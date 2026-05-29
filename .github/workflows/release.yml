@@ -97,31 +97,13 @@ jobs:
       # to what CI tested. Plain @stable would leave the nightly missing and
       # `wasm-pack build` would fail with "toolchain not installed" — exactly
       # the regression observed on Release #403 after #657 untracked the wasm.
-      - name: Setup Rust (pinned by rust-toolchain.toml)
-        run: rustup show
-
-      - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      # Rust + wasm-pack + LLVM-20 for the manifold-csg-sys wasm build.
+      # Single-sourced in .github/actions/setup-wasm-build (shared with
+      # test.yml / desktop-compat.yml / sdk-canary.yml).
+      - name: Setup WASM build toolchain
+        uses: ./.github/actions/setup-wasm-build
         with:
-          prefix-key: release
-
-      - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
-        with:
-          version: latest
-
-      # PR #861 enables `manifold-csg-wasm-uu` on the wasm bundle;
-      # `manifold-csg-sys`'s build script needs clang-20+ for wasm32
-      # cross-compile. Same install as `test.yml` and `desktop-compat.yml`.
-      - name: Install LLVM 20 (for manifold-csg-sys wasm build)
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
-            | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
-            | sudo tee /etc/apt/sources.list.d/llvm.list
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            clang-20 lld-20 libc++-20-dev libc++abi-20-dev
+          cache-prefix: release
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile

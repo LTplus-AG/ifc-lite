@@ -57,35 +57,10 @@ jobs:
       # WASM bundles are no longer committed (see #654); turbo's wasm
       # packages rebuild from source via scripts/build-wasm.sh, which
       # needs a Rust toolchain matching rust-toolchain.toml + wasm-pack.
-      - name: Setup Rust (pinned by rust-toolchain.toml)
-        run: rustup show
-
-      - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Setup WASM build toolchain
+        uses: ./.github/actions/setup-wasm-build
         with:
-          prefix-key: ci
-
-      - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
-        with:
-          version: latest
-
-      # PR #861 enables `manifold-csg-wasm-uu` on the wasm bundle;
-      # `manifold-csg-sys`'s build script needs a wasm32-capable
-      # clang + libc++ headers. clang-20 specifically — libc++-18's
-      # ABI/availability config doesn't cross-compile to
-      # wasm32-unknown-unknown (see test.yml's note for the full
-      # diagnostic). Add apt.llvm.org for clang-20 since Ubuntu
-      # Noble's main repo tops out at clang-18.
-      - name: Install LLVM 20 (for manifold-csg-sys wasm build)
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
-            | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
-            | sudo tee /etc/apt/sources.list.d/llvm.list
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            clang-20 lld-20 libc++-20-dev libc++abi-20-dev
+          cache-prefix: ci
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

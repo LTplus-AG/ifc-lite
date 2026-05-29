@@ -1,0 +1,53 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Single source of truth for the toolchain that scripts/build-wasm.sh needs.
+# The wasm bundle pulls in manifold-csg-sys via the `manifold-csg-wasm-uu`
+# feature (PR #861); its build script (wasm-cxx-shim) needs the pinned Rust
+# nightly + wasm-pack + a wasm32-capable clang-20 with libc++ headers
+# (libc++-18 doesn't cross-compile to wasm32-unknown-unknown — see the git
+# history for the full diagnostic). Ubuntu Noble's main repo tops out at
+# clang-18, so add apt.llvm.org for clang-20.
+#
+# Used by test.yml, release.yml, desktop-compat.yml and sdk-canary.yml so the
+# four stay in lock-step — a toolchain change here updates all of them at once,
+# instead of one drifting (which is how sdk-canary once shipped without LLVM-20
+# and went red on an unrelated PR).
+name: 'Setup WASM build toolchain'
+description: 'Rust (rust-toolchain.toml) + wasm-pack + LLVM-20 for the manifold-csg-sys wasm32 build'
+
+inputs:
+  cache-prefix:
+    description: 'Swatinem/rust-cache prefix-key, to namespace the cargo cache per workflow'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # rust-toolchain.toml pins the nightly + wasm32-unknown-unknown + rust-src;
+    # `rustup show` triggers install of exactly that toolchain.
+    - name: Setup Rust (pinned by rust-toolchain.toml)
+      shell: bash
+      run: rustup show
+
+    - name: Cargo cache
+      uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      with:
+        prefix-key: ${{ inputs.cache-prefix }}
+
+    - name: Install wasm-pack
+      uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
+      with:
+        version: latest
+
+    - name: Install LLVM 20 (for manifold-csg-sys wasm build)
+      shell: bash
+      run: |
+        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+          | sudo gpg --dearmor -o /usr/share/keyrings/llvm-snapshot-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" \
+          | sudo tee /etc/apt/sources.list.d/llvm.list
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq \
+          clang-20 lld-20 libc++-20-dev libc++abi-20-dev

@@ -46,8 +46,8 @@ const PRESETS_KEY = 'ifc-lite-clash-presets';
 const SETTINGS_KEY = 'ifc-lite-clash-settings';
 const SCHEMA_VERSION = 1;
 
-export const MAX_PRESETS = 200;
-export const MAX_NAME = 100;
+const MAX_PRESETS = 200;
+const MAX_NAME = 100;
 
 /** [min, max] clamps applied to settings numerics on load and on commit. */
 export const CLASH_BOUNDS = {

@@ -1284,9 +1284,6 @@ importers:
 
   packages/sandbox:
     dependencies:
-      '@ifc-lite/clash':
-        specifier: workspace:^
-        version: link:../clash
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../sdk

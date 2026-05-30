@@ -1,8 +1,9 @@
-# Clash Detection — Architecture & Implementation Plan
+# Clash Detection — Architecture
 
-Status: **proposed**
+Status: **shipped** (`@ifc-lite/clash`). This is the *what/why* of the design as built;
+the source, tests, and changeset are the source of truth for the *how*.
 Owner: clash core
-Related: `docs/architecture/collab-plan.md`, `docs/architecture/streaming-load-design.md`, the existing `clash_check` MCP stub (`packages/mcp/src/tools/geometry.ts:229`), and the prototype in `ifc-lite-desktop` (`src/desktop/analysis/`).
+Related: `docs/architecture/collab-plan.md`, `docs/architecture/streaming-load-design.md`.
 
 ---
 
@@ -313,14 +314,15 @@ BCF status persists via the deterministic topic GUID. This is the Navisworks "cl
 - `bim.clash.run(selA, selB, opts)` / `bim.clash.matrix(presets)` in the sandbox bridge (`packages/sandbox/src/bridge-schema.ts`), returning serializable `ClashResult`.
 - New headless `ifc-lite clash` CLI command (WASM runs in Node) with `--json`, `--matrix`, `--bcf out.bcfzip`, `--group cluster`. Fits the existing `eval`/`run` power-tool model.
 
-### 9.4 Desktop migration
-- Replace `src/desktop/analysis/clash-engine.ts` with `@ifc-lite/clash`; keep the panel, BCF export, and AI triage (now `triage.ts` in the package — pure prompt build/parse; the desktop keeps its LLM call). Delete the private engine so the two never diverge.
+### 9.4 Desktop migration (not pursued)
+- The desktop app could replace `src/desktop/analysis/clash-engine.ts` with `@ifc-lite/clash` (keeping its panel + AI triage via the package's pure `triage.ts`). Out of scope for this work; noted as a possible future direction in the separate `ifc-lite-desktop` repo.
 
 ---
 
-## 10. Phased delivery
+## 10. Delivery (as shipped)
 
-Each phase is independently shippable and leaves the product better.
+Built in independently-shippable phases (P0–P6, all landed on `feat/clash-detection`).
+P7 (desktop migration) was not pursued — see §9.4.
 
 | Phase | Deliverable | Why it's valuable alone |
 |---|---|---|
@@ -331,7 +333,7 @@ Each phase is independently shippable and leaves the product better.
 | **4. MCP + scripting + CLI** | implement `clash_check`, add `clash_matrix`/`clash_report`, `bim.clash.*`, `ifc-lite clash` | Headless + agentic clash; couples to automation |
 | **5. Lifecycle** | revision diffing of clash sets, BCF status persistence | Clash becomes a tracked workflow, not a snapshot |
 | **6. IFC5/USD** | `adapters/ifcx.ts` (prim path = key, component type = tag, geom from ifcx extractor) | Proves and delivers the future-alignment; core unchanged |
-| **7. Desktop migration** | desktop consumes `@ifc-lite/clash`; delete private engine | Single source of truth |
+| **7. Desktop migration** *(not pursued)* | desktop consumes `@ifc-lite/clash`; delete private engine | Single source of truth |
 
 ---
 
@@ -344,14 +346,3 @@ Each phase is independently shippable and leaves the product better.
 5. **TS vs WASM float drift** — *Mitigation:* epsilon bands in differential tests; deterministic ordering.
 6. **Instancing** — confirmed the streaming mesher emits de-instanced, world-baked `MeshData`, so `transform` defaults to identity; the `transform` field is reserved for a future instanced path.
 7. **AI triage placement** — kept as pure prompt build/parse in `triage.ts`; hosts (desktop, web chat, CLI `ask`, MCP `clash_review`) own the LLM call.
-
----
-
-## 12. First concrete step (Phase 0 scaffold)
-
-1. `pnpm` workspace package `packages/clash` with MPL headers + changeset.
-2. Lift `selectors.ts` and `disciplines.ts` verbatim from the desktop prototype (with tests).
-3. Implement `engine-ts/` (broad via `@ifc-lite/spatial` BVH; exact tri-tri intersection + distance), `adapters/step.ts`, `exclude.ts`.
-4. Golden fixtures + unit tests; wire nothing into the app yet.
-
-This yields a correct, headless, tested clash engine that the CLI and MCP can call immediately — and that becomes the oracle for the Rust core in Phase 3.

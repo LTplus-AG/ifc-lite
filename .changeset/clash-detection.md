@@ -16,6 +16,9 @@ framing viewpoints, A/B coloring, optional snapshots) and round-trip status back
 
 Surfaced through the existing tools:
 
+- `@ifc-lite/clash` — `rulesFromPresets(presets, mode, clearance?, reportTouch?)` builds
+  runnable rules from any preset list (the discipline matrix is this over the built-ins),
+  so hosts can run a user-curated rule set.
 - `@ifc-lite/sdk` — a `clash` namespace (`run`, `matrix`, `group`, presets).
 - `@ifc-lite/cli` — `ifc-lite clash <file>` with `--a/--b`, `--mode`, `--matrix`,
   `--clearance`, `--bcf`.

@@ -153,17 +153,31 @@ export function inferClashSeverity(typeA: string, typeB: string): ClashSeverity 
 }
 
 /** Turn the discipline presets into runnable clash rules (the clash matrix). */
-export function disciplineMatrixRules(mode: ClashMode = 'hard', clearance?: number): ClashRule[] {
-  return CLASH_RULE_PRESETS.map((preset) => ({
+/**
+ * Turn an arbitrary list of rule presets into runnable `ClashRule`s. Used by the
+ * built-in discipline matrix below and by the viewer to run a user-edited preset
+ * set. `clearance` is threaded onto each rule only in clearance mode (narrow.ts
+ * only reports clearance violations when `rule.clearance != null`); `reportTouch`
+ * is threaded onto every rule when set.
+ */
+export function rulesFromPresets(
+  presets: ClashRulePreset[],
+  mode: ClashMode = 'hard',
+  clearance?: number,
+  reportTouch?: boolean,
+): ClashRule[] {
+  return presets.map((preset) => ({
     id: preset.id,
     name: preset.name,
     a: preset.selectorA,
     b: preset.selectorB,
     mode,
     severity: preset.severity,
-    // A clearance run only reports violations when each rule carries a
-    // `clearance` (see narrow.ts) — thread the caller's value through so
-    // `--matrix --mode clearance --clearance N` is no longer silently dropped.
     ...(mode === 'clearance' && clearance != null ? { clearance } : {}),
+    ...(reportTouch ? { reportTouch: true } : {}),
   }));
+}
+
+export function disciplineMatrixRules(mode: ClashMode = 'hard', clearance?: number): ClashRule[] {
+  return rulesFromPresets(CLASH_RULE_PRESETS, mode, clearance);
 }

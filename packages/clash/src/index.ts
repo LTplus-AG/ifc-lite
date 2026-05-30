@@ -19,6 +19,7 @@ export {
   CLASH_RULE_PRESETS,
   inferClashSeverity,
   disciplineMatrixRules,
+  rulesFromPresets,
   type Discipline,
   type DisciplineInfo,
   type ClashRulePreset,

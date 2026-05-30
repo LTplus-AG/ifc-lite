@@ -14,9 +14,8 @@ import { useCallback } from 'react';
 import { useViewerStore } from '@/store';
 import {
   createClashEngine,
-  disciplineMatrixRules,
+  rulesFromPresets,
   groupClashes,
-  CLASH_RULE_PRESETS,
   type Clash,
   type ClashElement,
   type ClashElementRef,
@@ -95,6 +94,9 @@ export function useClash() {
   const tolerance = useViewerStore((s) => s.clashTolerance);
   const clearance = useViewerStore((s) => s.clashClearance);
   const groupBy = useViewerStore((s) => s.clashGroupBy);
+  const clusterEpsilon = useViewerStore((s) => s.clashClusterEpsilon);
+  const reportTouch = useViewerStore((s) => s.clashReportTouch);
+  const clashPresets = useViewerStore((s) => s.clashPresets);
   const selectedId = useViewerStore((s) => s.clashSelectedId);
   const panelVisible = useViewerStore((s) => s.clashPanelVisible);
 
@@ -141,8 +143,8 @@ export function useClash() {
         const res = await engine.run(elements, rules, { exclusions, tolerance: state.clashTolerance });
         state.setClashResult(res);
         // Spatial clustering is the sensible BCF unit; the panel list groups by
-        // its own dimension separately.
-        state.setClashGroups(groupClashes(res, { by: 'cluster' }));
+        // its own dimension separately. Radius is the user's cluster epsilon.
+        state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
         state.setClashSelectedId(null);
       } catch (err) {
         console.error('[clash] detection run failed', err);
@@ -154,10 +156,19 @@ export function useClash() {
     [gatherElements],
   );
 
-  const runMatrix = useCallback(
-    (): Promise<void> => run(disciplineMatrixRules(mode, mode === 'clearance' ? clearance : undefined)),
-    [run, mode, clearance],
-  );
+  /**
+   * Run the user's ENABLED rule set (built-in discipline rules they've kept on,
+   * plus any custom presets). With no enabled rules, surface a clear message
+   * instead of silently finding nothing.
+   */
+  const runMatrix = useCallback((): Promise<void> => {
+    const enabled = clashPresets.filter((p) => p.enabled);
+    if (enabled.length === 0) {
+      useViewerStore.getState().setClashError('All rules are disabled — enable at least one in Clash settings (⚙).');
+      return Promise.resolve();
+    }
+    return run(rulesFromPresets(enabled, mode, mode === 'clearance' ? clearance : undefined, reportTouch));
+  }, [run, mode, clearance, reportTouch, clashPresets]);
 
   /**
    * Detect ALL clashes in the loaded geometry — a single self-clash rule over
@@ -174,28 +185,19 @@ export function useClash() {
           a: '*',
           mode,
           ...(mode === 'clearance' ? { clearance } : {}),
+          ...(reportTouch ? { reportTouch: true } : {}),
         },
       ]),
-    [run, mode, clearance],
+    [run, mode, clearance, reportTouch],
   );
 
   const runPreset = useCallback(
     (presetId: string): Promise<void> => {
-      const preset = CLASH_RULE_PRESETS.find((p) => p.id === presetId);
+      const preset = useViewerStore.getState().clashPresets.find((p) => p.id === presetId);
       if (!preset) return Promise.resolve();
-      return run([
-        {
-          id: preset.id,
-          name: preset.name,
-          a: preset.selectorA,
-          b: preset.selectorB,
-          mode,
-          severity: preset.severity,
-          ...(mode === 'clearance' ? { clearance } : {}),
-        },
-      ]);
+      return run(rulesFromPresets([preset], mode, mode === 'clearance' ? clearance : undefined, reportTouch));
     },
-    [run, mode, clearance],
+    [run, mode, clearance, reportTouch],
   );
 
   const refOf = useCallback((ref: ClashElementRef): SelectionRef | null => {
@@ -261,11 +263,12 @@ export function useClash() {
    * Cheap (pure grouping) so the dialog can call it on every keystroke.
    */
   const bcfPreview = useCallback((config: ClashBcfConfig): { clashes: number; topics: number } => {
-    const current = useViewerStore.getState().clashResult;
+    const state = useViewerStore.getState();
+    const current = state.clashResult;
     if (!current) return { clashes: 0, topics: 0 };
     const filtered = filterResultBySeverity(current, new Set(config.severities));
     if (filtered.clashes.length === 0) return { clashes: 0, topics: 0 };
-    const groups = groupClashes(filtered, { by: config.groupBy });
+    const groups = groupClashes(filtered, { by: config.groupBy, epsilon: state.clashClusterEpsilon });
     const capped = Math.min(groups.length, config.maxTopics);
     const overflow = groups.length > config.maxTopics ? 1 : 0;
     return { clashes: filtered.clashes.length, topics: capped + overflow };
@@ -288,7 +291,7 @@ export function useClash() {
       if (!current) return;
       const filtered = filterResultBySeverity(current, new Set(config.severities));
       if (filtered.clashes.length === 0) return;
-      const groups = groupClashes(filtered, { by: config.groupBy });
+      const groups = groupClashes(filtered, { by: config.groupBy, epsilon: state.clashClusterEpsilon });
 
       let restore: (() => void) | undefined;
       let snapshotProvider: ((group: ClashGroup) => Promise<Uint8Array | undefined>) | undefined;
@@ -379,7 +382,8 @@ export function useClash() {
     groupBy,
     selectedId,
     panelVisible,
-    presets: CLASH_RULE_PRESETS,
+    // Only enabled presets show as run chips; the settings dialog manages the full set.
+    presets: clashPresets.filter((p) => p.enabled),
     // settings
     setMode,
     setTolerance,

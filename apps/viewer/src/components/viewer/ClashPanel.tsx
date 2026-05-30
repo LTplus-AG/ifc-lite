@@ -19,6 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useClash } from '@/hooks/useClash';
 import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
+import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import type { Clash, ClashSeverity } from '@ifc-lite/clash';
 
 interface ClashPanelProps {
@@ -110,6 +111,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         <Crosshair className="h-4 w-4 text-[#f7768e]" />
         <span className="text-sm font-semibold tracking-tight">Clash detection</span>
         <div className="ml-auto flex items-center gap-1">
+          <ClashSettingsDialog />
           {result && (
             <Button variant="ghost" size="icon" className="h-7 w-7" title="Clear results" onClick={clearAll}>
               <Trash2 className="h-4 w-4" />

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CLASH_RULE_PRESETS,
   disciplineMatrixRules,
+  rulesFromPresets,
   inferClashSeverity,
 } from './disciplines.js';
 
@@ -58,5 +59,28 @@ describe('disciplineMatrixRules', () => {
     for (const rule of rules) {
       expect(rule.clearance).toBeUndefined();
     }
+  });
+
+  it('is exactly rulesFromPresets over the built-in list (CLI/MCP/SDK contract)', () => {
+    expect(disciplineMatrixRules('hard')).toEqual(rulesFromPresets(CLASH_RULE_PRESETS, 'hard'));
+    expect(disciplineMatrixRules('clearance', 0.05)).toEqual(
+      rulesFromPresets(CLASH_RULE_PRESETS, 'clearance', 0.05),
+    );
+  });
+});
+
+describe('rulesFromPresets', () => {
+  const custom = [{ id: 'x', name: 'X', description: '', severity: 'major' as const, selectorA: 'IfcDuct*', selectorB: 'IfcDuct*' }];
+
+  it('maps each preset to a runnable rule', () => {
+    const rules = rulesFromPresets(custom, 'hard');
+    expect(rules).toHaveLength(1);
+    expect(rules[0]).toMatchObject({ id: 'x', a: 'IfcDuct*', b: 'IfcDuct*', mode: 'hard', severity: 'major' });
+  });
+
+  it('threads clearance (clearance mode only) and reportTouch onto every rule', () => {
+    expect(rulesFromPresets(custom, 'clearance', 0.1)[0].clearance).toBe(0.1);
+    expect(rulesFromPresets(custom, 'hard', 0.1)[0].clearance).toBeUndefined();
+    expect(rulesFromPresets(custom, 'hard', undefined, true)[0].reportTouch).toBe(true);
   });
 });

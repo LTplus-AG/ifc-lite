@@ -110,18 +110,12 @@ export function ViewportContainer() {
     // sees per model, so we can tell whether a model's `visible` flips, its
     // `meshes` empties, or its `geometryResult` goes undefined.
     try {
-      const snapshot = Array.from(storeModels.entries()).map(([id, m]) => ({
-        id: id.slice(0, 8),
-        name: m.name,
-        visible: m.visible,
-        meshes: m.geometryResult?.meshes?.length ?? null,
-        hasGeom: !!m.geometryResult,
-        loadedAt: m.loadedAt,
-      }));
+      const inline = Array.from(storeModels.entries()).map(([id, m]) =>
+        `${(m.name ?? id).slice(0, 22)}[vis=${m.visible},meshes=${m.geometryResult?.meshes?.length ?? 'NULL'},geom=${!!m.geometryResult}]`,
+      ).join('  ');
       // eslint-disable-next-line no-console
       console.log(
-        `[DIAG merge] size=${storeModels.size} contentV=${geometryContentVersion} active=${useViewerStore.getState().activeModelId?.slice(0, 8) ?? 'none'}`,
-        snapshot,
+        `[DIAG merge] size=${storeModels.size} contentV=${geometryContentVersion} active=${useViewerStore.getState().activeModelId?.slice(0, 8) ?? 'none'} :: ${inline}`,
       );
     } catch { /* diagnostic only — never throw */ }
 

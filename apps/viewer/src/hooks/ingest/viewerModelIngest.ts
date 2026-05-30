@@ -390,10 +390,27 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
     finalCoordinateInfo.wasmRtcOffset = capturedRtcOffset;
   }
 
+  // [DIAG federation-merge] TEMPORARY — wrap the mesh array in a length-trap
+  // so whoever truncates a federated model's geometry (the "second model
+  // truly gone" / meshes:0 bug) reveals their call stack. Wrapping at creation
+  // means a consumer that captured the array reference still hits the trap.
+  // Revert before merge.
+  const trappedMeshes: typeof allMeshes = new Proxy(allMeshes, {
+    set(target, prop, value) {
+      if (prop === 'length' && typeof value === 'number' && value === 0 && target.length > 0) {
+        // eslint-disable-next-line no-console
+        console.trace(`[DIAG TRAP] ${options.fileName} meshes truncated ${target.length} -> 0`);
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (target as any)[prop] = value;
+      return true;
+    },
+  });
+
   return {
     dataStore,
     geometryResult: {
-      meshes: allMeshes,
+      meshes: trappedMeshes,
       totalVertices: allMeshes.reduce((sum, mesh) => sum + mesh.positions.length / 3, 0),
       totalTriangles: allMeshes.reduce((sum, mesh) => sum + mesh.indices.length / 3, 0),
       coordinateInfo: finalCoordinateInfo,
@@ -403,7 +420,7 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
       : dataStore.schemaVersion === 'IFC4'
         ? 'IFC4'
         : 'IFC2X3',
-    allMeshes,
+    allMeshes: trappedMeshes,
     cumulativeColorUpdates,
   };
 }

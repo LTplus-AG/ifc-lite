@@ -54,6 +54,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     setTolerance,
     setClearance,
     setGroupBy,
+    runAll,
     runMatrix,
     runPreset,
     focusClash,
@@ -167,9 +168,18 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           )}
         </div>
 
-        <Button className="w-full h-8" disabled={running} onClick={() => void runMatrix()}>
-          {running ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Play className="h-4 w-4 mr-1.5" />}
-          {running ? 'Detecting…' : 'Run discipline matrix'}
+        <Button className="w-full h-8" disabled={running} onClick={() => void runAll()}>
+          {running ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Crosshair className="h-4 w-4 mr-1.5" />}
+          {running ? 'Detecting…' : 'Detect all clashes'}
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full h-7 text-xs"
+          disabled={running}
+          onClick={() => void runMatrix()}
+        >
+          <Play className="h-3.5 w-3.5 mr-1.5" />
+          Run discipline matrix
         </Button>
 
         <div className="flex flex-wrap gap-1.5">

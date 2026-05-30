@@ -111,6 +111,26 @@ export function useClash() {
 
   const runMatrix = useCallback((): Promise<void> => run(disciplineMatrixRules(mode)), [run, mode]);
 
+  /**
+   * Detect ALL clashes in the loaded geometry — a single self-clash rule over
+   * every element (every element vs every other), no discipline matrix or
+   * A/B selectors needed. For a single loaded model this is "all clashes inside
+   * the model".
+   */
+  const runAll = useCallback(
+    (): Promise<void> =>
+      run([
+        {
+          id: 'all-clashes',
+          name: 'All elements',
+          a: '*',
+          mode,
+          ...(mode === 'clearance' ? { clearance } : {}),
+        },
+      ]),
+    [run, mode, clearance],
+  );
+
   const runPreset = useCallback(
     (presetId: string): Promise<void> => {
       const preset = CLASH_RULE_PRESETS.find((p) => p.id === presetId);
@@ -208,6 +228,7 @@ export function useClash() {
     setPanelVisible,
     // actions
     run,
+    runAll,
     runMatrix,
     runPreset,
     focusClash,

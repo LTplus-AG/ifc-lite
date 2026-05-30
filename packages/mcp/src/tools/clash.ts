@@ -10,7 +10,9 @@
  * meshed once and cached by model id; the engine's rule SELECTORS (TYPE-based,
  * e.g. `IfcDuct*|IfcPipe*`) pick the element groups for each run.
  *
- *   - clash_check   one ad-hoc rule between two selectors.
+ *   - clash_check   one ad-hoc rule: A vs B, a self-clash within A, or — with no
+ *                   selectors at all — ALL clashes in the model (every element
+ *                   vs every other, no discipline matrix needed).
  *   - clash_matrix  the standard discipline matrix (MEP x STR, HVAC x ARCH, ...).
  *
  * Clash lists are always capped for display; the cap and the dropped count are
@@ -126,35 +128,39 @@ function topClashes(clashes: Clash[], cap: number): {
 const clashCheck: Tool = {
   name: 'clash_check',
   description:
-    'Pairwise clash detection between two TYPE-based selectors (e.g. a="IfcDuct*|IfcPipe*", b="IfcWall*"). '
-    + 'Meshes the model headlessly, runs one rule, and returns a summary plus the top clashes by |distance|.',
+    'Clash detection on a single model. Omit BOTH a and b to detect ALL clashes inside the model '
+    + '(every element vs every other — no discipline matrix needed). Give only a TYPE selector for a to '
+    + 'self-clash within a group (a="IfcDuct*"), or both a and b for a pairwise check (a="IfcDuct*", b="IfcWall*"). '
+    + 'Meshes the model headlessly and returns a summary plus the top clashes by |distance|.',
   scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {
       model_id: { type: 'string' },
-      a: { type: 'string', description: 'Type selector for set A, e.g. "IfcDuct*|IfcPipe*", "!IfcSpace", "*".' },
-      b: { type: 'string', description: 'Type selector for set B.' },
+      a: { type: 'string', description: 'Type selector for set A. Defaults to "*" (all elements). e.g. "IfcDuct*|IfcPipe*", "!IfcSpace".' },
+      b: { type: 'string', description: 'Type selector for set B. OMIT for a self-clash within A (every element vs every other in the group).' },
       mode: { type: 'string', enum: ['hard', 'clearance'], default: 'hard' },
       tolerance: { type: 'number', description: 'Touching band (m). Defaults to the engine tolerance.' },
       clearance: { type: 'number', description: 'Required gap (m) for mode="clearance".' },
     },
-    required: ['a', 'b'],
     additionalProperties: false,
   },
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const a = input.a as string;
-    const b = input.b as string;
+    const a = (input.a as string | undefined) ?? '*';
+    const b = input.b as string | undefined;
     const mode = (input.mode as ClashMode | undefined) ?? 'hard';
     const tolerance = input.tolerance as number | undefined;
     const clearance = input.clearance as number | undefined;
+    // No `b` => self-clash within A (every element vs every other in the group);
+    // with the default a="*" that is "all clashes in the model".
+    const label = b ? `${a} vs ${b}` : a === '*' ? 'all elements (self-clash)' : `${a} (self-clash)`;
 
     const rule: ClashRule = {
       id: 'clash_check',
-      name: `${a} vs ${b}`,
+      name: label,
       a,
-      b,
+      ...(b != null ? { b } : {}),
       mode,
       ...(tolerance != null ? { tolerance } : {}),
       ...(clearance != null ? { clearance } : {}),
@@ -163,12 +169,12 @@ const clashCheck: Tool = {
     const result = await runRules(m, [rule], ctx);
     const { rows, truncated } = topClashes(result.clashes, CLASH_DISPLAY_CAP);
 
-    const settings = { a, b, mode, tolerance: tolerance ?? null, clearance: clearance ?? null };
+    const settings = { a, b: b ?? null, mode, tolerance: tolerance ?? null, clearance: clearance ?? null };
     const capNote = truncated
       ? ` Showing top ${truncated.shown} by |distance|; ${truncated.dropped} more not shown.`
       : '';
     return okResult(
-      `Found ${result.summary.total} clash(es) for ${a} vs ${b} (mode=${mode}).${capNote}`,
+      `Found ${result.summary.total} clash(es) for ${label} (mode=${mode}).${capNote}`,
       {
         summary: result.summary,
         settings,

@@ -1,0 +1,58 @@
+{
+  "name": "@ifc-lite/clash",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clash detection for IFC-Lite — representation-agnostic core engine + source adapters",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./step": {
+      "import": "./dist/adapters/step.js",
+      "types": "./dist/adapters/step.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ifc-lite/spatial": "workspace:^",
+    "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/parser": "workspace:^",
+    "@ifc-lite/query": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^1.6.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/clash"
+  },
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "bim",
+    "clash",
+    "clash-detection",
+    "coordination",
+    "aec"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

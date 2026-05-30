@@ -7,11 +7,14 @@
 //! Modern async/await API for parsing IFC files.
 
 mod alignment_lines;
+mod clash;
 mod extract_profiles;
 mod gpu_meshes;
 mod parsing;
 pub(crate) mod styling;
 mod symbolic;
+
+pub use clash::{ClashRunResult, ClashSession};
 
 use ifc_lite_core::EntityIndex;
 use wasm_bindgen::prelude::*;

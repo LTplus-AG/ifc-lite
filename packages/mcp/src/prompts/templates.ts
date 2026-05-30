@@ -132,12 +132,22 @@ export const spaceProgramCheck: Prompt = {
 
 export const clashReview: Prompt = {
   name: 'clash_review',
-  description: 'Run clash_check, group by trade, prioritize by severity.',
-  render() {
+  description: 'Run the discipline clash matrix, group by trade, prioritize by severity.',
+  arguments: [
+    { name: 'mode', description: 'Clash mode: hard (interpenetration) or clearance (gap).', required: false },
+  ],
+  render(args) {
+    const mode = args.mode ?? 'hard';
     return {
       description: 'Clash review',
       messages: [
-        userMessage('Run `clash_check` on the model. Group results by IFC type pair (e.g. IfcWall × IfcDuct) and produce a top-20 priority list for review.'),
+        systemMessage('You are a BIM coordination lead triaging clash results.'),
+        userMessage([
+          `Run \`clash_matrix\` (mode="${mode}") on the model.`,
+          'Summarize the byRule and bySeverity breakdowns, then produce a top-20 priority list ordered by severity and |distance|.',
+          'For any discipline pair you want to drill into, follow up with `clash_check` using the two TYPE selectors (e.g. a="IfcDuct*|IfcPipe*", b="IfcWall*").',
+          'Always state the display cap and how many clashes were not shown.',
+        ].join('\n')),
       ],
     };
   },

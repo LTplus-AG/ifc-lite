@@ -16,6 +16,7 @@ import { propsCommand } from './commands/props.js';
 import { exportCommand } from './commands/export.js';
 import { idsCommand } from './commands/ids.js';
 import { bcfCommand } from './commands/bcf.js';
+import { clashCommand } from './commands/clash.js';
 import { createCommand } from './commands/create.js';
 import { evalCommand } from './commands/eval.js';
 import { runCommand } from './commands/run.js';
@@ -65,6 +66,7 @@ const HELP = `
     export    <file.ifc> --format csv|json|ifc    Export data to file or stdout
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
+    clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
     create    <type> [options] --out F             Create IFC elements (30+ types)
     eval      <file.ifc> "<expression>"           Evaluate SDK expression
     run       <script.js> <file.ifc>              Execute a script against model
@@ -105,6 +107,9 @@ const HELP = `
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
     ifc-lite ids model.ifc requirements.ids --json
     ifc-lite bcf create --title "Missing door" --out issue.bcf
+    ifc-lite clash model.ifc --matrix --json
+    ifc-lite clash model.ifc --a "IfcDuct*|IfcPipe*" --b "IfcWall*" --mode clearance --clearance 0.05
+    ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
     ifc-lite create wall --height 3 --thickness 0.2 --start 0,0,0 --end 5,0,0 --out wall.ifc
     ifc-lite create stair --number-of-risers 12 --riser-height 0.175 --width 1.2 --out stair.ifc
     ifc-lite create door --width 0.9 --height 2.1 --position 0,0,0 --out door.ifc
@@ -192,6 +197,9 @@ async function main(): Promise<void> {
       break;
     case 'bcf':
       await bcfCommand(commandArgs);
+      break;
+    case 'clash':
+      await clashCommand(commandArgs);
       break;
     case 'create':
       await createCommand(commandArgs);

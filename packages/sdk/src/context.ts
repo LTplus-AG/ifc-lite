@@ -31,6 +31,7 @@ import { BsddNamespace } from './namespaces/bsdd.js';
 import { SandboxNamespace } from './namespaces/sandbox.js';
 import { FilesNamespace } from './namespaces/files.js';
 import { ScheduleNamespace } from './namespaces/schedule.js';
+import { ClashNamespace } from './namespaces/clash.js';
 import { RemoteBackend } from './transport/remote-backend.js';
 
 export class BimContext {
@@ -51,6 +52,7 @@ export class BimContext {
   readonly sandbox: SandboxNamespace;
   readonly files: FilesNamespace;
   readonly schedule: ScheduleNamespace;
+  readonly clash: ClashNamespace;
 
   private _queryNamespace: QueryNamespace;
   private _backend: BimBackend;
@@ -83,6 +85,7 @@ export class BimContext {
     this.sandbox = new SandboxNamespace(this);
     this.files = new FilesNamespace(this._backend);
     this.schedule = new ScheduleNamespace(this._backend);
+    this.clash = new ClashNamespace();
     // Cache the bound function so every access returns the same reference
     this._boundOn = this.events.on.bind(this.events);
   }

@@ -6,6 +6,7 @@ import { ToolRegistry } from './types.js';
 import { discoveryTools } from './discovery.js';
 import { queryTools } from './query.js';
 import { geometryTools } from './geometry.js';
+import { clashTools } from './clash.js';
 import { validationTools } from './validation.js';
 import { mutationTools } from './mutate.js';
 import { bcfTools } from './bcf.js';
@@ -21,6 +22,7 @@ export {
   discoveryTools,
   queryTools,
   geometryTools,
+  clashTools,
   validationTools,
   mutationTools,
   bcfTools,
@@ -40,6 +42,7 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(discoveryTools);
   registry.registerAll(queryTools);
   registry.registerAll(geometryTools);
+  registry.registerAll(clashTools);
   registry.registerAll(validationTools);
   registry.registerAll(mutationTools);
   registry.registerAll(bcfTools);

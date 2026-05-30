@@ -33,6 +33,7 @@ import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensions
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
+import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -129,6 +130,7 @@ export type ViewerState = LoadingSlice &
   ListSlice &
   PinboardSlice &
   LensSlice &
+  ClashSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
@@ -169,6 +171,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createListSlice(...args),
   ...createPinboardSlice(...args),
   ...createLensSlice(...args),
+  ...createClashSlice(...args),
   ...createScriptSlice(...args),
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),

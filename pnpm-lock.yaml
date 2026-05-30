@@ -265,6 +265,9 @@ importers:
       '@ifc-lite/cache':
         specifier: workspace:^
         version: link:../../packages/cache
+      '@ifc-lite/collab':
+        specifier: workspace:^
+        version: link:../../packages/collab
       '@ifc-lite/create':
         specifier: workspace:^
         version: link:../../packages/create

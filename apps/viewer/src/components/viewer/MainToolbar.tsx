@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import React, { useRef, useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import {
   FolderOpen,
   Download,
@@ -50,6 +50,7 @@ import {
   ChevronsUpDown,
   Undo2,
   Redo2,
+  Share2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -77,6 +78,8 @@ import { CSVExporter } from '@ifc-lite/export';
 import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
+import { ShareDialog } from './ShareDialog';
+import { isCollabEnabled } from '@/lib/collab/config';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -418,6 +421,10 @@ interface MainToolbarProps {
 export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addModelInputRef = useRef<HTMLInputElement>(null);
+  // Collaboration (M1): Share button is gated behind the collab feature flag.
+  const collabEnabled = useMemo(() => isCollabEnabled(), []);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const collabPeerCount = useViewerStore((s) => s.collabPeers.length);
   const {
     loadFile,
     loading,
@@ -1142,6 +1149,33 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Share - link-based multiuser collaboration (M1, behind collab.enabled) */}
+      {collabEnabled && (
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={!geometryResult}
+                onClick={() => setShareDialogOpen(true)}
+                className="relative"
+                aria-label="Share"
+              >
+                <Share2 className="h-4 w-4" />
+                {collabPeerCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium text-primary-foreground">
+                    {collabPeerCount + 1}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Share</TooltipContent>
+          </Tooltip>
+          <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+        </>
+      )}
 
       {/* Edit Menu - Bulk editing and data import */}
       <DropdownMenu>

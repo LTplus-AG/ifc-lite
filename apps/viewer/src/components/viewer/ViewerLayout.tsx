@@ -22,6 +22,8 @@ import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
+import { isCollabEnabled } from '@/lib/collab/config';
+import { parseRoleFromToken } from '@/lib/collab/share-link';
 import { EntityContextMenu } from './EntityContextMenu';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
@@ -84,6 +86,22 @@ export function ViewerLayout() {
       }
     })();
   }, [autoloadAddModel]);
+
+  // Deep-link collaboration join (plan §7.3): a share link is `?room=…&t=…`.
+  // The recipient joins the room; with seed-into-room (plan §4.6) the model
+  // hydrates from the Y.Doc, so no `?model=` is needed for shared sessions.
+  const collabJoinDoneRef = useRef(false);
+  useEffect(() => {
+    if (collabJoinDoneRef.current) return;
+    if (!isCollabEnabled()) return;
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get('room');
+    if (!roomId) return;
+    const token = params.get('t') ?? undefined;
+    collabJoinDoneRef.current = true;
+    const role = (token && parseRoleFromToken(token)) || 'viewer';
+    void useViewerStore.getState().startCollab({ roomId, role, token });
+  }, []);
 
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);

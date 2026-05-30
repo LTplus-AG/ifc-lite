@@ -46,6 +46,7 @@ import { createAddElementSlice, type AddElementSlice } from './slices/addElement
 import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSlice.js';
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
 import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
+import { createCollabSlice, type CollabSlice } from './slices/collabSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -100,6 +101,9 @@ export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './slices/
 export type { PlaybackSlice } from './slices/playbackSlice.js';
 export type { OverlaySlice, OverlayLayer, RGBA as OverlayRGBA } from './slices/overlaySlice.js';
 export { composeLayers as composeOverlayLayers } from './slices/overlaySlice.js';
+
+// Re-export Collab types
+export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from './slices/collabSlice.js';
 export {
   computeScheduleRange,
   computeHiddenProductIds,
@@ -142,6 +146,7 @@ export type ViewerState = LoadingSlice &
   SplitToolSlice &
   LevelDisplaySlice &
   PointCloudSlice &
+  CollabSlice &
   ExtensionsSlice & {
     resetViewerState: () => void;
   };
@@ -182,6 +187,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createSplitToolSlice(...args),
   ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
+  ...createCollabSlice(...args),
   ...createExtensionsSlice(...args),
 
   // Reset all viewer state when loading new file

@@ -14,6 +14,14 @@
     "./step": {
       "import": "./dist/adapters/step.js",
       "types": "./dist/adapters/step.d.ts"
+    },
+    "./ifcx": {
+      "import": "./dist/adapters/ifcx.js",
+      "types": "./dist/adapters/ifcx.d.ts"
+    },
+    "./bcf": {
+      "import": "./dist/bcf-bridge.js",
+      "types": "./dist/bcf-bridge.d.ts"
     }
   },
   "scripts": {
@@ -25,7 +33,9 @@
     "@ifc-lite/spatial": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
-    "@ifc-lite/query": "workspace:^"
+    "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/bcf": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

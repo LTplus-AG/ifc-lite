@@ -41,9 +41,15 @@ export function candidatePairs(
     }
   } else {
     for (let i = 0; i < groupA.length; i += 1) {
-      const hits = bvh.queryAABB(inflate(groupA[i].bounds, margin));
+      const a = groupA[i];
+      const hits = bvh.queryAABB(inflate(a.bounds, margin));
       for (const j of hits) {
         if (j <= i) continue;
+        const other = groupA[j];
+        // Skip same-entity pairs: an element split across several geometry
+        // sub-prims (common in IFC5/USD) produces multiple elements with the
+        // same durable key — that is one entity, not a self-clash.
+        if (a.key === other.key && a.model === other.model) continue;
         pairs.push([i, j]);
       }
     }

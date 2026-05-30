@@ -723,9 +723,15 @@ importers:
 
   packages/clash:
     dependencies:
+      '@ifc-lite/bcf':
+        specifier: workspace:^
+        version: link:../bcf
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry
+      '@ifc-lite/ifcx':
+        specifier: workspace:^
+        version: link:../ifcx
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser

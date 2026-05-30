@@ -31,3 +31,5 @@ export {
   parseTriageResponse,
   type ClashTriageResult,
 } from './triage.js';
+export { groupClashes, type GroupOptions } from './grouping.js';
+export { compareClashRuns, type ClashRevisionDiff } from './lifecycle.js';

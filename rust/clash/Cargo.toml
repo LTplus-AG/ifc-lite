@@ -1,0 +1,13 @@
+[package]
+name = "ifc-lite-clash"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "High-performance geometry kernel for IFC clash detection"
+keywords = ["ifc", "bim", "clash", "geometry", "aec"]
+categories = ["algorithms", "data-structures"]
+readme = "../../README.md"
+
+[dependencies]

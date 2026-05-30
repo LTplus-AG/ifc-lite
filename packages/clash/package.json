@@ -22,6 +22,10 @@
     "./bcf": {
       "import": "./dist/bcf-bridge.js",
       "types": "./dist/bcf-bridge.d.ts"
+    },
+    "./wasm": {
+      "import": "./dist/engine-wasm/index.js",
+      "types": "./dist/engine-wasm/index.d.ts"
     }
   },
   "scripts": {
@@ -35,7 +39,8 @@
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
-    "@ifc-lite/ifcx": "workspace:^"
+    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

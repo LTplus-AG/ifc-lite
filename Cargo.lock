@@ -2422,6 +2422,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-clash"
+version = "3.0.0"
+
+[[package]]
 name = "ifc-lite-core"
 version = "3.0.0"
 dependencies = [
@@ -2528,6 +2532,7 @@ version = "3.0.0"
 dependencies = [
  "console_error_panic_hook",
  "futures-util",
+ "ifc-lite-clash",
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-processing",

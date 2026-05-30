@@ -21,8 +21,12 @@ export interface CreateClashEngineOptions {
 export function createClashEngine(options: CreateClashEngineOptions = {}): ClashEngine {
   const backend = options.backend ?? 'auto';
   if (backend === 'wasm') {
-    throw new Error('The WASM clash backend lands in Phase 3; use backend "ts" or "auto".');
+    throw new Error(
+      'Import { WasmClashEngine } from "@ifc-lite/clash/wasm" instead — the WASM backend ' +
+        'needs async init and is kept off the core import graph (subpath-only).',
+    );
   }
-  // 'auto' resolves to the TS engine until the WASM backend exists.
+  // 'auto' resolves to the in-process TS engine. The Rust/WASM backend is opt-in
+  // via @ifc-lite/clash/wasm (it requires an async module init before use).
   return new TsClashEngine();
 }

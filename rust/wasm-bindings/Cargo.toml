@@ -43,6 +43,8 @@ ifc-lite-geometry = { path = "../geometry", default-features = false, features =
 # Canonical 2D-symbol extractor lives here; the wasm bindings just
 # delegate (issue #843 follow-up — full parity, one implementation).
 ifc-lite-processing = { path = "../processing" }
+# Pure-geometry clash kernel (BVH broad phase + exact triangle narrow phase).
+ifc-lite-clash = { path = "../clash" }
 js-sys = "=0.3.83"
 rayon = "1.10"
 # `ifc-lite-geometry` uses rayon `par_iter` (e.g. FacetedBrep

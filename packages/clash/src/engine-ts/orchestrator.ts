@@ -76,6 +76,10 @@ export async function runClash(
       }
       const elA = elements[rec.a];
       const elB = elements[rec.b];
+      // Same durable key + model = one entity split across geometry sub-prims
+      // (common in IFC5/USD), not a self-clash. Filter here so every kernel —
+      // TS or WASM, regardless of how its broad phase dedups — behaves alike.
+      if (elA.key === elB.key && elA.model === elB.model) continue;
       if (exclusions && isExcluded(exclusions, elA.key, elB.key)) continue;
 
       const id = clashId(elA, elB, rule.id);

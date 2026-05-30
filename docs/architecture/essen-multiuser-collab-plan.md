@@ -235,8 +235,8 @@ Two options; we plan **both**, sequenced:
    `guidPath` is the only new mapping (a `Map<number,string>` built once from
    the parsed store).
 
-2. **M2.5 (full seed / authoritative room): STEP → CRDT seeder.** For "upload
-   once, anyone joins without the file", add
+2. **Full seed / authoritative room: STEP → CRDT seeder.** For "send a link,
+   anyone joins without the file" (the chosen transport — §4.6 option 3), add
    `seedFromStep(doc, ifcDataStore)` in `packages/collab` that walks the
    parsed `IfcDataStore` and emits `createEntity`/`setAttribute`/
    `createRelationship` calls keyed by GUID. This is the new
@@ -244,10 +244,28 @@ Two options; we plan **both**, sequenced:
    `to-ifcx.ts` (CRDT → IFCX); a **CRDT → STEP** writer is a later concern
    (export already round-trips changes via `ExportChangesButton`).
 
-> **Design call:** M1–M2 use approach (1) — **edit-layer only**, model bytes
-> shared out-of-band via the link target. This is the lowest-risk way to get
-> "full legacy IFC support" without a whole STEP→IFCX conversion landing
-> first. Approach (2) is the upgrade for true serverless join.
+> **Design call (decided):** ship approach (2) — **full seed** — from M1,
+> because the chosen recipient transport is *seed-into-room* (§4.6 option 3):
+> the model arrives through the Y.Doc, so the whole model must live in the
+> CRDT. This pulls the `seedFromStep` work forward into M1 (it was M2.5) and
+> trades a larger Y.Doc + more up-front seeder work for the cleanest "just
+> send a link" UX. Approach (1) edit-layer-only remains the fallback if the
+> recipient already has the file locally (then we seed only diffs).
+>
+> **Two consequences to design for (see open questions §10):**
+> 1. **Y.Doc size / perf.** A 100k-entity model fully in the Y.Doc is far
+>    bigger than an edit-layer. The `indexeddb+websocket` provider + server
+>    compaction (every 1000 updates) are built for this, but we must measure
+>    cold-join time against the §15 perf budget and consider seeding in a
+>    Web Worker (the snapshot worker already exists).
+> 2. **Geometry has to arrive too.** With no model URL, the recipient needs
+>    geometry, not just properties. Two paths: (a) **client re-tessellation** —
+>    seed parametric placement/profile params and re-run the viewer's WASM
+>    geometry kernel locally (smallest payload, needs deterministic kernel);
+>    (b) **mesh blobs** — bake meshes into the content-addressed blob store
+>    (`blob-route.ts`) and reference them from `GeometryRef` (works for any
+>    model, larger payload). Recommend (a) where the kernel is deterministic,
+>    (b) as the universal fallback.
 
 ### 4.3 Mutation flow (legacy STEP, M2)
 
@@ -314,9 +332,9 @@ Three transports, shipped in order:
 
 | # | Transport | Share link | New infra | When |
 |---|---|---|---|---|
-| 1 | **Public URL** (embed today) | `?model=<url>&room=…&t=…` | none | model already on a CDN/server |
-| 2 | **Upload-on-share** | `?model=<blobUrl>&room=…&t=…` | reuse `collab-server/blob-route.ts` | **M1 default** — share a local file |
-| 3 | **Seed-into-room** | `?room=…&t=…` (no model url) | M2.5 `seedFromStep` | "just send a link", offline-capable |
+| 1 | **Public URL** (embed today) | `?model=<url>&room=…&t=…` | none | model already on a CDN/server (fallback) |
+| 2 | **Upload-on-share** | `?model=<blobUrl>&room=…&t=…` | reuse `collab-server/blob-route.ts` | recipient already has-or-fetches the file |
+| 3 | **Seed-into-room** ✅ **chosen** | `?room=…&t=…` (no model url) | `seedFromStep` (pulled into M1) | "just send a link", offline-capable |
 
 - **(2) Upload-on-share is the missing piece, and it's small.** The
   collab-server **already ships a content-addressed blob route**
@@ -332,9 +350,13 @@ Three transports, shipped in order:
   makes it offline-capable. Cost: a larger Y.Doc (whole model, not just edits)
   and the STEP→CRDT seeder must land first.
 
-**Recommendation:** M1 ships transport (2) — upload-on-share to the existing
-blob route — as the default, falling back to (1) when the model is already at a
-public URL. (3) becomes the default once `seedFromStep` lands at M2.5.
+**Decision:** ship transport **(3) seed-into-room** as the default. The share
+link is just `?room=…&t=…`; the recipient hydrates the model **through the Y.Doc
+sync** (offline-capable via IndexedDB), with geometry arriving by client
+re-tessellation or mesh blobs (§4.2 consequence 2). This pulls the
+`seedFromStep` seeder forward into M1. Transports (1)/(2) remain as fallbacks
+when the recipient can cheaply get the bytes locally (then we sync only the
+edit-layer diff instead of the whole model).
 
 ---
 
@@ -468,35 +490,31 @@ investment.
 
 Each milestone is shippable behind `collab.enabled` and has a hard exit gate.
 
-### M1 — Presence + comments MVP · ~1.5–2 wk
-**Goal:** Owner clicks Share → sends a link → recipient opens it, the model
-loads for them, and they see each other's cursors, selections, and avatars;
-comments sync live.
-- Model transport: **upload-on-share** to the collab-server blob route (§4.6
-  transport 2), `?model=<blobUrl>&room=…&t=…` link, recipient autoload via the
-  existing `?model=` hook (transport 1 fallback when already public).
+### M1 — Seed-into-room + presence + comments MVP · ~3–4 wk
+**Goal:** Owner clicks Share → sends a bare `?room=…&t=…` link → recipient
+opens it, the model **reconstructs from the Y.Doc** (no file, no model URL),
+and they see each other's cursors, selections, and avatars; comments sync live.
+- **STEP → CRDT seeder** (`seedFromStep`, pulled forward from old M2.5): owner
+  seeds the full parsed model into the Y.Doc on Share; geometry via client
+  re-tessellation or mesh blobs (§4.2 consequence 2).
+- Cold-join perf pass: seed in the snapshot Web Worker; measure against §15
+  budget; periodic `.ifcx` server snapshot for durability.
 - collabSlice (presence only), ephemeral identity, Share dialog (link mint),
   deep-link join, `mountPresenceInViewer`, avatar stack, comment subtree +
   BCF binding, token service (viewer/commenter/editor minting; only
   commenter+ write comments).
-- **Exit:** a recipient with only the link loads the model and joins; live
-  cursors + selection halos + shared comments across two browsers; `viewer`
-  role provably cannot write (server drops it); links expire/revoke.
+- **Exit:** a recipient with **only the link** reconstructs the model + geometry
+  and joins; live cursors + selection halos + shared comments across two
+  browsers; `viewer` role provably cannot write (server drops it); links
+  expire/revoke.
 
 ### M2 — Property editing over legacy STEP · ~2 wk
 **Goal:** `editor`s change properties and everyone converges.
 - GUID↔expressId maps, `bindMutationsToCollab`, remote→local observer,
-  per-user undo isolation, edit-layer-only Y.Doc, conflict badge for
-  concurrent property writes.
+  per-user undo isolation, conflict badge for concurrent property writes.
 - **Exit:** two editors change Pset values on the same wall; LWW resolves;
   loser notified; export reflects merged state; `commenter` blocked from
   property writes server-side.
-
-### M2.5 — STEP → CRDT seeder (serverless join) · ~1 wk
-**Goal:** Join a room without already having the file.
-- `seedFromStep(doc, store)` in `packages/collab`; owner seeds on share;
-  guests hydrate from the Y.Doc; periodic `.ifcx` server snapshot.
-- **Exit:** guest with only the link reconstructs the model + edits.
 
 ### M3 — Geometry editing · ~2–3 wk
 **Goal:** Collaborative move/rotate/add-element.
@@ -544,20 +562,22 @@ comments sync live.
    can collide across revisions; random id = explicit "create a shared session".
    *Recommendation:* owner-minted random id (explicit share intent), store the
    model→room mapping in the owner's `localStorage`.
-3. **Edit-layer-only vs full seed for M1/M2** — confirmed edit-layer first
-   (§4.2 approach 1); revisit at M2.5.
-4. **CRDT → STEP writer** — needed for "download merged result as .ifc" vs
+3. **Edit-layer-only vs full seed** — ✅ **decided: full seed from M1**
+   (consequence of choosing seed-into-room transport, §4.6 option 3). Edit-layer
+   remains a fallback when the recipient already has the file.
+4. **Geometry transport for seeded recipients (§4.2 consequence 2)** — client
+   re-tessellation (seed params, re-run the WASM kernel) vs mesh blobs in the
+   content-addressed store. *Recommendation:* re-tessellation where the kernel
+   is deterministic, mesh blobs as the universal fallback. **Needs your call.**
+5. **CRDT → STEP writer** — needed for "download merged result as .ifc" vs
    "download as .ifcx". The existing `ExportChangesButton` change-set path may
    suffice; confirm whether a true STEP writer is in scope or IFCX export is
    acceptable for collaborative results.
-5. **Mobile** — presence/comments on `MobileToolbar` in M1; editing on mobile
+6. **Mobile** — presence/comments on `MobileToolbar` in M1; editing on mobile
    deferred.
-6. **Model bytes hosting (§4.6)** — upload-on-share to the collab-server blob
-   route vs an S3 presigned PUT vs requiring an already-public `?model=` URL.
-   *Recommendation:* blob route for M1 (no extra infra, content-addressed,
-   co-located with revocation/persistence), graduating to seed-into-room at
-   M2.5. Privacy note: a blob URL is itself a bearer capability — gate the
-   blob route behind the same room token so the model isn't world-readable.
+7. **Y.Doc size budget** — a full-model seed (100k+ entities) in the Y.Doc;
+   confirm the §15 cold-join target and whether we cap shareable model size
+   for M1.
 
 ---
 

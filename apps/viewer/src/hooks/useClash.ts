@@ -109,7 +109,10 @@ export function useClash() {
     [gatherElements],
   );
 
-  const runMatrix = useCallback((): Promise<void> => run(disciplineMatrixRules(mode)), [run, mode]);
+  const runMatrix = useCallback(
+    (): Promise<void> => run(disciplineMatrixRules(mode, mode === 'clearance' ? clearance : undefined)),
+    [run, mode, clearance],
+  );
 
   /**
    * Detect ALL clashes in the loaded geometry — a single self-clash rule over

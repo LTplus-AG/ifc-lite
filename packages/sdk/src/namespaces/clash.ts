@@ -69,6 +69,12 @@ export type ClashRunOptions = ClashSettings;
 export interface ClashMatrixOptions extends ClashSettings {
   /** Detection mode for the discipline-matrix preset rules. Default 'hard'. */
   mode?: ClashMode;
+  /**
+   * Required gap (m) applied to every matrix rule when `mode === 'clearance'`.
+   * Without it a clearance matrix reports nothing (clearance is a per-rule
+   * field, not a run setting), so it is threaded onto the generated rules.
+   */
+  clearance?: number;
 }
 
 // ============================================================================
@@ -101,8 +107,10 @@ export class ClashNamespace {
    * remaining options are forwarded to the engine as run settings.
    */
   matrix(elements: ClashElement[], options?: ClashMatrixOptions): Promise<ClashResult> {
-    const { mode, ...settings } = options ?? {};
-    return this.run(elements, disciplineMatrixRules(mode), settings);
+    // `clearance` belongs on the rules, not the run settings — pull it out so it
+    // reaches disciplineMatrixRules and is not forwarded to the engine as a no-op.
+    const { mode, clearance, ...settings } = options ?? {};
+    return this.run(elements, disciplineMatrixRules(mode, clearance), settings);
   }
 
   /**
@@ -119,7 +127,7 @@ export class ClashNamespace {
   }
 
   /** The standard discipline matrix as runnable clash rules. */
-  disciplineRules(mode?: ClashMode): ClashRule[] {
-    return disciplineMatrixRules(mode);
+  disciplineRules(mode?: ClashMode, clearance?: number): ClashRule[] {
+    return disciplineMatrixRules(mode, clearance);
   }
 }

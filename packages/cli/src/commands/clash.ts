@@ -92,7 +92,7 @@ function parseNumberFlag(raw: string | undefined, flag: string): number | undefi
 
 function buildRules(args: string[], mode: ClashMode, tolerance: number | undefined, clearance: number | undefined): ClashRule[] {
   if (hasFlag(args, '--matrix')) {
-    return disciplineMatrixRules(mode);
+    return disciplineMatrixRules(mode, clearance);
   }
 
   const a = getFlag(args, '--a') ?? '*';

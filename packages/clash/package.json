@@ -1,7 +1,6 @@
 {
   "name": "@ifc-lite/clash",
   "version": "1.0.0",
-  "private": true,
   "description": "Clash detection for IFC-Lite — representation-agnostic core engine + source adapters",
   "type": "module",
   "main": "./dist/index.js",

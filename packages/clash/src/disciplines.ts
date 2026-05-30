@@ -153,7 +153,7 @@ export function inferClashSeverity(typeA: string, typeB: string): ClashSeverity 
 }
 
 /** Turn the discipline presets into runnable clash rules (the clash matrix). */
-export function disciplineMatrixRules(mode: ClashMode = 'hard'): ClashRule[] {
+export function disciplineMatrixRules(mode: ClashMode = 'hard', clearance?: number): ClashRule[] {
   return CLASH_RULE_PRESETS.map((preset) => ({
     id: preset.id,
     name: preset.name,
@@ -161,5 +161,9 @@ export function disciplineMatrixRules(mode: ClashMode = 'hard'): ClashRule[] {
     b: preset.selectorB,
     mode,
     severity: preset.severity,
+    // A clearance run only reports violations when each rule carries a
+    // `clearance` (see narrow.ts) — thread the caller's value through so
+    // `--matrix --mode clearance --clearance N` is no longer silently dropped.
+    ...(mode === 'clearance' && clearance != null ? { clearance } : {}),
   }));
 }

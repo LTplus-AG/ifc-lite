@@ -109,14 +109,22 @@ function displayClash(c: Clash): Record<string, unknown> {
 }
 
 /**
- * Top clashes by |distance| (deepest penetration / smallest gap first), capped
- * for display. Returns the rows plus an explicit `truncated` note when capped.
+ * Top clashes by signed distance (deepest penetration / smallest gap first),
+ * capped for display. Returns the rows plus an explicit `truncated` note when
+ * capped.
+ *
+ * Sort by RAW distance ascending, not |distance|: hard clashes carry a negative
+ * penetration depth, so most-negative-first surfaces the DEEPEST penetrations
+ * (the worst, most actionable rows) instead of burying them past the cap;
+ * clearance/touch gaps are positive, so the same order surfaces the tightest
+ * gaps first. (An |distance| sort inverted the hard-mode order — issue caught in
+ * review.)
  */
 function topClashes(clashes: Clash[], cap: number): {
   rows: Record<string, unknown>[];
   truncated: { shown: number; dropped: number; total: number } | null;
 } {
-  const sorted = [...clashes].sort((x, y) => Math.abs(x.distance) - Math.abs(y.distance));
+  const sorted = [...clashes].sort((x, y) => x.distance - y.distance);
   const shown = sorted.slice(0, cap);
   const rows = shown.map(displayClash);
   if (sorted.length > cap) {
@@ -198,13 +206,15 @@ const clashMatrix: Tool = {
     properties: {
       model_id: { type: 'string' },
       mode: { type: 'string', enum: ['hard', 'clearance'], default: 'hard' },
+      clearance: { type: 'number', description: 'Required gap (m) applied to every matrix rule when mode="clearance". Without it a clearance matrix reports nothing.' },
     },
     additionalProperties: false,
   },
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const mode = (input.mode as ClashMode | undefined) ?? 'hard';
-    const rules = disciplineMatrixRules(mode);
+    const clearance = input.clearance as number | undefined;
+    const rules = disciplineMatrixRules(mode, clearance);
 
     const result = await runRules(m, rules, ctx);
     const { rows, truncated } = topClashes(result.clashes, CLASH_DISPLAY_CAP);

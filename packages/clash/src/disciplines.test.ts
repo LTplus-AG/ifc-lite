@@ -34,4 +34,29 @@ describe('disciplineMatrixRules', () => {
       expect(rule.b && rule.b.length).toBeGreaterThan(0);
     }
   });
+
+  it('never sets clearance in hard mode, even if a value is passed', () => {
+    const rules = disciplineMatrixRules('hard', 0.05);
+    for (const rule of rules) {
+      expect(rule.clearance).toBeUndefined();
+    }
+  });
+
+  it('threads a clearance value onto every rule in clearance mode', () => {
+    // Regression: a clearance matrix reports nothing unless each rule carries a
+    // `clearance` (narrow.ts gates clearance violations on `rule.clearance != null`).
+    const rules = disciplineMatrixRules('clearance', 0.05);
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) {
+      expect(rule.mode).toBe('clearance');
+      expect(rule.clearance).toBe(0.05);
+    }
+  });
+
+  it('omits clearance in clearance mode when no value is provided', () => {
+    const rules = disciplineMatrixRules('clearance');
+    for (const rule of rules) {
+      expect(rule.clearance).toBeUndefined();
+    }
+  });
 });

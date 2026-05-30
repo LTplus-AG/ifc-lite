@@ -27,6 +27,7 @@
     "@codemirror/view": "^6.43.0",
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/cache": "workspace:^",
+    "@ifc-lite/clash": "workspace:^",
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/drawing-2d": "workspace:^",

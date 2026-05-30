@@ -15,11 +15,13 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useExtensionKeybindings } from '@/hooks/useExtensionKeybindings';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
 import { ShieldAlert } from 'lucide-react';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
+import { WorkbenchDesktopLayout } from '@/components/workbench/WorkbenchDesktopLayout';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { EntityContextMenu } from './EntityContextMenu';
@@ -49,6 +51,7 @@ const BOTTOM_PANEL_MAX_RATIO = 0.7; // max 70% of container
 export function ViewerLayout() {
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
+  useExtensionKeybindings();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
   // Bridge viewer state transitions into the extension action log
@@ -283,108 +286,7 @@ export function ViewerLayout() {
         {!isMobile && <DesktopEntitlementBanner />}
 
         {/* Main Content Area - Desktop Layout */}
-        {!isMobile && (
-          <div ref={containerRef} className="flex-1 min-h-0 flex flex-col">
-            {/* Top: horizontal split (hierarchy | viewport | properties) */}
-            <div className="flex-1 min-h-0">
-              <PanelGroup orientation="horizontal" className="h-full">
-                {/* Left Panel - Hierarchy */}
-                <Panel
-                  id="left-panel"
-                  defaultSize={20}
-                  minSize={10}
-                  collapsible
-                  collapsedSize={0}
-                  panelRef={leftPanelRef}
-                  onResize={() => {
-                    const collapsed = leftPanelRef.current?.isCollapsed() ?? false;
-                    if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
-                  }}
-                >
-                  <div className="h-full w-full overflow-hidden panel-container flex flex-col">
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <HierarchyPanel />
-                    </div>
-                    {/* Extension dock.left — collapses when no extension
-                        contributes. Sits beneath the hierarchy panel. */}
-                    <ExtensionDockHost slot="dock.left" className="max-h-[40%] border-t" />
-                  </div>
-                </Panel>
-
-                <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
-
-                {/* Center - Viewport */}
-                <Panel id="viewport-panel" defaultSize={58} minSize={30}>
-                  <div className="h-full w-full overflow-hidden">
-                    <ViewportContainer />
-                  </div>
-                </Panel>
-
-                <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
-
-                {/* Right Panel - Properties, BCF, or IDS */}
-                <Panel
-                  id="right-panel"
-                  defaultSize={22}
-                  minSize={15}
-                  collapsible
-                  collapsedSize={0}
-                  panelRef={rightPanelRef}
-                  onResize={() => {
-                    const collapsed = rightPanelRef.current?.isCollapsed() ?? false;
-                    if (collapsed !== rightPanelCollapsed) setRightPanelCollapsed(collapsed);
-                  }}
-                >
-                  <div className="h-full w-full overflow-hidden panel-container">
-                    {activeRightAnalysisExtension ? (
-                      activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                    ) : activeTool === 'addElement' ? (
-                      <AddElementPanel onClose={() => setActiveTool('select')} />
-                    ) : lensPanelVisible ? (
-                      <LensPanel onClose={() => setLensPanelVisible(false)} />
-                    ) : idsPanelVisible ? (
-                      <IDSPanel onClose={() => setIdsPanelVisible(false)} />
-                    ) : bcfPanelVisible ? (
-                      <BCFPanel onClose={() => setBcfPanelVisible(false)} />
-                    ) : extensionsPanelVisible ? (
-                      <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
-                    ) : (
-                      <div className="h-full flex flex-col">
-                        <div className="flex-1 min-h-0 overflow-hidden">
-                          <PropertiesPanel />
-                        </div>
-                        {/* Extension dock.right — collapses when empty. */}
-                        <ExtensionDockHost slot="dock.right" className="max-h-[40%] border-t" />
-                      </div>
-                    )}
-                  </div>
-                </Panel>
-              </PanelGroup>
-            </div>
-
-            {/* Bottom Panel - Lists / Script / Gantt / analysis ext (custom resizable) */}
-            {(listPanelVisible || scriptPanelVisible || ganttPanelVisible || !!activeBottomAnalysisExtension) && (
-              <div style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
-                {/* Drag handle */}
-                <div
-                  className="absolute inset-x-0 top-0 h-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-row-resize z-10"
-                  onMouseDown={handleResizeStart}
-                />
-                <div className="h-full w-full overflow-hidden border-t pt-1.5">
-                  {activeBottomAnalysisExtension ? (
-                    activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                  ) : ganttPanelVisible ? (
-                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
-                  ) : scriptPanelVisible ? (
-                    <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
-                  ) : (
-                    <ListPanel onClose={() => setListPanelVisible(false)} />
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {!isMobile && <WorkbenchDesktopLayout analysisExtensionState={analysisExtensionState} />}
 
         {/* Main Content Area - Mobile Layout */}
         {isMobile && (
@@ -493,14 +395,6 @@ export function ViewerLayout() {
                 </button>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Extension dock.bottom slot — collapses to nothing when no
-            extension contributes here. */}
-        {!isMobile && (
-          <div className="max-h-[40vh]">
-            <ExtensionDockHost slot="dock.bottom" />
           </div>
         )}
 

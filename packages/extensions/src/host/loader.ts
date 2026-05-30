@@ -257,6 +257,9 @@ export function manifestToContributions(
   for (const c of contributes.commands ?? []) {
     out.push({ extensionId, slot: 'commandPalette', payload: c });
   }
+  for (const p of contributes.panels ?? []) {
+    out.push({ extensionId, slot: 'workbench.panels', payload: p });
+  }
   for (const t of contributes.toolbar ?? []) {
     const cmd = commandIndex.get(t.command);
     out.push({

@@ -33,11 +33,14 @@ export type {
   ExporterContribution,
   ExtensionManifest,
   IdsValidatorContribution,
+  JsonValue,
   KeybindingContribution,
   LensContribution,
   ManifestAuthor,
   ManifestContributions,
   ManifestEntry,
+  PanelContribution,
+  PanelPlacement,
   ManifestTest,
   ManifestTestExpect,
   RiskTier,
@@ -92,6 +95,7 @@ export * from './signing/index.js';
 
 // ---------- Flavors (Phase 3 library)
 export * from './flavor/index.js';
+export * from './layout/index.js';
 
 // ---------- Action log + miner (Phase 4 library)
 export * from './log/index.js';

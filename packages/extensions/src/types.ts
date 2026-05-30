@@ -186,6 +186,7 @@ export interface ManifestEntry {
 
 export interface ManifestContributions {
   commands?: CommandContribution[];
+  panels?: PanelContribution[];
   toolbar?: ToolbarContribution[];
   dock?: DockContribution[];
   contextMenu?: ContextMenuContribution[];
@@ -202,6 +203,20 @@ export interface CommandContribution {
   description?: string;
   icon?: string;
   paletteCategory?: string;
+}
+
+export type PanelPlacement = 'left' | 'right' | 'bottom' | 'floating';
+
+export interface PanelContribution {
+  id: string;
+  title: string;
+  icon?: string;
+  widget: string;
+  defaultPlacement: PanelPlacement;
+  allowedPlacements?: PanelPlacement[];
+  when?: string;
+  order?: number;
+  configSchema?: string;
 }
 
 export type ToolbarSlot = 'toolbar.left' | 'toolbar.right' | 'toolbar.center';

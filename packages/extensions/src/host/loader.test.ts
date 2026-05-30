@@ -70,6 +70,23 @@ describe('manifestToContributions', () => {
     expect(out[0].slot).toBe('toolbar.right');
   });
 
+  it('translates first-class workbench panels into the workbench slot', () => {
+    const out = manifestToContributions('ext-a', {
+      panels: [{
+        id: 'qa',
+        title: 'QA panel',
+        widget: 'widgets/qa.json',
+        defaultPlacement: 'right',
+      }],
+    } as ManifestContributions);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      extensionId: 'ext-a',
+      slot: 'workbench.panels',
+      payload: { id: 'qa', defaultPlacement: 'right' },
+    });
+  });
+
   it('keeps extension ids consistent', () => {
     const out = manifestToContributions('ext-a', {
       commands: [{ id: 'x', title: 'X' }],

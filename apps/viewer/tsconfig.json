@@ -24,6 +24,7 @@
       "@ifc-lite/server-client": ["../../packages/server-client/src"],
       "@ifc-lite/ifcx": ["../../packages/ifcx/src"],
       "@ifc-lite/create": ["../../packages/create/src"],
+      "@ifc-lite/customization": ["../../packages/customization/src"],
       "@ifc-lite/ids": ["../../packages/ids/src"],
       "@ifc-lite/encoding": ["../../packages/encoding/src"],
       "@ifc-lite/lists": ["../../packages/lists/src"],

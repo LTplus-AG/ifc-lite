@@ -175,6 +175,11 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
                         {conflict.kind}
                       </code>
                       <span className="font-mono text-[11px] break-all">{conflict.key}</span>
+                      {conflict.kind === 'layout' && (
+                        <span className="text-[11px] text-muted-foreground">
+                          {describeLayoutConflict(conflict.key)}
+                        </span>
+                      )}
                     </div>
                     <div
                       className={`grid gap-2 text-[11px] ${hasBase ? 'grid-cols-3' : 'grid-cols-2'}`}
@@ -222,6 +227,15 @@ export function FlavorMergeDialog({ open, theirs, onClose, onMerged }: FlavorMer
       </DialogContent>
     </Dialog>
   );
+}
+
+function describeLayoutConflict(key: string): string {
+  if (key.startsWith('panel_move:')) return 'Panel was moved differently.';
+  if (key.startsWith('zone_order:')) return 'Panel tab order changed on both sides.';
+  if (key.startsWith('split_resize:')) return 'Resize/collapse value changed on both sides.';
+  if (key.startsWith('panel_chrome:')) return 'Panel title/icon/visibility changed on both sides.';
+  if (key.startsWith('personal_panel:')) return 'Personal panel content changed on both sides.';
+  return 'Workbench layout changed on both sides.';
 }
 
 function ResolutionChip({
@@ -322,5 +336,8 @@ function applyChoice(
       if (idx >= 0) merged.keybindings[idx] = src;
       break;
     }
+    case 'layout':
+      merged.layout = source.layout;
+      break;
   }
 }

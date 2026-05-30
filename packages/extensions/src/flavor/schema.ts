@@ -11,6 +11,7 @@
 
 import type { Flavor, FlavorExtension } from './types.js';
 import type { ValidationError, ValidationResult } from '../types.js';
+import { normalizeWorkbenchLayout } from '../layout/index.js';
 
 const ID_RE = /^[a-z0-9]+([._-][a-z0-9]+)*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
@@ -86,7 +87,7 @@ export function validateFlavor(input: unknown): ValidationResult<Flavor> {
       lenses: flavor.lenses ?? [],
       savedQueries: flavor.savedQueries ?? [],
       keybindings: flavor.keybindings ?? [],
-      layout: flavor.layout ?? { state: {} },
+      layout: { state: normalizeWorkbenchLayout(flavor.layout?.state ?? flavor.layout) },
       settings: flavor.settings ?? {},
     },
   };

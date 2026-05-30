@@ -11,6 +11,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
+import { ExtensionStatusBarSlot } from '@/components/extensions/ExtensionStatusBarSlot';
 
 export function StatusBar() {
   const { loading, geometryResult, ifcDataStore } = useIfc();
@@ -134,6 +135,7 @@ export function StatusBar() {
             Cancel
           </button>
         )}
+        <ExtensionStatusBarSlot slot="statusBar.left" />
       </div>
 
       {/* Center: Model Stats */}
@@ -184,6 +186,10 @@ export function StatusBar() {
             {webgpu.checking ? 'Checking...' : webgpu.supported ? 'WebGPU' : 'No WebGPU'}
           </span>
         </div>
+
+        <Separator orientation="vertical" className="h-3.5" />
+
+        <ExtensionStatusBarSlot slot="statusBar.right" />
 
         <Separator orientation="vertical" className="h-3.5" />
 

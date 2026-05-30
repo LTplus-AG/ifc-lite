@@ -1,0 +1,40 @@
+{
+  "name": "@ifc-lite/customization",
+  "version": "0.1.0",
+  "description": "Customization Studio core: workbench patches, templates, simulation, and AI plan contracts for IFC-Lite",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ifc-lite/extensions": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^1.6.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/customization"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

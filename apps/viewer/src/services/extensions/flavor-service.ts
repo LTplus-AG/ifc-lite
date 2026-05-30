@@ -15,6 +15,7 @@
 
 import {
   DEFAULT_FLAVOR_ID,
+  createDefaultWorkbenchLayout,
   flavorImportedId,
   packFlavor,
   switchFlavor,
@@ -160,7 +161,7 @@ export class FlavorService {
       lenses: [],
       savedQueries: [],
       keybindings: [],
-      layout: { state: {} },
+      layout: { state: createDefaultWorkbenchLayout() },
       settings: {},
     };
     await this.storage.putFlavor(flavor, 'reset to defaults');

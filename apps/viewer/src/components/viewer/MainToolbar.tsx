@@ -1067,6 +1067,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </Tooltip>
       )}
 
+      <ExtensionToolbarSlot slot="toolbar.left" />
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon-sm" disabled={!geometryResult}>
@@ -1471,6 +1473,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
       <ActionButton icon={Eye} label="Show All (Reset Filters)" onClick={handleShowAll} shortcut="A" />
       <ActionButton icon={Maximize2} label="Fit All" onClick={() => cameraCallbacks.fitAll?.()} shortcut="Z" />
+
+      <ExtensionToolbarSlot slot="toolbar.center" />
 
       <DropdownMenu>
         <Tooltip>

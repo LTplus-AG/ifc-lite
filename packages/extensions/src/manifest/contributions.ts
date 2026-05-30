@@ -24,6 +24,7 @@ const CONTEXT_MENU_SLOTS = new Set([
   'contextMenu.tree',
 ]);
 const STATUS_BAR_SLOTS = new Set(['statusBar.left', 'statusBar.right']);
+const PANEL_PLACEMENTS = new Set(['left', 'right', 'bottom', 'floating']);
 
 export function validateContributions(
   ctx: ValidationContext,
@@ -46,6 +47,15 @@ export function validateContributions(
     validateArray(ctx, obj.toolbar, `${path}.toolbar`, (item, p) => {
       requireStringInObj(ctx, item, p, 'command');
       validateSlot(ctx, item, p, TOOLBAR_SLOTS, 'toolbar');
+      validateOptionalWhen(ctx, item, p);
+    });
+  }
+  if ('panels' in obj && obj.panels !== undefined) {
+    validateArray(ctx, obj.panels, `${path}.panels`, (item, p) => {
+      requireStringInObj(ctx, item, p, 'id');
+      requireStringInObj(ctx, item, p, 'title');
+      requireStringInObj(ctx, item, p, 'widget');
+      validatePlacement(ctx, item, p);
       validateOptionalWhen(ctx, item, p);
     });
   }
@@ -102,6 +112,23 @@ export function validateContributions(
       validateSlot(ctx, item, p, STATUS_BAR_SLOTS, 'statusBar');
       validateOptionalWhen(ctx, item, p);
     });
+  }
+}
+
+function validatePlacement(ctx: ValidationContext, item: unknown, path: string): void {
+  if (!isPlainObject(item)) return;
+  const placement = (item as Record<string, unknown>).defaultPlacement;
+  if (typeof placement !== 'string' || !PANEL_PLACEMENTS.has(placement)) {
+    ctx.add(`${path}.defaultPlacement`, 'invalid_value',
+      `Invalid panel placement ${JSON.stringify(placement)}.`,
+      `Allowed: ${Array.from(PANEL_PLACEMENTS).join(', ')}.`);
+  }
+  const allowed = (item as Record<string, unknown>).allowedPlacements;
+  if (allowed !== undefined) {
+    if (!Array.isArray(allowed) || allowed.some((value) => typeof value !== 'string' || !PANEL_PLACEMENTS.has(value))) {
+      ctx.add(`${path}.allowedPlacements`, 'invalid_value',
+        `allowedPlacements must contain only: ${Array.from(PANEL_PLACEMENTS).join(', ')}.`);
+    }
   }
 }
 

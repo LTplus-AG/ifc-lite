@@ -46,6 +46,7 @@ import { createAddElementSlice, type AddElementSlice } from './slices/addElement
 import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSlice.js';
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
 import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
+import { createWorkbenchSlice, type WorkbenchSlice } from './slices/workbenchSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -99,6 +100,7 @@ export type { CesiumSlice, CesiumDataSource, CesiumPlacementDraft } from './slic
 export type { ScheduleSlice, ScheduleTimeRange, GanttTimeScale } from './slices/scheduleSlice.js';
 export type { PlaybackSlice } from './slices/playbackSlice.js';
 export type { OverlaySlice, OverlayLayer, RGBA as OverlayRGBA } from './slices/overlaySlice.js';
+export type { WorkbenchSlice } from './slices/workbenchSlice.js';
 export { composeLayers as composeOverlayLayers } from './slices/overlaySlice.js';
 export {
   computeScheduleRange,
@@ -142,6 +144,7 @@ export type ViewerState = LoadingSlice &
   SplitToolSlice &
   LevelDisplaySlice &
   PointCloudSlice &
+  WorkbenchSlice &
   ExtensionsSlice & {
     resetViewerState: () => void;
   };
@@ -182,6 +185,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createSplitToolSlice(...args),
   ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
+  ...createWorkbenchSlice(...args),
   ...createExtensionsSlice(...args),
 
   // Reset all viewer state when loading new file

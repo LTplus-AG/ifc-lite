@@ -1,5 +1,82 @@
 # @ifc-lite/wasm
 
+## 2.1.0
+
+### Minor Changes
+
+- [#887](https://github.com/LTplus-AG/ifc-lite/pull/887) [`175f8e3`](https://github.com/LTplus-AG/ifc-lite/commit/175f8e3ed93acba35f2efcb57993dd137ff7a241) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC4x3 `IfcGridPlacement` so products laid out on a structural grid
+  land on their grid-axis intersections instead of stacking at world origin
+  (issue [#883](https://github.com/LTplus-AG/ifc-lite/issues/883)).
+
+  The fix is in the shared `ifc-lite-geometry` Rust crate, so it ships on both
+  surfaces that compile it: the WebAssembly build (`@ifc-lite/wasm`) and the
+  native server binary downloaded by `@ifc-lite/server-bin` (pinned to its own
+  package version, so it needs the bump to pull a rebuilt binary). The desktop
+  app (Tauri) and the Docker server image compile the same crate and pick the
+  fix up through their own build pipelines.
+
+  The placement resolver dispatched only on `IfcLocalPlacement` and
+  `IfcLinearPlacement` — every other placement type fell through to identity.
+  The reporter's `ifcgrid.ifc` placed 25 `IfcColumn`s via
+  `IfcGridPlacement → IfcVirtualGridIntersection`, so they all collapsed onto
+  the same spot instead of spreading across the grid.
+
+  This change:
+
+  - Recognises `IfcGridPlacement` in the placement resolver. `PlacementRelTo`
+    (the grid's own placement) composes exactly like `IfcLocalPlacement`;
+    `PlacementLocation (IfcVirtualGridIntersection)` is resolved by reading the
+    two referenced `IfcGridAxis` curves, intersecting them in the grid plane,
+    applying the per-axis lateral `OffsetDistances` (each axis shifted along its
+    left normal) and the optional elevation, then composing `parent * local`.
+  - Implements full `IfcGridPlacementDirectionSelect` coverage for
+    `PlacementRefDirection`: an `IfcDirection` sets local +X directly; an
+    `IfcVirtualGridIntersection` points local +X from the placement location to
+    that second intersection; null / unresolved inherits the grid orientation.
+
+  Out of scope (documented in code):
+
+  - Grid axes are treated as straight lines (chord of the first→last curve
+    sample); curved axes would need arc-length sampling.
+
+  Regression coverage:
+
+  - `grid_placement_tests` in `rust/geometry/src/router/transforms.rs` — inline
+    unit tests that assert the resolved transform directly: the axis-intersection
+    origin, both `PlacementRefDirection` variants, the `OffsetDistances`
+    perpendicular shift + elevation, and `PlacementRelTo` composition. No
+    committed fixture (per AGENTS.md §9); the unit tests are self-contained.
+
+- [#889](https://github.com/LTplus-AG/ifc-lite/pull/889) [`32c2f01`](https://github.com/LTplus-AG/ifc-lite/commit/32c2f014c668b97247d6cec236e53d1573201662) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcAlignment` as a thin centerline **line** instead of a triangulated
+  ribbon, matching how IfcGrid axes and IfcAnnotation curves draw.
+
+  `IfcAlignment` carries its geometry in the `Axis` curve (`IfcAlignmentCurve` or
+  `IfcPolyline`), not a `Representation`. Previously the streaming batch mesher
+  routed it through the whole-element `IfcAlignmentProcessor`, which sampled the
+  directrix into a thin solid ribbon strip — visually wrong for what is a
+  centerline. Now the alignment is sampled straight into a line-list overlay:
+
+  - **`@ifc-lite/wasm`** gains `IfcAPI.parseAlignmentLines(content)`, which walks
+    every `IfcAlignment`, resolves its `Axis` directrix, samples the centerline
+    (1 file-unit station spacing, adaptive cap at 5000 samples) and returns a flat
+    `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in the
+    renderer's Y-up, RTC-subtracted, metres world space — the same frame the mesh
+    pipeline produces, so the line lands on the same ground as the terrain.
+  - **`@ifc-lite/geometry`** surfaces it as `GeometryProcessor.parseAlignmentLines`.
+  - **`@ifc-lite/renderer`** gains `uploadAlignmentLines3D` / `clearAlignmentLines3D`,
+    drawing the centerline through the existing line pipeline (separate buffer).
+
+  The batch mesher no longer special-cases `IfcAlignment` into the ribbon
+  processor (reverted to the prior skip), so alignments are lines-only — never
+  both. In the viewer the centerline renders whenever a model carries an
+  alignment (no toggle).
+
+  Regression coverage: `alignment_lines` unit tests in
+  `rust/wasm-bindings/src/api/alignment_lines.rs` pin the contract — a planar
+  polyline alignment emits an even-count line-list whose start maps to the
+  renderer origin and whose extent matches the directrix, and a file with no
+  alignment emits an empty array.
+
 ## 2.0.0
 
 ### Major Changes

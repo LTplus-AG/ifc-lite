@@ -19,6 +19,7 @@ import {
   InMemoryBlobStorage,
   type ServerBlobStorage,
 } from './blob-route.js';
+import { handleTokenMintRequest, type TokenEndpointOptions } from './room-token.js';
 import { defaultMetrics, MetricsRegistry } from './metrics.js';
 
 export interface StartCollabServerOptions {
@@ -56,6 +57,13 @@ export interface StartCollabServerOptions {
    * `reject` with the reason and drops the message.
    */
   verifyMessage?: VerifyMessageFn;
+  /**
+   * Enable the `POST /collab/token` mint route for link-based sharing
+   * (plan §3.1, §7.7). Omit to leave the route disabled (404). Pair with
+   * `authenticate: createRoomTokenAuthenticator({ secret })` so connections
+   * are verified against the same secret.
+   */
+  tokenEndpoint?: TokenEndpointOptions;
 }
 
 export interface CollabServerHandle {
@@ -117,6 +125,11 @@ export async function startCollabServer(
           res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4' });
           res.end(metrics.render());
           return;
+        }
+        // Token mint route: POST /collab/token (link-based sharing).
+        if (opts.tokenEndpoint && req.url && req.url.startsWith('/collab/token')) {
+          const handled = await handleTokenMintRequest(req, res, opts.tokenEndpoint);
+          if (handled) return;
         }
         // Blob route: PUT / GET / HEAD / DELETE on /blobs/<hash>, GET /blobs.
         if (req.url && req.url.startsWith('/blobs')) {

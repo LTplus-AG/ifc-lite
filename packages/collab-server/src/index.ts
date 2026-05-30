@@ -110,3 +110,16 @@ export {
   type ServerBlobMeta,
   type BlobRouteOptions,
 } from './blob-route.js';
+export {
+  signRoomToken,
+  verifyRoomToken,
+  createRoomTokenAuthenticator,
+  handleTokenMintRequest,
+  type RoomTokenClaims,
+  type SecretResolver,
+  type SignRoomTokenOptions,
+  type VerifyRoomTokenOptions,
+  type RoomTokenAuthenticatorOptions,
+  type TokenEndpointOptions,
+  type MintRequestBody,
+} from './room-token.js';

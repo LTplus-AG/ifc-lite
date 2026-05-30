@@ -79,7 +79,13 @@ export class WasmKernel implements ClashKernel {
     rule: ClashRule,
     tolerance: number,
     _maxPairs: number,
+    signal?: AbortSignal,
   ): RuleDetection {
+    // The WASM backend runs every candidate pair in Rust, so it does NOT enforce
+    // the run-global maxCandidatePairs cap — that cap is a TS-engine guardrail.
+    if (signal?.aborted) {
+      throw new DOMException('Clash run aborted', 'AbortError');
+    }
     const mode = rule.mode === 'clearance' ? 1 : 0;
     const clearance = rule.clearance ?? 0;
     const reportTouch = rule.reportTouch ?? false;
@@ -87,33 +93,34 @@ export class WasmKernel implements ClashKernel {
     const groupB = groupBIdx ? Uint32Array.from(groupBIdx) : new Uint32Array(0);
 
     const res = this.session.runRule(groupA, groupB, mode, tolerance, clearance, reportTouch);
-    // Each getter returns a fresh copy; read once into locals, then free.
-    const a = res.a;
-    const b = res.b;
-    const status = res.status;
-    const distance = res.distance;
-    const points = res.points;
-    const bounds = res.bounds;
-
     const records: NarrowRecord[] = [];
-    for (let k = 0; k < a.length; k += 1) {
-      const bnds: AABB = {
-        min: [bounds[k * 6], bounds[k * 6 + 1], bounds[k * 6 + 2]],
-        max: [bounds[k * 6 + 3], bounds[k * 6 + 4], bounds[k * 6 + 5]],
-      };
-      records.push({
-        a: a[k],
-        b: b[k],
-        status: STATUS[status[k]] ?? 'hard',
-        distance: distance[k],
-        point: [points[k * 3], points[k * 3 + 1], points[k * 3 + 2]],
-        bounds: bnds,
-      });
+    try {
+      // Each getter returns a fresh copy; read once into locals.
+      const a = res.a;
+      const b = res.b;
+      const status = res.status;
+      const distance = res.distance;
+      const points = res.points;
+      const bounds = res.bounds;
+      for (let k = 0; k < a.length; k += 1) {
+        const bnds: AABB = {
+          min: [bounds[k * 6], bounds[k * 6 + 1], bounds[k * 6 + 2]],
+          max: [bounds[k * 6 + 3], bounds[k * 6 + 4], bounds[k * 6 + 5]],
+        };
+        records.push({
+          a: a[k],
+          b: b[k],
+          status: STATUS[status[k]] ?? 'hard',
+          distance: distance[k],
+          point: [points[k * 3], points[k * 3 + 1], points[k * 3 + 2]],
+          bounds: bnds,
+        });
+      }
+    } finally {
+      // Free the wasm-side result even if the mapping above throws.
+      res.free();
     }
-
-    res.free();
-    // The WASM kernel processes every candidate pair (no maxPairs cap).
-    return { records, candidatesDropped: 0 };
+    return { records, candidatesProcessed: 0, candidatesDropped: 0 };
   }
 
   dispose(): void {

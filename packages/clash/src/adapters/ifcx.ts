@@ -35,7 +35,7 @@
  */
 
 import { parseIfcx, type MeshData } from '@ifc-lite/ifcx';
-import { makeExclusionSet } from '../exclude.js';
+import { makeExclusionSet, qualifiedKey } from '../exclude.js';
 import { fromPositions } from '../math/aabb.js';
 import type { ClashElement, ExclusionSet } from '../types.js';
 
@@ -79,27 +79,49 @@ export async function elementsFromIfcx(options: IfcxAdapterOptions): Promise<Ifc
   const parsed = await parseIfcx(buffer);
   const { meshes, idToPath, entities, relationships } = parsed;
 
-  const elements: ClashElement[] = [];
-  const byExpressId = new Map<number, ClashElement>();
-
+  // The IFCX geometry extractor associates each `UsdMesh` with the nearest
+  // ancestor entity that has an expressId, so a single entity (one durable
+  // prim path) can yield several `MeshData` (e.g. separate `Body`/`Axis`
+  // representations or multiple sub-meshes). Group those meshes by their
+  // owning entity first, then concatenate each group into one geometry, so a
+  // given durable key produces exactly ONE `ClashElement` over all of it
+  // rather than several aliasing elements that share a key/ref.
+  const groups = new Map<number, MeshData[]>();
   for (const mesh of meshes) {
     if (!mesh.positions || mesh.positions.length === 0) continue;
     if (!mesh.indices || mesh.indices.length === 0) continue;
 
     const expressId = mesh.expressId;
     // The prim path is the durable USD identity; skip meshes we cannot key.
+    if (!idToPath.has(expressId)) continue;
+
+    const group = groups.get(expressId);
+    if (group) {
+      group.push(mesh);
+    } else {
+      groups.set(expressId, [mesh]);
+    }
+  }
+
+  const elements: ClashElement[] = [];
+  const byExpressId = new Map<number, ClashElement>();
+
+  for (const [expressId, group] of groups) {
+    // The prim path is the durable USD identity; skip entities we cannot key.
+    // (It was present at grouping time; re-check to narrow without a cast.)
     const key = idToPath.get(expressId);
     if (!key) continue;
+    const merged = mergeMeshes(group);
 
     const element: ClashElement = {
       key,
       ref: refFromPath(key),
       model: modelId,
-      tag: resolveTag(mesh, entities, expressId),
+      tag: resolveTag(group[0], entities, expressId),
       name: resolveName(entities, expressId),
-      bounds: fromPositions(mesh.positions),
-      positions: mesh.positions,
-      indices: mesh.indices,
+      bounds: fromPositions(merged.positions),
+      positions: merged.positions,
+      indices: merged.indices,
     };
 
     elements.push(element);
@@ -130,15 +152,16 @@ export function buildIfcxExclusions(
   for (const [expressId, element] of byExpressId) {
     // Children (this entity contains/aggregates them) and parents (inverse).
     // All IFCX edges are composition edges, so no type filter is needed.
+    const ek = qualifiedKey(element.model, element.key);
     const children = relationships.forward.getTargets(expressId);
     const parents = relationships.inverse.getTargets(expressId);
     for (const relatedId of children) {
       const related = byExpressId.get(relatedId);
-      if (related) pairs.push([element.key, related.key]);
+      if (related) pairs.push([ek, qualifiedKey(related.model, related.key)]);
     }
     for (const relatedId of parents) {
       const related = byExpressId.get(relatedId);
-      if (related) pairs.push([element.key, related.key]);
+      if (related) pairs.push([ek, qualifiedKey(related.model, related.key)]);
     }
   }
 
@@ -167,6 +190,43 @@ function resolveName(
 ): string | undefined {
   const name = entities.getName(expressId);
   return name && name.length > 0 ? name : undefined;
+}
+
+/**
+ * Concatenate a group of meshes (all belonging to the same entity) into a
+ * single position/index buffer. Each subsequent mesh's indices are offset by
+ * the running vertex count so the merged index buffer addresses the combined
+ * vertex array. A single mesh is returned as-is (no copy) for the common case.
+ */
+function mergeMeshes(group: MeshData[]): { positions: Float32Array; indices: Uint32Array } {
+  if (group.length === 1) {
+    return { positions: group[0].positions, indices: group[0].indices };
+  }
+
+  let totalPositions = 0;
+  let totalIndices = 0;
+  for (const mesh of group) {
+    totalPositions += mesh.positions.length;
+    totalIndices += mesh.indices.length;
+  }
+
+  const positions = new Float32Array(totalPositions);
+  const indices = new Uint32Array(totalIndices);
+  let positionOffset = 0;
+  let indexOffset = 0;
+  let vertexBase = 0;
+  for (const mesh of group) {
+    positions.set(mesh.positions, positionOffset);
+    for (let i = 0; i < mesh.indices.length; i++) {
+      indices[indexOffset + i] = mesh.indices[i] + vertexBase;
+    }
+    positionOffset += mesh.positions.length;
+    indexOffset += mesh.indices.length;
+    // 3 floats per vertex; the next mesh's indices start after these vertices.
+    vertexBase += mesh.positions.length / 3;
+  }
+
+  return { positions, indices };
 }
 
 /**

@@ -83,30 +83,33 @@ impl ClashSession {
         let n = pos_ranges.len() / 2;
         self.elements.reserve(n);
         for e in 0..n {
-            let pos_off = pos_ranges[e * 2] as usize;
-            let pos_len = pos_ranges[e * 2 + 1] as usize;
-            let idx_off = idx_ranges[e * 2] as usize;
-            let idx_len = idx_ranges[e * 2 + 1] as usize;
+            // Default to an empty element so global indices stay aligned with the
+            // caller's arena even if this element's slices are malformed — no
+            // panic (which under `panic = abort` would poison the shared wasm
+            // module); it simply never produces a clash.
+            let mut element_positions: Vec<f64> = Vec::new();
+            let mut element_indices: Vec<u32> = Vec::new();
+            let mut aabb = Aabb::new([0.0; 3], [0.0; 3]);
 
-            let element_positions: Vec<f64> = positions[pos_off..pos_off + pos_len]
-                .iter()
-                .map(|&v| v as f64)
-                .collect();
-            let element_indices: Vec<u32> = indices[idx_off..idx_off + idx_len].to_vec();
-
-            let ab = e * 6;
-            let aabb = Aabb::new(
-                [
-                    aabbs[ab] as f64,
-                    aabbs[ab + 1] as f64,
-                    aabbs[ab + 2] as f64,
-                ],
-                [
-                    aabbs[ab + 3] as f64,
-                    aabbs[ab + 4] as f64,
-                    aabbs[ab + 5] as f64,
-                ],
-            );
+            let ranges_ok = e * 2 + 1 < idx_ranges.len() && e * 6 + 5 < aabbs.len();
+            if ranges_ok {
+                let pos_off = pos_ranges[e * 2] as usize;
+                let pos_len = pos_ranges[e * 2 + 1] as usize;
+                let idx_off = idx_ranges[e * 2] as usize;
+                let idx_len = idx_ranges[e * 2 + 1] as usize;
+                if pos_off + pos_len <= positions.len() && idx_off + idx_len <= indices.len() {
+                    element_positions = positions[pos_off..pos_off + pos_len]
+                        .iter()
+                        .map(|&v| v as f64)
+                        .collect();
+                    element_indices = indices[idx_off..idx_off + idx_len].to_vec();
+                    let ab = e * 6;
+                    aabb = Aabb::new(
+                        [aabbs[ab] as f64, aabbs[ab + 1] as f64, aabbs[ab + 2] as f64],
+                        [aabbs[ab + 3] as f64, aabbs[ab + 4] as f64, aabbs[ab + 5] as f64],
+                    );
+                }
+            }
 
             self.elements.push(Element {
                 aabb,
@@ -202,10 +205,14 @@ impl ClashSession {
     /// position in `group_a` satisfies `i < j`.
     fn candidate_pairs(
         &self,
-        group_a: &[u32],
-        group_b: &[u32],
+        group_a_in: &[u32],
+        group_b_in: &[u32],
         margin: f64,
     ) -> Vec<(u32, u32)> {
+        // Defensively drop any out-of-range global indices at the public boundary.
+        let n = self.elements.len() as u32;
+        let group_a: Vec<u32> = group_a_in.iter().copied().filter(|&g| g < n).collect();
+        let group_b: Vec<u32> = group_b_in.iter().copied().filter(|&g| g < n).collect();
         if group_a.is_empty() {
             return Vec::new();
         }
@@ -223,7 +230,7 @@ impl ClashSession {
 
         if !group_b.is_empty() {
             let mut seen: HashSet<(u32, u32)> = HashSet::new();
-            for &b_global in group_b {
+            for &b_global in &group_b {
                 let b_aabb = self.elements[b_global as usize].aabb;
                 let hits = bvh.query_aabb(&b_aabb.inflate(margin));
                 for i in hits {

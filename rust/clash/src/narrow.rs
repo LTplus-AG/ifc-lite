@@ -115,9 +115,9 @@ pub fn test_pair(
         return None;
     }
 
-    if min_dist < tolerance {
-        // Surfaces coincide/touch with no genuine crossing. Distinguish a
-        // volumetric overlap from mere face contact via AABB penetration depth.
+    // Surfaces coincide/touch with no genuine crossing, but the volumes overlap
+    // beyond tolerance (coplanar surfaces, e.g. axis-aligned boxes) -> hard.
+    if min_dist <= tolerance {
         let gap = signed_gap(aabb_a, aabb_b);
         if gap < -tolerance {
             return Some(NarrowResult {
@@ -127,20 +127,28 @@ pub fn test_pair(
                 bounds: overlap,
             });
         }
-        if !report_touch {
-            return None;
-        }
+    }
+
+    // Clearance rule: ANY gap within the required clearance is a violation,
+    // including sub-tolerance, nearly-touching gaps (the most severe). These
+    // must not be swallowed by the touch band below.
+    if is_clearance && min_dist <= clearance {
         return Some(NarrowResult {
-            status: ClashStatus::Touch,
+            status: ClashStatus::Clearance,
             distance: min_dist,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),
         });
     }
 
-    if is_clearance && min_dist <= clearance {
+    // Otherwise only bare contact within tolerance remains; suppressed unless the
+    // rule opts in. `<=` so an exact touch at tolerance 0 is still caught.
+    if min_dist <= tolerance {
+        if !report_touch {
+            return None;
+        }
         return Some(NarrowResult {
-            status: ClashStatus::Clearance,
+            status: ClashStatus::Touch,
             distance: min_dist,
             point: mid(closest_a, closest_b),
             bounds: bounds_of_points(closest_a, closest_b),

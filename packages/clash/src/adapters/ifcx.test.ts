@@ -69,7 +69,11 @@ function buildIfcxFile() {
       {
         path: 'Project',
         attributes: { 'bsi::ifc::class': ifcClass('IfcProject') },
-        children: { WallA: 'Project/WallA', WallB: 'Project/WallB' },
+        children: {
+          WallA: 'Project/WallA',
+          WallB: 'Project/WallB',
+          WallC: 'Project/WallC',
+        },
       },
       {
         path: 'Project/WallA',
@@ -96,6 +100,31 @@ function buildIfcxFile() {
         // Offset by 0.5 so WallB genuinely interpenetrates WallA.
         attributes: { 'usd::usdgeom::mesh': cubeMesh(0.5, 0, 0, 1) },
       },
+      // WallC is a SINGLE entity (one durable prim path) that owns TWO
+      // mesh-bearing descendants: a `Body` and an `Axis`. Neither child carries
+      // `bsi::ifc::class`, so the IFCX geometry extractor associates BOTH
+      // meshes with WallC's expressId — emitting two `MeshData` that share a
+      // prim path. The adapter must coalesce these into ONE ClashElement.
+      {
+        path: 'Project/WallC',
+        attributes: {
+          'bsi::ifc::class': ifcClass('IfcWall'),
+          'bsi::ifc::name': 'Wall C',
+        },
+        children: {
+          Body: 'Project/WallC/Body',
+          Axis: 'Project/WallC/Axis',
+        },
+      },
+      {
+        path: 'Project/WallC/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(10, 0, 0, 1) },
+      },
+      {
+        path: 'Project/WallC/Axis',
+        // A second, disjoint sub-mesh under the same wall entity.
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(12, 0, 0, 1) },
+      },
     ],
   };
 }
@@ -120,10 +149,10 @@ describe('elementsFromIfcx', () => {
       modelId: 'ifcx-model',
     });
 
-    expect(elements).toHaveLength(2);
+    expect(elements).toHaveLength(3);
 
     const keys = elements.map((e) => e.key).sort();
-    expect(keys).toEqual(['Project/WallA', 'Project/WallB']);
+    expect(keys).toEqual(['Project/WallA', 'Project/WallB', 'Project/WallC']);
 
     for (const el of elements) {
       // key is the durable USD prim path

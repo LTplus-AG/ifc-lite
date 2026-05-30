@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createClashEngine } from '../engine.js';
-import { makeExclusionSet } from '../exclude.js';
+import { makeExclusionSet, qualifiedKey } from '../exclude.js';
 import { fromPositions } from '../math/aabb.js';
 import type { ClashElement, ClashRule, Vec3 } from '../types.js';
 
@@ -111,7 +111,7 @@ describe('TsClashEngine', () => {
       boxElement('A', 'IfcWall', [0, 0, 0]),
       boxElement('B', 'IfcDuct', [0.5, 0, 0]),
     ];
-    const exclusions = makeExclusionSet([['A', 'B']]);
+    const exclusions = makeExclusionSet([[qualifiedKey('m', 'A'), qualifiedKey('m', 'B')]]);
     const result = await engine.run(elements, [hard()], { exclusions });
     expect(result.summary.total).toBe(0);
   });

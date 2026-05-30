@@ -23,7 +23,9 @@ export interface NarrowRecord {
 
 export interface RuleDetection {
   records: NarrowRecord[];
-  /** Candidate pairs skipped by a `maxPairs` cap (for transparency). */
+  /** Candidate pairs actually examined — drives the run-global `maxPairs` budget. */
+  candidatesProcessed: number;
+  /** Candidate pairs skipped by the `maxPairs` cap (for transparency). */
   candidatesDropped: number;
 }
 
@@ -49,6 +51,7 @@ export interface ClashKernel {
     rule: ClashRule,
     tolerance: number,
     maxPairs: number,
+    signal?: AbortSignal,
   ): RuleDetection;
   /** Release any resources (e.g. a WASM session). Optional. */
   dispose?(): void;

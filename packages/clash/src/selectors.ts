@@ -25,14 +25,19 @@ export function matchesSelector(typeName: string, selector: string): boolean {
 
   const alternatives = trimmed.split('|');
   const upper = typeName.toUpperCase();
+  // Evaluate every alternative so exclusions win regardless of order:
+  // any matching negated alternative rejects the type outright, otherwise
+  // the type matches when at least one positive alternative matches.
+  let positiveMatch = false;
   for (const alt of alternatives) {
     const pattern = alt.trim().toUpperCase();
     if (!pattern) continue;
     if (pattern.startsWith('!')) {
       // Exclusion within alternatives: treated as "not this one"
+      const body = pattern.slice(1);
       if (
-        upper === pattern.slice(1) ||
-        (pattern.slice(1).endsWith('*') && upper.startsWith(pattern.slice(1, -1)))
+        upper === body ||
+        (body.endsWith('*') && upper.startsWith(body.slice(0, -1)))
       ) {
         return false;
       }
@@ -40,11 +45,11 @@ export function matchesSelector(typeName: string, selector: string): boolean {
     }
     if (pattern.endsWith('*')) {
       if (upper.startsWith(pattern.slice(0, -1))) {
-        return true;
+        positiveMatch = true;
       }
     } else if (upper === pattern) {
-      return true;
+      positiveMatch = true;
     }
   }
-  return false;
+  return positiveMatch;
 }

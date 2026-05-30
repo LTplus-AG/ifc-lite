@@ -37,6 +37,7 @@ export class TsKernel implements ClashKernel {
     rule: import('../types.js').ClashRule,
     tolerance: number,
     maxPairs: number,
+    signal?: AbortSignal,
   ): RuleDetection {
     const groupA = groupAIdx.map((i) => elements[i]);
     const groupB = groupBIdx ? groupBIdx.map((i) => elements[i]) : null;
@@ -54,6 +55,10 @@ export class TsKernel implements ClashKernel {
         candidatesDropped = pairs.length - processed;
         break;
       }
+      // Honor cancellation mid-rule for large candidate sets.
+      if (signal?.aborted && (processed & 0x3ff) === 0) {
+        throw new DOMException('Clash run aborted', 'AbortError');
+      }
       processed += 1;
       const elA = groupA[i];
       const elB = resolveB[j];
@@ -69,6 +74,6 @@ export class TsKernel implements ClashKernel {
       });
     }
 
-    return { records, candidatesDropped };
+    return { records, candidatesProcessed: processed, candidatesDropped };
   }
 }

@@ -120,8 +120,8 @@ export function parseTriageResponse(text: string, result: ClashResult): ClashTri
       severityCounts,
     };
   } catch (error) {
-    // Malformed JSON from the model — fall back to the raw text as the summary.
-    void error;
+    // Malformed JSON from the model — log, then fall back to the raw text as the summary.
+    console.warn('[clash/triage] failed to parse LLM JSON response; using raw text fallback', error);
     return { summary: text.slice(0, 500), recommendations: [], severityCounts };
   }
 }

@@ -26,6 +26,34 @@ pub struct TriMesh {
 impl TriMesh {
     /// Build from world-space `positions` (`f64`) and local triangle `indices`.
     pub fn new(positions: Vec<f64>, indices: Vec<u32>) -> Self {
+        // Sanitize: keep only triangles whose three indices reference real
+        // vertices. A malformed / partial mesh must NOT panic — under the release
+        // `panic = abort` profile a panic traps the instance and poisons the
+        // entire shared wasm module (geometry, parsing and clash all share it),
+        // whereas the TS engine degrades gracefully (NaN coords -> 0 clashes).
+        let vertex_count = positions.len() / 3;
+        let mut indices = indices;
+        let tri_total = indices.len() / 3;
+        let all_valid = (0..tri_total).all(|t| {
+            let o = t * 3;
+            (indices[o] as usize) < vertex_count
+                && (indices[o + 1] as usize) < vertex_count
+                && (indices[o + 2] as usize) < vertex_count
+        });
+        if !all_valid {
+            let mut clean: Vec<u32> = Vec::with_capacity(indices.len());
+            for t in 0..tri_total {
+                let o = t * 3;
+                let i0 = indices[o] as usize;
+                let i1 = indices[o + 1] as usize;
+                let i2 = indices[o + 2] as usize;
+                if i0 < vertex_count && i1 < vertex_count && i2 < vertex_count {
+                    clean.extend_from_slice(&[indices[o], indices[o + 1], indices[o + 2]]);
+                }
+            }
+            indices = clean;
+        }
+
         let count = indices.len() / 3;
         let mut items: Vec<(u32, Aabb)> = Vec::with_capacity(count);
         // Build the per-triangle bounds inline so we can populate the BVH before

@@ -15,7 +15,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { EntityNode } from '@ifc-lite/query';
 import type { MeshData } from '@ifc-lite/geometry';
-import { makeExclusionSet } from '../exclude.js';
+import { makeExclusionSet, qualifiedKey } from '../exclude.js';
 import { fromPositions } from '../math/aabb.js';
 import type { ClashElement, ExclusionSet, Mat4 } from '../types.js';
 
@@ -53,8 +53,9 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     const expressId = mesh.expressId;
     const node = new EntityNode(store, expressId);
 
-    const key = node.globalId;
-    if (!key) continue;
+    // Fall back to a model-scoped synthetic key rather than dropping geometry:
+    // malformed IFC roots / fallback-only elements still participate in clashes.
+    const key = node.globalId || `expressid:${expressId}`;
 
     const element: ClashElement = {
       key,
@@ -95,16 +96,17 @@ export function buildStepExclusions(
 
   for (const [expressId, element] of byExpressId) {
     const node = new EntityNode(store, expressId);
+    const ek = qualifiedKey(element.model, element.key);
 
     for (const opening of node.voids()) {
       const openingElement = byExpressId.get(opening.expressId);
       if (openingElement) {
-        pairs.push([element.key, openingElement.key]);
+        pairs.push([ek, qualifiedKey(openingElement.model, openingElement.key)]);
       }
       for (const filler of opening.filledBy()) {
         const fillerElement = byExpressId.get(filler.expressId);
         if (fillerElement) {
-          pairs.push([element.key, fillerElement.key]);
+          pairs.push([ek, qualifiedKey(fillerElement.model, fillerElement.key)]);
         }
       }
     }
@@ -115,7 +117,7 @@ export function buildStepExclusions(
         if (sibling.expressId === expressId) continue;
         const siblingElement = byExpressId.get(sibling.expressId);
         if (siblingElement) {
-          pairs.push([element.key, siblingElement.key]);
+          pairs.push([ek, qualifiedKey(siblingElement.model, siblingElement.key)]);
         }
       }
     }

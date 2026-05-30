@@ -35,4 +35,10 @@ describe('matchesSelector', () => {
     expect(matchesSelector('IfcSlab', '!IfcWall')).toBe(true);
     expect(matchesSelector('IfcPipeSegment', '!IfcPipe*')).toBe(false);
   });
+
+  it('lets exclusions win inside pipe-alternatives regardless of order', () => {
+    expect(matchesSelector('IfcWall', 'Ifc*|!IfcWall')).toBe(false);
+    expect(matchesSelector('IfcSlab', 'Ifc*|!IfcWall')).toBe(true);
+    expect(matchesSelector('IfcWall', '!IfcWall|Ifc*')).toBe(false);
+  });
 });

@@ -14,6 +14,7 @@ import type {
   ClashStatus,
 } from './types.js';
 import { createBCFFromClashResult, mapBcfToClashes } from './bcf-bridge.js';
+import { groupClashes } from './grouping.js';
 import { uuidFromSeed } from './deterministic-uuid.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -255,11 +256,93 @@ describe('mapBcfToClashes', () => {
     const map = mapBcfToClashes(project);
 
     expect(map.size).toBe(4);
-    expect(map.get('clash-1')?.status).toBe('In Progress');
-    expect(map.get('clash-1')?.topicGuid).toBe(uuidFromSeed('group-critical'));
-    expect(map.get('clash-2')?.topicGuid).toBe(uuidFromSeed('group-critical'));
-    expect(map.get('clash-3')?.topicGuid).toBe(uuidFromSeed('group-major'));
-    expect(map.get('clash-4')?.topicGuid).toBe(uuidFromSeed('group-minor'));
+    // Each clash belongs to exactly one group here, so one topic entry apiece.
+    expect(map.get('clash-1')?.length).toBe(1);
+    expect(map.get('clash-1')?.[0]?.status).toBe('In Progress');
+    expect(map.get('clash-1')?.[0]?.topicGuid).toBe(uuidFromSeed('group-critical'));
+    expect(map.get('clash-2')?.[0]?.topicGuid).toBe(uuidFromSeed('group-critical'));
+    expect(map.get('clash-3')?.[0]?.topicGuid).toBe(uuidFromSeed('group-major'));
+    expect(map.get('clash-4')?.[0]?.topicGuid).toBe(uuidFromSeed('group-minor'));
+  });
+
+  it('accumulates one entry per topic for element-mode groups (no overwrite)', async () => {
+    // Two elements (GUID_A and GUID_B) clash only with each other, plus each
+    // also clashes with a third element. Element-mode grouping emits one group
+    // per participating element, so the shared clash lands in two topics.
+    const shared = clash(
+      'clash-shared',
+      ref('GUID_A', 'IfcPipeSegment', 'Pipe-A'),
+      ref('GUID_B', 'IfcBeam', 'Beam-B'),
+      'hard',
+      'critical',
+      'MEPxSTR',
+    );
+    const onlyA = clash(
+      'clash-only-a',
+      ref('GUID_A', 'IfcPipeSegment', 'Pipe-A'),
+      ref('GUID_C', 'IfcColumn'),
+      'hard',
+      'critical',
+      'MEPxSTR',
+    );
+    const onlyB = clash(
+      'clash-only-b',
+      ref('GUID_B', 'IfcBeam', 'Beam-B'),
+      ref('GUID_D', 'IfcWall'),
+      'hard',
+      'critical',
+      'MEPxSTR',
+    );
+
+    const clashes = [shared, onlyA, onlyB];
+    const result: ClashResult = {
+      clashes,
+      summary: {
+        total: clashes.length,
+        byRule: { MEPxSTR: clashes.length },
+        byTypePair: {},
+        bySeverity: { critical: clashes.length, major: 0, minor: 0, info: 0 },
+      },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+
+    const groups = groupClashes(result, { by: 'element' });
+    const project = await createBCFFromClashResult(result, groups, {
+      author: 'tester',
+      status: 'Open',
+    });
+
+    const { writeBCF } = await import('@ifc-lite/bcf');
+    const blob = await writeBCF(project);
+    const buffer = await blob.arrayBuffer();
+    const reloaded = await readBCF(buffer);
+
+    const map = mapBcfToClashes(reloaded);
+
+    // The shared clash participates in both element groups (A and B), so the
+    // old overwrite would have dropped one. It must map to two distinct topics.
+    const sharedEntries = map.get('clash-shared');
+    expect(sharedEntries?.length).toBe(2);
+    const guids = sharedEntries?.map((e) => e.topicGuid) ?? [];
+    // Two distinct topics, not the same one twice.
+    expect(new Set(guids).size).toBe(2);
+    // Both topics are real exported groups (the element groups for A and B).
+    const groupGuids = new Set(groups.map((g) => uuidFromSeed(g.id)));
+    for (const guid of guids) {
+      expect(groupGuids.has(guid)).toBe(true);
+    }
+    for (const entry of sharedEntries ?? []) {
+      expect(entry.status).toBe('Open');
+    }
+
+    // Every clash joins two distinct element groups (each pairs two elements),
+    // so each clash id accumulates two topic entries — none silently lost.
+    for (const id of ['clash-shared', 'clash-only-a', 'clash-only-b']) {
+      const entries = map.get(id);
+      expect(entries?.length).toBe(2);
+      expect(new Set(entries?.map((e) => e.topicGuid)).size).toBe(2);
+    }
   });
 });
 
@@ -282,12 +365,14 @@ describe('BCF round-trip', () => {
     expect(map.size).toBe(4);
     for (const id of ['clash-1', 'clash-2', 'clash-3', 'clash-4']) {
       expect(map.has(id)).toBe(true);
-      expect(map.get(id)?.status).toBe('Open');
+      // Rule-mode fixture groups don't overlap: one topic entry per clash.
+      expect(map.get(id)?.length).toBe(1);
+      expect(map.get(id)?.[0]?.status).toBe('Open');
     }
 
     // Topic guids survive the round-trip and remain the deterministic ones.
-    expect(map.get('clash-1')?.topicGuid).toBe(uuidFromSeed('group-critical'));
-    expect(map.get('clash-3')?.topicGuid).toBe(uuidFromSeed('group-major'));
+    expect(map.get('clash-1')?.[0]?.topicGuid).toBe(uuidFromSeed('group-critical'));
+    expect(map.get('clash-3')?.[0]?.topicGuid).toBe(uuidFromSeed('group-major'));
   });
 });
 

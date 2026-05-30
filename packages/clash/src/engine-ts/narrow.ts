@@ -95,26 +95,34 @@ export function testPair(
     return null;
   }
 
-  if (minDist < tolerance) {
-    // Surfaces coincide/touch with no genuine crossing. Distinguish a volumetric
-    // overlap (whose surface intersections are all coplanar — e.g. axis-aligned
-    // boxes) from mere face contact via AABB penetration depth.
+  // Surfaces coincide/touch with no genuine crossing, but the volumes overlap
+  // beyond tolerance (e.g. axis-aligned boxes, whose surface intersections are
+  // all coplanar) -> hard, via AABB penetration depth.
+  if (minDist <= tolerance) {
     const gap = signedGap(elA.bounds, elB.bounds);
     if (gap < -tolerance) {
       return { status: 'hard', distance: gap, point: center(overlap), bounds: overlap };
     }
-    if (!rule.reportTouch) return null;
+  }
+
+  // Clearance rule: ANY gap within the required clearance is a violation —
+  // including sub-tolerance, nearly-touching gaps, which are the MOST severe and
+  // must not be swallowed by the touch band below.
+  if (rule.mode === 'clearance' && rule.clearance != null && minDist <= rule.clearance) {
     return {
-      status: 'touch',
+      status: 'clearance',
       distance: minDist,
       point: mid(closestA, closestB),
       bounds: boundsOfPoints(closestA, closestB),
     };
   }
 
-  if (rule.mode === 'clearance' && rule.clearance != null && minDist <= rule.clearance) {
+  // Otherwise only bare contact within tolerance remains; suppressed unless the
+  // rule opts in. `<=` so an exact touch at tolerance 0 is still caught.
+  if (minDist <= tolerance) {
+    if (!rule.reportTouch) return null;
     return {
-      status: 'clearance',
+      status: 'touch',
       distance: minDist,
       point: mid(closestA, closestB),
       bounds: boundsOfPoints(closestA, closestB),

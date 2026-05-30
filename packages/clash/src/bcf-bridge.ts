@@ -303,23 +303,35 @@ export async function createBCFFromClashResult(
 }
 
 /**
- * Read a BCF project back into a map of clash-id -> { topicGuid, status }.
+ * Read a BCF project back into a map of clash-id -> [{ topicGuid, status }, ...].
  *
  * Parses the machine-readable `clash-ids:` line that `createBCFFromClashResult`
  * embeds in each topic description. Topics without that line (e.g. the overflow
  * marker, or unrelated topics) are skipped.
+ *
+ * A clash id can legitimately appear in more than one topic: element-mode
+ * grouping (see `groupClashes(result, { by: 'element' })`) emits one group per
+ * participating element, so a clash between two elements lands in two topics.
+ * We therefore accumulate one entry per topic the id appears in rather than
+ * overwriting, so no topic mapping is silently lost.
  */
 export function mapBcfToClashes(
   project: BCFProject,
-): Map<string, { topicGuid: string; status: string }> {
-  const map = new Map<string, { topicGuid: string; status: string }>();
+): Map<string, Array<{ topicGuid: string; status: string }>> {
+  const map = new Map<string, Array<{ topicGuid: string; status: string }>>();
 
   for (const topic of project.topics.values()) {
     const ids = extractClashIds(topic);
     if (ids.length === 0) continue;
     const status = topic.topicStatus ?? 'Open';
     for (const id of ids) {
-      map.set(id, { topicGuid: topic.guid, status });
+      const entry = { topicGuid: topic.guid, status };
+      const existing = map.get(id);
+      if (existing) {
+        existing.push(entry);
+      } else {
+        map.set(id, [entry]);
+      }
     }
   }
 

@@ -4,7 +4,7 @@
 
 import { matchesSelector } from '../selectors.js';
 import { inferClashSeverity } from '../disciplines.js';
-import { isExcluded } from '../exclude.js';
+import { isExcluded, qualifiedKey } from '../exclude.js';
 import {
   DEFAULT_CLASH_SETTINGS,
   type Clash,
@@ -42,67 +42,82 @@ export async function runClash(
   const clashes: Clash[] = [];
   const seen = new Set<string>();
   let droppedPairs = 0;
+  // A single GLOBAL candidate-pair budget across the whole run (not per rule),
+  // so `maxCandidatePairs` is an honest end-to-end guardrail.
+  let remaining = maxPairs;
 
-  for (const rule of rules) {
-    if (settings.signal?.aborted) {
-      throw new DOMException('Clash run aborted', 'AbortError');
-    }
-
-    const groupA: number[] = [];
-    const groupB: number[] | null = rule.b ? [] : null;
-    for (let i = 0; i < elements.length; i += 1) {
-      const tag = elements[i].tag;
-      if (matchesSelector(tag, rule.a)) groupA.push(i);
-      if (groupB && matchesSelector(tag, rule.b!)) groupB.push(i);
-    }
-
-    const ruleTolerance = rule.tolerance ?? tolerance;
-    settings.onProgress?.({ phase: 'broad', rule: rule.id, done: 0, total: 0 });
-
-    const { records, candidatesDropped } = kernel.detectRule(
-      elements,
-      groupA,
-      groupB,
-      rule,
-      ruleTolerance,
-      maxPairs,
-    );
-    droppedPairs += candidatesDropped;
-
-    let processed = 0;
-    for (const rec of records) {
+  // `finally` guarantees the kernel is disposed even on abort / kernel error —
+  // otherwise a `WasmKernel`'s `ClashSession` (and its arenas) would leak.
+  try {
+    for (const rule of rules) {
       if (settings.signal?.aborted) {
         throw new DOMException('Clash run aborted', 'AbortError');
       }
-      const elA = elements[rec.a];
-      const elB = elements[rec.b];
-      // Same durable key + model = one entity split across geometry sub-prims
-      // (common in IFC5/USD), not a self-clash. Filter here so every kernel —
-      // TS or WASM, regardless of how its broad phase dedups — behaves alike.
-      if (elA.key === elB.key && elA.model === elB.model) continue;
-      if (exclusions && isExcluded(exclusions, elA.key, elB.key)) continue;
 
-      const id = clashId(elA, elB, rule.id);
-      if (seen.has(id)) continue;
-      seen.add(id);
+      const groupA: number[] = [];
+      const groupB: number[] | null = rule.b ? [] : null;
+      for (let i = 0; i < elements.length; i += 1) {
+        const tag = elements[i].tag;
+        if (matchesSelector(tag, rule.a)) groupA.push(i);
+        if (groupB && matchesSelector(tag, rule.b!)) groupB.push(i);
+      }
 
-      clashes.push({
-        id,
-        a: toRef(elA),
-        b: toRef(elB),
-        rule: rule.id,
-        status: rec.status,
-        distance: rec.distance,
-        point: rec.point,
-        bounds: rec.bounds,
-        severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),
-      });
-      processed += 1;
-      settings.onProgress?.({ phase: 'narrow', rule: rule.id, done: processed, total: records.length });
+      const ruleTolerance = rule.tolerance ?? tolerance;
+      settings.onProgress?.({ phase: 'broad', rule: rule.id, done: 0, total: 0 });
+
+      const { records, candidatesProcessed, candidatesDropped } = kernel.detectRule(
+        elements,
+        groupA,
+        groupB,
+        rule,
+        ruleTolerance,
+        remaining,
+        settings.signal,
+      );
+      remaining = Math.max(0, remaining - candidatesProcessed);
+      droppedPairs += candidatesDropped;
+
+      let processed = 0;
+      for (const rec of records) {
+        if (settings.signal?.aborted) {
+          throw new DOMException('Clash run aborted', 'AbortError');
+        }
+        const elA = elements[rec.a];
+        const elB = elements[rec.b];
+        // Same durable key + model = one entity split across geometry sub-prims
+        // (common in IFC5/USD), not a self-clash. Filter here so every kernel —
+        // TS or WASM, regardless of how its broad phase dedups — behaves alike.
+        if (elA.key === elB.key && elA.model === elB.model) continue;
+        if (
+          exclusions &&
+          isExcluded(exclusions, qualifiedKey(elA.model, elA.key), qualifiedKey(elB.model, elB.key))
+        ) {
+          continue;
+        }
+
+        const id = clashId(elA, elB, rule.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+
+        clashes.push({
+          id,
+          a: toRef(elA),
+          b: toRef(elB),
+          rule: rule.id,
+          status: rec.status,
+          distance: rec.distance,
+          point: rec.point,
+          bounds: rec.bounds,
+          severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),
+        });
+        processed += 1;
+        settings.onProgress?.({ phase: 'narrow', rule: rule.id, done: processed, total: records.length });
+      }
     }
+  } finally {
+    kernel.dispose?.();
   }
 
-  kernel.dispose?.();
   clashes.sort(byKeyThenRule);
 
   const result: ClashResult = {

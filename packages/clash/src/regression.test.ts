@@ -87,7 +87,34 @@ describe('regression: BCF clash-ids round-trip survives commas in an id', () => 
     const map = mapBcfToClashes(reloaded);
 
     expect(map.has(commaId)).toBe(true);
-    expect(map.get(commaId)?.status).toBe('Open');
+    expect(map.get(commaId)?.[0]?.status).toBe('Open');
+  });
+});
+
+describe('regression: clearance violations inside tolerance are not swallowed', () => {
+  it('reports a near-touching pair (gap < tolerance) as a clearance violation', async () => {
+    // Two boxes 1 mm apart with a 50 mm clearance requirement and the default
+    // 2 mm tolerance. The 1 mm gap is < tolerance, but it is the WORST kind of
+    // clearance violation and must be reported (previously it was suppressed).
+    const elements = [boxElement('A', 'IfcWall', 0), boxElement('B', 'IfcDuctSegment', 1.001)];
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(elements, [
+      { id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'clearance', clearance: 0.05 },
+    ]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('clearance');
+  });
+
+  it('catches an exact touch when tolerance is 0 and reportTouch is set', async () => {
+    const elements = [boxElement('A', 'IfcWall', 0), boxElement('B', 'IfcDuctSegment', 1)];
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      elements,
+      [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard', tolerance: 0, reportTouch: true }],
+      { tolerance: 0 },
+    );
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('touch');
   });
 });
 

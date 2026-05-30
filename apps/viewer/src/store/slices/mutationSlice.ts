@@ -1119,6 +1119,11 @@ export const createMutationSlice: StateCreator<
       };
     });
 
+    // Mirror into the collab CRDT (no-op without a session) — plan §7.5.
+    if (modelId === get().activeModelId) {
+      get().mirrorPropertyEdit(entityId, psetName, propName, value, valueType);
+    }
+
     return mutation;
   },
 
@@ -1147,6 +1152,11 @@ export const createMutationSlice: StateCreator<
         mutationVersion: state.mutationVersion + 1,
       };
     });
+
+    // Mirror into the collab CRDT (no-op without a session) — plan §7.5.
+    if (modelId === get().activeModelId) {
+      get().mirrorPropertyDelete(entityId, psetName, propName);
+    }
 
     return mutation;
   },
@@ -1289,6 +1299,11 @@ export const createMutationSlice: StateCreator<
         mutationVersion: state.mutationVersion + 1,
       };
     });
+
+    // Mirror into the collab CRDT (no-op without a session) — plan §7.5.
+    if (modelId === get().activeModelId) {
+      get().mirrorAttributeEdit(entityId, attrName, value);
+    }
 
     return mutation;
   },

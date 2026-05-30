@@ -463,11 +463,14 @@ investment.
 
 ### 7.5 Mutation binding + remote apply
 
-- ☐ `bindMutationsToCollab(view, session, { resolveEntity: guidFor })` in the
-  edit path.
-- ☐ Remote-change observer → replay into `mutationSlice` guarded by origin so
-  it doesn't echo or pollute the local undo stack (use the session's
-  per-origin undo).
+- ◐ `lib/collab/mutation-bridge.ts` mirrors local **property** (set/delete) and
+  **attribute** edits into the CRDT, keyed by GUID path (built from the parsed
+  store). Wired into `mutationSlice.setProperty/deleteProperty/setAttribute`
+  (active model only), no-op without a session. Quantities / pset-create /
+  geometry edits are follow-ups.
+- ☑ Remote-change observer (`attachRemoteApply`, `observeDeep` filtered by
+  `txn.local`) replays peers' edits straight into the `MutablePropertyView` —
+  no undo-stack pollution, no echo. Needs live multi-peer verification.
 
 ### 7.6 Conflict UX
 

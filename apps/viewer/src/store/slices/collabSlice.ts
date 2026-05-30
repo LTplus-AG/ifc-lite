@@ -35,12 +35,21 @@ import type {
   UserIdentity,
   WebSocketStatus,
 } from '@ifc-lite/collab';
+import type { PropertyValueType } from '@ifc-lite/data';
+import type { ViewerState } from '../index.js';
 import { collabServerUrl } from '@/lib/collab/config';
 import {
   loadOrCreateIdentity,
   persistIdentity,
   type EphemeralIdentity,
 } from '@/lib/collab/identity';
+import {
+  attachRemoteApply,
+  mirrorAttribute,
+  mirrorProperty,
+  mirrorPropertyDelete,
+  type CollabDocApi,
+} from '@/lib/collab/mutation-bridge';
 
 /**
  * Access roles, mirrored from `@ifc-lite/collab-server`'s `Role`. Kept as a
@@ -96,6 +105,18 @@ export interface CollabSlice {
   canCollabEdit: () => boolean;
   /** Whether this client may write comments (commenter/editor/admin). */
   canCollabComment: () => boolean;
+
+  // ── Mutation mirror (plan §7.5) — called by mutationSlice after a local
+  //    edit. No-ops without an active session. ───────────────────────────────
+  mirrorPropertyEdit: (
+    entityId: number,
+    psetName: string,
+    propName: string,
+    value: unknown,
+    valueType: PropertyValueType,
+  ) => void;
+  mirrorPropertyDelete: (entityId: number, psetName: string, propName: string) => void;
+  mirrorAttributeEdit: (entityId: number, attrName: string, value: unknown) => void;
 }
 
 function pickProvider(): ProviderKind {
@@ -114,7 +135,13 @@ function remotePeers(peers: Record<number, PresenceState>, selfClientId: number)
   return out;
 }
 
-export const createCollabSlice: StateCreator<CollabSlice, [], [], CollabSlice> = (set, get) => ({
+// Collab doc helpers captured from the lazy-loaded runtime (see startCollab),
+// so the synchronous mutation mirror can write to the doc without re-importing.
+let docApi: CollabDocApi | null = null;
+// Teardown for the remote→local Y.Doc observer.
+let remoteApplyTeardown: (() => void) | null = null;
+
+export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> = (set, get) => ({
   // Initial state
   collabSession: null,
   collabStatus: 'disconnected',
@@ -150,6 +177,14 @@ export const createCollabSlice: StateCreator<CollabSlice, [], [], CollabSlice> =
       // Lazy-load the collab runtime (code-split) — see the import note above.
       const collab = await import('@ifc-lite/collab');
       seedFromStep = collab.seedFromStep;
+      // Capture the doc helpers the synchronous mutation mirror needs.
+      docApi = {
+        hasEntity: collab.hasEntity,
+        setPropertyValue: collab.setPropertyValue,
+        deletePropertyValue: collab.deletePropertyValue,
+        setAttribute: collab.setAttribute,
+        PROPERTY_TYPE_NAMES: collab.PROPERTY_TYPE_NAMES,
+      };
       session = await collab.createCollabSession({
         roomId,
         user,
@@ -193,7 +228,32 @@ export const createCollabSlice: StateCreator<CollabSlice, [], [], CollabSlice> =
       }
     }
 
-    // TODO(M2, plan §7.5): `bindMutationsToCollab` + remote→local observer.
+    // Remote → local apply (plan §7.5): replay peers' property/attribute edits
+    // into the active model's MutablePropertyView (no undo tracking, no echo).
+    const applyStore = get().ifcDataStore;
+    const applyModelId = get().activeModelId;
+    if (applyStore && applyModelId) {
+      remoteApplyTeardown = attachRemoteApply(session, applyStore, {
+        onProperty: (entityId, pset, prop, value, type) => {
+          const view = get().mutationViews.get(applyModelId);
+          if (!view) return;
+          view.setProperty(entityId, pset, prop, value, type);
+          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+        },
+        onPropertyDelete: (entityId, pset, prop) => {
+          const view = get().mutationViews.get(applyModelId);
+          if (!view) return;
+          view.deleteProperty(entityId, pset, prop);
+          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+        },
+        onAttribute: (entityId, attrName, value) => {
+          const view = get().mutationViews.get(applyModelId);
+          if (!view) return;
+          view.setAttribute(entityId, attrName, value === null ? '' : String(value));
+          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+        },
+      });
+    }
 
     set({
       collabSession: session,
@@ -203,6 +263,15 @@ export const createCollabSlice: StateCreator<CollabSlice, [], [], CollabSlice> =
   },
 
   stopCollab: () => {
+    if (remoteApplyTeardown) {
+      try {
+        remoteApplyTeardown();
+      } catch {
+        // ignore teardown errors
+      }
+      remoteApplyTeardown = null;
+    }
+    docApi = null;
     const session = get().collabSession;
     if (session) {
       try {
@@ -234,5 +303,26 @@ export const createCollabSlice: StateCreator<CollabSlice, [], [], CollabSlice> =
     const role = get().collabRole;
     if (role === null) return true;
     return role === 'commenter' || role === 'editor' || role === 'admin';
+  },
+
+  mirrorPropertyEdit: (entityId, psetName, propName, value, valueType) => {
+    const session = get().collabSession;
+    const store = get().ifcDataStore;
+    if (!session || !store || !docApi) return;
+    mirrorProperty(docApi, session, store, entityId, psetName, propName, value, valueType);
+  },
+
+  mirrorPropertyDelete: (entityId, psetName, propName) => {
+    const session = get().collabSession;
+    const store = get().ifcDataStore;
+    if (!session || !store || !docApi) return;
+    mirrorPropertyDelete(docApi, session, store, entityId, psetName, propName);
+  },
+
+  mirrorAttributeEdit: (entityId, attrName, value) => {
+    const session = get().collabSession;
+    const store = get().ifcDataStore;
+    if (!session || !store || !docApi) return;
+    mirrorAttribute(docApi, session, store, entityId, attrName, value);
   },
 });

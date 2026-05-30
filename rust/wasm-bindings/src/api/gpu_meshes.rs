@@ -476,17 +476,33 @@ impl IfcAPI {
                 && project_id.is_some()
                 && buffered_jobs.len() >= RTC_SAMPLE_THRESHOLD
             {
-                // Build a decoder over the partial entity index. The unit
-                // assignment + IFCSIUNIT entities live near the top of every
-                // STEP file — with RTC_SAMPLE_THRESHOLD geometry jobs already
-                // scanned we are well past them.
+                // Build a decoder over the partial entity index built so far.
                 let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
+                let pid = project_id.expect("project_id checked");
 
-                let unit_scale = ifc_lite_core::extract_length_unit_scale(
+                // Resolve the length-unit scale. The assignment + IFCSIUNIT
+                // usually sit near the top of a STEP file, so the partial
+                // index resolves them directly (fast path). But many real
+                // exports (Revit) place the IFCPROJECT / IFCUNITASSIGNMENT
+                // AFTER the bulk of geometry — there the partial index does
+                // not yet contain the assigned IFCSIUNIT, and silently
+                // defaulting to metres renders a millimetre model 1000×
+                // oversized (and dwarfs any correctly-scaled federated peer).
+                // When the chain isn't fully decodable here, resolve against a
+                // complete index instead of trusting the metres default.
+                let unit_scale = match ifc_lite_core::try_extract_length_unit_scale(
                     &mut decoder,
-                    project_id.expect("project_id checked"),
-                )
-                .unwrap_or(1.0);
+                    pid,
+                ) {
+                    Some(scale) => scale,
+                    None => {
+                        let full_index = ifc_lite_core::build_entity_index(content);
+                        let mut full_decoder =
+                            EntityDecoder::with_index(content, full_index);
+                        ifc_lite_core::extract_length_unit_scale(&mut full_decoder, pid)
+                            .unwrap_or(1.0)
+                    }
+                };
 
                 let router = GeometryRouter::with_scale(unit_scale);
                 let rtc_offset = router

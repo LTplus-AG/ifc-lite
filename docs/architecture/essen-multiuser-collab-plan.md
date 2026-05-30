@@ -493,8 +493,17 @@ investment.
   `IfcDataStore` → GUID-keyed entities + core attributes. Persisting the
   model→room map in `localStorage` is a follow-up.
 - ☑ Bare `?room=…&t=…` link (no model url); recipient joins and hydrates
-  entities from the Y.Doc. **Geometry** hydration (re-tessellation / mesh blobs
-  — §4.2 consequence 2) and **psets** in the seed are the next follow-ups.
+  entities from the Y.Doc.
+- ◐ **Geometry** (mesh-blob path, §4.2 option b): the data transport is built
+  and unit-tested — `lib/collab/mesh-codec.ts` (MeshData ⇄ bytes) +
+  `lib/collab/geometry-sync.ts` (`seedGeometryToRoom` / `hydrateGeometryFromRoom`
+  over a content-addressed blob store, round-trip test green). **Remaining
+  (needs live-render verification):** wire a shared blob store (HttpBlobStore →
+  collab-server `/blobs`, or IndexedDB for local multi-tab), call
+  `seedGeometryToRoom` after the owner's entity seed, and on the recipient
+  assemble a `GeometryResult` from the hydrated meshes + inject it into the
+  renderer pipeline. Re-tessellation (§4.2 option a) and **psets** in the seed
+  remain follow-ups.
 - ☐ Optional fallback: when the recipient already has the file locally, seed
   only the edit-layer diff instead of the whole model.
 

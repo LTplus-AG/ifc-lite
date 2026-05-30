@@ -188,6 +188,23 @@ export { CreateNamespace } from './namespaces/create.js';
 export { FilesNamespace } from './namespaces/files.js';
 export { ScheduleNamespace } from './namespaces/schedule.js';
 
+// Clash — geometric interference detection over caller-provided ClashElement[]
+export { ClashNamespace } from './namespaces/clash.js';
+export type { ClashGroupBy, ClashRunOptions, ClashMatrixOptions } from './namespaces/clash.js';
+// Re-export the clash core types so hosts can type elements/rules/results
+// without taking a second direct dependency on @ifc-lite/clash.
+export type {
+  ClashElement,
+  ClashElementRef,
+  ClashRule,
+  ClashResult,
+  ClashGroup,
+  Clash,
+  ClashMode,
+  ClashStatus,
+  ClashSeverity,
+} from './namespaces/clash.js';
+
 // bSDD — buildingSMART Data Dictionary property/classification lookup
 export { BsddNamespace, BsddHttpError } from './namespaces/bsdd.js';
 export type { BsddClassInfo, BsddClassProperty, BsddSearchResult, BsddOptions } from './namespaces/bsdd.js';

@@ -8,8 +8,9 @@
  * v0.1 strategy: serve the cheap, accurate values that come straight off
  * IfcElementQuantity (volume, area), and surface a UNSUPPORTED_OPERATION
  * with a useful hint for tools that need WASM-driven mesh tessellation
- * (geometry_get, raycast, clash_check). When `@ifc-lite/wasm` lands in the
- * MCP container we wire it in here without changing the tool surface.
+ * (geometry_get, raycast). Clash detection has moved to clash.ts, which
+ * meshes headlessly via @ifc-lite/geometry. When `@ifc-lite/wasm` lands in
+ * the MCP container we wire geometry_get/raycast in here too.
  */
 
 import { EntityNode } from '@ifc-lite/query';
@@ -226,33 +227,10 @@ const raycast: Tool = {
   },
 };
 
-const clashCheck: Tool = {
-  name: 'clash_check',
-  description: 'Pairwise clash detection on element selections. Requires the WASM geometry pipeline.',
-  scope: 'read',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      a: { type: 'array', items: { type: 'string' }, description: 'GlobalIds for set A.' },
-      b: { type: 'array', items: { type: 'string' }, description: 'GlobalIds for set B.' },
-    },
-    required: ['a', 'b'],
-    additionalProperties: false,
-  },
-  handler() {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'clash_check requires the WASM geometry pipeline (planned for v0.2).',
-    });
-  },
-};
-
 export const geometryTools: Tool[] = [
   geometryGet,
   geometryBbox,
   geometryVolume,
   geometryArea,
   raycast,
-  clashCheck,
 ];

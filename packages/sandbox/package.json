@@ -21,6 +21,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/clash": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "esbuild-wasm": "^0.28.0",
     "quickjs-emscripten": "^0.32.0"

@@ -760,6 +760,9 @@ importers:
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf
+      '@ifc-lite/clash':
+        specifier: workspace:^
+        version: link:../clash
       '@ifc-lite/create':
         specifier: workspace:^
         version: link:../create
@@ -775,6 +778,9 @@ importers:
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../extensions
+      '@ifc-lite/geometry':
+        specifier: workspace:^
+        version: link:../geometry
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
@@ -1137,6 +1143,9 @@ importers:
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf
+      '@ifc-lite/clash':
+        specifier: workspace:^
+        version: link:../clash
       '@ifc-lite/create':
         specifier: workspace:^
         version: link:../create
@@ -1149,6 +1158,9 @@ importers:
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../export
+      '@ifc-lite/geometry':
+        specifier: workspace:^
+        version: link:../geometry
       '@ifc-lite/ids':
         specifier: workspace:^
         version: link:../ids
@@ -1272,6 +1284,9 @@ importers:
 
   packages/sandbox:
     dependencies:
+      '@ifc-lite/clash':
+        specifier: workspace:^
+        version: link:../clash
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../sdk
@@ -1294,6 +1309,9 @@ importers:
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf
+      '@ifc-lite/clash':
+        specifier: workspace:^
+        version: link:../clash
       '@ifc-lite/create':
         specifier: workspace:^
         version: link:../create

@@ -10,7 +10,15 @@
 
 use crate::aabb::Aabb;
 use crate::bvh::Bvh;
-use crate::vec3::Vec3;
+use crate::vec3::{cross, dot, sub, Vec3};
+
+/// Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.
+/// NON-axis-aligned so the ray never grazes axis-aligned box edges/vertices
+/// (which would double-count). Exact IEEE-754 literals, byte-identical to the
+/// TS kernel's `RAY_DIR` — `|RAY_DIR| == 1` exactly.
+const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
+/// Parallel-reject + forward-crossing threshold. Same literal in the TS kernel.
+const RAY_EPS: f64 = 1e-9;
 
 /// A triangle mesh with a per-triangle BVH over its triangle AABBs.
 pub struct TriMesh {
@@ -101,6 +109,47 @@ impl TriMesh {
             return Vec::new();
         }
         self.bvh.query_aabb(bounds)
+    }
+
+    /// True when `p` is inside this closed mesh. Casts a fixed-direction ray and
+    /// counts forward crossings against every triangle (Möller–Trumbore,
+    /// double-sided so winding doesn't matter); an odd count means inside.
+    ///
+    /// Iterates all triangles in index order — deliberately NOT the BVH — so the
+    /// result is bit-identical to the TS `containsPoint`. Only invoked in the
+    /// rare enclosed-solid branch of the narrow phase, so the O(n) cost is fine.
+    // Keep the bare `u < 0.0 || u > 1.0` comparisons (not `RangeInclusive::contains`):
+    // they must match the TS kernel's operators EXACTLY, including NaN handling
+    // (`contains` would skip a NaN `u`, the comparison does not), or parity breaks.
+    #[allow(clippy::manual_range_contains)]
+    pub fn contains_point(&self, p: Vec3) -> bool {
+        let mut crossings: u32 = 0;
+        for t in 0..self.count {
+            let [v0, v1, v2] = self.tri(t);
+            let e1 = sub(v1, v0);
+            let e2 = sub(v2, v0);
+            let pv = cross(RAY_DIR, e2);
+            let det = dot(e1, pv);
+            if det > -RAY_EPS && det < RAY_EPS {
+                continue; // ray parallel to triangle
+            }
+            let inv = 1.0 / det;
+            let tv = sub(p, v0);
+            let u = dot(tv, pv) * inv;
+            if u < 0.0 || u > 1.0 {
+                continue;
+            }
+            let qv = cross(tv, e1);
+            let v = dot(RAY_DIR, qv) * inv;
+            if v < 0.0 || u + v > 1.0 {
+                continue;
+            }
+            let t_hit = dot(e2, qv) * inv;
+            if t_hit > RAY_EPS {
+                crossings += 1; // strictly forward
+            }
+        }
+        crossings & 1 == 1
     }
 }
 

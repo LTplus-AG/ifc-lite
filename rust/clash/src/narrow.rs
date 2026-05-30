@@ -8,7 +8,7 @@
 //! comparisons, and result construction match the TS reference bit-for-bit in
 //! logic so this kernel and the TS engine agree on classification.
 
-use crate::aabb::{bounds_of_points, overlap_bounds, signed_gap, Aabb};
+use crate::aabb::{aabb_contains, bounds_of_points, overlap_bounds, signed_gap, Aabb};
 use crate::triangle::{tri_tri_distance, tri_tri_intersect};
 use crate::tri_mesh::TriMesh;
 use crate::vec3::{centroid, mid, Vec3};
@@ -106,6 +106,29 @@ pub fn test_pair(
             status: ClashStatus::Hard,
             distance: -penetration,
             point,
+            bounds: overlap,
+        });
+    }
+
+    // Fully-enclosed solid: no surface crossing, but one element's AABB is wholly
+    // inside the other's, so it may be buried. With no surface crossing the inner
+    // solid is entirely inside OR entirely outside the other, so ray-casting ONE
+    // representative vertex of the contained mesh decides it — and ray casting
+    // (not an AABB test) correctly returns "outside" for a concave-notch case.
+    // Test B-contains-A first, then A-contains-B, so the inner pick is
+    // deterministic (and identical to the TS kernel) on equal AABBs.
+    let enclosed = if aabb_contains(aabb_b, aabb_a) {
+        tri_a.count > 0 && tri_b.contains_point(tri_a.tri(0)[0])
+    } else if aabb_contains(aabb_a, aabb_b) {
+        tri_b.count > 0 && tri_a.contains_point(tri_b.tri(0)[0])
+    } else {
+        false
+    };
+    if enclosed {
+        return Some(NarrowResult {
+            status: ClashStatus::Hard,
+            distance: signed_gap(aabb_a, aabb_b),
+            point: overlap.center(),
             bounds: overlap,
         });
     }

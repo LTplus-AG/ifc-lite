@@ -7,6 +7,7 @@
 
 use crate::narrow::ClashStatus;
 use crate::session::ClashSession;
+use crate::tri_mesh::TriMesh;
 use crate::triangle::{tri_tri_distance, tri_tri_intersect};
 use crate::vec3::Vec3;
 
@@ -75,6 +76,74 @@ fn session_of_cubes(cubes: &[(f32, f32, f32)]) -> ClashSession {
     session
 }
 
+/// Axis-aligned cube of arbitrary `side` centred at `(cx, cy, cz)`. Same packing
+/// as `unit_cube`, used for enclosure tests where the two cubes differ in size.
+fn sized_cube(cx: f32, cy: f32, cz: f32, side: f32) -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let h = side / 2.0;
+    let corners = [
+        [cx - h, cy - h, cz - h],
+        [cx + h, cy - h, cz - h],
+        [cx + h, cy + h, cz - h],
+        [cx - h, cy + h, cz - h],
+        [cx - h, cy - h, cz + h],
+        [cx + h, cy - h, cz + h],
+        [cx + h, cy + h, cz + h],
+        [cx - h, cy + h, cz + h],
+    ];
+    let mut positions = Vec::with_capacity(24);
+    for c in &corners {
+        positions.extend_from_slice(c);
+    }
+    let indices: Vec<u32> = vec![
+        0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 5, 1, 0, 4, 5, 3, 2, 6, 3, 6, 7, 0, 3, 7, 0, 7, 4,
+        1, 5, 6, 1, 6, 2,
+    ];
+    let aabb = vec![cx - h, cy - h, cz - h, cx + h, cy + h, cz + h];
+    (positions, indices, aabb)
+}
+
+/// Build a session from `(cx, cy, cz, side)` cubes.
+fn session_of_sized(cubes: &[(f32, f32, f32, f32)]) -> ClashSession {
+    let mut positions: Vec<f32> = Vec::new();
+    let mut pos_ranges: Vec<u32> = Vec::new();
+    let mut indices: Vec<u32> = Vec::new();
+    let mut idx_ranges: Vec<u32> = Vec::new();
+    let mut aabbs: Vec<f32> = Vec::new();
+    for &(cx, cy, cz, side) in cubes {
+        let (p, idx, ab) = sized_cube(cx, cy, cz, side);
+        pos_ranges.push(positions.len() as u32);
+        pos_ranges.push(p.len() as u32);
+        idx_ranges.push(indices.len() as u32);
+        idx_ranges.push(idx.len() as u32);
+        positions.extend_from_slice(&p);
+        indices.extend_from_slice(&idx);
+        aabbs.extend_from_slice(&ab);
+    }
+    let mut session = ClashSession::new();
+    session.ingest(&positions, &pos_ranges, &indices, &idx_ranges, &aabbs);
+    session
+}
+
+/// A closed, CONCAVE L-shaped prism: footprint
+/// `(0,0)-(2,0)-(2,1)-(1,1)-(1,2)-(0,2)` extruded z=0..1. The square
+/// `[1,2]×[1,2]` is the notch — inside the AABB but OUTSIDE the solid.
+fn l_prism() -> TriMesh {
+    let positions: Vec<f64> = vec![
+        // bottom (z=0): 0..5
+        0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0, 0.0,
+        // top (z=1): 6..11
+        0.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 1.0, 0.0, 2.0, 1.0,
+    ];
+    let indices: Vec<u32> = vec![
+        // bottom cap (fan from 0)
+        0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5, // top cap (fan from 6)
+        6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11, // sides (one quad per footprint edge)
+        0, 1, 7, 0, 7, 6, 1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8, 3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11,
+        10, 5, 0, 6, 5, 6, 11,
+    ];
+    TriMesh::new(positions, indices)
+}
+
 const HARD: u8 = 0;
 const CLEARANCE: u8 = 1;
 
@@ -139,6 +208,46 @@ fn self_clash_group() {
     assert_eq!(rec.status, ClashStatus::Hard);
     // Records carry GLOBAL element indices; the overlapping pair is (0, 1).
     assert_eq!((rec.a, rec.b), (0, 1));
+}
+
+#[test]
+fn enclosed_solid_hard() {
+    // A side-1 cube fully inside a side-10 cube, both centred at origin: surfaces
+    // are ~4.5 apart so no triangle pair is within margin — only full enclosure
+    // signals the clash, via the point-in-solid ray cast.
+    let session = session_of_sized(&[(0.0, 0.0, 0.0, 10.0), (0.0, 0.0, 0.0, 1.0)]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1, "fully-enclosed solid must be a hard clash");
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert!(result.records[0].distance < 0.0, "penetration distance must be negative");
+}
+
+#[test]
+fn separated_not_enclosed_none() {
+    // Two side-1 cubes far apart: neither AABB contains the other, so the
+    // enclosure path must stay quiet (no false positive).
+    let session = session_of_sized(&[(0.0, 0.0, 0.0, 1.0), (20.0, 0.0, 0.0, 1.0)]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 0, "disjoint cubes are not a clash");
+}
+
+#[test]
+fn contains_point_convex_cube() {
+    let (p, idx, _) = unit_cube(0.0, 0.0, 0.0);
+    let positions: Vec<f64> = p.iter().map(|&x| x as f64).collect();
+    let mesh = TriMesh::new(positions, idx);
+    assert!(mesh.contains_point([0.0, 0.0, 0.0]), "centre is inside");
+    assert!(!mesh.contains_point([5.0, 5.0, 5.0]), "far point is outside");
+}
+
+#[test]
+fn contains_point_concave_notch_is_outside() {
+    // The defining guarantee of ray casting over an AABB heuristic: a point in
+    // the L-prism's concave notch is inside the AABB but OUTSIDE the solid.
+    let mesh = l_prism();
+    assert!(mesh.contains_point([0.5, 0.5, 0.5]), "point in the L arm is inside the solid");
+    assert!(!mesh.contains_point([1.5, 1.5, 0.5]), "point in the concave notch is OUTSIDE the solid");
+    assert!(!mesh.contains_point([5.0, 5.0, 5.0]), "far point is outside");
 }
 
 // --- Triangle math unit tests -------------------------------------------------

@@ -4,6 +4,18 @@
 
 import { BVH, type AABB, type MeshWithBounds } from '@ifc-lite/spatial';
 import type { Mat4, Vec3 } from '../types.js';
+import { sub, cross, dot } from '../math/vec3.js';
+
+/**
+ * Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.
+ * Deliberately NON-axis-aligned so the ray never grazes the edges/vertices of
+ * axis-aligned boxes (which would double-count crossings). Written as exact
+ * IEEE-754 literals (not computed via `normalize()`) so the Rust kernel uses
+ * byte-identical components — `|RAY_DIR| === 1` exactly.
+ */
+const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
+/** Parallel-reject + forward-crossing threshold. Same literal in the Rust kernel. */
+const RAY_EPS = 1e-9;
 
 /**
  * A triangle mesh with a per-triangle BVH for narrow-phase queries. Built once
@@ -75,5 +87,36 @@ export class TriMesh {
   queryTris(bounds: AABB): number[] {
     if (this.count === 0) return [];
     return this.bvh.queryAABB(bounds);
+  }
+
+  /**
+   * True when `p` is inside this closed mesh. Casts a fixed-direction ray and
+   * counts forward crossings against every triangle (Möller–Trumbore,
+   * double-sided so winding doesn't matter); an odd count means inside.
+   *
+   * Iterates all triangles in index order — deliberately NOT the BVH — so the
+   * result is bit-identical to the Rust `contains_point`. Only invoked in the
+   * rare enclosed-solid branch of the narrow phase, so the O(n) cost is fine.
+   */
+  containsPoint(p: Vec3): boolean {
+    let crossings = 0;
+    for (let t = 0; t < this.count; t += 1) {
+      const [v0, v1, v2] = this.tri(t);
+      const e1 = sub(v1, v0);
+      const e2 = sub(v2, v0);
+      const pv = cross(RAY_DIR, e2);
+      const det = dot(e1, pv);
+      if (det > -RAY_EPS && det < RAY_EPS) continue; // ray parallel to triangle
+      const inv = 1 / det;
+      const tv = sub(p, v0);
+      const u = dot(tv, pv) * inv;
+      if (u < 0 || u > 1) continue;
+      const qv = cross(tv, e1);
+      const v = dot(RAY_DIR, qv) * inv;
+      if (v < 0 || u + v > 1) continue;
+      const tHit = dot(e2, qv) * inv;
+      if (tHit > RAY_EPS) crossings += 1; // strictly forward
+    }
+    return (crossings & 1) === 1;
   }
 }

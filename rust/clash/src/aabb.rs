@@ -131,3 +131,16 @@ pub fn bounds_of_points(a: Vec3, b: Vec3) -> Aabb {
         [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2])],
     )
 }
+
+/// True when `outer` fully contains `inner` (face-sharing counts as contained).
+/// Cheap precondition for the enclosed-solid test in the narrow phase. Mirrors
+/// `aabbContains` in the TS kernel exactly (same `<=`/`>=`, axis order 0,1,2).
+#[inline]
+pub fn aabb_contains(outer: &Aabb, inner: &Aabb) -> bool {
+    outer.min[0] <= inner.min[0]
+        && outer.max[0] >= inner.max[0]
+        && outer.min[1] <= inner.min[1]
+        && outer.max[1] >= inner.max[1]
+        && outer.min[2] <= inner.min[2]
+        && outer.max[2] >= inner.max[2]
+}

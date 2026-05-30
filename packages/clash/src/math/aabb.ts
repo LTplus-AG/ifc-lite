@@ -118,3 +118,17 @@ export function boundsOfPoints(a: Vec3, b: Vec3): AABB {
     max: [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.max(a[2], b[2])],
   };
 }
+
+/**
+ * True when `outer` fully contains `inner` (face-sharing counts as contained).
+ * Cheap precondition for the enclosed-solid test in the narrow phase: a solid
+ * can only be buried inside another if its AABB is inside the other's. Mirrors
+ * `aabb_contains` in the Rust kernel exactly (same `<=`/`>=`, axis order 0,1,2).
+ */
+export function aabbContains(outer: AABB, inner: AABB): boolean {
+  return (
+    outer.min[0] <= inner.min[0] && outer.max[0] >= inner.max[0] &&
+    outer.min[1] <= inner.min[1] && outer.max[1] >= inner.max[1] &&
+    outer.min[2] <= inner.min[2] && outer.max[2] >= inner.max[2]
+  );
+}

@@ -126,4 +126,19 @@ describe('differential: WASM kernel === TS kernel', () => {
     const n = await bothAgree(els, disciplineMatrixRules('hard'));
     expect(n).toBeGreaterThan(0);
   });
+
+  it('agrees on a fully-enclosed solid (no surface crossing)', async () => {
+    // A 1×1 duct centered inside a 10×10 wall: surfaces are 4.5 m apart so no
+    // triangle pair is within margin — the only signal is full enclosure, which
+    // both kernels must detect via the point-in-solid ray cast.
+    const els = [box('OUT', 'IfcWall', [0, 0, 0], 10), box('IN', 'IfcDuctSegment', [0, 0, 0], 1)];
+    const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(n).toBe(1);
+  });
+
+  it('agrees that disjoint solids are not a clash (enclosure must not over-fire)', async () => {
+    const els = [box('A', 'IfcWall', [0, 0, 0], 1), box('B', 'IfcDuctSegment', [20, 0, 0], 1)];
+    const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(n).toBe(0);
+  });
 });

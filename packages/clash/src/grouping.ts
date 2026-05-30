@@ -45,8 +45,12 @@ const SEVERITY_RANK: Record<ClashSeverity, number> = {
 function fnv1a(input: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i) & 0xff;
+    const code = input.charCodeAt(i);
+    // Fold both bytes of each UTF-16 code unit so non-ASCII ids cannot collide.
     // 32-bit FNV prime multiply via shifts to stay in unsigned range.
+    hash ^= code & 0xff;
+    hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0;
+    hash ^= (code >>> 8) & 0xff;
     hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0;
   }
   return hash.toString(16).padStart(8, '0');

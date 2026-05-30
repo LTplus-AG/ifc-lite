@@ -135,9 +135,10 @@ function ifcxBuffer(): ArrayBuffer {
 }
 
 function isDegenerate(bounds: { min: number[]; max: number[] }): boolean {
+  // Degenerate if ANY axis has zero/negative extent (a flat or empty mesh).
   return (
-    bounds.max[0] <= bounds.min[0] &&
-    bounds.max[1] <= bounds.min[1] &&
+    bounds.max[0] <= bounds.min[0] ||
+    bounds.max[1] <= bounds.min[1] ||
     bounds.max[2] <= bounds.min[2]
   );
 }

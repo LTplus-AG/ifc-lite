@@ -816,6 +816,24 @@ export class GeometryProcessor {
   }
 
   /**
+   * Parse IfcAlignment directrix curves into a flat Float32Array of 3D
+   * line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in renderer Y-up world space
+   * (RTC-subtracted, metres). Rendered as thin lines (not a ribbon mesh) to
+   * match IfcGrid / IfcAnnotation. Feed straight to `renderer.uploadAlignmentLines3D`.
+   * @param buffer IFC file buffer
+   * @returns Flat line-list vertices, or null if not initialized
+   */
+  parseAlignmentLines(buffer: Uint8Array): Float32Array | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    // SAB-safe: caller may pass a SharedArrayBuffer-backed view, which
+    // both Firefox and Chromium reject in raw `TextDecoder.decode`.
+    const content = safeUtf8Decode(buffer);
+    return this.bridge.parseAlignmentLines(content);
+  }
+
+  /**
    * Extract raw profile polygons from IfcExtrudedAreaSolid building elements.
    * Returns clean per-element profile outlines + 3D placement transforms.
    * Used by Drawing2DGenerator for artifact-free 2D projection.

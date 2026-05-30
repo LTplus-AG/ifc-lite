@@ -135,6 +135,32 @@ export class IfcLiteBridge {
   }
 
   /**
+   * Parse IfcAlignment directrix curves into a flat Float32Array of 3D
+   * line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in renderer Y-up world space
+   * (RTC-subtracted, metres). Feed straight to `renderer.uploadAlignmentLines3D`.
+   * Empty when the file has no alignments.
+   */
+  parseAlignmentLines(content: string): Float32Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      const vertices = this.ifcApi.parseAlignmentLines(content);
+      log.debug(`Parsed ${vertices.length / 3} alignment line vertices`, { operation: 'parseAlignmentLines' });
+      return vertices;
+    } catch (error) {
+      log.error('Failed to parse alignment lines', error, {
+        operation: 'parseAlignmentLines',
+        data: { contentLength: content.length },
+      });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Extract raw profile polygons from all IfcExtrudedAreaSolid building elements.
    *
    * Returns profile outlines + placement transforms for clean 2D projection

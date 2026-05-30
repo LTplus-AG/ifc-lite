@@ -6,6 +6,7 @@
 //!
 //! Modern async/await API for parsing IFC files.
 
+mod alignment_lines;
 mod extract_profiles;
 mod gpu_meshes;
 mod parsing;

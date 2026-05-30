@@ -105,6 +105,26 @@ export function ViewportContainer() {
 
   // Multi-model: merge geometries from all visible models
   const mergedGeometryResult = useMemo(() => {
+    // [DIAG federation-merge] TEMPORARY trace — remove after pinning the
+    // "second model truly gone" drop. Shows exactly what each merge compute
+    // sees per model, so we can tell whether a model's `visible` flips, its
+    // `meshes` empties, or its `geometryResult` goes undefined.
+    try {
+      const snapshot = Array.from(storeModels.entries()).map(([id, m]) => ({
+        id: id.slice(0, 8),
+        name: m.name,
+        visible: m.visible,
+        meshes: m.geometryResult?.meshes?.length ?? null,
+        hasGeom: !!m.geometryResult,
+        loadedAt: m.loadedAt,
+      }));
+      // eslint-disable-next-line no-console
+      console.log(
+        `[DIAG merge] size=${storeModels.size} contentV=${geometryContentVersion} active=${useViewerStore.getState().activeModelId?.slice(0, 8) ?? 'none'}`,
+        snapshot,
+      );
+    } catch { /* diagnostic only — never throw */ }
+
     if (storeModels.size === 1) {
       const firstModel = storeModels.values().next().value;
       if (!firstModel?.visible) {

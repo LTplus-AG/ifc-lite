@@ -141,29 +141,10 @@ export async function* processParallel(
   // workers are usually hot and the first chunk's processing time is
   // dominated by actual geometry work, not WASM startup.
   let workerError: Error | null = null;
+  let workersCompleted = 0;
   let totalMeshes = 0;
   let endSentToWorkers = false;
   let streamStartSentToWorkers = false;
-  // Per-worker lifecycle tracking. The browser can fail to instantiate a
-  // worker (Chromium logs "Attempting to create a Worker from an empty
-  // source"); such a worker never posts `ready`, never `complete`, and never
-  // fires `onerror`. We must therefore NOT (a) wait for it before declaring
-  // the stream complete (else the generator wedges forever), nor (b) hand it
-  // job slices (they'd be silently dropped, losing geometry). We track which
-  // workers actually came up and only ever depend on those. Indexed by
-  // workerIndex; absent === false.
-  const workerReady: boolean[] = [];
-  const workerDone: boolean[] = [];
-  let completedCount = 0;
-  let readyCount = 0;
-  // A worker that hasn't reported `ready` within this window after stream
-  // start is presumed dead (failed to instantiate). Healthy workers report
-  // `ready` once their WASM compiles — well under a second even cold — so
-  // this only ever trips for genuine spawn failures. Kept comfortably below
-  // the host-side stream watchdog so the live workers' output still renders.
-  const READINESS_DEADLINE_MS = 6000;
-  let readinessDeadlinePassed = false;
-  let readinessTimer: ReturnType<typeof setTimeout> | null = null;
   /**
    * Chunks held until BOTH `meta` (workers spawned + initialised) AND
    * `styles` (resolved colours from the pre-pass) have arrived. Workers
@@ -184,15 +165,7 @@ export async function* processParallel(
     worker.onmessage = (e: MessageEvent) => {
       const msg = e.data;
       if (msg.type === 'ready') {
-        if (!workerReady[workerIndex]) {
-          workerReady[workerIndex] = true;
-          readyCount++;
-        }
         console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
-        // A worker coming up may unblock a drain that found no live worker
-        // when styles/entity-index first arrived.
-        drainQueuedChunksIfReady();
-        wake();
         return;
       }
       if (msg.type === 'memory') {
@@ -251,14 +224,14 @@ export async function* processParallel(
         // of batch lengths we observed, a batch was lost — log but
         // trust our observed count to keep totalSoFar consistent
         // with what consumers actually rendered.
-        markWorkerDone(workerIndex);
+        workersCompleted++;
         worker.terminate();
         wake();
         return;
       }
       if (msg.type === 'error') {
         workerError = new Error(`Geometry worker error: ${msg.message}`);
-        markWorkerDone(workerIndex);
+        workersCompleted++;
         worker.terminate();
         wake();
         return;
@@ -266,56 +239,10 @@ export async function* processParallel(
     };
     worker.onerror = (err) => {
       workerError = new Error(`Geometry worker failed: ${err.message}`);
-      markWorkerDone(workerIndex);
+      workersCompleted++;
       worker.terminate();
       wake();
     };
-  };
-
-  // Record that worker #i has finished (complete or errored), exactly once.
-  // A worker that reports `complete` without ever having posted `ready`
-  // (shouldn't happen, but guard anyway) is also counted as ready so the
-  // completion gate's `completedCount >= readyCount` stays consistent.
-  const markWorkerDone = (workerIndex: number) => {
-    if (workerDone[workerIndex]) return;
-    workerDone[workerIndex] = true;
-    if (!workerReady[workerIndex]) {
-      workerReady[workerIndex] = true;
-      readyCount++;
-    }
-    completedCount++;
-  };
-
-  // Workers that came up and are still processing — the only ones we dispatch
-  // job slices to. A worker that never reported `ready` (failed to spawn) is
-  // excluded so its slice isn't silently dropped.
-  const liveWorkers = (): Worker[] =>
-    workers.filter((_, i) => workerReady[i] && !workerDone[i]);
-
-  // Readiness deadline fired: retire every worker that never reported `ready`.
-  // These are spawn failures — terminate them and mark them done WITHOUT
-  // counting them as ready, so the completion gate (completedCount >=
-  // readyCount) is satisfied by the live workers alone instead of waiting
-  // forever. If NONE came up, the load genuinely can't proceed → surface an
-  // error rather than yield an empty model.
-  const markUnreadyWorkersDead = () => {
-    readinessTimer = null;
-    readinessDeadlinePassed = true;
-    for (let i = 0; i < workers.length; i++) {
-      if (!workerReady[i] && !workerDone[i]) {
-        console.warn(
-          `[stream] worker[${i}] never reported ready within ${READINESS_DEADLINE_MS}ms `
-          + `(@ ${elapsed()}ms) — presumed failed to spawn, excluding from pool`,
-        );
-        try { workers[i].terminate(); } catch { /* already gone — ignore */ }
-        workerDone[i] = true;
-      }
-    }
-    if (readyCount === 0) {
-      workerError = workerError
-        ?? new Error('No geometry workers could be started (all failed to instantiate).');
-    }
-    wake();
   };
 
   // Pick worker count and pre-spawn them now. `pickWorkerCount` needs a
@@ -373,14 +300,6 @@ export async function* processParallel(
     if (streamStartSentToWorkers || !prepassMeta) return;
     streamStartSentToWorkers = true;
 
-    // Arm the readiness deadline: any worker that hasn't reported `ready` by
-    // now + READINESS_DEADLINE_MS is presumed to have failed to instantiate
-    // and is retired so it can neither block completion nor receive (and
-    // drop) job slices. Healthy workers report `ready` in well under a second.
-    if (readinessTimer === null) {
-      readinessTimer = setTimeout(markUnreadyWorkersDead, READINESS_DEADLINE_MS);
-    }
-
     const useSharedRtc = sharedRtcOffset != null;
     const rtcX = useSharedRtc ? sharedRtcOffset.x : prepassMeta.rtcOffset[0];
     const rtcY = useSharedRtc ? sharedRtcOffset.y : prepassMeta.rtcOffset[1];
@@ -417,35 +336,24 @@ export async function* processParallel(
   };
 
   function dispatchJobsChunkInternal(jobs: Uint32Array): void {
-    if (jobs.length === 0) return;
-    // Only ever dispatch to workers that actually came up. A worker that
-    // failed to instantiate would silently drop its slice (the geometry it
-    // covers would never be produced), so we split across the LIVE pool only.
-    const targets = liveWorkers();
-    if (targets.length === 0) {
-      // No live worker yet — re-queue; the `ready` handler drains again once
-      // one comes up. (Should be rare: workers report ready well before the
-      // styles/entity-index gates open.)
-      queuedChunks.push(jobs);
-      return;
-    }
+    if (workers.length === 0 || jobs.length === 0) return;
     // Round-robin sending whole chunks to single workers leaves N-1
     // workers idle whenever the chunk count is small. Instead split each
-    // Rust chunk evenly across all live workers so every worker processes a
+    // Rust chunk evenly across all workers so every worker processes a
     // slice of every chunk in parallel — full pool utilisation from the
     // very first chunk.
     const totalSubJobs = Math.floor(jobs.length / 3);
     if (totalSubJobs === 0) return;
-    const subPerWorker = Math.ceil(totalSubJobs / targets.length);
+    const subPerWorker = Math.ceil(totalSubJobs / workers.length);
     try {
-      for (let i = 0; i < targets.length; i++) {
+      for (let i = 0; i < workers.length; i++) {
         const start = i * subPerWorker * 3;
         const end = Math.min(start + subPerWorker * 3, jobs.length);
         if (start >= end) continue;
         // `slice` allocates a new ArrayBuffer per piece so each can be in
         // its own transfer list. Cheap relative to the WASM work that follows.
         const sub = jobs.slice(start, end);
-        targets[i].postMessage(
+        workers[i].postMessage(
           { type: 'stream-chunk' as const, jobsFlat: sub },
           [sub.buffer],
         );
@@ -457,13 +365,12 @@ export async function* processParallel(
   }
 
   const dispatchJobsChunk = (jobs: Uint32Array) => {
-    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived || liveWorkers().length === 0) {
+    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived) {
       // Hold until stream-start AND styles AND entity-index have all
-      // been posted to workers AND at least one worker is live. Without
-      // styles the meshes would render with default per-type colours;
-      // without the pre-built entity index, the worker's first WASM call
-      // would re-scan the file (~5 s on 1 GB) to rebuild the index inside
-      // Rust; with no live worker the slice would be dropped.
+      // been posted to workers. Without styles the meshes would render
+      // with default per-type colours; without the pre-built entity
+      // index, the worker's first WASM call would re-scan the file
+      // (~5 s on 1 GB) to rebuild the index inside Rust.
       queuedChunks.push(jobs);
       return;
     }
@@ -472,7 +379,7 @@ export async function* processParallel(
 
   /** Drain queued chunks once all gating conditions are met. */
   const drainQueuedChunksIfReady = () => {
-    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived || liveWorkers().length === 0) return;
+    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived) return;
     while (queuedChunks.length > 0) {
       dispatchJobsChunkInternal(queuedChunks.shift()!);
     }
@@ -722,7 +629,6 @@ export async function* processParallel(
       yield eventQueue.shift()!;
     }
     if (workerError) {
-      if (readinessTimer !== null) { clearTimeout(readinessTimer); readinessTimer = null; }
       for (const w of workers) {
         try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
       }
@@ -730,7 +636,6 @@ export async function* processParallel(
       throw workerError;
     }
     if (prepassError) {
-      if (readinessTimer !== null) { clearTimeout(readinessTimer); readinessTimer = null; }
       for (const w of workers) {
         try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
       }
@@ -743,7 +648,6 @@ export async function* processParallel(
     // `complete`. Workers were pre-spawned with `init` so they need an
     // explicit terminate to exit.
     if (prepassDone && !streamStartSentToWorkers && prepassJobsTotal === 0) {
-      if (readinessTimer !== null) { clearTimeout(readinessTimer); readinessTimer = null; }
       for (const w of workers) {
         try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
       }
@@ -752,18 +656,10 @@ export async function* processParallel(
       return;
     }
 
-    // Stream complete once every LIVE worker (the ones that actually came up)
-    // has reported `complete`. We require either that every spawned worker
-    // came up (healthy fast path) or that the readiness deadline has passed
-    // (so we know the not-yet-ready ones are genuine spawn failures, not just
-    // slow to compile) — otherwise a worker still initialising could be
-    // skipped. `readyCount === 0` after the deadline is turned into a
-    // workerError above, so this never yields an empty model.
     if (
       prepassDone
       && streamStartSentToWorkers
-      && completedCount >= readyCount
-      && (readyCount === workers.length || readinessDeadlinePassed)
+      && workersCompleted >= workers.length
       && eventQueue.length === 0
     ) {
       break;
@@ -772,7 +668,6 @@ export async function* processParallel(
     await new Promise<void>((resolve) => { resolveWaiting = resolve; });
   }
 
-  if (readinessTimer !== null) { clearTimeout(readinessTimer); readinessTimer = null; }
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
   yield { type: 'complete', totalMeshes, coordinateInfo };
 }

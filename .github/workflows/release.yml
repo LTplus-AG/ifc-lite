@@ -192,6 +192,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # @ifc-lite/server-bin downloads its native archive from a GitHub
+      # release tagged `v<its-own-version>` (packages/server-bin/src/binary.ts).
+      # The root `v<version>` release above is keyed to the *highest* workspace
+      # package version, which is usually NOT server-bin's — so without a
+      # matching tag `npx @ifc-lite/server-bin` 404s on download, and native
+      # binaries never carry geometry fixes that bump only server-bin/wasm.
+      # Create a release at server-bin's own version: that `release: published`
+      # event triggers server-binaries.yml to build + upload the per-platform
+      # archives to this tag, so the download URL resolves with fresh binaries.
+      - name: Create server-bin binary release
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          SB_VERSION=$(node -p "require('./packages/server-bin/package.json').version")
+          TAG="v${SB_VERSION}"
+          # Skip when the tag already exists (server-bin unchanged this cycle,
+          # or it happens to equal the root release already created above).
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping (server binaries already published)"
+          else
+            git tag "$TAG" || true
+            git push origin "$TAG" || true
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "Native server binary for @ifc-lite/server-bin v${SB_VERSION}. See CHANGELOG.md."
+          fi
+        env:
+          # Use the fine-grained PAT, NOT GITHUB_TOKEN: a release created with
+          # GITHUB_TOKEN does NOT emit a `release: published` event that starts new
+          # workflow runs (GitHub recursion guard). server-binaries.yml uploads
+          # binaries only on `release: published`, so a GITHUB_TOKEN-created release
+          # would sit empty and downloads would still 404. The PAT is a real
+          # identity, so the event fires and binaries build + upload to this tag.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+
   # Verify every published package is actually reachable on npm.
   # Catches packages accidentally skipped during release before users hit them.
   verify-npm-publish:

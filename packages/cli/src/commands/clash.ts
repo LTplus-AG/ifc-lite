@@ -90,6 +90,16 @@ function parseNumberFlag(raw: string | undefined, flag: string): number | undefi
   return value;
 }
 
+type ClashGroupByCli = 'cluster' | 'rule' | 'typePair' | 'element';
+
+function parseGroupBy(raw: string | undefined): ClashGroupByCli {
+  const g = raw ?? 'cluster';
+  if (g !== 'cluster' && g !== 'rule' && g !== 'typePair' && g !== 'element') {
+    fatal(`Invalid --group "${g}". Supported: cluster, rule, typePair, element`);
+  }
+  return g as ClashGroupByCli;
+}
+
 function buildRules(args: string[], mode: ClashMode, tolerance: number | undefined, clearance: number | undefined): ClashRule[] {
   if (hasFlag(args, '--matrix')) {
     return disciplineMatrixRules(mode, clearance);
@@ -146,7 +156,7 @@ function printHumanSummary(result: ClashResult): void {
 export async function clashCommand(args: string[]): Promise<void> {
   const filePath = args.find(a => !a.startsWith('-'));
   if (!filePath) {
-    fatal('Usage: ifc-lite clash <file.ifc> [--a <selector>] [--b <selector>] [--mode hard|clearance] [--tolerance N] [--clearance N] [--matrix] [--bcf <out.bcfzip>] [--json]');
+    fatal('Usage: ifc-lite clash <file.ifc> [--a <selector>] [--b <selector>] [--mode hard|clearance] [--tolerance N] [--clearance N] [--matrix] [--bcf <out.bcfzip>] [--group cluster|rule|typePair|element] [--bcf-status <status>] [--max-topics N] [--json]');
   }
 
   const jsonOutput = hasFlag(args, '--json');
@@ -154,6 +164,9 @@ export async function clashCommand(args: string[]): Promise<void> {
   const tolerance = parseNumberFlag(getFlag(args, '--tolerance'), '--tolerance');
   const clearance = parseNumberFlag(getFlag(args, '--clearance'), '--clearance');
   const bcfPath = getFlag(args, '--bcf');
+  const bcfGroupBy = parseGroupBy(getFlag(args, '--group'));
+  const bcfStatus = getFlag(args, '--bcf-status');
+  const maxTopics = parseNumberFlag(getFlag(args, '--max-topics'), '--max-topics');
 
   const { store } = await createHeadlessContext(filePath);
 
@@ -178,15 +191,18 @@ export async function clashCommand(args: string[]): Promise<void> {
   if (!jsonOutput) process.stderr.write('\n');
 
   if (bcfPath) {
-    const groups = groupClashes(result, { by: 'cluster' });
+    const groups = groupClashes(result, { by: bcfGroupBy });
     const project = await createBCFFromClashResult(result, groups, {
       author: 'ifc-lite clash',
       projectName: 'Clash report',
+      // Headless: no snapshots (no renderer) — viewer export embeds those.
+      ...(bcfStatus ? { status: bcfStatus } : {}),
+      ...(maxTopics != null ? { maxTopics } : {}),
     });
     const blob = await writeBCF(project);
     const buffer = Buffer.from(await blob.arrayBuffer());
     await writeFile(bcfPath, buffer);
-    process.stderr.write(`  BCF report written to ${bcfPath} (${groups.length} topic group(s))\n`);
+    process.stderr.write(`  BCF report written to ${bcfPath} (${groups.length} topic group(s), grouped by ${bcfGroupBy})\n`);
   }
 
   if (jsonOutput) {

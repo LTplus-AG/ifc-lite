@@ -8,7 +8,6 @@ import {
   Play,
   Loader2,
   Trash2,
-  Download,
   Crosshair,
   AlertTriangle,
   ChevronDown,
@@ -19,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useClash } from '@/hooks/useClash';
+import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
 import type { Clash, ClashSeverity } from '@ifc-lite/clash';
 
 interface ClashPanelProps {
@@ -41,7 +41,6 @@ function shortName(key: string): string {
 export function ClashPanel({ onClose }: ClashPanelProps) {
   const {
     result,
-    groups,
     running,
     error,
     mode,
@@ -60,7 +59,6 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     focusClash,
     highlightAll,
     clearHighlight,
-    exportBcf,
     clearAll,
   } = useClash();
 
@@ -261,16 +259,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={clearHighlight}>
               Clear
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              title={`Export ${groups?.length ?? 0} grouped topics to BCF`}
-              onClick={() => void exportBcf()}
-            >
-              <Download className="h-3.5 w-3.5 mr-1" />
-              BCF
-            </Button>
+            <ClashBcfExportDialog />
           </div>
         </div>
       )}

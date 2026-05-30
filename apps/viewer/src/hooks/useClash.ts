@@ -20,17 +20,42 @@ import {
   type Clash,
   type ClashElement,
   type ClashElementRef,
+  type ClashGroup,
+  type ClashResult,
   type ClashRule,
+  type ClashSeverity,
   type ExclusionSet,
 } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { writeBCF } from '@ifc-lite/bcf';
+import { getGlobalRenderer } from '@/hooks/useBCF';
 
 interface SelectionRef {
   modelId: string;
   expressId: number;
 }
+
+/** How clashes collapse into BCF topics. `storey` is omitted — Clash has no
+ *  storey, so it degrades to `rule` (see grouping.ts) and would only confuse. */
+export type ClashBcfGroupBy = 'cluster' | 'rule' | 'typePair' | 'element';
+
+/** User-controllable settings for a BCF export — "what gets created". */
+export interface ClashBcfConfig {
+  /** Grouping dimension → one BCF topic per group. */
+  groupBy: ClashBcfGroupBy;
+  /** Only clashes of these severities become topics. */
+  severities: ClashSeverity[];
+  /** Render each topic's viewpoint offscreen and embed a PNG snapshot. */
+  includeSnapshots: boolean;
+  /** Initial BCF topic status (Open / In Progress / ...). */
+  status: string;
+  /** Safety cap on topic count; overflow is recorded in one marker topic. */
+  maxTopics: number;
+}
+
+/** Dark, neutral background for offscreen snapshot captures (Tokyo Night base). */
+const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.04, 0.05, 0.1, 1];
 
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -39,6 +64,26 @@ function downloadBlob(blob: Blob, filename: string): void {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+/** Decode a `data:image/png;base64,...` URL into raw PNG bytes for the BCF zip. */
+function dataUrlToBytes(dataUrl: string): Uint8Array | undefined {
+  const comma = dataUrl.indexOf(',');
+  if (comma < 0) return undefined;
+  try {
+    const binary = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Drop clashes whose severity is not selected; total is kept consistent. */
+function filterResultBySeverity(result: ClashResult, severities: Set<ClashSeverity>): ClashResult {
+  const clashes = result.clashes.filter((c) => severities.has(c.severity));
+  return { ...result, clashes, summary: { ...result.summary, total: clashes.length } };
 }
 
 export function useClash() {
@@ -209,18 +254,113 @@ export function useClash() {
     setSelectedId(null);
   }, [setSelectedId]);
 
-  const exportBcf = useCallback(async (): Promise<void> => {
-    const state = useViewerStore.getState();
-    const current = state.clashResult;
-    const currentGroups = state.clashGroups;
-    if (!current || !currentGroups || currentGroups.length === 0) return;
-    const project = await createBCFFromClashResult(current, currentGroups, {
-      author: 'clash@ifc-lite',
-      projectName: 'Clash report',
-    });
-    const blob = await writeBCF(project);
-    downloadBlob(blob, 'clashes.bcfzip');
+  /**
+   * Preview what a given export config would produce, WITHOUT building anything:
+   * how many clashes survive the severity filter and how many BCF topics they
+   * collapse into under the chosen grouping (incl. the overflow marker topic).
+   * Cheap (pure grouping) so the dialog can call it on every keystroke.
+   */
+  const bcfPreview = useCallback((config: ClashBcfConfig): { clashes: number; topics: number } => {
+    const current = useViewerStore.getState().clashResult;
+    if (!current) return { clashes: 0, topics: 0 };
+    const filtered = filterResultBySeverity(current, new Set(config.severities));
+    if (filtered.clashes.length === 0) return { clashes: 0, topics: 0 };
+    const groups = groupClashes(filtered, { by: config.groupBy });
+    const capped = Math.min(groups.length, config.maxTopics);
+    const overflow = groups.length > config.maxTopics ? 1 : 0;
+    return { clashes: filtered.clashes.length, topics: capped + overflow };
   }, []);
+
+  /**
+   * Export the current clash result to a BCF 2.1 archive under `config`.
+   *
+   * Filters by severity, groups along the chosen dimension (one topic per
+   * group), and — when `includeSnapshots` is on and a renderer is live —
+   * renders each topic's framing viewpoint offscreen and embeds a PNG. The
+   * snapshot pass mirrors the IDS batch path: save viewer state, then per group
+   * frame the bounds + isolate the members + capture, and restore at the end.
+   * `onProgress(done, total)` ticks once per captured snapshot.
+   */
+  const exportBcf = useCallback(
+    async (config: ClashBcfConfig, onProgress?: (done: number, total: number) => void): Promise<void> => {
+      const state = useViewerStore.getState();
+      const current = state.clashResult;
+      if (!current) return;
+      const filtered = filterResultBySeverity(current, new Set(config.severities));
+      if (filtered.clashes.length === 0) return;
+      const groups = groupClashes(filtered, { by: config.groupBy });
+
+      let restore: (() => void) | undefined;
+      let snapshotProvider: ((group: ClashGroup) => Promise<Uint8Array | undefined>) | undefined;
+
+      if (config.includeSnapshots) {
+        const renderer = getGlobalRenderer();
+        if (renderer) {
+          const saved = {
+            selectedEntityId: state.selectedEntityId,
+            selectedEntityIds: state.selectedEntityIds,
+            isolatedEntities: state.isolatedEntities,
+            hiddenEntities: state.hiddenEntities,
+          };
+          restore = () => {
+            useViewerStore.setState({
+              selectedEntityId: saved.selectedEntityId,
+              selectedEntityIds: saved.selectedEntityIds,
+              isolatedEntities: saved.isolatedEntities,
+              hiddenEntities: saved.hiddenEntities,
+            });
+            renderer.render({
+              hiddenIds: saved.hiddenEntities,
+              isolatedIds: saved.isolatedEntities,
+              selectedId: saved.selectedEntityId,
+            });
+          };
+          const total = Math.min(groups.length, config.maxTopics);
+          const camera = renderer.getCamera();
+          let done = 0;
+          snapshotProvider = async (group: ClashGroup): Promise<Uint8Array | undefined> => {
+            const b = group.bounds;
+            await camera.frameBounds(
+              { x: b.min[0], y: b.min[1], z: b.min[2] },
+              { x: b.max[0], y: b.max[1], z: b.max[2] },
+              1,
+            );
+            // Isolate just this topic's members so the snapshot is unambiguous;
+            // no selection highlight so the captured colours read true.
+            const isolation = new Set<number>();
+            for (const m of group.members) {
+              isolation.add(m.a.ref);
+              isolation.add(m.b.ref);
+            }
+            renderer.render({ isolatedIds: isolation, selectedId: null, clearColor: SNAPSHOT_CLEAR_COLOR });
+            const device = renderer.getGPUDevice();
+            if (device) await device.queue.onSubmittedWorkDone();
+            // Let the compositor present the frame before reading the canvas.
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            const dataUrl = await renderer.captureScreenshot();
+            done += 1;
+            onProgress?.(done, total);
+            return dataUrl ? dataUrlToBytes(dataUrl) : undefined;
+          };
+        }
+      }
+
+      try {
+        const project = await createBCFFromClashResult(filtered, groups, {
+          author: 'clash@ifc-lite',
+          projectName: 'Clash report',
+          status: config.status,
+          maxTopics: config.maxTopics,
+          ...(snapshotProvider ? { snapshotProvider } : {}),
+        });
+        const blob = await writeBCF(project);
+        downloadBlob(blob, 'clashes.bcfzip');
+      } finally {
+        restore?.();
+      }
+    },
+    [],
+  );
 
   const clearAll = useCallback((): void => {
     useViewerStore.getState().clearEntitySelection();
@@ -255,6 +395,7 @@ export function useClash() {
     highlightAll,
     clearHighlight,
     exportBcf,
+    bcfPreview,
     clearAll,
   };
 }

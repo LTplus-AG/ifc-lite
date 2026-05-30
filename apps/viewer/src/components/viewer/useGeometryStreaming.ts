@@ -184,6 +184,20 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     const scene = renderer.getScene();
     const currentLength = geometry.length;
 
+    // [DIAG render] TEMPORARY — trace what the renderer receives + does at each
+    // geometry change. The last mesh is the most-recently-added model's; if its
+    // positions.length is 0 the buffers were detached upstream (uploads empty).
+    // Revert before merge.
+    try {
+      const first = geometry[0];
+      const last = geometry[currentLength - 1];
+      const zeroPos = geometry.reduce((n, m) => n + ((m?.positions?.length ?? 0) === 0 ? 1 : 0), 0);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[DIAG render] len=${currentLength} lastLen=${lastGeometryLengthRef.current} isStreaming=${isStreaming} prevStreaming=${prevIsStreamingRef.current} contentV=${geometryContentVersion ?? 0} firstPos=${first?.positions?.length ?? 'n/a'} lastPos=${last?.positions?.length ?? 'n/a'} zeroPosMeshes=${zeroPos} sceneBatches=${scene.getBatchedMeshes().length}`,
+      );
+    } catch { /* diagnostic only */ }
+
     // In-place mutation detection: when geometryContentVersion bumps, mesh
     // positions/normals were rewritten in place (e.g. realignFederation).
     // Length-based classification can't catch this, so force a full reset and

@@ -652,19 +652,43 @@ export function Viewport({
           calculateScale();
         },
         frameSelection: () => {
-          // Frame selection - zoom to fit selected element
-          const selectedId = selectedEntityIdRef.current;
+          // Frame the current selection. Prefer the full multi-selection set
+          // (Ctrl-click, box-select, a clash pair) so the camera encloses EVERY
+          // selected element; fall back to the single primary id. The set is
+          // kept in sync with selection (cleared on a plain click), so the
+          // union is always an accurate frame of what's highlighted.
           const geom = geometryRef.current;
-          if (selectedId !== null && geom) {
-            const bounds = getEntityBounds(geom, selectedId);
-            if (bounds) {
-              camera.frameBounds(bounds.min, bounds.max, 300);
-              calculateScale();
-            } else {
-              console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
-            }
-          } else {
+          const set = selectedEntityIdsRef.current;
+          const single = selectedEntityIdRef.current;
+          const ids = set && set.size > 0
+            ? Array.from(set)
+            : single !== null ? [single] : [];
+          if (!geom || ids.length === 0) {
             console.warn('[Viewport] frameSelection: No selection or geometry');
+            return;
+          }
+          let min: { x: number; y: number; z: number } | null = null;
+          let max: { x: number; y: number; z: number } | null = null;
+          for (const id of ids) {
+            const b = getEntityBounds(geom, id);
+            if (!b) continue;
+            if (!min || !max) {
+              min = { x: b.min.x, y: b.min.y, z: b.min.z };
+              max = { x: b.max.x, y: b.max.y, z: b.max.z };
+            } else {
+              min.x = Math.min(min.x, b.min.x);
+              min.y = Math.min(min.y, b.min.y);
+              min.z = Math.min(min.z, b.min.z);
+              max.x = Math.max(max.x, b.max.x);
+              max.y = Math.max(max.y, b.max.y);
+              max.z = Math.max(max.z, b.max.z);
+            }
+          }
+          if (min && max) {
+            camera.frameBounds(min, max, 300);
+            calculateScale();
+          } else {
+            console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }
         },
         orbit: (deltaX: number, deltaY: number) => {

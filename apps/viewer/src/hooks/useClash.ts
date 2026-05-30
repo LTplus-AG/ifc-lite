@@ -154,34 +154,51 @@ export function useClash() {
     return useViewerStore.getState().fromGlobalId(ref.ref);
   }, []);
 
-  /** Select both elements of a clash and frame the camera on them. */
+  /** Select both elements of a clash, highlight them, and frame the camera. */
   const focusClash = useCallback(
     (clash: Clash): void => {
       const state = useViewerStore.getState();
-      const refs = [refOf(clash.a), refOf(clash.b)].filter((r): r is SelectionRef => r !== null);
+      const a = refOf(clash.a);
+      const b = refOf(clash.b);
+      const refs = [a, b].filter((r): r is SelectionRef => r !== null);
       if (refs.length === 0) return;
+      // The renderer highlights the GLOBAL-id set (`selectedEntityIds`) and
+      // `frameSelection` frames it — `clash.X.ref` IS the federated global id
+      // (see gatherElements), so drive those, not just the model-aware set.
+      const globalIds: number[] = [];
+      if (a) globalIds.push(clash.a.ref);
+      if (b) globalIds.push(clash.b.ref);
       // Replace any existing selection so the camera frames only this clash pair.
       state.clearEntitySelection();
-      state.addEntitiesToSelection(refs);
+      state.setSelectedEntityIds(globalIds); // highlight BOTH elements + frame target
+      state.addEntitiesToSelection(refs); // model-aware context for the properties panel
       state.setClashSelectedId(clash.id);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
     },
     [refOf],
   );
 
-  /** Select every element involved in any clash. */
+  /** Highlight every element involved in any clash. */
   const highlightAll = useCallback((): void => {
     const state = useViewerStore.getState();
     const current = state.clashResult;
     if (!current) return;
+    // Drive the renderer's global-id highlight set (`selectedEntityIds`); the
+    // model-aware set is added alongside for properties / federation context.
+    const globalIds = new Set<number>();
     const refs: SelectionRef[] = [];
     for (const clash of current.clashes) {
-      const a = refOf(clash.a);
-      const b = refOf(clash.b);
-      if (a) refs.push(a);
-      if (b) refs.push(b);
+      for (const el of [clash.a, clash.b]) {
+        const ref = refOf(el);
+        if (ref) {
+          globalIds.add(el.ref);
+          refs.push(ref);
+        }
+      }
     }
-    if (refs.length > 0) state.addEntitiesToSelection(refs);
+    if (globalIds.size === 0) return;
+    state.setSelectedEntityIds([...globalIds]);
+    state.addEntitiesToSelection(refs);
   }, [refOf]);
 
   const clearHighlight = useCallback((): void => {

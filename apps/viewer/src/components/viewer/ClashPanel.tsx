@@ -280,7 +280,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         {!result && !running && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
             <Crosshair className="h-8 w-8 mb-3 opacity-40" />
-            <p className="text-sm">Run the discipline matrix or a preset to detect clashes across the loaded models.</p>
+            <p className="text-sm">Detect all clashes, run the discipline matrix, or pick a preset to find conflicts in the loaded models. Click any result to highlight both elements and frame the camera on it.</p>
           </div>
         )}
 

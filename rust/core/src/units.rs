@@ -260,6 +260,109 @@ pub fn extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -
     Ok(1.0)
 }
 
+/// Resolve the length-unit scale ONLY when the full unit chain
+/// (IFCPROJECT → IFCUNITASSIGNMENT → IFCSIUNIT) is decodable from the
+/// decoder's current index.
+///
+/// Returns:
+/// - `Some(scale)` when resolution is definitive — either a length unit was
+///   found, or every referenced unit decoded and none was a length unit
+///   (genuine base-metres default).
+/// - `None` when a referenced entity in the chain could not be decoded from
+///   the current (possibly partial) index, OR a conversion-based length unit
+///   was hit. The caller should retry against a *complete* index before
+///   trusting a metres default.
+///
+/// This exists for the streaming pre-pass, which resolves units from a
+/// partial entity index built mid-scan. Many real exports (e.g. Revit) place
+/// the IFCPROJECT / IFCUNITASSIGNMENT *after* the bulk of geometry, so the
+/// partial index does not yet contain the assigned IFCSIUNIT — and silently
+/// defaulting to metres there renders a millimetre model 1000× oversized.
+pub fn try_extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u32) -> Option<f64> {
+    // Project must decode; the gate that calls us guarantees it is indexed.
+    let project = decoder.decode_by_id(project_id).ok()?;
+    if project.ifc_type.as_str() != "IFCPROJECT" {
+        return Some(1.0); // Not a project — matches extract_length_unit_scale.
+    }
+
+    // Attribute 8: UnitsInContext (IFCUNITASSIGNMENT). Absent/!ref ⇒ no units.
+    let units_ref = match project.get(8).and_then(|a| a.as_entity_ref()) {
+        Some(r) => r,
+        None => return Some(1.0),
+    };
+
+    // The assignment itself not being in the index means the chain is
+    // incomplete — signal the caller to retry with a full index.
+    let unit_assignment = decoder.decode_by_id(units_ref).ok()?;
+    if unit_assignment.ifc_type.as_str() != "IFCUNITASSIGNMENT" {
+        return Some(1.0);
+    }
+
+    let units_list = match unit_assignment.get(0).and_then(|a| a.as_list()) {
+        Some(list) => list,
+        None => return Some(1.0),
+    };
+
+    let mut saw_undecodable = false;
+    for unit_attr in units_list {
+        let unit_ref = match unit_attr.as_entity_ref() {
+            Some(r) => r,
+            None => continue,
+        };
+        let unit_entity = match decoder.decode_by_id(unit_ref) {
+            Ok(e) => e,
+            // A unit referenced by the assignment is missing from this index;
+            // it might be the length unit, so we cannot resolve confidently.
+            Err(_) => {
+                saw_undecodable = true;
+                continue;
+            }
+        };
+
+        match unit_entity.ifc_type.as_str() {
+            "IFCSIUNIT" => {
+                let is_length = unit_entity
+                    .get(1)
+                    .and_then(|a| a.as_enum())
+                    .map(|t| t == "LENGTHUNIT")
+                    .unwrap_or(false);
+                if !is_length {
+                    continue;
+                }
+                // Prefix (attr 2): null ⇒ base metres; enum ⇒ SI multiplier.
+                return match unit_entity.get(2) {
+                    None => Some(1.0),
+                    Some(p) if p.is_null() => Some(1.0),
+                    Some(p) => Some(p.as_enum().map(get_si_prefix_multiplier).unwrap_or(1.0)),
+                };
+            }
+            "IFCCONVERSIONBASEDUNIT" => {
+                let is_length = unit_entity
+                    .get(1)
+                    .and_then(|a| a.as_enum())
+                    .map(|t| t == "LENGTHUNIT")
+                    .unwrap_or(false);
+                if is_length {
+                    // Imperial/conversion length units need a deeper chain
+                    // (name + IFCMEASUREWITHUNIT). Defer to the full-index
+                    // path rather than reimplement that walk here.
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // No length unit found in the list. If everything decoded, the file
+    // genuinely uses base metres; otherwise the length unit may be among the
+    // entities we could not decode yet — ask the caller to retry.
+    if saw_undecodable {
+        None
+    } else {
+        Some(1.0)
+    }
+}
+
 /// Extract the multiplier that converts file plane-angle units to radians.
 ///
 /// Follows the chain: IFCPROJECT → IFCUNITASSIGNMENT → IFCSIUNIT / IFCCONVERSIONBASEDUNIT.
@@ -440,6 +543,86 @@ END-ISO-10303-21;
             "Expected 1.0 for meters, got {}",
             scale
         );
+    }
+
+    #[test]
+    fn test_try_extract_length_unit_partial_index_defers() {
+        use crate::decoder::EntityIndex;
+
+        // Geometry-first ordering (Revit-style): the IFCPROJECT and its
+        // IFCUNITASSIGNMENT / IFCSIUNIT come AFTER the geometry. A streaming
+        // pre-pass that resolves units from a partial index built up to the
+        // IFCPROJECT will not yet have the assigned millimetre unit.
+        let ifc_content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCEXTRUDEDAREASOLID(#11,#12,#13,3000.);
+#100=IFCPROJECT('guid',$,'Test',$,$,$,$,(#2),#200);
+#200=IFCUNITASSIGNMENT((#300));
+#300=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+        // Partial index: everything scanned up to (and including) the
+        // IFCPROJECT, i.e. WITHOUT the assignment (#200) or the unit (#300).
+        let mut partial: EntityIndex = Default::default();
+        {
+            let mut scanner = crate::EntityScanner::new(ifc_content);
+            while let Some((id, type_name, start, end)) = scanner.next_entity() {
+                partial.insert(id, (start, end));
+                if type_name == "IFCPROJECT" {
+                    break;
+                }
+            }
+        }
+        assert!(!partial.contains_key(&200), "test setup: #200 must be absent");
+
+        // With the partial index the chain is not decodable → defer (None),
+        // rather than silently returning the metres default (the bug).
+        let mut partial_decoder = EntityDecoder::with_index(ifc_content, partial);
+        assert_eq!(
+            try_extract_length_unit_scale(&mut partial_decoder, 100),
+            None,
+            "partial index must defer, not default to metres"
+        );
+
+        // Full index: the chain resolves to millimetres.
+        let full = crate::build_entity_index(ifc_content);
+        let mut full_decoder = EntityDecoder::with_index(ifc_content, full);
+        assert_eq!(
+            try_extract_length_unit_scale(&mut full_decoder, 100),
+            Some(0.001),
+            "full index must resolve millimetres"
+        );
+        assert!(
+            (extract_length_unit_scale(&mut full_decoder, 100).unwrap() - 0.001).abs() < 1e-9
+        );
+    }
+
+    #[test]
+    fn test_try_extract_length_unit_resolves_metres_when_complete() {
+        // When the whole chain is present and there is no length prefix, the
+        // result is a definitive metres (Some(1.0)), not a deferral.
+        let ifc_content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('guid',$,'Test',$,$,$,$,(#2),#3);
+#3=IFCUNITASSIGNMENT((#5));
+#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let mut decoder = EntityDecoder::new(ifc_content);
+        assert_eq!(try_extract_length_unit_scale(&mut decoder, 1), Some(1.0));
     }
 
     #[test]

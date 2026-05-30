@@ -94,4 +94,5 @@ pub use schema_helpers::{has_geometry_by_name, is_simple_geometry_type};
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use units::{
     extract_length_unit_scale, extract_plane_angle_to_radians, get_si_prefix_multiplier,
+    try_extract_length_unit_scale,
 };

@@ -93,9 +93,18 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     } else {
       entries.sort((a, b) => b[1].length - a[1].length);
     }
+    // Map rule id → human name for "By rule" labels. rulesRun covers every rule
+    // that actually ran — discipline presets, custom presets, and the synthetic
+    // "all-clashes" — so no hardcoding or preset lookup is needed.
+    const ruleNames = new Map(result.rulesRun.map((r) => [r.id, r.name]));
     return entries.map(([key, items]) => ({
       key,
-      label: groupBy === 'severity' ? SEVERITY[key as ClashSeverity].label : key,
+      label:
+        groupBy === 'severity'
+          ? SEVERITY[key as ClashSeverity].label
+          : groupBy === 'rule'
+            ? ruleNames.get(key) ?? key
+            : key,
       color: groupBy === 'severity' ? SEVERITY[key as ClashSeverity].color : undefined,
       items,
     }));

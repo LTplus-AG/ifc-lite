@@ -316,6 +316,11 @@ export function useClash() {
               hiddenIds: saved.hiddenEntities,
               isolatedIds: saved.isolatedEntities,
               selectedId: saved.selectedEntityId,
+              // Repaint the full multi-selection too — the snapshot loop drove the
+              // renderer directly without touching the store, so the store's
+              // selectedEntityIds reference never changed and useRenderUpdates
+              // won't re-fire. Without this the clash highlight vanishes post-export.
+              selectedIds: saved.selectedEntityIds,
             });
           };
           const total = Math.min(groups.length, config.maxTopics);

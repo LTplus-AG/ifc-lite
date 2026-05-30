@@ -97,7 +97,13 @@ export interface ClashSettings {
   excludeVoidsAndHosts?: boolean;
   /** Pair-exclusion set from an adapter. */
   exclusions?: ExclusionSet;
-  /** Safety cap on candidate pairs per rule. Reported in `result.truncated`. */
+  /**
+   * Safety cap on candidate pairs per rule, reported in `result.truncated`.
+   * This is a **TS-backend guardrail**: the WASM kernel runs every candidate pair
+   * in Rust and does not truncate, so when the cap would bite it returns the
+   * COMPLETE (uncapped) clash set rather than a truncated one. Use `backend:'ts'`
+   * when a deterministic cap matters. Defaults to unlimited.
+   */
   maxCandidatePairs?: number;
   signal?: AbortSignal;
   onProgress?: (p: ClashProgress) => void;

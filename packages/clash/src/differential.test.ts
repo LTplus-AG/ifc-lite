@@ -16,7 +16,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createClashEngine } from './engine.js';
 import { disciplineMatrixRules } from './disciplines.js';
 import { WasmClashEngine, initClashWasm } from './engine-wasm/index.js';
-import type { ClashElement, ClashResult, ClashRule, Vec3 } from './types.js';
+import type { ClashElement, ClashResult, ClashRule, Mat4, Vec3 } from './types.js';
 
 const EPS = 1e-6;
 
@@ -50,6 +50,34 @@ function box(key: string, tag: string, center: Vec3, size = 1): ClashElement {
       max: [center[0] + h, center[1] + h, center[2] + h],
     },
   };
+}
+
+function applyMat4Pt(m: Mat4, x: number, y: number, z: number): Vec3 {
+  return [
+    m[0] * x + m[4] * y + m[8] * z + m[12],
+    m[1] * x + m[5] * y + m[9] * z + m[13],
+    m[2] * x + m[6] * y + m[10] * z + m[14],
+  ];
+}
+
+/**
+ * A box that carries a deferred world `transform` (the federation hook on the
+ * STEP adapter). World bounds are f32-quantized to mirror what both kernels
+ * ultimately feed the narrow phase, isolating the transform-precision parity.
+ */
+function boxWithTransform(key: string, tag: string, center: Vec3, size: number, transform: Mat4): ClashElement {
+  const { positions, indices } = makeBox(center, size);
+  let min: Vec3 = [Infinity, Infinity, Infinity];
+  let max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    const w = applyMat4Pt(transform, positions[i], positions[i + 1], positions[i + 2]);
+    for (let a = 0; a < 3; a += 1) {
+      const v = Math.fround(w[a]);
+      if (v < min[a]) min[a] = v;
+      if (v > max[a]) max[a] = v;
+    }
+  }
+  return { key, ref: refCounter++, model: 'm', tag, positions, indices, bounds: { min, max }, transform };
 }
 
 const ts = createClashEngine({ backend: 'ts' });
@@ -140,5 +168,22 @@ describe('differential: WASM kernel === TS kernel', () => {
     const els = [box('A', 'IfcWall', [0, 0, 0], 1), box('B', 'IfcDuctSegment', [20, 0, 0], 1)];
     const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
     expect(n).toBe(0);
+  });
+
+  it('agrees on transformed elements (f32-quantized world coords)', async () => {
+    // Rotate ~0.3 rad about Z + a large, non-f32-exact RTC-style translation: the
+    // transformed coords are NOT f32-representable, so the WASM arena's f32 packing
+    // and the TS kernel's transform must quantize identically (Math.fround) or the
+    // contact point drifts by ~1e-4 at this scale — far beyond the 1e-6 parity EPS.
+    const c = Math.cos(0.3);
+    const s = Math.sin(0.3);
+    const m: Mat4 = [c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 1234.567, -89.0, 0.123, 1];
+    // Same rigid transform on both boxes, which overlap locally → still overlap.
+    const els = [
+      boxWithTransform('A', 'IfcWall', [0, 0, 0], 1, m),
+      boxWithTransform('B', 'IfcDuctSegment', [0.5, 0, 0], 1, m),
+    ];
+    const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(n).toBe(1);
   });
 });

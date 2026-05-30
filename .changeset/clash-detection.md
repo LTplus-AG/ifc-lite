@@ -3,6 +3,7 @@
 "@ifc-lite/sdk": minor
 "@ifc-lite/cli": minor
 "@ifc-lite/mcp": minor
+"@ifc-lite/viewer": minor
 ---
 
 Add representation-agnostic clash detection.
@@ -19,6 +20,9 @@ Surfaced through the existing tools:
 - `@ifc-lite/clash` — `rulesFromPresets(presets, mode, clearance?, reportTouch?)` builds
   runnable rules from any preset list (the discipline matrix is this over the built-ins),
   so hosts can run a user-curated rule set.
+- `@ifc-lite/viewer` — an interactive clash panel (run detection / discipline matrix /
+  presets, A/B highlight + camera framing, configurable settings & custom rules, a
+  controllable BCF export with optional rendered snapshots).
 - `@ifc-lite/sdk` — a `clash` namespace (`run`, `matrix`, `group`, presets).
 - `@ifc-lite/cli` — `ifc-lite clash <file>` with `--a/--b`, `--mode`, `--matrix`,
   `--clearance`, `--bcf`.

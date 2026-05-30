@@ -106,7 +106,16 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
   }, [config, exportBcf, preview.topics]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        // Don't let Esc / backdrop close the dialog mid-export: the snapshot loop
+        // is driving the live renderer (camera + isolation), and there's no UI to
+        // resume into if the dialog vanishes. Mirrors the IDS export dialog.
+        if (exporting) return;
+        setOpen(v);
+      }}
+    >
       <DialogTrigger asChild>
         {trigger ?? (
           <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">

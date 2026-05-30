@@ -212,9 +212,11 @@ STEP express id  #145  ──┐
 parser IfcDataStore  ────┘                            (key in entities Y.Map)
 ```
 
-- **Room id** = `m/<short-hash>` where the hash is derived from the model's
-  content/GUID-set (stable for the same model regardless of who uploads it),
-  so two people who open the same file land in the same room.
+- **Room id** = `m/<random>` — an opaque id the **owner mints on Share**
+  (explicit "start a shared session"), stored in the owner's `localStorage` as
+  a model→room mapping so re-opening offers "resume sharing". *Not* derived
+  from model content, so two revisions of a file don't silently collide. (The
+  GUID-as-path keying below is independent of room-id choice.)
 - Entities **without** a GUID (geometry primitives, placements, profiles) are
   *not* first-class CRDT entities; they live inside their owner entity's
   geometry record (already how `GeometryRef` works) and are addressed by a
@@ -259,13 +261,14 @@ Two options; we plan **both**, sequenced:
 >    cold-join time against the §15 perf budget and consider seeding in a
 >    Web Worker (the snapshot worker already exists).
 > 2. **Geometry has to arrive too.** With no model URL, the recipient needs
->    geometry, not just properties. Two paths: (a) **client re-tessellation** —
->    seed parametric placement/profile params and re-run the viewer's WASM
->    geometry kernel locally (smallest payload, needs deterministic kernel);
->    (b) **mesh blobs** — bake meshes into the content-addressed blob store
->    (`blob-route.ts`) and reference them from `GeometryRef` (works for any
->    model, larger payload). Recommend (a) where the kernel is deterministic,
->    (b) as the universal fallback.
+>    geometry, not just properties. ✅ **Decided: hybrid.** (a) **client
+>    re-tessellation** — seed parametric placement/profile params and re-run
+>    the viewer's WASM geometry kernel locally (smallest payload) wherever the
+>    kernel is bit-deterministic; (b) **mesh blobs** — bake meshes into the
+>    content-addressed blob store (`blob-route.ts`) and reference them from
+>    `GeometryRef` as the universal fallback (imported meshes, non-deterministic
+>    primitives). A per-`GeometryRef` flag records which path was used so the
+>    recipient knows whether to re-tessellate or fetch a blob.
 
 ### 4.3 Mutation flow (legacy STEP, M2)
 
@@ -342,13 +345,13 @@ Three transports, shipped in order:
   the model to it (or an S3 presigned URL), get a content-hashed URL back, and
   bake it into the link. Content addressing **pins an immutable base version** —
   essential, because every peer must seed its edit-layer from the *exact same*
-  bytes or GUID-keyed edits won't line up. The room id (§4.1) is derived from
-  that same content hash, so "same file → same room" falls out for free.
-- **(3) Seed-into-room is the truest "send a link" UX.** The owner seeds the
-  full model into the Y.Doc (M2.5 `seedFromStep`); the recipient hydrates the
-  model **through the CRDT sync itself** — no separate fetch, and IndexedDB
-  makes it offline-capable. Cost: a larger Y.Doc (whole model, not just edits)
-  and the STEP→CRDT seeder must land first.
+  bytes or GUID-keyed edits won't line up. (Room id is owner-minted — §4.1 —
+  independent of this hash.)
+- **(3) Seed-into-room is the truest "send a link" UX — and the chosen
+  default.** The owner seeds the full model into the Y.Doc (`seedFromStep`,
+  M1); the recipient hydrates the model **through the CRDT sync itself** — no
+  separate fetch, and IndexedDB makes it offline-capable. Cost: a larger Y.Doc
+  (whole model, not just edits) and the STEP→CRDT seeder must land in M1.
 
 **Decision:** ship transport **(3) seed-into-room** as the default. The share
 link is just `?room=…&t=…`; the recipient hydrates the model **through the Y.Doc
@@ -463,20 +466,20 @@ investment.
 
 ### 7.7 Token service
 
-- ☐ `apps/api` route (or collab-server route) `POST /collab/token` +
-  `verifyRoomToken` `AuthenticateFn`. Secret + key rotation via env.
-- ☐ Revocation deny-list in the chosen persistence backend.
+- ☐ `POST /collab/token` + `verifyRoomToken` `AuthenticateFn` **as a route on
+  the collab-server** (co-located with the persistence backend used for
+  revocation). Secret + key rotation via env.
+- ☐ Revocation deny-list in the collab-server persistence backend.
 
-### 7.9 Model transport for recipients (§4.6)
+### 7.9 Model transport for recipients (§4.6 — seed-into-room)
 
-- ☐ Upload-on-share: PUT the active model to the collab-server blob route
-  (`blob-route.ts`) on Share → content-hashed URL; derive room id from the
-  same hash.
-- ☐ Bake `?model=<blobUrl>&room=…&t=…` into the link; reuse the existing
-  `?model=` autoload (`ViewerLayout.tsx`) so the recipient fetches + parses
-  the base model, then joins the room for the live layer.
-- ☐ Fallback to transport (1) when the model is already at a public URL
-  (skip upload).
+- ☐ Owner mints a random room id on Share (store model→room in `localStorage`)
+  and seeds the full model into the Y.Doc via `seedFromStep` (§4.2).
+- ☐ Bake a bare `?room=…&t=…` link (no model url); recipient joins the room and
+  hydrates the model + geometry from the Y.Doc (hybrid geometry — §4.2
+  consequence 2).
+- ☐ Optional fallback: when the recipient already has the file locally, seed
+  only the edit-layer diff instead of the whole model.
 
 ### 7.8 Packaging
 
@@ -552,32 +555,37 @@ and they see each other's cursors, selections, and avatars; comments sync live.
 
 ---
 
-## 10. Open questions / decisions to confirm
+## 10. Decisions (resolved)
 
-1. **Token service home** — `apps/api` (exists, but is the AI-chat proxy) vs a
-   route on collab-server vs an edge function. *Recommendation:* a route on the
-   collab-server (it already holds the persistence backend for revocation).
-2. **Room-id derivation for STEP** — content hash of the GUID-set vs a random
-   id minted by the owner. Content hash = "same file → same room" magic but
-   can collide across revisions; random id = explicit "create a shared session".
-   *Recommendation:* owner-minted random id (explicit share intent), store the
-   model→room mapping in the owner's `localStorage`.
-3. **Edit-layer-only vs full seed** — ✅ **decided: full seed from M1**
-   (consequence of choosing seed-into-room transport, §4.6 option 3). Edit-layer
-   remains a fallback when the recipient already has the file.
-4. **Geometry transport for seeded recipients (§4.2 consequence 2)** — client
-   re-tessellation (seed params, re-run the WASM kernel) vs mesh blobs in the
-   content-addressed store. *Recommendation:* re-tessellation where the kernel
-   is deterministic, mesh blobs as the universal fallback. **Needs your call.**
-5. **CRDT → STEP writer** — needed for "download merged result as .ifc" vs
-   "download as .ifcx". The existing `ExportChangesButton` change-set path may
-   suffice; confirm whether a true STEP writer is in scope or IFCX export is
-   acceptable for collaborative results.
-6. **Mobile** — presence/comments on `MobileToolbar` in M1; editing on mobile
-   deferred.
-7. **Y.Doc size budget** — a full-model seed (100k+ entities) in the Y.Doc;
-   confirm the §15 cold-join target and whether we cap shareable model size
-   for M1.
+All forking decisions are now settled; this section is the record.
+
+1. **Identity / auth** — ✅ **accountless, link-based.** Role rides in a signed
+   room token; ephemeral handle + color in `localStorage`. (§2.2, §3)
+2. **Recipient transport** — ✅ **seed-into-room.** Bare `?room=…&t=…` link;
+   model arrives through the Y.Doc. (§4.6)
+3. **Seed strategy** — ✅ **full STEP seed from M1** (`seedFromStep`), with
+   edit-layer-only as the local-file fallback. (§4.2)
+4. **Geometry transport** — ✅ **hybrid:** client re-tessellation where the
+   WASM kernel is deterministic; content-addressed mesh blobs as the universal
+   fallback, flagged per `GeometryRef`. (§4.2 consequence 2)
+5. **Room-id derivation** — ✅ **owner-minted random id** (explicit "start a
+   shared session"); model→room mapping in the owner's `localStorage`. (§4.1)
+6. **Result export** — ✅ **IFCX (IFC5) snapshot only for now** via the existing
+   `to-ifcx` path, plus the current `ExportChangesButton` change-set for STEP.
+   No new CRDT→STEP `.ifc` writer in scope; revisit if legacy round-trip is
+   demanded. (§4.2)
+7. **Token service home** — ✅ **route on the collab-server** (`POST
+   /collab/token` + `verifyRoomToken`), co-located with the revocation store.
+   (§3.1, §7.7)
+8. **Mobile** — ✅ presence + comments on `MobileToolbar` in M1; mobile
+   *editing* deferred.
+
+**Remaining to confirm after M1's perf pass (measurement-driven, not a fork):**
+
+- **Y.Doc size budget** — a full-model seed (100k+ entities) in the Y.Doc.
+  Measure cold-join against the §15 budget; set a provisional shareable-model
+  size cap and decide whether large models force the edit-layer fallback or a
+  worker-side incremental seed.
 
 ---
 
@@ -594,5 +602,6 @@ consumes is already ☑/◐ there:
   *this* doc's M3.
 - Federation (v0.4) — landed; multi-model shared rooms are a post-M4 follow-up.
 
-This plan adds **no new package roadmap items** except: `from-step.ts` seeder
-(M2.5) and the link-token `AuthenticateFn` (M1), both small and additive.
+This plan adds **no new package roadmap items** except, both in M1 and both
+small/additive: the `from-step.ts` seeder (`seedFromStep`) and the link-token
+`AuthenticateFn` + `POST /collab/token` route on the collab-server.

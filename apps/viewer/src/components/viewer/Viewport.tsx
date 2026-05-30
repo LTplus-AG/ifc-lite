@@ -45,6 +45,7 @@ import {
   useSymbolicAnnotationsRichData,
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
+import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -885,6 +886,20 @@ export function Viewport({
       renderer.uploadAnnotationLines3D(annotationVertices3D);
     }
   }, [annotationVertices3D, isInitialized]);
+
+  // IfcAlignment centerlines render as thin lines (not a ribbon mesh), always
+  // on — see useAlignmentLines3D. Upload/clear mirrors the annotation overlay;
+  // a separate renderer buffer keeps alignment visibility independent.
+  const alignmentVertices3D = useAlignmentLines3D();
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    if (alignmentVertices3D.length === 0) {
+      renderer.clearAlignmentLines3D();
+    } else {
+      renderer.uploadAlignmentLines3D(alignmentVertices3D);
+    }
+  }, [alignmentVertices3D, isInitialized]);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput

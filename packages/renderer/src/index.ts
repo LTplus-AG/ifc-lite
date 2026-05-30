@@ -2026,6 +2026,9 @@ export class Renderer {
             if (this.section2DOverlayRenderer?.hasAnnotationLines3D()) {
                 this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
             }
+            if (this.section2DOverlayRenderer?.hasAlignmentLines3D()) {
+                this.section2DOverlayRenderer.drawAlignmentLines3D(pass, viewProj);
+            }
             if (this.symbolicTextPipeline?.hasGeometry()) {
                 // Pass viewport pixel dimensions so the shader can scale glyphs
                 // to a constant on-screen size (BIMvision-style annotations)
@@ -2425,6 +2428,29 @@ export class Renderer {
     clearAnnotationLines3D(): void {
         if (this.section2DOverlayRenderer) {
             this.section2DOverlayRenderer.clearAnnotationLines3D();
+            this.requestRender();
+        }
+    }
+
+    /**
+     * Upload IfcAlignment centerline segments as a flat [x,y,z,x,y,z,...]
+     * line-list in world space. Rendered as thin lines (not a ribbon mesh)
+     * to match IfcGrid / IfcAnnotation. Pass an empty Float32Array to clear.
+     */
+    uploadAlignmentLines3D(vertices: Float32Array): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.section2DOverlayRenderer.uploadAlignmentLines3D(vertices);
+        // Frame alignment-only files the same way annotation overlays are
+        // framed (see uploadAnnotationLines3D).
+        this.expandModelBoundsWithFlatVertices(vertices, 3);
+        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /** Clear the alignment centerline overlay. */
+    clearAlignmentLines3D(): void {
+        if (this.section2DOverlayRenderer) {
+            this.section2DOverlayRenderer.clearAlignmentLines3D();
             this.requestRender();
         }
     }

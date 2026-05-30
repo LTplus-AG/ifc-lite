@@ -117,6 +117,13 @@ export class Section2DOverlayRenderer {
   private annotationLineVertexBuffer: GPUBuffer | null = null;
   private annotationLineVertexCount = 0;
 
+  // Standalone 3D alignment centerline overlay. Independent buffer from the
+  // annotation lines (separate visibility toggle) but reuses the same line
+  // pipeline. IfcAlignment renders as a thin line here — not a ribbon mesh —
+  // to match IfcGrid axes / IfcAnnotation curves.
+  private alignmentLineVertexBuffer: GPUBuffer | null = null;
+  private alignmentLineVertexCount = 0;
+
   constructor(device: GPUDevice, format: GPUTextureFormat, sampleCount: number = 4) {
     this.device = device;
     this.format = format;
@@ -696,6 +703,43 @@ export class Section2DOverlayRenderer {
   }
 
   /**
+   * Upload a flat Float32Array of 3D line-list vertices for the alignment
+   * centerline overlay. Same format/pipeline as the annotation lines, kept in
+   * a separate buffer so alignment visibility is independent.
+   * Pass an empty array (or omit) to clear.
+   */
+  uploadAlignmentLines3D(vertices: Float32Array): void {
+    this.init();
+
+    if (this.alignmentLineVertexBuffer) {
+      this.alignmentLineVertexBuffer.destroy();
+      this.alignmentLineVertexBuffer = null;
+    }
+    this.alignmentLineVertexCount = 0;
+
+    if (vertices.length < 6) return;
+
+    this.alignmentLineVertexBuffer = this.device.createBuffer({
+      size: vertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.alignmentLineVertexBuffer, 0, vertices);
+    this.alignmentLineVertexCount = vertices.length / 3;
+  }
+
+  clearAlignmentLines3D(): void {
+    if (this.alignmentLineVertexBuffer) {
+      this.alignmentLineVertexBuffer.destroy();
+      this.alignmentLineVertexBuffer = null;
+    }
+    this.alignmentLineVertexCount = 0;
+  }
+
+  hasAlignmentLines3D(): boolean {
+    return this.alignmentLineVertexCount > 0;
+  }
+
+  /**
    * Draw the standalone annotation line overlay. Uses the same line pipeline
    * as the section cut outlines (vertex format: 3 floats per vertex, line-list
    * topology) but reads from a separate vertex buffer. The pipeline's
@@ -719,6 +763,26 @@ export class Section2DOverlayRenderer {
     pass.setBindGroup(0, this.bindGroup);
     pass.setVertexBuffer(0, this.annotationLineVertexBuffer);
     pass.draw(this.annotationLineVertexCount);
+  }
+
+  /**
+   * Draw the alignment centerline overlay. Identical pipeline/uniform setup as
+   * `drawAnnotationLines3D`, reading from the separate alignment buffer.
+   */
+  drawAlignmentLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+    this.init();
+    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
+    if (!this.alignmentLineVertexBuffer || this.alignmentLineVertexCount === 0) return;
+
+    const uniforms = new Float32Array(20);
+    uniforms.set(viewProj, 0);
+    // planeOffset = 0 — vertices are already in world space.
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
+
+    pass.setPipeline(this.linePipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    pass.setVertexBuffer(0, this.alignmentLineVertexBuffer);
+    pass.draw(this.alignmentLineVertexCount);
   }
 
   /**

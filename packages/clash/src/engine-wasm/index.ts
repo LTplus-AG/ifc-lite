@@ -26,7 +26,12 @@ let initPromise: Promise<void> | null = null;
 export function initClashWasm(input?: InitInput): Promise<void> {
   if (!initPromise) {
     const loaded = input === undefined ? initWasm() : initWasm({ module_or_path: input });
-    initPromise = loaded.then(() => undefined);
+    initPromise = loaded.then(() => undefined).catch((err: unknown) => {
+      // Never cache a failed init: a transient load error would otherwise
+      // permanently break the WASM backend for the whole process.
+      initPromise = null;
+      throw err;
+    });
   }
   return initPromise;
 }

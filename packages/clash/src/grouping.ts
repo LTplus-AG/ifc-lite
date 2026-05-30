@@ -15,8 +15,10 @@ import type { AABB } from '@ifc-lite/spatial';
 import { center } from './math/aabb.js';
 import { distSq } from './math/vec3.js';
 import { CLASH_RULE_PRESETS, DISCIPLINES } from './disciplines.js';
+import { qualifiedKey } from './exclude.js';
 import type {
   Clash,
+  ClashElementRef,
   ClashGroup,
   ClashResult,
   ClashSeverity,
@@ -287,23 +289,24 @@ function typePairGroups(clashes: Clash[]): ClashGroup[] {
 }
 
 function elementGroups(clashes: Clash[]): ClashGroup[] {
-  // Each clash contributes to BOTH participating element keys.
-  const byKey = new Map<string, Clash[]>();
+  // Each clash contributes to BOTH participating elements, keyed by (model, key)
+  // so federated elements that share a key do not collide into one group.
+  const byElement = new Map<string, { ref: ClashElementRef; members: Clash[] }>();
   for (const clash of clashes) {
     for (const ref of [clash.a, clash.b]) {
-      const bucket = byKey.get(ref.key);
+      const k = qualifiedKey(ref.model, ref.key);
+      const bucket = byElement.get(k);
       if (bucket) {
-        bucket.push(clash);
+        bucket.members.push(clash);
       } else {
-        byKey.set(ref.key, [clash]);
+        byElement.set(k, { ref, members: [clash] });
       }
     }
   }
   const groups: ClashGroup[] = [];
-  for (const [key, members] of byKey) {
-    const ref = members[0].a.key === key ? members[0].a : members[0].b;
-    const label = ref.name ?? key;
-    groups.push(makeGroup(members, `Clashes on ${ref.tag} ${label}`, undefined, `elem:${key}`));
+  for (const [k, { ref, members }] of byElement) {
+    const label = ref.name ?? ref.key;
+    groups.push(makeGroup(members, `Clashes on ${ref.tag} ${label}`, undefined, `elem:${k}`));
   }
   return groups;
 }

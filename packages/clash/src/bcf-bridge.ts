@@ -338,6 +338,16 @@ export function mapBcfToClashes(
   return map;
 }
 
+/** decodeURIComponent that tolerates malformed input (keeps the raw token). */
+function safeDecode(token: string): string {
+  try {
+    return decodeURIComponent(token);
+  } catch (err) {
+    console.warn('[clash/bcf] malformed clash-id token; keeping it raw', token, err);
+    return token;
+  }
+}
+
 /** Pull the comma-separated ids out of a topic's `clash-ids:` line. */
 function extractClashIds(topic: BCFTopic): string[] {
   const description = topic.description;
@@ -351,7 +361,7 @@ function extractClashIds(topic: BCFTopic): string[] {
         .split(',')
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
-        .map((s) => decodeURIComponent(s));
+        .map((s) => safeDecode(s));
     }
   }
   return [];

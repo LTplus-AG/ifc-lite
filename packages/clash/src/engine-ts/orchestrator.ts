@@ -37,8 +37,6 @@ export async function runClash(
   const exclusions = excludeVoidsAndHosts ? settings.exclusions : undefined;
   const maxPairs = settings.maxCandidatePairs ?? Infinity;
 
-  kernel.prepare(elements);
-
   const clashes: Clash[] = [];
   const seen = new Set<string>();
   let droppedPairs = 0;
@@ -46,9 +44,11 @@ export async function runClash(
   // so `maxCandidatePairs` is an honest end-to-end guardrail.
   let remaining = maxPairs;
 
-  // `finally` guarantees the kernel is disposed even on abort / kernel error —
-  // otherwise a `WasmKernel`'s `ClashSession` (and its arenas) would leak.
+  // `finally` guarantees the kernel is disposed even on abort / kernel error /
+  // a throw inside prepare() — otherwise a `WasmKernel`'s `ClashSession` (and
+  // its arenas) would leak.
   try {
+    kernel.prepare(elements);
     for (const rule of rules) {
       if (settings.signal?.aborted) {
         throw new DOMException('Clash run aborted', 'AbortError');

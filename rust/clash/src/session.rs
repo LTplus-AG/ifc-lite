@@ -80,6 +80,8 @@ impl ClashSession {
         idx_ranges: &[u32],
         aabbs: &[f32],
     ) {
+        // Reset first, so a reused session does not accumulate stale elements.
+        self.elements.clear();
         let n = pos_ranges.len() / 2;
         self.elements.reserve(n);
         for e in 0..n {

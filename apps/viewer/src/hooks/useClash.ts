@@ -100,6 +100,7 @@ export function useClash() {
         state.setClashGroups(groupClashes(res, { by: 'cluster' }));
         state.setClashSelectedId(null);
       } catch (err) {
+        console.error('[clash] detection run failed', err);
         state.setClashError(err instanceof Error ? err.message : String(err));
       } finally {
         state.setClashRunning(false);
@@ -139,6 +140,8 @@ export function useClash() {
       const state = useViewerStore.getState();
       const refs = [refOf(clash.a), refOf(clash.b)].filter((r): r is SelectionRef => r !== null);
       if (refs.length === 0) return;
+      // Replace any existing selection so the camera frames only this clash pair.
+      state.clearEntitySelection();
       state.addEntitiesToSelection(refs);
       state.setClashSelectedId(clash.id);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());

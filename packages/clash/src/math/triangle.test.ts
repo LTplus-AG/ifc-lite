@@ -48,7 +48,7 @@ describe('triTriDistance', () => {
   });
 
   it('measures a clean edge-to-edge gap', () => {
-    // Triangle shifted +2 in x: nearest edges are 1.0 apart (A max x = 1).
+    // Triangle B starts at x = 3; nearest features (A max x = 1, B min x = 3) are 2.0 apart.
     const b0: Vec3 = [3, 0, 0];
     const b1: Vec3 = [4, 0, 0];
     const b2: Vec3 = [3, 1, 0];

@@ -39,6 +39,26 @@ const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
   hasLargeCoordinates: false,
 };
 
+type Vec3Bounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+
+/** True for a real (non-placeholder, non-degenerate) bounds box. */
+function isUsableBounds(b: Vec3Bounds | undefined): b is Vec3Bounds {
+  if (!b) return false;
+  return (
+    b.max.x > b.min.x || b.max.y > b.min.y || b.max.z > b.min.z
+  );
+}
+
+/** Axis-aligned union of two bounds boxes (either may be undefined). */
+function unionBounds(acc: Vec3Bounds | undefined, b: Vec3Bounds | undefined): Vec3Bounds | undefined {
+  if (!isUsableBounds(b)) return acc;
+  if (!acc) return { min: { ...b.min }, max: { ...b.max } };
+  return {
+    min: { x: Math.min(acc.min.x, b.min.x), y: Math.min(acc.min.y, b.min.y), z: Math.min(acc.min.z, b.min.z) },
+    max: { x: Math.max(acc.max.x, b.max.x), y: Math.max(acc.max.y, b.max.y), z: Math.max(acc.max.z, b.max.z) },
+  };
+}
+
 export function ViewportContainer() {
   // Drive Stacked / Solo / Exploded level display from the slice.
   // Mount-once hook — it self-gates on mode + gap + model changes.
@@ -121,7 +141,16 @@ export function ViewportContainer() {
     if (storeModels.size > 1) {
       let totalVertices = 0;
       let totalTriangles = 0;
-      let mergedCoordinateInfo: CoordinateInfo | undefined;
+      // The merged coordinateInfo must cover ALL visible models, not just the
+      // first one — the renderer fits the camera to `shiftedBounds`, so a
+      // first-wins box left every model after the first off-screen (it only
+      // showed its 2D grid overlay). Union the bounds across visible models;
+      // keep the first model's frame metadata (originShift / RTC) since
+      // federated models share a coordinate frame.
+      let baseCoordInfo: CoordinateInfo | undefined;
+      let unionedShifted: Vec3Bounds | undefined;
+      let unionedOriginal: Vec3Bounds | undefined;
+      let anyLargeCoords = false;
       let shouldRebuild = false;
 
       if (mergedLengthsRef.current.size !== storeModels.size) {
@@ -142,8 +171,12 @@ export function ViewportContainer() {
         const meshCount = model.visible ? (modelGeometry?.meshes.length ?? 0) : 0;
         totalVertices += model.visible ? (modelGeometry?.totalVertices ?? 0) : 0;
         totalTriangles += model.visible ? (modelGeometry?.totalTriangles ?? 0) : 0;
-        if (!mergedCoordinateInfo && model.visible && modelGeometry?.coordinateInfo) {
-          mergedCoordinateInfo = modelGeometry.coordinateInfo;
+        if (model.visible && modelGeometry?.coordinateInfo) {
+          const ci = modelGeometry.coordinateInfo;
+          if (!baseCoordInfo) baseCoordInfo = ci;
+          anyLargeCoords = anyLargeCoords || !!ci.hasLargeCoordinates;
+          unionedShifted = unionBounds(unionedShifted, ci.shiftedBounds);
+          unionedOriginal = unionBounds(unionedOriginal, ci.originalBounds);
         }
 
         if (
@@ -186,6 +219,15 @@ export function ViewportContainer() {
           mergedVisibilityRef.current.set(modelId, model.visible);
         }
       }
+
+      const mergedCoordinateInfo: CoordinateInfo | undefined = baseCoordInfo
+        ? {
+            ...baseCoordInfo,
+            originalBounds: unionedOriginal ?? baseCoordInfo.originalBounds,
+            shiftedBounds: unionedShifted ?? baseCoordInfo.shiftedBounds,
+            hasLargeCoordinates: anyLargeCoords,
+          }
+        : undefined;
 
       return {
         meshes: mergedCacheRef.current,

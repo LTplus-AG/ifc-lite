@@ -1056,6 +1056,7 @@ export function Viewport({
     geometryContentVersion,
     coordinateInfo,
     isStreaming,
+    modelCount: modelIdToIndex?.size ?? 0,
     geometryBoundsRef,
     pendingColorUpdates,
     pendingMeshColorUpdates,

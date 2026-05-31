@@ -108,6 +108,69 @@ export function normalizeDataStoreStoreys(dataStore: IfcDataStore): IfcDataStore
   return dataStore;
 }
 
+/** Only recenter models whose bounds center is at least this far (metres) from
+ *  the origin — i.e. the WASM RTC failed to bring them near origin. */
+const RECENTER_FAR_THRESHOLD_M = 1000;
+/** Remove the offset rounded to this grid (metres), so the model's LOCAL layout
+ *  is preserved and models that differ only by a large round survey offset
+ *  (the common georef case) snap to the same frame instead of overlapping
+ *  half-way. */
+const RECENTER_ROUND_M = 1000;
+
+/**
+ * Fallback world-origin recenter for geometry the WASM RTC pass left far from
+ * the origin. ARC-style models that place all geometry via `IfcMappedItem`
+ * carry their site/survey offset in the mapping transform, which the RTC
+ * sampler (`detect_rtc_offset_from_jobs`) never inspects — so the model renders
+ * ~20 km off and, in a federation, sits nowhere near the other models.
+ *
+ * Operates on the FINAL meshes (ground truth, post every transform): if the
+ * bounds center is beyond the threshold on any axis, subtract the large rounded
+ * offset from every vertex IN PLACE and fold it into `coordinateInfo`
+ * (shiftedBounds + originShift) so the camera, picking, and georef stay
+ * consistent. Returns the applied offset, or null when nothing was shifted.
+ */
+export function recenterFarGeometry(
+  meshes: MeshData[],
+  coordinateInfo: CoordinateInfo,
+): { x: number; y: number; z: number } | null {
+  if (meshes.length === 0) return null;
+  let mnx = Infinity, mny = Infinity, mnz = Infinity;
+  let mxx = -Infinity, mxy = -Infinity, mxz = -Infinity;
+  for (const m of meshes) {
+    const p = m.positions;
+    for (let i = 0; i < p.length; i += 3) {
+      const x = p[i], y = p[i + 1], z = p[i + 2];
+      if (x < mnx) mnx = x; if (y < mny) mny = y; if (z < mnz) mnz = z;
+      if (x > mxx) mxx = x; if (y > mxy) mxy = y; if (z > mxz) mxz = z;
+    }
+  }
+  if (!Number.isFinite(mnx) || !Number.isFinite(mxx)) return null;
+  const cx = (mnx + mxx) / 2, cy = (mny + mxy) / 2, cz = (mnz + mxz) / 2;
+  const round = (c: number) =>
+    Math.abs(c) > RECENTER_FAR_THRESHOLD_M ? Math.round(c / RECENTER_ROUND_M) * RECENTER_ROUND_M : 0;
+  const ox = round(cx), oy = round(cy), oz = round(cz);
+  if (ox === 0 && oy === 0 && oz === 0) return null;
+
+  for (const m of meshes) {
+    const p = m.positions;
+    for (let i = 0; i < p.length; i += 3) {
+      p[i] -= ox; p[i + 1] -= oy; p[i + 2] -= oz;
+    }
+  }
+  const shiftBounds = (b?: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }) =>
+    b
+      ? {
+          min: { x: b.min.x - ox, y: b.min.y - oy, z: b.min.z - oz },
+          max: { x: b.max.x - ox, y: b.max.y - oy, z: b.max.z - oz },
+        }
+      : b;
+  if (coordinateInfo.shiftedBounds) coordinateInfo.shiftedBounds = shiftBounds(coordinateInfo.shiftedBounds)!;
+  const os = coordinateInfo.originShift ?? { x: 0, y: 0, z: 0 };
+  coordinateInfo.originShift = { x: os.x + ox, y: os.y + oy, z: os.z + oz };
+  return { x: ox, y: oy, z: oz };
+}
+
 export function getMaxExpressId(dataStore: IfcDataStore, meshes: MeshData[]): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
   let maxExpressIdFromEntities = 0;
@@ -388,6 +451,13 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
   }
   if (capturedRtcOffset) {
     finalCoordinateInfo.wasmRtcOffset = capturedRtcOffset;
+  }
+  // Fallback: bring geometry the WASM RTC pass left far from origin (e.g.
+  // IfcMappedItem-placed models like the BIMcollab ARC sample, ~20 km off)
+  // back to a shared origin so it co-locates with the other federated models.
+  const recenter = recenterFarGeometry(allMeshes, finalCoordinateInfo);
+  if (recenter) {
+    console.log(`[viewerModelIngest] recentered far geometry for ${options.fileName} by (${recenter.x},${recenter.y},${recenter.z})`);
   }
 
   return {

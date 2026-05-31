@@ -559,6 +559,13 @@ impl ProfileProcessor {
             ))),
         }?;
 
+        // Parameterised profiles are defined centred on their bounding box, and the
+        // Position placement below is applied relative to that centred origin.
+        // Several asymmetric builders (L/U/T/C) emit their points from a corner, so
+        // centre every parametric profile here in one place. Already-centred shapes
+        // (rectangle, circle, I, Z, …) are unaffected.
+        base_profile.center_on_bbox();
+
         // Apply Profile Position transform (attribute 2: IfcAxis2Placement2D)
         if let Some(pos_attr) = profile.get(2) {
             if !pos_attr.is_null() {
@@ -2786,6 +2793,73 @@ mod tests {
 
         assert_eq!(profile.outer.len(), 12); // I-shape has 12 vertices
         assert!(!profile.outer.is_empty());
+    }
+
+    /// (min_x, min_y, max_x, max_y) of a profile's outer boundary.
+    fn outer_bbox(profile: &Profile2D) -> (f64, f64, f64, f64) {
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for p in &profile.outer {
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+            max_x = max_x.max(p.x);
+            max_y = max_y.max(p.y);
+        }
+        (min_x, min_y, max_x, max_y)
+    }
+
+    fn process_content(content: &str, id: u32) -> Profile2D {
+        let mut decoder = EntityDecoder::new(content);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let entity = decoder.decode_by_id(id).unwrap();
+        processor.process(&entity, &mut decoder).unwrap()
+    }
+
+    // A U-shape (channel) is centred on its bounding box: X spans
+    // -FlangeWidth/2..+FlangeWidth/2, not 0..FlangeWidth. Regression for channels
+    // being offset by half the flange width.
+    #[test]
+    fn test_u_shape_is_centered() {
+        // Depth 160, FlangeWidth 64, WebThickness 5, FlangeThickness 8.4
+        let profile =
+            process_content("#1=IFCUSHAPEPROFILEDEF(.AREA.,$,$,160.,64.,5.,8.4,$,$,$,$);\n", 1);
+        let (min_x, min_y, max_x, max_y) = outer_bbox(&profile);
+        assert!((min_x + max_x).abs() < 1e-9, "X not centred: {min_x}..{max_x}");
+        assert!((min_y + max_y).abs() < 1e-9, "Y not centred: {min_y}..{max_y}");
+        assert!((max_x - min_x - 64.0).abs() < 1e-9, "width should be FlangeWidth");
+        assert!((max_y - min_y - 160.0).abs() < 1e-9, "height should be Depth");
+    }
+
+    // An L-shape (angle) is centred on its bounding box rather than having its
+    // corner at the origin.
+    #[test]
+    fn test_l_shape_is_centered() {
+        // Depth 100, Width 80, Thickness 10
+        let profile =
+            process_content("#1=IFCLSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,10.,$,$,$,$,$);\n", 1);
+        let (min_x, min_y, max_x, max_y) = outer_bbox(&profile);
+        assert!((min_x + max_x).abs() < 1e-9, "X not centred: {min_x}..{max_x}");
+        assert!((min_y + max_y).abs() < 1e-9, "Y not centred: {min_y}..{max_y}");
+        assert!((max_x - min_x - 80.0).abs() < 1e-9, "width should be Width");
+        assert!((max_y - min_y - 100.0).abs() < 1e-9, "height should be Depth");
+    }
+
+    // A T-shape is centred on its bounding box: Y spans -Depth/2..+Depth/2,
+    // not 0..Depth.
+    #[test]
+    fn test_t_shape_is_centered() {
+        // Depth 100, FlangeWidth 80, WebThickness 10, FlangeThickness 12
+        let profile = process_content(
+            "#1=IFCTSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,10.,12.,$,$,$,$,$);\n",
+            1,
+        );
+        let (min_x, min_y, max_x, max_y) = outer_bbox(&profile);
+        assert!((min_x + max_x).abs() < 1e-9, "X not centred: {min_x}..{max_x}");
+        assert!((min_y + max_y).abs() < 1e-9, "Y not centred: {min_y}..{max_y}");
+        assert!((max_x - min_x - 80.0).abs() < 1e-9, "width should be FlangeWidth");
+        assert!((max_y - min_y - 100.0).abs() < 1e-9, "height should be Depth");
     }
 
     #[test]

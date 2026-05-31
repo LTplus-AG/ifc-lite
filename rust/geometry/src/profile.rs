@@ -30,6 +30,47 @@ impl Profile2D {
         self.holes.push(hole);
     }
 
+    /// Translate the profile so the centre of its outer bounding box sits at the
+    /// origin.
+    ///
+    /// IFC parameterised profiles (I/U/L/T/C/Z/…) are defined centred on their
+    /// bounding box, and the swept-area `Position` placement is applied relative
+    /// to that centred origin. Some per-shape builders are easier to read when
+    /// written from a corner; centring them here in one place keeps every
+    /// parametric profile consistent with the spec. Holes are shifted by the same
+    /// offset so they stay aligned with the outer boundary. No-op for profiles
+    /// that are already centred.
+    pub fn center_on_bbox(&mut self) {
+        if self.outer.is_empty() {
+            return;
+        }
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for p in &self.outer {
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+            max_x = max_x.max(p.x);
+            max_y = max_y.max(p.y);
+        }
+        let cx = (min_x + max_x) / 2.0;
+        let cy = (min_y + max_y) / 2.0;
+        if cx == 0.0 && cy == 0.0 {
+            return;
+        }
+        for p in &mut self.outer {
+            p.x -= cx;
+            p.y -= cy;
+        }
+        for hole in &mut self.holes {
+            for p in hole {
+                p.x -= cx;
+                p.y -= cy;
+            }
+        }
+    }
+
     /// Triangulate the profile using earcutr
     /// Returns triangle indices into the flattened vertex array
     pub fn triangulate(&self) -> Result<Triangulation> {

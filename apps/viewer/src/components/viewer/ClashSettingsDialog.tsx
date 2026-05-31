@@ -164,8 +164,21 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
 
         <Tabs defaultValue="detection" className="mt-1">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="detection">Detection</TabsTrigger>
-            <TabsTrigger value="rules">Rules</TabsTrigger>
+            {/* ui/tabs TabsTrigger ships no active styling — add it per-usage,
+                matching KeyboardShortcutsDialog / ByokKeyModal, so the active tab
+                reads clearly. */}
+            <TabsTrigger
+              value="detection"
+              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
+            >
+              Detection
+            </TabsTrigger>
+            <TabsTrigger
+              value="rules"
+              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold"
+            >
+              Rules
+            </TabsTrigger>
           </TabsList>
 
           {/* ---- Detection ---------------------------------------------------- */}

@@ -128,7 +128,7 @@ export function BCFOverlay() {
   const bcfProject = useViewerStore((s) => s.bcfProject);
   const activeTopicId = useViewerStore((s) => s.activeTopicId);
   const setActiveTopic = useViewerStore((s) => s.setActiveTopic);
-  const setBcfPanelVisible = useViewerStore((s) => s.setBcfPanelVisible);
+  const openWorkspacePanel = useViewerStore((s) => s.openWorkspacePanel);
   const models = useViewerStore((s) => s.models);
   const loading = useViewerStore((s) => s.loading);
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
@@ -239,10 +239,11 @@ export function BCFOverlay() {
     if (!overlay) return;
     return overlay.onMarkerClick((topicGuid) => {
       setActiveTopic(topicGuid);
-      const panelVisible = useViewerStore.getState().bcfPanelVisible;
-      if (!panelVisible) setBcfPanelVisible(true);
+      // Open BCF exclusively so clicking a marker brings it to the front over any
+      // other right panel (e.g. clash), instead of leaving it behind.
+      openWorkspacePanel('bcf');
     });
-  }, [overlayReady, setActiveTopic, setBcfPanelVisible]);
+  }, [overlayReady, setActiveTopic, openWorkspacePanel]);
 
   return (
     <div

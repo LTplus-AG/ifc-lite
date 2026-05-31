@@ -146,6 +146,16 @@ export type ViewerState = LoadingSlice &
   PointCloudSlice &
   ExtensionsSlice & {
     resetViewerState: () => void;
+    /**
+     * Open one right-side analysis panel and close the others, so the chosen
+     * panel is always the topmost/active one. The right panel renders a single
+     * mutually-exclusive chain (lens → clash → ids → bcf → extensions), so
+     * leaving a sibling flag set would keep the higher-precedence panel on top
+     * (the cause of "I have to close clash before I see BCF"). Also un-collapses
+     * the right panel. Routed through by the toolbar, command palette, and the
+     * BCF overlay so every entry point behaves identically.
+     */
+    openWorkspacePanel: (panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'extensions') => void;
   };
 
 /**
@@ -440,6 +450,18 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // Single-source-of-truth defaults shared with createPointCloudSlice.
       ...POINT_CLOUD_DEFAULTS,
       pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
+    });
+  },
+
+  openWorkspacePanel: (panel) => {
+    const [set] = args;
+    set({
+      bcfPanelVisible: panel === 'bcf',
+      idsPanelVisible: panel === 'ids',
+      lensPanelVisible: panel === 'lens',
+      clashPanelVisible: panel === 'clash',
+      extensionsPanelVisible: panel === 'extensions',
+      rightPanelCollapsed: false,
     });
   },
 }));

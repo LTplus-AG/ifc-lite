@@ -203,31 +203,28 @@ function downloadBlob(data: BlobPart, name: string, mime: string) {
  *  Closes all others first so the if-else chain in ViewerLayout renders it.
  *  If the target is already active, closes it (back to Properties). */
 
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'extensions') {
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'extensions') {
   const s = useViewerStore.getState();
   const isActive =
     panel === 'bcf' ? s.bcfPanelVisible :
     panel === 'ids' ? s.idsPanelVisible :
+    panel === 'clash' ? s.clashPanelVisible :
     panel === 'extensions' ? s.extensionsPanelVisible :
     s.lensPanelVisible;
 
   closeActiveAnalysisExtension();
 
-  // Close all content panels
-  s.setBcfPanelVisible(false);
-  s.setIdsPanelVisible(false);
-  s.setLensPanelVisible(false);
-  s.setExtensionsPanelVisible(false);
-
-  if (!isActive) {
-    // Open the target, expand right panel
-    s.setRightPanelCollapsed(false);
-    if (panel === 'bcf') s.setBcfPanelVisible(true);
-    else if (panel === 'ids') s.setIdsPanelVisible(true);
-    else if (panel === 'extensions') s.setExtensionsPanelVisible(true);
-    else s.setLensPanelVisible(true);
+  if (isActive) {
+    // Toggle off → close it (and the rest of the group) → falls back to Properties.
+    s.setBcfPanelVisible(false);
+    s.setIdsPanelVisible(false);
+    s.setLensPanelVisible(false);
+    s.setClashPanelVisible(false);
+    s.setExtensionsPanelVisible(false);
+  } else {
+    // Open exclusively (closes every sibling, including clash) and un-collapse.
+    s.openWorkspacePanel(panel);
   }
-  // If was active → all closed → falls back to Properties
 }
 
 /** Exclusively activate a bottom panel (Script / List / Gantt).
@@ -432,6 +429,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('bcf'); } },
       { id: 'panel:ids', label: 'IDS Validation', keywords: 'information delivery specification check', category: 'Panels', icon: ClipboardCheck,
         action: () => { activateRightPanel('ids'); } },
+      { id: 'panel:clash', label: 'Clash Detection', keywords: 'collision interference clearance coordination clash matrix mep', category: 'Panels', icon: Crosshair,
+        action: () => { activateRightPanel('clash'); } },
       { id: 'panel:lists', label: 'Entity Lists', keywords: 'table spreadsheet', category: 'Panels', icon: FileSpreadsheet,
         action: () => { activateBottomPanel('list'); } },
       { id: 'panel:gantt', label: 'Construction Schedule (Gantt)', keywords: '4d timeline tasks ifctask sequence playback animation', category: 'Panels', icon: CalendarClock,

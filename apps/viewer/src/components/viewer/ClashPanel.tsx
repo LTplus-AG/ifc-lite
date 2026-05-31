@@ -115,12 +115,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const bySeverity = result?.summary.bySeverity;
 
   return (
-    <div className="h-full flex flex-col bg-background text-foreground">
+    <div className="h-full flex flex-col bg-background text-foreground overflow-hidden min-w-0">
       {/* Header */}
       <div className="flex items-center gap-2 p-3 border-b border-border">
-        <Crosshair className="h-4 w-4 text-[#f7768e]" />
-        <span className="text-sm font-semibold tracking-tight">Clash detection</span>
-        <div className="ml-auto flex items-center gap-1">
+        <Crosshair className="h-4 w-4 text-[#f7768e] shrink-0" />
+        <span className="text-sm font-semibold tracking-tight min-w-0">Clash detection</span>
+        <div className="ml-auto flex items-center gap-1 shrink-0">
           <ClashSettingsDialog />
           {result && (
             <Button variant="ghost" size="icon" className="h-7 w-7" title="Clear results" onClick={clearAll}>
@@ -137,8 +137,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
       {/* Run controls */}
       <div className="p-3 space-y-3 border-b border-border">
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md border border-border overflow-hidden text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
             {(['hard', 'clearance'] as const).map((m) => (
               <button
                 key={m}
@@ -277,18 +277,18 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
       {/* Toolbar: group-by + actions */}
       {result && total > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs">
-          <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 border-b border-border text-xs">
+          <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <select
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
-            className="rounded border border-border bg-transparent px-1.5 py-0.5"
+            className="min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5"
           >
             <option value="severity">By severity</option>
             <option value="rule">By rule</option>
             <option value="typePair">By type pair</option>
           </select>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1 shrink-0">
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={highlightAll}>
               Highlight
             </Button>

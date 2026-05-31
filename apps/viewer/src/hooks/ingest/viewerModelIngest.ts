@@ -166,6 +166,12 @@ export function recenterFarGeometry(
         }
       : b;
   if (coordinateInfo.shiftedBounds) coordinateInfo.shiftedBounds = shiftBounds(coordinateInfo.shiftedBounds)!;
+  // Also shift originalBounds: georef reconstructs the model's true world
+  // centre as originalBounds_centre + originShift (+ rtc). We add `offset` to
+  // originShift below, so originalBounds must drop the same `offset` to keep
+  // that reconstruction (LocationMap pin, Cesium altitude) pointing at the
+  // model's real position rather than drifting by the recenter amount.
+  if (coordinateInfo.originalBounds) coordinateInfo.originalBounds = shiftBounds(coordinateInfo.originalBounds)!;
   const os = coordinateInfo.originShift ?? { x: 0, y: 0, z: 0 };
   coordinateInfo.originShift = { x: os.x + ox, y: os.y + oy, z: os.z + oz };
   return { x: ox, y: oy, z: oz };

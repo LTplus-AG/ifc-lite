@@ -8,6 +8,7 @@ import assert from 'node:assert';
 import {
   detectScaleUnitMismatch,
   getEffectiveHorizontalScale,
+  hasStandardGeoreferencing,
   inferMapUnitScale,
   mergeMapConversion,
   mergeProjectedCRS,
@@ -235,6 +236,71 @@ describe('effective georeferencing', () => {
       const m = detectScaleUnitMismatch(2, 1, 1);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 2);
+    });
+  });
+
+  describe('hasStandardGeoreferencing (federation alignment gate)', () => {
+    // Federation affine alignment (extractModelGeoref → buildGeorefAlignmentTransform)
+    // gates on this predicate. A site-location-only georef must NOT qualify: it is
+    // EPSG:4326 lat/long degrees + a raw, un-unit-scaled IfcSite RefElevation, which
+    // the projected-CRS transform misreads as metres and flings the second federated
+    // model kilometres away. These tests lock that invariant.
+    const mapConversion: MapConversion = {
+      id: 1,
+      sourceCRS: 0,
+      targetCRS: 0,
+      eastings: 100,
+      northings: 200,
+      orthogonalHeight: 5,
+    };
+
+    it('rejects synthesised site-location georef even with a CRS name + map conversion', () => {
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'siteLocation',
+          projectedCRS: { id: 1, name: 'EPSG:4326' },
+          mapConversion,
+        }),
+        false,
+      );
+    });
+
+    it('accepts true IfcMapConversion + IfcProjectedCRS georef', () => {
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion,
+        }),
+        true,
+      );
+    });
+
+    it('rejects georef missing a map conversion', () => {
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion: undefined,
+        }),
+        false,
+      );
+    });
+
+    it('rejects georef missing a projected CRS name', () => {
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: '' },
+          mapConversion,
+        }),
+        false,
+      );
+    });
+
+    it('rejects null / undefined', () => {
+      assert.strictEqual(hasStandardGeoreferencing(null), false);
+      assert.strictEqual(hasStandardGeoreferencing(undefined), false);
     });
   });
 });

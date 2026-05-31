@@ -55,6 +55,7 @@ import { useIfcCache, getCached } from './useIfcCache.js';
 import { useIfcServer } from './useIfcServer.js';
 
 import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
+import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { getGlobalRenderer } from './useBCF.js';
 
@@ -2053,13 +2054,10 @@ export function useIfcLoader() {
         closeGeometryIterator = async () => {
           if (geometryIteratorClosed || typeof geometryIterator.return !== 'function') return;
           geometryIteratorClosed = true;
-          try {
-            // `AsyncIterator.return()` is signed as taking a value in
-            // current TS libs; callers conventionally pass `undefined`.
-            await geometryIterator.return(undefined);
-          } catch {
-            // Ignore iterator shutdown failures during recovery.
-          }
+          // Bound the shutdown: `return()` cannot interrupt a generator parked
+          // on a stalled worker await, so an unbounded await would re-wedge on
+          // the very stall the watchdog escaped. See boundedIteratorReturn.
+          await boundedIteratorReturn(geometryIterator);
         };
 
         while (true) {

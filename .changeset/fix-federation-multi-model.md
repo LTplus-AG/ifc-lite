@@ -36,6 +36,10 @@ resolvable from this index" from a genuine metres default; covered by unit tests
 (`parseStepBufferViewerModel`) gains the same size-aware stream watchdog the
 single-model loader already had, so a stalled geometry stream surfaces a
 recoverable error instead of hanging forever at "Processing geometry (N meshes)".
+The watchdog plus its iterator teardown are extracted into a shared
+`watchedGeometryStream` / `boundedIteratorReturn` helper (used by both loaders):
+the teardown is now bounded so an abandoned generator parked on the very stall
+the watchdog escaped can't re-wedge cleanup and swallow the timeout error.
 
 **Camera framing.** When a second model is added, the viewport now unions the
 bounds of all visible models and refits, so federated models are framed together

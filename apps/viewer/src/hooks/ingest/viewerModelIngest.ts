@@ -4,11 +4,12 @@
 
 import { IfcParser, parseIfcx, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
 import { WorkerParser } from '@ifc-lite/parser/browser';
-import { GeometryProcessor, GeometryQuality, getGeometryStreamWatchdogMs, type CoordinateInfo, type DynamicBatchConfig, type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
+import { GeometryProcessor, GeometryQuality, type CoordinateInfo, type DynamicBatchConfig, type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
 import { calculateMeshBounds, calculateStoreyHeights, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
 import { resolveDataStoreOrAbort } from './resolveDataStoreOrAbort.js';
+import { watchedGeometryStream } from './watchedGeometryStream.js';
 
 type RgbaColor = [number, number, number, number];
 
@@ -264,17 +265,7 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
       });
 
   const geometryView = sharedSource ? new Uint8Array(sharedSource) : new Uint8Array(options.buffer);
-  // Drive the geometry stream through a manual iterator guarded by a
-  // size-aware watchdog. The parallel pipeline only ends once EVERY spawned
-  // geometry worker reports `complete`; if the browser fails to instantiate a
-  // worker (the "Attempting to create a Worker from an empty source" warning),
-  // that worker never reports `ready`, never `complete`, and never fires
-  // `onerror`, so the generator can wedge forever — leaving this loop stuck on
-  // "Processing geometry (N meshes)". The single-model loader (useIfcLoader)
-  // already wraps its stream in this same watchdog; the federated/added-model
-  // path was missing it and would hang indefinitely instead of surfacing a
-  // recoverable error. (See watchdog.ts for the size-aware deadline.)
-  const geometryIterator = geometryProcessor.processAdaptive(geometryView, {
+  const geometryStream = geometryProcessor.processAdaptive(geometryView, {
     sizeThreshold: 2 * 1024 * 1024,
     batchSize: options.getDynamicBatchSize(options.fileSizeMB),
     sharedRtcOffset: options.sharedRtcOffset,
@@ -282,37 +273,21 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
     onEntityIndex: (ids, starts, lengths) => {
       workerParser?.setEntityIndex(ids, starts, lengths);
     },
-  })[Symbol.asyncIterator]();
+  });
   let lastTotalMeshes = 0;
+  // The federated/added-model path was missing the size-aware stream watchdog
+  // the single-model loader has, so a geometry worker that failed to spawn would
+  // hang the load forever on "Processing geometry (N meshes)" instead of
+  // surfacing a recoverable error. watchedGeometryStream re-yields each event
+  // under that watchdog and bounds iterator teardown on every exit path.
   try {
-    while (true) {
-      const watchdogMs = getGeometryStreamWatchdogMs({
-        desktopStableWasm: false,
-        batchCount: batchIndex,
-        fileSizeMB: options.fileSizeMB,
-      });
-      let watchdogId: ReturnType<typeof setTimeout> | null = null;
-      const nextResult = await Promise.race([
-        geometryIterator.next(),
-        new Promise<never>((_, reject) => {
-          watchdogId = setTimeout(() => {
-            reject(new Error(
-              `Geometry stream stalled after ${watchdogMs}ms while loading ${options.fileName}. `
-              + `Last rendered meshes: ${lastTotalMeshes}. A geometry worker likely failed to start.`,
-            ));
-          }, watchdogMs);
-        }),
-      ]);
-      if (watchdogId !== null) {
-        clearTimeout(watchdogId);
-      }
-      if (nextResult.done) {
-        break;
-      }
-      if (options.shouldAbort?.()) {
-        break;
-      }
-      const event = nextResult.value;
+    for await (const event of watchedGeometryStream(geometryStream, {
+      fileName: options.fileName,
+      fileSizeMB: options.fileSizeMB,
+      shouldAbort: options.shouldAbort,
+      getBatchCount: () => batchIndex,
+      getLastTotalMeshes: () => lastTotalMeshes,
+    })) {
       switch (event.type) {
         case 'start':
           estimatedTotal = event.totalEstimate;
@@ -357,19 +332,10 @@ export async function parseStepBufferViewerModel(options: StepBufferIngestOption
     // Watchdog stall (or other stream error): the parser worker may be
     // blocked in `waitForEntityIndex`, which only the geometry pre-pass would
     // unblock. Terminate it here so it doesn't leak — the normal path below
-    // still awaits it via resolveDataStoreOrAbort.
+    // still awaits it via resolveDataStoreOrAbort. watchedGeometryStream's
+    // finally has already bounded teardown of the geometry iterator itself.
     workerParser?.terminate();
     throw err;
-  } finally {
-    // Abandon the generator on early break / watchdog throw so the geometry
-    // workers and pre-pass worker are torn down rather than left running.
-    if (typeof geometryIterator.return === 'function') {
-      try {
-        await geometryIterator.return(undefined);
-      } catch {
-        // Iterator shutdown failures during recovery are non-fatal.
-      }
-    }
   }
 
   // If the load was cancelled, don't await dataStorePromise: a worker parse

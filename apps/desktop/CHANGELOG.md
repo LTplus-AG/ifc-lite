@@ -1,5 +1,14 @@
 # @ifc-lite/desktop
 
+## 1.14.7
+
+### Patch Changes
+
+- Updated dependencies [[`d6b8986`](https://github.com/LTplus-AG/ifc-lite/commit/d6b89866b4c058531ce0c5c7472a297adc6580a8), [`94d9116`](https://github.com/LTplus-AG/ifc-lite/commit/94d91161abc58b5804bd979d841d7475714ee5ad)]:
+  - @ifc-lite/sdk@1.17.0
+  - @ifc-lite/mcp@0.3.0
+  - @ifc-lite/wasm@2.1.1
+
 ## 1.14.6
 
 ### Patch Changes

@@ -1,5 +1,86 @@
 # @ifc-lite/viewer
 
+## 1.26.0
+
+### Minor Changes
+
+- [#891](https://github.com/LTplus-AG/ifc-lite/pull/891) [`d6b8986`](https://github.com/LTplus-AG/ifc-lite/commit/d6b89866b4c058531ce0c5c7472a297adc6580a8) Thanks [@louistrue](https://github.com/louistrue)! - Add representation-agnostic clash detection.
+
+  `@ifc-lite/clash` is a new package: a source-agnostic clash core (STEP/IFCX
+  adapters, BVH broad phase, exact triangle-intersection narrow phase, hard /
+  clearance / touch classification) with a pluggable TS reference kernel and a
+  Rust/WASM kernel kept in lockstep by a differential test. Results group into a
+  _manageable_ set of BCF topics (deterministic topic GUIDs, caps-with-transparency,
+  framing viewpoints, A/B coloring, optional snapshots) and round-trip status back.
+
+  Surfaced through the existing tools:
+
+  - `@ifc-lite/clash` — `rulesFromPresets(presets, mode, clearance?, reportTouch?)` builds
+    runnable rules from any preset list (the discipline matrix is this over the built-ins),
+    so hosts can run a user-curated rule set.
+  - `@ifc-lite/viewer` — an interactive clash panel (run detection / discipline matrix /
+    presets, A/B highlight + camera framing, configurable settings & custom rules, a
+    controllable BCF export with optional rendered snapshots).
+  - `@ifc-lite/sdk` — a `clash` namespace (`run`, `matrix`, `group`, presets).
+  - `@ifc-lite/cli` — `ifc-lite clash <file>` with `--a/--b`, `--mode`, `--matrix`,
+    `--clearance`, `--bcf`.
+  - `@ifc-lite/mcp` — `clash_check` (omit selectors for a whole-model self-clash)
+    and `clash_matrix`.
+
+  The discipline matrix now threads a `clearance` value onto its rules, so
+  `--matrix --mode clearance --clearance N` (and the SDK/MCP equivalents) report
+  violations instead of silently dropping the override.
+
+### Patch Changes
+
+- [#895](https://github.com/LTplus-AG/ifc-lite/pull/895) [`94d9116`](https://github.com/LTplus-AG/ifc-lite/commit/94d91161abc58b5804bd979d841d7475714ee5ad) Thanks [@louistrue](https://github.com/louistrue)! - Fix model federation: two models now load co-located at the correct scale
+  instead of one being flung ~20 km away, dwarfed, or hanging on "Processing
+  geometry".
+
+  **Federation alignment (the regression).** When a model has no
+  `IfcMapConversion` we synthesise a `source: 'siteLocation'` georeference from its
+  `IfcSite` `RefLatitude`/`RefLongitude`/`RefElevation` so it can still be pinned on
+  the location map. Since [#658](https://github.com/LTplus-AG/ifc-lite/issues/658) the federated add-model path treated that synthetic
+  georef as real and ran it through the projected-CRS affine alignment — but its
+  coordinates are geographic degrees plus a raw, un-unit-scaled site elevation, not
+  projected metres. For the BIMcollab ARC/STR sample (which share a site GUID but
+  carry `RefElevation` `0` vs `20000` mm) the height term placed the architectural
+  model ~20 km below the structural one. Federation alignment now requires _true_
+  georeferencing (`IfcMapConversion` + `IfcProjectedCRS`, via
+  `hasStandardGeoreferencing`); site-location-only models stay in their own local
+  frames where they already overlay correctly.
+
+  **Unit scale.** The streaming geometry pre-pass (`buildPrePassStreaming`)
+  resolved `unitScale` from a _partial_ entity index — only the rows up to the
+  first `IFCPROJECT`. Many real exports (Revit) place `IFCPROJECT` and its
+  `IFCUNITASSIGNMENT` _after_ the bulk of the geometry, so the assigned
+  `IFCSIUNIT` wasn't indexed yet, `decode_by_id` failed, and resolution silently
+  fell back to the metres default — rendering a millimetre model 1000× too large.
+  The pre-pass now tries the partial index first (fast path for unit-first files)
+  and falls back to a _complete_ index when the unit chain isn't yet decodable, so
+  the scale is correct regardless of entity ordering. New
+  `try_extract_length_unit_scale` in `ifc-lite-core` distinguishes "not yet
+  resolvable from this index" from a genuine metres default; covered by unit tests.
+
+  **Ingest watchdog (viewer).** The added-model ingest path
+  (`parseStepBufferViewerModel`) gains the same size-aware stream watchdog the
+  single-model loader already had, so a stalled geometry stream surfaces a
+  recoverable error instead of hanging forever at "Processing geometry (N meshes)".
+  The watchdog plus its iterator teardown are extracted into a shared
+  `watchedGeometryStream` / `boundedIteratorReturn` helper (used by both loaders):
+  the teardown is now bounded so an abandoned generator parked on the very stall
+  the watchdog escaped can't re-wedge cleanup and swallow the timeout error.
+
+  **Camera framing.** When a second model is added, the viewport now unions the
+  bounds of all visible models and refits, so federated models are framed together
+  instead of the camera staying on the first model.
+
+- Updated dependencies [[`d6b8986`](https://github.com/LTplus-AG/ifc-lite/commit/d6b89866b4c058531ce0c5c7472a297adc6580a8), [`94d9116`](https://github.com/LTplus-AG/ifc-lite/commit/94d91161abc58b5804bd979d841d7475714ee5ad)]:
+  - @ifc-lite/clash@1.1.0
+  - @ifc-lite/sdk@1.17.0
+  - @ifc-lite/mcp@0.3.0
+  - @ifc-lite/wasm@2.1.1
+
 ## 1.25.2
 
 ### Patch Changes

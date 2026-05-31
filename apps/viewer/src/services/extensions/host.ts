@@ -436,6 +436,19 @@ export class ExtensionHostService {
     } catch (err) {
       console.warn('[ext-host] lens restore on switch failed:', err);
     }
+    // Restore the flavor's clash config (rule-set + detection settings) from the
+    // opaque settings.clash blob, mirroring the lens roundtrip above. Missing /
+    // malformed blobs deserialize to null and are skipped (no-op).
+    try {
+      const { deserializeClashConfig } = await import('@/lib/clash/persistence');
+      const config = deserializeClashConfig((target.settings as Record<string, unknown> | undefined)?.clash);
+      if (config) {
+        const { useViewerStore } = await import('@/store');
+        useViewerStore.getState().applyClashFlavorConfig(config);
+      }
+    } catch (err) {
+      console.warn('[ext-host] clash restore on switch failed:', err);
+    }
     this.emit();
   }
 

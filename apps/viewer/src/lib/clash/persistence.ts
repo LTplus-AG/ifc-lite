@@ -137,14 +137,22 @@ export function defaultPresets(): ClashPreset[] {
  * override applied) followed by custom presets. Built-ins are always present
  * even if storage is empty or dropped them.
  */
-export function buildInitialPresets(): ClashPreset[] {
-  const stored = readStoredPresets();
+/**
+ * Resolve a stored (customs + modified-built-ins) list into the full preset
+ * list: every built-in (with any override applied), then customs. Built-ins are
+ * always present, so a list from an older app version still picks up new ones.
+ */
+export function mergeStoredPresets(stored: ClashPreset[]): ClashPreset[] {
   const overrides = new Map(stored.filter((p) => p.builtin).map((p) => [p.id, p]));
   const builtins: ClashPreset[] = CLASH_RULE_PRESETS.map(
     (p) => overrides.get(p.id) ?? { ...p, enabled: true, builtin: true },
   );
   const custom = stored.filter((p) => !p.builtin);
   return [...builtins, ...custom];
+}
+
+export function buildInitialPresets(): ClashPreset[] {
+  return mergeStoredPresets(readStoredPresets());
 }
 
 function builtinDiffersFromDefault(p: ClashPreset): boolean {
@@ -160,13 +168,21 @@ function builtinDiffersFromDefault(p: ClashPreset): boolean {
   );
 }
 
+/** The minimal stored shape: customs + only the built-ins that differ from default. */
+export function presetsToStore(presets: ClashPreset[]): ClashPreset[] {
+  return [
+    ...presets.filter((p) => !p.builtin),
+    ...presets.filter((p) => p.builtin && builtinDiffersFromDefault(p)),
+  ];
+}
+
 /** Persist only custom presets + modified built-ins (quota-safe). */
 export function savePresets(presets: ClashPreset[]): SaveResult {
   const custom = presets.filter((p) => !p.builtin);
   if (custom.length > MAX_PRESETS) {
     return { ok: false, reason: 'too_many', message: `Too many custom rules (max ${MAX_PRESETS}).` };
   }
-  const toStore = [...custom, ...presets.filter((p) => p.builtin && builtinDiffersFromDefault(p))];
+  const toStore = presetsToStore(presets);
   let payload: string;
   try {
     payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: toStore });
@@ -181,23 +197,27 @@ export function savePresets(presets: ClashPreset[]): SaveResult {
   }
 }
 
+/** Coerce arbitrary input into valid, bounds-clamped settings (defaults on junk). */
+export function normalizeSettings(raw: unknown): ClashGlobalSettings {
+  const s = (raw && typeof raw === 'object' && 'settings' in raw
+    ? (raw as { settings: unknown }).settings
+    : raw) as Partial<ClashGlobalSettings> | null;
+  if (!s || typeof s !== 'object') return { ...DEFAULT_CLASH_SETTINGS };
+  return {
+    mode: s.mode === 'clearance' ? 'clearance' : 'hard',
+    tolerance: clampToBounds(s.tolerance, CLASH_BOUNDS.tolerance, DEFAULT_CLASH_SETTINGS.tolerance),
+    clearance: clampToBounds(s.clearance, CLASH_BOUNDS.clearance, DEFAULT_CLASH_SETTINGS.clearance),
+    clusterEpsilon: clampToBounds(s.clusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon),
+    reportTouch: s.reportTouch === true,
+    groupBy: GROUP_BYS.includes(s.groupBy as ClashSettingsGroupBy) ? (s.groupBy as ClashSettingsGroupBy) : 'severity',
+  };
+}
+
 export function loadSettings(): ClashGlobalSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return { ...DEFAULT_CLASH_SETTINGS };
-    const parsed: unknown = JSON.parse(raw);
-    const s = (parsed && typeof parsed === 'object' && 'settings' in parsed
-      ? (parsed as { settings: unknown }).settings
-      : parsed) as Partial<ClashGlobalSettings> | null;
-    if (!s || typeof s !== 'object') return { ...DEFAULT_CLASH_SETTINGS };
-    return {
-      mode: s.mode === 'clearance' ? 'clearance' : 'hard',
-      tolerance: clampToBounds(s.tolerance, CLASH_BOUNDS.tolerance, DEFAULT_CLASH_SETTINGS.tolerance),
-      clearance: clampToBounds(s.clearance, CLASH_BOUNDS.clearance, DEFAULT_CLASH_SETTINGS.clearance),
-      clusterEpsilon: clampToBounds(s.clusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon),
-      reportTouch: s.reportTouch === true,
-      groupBy: GROUP_BYS.includes(s.groupBy as ClashSettingsGroupBy) ? (s.groupBy as ClashSettingsGroupBy) : 'severity',
-    };
+    return normalizeSettings(JSON.parse(raw));
   } catch {
     return { ...DEFAULT_CLASH_SETTINGS };
   }
@@ -245,4 +265,44 @@ export async function importPresets(file: File): Promise<ClashPreset[]> {
     enabled: p.enabled !== false,
     builtin: false,
   }));
+}
+
+// ── Flavor integration ───────────────────────────────────────────────────────
+// Clash config rides inside a flavor's generic `settings.clash` blob, so each
+// flavor/profile carries its own rule-set + detection settings (and they travel
+// with flavor export/import). Serialize stores the minimal shape (customs +
+// modified built-ins + settings); deserialize rebuilds the full, validated state.
+
+/** Plain-JSON snapshot of clash config stored in a flavor. */
+export interface ClashFlavorConfig {
+  schemaVersion: number;
+  settings: ClashGlobalSettings;
+  /** Customs + modified built-ins only (built-ins are re-merged on restore). */
+  presets: ClashPreset[];
+}
+
+export function serializeClashConfig(presets: ClashPreset[], settings: ClashGlobalSettings): ClashFlavorConfig {
+  return { schemaVersion: SCHEMA_VERSION, settings: { ...settings }, presets: presetsToStore(presets) };
+}
+
+/**
+ * Rebuild clash state from a flavor blob: the full resolved preset list (defaults
+ * + the blob's overrides/customs) and bounds-clamped settings. Returns null when
+ * the blob is missing/garbage so the caller can skip the restore.
+ */
+export function deserializeClashConfig(blob: unknown): { presets: ClashPreset[]; settings: ClashGlobalSettings } | null {
+  if (!blob || typeof blob !== 'object') return null;
+  const b = blob as Partial<ClashFlavorConfig>;
+  const storedRaw = Array.isArray(b.presets) ? b.presets : [];
+  const stored = storedRaw.filter(isValidStoredPreset).map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: typeof p.description === 'string' ? p.description : '',
+    severity: p.severity,
+    selectorA: p.selectorA,
+    selectorB: p.selectorB,
+    enabled: p.enabled !== false,
+    builtin: BUILTIN_PRESET_IDS.has(p.id),
+  }));
+  return { presets: mergeStoredPresets(stored), settings: normalizeSettings(b.settings) };
 }

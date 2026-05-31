@@ -83,6 +83,11 @@ export interface ClashSlice {
   setClashPresetEnabled: (id: string, enabled: boolean) => void;
   resetClashPresets: () => void;
   importClashPresets: (presets: ClashPreset[]) => SaveResult;
+  /**
+   * Replace the entire clash config (presets + detection settings) and persist.
+   * Used when activating a flavor/profile so each one carries its own rule-set.
+   */
+  applyClashFlavorConfig: (config: { presets: ClashPreset[]; settings: ClashGlobalSettings }) => void;
   clearClash: () => void;
 }
 
@@ -209,6 +214,21 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       const result = savePresets(next);
       if (result.ok) set({ clashPresets: next });
       return result;
+    },
+
+    applyClashFlavorConfig: ({ presets, settings }) => {
+      set({
+        clashPresets: presets,
+        clashMode: settings.mode,
+        clashTolerance: settings.tolerance,
+        clashClearance: settings.clearance,
+        clashClusterEpsilon: settings.clusterEpsilon,
+        clashReportTouch: settings.reportTouch,
+        clashGroupBy: settings.groupBy,
+      });
+      // Persist so the activated flavor's config becomes the working set on reload.
+      savePresets(presets);
+      saveSettings(settings);
     },
 
     clearClash: () =>

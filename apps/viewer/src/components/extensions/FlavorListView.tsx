@@ -28,6 +28,15 @@ import type { Flavor } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
+/** Number of clash rules (customs + modified built-ins) stored in a flavor's
+ *  `settings.clash` blob. 0 when the flavor carries no clash config. */
+function clashRuleCount(flavor: Flavor): number {
+  const clash = (flavor.settings as Record<string, unknown> | undefined)?.clash;
+  if (!clash || typeof clash !== 'object') return 0;
+  const presets = (clash as { presets?: unknown }).presets;
+  return Array.isArray(presets) ? presets.length : 0;
+}
+
 interface FlavorListViewProps {
   flavors: readonly Flavor[];
   activeId: string | undefined;
@@ -92,8 +101,8 @@ export function FlavorListView({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-muted-foreground flex-1 min-w-[200px]">
-          Flavors bundle your extensions, lenses, queries, and layout. Switch to
-          isolate experiments; export to share or back up.
+          Flavors bundle your extensions, lenses, queries, clash rules, and layout.
+          Switch to isolate experiments; export to share or back up.
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <Button
@@ -238,7 +247,7 @@ export function FlavorListView({
                   )}
                   <div className="text-[10px] text-muted-foreground mt-0.5">
                     {flavor.extensions.length} ext · {flavor.lenses.length} lens ·{' '}
-                    {flavor.savedQueries.length} qry · updated{' '}
+                    {flavor.savedQueries.length} qry · {clashRuleCount(flavor)} clash · updated{' '}
                     {new Date(flavor.updatedAt).toLocaleDateString()}
                   </div>
                 </div>

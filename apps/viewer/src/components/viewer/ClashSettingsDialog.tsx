@@ -217,7 +217,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
           {/* ---- Rules -------------------------------------------------------- */}
           <TabsContent value="rules" className="space-y-2">
             <div className="flex items-center gap-1.5">
-              <Button size="sm" className="h-7 px-2 text-xs" onClick={startAdd} disabled={!!draft}>
+              <Button size="sm" className="h-7 px-2 text-xs" onClick={startAdd}>
                 <Plus className="h-3.5 w-3.5 mr-1" /> Add rule
               </Button>
               <div className="ml-auto flex items-center gap-1">

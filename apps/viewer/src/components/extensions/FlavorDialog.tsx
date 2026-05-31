@@ -28,6 +28,21 @@ import { FlavorImportPreview } from './FlavorImportPreview';
 import * as toastText from './toast-helpers';
 import { HelpHint } from './HelpHint';
 import { useViewerStore } from '@/store';
+import { serializeClashConfig } from '@/lib/clash/persistence';
+
+/** Snapshot the current clash rule-set + detection settings for a flavor's
+ *  `settings.clash` blob, so each profile carries its own clash config. */
+function captureClashConfig(): unknown {
+  const s = useViewerStore.getState();
+  return serializeClashConfig(s.clashPresets, {
+    mode: s.clashMode,
+    tolerance: s.clashTolerance,
+    clearance: s.clashClearance,
+    clusterEpsilon: s.clashClusterEpsilon,
+    reportTouch: s.clashReportTouch,
+    groupBy: s.clashGroupBy,
+  });
+}
 
 interface FlavorDialogProps {
   open: boolean;
@@ -156,10 +171,11 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
       const next = {
         ...target,
         lenses,
+        settings: { ...target.settings, clash: captureClashConfig() } as typeof target.settings,
         updatedAt: new Date().toISOString(),
       };
       await host.flavors.put(next, 'capture current state');
-      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} into ${target.name}`);
+      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} + clash rules into ${target.name}`);
     } catch (err) {
       toast.error(toastText.failed('Capture', err));
     } finally {
@@ -201,7 +217,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         savedQueries: [],
         keybindings: [],
         layout: { state: {} },
-        settings: {},
+        settings: (opts.snapshot ? { clash: captureClashConfig() } : {}) as Flavor['settings'],
       };
       await host.flavors.put(flavor, opts.snapshot ? 'created from current state' : 'created empty');
       await host.flavors.activate(id);

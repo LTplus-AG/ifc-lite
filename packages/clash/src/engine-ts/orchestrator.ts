@@ -65,7 +65,7 @@ export async function runClash(
       const ruleTolerance = rule.tolerance ?? tolerance;
       settings.onProgress?.({ phase: 'broad', rule: rule.id, done: 0, total: 0 });
 
-      const { records, candidatesProcessed, candidatesDropped } = kernel.detectRule(
+      const { records, candidatesProcessed, candidatesDropped } = await kernel.detectRule(
         elements,
         groupA,
         groupB,
@@ -73,11 +73,13 @@ export async function runClash(
         ruleTolerance,
         remaining,
         settings.signal,
+        settings.onProgress
+          ? (done, total) => settings.onProgress!({ phase: 'narrow', rule: rule.id, done, total })
+          : undefined,
       );
       remaining = Math.max(0, remaining - candidatesProcessed);
       droppedPairs += candidatesDropped;
 
-      let processed = 0;
       for (const rec of records) {
         if (settings.signal?.aborted) {
           throw new DOMException('Clash run aborted', 'AbortError');
@@ -110,8 +112,6 @@ export async function runClash(
           bounds: rec.bounds,
           severity: rule.severity ?? inferClashSeverity(elA.tag, elB.tag),
         });
-        processed += 1;
-        settings.onProgress?.({ phase: 'narrow', rule: rule.id, done: processed, total: records.length });
       }
     }
   } finally {

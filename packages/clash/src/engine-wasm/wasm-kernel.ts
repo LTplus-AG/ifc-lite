@@ -72,7 +72,7 @@ export class WasmKernel implements ClashKernel {
     );
   }
 
-  detectRule(
+  async detectRule(
     _elements: ClashElement[],
     groupAIdx: number[],
     groupBIdx: number[] | null,
@@ -80,7 +80,8 @@ export class WasmKernel implements ClashKernel {
     tolerance: number,
     _maxPairs: number,
     signal?: AbortSignal,
-  ): RuleDetection {
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<RuleDetection> {
     // The WASM backend runs every candidate pair in Rust, so it does NOT enforce
     // the run-global maxCandidatePairs cap — that cap is a TS-engine guardrail.
     if (signal?.aborted) {
@@ -120,6 +121,9 @@ export class WasmKernel implements ClashKernel {
       // Free the wasm-side result even if the mapping above throws.
       res.free();
     }
+    // Rust runs every pair in one fast call — no incremental progress, just
+    // report completion so the UI's bar lands at 100%.
+    onProgress?.(records.length, records.length);
     return { records, candidatesProcessed: 0, candidatesDropped: 0 };
   }
 

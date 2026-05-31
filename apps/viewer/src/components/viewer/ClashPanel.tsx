@@ -44,6 +44,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     result,
     running,
     error,
+    progress,
     mode,
     tolerance,
     clearance,
@@ -208,6 +209,30 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             </button>
           ))}
         </div>
+
+        {/* Live progress — the engine yields between chunks so this paints even
+            on large models that take a while. */}
+        {running && progress && (() => {
+          const determinate = progress.total > 0;
+          const pct = determinate ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
+          const label = determinate
+            ? `Checking ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()} pairs`
+            : 'Preparing geometry…';
+          return (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span className="truncate">{label}</span>
+                {determinate && <span className="tabular-nums">{pct}%</span>}
+              </div>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn('h-full bg-[#f7768e]', determinate ? 'transition-[width] duration-150' : 'w-2/5 animate-pulse')}
+                  style={determinate ? { width: `${pct}%` } : undefined}
+                />
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Error */}

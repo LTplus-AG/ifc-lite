@@ -30,7 +30,7 @@ export class TsKernel implements ClashKernel {
     return mesh;
   }
 
-  detectRule(
+  async detectRule(
     elements: ClashElement[],
     groupAIdx: number[],
     groupBIdx: number[] | null,
@@ -38,7 +38,8 @@ export class TsKernel implements ClashKernel {
     tolerance: number,
     maxPairs: number,
     signal?: AbortSignal,
-  ): RuleDetection {
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<RuleDetection> {
     const groupA = groupAIdx.map((i) => elements[i]);
     const groupB = groupBIdx ? groupBIdx.map((i) => elements[i]) : null;
     const resolveB = groupB ?? groupA;
@@ -46,18 +47,30 @@ export class TsKernel implements ClashKernel {
     const margin = Math.max(tolerance, rule.clearance ?? 0);
 
     const pairs = candidatePairs(groupA, groupB, margin);
+    const total = pairs.length;
     const records: NarrowRecord[] = [];
     let processed = 0;
     let candidatesDropped = 0;
+    onProgress?.(0, total);
+    let lastYield = now();
 
     for (const [i, j] of pairs) {
       if (processed >= maxPairs) {
-        candidatesDropped = pairs.length - processed;
+        candidatesDropped = total - processed;
         break;
       }
-      // Honor cancellation mid-rule for large candidate sets.
-      if (signal?.aborted && (processed & 0x3ff) === 0) {
-        throw new DOMException('Clash run aborted', 'AbortError');
+      // Every 1024 pairs: check cancellation, and if we've held the thread for
+      // more than a frame's worth of time, report progress and yield so the UI
+      // can repaint and stay responsive on large models.
+      if ((processed & 0x3ff) === 0) {
+        if (signal?.aborted) {
+          throw new DOMException('Clash run aborted', 'AbortError');
+        }
+        if (onProgress && now() - lastYield > YIELD_MS) {
+          onProgress(processed, total);
+          await yieldToEventLoop();
+          lastYield = now();
+        }
       }
       processed += 1;
       const elA = groupA[i];
@@ -74,6 +87,19 @@ export class TsKernel implements ClashKernel {
       });
     }
 
+    onProgress?.(processed, total);
     return { records, candidatesProcessed: processed, candidatesDropped };
   }
+}
+
+/** Hold the main thread no longer than this between yields (≈ a few frames). */
+const YIELD_MS = 50;
+
+function now(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+/** Yield to the event loop so the host can flush React renders / repaint. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }

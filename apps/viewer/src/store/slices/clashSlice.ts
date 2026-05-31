@@ -12,7 +12,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { ClashResult, ClashGroup, ClashMode } from '@ifc-lite/clash';
+import type { ClashResult, ClashGroup, ClashMode, ClashProgress } from '@ifc-lite/clash';
 import {
   buildInitialPresets,
   defaultPresets,
@@ -48,6 +48,8 @@ export interface ClashSlice {
   clashGroups: ClashGroup[] | null;
   clashRunning: boolean;
   clashError: string | null;
+  /** Live detection progress for the running rule (null when idle). */
+  clashProgress: ClashProgress | null;
   /** Detection settings (persisted). */
   clashMode: ClashMode;
   clashTolerance: number;
@@ -67,6 +69,7 @@ export interface ClashSlice {
   setClashGroups: (groups: ClashGroup[] | null) => void;
   setClashRunning: (running: boolean) => void;
   setClashError: (error: string | null) => void;
+  setClashProgress: (progress: ClashProgress | null) => void;
   setClashMode: (mode: ClashMode) => void;
   setClashTolerance: (tolerance: number) => void;
   setClashClearance: (clearance: number) => void;
@@ -114,6 +117,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashGroups: null,
     clashRunning: false,
     clashError: null,
+    clashProgress: null,
     clashMode: initial.mode,
     clashTolerance: initial.tolerance,
     clashClearance: initial.clearance,
@@ -129,6 +133,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     setClashGroups: (clashGroups) => set({ clashGroups }),
     setClashRunning: (clashRunning) => set({ clashRunning }),
     setClashError: (clashError) => set({ clashError }),
+    setClashProgress: (clashProgress) => set({ clashProgress }),
 
     setClashMode: (clashMode) => { set({ clashMode }); persistSettings(); },
     setClashTolerance: (clashTolerance) => {
@@ -239,6 +244,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashGroups: null,
         clashRunning: false,
         clashError: null,
+        clashProgress: null,
         clashSelectedId: null,
       }),
   };

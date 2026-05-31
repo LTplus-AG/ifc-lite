@@ -52,7 +52,13 @@ export interface ClashKernel {
     tolerance: number,
     maxPairs: number,
     signal?: AbortSignal,
-  ): RuleDetection;
+    /**
+     * Reports narrow-phase progress as `(processedPairs, totalPairs)`. The TS
+     * kernel calls it periodically AND yields to the event loop between calls,
+     * so a long run on the main thread stays responsive and can paint progress.
+     */
+    onProgress?: (done: number, total: number) => void,
+  ): RuleDetection | Promise<RuleDetection>;
   /** Release any resources (e.g. a WASM session). Optional. */
   dispose?(): void;
 }

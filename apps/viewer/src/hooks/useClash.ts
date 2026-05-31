@@ -90,6 +90,7 @@ export function useClash() {
   const groups = useViewerStore((s) => s.clashGroups);
   const running = useViewerStore((s) => s.clashRunning);
   const error = useViewerStore((s) => s.clashError);
+  const progress = useViewerStore((s) => s.clashProgress);
   const mode = useViewerStore((s) => s.clashMode);
   const tolerance = useViewerStore((s) => s.clashTolerance);
   const clearance = useViewerStore((s) => s.clashClearance);
@@ -131,8 +132,10 @@ export function useClash() {
       const state = useViewerStore.getState();
       state.setClashRunning(true);
       state.setClashError(null);
+      // Indeterminate "preparing" state until the engine reports candidate counts.
+      state.setClashProgress({ phase: 'broad', rule: '', done: 0, total: 0 });
       try {
-        // Let the panel paint the running state before the (sync) heavy work.
+        // Let the panel paint the running state before the heavy work.
         await new Promise((resolve) => requestAnimationFrame(resolve));
         const { elements, exclusions } = gatherElements();
         if (elements.length === 0) {
@@ -140,7 +143,12 @@ export function useClash() {
           return;
         }
         const engine = createClashEngine({ backend: 'ts' });
-        const res = await engine.run(elements, rules, { exclusions, tolerance: state.clashTolerance });
+        const res = await engine.run(elements, rules, {
+          exclusions,
+          tolerance: state.clashTolerance,
+          // The TS engine yields between chunks, so these updates actually paint.
+          onProgress: (p) => useViewerStore.getState().setClashProgress(p),
+        });
         state.setClashResult(res);
         // Spatial clustering is the sensible BCF unit; the panel list groups by
         // its own dimension separately. Radius is the user's cluster epsilon.
@@ -151,6 +159,7 @@ export function useClash() {
         state.setClashError(err instanceof Error ? err.message : String(err));
       } finally {
         state.setClashRunning(false);
+        state.setClashProgress(null);
       }
     },
     [gatherElements],
@@ -381,6 +390,7 @@ export function useClash() {
     groups,
     running,
     error,
+    progress,
     mode,
     tolerance,
     clearance,

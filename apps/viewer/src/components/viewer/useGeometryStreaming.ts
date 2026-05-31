@@ -349,18 +349,6 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     lastGeometryLengthRef.current = currentLength;
 
-    // [DIAG render] TEMPORARY — confirm the (non-streaming) upload landed and
-    // the camera framing covers all models. Remove before merge.
-    if (!isStreaming) {
-      try {
-        const sb = coordinateInfo?.shiftedBounds;
-        // eslint-disable-next-line no-console
-        console.log(
-          `[DIAG render] uploaded newMeshes=${newMeshes.length} totalLen=${currentLength} sceneBatches=${scene.getBatchedMeshes().length} cameraFitted=${cameraFittedRef.current} bounds=${sb ? `(${sb.min.x.toFixed(1)},${sb.min.y.toFixed(1)},${sb.min.z.toFixed(1)})..(${sb.max.x.toFixed(1)},${sb.max.y.toFixed(1)},${sb.max.z.toFixed(1)})` : 'none'}`,
-        );
-      } catch { /* diagnostic only */ }
-    }
-
     // ── Fit camera ──
     //
     // Pre-#871 the branching here was structured as

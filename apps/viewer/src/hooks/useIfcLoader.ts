@@ -54,7 +54,7 @@ import { useIfcCache, getCached } from './useIfcCache.js';
 // Server hook
 import { useIfcServer } from './useIfcServer.js';
 
-import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel, recenterFarGeometry } from './ingest/viewerModelIngest.js';
+import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { getGlobalRenderer } from './useBCF.js';
 
@@ -2198,21 +2198,6 @@ export function useIfcLoader() {
               // Store captured RTC offset in coordinate info for multi-model alignment
               if (finalCoordinateInfo && capturedRtcOffset) {
                 finalCoordinateInfo.wasmRtcOffset = capturedRtcOffset;
-              }
-
-              // Fallback origin-recenter for geometry the WASM RTC left far from
-              // origin (e.g. IfcMappedItem-placed models ~20 km off). allMeshes
-              // shares mesh objects with the store's geometryResult, so shifting
-              // positions in place updates the rendered meshes too; bump the
-              // content version so useGeometryStreaming re-uploads at the new
-              // origin. This keeps a far first model co-located when a second is
-              // federated onto it.
-              if (finalCoordinateInfo) {
-                const recenter = recenterFarGeometry(allMeshes, finalCoordinateInfo);
-                if (recenter) {
-                  console.log(`[useIfc] recentered far geometry for ${file.name} by (${recenter.x},${recenter.y},${recenter.z})`);
-                  useViewerStore.getState().bumpGeometryContentVersion();
-                }
               }
 
               // Update geometry result with final coordinate info

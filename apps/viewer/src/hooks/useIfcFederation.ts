@@ -40,7 +40,7 @@ import {
 } from './ingest/pointCloudIngest.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
-import { getEffectiveGeoreference, getEffectiveHorizontalScale, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
+import { getEffectiveGeoreference, getEffectiveHorizontalScale, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
 import { resolveMapUnitToMetreScale } from '../lib/geo/geo-scale.js';
 import { resolveProjection } from '../lib/geo/reproject.js';
 import { toast } from '../components/ui/toast.js';
@@ -105,7 +105,21 @@ function extractModelGeoref(
   mutations?: GeorefMutationDataLike,
 ): ModelGeoref | null {
   const georef = getEffectiveGeoreference(dataStore, coordinateInfo, mutations);
-  if (!georef?.mapConversion || !georef.projectedCRS?.name) return null;
+  // Only TRUE georeferencing (real IfcMapConversion + IfcProjectedCRS) may drive
+  // federation alignment. A file with no IfcMapConversion gets a synthesised
+  // `source: 'siteLocation'` georef (EPSG:4326 from IfcSite RefLatitude/Longitude/
+  // Elevation) so it can still be pinned on the location map — but those are
+  // geographic degrees plus a raw, un-unit-scaled site elevation, not a projected
+  // metric frame. buildGeorefAlignmentTransform assumes projected eastings/
+  // northings/height in metres, so feeding it site data places the second model
+  // kilometres away: the BIMcollab ARC/STR pair share a site GUID but carry
+  // RefElevation 0 vs 20000 mm, and the height term lands ARC ~20 km below STR.
+  // Such models have no real georef relationship, so leave them in their own local
+  // frames where they overlay correctly. hasStandardGeoreferencing() excludes
+  // 'siteLocation' (see effective-georef.test.ts). (Regression from #658.)
+  if (!hasStandardGeoreferencing(georef) || !georef?.mapConversion || !georef.projectedCRS?.name) {
+    return null;
+  }
   return {
     mapConversion: georef.mapConversion,
     projectedCRS: georef.projectedCRS,

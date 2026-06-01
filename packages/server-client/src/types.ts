@@ -159,8 +159,11 @@ export interface SymbolicFillArea {
   has_hatching: boolean;
   hatch_spacing: number;
   hatch_angle: number;
-  /** Secondary cross-hatch angle (`NaN` if absent). */
-  hatch_angle_secondary: number;
+  /**
+   * Secondary cross-hatch angle. `null` when absent — the Rust model uses
+   * `f32::NAN`, which `serde_json` serializes as JSON `null` (not `NaN`).
+   */
+  hatch_angle_secondary: number | null;
   hatch_line_width: number;
   world_y: number;
   representation: string;

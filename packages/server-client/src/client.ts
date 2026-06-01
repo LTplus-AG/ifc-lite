@@ -269,7 +269,14 @@ export class IfcServerClient {
 
       // Symbolic data isn't in the cached geometry payload — fetch it by key
       // so the cache-HIT path reaches the same parity as the live stream.
-      const cachedSymbolic = await this.fetchSymbolic(cachedResult.cache_key);
+      // Symbols are supplementary, so a fetch failure must not fail the geometry
+      // load: log and continue without them (fetchSymbolic surfaces real errors).
+      let cachedSymbolic: SymbolicData | null = null;
+      try {
+        cachedSymbolic = await this.fetchSymbolic(cachedResult.cache_key);
+      } catch (error) {
+        console.warn('[client] Symbolic fetch failed on cache hit; continuing without symbols:', error);
+      }
 
       return {
         cache_key: cachedResult.cache_key,
@@ -660,35 +667,41 @@ export class IfcServerClient {
     let delay = 100; // Start with 100ms delay
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // Only transport/timeout failures are retried here. HTTP error statuses
+      // are handled below so a persistent 5xx surfaces as a thrown error rather
+      // than being collapsed into `null` (which would look like "no symbols").
+      let response: Response;
       try {
-        const response = await fetch(`${this.baseUrl}/api/v1/parse/symbolic/${cacheKey}`, {
+        response = await fetch(`${this.baseUrl}/api/v1/parse/symbolic/${cacheKey}`, {
           method: 'GET',
           signal: AbortSignal.timeout(30000),
         });
-
-        if (response.status === 200) {
-          return (await response.json()) as SymbolicData;
-        } else if (response.status === 202) {
-          // Still processing (streaming background cache), wait and retry
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay = Math.min(delay * 1.5, 2000); // Exponential backoff, max 2s
-        } else if (response.status === 404) {
-          console.warn(`[client] Symbolic data not found for cache key: ${cacheKey}`);
-          return null;
-        } else {
-          throw new Error(`Unexpected response status: ${response.status}`);
-        }
       } catch (error) {
-        if (attempt === maxRetries - 1) {
-          console.error('[client] Failed to fetch symbolic data:', error);
-          return null;
-        }
-        // Retry on network errors
+        if (attempt === maxRetries - 1) throw error;
+        console.warn('[client] Retrying symbolic data fetch after network error:', error);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay = Math.min(delay * 1.5, 2000); // Exponential backoff, max 2s
+        continue;
+      }
+
+      if (response.status === 200) {
+        return (await response.json()) as SymbolicData;
+      } else if (response.status === 202) {
+        // Still processing (streaming background cache), wait and retry.
         await new Promise(resolve => setTimeout(resolve, delay));
         delay = Math.min(delay * 1.5, 2000);
+      } else if (response.status === 404) {
+        // Definitive "no entry for this cache key" — distinct from a server error.
+        console.warn(`[client] Symbolic data not found for cache key: ${cacheKey}`);
+        return null;
+      } else {
+        // 5xx / other unexpected status: surface it instead of masking it.
+        throw await this.handleError(response);
       }
     }
 
+    // Exhausted retries while still 202 (background cache not ready). This is a
+    // known "not yet available" state, so return null rather than throwing.
     console.warn('[client] Symbolic data fetch timed out after max retries');
     return null;
   }

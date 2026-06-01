@@ -32,6 +32,11 @@ Symbol data can be large for annotation-heavy drawings, so it travels in the
 response body / SSE payload (JSON paths) or via the dedicated fetch endpoint
 (binary paths) — never an HTTP header.
 
+The parquet geometry cache version is bumped (`v2` → `v3`) so models cached
+before the symbolic sidecar existed are reprocessed once and get their
+`{cache_key}-symbolic-v1` companion written, instead of serving symbol-less
+geometry while the symbolic endpoint returns `202` forever.
+
 Client (`@ifc-lite/server-client`):
 
 - New `SymbolicData` type (plus `SymbolicGridAxis`, `SymbolicPolyline`,

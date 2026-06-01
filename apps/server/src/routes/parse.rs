@@ -53,14 +53,20 @@ fn reject_unsupported_streaming_opening_filter(query: &ParseQuery) -> Result<(),
 ///
 /// Must stay in sync with the writer in `parse_parquet` / `parse_parquet_stream`,
 /// which derives the same suffix from `OpeningFilterMode::cache_key_suffix()`.
+///
+/// Version bumped `v2` → `v3` with issue #900: geometry entries cached before the
+/// symbolic sidecar existed have no `{cache_key}-symbolic-v1` companion, so serving
+/// them would make `GET /api/v1/parse/symbolic/{cache_key}` return `202` forever and
+/// the parquet-stream fast-path emit no symbols. Bumping invalidates those entries so
+/// the next request reprocesses and writes the sidecar alongside the geometry.
 fn parquet_cache_key(hash: &str, opening_filter: OpeningFilterMode) -> String {
-    format!("{}-{}-parquet-v2", hash, opening_filter.cache_key_suffix())
+    format!("{}-{}-parquet-v3", hash, opening_filter.cache_key_suffix())
 }
 
 /// Build the parquet metadata cache key for a given file hash and opening filter.
 fn parquet_metadata_cache_key(hash: &str, opening_filter: OpeningFilterMode) -> String {
     format!(
-        "{}-{}-parquet-metadata-v2",
+        "{}-{}-parquet-metadata-v3",
         hash,
         opening_filter.cache_key_suffix()
     )
@@ -347,8 +353,8 @@ pub async fn parse_parquet_stream(
 
     // OPTIMIZATION: Check cache first and fast-path return if available
     // This avoids re-processing files that are already cached
-    let parquet_cache_key = format!("{}-parquet-v2", cache_key);
-    let metadata_cache_key = format!("{}-parquet-metadata-v2", cache_key);
+    let parquet_cache_key = format!("{}-parquet-v3", cache_key);
+    let metadata_cache_key = format!("{}-parquet-metadata-v3", cache_key);
 
     if let (Some(cached_parquet), Some(cached_metadata_json)) = (
         state.cache.get_bytes(&parquet_cache_key).await?,
@@ -526,7 +532,7 @@ pub async fn parse_parquet_stream(
                         combined_parquet.extend_from_slice(&0u32.to_le_bytes()); // data_model_len = 0
 
                         // Cache geometry (same format as non-streaming)
-                        let parquet_cache_key = format!("{}-parquet-v2", key);
+                        let parquet_cache_key = format!("{}-parquet-v3", key);
                         if let Err(e) = cache.set_bytes(&parquet_cache_key, &combined_parquet).await {
                             tracing::error!(error = %e, "Failed to cache geometry from stream");
                         } else {
@@ -548,7 +554,7 @@ pub async fn parse_parquet_stream(
                             data_model_stats: None, // Data model cached separately via data model endpoint
                         };
                         if let Ok(metadata_json) = serde_json::to_vec(&metadata_header) {
-                            let metadata_cache_key = format!("{}-parquet-metadata-v2", key);
+                            let metadata_cache_key = format!("{}-parquet-metadata-v3", key);
                             if let Err(e) = cache.set_bytes(&metadata_cache_key, &metadata_json).await {
                                 tracing::error!(error = %e, "Failed to cache metadata from stream");
                             } else {
@@ -704,8 +710,8 @@ pub async fn parse_parquet(
     );
 
     // Check cache first (before any processing)
-    let parquet_cache_key = format!("{}-parquet-v2", cache_key);
-    let metadata_cache_key = format!("{}-parquet-metadata-v2", cache_key);
+    let parquet_cache_key = format!("{}-parquet-v3", cache_key);
+    let metadata_cache_key = format!("{}-parquet-metadata-v3", cache_key);
 
     if let (Some(cached_parquet), Some(cached_metadata_json)) = (
         state.cache.get_bytes(&parquet_cache_key).await?,
@@ -836,8 +842,8 @@ pub async fn parse_parquet(
     let metadata_json = serde_json::to_string(&metadata_header)?;
 
     // Cache the results for future requests
-    let parquet_cache_key = format!("{}-parquet-v2", cache_key_clone);
-    let metadata_cache_key = format!("{}-parquet-metadata-v2", cache_key_clone);
+    let parquet_cache_key = format!("{}-parquet-v3", cache_key_clone);
+    let metadata_cache_key = format!("{}-parquet-metadata-v3", cache_key_clone);
     let combined_parquet_clone = combined_parquet.clone();
     let metadata_json_clone = metadata_json.clone();
     let cache = state.cache.clone();
@@ -1180,23 +1186,23 @@ mod tests {
     use super::*;
 
     /// Regression test for #587: the reader (`check_cache`) used to look up
-    /// `{hash}-parquet-v2`, while the writer (`parse_parquet`) stored
-    /// `{hash}-{opening_filter}-parquet-v2`, so the check always returned 404.
+    /// `{hash}-parquet-v3`, while the writer (`parse_parquet`) stored
+    /// `{hash}-{opening_filter}-parquet-v3`, so the check always returned 404.
     /// The shared helper must produce the same key the writer stores under.
     #[test]
     fn parquet_cache_key_matches_writer_format() {
         let hash = "0ab20f4e4014";
 
         // The writer composes `cache_key = format!("{hash}-{suffix}")` and then
-        // `format!("{cache_key}-parquet-v2")`. The helper must produce the same string.
+        // `format!("{cache_key}-parquet-v3")`. The helper must produce the same string.
         for mode in [
             OpeningFilterMode::Default,
             OpeningFilterMode::IgnoreAll,
             OpeningFilterMode::IgnoreOpaque,
         ] {
             let writer_cache_key = format!("{}-{}", hash, mode.cache_key_suffix());
-            let writer_parquet_key = format!("{}-parquet-v2", writer_cache_key);
-            let writer_metadata_key = format!("{}-parquet-metadata-v2", writer_cache_key);
+            let writer_parquet_key = format!("{}-parquet-v3", writer_cache_key);
+            let writer_metadata_key = format!("{}-parquet-metadata-v3", writer_cache_key);
 
             assert_eq!(parquet_cache_key(hash, mode), writer_parquet_key);
             assert_eq!(parquet_metadata_cache_key(hash, mode), writer_metadata_key);
@@ -1206,7 +1212,7 @@ mod tests {
     #[test]
     fn parquet_cache_key_default_filter_uses_default_suffix() {
         let key = parquet_cache_key("abc", OpeningFilterMode::Default);
-        assert_eq!(key, "abc-default-parquet-v2");
+        assert_eq!(key, "abc-default-parquet-v3");
     }
 
     /// The symbolic cache key (issue #900) is derived from the full

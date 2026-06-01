@@ -5,18 +5,31 @@
 /**
  * Geometry tools (spec §7.3).
  *
- * v0.1 strategy: serve the cheap, accurate values that come straight off
- * IfcElementQuantity (volume, area), and surface a UNSUPPORTED_OPERATION
- * with a useful hint for tools that need WASM-driven mesh tessellation
- * (geometry_get, raycast). Clash detection has moved to clash.ts, which
- * meshes headlessly via @ifc-lite/geometry. When `@ifc-lite/wasm` lands in
- * the MCP container we wire geometry_get/raycast in here too.
+ * Two tiers:
+ *   - Quantity-derived, no meshing: geometry_bbox / geometry_volume /
+ *     geometry_area read straight off IfcElementQuantity — cheap and exact when
+ *     the model authored quantities.
+ *   - Mesh-derived, headless tessellation: geometry_get and raycast tessellate
+ *     the model once via @ifc-lite/geometry (shared cache in mesh.ts, same
+ *     tessellation clash uses) and answer from real triangles. This runs in the
+ *     MCP server's Node process — @ifc-lite/geometry loads its WASM off disk
+ *     headlessly, so these no longer fall back to bounding boxes.
+ *
+ * Mesh-frame note: tessellated positions live in the viewer's Y-up frame with a
+ * possible large-coordinate origin shift. geometry_get returns that frame and
+ * echoes `coordinateInfo`; raycast operates in the SAME frame so the two compose.
  */
 
 import { EntityNode } from '@ifc-lite/query';
+import { GLTFExporter } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
+import { meshModel } from './mesh.js';
+import { castRay } from './raycast.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+
+/** Total vertices returned across a geometry_get(json) selection before capping. */
+const GEOMETRY_VERTEX_CAP = 200_000;
 
 interface IdInput {
   model_id?: string;
@@ -51,7 +64,10 @@ function resolveExpressIds(m: ReturnType<typeof resolveModel>, input: Record<str
 
 const geometryGet: Tool = {
   name: 'geometry_get',
-  description: 'Mesh data (positions, indices, normals) for an entity selection. Requires the WASM geometry pipeline; returns UNSUPPORTED_OPERATION when the server runs without it.',
+  description:
+    'Tessellated mesh for an entity selection, meshed headlessly. format="json" (default) returns raw '
+    + 'positions/normals/indices arrays (capped by vertex budget); format="gltf" returns a base64 GLB of the '
+    + 'selection. Positions are in the model tessellation frame (see coordinateInfo). Requires explicit geometry.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -65,15 +81,71 @@ const geometryGet: Tool = {
     },
     additionalProperties: false,
   },
-  handler() {
-    // The geometry tessellation pipeline lives in @ifc-lite/wasm and is
-    // browser-shaped today. v0.1 surfaces a clear refusal so agents can
-    // pick a different path (geometry_bbox / geometry_volume).
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'geometry_get requires the WASM geometry pipeline, which is not loaded in this MCP build.',
-      hint: 'Use geometry_bbox / geometry_volume / geometry_area for quantity-based answers, or run the server with the geometry profile (planned for v0.2).',
-    });
+  async handler(input, ctx) {
+    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const ids = resolveExpressIds(m, input);
+    if (ids.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: 'Provide an entity selector (global_id(s) or express_id(s)).',
+      });
+    }
+    const idSet = new Set(ids);
+    const result = await meshModel(m, ctx);
+    const selected = result.meshes.filter((mesh) => idSet.has(mesh.expressId));
+    if (selected.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: `None of the ${ids.length} requested entit${ids.length === 1 ? 'y has' : 'ies have'} tessellated geometry.`,
+        hint: 'They may be quantity-only or non-geometric; try geometry_volume / geometry_area / geometry_bbox.',
+      });
+    }
+
+    const format = (input.format as string | undefined) ?? 'json';
+
+    if (format === 'gltf') {
+      const isolated = new Set(selected.map((s) => s.expressId));
+      const glb = new GLTFExporter(result).exportGLB({ visibleOnly: true, isolatedEntityIds: isolated });
+      return okResult(
+        `GLB for ${selected.length} entit${selected.length === 1 ? 'y' : 'ies'} (${glb.byteLength.toLocaleString()} bytes, base64).`,
+        {
+          format: 'gltf',
+          entityCount: selected.length,
+          byteLength: glb.byteLength,
+          glbBase64: Buffer.from(glb).toString('base64'),
+        },
+      );
+    }
+
+    const entities: Array<Record<string, unknown>> = [];
+    let vertexBudget = GEOMETRY_VERTEX_CAP;
+    let omitted = 0;
+    for (const mesh of selected) {
+      const vertexCount = mesh.positions.length / 3;
+      if (vertexBudget - vertexCount < 0) { omitted++; continue; }
+      vertexBudget -= vertexCount;
+      entities.push({
+        expressId: mesh.expressId,
+        ifcType: mesh.ifcType ?? null,
+        vertexCount,
+        triangleCount: mesh.indices.length / 3,
+        positions: Array.from(mesh.positions),
+        normals: Array.from(mesh.normals),
+        indices: Array.from(mesh.indices),
+      });
+    }
+    const note = omitted > 0
+      ? ` ${omitted} entit${omitted === 1 ? 'y' : 'ies'} omitted to stay under the ${GEOMETRY_VERTEX_CAP.toLocaleString()}-vertex cap — request fewer, or use format="gltf".`
+      : '';
+    return okResult(
+      `Tessellated ${entities.length}/${selected.length} requested entit${selected.length === 1 ? 'y' : 'ies'}.${note}`,
+      {
+        format: 'json',
+        entities,
+        omitted,
+        coordinateInfo: result.coordinateInfo,
+      },
+    );
   },
 };
 
@@ -207,23 +279,59 @@ const geometryArea: Tool = {
 
 const raycast: Tool = {
   name: 'raycast',
-  description: 'Cast a world-space ray against the model. Requires the WASM geometry pipeline.',
+  description:
+    'Cast a ray against the tessellated model and return the nearest entity hit (expressId, ifcType, '
+    + 'distance, point) or null. Origin/direction are in the model tessellation frame — the same frame '
+    + 'geometry_get returns (Y-up, see its coordinateInfo), so the two compose. Direction need not be unit length.',
   scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {
       model_id: { type: 'string' },
-      origin: { type: 'array', items: { type: 'number' } },
-      direction: { type: 'array', items: { type: 'number' } },
+      origin: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 },
+      direction: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 },
     },
     required: ['origin', 'direction'],
     additionalProperties: false,
   },
-  handler() {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'raycast requires the WASM geometry pipeline (planned for v0.2).',
-    });
+  async handler(input, ctx) {
+    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const origin = input.origin as number[] | undefined;
+    const direction = input.direction as number[] | undefined;
+    if (!origin || origin.length !== 3 || !direction || direction.length !== 3) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: 'origin and direction must each be 3-number arrays [x, y, z].',
+      });
+    }
+    if (direction[0] === 0 && direction[1] === 0 && direction[2] === 0) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'direction must be non-zero.' });
+    }
+
+    const result = await meshModel(m, ctx);
+    const hit = castRay(
+      result.meshes,
+      [origin[0], origin[1], origin[2]],
+      [direction[0], direction[1], direction[2]],
+    );
+
+    if (!hit) {
+      return okResult('Ray missed all geometry.', { hit: false, coordinateInfo: result.coordinateInfo });
+    }
+    const node = new EntityNode(m.store, hit.expressId);
+    return okResult(
+      `Hit ${hit.ifcType ?? 'entity'} #${hit.expressId} at distance ${hit.distance.toFixed(3)}.`,
+      {
+        hit: true,
+        expressId: hit.expressId,
+        globalId: node.globalId || null,
+        ifcType: hit.ifcType,
+        name: node.name || null,
+        distance: hit.distance,
+        point: hit.point,
+        coordinateInfo: result.coordinateInfo,
+      },
+    );
   },
 };
 

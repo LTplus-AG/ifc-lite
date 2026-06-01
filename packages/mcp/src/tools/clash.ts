@@ -19,8 +19,6 @@
  * stated explicitly so output never silently truncates.
  */
 
-import { readFile } from 'node:fs/promises';
-import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 import {
   createClashEngine,
   disciplineMatrixRules,
@@ -32,56 +30,15 @@ import {
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
-import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { meshesFor } from './mesh.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 
 /** Cap on clashes returned in a tool result. The dropped count is reported. */
 const CLASH_DISPLAY_CAP = 50;
 
-/**
- * Module-level mesh cache, keyed by model id, so repeated clash calls on the
- * same model don't re-run the (expensive) headless tessellation.
- */
-const meshCache = new Map<string, MeshData[]>();
-
-/** Mesh the whole model once (headless, no DOM) and cache by model id. */
-async function meshModel(m: LoadedModel, ctx: ToolContext): Promise<MeshData[]> {
-  const cached = meshCache.get(m.id);
-  if (cached) return cached;
-
-  const bytes = await resolveIfcBytes(m);
-  ctx.progress.report(0.1, 'Tessellating model geometry', 1);
-  const gp = new GeometryProcessor();
-  await gp.init();
-  if (ctx.signal.aborted) {
-    throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Clash run cancelled before meshing.' });
-  }
-  const result = await gp.process(bytes);
-  const meshes = result.meshes;
-  if (meshes.length === 0) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
-      hint: 'Confirm the model carries explicit geometry (not quantity-only data).',
-    });
-  }
-  meshCache.set(m.id, meshes);
-  return meshes;
-}
-
-/** Raw IFC bytes for meshing: prefer the in-memory source, fall back to disk. */
-async function resolveIfcBytes(m: LoadedModel): Promise<Uint8Array> {
-  if (m.store.source && m.store.source.byteLength > 0) return m.store.source;
-  if (m.filePath) return readFile(m.filePath);
-  throw new ToolExecutionError({
-    code: ToolErrorCode.UNSUPPORTED_OPERATION,
-    message: 'Model has no in-memory source bytes and no file path to re-read for meshing.',
-  });
-}
-
 /** Run a rule set against a model, returning the engine result. */
 async function runRules(m: LoadedModel, rules: ClashRule[], ctx: ToolContext): Promise<ClashResult> {
-  const meshes = await meshModel(m, ctx);
+  const meshes = await meshesFor(m, ctx);
   const { elements, exclusions } = elementsFromStep({ store: m.store, meshes, modelId: m.id });
   const engine = createClashEngine({ backend: 'ts' });
   return engine.run(elements, rules, {

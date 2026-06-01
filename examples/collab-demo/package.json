@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@ifc-lite/collab": "workspace:*",
-    "yjs": "^13.6.20"
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

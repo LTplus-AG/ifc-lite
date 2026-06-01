@@ -5,12 +5,12 @@
 //! Parquet serialization for IFC data model (entities, properties, relationships, spatial hierarchy).
 
 use crate::services::data_model::{
-    DataModel, EntityMetadata, PropertySet, QuantitySet, Relationship, SpatialHierarchyData,
-    SpatialNode,
+    ClassificationAssociation, DataModel, DocumentAssociation, EntityMetadata, MaterialAssociation,
+    PropertySet, QuantitySet, Relationship, SpatialHierarchyData, SpatialNode,
 };
 use arrow::array::builder::ListBuilder;
 use arrow::array::UInt32Builder;
-use arrow::array::{BooleanArray, StringArray, UInt16Array, UInt32Array};
+use arrow::array::{BooleanArray, Float64Array, StringArray, UInt16Array, UInt32Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
@@ -72,7 +72,23 @@ pub fn serialize_data_model_to_parquet(
     let relationships_data = relationships_data?;
     let spatial_data = spatial_data?;
 
-    // Write format: [entities_len][entities_data][properties_len][properties_data][quantities_len][quantities_data][relationships_len][relationships_data][spatial_len][spatial_data]
+    // Classification / material / document tables (issue #900). Appended after
+    // the original five so older decoders that stop at `spatial` simply ignore
+    // the trailing bytes — the format stays backward compatible.
+    let ((classifications_data, materials_data), documents_data) = rayon::join(
+        || {
+            rayon::join(
+                || serialize_classifications_table(&data_model.classifications),
+                || serialize_materials_table(&data_model.materials),
+            )
+        },
+        || serialize_documents_table(&data_model.documents),
+    );
+    let classifications_data = classifications_data?;
+    let materials_data = materials_data?;
+    let documents_data = documents_data?;
+
+    // Write format: [entities_len][entities_data][properties_len][properties_data][quantities_len][quantities_data][relationships_len][relationships_data][spatial_len][spatial_data][classifications_len][...][materials_len][...][documents_len][...]
     let mut result = Vec::new();
     result.extend_from_slice(&(entities_data.len() as u32).to_le_bytes());
     result.extend_from_slice(&entities_data);
@@ -84,8 +100,145 @@ pub fn serialize_data_model_to_parquet(
     result.extend_from_slice(&relationships_data);
     result.extend_from_slice(&(spatial_data.len() as u32).to_le_bytes());
     result.extend_from_slice(&spatial_data);
+    result.extend_from_slice(&(classifications_data.len() as u32).to_le_bytes());
+    result.extend_from_slice(&classifications_data);
+    result.extend_from_slice(&(materials_data.len() as u32).to_le_bytes());
+    result.extend_from_slice(&materials_data);
+    result.extend_from_slice(&(documents_data.len() as u32).to_le_bytes());
+    result.extend_from_slice(&documents_data);
 
     Ok(result)
+}
+
+/// Serialize classification associations table.
+fn serialize_classifications_table(
+    rows: &[ClassificationAssociation],
+) -> Result<Vec<u8>, DataModelParquetError> {
+    let count = rows.len();
+    let mut element_ids = Vec::with_capacity(count);
+    let mut system_names: Vec<Option<String>> = Vec::with_capacity(count);
+    let mut identifications: Vec<Option<String>> = Vec::with_capacity(count);
+    let mut names: Vec<Option<String>> = Vec::with_capacity(count);
+    let mut locations: Vec<Option<String>> = Vec::with_capacity(count);
+
+    for row in rows {
+        element_ids.push(row.element_id);
+        system_names.push(row.system_name.clone());
+        identifications.push(row.identification.clone());
+        names.push(row.name.clone());
+        locations.push(row.location.clone());
+    }
+
+    let schema = Schema::new(vec![
+        Field::new("element_id", DataType::UInt32, false),
+        Field::new("system_name", DataType::Utf8, true),
+        Field::new("identification", DataType::Utf8, true),
+        Field::new("name", DataType::Utf8, true),
+        Field::new("location", DataType::Utf8, true),
+    ]);
+
+    let batch = RecordBatch::try_new(
+        Arc::new(schema),
+        vec![
+            Arc::new(UInt32Array::from(element_ids)),
+            Arc::new(StringArray::from(system_names)),
+            Arc::new(StringArray::from(identifications)),
+            Arc::new(StringArray::from(names)),
+            Arc::new(StringArray::from(locations)),
+        ],
+    )?;
+
+    write_parquet_batch(batch)
+}
+
+/// Serialize material associations table.
+fn serialize_materials_table(
+    rows: &[MaterialAssociation],
+) -> Result<Vec<u8>, DataModelParquetError> {
+    let count = rows.len();
+    let mut element_ids = Vec::with_capacity(count);
+    let mut set_names: Vec<Option<String>> = Vec::with_capacity(count);
+    let mut layer_indices = Vec::with_capacity(count);
+    let mut material_names = Vec::with_capacity(count);
+    let mut thicknesses: Vec<Option<f64>> = Vec::with_capacity(count);
+    let mut ventilated: Vec<Option<bool>> = Vec::with_capacity(count);
+    let mut categories: Vec<Option<String>> = Vec::with_capacity(count);
+
+    for row in rows {
+        element_ids.push(row.element_id);
+        set_names.push(row.set_name.clone());
+        layer_indices.push(row.layer_index);
+        material_names.push(row.material_name.clone());
+        thicknesses.push(row.thickness);
+        ventilated.push(row.is_ventilated);
+        categories.push(row.category.clone());
+    }
+
+    let schema = Schema::new(vec![
+        Field::new("element_id", DataType::UInt32, false),
+        Field::new("set_name", DataType::Utf8, true),
+        Field::new("layer_index", DataType::UInt32, false),
+        Field::new("material_name", DataType::Utf8, false),
+        Field::new("thickness", DataType::Float64, true),
+        Field::new("is_ventilated", DataType::Boolean, true),
+        Field::new("category", DataType::Utf8, true),
+    ]);
+
+    let batch = RecordBatch::try_new(
+        Arc::new(schema),
+        vec![
+            Arc::new(UInt32Array::from(element_ids)),
+            Arc::new(StringArray::from(set_names)),
+            Arc::new(UInt32Array::from(layer_indices)),
+            Arc::new(StringArray::from(material_names)),
+            Arc::new(Float64Array::from(thicknesses)),
+            Arc::new(BooleanArray::from(ventilated)),
+            Arc::new(StringArray::from(categories)),
+        ],
+    )?;
+
+    write_parquet_batch(batch)
+}
+
+/// Serialize document associations table.
+fn serialize_documents_table(
+    rows: &[DocumentAssociation],
+) -> Result<Vec<u8>, DataModelParquetError> {
+    let count = rows.len();
+    let mut element_ids = Vec::with_capacity(count);
+    let mut identifications: Vec<Option<String>> = Vec::with_capacity(count);
+    let mut names: Vec<Option<String>> = Vec::with_capacity(count);
+    let mut locations: Vec<Option<String>> = Vec::with_capacity(count);
+    let mut descriptions: Vec<Option<String>> = Vec::with_capacity(count);
+
+    for row in rows {
+        element_ids.push(row.element_id);
+        identifications.push(row.identification.clone());
+        names.push(row.name.clone());
+        locations.push(row.location.clone());
+        descriptions.push(row.description.clone());
+    }
+
+    let schema = Schema::new(vec![
+        Field::new("element_id", DataType::UInt32, false),
+        Field::new("identification", DataType::Utf8, true),
+        Field::new("name", DataType::Utf8, true),
+        Field::new("location", DataType::Utf8, true),
+        Field::new("description", DataType::Utf8, true),
+    ]);
+
+    let batch = RecordBatch::try_new(
+        Arc::new(schema),
+        vec![
+            Arc::new(UInt32Array::from(element_ids)),
+            Arc::new(StringArray::from(identifications)),
+            Arc::new(StringArray::from(names)),
+            Arc::new(StringArray::from(locations)),
+            Arc::new(StringArray::from(descriptions)),
+        ],
+    )?;
+
+    write_parquet_batch(batch)
 }
 
 /// Serialize entities table.

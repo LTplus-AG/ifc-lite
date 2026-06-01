@@ -70,11 +70,56 @@ export interface SpatialHierarchy {
   element_to_space: Map<number, number>;
 }
 
+/** A classification reference associated with one element. */
+export interface ClassificationAssociation {
+  element_id: number;
+  /** Classification system name (`IfcClassification.Name`). */
+  system_name?: string;
+  /** Code / `IfcClassificationReference.Identification`. */
+  identification?: string;
+  /** Human-readable reference name. */
+  name?: string;
+  /** Location / URI. */
+  location?: string;
+}
+
+/** A material (or one material layer) associated with an element. */
+export interface MaterialAssociation {
+  element_id: number;
+  /** Layer-set name; absent for a single material / list / constituent set. */
+  set_name?: string;
+  /** 0-based layer index within its set (0 for a single material). */
+  layer_index: number;
+  material_name: string;
+  /** Layer thickness in metres (already unit-scaled); absent if not a layer. */
+  thickness?: number;
+  is_ventilated?: boolean;
+  category?: string;
+}
+
+/** A document associated with an element. */
+export interface DocumentAssociation {
+  element_id: number;
+  identification?: string;
+  name?: string;
+  location?: string;
+  description?: string;
+}
+
 export interface DataModel {
   entities: Map<number, EntityMetadata>;
   propertySets: Map<number, PropertySet>;
   quantitySets: Map<number, QuantitySet>;
   relationships: Relationship[];
+  /**
+   * Classification references per element (`IfcRelAssociatesClassification`).
+   * Empty when served by an older server / cache that predates this field.
+   */
+  classifications: ClassificationAssociation[];
+  /** Materials / material layers per element (`IfcRelAssociatesMaterial`). */
+  materials: MaterialAssociation[];
+  /** Documents per element (`IfcRelAssociatesDocument`). */
+  documents: DocumentAssociation[];
   spatialHierarchy: SpatialHierarchy;
 }
 
@@ -126,6 +171,26 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const spatialLen = view.getUint32(offset, true);
   offset += 4;
   const spatialData = new Uint8Array(data, offset, spatialLen);
+  offset += spatialLen;
+
+  // Read an optional appended length-prefixed section, returning null when no
+  // bytes remain (older servers/caches omit the classification/material/document
+  // tables — see the writer in parquet_data_model.rs).
+  const readOptionalSection = (): Uint8Array | null => {
+    if (offset + 4 > data.byteLength) return null;
+    const len = view.getUint32(offset, true);
+    offset += 4;
+    if (len === 0 || offset + len > data.byteLength) {
+      offset += len;
+      return null;
+    }
+    const section = new Uint8Array(data, offset, len);
+    offset += len;
+    return section;
+  };
+  const classificationsData = readOptionalSection();
+  const materialsData = readOptionalSection();
+  const documentsData = readOptionalSection();
 
   // Parse Parquet tables
   const entitiesTable = parquet.readParquet(entitiesData);
@@ -343,11 +408,79 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
     parseLookupTable(elementToSpaceData),
   ];
 
+  // Classification associations (issue #900). Absent on older caches.
+  const classifications: ClassificationAssociation[] = [];
+  if (classificationsData) {
+    const t = arrow.tableFromIPC(parquet.readParquet(classificationsData).intoIPCStream());
+    const elementIds = t.getChild('element_id')?.toArray() as Uint32Array;
+    const systemNames = t.getChild('system_name')?.toArray() as (string | null)[];
+    const identifications = t.getChild('identification')?.toArray() as (string | null)[];
+    const namesArr = t.getChild('name')?.toArray() as (string | null)[];
+    const locations = t.getChild('location')?.toArray() as (string | null)[];
+    for (let i = 0; i < elementIds.length; i++) {
+      classifications.push({
+        element_id: elementIds[i],
+        system_name: systemNames?.[i] || undefined,
+        identification: identifications?.[i] || undefined,
+        name: namesArr?.[i] || undefined,
+        location: locations?.[i] || undefined,
+      });
+    }
+  }
+
+  // Material associations (issue #900).
+  const materials: MaterialAssociation[] = [];
+  if (materialsData) {
+    const t = arrow.tableFromIPC(parquet.readParquet(materialsData).intoIPCStream());
+    const elementIds = t.getChild('element_id')?.toArray() as Uint32Array;
+    const setNames = t.getChild('set_name')?.toArray() as (string | null)[];
+    const layerIndices = t.getChild('layer_index')?.toArray() as Uint32Array;
+    const materialNames = t.getChild('material_name')?.toArray() as (string | null)[];
+    const thicknesses = t.getChild('thickness')?.toArray() as (number | null)[];
+    const ventChild = t.getChild('is_ventilated');
+    const categories = t.getChild('category')?.toArray() as (string | null)[];
+    for (let i = 0; i < elementIds.length; i++) {
+      const vent = ventChild?.get(i);
+      materials.push({
+        element_id: elementIds[i],
+        set_name: setNames?.[i] || undefined,
+        layer_index: layerIndices[i],
+        material_name: materialNames?.[i] ?? '',
+        thickness: thicknesses?.[i] ?? undefined,
+        is_ventilated: vent === null || vent === undefined ? undefined : Boolean(vent),
+        category: categories?.[i] || undefined,
+      });
+    }
+  }
+
+  // Document associations (issue #900).
+  const documents: DocumentAssociation[] = [];
+  if (documentsData) {
+    const t = arrow.tableFromIPC(parquet.readParquet(documentsData).intoIPCStream());
+    const elementIds = t.getChild('element_id')?.toArray() as Uint32Array;
+    const identifications = t.getChild('identification')?.toArray() as (string | null)[];
+    const namesArr = t.getChild('name')?.toArray() as (string | null)[];
+    const locations = t.getChild('location')?.toArray() as (string | null)[];
+    const descriptions = t.getChild('description')?.toArray() as (string | null)[];
+    for (let i = 0; i < elementIds.length; i++) {
+      documents.push({
+        element_id: elementIds[i],
+        identification: identifications?.[i] || undefined,
+        name: namesArr?.[i] || undefined,
+        location: locations?.[i] || undefined,
+        description: descriptions?.[i] || undefined,
+      });
+    }
+  }
+
   return {
     entities,
     propertySets,
     quantitySets,
     relationships,
+    classifications,
+    materials,
+    documents,
     spatialHierarchy: {
       nodes: spatialNodes,
       project_id: projectId,

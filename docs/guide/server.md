@@ -289,7 +289,13 @@ const available = await client.isParquetSupported();
 
 ## Data Model
 
-The server computes a complete data model including:
+The server computes a complete data model including entities, property sets,
+quantity sets, relationships, spatial hierarchy, and — matching `@ifc-lite/parse`
+— per-element **classifications** (`IfcClassificationReference`), **materials**
+(`IfcMaterialLayerSet` layers with metre thicknesses), and **documents**
+(`IfcDocumentReference`). The latter three are exposed as flat, element-keyed
+arrays on the decoded `DataModel` (`classifications`, `materials`, `documents`)
+and decode to empty arrays when served by an older server/cache.
 
 ### Entities
 

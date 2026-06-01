@@ -38,6 +38,9 @@ describe('convertServerDataModel', () => {
         { rel_type: 'IFCRELAGGREGATES', relating_id: 2, related_id: 3 },
         { rel_type: 'IFCRELCONTAINEDINSPATIALSTRUCTURE', relating_id: 3, related_id: 4 },
       ],
+      classifications: [],
+      materials: [],
+      documents: [],
       spatialHierarchy: {
         nodes: [
           {
@@ -101,6 +104,9 @@ describe('convertServerDataModel', () => {
         { rel_type: 'IFCRELNESTS', relating_id: 1, related_id: 2 },
         { rel_type: 'IFCRELASSOCIATESDOCUMENT', relating_id: 3, related_id: 2 },
       ],
+      classifications: [],
+      materials: [],
+      documents: [],
       spatialHierarchy: {
         nodes: [
           {

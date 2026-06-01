@@ -23,6 +23,14 @@ pub struct DataModel {
     pub quantity_sets: Vec<QuantitySet>,
     /// Relationships (type, relating, related[]).
     pub relationships: Vec<Relationship>,
+    /// Classification references associated with elements
+    /// (`IfcRelAssociatesClassification`).
+    pub classifications: Vec<ClassificationAssociation>,
+    /// Materials / material layers associated with elements
+    /// (`IfcRelAssociatesMaterial`).
+    pub materials: Vec<MaterialAssociation>,
+    /// Documents associated with elements (`IfcRelAssociatesDocument`).
+    pub documents: Vec<DocumentAssociation>,
     /// Spatial hierarchy data with nodes and lookup maps.
     pub spatial_hierarchy: SpatialHierarchyData,
 }
@@ -97,6 +105,62 @@ pub struct Relationship {
     pub relating_id: u32,
     /// Related entity ID (one Relationship per related entity).
     pub related_id: u32,
+}
+
+/// A classification reference associated with one element, flattened from
+/// `IfcRelAssociatesClassification` → `IfcClassificationReference`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassificationAssociation {
+    /// Element the classification is assigned to.
+    pub element_id: u32,
+    /// Classification system name (`IfcClassification.Name`), resolved by
+    /// walking `ReferencedSource`. `None` when not resolvable.
+    pub system_name: Option<String>,
+    /// Code / `IfcClassificationReference.Identification`
+    /// (`ItemReference` in IFC2x3).
+    pub identification: Option<String>,
+    /// Human-readable reference name (`IfcClassificationReference.Name`).
+    pub name: Option<String>,
+    /// Location / URI of the reference.
+    pub location: Option<String>,
+}
+
+/// A material (or one material layer) associated with an element, flattened
+/// from `IfcRelAssociatesMaterial`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaterialAssociation {
+    /// Element the material is assigned to.
+    pub element_id: u32,
+    /// Layer-set name (`IfcMaterialLayerSet.LayerSetName`); `None` for a single
+    /// material, list, or constituent set.
+    pub set_name: Option<String>,
+    /// 0-based index of this layer within its set (0 for a single material).
+    pub layer_index: u32,
+    /// Material name (`IfcMaterial.Name`).
+    pub material_name: String,
+    /// Layer thickness in **metres** (already unit-scaled). `None` for
+    /// non-layered materials.
+    pub thickness: Option<f64>,
+    /// `IfcMaterialLayer.IsVentilated` (`None` when unknown / not a layer).
+    pub is_ventilated: Option<bool>,
+    /// Material/layer category (`IfcMaterialLayer.Category` / `IfcMaterial.Category`).
+    pub category: Option<String>,
+}
+
+/// A document associated with an element, flattened from
+/// `IfcRelAssociatesDocument` → `IfcDocumentReference` / `IfcDocumentInformation`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentAssociation {
+    /// Element the document is assigned to.
+    pub element_id: u32,
+    /// `Identification` (`ItemReference`/`DocumentId` in older schemas).
+    pub identification: Option<String>,
+    /// Document name.
+    pub name: Option<String>,
+    /// Location / URI.
+    pub location: Option<String>,
+    /// Description.
+    pub description: Option<String>,
 }
 
 /// Spatial hierarchy node.
@@ -274,6 +338,21 @@ pub fn extract_data_model(content: &str) -> DataModel {
         "Extracted length unit scale"
     );
 
+    // Extract classifications, materials, and documents in parallel. These
+    // follow the same `IfcRelAssociates*` pattern as the relationship pass but
+    // resolve the referenced object (classification reference, material layer
+    // set, document) into a flat, element-keyed shape (issue #900 parity).
+    // Materials need the length-unit scale to report layer thickness in metres.
+    let ((classifications, materials), documents) = rayon::join(
+        || {
+            rayon::join(
+                || extract_classifications(&all_entities, &content_arc, &entity_index),
+                || extract_materials(&all_entities, &content_arc, &entity_index, length_unit_scale),
+            )
+        },
+        || extract_documents(&all_entities, &content_arc, &entity_index),
+    );
+
     // Build spatial hierarchy (depends on relationships and entities)
     let spatial_hierarchy = build_spatial_hierarchy(
         &relationships,
@@ -289,6 +368,9 @@ pub fn extract_data_model(content: &str) -> DataModel {
         property_sets = property_sets.len(),
         quantity_sets = quantity_sets.len(),
         relationships = relationships.len(),
+        classifications = classifications.len(),
+        materials = materials.len(),
+        documents = documents.len(),
         spatial_nodes = spatial_hierarchy.nodes.len(),
         extract_time_ms = extract_time.as_millis(),
         "Data model extraction complete"
@@ -299,6 +381,9 @@ pub fn extract_data_model(content: &str) -> DataModel {
         property_sets,
         quantity_sets,
         relationships,
+        classifications,
+        materials,
+        documents,
         spatial_hierarchy,
     }
 }
@@ -574,6 +659,374 @@ fn extract_relationship(entity: &DecodedEntity, type_name: &str) -> Option<Vec<R
             })
             .collect(),
     )
+}
+
+/// Read an `IfcLogical` / `IfcBoolean` attribute as a tri-state `Option<bool>`
+/// (`.U.` / absent → `None`).
+fn read_logical(entity: &DecodedEntity, index: usize) -> Option<bool> {
+    let token = entity.get(index)?.as_enum()?;
+    match token {
+        "T" | "TRUE" | "true" => Some(true),
+        "F" | "FALSE" | "false" => Some(false),
+        _ => None,
+    }
+}
+
+/// Collect the `RelatedObjects` (attribute 4) entity ids of an `IfcRelAssociates*`.
+fn related_object_ids(rel: &DecodedEntity) -> Vec<u32> {
+    rel.get_list(4)
+        .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+        .unwrap_or_default()
+}
+
+/// Resolve an `IfcClassificationReference` / `IfcClassification` into
+/// `(identification, name, location, system_name)`. Walks `ReferencedSource`
+/// up to the owning `IfcClassification` (bounded to avoid cycles).
+fn resolve_classification(
+    decoder: &mut EntityDecoder,
+    id: u32,
+) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+    let Ok(entity) = decoder.decode_by_id(id) else {
+        return (None, None, None, None);
+    };
+
+    if entity.ifc_type.as_str().eq_ignore_ascii_case("IFCCLASSIFICATION") {
+        // Directly an IfcClassification: Name is attribute 3.
+        return (None, None, None, entity.get_string(3).map(|s| s.to_string()));
+    }
+
+    // IfcClassificationReference: Location(0), Identification(1), Name(2),
+    // ReferencedSource(3).
+    let location = entity.get_string(0).map(|s| s.to_string());
+    let identification = entity.get_string(1).map(|s| s.to_string());
+    let name = entity.get_string(2).map(|s| s.to_string());
+
+    // Walk ReferencedSource up to the IfcClassification for the system name.
+    let mut system_name = None;
+    let mut source = entity.get_ref(3);
+    let mut depth = 0;
+    while let Some(src_id) = source {
+        if depth >= 8 {
+            break;
+        }
+        depth += 1;
+        let Ok(src) = decoder.decode_by_id(src_id) else { break };
+        if src.ifc_type.as_str().eq_ignore_ascii_case("IFCCLASSIFICATION") {
+            system_name = src.get_string(3).map(|s| s.to_string());
+            break;
+        }
+        // Another IfcClassificationReference — keep walking its ReferencedSource.
+        source = src.get_ref(3);
+    }
+
+    (identification, name, location, system_name)
+}
+
+/// Extract classification associations (`IfcRelAssociatesClassification`).
+fn extract_classifications(
+    jobs: &[EntityJob],
+    content: &Arc<String>,
+    entity_index: &Arc<ifc_lite_core::EntityIndex>,
+) -> Vec<ClassificationAssociation> {
+    let rel_jobs: Vec<_> = jobs
+        .iter()
+        .filter(|job| job.type_name.eq_ignore_ascii_case("IFCRELASSOCIATESCLASSIFICATION"))
+        .collect();
+
+    tracing::debug!(count = rel_jobs.len(), "Extracting classifications");
+
+    rel_jobs
+        .par_iter()
+        .flat_map(|job| {
+            let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let Ok(rel) = decoder.decode_at(job.start, job.end) else {
+                return Vec::new();
+            };
+            let related = related_object_ids(&rel);
+            // RelatingClassification is attribute 5.
+            let Some(class_id) = rel.get_ref(5) else {
+                return Vec::new();
+            };
+            let (identification, name, location, system_name) =
+                resolve_classification(&mut decoder, class_id);
+
+            related
+                .into_iter()
+                .map(|element_id| ClassificationAssociation {
+                    element_id,
+                    system_name: system_name.clone(),
+                    identification: identification.clone(),
+                    name: name.clone(),
+                    location: location.clone(),
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// One resolved material layer (intermediate, before element fan-out).
+struct ResolvedLayer {
+    set_name: Option<String>,
+    layer_index: u32,
+    material_name: String,
+    thickness: Option<f64>,
+    is_ventilated: Option<bool>,
+    category: Option<String>,
+}
+
+/// Resolve an `IfcMaterialLayer`'s referenced `IfcMaterial` name.
+fn material_name_of(decoder: &mut EntityDecoder, material_id: u32) -> Option<String> {
+    let mat = decoder.decode_by_id(material_id).ok()?;
+    // IfcMaterial.Name is attribute 0.
+    mat.get_string(0).map(|s| s.to_string())
+}
+
+/// Resolve a `RelatingMaterial` into a flat list of layers. Handles
+/// `IfcMaterial`, `IfcMaterialLayerSet`, `IfcMaterialLayerSetUsage` (→ set),
+/// `IfcMaterialList`, and `IfcMaterialConstituentSet`. `unit_scale` converts
+/// layer thickness to metres.
+fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Vec<ResolvedLayer> {
+    let Ok(entity) = decoder.decode_by_id(id) else {
+        return Vec::new();
+    };
+    let ty = entity.ifc_type.as_str().to_ascii_uppercase();
+
+    match ty.as_str() {
+        "IFCMATERIAL" => entity
+            .get_string(0)
+            .map(|name| {
+                vec![ResolvedLayer {
+                    set_name: None,
+                    layer_index: 0,
+                    material_name: name.to_string(),
+                    thickness: None,
+                    is_ventilated: None,
+                    category: entity.get_string(2).map(|s| s.to_string()),
+                }]
+            })
+            .unwrap_or_default(),
+        "IFCMATERIALLAYERSETUSAGE" => {
+            // ForLayerSet is attribute 0.
+            match entity.get_ref(0) {
+                Some(set_id) => resolve_material(decoder, set_id, unit_scale),
+                None => Vec::new(),
+            }
+        }
+        "IFCMATERIALLAYERSET" => {
+            let set_name = entity.get_string(1).map(|s| s.to_string());
+            let layer_ids: Vec<u32> = entity
+                .get_list(0)
+                .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
+                .unwrap_or_default();
+            layer_ids
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, layer_id)| {
+                    let layer = decoder.decode_by_id(layer_id).ok()?;
+                    // IfcMaterialLayer: Material(0), LayerThickness(1),
+                    // IsVentilated(2), Name(3), Description(4), Category(5).
+                    let material_name = layer
+                        .get_ref(0)
+                        .and_then(|mid| material_name_of(decoder, mid))
+                        .unwrap_or_else(|| "Unnamed".to_string());
+                    let thickness = layer.get_float(1).map(|t| t * unit_scale);
+                    let is_ventilated = read_logical(&layer, 2);
+                    let category = layer.get_string(5).map(|s| s.to_string());
+                    Some(ResolvedLayer {
+                        set_name: set_name.clone(),
+                        layer_index: i as u32,
+                        material_name,
+                        thickness,
+                        is_ventilated,
+                        category,
+                    })
+                })
+                .collect()
+        }
+        "IFCMATERIALLIST" => {
+            let mat_ids: Vec<u32> = entity
+                .get_list(0)
+                .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
+                .unwrap_or_default();
+            mat_ids
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, mid)| {
+                    let material_name = material_name_of(decoder, mid)?;
+                    Some(ResolvedLayer {
+                        set_name: None,
+                        layer_index: i as u32,
+                        material_name,
+                        thickness: None,
+                        is_ventilated: None,
+                        category: None,
+                    })
+                })
+                .collect()
+        }
+        "IFCMATERIALCONSTITUENTSET" => {
+            // Constituents is attribute 0; each IfcMaterialConstituent has
+            // Name(0), Description(1), Material(2), Fraction(3), Category(4).
+            let constituent_ids: Vec<u32> = entity
+                .get_list(0)
+                .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
+                .unwrap_or_default();
+            constituent_ids
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, cid)| {
+                    let constituent = decoder.decode_by_id(cid).ok()?;
+                    let material_name = constituent
+                        .get_ref(2)
+                        .and_then(|mid| material_name_of(decoder, mid))
+                        .or_else(|| constituent.get_string(0).map(|s| s.to_string()))?;
+                    Some(ResolvedLayer {
+                        set_name: None,
+                        layer_index: i as u32,
+                        material_name,
+                        thickness: None,
+                        is_ventilated: None,
+                        category: constituent.get_string(4).map(|s| s.to_string()),
+                    })
+                })
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Extract material associations (`IfcRelAssociatesMaterial`).
+fn extract_materials(
+    jobs: &[EntityJob],
+    content: &Arc<String>,
+    entity_index: &Arc<ifc_lite_core::EntityIndex>,
+    unit_scale: f64,
+) -> Vec<MaterialAssociation> {
+    let rel_jobs: Vec<_> = jobs
+        .iter()
+        .filter(|job| job.type_name.eq_ignore_ascii_case("IFCRELASSOCIATESMATERIAL"))
+        .collect();
+
+    tracing::debug!(count = rel_jobs.len(), "Extracting materials");
+
+    rel_jobs
+        .par_iter()
+        .flat_map(|job| {
+            let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let Ok(rel) = decoder.decode_at(job.start, job.end) else {
+                return Vec::new();
+            };
+            let related = related_object_ids(&rel);
+            // RelatingMaterial is attribute 5.
+            let Some(material_id) = rel.get_ref(5) else {
+                return Vec::new();
+            };
+            let layers = resolve_material(&mut decoder, material_id, unit_scale);
+            if layers.is_empty() {
+                return Vec::new();
+            }
+
+            related
+                .into_iter()
+                .flat_map(|element_id| {
+                    layers.iter().map(move |layer| MaterialAssociation {
+                        element_id,
+                        set_name: layer.set_name.clone(),
+                        layer_index: layer.layer_index,
+                        material_name: layer.material_name.clone(),
+                        thickness: layer.thickness,
+                        is_ventilated: layer.is_ventilated,
+                        category: layer.category.clone(),
+                    })
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// Resolve an `IfcDocumentReference` / `IfcDocumentInformation` into
+/// `(identification, name, location, description)`.
+fn resolve_document(
+    decoder: &mut EntityDecoder,
+    id: u32,
+) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+    let Ok(entity) = decoder.decode_by_id(id) else {
+        return (None, None, None, None);
+    };
+    let ty = entity.ifc_type.as_str().to_ascii_uppercase();
+
+    if ty == "IFCDOCUMENTINFORMATION" {
+        // Identification(0), Name(1), Description(2), Location(3).
+        return (
+            entity.get_string(0).map(|s| s.to_string()),
+            entity.get_string(1).map(|s| s.to_string()),
+            entity.get_string(3).map(|s| s.to_string()),
+            entity.get_string(2).map(|s| s.to_string()),
+        );
+    }
+
+    // IfcDocumentReference: Location(0), Identification(1), Name(2),
+    // Description(3), ReferencedDocument(4).
+    let mut location = entity.get_string(0).map(|s| s.to_string());
+    let mut identification = entity.get_string(1).map(|s| s.to_string());
+    let mut name = entity.get_string(2).map(|s| s.to_string());
+    let mut description = entity.get_string(3).map(|s| s.to_string());
+
+    // Backfill missing fields from the referenced IfcDocumentInformation.
+    if let Some(info_id) = entity.get_ref(4) {
+        if let Ok(info) = decoder.decode_by_id(info_id) {
+            if info.ifc_type.as_str().eq_ignore_ascii_case("IFCDOCUMENTINFORMATION") {
+                identification = identification.or_else(|| info.get_string(0).map(|s| s.to_string()));
+                name = name.or_else(|| info.get_string(1).map(|s| s.to_string()));
+                description = description.or_else(|| info.get_string(2).map(|s| s.to_string()));
+                location = location.or_else(|| info.get_string(3).map(|s| s.to_string()));
+            }
+        }
+    }
+
+    (identification, name, location, description)
+}
+
+/// Extract document associations (`IfcRelAssociatesDocument`).
+fn extract_documents(
+    jobs: &[EntityJob],
+    content: &Arc<String>,
+    entity_index: &Arc<ifc_lite_core::EntityIndex>,
+) -> Vec<DocumentAssociation> {
+    let rel_jobs: Vec<_> = jobs
+        .iter()
+        .filter(|job| job.type_name.eq_ignore_ascii_case("IFCRELASSOCIATESDOCUMENT"))
+        .collect();
+
+    tracing::debug!(count = rel_jobs.len(), "Extracting documents");
+
+    rel_jobs
+        .par_iter()
+        .flat_map(|job| {
+            let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let Ok(rel) = decoder.decode_at(job.start, job.end) else {
+                return Vec::new();
+            };
+            let related = related_object_ids(&rel);
+            // RelatingDocument is attribute 5.
+            let Some(doc_id) = rel.get_ref(5) else {
+                return Vec::new();
+            };
+            let (identification, name, location, description) =
+                resolve_document(&mut decoder, doc_id);
+
+            related
+                .into_iter()
+                .map(|element_id| DocumentAssociation {
+                    element_id,
+                    identification: identification.clone(),
+                    name: name.clone(),
+                    location: location.clone(),
+                    description: description.clone(),
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// Build spatial hierarchy from relationships.
@@ -855,4 +1308,96 @@ fn extract_elevation_if_storey(
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// IFC4 model (millimetre units) with a wall carrying a two-layer material
+    /// set, a Uniclass classification reference, and a document reference — one
+    /// of each association type (issue #900).
+    const ASSOCIATIONS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-900 associations fixture'),'2;1');
+FILE_NAME('assoc.ifc','2026-06-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+/* Material layer set: 200mm Concrete + 50mm ventilated Insulation */
+#30=IFCMATERIAL('Concrete',$,$);
+#31=IFCMATERIAL('Insulation',$,$);
+#32=IFCMATERIALLAYER(#30,200.,.F.,'Core',$,$,$);
+#33=IFCMATERIALLAYER(#31,50.,.T.,'Insul',$,$,$);
+#34=IFCMATERIALLAYERSET((#32,#33),'WallSet',$);
+#35=IFCRELASSOCIATESMATERIAL('Mat0000000000000000001',$,$,$,(#28),#34);
+/* Classification */
+#40=IFCCLASSIFICATION('Uniclass 2015','2',$,'Uniclass 2015',$,$,$);
+#41=IFCCLASSIFICATIONREFERENCE('https://uniclass.example','EF_25_10_25','Walls',#40,$,$);
+#42=IFCRELASSOCIATESCLASSIFICATION('Cls0000000000000000001',$,$,$,(#28),#41);
+/* Document */
+#50=IFCDOCUMENTREFERENCE('https://docs.example/spec','DOC-001','Wall spec',$,$);
+#51=IFCRELASSOCIATESDOCUMENT('Doc0000000000000000001',$,$,$,(#28),#50);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn extracts_classification_material_and_document_associations() {
+        let dm = extract_data_model(ASSOCIATIONS_IFC);
+
+        // Classification: one reference assigned to the wall (#28).
+        assert_eq!(dm.classifications.len(), 1, "expected one classification");
+        let c = &dm.classifications[0];
+        assert_eq!(c.element_id, 28);
+        assert_eq!(c.system_name.as_deref(), Some("Uniclass 2015"));
+        assert_eq!(c.identification.as_deref(), Some("EF_25_10_25"));
+        assert_eq!(c.name.as_deref(), Some("Walls"));
+
+        // Materials: two layers, thickness reported in metres (mm * 0.001).
+        assert_eq!(dm.materials.len(), 2, "expected two material layers");
+        let mut layers = dm.materials.clone();
+        layers.sort_by_key(|m| m.layer_index);
+        assert_eq!(layers[0].element_id, 28);
+        assert_eq!(layers[0].set_name.as_deref(), Some("WallSet"));
+        assert_eq!(layers[0].material_name, "Concrete");
+        assert!((layers[0].thickness.unwrap() - 0.2).abs() < 1e-9, "200mm -> 0.2m");
+        assert_eq!(layers[0].is_ventilated, Some(false));
+        assert_eq!(layers[1].material_name, "Insulation");
+        assert!((layers[1].thickness.unwrap() - 0.05).abs() < 1e-9, "50mm -> 0.05m");
+        assert_eq!(layers[1].is_ventilated, Some(true));
+
+        // Document.
+        assert_eq!(dm.documents.len(), 1, "expected one document");
+        let d = &dm.documents[0];
+        assert_eq!(d.element_id, 28);
+        assert_eq!(d.identification.as_deref(), Some("DOC-001"));
+        assert_eq!(d.name.as_deref(), Some("Wall spec"));
+        assert_eq!(d.location.as_deref(), Some("https://docs.example/spec"));
+    }
+
+    #[test]
+    fn associations_empty_without_relationships() {
+        let plain = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let dm = extract_data_model(plain);
+        assert!(dm.classifications.is_empty());
+        assert!(dm.materials.is_empty());
+        assert!(dm.documents.is_empty());
+    }
 }

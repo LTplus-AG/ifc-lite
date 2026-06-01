@@ -865,10 +865,11 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                 .collect()
         }
         "IFCMATERIALCONSTITUENTSET" => {
-            // Constituents is attribute 0; each IfcMaterialConstituent has
+            // IfcMaterialConstituentSet: Name(0), Description(1),
+            // MaterialConstituents(2). Each IfcMaterialConstituent has
             // Name(0), Description(1), Material(2), Fraction(3), Category(4).
             let constituent_ids: Vec<u32> = entity
-                .get_list(0)
+                .get_list(2)
                 .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
                 .unwrap_or_default();
             constituent_ids
@@ -887,6 +888,43 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                         thickness: None,
                         is_ventilated: None,
                         category: constituent.get_string(4).map(|s| s.to_string()),
+                    })
+                })
+                .collect()
+        }
+        "IFCMATERIALPROFILESETUSAGE" => {
+            // ForProfileSet is attribute 0.
+            match entity.get_ref(0) {
+                Some(set_id) => resolve_material(decoder, set_id, unit_scale),
+                None => Vec::new(),
+            }
+        }
+        "IFCMATERIALPROFILESET" => {
+            // IfcMaterialProfileSet: Name(0), Description(1), MaterialProfiles(2).
+            // Each IfcMaterialProfile: Name(0), Description(1), Material(2),
+            // Profile(3), Priority(4), Category(5). Profiles carry no layer
+            // thickness, so thickness stays `None`.
+            let set_name = entity.get_string(0).map(|s| s.to_string());
+            let profile_ids: Vec<u32> = entity
+                .get_list(2)
+                .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
+                .unwrap_or_default();
+            profile_ids
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, pid)| {
+                    let profile = decoder.decode_by_id(pid).ok()?;
+                    let material_name = profile
+                        .get_ref(2)
+                        .and_then(|mid| material_name_of(decoder, mid))
+                        .or_else(|| profile.get_string(0).map(|s| s.to_string()))?;
+                    Some(ResolvedLayer {
+                        set_name: set_name.clone(),
+                        layer_index: i as u32,
+                        material_name,
+                        thickness: None,
+                        is_ventilated: None,
+                        category: profile.get_string(5).map(|s| s.to_string()),
                     })
                 })
                 .collect()
@@ -1345,6 +1383,18 @@ DATA;
 /* Document */
 #50=IFCDOCUMENTREFERENCE('https://docs.example/spec','DOC-001','Wall spec',$,$);
 #51=IFCRELASSOCIATESDOCUMENT('Doc0000000000000000001',$,$,$,(#28),#50);
+/* Column with a material constituent set */
+#60=IFCCOLUMN('Col0000000000000000001',$,'C1',$,$,$,$,$,$);
+#61=IFCMATERIAL('Steel',$,$);
+#62=IFCMATERIALCONSTITUENT('Core',$,#61,$,'load-bearing');
+#63=IFCMATERIALCONSTITUENTSET('ColSet',$,(#62));
+#64=IFCRELASSOCIATESMATERIAL('Mat0000000000000000002',$,$,$,(#60),#63);
+/* Beam with a material profile set */
+#70=IFCBEAM('Bem0000000000000000001',$,'B1',$,$,$,$,$,$);
+#71=IFCMATERIAL('Timber',$,$);
+#72=IFCMATERIALPROFILE('Flange',$,#71,$,$,$);
+#73=IFCMATERIALPROFILESET('BeamSet',$,(#72),$);
+#74=IFCRELASSOCIATESMATERIAL('Mat0000000000000000003',$,$,$,(#70),#73);
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -1361,10 +1411,15 @@ END-ISO-10303-21;
         assert_eq!(c.identification.as_deref(), Some("EF_25_10_25"));
         assert_eq!(c.name.as_deref(), Some("Walls"));
 
-        // Materials: two layers, thickness reported in metres (mm * 0.001).
-        assert_eq!(dm.materials.len(), 2, "expected two material layers");
-        let mut layers = dm.materials.clone();
+        // Materials: the wall (#28) has two layers, thickness in metres (mm * 0.001).
+        let mut layers: Vec<_> = dm
+            .materials
+            .iter()
+            .filter(|m| m.element_id == 28)
+            .cloned()
+            .collect();
         layers.sort_by_key(|m| m.layer_index);
+        assert_eq!(layers.len(), 2, "expected two wall layers");
         assert_eq!(layers[0].element_id, 28);
         assert_eq!(layers[0].set_name.as_deref(), Some("WallSet"));
         assert_eq!(layers[0].material_name, "Concrete");
@@ -1381,6 +1436,18 @@ END-ISO-10303-21;
         assert_eq!(d.identification.as_deref(), Some("DOC-001"));
         assert_eq!(d.name.as_deref(), Some("Wall spec"));
         assert_eq!(d.location.as_deref(), Some("https://docs.example/spec"));
+
+        // Material constituent set on the column (#60) — constituents read from
+        // attribute 2 (the set name is attribute 0).
+        let column_mats: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 60).collect();
+        assert_eq!(column_mats.len(), 1, "expected one constituent for the column");
+        assert_eq!(column_mats[0].material_name, "Steel");
+
+        // Material profile set on the beam (#70).
+        let beam_mats: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 70).collect();
+        assert_eq!(beam_mats.len(), 1, "expected one profile for the beam");
+        assert_eq!(beam_mats[0].material_name, "Timber");
+        assert_eq!(beam_mats[0].set_name.as_deref(), Some("BeamSet"));
     }
 
     #[test]

@@ -117,6 +117,117 @@ export interface ProcessingStats {
   from_cache: boolean;
 }
 
+// ============================================
+// 2D Symbol Data (IfcAnnotation + IfcGrid)
+// ============================================
+
+/**
+ * A single `IfcGridAxis` tag + axis curve (compact endpoint-pair shape).
+ */
+export interface SymbolicGridAxis {
+  express_id: number;
+  grid_express_id: number;
+  tag: string;
+  /** Endpoint pair `[x0, y0, x1, y1]` in metres (plan view). */
+  endpoints: [number, number, number, number];
+  world_y: number;
+}
+
+/**
+ * A 2D polyline (`IfcPolyline`, `IfcIndexedPolyCurve`, tessellated ellipses,
+ * trimmed-curve arcs, grid axis lines).
+ */
+export interface SymbolicPolyline {
+  express_id: number;
+  ifc_type: string;
+  /** Flat `[x0, y0, x1, y1, …]` plan-view coordinates. */
+  points: number[];
+  closed: boolean;
+  world_y: number;
+  representation: string;
+}
+
+/**
+ * A 2D circle / arc (`IfcCircle`).
+ */
+export interface SymbolicCircle {
+  express_id: number;
+  ifc_type: string;
+  center_x: number;
+  center_y: number;
+  radius: number;
+  world_y: number;
+  /** Start angle in radians (0 for a full circle). */
+  start_angle: number;
+  /** End angle in radians (`2π` for a full circle). */
+  end_angle: number;
+  representation: string;
+}
+
+/**
+ * A 2D text annotation (`IfcTextLiteral` / grid bubble glyphs + tags).
+ */
+export interface SymbolicText {
+  express_id: number;
+  ifc_type: string;
+  x: number;
+  y: number;
+  /** Baseline orientation as a `(cos, sin)` pair. */
+  dir_x: number;
+  dir_y: number;
+  /** Font cap height in model units (already unit-scaled). */
+  height: number;
+  content: string;
+  /** IFC `BoxAlignment` (`top-left`, `center`, …). Empty when absent. */
+  alignment: string;
+  world_y: number;
+  /** sRGB straight-alpha colour `[r, g, b, a]`. */
+  color: [number, number, number, number];
+  /** Per-instance target screen-pixel cap height (`0` = renderer default). */
+  target_px: number;
+  representation: string;
+}
+
+/**
+ * A 2D filled region (`IfcAnnotationFillArea`). Outer ring + optional holes
+ * packed into a single `points` buffer; `holes_offsets[i]` is the vertex index
+ * where hole `i` begins.
+ */
+export interface SymbolicFillArea {
+  express_id: number;
+  ifc_type: string;
+  points: number[];
+  holes_offsets: number[];
+  fill_color: [number, number, number, number];
+  has_hatching: boolean;
+  hatch_spacing: number;
+  hatch_angle: number;
+  /**
+   * Secondary cross-hatch angle. `null` when absent — the Rust model uses
+   * `f32::NAN`, which `serde_json` serializes as JSON `null` (not `NaN`).
+   */
+  hatch_angle_secondary: number | null;
+  hatch_line_width: number;
+  world_y: number;
+  representation: string;
+}
+
+/**
+ * 2D symbol data extracted from `IfcAnnotation` and `IfcGrid` entities.
+ *
+ * Returned inline by `POST /api/v1/parse` and the streaming `complete` events,
+ * and fetched by cache key from `GET /api/v1/parse/symbolic/{cache_key}` for the
+ * binary (Parquet) transports. Arrays may be empty when the model carries no
+ * 2D symbols.
+ */
+export interface SymbolicData {
+  grid_axes: SymbolicGridAxis[];
+  polylines: SymbolicPolyline[];
+  circles: SymbolicCircle[];
+  texts: SymbolicText[];
+  fills: SymbolicFillArea[];
+}
+
 /**
  * Full parse response with all meshes.
  */
@@ -129,6 +240,11 @@ export interface ParseResponse {
   metadata: ModelMetadata;
   /** Processing statistics */
   stats: ProcessingStats;
+  /**
+   * 2D symbol data (`IfcAnnotation` + `IfcGrid`). Omitted when the model has
+   * no 2D symbols.
+   */
+  symbolic_data?: SymbolicData;
 }
 
 /**
@@ -221,6 +337,11 @@ export interface StreamCompleteEvent {
   metadata: ModelMetadata;
   /** Cache key for the result */
   cache_key: string;
+  /**
+   * 2D symbol data (`IfcAnnotation` + `IfcGrid`). Omitted when the model has
+   * no 2D symbols.
+   */
+  symbolic_data?: SymbolicData;
 }
 
 /**
@@ -411,6 +532,11 @@ export interface ParquetStreamCompleteEvent {
   stats: ProcessingStats;
   /** Model metadata */
   metadata: ModelMetadata;
+  /**
+   * 2D symbol data (`IfcAnnotation` + `IfcGrid`). Omitted when the model has
+   * no 2D symbols.
+   */
+  symbolic_data?: SymbolicData;
 }
 
 /**
@@ -446,4 +572,9 @@ export interface ParquetStreamResult {
   stats: ProcessingStats;
   /** Model metadata */
   metadata: ModelMetadata;
+  /**
+   * 2D symbol data (`IfcAnnotation` + `IfcGrid`) from the stream's `complete`
+   * event. Omitted when the model has no 2D symbols.
+   */
+  symbolic_data?: SymbolicData;
 }

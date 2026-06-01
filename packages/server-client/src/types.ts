@@ -42,6 +42,49 @@ export interface ModelMetadata {
   geometry_entity_count: number;
   /** Coordinate system information */
   coordinate_info: CoordinateInfo;
+  /**
+   * Length unit scale to convert model length values to metres (e.g. `0.001`
+   * for millimetres). Absent on older servers — treat as `1`.
+   */
+  length_unit_scale?: number;
+  /**
+   * Georeferencing (`IfcMapConversion` + `IfcProjectedCRS`). Absent when the
+   * model carries no map-conversion data.
+   */
+  georeferencing?: Georeferencing;
+}
+
+/**
+ * Georeferencing metadata (`IfcMapConversion` + `IfcProjectedCRS`).
+ *
+ * Surfaced on every geometry endpoint's `ModelMetadata`, matching the browser
+ * parser's `extractGeoreferencing`.
+ */
+export interface Georeferencing {
+  /** Projected CRS name from `IfcProjectedCRS.Name` (e.g. "EPSG:32632"). */
+  crs_name?: string;
+  /** Geodetic datum (e.g. "WGS84"). */
+  geodetic_datum?: string;
+  /** Vertical datum (e.g. "NAVD88"). */
+  vertical_datum?: string;
+  /** Map projection (e.g. "UTM"). */
+  map_projection?: string;
+  /** False easting — X offset to the map CRS, in the project's length unit. */
+  eastings: number;
+  /** False northing — Y offset to the map CRS, in the project's length unit. */
+  northings: number;
+  /** Orthogonal height — Z offset to the map CRS. */
+  orthogonal_height: number;
+  /** X-axis abscissa: cosine of the rotation to grid north. */
+  x_axis_abscissa: number;
+  /** X-axis ordinate: sine of the rotation to grid north. */
+  x_axis_ordinate: number;
+  /** Scale factor applied during the local→map transform (default 1). */
+  scale: number;
+  /** Rotation to grid north in degrees, derived from the X-axis direction. */
+  rotation_degrees: number;
+  /** Local→map transform as a column-major 4×4 matrix (16 values). */
+  transform_matrix: number[];
 }
 
 /**

@@ -472,6 +472,20 @@ pub fn process_streaming(
         // Generate cache key for the complete result
         let cache_key = DiskCache::generate_key(prepared.content.as_bytes());
 
+        // Extract georeferencing on a blocking thread so the streaming Complete
+        // event carries the same map-conversion/CRS metadata as the synchronous
+        // endpoints (issue #900). Cheap relative to geometry; never blocks the
+        // async executor.
+        let georef_content = prepared.content.clone();
+        let georeferencing = tokio::task::spawn_blocking(move || {
+            ifc_lite_processing::extract_georeferencing(&georef_content)
+        })
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, "Georeferencing extraction task panicked");
+            None
+        });
+
         yield StreamEvent::Complete {
             stats: ProcessingStats {
                 total_meshes: all_meshes.len(),
@@ -499,6 +513,8 @@ pub fn process_streaming(
                         || prepared.rtc_offset.1 != 0.0
                         || prepared.rtc_offset.2 != 0.0,
                 },
+                length_unit_scale: Some(prepared.unit_scale),
+                georeferencing,
             },
             cache_key,
             mesh_coordinate_space: Some(prepared.mesh_coordinate_space.to_string()),

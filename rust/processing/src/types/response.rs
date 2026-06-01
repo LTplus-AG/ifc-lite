@@ -5,6 +5,7 @@
 //! Shared response types for the IFC processing API.
 
 use super::mesh::MeshData;
+use crate::georeferencing::Georeferencing;
 use crate::symbolic::SymbolicData;
 use serde::{Deserialize, Serialize};
 
@@ -52,6 +53,17 @@ pub struct ModelMetadata {
     pub geometry_entity_count: usize,
     /// Coordinate system information.
     pub coordinate_info: CoordinateInfo,
+    /// Length unit scale to convert model length values to metres (e.g. `0.001`
+    /// for millimetres). `None` when not yet computed; consumers treat it as
+    /// `1.0`. Brings the server to parity with the browser parser's
+    /// `extractLengthUnitScale` (issue #900).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_unit_scale: Option<f64>,
+    /// Georeferencing (`IfcMapConversion` + `IfcProjectedCRS`). `None` when the
+    /// model carries no map-conversion data. Mirrors the browser parser's
+    /// `extractGeoreferencing` (issue #900).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub georeferencing: Option<Georeferencing>,
 }
 
 /// Coordinate system information.

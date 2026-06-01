@@ -21,31 +21,42 @@ import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 
-/** Module-level cache, keyed by model id, of the full tessellation result. */
-const geometryCache = new Map<string, GeometryResult>();
+/**
+ * Module-level cache, keyed by model id, of the in-flight (or resolved)
+ * tessellation. Caching the *promise* — not just the resolved value — dedupes
+ * concurrent callers (e.g. `geometry_get` and `raycast` issued in parallel),
+ * so the expensive WASM init + `process` runs once per model. A rejected run is
+ * evicted so a transient failure isn't memoized forever.
+ */
+const geometryCache = new Map<string, Promise<GeometryResult>>();
 
 /** Tessellate the whole model once (headless, no DOM) and cache by model id. */
-export async function meshModel(m: LoadedModel, ctx: ToolContext): Promise<GeometryResult> {
+export function meshModel(m: LoadedModel, ctx: ToolContext): Promise<GeometryResult> {
   const cached = geometryCache.get(m.id);
   if (cached) return cached;
 
-  const bytes = await resolveIfcBytes(m);
-  ctx.progress.report(0.1, 'Tessellating model geometry', 1);
-  const gp = new GeometryProcessor();
-  await gp.init();
-  if (ctx.signal.aborted) {
-    throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Geometry run cancelled before meshing.' });
-  }
-  const result = await gp.process(bytes);
-  if (result.meshes.length === 0) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'No mesh geometry could be produced for this model; it carries no tessellated solids.',
-      hint: 'Confirm the model has explicit geometry (not quantity-only data).',
-    });
-  }
-  geometryCache.set(m.id, result);
-  return result;
+  const pending = (async () => {
+    const bytes = await resolveIfcBytes(m);
+    ctx.progress.report(0.1, 'Tessellating model geometry', 1);
+    const gp = new GeometryProcessor();
+    await gp.init();
+    if (ctx.signal.aborted) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Geometry run cancelled before meshing.' });
+    }
+    const result = await gp.process(bytes);
+    if (result.meshes.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: 'No mesh geometry could be produced for this model; it carries no tessellated solids.',
+        hint: 'Confirm the model has explicit geometry (not quantity-only data).',
+      });
+    }
+    return result;
+  })();
+
+  geometryCache.set(m.id, pending);
+  pending.catch(() => geometryCache.delete(m.id));
+  return pending;
 }
 
 /** Convenience: just the meshes from the cached tessellation. */

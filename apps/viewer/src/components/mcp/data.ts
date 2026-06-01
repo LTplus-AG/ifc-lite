@@ -600,6 +600,7 @@ export const EXAMPLES: Record<string, Record<string, unknown>> = {
   geometry_area: { global_id: '1AQAupaRP1txwK1AGiN61V' },
   clash_check: { a: 'IfcDuct*|IfcPipe*', b: 'IfcWall*|IfcSlab*' },
   clash_matrix: { mode: 'hard' },
+  clash_bcf_export: { group_by: 'cluster' },
   model_audit: {},
   ids_validate: { ids_path: './specs/lod350-walls.ids' },
   ids_explain: { ids_path: './specs/lod350-walls.ids' },

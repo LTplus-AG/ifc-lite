@@ -57,12 +57,15 @@ import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 import {
   createClashEngine,
   disciplineMatrixRules,
+  groupClashes,
   type Clash,
   type ClashMode,
   type ClashResult,
   type ClashRule,
+  type GroupOptions,
 } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
+import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { CATALOG, paramsFor } from './data';
 import type { CatalogTool } from './types';
 import type { ViewerController, ColorTuple } from './PlaygroundViewer';
@@ -343,12 +346,22 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<MeshData[]> {
   return meshes;
 }
 
-/** Run a rule set against a model's meshes, returning the engine result. */
+/**
+ * The most recent clash result per model id, so `clash_bcf_export` can turn the
+ * last run into a rich BCF without re-clashing (mirrors the viewer, where the
+ * ClashPanel holds the result the export dialog reads). Bounded implicitly by
+ * the single-model session; one entry per distinct model id.
+ */
+const lastClashResult = new Map<string, ClashResult>();
+
+/** Run a rule set against a model's meshes, returning (and caching) the result. */
 async function runClashRules(m: LoadedPlaygroundModel, rules: ClashRule[]): Promise<ClashResult> {
   const meshes = await meshForClash(m);
   const { elements, exclusions } = elementsFromStep({ store: m.store, meshes, modelId: m.id });
   const engine = createClashEngine({ backend: 'ts' });
-  return engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS });
+  const result = await engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS });
+  lastClashResult.set(m.id, result);
+  return result;
 }
 
 /** When the candidate-pair guardrail bit, say so in the human-readable text so
@@ -727,6 +740,62 @@ const IMPLS: Record<string, ToolImpl> = {
         sampleClashes: rows,
         sampleTruncated: truncated,
       },
+    };
+  },
+  async clash_bcf_export(m, args) {
+    const groupBy = (args.group_by as GroupOptions['by'] | undefined) ?? 'cluster';
+    const epsilon = args.cluster_epsilon as number | undefined;
+    const status = args.status as string | undefined;
+    const maxTopics = args.max_topics as number | undefined;
+
+    // Reuse the last clash run for this model; if there is none, run a default
+    // all-vs-all hard self-clash so the tool works standalone (and caches it).
+    let result = lastClashResult.get(m.id);
+    if (!result) {
+      result = await runClashRules(m, [{ id: 'clash_check', name: 'all elements (self-clash)', a: '*', mode: 'hard' }]);
+    }
+    if (result.summary.total === 0) {
+      return {
+        text: 'No clashes to export — the last clash run found 0. Run clash_check first (omit a and b for every element vs every other).',
+        structured: { topics: 0, clashes: 0 },
+      };
+    }
+
+    // One BCF topic per clash group, each carrying a framed viewpoint (camera +
+    // the clashing elements as components) and severity/status/distance
+    // metadata — the same bridge the viewer's clash→BCF export uses. Snapshots
+    // are omitted: the inline ViewerController can't render frames headlessly,
+    // and BCF viewpoints are valid without an embedded image.
+    const groups = groupClashes(result, { by: groupBy, ...(epsilon != null ? { epsilon } : {}) });
+    const project = await createBCFFromClashResult(result, groups, {
+      author: 'clash@ifc-lite',
+      projectName: 'Clash report',
+      ...(status ? { status } : {}),
+      ...(maxTopics != null ? { maxTopics } : {}),
+    });
+
+    const filename = coerceFilename(args.file_path as string | undefined, 'bcfzip', 'clashes');
+    const blob = await writeBCF(project);
+    const file = playgroundFiles.add({
+      filename,
+      mimeType: 'application/zip',
+      size: blob.size,
+      blob,
+      source: 'clash_bcf_export',
+      description: `${project.topics.size} clash topic(s), grouped by ${groupBy}`,
+    });
+    return {
+      text: `Bundled ${filename}: ${project.topics.size} BCF topic(s) from ${result.summary.total} clash(es), grouped by ${groupBy}`
+        + ` — each with a framed viewpoint + clashing components + severity/distance metadata. (Snapshots omitted: the inline viewer can't capture frames headlessly.)`,
+      structured: {
+        fileId: file.id,
+        filename,
+        bytes: blob.size,
+        topics: project.topics.size,
+        groupBy,
+        clashes: result.summary.total,
+      },
+      download: { fileId: file.id, filename, mimeType: 'application/zip', size: blob.size, label: 'Get .bcfzip' },
     };
   },
 

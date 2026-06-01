@@ -347,10 +347,11 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<MeshData[]> {
 }
 
 /**
- * The most recent clash result per model id, so `clash_bcf_export` can turn the
- * last run into a rich BCF without re-clashing (mirrors the viewer, where the
- * ClashPanel holds the result the export dialog reads). Bounded implicitly by
- * the single-model session; one entry per distinct model id.
+ * The most recent clash result, so `clash_bcf_export` can turn the last run into
+ * a rich BCF without re-clashing (mirrors the viewer, where the ClashPanel holds
+ * the result the export dialog reads). Keyed by the SAME `id:fileSize` identity
+ * as the mesh cache — keying by `m.id` alone would serve a stale result after an
+ * edited re-upload (same filename slug) even though the meshes re-compute.
  */
 const lastClashResult = new Map<string, ClashResult>();
 
@@ -360,7 +361,7 @@ async function runClashRules(m: LoadedPlaygroundModel, rules: ClashRule[]): Prom
   const { elements, exclusions } = elementsFromStep({ store: m.store, meshes, modelId: m.id });
   const engine = createClashEngine({ backend: 'ts' });
   const result = await engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS });
-  lastClashResult.set(m.id, result);
+  lastClashResult.set(meshCacheKey(m), result);
   return result;
 }
 
@@ -750,7 +751,7 @@ const IMPLS: Record<string, ToolImpl> = {
 
     // Reuse the last clash run for this model; if there is none, run a default
     // all-vs-all hard self-clash so the tool works standalone (and caches it).
-    let result = lastClashResult.get(m.id);
+    let result = lastClashResult.get(meshCacheKey(m));
     if (!result) {
       result = await runClashRules(m, [{ id: 'clash_check', name: 'all elements (self-clash)', a: '*', mode: 'hard' }]);
     }

@@ -22,7 +22,8 @@ export type ToolCategory =
   | 'bSDD'
   | 'Diff'
   | 'Export'
-  | 'Viewer';
+  | 'Viewer'
+  | 'Clash';
 
 export interface CatalogTool {
   name: string;

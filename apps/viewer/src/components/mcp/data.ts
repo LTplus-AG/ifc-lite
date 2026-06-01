@@ -54,6 +54,7 @@ export const CATEGORY_ORDER: ToolCategory[] = [
   'Diff',
   'Export',
   'Viewer',
+  'Clash',
 ];
 
 export const CATEGORY_BLURBS: Record<ToolCategory, string> = {
@@ -67,6 +68,7 @@ export const CATEGORY_BLURBS: Record<ToolCategory, string> = {
   Diff: 'Compare two loaded models — added/removed/changed.',
   Export: 'Dump to .ifc, CSV, JSON, glTF, IFCx, PDF.',
   Viewer: 'Drive the live WebGL viewer; subscribe to user picks.',
+  Clash: 'Mesh in-browser and detect hard/clearance interferences.',
 };
 
 export const CATEGORY_GLYPHS: Record<ToolCategory, string> = {
@@ -80,6 +82,7 @@ export const CATEGORY_GLYPHS: Record<ToolCategory, string> = {
   Diff: '08',
   Export: '09',
   Viewer: '10',
+  Clash: '11',
 };
 
 export function toolsByCategory(): Map<ToolCategory, CatalogTool[]> {
@@ -595,6 +598,8 @@ export const EXAMPLES: Record<string, Record<string, unknown>> = {
   geometry_bbox: { global_id: '1AQAupaRP1txwK1AGiN61V' },
   geometry_volume: { global_id: '1AQAupaRP1txwK1AGiN61V' },
   geometry_area: { global_id: '1AQAupaRP1txwK1AGiN61V' },
+  clash_check: { a: 'IfcDuct*|IfcPipe*', b: 'IfcWall*|IfcSlab*' },
+  clash_matrix: { mode: 'hard' },
   model_audit: {},
   ids_validate: { ids_path: './specs/lod350-walls.ids' },
   ids_explain: { ids_path: './specs/lod350-walls.ids' },

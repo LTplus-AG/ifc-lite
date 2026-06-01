@@ -151,6 +151,33 @@ END-ISO-10303-21;
         assert!((geo.transform_matrix[13] - 2000.25).abs() < 1e-6);
     }
 
+    /// IFC2x3 models carry georeferencing via an `ePSet_MapConversion` property
+    /// set rather than `IfcMapConversion`. Regression for the core extractor bug
+    /// that read `IfcPropertySet.Name` from attribute 0 (GlobalId) instead of 2.
+    const IFC2X3_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ifc2x3 georef pset fixture'),'2;1');
+FILE_NAME('georef2x3.ifc','2026-06-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1000.5),$);
+#2=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(2000.25),$);
+#3=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(42.),$);
+#4=IFCPROPERTYSET('0PSet00000000000000001',$,'ePSet_MapConversion',$,(#1,#2,#3));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn extracts_ifc2x3_epset_map_conversion_fallback() {
+        let geo = extract_georeferencing(IFC2X3_PSET_IFC)
+            .expect("expected georeferencing from ePSet_MapConversion");
+        assert!((geo.eastings - 1000.5).abs() < 1e-6);
+        assert!((geo.northings - 2000.25).abs() < 1e-6);
+        assert!((geo.orthogonal_height - 42.0).abs() < 1e-6);
+    }
+
     #[test]
     fn returns_none_without_georeferencing() {
         let plain = r#"ISO-10303-21;

@@ -252,7 +252,10 @@ impl GeoRefExtractor {
         for (id, ifc_type) in entity_types {
             if *ifc_type == IfcType::IfcPropertySet {
                 let entity = decoder.decode_by_id(*id)?;
-                if let Some(name) = entity.get_string(0) {
+                // IfcPropertySet.Name is attribute 2 (attribute 0 is GlobalId);
+                // reading attribute 0 here never matched the ePSet, so the
+                // IFC2x3 georeferencing fallback was dead (issue #900 review).
+                if let Some(name) = entity.get_string(2) {
                     if name == "ePSet_MapConversion" || name == "EPset_MapConversion" {
                         return Self::parse_pset_map_conversion(decoder, &entity);
                     }

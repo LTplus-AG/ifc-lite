@@ -266,15 +266,62 @@ const PROXIED_BSDD = new BsddNamespace({ apiBase: '/api/bsdd' });
 /** Cap on clashes returned in a tool result. The dropped count is reported. */
 const CLASH_DISPLAY_CAP = 50;
 
-/** Module-level mesh cache, keyed by model id, so repeated clash calls on the
- *  same model don't re-run the (expensive) headless tessellation. */
+/**
+ * Runaway guardrail for the TS clash engine: the whole-run candidate-pair
+ * budget (broad-phase AABB-overlap survivors across every rule). The engine
+ * yields between chunks so it never hard-freezes the tab, but an agent can
+ * fire `clash_check` (all-vs-all) on an arbitrarily large uploaded model
+ * unattended — this ceiling bounds the narrow-phase work and is reported via
+ * `result.truncated` (never silent). Generous on purpose: real building models
+ * stay well under it, so totals match the viewer's (unbounded) ClashPanel; only
+ * pathological models get bounded.
+ */
+const CLASH_MAX_CANDIDATE_PAIRS = 5_000_000;
+
+/** Max distinct models whose meshes we keep cached at once (LRU). The playground
+ *  is effectively single-model, so a small bound is plenty and stops a long
+ *  session of re-uploads from pinning every model's meshes in memory. */
+const CLASH_MESH_CACHE_MAX = 3;
+
+/**
+ * Module-level mesh cache so repeated clash calls on the same model don't
+ * re-run the (expensive) headless tessellation. Keyed by `id:fileSize`, NOT id
+ * alone: the playground reuses a filename-slug id, so an edited re-upload would
+ * otherwise hit a stale mesh — folding in the byte length forces a re-mesh when
+ * the bytes change. Bounded to CLASH_MESH_CACHE_MAX entries with LRU eviction.
+ */
 const clashMeshCache = new Map<string, MeshData[]>();
 
+function meshCacheKey(m: LoadedPlaygroundModel): string {
+  return `${m.id}:${m.fileSize}`;
+}
+
+/** LRU get: a hit refreshes recency so the active model survives eviction. */
+function getCachedMeshes(key: string): MeshData[] | undefined {
+  const hit = clashMeshCache.get(key);
+  if (hit) {
+    clashMeshCache.delete(key);
+    clashMeshCache.set(key, hit);
+  }
+  return hit;
+}
+
+/** LRU set: insert then evict the least-recently-used entries past the bound. */
+function setCachedMeshes(key: string, meshes: MeshData[]): void {
+  clashMeshCache.set(key, meshes);
+  while (clashMeshCache.size > CLASH_MESH_CACHE_MAX) {
+    const oldest = clashMeshCache.keys().next().value;
+    if (oldest === undefined) break;
+    clashMeshCache.delete(oldest);
+  }
+}
+
 /** Mesh the whole model once (in-browser, same path as PlaygroundViewer) and
- *  cache by model id. Throws UNSUPPORTED_OPERATION when the model carries no
- *  drawable geometry — clash needs tessellated solids, not quantity sets. */
+ *  cache it. Throws UNSUPPORTED_OPERATION when the model carries no drawable
+ *  geometry — clash needs tessellated solids, not quantity sets. */
 async function meshForClash(m: LoadedPlaygroundModel): Promise<MeshData[]> {
-  const cached = clashMeshCache.get(m.id);
+  const key = meshCacheKey(m);
+  const cached = getCachedMeshes(key);
   if (cached) return cached;
 
   const processor = new GeometryProcessor({ preferNative: false });
@@ -292,7 +339,7 @@ async function meshForClash(m: LoadedPlaygroundModel): Promise<MeshData[]> {
       hint: 'Confirm the model carries explicit geometry (not schema/quantity-only data).',
     });
   }
-  clashMeshCache.set(m.id, meshes);
+  setCachedMeshes(key, meshes);
   return meshes;
 }
 
@@ -301,7 +348,16 @@ async function runClashRules(m: LoadedPlaygroundModel, rules: ClashRule[]): Prom
   const meshes = await meshForClash(m);
   const { elements, exclusions } = elementsFromStep({ store: m.store, meshes, modelId: m.id });
   const engine = createClashEngine({ backend: 'ts' });
-  return engine.run(elements, rules, { exclusions });
+  return engine.run(elements, rules, { exclusions, maxCandidatePairs: CLASH_MAX_CANDIDATE_PAIRS });
+}
+
+/** When the candidate-pair guardrail bit, say so in the human-readable text so
+ *  totals are never silently a lower bound. Empty string when the run was
+ *  complete. */
+function clashCapNote(result: ClashResult): string {
+  if (!result.truncated) return '';
+  return ` Note: the ${CLASH_MAX_CANDIDATE_PAIRS.toLocaleString()}-candidate-pair guardrail was hit`
+    + ` (${result.truncated.droppedPairs.toLocaleString()} pairs not evaluated) — totals are a lower bound.`;
 }
 
 /**
@@ -636,7 +692,7 @@ const IMPLS: Record<string, ToolImpl> = {
       ? ` Showing top ${truncated.shown} by penetration depth; ${truncated.dropped} more not shown.`
       : '';
     return {
-      text: `Found ${result.summary.total} clash(es) for ${label} (mode=${mode}).${capNote}`,
+      text: `Found ${result.summary.total} clash(es) for ${label} (mode=${mode}).${capNote}${clashCapNote(result)}`,
       structured: {
         summary: result.summary,
         settings: { a, b: b ?? null, mode, tolerance: tolerance ?? null, clearance: clearance ?? null },
@@ -658,7 +714,7 @@ const IMPLS: Record<string, ToolImpl> = {
       ? ` Sampling top ${truncated.shown} by penetration depth; ${truncated.dropped} more not shown.`
       : '';
     return {
-      text: `Discipline matrix (mode=${mode}, ${rules.length} rules): ${result.summary.total} clash(es).${capNote}`,
+      text: `Discipline matrix (mode=${mode}, ${rules.length} rules): ${result.summary.total} clash(es).${capNote}${clashCapNote(result)}`,
       structured: {
         mode,
         ruleCount: rules.length,

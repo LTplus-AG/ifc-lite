@@ -1,5 +1,18 @@
 # @ifc-lite/wasm
 
+## 2.1.2
+
+### Patch Changes
+
+- [#899](https://github.com/LTplus-AG/ifc-lite/pull/899) [`9defd29`](https://github.com/LTplus-AG/ifc-lite/commit/9defd2925812b64012e6391c1c541bcf11af312a) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Centre parameterised profiles on their bounding box.
+
+  `IfcUShapeProfileDef`, `IfcLShapeProfileDef` and `IfcTShapeProfileDef` were
+  generated from a corner instead of centred on their bounding box, so channels were
+  offset by half the flange width, angles by half their leg lengths and tees by half
+  their depth. The base profile is now centred before the swept-area `Position`
+  placement is applied, matching the symmetric profiles (I-shape, rectangle, …) and
+  the IfcOpenShell/Tekla/Revit convention.
+
 ## 2.1.1
 
 ### Patch Changes

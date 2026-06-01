@@ -601,6 +601,8 @@ fn extract_relationships(
         "IFCRELDEFINESBYPROPERTIES",
         "IFCRELDEFINESBYTYPE",
         "IFCRELASSOCIATESMATERIAL",
+        "IFCRELASSOCIATESCLASSIFICATION",
+        "IFCRELASSOCIATESDOCUMENT",
         "IFCRELVOIDSELEMENT",
         "IFCRELFILLSELEMENT",
     ];
@@ -634,6 +636,11 @@ fn extract_relationship(entity: &DecodedEntity, type_name: &str) -> Option<Vec<R
     let (relating_idx, related_idx) = match type_upper.as_str() {
         "IFCRELDEFINESBYPROPERTIES" => (5, 4), // RelatingPropertyDefinition at 5, RelatedObjects at 4
         "IFCRELCONTAINEDINSPATIALSTRUCTURE" => (5, 4), // RelatingStructure at 5, RelatedElements at 4
+        // IfcRelAssociates* family: RelatingX (Material/Classification/Document)
+        // is the single ref at attribute 5; RelatedObjects is the list at 4.
+        "IFCRELASSOCIATESMATERIAL"
+        | "IFCRELASSOCIATESCLASSIFICATION"
+        | "IFCRELASSOCIATESDOCUMENT" => (5, 4),
         _ => (4, 5), // Standard: RelatingObject at 4, RelatedObjects at 5
     };
 
@@ -868,6 +875,7 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
             // IfcMaterialConstituentSet: Name(0), Description(1),
             // MaterialConstituents(2). Each IfcMaterialConstituent has
             // Name(0), Description(1), Material(2), Fraction(3), Category(4).
+            let set_name = entity.get_string(0).map(|s| s.to_string());
             let constituent_ids: Vec<u32> = entity
                 .get_list(2)
                 .map(|l| l.iter().filter_map(|v| v.as_entity_ref()).collect())
@@ -882,7 +890,7 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
                         .and_then(|mid| material_name_of(decoder, mid))
                         .or_else(|| constituent.get_string(0).map(|s| s.to_string()))?;
                     Some(ResolvedLayer {
-                        set_name: None,
+                        set_name: set_name.clone(),
                         layer_index: i as u32,
                         material_name,
                         thickness: None,
@@ -1438,10 +1446,33 @@ END-ISO-10303-21;
         assert_eq!(d.location.as_deref(), Some("https://docs.example/spec"));
 
         // Material constituent set on the column (#60) — constituents read from
-        // attribute 2 (the set name is attribute 0).
+        // attribute 2, set name preserved from attribute 0.
         let column_mats: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 60).collect();
         assert_eq!(column_mats.len(), 1, "expected one constituent for the column");
         assert_eq!(column_mats[0].material_name, "Steel");
+        assert_eq!(column_mats[0].set_name.as_deref(), Some("ColSet"));
+
+        // The IfcRelAssociates* family must also land in the generic relationship
+        // graph (relating = the material/classification/document, related = element).
+        let has_rel = |ty: &str, relating: u32, related: u32| {
+            dm.relationships.iter().any(|r| {
+                r.rel_type.eq_ignore_ascii_case(ty)
+                    && r.relating_id == relating
+                    && r.related_id == related
+            })
+        };
+        assert!(
+            has_rel("IFCRELASSOCIATESCLASSIFICATION", 41, 28),
+            "classification association missing from relationships"
+        );
+        assert!(
+            has_rel("IFCRELASSOCIATESDOCUMENT", 50, 28),
+            "document association missing from relationships"
+        );
+        assert!(
+            has_rel("IFCRELASSOCIATESMATERIAL", 34, 28),
+            "material association missing from relationships"
+        );
 
         // Material profile set on the beam (#70).
         let beam_mats: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 70).collect();

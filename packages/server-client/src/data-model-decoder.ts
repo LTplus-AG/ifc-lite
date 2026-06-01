@@ -173,16 +173,20 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const spatialData = new Uint8Array(data, offset, spatialLen);
   offset += spatialLen;
 
-  // Read an optional appended length-prefixed section, returning null when no
-  // bytes remain (older servers/caches omit the classification/material/document
-  // tables — see the writer in parquet_data_model.rs).
+  // Read an optional appended length-prefixed section. Returns null only when
+  // no length prefix remains — i.e. an older server/cache that omits the
+  // classification/material/document tables (see the writer in
+  // parquet_data_model.rs). Once a prefix is present, a zero length or a length
+  // that overruns the buffer means the payload is malformed, so we throw rather
+  // than silently dropping data as if it were an old payload.
   const readOptionalSection = (): Uint8Array | null => {
-    if (offset + 4 > data.byteLength) return null;
+    if (offset + 4 > data.byteLength) return null; // section absent (old payload)
     const len = view.getUint32(offset, true);
     offset += 4;
     if (len === 0 || offset + len > data.byteLength) {
-      offset += len;
-      return null;
+      throw new Error(
+        `Malformed data model: truncated appended section (len=${len}, remaining=${data.byteLength - offset})`
+      );
     }
     const section = new Uint8Array(data, offset, len);
     offset += len;

@@ -13,7 +13,7 @@ use ifc_lite_core::{
     EntityScanner, IfcType,
 };
 use ifc_lite_geometry::{calculate_normals, GeometryRouter};
-use ifc_lite_processing::convert_mesh_to_site_local;
+use ifc_lite_processing::{convert_mesh_to_site_local, extract_symbolic_data, SymbolicData};
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::pin::Pin;
@@ -472,6 +472,19 @@ pub fn process_streaming(
         // Generate cache key for the complete result
         let cache_key = DiskCache::generate_key(prepared.content.as_bytes());
 
+        // Extract the 2D symbolic stream (IfcAnnotation + IfcGrid) once, on a
+        // blocking thread, so the streaming Complete event reaches parity with
+        // the synchronous `POST /api/v1/parse` response (issue #900).
+        let symbolic_content = prepared.content.clone();
+        let symbolic_data = tokio::task::spawn_blocking(move || {
+            extract_symbolic_data(&symbolic_content)
+        })
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, "Symbolic-data extraction task panicked");
+            SymbolicData::default()
+        });
+
         yield StreamEvent::Complete {
             stats: ProcessingStats {
                 total_meshes: all_meshes.len(),
@@ -504,6 +517,7 @@ pub fn process_streaming(
             mesh_coordinate_space: Some(prepared.mesh_coordinate_space.to_string()),
             site_transform: prepared.site_transform,
             building_transform: prepared.building_transform,
+            symbolic_data,
         };
     })
 }

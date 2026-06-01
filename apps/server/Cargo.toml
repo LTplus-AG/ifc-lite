@@ -79,6 +79,8 @@ base64 = "0.22"
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }
+# `util` feature pulls in `ServiceExt::oneshot` for in-process route tests.
+tower = { version = "0.5", features = ["util"] }
 
 [[bench]]
 name = "serialization"

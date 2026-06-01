@@ -18,6 +18,7 @@ import type {
   ProcessingStats,
   ServerConfig,
   StreamEvent,
+  SymbolicData,
 } from './types.js';
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 
@@ -266,11 +267,16 @@ export class IfcServerClient {
         decode_time_ms: performance.now() - decodeStart,
       });
 
+      // Symbolic data isn't in the cached geometry payload — fetch it by key
+      // so the cache-HIT path reaches the same parity as the live stream.
+      const cachedSymbolic = await this.fetchSymbolic(cachedResult.cache_key);
+
       return {
         cache_key: cachedResult.cache_key,
         total_meshes: cachedResult.meshes.length,
         stats: cachedResult.stats,
         metadata: cachedResult.metadata,
+        symbolic_data: cachedSymbolic ?? undefined,
       };
     }
 
@@ -303,6 +309,7 @@ export class IfcServerClient {
     let total_meshes = 0;
     let stats: ProcessingStats | null = null;
     let metadata: ModelMetadata | null = null;
+    let symbolic_data: SymbolicData | undefined;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -361,6 +368,7 @@ export class IfcServerClient {
             case 'complete':
               stats = event.stats;
               metadata = event.metadata;
+              symbolic_data = event.symbolic_data;
               const totalTime = performance.now() - uploadStart;
               console.log(`[client] Stream complete: ${total_meshes} meshes in ${totalTime.toFixed(0)}ms`);
               break;
@@ -387,6 +395,7 @@ export class IfcServerClient {
       total_meshes,
       stats,
       metadata,
+      symbolic_data,
     };
   }
 
@@ -617,6 +626,70 @@ export class IfcServerClient {
     }
 
     console.warn('[client] Data model fetch timed out after max retries');
+    return null;
+  }
+
+  /**
+   * Fetch the 2D symbol stream (`IfcAnnotation` + `IfcGrid`) for a previously
+   * parsed file.
+   *
+   * The JSON endpoints (`parse`, `parseStream`) and the streaming Parquet path
+   * already deliver `symbolic_data` inline. This helper is for the binary
+   * Parquet transports (`parseParquet`, `parseParquetOptimized`) whose payloads
+   * can't carry it inline — fetch it by the `cache_key` returned in their
+   * result, mirroring {@link fetchDataModel}.
+   *
+   * Symbolic data is cached synchronously by the non-streaming endpoints, so
+   * this typically returns on the first attempt; the streaming endpoint caches
+   * it in the background, hence the bounded retry.
+   *
+   * @param cacheKey - The `cache_key` from a parse response
+   * @param maxRetries - Maximum number of retries (default: 10)
+   * @returns Decoded symbol data, or null if unavailable after retries
+   *
+   * @example
+   * ```typescript
+   * const result = await client.parseParquet(file);
+   * const symbols = await client.fetchSymbolic(result.cache_key);
+   * if (symbols) {
+   *   console.log(`${symbols.grid_axes.length} grid axes, ${symbols.texts.length} labels`);
+   * }
+   * ```
+   */
+  async fetchSymbolic(cacheKey: string, maxRetries = 10): Promise<SymbolicData | null> {
+    let delay = 100; // Start with 100ms delay
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const response = await fetch(`${this.baseUrl}/api/v1/parse/symbolic/${cacheKey}`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(30000),
+        });
+
+        if (response.status === 200) {
+          return (await response.json()) as SymbolicData;
+        } else if (response.status === 202) {
+          // Still processing (streaming background cache), wait and retry
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay = Math.min(delay * 1.5, 2000); // Exponential backoff, max 2s
+        } else if (response.status === 404) {
+          console.warn(`[client] Symbolic data not found for cache key: ${cacheKey}`);
+          return null;
+        } else {
+          throw new Error(`Unexpected response status: ${response.status}`);
+        }
+      } catch (error) {
+        if (attempt === maxRetries - 1) {
+          console.error('[client] Failed to fetch symbolic data:', error);
+          return null;
+        }
+        // Retry on network errors
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay = Math.min(delay * 1.5, 2000);
+      }
+    }
+
+    console.warn('[client] Symbolic data fetch timed out after max retries');
     return null;
   }
 

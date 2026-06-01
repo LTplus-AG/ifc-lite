@@ -8,6 +8,7 @@
 //! re-exported from the `ifc-lite-processing` crate. Server-only types remain here.
 
 use super::MeshData;
+use ifc_lite_processing::SymbolicData;
 use serde::{Deserialize, Serialize};
 
 // Re-export shared types from the processing crate
@@ -71,6 +72,11 @@ pub enum StreamEvent {
         /// IfcBuilding ObjectPlacement as a column-major 4×4 matrix (metres).
         #[serde(skip_serializing_if = "Option::is_none")]
         building_transform: Option<Vec<f64>>,
+        /// 2D symbol data extracted from `IfcAnnotation` and `IfcGrid`
+        /// entities — mirrors the inline field on `POST /api/v1/parse`
+        /// (issue #843) so the streaming paths reach parity (issue #900).
+        #[serde(default, skip_serializing_if = "SymbolicData::is_empty")]
+        symbolic_data: SymbolicData,
     },
 
     /// Error occurred.

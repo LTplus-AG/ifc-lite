@@ -26,6 +26,7 @@ use axum::{
 use flate2::read::GzDecoder;
 use futures::stream::StreamExt;
 use ifc_lite_core::EntityScanner;
+use ifc_lite_processing::{extract_symbolic_data, SymbolicData};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::io::Read;
@@ -63,6 +64,55 @@ fn parquet_metadata_cache_key(hash: &str, opening_filter: OpeningFilterMode) -> 
         hash,
         opening_filter.cache_key_suffix()
     )
+}
+
+/// Build the symbolic-data cache key for a given file cache key.
+///
+/// The 2D symbol stream (`IfcAnnotation` + `IfcGrid`) is cached separately
+/// from geometry so binary-transport endpoints (Parquet, optimized Parquet,
+/// cached geometry) can expose it via `GET /api/v1/parse/symbolic/{cache_key}`,
+/// mirroring how the data model is cached and fetched (issue #900). `cache_key`
+/// is the full `{hash}-{opening_filter}` key, matching the value embedded in
+/// each response's metadata header.
+fn symbolic_cache_key(cache_key: &str) -> String {
+    format!("{}-symbolic-v1", cache_key)
+}
+
+/// Serialize symbolic data and write it to the cache under `{cache_key}-symbolic-v1`.
+///
+/// Always stores the JSON (even when empty) so the fetch endpoint can return a
+/// definitive `200` with empty arrays rather than looping on `202`.
+async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symbolic: &SymbolicData) {
+    match serde_json::to_vec(symbolic) {
+        Ok(bytes) => {
+            let key = symbolic_cache_key(cache_key);
+            if let Err(e) = cache.set_bytes(&key, &bytes).await {
+                tracing::error!(error = %e, cache_key = %cache_key, "Failed to cache symbolic data");
+            } else {
+                tracing::debug!(cache_key = %key, size = bytes.len(), "Symbolic data cached");
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to serialize symbolic data for caching");
+        }
+    }
+}
+
+/// Load cached symbolic data for `cache_key`, defaulting to empty when the
+/// entry is absent or unreadable.
+async fn load_cached_symbolic(cache: &DiskCache, cache_key: &str) -> SymbolicData {
+    let key = symbolic_cache_key(cache_key);
+    match cache.get_bytes(&key).await {
+        Ok(Some(bytes)) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+            tracing::error!(error = %e, cache_key = %cache_key, "Failed to parse cached symbolic data");
+            SymbolicData::default()
+        }),
+        Ok(None) => SymbolicData::default(),
+        Err(e) => {
+            tracing::error!(error = %e, cache_key = %cache_key, "Failed to read cached symbolic data");
+            SymbolicData::default()
+        }
+    }
 }
 
 /// Extract file data from multipart request.
@@ -175,10 +225,14 @@ pub async fn parse_full(
         symbolic_data,
     };
 
-    // Cache result (background)
+    // Cache result (background). Also mirror the symbolic stream into the
+    // dedicated `{cache_key}-symbolic-v1` entry so it's reachable through
+    // `GET /api/v1/parse/symbolic/{cache_key}` regardless of which endpoint
+    // first processed the file (issue #900).
     let cache = state.cache.clone();
     let response_clone = response.clone();
     tokio::spawn(async move {
+        cache_symbolic_data(&cache, &cache_key, &response_clone.symbolic_data).await;
         if let Err(e) = cache.set(&cache_key, &response_clone).await {
             tracing::error!(error = %e, "Failed to cache result");
         }
@@ -244,6 +298,10 @@ pub enum ParquetStreamEvent {
     Complete {
         stats: ProcessingStats,
         metadata: ModelMetadata,
+        /// 2D symbol data extracted from `IfcAnnotation` and `IfcGrid`
+        /// entities — parity with `POST /api/v1/parse` (issue #900).
+        #[serde(default, skip_serializing_if = "SymbolicData::is_empty")]
+        symbolic_data: SymbolicData,
     },
     /// Error occurred.
     Error { message: String },
@@ -306,6 +364,10 @@ pub async fn parse_parquet_stream(
         let metadata_header: ParquetMetadataHeader = serde_json::from_slice(&cached_metadata_json)
             .map_err(|e| ApiError::Internal(format!("Failed to parse cached metadata: {}", e)))?;
 
+        // Load the cached symbolic stream so the Complete event reaches parity
+        // even on the cache fast-path (issue #900).
+        let symbolic_data = load_cached_symbolic(&state.cache, &cache_key).await;
+
         // Extract geometry length from combined parquet (first 4 bytes)
         let geometry_len = u32::from_le_bytes(cached_parquet[0..4].try_into().unwrap()) as usize;
         let geometry_data = cached_parquet[4..4 + geometry_len].to_vec();
@@ -339,6 +401,7 @@ pub async fn parse_parquet_stream(
                 serde_json::to_string(&ParquetStreamEvent::Complete {
                     stats: metadata_header.stats,
                     metadata: metadata_header.metadata,
+                    symbolic_data,
                 })
                 .unwrap(),
             )),
@@ -402,7 +465,20 @@ pub async fn parse_parquet_stream(
                     }
                 }
             }
-            StreamEvent::Complete { stats, metadata, mesh_coordinate_space, site_transform, building_transform, .. } => {
+            StreamEvent::Complete { stats, metadata, mesh_coordinate_space, site_transform, building_transform, symbolic_data, .. } => {
+                // Cache the symbolic stream so the cached-geometry fast-path and
+                // `GET /api/v1/parse/symbolic/{cache_key}` reach parity (issue #900).
+                // Reuses the value already computed inside `process_streaming` —
+                // no re-extraction.
+                {
+                    let cache = cache_for_geometry.clone();
+                    let key = cache_key_for_geometry.clone();
+                    let symbolic_for_cache = symbolic_data.clone();
+                    tokio::spawn(async move {
+                        cache_symbolic_data(&cache, &key, &symbolic_for_cache).await;
+                    });
+                }
+
                 // OPTIMIZATION: Use accumulated meshes instead of re-processing
                 // This eliminates duplicate geometry extraction (~1100ms savings for large files)
                 let cache = cache_for_geometry.clone();
@@ -484,7 +560,7 @@ pub async fn parse_parquet_stream(
                     }
                 });
 
-                ParquetStreamEvent::Complete { stats, metadata }
+                ParquetStreamEvent::Complete { stats, metadata, symbolic_data }
             }
             StreamEvent::Error { message } => {
                 ParquetStreamEvent::Error { message }
@@ -667,12 +743,19 @@ pub async fn parse_parquet(
     // that's independent of tokio's blocking thread pool
     let serialize_start = tokio::time::Instant::now();
     let opening_filter = query.opening_filter;
-    let ((geometry_result, geometry_parquet), (data_model_stats, data_model_parquet)) =
+    let ((geometry_result, geometry_parquet), (data_model_stats, data_model_parquet), symbolic_data) =
         tokio::task::spawn_blocking(move || {
-            // First: extract geometry and data model in parallel
-            let (geometry_result, data_model) = rayon::join(
-                || process_geometry_filtered(&content, opening_filter),
-                || extract_data_model(&content),
+            // First: extract geometry, data model, and the 2D symbol stream
+            // (IfcAnnotation + IfcGrid) all in parallel. Symbolic extraction is
+            // added here for endpoint parity (issue #900).
+            let ((geometry_result, data_model), symbolic_data) = rayon::join(
+                || {
+                    rayon::join(
+                        || process_geometry_filtered(&content, opening_filter),
+                        || extract_data_model(&content),
+                    )
+                },
+                || extract_symbolic_data(&content),
             );
 
             // Capture stats before moving data_model
@@ -690,7 +773,11 @@ pub async fn parse_parquet(
                 || serialize_data_model_to_parquet(&data_model),
             );
 
-            ((geometry_result, geo_parquet), (dm_stats, dm_parquet))
+            (
+                (geometry_result, geo_parquet),
+                (dm_stats, dm_parquet),
+                symbolic_data,
+            )
         })
         .await?;
 
@@ -722,6 +809,10 @@ pub async fn parse_parquet(
             "Data model cached (ready for client)"
         );
     }
+
+    // Cache the symbolic stream immediately so it's ready when the client
+    // fetches `GET /api/v1/parse/symbolic/{cache_key}` (issue #900).
+    cache_symbolic_data(&state.cache, &cache_key, &symbolic_data).await;
 
     // Build geometry-only response (data model available via separate endpoint)
     let mut combined_parquet = Vec::new();
@@ -838,10 +929,20 @@ pub async fn parse_parquet_optimized(
     let content = String::from_utf8(data)?;
     let opening_filter = query.opening_filter;
 
-    // Process on blocking thread pool (CPU-intensive)
-    let result =
-        tokio::task::spawn_blocking(move || process_geometry_filtered(&content, opening_filter))
-            .await?;
+    // Process on blocking thread pool (CPU-intensive). Extract the 2D symbol
+    // stream (IfcAnnotation + IfcGrid) alongside geometry for endpoint parity
+    // (issue #900) — it's cached and served via the symbolic fetch endpoint.
+    let (result, symbolic_data) = tokio::task::spawn_blocking(move || {
+        rayon::join(
+            || process_geometry_filtered(&content, opening_filter),
+            || extract_symbolic_data(&content),
+        )
+    })
+    .await?;
+
+    // Cache the symbolic stream so the client can fetch it via
+    // `GET /api/v1/parse/symbolic/{cache_key}`.
+    cache_symbolic_data(&state.cache, &cache_key, &symbolic_data).await;
 
     // Serialize to optimized Parquet (with deduplication, quantization, etc.)
     // Don't include normals by default - client can compute them
@@ -926,6 +1027,59 @@ pub async fn get_data_model(
                 .status(StatusCode::ACCEPTED)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"status":"processing","message":"Data model is still being processed. Retry in a moment."}"#))
+                .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+            Ok(response)
+        }
+    }
+}
+
+/// GET /api/v1/parse/symbolic/:cache_key
+///
+/// Fetch the 2D symbol stream (`IfcAnnotation` + `IfcGrid`) for a previously
+/// parsed file as JSON. This brings the binary-transport endpoints (Parquet,
+/// optimized Parquet, cached geometry) to parity with the inline `symbolic_data`
+/// field on `POST /api/v1/parse` (issue #900). Symbol data is cached separately
+/// from geometry — exactly like the data model — so it's fetched the same way,
+/// keyed by the `cache_key` carried in each response's metadata header.
+///
+/// `cache_key` is the full `{hash}-{opening_filter}` value (e.g. `<hash>-default`).
+///
+/// Response:
+/// - 200: `SymbolicData` JSON (may have empty arrays when the model has no 2D symbols)
+/// - 202: Not yet available — streaming caches symbolic data in the background; retry
+pub async fn get_symbolic(
+    State(state): State<AppState>,
+    axum::extract::Path(cache_key): axum::extract::Path<String>,
+) -> Result<Response, ApiError> {
+    let key = symbolic_cache_key(&cache_key);
+
+    match state.cache.get_bytes(&key).await? {
+        Some(symbolic_json) => {
+            tracing::info!(
+                cache_key = %cache_key,
+                size = symbolic_json.len(),
+                "Symbolic data cache HIT"
+            );
+
+            let response = Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::CONTENT_LENGTH, symbolic_json.len())
+                .body(Body::from(symbolic_json))
+                .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+            Ok(response)
+        }
+        None => {
+            tracing::debug!(cache_key = %cache_key, "Symbolic data not yet available");
+
+            // Return 202 Accepted to indicate processing (mirrors get_data_model);
+            // the streaming endpoints cache symbolic data in a background task.
+            let response = Response::builder()
+                .status(StatusCode::ACCEPTED)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"status":"processing","message":"Symbolic data is still being processed. Retry in a moment."}"#))
                 .map_err(|e| ApiError::Internal(e.to_string()))?;
 
             Ok(response)
@@ -1053,5 +1207,30 @@ mod tests {
     fn parquet_cache_key_default_filter_uses_default_suffix() {
         let key = parquet_cache_key("abc", OpeningFilterMode::Default);
         assert_eq!(key, "abc-default-parquet-v2");
+    }
+
+    /// The symbolic cache key (issue #900) is derived from the full
+    /// `{hash}-{opening_filter}` cache key the writers store under, and the
+    /// `get_symbolic` reader composes the same string from the path param.
+    #[test]
+    fn symbolic_cache_key_matches_writer_format() {
+        let hash = "0ab20f4e4014";
+        for mode in [
+            OpeningFilterMode::Default,
+            OpeningFilterMode::IgnoreAll,
+            OpeningFilterMode::IgnoreOpaque,
+        ] {
+            let writer_cache_key = format!("{}-{}", hash, mode.cache_key_suffix());
+            assert_eq!(
+                symbolic_cache_key(&writer_cache_key),
+                format!("{}-symbolic-v1", writer_cache_key)
+            );
+        }
+    }
+
+    #[test]
+    fn symbolic_cache_key_default_filter() {
+        let key = symbolic_cache_key("abc-default");
+        assert_eq!(key, "abc-default-symbolic-v1");
     }
 }

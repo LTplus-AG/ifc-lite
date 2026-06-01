@@ -19,6 +19,7 @@
 //! - `POST /api/v1/parse/metadata` - Quick metadata only
 //! - `POST /api/v1/parse/parquet` - Full parse with Parquet-encoded geometry (~15x smaller)
 //! - `POST /api/v1/parse/parquet/optimized` - ara3d BOS-optimized format (~50x smaller)
+//! - `GET /api/v1/parse/symbolic/:cache_key` - 2D symbol stream (IfcAnnotation + IfcGrid) as JSON
 //! - `GET /api/v1/cache/:key` - Retrieve cached result
 
 use axum::http::{header, HeaderValue, Method};
@@ -40,6 +41,9 @@ mod middleware;
 mod routes;
 mod services;
 mod types;
+
+#[cfg(test)]
+mod parity_tests;
 
 use config::Config;
 use services::cache::DiskCache;
@@ -75,6 +79,60 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
 pub struct AppState {
     pub cache: Arc<DiskCache>,
     pub config: Arc<Config>,
+}
+
+/// Build the application router with all routes and middleware.
+///
+/// Extracted from `main` so integration tests can exercise the full route
+/// table in-process (via `tower`'s `oneshot`) without binding a socket.
+fn build_router(state: AppState) -> Router {
+    let config = state.config.clone();
+    Router::new()
+        // Root endpoint - API information
+        .route("/", get(routes::health::info))
+        // Health check
+        .route("/api/v1/health", get(routes::health::check))
+        // Parse endpoints
+        .route("/api/v1/parse", post(routes::parse::parse_full))
+        .route("/api/v1/parse/stream", post(routes::parse::parse_stream))
+        .route(
+            "/api/v1/parse/parquet-stream",
+            post(routes::parse::parse_parquet_stream),
+        )
+        .route(
+            "/api/v1/parse/metadata",
+            post(routes::parse::parse_metadata),
+        )
+        .route("/api/v1/parse/parquet", post(routes::parse::parse_parquet))
+        .route(
+            "/api/v1/parse/parquet/optimized",
+            post(routes::parse::parse_parquet_optimized),
+        )
+        .route(
+            "/api/v1/parse/data-model/{cache_key}",
+            get(routes::parse::get_data_model),
+        )
+        .route(
+            "/api/v1/parse/symbolic/{cache_key}",
+            get(routes::parse::get_symbolic),
+        )
+        // Cache endpoints
+        .route("/api/v1/cache/{key}", get(routes::cache::get_cached))
+        .route("/api/v1/cache/check/{hash}", get(routes::parse::check_cache))
+        .route(
+            "/api/v1/cache/geometry/{hash}",
+            get(routes::parse::get_cached_geometry),
+        )
+        // Middleware
+        .layer(DefaultBodyLimit::max(config.max_file_size_mb * 1024 * 1024)) // Match max_file_size_mb
+        .layer(CompressionLayer::new()) // Compress responses (gzip)
+        // Note: Request decompression handled manually in extract_file() to support multipart
+        .layer(TimeoutLayer::new(Duration::from_secs(
+            config.request_timeout_secs,
+        )))
+        .layer(TraceLayer::new_for_http())
+        .layer(build_cors_layer(&config))
+        .with_state(state)
 }
 
 #[tokio::main]
@@ -114,48 +172,7 @@ async fn main() {
     };
 
     // Build router
-    let app = Router::new()
-        // Root endpoint - API information
-        .route("/", get(routes::health::info))
-        // Health check
-        .route("/api/v1/health", get(routes::health::check))
-        // Parse endpoints
-        .route("/api/v1/parse", post(routes::parse::parse_full))
-        .route("/api/v1/parse/stream", post(routes::parse::parse_stream))
-        .route(
-            "/api/v1/parse/parquet-stream",
-            post(routes::parse::parse_parquet_stream),
-        )
-        .route(
-            "/api/v1/parse/metadata",
-            post(routes::parse::parse_metadata),
-        )
-        .route("/api/v1/parse/parquet", post(routes::parse::parse_parquet))
-        .route(
-            "/api/v1/parse/parquet/optimized",
-            post(routes::parse::parse_parquet_optimized),
-        )
-        .route(
-            "/api/v1/parse/data-model/{cache_key}",
-            get(routes::parse::get_data_model),
-        )
-        // Cache endpoints
-        .route("/api/v1/cache/{key}", get(routes::cache::get_cached))
-        .route("/api/v1/cache/check/{hash}", get(routes::parse::check_cache))
-        .route(
-            "/api/v1/cache/geometry/{hash}",
-            get(routes::parse::get_cached_geometry),
-        )
-        // Middleware
-        .layer(DefaultBodyLimit::max(config.max_file_size_mb * 1024 * 1024)) // Match max_file_size_mb
-        .layer(CompressionLayer::new()) // Compress responses (gzip)
-        // Note: Request decompression handled manually in extract_file() to support multipart
-        .layer(TimeoutLayer::new(Duration::from_secs(
-            config.request_timeout_secs,
-        )))
-        .layer(TraceLayer::new_for_http())
-        .layer(build_cors_layer(&config))
-        .with_state(state);
+    let app = build_router(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("Listening on http://{}", addr);

@@ -132,6 +132,12 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE) |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
 
+All parse endpoints that return geometry also surface the 2D symbol stream
+(`IfcAnnotation` + `IfcGrid`), matching `@ifc-lite/parse`. The JSON and SSE
+responses carry it inline as `symbolic_data` (in the `complete` event for the
+streaming variants); the binary Parquet transports expose it by cache key via
+`/api/v1/parse/symbolic/{key}` (see below).
+
 ### Cache Endpoints
 
 | Endpoint | Method | Description |
@@ -140,6 +146,7 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | `/api/v1/cache/geometry/{hash}` | GET | Fetch cached geometry (no upload) |
 | `/api/v1/cache/{key}` | GET | Retrieve cached JSON result |
 | `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model |
+| `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON |
 
 ### Utility Endpoints
 
@@ -271,6 +278,23 @@ if (dataModel) {
   const decoded = await decodeDataModel(dataModel);
   console.log(`Entities: ${decoded.entities.size}`);
   console.log(`Property sets: ${decoded.propertySets.size}`);
+}
+```
+
+#### Fetching Symbolic Data
+
+The JSON (`parse`) and streaming endpoints return the 2D symbol stream
+(`IfcAnnotation` + `IfcGrid`) inline as `symbolic_data`. The binary Parquet
+endpoints (`parseParquet`, `parseParquetOptimized`) can't carry it inline —
+fetch it by cache key instead:
+
+```typescript
+const result = await client.parseParquet(file);
+
+const symbols = await client.fetchSymbolic(result.cache_key);
+if (symbols) {
+  console.log(`Grid axes: ${symbols.grid_axes.length}`);
+  console.log(`Annotations: ${symbols.polylines.length} polylines, ${symbols.texts.length} labels`);
 }
 ```
 

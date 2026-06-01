@@ -28,7 +28,7 @@ futures-util = "0.3"
 lexical-core = "1.0"
 
 # Fast byte searching
-memchr = "2.7"
+memchr = "2.8"
 # Parser
 nom = "7.1"
 

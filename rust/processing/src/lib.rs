@@ -7,10 +7,12 @@
 //! This crate extracts the core processing logic so it can be used by both
 //! the HTTP server and the native FFI library.
 
+mod georeferencing;
 mod processor;
 mod symbolic;
 mod types;
 
+pub use georeferencing::{extract_georeferencing, Georeferencing};
 pub use processor::{
     convert_mesh_to_site_local, process_geometry, process_geometry_filtered,
     process_geometry_streaming, process_geometry_streaming_filtered,

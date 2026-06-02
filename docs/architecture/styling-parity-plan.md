@@ -25,6 +25,13 @@ default colors themselves differ for several IFC types. The root cause is
 structural: **the styling/color logic was duplicated into each crate instead of
 shared**, and the two copies have drifted.
 
+> **Scope note (see §8):** the issue frames this as a *two-way* gap
+> (`wasm-bindings` vs `processing`), but an audit found the same color logic
+> **copied into four Rust consumers** (`wasm-bindings`, `processing`,
+> `apps/server`, `apps/desktop`) plus an intentional 2D table in TypeScript —
+> and they have drifted in every direction, the Tauri desktop app most of all.
+> The plan below treats the gap as monorepo-wide, not two-crate.
+
 Note: `symbolic` extraction (2D curves, fills, grid bubbles, annotation colors)
 is *not* part of this gap — it already lives in the shared
 `ifc_lite_processing::symbolic` module and is consumed by both paths. This plan
@@ -183,17 +190,24 @@ Ordered so each phase is independently shippable and testable, smallest
 user-visible regression first.
 
 ### Phase 1 — Unify the default-color table *(low risk, high clarity)*
-- Add `processing::styling::default_color_for_type(&IfcType) -> [f32;4]` as the
-  single source of truth.
-- Reconcile the four diverging types (see §2.2). **Decision required** (§5): pick
-  one value per type. Recommended canonical set: keep wasm's `IfcCurtainWall`
-  (glass blue) and `IfcFurnishingElement` (light wood), keep processing's
-  `IfcStairFlight` (= `IfcStair` gray) and `IfcBuildingElementProxy` (`0.6` gray),
-  i.e. the **union** of both tables — no type loses an authored default.
-- Replace both `get_default_color` / `get_default_color_for_type` bodies with calls
-  into the shared fn. Delete the stale `default-materials.ts` comment.
+- Add `processing::styling::default_color_for_type(&IfcType) -> [f32;4]` (or place
+  it in `core`/`geometry` so it sits below every consumer) as the single source of
+  truth.
+- Reconcile the four diverging types between `wasm` and `processing` (§2.2).
+  **Decision required** (§5): pick one value per type. Recommended canonical set:
+  keep wasm's `IfcCurtainWall` (glass blue) and `IfcFurnishingElement` (light wood),
+  keep processing's `IfcStairFlight` (= `IfcStair` gray) and
+  `IfcBuildingElementProxy` (`0.6` gray), i.e. the **union** of both tables — no
+  type loses an authored default.
+- Replace **all four** Rust copies with calls into the shared fn — not just
+  `wasm-bindings` + `processing`, but also `apps/server/src/services/streaming.rs`
+  and `apps/desktop/src-tauri/src/commands/ifc.rs` (the most divergent, §8). Delete
+  the stale `default-materials.ts` comment.
+- Leave `packages/renderer/src/section-2d-overlay.ts` (`IFC_TYPE_FILL_COLORS`)
+  alone but add a comment marking it an **intentional** 2D-drafting convention, so
+  it is never mistaken for the canonical 3D table.
 - Test: table-driven unit test asserting every mapped type is identical across the
-  shared fn; snapshot both paths on a fixture covering all four contested types.
+  shared fn; snapshot all consumers on a fixture covering the contested types.
 
 ### Phase 2 — Move `IfcStyledItem` + `IfcIndexedColourMap` + material chain into `processing`
 - Lift the wasm color-extraction functions (§2.1, §2.4, §2.7) into
@@ -280,3 +294,98 @@ rather than assumed.
 - **File-size rule** (`AGENTS.md §7`, ~400 lines): the new `processing` styling code
   should be its own module (`processing/src/styling/…`), not appended to the already
   2.2k-line `processor.rs`.
+
+---
+
+## 8. Expanded scope — the divergence is monorepo-wide
+
+Issue #913 describes a two-way gap. An audit of the whole repo shows the same
+color logic was **copied into four Rust consumers** of the geometry pipeline, and
+they have drifted independently. All locations below were verified directly.
+
+### 8.1 Five copies of the IFC-type → default-color table
+
+| # | Location | Symbol | Notes |
+|---|---|---|---|
+| 1 | `rust/wasm-bindings/src/api/styling.rs:970` | `get_default_color_for_type` | browser; has `IfcCurtainWall`, lacks `IfcStairFlight`/`IfcBuildingElementProxy` |
+| 2 | `rust/processing/src/processor.rs:2140` | `get_default_color` | has `IfcStairFlight`/`IfcBuildingElementProxy`, lacks `IfcCurtainWall`; `IfcFurnishingElement` darker |
+| 3 | `apps/server/src/services/streaming.rs:690` | `get_default_color` | a **third** backend copy; tracks #2 (incl. the `IfcFurnishingElement` value) but is yet another hand-maintained table |
+| 4 | `apps/desktop/src-tauri/src/commands/ifc.rs:431` | `get_default_color_for_type` | **most divergent** — depends only on `ifc-lite-geometry`, fully independent. e.g. `IfcWall [0.9,0.9,0.85,1]` (cream vs neutral gray), `IfcWindow` alpha `0.5` vs `0.4`, `IfcOpeningElement [0.9,0.9,0.9,0.2]` (white) vs `[1.0,0.42,0.29,0.4]` (red-orange), `IfcSpace` blue vs cyan, `IfcRailing` ~25% darker, ~14 types differ |
+| 5 | `packages/renderer/src/section-2d-overlay.ts:69` | `IFC_TYPE_FILL_COLORS` | TypeScript **2D drafting** table (`IfcWall [0.69,0.69,0.69,0.95]`). Intentionally different — but undocumented as such |
+
+So a single model can render in **four different default-color schemes** depending
+on whether it's viewed in the browser, returned by the REST server, processed by
+the CLI, or opened in the desktop app. The Tauri desktop divergence is the largest
+and is invisible to web-only testing.
+
+### 8.2 Why it keeps happening (recurring-drift history)
+
+This is not a one-off. The color/styling layer has a long lineage of one-path
+fixes:
+
+- **#407** ("sub element material mapping sometimes missing", closed) added
+  material-chain resolution to the backend and its own note says *"the
+  wasm-bindings (web viewer) have the same gap in styling.rs but weren't touched —
+  the fix here is for the C# FFI path only."* The current tree shows the **reverse**
+  asymmetry (material chain now lives only in wasm), i.e. the fix did not stay in
+  the backend.
+- **#663** (material color → off-white) and **#858** (per-triangle indexed colour)
+  were each fixed in the browser path; #913 is the backend catching up.
+- **#541** (multi-layer compound wall materials) is the layered-material case from §2.6.
+- Older PRs #72 / #74 / #117 ("fix colors", "rebuild wasm with color fixes",
+  "colors and geometry fixed (mostly)") show the same fix-one-surface pattern.
+
+Each fix lands in one consumer because there is **no shared source and no
+cross-consumer test** to force the others to follow. This is exactly the structural
+problem §3 proposes to remove.
+
+### 8.3 Other duplicated logic with drift risk (beyond color)
+
+Verified locations; ranked by risk. These are *not* all in scope for #913 but
+belong in the same "share it or test it" program:
+
+- **Material-chain resolution** — full pipeline only in `wasm-bindings/styling.rs`
+  (`build_material_style_index`/`build_element_material_styles`/`resolve_material_ids`/
+  `flatten_material_color_index`); `processing` has none. Material-only-styled files
+  (common in IFC2x3 / ArchiCAD exports) render colored in the browser, gray in the
+  backend. **(High — covered by Phase 2/3.)**
+- **`IfcPresentationStyleAssignment` (IFC2x3) handling** — implemented separately in
+  `styling.rs:192` (carrying a `// FIX:` comment) and `processor.rs:1745`. Legacy
+  IFC2x3 styling can drift between paths. **(Medium — folds into Phase 2.)**
+- **Metadata entity-type filter** — `wasm-bindings/src/api/parsing.rs:13`
+  `is_relevant_metadata_type` is a **hardcoded** type list, whereas the backend uses
+  schema-driven `ifc_lite_core` helpers. New IFC types (e.g. infrastructure
+  extensions) are picked up automatically in one path and silently missed in the
+  other. **(Medium.)**
+- **Opening-classification heuristics** — `is_opaque_opening` /
+  `is_opening_with_subparts` / `infer_opening_subpart_material_name` live in
+  `processing/processor.rs:2012+`, while the browser relies on the geometry router's
+  internal filtering. **(Medium.)**
+- **Y-up ↔ Z-up coordinate conversion** — duplicated across
+  `packages/bcf/src/viewpoint.ts:83` (`viewerToBcfCoords`/`bcfToViewerCoords`),
+  `packages/bcf/src/ids-reporter.ts`, and `rust/processing/src/processor.rs:115`
+  (`apply_inverse_rotation_in_place` / `convert_mesh_to_site_local`). Correct today,
+  but no shared helper or round-trip test guards it. **(Medium.)**
+
+### 8.4 What is already shared correctly (the model to copy)
+
+For contrast — these were unified and have *not* drifted, because the logic lives
+in a shared crate and (for symbolic) has a parity test:
+
+- **Symbolic / 2D extraction** — `processing/src/symbolic.rs`, wrapped by
+  `wasm-bindings/src/api/symbolic.rs`; guarded by `processing/tests/issue_843_*`.
+- **Geometry kernel** (extrusion, CSG/booleans, profiles, trimmed curves, tapered
+  solids, voids, transforms, RTC, unit scale) — all in `ifc-lite-geometry` /
+  `ifc-lite-core`. This is why geometry bug fixes (#820, #853, #883, #628, #424)
+  fix every consumer at once. Styling is the conspicuous exception.
+
+### 8.5 Scope recommendation
+
+- **In scope for #913**: the four-way Rust default-color unification (Phase 1, now
+  including `apps/server` + `apps/desktop`) and backend `IfcIndexedColourMap` +
+  material-chain support (Phases 2–3).
+- **Adjacent, worth a follow-up issue**: metadata-type filter, opening heuristics,
+  and coordinate-conversion duplication (§8.3) — same root cause, different surface.
+- **Guard rail for all of it**: the cross-consumer equality test (§6) is what stops
+  this from recurring a sixth time. Without it, unifying the tables today only
+  resets the clock.

@@ -40,7 +40,7 @@ export function toJulianDay(date: Date): number {
   return date.getTime() / 86_400_000 + 2_440_587.5;
 }
 
-/** Julian centuries since J2000.0. */
+/** Julian centuries elapsed since the J2000.0 epoch (2000-01-01 12:00 TT). */
 function julianCentury(jd: number): number {
   return (jd - 2_451_545.0) / 36_525;
 }
@@ -138,30 +138,27 @@ export function sunPositionFromGeometry(
   const zenith = Math.acos(clamp(cosZenith, -1, 1));
   const altitude = 90 - zenith * RAD;
 
-  // Azimuth measured clockwise from north.
-  let azimuth: number;
-  const sinZenith = Math.sin(zenith);
-  if (Math.abs(sinZenith) < 1e-9) {
-    // Sun directly overhead/underfoot — azimuth is undefined; pick north.
-    azimuth = 0;
-  } else {
-    const cosAz = clamp(
-      (Math.sin(latRad) * Math.cos(zenith) - Math.sin(decRad)) /
-        (Math.cos(latRad) * sinZenith),
-      -1,
-      1,
-    );
-    const az = Math.acos(cosAz) * RAD;
-    azimuth = hourAngle > 0 ? mod360(az + 180) : mod360(540 - az);
-  }
+  // Azimuth measured clockwise from north, derived from the horizontal ENU
+  // components of the solar vector. atan2 keeps the quadrant correct and stays
+  // finite at the poles, where the acos form divides by cos(latitude) = 0.
+  const east = -Math.cos(decRad) * Math.sin(haRad);
+  const north =
+    Math.cos(latRad) * Math.sin(decRad) -
+    Math.sin(latRad) * Math.cos(decRad) * Math.cos(haRad);
+  const azimuth =
+    Math.abs(east) < 1e-9 && Math.abs(north) < 1e-9
+      ? 0 // Sun directly overhead/underfoot — azimuth is undefined; pick north.
+      : mod360(Math.atan2(east, north) * RAD);
 
   return { azimuth, altitude, declination, equationOfTime };
 }
 
+/** Normalise an angle in degrees to the [0, 360) range. */
 function mod360(v: number): number {
   return ((v % 360) + 360) % 360;
 }
 
+/** Clamp a value to the inclusive [lo, hi] range (guards acos domain errors). */
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }

@@ -54,6 +54,7 @@ export function azimuthAltitudeToEnu(azimuthDeg: number, altitudeDeg: number): E
   };
 }
 
+/** Build a {@link SunSample} (position + dome direction) for one instant. */
 function sampleAt(date: Date, lat: number, lon: number, decl: number, eot: number): SunSample {
   const pos = sunPositionFromGeometry(date, lat, lon, decl, eot);
   return {
@@ -202,6 +203,7 @@ export function domeGraticule(options: GraticuleOptions = {}): Graticule {
   return { altitudeRings, azimuthSpokes, cardinals };
 }
 
+/** True if `year` is a Gregorian leap year (366 days). */
 function isLeap(year: number): boolean {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }

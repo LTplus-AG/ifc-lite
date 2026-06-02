@@ -52,6 +52,17 @@ export function sunTimes(date: Date, latitude: number, longitude: number): SunTi
 
   const latRad = latitude * DEG;
   const decRad = declination * DEG;
+
+  // Exact poles: cos(latitude) = 0 makes the hour-angle formula divide by zero
+  // (cosHa = NaN), which would skip both polar branches and yield Invalid Date.
+  // At a pole the sun holds a near-constant altitude ≈ declination all day, so
+  // decide always-up vs always-down directly from that altitude.
+  if (Math.abs(Math.cos(latRad)) < 1e-12) {
+    const poleAltitude = latitude > 0 ? declination : -declination;
+    const alwaysUp = poleAltitude >= -(SUNRISE_ZENITH - 90);
+    return { sunrise: null, sunset: null, solarNoon, alwaysUp, alwaysDown: !alwaysUp };
+  }
+
   const cosHa =
     Math.cos(SUNRISE_ZENITH * DEG) / (Math.cos(latRad) * Math.cos(decRad)) -
     Math.tan(latRad) * Math.tan(decRad);

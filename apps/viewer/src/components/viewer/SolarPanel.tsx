@@ -296,6 +296,7 @@ export function SolarPanel() {
   );
 }
 
+/** Small pill toggle button used for the dome/shadow switches. */
 function ToggleChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -313,6 +314,7 @@ function ToggleChip({ label, active, onClick }: { label: string; active: boolean
   );
 }
 
+/** One label/value cell in the sun readout grid. */
 function Readout({ label, value }: { label: string; value: string }) {
   return (
     <>

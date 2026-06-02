@@ -111,6 +111,7 @@ export class SunPathDome {
   private sunMarker: InstanceType<typeof import('cesium').Entity> | null = null;
   private sunBeam: InstanceType<typeof import('cesium').Entity> | null = null;
 
+  /** Build the dome's data source + static geometry and add it to the viewer. */
   constructor(Cesium: CesiumNs, viewer: CesiumViewer, options: SunPathDomeOptions) {
     this.Cesium = Cesium;
     this.viewer = viewer;
@@ -139,6 +140,7 @@ export class SunPathDome {
     );
   }
 
+  /** Add a polyline entity from a list of ENU directions at the dome radius. */
   private polyline(
     dirs: Enu[],
     rgb: readonly [number, number, number],
@@ -158,7 +160,7 @@ export class SunPathDome {
 
   /** Build the date-independent geometry: graticule, cardinals, analemmas, day arc. */
   private buildStatic(): void {
-    const { origin, radius, date } = this.options;
+    const { origin, date } = this.options;
 
     // Graticule — altitude rings + azimuth spokes.
     const grat = domeGraticule({ altitudeStep: 15, azimuthStep: 30 });
@@ -197,8 +199,6 @@ export class SunPathDome {
     // Day arc for the studied date.
     const arc = dayPath(date, origin.latitude, origin.longitude, { stepMinutes: 10 });
     this.polyline(arc.map((s) => s.dir), DAY_ARC_COLOR, 2);
-
-    void radius;
   }
 
   /** Reposition the live sun marker + beam for a new instant. */
@@ -244,6 +244,7 @@ export class SunPathDome {
     this.viewer.scene.requestRender();
   }
 
+  /** Remove every dome entity and detach the data source from the viewer. */
   destroy(): void {
     this.dataSource.entities.removeAll();
     void this.viewer.dataSources.remove(this.dataSource, true);

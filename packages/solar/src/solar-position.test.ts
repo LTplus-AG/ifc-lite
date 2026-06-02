@@ -62,6 +62,20 @@ describe('sunPosition', () => {
     const midnight = sunPosition(new Date('2024-06-20T00:00:00Z'), LAT, LON);
     expect(midnight.altitude).toBeLessThan(0);
   });
+
+  it('returns finite azimuth/altitude exactly at the poles', () => {
+    // cos(latitude) = 0 at ±90°; the acos azimuth form would divide by zero.
+    for (const lat of [90, -90]) {
+      const p = sunPosition(new Date('2024-06-20T12:00:00Z'), lat, 0);
+      expect(Number.isFinite(p.azimuth)).toBe(true);
+      expect(Number.isFinite(p.altitude)).toBe(true);
+      expect(p.azimuth).toBeGreaterThanOrEqual(0);
+      expect(p.azimuth).toBeLessThan(360);
+    }
+    // North Pole in summer: sun above the horizon at roughly +declination.
+    const np = sunPosition(new Date('2024-06-20T12:00:00Z'), 90, 0);
+    expect(np.altitude).toBeGreaterThan(0);
+  });
 });
 
 describe('sunTimes', () => {
@@ -95,5 +109,20 @@ describe('sunTimes', () => {
     const t = sunTimes(new Date('2024-09-15T12:00:00Z'), LAT, LON);
     expect(t.sunrise!.getTime()).toBeLessThan(t.solarNoon.getTime());
     expect(t.solarNoon.getTime()).toBeLessThan(t.sunset!.getTime());
+  });
+
+  it('handles exact poles without producing Invalid Date', () => {
+    // North Pole, summer → midnight sun; winter → polar night. No NaN/Invalid.
+    const npSummer = sunTimes(new Date('2024-06-20T12:00:00Z'), 90, 0);
+    expect(npSummer.alwaysUp).toBe(true);
+    expect(npSummer.sunrise).toBeNull();
+    expect(Number.isFinite(npSummer.solarNoon.getTime())).toBe(true);
+
+    const npWinter = sunTimes(new Date('2024-12-21T12:00:00Z'), 90, 0);
+    expect(npWinter.alwaysDown).toBe(true);
+
+    // South Pole mirrors the North Pole.
+    const spSummer = sunTimes(new Date('2024-12-21T12:00:00Z'), -90, 0);
+    expect(spSummer.alwaysUp).toBe(true);
   });
 });

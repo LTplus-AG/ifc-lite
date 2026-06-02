@@ -36,6 +36,9 @@ export interface SolarSunInfo {
   solarNoonMs: number;
 }
 
+/** Which dimension the animation sweep advances. */
+export type SolarSweepMode = 'day' | 'year';
+
 export interface SolarSlice {
   /** Whether the sun-path / shadow study is active. */
   solarEnabled: boolean;
@@ -47,6 +50,17 @@ export interface SolarSlice {
   solarShowShadows: boolean;
   /** Resolved sun position/times for the readout panel; null until computed. */
   solarSunInfo: SolarSunInfo | null;
+  /**
+   * Display times in local solar time derived from the site longitude
+   * (15°/hour) instead of UTC. This is civil-timezone-agnostic on purpose —
+   * sun-path studies care about solar time, and a longitude offset needs no
+   * timezone database or DST rules.
+   */
+  solarUseLocalTime: boolean;
+  /** Whether the animation sweep is playing. */
+  solarPlaying: boolean;
+  /** Which dimension the sweep advances (time-of-day vs day-of-year). */
+  solarSweepMode: SolarSweepMode;
 
   setSolarEnabled: (enabled: boolean) => void;
   toggleSolar: () => void;
@@ -54,6 +68,10 @@ export interface SolarSlice {
   setSolarShowSunPath: (show: boolean) => void;
   setSolarShowShadows: (show: boolean) => void;
   setSolarSunInfo: (info: SolarSunInfo | null) => void;
+  setSolarUseLocalTime: (use: boolean) => void;
+  setSolarPlaying: (playing: boolean) => void;
+  toggleSolarPlaying: () => void;
+  setSolarSweepMode: (mode: SolarSweepMode) => void;
 }
 
 /** Default studied instant: a bright equinox midday so the dome reads well. */
@@ -67,13 +85,24 @@ export const createSolarSlice: StateCreator<SolarSlice, [], [], SolarSlice> = (s
   solarShowSunPath: true,
   solarShowShadows: true,
   solarSunInfo: null,
+  solarUseLocalTime: false,
+  solarPlaying: false,
+  solarSweepMode: 'day',
 
   setSolarEnabled: (enabled) =>
-    set(enabled ? { solarEnabled: true } : { solarEnabled: false, solarSunInfo: null }),
+    set(enabled
+      ? { solarEnabled: true }
+      : { solarEnabled: false, solarSunInfo: null, solarPlaying: false }),
   toggleSolar: () =>
-    set((s) => (s.solarEnabled ? { solarEnabled: false, solarSunInfo: null } : { solarEnabled: true })),
+    set((s) => (s.solarEnabled
+      ? { solarEnabled: false, solarSunInfo: null, solarPlaying: false }
+      : { solarEnabled: true })),
   setSolarDateMs: (ms) => set({ solarDateMs: ms }),
   setSolarShowSunPath: (show) => set({ solarShowSunPath: show }),
   setSolarShowShadows: (show) => set({ solarShowShadows: show }),
   setSolarSunInfo: (info) => set({ solarSunInfo: info }),
+  setSolarUseLocalTime: (use) => set({ solarUseLocalTime: use }),
+  setSolarPlaying: (playing) => set({ solarPlaying: playing }),
+  toggleSolarPlaying: () => set((s) => ({ solarPlaying: !s.solarPlaying })),
+  setSolarSweepMode: (mode) => set({ solarSweepMode: mode }),
 });

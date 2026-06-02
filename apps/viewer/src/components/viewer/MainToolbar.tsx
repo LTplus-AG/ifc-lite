@@ -42,6 +42,7 @@ import {
   FileCode2,
   CalendarClock,
   Globe2,
+  Sun,
   Move,
   Settings,
   PenLine,
@@ -587,6 +588,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleCesium = useViewerStore((state) => state.toggleCesium);
   const cesiumPlacementEditMode = useViewerStore((state) => state.cesiumPlacementEditMode);
   const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
+  // Solar sun-path / shadow study state
+  const solarEnabled = useViewerStore((state) => state.solarEnabled);
+  const toggleSolar = useViewerStore((state) => state.toggleSolar);
+  const setCesiumEnabled = useViewerStore((state) => state.setCesiumEnabled);
   const storeModels = useViewerStore((state) => state.models);
   const desktopEntitlement = useViewerStore((state) => state.desktopEntitlement);
   const analysisExtensionState = useSyncExternalStore(
@@ -1671,6 +1676,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               </TooltipContent>
             </Tooltip>
           )}
+          {/* Sun-path + shadow study — needs the Cesium context, so enabling
+              it turns Cesium on too. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={solarEnabled ? 'default' : 'ghost'}
+                size="icon-sm"
+                aria-label={solarEnabled ? 'Hide sun-path study' : 'Show sun-path study'}
+                aria-pressed={solarEnabled}
+                onClick={(e) => {
+                  (e.currentTarget as HTMLButtonElement).blur();
+                  const willEnable = !solarEnabled;
+                  toggleSolar();
+                  if (willEnable) setCesiumEnabled(true);
+                }}
+                className={cn(solarEnabled && 'bg-amber-500 text-zinc-950 hover:bg-amber-400')}
+              >
+                <Sun className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {solarEnabled ? 'Hide' : 'Show'} sun-path &amp; shadow study
+            </TooltipContent>
+          </Tooltip>
         </>
       )}
 

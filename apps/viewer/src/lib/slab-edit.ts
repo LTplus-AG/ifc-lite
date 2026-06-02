@@ -117,10 +117,19 @@ function resolveSolidPositionXform(
     }
   }
 
-  const z = readDirection(dataStore, view, editor, asExpressIdRef(attrs[1])) ?? [0, 0, 1];
+  // IfcDirection ratios are NOT guaranteed unit length, so normalise Z
+  // before using it as a basis vector — otherwise the Gram-Schmidt
+  // projection (which assumes |Z|=1) and Y = Z × X both pick up |Z| as a
+  // stray scale factor, skewing the footprint away from the rendered mesh
+  // for files with e.g. Axis=(0,0,2). The Rust profile extractor
+  // normalises the same placement.
+  const rawZ = readDirection(dataStore, view, editor, asExpressIdRef(attrs[1])) ?? [0, 0, 1];
+  const zlen = Math.hypot(rawZ[0], rawZ[1], rawZ[2]);
+  if (zlen < 1e-9) return IDENTITY_XFORM2D;
+  const z: [number, number, number] = [rawZ[0] / zlen, rawZ[1] / zlen, rawZ[2] / zlen];
   const refX = readDirection(dataStore, view, editor, asExpressIdRef(attrs[2])) ?? [1, 0, 0];
 
-  // Orthonormalise X against Z (Gram-Schmidt), then Y = Z × X.
+  // Orthonormalise X against the unit Z (Gram-Schmidt), then Y = Z × X.
   const dot = refX[0] * z[0] + refX[1] * z[1] + refX[2] * z[2];
   let xv: [number, number, number] = [
     refX[0] - dot * z[0],
@@ -130,6 +139,7 @@ function resolveSolidPositionXform(
   const xlen = Math.hypot(xv[0], xv[1], xv[2]);
   if (xlen < 1e-9) return IDENTITY_XFORM2D;
   xv = [xv[0] / xlen, xv[1] / xlen, xv[2] / xlen];
+  // Z and X are now orthonormal, so Y = Z × X is already unit length.
   const yv: [number, number, number] = [
     z[1] * xv[2] - z[2] * xv[1],
     z[2] * xv[0] - z[0] * xv[2],

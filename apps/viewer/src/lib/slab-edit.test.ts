@@ -128,6 +128,34 @@ describe('slab-edit', () => {
     assert.deepStrictEqual(chain.footprint[2], [109, 72]);
   });
 
+  it('normalizes a non-unit-length Axis/RefDirection in the solid Position', () => {
+    // IfcDirection.DirectionRatios are ratios, not guaranteed unit
+    // vectors. A valid Axis=(0,0,2) must not leak its length into the
+    // Y basis (Y = Z×X) or skew the Gram-Schmidt projection — otherwise
+    // the footprint disagrees with the (normalizing) renderer. With
+    // proper normalization the result matches an identity-rotation
+    // placement: solidXform(p) = (100 + p.x, 50 + p.y).
+    const entities = makePolygonSlabFixture();
+    entities.push(
+      { expressId: 70, type: 'IFCCARTESIANPOINT', attributes: [[100, 50, 0]] },
+      { expressId: 71, type: 'IFCDIRECTION', attributes: [[0, 0, 2]] }, // non-unit Axis (Z)
+      { expressId: 72, type: 'IFCDIRECTION', attributes: [[3, 0, 0]] }, // non-unit RefDirection (X)
+      { expressId: 73, type: 'IFCAXIS2PLACEMENT3D', attributes: [70, 71, 72] },
+    );
+    entities.find((e) => e.expressId === 93)!.attributes = [92, 73, null, 0.25];
+
+    const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveSlabEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveSlabEditChain>[1];
+    const chain = resolveSlabEditChain(dataStoreStub, view, editor, 100);
+    assert.ok(chain);
+    //   (0,0) → (100,50) → +placement(10,20) → (110,70)
+    //   (2,0) → (102,50) → (112,70)
+    //   (1,2) → (101,52) → (111,72)   [buggy raw-Axis would give y=74]
+    assert.deepStrictEqual(chain.footprint[0], [110, 70]);
+    assert.deepStrictEqual(chain.footprint[1], [112, 70]);
+    assert.deepStrictEqual(chain.footprint[2], [111, 72]);
+  });
+
   it('ignores lengthUnitScale for authored (overlay) entities', () => {
     // The in-store builders already emit metres, so a freshly-authored
     // slab must NOT be re-scaled even on a millimetre model — otherwise

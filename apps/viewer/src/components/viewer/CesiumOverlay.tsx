@@ -261,6 +261,10 @@ export function CesiumOverlay({
   const solarShowSunPath = useViewerStore((s) => s.solarShowSunPath);
   const solarShowShadows = useViewerStore((s) => s.solarShowShadows);
   const setSolarSunInfo = useViewerStore((s) => s.setSolarSunInfo);
+  // Re-run the solar effect once the deferred GLB load completes, so the IFC
+  // model's shadow mode is applied even when the study was enabled before the
+  // model finished loading into Cesium.
+  const cesiumGlbLoaded = useViewerStore((s) => s.cesiumGlbLoaded);
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; shadows?: any; destroy?: () => void } | null>(null);
@@ -777,6 +781,7 @@ export function CesiumOverlay({
   }, [
     status,
     bridgeVersion,
+    cesiumGlbLoaded,
     solarEnabled,
     solarDateMs,
     solarShowSunPath,

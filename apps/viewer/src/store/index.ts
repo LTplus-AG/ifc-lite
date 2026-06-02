@@ -37,6 +37,7 @@ import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
+import { createSolarSlice, type SolarSlice } from './slices/solarSlice.js';
 import { createDesktopEntitlementSlice, type DesktopEntitlementSlice } from './slices/desktopEntitlementSlice.js';
 import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.js';
 import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.js';
@@ -134,6 +135,7 @@ export type ViewerState = LoadingSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
+  SolarSlice &
   DesktopEntitlementSlice &
   ScheduleSlice &
   PlaybackSlice &
@@ -185,6 +187,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createScriptSlice(...args),
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),
+  ...createSolarSlice(...args),
   ...createDesktopEntitlementSlice(...args),
   ...createScheduleSlice(...args),
   ...createPlaybackSlice(...args),

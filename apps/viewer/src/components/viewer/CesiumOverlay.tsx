@@ -746,16 +746,18 @@ export function CesiumOverlay({
             // New day or site → rebuild static geometry (day arc + analemmas).
             sunPathDomeRef.current?.destroy();
             const bounds = coordinateInfo?.originalBounds;
-            const radius = bounds
-              ? Math.max(
-                  40,
-                  0.9 * Math.hypot(
-                    bounds.max.x - bounds.min.x,
-                    bounds.max.y - bounds.min.y,
-                    bounds.max.z - bounds.min.z,
-                  ),
+            // Size the dome to roughly the model footprint, but clamp to an
+            // architectural scale: with many federated models the combined
+            // bounds can span kilometres, which would push the dome arcs so
+            // far out they read as nothing. Half-diagonal ≈ bounding radius.
+            const rawRadius = bounds
+              ? 0.5 * Math.hypot(
+                  bounds.max.x - bounds.min.x,
+                  bounds.max.y - bounds.min.y,
+                  bounds.max.z - bounds.min.z,
                 )
               : 80;
+            const radius = Math.min(250, Math.max(40, rawRadius));
             sunPathDomeRef.current = new SunPathDome(Cesium, viewer, {
               origin: { latitude, longitude, height },
               radius,

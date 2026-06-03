@@ -132,7 +132,16 @@ export class SunPathDome {
     // nothing and the dome would stay invisible until the next camera move.
     viewer.dataSources
       .add(this.dataSource)
-      .then(() => viewer.scene.requestRender())
+      .then(() => {
+        viewer.scene.requestRender();
+        console.log('[SunPathDome] built', {
+          lat: options.origin.latitude,
+          lon: options.origin.longitude,
+          height: options.origin.height,
+          radius: options.radius,
+          entities: this.dataSource.entities.values.length,
+        });
+      })
       .catch((err) => console.warn('[SunPathDome] failed to add data source:', err));
   }
 

@@ -273,7 +273,8 @@ Phase 0 first so every later refactor is provably behavior-preserving.
   `StyleIndex` + the batch resolver, `Rgba`-pure, **preserving `IfcStyledItem`-wins
   precedence** over the indexed side-map.
 - Backend now gains `IfcIndexedColourMap` + material chain → fixes #663 and the #407
-  regression. Per-triangle split included or dominant-only — **decision §8.2**.
+  regression. **Full per-triangle split is in scope** (§8.2): split
+  `IfcTriangulatedFaceSet` into one submesh per palette group, matching the browser.
 - `wasm-bindings` re-points its pre-pass to build the shared `StyleIndex`.
 
 ### Phase 3 — Consumers go thin
@@ -290,8 +291,8 @@ Phase 0 first so every later refactor is provably behavior-preserving.
 ### Phase 5 — Quantization contract (§2.5)
 - Express the browser's 8-bit step only via `Rgba::to_rgba8`/`from_rgba8`; document
   that browser colors round to 1/255 and the backend stays exact (parity test uses a
-  1/255 tolerance for the wasm path, 0 otherwise). **Decision §8.3** on whether to
-  instead widen the SAB transport to `f32`.
+  1/255 tolerance for the wasm path, 0 otherwise). **Resolved (§8.3): keep 8-bit as
+  browser-only transport; no `f32` SAB widening.**
 
 ### Phase 6 — 2D table + adjacent dups *(follow-up issue)*
 - Annotate `IFC_TYPE_FILL_COLORS` as an intentional 2D convention; optionally generate
@@ -358,19 +359,28 @@ tripwire that would have caught copies #3 and #4 the day they were added.
 
 ---
 
-## 8. Decisions required (surface to maintainer)
-1. **Canonical default colors** for the four contested types (§2.2). Recommend the
-   **union** of the wasm + processing tables (no type loses an authored default).
-2. **Backend per-triangle indexed-colour fidelity** (§2.1): full per-triangle split
-   (as browser since #867) or dominant-color-per-faceset? Recommend full split for
-   true parity.
-3. **Quantization** (§2.5/§5): document 8-bit as browser-transport-only (recommended;
-   sub-0.4% and invisible after GPU 8-bit), or widen SAB to `f32`.
+## 8. Decisions — **resolved**
 
-(The earlier "is the desktop palette intentional?" decision is moot — the app is
-being discontinued and its table deleted.)
+1. **Canonical default colors (§2.2): the _union_.** Each contested type keeps the
+   value from whichever table defines it:
+   - `IfcCurtainWall` → `[0.5,0.7,0.9,0.5]` (glass blue, from wasm)
+   - `IfcStairFlight` → `[0.75,0.75,0.75,1]` (grouped with `IfcStair`, from processing)
+   - `IfcBuildingElementProxy` → `[0.6,0.6,0.6,1]` (from processing)
+   - `IfcFurnishingElement` → `[0.7,0.55,0.4,1]` (light wood, from **wasm** — the
+     value browser users see today; processing's darker `[0.5,0.35,0.2,1]` is dropped)
+   All other entries already match. This is the table `processing::style::default_color_for_type`
+   ships in Phase 0/1.
+2. **Backend indexed-colour fidelity (§2.1): full per-triangle split.** The backend
+   matches the browser (#867) — an `IfcTriangulatedFaceSet` is split into one submesh
+   per palette group, so multi-color facesets (#858) render correctly in every
+   consumer. This is in scope for Phase 2 (not dominant-color-only).
+3. **Quantization (§2.5/§5): 8-bit is browser-transport-only, documented.** The wasm
+   path keeps `u8` RGBA across the SAB worker boundary (via `Rgba::to_rgba8`/`from_rgba8`);
+   the backend stays `f32` exact. The parity test allows a 1/255 tolerance for the
+   wasm path and requires exact equality elsewhere. No `f32` SAB widening.
 
-These are product/fidelity calls; confirm rather than assume. None block Phase 0.
+(The earlier "is the desktop palette intentional?" question is moot — the app is being
+discontinued and its table deleted with it.)
 
 ---
 

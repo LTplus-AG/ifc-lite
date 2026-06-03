@@ -30,6 +30,9 @@
 
 use ifc_lite_core::IfcType;
 
+mod indexed_colour;
+pub(crate) use indexed_colour::resolve_indexed_colour_map;
+
 /// Alpha at or above which a color is treated as opaque.
 ///
 /// Used by submesh material selection (Phase 2) to prefer glass (transparent)

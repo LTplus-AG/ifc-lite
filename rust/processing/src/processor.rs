@@ -797,6 +797,10 @@ pub fn process_geometry_streaming_filtered_with_options(
     tracing::debug!("Built entity index");
 
     let mut geometry_style_index: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+    // IfcIndexedColourMap colours, keyed by target geometry id (issue #913).
+    // Collected eagerly regardless of `defer_style_updates`; merged into
+    // `geometry_style_index` (styled items win) before color resolution.
+    let mut indexed_colour_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     let mut presentation_layer_by_assigned_id: FxHashMap<u32, String> = FxHashMap::default();
     let mut property_values_by_id: FxHashMap<u32, (String, String)> = FxHashMap::default();
     let mut property_sets_by_id: FxHashMap<u32, PropertySetDefinition> = FxHashMap::default();
@@ -884,6 +888,21 @@ pub fn process_geometry_streaming_filtered_with_options(
                     ));
                 }
             }
+        }
+
+        if type_name == "IFCINDEXEDCOLOURMAP" {
+            // Collect authored tessellation colours so the backend matches the
+            // browser on CATIA-style exports that have no IFCSTYLEDITEM (#663).
+            if let Ok(icm) = decoder.decode_at(start, end) {
+                if let Some((geometry_id, rgba)) =
+                    crate::style::resolve_indexed_colour_map(&icm, &mut decoder)
+                {
+                    indexed_colour_index
+                        .entry(geometry_id)
+                        .or_insert(rgba.to_array());
+                }
+            }
+            continue;
         }
 
         if type_name == "IFCSTYLEDITEM" {
@@ -1179,6 +1198,9 @@ pub fn process_geometry_streaming_filtered_with_options(
     let rtc_offset = router.rtc_offset();
     let void_index_arc = Arc::new(filtered_void_index);
     let skipped_entity_ids = Arc::new(skipped_entity_ids);
+    // Fold indexed-colour-map colours in where no IFCSTYLEDITEM already claimed
+    // the geometry (styled items win, matching the browser precedence).
+    merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
     let mut geometry_style_index = Arc::new(geometry_style_index);
 
     let total_jobs = entity_jobs.len();
@@ -1324,6 +1346,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                         }
                     }
                 }
+                merge_indexed_colours(&mut rebuilt_styles, &indexed_colour_index);
                 geometry_style_index = Arc::new(rebuilt_styles);
                 let deferred_color_updates = build_color_updates_for_jobs(
                     &entity_jobs[..processed_jobs],
@@ -1499,6 +1522,24 @@ fn process_entity_job(
     }
 
     Vec::new()
+}
+
+/// Fold `IfcIndexedColourMap` colours into the style index, keyed by target
+/// geometry id. `or_insert` preserves IFCSTYLEDITEM precedence: a geometry that
+/// already has a direct style keeps it; the indexed colour only fills the gaps.
+fn merge_indexed_colours(
+    geometry_styles: &mut FxHashMap<u32, GeometryStyleInfo>,
+    indexed_colours: &FxHashMap<u32, [f32; 4]>,
+) {
+    for (&geometry_id, &color) in indexed_colours {
+        geometry_styles
+            .entry(geometry_id)
+            .or_insert_with(|| GeometryStyleInfo {
+                color,
+                shading_color: None,
+                material_name: None,
+            });
+    }
 }
 
 fn collect_geometry_style_info(

@@ -1,9 +1,11 @@
 # IFC Styling & Default-Rendering Parity — Research & Plan
 
-Status: **Phases 0–1 landed.** Canonical `ifc_lite_processing::style` module is now
-the single default-color table, consumed by `processing`, `wasm-bindings`, and
-`apps/server`; a CI guard forbids new copies. Phase 2 (shared resolver +
-`IfcIndexedColourMap` + material chain) not started.
+Status: **Phases 0–1 + 2a landed.** Canonical `ifc_lite_processing::style` module is
+the single default-color table (consumed by `processing`, `wasm-bindings`,
+`apps/server`; CI guard forbids new copies), and the backend now resolves
+`IfcIndexedColourMap` (dominant colour) — fixing the #663 off-white regression.
+Remaining Phase 2: per-triangle split (#858), material chain (#407), and pointing
+`wasm-bindings` at the shared resolver.
 Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
 Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`,
@@ -286,13 +288,29 @@ Phase 0 first so every later refactor is provably behavior-preserving.
   contested types; `tests/styling_parity.rs` proves only those four changed.
 
 ### Phase 2 — Shared resolver in `processing::style`
-- Lift the wasm extraction (§2.1, §2.3, §2.4, §2.7) into `processing::style` as
-  `StyleIndex` + the batch resolver, `Rgba`-pure, **preserving `IfcStyledItem`-wins
-  precedence** over the indexed side-map.
-- Backend now gains `IfcIndexedColourMap` + material chain → fixes #663 and the #407
-  regression. **Full per-triangle split is in scope** (§8.2): split
-  `IfcTriangulatedFaceSet` into one submesh per palette group, matching the browser.
-- `wasm-bindings` re-points its pre-pass to build the shared `StyleIndex`.
+
+**Phase 2a — backend `IfcIndexedColourMap` (dominant colour) — done**
+- ✅ `processing::style::indexed_colour::resolve_indexed_colour_map` ports the browser
+  extractor (`Rgba`-pure). The processor collects `IFCINDEXEDCOLOURMAP` during its
+  scan into a `geometry_id → colour` index and folds it into `geometry_style_index`
+  via `merge_indexed_colours` — `or_insert`, so **`IfcStyledItem` still wins** (the
+  side-map only fills geometry with no direct style). Every existing color consumer
+  (element-color resolution, submesh path, `is_opaque_opening`) picks it up with zero
+  threading.
+- ✅ Fixes #663: `tests/styling_indexed_colour.rs` proves an `IfcBuildingElementProxy`
+  whose only colour source is an indexed colour map now renders the authored colour,
+  not the default gray.
+
+**Phase 2b — remaining (not started)**
+- Per-triangle split (§8.2 / #858): partition an `IfcTriangulatedFaceSet` into one
+  submesh per palette group at emission time (the dominant-colour path above handles
+  single-colour face sets; multi-colour needs mesh partitioning).
+- Material chain (§2.4 / #407): port `build_material_style_index` /
+  `resolve_material_ids` / `flatten_material_color_index` so material-only-styled
+  files (IFC2x3 / ArchiCAD) color in the backend too.
+- Submesh transparent/opaque preference (§2.3) as a shared batch resolver.
+- Point `wasm-bindings` at the shared resolver (needs an LLVM-20 / CI build to verify;
+  not buildable in the current dev container).
 
 ### Phase 3 — Consumers go thin
 - `processing` + `apps/server` call `resolve_element_submesh_colors` and delete their

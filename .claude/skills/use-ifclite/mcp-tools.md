@@ -17,8 +17,9 @@ ifc-lite mcp ./model.ifc --viewer              # auto-open the 3D viewer
 The standalone binary `ifc-lite-mcp …` accepts the same flags. Useful options:
 `--read-only`, `--federate`, `--transport stdio|http`, `--port`, `--host`
 (loopback by default; non-loopback needs `--token` or `--insecure`), `--token`
-(repeatable; full or read-only scope), `--bsdd <url>`, `--allow <path>`
-(restrict filesystem access).
+(a single bearer token for HTTP auth; combine with `--read-only` to scope the
+whole server read-only), `--bsdd <url>`, `--allow <path>` (restrict filesystem
+access).
 
 Register it with Claude Code via your MCP config, e.g.:
 

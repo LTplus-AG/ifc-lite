@@ -9,6 +9,7 @@
 
 mod georeferencing;
 mod processor;
+mod style;
 mod symbolic;
 mod types;
 
@@ -20,6 +21,7 @@ pub use processor::{
     process_geometry_streaming_with_options_and_bootstrap,
     OpeningFilterMode, ProcessingResult, StreamingOptions,
 };
+pub use style::{default_color_for_type, Rgba, TRANSPARENCY_ALPHA_THRESHOLD};
 pub use symbolic::{
     extract_symbolic_data, SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis,
     SymbolicPolyline, SymbolicText,

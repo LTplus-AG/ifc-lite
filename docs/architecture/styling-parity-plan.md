@@ -1,6 +1,7 @@
 # IFC Styling & Default-Rendering Parity — Research & Plan
 
-Status: **proposed** (research complete; implementation not started).
+Status: **Phase 0 landed** (canonical `ifc_lite_processing::style` module + baseline
+parity lock, not yet wired in); Phases 1+ not started.
 Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
 Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`,
@@ -250,12 +251,19 @@ everyone else downstream.
 Each phase is independently shippable, reversible, and lands with its tests.
 Phase 0 first so every later refactor is provably behavior-preserving.
 
-### Phase 0 — Baseline harness (no behavior change)
-- Add the cross-consumer parity test + **golden fixtures** (§6.2) asserting *current*
-  output of the wasm and processing paths. Captures today's behavior (divergences
-  included) as a baseline.
-- Add `processing::style::{Rgba, default_color_for_type}` (table = agreed union,
-  §8.1) and unit-test it. Not wired in yet.
+### Phase 0 — Baseline + scaffold (no behavior change) — **done**
+- ✅ Added `processing::style::{Rgba, default_color_for_type, TRANSPARENCY_ALPHA_THRESHOLD}`
+  (`rust/processing/src/style/mod.rs`) — the canonical color type and the agreed
+  **union** table (§8.1), with unit tests. Re-exported from `lib.rs`; **not wired into
+  the pipeline** yet.
+- ✅ Added `rust/processing/tests/styling_parity.rs` — a **baseline lock** that
+  snapshots both historical tables and proves the union changes *exactly* four
+  entries (`exactly_four_types_change_per_table`), so Phase 1's deletions are
+  provably intentional.
+- ⏭️ **Deferred to Phase 2:** the end-to-end golden IFC fixtures comparing the wasm
+  vs processing *mesh* output (§6.2). They need the shared decoder-driven resolver
+  to compare against, which doesn't exist until Phase 2; today the default-color
+  table is the only shared styling surface, and it is locked at unit level above.
 
 ### Phase 1 — Unify the default-color table *(low risk)*
 - Repoint the live Rust copies (#1–#3, §3.1) to

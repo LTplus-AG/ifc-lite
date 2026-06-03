@@ -31,7 +31,9 @@
 use ifc_lite_core::IfcType;
 
 mod indexed_colour;
-pub(crate) use indexed_colour::resolve_indexed_colour_map;
+pub(crate) use indexed_colour::{
+    resolve_indexed_colour_map_full, split_mesh_by_indexed_colour, FullIndexedColourMap,
+};
 
 /// Alpha at or above which a color is treated as opaque.
 ///

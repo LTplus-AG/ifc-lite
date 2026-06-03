@@ -797,10 +797,13 @@ pub fn process_geometry_streaming_filtered_with_options(
     tracing::debug!("Built entity index");
 
     let mut geometry_style_index: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-    // IfcIndexedColourMap colours, keyed by target geometry id (issue #913).
-    // Collected eagerly regardless of `defer_style_updates`; merged into
-    // `geometry_style_index` (styled items win) before color resolution.
+    // IfcIndexedColourMap data, keyed by target geometry id (issue #913).
+    // Collected eagerly regardless of `defer_style_updates`. The dominant
+    // colour is merged into `geometry_style_index` (styled items win); the full
+    // per-triangle map drives sub-mesh splitting at emission (#858).
     let mut indexed_colour_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    let mut indexed_colour_full: FxHashMap<u32, crate::style::FullIndexedColourMap> =
+        FxHashMap::default();
     let mut presentation_layer_by_assigned_id: FxHashMap<u32, String> = FxHashMap::default();
     let mut property_values_by_id: FxHashMap<u32, (String, String)> = FxHashMap::default();
     let mut property_sets_by_id: FxHashMap<u32, PropertySetDefinition> = FxHashMap::default();
@@ -892,14 +895,17 @@ pub fn process_geometry_streaming_filtered_with_options(
 
         if type_name == "IFCINDEXEDCOLOURMAP" {
             // Collect authored tessellation colours so the backend matches the
-            // browser on CATIA-style exports that have no IFCSTYLEDITEM (#663).
+            // browser on CATIA-style exports that have no IFCSTYLEDITEM (#663,
+            // #858).
             if let Ok(icm) = decoder.decode_at(start, end) {
-                if let Some((geometry_id, rgba)) =
-                    crate::style::resolve_indexed_colour_map(&icm, &mut decoder)
+                if let Some(full) =
+                    crate::style::resolve_indexed_colour_map_full(&icm, &mut decoder)
                 {
+                    let geometry_id = full.geometry_id;
                     indexed_colour_index
                         .entry(geometry_id)
-                        .or_insert(rgba.to_array());
+                        .or_insert(full.dominant().to_array());
+                    indexed_colour_full.entry(geometry_id).or_insert(full);
                 }
             }
             continue;
@@ -1202,6 +1208,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     // the geometry (styled items win, matching the browser precedence).
     merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
     let mut geometry_style_index = Arc::new(geometry_style_index);
+    let indexed_colour_full = Arc::new(indexed_colour_full);
 
     let total_jobs = entity_jobs.len();
     let initial_chunk_size = options.initial_batch_size.max(1);
@@ -1315,6 +1322,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     void_index_arc.as_ref(),
                     skipped_entity_ids.as_ref(),
                     geometry_style_index.as_ref(),
+                    indexed_colour_full.as_ref(),
                     site_local_rotation,
                 )
             })
@@ -1416,6 +1424,7 @@ fn process_entity_job(
     void_index: &FxHashMap<u32, Vec<u32>>,
     skipped_entity_ids: &HashSet<u32>,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
+    indexed_colour_full: &FxHashMap<u32, crate::style::FullIndexedColourMap>,
     // Present only when the selected coordinate space is `site_local`; rotates
     // mesh vertices into the site's axis frame.
     site_local_rotation: Option<&Vec<f64>>,
@@ -1502,6 +1511,46 @@ fn process_entity_job(
 
     if let Some(mut mesh) = mesh_candidate {
         if !mesh.is_empty() {
+            // Multi-colour IfcIndexedColourMap → one sub-mesh per palette group
+            // (#858). Only applies when the produced triangle count still
+            // matches the face set's CoordIndex (no CSG/void retopology);
+            // otherwise we keep the single dominant-coloured mesh below.
+            if !indexed_colour_full.is_empty() {
+                if let Some(full) =
+                    find_indexed_colour_for_element(&entity, indexed_colour_full, &mut local_decoder)
+                {
+                    let geometry_id = full.geometry_id;
+                    if let Some(groups) = crate::style::split_mesh_by_indexed_colour(&mesh, full) {
+                        let mut out: Vec<MeshData> = Vec::with_capacity(groups.len());
+                        for (color, mut part) in groups {
+                            if part.normals.is_empty() {
+                                calculate_normals(&mut part);
+                            }
+                            let mut mesh_data = MeshData::new(
+                                job.id,
+                                job.ifc_type.name().to_string(),
+                                part.positions,
+                                part.normals,
+                                part.indices,
+                                color.to_array(),
+                            )
+                            .with_element_metadata(
+                                global_id.clone(),
+                                name.clone(),
+                                presentation_layer.clone(),
+                            )
+                            .with_properties(space_zone_properties.clone())
+                            .with_style_metadata(None, Some(geometry_id));
+                            convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
+                            out.push(mesh_data);
+                        }
+                        if !out.is_empty() {
+                            return out;
+                        }
+                    }
+                }
+            }
+
             if mesh.normals.is_empty() {
                 calculate_normals(&mut mesh);
             }
@@ -1522,6 +1571,31 @@ fn process_entity_job(
     }
 
     Vec::new()
+}
+
+/// Find the first representation item of `entity` that carries a full
+/// `IfcIndexedColourMap` (issue #858). Used to drive per-triangle sub-mesh
+/// splitting in the single-mesh emission path.
+fn find_indexed_colour_for_element<'a>(
+    entity: &DecodedEntity,
+    indexed_colour_full: &'a FxHashMap<u32, crate::style::FullIndexedColourMap>,
+    decoder: &mut EntityDecoder,
+) -> Option<&'a crate::style::FullIndexedColourMap> {
+    let pds_id = entity.get_ref(6)?;
+    let pds = decoder.decode_by_id(pds_id).ok()?;
+    let repr_ids = get_refs_from_list(&pds, 2)?;
+    for repr_id in repr_ids {
+        if let Ok(repr) = decoder.decode_by_id(repr_id) {
+            if let Some(items) = get_refs_from_list(&repr, 3) {
+                for item_id in items {
+                    if let Some(full) = indexed_colour_full.get(&item_id) {
+                        return Some(full);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Fold `IfcIndexedColourMap` colours into the style index, keyed by target

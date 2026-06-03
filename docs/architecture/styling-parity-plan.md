@@ -1,11 +1,11 @@
 # IFC Styling & Default-Rendering Parity — Research & Plan
 
-Status: **Phases 0–1 + 2a landed.** Canonical `ifc_lite_processing::style` module is
-the single default-color table (consumed by `processing`, `wasm-bindings`,
-`apps/server`; CI guard forbids new copies), and the backend now resolves
-`IfcIndexedColourMap` (dominant colour) — fixing the #663 off-white regression.
-Remaining Phase 2: per-triangle split (#858), material chain (#407), and pointing
-`wasm-bindings` at the shared resolver.
+Status: **Phases 0–1 + 2a + 2b(per-triangle) landed.** Canonical
+`ifc_lite_processing::style` module is the single default-color table (consumed by
+`processing`, `wasm-bindings`, `apps/server`; CI guard forbids new copies), and the
+backend now resolves `IfcIndexedColourMap` — both dominant colour (#663) **and
+per-triangle splitting** (#858). Remaining Phase 2: material chain (#407), submesh
+transparent/opaque preference, and pointing `wasm-bindings` at the shared resolver.
 Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
 Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`,
@@ -301,10 +301,21 @@ Phase 0 first so every later refactor is provably behavior-preserving.
   whose only colour source is an indexed colour map now renders the authored colour,
   not the default gray.
 
-**Phase 2b — remaining (not started)**
-- Per-triangle split (§8.2 / #858): partition an `IfcTriangulatedFaceSet` into one
-  submesh per palette group at emission time (the dominant-colour path above handles
-  single-colour face sets; multi-colour needs mesh partitioning).
+**Phase 2b — per-triangle indexed-colour split — done**
+- ✅ `resolve_indexed_colour_map_full` now returns the palette + a per-triangle index
+  (`FullIndexedColourMap`), and `split_mesh_by_indexed_colour` partitions a flat-shaded
+  face set into one sub-mesh per palette group. The processor collects the full map in
+  the same scan, and the single-mesh emission path splits when an element's face set
+  has a multi-colour map **and** the produced triangle count still matches `CoordIndex`
+  (a count mismatch = CSG/void retopology → keep the dominant-coloured mesh).
+- ✅ Fixes #858: `tests/styling_indexed_colour.rs::faceset_is_split_per_triangle_palette_group`
+  proves a 12-triangle cube coloured 6 red + 6 green emits two correctly-coloured
+  sub-meshes. (Triangle order is safe: `orient_closed_shell_outward` only flips winding
+  in place and `build_flat_shaded_mesh` preserves `CoordIndex` order.)
+- Note: this *re-adds* per-triangle fidelity that the #874 mesh-pipeline unification
+  dropped from wasm too — so when wasm is re-pointed it regains #858 for free.
+
+**Phase 2c — remaining (not started)**
 - Material chain (§2.4 / #407): port `build_material_style_index` /
   `resolve_material_ids` / `flatten_material_color_index` so material-only-styled
   files (IFC2x3 / ArchiCAD) color in the backend too.

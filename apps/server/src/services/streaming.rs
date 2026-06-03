@@ -255,7 +255,9 @@ fn process_batch(
                         let color = style_index
                             .get(&job.id)
                             .copied()
-                            .unwrap_or_else(|| get_default_color(&job.ifc_type));
+                            .unwrap_or_else(|| {
+                                ifc_lite_processing::default_color_for_type(job.ifc_type).to_array()
+                            });
 
                         let mut mesh_data = MeshData::new(
                             job.id,
@@ -687,25 +689,6 @@ fn extract_surface_style_color(style_id: u32, decoder: &mut EntityDecoder) -> Op
     None
 }
 
-fn get_default_color(ifc_type: &IfcType) -> [f32; 4] {
-    match ifc_type {
-        IfcType::IfcWall | IfcType::IfcWallStandardCase => [0.85, 0.85, 0.85, 1.0],
-        IfcType::IfcSlab => [0.7, 0.7, 0.7, 1.0],
-        IfcType::IfcRoof => [0.6, 0.5, 0.4, 1.0],
-        IfcType::IfcColumn | IfcType::IfcBeam | IfcType::IfcMember => [0.6, 0.65, 0.7, 1.0],
-        IfcType::IfcWindow => [0.6, 0.8, 1.0, 0.4],
-        IfcType::IfcDoor => [0.6, 0.45, 0.3, 1.0],
-        IfcType::IfcStair | IfcType::IfcStairFlight => [0.75, 0.75, 0.75, 1.0],
-        IfcType::IfcRailing => [0.4, 0.4, 0.45, 1.0],
-        IfcType::IfcPlate | IfcType::IfcCovering => [0.8, 0.8, 0.8, 1.0],
-        IfcType::IfcFurnishingElement => [0.5, 0.35, 0.2, 1.0],
-        // Space - cyan transparent (matches MainToolbar)
-        IfcType::IfcSpace => [0.2, 0.85, 1.0, 0.3],
-        // Opening elements - red-orange transparent
-        IfcType::IfcOpeningElement => [1.0, 0.42, 0.29, 0.4],
-        // Site - green
-        IfcType::IfcSite => [0.4, 0.8, 0.3, 1.0],
-        IfcType::IfcBuildingElementProxy => [0.6, 0.6, 0.6, 1.0],
-        _ => [0.8, 0.8, 0.8, 1.0],
-    }
-}
+// Default IFC-type colors now come from the single canonical table in
+// `ifc_lite_processing::default_color_for_type` (issue #913). Do not
+// reintroduce a per-service table here.

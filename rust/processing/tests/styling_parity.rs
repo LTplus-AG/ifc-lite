@@ -186,3 +186,91 @@ fn exactly_four_types_change_per_table() {
         "unexpected changes relative to the processing table"
     );
 }
+
+// ---------------------------------------------------------------------------
+// "No second table" guard (plan §6.3).
+//
+// Fails the build if a per-consumer IFC-type → color table reappears anywhere
+// in the Rust sources. The canonical table is `style::default_color_for_type`;
+// the historical copies were all named `fn get_default_color[...]`, so that is
+// the signature we forbid outside the allowlist. This is the tripwire that
+// would have caught the server and desktop copies the day they were added.
+// ---------------------------------------------------------------------------
+
+/// Repo root = the first ancestor of this crate that holds both `rust/` and
+/// `apps/`. Returns `None` in a packaged/standalone context (test then skips).
+fn repo_root() -> Option<std::path::PathBuf> {
+    let mut dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
+    loop {
+        if dir.join("rust").is_dir() && dir.join("apps").is_dir() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let skip = matches!(
+                path.file_name().and_then(|n| n.to_str()),
+                Some("target" | "node_modules" | ".git" | "dist" | "build")
+            );
+            if !skip {
+                collect_rs_files(&path, out);
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(path);
+        }
+    }
+}
+
+#[test]
+fn no_duplicate_default_color_tables() {
+    let Some(root) = repo_root() else {
+        eprintln!("repo root not found (packaged context) — skipping guard");
+        return;
+    };
+
+    // Paths allowed to still contain a `fn get_default_color*`:
+    //  - this guard test itself (it names the pattern in prose/snapshots);
+    //  - the discontinued desktop app, deleted with its decommission (#913).
+    let allow = |rel: &str| {
+        rel.ends_with("rust/processing/tests/styling_parity.rs")
+            || rel.starts_with("apps/desktop/")
+    };
+
+    let mut files = Vec::new();
+    collect_rs_files(&root.join("rust"), &mut files);
+    collect_rs_files(&root.join("apps"), &mut files);
+
+    let mut offenders = Vec::new();
+    for path in files {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if allow(&rel) {
+            continue;
+        }
+        let Ok(src) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if src.contains("fn get_default_color") {
+            offenders.push(rel);
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "found per-consumer default-color table(s) outside the canonical \
+         `processing::style` — use `default_color_for_type` instead (issue #913): {offenders:?}"
+    );
+}

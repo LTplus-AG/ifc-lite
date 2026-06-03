@@ -1,7 +1,9 @@
 # IFC Styling & Default-Rendering Parity — Research & Plan
 
-Status: **Phase 0 landed** (canonical `ifc_lite_processing::style` module + baseline
-parity lock, not yet wired in); Phases 1+ not started.
+Status: **Phases 0–1 landed.** Canonical `ifc_lite_processing::style` module is now
+the single default-color table, consumed by `processing`, `wasm-bindings`, and
+`apps/server`; a CI guard forbids new copies. Phase 2 (shared resolver +
+`IfcIndexedColourMap` + material chain) not started.
 Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
 Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`,
@@ -265,16 +267,23 @@ Phase 0 first so every later refactor is provably behavior-preserving.
   to compare against, which doesn't exist until Phase 2; today the default-color
   table is the only shared styling surface, and it is locked at unit level above.
 
-### Phase 1 — Unify the default-color table *(low risk)*
-- Repoint the live Rust copies (#1–#3, §3.1) to
-  `processing::style::default_color_for_type`; delete the three bodies and the stale
-  `default-materials.ts` comment.
-- **Delete copy #4 by removing the discontinued desktop app/crate** (coordinated with
-  its decommission) — this also drops a geometry-only dependency.
-- Land the **"no second table" CI guard** (§6.3) in the same PR — this is what makes
-  Phase 1 *stick*.
-- Behavioral change for the four contested types in backend/server; snapshots updated
-  in-PR and noted in the changeset/PR body.
+### Phase 1 — Unify the default-color table *(low risk)* — **done**
+- ✅ Repointed the three live Rust copies to
+  `ifc_lite_processing::default_color_for_type(..).to_array()` and **deleted** their
+  bodies: `processing` (`processor.rs`), `wasm-bindings` (`api/styling.rs`, call
+  sites in `api/gpu_meshes.rs`), `apps/server` (`services/streaming.rs`). Removed the
+  stale `// matches default-materials.ts` comment.
+- ✅ Landed the **"no second table" CI guard** as a self-contained test
+  (`tests/styling_parity.rs::no_duplicate_default_color_tables`) — scans `rust/` and
+  `apps/` and fails on any `fn get_default_color*` outside `processing::style`. Runs
+  under `cargo test`; no workflow edits needed.
+- 🔸 **Copy #4 (desktop) is allowlisted, not deleted here.** Removing the whole
+  discontinued app is out of scope for a styling PR; the guard allowlists
+  `apps/desktop/` with a `#913` note so it is removed when the app is decommissioned.
+  (Desktop is geometry-only, so its colors are simply stale until then — no live web
+  or server path uses it.)
+- Behavioral change: backend/server now match the canonical union for the four
+  contested types; `tests/styling_parity.rs` proves only those four changed.
 
 ### Phase 2 — Shared resolver in `processing::style`
 - Lift the wasm extraction (§2.1, §2.3, §2.4, §2.7) into `processing::style` as

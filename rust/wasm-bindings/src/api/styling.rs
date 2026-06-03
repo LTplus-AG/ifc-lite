@@ -966,57 +966,9 @@ fn walk_representation_for_direct_color(
     None
 }
 
-/// Get default color for IFC type (matches default-materials.ts)
-pub(crate) fn get_default_color_for_type(ifc_type: &ifc_lite_core::IfcType) -> [f32; 4] {
-    use ifc_lite_core::IfcType;
-
-    match ifc_type {
-        // Walls - light gray
-        IfcType::IfcWall | IfcType::IfcWallStandardCase => [0.85, 0.85, 0.85, 1.0],
-
-        // Slabs - darker gray
-        IfcType::IfcSlab => [0.7, 0.7, 0.7, 1.0],
-
-        // Roofs - brown-ish
-        IfcType::IfcRoof => [0.6, 0.5, 0.4, 1.0],
-
-        // Columns/Beams - steel gray
-        IfcType::IfcColumn | IfcType::IfcBeam | IfcType::IfcMember => [0.6, 0.65, 0.7, 1.0],
-
-        // Windows - light blue transparent
-        IfcType::IfcWindow => [0.6, 0.8, 1.0, 0.4],
-
-        // Doors - wood brown
-        IfcType::IfcDoor => [0.6, 0.45, 0.3, 1.0],
-
-        // Stairs
-        IfcType::IfcStair => [0.75, 0.75, 0.75, 1.0],
-
-        // Railings
-        IfcType::IfcRailing => [0.4, 0.4, 0.45, 1.0],
-
-        // Plates/Coverings
-        IfcType::IfcPlate | IfcType::IfcCovering => [0.8, 0.8, 0.8, 1.0],
-
-        // Curtain walls - glass blue
-        IfcType::IfcCurtainWall => [0.5, 0.7, 0.9, 0.5],
-
-        // Furniture - wood
-        IfcType::IfcFurnishingElement => [0.7, 0.55, 0.4, 1.0],
-
-        // Spaces - cyan transparent (matches MainToolbar)
-        IfcType::IfcSpace => [0.2, 0.85, 1.0, 0.3],
-
-        // Opening elements - red-orange transparent
-        IfcType::IfcOpeningElement => [1.0, 0.42, 0.29, 0.4],
-
-        // Site - green
-        IfcType::IfcSite => [0.4, 0.8, 0.3, 1.0],
-
-        // Default gray
-        _ => [0.8, 0.8, 0.8, 1.0],
-    }
-}
+// Default IFC-type colors now come from the single canonical table in
+// `ifc_lite_processing::default_color_for_type` (issue #913). The browser path
+// calls it directly (see `gpu_meshes.rs`); do not reintroduce a table here.
 
 /// Extract building rotation from a pre-collected IfcSite position (avoids re-scanning).
 /// Returns rotation angle in radians, or None if not found.

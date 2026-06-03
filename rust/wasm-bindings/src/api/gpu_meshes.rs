@@ -817,10 +817,9 @@ impl IfcAPI {
         style_ids: &[u32],   // geometry style entity IDs
         style_colors: &[u8], // [r, g, b, a, r, g, b, a, ...] (0-255)
     ) -> MeshCollection {
-        use super::styling::{
-            get_default_color_for_type, resolve_element_color, resolve_submesh_color,
-        };
+        use super::styling::{resolve_element_color, resolve_submesh_color};
         use ifc_lite_core::EntityDecoder;
+        use ifc_lite_processing::default_color_for_type;
         use ifc_lite_geometry::{calculate_normals, GeometryRouter};
 
         let content = decode_ifc_bytes(data);
@@ -971,7 +970,7 @@ impl IfcAPI {
                             let color = element_styles
                                 .get(&id)
                                 .copied()
-                                .unwrap_or_else(|| get_default_color_for_type(&ifc_type));
+                                .unwrap_or_else(|| default_color_for_type(ifc_type).to_array());
                             let ifc_type_name = type_name_cache
                                 .entry(ifc_type)
                                 .or_insert_with(|| ifc_type.name().to_string())
@@ -998,7 +997,7 @@ impl IfcAPI {
                             router.process_element_with_submeshes(&entity, &mut decoder)
                         {
                             if !sub_meshes.is_empty() {
-                                let default_color = get_default_color_for_type(&ifc_type);
+                                let default_color = default_color_for_type(ifc_type).to_array();
                                 let element_color = element_styles.get(&id).copied();
                                 let mut mat_color_idx = 0usize;
                                 for sub in sub_meshes.sub_meshes {
@@ -1042,7 +1041,7 @@ impl IfcAPI {
                             router.process_element_with_submeshes(&entity, &mut decoder)
                         {
                             if !sub_meshes.is_empty() {
-                                let default_color = get_default_color_for_type(&ifc_type);
+                                let default_color = default_color_for_type(ifc_type).to_array();
                                 let element_color = element_styles.get(&id).copied();
                                 let mut mat_color_idx = 0usize;
                                 for sub in sub_meshes.sub_meshes {

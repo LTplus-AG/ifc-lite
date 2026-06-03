@@ -1000,7 +1000,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 start,
                 end,
                 product_definition_shape_id: None,
-                element_color: get_default_color(&ifc_type),
+                element_color: crate::style::default_color_for_type(ifc_type).to_array(),
                 global_id: None,
                 name: None,
                 presentation_layer: None,
@@ -2136,55 +2136,9 @@ fn infer_opening_subpart_material_name(
     Some(format!("{}_Frame_{}", prefix, geometry_id))
 }
 
-/// Get default color based on IFC type.
-fn get_default_color(ifc_type: &IfcType) -> [f32; 4] {
-    match ifc_type {
-        // Walls - light gray
-        IfcType::IfcWall | IfcType::IfcWallStandardCase => [0.85, 0.85, 0.85, 1.0],
-
-        // Slabs - darker gray
-        IfcType::IfcSlab => [0.7, 0.7, 0.7, 1.0],
-
-        // Roofs - brown-ish
-        IfcType::IfcRoof => [0.6, 0.5, 0.4, 1.0],
-
-        // Columns/Beams - steel gray
-        IfcType::IfcColumn | IfcType::IfcBeam | IfcType::IfcMember => [0.6, 0.65, 0.7, 1.0],
-
-        // Windows - light blue transparent
-        IfcType::IfcWindow => [0.6, 0.8, 1.0, 0.4],
-
-        // Doors - wood brown
-        IfcType::IfcDoor => [0.6, 0.45, 0.3, 1.0],
-
-        // Stairs
-        IfcType::IfcStair | IfcType::IfcStairFlight => [0.75, 0.75, 0.75, 1.0],
-
-        // Railings
-        IfcType::IfcRailing => [0.4, 0.4, 0.45, 1.0],
-
-        // Plates/Coverings
-        IfcType::IfcPlate | IfcType::IfcCovering => [0.8, 0.8, 0.8, 1.0],
-
-        // Furniture
-        IfcType::IfcFurnishingElement => [0.5, 0.35, 0.2, 1.0],
-
-        // Space - cyan transparent (matches MainToolbar)
-        IfcType::IfcSpace => [0.2, 0.85, 1.0, 0.3],
-
-        // Opening elements - red-orange transparent
-        IfcType::IfcOpeningElement => [1.0, 0.42, 0.29, 0.4],
-
-        // Site - green
-        IfcType::IfcSite => [0.4, 0.8, 0.3, 1.0],
-
-        // Building element proxy - generic gray
-        IfcType::IfcBuildingElementProxy => [0.6, 0.6, 0.6, 1.0],
-
-        // Default - neutral gray
-        _ => [0.8, 0.8, 0.8, 1.0],
-    }
-}
+// Default IFC-type colors now come from the single canonical table in
+// `crate::style::default_color_for_type` (issue #913). Do not reintroduce a
+// per-module table here — see `tests/styling_parity.rs` for the guard.
 
 #[cfg(test)]
 mod tests {

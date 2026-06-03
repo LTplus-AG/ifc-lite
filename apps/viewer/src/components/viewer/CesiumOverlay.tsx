@@ -741,30 +741,34 @@ export function CesiumOverlay({
 
       if (solarShowSunPath) {
         const dayKey = `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}:${latitude.toFixed(4)},${longitude.toFixed(4)}`;
-        if (!sunPathDomeRef.current || sunPathDomeDayRef.current !== dayKey) {
-          // New day or site → rebuild static geometry (day arc + analemmas).
-          sunPathDomeRef.current?.destroy();
-          const bounds = coordinateInfo?.originalBounds;
-          const radius = bounds
-            ? Math.max(
-                40,
-                0.9 * Math.hypot(
-                  bounds.max.x - bounds.min.x,
-                  bounds.max.y - bounds.min.y,
-                  bounds.max.z - bounds.min.z,
-                ),
-              )
-            : 80;
-          sunPathDomeRef.current = new SunPathDome(Cesium, viewer, {
-            origin: { latitude, longitude, height },
-            radius,
-            date,
-            showAnalemmas: true,
-          });
-          sunPathDomeDayRef.current = dayKey;
-        } else {
-          // Same day, new time → just move the sun marker + beam.
-          sunPathDomeRef.current.update(date);
+        try {
+          if (!sunPathDomeRef.current || sunPathDomeDayRef.current !== dayKey) {
+            // New day or site → rebuild static geometry (day arc + analemmas).
+            sunPathDomeRef.current?.destroy();
+            const bounds = coordinateInfo?.originalBounds;
+            const radius = bounds
+              ? Math.max(
+                  40,
+                  0.9 * Math.hypot(
+                    bounds.max.x - bounds.min.x,
+                    bounds.max.y - bounds.min.y,
+                    bounds.max.z - bounds.min.z,
+                  ),
+                )
+              : 80;
+            sunPathDomeRef.current = new SunPathDome(Cesium, viewer, {
+              origin: { latitude, longitude, height },
+              radius,
+              date,
+              showAnalemmas: true,
+            });
+            sunPathDomeDayRef.current = dayKey;
+          } else {
+            // Same day, new time → just move the sun marker + beam.
+            sunPathDomeRef.current.update(date);
+          }
+        } catch (err) {
+          console.warn('[CesiumOverlay] sun-path dome build/update failed:', err);
         }
       } else if (sunPathDomeRef.current) {
         sunPathDomeRef.current.destroy();

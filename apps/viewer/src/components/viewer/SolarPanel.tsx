@@ -11,10 +11,10 @@
  * and on Cesium for the OSM/photorealistic context that casts shadows.
  *
  * Time handling: the studied instant is always stored as an absolute UTC
- * epoch. For display the panel can show either UTC or *local solar time*
- * derived from the site longitude (15°/hour) — civil-timezone-agnostic on
- * purpose, since sun-path studies care about solar time and a longitude
- * offset needs no timezone database or DST rules.
+ * epoch. For display the panel defaults to *local solar time* derived from the
+ * site longitude (15°/hour) — civil-timezone-agnostic on purpose, since
+ * sun-path studies care about solar time and a longitude offset needs no
+ * timezone database or DST rules. The user can switch the readout to UTC.
  */
 
 import { useEffect, useRef } from 'react';
@@ -154,17 +154,18 @@ export function SolarPanel() {
   };
 
   return (
-    <div className="absolute top-2 right-2 z-20 w-64 rounded-md bg-white/90 dark:bg-[#1a1b26]/90 backdrop-blur-sm border border-zinc-200 dark:border-[#292e42] shadow-lg p-3 text-xs font-mono text-zinc-700 dark:text-[#a9b1d6]">
-      <div className="flex items-center justify-between mb-2">
-        <span className="font-black uppercase tracking-wide text-zinc-900 dark:text-white">Sun Path</span>
+    <div className="absolute top-4 right-4 z-10 pointer-events-auto w-60 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Sun Path
+        </span>
         <button
           type="button"
+          aria-pressed={enabled}
           onClick={toggleStudy}
           className={cn(
-            'px-2 py-0.5 rounded text-[10px] font-bold uppercase border transition-colors',
-            enabled
-              ? 'bg-[#9ece6a] text-black border-[#9ece6a]'
-              : 'bg-transparent border-zinc-300 dark:border-[#414868] hover:border-[#9ece6a]',
+            'px-2 py-0.5 rounded text-[10px] font-semibold uppercase transition-colors',
+            enabled ? 'bg-teal-600 text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
           )}
         >
           {enabled ? 'On' : 'Off'}
@@ -174,15 +175,15 @@ export function SolarPanel() {
       {enabled && (
         <>
           {/* Date + play/pause */}
-          <div className="flex items-end gap-1.5 mb-2">
-            <label className="block flex-1">
-              <span className="flex justify-between text-[10px] uppercase text-zinc-500 dark:text-[#565f89]">
+          <div className="flex items-end gap-1.5">
+            <label className="flex flex-col gap-0.5 flex-1">
+              <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
                 <span>Date</span>
                 <button
                   type="button"
                   onClick={() => setUseLocalTime(!useLocalTime)}
                   title="Toggle UTC / local solar time (from site longitude)"
-                  className="hover:text-[#7aa2f7] transition-colors"
+                  className="hover:text-foreground transition-colors"
                 >
                   {tzLabel}
                 </button>
@@ -191,18 +192,17 @@ export function SolarPanel() {
                 type="date"
                 value={toDateInputValue(dateMs, offsetMin)}
                 onChange={(e) => setDateMs(composeMs(e.target.value, minutes, offsetMin))}
-                className="mt-0.5 w-full bg-zinc-100 dark:bg-[#24283b] rounded px-1.5 py-1 border border-zinc-200 dark:border-[#414868]"
+                className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground"
               />
             </label>
             <button
               type="button"
               onClick={togglePlaying}
               aria-label={playing ? 'Pause sweep' : 'Play sweep'}
+              aria-pressed={playing}
               className={cn(
-                'h-[26px] w-[26px] flex items-center justify-center rounded border transition-colors shrink-0',
-                playing
-                  ? 'bg-[#f7768e] text-black border-[#f7768e]'
-                  : 'bg-transparent border-zinc-300 dark:border-[#414868] hover:border-[#f7768e]',
+                'h-[26px] w-[26px] flex items-center justify-center rounded transition-colors shrink-0',
+                playing ? 'bg-teal-600 text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
             >
               {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
@@ -210,10 +210,10 @@ export function SolarPanel() {
           </div>
 
           {/* Time of day */}
-          <label className="block mb-2">
-            <span className="flex justify-between text-[10px] uppercase text-zinc-500 dark:text-[#565f89]">
+          <label className="flex flex-col gap-0.5">
+            <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
               <span>Time</span>
-              <span className="tabular-nums">{formatTime(dateMs, offsetMin)}</span>
+              <span className="tabular-nums text-foreground">{formatTime(dateMs, offsetMin)}</span>
             </span>
             <input
               type="range"
@@ -222,25 +222,26 @@ export function SolarPanel() {
               step={5}
               value={minutes}
               onChange={(e) => setDateMs(composeMs(toDateInputValue(dateMs, offsetMin), Number(e.target.value), offsetMin))}
-              className="mt-1 w-full accent-[#9ece6a]"
+              className="w-full accent-teal-600"
             />
           </label>
 
           {/* Sweep mode */}
-          <div className="mb-2">
-            <span className="text-[10px] uppercase text-zinc-500 dark:text-[#565f89]">Sweep</span>
-            <div className="mt-0.5 flex gap-1">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Sweep</span>
+            <div className="flex gap-1">
               {SWEEP_MODES.map((m) => (
                 <button
                   key={m.value}
                   type="button"
                   title={m.hint}
+                  aria-pressed={sweepMode === m.value}
                   onClick={() => setSweepMode(m.value)}
                   className={cn(
-                    'flex-1 px-1.5 py-1 rounded text-[10px] border transition-colors',
+                    'flex-1 px-1.5 py-1 rounded text-[10px] transition-colors',
                     sweepMode === m.value
-                      ? 'bg-[#e0af68] text-black border-[#e0af68]'
-                      : 'bg-transparent border-zinc-300 dark:border-[#414868] hover:border-[#e0af68]',
+                      ? 'bg-teal-600 text-white'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                   )}
                 >
                   {m.label}
@@ -250,26 +251,27 @@ export function SolarPanel() {
           </div>
 
           {/* Toggles */}
-          <div className="flex gap-2 mb-2">
+          <div className="flex gap-1">
             <ToggleChip label="Dome" active={showSunPath} onClick={() => setShowSunPath(!showSunPath)} />
             <ToggleChip label="Shadows" active={showShadows} onClick={() => setShowShadows(!showShadows)} />
           </div>
 
           {/* Context source */}
-          <div className="mb-2">
-            <span className="text-[10px] uppercase text-zinc-500 dark:text-[#565f89]">Context</span>
-            <div className="mt-0.5 flex gap-1">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Context</span>
+            <div className="flex gap-1">
               {CONTEXT_SOURCES.map((src) => (
                 <button
                   key={src.value}
                   type="button"
                   title={src.hint}
+                  aria-pressed={dataSource === src.value}
                   onClick={() => setDataSource(src.value)}
                   className={cn(
-                    'flex-1 px-1.5 py-1 rounded text-[10px] border transition-colors',
+                    'flex-1 px-1.5 py-1 rounded text-[10px] transition-colors',
                     dataSource === src.value
-                      ? 'bg-[#7aa2f7] text-black border-[#7aa2f7]'
-                      : 'bg-transparent border-zinc-300 dark:border-[#414868] hover:border-[#7aa2f7]',
+                      ? 'bg-teal-600 text-white'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                   )}
                 >
                   {src.label}
@@ -279,7 +281,7 @@ export function SolarPanel() {
           </div>
 
           {/* Readout */}
-          <div className="mt-2 pt-2 border-t border-zinc-200 dark:border-[#292e42] grid grid-cols-2 gap-x-2 gap-y-0.5 tabular-nums">
+          <div className="mt-1 pt-2 border-t grid grid-cols-2 gap-x-2 gap-y-0.5 tabular-nums">
             <Readout label="Azimuth" value={sunInfo ? `${sunInfo.azimuth.toFixed(1)}°` : '—'} />
             <Readout label="Altitude" value={sunInfo ? `${sunInfo.altitude.toFixed(1)}°` : '—'} />
             <Readout label="Sunrise" value={formatTime(sunInfo?.sunriseMs ?? null, offsetMin)} />
@@ -302,11 +304,10 @@ function ToggleChip({ label, active, onClick }: { label: string; active: boolean
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        'flex-1 px-2 py-1 rounded text-[10px] font-bold uppercase border transition-colors',
-        active
-          ? 'bg-[#bb9af7] text-black border-[#bb9af7]'
-          : 'bg-transparent border-zinc-300 dark:border-[#414868] hover:border-[#bb9af7]',
+        'flex-1 px-2 py-1 rounded text-[10px] font-semibold uppercase transition-colors',
+        active ? 'bg-teal-600 text-white' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
       )}
     >
       {label}
@@ -318,8 +319,8 @@ function ToggleChip({ label, active, onClick }: { label: string; active: boolean
 function Readout({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <span className="text-zinc-500 dark:text-[#565f89]">{label}</span>
-      <span className="text-right text-zinc-900 dark:text-white">{value}</span>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right text-foreground">{value}</span>
     </>
   );
 }

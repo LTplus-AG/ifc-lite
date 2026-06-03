@@ -85,7 +85,9 @@ export const createSolarSlice: StateCreator<SolarSlice, [], [], SolarSlice> = (s
   solarShowSunPath: true,
   solarShowShadows: true,
   solarSunInfo: null,
-  solarUseLocalTime: false,
+  // Default to the site's local solar time (derived from longitude): for a
+  // sun-path study "9am" should mean 9am at the site, not UTC.
+  solarUseLocalTime: true,
   solarPlaying: false,
   solarSweepMode: 'day',
 

@@ -127,7 +127,13 @@ export class SunPathDome {
 
     this.buildStatic();
     this.update(options.date);
-    void viewer.dataSources.add(this.dataSource);
+    // Await attach, THEN request a render: the viewer runs in requestRenderMode,
+    // so a render requested before the data source is attached would paint
+    // nothing and the dome would stay invisible until the next camera move.
+    viewer.dataSources
+      .add(this.dataSource)
+      .then(() => viewer.scene.requestRender())
+      .catch((err) => console.warn('[SunPathDome] failed to add data source:', err));
   }
 
   /** Map a single ENU direction (unit) at the dome radius to an ECEF position. */
@@ -153,6 +159,9 @@ export class SunPathDome {
         positions,
         width,
         material: this.Cesium.Color.fromBytes(rgb[0], rgb[1], rgb[2], 235),
+        // Draw the dome even where it sits behind terrain / 3D tiles or the
+        // model, dimmer, so the full sun path stays legible in 3D.
+        depthFailMaterial: this.Cesium.Color.fromBytes(rgb[0], rgb[1], rgb[2], 90),
         arcType: this.Cesium.ArcType.NONE,
       },
     });
@@ -226,6 +235,7 @@ export class SunPathDome {
           positions: [originEcef, sunEcef],
           width: 2,
           material: this.Cesium.Color.fromBytes(SUN_COLOR[0], SUN_COLOR[1], SUN_COLOR[2], 160),
+          depthFailMaterial: this.Cesium.Color.fromBytes(SUN_COLOR[0], SUN_COLOR[1], SUN_COLOR[2], 70),
           arcType: this.Cesium.ArcType.NONE,
         },
       });

@@ -3,39 +3,34 @@
 Status: **proposed** (research complete; implementation not started).
 Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
-Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`.
+Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`,
+`docs/architecture/clash-detection-plan.md` (the "one shared core" precedent).
 
-This document is the *what/why* of closing the styling gap between the two Rust
-rendering paths. It is research + a phased plan, not a record of shipped work.
+This is the *what/why* of closing the styling gap between every rendering path in
+the repo, **and** the structural changes that stop it reopening. It is research +
+a phased plan + an anti-regression design, not a record of shipped work.
 
 ---
 
 ## 0. Problem statement
 
-ifc-lite has **two Rust paths that produce colored meshes from the same IFC file**:
+ifc-lite turns one IFC file into colored meshes in **four** independent Rust
+consumers, plus a TypeScript 2D path:
 
-- **Browser** — `rust/wasm-bindings` (`src/api/styling.rs`, `src/api/gpu_meshes.rs`),
-  streaming pre-pass → worker batches → GPU.
-- **Backend** — `rust/processing` (`src/processor.rs`), CPU pipeline used by the
-  CLI, server, MCP, and headless tooling.
+- **Browser** — `rust/wasm-bindings` (streaming pre-pass → worker → GPU).
+- **Backend crate** — `rust/processing` (the shared CPU pipeline).
+- **REST/stream server** — `apps/server` (depends on `processing`, but keeps its own color code).
+- **Desktop (Tauri)** — `apps/desktop` (depends only on `ifc-lite-geometry`).
+- **2D drafting** — `packages/renderer` (TypeScript, intentionally its own palette).
 
-They are **not rendering-equivalent today**. The same file can render with
-authored colors in the browser and fallback defaults in the backend, and the
-default colors themselves differ for several IFC types. The root cause is
-structural: **the styling/color logic was duplicated into each crate instead of
-shared**, and the two copies have drifted.
+They are **not rendering-equivalent today**. The same file renders authored colors
+in the browser and fallback gray in the backend; default colors differ per type;
+the desktop app diverges on ~14 types. The root cause is structural: **color logic
+was copied into each consumer instead of shared**, and the copies drifted (§3).
 
-> **Scope note (see §8):** the issue frames this as a *two-way* gap
-> (`wasm-bindings` vs `processing`), but an audit found the same color logic
-> **copied into four Rust consumers** (`wasm-bindings`, `processing`,
-> `apps/server`, `apps/desktop`) plus an intentional 2D table in TypeScript —
-> and they have drifted in every direction, the Tauri desktop app most of all.
-> The plan below treats the gap as monorepo-wide, not two-crate.
-
-Note: `symbolic` extraction (2D curves, fills, grid bubbles, annotation colors)
-is *not* part of this gap — it already lives in the shared
-`ifc_lite_processing::symbolic` module and is consumed by both paths. This plan
-is about **3D geometry styling and default mesh colors only**.
+`symbolic` extraction is *not* part of this gap — it already lives in the shared
+`ifc_lite_processing::symbolic` module with a parity test, and is wrapped by the
+browser. It is the model this plan follows for styling.
 
 ---
 
@@ -46,346 +41,346 @@ is about **3D geometry styling and default mesh colors only**.
 | `IfcStyledItem` chain → `IfcSurfaceStyle` → `IfcColourRgb` | `api/styling.rs:134–325` | `processor.rs:1504–1849` | ❌ duplicated |
 | `IfcIndexedColourMap` / `IfcColourRgbList` | `api/styling.rs:23–78` (+ per-triangle split in `api/gpu_meshes.rs`) | **absent** | ❌ wasm-only |
 | Material chain (orphan `IfcStyledItem`, material `SELECT` walk) | `api/styling.rs:552–821` | **absent** | ❌ wasm-only |
-| Submesh color resolution + transparent/opaque preference | `api/styling.rs:828–890` | `processor.rs:1428–1459` | ❌ diverged |
-| Default IFC-type color table | `api/styling.rs:970–1019` | `processor.rs:2140–2187` | ❌ diverged |
-| Color numeric representation | `f32` internally, **quantized to `u8` RGBA** across the SAB bridge (`api/gpu_meshes.rs:121–135, 713–723`, restored `876–892`) | `f32` end-to-end | ❌ diverged |
-| `merge_layers` / `MaterialLayerIndex` / void propagation | `api/mod.rs:46–249` + `geometry/src/router/layers.rs` + `geometry/src/void_index.rs` | partial (`processor.rs:1864–1930`) via the **shared** geometry router | ⚠️ partial |
-
-Symbolic, by contrast, is the model to follow: `processing/src/symbolic.rs` is the
-single source, and `wasm-bindings/src/api/symbolic.rs` is a thin wrapper that
-calls `ifc_lite_processing::extract_symbolic_data` and adapts the result to the
-`wasm_bindgen` types.
+| Submesh color + transparent/opaque preference | `api/styling.rs:828–890` | `processor.rs:1428–1459` | ❌ diverged |
+| Default IFC-type color table | `api/styling.rs:970` | `processor.rs:2140` | ❌ diverged (and ×2 more, §3) |
+| Color numeric representation | `f32`, **quantized to `u8`** over the SAB bridge | `f32` end-to-end | ❌ diverged |
+| `merge_layers` / `MaterialLayerIndex` / voids | `api/mod.rs:46–249` + `geometry` kernels | partial (`processor.rs:1864–1930`) via the **shared** geometry router | ⚠️ partial |
 
 ---
 
 ## 2. Detailed parity findings
 
 ### 2.1 `IfcIndexedColourMap` — backend has nothing
-
-- **Browser**: `extract_color_from_indexed_colour_map` (`styling.rs:32–78`) decodes
-  `IfcIndexedColourMap` (`MappedTo`, `Opacity`, `Colours → IfcColourRgbList`,
-  `ColourIndex`). It picks the **dominant** palette index via a histogram (single
-  index → that index). Additionally, since #867, `split_mesh_by_indexed_colour_map`
-  (`gpu_meshes.rs`) partitions a flat-shaded `IfcTriangulatedFaceSet` into one
-  sub-mesh **per palette group**, so per-triangle authored colors render correctly.
-- **Backend**: grep finds **zero** references to `IfcIndexedColourMap`,
-  `IFCINDEXEDCOLOURMAP`, or `IFCCOLOURRGBLIST` in `rust/processing`. The schema type
-  IDs exist in `core/src/generated/schema.rs` (`IFCINDEXEDCOLOURMAP = 3570813810`,
-  `IFCCOLOURRGBLIST = 3285139300`) but nothing consumes them.
-- **Effect**: CATIA / 3DEXPERIENCE exports (e.g. `A0513.ifc` from #663) that color
-  via `IFCINDEXEDCOLOURMAP` with no `IFCSTYLEDITEM` chain render authored colors in
-  the browser and **off-white/gray defaults** in the backend. This is the clearest
-  regression and the minimum bar for the fix.
-- **Precedence to preserve**: in wasm, the indexed-colour side-map only fills
-  geometry that has **no** direct `IfcStyledItem` (`styling.rs` pre-pass ~`495–500`).
-  `IfcStyledItem` wins.
+`extract_color_from_indexed_colour_map` (`styling.rs:32–78`) decodes the map, picks
+the **dominant** palette index, and (since #867) `split_mesh_by_indexed_colour_map`
+splits a flat `IfcTriangulatedFaceSet` into one sub-mesh **per palette group**. The
+backend has **zero** references to `IFCINDEXEDCOLOURMAP` / `IFCCOLOURRGBLIST` (only
+the schema type IDs exist in `core`). CATIA/3DEXPERIENCE files with no
+`IFCSTYLEDITEM` (e.g. `A0513.ifc`, #663) render authored colors in the browser and
+gray in the backend. Precedence to preserve: the indexed side-map only fills
+geometry with **no** direct `IfcStyledItem`.
 
 ### 2.2 Default IFC-type color table — diverged in *both* directions
-
-The two `match` tables are mostly identical but differ on four types. Each crate
-has entries the other lacks, so this is genuine drift, not "backend is behind":
-
-| IFC type | `processing` (`processor.rs:2140`) | `wasm-bindings` (`styling.rs:970`) |
+| IFC type | `processing` (`processor.rs:2140`) | `wasm` (`styling.rs:970`) |
 |---|---|---|
-| `IfcStairFlight` | `[0.75, 0.75, 0.75, 1.0]` (grouped with `IfcStair`) | **falls to default** `[0.8, 0.8, 0.8, 1.0]` |
-| `IfcCurtainWall` | **falls to default** `[0.8, 0.8, 0.8, 1.0]` | `[0.5, 0.7, 0.9, 0.5]` (glass blue) |
-| `IfcFurnishingElement` | `[0.5, 0.35, 0.2, 1.0]` (dark brown) | `[0.7, 0.55, 0.4, 1.0]` (light wood) |
-| `IfcBuildingElementProxy` | `[0.6, 0.6, 0.6, 1.0]` | **falls to default** `[0.8, 0.8, 0.8, 1.0]` |
+| `IfcStairFlight` | `[0.75,0.75,0.75,1]` (with `IfcStair`) | **default** `[0.8,0.8,0.8,1]` |
+| `IfcCurtainWall` | **default** `[0.8,0.8,0.8,1]` | `[0.5,0.7,0.9,0.5]` glass blue |
+| `IfcFurnishingElement` | `[0.5,0.35,0.2,1]` dark | `[0.7,0.55,0.4,1]` light wood |
+| `IfcBuildingElementProxy` | `[0.6,0.6,0.6,1]` | **default** `[0.8,0.8,0.8,1]` |
 
-All other entries match. The wasm function carries a stale comment
-`// matches default-materials.ts`; **no such TS file exists today** — the only two
-sources of truth are these two Rust functions.
+All other entries match. The wasm comment `// matches default-materials.ts` is
+**stale** — no such file exists. And these are only 2 of the **5** copies (§3.1).
 
-### 2.3 Submesh material selection — transparent/opaque preference only in wasm
-
-- **Browser** `resolve_submesh_color` (`styling.rs:828`) → on material fallback,
-  `pick_material_style_for_submesh` (`styling.rs:862`) **alternates**: even
-  `mat_color_idx` prefers transparent (alpha `< 0.95`), odd prefers opaque
-  (`TRANSPARENCY_ALPHA_THRESHOLD = 0.95`). This is how a window with frame (opaque)
-  + glazing (transparent) materials distributes colors across its sub-meshes.
-- **Backend**: `processor.rs:1428–1459` looks up the per-submesh `geometry_id` style,
-  else falls back to a single `element_color`. **No material-color vector and no
-  transparent/opaque alternation.**
+### 2.3 Submesh material selection — preference only in wasm
+`resolve_submesh_color` (`styling.rs:828`) → `pick_material_style_for_submesh`
+(`:862`) **alternates** transparent (alpha `< 0.95`) / opaque per `mat_color_idx`,
+the mechanism that splits a window's glass vs frame. The backend
+(`processor.rs:1428–1459`) uses one `element_color` with no alternation.
 
 ### 2.4 Material-chain resolution — wasm-only
-
-The browser pre-pass resolves colors that live on **materials**, not geometry:
-`build_material_style_index` (`styling.rs:552`), `build_element_material_styles`
-(`600`), `resolve_material_ids` (`632`, walks `IfcMaterialList` /
-`IfcMaterialLayerSetUsage` / `IfcMaterialConstituentSet` / `IfcMaterialProfileSet`
-with a depth-4 guard), and `flatten_material_color_index` (`739`, one opaque color
-per material). The backend does **none** of this — it only reads direct
-`IfcStyledItem` on geometry plus an element-level representation color walk
-(`resolve_element_color_for_product_definition_shape`, `processor.rs:1572`).
+`build_material_style_index` (`:552`), `build_element_material_styles` (`:600`),
+`resolve_material_ids` (`:632`, walks `IfcMaterialList` / `IfcMaterialLayerSetUsage`
+/ `IfcMaterialConstituentSet` / `IfcMaterialProfileSet`, depth-4 guard),
+`flatten_material_color_index` (`:739`). The backend does none — only direct
+`IfcStyledItem` + an element representation walk
+(`resolve_element_color_for_product_definition_shape`, `:1572`). Material-only-styled
+files (common IFC2x3 / ArchiCAD) render colored in browser, gray in backend.
 
 ### 2.5 Color representation — 8-bit quantization in the wasm bridge
-
-Both crates compute colors as `f32` in `[0,1]`. The **browser** then quantizes to
-`u8` RGBA to cross the SharedArrayBuffer worker boundary
-(`gpu_meshes.rs:121–135` and `713–723`, `(c * 255.0).clamp(0,255) as u8`) and
-restores `c as f32 / 255.0` in the worker (`876–892`). The **backend** keeps `f32`
-throughout (`MeshData.color: [f32;4]`, serde JSON). Result: browser colors are
-rounded to 1/255 steps; backend colors are exact. For most authored colors this is
-invisible, but non-integer RGB and partial transparency can drift by up to ~0.4%.
-This is a **deliberate transport optimization in wasm**, not a styling-logic
-difference — but it does mean the two paths are not bit-identical.
+Both compute `f32`; the browser quantizes to `u8` RGBA across the SAB worker
+boundary (`gpu_meshes.rs:121–135`, `713–723`) and restores `c/255.0` (`:876–892`).
+The backend keeps `f32` (`MeshData.color`). Browser colors round to 1/255 (~0.4%
+max drift); backend is exact. A deliberate transport optimization, not a logic
+difference — but the paths aren't bit-identical.
 
 ### 2.6 `merge_layers`, `MaterialLayerIndex`, voids
-
-The heavy lifting here is already in the **shared** `ifc_lite_geometry` crate:
-`material_layer_index.rs` (buildup detection / sliceability), `router/layers.rs`
-(per-layer slicing, `merge_thin_layers` folding sub-2mm layers, voids subtracted
-*before* slicing), and `void_index.rs::propagate_voids_to_parts`. The divergence is
-in the **drivers**: wasm has a `merge_layers` `AtomicBool` toggle and a cached
-`parts_to_skip` set (`api/mod.rs:212–249`) that suppresses
-`IfcBuildingElementPart` emission when the parent wall is sliceable; the backend's
-equivalent (`processor.rs:1864–1930` `propagate_voids_to_aggregated_parts`) is not
-a 1:1 mirror. Layered walls and aggregated parts can therefore diverge in coloring
-and cut behavior even when no indexed colour map is involved.
+The kernels are **already shared** in `ifc_lite_geometry` (`material_layer_index.rs`,
+`router/layers.rs` incl. `merge_thin_layers`, `void_index.rs`). The divergence is in
+the **drivers**: wasm's `merge_layers` toggle + cached `parts_to_skip`
+(`api/mod.rs:212–249`) vs the backend's `propagate_voids_to_aggregated_parts`
+(`processor.rs:1864–1930`) — not a 1:1 mirror.
 
 ### 2.7 `IfcStyledItem` chain — close, but wasm is richer
-
-Both resolve `IfcStyledItem → (IfcPresentationStyleAssignment) → IfcSurfaceStyle →
-IfcSurfaceStyleRendering → IfcColourRgb`, including the #259 `DiffuseColour`
-handling (RGB diffuse stored as shading override, not rendered; ratio diffuse
-modulates surface color). Two browser-only extras: **`IfcMappedItem` traversal**
-(`find_color_for_geometry`, `styling.rs:83`) follows `IfcRepresentationMap` so
-mapped/instanced geometry inherits style, and the browser returns a **shading
-color** alongside the rendering color; the backend keeps only one color.
+Both resolve the chain incl. the #259 `DiffuseColour` rule. Browser-only extras:
+**`IfcMappedItem` traversal** (`find_color_for_geometry`, `:83`) so mapped/instanced
+geometry inherits style, and a returned **shading color** the backend drops.
 
 ---
 
-## 3. Root cause & target architecture
+## 3. The full blast radius (monorepo-wide)
 
-**Root cause:** styling is presentation logic that was implemented twice. Symbolic
-extraction avoided this by living in `processing` and being wrapped by wasm; styling
-did not, because the wasm path grew around a heavily optimized single-pass pre-scan
-and the backend re-implemented the pieces it needed inline.
+Issue #913 frames a two-way gap. An audit (all locations verified directly) shows it
+is far wider.
 
-**Target (mirrors the symbolic split and the issue's "Optional Recommendation"):**
-
-```
-ifc-lite-core        schema, decoder, IfcType            (unchanged)
-ifc-lite-geometry    mesh/CSG, layers, voids             (already shared)
-ifc-lite-processing  ── NEW: styling module ─────────────────────────────┐
-                     • canonical default-color table                      │
-                     • IfcStyledItem chain + MappedItem traversal          │ one
-                     • IfcIndexedColourMap / IfcColourRgbList resolution    │ source
-                     • material-chain resolution                           │ of
-                     • submesh color resolution + transparent/opaque rule  │ truth
-                     • all colors f32 end-to-end                           │
-ifc-lite-wasm        thin layer: pre-pass scan plumbing, SAB/u8 transport, ┘
-                     JS wrappers — calls into processing::styling
-```
-
-The hard rule (as with `symbolic` and `clash`): **canonical styling decisions live
-in `processing` (or lower in `geometry` when purely geometric); `wasm-bindings`
-keeps only the FFI boundary, the streaming/SAB transport, and JS wrappers.**
-
----
-
-## 4. Phased plan
-
-Ordered so each phase is independently shippable and testable, smallest
-user-visible regression first.
-
-### Phase 1 — Unify the default-color table *(low risk, high clarity)*
-- Add `processing::styling::default_color_for_type(&IfcType) -> [f32;4]` (or place
-  it in `core`/`geometry` so it sits below every consumer) as the single source of
-  truth.
-- Reconcile the four diverging types between `wasm` and `processing` (§2.2).
-  **Decision required** (§5): pick one value per type. Recommended canonical set:
-  keep wasm's `IfcCurtainWall` (glass blue) and `IfcFurnishingElement` (light wood),
-  keep processing's `IfcStairFlight` (= `IfcStair` gray) and
-  `IfcBuildingElementProxy` (`0.6` gray), i.e. the **union** of both tables — no
-  type loses an authored default.
-- Replace **all four** Rust copies with calls into the shared fn — not just
-  `wasm-bindings` + `processing`, but also `apps/server/src/services/streaming.rs`
-  and `apps/desktop/src-tauri/src/commands/ifc.rs` (the most divergent, §8). Delete
-  the stale `default-materials.ts` comment.
-- Leave `packages/renderer/src/section-2d-overlay.ts` (`IFC_TYPE_FILL_COLORS`)
-  alone but add a comment marking it an **intentional** 2D-drafting convention, so
-  it is never mistaken for the canonical 3D table.
-- Test: table-driven unit test asserting every mapped type is identical across the
-  shared fn; snapshot all consumers on a fixture covering the contested types.
-
-### Phase 2 — Move `IfcStyledItem` + `IfcIndexedColourMap` + material chain into `processing`
-- Lift the wasm color-extraction functions (§2.1, §2.4, §2.7) into
-  `processing::styling` as pure functions over `EntityDecoder`, **preserving the
-  `IfcStyledItem`-wins precedence** over the indexed-colour side-map.
-- Keep `f32` throughout; do not introduce quantization in the shared code.
-- Re-point `wasm-bindings` to the shared functions; its pre-pass keeps only the
-  scan/iteration + SAB packing.
-- Add `IfcIndexedColourMap` resolution to the backend processor so `A0513.ifc`
-  (#663) renders authored colors. Include the per-triangle split path (port
-  `split_mesh_by_indexed_colour_map`) or, at minimum, the dominant-color path —
-  **decision required** (§5) on whether the backend needs per-triangle fidelity.
-- Test: `A0513.ifc` backend snapshot now shows palette colors, not gray; a
-  per-triangle fixture (the #858 12-tri cube) shows ≥2 color groups if per-triangle
-  is in scope.
-
-### Phase 3 — Align submesh material selection
-- Move `resolve_submesh_color` + `pick_material_style_for_submesh` (incl. the
-  `mat_color_idx` alternation and `0.95` threshold) into `processing::styling`; use
-  it from both paths so windows/curtain walls distribute frame/glass colors
-  identically.
-- Test: a window fixture with frame+glazing materials produces the same per-submesh
-  color sequence in both paths.
-
-### Phase 4 — Reconcile `merge_layers` / void propagation drivers
-- Factor the layer/void *driver* (parts-to-skip when parent is sliceable;
-  void propagation to aggregated parts) into a shared helper in `geometry` or
-  `processing`, consumed by both `api/mod.rs` and `processor.rs`.
-- Test: a layered wall with a window opening renders the same layer sub-meshes and
-  the same cut in both paths.
-
-### Phase 5 — Decide the quantization contract *(documentation / optional)*
-- Either (a) accept 8-bit quantization as a browser-transport-only concern and
-  **document** that browser colors are rounded to 1/255 (backend stays exact), or
-  (b) widen the SAB transport to `f32` (4× the style-color payload; styles are a
-  small fraction of total mesh bytes, so cost is likely negligible).
-- **Decision required** (§5). Recommended: (a) document it — the drift is sub-0.4%
-  and invisible after GPU 8-bit framebuffer quantization anyway.
-
----
-
-## 5. Decisions required (surface to maintainer before/within implementation)
-
-1. **Canonical default colors** for the four contested types (§2.2). Recommended:
-   union of both tables (no type loses a default).
-2. **Backend per-triangle indexed-colour fidelity** (§2.1/Phase 2): full per-triangle
-   split, or dominant-color-per-faceset only? Browser does full split since #867.
-3. **Quantization contract** (§2.5/Phase 5): document 8-bit as browser-only, or move
-   the SAB transport to `f32`?
-
-These are product/fidelity calls, not mechanical ones, so they should be confirmed
-rather than assumed.
-
----
-
-## 6. Test & verification strategy
-
-- **Golden fixtures**, one per gap: `A0513.ifc` (#663, indexed colour map), the
-  #858 per-triangle cube, a curtain-wall/window frame+glazing model, a layered wall
-  with an opening, and a model exercising all four contested default types.
-- **Cross-path equality harness**: a Rust integration test that runs the same
-  fixture through `processing` and through the `wasm-bindings` extraction functions
-  and asserts per-geometry colors match (modulo the documented quantization
-  tolerance from §5.3). This harness is the regression guard against future drift —
-  it is what was missing.
-- Reuse existing CSG/geometry fidelity patterns from `docs/research/csg-clipping-fidelity.md`.
-
----
-
-## 7. Risks & notes
-
-- **Behavioral change for existing files**: unifying defaults will change backend
-  colors for `IfcCurtainWall` / `IfcBuildingElementProxy` / `IfcStairFlight` /
-  `IfcFurnishingElement` and browser colors for whichever side loses a contested
-  value. This is the intended fix but should land with the snapshot updates in the
-  same PR.
-- **`wasm-bindings` slimming** must not regress the single-pass pre-scan performance
-  characteristics; the shared functions should be `f32`-pure and allocation-light so
-  the wasm pre-pass keeps its one-scan budget.
-- **Changeset**: if any published `packages/*` surface changes (it likely won't —
-  this is Rust-internal), add a changeset per `AGENTS.md §3`. WASM rebuild churn in
-  `packages/wasm/pkg/{README.md,package.json}` must be `git checkout`-reverted before
-  commit per `AGENTS.md §3`.
-- **File-size rule** (`AGENTS.md §7`, ~400 lines): the new `processing` styling code
-  should be its own module (`processing/src/styling/…`), not appended to the already
-  2.2k-line `processor.rs`.
-
----
-
-## 8. Expanded scope — the divergence is monorepo-wide
-
-Issue #913 describes a two-way gap. An audit of the whole repo shows the same
-color logic was **copied into four Rust consumers** of the geometry pipeline, and
-they have drifted independently. All locations below were verified directly.
-
-### 8.1 Five copies of the IFC-type → default-color table
-
+### 3.1 Five copies of the IFC-type → default-color table
 | # | Location | Symbol | Notes |
 |---|---|---|---|
-| 1 | `rust/wasm-bindings/src/api/styling.rs:970` | `get_default_color_for_type` | browser; has `IfcCurtainWall`, lacks `IfcStairFlight`/`IfcBuildingElementProxy` |
-| 2 | `rust/processing/src/processor.rs:2140` | `get_default_color` | has `IfcStairFlight`/`IfcBuildingElementProxy`, lacks `IfcCurtainWall`; `IfcFurnishingElement` darker |
-| 3 | `apps/server/src/services/streaming.rs:690` | `get_default_color` | a **third** backend copy; tracks #2 (incl. the `IfcFurnishingElement` value) but is yet another hand-maintained table |
-| 4 | `apps/desktop/src-tauri/src/commands/ifc.rs:431` | `get_default_color_for_type` | **most divergent** — depends only on `ifc-lite-geometry`, fully independent. e.g. `IfcWall [0.9,0.9,0.85,1]` (cream vs neutral gray), `IfcWindow` alpha `0.5` vs `0.4`, `IfcOpeningElement [0.9,0.9,0.9,0.2]` (white) vs `[1.0,0.42,0.29,0.4]` (red-orange), `IfcSpace` blue vs cyan, `IfcRailing` ~25% darker, ~14 types differ |
-| 5 | `packages/renderer/src/section-2d-overlay.ts:69` | `IFC_TYPE_FILL_COLORS` | TypeScript **2D drafting** table (`IfcWall [0.69,0.69,0.69,0.95]`). Intentionally different — but undocumented as such |
+| 1 | `rust/wasm-bindings/.../styling.rs:970` | `get_default_color_for_type` | browser |
+| 2 | `rust/processing/.../processor.rs:2140` | `get_default_color` | backend crate |
+| 3 | `apps/server/src/services/streaming.rs:690` | `get_default_color` | **3rd** copy; tracks #2 but hand-maintained |
+| 4 | `apps/desktop/src-tauri/src/commands/ifc.rs:431` | `get_default_color_for_type` | **most divergent**; geometry-only dep, independent. `IfcWall` cream `[0.9,0.9,0.85,1]`, `IfcOpeningElement` white `[0.9,0.9,0.9,0.2]` vs red-orange, `IfcWindow` opaque vs transparent, ~14 types differ |
+| 5 | `packages/renderer/src/section-2d-overlay.ts:69` | `IFC_TYPE_FILL_COLORS` | TS **2D drafting**, intentional but undocumented |
 
-So a single model can render in **four different default-color schemes** depending
-on whether it's viewed in the browser, returned by the REST server, processed by
-the CLI, or opened in the desktop app. The Tauri desktop divergence is the largest
-and is invisible to web-only testing.
+One model → four different default schemes (web / REST / CLI / desktop).
 
-### 8.2 Why it keeps happening (recurring-drift history)
+### 3.2 Why it recurs
+- **#407** added material-chain styling to the backend and noted *"the wasm-bindings
+  have the same gap … but weren't touched."* The current tree shows the **reverse**
+  asymmetry — material chain now lives only in wasm. The fix didn't stay.
+- **#663 / #858** fixed browser-first; #913 is the backend catching up.
+- **#541** is the layered-material case. PRs **#72 / #74 / #117** ("fix colors",
+  "rebuild wasm with color fixes", "colors … fixed (mostly)") are the same pattern.
 
-This is not a one-off. The color/styling layer has a long lineage of one-path
-fixes:
+Every fix lands in one consumer because **there is no shared source and no
+cross-consumer test** to force the others along. Unifying the tables once, without
+removing that root cause, just resets the clock.
 
-- **#407** ("sub element material mapping sometimes missing", closed) added
-  material-chain resolution to the backend and its own note says *"the
-  wasm-bindings (web viewer) have the same gap in styling.rs but weren't touched —
-  the fix here is for the C# FFI path only."* The current tree shows the **reverse**
-  asymmetry (material chain now lives only in wasm), i.e. the fix did not stay in
-  the backend.
-- **#663** (material color → off-white) and **#858** (per-triangle indexed colour)
-  were each fixed in the browser path; #913 is the backend catching up.
-- **#541** (multi-layer compound wall materials) is the layered-material case from §2.6.
-- Older PRs #72 / #74 / #117 ("fix colors", "rebuild wasm with color fixes",
-  "colors and geometry fixed (mostly)") show the same fix-one-surface pattern.
+### 3.3 Adjacent duplications with the same risk (verified)
+Not all in #913's scope, but the same "share-it-or-test-it" program:
+- **`IfcPresentationStyleAssignment`** IFC2x3 handling twice (`styling.rs:192` w/ a
+  `// FIX:` comment vs `processor.rs:1745`).
+- **Metadata type filter** — `parsing.rs:13` `is_relevant_metadata_type` is a
+  hardcoded list vs schema-driven backend; new IFC types silently missed in one path.
+- **Opening heuristics** — `is_opaque_opening` / `is_opening_with_subparts` /
+  `infer_opening_subpart_material_name` in `processor.rs:2012+` vs the router's
+  internal filtering.
+- **Y-up ↔ Z-up coords** — `bcf/viewpoint.ts:83`, `bcf/ids-reporter.ts`,
+  `processing/processor.rs:115`; correct today, no round-trip test.
 
-Each fix lands in one consumer because there is **no shared source and no
-cross-consumer test** to force the others to follow. This is exactly the structural
-problem §3 proposes to remove.
+### 3.4 What is already shared correctly (the model)
+- **Symbolic / 2D extraction** — `processing/src/symbolic.rs`, wrapped by wasm,
+  guarded by `processing/tests/issue_843_*`.
+- **Geometry kernel** — extrusion, CSG, profiles, trimmed curves, tapered solids,
+  voids, transforms, RTC, unit scale all in `ifc-lite-geometry`/`core`. This is why
+  geometry fixes (#820, #853, #883, #628, #424) fix **every** consumer at once.
+  Styling is the conspicuous exception.
 
-### 8.3 Other duplicated logic with drift risk (beyond color)
+---
 
-Verified locations; ranked by risk. These are *not* all in scope for #913 but
-belong in the same "share it or test it" program:
+## 4. Target architecture
 
-- **Material-chain resolution** — full pipeline only in `wasm-bindings/styling.rs`
-  (`build_material_style_index`/`build_element_material_styles`/`resolve_material_ids`/
-  `flatten_material_color_index`); `processing` has none. Material-only-styled files
-  (common in IFC2x3 / ArchiCAD exports) render colored in the browser, gray in the
-  backend. **(High — covered by Phase 2/3.)**
-- **`IfcPresentationStyleAssignment` (IFC2x3) handling** — implemented separately in
-  `styling.rs:192` (carrying a `// FIX:` comment) and `processor.rs:1745`. Legacy
-  IFC2x3 styling can drift between paths. **(Medium — folds into Phase 2.)**
-- **Metadata entity-type filter** — `wasm-bindings/src/api/parsing.rs:13`
-  `is_relevant_metadata_type` is a **hardcoded** type list, whereas the backend uses
-  schema-driven `ifc_lite_core` helpers. New IFC types (e.g. infrastructure
-  extensions) are picked up automatically in one path and silently missed in the
-  other. **(Medium.)**
-- **Opening-classification heuristics** — `is_opaque_opening` /
-  `is_opening_with_subparts` / `infer_opening_subpart_material_name` live in
-  `processing/processor.rs:2012+`, while the browser relies on the geometry router's
-  internal filtering. **(Medium.)**
-- **Y-up ↔ Z-up coordinate conversion** — duplicated across
-  `packages/bcf/src/viewpoint.ts:83` (`viewerToBcfCoords`/`bcfToViewerCoords`),
-  `packages/bcf/src/ids-reporter.ts`, and `rust/processing/src/processor.rs:115`
-  (`apply_inverse_rotation_in_place` / `convert_mesh_to_site_local`). Correct today,
-  but no shared helper or round-trip test guards it. **(Medium.)**
+### 4.1 The dependency constraint that decides the home crate
+A single source of truth must sit **at or below the lowest crate every consumer
+shares**. Reachability:
 
-### 8.4 What is already shared correctly (the model to copy)
+```
+ifc-lite-core      ← everyone
+ifc-lite-geometry  ← wasm, processing, server(via processing), desktop   ✅ common
+ifc-lite-processing← wasm, server   …but NOT desktop (geometry-only)      ❌ too high
+```
 
-For contrast — these were unified and have *not* drifted, because the logic lives
-in a shared crate and (for symbolic) has a parity test:
+So the earlier "put it in `processing`" idea (and the issue's first suggestion)
+**cannot reach the desktop app**. The shared home is **`core` + `geometry`**:
 
-- **Symbolic / 2D extraction** — `processing/src/symbolic.rs`, wrapped by
-  `wasm-bindings/src/api/symbolic.rs`; guarded by `processing/tests/issue_843_*`.
-- **Geometry kernel** (extrusion, CSG/booleans, profiles, trimmed curves, tapered
-  solids, voids, transforms, RTC, unit scale) — all in `ifc-lite-geometry` /
-  `ifc-lite-core`. This is why geometry bug fixes (#820, #853, #883, #628, #424)
-  fix every consumer at once. Styling is the conspicuous exception.
+- **`ifc-lite-core::style`** — the *pure* pieces with no decoder/geometry:
+  - `Rgba([f32;4])` canonical color type, with `to_rgba8()` / `from_rgba8()` and
+    `is_transparent()` helpers (so quantization is a documented method, not ad-hoc).
+  - `default_color_for_type(IfcType) -> Rgba` — the **one** table.
+- **`ifc-lite-geometry::style`** — the decoder-driven resolution (needs `core`'s
+  `EntityDecoder` + mesh/submesh, both already in `geometry`):
+  - `StyleIndex` — built in one scan, holds direct styled items, orphan/material
+    styled items, the material→colors map, and the `IfcIndexedColourMap` resolutions.
+  - `IfcStyledItem` chain + `IfcMappedItem` traversal, material-`SELECT` walk,
+    `resolve_element_color`, `resolve_submesh_color` (with the transparent/opaque
+    rule), and the per-triangle indexed-colour split.
+  - **All `f32` (`Rgba`) end-to-end.** No quantization in shared code.
 
-### 8.5 Scope recommendation
+`geometry` already decodes IFC entities and owns mesh emission, so IFC styling is
+legitimately "geometry-specific" — exactly the issue's fallback recommendation.
 
-- **In scope for #913**: the four-way Rust default-color unification (Phase 1, now
-  including `apps/server` + `apps/desktop`) and backend `IfcIndexedColourMap` +
-  material-chain support (Phases 2–3).
-- **Adjacent, worth a follow-up issue**: metadata-type filter, opening heuristics,
-  and coordinate-conversion duplication (§8.3) — same root cause, different surface.
-- **Guard rail for all of it**: the cross-consumer equality test (§6) is what stops
-  this from recurring a sixth time. Without it, unifying the tables today only
-  resets the clock.
+### 4.2 The decisive move: color becomes part of the mesh contract
+Today every consumer *re-resolves* color after meshing — which is the thing that
+drifts. Instead, the **`GeometryRouter` emits already-colored submeshes**:
+
+```rust
+// geometry
+let style = StyleIndex::from_content(content, decoder);          // one shared scan
+let router = GeometryRouter::with_scale(scale).with_styles(&style);
+let submeshes = router.process_element_with_submeshes(&entity, decoder)?;
+// each SubMesh now carries `color: Rgba`, resolved by the shared resolver,
+// falling back to core::default_color_for_type(ifc_type).
+```
+
+After this, consumers **do not resolve color at all** — they read `submesh.color`.
+There is nothing left to duplicate, so nothing left to drift. (This mirrors how
+`symbolic` returns already-colored fills/text.)
+
+The browser keeps its streaming optimization without forking logic: the pre-pass
+builds the **same** `StyleIndex`, serializes it across the SAB boundary using
+`Rgba::to_rgba8`, and the worker rebuilds it with `from_rgba8` before handing it to
+the router. The *only* wasm-specific code is that serialize/deserialize step.
+
+### 4.3 Consumers after the change
+| Consumer | Before | After |
+|---|---|---|
+| `wasm-bindings` | full styling pipeline + transport | `StyleIndex` build + `Rgba` u8 transport only; reads router colors |
+| `processing` | partial styling, own default table | builds `StyleIndex`, reads router colors; **deletes** styling + table |
+| `apps/server` | own `get_default_color` + some extraction | uses `processing` output; **deletes** its copy |
+| `apps/desktop` | independent table on raw geometry | builds `StyleIndex` from `geometry`; **deletes** its table |
+| `packages/renderer` (2D) | own `IFC_TYPE_FILL_COLORS` | **unchanged**, but annotated as an intentional 2D convention (§5.6) |
+
+### 4.4 The hard rules (enforced, not just stated)
+1. **One color table.** `core::style::default_color_for_type` is the only
+   IFC-type→color map in Rust. Any other is a bug (guarded in CI, §6.3).
+2. **Consumers don't resolve color.** They read `submesh.color`. No `extract_color_*`
+   outside `geometry::style`.
+3. **`f32` is canonical; `u8` is transport-only**, expressed solely through
+   `Rgba::to_rgba8`/`from_rgba8`.
+4. **`wasm-bindings` is a thin platform layer** — FFI, JS wrappers, SAB/streaming
+   transport. No styling decisions.
+
+---
+
+## 5. Migration plan
+
+Each phase is independently shippable, reversible, and lands with its tests.
+Phase 0 first so every later refactor is provably behavior-preserving.
+
+### Phase 0 — Baseline harness (no behavior change)
+- Add the cross-consumer parity test crate/harness (§6) and **golden fixtures**,
+  asserting *current* output of each path. This captures today's behavior (including
+  the divergences) as a baseline, so subsequent phases show exactly what changed.
+- Add `core::style::{Rgba, default_color_for_type}` (table = the agreed union, §8.1)
+  but **don't wire it in yet** — just unit-test it.
+
+### Phase 1 — Unify the default-color table *(low risk)*
+- Repoint **all four** Rust copies (#1–#4 in §3.1) to `core::style::default_color_for_type`.
+  Delete the four bodies and the stale `default-materials.ts` comment.
+- Land the **"no second table" CI guard** (§6.3) in the same PR — this is what makes
+  Phase 1 *stick*.
+- Behavioral change for `apps/desktop` (14 types) and the four contested types
+  elsewhere; snapshots updated in-PR; documented in the changeset/PR body.
+
+### Phase 2 — Shared resolver in `geometry::style`
+- Lift the wasm extraction (§2.1, §2.3, §2.4, §2.7) into `geometry::style` as
+  `StyleIndex` + resolvers, `Rgba`-pure, **preserving `IfcStyledItem`-wins
+  precedence** over the indexed side-map.
+- Wire `GeometryRouter::with_styles` so `process_element_with_submeshes` emits
+  colored submeshes (§4.2).
+- Backend now gains `IfcIndexedColourMap` + material chain → fixes #663 and the #407
+  regression. Per-triangle split included or dominant-only — **decision §8.2**.
+
+### Phase 3 — Consumers go thin
+- `processing`, `apps/server`, `apps/desktop` drop all color resolution and read
+  `submesh.color`. `wasm-bindings` re-points to the shared `StyleIndex`, keeping only
+  the `Rgba` u8 SAB transport.
+- Net: hundreds of lines deleted across four consumers; one implementation remains.
+
+### Phase 4 — Reconcile `merge_layers` / void drivers (§2.6)
+- Factor the layer/void *driver* (parts-to-skip when parent sliceable; void
+  propagation to aggregated parts) into a shared `geometry`/`processing` helper used
+  by both `api/mod.rs` and `processor.rs`.
+
+### Phase 5 — Quantization contract (§2.5)
+- Express the browser's 8-bit step only via `Rgba::to_rgba8`/`from_rgba8`; document
+  that browser colors round to 1/255 and the backend stays exact (the parity test
+  uses a 1/255 tolerance for the wasm path, 0 elsewhere). **Decision §8.3** on whether
+  to instead widen the SAB transport to `f32`.
+
+### Phase 6 — 2D table + adjacent dups *(follow-up issue)*
+- Annotate `IFC_TYPE_FILL_COLORS` as an intentional 2D convention; optionally
+  generate it from a shared export so even the deliberate offset is traceable.
+- Open a separate issue for the §3.3 adjacencies (style-assignment, metadata filter,
+  opening heuristics, coordinate conversion) — same root cause, different surface.
+
+---
+
+## 6. Anti-regression system — *the answer to "not here again in 3 months"*
+
+Unifying code is necessary but not sufficient; #407 proves a one-time fix erodes.
+Four layers, in increasing durability:
+
+### 6.1 Structural (can't drift)
+The single source of truth (§4.1) + colored-mesh contract (§4.2). Once consumers
+read `submesh.color`, there is **no second place** to put a color decision. This is
+the primary defense; everything below is backstop.
+
+### 6.2 Golden parity test (catches logic drift)
+A Rust integration test (new `rust/parity/` test crate, or
+`geometry/tests/styling_parity.rs`) that, for each fixture:
+- builds the `StyleIndex` and runs the shared resolver, and
+- asserts per-geometry colors against a checked-in expectation, **and**
+- asserts the `wasm-bindings` extraction path and the `processing` path produce the
+  **same** colors (wasm within the 1/255 tolerance, others exact).
+
+This is precisely what `symbolic` has (`tests/issue_843_*`) and styling lacks.
+Fixtures (one per failure mode, each a tiny IFC):
+- `A0513`-style `IfcIndexedColourMap` (no styled item) — #663.
+- 12-tri per-triangle cube — #858.
+- window with frame+glazing materials — #407 / §2.3.
+- material-only-styled wall (IFC2x3) — §2.4.
+- layered wall with an opening — §2.6.
+- a model touching all contested default types — §2.2.
+
+### 6.3 "No second table" CI guard (catches new copies)
+A test (or `scripts/` lint run in CI) that scans Rust sources and **fails** if an
+IFC-type→color table appears outside `core::style`. Concretely: grep for a
+`get_default_color`-style signature or an `IfcType::Ifc... => [` color-literal
+pattern; allow exactly the canonical module and the explicitly-marked 2D table
+(`// PARITY-ALLOW: intentional 2D drafting palette`). This is the tripwire that
+would have caught copies #3 and #4 the day they were added.
+
+### 6.4 Process / docs (catches intent)
+- **`AGENTS.md` rule** (new bullet under §1 Schema Compliance or a new "Styling"
+  section): *"Default colors and style resolution have exactly one home
+  (`core::style` + `geometry::style`). Never add a per-consumer color table or
+  `extract_color_*`. A new IFC-type default = edit the one table **and** extend the
+  parity fixture. The 2D drafting palette is the only sanctioned exception and must
+  carry the `PARITY-ALLOW` marker."*
+- This document, linked from the rule, as the rationale (ADR-style).
+- PR-review checklist item: "touches color? → one table, parity fixture updated."
+
+---
+
+## 7. Test & verification strategy
+- The §6.2 golden harness is the backbone; add to it before fixing each gap.
+- Reuse the CSG fidelity patterns in `docs/research/csg-clipping-fidelity.md`.
+- Manual: load each fixture in the web viewer **and** via `ifc-lite` CLI export and
+  confirm matching colors (the verify/run skills can drive this).
+- Definition of done (acceptance):
+  1. `A0513.ifc` renders authored colors in **all four** consumers.
+  2. The four contested default types and the ~14 desktop types are identical
+     everywhere (or the desktop palette is explicitly ratified as intentional, §8.4).
+  3. Only one Rust color table exists; the CI guard is green.
+  4. The parity test fails if any consumer's color resolution diverges.
+
+---
+
+## 8. Decisions required (surface to maintainer)
+1. **Canonical default colors** for the four contested types (§2.2). Recommend the
+   **union** of the wasm + processing tables (no type loses an authored default).
+2. **Backend per-triangle indexed-colour fidelity** (§2.1): full per-triangle split
+   (as browser since #867) or dominant-color-per-faceset? Recommend full split for
+   true parity.
+3. **Quantization** (§2.5/§5): document 8-bit as browser-transport-only (recommended;
+   drift is sub-0.4% and invisible after GPU 8-bit anyway), or widen SAB to `f32`.
+4. **Desktop palette** (§3.1 #4): is the cream/white-opening scheme an intentional
+   desktop aesthetic, or drift? Recommend treating as drift and unifying; if
+   intentional, it must become an explicit, `PARITY-ALLOW`-marked theme, not a buried
+   table.
+
+These are product/fidelity calls; confirm rather than assume. None block Phase 0.
+
+---
+
+## 9. Risks, rollout, ownership
+- **Behavioral change** is the point, not a side effect: Phase 1 changes backend and
+  desktop colors for several types. Land each phase with snapshot updates and a clear
+  changeset/PR note. Roll out phase-by-phase so any regression is bisectable to one
+  small PR.
+- **Don't regress the wasm pre-scan budget**: `StyleIndex::from_content` must stay a
+  single allocation-light scan; the shared resolvers must be `Rgba`-pure. Benchmark
+  the pre-pass on a large file before/after Phase 3.
+- **`geometry` file-size** (`AGENTS.md §7`, ~400 lines): `geometry::style` is its own
+  module dir (`geometry/src/style/{mod,index,resolve,indexed_colour}.rs`), not bolted
+  onto the router. Same for `processing` — never grow the 2.2k-line `processor.rs`.
+- **Changeset**: if any published `packages/*` surface changes (unlikely — this is
+  Rust-internal), add one per `AGENTS.md §3`; the bump must match the biggest API
+  change. Revert the generated `packages/wasm/pkg/{README.md,package.json}` churn
+  before committing.
+- **Ownership**: geometry/processing core owns Phases 0–4; the desktop change in
+  Phase 1/3 needs a desktop maintainer's sign-off on decision §8.4.
+- **Sizing (rough)**: P0 ~1d (harness+fixtures), P1 ~0.5d, P2 ~2–3d (the real lift,
+  porting + per-triangle split + router wiring), P3 ~1–2d (deletions + wasm
+  transport), P4 ~1d, P5 ~0.5d, P6 follow-up. The guard rails (§6.2–6.4) are inside
+  P0/P1, not extra.

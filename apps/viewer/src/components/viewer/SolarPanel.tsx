@@ -115,14 +115,20 @@ export function SolarPanel() {
     intervalRef.current = setInterval(() => {
       const store = useViewerStore.getState();
       const current = store.solarDateMs;
-      const d = new Date(current);
       let next: number;
       if (store.solarSweepMode === 'day') {
-        const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-        const minutes = (current - dayStart) / MS_PER_MIN;
+        // Wrap in the same display frame the slider edits in, so the day seam
+        // lands at displayed midnight (not UTC midnight) and the date doesn't
+        // flip mid-sweep when site/local time is active.
+        const offsetMin = offsetMinutesFor(store.solarUseLocalTime, store.solarSunInfo?.longitude);
+        const displayMs = current + offsetMin * MS_PER_MIN;
+        const disp = new Date(displayMs);
+        const dayStart = Date.UTC(disp.getUTCFullYear(), disp.getUTCMonth(), disp.getUTCDate());
+        const minutes = (displayMs - dayStart) / MS_PER_MIN;
         const nextMinutes = (minutes + DAY_STEP_MIN) % 1440;
-        next = dayStart + nextMinutes * MS_PER_MIN;
+        next = dayStart + nextMinutes * MS_PER_MIN - offsetMin * MS_PER_MIN;
       } else {
+        const d = new Date(current);
         const yearStart = Date.UTC(d.getUTCFullYear(), 0, 1);
         const dayOfYear = Math.floor((current - yearStart) / MS_PER_DAY);
         const isLeap = (d.getUTCFullYear() % 4 === 0 && d.getUTCFullYear() % 100 !== 0) || d.getUTCFullYear() % 400 === 0;
@@ -176,7 +182,9 @@ export function SolarPanel() {
         <>
           {/* Date + play/pause */}
           <div className="flex items-end gap-1.5">
-            <label className="flex flex-col gap-0.5 flex-1">
+            {/* Not a <label>: the tz toggle is interactive, so wrapping the
+                input in a label would forward tz clicks to the date picker. */}
+            <div className="flex flex-col gap-0.5 flex-1">
               <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
                 <span>Date</span>
                 <button
@@ -190,11 +198,12 @@ export function SolarPanel() {
               </span>
               <input
                 type="date"
+                aria-label="Sun study date"
                 value={toDateInputValue(dateMs, offsetMin)}
                 onChange={(e) => setDateMs(composeMs(e.target.value, minutes, offsetMin))}
                 className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground"
               />
-            </label>
+            </div>
             <button
               type="button"
               onClick={togglePlaying}

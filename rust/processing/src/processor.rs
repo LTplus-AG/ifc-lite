@@ -182,6 +182,7 @@ struct EntityJob {
 fn populate_entity_job_metadata(
     job: &mut EntityJob,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
+    element_material_color: &FxHashMap<u32, [f32; 4]>,
     layer_by_assigned_representation: &FxHashMap<u32, String>,
     color_cache_by_product_definition_shape: &mut FxHashMap<u32, Option<[f32; 4]>>,
     layer_cache_by_product_definition_shape: &mut FxHashMap<u32, Option<String>>,
@@ -215,6 +216,8 @@ fn populate_entity_job_metadata(
             )
         });
     if let Some(color) = resolved_color {
+        job.element_color = *color;
+    } else if let Some(color) = element_material_color.get(&job.id) {
         job.element_color = *color;
     }
 
@@ -804,6 +807,12 @@ pub fn process_geometry_streaming_filtered_with_options(
     let mut indexed_colour_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     let mut indexed_colour_full: FxHashMap<u32, crate::style::FullIndexedColourMap> =
         FxHashMap::default();
+    // Material-chain colour inputs (issue #407): orphan IfcStyledItem colours,
+    // material → styled representations, and element → material associations.
+    // Joined into `element_material_color` after the scan.
+    let mut orphan_styled_items: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    let mut material_def_reprs: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    let mut element_to_material: FxHashMap<u32, u32> = FxHashMap::default();
     let mut presentation_layer_by_assigned_id: FxHashMap<u32, String> = FxHashMap::default();
     let mut property_values_by_id: FxHashMap<u32, (String, String)> = FxHashMap::default();
     let mut property_sets_by_id: FxHashMap<u32, PropertySetDefinition> = FxHashMap::default();
@@ -919,7 +928,46 @@ pub fn process_geometry_streaming_filtered_with_options(
                 continue;
             }
             if let Ok(styled_item) = decoder.decode_at(start, end) {
-                collect_geometry_style_info(&mut geometry_style_index, &styled_item, &mut decoder);
+                if styled_item.get_ref(0).is_none() {
+                    // Orphan styled item (null Item) = a material appearance
+                    // (#407). Collect its colour for the material chain.
+                    if let Some(info) =
+                        extract_style_info_from_styled_item(&styled_item, &mut decoder)
+                    {
+                        orphan_styled_items.insert(id, info.color);
+                    }
+                } else {
+                    collect_geometry_style_info(
+                        &mut geometry_style_index,
+                        &styled_item,
+                        &mut decoder,
+                    );
+                }
+            }
+            continue;
+        } else if type_name == "IFCMATERIALDEFINITIONREPRESENTATION" {
+            // RepresentedMaterial (attr 3) → Representations (attr 2).
+            if let Ok(entity) = decoder.decode_at(start, end) {
+                if let Some(material_id) = entity.get_ref(3) {
+                    if let Some(reprs) = get_refs_from_list(&entity, 2) {
+                        material_def_reprs
+                            .entry(material_id)
+                            .or_default()
+                            .extend(reprs);
+                    }
+                }
+            }
+            continue;
+        } else if type_name == "IFCRELASSOCIATESMATERIAL" {
+            // RelatingMaterial (attr 5) ← RelatedObjects (attr 4).
+            if let Ok(entity) = decoder.decode_at(start, end) {
+                if let Some(material_select_id) = entity.get_ref(5) {
+                    if let Some(related) = get_refs_from_list(&entity, 4) {
+                        for element_id in related {
+                            element_to_material.insert(element_id, material_select_id);
+                        }
+                    }
+                }
             }
             continue;
         } else if type_name == "IFCPRESENTATIONLAYERASSIGNMENT" {
@@ -1209,6 +1257,14 @@ pub fn process_geometry_streaming_filtered_with_options(
     merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
     let mut geometry_style_index = Arc::new(geometry_style_index);
     let indexed_colour_full = Arc::new(indexed_colour_full);
+    // Join the material chain into a single colour per element, used as a
+    // fallback when an element has no direct/indexed geometry style (#407).
+    let element_material_color = crate::style::build_element_material_color(
+        &material_def_reprs,
+        &orphan_styled_items,
+        &element_to_material,
+        &mut decoder,
+    );
 
     let total_jobs = entity_jobs.len();
     let initial_chunk_size = options.initial_batch_size.max(1);
@@ -1273,6 +1329,10 @@ pub fn process_geometry_streaming_filtered_with_options(
                     });
                 if let Some(color) = resolved_color {
                     job.element_color = *color;
+                } else if let Some(color) = element_material_color.get(&job.id) {
+                    // No direct/indexed geometry style — inherit the material
+                    // appearance (#407).
+                    job.element_color = *color;
                 }
                 if options.include_presentation_layers {
                     let resolved_layer = layer_cache_by_product_definition_shape
@@ -1296,6 +1356,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             populate_entity_job_metadata(
                 job,
                 &geometry_style_index,
+                &element_material_color,
                 &presentation_layer_by_assigned_id,
                 &mut color_cache_by_product_definition_shape,
                 &mut layer_cache_by_product_definition_shape,

@@ -1,10 +1,10 @@
 # IFC Styling & Default-Rendering Parity — Research & Plan
 
-Status: **Phases 0–1 + 2a + 2b(per-triangle) landed.** Canonical
-`ifc_lite_processing::style` module is the single default-color table (consumed by
-`processing`, `wasm-bindings`, `apps/server`; CI guard forbids new copies), and the
-backend now resolves `IfcIndexedColourMap` — both dominant colour (#663) **and
-per-triangle splitting** (#858). Remaining Phase 2: material chain (#407), submesh
+Status: **Phases 0–1 + 2a/2b/2c landed.** Canonical `ifc_lite_processing::style`
+module is the single default-color table (consumed by `processing`, `wasm-bindings`,
+`apps/server`; CI guard forbids new copies). The backend now resolves
+`IfcIndexedColourMap` — dominant colour (#663) **and** per-triangle splitting
+(#858) — **and** the material chain (#407). Remaining Phase 2: submesh
 transparent/opaque preference, and pointing `wasm-bindings` at the shared resolver.
 Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
@@ -315,13 +315,30 @@ Phase 0 first so every later refactor is provably behavior-preserving.
 - Note: this *re-adds* per-triangle fidelity that the #874 mesh-pipeline unification
   dropped from wasm too — so when wasm is re-pointed it regains #858 for free.
 
-**Phase 2c — remaining (not started)**
-- Material chain (§2.4 / #407): port `build_material_style_index` /
-  `resolve_material_ids` / `flatten_material_color_index` so material-only-styled
-  files (IFC2x3 / ArchiCAD) color in the backend too.
-- Submesh transparent/opaque preference (§2.3) as a shared batch resolver.
+**Phase 2c — material chain — done**
+- ✅ `processing::style::material::build_element_material_color` ports the browser
+  chain: `IfcRelAssociatesMaterial` → material `SELECT` (resolving `IfcMaterialList`
+  / `IfcMaterialLayerSet[Usage]` / `IfcMaterialConstituentSet` / `IfcMaterialProfileSet`
+  with a depth-4 guard) → `IfcMaterialDefinitionRepresentation` →
+  `IfcStyledRepresentation` → orphan `IfcStyledItem` colour. Picks the first opaque
+  colour per element.
+- ✅ The processor collects orphan styled items (null `Item`) + the two material
+  relations during its scan, joins them after the scan, and applies the colour as a
+  fallback in element-colour resolution (both the non-wasm parallel path and the
+  wasm `populate_entity_job_metadata` path).
+- ✅ Fixes #407: `tests/styling_material_chain.rs` proves a proxy styled only through
+  its material chain renders the authored blue, not the default gray.
+- ⚠️ Eager-path only: in the `fast_first_batch` streaming mode styled items are
+  deferred, so orphan/material colours are not collected there yet — the map is
+  empty and elements fall back to the default. CLI/FFI/server (the #407 context) use
+  the eager path. Streaming material colour is a small follow-up.
+
+**Phase 2d — remaining (not started)**
+- Submesh transparent/opaque preference (§2.3) as a shared batch resolver — so a
+  window splits frame (opaque) vs glazing (transparent) across its sub-meshes.
 - Point `wasm-bindings` at the shared resolver (needs an LLVM-20 / CI build to verify;
-  not buildable in the current dev container).
+  not buildable in the current dev container). This also restores wasm's per-triangle
+  indexed-colour fidelity that #874 dropped.
 
 ### Phase 3 — Consumers go thin
 - `processing` + `apps/server` call `resolve_element_submesh_colors` and delete their

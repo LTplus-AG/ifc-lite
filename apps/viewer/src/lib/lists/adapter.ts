@@ -92,10 +92,15 @@ export function createListDataProvider(store: IfcDataStore): ListDataProvider {
 
     getAllEntityIds(): number[] {
       if (allIdsCache) return allIdsCache;
+      // Restrict "all elements" to geometry-bearing (selectable) products.
+      // The raw expressId column also holds relationships, property sets,
+      // materials, classifications and other non-element records — a
+      // class-less list should not surface those as rows.
       const ids: number[] = [];
       const col = store.entities.expressId;
       for (let i = 0; i < col.length; i++) {
-        if (col[i]) ids.push(col[i]);
+        const id = col[i];
+        if (id && store.entities.hasGeometry(id)) ids.push(id);
       }
       allIdsCache = ids;
       return ids;

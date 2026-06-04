@@ -249,8 +249,9 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
 
           {selectedTypes.size === 0 && (
             <p className="text-[11px] text-muted-foreground">
-              No entity types selected — this list targets <strong>all elements</strong>. Add
-              filters above (e.g. Name, Material, Classification, Storey) to narrow it.
+              No entity types selected — this list targets <strong>all model elements</strong>
+              {' '}(everything with geometry). Add filters above (e.g. Name, Material,
+              Classification, Storey) to narrow it.
             </p>
           )}
 

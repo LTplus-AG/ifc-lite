@@ -1559,8 +1559,18 @@ fn process_entity_job(
                     }
 
                     let style = geometry_style_index.get(&sub.geometry_id);
-                    let color = if let Some(style) = style {
-                        style.color
+                    // Direct style wins; else chase IfcMappedItem so mapped
+                    // sub-geometry inherits its underlying style (#913 §2.7);
+                    // else fall back to the material chain / element colour.
+                    let resolved_color = style.map(|s| s.color).or_else(|| {
+                        find_geometry_item_color(
+                            sub.geometry_id,
+                            geometry_style_index,
+                            &mut local_decoder,
+                        )
+                    });
+                    let color = if let Some(color) = resolved_color {
+                        color
                     } else if let Some(colors) = material_colors {
                         let prefer_transparent = mat_color_idx % 2 == 0;
                         mat_color_idx += 1;
@@ -1945,6 +1955,44 @@ fn find_color_in_shape_representation(
         }
     }
 
+    None
+}
+
+/// Resolve a single geometry item's colour, following `IfcMappedItem` into its
+/// mapped representation when the item itself carries no direct style. Mirrors
+/// the browser's `find_color_for_geometry` so mapped / instanced sub-geometry
+/// inherits its underlying style in the sub-mesh path too (issue #913 §2.7) —
+/// the element-level walk (`find_color_in_representation`) already did this, but
+/// the per-sub-mesh lookup was a flat `geometry_styles.get`.
+fn find_geometry_item_color(
+    geometry_id: u32,
+    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
+    decoder: &mut EntityDecoder,
+) -> Option<[f32; 4]> {
+    // Direct style on this exact geometry item wins.
+    if let Some(style) = geometry_styles.get(&geometry_id) {
+        return Some(style.color);
+    }
+
+    // Otherwise, if it's a mapped item, chase the mapping to the underlying
+    // geometry and resolve there (recursing handles nested mapped items).
+    let geom = decoder.decode_by_id(geometry_id).ok()?;
+    if geom.ifc_type != IfcType::IfcMappedItem {
+        return None;
+    }
+    // IfcMappedItem.MappingSource (attr 0) → IfcRepresentationMap.
+    let mapping_source_id = geom.get_ref(0)?;
+    // IfcRepresentationMap.MappedRepresentation (attr 1) → IfcShapeRepresentation.
+    let representation_map = decoder.decode_by_id(mapping_source_id).ok()?;
+    let mapped_representation_id = representation_map.get_ref(1)?;
+    let mapped_representation = decoder.decode_by_id(mapped_representation_id).ok()?;
+    // IfcShapeRepresentation.Items (attr 3).
+    let items = get_refs_from_list(&mapped_representation, 3)?;
+    for underlying in items {
+        if let Some(color) = find_geometry_item_color(underlying, geometry_styles, decoder) {
+            return Some(color);
+        }
+    }
     None
 }
 
@@ -2364,6 +2412,46 @@ mod tests {
             .iter()
             .map(|(k, v)| (*k, v.to_vec()))
             .collect()
+    }
+
+    #[test]
+    fn find_geometry_item_color_follows_mapped_item() {
+        // #100 IfcMappedItem → #101 IfcRepresentationMap → #103
+        // IfcShapeRepresentation whose Items = (#110). The style lives on the
+        // underlying item #110, not on the mapped item, so a flat lookup of
+        // #100 misses it — the resolver must chase the mapping (#913 §2.7).
+        const IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m.ifc','2026-06-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,$,$);
+#100=IFCMAPPEDITEM(#101,#105);
+#101=IFCREPRESENTATIONMAP(#102,#103);
+#102=IFCAXIS2PLACEMENT3D(#104,$,$);
+#103=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#110));
+#104=IFCCARTESIANPOINT((0.,0.,0.));
+#105=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#104,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let blue = [0.1, 0.2, 0.9, 1.0];
+        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+        styles.insert(
+            110,
+            GeometryStyleInfo { color: blue, shading_color: None, material_name: None },
+        );
+
+        let mut decoder = EntityDecoder::new(IFC);
+
+        // Mapped item, no direct style → inherits the underlying item's colour.
+        assert_eq!(find_geometry_item_color(100, &styles, &mut decoder), Some(blue));
+        // A direct style still wins.
+        assert_eq!(find_geometry_item_color(110, &styles, &mut decoder), Some(blue));
+        // A non-mapped, unstyled item (the representation map itself) → None.
+        assert_eq!(find_geometry_item_color(101, &styles, &mut decoder), None);
     }
 
     #[test]

@@ -9,9 +9,10 @@ browser's intent: `IfcIndexedColourMap` dominant (#663) **and** per-triangle
 Phase 2e is done: `wasm-bindings` now delegates indexed-colour, material-chain, and
 submesh resolution to `processing::style` (the duplicated logic is deleted), so the
 two Rust paths share one resolver — verified by `cargo build -p ifc-lite-wasm
---target wasm32-unknown-unknown`. Remaining: the deeper §4.2 single-batch
-`StyleIndex` API (cohesion, not correctness), Phase 4 layer/void driver, and the
-`IfcMappedItem` style traversal (§2.7) on the backend. Owner: geometry / processing core.
+--target wasm32-unknown-unknown`. The `IfcMappedItem` sub-mesh style traversal (§2.7)
+is now in the backend too (`find_geometry_item_color`). Remaining: the deeper §4.2
+single-batch `StyleIndex` API (cohesion, not correctness) and the Phase 4 layer/void
+driver reconciliation. Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
 Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`,
 `docs/architecture/clash-detection-plan.md` (the "one shared core" precedent).
@@ -359,8 +360,11 @@ Phase 0 first so every later refactor is provably behavior-preserving.
 - ✅ Verified locally with `cargo build -p ifc-lite-wasm --target wasm32-unknown-unknown`
   (clang 21 compiles the manifold C++ shim; the LLVM-20 note applied only to the
   old dev container). CI's `Build packages + WASM` job exercises the full wasm-pack build.
-- Note: `find_color_for_geometry` (the `IfcMappedItem` style traversal, §2.7) is the
-  one resolver still living only in wasm — tracked below.
+- ✅ §2.7 `IfcMappedItem` sub-mesh traversal is now in the backend:
+  `processor::find_geometry_item_color` mirrors the browser's `find_color_for_geometry`,
+  so a window/door sub-mesh whose geometry is a mapped item inherits the underlying
+  style instead of falling through to the material/default colour. Unit-tested
+  (`processor::tests::find_geometry_item_color_follows_mapped_item`).
 - Not yet done: the deeper §4.2 *single batch entry point* (`StyleIndex::from_content`
   + `resolve_element_submesh_colors`). The logic is now shared as leaf functions; folding
   it into one stateful resolver is a cohesion refactor, not a correctness gap.

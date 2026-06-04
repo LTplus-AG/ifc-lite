@@ -174,6 +174,30 @@ describe('executeList', () => {
     expect(result.rows[0].values[1]).toBe(5.0);
   });
 
+  it('extracts material, classification and storey columns', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'test-cols',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'mat', source: 'material', propertyName: 'Material' },
+        { id: 'cls', source: 'classification', propertyName: 'Classification' },
+        { id: 'sto', source: 'spatial', propertyName: 'Storey' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    // Wall-01: single material, one classification (code), Level 0.
+    expect(result.rows[0].values).toEqual(['Wall-01', 'Concrete C30/37', 'Pr_20_93', 'Level 0']);
+    // Wall-02: two material layers joined; no classification → null; Level 1.
+    expect(result.rows[1].values).toEqual(['Wall-02', 'Brick, Rigid Insulation', null, 'Level 1']);
+  });
+
   it('filters by conditions', () => {
     const provider = createMockProvider();
     const def: ListDefinition = {

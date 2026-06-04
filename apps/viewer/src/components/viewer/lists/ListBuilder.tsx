@@ -55,6 +55,13 @@ const SELECTABLE_TYPES: { type: IfcTypeEnum; label: string }[] = [
   { type: IfcTypeEnum.IfcFlowFitting, label: 'MEP Fittings' },
 ];
 
+// Fixed semantic / spatial columns (not name-discovered like psets/qtos).
+const SEMANTIC_COLUMNS: { id: string; source: ColumnDefinition['source']; label: string }[] = [
+  { id: 'col-material', source: 'material', label: 'Material' },
+  { id: 'col-classification', source: 'classification', label: 'Classification' },
+  { id: 'col-storey', source: 'spatial', label: 'Storey' },
+];
+
 interface ListBuilderProps {
   providers: ListDataProvider[];
   initial: ListDefinition | null;
@@ -391,6 +398,29 @@ function ColumnPicker({ discovered, selectedIds, onAdd }: ColumnPickerProps) {
               onClick={() => {
                 if (!isSelected) {
                   onAdd({ id, source: 'attribute', propertyName: attr });
+                }
+              }}
+            />
+          );
+        })}
+      </CollapsibleSection>
+
+      {/* Spatial & materials (fixed columns, not name-discovered) */}
+      <CollapsibleSection
+        title="Spatial & Materials"
+        expanded={expandedSections.has('semantics')}
+        onToggle={() => toggleSection('semantics')}
+      >
+        {SEMANTIC_COLUMNS.map(({ id, source, label }) => {
+          const isSelected = selectedIds.has(id);
+          return (
+            <PickerItem
+              key={id}
+              label={label}
+              selected={isSelected}
+              onClick={() => {
+                if (!isSelected) {
+                  onAdd({ id, source, propertyName: label, label });
                 }
               }}
             />

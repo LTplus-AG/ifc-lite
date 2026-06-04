@@ -247,11 +247,31 @@ function extractColumnValues(
       case 'quantity':
         values[i] = findQuantityInSets(qsets ?? [], col.psetName ?? '', col.propertyName);
         break;
+      case 'material': {
+        const names = provider.getMaterialNames?.(entityId) ?? [];
+        values[i] = names.length > 0 ? uniqueJoin(names) : null;
+        break;
+      }
+      case 'classification': {
+        const refs = provider.getClassifications?.(entityId) ?? [];
+        const codes = refs.map(r => r.code || r.name || '').filter(s => s.length > 0);
+        values[i] = codes.length > 0 ? uniqueJoin(codes) : null;
+        break;
+      }
+      case 'spatial':
+        values[i] = provider.getStoreyName?.(entityId) || null;
+        break;
       default:
         values[i] = null;
     }
   }
   return values;
+}
+
+/** Join a list of strings into a single cell value, de-duplicated and
+ *  order-preserving (an element can repeat a material across layers). */
+function uniqueJoin(values: string[]): string {
+  return Array.from(new Set(values)).join(', ');
 }
 
 // ============================================================================

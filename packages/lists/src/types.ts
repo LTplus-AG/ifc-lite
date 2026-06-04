@@ -142,10 +142,14 @@ export type ConditionOperator =
 
 export interface ColumnDefinition {
   id: string;
-  source: 'attribute' | 'property' | 'quantity';
+  /**
+   * Where the column value comes from. `material` / `classification` are
+   * multi-valued (joined with ", "); `spatial` is the element's storey name.
+   */
+  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial';
   /** For property: pset name. For quantity: qset name. */
   psetName?: string;
-  /** Attribute name or property/quantity name */
+  /** Attribute name or property/quantity name. Ignored for material/classification/spatial. */
   propertyName: string;
   /** Display label override */
   label?: string;

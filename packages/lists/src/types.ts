@@ -53,6 +53,31 @@ export interface ListDataProvider {
   getPropertySets(expressId: number): PropertySet[];
   /** Get all quantity sets for an entity (handles on-demand extraction) */
   getQuantitySets(expressId: number): QuantitySet[];
+
+  // ── Optional accessors (added for richer list targeting / columns) ──
+  // Implementers built before these existed keep working: the engine
+  // degrades gracefully when a method is absent (no-class lists resolve
+  // to no rows; material/classification/storey conditions never match).
+
+  /**
+   * All entity express IDs in the model. Used to target a list at every
+   * element regardless of IFC class (when `entityTypes` is empty).
+   */
+  getAllEntityIds?(): number[];
+  /** Material name(s) for the element — top-level material plus any
+   *  layer / constituent / profile / list-member names. */
+  getMaterialNames?(expressId: number): string[];
+  /** Classification references associated with the element. */
+  getClassifications?(expressId: number): ListClassificationRef[];
+  /** Building-storey name the element belongs to, or '' when unplaced. */
+  getStoreyName?(expressId: number): string;
+}
+
+/** A classification reference exposed to the list engine (code + name). */
+export interface ListClassificationRef {
+  system?: string;
+  code?: string;
+  name?: string;
 }
 
 // ============================================================================
@@ -84,10 +109,18 @@ export interface ListDefinition {
 // ============================================================================
 
 export interface PropertyCondition {
-  source: 'attribute' | 'property' | 'quantity';
+  /**
+   * Where the compared value comes from:
+   * - `attribute` — a built-in attribute (Name, Class, Description, …)
+   * - `property` / `quantity` — a pset / qto value (uses `psetName`)
+   * - `material` — any of the element's material names (multi-valued)
+   * - `classification` — any classification code or name (multi-valued)
+   * - `spatial` — the element's building-storey name
+   */
+  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial';
   /** Property set name (for property/quantity sources) */
   psetName?: string;
-  /** Property name within the set */
+  /** Property name within the set. Ignored for material/classification/spatial. */
   propertyName: string;
   operator: ConditionOperator;
   value: string | number | boolean;

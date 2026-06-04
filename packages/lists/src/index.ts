@@ -12,6 +12,7 @@ export type {
   ColumnDefinition,
   PropertyCondition,
   ConditionOperator,
+  ListClassificationRef,
   DiscoveredColumns,
   EntityAttribute,
 } from './types.js';

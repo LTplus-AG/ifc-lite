@@ -66,6 +66,24 @@ function createMockProvider(): ListDataProvider {
     ]],
   ]);
 
+  const materialNames = new Map<number, string[]>([
+    [1, ['Concrete C30/37']],
+    [2, ['Brick', 'Rigid Insulation']],
+    [3, ['Concrete C30/37']],
+  ]);
+
+  const classifications = new Map<number, Array<{ system?: string; code?: string; name?: string }>>([
+    [1, [{ system: 'Uniclass 2015', code: 'Pr_20_93', name: 'External wall' }]],
+    [2, []],
+    [3, [{ system: 'Uniclass 2015', code: 'Ss_30_10', name: 'Floor slab' }]],
+  ]);
+
+  const storeyNames = new Map<number, string>([
+    [1, 'Level 0'],
+    [2, 'Level 1'],
+    [3, 'Level 0'],
+  ]);
+
   return {
     getEntitiesByType: (type) => typeIndex.get(type) ?? [],
     getEntityName: (id) => entities.get(id)?.name ?? '',
@@ -76,6 +94,10 @@ function createMockProvider(): ListDataProvider {
     getEntityTypeName: (id) => entities.get(id)?.type ?? '',
     getPropertySets: (id) => propertySets.get(id) ?? [],
     getQuantitySets: (id) => quantitySets.get(id) ?? [],
+    getAllEntityIds: () => Array.from(entities.keys()),
+    getMaterialNames: (id) => materialNames.get(id) ?? [],
+    getClassifications: (id) => classifications.get(id) ?? [],
+    getStoreyName: (id) => storeyNames.get(id) ?? '',
   };
 }
 
@@ -210,6 +232,93 @@ describe('executeList', () => {
 
     const result = executeList(def, provider);
     expect(result.totalCount).toBe(3);
+  });
+
+  it('targets all elements when entityTypes is empty (no class constraint)', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'test-all',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [
+        { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '01' },
+      ],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+
+    const result = executeList(def, provider);
+    // Wall-01 and Slab-01 match across all classes.
+    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
+  });
+
+  it('filters by material name (multi-valued, any-match)', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'test-mat',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [
+        { source: 'material', propertyName: 'Material', operator: 'contains', value: 'insulation' },
+      ],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+    const result = executeList(def, provider);
+    // Only Wall-02 has an insulation layer.
+    expect(result.rows.map(r => r.values[0])).toEqual(['Wall-02']);
+  });
+
+  it('filters by classification code or name', () => {
+    const provider = createMockProvider();
+    const byCode = executeList({
+      id: 'c1', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
+      conditions: [{ source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'Pr_20' }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    }, provider);
+    expect(byCode.rows.map(r => r.values[0])).toEqual(['Wall-01']);
+
+    const byName = executeList({
+      id: 'c2', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
+      conditions: [{ source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'slab' }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    }, provider);
+    expect(byName.rows.map(r => r.values[0])).toEqual(['Slab-01']);
+  });
+
+  it('classification exists matches only classified elements', () => {
+    const provider = createMockProvider();
+    const result = executeList({
+      id: 'c3', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
+      conditions: [{ source: 'classification', propertyName: 'Classification', operator: 'exists', value: '' }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    }, provider);
+    // Wall-02 has no classification.
+    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
+  });
+
+  it('filters by storey (spatial source)', () => {
+    const provider = createMockProvider();
+    const result = executeList({
+      id: 'sp1', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
+      conditions: [{ source: 'spatial', propertyName: 'Storey', operator: 'equals', value: 'Level 0' }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    }, provider);
+    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
+  });
+
+  it('class-less targeting yields nothing when the provider cannot enumerate', () => {
+    const provider = createMockProvider();
+    // Simulate an older provider without getAllEntityIds.
+    delete (provider as { getAllEntityIds?: unknown }).getAllEntityIds;
+    const result = executeList({
+      id: 'noall', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
+      conditions: [],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    }, provider);
+    expect(result.totalCount).toBe(0);
   });
 
   it('sorts results when sortBy is configured', () => {

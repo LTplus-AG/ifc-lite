@@ -68,13 +68,21 @@ export function executeList(
 function resolveSourceSet(definition: ListDefinition, provider: ListDataProvider): number[] {
   const { entityTypes, conditions } = definition;
 
-  // Collect entity IDs by type - gather arrays first, then flatten once
-  const chunks: number[][] = [];
-  for (const type of entityTypes) {
-    const ids = provider.getEntitiesByType(type);
-    if (ids.length > 0) chunks.push(ids);
+  let entityIds: number[];
+  if (entityTypes.length === 0) {
+    // No class constraint — target every element in the model. Requires
+    // the provider to enumerate all ids; older providers without it
+    // resolve to an empty set rather than throwing.
+    entityIds = provider.getAllEntityIds?.() ?? [];
+  } else {
+    // Collect entity IDs by type - gather arrays first, then flatten once
+    const chunks: number[][] = [];
+    for (const type of entityTypes) {
+      const ids = provider.getEntitiesByType(type);
+      if (ids.length > 0) chunks.push(ids);
+    }
+    entityIds = chunks.length === 1 ? chunks[0] : chunks.flat();
   }
-  const entityIds = chunks.length === 1 ? chunks[0] : chunks.flat();
 
   // Apply conditions as filters
   if (conditions.length === 0) {
@@ -102,6 +110,13 @@ function matchesCondition(
   condition: PropertyCondition,
   provider: ListDataProvider,
 ): boolean {
+  // Material and classification are multi-valued (an element can have many
+  // material layers or classification refs) so they use any/none semantics
+  // rather than the scalar comparison below.
+  if (condition.source === 'material' || condition.source === 'classification') {
+    return matchesMultiValuedCondition(entityId, condition, provider);
+  }
+
   const actualValue = getConditionValue(entityId, condition, provider);
 
   if (condition.operator === 'exists') {
@@ -144,9 +159,56 @@ function getConditionValue(
       return getPropertyValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
     case 'quantity':
       return getQuantityValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
+    case 'spatial':
+      return provider.getStoreyName?.(entityId) || null;
     default:
       return null;
   }
+}
+
+/**
+ * Match a multi-valued condition (material / classification). Positive
+ * operators match if ANY candidate value satisfies them; `notEquals`
+ * matches only if NO candidate equals the value. An element with no
+ * materials / classifications never matches (including `notEquals`),
+ * except `exists` which is a pure presence check.
+ */
+function matchesMultiValuedCondition(
+  entityId: number,
+  condition: PropertyCondition,
+  provider: ListDataProvider,
+): boolean {
+  const candidates = condition.source === 'material'
+    ? (provider.getMaterialNames?.(entityId) ?? [])
+    : classificationCandidates(provider.getClassifications?.(entityId) ?? []);
+
+  if (condition.operator === 'exists') return candidates.length > 0;
+  if (candidates.length === 0) return false;
+
+  const target = String(condition.value).toLowerCase();
+  switch (condition.operator) {
+    case 'equals':
+      return candidates.some(c => c.toLowerCase() === target);
+    case 'contains':
+      return candidates.some(c => c.toLowerCase().includes(target));
+    case 'notEquals':
+      return candidates.every(c => c.toLowerCase() !== target);
+    default:
+      // gt/lt/gte/lte have no meaning for material/classification strings.
+      return false;
+  }
+}
+
+/** Flatten classification refs into a candidate string list (code + name). */
+function classificationCandidates(
+  refs: ReadonlyArray<{ code?: string; name?: string }>,
+): string[] {
+  const out: string[] = [];
+  for (const ref of refs) {
+    if (ref.code) out.push(ref.code);
+    if (ref.name) out.push(ref.name);
+  }
+  return out;
 }
 
 // ============================================================================

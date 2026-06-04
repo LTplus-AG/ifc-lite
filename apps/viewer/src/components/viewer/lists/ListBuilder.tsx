@@ -28,8 +28,9 @@ import type {
   ColumnDefinition,
   DiscoveredColumns,
   PropertyCondition,
+  ConditionOperator,
 } from '@ifc-lite/lists';
-import { discoverColumns } from '@ifc-lite/lists';
+import { discoverColumns, ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 
 // Building element types available for selection
 const SELECTABLE_TYPES: { type: IfcTypeEnum; label: string }[] = [
@@ -71,6 +72,7 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
   const [columns, setColumns] = useState<ColumnDefinition[]>(initial?.columns ?? []);
   const [conditions, setConditions] = useState<PropertyCondition[]>(initial?.conditions ?? []);
   const [columnsExpanded, setColumnsExpanded] = useState(true);
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
 
   // Count entities per type across all providers
   const typeCounts = useMemo(() => {
@@ -85,9 +87,11 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
     return counts;
   }, [providers]);
 
-  // Discover available columns whenever selected types change (across all providers)
-  const discovered = useMemo<DiscoveredColumns | null>(() => {
-    if (selectedTypes.size === 0) return null;
+  // Discover available columns whenever selected types change (across all
+  // providers). With no types selected the list targets every element, so
+  // discovery returns the built-in attributes only (pset/qto discovery needs
+  // a type to sample) — that's enough to pick Name/Class/etc. columns.
+  const discovered = useMemo<DiscoveredColumns>(() => {
     return discoverColumns(providers, Array.from(selectedTypes));
   }, [providers, selectedTypes]);
 
@@ -124,6 +128,18 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
       next[target] = tmp;
       return next;
     });
+  }, []);
+
+  const addCondition = useCallback((condition: PropertyCondition) => {
+    setConditions(prev => [...prev, condition]);
+  }, []);
+
+  const updateCondition = useCallback((idx: number, condition: PropertyCondition) => {
+    setConditions(prev => prev.map((c, i) => (i === idx ? condition : c)));
+  }, []);
+
+  const removeCondition = useCallback((idx: number) => {
+    setConditions(prev => prev.filter((_, i) => i !== idx));
   }, []);
 
   const buildDefinition = useCallback((): ListDefinition => {
@@ -217,12 +233,29 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
             </div>
           </div>
 
-          {selectedTypes.size > 0 && discovered && (
-            <>
-              <Separator />
+          <Separator />
 
-              {/* Column Selection */}
-              <div>
+          {/* Filters / Conditions */}
+          <ConditionsSection
+            conditions={conditions}
+            expanded={filtersExpanded}
+            onToggle={() => setFiltersExpanded((v) => !v)}
+            onAdd={addCondition}
+            onUpdate={updateCondition}
+            onRemove={removeCondition}
+          />
+
+          <Separator />
+
+          {selectedTypes.size === 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              No entity types selected — this list targets <strong>all elements</strong>. Add
+              filters above (e.g. Name, Material, Classification, Storey) to narrow it.
+            </p>
+          )}
+
+          {/* Column Selection */}
+          <div>
                 <button
                   className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider w-full"
                   onClick={() => setColumnsExpanded(!columnsExpanded)}
@@ -282,8 +315,6 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
                   </div>
                 )}
               </div>
-            </>
-          )}
         </div>
       </ScrollArea>
 
@@ -293,7 +324,7 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
           variant="default"
           size="sm"
           onClick={handleRun}
-          disabled={selectedTypes.size === 0 || columns.length === 0}
+          disabled={columns.length === 0}
           className="text-xs h-7"
         >
           <Play className="h-3 w-3 mr-1" />
@@ -303,7 +334,7 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
           variant="outline"
           size="sm"
           onClick={handleSave}
-          disabled={selectedTypes.size === 0 || columns.length === 0}
+          disabled={columns.length === 0}
           className="text-xs h-7"
         >
           <Save className="h-3 w-3 mr-1" />
@@ -482,5 +513,209 @@ function PickerItem({
       <span className="truncate">{label}</span>
       {selected && <span className="ml-auto text-[10px] text-muted-foreground">added</span>}
     </button>
+  );
+}
+
+// ============================================================================
+// Conditions (filters)
+// ============================================================================
+
+type ConditionSource = PropertyCondition['source'];
+
+const CONDITION_SOURCES: { source: ConditionSource; label: string }[] = [
+  { source: 'attribute', label: 'Attribute' },
+  { source: 'property', label: 'Property' },
+  { source: 'quantity', label: 'Quantity' },
+  { source: 'material', label: 'Material' },
+  { source: 'classification', label: 'Classification' },
+  { source: 'spatial', label: 'Storey' },
+];
+
+const OPERATOR_LABEL: Record<ConditionOperator, string> = {
+  equals: '=',
+  notEquals: '≠',
+  contains: 'contains',
+  gt: '>',
+  lt: '<',
+  gte: '≥',
+  lte: '≤',
+  exists: 'is set',
+};
+
+function operatorsFor(source: ConditionSource): ConditionOperator[] {
+  switch (source) {
+    case 'quantity':
+      return ['equals', 'notEquals', 'gt', 'gte', 'lt', 'lte', 'exists'];
+    case 'material':
+    case 'classification':
+      return ['contains', 'equals', 'notEquals', 'exists'];
+    default:
+      return ['equals', 'notEquals', 'contains', 'exists'];
+  }
+}
+
+function defaultConditionFor(source: ConditionSource): PropertyCondition {
+  switch (source) {
+    case 'property':
+      return { source, psetName: '', propertyName: '', operator: 'equals', value: '' };
+    case 'quantity':
+      return { source, psetName: '', propertyName: '', operator: 'gt', value: '' };
+    case 'material':
+      return { source, propertyName: 'Material', operator: 'contains', value: '' };
+    case 'classification':
+      return { source, propertyName: 'Classification', operator: 'contains', value: '' };
+    case 'spatial':
+      return { source, propertyName: 'Storey', operator: 'equals', value: '' };
+    case 'attribute':
+    default:
+      return { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '' };
+  }
+}
+
+const SELECT_CLASS =
+  'h-6 rounded border border-border bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring';
+
+interface ConditionsSectionProps {
+  conditions: PropertyCondition[];
+  expanded: boolean;
+  onToggle: () => void;
+  onAdd: (condition: PropertyCondition) => void;
+  onUpdate: (idx: number, condition: PropertyCondition) => void;
+  onRemove: (idx: number) => void;
+}
+
+function ConditionsSection({
+  conditions,
+  expanded,
+  onToggle,
+  onAdd,
+  onUpdate,
+  onRemove,
+}: ConditionsSectionProps) {
+  return (
+    <div>
+      <button
+        className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider w-full"
+        onClick={onToggle}
+      >
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        Filters ({conditions.length})
+      </button>
+
+      {expanded && (
+        <div className="mt-2 space-y-1">
+          {conditions.map((condition, idx) => (
+            <ConditionRow
+              key={idx}
+              condition={condition}
+              onChange={(next) => onUpdate(idx, next)}
+              onRemove={() => onRemove(idx)}
+            />
+          ))}
+          <button
+            onClick={() => onAdd(defaultConditionFor('attribute'))}
+            className="flex items-center gap-1 px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <Plus className="h-3 w-3" /> Add filter
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConditionRow({
+  condition,
+  onChange,
+  onRemove,
+}: {
+  condition: PropertyCondition;
+  onChange: (next: PropertyCondition) => void;
+  onRemove: () => void;
+}) {
+  const ops = operatorsFor(condition.source);
+  const showValue = condition.operator !== 'exists';
+  const showSetFields = condition.source === 'property' || condition.source === 'quantity';
+
+  const valuePlaceholder =
+    condition.source === 'spatial'
+      ? 'storey name'
+      : condition.source === 'material'
+        ? 'material'
+        : condition.source === 'classification'
+          ? 'code or name'
+          : 'value';
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 rounded bg-muted/50 px-2 py-1 text-xs">
+      <select
+        value={condition.source}
+        onChange={(e) => onChange(defaultConditionFor(e.target.value as ConditionSource))}
+        className={SELECT_CLASS}
+        aria-label="Filter dimension"
+      >
+        {CONDITION_SOURCES.map((s) => (
+          <option key={s.source} value={s.source}>{s.label}</option>
+        ))}
+      </select>
+
+      {condition.source === 'attribute' && (
+        <select
+          value={condition.propertyName}
+          onChange={(e) => onChange({ ...condition, propertyName: e.target.value })}
+          className={SELECT_CLASS}
+          aria-label="Attribute"
+        >
+          {ENTITY_ATTRIBUTES.map((a) => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+      )}
+
+      {showSetFields && (
+        <>
+          <Input
+            value={condition.psetName ?? ''}
+            placeholder={condition.source === 'quantity' ? 'Qto_…' : 'Pset_…'}
+            onChange={(e) => onChange({ ...condition, psetName: e.target.value })}
+            className="h-6 w-28 text-xs"
+          />
+          <Input
+            value={condition.propertyName}
+            placeholder="name"
+            onChange={(e) => onChange({ ...condition, propertyName: e.target.value })}
+            className="h-6 w-24 text-xs"
+          />
+        </>
+      )}
+
+      <select
+        value={condition.operator}
+        onChange={(e) => onChange({ ...condition, operator: e.target.value as ConditionOperator })}
+        className={SELECT_CLASS}
+        aria-label="Operator"
+      >
+        {ops.map((op) => (
+          <option key={op} value={op}>{OPERATOR_LABEL[op]}</option>
+        ))}
+      </select>
+
+      {showValue && (
+        <Input
+          value={String(condition.value ?? '')}
+          placeholder={valuePlaceholder}
+          onChange={(e) => onChange({ ...condition, value: e.target.value })}
+          className="h-6 flex-1 min-w-[6rem] text-xs"
+        />
+      )}
+
+      <button
+        onClick={onRemove}
+        aria-label="Remove filter"
+        className="ml-auto text-muted-foreground hover:text-destructive"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </div>
   );
 }

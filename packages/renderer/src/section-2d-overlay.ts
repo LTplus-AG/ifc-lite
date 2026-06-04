@@ -65,7 +65,14 @@ export interface DrawingLine2D {
   category: string;
 }
 
-// Fill colors by IFC type (architectural convention)
+// Fill colors by IFC type (architectural convention).
+//
+// PARITY-ALLOW (#913): this is the **2D drafting** palette and is deliberately
+// independent of the canonical 3D styling table
+// (`ifc_lite_processing::style::default_color_for_type`). 2D plan/section fills
+// follow drawing conventions (heavier alpha, line-weight-driven greys), not the
+// 3D material appearance, so it is the one sanctioned second colour table. Do
+// not "sync" it to the 3D defaults; do not add a third table anywhere else.
 const IFC_TYPE_FILL_COLORS: Record<string, [number, number, number, number]> = {
   IfcWall: [0.69, 0.69, 0.69, 0.95],
   IfcWallStandardCase: [0.69, 0.69, 0.69, 0.95],

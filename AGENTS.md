@@ -66,6 +66,12 @@
 - Every WASM handle (`MeshCollection`, `MeshDataJs`, the pre-pass cache) must be freed deterministically. Wrap pre-pass + job-batch usage in `try/finally` so `clearPrePassCache()` / `.free()` run on early return, on a thrown error, **and** when an async generator is abandoned (its `.return()` runs `finally`).
 - The mesh getters copy into JS-owned typed arrays, so it is safe to `.free()` each handle immediately after extracting its data — and retaining the extracted `MeshData` across batches is safe (it is no longer a live view into WASM memory). Do not add redundant deep-copies of already-extracted meshes.
 
+### Styling: one colour home (#913)
+- **Default colours and style resolution have exactly one home: `ifc_lite_processing::style`** (mirrors `processing::symbolic`). `wasm-bindings` and `apps/server` consume it; they never resolve colour themselves.
+- **Never add a per-consumer colour table or an `extract_color_*` / `get_default_color*` helper outside `processing::style`.** A Rust test (`processing/tests/styling_parity.rs::no_duplicate_default_color_tables`) fails the build if one reappears.
+- A new IFC-type default = edit the one table **and** extend the mesh-level fixture (`processing/tests/styling_default_colors.rs`).
+- The 2D drafting palette (`packages/renderer/src/section-2d-overlay.ts` `IFC_TYPE_FILL_COLORS`) is the **only** sanctioned exception; it carries a `PARITY-ALLOW` marker. See `docs/architecture/styling-parity-plan.md` for the rationale.
+
 ## 8. Rust Dependency Policy
 - **`Cargo.lock` is committed.** This workspace mixes libraries (`rust/core`, `rust/geometry`, etc.) and application binaries (`apps/server`, `apps/desktop/src-tauri`). App crates need a committed lockfile to stay reproducible, and CI runs a fresh resolve on every build — without a lockfile, any upstream yank instantly breaks the pipeline. See commit history for the `core2` incident (every published version yanked in 2025) that motivated this decision.
 - **Don't delete `Cargo.lock` to "refresh" dependencies.** Use `cargo update -p <crate>` for targeted upgrades, or `cargo update` for a full refresh. Review the resulting lockfile diff before committing.

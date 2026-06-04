@@ -36,6 +36,7 @@ import {
   type StringOp,
   type ValueOp,
   type NumericOp,
+  type ClassificationOp,
   type Combinator,
 } from '@/lib/search/filter-rules';
 import {
@@ -57,6 +58,9 @@ const VALUE_OPS: ValueOp[] = [
   'eq', 'ne', 'contains', 'notContains', 'gt', 'gte', 'lt', 'lte', 'isSet', 'isNotSet',
 ];
 const NUMERIC_OPS: NumericOp[] = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
+const CLASSIFICATION_OPS: ClassificationOp[] = [
+  'contains', 'eq', 'ne', 'notContains', 'isSet', 'isNotSet',
+];
 
 const OP_LABEL: Record<string, string> = {
   in: 'is one of',  notIn: 'is not one of',
@@ -74,6 +78,9 @@ const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
   name:            'Name',
   property:        'Property',
   quantity:        'Quantity',
+  material:        'Material',
+  classification:  'Classification',
+  elevation:       'Elevation',
 };
 
 export function SearchModalFilterBuilder() {
@@ -153,6 +160,9 @@ export function SearchModalFilterBuilder() {
       case 'name':           rule = Rule.name('contains', ''); break;
       case 'property':       rule = Rule.property('', '', 'eq', ''); break;
       case 'quantity':       rule = Rule.quantity('', '', 'gt', 0); break;
+      case 'material':       rule = Rule.material('contains', ''); break;
+      case 'classification': rule = Rule.classification('', 'contains', ''); break;
+      case 'elevation':      rule = Rule.elevation('gt', 0); break;
     }
     addFilterRule(rule);
   }, [addFilterRule]);
@@ -254,7 +264,8 @@ export function SearchModalFilterBuilder() {
       <div className="flex flex-col gap-2">
         {filter.rules.length === 0 && (
           <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
-            Add a rule to start filtering — pick by storey, IFC type, name, property, or quantity.
+            Add a rule to start filtering — pick by storey, IFC type, name,
+            property, quantity, material, classification, or elevation.
           </p>
         )}
         {filter.rules.map((rule, i) => (
@@ -459,6 +470,26 @@ function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, onChange, onRem
 
       {rule.kind === 'quantity' && (
         <QuantityEditor rule={rule} psetQto={psetQto} onChange={onChange} />
+      )}
+
+      {rule.kind === 'material' && (
+        <MaterialEditor
+          op={rule.op}
+          value={rule.value}
+          onChange={(op, value) => onChange(Rule.material(op, value))}
+        />
+      )}
+
+      {rule.kind === 'classification' && (
+        <ClassificationEditor rule={rule} onChange={onChange} />
+      )}
+
+      {rule.kind === 'elevation' && (
+        <ElevationEditor
+          op={rule.op}
+          value={rule.value}
+          onChange={(op, value) => onChange(Rule.elevation(op, value))}
+        />
       )}
 
       <button
@@ -681,6 +712,87 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
         onChange={(e) => onChange({ ...rule, value: Number.parseFloat(e.target.value) || 0 })}
         className="h-7 w-32 text-xs font-mono"
       />
+    </>
+  );
+}
+
+function MaterialEditor({
+  op,
+  value,
+  onChange,
+}: {
+  op: StringOp;
+  value: string;
+  onChange: (op: StringOp, value: string) => void;
+}) {
+  return (
+    <>
+      <OpDropdown ops={STRING_OPS} value={op} onChange={(next) => onChange(next, value)} />
+      <Input
+        placeholder="material name (e.g. Concrete)"
+        value={value}
+        onChange={(e) => onChange(op, e.target.value)}
+        className="h-7 w-56 text-xs font-mono"
+      />
+    </>
+  );
+}
+
+function ClassificationEditor({
+  rule,
+  onChange,
+}: {
+  rule: Extract<FilterRule, { kind: 'classification' }>;
+  onChange: (next: FilterRule) => void;
+}) {
+  const valueless = rule.op === 'isSet' || rule.op === 'isNotSet';
+  return (
+    <>
+      <Input
+        placeholder="system (optional)"
+        value={rule.system ?? ''}
+        onChange={(e) => onChange(Rule.classification(e.target.value, rule.op, rule.value))}
+        className="h-7 w-40 text-xs font-mono"
+        title="Restrict to one classification system, e.g. Uniclass 2015. Leave blank for any."
+      />
+      <OpDropdown
+        ops={CLASSIFICATION_OPS}
+        value={rule.op}
+        onChange={(next) => onChange(Rule.classification(rule.system ?? '', next, rule.value))}
+      />
+      {!valueless && (
+        <Input
+          placeholder="code or name"
+          value={rule.value}
+          onChange={(e) => onChange(Rule.classification(rule.system ?? '', rule.op, e.target.value))}
+          className="h-7 w-44 text-xs font-mono"
+        />
+      )}
+    </>
+  );
+}
+
+function ElevationEditor({
+  op,
+  value,
+  onChange,
+}: {
+  op: NumericOp;
+  value: number;
+  onChange: (op: NumericOp, value: number) => void;
+}) {
+  return (
+    <>
+      <OpDropdown ops={NUMERIC_OPS} value={op} onChange={(next) => onChange(next, value)} />
+      <Input
+        type="number"
+        step="any"
+        placeholder="metres"
+        value={value}
+        onChange={(e) => onChange(op, Number.parseFloat(e.target.value) || 0)}
+        className="h-7 w-28 text-xs font-mono"
+      />
+      <span className="text-[10px] text-muted-foreground">m (storey elevation)</span>
     </>
   );
 }

@@ -37,19 +37,25 @@
 import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
+  extractMaterialsOnDemand,
+  extractClassificationsOnDemand,
   type IfcDataStore,
+  type MaterialInfo,
+  type ClassificationInfo,
 } from '@ifc-lite/parser';
 
 import {
   combineRuleResults,
   setOpMatches,
   stringOpMatches,
+  matchStringAnyNone,
   numericOpMatches,
   valueOpMatches,
   type Combinator,
   type FilterRule,
   type PropertyRule,
   type QuantityRule,
+  type ClassificationRule,
 } from './filter-rules.js';
 
 /** A single matched element. Mirrors the Rust `FilteredElement` shape. */
@@ -108,6 +114,8 @@ export function evaluateFilterRules(
     options,
     hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
     hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
+    hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
+    hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
   };
 
   for (const expressId of iterIds) {
@@ -210,6 +218,8 @@ export async function evaluateFilterRulesFederated(
       options,
       hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
       hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
+      hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
+      hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
     };
 
     // Walk the per-model iter in chunkSize-sized strides, yielding the
@@ -340,12 +350,17 @@ const RULE_COST: Record<FilterRule['kind'], number> = {
   ifcType:        0,
   // Pre-built reverse-map lookup.
   storey:         1,
+  // Pre-built reverse-map lookup (elementToStorey → storeyElevations).
+  elevation:      1,
   // String-table indirection.
   name:           2,
   predefinedType: 2,
   // Source-buffer parse (the AGENTS.md §2 hot path).
   property:       10,
   quantity:       10,
+  // Relationship-graph walk + on-demand resolve — as costly as a pset parse.
+  material:       10,
+  classification: 10,
 };
 
 export function orderRulesByCost(rules: readonly FilterRule[]): FilterRule[] {
@@ -365,6 +380,8 @@ interface EvalContext {
   options: EvaluateOptions;
   hasPropertyRule: boolean;
   hasQuantityRule: boolean;
+  hasMaterialRule: boolean;
+  hasClassificationRule: boolean;
 }
 
 function evaluateOneEntity(
@@ -379,6 +396,8 @@ function evaluateOneEntity(
   // parse entirely.
   let psetCache: PsetRows | null = null;
   let qtyCache: QtyRows | null = null;
+  let matCache: string[] | null = null;
+  let classCache: readonly ClassificationInfo[] | null = null;
   const psetsFor = (): PsetRows => {
     if (!psetCache) psetCache = flattenPsets(extractPropertiesOnDemand(ctx.store, expressId));
     return psetCache;
@@ -386,6 +405,14 @@ function evaluateOneEntity(
   const qtysFor = (): QtyRows => {
     if (!qtyCache) qtyCache = flattenQtys(extractQuantitiesOnDemand(ctx.store, expressId));
     return qtyCache;
+  };
+  const matNamesFor = (): string[] => {
+    if (!matCache) matCache = materialNamesOf(extractMaterialsOnDemand(ctx.store, expressId));
+    return matCache;
+  };
+  const classFor = (): readonly ClassificationInfo[] => {
+    if (!classCache) classCache = extractClassificationsOnDemand(ctx.store, expressId);
+    return classCache;
   };
 
   const ruleResults: boolean[] = [];
@@ -396,6 +423,8 @@ function evaluateOneEntity(
       expressId,
       ctx.hasPropertyRule ? psetsFor : null,
       ctx.hasQuantityRule ? qtysFor : null,
+      ctx.hasMaterialRule ? matNamesFor : null,
+      ctx.hasClassificationRule ? classFor : null,
     );
     ruleResults.push(result);
     if (combinator === 'AND' && !result) return false;
@@ -410,6 +439,8 @@ function evaluateRule(
   expressId: number,
   psetsFor: (() => PsetRows) | null,
   qtysFor: (() => QtyRows) | null,
+  matNamesFor: (() => string[]) | null,
+  classFor: (() => readonly ClassificationInfo[]) | null,
 ): boolean {
   switch (rule.kind) {
     case 'storey': {
@@ -434,6 +465,19 @@ function evaluateRule(
     case 'quantity': {
       if (!qtysFor) return false;
       return matchQuantityRule(rule, qtysFor());
+    }
+    case 'material': {
+      if (!matNamesFor) return false;
+      return matchStringAnyNone(rule.op, matNamesFor(), rule.value);
+    }
+    case 'classification': {
+      if (!classFor) return false;
+      return matchClassificationRule(rule, classFor());
+    }
+    case 'elevation': {
+      const elev = elevationOf(ctx.store, expressId);
+      if (elev === null) return false;
+      return numericOpMatches(rule.op, elev, rule.value);
     }
   }
 }
@@ -597,6 +641,60 @@ function defaultStoreyName(store: IfcDataStore, expressId: number): string {
   return store.entities.getName(storeyId);
 }
 
+// ── Material / classification / elevation resolution ─────────────────────────
+
+/** Collect every material-name string an element exposes — top-level
+ *  material, plus layer / constituent / profile names and list members.
+ *  Used by the multi-valued `material` rule matcher. */
+function materialNamesOf(info: MaterialInfo | null): string[] {
+  if (!info) return [];
+  const names: string[] = [];
+  const push = (s: string | undefined) => { if (s) names.push(s); };
+  push(info.name);
+  for (const l of info.layers ?? []) { push(l.materialName); push(l.name); }
+  for (const c of info.constituents ?? []) { push(c.materialName); push(c.name); }
+  for (const p of info.profiles ?? []) { push(p.materialName); push(p.name); }
+  for (const m of info.materials ?? []) push(m.name);
+  return names;
+}
+
+/** Match a classification rule against an element's classification refs.
+ *  `system` (when set) scopes to one classification system; value ops
+ *  match a ref's code (identification) OR name. */
+function matchClassificationRule(
+  rule: ClassificationRule,
+  refs: readonly ClassificationInfo[],
+): boolean {
+  const sys = rule.system?.trim().toLowerCase();
+  const scoped = sys
+    ? refs.filter((r) => (r.system ?? '').toLowerCase() === sys)
+    : refs;
+
+  if (rule.op === 'isSet') return scoped.length > 0;
+  if (rule.op === 'isNotSet') return scoped.length === 0;
+
+  // Value ops — match against identification (code) and name of each ref.
+  const candidates: string[] = [];
+  for (const r of scoped) {
+    if (r.identification) candidates.push(r.identification);
+    if (r.name) candidates.push(r.name);
+  }
+  // rule.op is now eq | ne | contains | notContains — a StringOp subset.
+  return matchStringAnyNone(rule.op, candidates, rule.value);
+}
+
+/** Element elevation in metres, derived from its building storey's
+ *  elevation. Returns null when the element isn't placed in the spatial
+ *  hierarchy (so an elevation rule simply doesn't match it). */
+function elevationOf(store: IfcDataStore, expressId: number): number | null {
+  const hierarchy = store.spatialHierarchy;
+  if (!hierarchy) return null;
+  const storeyId = hierarchy.elementToStorey.get(expressId);
+  if (!storeyId) return null;
+  const elev = hierarchy.storeyElevations.get(storeyId);
+  return typeof elev === 'number' ? elev : null;
+}
+
 // ── Exposed for tests ────────────────────────────────────────────────────────
 
 export const __internal = {
@@ -605,6 +703,9 @@ export const __internal = {
   stringifyValue,
   matchPropertyRule,
   matchQuantityRule,
+  materialNamesOf,
+  matchClassificationRule,
+  elevationOf,
   orderRulesByCost,
   selectIterationSource,
 };

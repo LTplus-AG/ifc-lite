@@ -37,6 +37,11 @@ export type ValueOp =
   | 'isSet'
   | 'isNotSet';
 
+/** Classification value+presence ops. A classification is matched against
+ *  its code / name string, so this is the StringOp comparison subset plus
+ *  presence — numeric ops don't apply. */
+export type ClassificationOp = 'eq' | 'ne' | 'contains' | 'notContains' | 'isSet' | 'isNotSet';
+
 /** Top-level rule combinator. */
 export type Combinator = 'AND' | 'OR';
 
@@ -83,13 +88,47 @@ export interface QuantityRule {
   value: number;
 }
 
+/** Match against an element's material name(s) — top-level material,
+ *  layer / constituent / profile names, and list members. Multi-valued:
+ *  the evaluator matches if ANY name satisfies a positive op, or NONE
+ *  violates a negative op (ne / notContains). */
+export interface MaterialRule {
+  kind: 'material';
+  op: StringOp;
+  value: string;
+}
+
+/** Match against an element's classification references (e.g. Uniclass,
+ *  OmniClass). `system` optionally scopes to one classification system;
+ *  the value matches a reference's code (identification) OR name. */
+export interface ClassificationRule {
+  kind: 'classification';
+  /** Optional system scope (e.g. "Uniclass 2015"). Empty = any system. */
+  system?: string;
+  op: ClassificationOp;
+  /** Matched against identification (code) OR name. Ignored for isSet/isNotSet. */
+  value: string;
+}
+
+/** Match against an element's elevation in metres — derived from the
+ *  elevation of the building storey the element belongs to. */
+export interface ElevationRule {
+  kind: 'elevation';
+  op: NumericOp;
+  /** Threshold in metres. */
+  value: number;
+}
+
 export type FilterRule =
   | StoreyRule
   | IfcTypeRule
   | PredefinedTypeRule
   | NameRule
   | PropertyRule
-  | QuantityRule;
+  | QuantityRule
+  | MaterialRule
+  | ClassificationRule
+  | ElevationRule;
 
 // ── Pure op helpers (ported verbatim from filter.rs) ──────────────────────────
 
@@ -107,6 +146,33 @@ export function stringOpMatches(op: StringOp, candidate: string, value: string):
     case 'contains':    return a.includes(b);
     case 'notContains': return !a.includes(b);
     case 'startsWith':  return a.startsWith(b);
+  }
+}
+
+/**
+ * Match a StringOp against a *set* of candidate strings — used for
+ * multi-valued dimensions (an element's material names, a classification's
+ * code+name pair). Positive ops (eq / contains / startsWith) match if ANY
+ * candidate satisfies them; negative ops (ne / notContains) match only if
+ * NO candidate violates them. An empty candidate set never matches: an
+ * element with no materials/classifications shouldn't satisfy a filter on
+ * that dimension (including the negative ops).
+ */
+export function matchStringAnyNone(
+  op: StringOp,
+  candidates: readonly string[],
+  value: string,
+): boolean {
+  if (candidates.length === 0) return false;
+  switch (op) {
+    case 'eq':
+    case 'contains':
+    case 'startsWith':
+      return candidates.some((c) => stringOpMatches(op, c, value));
+    case 'ne':
+      return candidates.every((c) => stringOpMatches('eq', c, value) === false);
+    case 'notContains':
+      return candidates.every((c) => stringOpMatches('contains', c, value) === false);
   }
 }
 
@@ -175,6 +241,10 @@ export const Rule = {
     ({ kind: 'property', setName, propertyName, op, value }),
   quantity: (setName: string, quantityName: string, op: NumericOp, value: number): QuantityRule =>
     ({ kind: 'quantity', setName, quantityName, op, value }),
+  material: (op: StringOp, value: string): MaterialRule => ({ kind: 'material', op, value }),
+  classification: (system: string, op: ClassificationOp, value: string): ClassificationRule =>
+    ({ kind: 'classification', system: system || undefined, op, value }),
+  elevation: (op: NumericOp, value: number): ElevationRule => ({ kind: 'elevation', op, value }),
 } as const;
 
 // ── JSON guards ──────────────────────────────────────────────────────────────
@@ -188,7 +258,10 @@ export function isFilterRule(value: unknown): value is FilterRule {
     kind === 'predefinedType' ||
     kind === 'name' ||
     kind === 'property' ||
-    kind === 'quantity'
+    kind === 'quantity' ||
+    kind === 'material' ||
+    kind === 'classification' ||
+    kind === 'elevation'
   );
 }
 

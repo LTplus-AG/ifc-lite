@@ -922,8 +922,25 @@ pub fn process_geometry_streaming_filtered_with_options(
 
         if type_name == "IFCSTYLEDITEM" {
             if defer_style_updates {
-                // Record byte positions so we can rebuild the style index
-                // without re-scanning the entire file.
+                // Only *geometry-attached* styled items are deferred (rebuilt
+                // from saved byte positions after the first batch). Orphan
+                // styled items (null Item) are material appearances (#407) that
+                // feed the material chain — resolved once, up front, before the
+                // deferred rebuild — so they must be collected now or
+                // material-only-styled elements render as the default gray even
+                // after the deferred pass (#913 §2c). The classifying decode is
+                // the cost of telling the two apart.
+                if let Ok(styled_item) = decoder.decode_at(start, end) {
+                    if styled_item.get_ref(0).is_none() {
+                        if let Some(info) =
+                            extract_style_info_from_styled_item(&styled_item, &mut decoder)
+                        {
+                            orphan_styled_items.insert(id, info.color);
+                        }
+                        continue;
+                    }
+                }
+                // Geometry-attached (or undecodable) → defer the rebuild.
                 deferred_styled_item_positions.push((start, end));
                 continue;
             }

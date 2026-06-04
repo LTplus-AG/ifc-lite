@@ -14,7 +14,9 @@
 //!
 //! Pre-fix the proxy rendered as the default gray; now it must be blue.
 
-use ifc_lite_processing::process_geometry;
+use ifc_lite_processing::{
+    process_geometry, process_geometry_streaming_with_options, StreamingOptions,
+};
 
 const MATERIAL_BLUE: [f32; 4] = [0.2, 0.3, 0.8, 1.0];
 const PROXY_DEFAULT: [f32; 4] = [0.6, 0.6, 0.6, 1.0];
@@ -68,6 +70,42 @@ fn proxy_inherits_material_appearance() {
     assert!(
         approx_eq(proxy.color, MATERIAL_BLUE),
         "expected material colour {MATERIAL_BLUE:?}, got {:?} (default would be {PROXY_DEFAULT:?})",
+        proxy.color
+    );
+}
+
+#[test]
+fn proxy_inherits_material_appearance_in_fast_first_batch_streaming() {
+    // Regression for #913 §2c: the `fast_first_batch` streaming mode defers
+    // geometry styled items, but orphan styled items (material appearances) are
+    // resolved up front for the material chain — so they must NOT be deferred.
+    // Pre-fix the deferred path collected no orphan styled items and this proxy
+    // rendered the default gray; now it must be the material blue.
+    let result = process_geometry_streaming_with_options(
+        MATERIAL_IFC,
+        // `defer_style_updates` = fast_first_batch && Default opening filter &&
+        // !include_presentation_layers — all three required to hit the deferred
+        // branch this test guards.
+        StreamingOptions {
+            fast_first_batch: true,
+            include_presentation_layers: false,
+            initial_batch_size: 1,
+            ..StreamingOptions::default()
+        },
+        |_, _, _| {},
+        |_| {},
+    );
+
+    let proxy = result
+        .meshes
+        .iter()
+        .find(|m| m.express_id == 10)
+        .expect("proxy #10 produced no mesh in fast_first_batch streaming mode");
+
+    assert!(
+        approx_eq(proxy.color, MATERIAL_BLUE),
+        "fast_first_batch streaming: expected material colour {MATERIAL_BLUE:?}, got {:?} \
+         (default would be {PROXY_DEFAULT:?})",
         proxy.color
     );
 }

@@ -330,7 +330,7 @@ export function ListResultsTable({ result, grouping, onGroupingChange }: ListRes
                             <span className="ml-1 shrink-0 rounded-full bg-foreground/10 px-1.5 text-[10px] tabular-nums text-muted-foreground">{item.count.toLocaleString()}</span>
                           </>
                         )}
-                        {colIdx !== 0 && sumColumnIds.includes(col.id) && (
+                        {sumColumnIds.includes(col.id) && (
                           <span className="ml-auto font-mono tabular-nums">{formatCellValue(item.sums[col.id])}</span>
                         )}
                       </div>
@@ -369,7 +369,7 @@ export function ListResultsTable({ result, grouping, onGroupingChange }: ListRes
               {columns.map((col, colIdx) => (
                 <div key={col.id} className="flex items-center border-r border-border/30 px-2 py-1 text-xs font-semibold shrink-0" style={{ width: columnWidths[colIdx] }}>
                   {colIdx === 0 && <span className="text-muted-foreground">Total · {totals.count.toLocaleString()}</span>}
-                  {colIdx !== 0 && sumColumnIds.includes(col.id) && (
+                  {sumColumnIds.includes(col.id) && (
                     <span className="ml-auto font-mono tabular-nums text-foreground">{formatCellValue(totals.sums[col.id])}</span>
                   )}
                 </div>

@@ -126,7 +126,13 @@ export function ComboInput({
         <div
           ref={listRef}
           role="listbox"
-          style={{ position: 'fixed', left: anchor.left, top: anchor.top + 4, minWidth: anchor.width }}
+          // Portaled to <body>, which sits OUTSIDE the Radix Dialog. Radix's
+          // scroll-lock disables pointer events on everything outside the
+          // dialog, so re-enable them here or mouse clicks/scroll are dead.
+          // Stop pointerdown from bubbling to the dialog's dismissable layer
+          // so selecting a value doesn't also close the whole modal.
+          style={{ position: 'fixed', left: anchor.left, top: anchor.top + 4, minWidth: anchor.width, pointerEvents: 'auto' }}
+          onPointerDown={(e) => e.stopPropagation()}
           className="z-[120] max-h-60 w-max max-w-[20rem] overflow-y-auto rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
         >
           {filtered.map((o, i) => (

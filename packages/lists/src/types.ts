@@ -71,6 +71,13 @@ export interface ListDataProvider {
   getClassifications?(expressId: number): ListClassificationRef[];
   /** Building-storey name the element belongs to, or '' when unplaced. */
   getStoreyName?(expressId: number): string;
+  /**
+   * Discover EVERY property set / property and quantity set / quantity in
+   * the model — complete and independent of entity-type selection — so the
+   * column picker can offer all data even with no type chosen. Optional:
+   * when absent, callers fall back to the type-sampled `discoverColumns()`.
+   */
+  discoverAllColumns?(): DiscoveredColumns;
 }
 
 /** A classification reference exposed to the list engine (code + name). */

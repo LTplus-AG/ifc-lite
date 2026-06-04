@@ -73,6 +73,26 @@ const COMMON_COLUMNS: CommonColumn[] = [
   { id: 'col-storey', source: 'spatial', propertyName: 'Storey', label: 'Storey' },
 ];
 
+/** Union the per-provider complete-discovery results into one column set. */
+function mergeDiscovered(parts: DiscoveredColumns[]): DiscoveredColumns {
+  const properties = new Map<string, Set<string>>();
+  const quantities = new Map<string, Set<string>>();
+  const merge = (target: Map<string, Set<string>>, src: Map<string, string[]>) => {
+    for (const [k, arr] of src) {
+      let b = target.get(k);
+      if (!b) { b = new Set(); target.set(k, b); }
+      for (const v of arr) b.add(v);
+    }
+  };
+  for (const d of parts) { merge(properties, d.properties); merge(quantities, d.quantities); }
+  const toSorted = (m: Map<string, Set<string>>) => {
+    const out = new Map<string, string[]>();
+    for (const [k, s] of m) out.set(k, Array.from(s).sort());
+    return out;
+  };
+  return { attributes: [...ENTITY_ATTRIBUTES], properties: toSorted(properties), quantities: toSorted(quantities) };
+}
+
 interface ListBuilderProps {
   providers: ListDataProvider[];
   initial: ListDefinition | null;
@@ -107,11 +127,15 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
     return counts;
   }, [providers]);
 
-  // Discover available columns whenever selected types change (across all
-  // providers). With no types selected the list targets every element, so
-  // discovery returns the built-in attributes only (pset/qto discovery needs
-  // a type to sample).
+  // Available columns. Prefer COMPLETE, type-independent discovery (every
+  // property set / quantity set in the model) so all properties/quantities
+  // are addable even with no entity type selected. Fall back to the
+  // type-sampled discovery for providers that can't enumerate completely.
   const discovered = useMemo<DiscoveredColumns>(() => {
+    const complete = providers.filter((p) => typeof p.discoverAllColumns === 'function');
+    if (providers.length > 0 && complete.length === providers.length) {
+      return mergeDiscovered(complete.map((p) => p.discoverAllColumns!()));
+    }
     return discoverColumns(providers, Array.from(selectedTypes));
   }, [providers, selectedTypes]);
 

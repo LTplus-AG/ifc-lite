@@ -20,7 +20,8 @@ import {
   extractClassificationsOnDemand,
 } from '@ifc-lite/parser';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
-import type { ListDataProvider, ListClassificationRef } from '@ifc-lite/lists';
+import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
+import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
 
 /** Collect every material-name string an element exposes — top-level
  *  material plus layer / constituent / profile names and list members. */
@@ -66,6 +67,23 @@ export function createListDataProvider(store: IfcDataStore): ListDataProvider {
     return empty;
   }
 
+  // Complete column discovery is cached — the provider outlives a builder
+  // open, and the scan touches every entity that declares a pset/qto.
+  let columnsCache: DiscoveredColumns | null = null;
+
+  const usesOnDemandProps = !!store.onDemandPropertyMap && store.source?.length > 0;
+  const usesOnDemandQtos = !!store.onDemandQuantityMap && store.source?.length > 0;
+
+  function getPropertySetsFor(entityId: number): PropertySet[] {
+    if (usesOnDemandProps) return extractPropertiesOnDemand(store, entityId) as PropertySet[];
+    return store.properties?.getForEntity(entityId) ?? [];
+  }
+
+  function getQuantitySetsFor(entityId: number): QuantitySet[] {
+    if (usesOnDemandQtos) return extractQuantitiesOnDemand(store, entityId) as QuantitySet[];
+    return store.quantities?.getForEntity(entityId) ?? [];
+  }
+
   return {
     getEntitiesByType: (type) => store.entities.getByType(type),
 
@@ -76,19 +94,8 @@ export function createListDataProvider(store: IfcDataStore): ListDataProvider {
     getEntityTag: (id) => getOnDemandAttrs(id).tag,
     getEntityTypeName: (id) => store.entities.getTypeName(id),
 
-    getPropertySets(entityId: number): PropertySet[] {
-      if (store.onDemandPropertyMap && store.source?.length > 0) {
-        return extractPropertiesOnDemand(store, entityId) as PropertySet[];
-      }
-      return store.properties?.getForEntity(entityId) ?? [];
-    },
-
-    getQuantitySets(entityId: number): QuantitySet[] {
-      if (store.onDemandQuantityMap && store.source?.length > 0) {
-        return extractQuantitiesOnDemand(store, entityId) as QuantitySet[];
-      }
-      return store.quantities?.getForEntity(entityId) ?? [];
-    },
+    getPropertySets: getPropertySetsFor,
+    getQuantitySets: getQuantitySetsFor,
 
     getAllEntityIds(): number[] {
       if (allIdsCache) return allIdsCache;
@@ -124,6 +131,64 @@ export function createListDataProvider(store: IfcDataStore): ListDataProvider {
       const storeyId = hierarchy.elementToStorey.get(entityId);
       if (!storeyId) return '';
       return store.entities.getName(storeyId) || '';
+    },
+
+    discoverAllColumns(): DiscoveredColumns {
+      if (columnsCache) return columnsCache;
+
+      const properties = new Map<string, Set<string>>();
+      const quantities = new Map<string, Set<string>>();
+
+      const ingestProps = (id: number) => {
+        for (const set of getPropertySetsFor(id)) {
+          if (!set.name) continue;
+          let bucket = properties.get(set.name);
+          if (!bucket) { bucket = new Set(); properties.set(set.name, bucket); }
+          for (const p of set.properties) if (p.name) bucket.add(p.name);
+        }
+      };
+      const ingestQtos = (id: number) => {
+        for (const set of getQuantitySetsFor(id)) {
+          if (!set.name) continue;
+          let bucket = quantities.get(set.name);
+          if (!bucket) { bucket = new Set(); quantities.set(set.name, bucket); }
+          for (const q of set.quantities) if (q.name) bucket.add(q.name);
+        }
+      };
+
+      // On-demand path: scan exactly the entities that declare a pset/qto —
+      // the minimal complete set (every distinct set/property in the model).
+      if (usesOnDemandProps && store.onDemandPropertyMap) {
+        for (const id of store.onDemandPropertyMap.keys()) ingestProps(id);
+      }
+      if (usesOnDemandQtos && store.onDemandQuantityMap) {
+        for (const id of store.onDemandQuantityMap.keys()) ingestQtos(id);
+      }
+      // Table path (e.g. server-loaded models): scan the entity column using
+      // the pre-built tables. Capped so it can't run away on huge models.
+      if (!usesOnDemandProps || !usesOnDemandQtos) {
+        const col = store.entities.expressId;
+        const CAP = 100_000;
+        for (let i = 0, seen = 0; i < col.length && seen < CAP; i++) {
+          const id = col[i];
+          if (!id) continue;
+          seen++;
+          if (!usesOnDemandProps) ingestProps(id);
+          if (!usesOnDemandQtos) ingestQtos(id);
+        }
+      }
+
+      const toSorted = (m: Map<string, Set<string>>) => {
+        const out = new Map<string, string[]>();
+        for (const [k, s] of m) out.set(k, Array.from(s).sort());
+        return out;
+      };
+      columnsCache = {
+        attributes: [...ENTITY_ATTRIBUTES],
+        properties: toSorted(properties),
+        quantities: toSorted(quantities),
+      };
+      return columnsCache;
     },
   };
 }

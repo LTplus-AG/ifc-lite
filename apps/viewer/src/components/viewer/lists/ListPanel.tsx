@@ -34,6 +34,7 @@ import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import {
   executeList,
+  summariseListRows,
   LIST_PRESETS,
   importListDefinition,
   exportListDefinition,
@@ -107,11 +108,17 @@ export function ListPanel({ onClose }: ListPanelProps) {
         const allRows = resultParts.flatMap(r => r.rows);
         const totalTime = resultParts.reduce((sum, r) => sum + r.executionTime, 0);
 
+        // Re-derive groups/summary over the merged rows so grouping works
+        // across federated models (and isn't dropped on the merge).
+        const { groups, summary } = summariseListRows(definition, allRows);
+
         setListResult({
           columns: definition.columns,
           rows: allRows,
           totalCount: allRows.length,
           executionTime: totalTime,
+          groups,
+          summary,
         });
         setView('results');
       } catch (err) {

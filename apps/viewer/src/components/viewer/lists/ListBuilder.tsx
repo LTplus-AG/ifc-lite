@@ -3,24 +3,22 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * ListBuilder - Configure a list by selecting entity types, columns, and conditions
+ * ListBuilder — configure a list: scope (entity types + filters), the
+ * columns to show, and optional grouping / totals.
+ *
+ * UI is organised as labelled sections with a consistent header treatment.
+ * The most-used columns (attributes + Material / Classification / Storey)
+ * are surfaced as a flat chip grid; property/quantity sets — which can be
+ * numerous — stay in collapsible groups below.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import {
-  Play,
-  Plus,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  Save,
-} from 'lucide-react';
+import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import type {
   ListDataProvider,
@@ -55,11 +53,24 @@ const SELECTABLE_TYPES: { type: IfcTypeEnum; label: string }[] = [
   { type: IfcTypeEnum.IfcFlowFitting, label: 'MEP Fittings' },
 ];
 
-// Fixed semantic / spatial columns (not name-discovered like psets/qtos).
-const SEMANTIC_COLUMNS: { id: string; source: ColumnDefinition['source']; label: string }[] = [
-  { id: 'col-material', source: 'material', label: 'Material' },
-  { id: 'col-classification', source: 'classification', label: 'Classification' },
-  { id: 'col-storey', source: 'spatial', label: 'Storey' },
+/** Column descriptor shared by the quick-add grid. */
+interface CommonColumn { id: string; source: ColumnDefinition['source']; propertyName: string; label: string }
+
+/**
+ * The first-class columns: built-in attributes plus the spatial / semantic
+ * columns. Surfaced as a flat grid so Material / Classification / Storey
+ * are as reachable as Name / Class — not buried in a collapsed group.
+ */
+const COMMON_COLUMNS: CommonColumn[] = [
+  ...ENTITY_ATTRIBUTES.map((a): CommonColumn => ({
+    id: `attr-${a.toLowerCase()}`,
+    source: 'attribute',
+    propertyName: a,
+    label: a,
+  })),
+  { id: 'col-material', source: 'material', propertyName: 'Material', label: 'Material' },
+  { id: 'col-classification', source: 'classification', propertyName: 'Classification', label: 'Classification' },
+  { id: 'col-storey', source: 'spatial', propertyName: 'Storey', label: 'Storey' },
 ];
 
 interface ListBuilderProps {
@@ -78,8 +89,6 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
   );
   const [columns, setColumns] = useState<ColumnDefinition[]>(initial?.columns ?? []);
   const [conditions, setConditions] = useState<PropertyCondition[]>(initial?.conditions ?? []);
-  const [columnsExpanded, setColumnsExpanded] = useState(true);
-  const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [groupByColumnId, setGroupByColumnId] = useState<string>(initial?.grouping?.columnId ?? '');
   const [sumColumnIds, setSumColumnIds] = useState<Set<string>>(
     new Set(initial?.grouping?.sumColumnIds ?? [])
@@ -101,7 +110,7 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
   // Discover available columns whenever selected types change (across all
   // providers). With no types selected the list targets every element, so
   // discovery returns the built-in attributes only (pset/qto discovery needs
-  // a type to sample) — that's enough to pick Name/Class/etc. columns.
+  // a type to sample).
   const discovered = useMemo<DiscoveredColumns>(() => {
     return discoverColumns(providers, Array.from(selectedTypes));
   }, [providers, selectedTypes]);
@@ -109,24 +118,30 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
   const toggleType = useCallback((type: IfcTypeEnum) => {
     setSelectedTypes(prev => {
       const next = new Set(prev);
-      if (next.has(type)) {
-        next.delete(type);
-      } else {
-        next.add(type);
-      }
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
       return next;
     });
   }, []);
 
   const addColumn = useCallback((col: ColumnDefinition) => {
-    setColumns(prev => {
-      if (prev.some(c => c.id === col.id)) return prev;
-      return [...prev, col];
-    });
+    setColumns(prev => (prev.some(c => c.id === col.id) ? prev : [...prev, col]));
   }, []);
 
   const removeColumn = useCallback((id: string) => {
     setColumns(prev => prev.filter(c => c.id !== id));
+    // Keep grouping consistent when its column is removed.
+    setGroupByColumnId(prev => (prev === id ? '' : prev));
+    setSumColumnIds(prev => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const toggleColumn = useCallback((col: ColumnDefinition) => {
+    setColumns(prev => (prev.some(c => c.id === col.id) ? prev.filter(c => c.id !== col.id) : [...prev, col]));
   }, []);
 
   const moveColumn = useCallback((idx: number, direction: -1 | 1) => {
@@ -134,9 +149,7 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
       const target = idx + direction;
       if (target < 0 || target >= prev.length) return prev;
       const next = [...prev];
-      const tmp = next[idx];
-      next[idx] = next[target];
-      next[target] = tmp;
+      [next[idx], next[target]] = [next[target], next[idx]];
       return next;
     });
   }, []);
@@ -144,18 +157,23 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
   const addCondition = useCallback((condition: PropertyCondition) => {
     setConditions(prev => [...prev, condition]);
   }, []);
-
   const updateCondition = useCallback((idx: number, condition: PropertyCondition) => {
     setConditions(prev => prev.map((c, i) => (i === idx ? condition : c)));
   }, []);
-
   const removeCondition = useCallback((idx: number) => {
     setConditions(prev => prev.filter((_, i) => i !== idx));
   }, []);
 
+  const toggleSumColumn = useCallback((id: string) => {
+    setSumColumnIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   const buildDefinition = useCallback((): ListDefinition => {
-    // Only persist grouping when the group-by column still exists; sum
-    // columns are likewise pruned to currently-selected columns.
     const groupValid = groupByColumnId && columns.some(c => c.id === groupByColumnId);
     const grouping = groupValid
       ? {
@@ -176,250 +194,117 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
     };
   }, [initial, name, description, selectedTypes, conditions, columns, groupByColumnId, sumColumnIds]);
 
-  const handleSave = useCallback(() => {
-    onSave(buildDefinition());
-  }, [buildDefinition, onSave]);
-
-  const handleRun = useCallback(() => {
-    const def = buildDefinition();
-    onExecute(def);
-  }, [buildDefinition, onExecute]);
+  const handleSave = useCallback(() => onSave(buildDefinition()), [buildDefinition, onSave]);
+  const handleRun = useCallback(() => onExecute(buildDefinition()), [buildDefinition, onExecute]);
 
   const selectedColumnIds = useMemo(() => new Set(columns.map(c => c.id)), [columns]);
-
   const totalSelectedEntities = useMemo(() => {
     let count = 0;
-    for (const type of selectedTypes) {
-      count += typeCounts.get(type) ?? 0;
-    }
+    for (const type of selectedTypes) count += typeCounts.get(type) ?? 0;
     return count;
   }, [selectedTypes, typeCounts]);
+
+  const canRun = columns.length > 0;
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <ScrollArea className="flex-1">
-        <div className="p-3 space-y-4">
-          {/* Name & Description */}
+        <div className="px-3 py-3 space-y-5">
+          {/* Identity */}
           <div className="space-y-2">
             <Input
-              placeholder="List name..."
+              placeholder="List name…"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="h-8 text-sm"
+              className="h-9 text-sm font-medium"
             />
             <Input
               placeholder="Description (optional)"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              className="h-8 text-sm"
+              className="h-7 text-xs"
             />
           </div>
 
-          <Separator />
-
-          {/* Entity Type Selection */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Entity Types
-              </span>
-              {selectedTypes.size > 0 && (
-                <Badge variant="secondary" className="text-xs h-5">
-                  {totalSelectedEntities} entities
-                </Badge>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1">
+          {/* Scope: entity types */}
+          <Section
+            label="Scope"
+            hint={selectedTypes.size > 0
+              ? `${totalSelectedEntities.toLocaleString()} elements`
+              : 'All elements'}
+          >
+            <div className="flex flex-wrap gap-1.5">
               {SELECTABLE_TYPES.map(({ type, label }) => {
                 const count = typeCounts.get(type);
-                if (!count) return null; // Don't show types not in model
-                const selected = selectedTypes.has(type);
+                if (!count) return null;
                 return (
-                  <button
+                  <Chip
                     key={type}
+                    selected={selectedTypes.has(type)}
                     onClick={() => toggleType(type)}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
-                      selected
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background border-border hover:bg-muted'
-                    }`}
+                    trailing={count.toLocaleString()}
                   >
                     {label}
-                    <span className={selected ? 'opacity-75' : 'text-muted-foreground'}>
-                      {count}
-                    </span>
-                  </button>
+                  </Chip>
                 );
               })}
             </div>
-          </div>
+            {selectedTypes.size === 0 && (
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                No type selected — the list targets <strong className="font-medium text-foreground">all model elements</strong>.
+                Use filters to narrow by name, material, classification or storey.
+              </p>
+            )}
+          </Section>
 
-          <Separator />
+          {/* Filters */}
+          <Section label="Filters" hint={conditions.length > 0 ? `${conditions.length}` : undefined}>
+            <ConditionsBody
+              conditions={conditions}
+              onAdd={addCondition}
+              onUpdate={updateCondition}
+              onRemove={removeCondition}
+            />
+          </Section>
 
-          {/* Filters / Conditions */}
-          <ConditionsSection
-            conditions={conditions}
-            expanded={filtersExpanded}
-            onToggle={() => setFiltersExpanded((v) => !v)}
-            onAdd={addCondition}
-            onUpdate={updateCondition}
-            onRemove={removeCondition}
-          />
+          {/* Columns */}
+          <Section label="Columns" hint={columns.length > 0 ? `${columns.length}` : undefined}>
+            {columns.length > 0 && (
+              <SelectedColumns columns={columns} onMove={moveColumn} onRemove={removeColumn} />
+            )}
+            <ColumnPicker
+              discovered={discovered}
+              selectedIds={selectedColumnIds}
+              onAdd={addColumn}
+              onToggle={toggleColumn}
+            />
+          </Section>
 
-          <Separator />
-
-          {selectedTypes.size === 0 && (
-            <p className="text-[11px] text-muted-foreground">
-              No entity types selected — this list targets <strong>all model elements</strong>
-              {' '}(everything with geometry). Add filters above (e.g. Name, Material,
-              Classification, Storey) to narrow it.
-            </p>
-          )}
-
-          {/* Column Selection */}
-          <div>
-                <button
-                  className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider w-full"
-                  onClick={() => setColumnsExpanded(!columnsExpanded)}
-                >
-                  {columnsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                  Columns ({columns.length} selected)
-                </button>
-
-                {columnsExpanded && (
-                  <div className="mt-2 space-y-2">
-                    {/* Selected columns (reorderable) */}
-                    {columns.length > 0 && (
-                      <div className="space-y-0.5 mb-2">
-                        {columns.map((col, idx) => (
-                          <div
-                            key={col.id}
-                            className="flex items-center gap-1 px-2 py-1 rounded bg-muted/50 text-xs"
-                          >
-                            <span className="text-muted-foreground w-4 text-right">{idx + 1}</span>
-                            <span className="flex-1 truncate">
-                              {col.label ?? col.propertyName}
-                              {col.psetName && (
-                                <span className="text-muted-foreground ml-1">({col.psetName})</span>
-                              )}
-                            </span>
-                            <button
-                              onClick={() => moveColumn(idx, -1)}
-                              disabled={idx === 0}
-                              className={`${idx === 0 ? 'text-muted-foreground/30' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                              <ChevronUp className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() => moveColumn(idx, 1)}
-                              disabled={idx === columns.length - 1}
-                              className={`${idx === columns.length - 1 ? 'text-muted-foreground/30' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                              <ChevronDown className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() => removeColumn(col.id)}
-                              className="text-muted-foreground hover:text-destructive"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Available columns */}
-                    <ColumnPicker
-                      discovered={discovered}
-                      selectedIds={selectedColumnIds}
-                      onAdd={addColumn}
-                    />
-                  </div>
-                )}
-              </div>
-
-          {/* Grouping & Totals */}
+          {/* Grouping & totals */}
           {columns.length > 0 && (
-            <>
-              <Separator />
-              <div>
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Grouping &amp; Totals
-                </span>
-                <div className="mt-2 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground w-16 shrink-0">Group by</label>
-                    <select
-                      value={groupByColumnId}
-                      onChange={(e) => setGroupByColumnId(e.target.value)}
-                      className="h-7 flex-1 rounded border border-border bg-background px-1 text-xs"
-                    >
-                      <option value="">No grouping</option>
-                      {columns.map((c) => (
-                        <option key={c.id} value={c.id}>{c.label ?? c.propertyName}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-muted-foreground">
-                      Sum columns (numeric) — totalled per group and overall
-                    </span>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {columns.map((c) => {
-                        const on = sumColumnIds.has(c.id);
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => setSumColumnIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(c.id)) next.delete(c.id);
-                              else next.add(c.id);
-                              return next;
-                            })}
-                            className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
-                              on
-                                ? 'bg-primary text-primary-foreground border-primary'
-                                : 'bg-background border-border hover:bg-muted'
-                            }`}
-                          >
-                            Σ {c.label ?? c.propertyName}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
+            <Section label="Grouping & Totals">
+              <GroupingBody
+                columns={columns}
+                groupByColumnId={groupByColumnId}
+                sumColumnIds={sumColumnIds}
+                onGroupByChange={setGroupByColumnId}
+                onToggleSum={toggleSumColumn}
+              />
+            </Section>
           )}
         </div>
       </ScrollArea>
 
-      {/* Bottom Actions */}
-      <div className="flex items-center gap-2 px-3 py-2 border-t">
-        <Button
-          variant="default"
-          size="sm"
-          onClick={handleRun}
-          disabled={columns.length === 0}
-          className="text-xs h-7"
-        >
-          <Play className="h-3 w-3 mr-1" />
-          Run
+      {/* Bottom actions */}
+      <div className="flex items-center gap-2 px-3 py-2.5 border-t bg-muted/30">
+        <Button size="sm" onClick={handleRun} disabled={!canRun} className="h-8 gap-1.5 text-xs font-medium">
+          <Play className="h-3.5 w-3.5" /> Run
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleSave}
-          disabled={columns.length === 0}
-          className="text-xs h-7"
-        >
-          <Save className="h-3 w-3 mr-1" />
-          Save
+        <Button variant="outline" size="sm" onClick={handleSave} disabled={!canRun} className="h-8 gap-1.5 text-xs">
+          <Save className="h-3.5 w-3.5" /> Save
         </Button>
         <div className="flex-1" />
-        <Button variant="ghost" size="sm" onClick={onCancel} className="text-xs h-7">
+        <Button variant="ghost" size="sm" onClick={onCancel} className="h-8 text-xs">
           Cancel
         </Button>
       </div>
@@ -428,140 +313,238 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
 }
 
 // ============================================================================
-// Column Picker
+// Section shell — consistent header with an accent rule
+// ============================================================================
+
+function Section({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="h-3 w-1 rounded-full bg-primary/70" aria-hidden />
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+        {hint !== undefined && (
+          <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-normal">{hint}</Badge>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Chip({
+  selected,
+  onClick,
+  trailing,
+  children,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  trailing?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+        selected
+          ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+          : 'border-border bg-background hover:bg-muted',
+      )}
+    >
+      {children}
+      {trailing !== undefined && (
+        <span className={cn('tabular-nums', selected ? 'opacity-80' : 'text-muted-foreground')}>{trailing}</span>
+      )}
+    </button>
+  );
+}
+
+// ============================================================================
+// Selected columns (ordered, reorderable)
+// ============================================================================
+
+function SelectedColumns({
+  columns,
+  onMove,
+  onRemove,
+}: {
+  columns: ColumnDefinition[];
+  onMove: (idx: number, dir: -1 | 1) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className="mb-3 space-y-1">
+      {columns.map((col, idx) => (
+        <div
+          key={col.id}
+          className="group flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1 text-xs"
+        >
+          <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+          <span className="w-4 shrink-0 text-right tabular-nums text-muted-foreground">{idx + 1}</span>
+          <span className="flex-1 truncate font-medium">
+            {col.label ?? col.propertyName}
+            {col.psetName && <span className="ml-1 font-normal text-muted-foreground">· {col.psetName}</span>}
+          </span>
+          <ColSourceTag source={col.source} />
+          <button
+            onClick={() => onMove(idx, -1)}
+            disabled={idx === 0}
+            aria-label="Move up"
+            className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onMove(idx, 1)}
+            disabled={idx === columns.length - 1}
+            aria-label="Move down"
+            className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onRemove(col.id)}
+            aria-label="Remove column"
+            className="shrink-0 text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const SOURCE_TAG: Record<ColumnDefinition['source'], string> = {
+  attribute: 'attr',
+  property: 'pset',
+  quantity: 'qty',
+  material: 'mat',
+  classification: 'cls',
+  spatial: 'storey',
+};
+
+function ColSourceTag({ source }: { source: ColumnDefinition['source'] }) {
+  return (
+    <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+      {SOURCE_TAG[source]}
+    </span>
+  );
+}
+
+// ============================================================================
+// Column Picker — flat "common" grid + collapsible pset/qto groups
 // ============================================================================
 
 interface ColumnPickerProps {
   discovered: DiscoveredColumns;
   selectedIds: Set<string>;
   onAdd: (col: ColumnDefinition) => void;
+  onToggle: (col: ColumnDefinition) => void;
 }
 
-function ColumnPicker({ discovered, selectedIds, onAdd }: ColumnPickerProps) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['attributes']));
-
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => {
+function ColumnPicker({ discovered, selectedIds, onAdd, onToggle }: ColumnPickerProps) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleSection = (id: string) =>
+    setExpanded(prev => {
       const next = new Set(prev);
-      if (next.has(section)) next.delete(section);
-      else next.add(section);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
-  };
+
+  const psetEntries = useMemo(
+    () => Array.from(discovered.properties.entries()).sort(([a], [b]) => a.localeCompare(b)),
+    [discovered.properties],
+  );
+  const qtoEntries = useMemo(
+    () => Array.from(discovered.quantities.entries()).sort(([a], [b]) => a.localeCompare(b)),
+    [discovered.quantities],
+  );
 
   return (
-    <div className="space-y-1 text-xs">
-      {/* Attributes */}
-      <CollapsibleSection
-        title="Attributes"
-        expanded={expandedSections.has('attributes')}
-        onToggle={() => toggleSection('attributes')}
-      >
-        {discovered.attributes.map(attr => {
-          const id = `attr-${attr.toLowerCase()}`;
-          const isSelected = selectedIds.has(id);
+    <div className="space-y-2">
+      {/* Quick-add grid of the first-class columns */}
+      <div className="flex flex-wrap gap-1.5">
+        {COMMON_COLUMNS.map(({ id, source, propertyName, label }) => {
+          const selected = selectedIds.has(id);
           return (
-            <PickerItem
+            <Chip
               key={id}
-              label={attr}
-              selected={isSelected}
-              onClick={() => {
-                if (!isSelected) {
-                  onAdd({ id, source: 'attribute', propertyName: attr });
-                }
-              }}
-            />
+              selected={selected}
+              onClick={() => onToggle({ id, source, propertyName, label })}
+            >
+              {selected && <Check className="h-3 w-3" />}
+              {label}
+            </Chip>
           );
         })}
-      </CollapsibleSection>
+      </div>
 
-      {/* Spatial & materials (fixed columns, not name-discovered) */}
-      <CollapsibleSection
-        title="Spatial & Materials"
-        expanded={expandedSections.has('semantics')}
-        onToggle={() => toggleSection('semantics')}
-      >
-        {SEMANTIC_COLUMNS.map(({ id, source, label }) => {
-          const isSelected = selectedIds.has(id);
-          return (
-            <PickerItem
-              key={id}
-              label={label}
-              selected={isSelected}
-              onClick={() => {
-                if (!isSelected) {
-                  onAdd({ id, source, propertyName: label, label });
-                }
-              }}
-            />
-          );
-        })}
-      </CollapsibleSection>
-
-      {/* Property Sets */}
-      {Array.from(discovered.properties.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([psetName, propNames]) => (
-          <CollapsibleSection
-            key={`pset-${psetName}`}
-            title={psetName}
-            badge="P"
-            expanded={expandedSections.has(`pset-${psetName}`)}
-            onToggle={() => toggleSection(`pset-${psetName}`)}
-          >
-            {propNames.map(propName => {
-              const id = `prop-${psetName}-${propName}`.toLowerCase().replace(/\s+/g, '-');
-              const isSelected = selectedIds.has(id);
-              return (
-                <PickerItem
-                  key={id}
-                  label={propName}
-                  selected={isSelected}
-                  onClick={() => {
-                    if (!isSelected) {
-                      onAdd({ id, source: 'property', psetName, propertyName: propName, label: propName });
-                    }
-                  }}
-                />
-              );
-            })}
-          </CollapsibleSection>
-        ))}
-
-      {/* Quantity Sets */}
-      {Array.from(discovered.quantities.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([qsetName, quantNames]) => (
-          <CollapsibleSection
-            key={`qset-${qsetName}`}
-            title={qsetName}
-            badge="Q"
-            expanded={expandedSections.has(`qset-${qsetName}`)}
-            onToggle={() => toggleSection(`qset-${qsetName}`)}
-          >
-            {quantNames.map(quantName => {
-              const id = `quant-${qsetName}-${quantName}`.toLowerCase().replace(/\s+/g, '-');
-              const isSelected = selectedIds.has(id);
-              return (
-                <PickerItem
-                  key={id}
-                  label={quantName}
-                  selected={isSelected}
-                  onClick={() => {
-                    if (!isSelected) {
-                      onAdd({ id, source: 'quantity', psetName: qsetName, propertyName: quantName, label: quantName });
-                    }
-                  }}
-                />
-              );
-            })}
-          </CollapsibleSection>
-        ))}
+      {(psetEntries.length > 0 || qtoEntries.length > 0) && (
+        <div className="rounded-md border border-border/60">
+          {psetEntries.map(([psetName, propNames]) => (
+            <PickerGroup
+              key={`pset-${psetName}`}
+              title={psetName}
+              badge="Pset"
+              expanded={expanded.has(`pset-${psetName}`)}
+              onToggle={() => toggleSection(`pset-${psetName}`)}
+            >
+              {propNames.map(propName => {
+                const id = `prop-${psetName}-${propName}`.toLowerCase().replace(/\s+/g, '-');
+                return (
+                  <PickerItem
+                    key={id}
+                    label={propName}
+                    selected={selectedIds.has(id)}
+                    onAdd={() => onAdd({ id, source: 'property', psetName, propertyName: propName, label: propName })}
+                  />
+                );
+              })}
+            </PickerGroup>
+          ))}
+          {qtoEntries.map(([qsetName, quantNames]) => (
+            <PickerGroup
+              key={`qset-${qsetName}`}
+              title={qsetName}
+              badge="Qty"
+              expanded={expanded.has(`qset-${qsetName}`)}
+              onToggle={() => toggleSection(`qset-${qsetName}`)}
+            >
+              {quantNames.map(quantName => {
+                const id = `quant-${qsetName}-${quantName}`.toLowerCase().replace(/\s+/g, '-');
+                return (
+                  <PickerItem
+                    key={id}
+                    label={quantName}
+                    selected={selectedIds.has(id)}
+                    onAdd={() => onAdd({ id, source: 'quantity', psetName: qsetName, propertyName: quantName, label: quantName })}
+                  />
+                );
+              })}
+            </PickerGroup>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function CollapsibleSection({
+function PickerGroup({
   title,
   badge,
   expanded,
@@ -569,24 +552,24 @@ function CollapsibleSection({
   children,
 }: {
   title: string;
-  badge?: string;
+  badge: string;
   expanded: boolean;
   onToggle: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <div>
+    <div className="border-b border-border/50 last:border-b-0">
       <button
-        className="flex items-center gap-1 w-full px-1 py-0.5 rounded hover:bg-muted/50 text-xs"
+        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-xs hover:bg-muted/50"
         onClick={onToggle}
       >
-        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        <span className="font-medium truncate">{title}</span>
-        {badge && (
-          <span className="ml-auto text-[10px] bg-muted px-1 rounded">{badge}</span>
-        )}
+        {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+        <span className="truncate font-medium">{title}</span>
+        <span className="ml-auto rounded bg-muted px-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+          {badge}
+        </span>
       </button>
-      {expanded && <div className="pl-4 space-y-0">{children}</div>}
+      {expanded && <div className="px-1 pb-1">{children}</div>}
     </div>
   );
 }
@@ -594,31 +577,78 @@ function CollapsibleSection({
 function PickerItem({
   label,
   selected,
-  onClick,
+  onAdd,
 }: {
   label: string;
   selected: boolean;
-  onClick: () => void;
+  onAdd: () => void;
 }) {
   return (
     <button
-      className={`flex items-center gap-1 w-full px-1 py-0.5 rounded text-xs ${
-        selected
-          ? 'text-muted-foreground cursor-default'
-          : 'hover:bg-muted/50 cursor-pointer'
-      }`}
-      onClick={onClick}
+      className={cn(
+        'flex w-full items-center gap-1.5 rounded px-2 py-1 text-xs',
+        selected ? 'cursor-default text-muted-foreground' : 'cursor-pointer hover:bg-muted/60',
+      )}
+      onClick={onAdd}
       disabled={selected}
     >
-      <Plus className={`h-2.5 w-2.5 ${selected ? 'invisible' : ''}`} />
+      {selected ? <Check className="h-3 w-3 text-primary" /> : <Plus className="h-3 w-3" />}
       <span className="truncate">{label}</span>
-      {selected && <span className="ml-auto text-[10px] text-muted-foreground">added</span>}
+      {selected && <span className="ml-auto text-[10px]">added</span>}
     </button>
   );
 }
 
 // ============================================================================
-// Conditions (filters)
+// Grouping & totals
+// ============================================================================
+
+function GroupingBody({
+  columns,
+  groupByColumnId,
+  sumColumnIds,
+  onGroupByChange,
+  onToggleSum,
+}: {
+  columns: ColumnDefinition[];
+  groupByColumnId: string;
+  sumColumnIds: Set<string>;
+  onGroupByChange: (id: string) => void;
+  onToggleSum: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-md border border-border/60 bg-card p-2.5">
+      <label className="flex items-center gap-2 text-xs">
+        <span className="w-16 shrink-0 text-muted-foreground">Group by</span>
+        <select
+          value={groupByColumnId}
+          onChange={(e) => onGroupByChange(e.target.value)}
+          className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">— None (flat list) —</option>
+          {columns.map((c) => (
+            <option key={c.id} value={c.id}>{c.label ?? c.propertyName}</option>
+          ))}
+        </select>
+      </label>
+      <div>
+        <div className="mb-1 text-[11px] text-muted-foreground">
+          Σ Totals — sum these columns per group and overall
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {columns.map((c) => (
+            <Chip key={c.id} selected={sumColumnIds.has(c.id)} onClick={() => onToggleSum(c.id)}>
+              <span className="font-mono">Σ</span> {c.label ?? c.propertyName}
+            </Chip>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Filters (conditions)
 // ============================================================================
 
 type ConditionSource = PropertyCondition['source'];
@@ -674,53 +704,35 @@ function defaultConditionFor(source: ConditionSource): PropertyCondition {
 }
 
 const SELECT_CLASS =
-  'h-6 rounded border border-border bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring';
+  'h-7 rounded-md border border-border bg-background px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring';
 
-interface ConditionsSectionProps {
-  conditions: PropertyCondition[];
-  expanded: boolean;
-  onToggle: () => void;
-  onAdd: (condition: PropertyCondition) => void;
-  onUpdate: (idx: number, condition: PropertyCondition) => void;
-  onRemove: (idx: number) => void;
-}
-
-function ConditionsSection({
+function ConditionsBody({
   conditions,
-  expanded,
-  onToggle,
   onAdd,
   onUpdate,
   onRemove,
-}: ConditionsSectionProps) {
+}: {
+  conditions: PropertyCondition[];
+  onAdd: (condition: PropertyCondition) => void;
+  onUpdate: (idx: number, condition: PropertyCondition) => void;
+  onRemove: (idx: number) => void;
+}) {
   return (
-    <div>
+    <div className="space-y-1.5">
+      {conditions.map((condition, idx) => (
+        <ConditionRow
+          key={idx}
+          condition={condition}
+          onChange={(next) => onUpdate(idx, next)}
+          onRemove={() => onRemove(idx)}
+        />
+      ))}
       <button
-        className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider w-full"
-        onClick={onToggle}
+        onClick={() => onAdd(defaultConditionFor('attribute'))}
+        className="flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
       >
-        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-        Filters ({conditions.length})
+        <Plus className="h-3.5 w-3.5" /> Add filter
       </button>
-
-      {expanded && (
-        <div className="mt-2 space-y-1">
-          {conditions.map((condition, idx) => (
-            <ConditionRow
-              key={idx}
-              condition={condition}
-              onChange={(next) => onUpdate(idx, next)}
-              onRemove={() => onRemove(idx)}
-            />
-          ))}
-          <button
-            onClick={() => onAdd(defaultConditionFor('attribute'))}
-            className="flex items-center gap-1 px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="h-3 w-3" /> Add filter
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -739,16 +751,13 @@ function ConditionRow({
   const showSetFields = condition.source === 'property' || condition.source === 'quantity';
 
   const valuePlaceholder =
-    condition.source === 'spatial'
-      ? 'storey name'
-      : condition.source === 'material'
-        ? 'material'
-        : condition.source === 'classification'
-          ? 'code or name'
+    condition.source === 'spatial' ? 'storey name'
+      : condition.source === 'material' ? 'material'
+        : condition.source === 'classification' ? 'code or name'
           : 'value';
 
   return (
-    <div className="flex flex-wrap items-center gap-1 rounded bg-muted/50 px-2 py-1 text-xs">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1.5 text-xs">
       <select
         value={condition.source}
         onChange={(e) => onChange(defaultConditionFor(e.target.value as ConditionSource))}
@@ -779,13 +788,13 @@ function ConditionRow({
             value={condition.psetName ?? ''}
             placeholder={condition.source === 'quantity' ? 'Qto_…' : 'Pset_…'}
             onChange={(e) => onChange({ ...condition, psetName: e.target.value })}
-            className="h-6 w-28 text-xs"
+            className="h-7 w-28 text-xs"
           />
           <Input
             value={condition.propertyName}
             placeholder="name"
             onChange={(e) => onChange({ ...condition, propertyName: e.target.value })}
-            className="h-6 w-24 text-xs"
+            className="h-7 w-24 text-xs"
           />
         </>
       )}
@@ -806,16 +815,16 @@ function ConditionRow({
           value={String(condition.value ?? '')}
           placeholder={valuePlaceholder}
           onChange={(e) => onChange({ ...condition, value: e.target.value })}
-          className="h-6 flex-1 min-w-[6rem] text-xs"
+          className="h-7 flex-1 min-w-[6rem] text-xs"
         />
       )}
 
       <button
         onClick={onRemove}
         aria-label="Remove filter"
-        className="ml-auto text-muted-foreground hover:text-destructive"
+        className="ml-auto shrink-0 text-muted-foreground hover:text-destructive"
       >
-        <Trash2 className="h-3 w-3" />
+        <Trash2 className="h-3.5 w-3.5" />
       </button>
     </div>
   );

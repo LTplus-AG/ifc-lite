@@ -56,7 +56,7 @@ export function executeList(
   }
 
   // Step 4: Group + summarise if configured
-  const { groups, summary } = computeGrouping(definition, rows);
+  const { groups, summary } = summariseListRows(definition, rows);
 
   return {
     columns: definition.columns,
@@ -73,11 +73,12 @@ export function executeList(
 // ============================================================================
 
 /**
- * Build the grouped breakdown + whole-result summary for a definition.
- * Returns `{ groups: undefined, summary: undefined }` when no grouping is
- * configured, so the result shape is unchanged for plain flat lists.
+ * Build the grouped breakdown + whole-result summary for a definition over a
+ * row set. Returns `{}` when no grouping is configured, so the result shape is
+ * unchanged for plain flat lists. Exported so federated callers can re-derive
+ * groups/summary after merging rows from several models.
  */
-function computeGrouping(
+export function summariseListRows(
   definition: ListDefinition,
   rows: ListRow[],
 ): { groups?: ListGroup[]; summary?: ListSummary } {

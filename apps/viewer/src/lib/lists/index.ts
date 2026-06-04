@@ -18,6 +18,7 @@ export type {
 export {
   ENTITY_ATTRIBUTES,
   executeList,
+  summariseListRows,
   listResultToCSV,
   discoverColumns,
   LIST_PRESETS,

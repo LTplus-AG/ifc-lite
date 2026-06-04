@@ -35,7 +35,7 @@ export function executeList(
   const startTime = performance.now();
 
   // Step 1: Resolve source set (which entities match)
-  const matchedIds = resolveSourceSet(definition, provider);
+  const matchedIds = resolveSourceSet(definition, provider, modelId);
 
   // Step 2: Extract column values for matched entities
   const rows: ListRow[] = new Array(matchedIds.length);
@@ -134,15 +134,21 @@ export function summariseListRows(
 // Source Set Resolution
 // ============================================================================
 
-function resolveSourceSet(definition: ListDefinition, provider: ListDataProvider): number[] {
-  const { entityTypes, conditions, expressIds } = definition;
+function resolveSourceSet(
+  definition: ListDefinition,
+  provider: ListDataProvider,
+  modelId: string,
+): number[] {
+  const { entityTypes, conditions, expressIdsByModel } = definition;
 
   let entityIds: number[];
-  if (expressIds && expressIds.length > 0) {
+  if (expressIdsByModel) {
     // Explicit snapshot scope (e.g. from a filter result) — target exactly
-    // these ids, keeping only those that resolve to an element in THIS
-    // model (a federated list runs per model, so foreign ids drop out).
-    entityIds = expressIds.filter((id) => provider.getEntityTypeName(id) !== '');
+    // the ids captured FOR THIS model. Keyed by model so a federated list
+    // never picks up a foreign model's element that happens to share a
+    // local express ID. Still intersect with this model for safety.
+    const snapshot = expressIdsByModel[modelId] ?? [];
+    entityIds = snapshot.filter((id) => provider.getEntityTypeName(id) !== '');
   } else if (entityTypes.length === 0) {
     // No class constraint — target every element in the model. Requires
     // the provider to enumerate all ids; older providers without it

@@ -264,21 +264,32 @@ export function SearchModalFilter() {
     downloadResult(searchFilterResult, format);
   }, [searchFilterResult]);
 
-  /** Freeze the current filter result into a new list (snapshot of the
-   *  matched express IDs) and open the list builder to configure columns. */
+  /** Freeze the current filter result into a new list — a per-model snapshot
+   *  of the matched express IDs — and open the list builder to configure
+   *  columns. Keyed by model so federated results don't over-select when
+   *  local express IDs collide across files. */
   const handleCreateList = useCallback(() => {
     const result = searchFilterResult;
     if (!result || result.rows.length === 0) return;
     const idIdx = result.columns.indexOf('express_id');
     if (idIdx < 0) return;
-    const expressIds = Array.from(
-      new Set(
-        result.rows
-          .map((r) => Number(r[idIdx]))
-          .filter((n) => Number.isFinite(n) && n > 0),
-      ),
-    );
-    if (expressIds.length === 0) return;
+    const modelIdx = result.columns.indexOf('model_id'); // only present for multi-model runs
+
+    const byModel: Record<string, number[]> = {};
+    const seen = new Set<string>();
+    for (const row of result.rows) {
+      const id = Number(row[idIdx]);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const modelId = modelIdx >= 0 && typeof row[modelIdx] === 'string'
+        ? (row[modelIdx] as string)
+        : (activeModelId ?? 'default');
+      const key = `${modelId}:${id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      (byModel[modelId] ??= []).push(id);
+    }
+    const total = Object.values(byModel).reduce((n, ids) => n + ids.length, 0);
+    if (total === 0) return;
 
     const now = Date.now();
     const draft: ListDefinition = {
@@ -287,7 +298,7 @@ export function SearchModalFilter() {
       createdAt: now,
       updatedAt: now,
       entityTypes: [],
-      expressIds,
+      expressIdsByModel: byModel,
       conditions: [],
       columns: [
         { id: 'attr-name', source: 'attribute', propertyName: 'Name', label: 'Name' },
@@ -297,7 +308,7 @@ export function SearchModalFilter() {
     setPendingListDraft(draft);
     setListPanelVisible(true);
     setSearchModalOpen(false);
-  }, [searchFilterResult, setPendingListDraft, setListPanelVisible, setSearchModalOpen]);
+  }, [searchFilterResult, activeModelId, setPendingListDraft, setListPanelVisible, setSearchModalOpen]);
 
   if (!activeStore) {
     return (

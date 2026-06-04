@@ -213,7 +213,7 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
       updatedAt: Date.now(),
       entityTypes: Array.from(selectedTypes),
       // Preserve a filter-snapshot scope (set at creation; not edited here).
-      expressIds: initial?.expressIds,
+      expressIdsByModel: initial?.expressIdsByModel,
       conditions,
       columns,
       grouping,
@@ -232,7 +232,9 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
 
   // A snapshot list (from "Create list" in the search filter) is frozen to an
   // explicit element set; the entity-type scope doesn't apply.
-  const snapshotCount = initial?.expressIds?.length ?? 0;
+  const snapshotCount = initial?.expressIdsByModel
+    ? Object.values(initial.expressIdsByModel).reduce((n, ids) => n + ids.length, 0)
+    : 0;
   const isSnapshot = snapshotCount > 0;
 
   const canRun = columns.length > 0;

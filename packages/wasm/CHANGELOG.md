@@ -1,5 +1,26 @@
 # @ifc-lite/wasm
 
+## 2.1.3
+
+### Patch Changes
+
+- [#920](https://github.com/LTplus-AG/ifc-lite/pull/920) [`5b34809`](https://github.com/LTplus-AG/ifc-lite/commit/5b348091ac9094a25aaa685fe0674bad4ba4be06) Thanks [@louistrue](https://github.com/louistrue)! - Unify IFC mesh styling between the browser and backend rendering paths ([#913](https://github.com/LTplus-AG/ifc-lite/issues/913)).
+
+  Colour resolution now lives in one shared place (`ifc_lite_processing::style`);
+  the browser bindings delegate to it instead of carrying their own copy, so the
+  two Rust paths can no longer drift:
+
+  - Default type colours come from a single table. The four types that diverged
+    render consistently now — `IfcCurtainWall` (glass blue), `IfcStairFlight`,
+    `IfcFurnishingElement` (light wood), `IfcBuildingElementProxy`.
+  - `IfcIndexedColourMap` is honoured end to end, including the per-triangle split
+    ([#663](https://github.com/LTplus-AG/ifc-lite/issues/663) / [#858](https://github.com/LTplus-AG/ifc-lite/issues/858)), restoring per-triangle fidelity dropped in the [#874](https://github.com/LTplus-AG/ifc-lite/issues/874) pipeline
+    unification.
+  - Material-appearance styling (`IfcRelAssociatesMaterial` → material chain,
+    [#407](https://github.com/LTplus-AG/ifc-lite/issues/407)) and the window frame/glass transparent-vs-opaque split resolve
+    identically in both paths, and mapped (`IfcMappedItem`) sub-geometry inherits
+    its underlying style.
+
 ## 2.1.2
 
 ### Patch Changes

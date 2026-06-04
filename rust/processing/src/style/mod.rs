@@ -9,7 +9,7 @@
 //! This mirrors the [`crate::symbolic`] split: presentation logic that used
 //! to be copied into every consumer (`wasm-bindings`, `processing`,
 //! `apps/server`, the now-discontinued desktop app) lives here exactly once.
-//! See `docs/architecture/styling-parity-plan.md` for the full design.
+//! See issue #913 for the design and rationale.
 //!
 //! Phase 0 (this commit) introduces only the two pieces with no decoder or
 //! geometry dependency — the canonical [`Rgba`] color type and the single

@@ -148,14 +148,21 @@ pub(crate) fn split_mesh_by_indexed_colour(
     let mut groups: Vec<Option<Group>> = (0..map.colours.len()).map(|_| None).collect();
 
     for (tri, &palette) in map.triangle_palette.iter().enumerate() {
+        // Defensive: drop the *whole* triangle if any of its three vertices is
+        // out of range — skipping a single vertex would emit a malformed
+        // 1- or 2-vertex triangle.
+        let tri_in_range = (0..3).all(|k| {
+            let vi = mesh.indices[tri * 3 + k] as usize;
+            vi * 3 + 2 < mesh.positions.len()
+        });
+        if !tri_in_range {
+            continue;
+        }
+
         let group = groups[palette].get_or_insert_with(Group::default);
         for k in 0..3 {
             let vi = mesh.indices[tri * 3 + k] as usize;
             let base = vi * 3;
-            // Defensive: skip a triangle that references out-of-range vertices.
-            if base + 2 >= mesh.positions.len() {
-                continue;
-            }
             let new_index = (group.positions.len() / 3) as u32;
             group.positions.push(mesh.positions[base]);
             group.positions.push(mesh.positions[base + 1]);
@@ -188,4 +195,47 @@ pub(crate) fn split_mesh_by_indexed_colour(
         .collect();
 
     (out.len() >= 2).then_some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{split_mesh_by_indexed_colour, FullIndexedColourMap};
+    use crate::style::Rgba;
+    use ifc_lite_geometry::Mesh;
+
+    #[test]
+    fn split_drops_out_of_range_triangle_without_partial_geometry() {
+        // 6 in-range vertices (0..=5); the third triangle references vertex 99,
+        // which is out of range. The split must drop that whole triangle, never
+        // emit a 1- or 2-vertex fragment.
+        let positions: Vec<f32> = (0..6).flat_map(|i| [i as f32, 0.0, 0.0]).collect();
+        let mesh = Mesh {
+            positions,
+            normals: Vec::new(),
+            indices: vec![0, 1, 2, 3, 4, 5, 0, 1, 99],
+            rtc_applied: false,
+        };
+        let map = FullIndexedColourMap {
+            geometry_id: 1,
+            colours: vec![Rgba::new(1.0, 0.0, 0.0, 1.0), Rgba::new(0.0, 1.0, 0.0, 1.0)],
+            // tri0 → red, tri1 → green, tri2 (out of range) → red
+            triangle_palette: vec![0, 1, 0],
+        };
+
+        let parts = split_mesh_by_indexed_colour(&mesh, &map)
+            .expect("two valid palette groups survive after dropping the OOB triangle");
+
+        let total_tris: usize = parts
+            .iter()
+            .map(|(_, m)| {
+                assert_eq!(m.indices.len() % 3, 0, "index buffer must be whole triangles");
+                assert_eq!(m.positions.len() % 3, 0, "positions must be whole vertices");
+                m.indices.len() / 3
+            })
+            .sum();
+        assert_eq!(
+            total_tris, 2,
+            "the out-of-range triangle must be dropped, not partially emitted"
+        );
+    }
 }

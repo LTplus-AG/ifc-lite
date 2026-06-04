@@ -263,7 +263,15 @@ fn no_duplicate_default_color_tables() {
         let Ok(src) = std::fs::read_to_string(&path) else {
             continue;
         };
-        if src.contains("fn get_default_color") {
+        // Match actual function declarations only, not prose/strings that
+        // happen to mention the name (e.g. this guard's own doc comment).
+        let declares_color_table = src.lines().any(|line| {
+            let line = line.trim_start();
+            line.starts_with("fn get_default_color")
+                || line.starts_with("pub fn get_default_color")
+                || line.starts_with("pub(crate) fn get_default_color")
+        });
+        if declares_color_table {
             offenders.push(rel);
         }
     }

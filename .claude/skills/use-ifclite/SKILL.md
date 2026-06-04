@@ -83,8 +83,9 @@ These are non-negotiable when emitting IFC names or editing models:
 - **Exact IFC EXPRESS names, never aliases.** Types like `IfcWallStandardCase`,
   relationships like `IfcRelAggregates` (not `Aggregates`). Attributes in IFC
   PascalCase: `GlobalId`, `Name`, `Description`, `ObjectType`.
-- **STEP type names are stored UPPERCASE.** For display use the SDK's type-name
-  resolution (`getTypeName(id)`) — don't hand-case them.
+- **STEP type names are stored UPPERCASE.** Don't hand-case them — query
+  results already carry the resolved IFC type in `EntityData.type` (e.g.
+  `entity.type === 'IfcWall'`), so read that instead of reconstructing it.
 - **Single vs federated models are both first-class.** When multiple files are
   merged/federated, IDs are namespaced; resolve through the federation registry
   rather than assuming `globalId === expressId`. (Single-model fallback: they're

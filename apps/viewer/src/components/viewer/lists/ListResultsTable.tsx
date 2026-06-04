@@ -14,14 +14,15 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowUp, ArrowDown, Search, Eye, EyeOff, Download, ChevronRight, ChevronDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, Search, Eye, EyeOff, Download, ChevronRight, ChevronDown, FileText, FileSpreadsheet, FileType } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import type { ListResult, ListRow, ColumnDefinition, ListGrouping } from '@ifc-lite/lists';
-import { listResultToCSV } from '@ifc-lite/lists';
+import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
 import { cn } from '@/lib/utils';
 import { columnToAutoColor } from '@/lib/lists/columnToAutoColor';
 import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
@@ -34,13 +35,15 @@ import {
 
 interface ListResultsTableProps {
   result: ListResult;
+  /** List name — used as the export title / filename. */
+  listName?: string;
   /** Active grouping from the executed definition (table ↔ settings sync). */
   grouping?: ListGrouping;
   /** Persist a grouping change made from the table back to the definition. */
   onGroupingChange?: (grouping: ListGrouping | undefined) => void;
 }
 
-export function ListResultsTable({ result, grouping, onGroupingChange }: ListResultsTableProps) {
+export function ListResultsTable({ result, listName, grouping, onGroupingChange }: ListResultsTableProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortCol, setSortCol] = useState<number | null>(null);
@@ -190,12 +193,20 @@ export function ListResultsTable({ result, grouping, onGroupingChange }: ListRes
     document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
   }, [columnWidths]);
 
-  const handleExportCSV = useCallback(() => {
-    const csv = listResultToCSV({ columns, rows: sortedRows, totalCount: sortedRows.length, executionTime: result.executionTime });
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a'); a.href = url; a.download = 'list-export.csv'; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }, [columns, result.executionTime, sortedRows]);
+  // Export honours the on-screen view: configured columns, the active
+  // grouping (sections + per-group count/sums), and the grand totals.
+  const handleExport = useCallback((format: ExportFormat) => {
+    const model = buildExportModel({
+      title: listName?.trim() || 'List',
+      columns,
+      rows: sortedRows,
+      grouping,
+      numericCols,
+      columnWidths,
+      generatedAt: new Date().toLocaleString(),
+    });
+    void exportList(format, model);
+  }, [listName, columns, sortedRows, grouping, numericCols, columnWidths]);
 
   const handleRowClick = useCallback((row: ListRow) => {
     setSelectedEntity({ modelId: row.modelId, expressId: row.entityId });
@@ -232,14 +243,29 @@ export function ListResultsTable({ result, grouping, onGroupingChange }: ListRes
           </TooltipTrigger>
           <TooltipContent>{filterByVisibility ? 'Showing visible objects only' : 'Showing all objects'}</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className="h-6 w-6 shrink-0" onClick={handleExportCSV}>
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Export CSV</TooltipContent>
-        </Tooltip>
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" className="h-6 w-6 shrink-0">
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Export…</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('csv')}>
+              <FileText className="h-3.5 w-3.5" /> {EXPORT_LABELS.csv}
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('xlsx')}>
+              <FileSpreadsheet className="h-3.5 w-3.5" /> {EXPORT_LABELS.xlsx}
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => handleExport('pdf')}>
+              <FileType className="h-3.5 w-3.5" /> {EXPORT_LABELS.pdf}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Grouping / totals control strip */}

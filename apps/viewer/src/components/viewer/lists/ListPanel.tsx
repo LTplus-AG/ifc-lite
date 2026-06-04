@@ -300,6 +300,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
       {view === 'results' && listResult && (
         <ListResultsTable
           result={listResult}
+          listName={editingList?.name}
           grouping={editingList?.grouping}
           onGroupingChange={handleGroupingFromTable}
         />

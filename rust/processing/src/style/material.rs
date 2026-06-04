@@ -115,6 +115,39 @@ pub fn pick_material_style_for_submesh(
     Some(matched.copied().unwrap_or(colors[0]))
 }
 
+/// Resolve one sub-mesh's colour, given its already-resolved direct-style colour.
+///
+/// This owns the precedence *below* the direct geometry style and the stateful
+/// transparent/opaque alternation, so every consumer (the native pipeline and
+/// the browser) applies the identical rule — the §4.2 "one place for the colour
+/// decision" guarantee. The caller resolves `direct_color` itself (its
+/// geometry-style index + `IfcMappedItem` traversal differ by data layout —
+/// `GeometryStyleInfo` vs `[f32; 4]` — so that one step stays at the boundary):
+///
+/// 1. `direct_color` (a direct `IfcStyledItem`, incl. mapped geometry) wins;
+/// 2. else the material chain, alternating transparent/opaque per sub-mesh via
+///    `mat_color_idx` (incremented here, only when a material list is present),
+///    so a window's glass and frame split across its parts;
+/// 3. else the element colour (already defaulted to `default_color_for_type`).
+pub fn resolve_submesh_color(
+    direct_color: Option<[f32; 4]>,
+    material_colors: Option<&[[f32; 4]]>,
+    mat_color_idx: &mut usize,
+    element_color: [f32; 4],
+) -> [f32; 4] {
+    if let Some(color) = direct_color {
+        return color;
+    }
+    if let Some(colors) = material_colors {
+        let prefer_transparent = *mat_color_idx % 2 == 0;
+        *mat_color_idx += 1;
+        if let Some(color) = pick_material_style_for_submesh(colors, prefer_transparent) {
+            return color;
+        }
+    }
+    element_color
+}
+
 /// material id → colours, by following each material's styled representations to
 /// the orphan styled items they reference.
 pub fn build_material_style_index(
@@ -203,4 +236,46 @@ fn extract_refs_from_list(entity: &DecodedEntity, index: usize) -> Vec<u32> {
         .and_then(|attr| attr.as_list())
         .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const OPAQUE: [f32; 4] = [0.6, 0.6, 0.6, 1.0];
+    const GLASS: [f32; 4] = [0.5, 0.7, 0.9, 0.4];
+    const ELEMENT: [f32; 4] = [0.1, 0.1, 0.1, 1.0];
+
+    #[test]
+    fn submesh_direct_style_wins_without_touching_counter() {
+        let mut idx = 0usize;
+        let direct = [0.9, 0.2, 0.2, 1.0];
+        let colors = [OPAQUE, GLASS];
+        assert_eq!(
+            resolve_submesh_color(Some(direct), Some(&colors), &mut idx, ELEMENT),
+            direct
+        );
+        assert_eq!(idx, 0, "the alternation counter must not advance when a direct style wins");
+    }
+
+    #[test]
+    fn submesh_material_alternates_transparent_opaque() {
+        let colors = [OPAQUE, GLASS];
+        let mut idx = 0usize;
+        // even index → prefer transparent (glass)
+        assert_eq!(resolve_submesh_color(None, Some(&colors), &mut idx, ELEMENT), GLASS);
+        // odd index → prefer opaque (frame)
+        assert_eq!(resolve_submesh_color(None, Some(&colors), &mut idx, ELEMENT), OPAQUE);
+        assert_eq!(idx, 2, "counter advances once per material-resolved sub-mesh");
+    }
+
+    #[test]
+    fn submesh_falls_back_to_element_color() {
+        let mut idx = 0usize;
+        assert_eq!(resolve_submesh_color(None, None, &mut idx, ELEMENT), ELEMENT);
+        assert_eq!(idx, 0, "no material list → counter untouched");
+        // Empty material list also falls through to the element colour.
+        let empty: [[f32; 4]; 0] = [];
+        assert_eq!(resolve_submesh_color(None, Some(&empty), &mut idx, ELEMENT), ELEMENT);
+    }
 }

@@ -651,25 +651,17 @@ pub(crate) fn resolve_submesh_color(
     element_color: Option<[f32; 4]>,
     default_color: [f32; 4],
 ) -> [f32; 4] {
-    // 1. Direct geometry style (IfcStyledItem -> geometry item)
-    if let Some(color) = find_color_for_geometry(geometry_id, geometry_styles, decoder) {
-        return color;
-    }
-
-    // 2. Material-based fallback (alternating transparent/opaque).
-    // Selection rule shared with the backend via `ifc_lite_processing::style`.
-    if let Some(colors) = material_colors {
-        let prefer_transparent = *mat_color_idx % 2 == 0;
-        *mat_color_idx += 1;
-        if let Some(color) =
-            ifc_lite_processing::style::pick_material_style_for_submesh(colors, prefer_transparent)
-        {
-            return color;
-        }
-    }
-
-    // 3. Element-level style or default
-    element_color.unwrap_or(default_color)
+    // Step 1 (the direct geometry style, incl. IfcMappedItem traversal) is the
+    // browser's own lookup over its `[f32; 4]` style map. The precedence below
+    // it and the transparent/opaque alternation are the shared resolver, so the
+    // browser and the backend can't drift on them (#913 §4.2).
+    let direct_color = find_color_for_geometry(geometry_id, geometry_styles, decoder);
+    ifc_lite_processing::style::resolve_submesh_color(
+        direct_color,
+        material_colors.map(|v| v.as_slice()),
+        mat_color_idx,
+        element_color.unwrap_or(default_color),
+    )
 }
 
 /// Resolve element color inline during processing by following its

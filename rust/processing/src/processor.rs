@@ -1560,25 +1560,23 @@ fn process_entity_job(
 
                     let style = geometry_style_index.get(&sub.geometry_id);
                     // Direct style wins; else chase IfcMappedItem so mapped
-                    // sub-geometry inherits its underlying style (#913 §2.7);
-                    // else fall back to the material chain / element colour.
-                    let resolved_color = style.map(|s| s.color).or_else(|| {
+                    // sub-geometry inherits its underlying style (#913 §2.7).
+                    let direct_color = style.map(|s| s.color).or_else(|| {
                         find_geometry_item_color(
                             sub.geometry_id,
                             geometry_style_index,
                             &mut local_decoder,
                         )
                     });
-                    let color = if let Some(color) = resolved_color {
-                        color
-                    } else if let Some(colors) = material_colors {
-                        let prefer_transparent = mat_color_idx % 2 == 0;
-                        mat_color_idx += 1;
-                        crate::style::pick_material_style_for_submesh(colors, prefer_transparent)
-                            .unwrap_or(element_color)
-                    } else {
-                        element_color
-                    };
+                    // The shared resolver owns the precedence below the direct
+                    // style + the transparent/opaque alternation (#913 §4.2), so
+                    // the browser and the backend can't drift on it.
+                    let color = crate::style::resolve_submesh_color(
+                        direct_color,
+                        material_colors.map(|v| v.as_slice()),
+                        &mut mat_color_idx,
+                        element_color,
+                    );
                     let material_name = style
                         .and_then(|s| s.material_name.as_ref())
                         .map(ToString::to_string);

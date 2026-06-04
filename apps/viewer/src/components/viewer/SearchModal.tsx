@@ -49,7 +49,6 @@ export function SearchModal() {
     searchIndexes,
     models,
     setSearchModalOpen,
-    toggleSearchModal,
     setSearchModalTab,
     setSearchQuery,
   } = useViewerStore(
@@ -60,7 +59,6 @@ export function SearchModal() {
       searchIndexes: s.searchIndexes,
       models: s.models,
       setSearchModalOpen: s.setSearchModalOpen,
-      toggleSearchModal: s.toggleSearchModal,
       setSearchModalTab: s.setSearchModalTab,
       setSearchQuery: s.setSearchQuery,
     })),
@@ -129,19 +127,26 @@ export function SearchModal() {
     return out;
   }, [tier0Models, tier1Indexes, debouncedQuery]);
 
-  /** Global ⌘⇧F / Ctrl+⇧F toggle — opens from anywhere, also closes when open. */
+  /** Global ⌘⇧F / Ctrl+⇧F toggle — opens from anywhere, also closes when open.
+   *  This is a text-search entry point, so opening always lands on the Search
+   *  tab (the controlled tab otherwise remembers the last-used Filter tab). */
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
       const isAdvancedShortcut =
         (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'f' || e.key === 'F');
       if (isAdvancedShortcut) {
         e.preventDefault();
-        toggleSearchModal();
+        if (searchModalOpen) {
+          setSearchModalOpen(false);
+        } else {
+          setSearchModalTab('search');
+          setSearchModalOpen(true);
+        }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [toggleSearchModal]);
+  }, [searchModalOpen, setSearchModalOpen, setSearchModalTab]);
 
   /**
    * Record the query in recents on the modal-close *transition* — once

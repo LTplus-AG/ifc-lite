@@ -401,8 +401,10 @@ export function SearchInline() {
         e.preventDefault();
         // ⌘↵ / Ctrl+↵ opens the advanced modal instead of committing — the
         // inline query is preserved so the modal opens already populated.
+        // Text-search entry point, so land on the Search tab.
         if (e.metaKey || e.ctrlKey) {
           setSearchOpen(false);
+          setSearchModalTab('search');
           setSearchModalOpen(true);
           return;
         }
@@ -422,7 +424,7 @@ export function SearchInline() {
         if (target) commitResult(target, idx, e.shiftKey, liveResults, live);
       }
     },
-    [commitResult, results, searchHighlightIndex, searchOpen, setSearchHighlightIndex, setSearchModalOpen, setSearchOpen],
+    [commitResult, results, searchHighlightIndex, searchOpen, setSearchHighlightIndex, setSearchModalOpen, setSearchModalTab, setSearchOpen],
   );
 
   const hasFilters = activeRuleCount > 0;
@@ -532,6 +534,7 @@ export function SearchInline() {
           onHover={(i) => setSearchHighlightIndex(i)}
           onOpenAdvanced={() => {
             setSearchOpen(false);
+            setSearchModalTab('search');
             setSearchModalOpen(true);
           }}
         />

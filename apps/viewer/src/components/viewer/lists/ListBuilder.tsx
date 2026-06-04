@@ -80,6 +80,10 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
   const [conditions, setConditions] = useState<PropertyCondition[]>(initial?.conditions ?? []);
   const [columnsExpanded, setColumnsExpanded] = useState(true);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [groupByColumnId, setGroupByColumnId] = useState<string>(initial?.grouping?.columnId ?? '');
+  const [sumColumnIds, setSumColumnIds] = useState<Set<string>>(
+    new Set(initial?.grouping?.sumColumnIds ?? [])
+  );
 
   // Count entities per type across all providers
   const typeCounts = useMemo(() => {
@@ -150,6 +154,15 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
   }, []);
 
   const buildDefinition = useCallback((): ListDefinition => {
+    // Only persist grouping when the group-by column still exists; sum
+    // columns are likewise pruned to currently-selected columns.
+    const groupValid = groupByColumnId && columns.some(c => c.id === groupByColumnId);
+    const grouping = groupValid
+      ? {
+          columnId: groupByColumnId,
+          sumColumnIds: columns.filter(c => sumColumnIds.has(c.id)).map(c => c.id),
+        }
+      : undefined;
     return {
       id: initial?.id ?? crypto.randomUUID(),
       name: name || 'Untitled List',
@@ -159,8 +172,9 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
       entityTypes: Array.from(selectedTypes),
       conditions,
       columns,
+      grouping,
     };
-  }, [initial, name, description, selectedTypes, conditions, columns]);
+  }, [initial, name, description, selectedTypes, conditions, columns, groupByColumnId, sumColumnIds]);
 
   const handleSave = useCallback(() => {
     onSave(buildDefinition());
@@ -323,6 +337,62 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
                   </div>
                 )}
               </div>
+
+          {/* Grouping & Totals */}
+          {columns.length > 0 && (
+            <>
+              <Separator />
+              <div>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Grouping &amp; Totals
+                </span>
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground w-16 shrink-0">Group by</label>
+                    <select
+                      value={groupByColumnId}
+                      onChange={(e) => setGroupByColumnId(e.target.value)}
+                      className="h-7 flex-1 rounded border border-border bg-background px-1 text-xs"
+                    >
+                      <option value="">No grouping</option>
+                      {columns.map((c) => (
+                        <option key={c.id} value={c.id}>{c.label ?? c.propertyName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted-foreground">
+                      Sum columns (numeric) — totalled per group and overall
+                    </span>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {columns.map((c) => {
+                        const on = sumColumnIds.has(c.id);
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => setSumColumnIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(c.id)) next.delete(c.id);
+                              else next.add(c.id);
+                              return next;
+                            })}
+                            className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                              on
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background border-border hover:bg-muted'
+                            }`}
+                          >
+                            Σ {c.label ?? c.propertyName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </ScrollArea>
 

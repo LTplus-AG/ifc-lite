@@ -366,6 +366,73 @@ describe('executeList', () => {
   });
 });
 
+describe('grouping & summary', () => {
+  it('groups rows, counts members, and sums numeric columns per group + overall', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'grp-1',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'class', source: 'attribute', propertyName: 'Class' },
+        { id: 'len', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
+      ],
+      grouping: { columnId: 'class', sumColumnIds: ['len'] },
+    };
+
+    const result = executeList(def, provider);
+
+    // Two groups, largest first: IfcWall (2), IfcSlab (1).
+    expect(result.groups?.map(g => [g.label, g.count])).toEqual([
+      ['IfcWall', 2],
+      ['IfcSlab', 1],
+    ]);
+    // Wall lengths 5.0 + 3.5 = 8.5; slab has no Qto_WallBaseQuantities → 0.
+    expect(result.groups?.find(g => g.label === 'IfcWall')?.sums.len).toBeCloseTo(8.5);
+    expect(result.groups?.find(g => g.label === 'IfcSlab')?.sums.len).toBe(0);
+    // Whole-result summary.
+    expect(result.summary?.count).toBe(3);
+    expect(result.summary?.sums.len).toBeCloseTo(8.5);
+  });
+
+  it('buckets empty group-by values under "(none)"', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'grp-2',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'fire', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'NonExistent' },
+      ],
+      grouping: { columnId: 'fire', sumColumnIds: [] },
+    };
+    const result = executeList(def, provider);
+    expect(result.groups).toEqual([{ key: '(none)', label: '(none)', count: 2, sums: {} }]);
+  });
+
+  it('omits groups/summary when grouping is not configured', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'grp-3',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+    const result = executeList(def, provider);
+    expect(result.groups).toBeUndefined();
+    expect(result.summary).toBeUndefined();
+  });
+});
+
 describe('listResultToCSV', () => {
   it('produces valid CSV output', () => {
     const provider = createMockProvider();

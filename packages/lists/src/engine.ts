@@ -16,6 +16,8 @@ import type {
   ListDefinition,
   ListResult,
   ListRow,
+  ListGroup,
+  ListSummary,
   CellValue,
   PropertyCondition,
   ColumnDefinition,
@@ -53,12 +55,78 @@ export function executeList(
     }
   }
 
+  // Step 4: Group + summarise if configured
+  const { groups, summary } = computeGrouping(definition, rows);
+
   return {
     columns: definition.columns,
     rows,
     totalCount: rows.length,
     executionTime: performance.now() - startTime,
+    groups,
+    summary,
   };
+}
+
+// ============================================================================
+// Grouping & Aggregation
+// ============================================================================
+
+/**
+ * Build the grouped breakdown + whole-result summary for a definition.
+ * Returns `{ groups: undefined, summary: undefined }` when no grouping is
+ * configured, so the result shape is unchanged for plain flat lists.
+ */
+function computeGrouping(
+  definition: ListDefinition,
+  rows: ListRow[],
+): { groups?: ListGroup[]; summary?: ListSummary } {
+  const grouping = definition.grouping;
+  if (!grouping) return {};
+
+  const columns = definition.columns;
+  const groupIdx = columns.findIndex(c => c.id === grouping.columnId);
+  const sumIndices = grouping.sumColumnIds
+    .map(id => ({ id, idx: columns.findIndex(c => c.id === id) }))
+    .filter(s => s.idx >= 0);
+
+  const zeroSums = (): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const s of sumIndices) out[s.id] = 0;
+    return out;
+  };
+
+  // Whole-result summary.
+  const summary: ListSummary = { count: rows.length, sums: zeroSums() };
+
+  // Group accumulation, preserving first-seen order.
+  const byKey = new Map<string, ListGroup>();
+  for (const row of rows) {
+    const raw = groupIdx >= 0 ? row.values[groupIdx] : null;
+    const label = raw === null || raw === undefined || raw === '' ? '(none)' : String(raw);
+    const key = label;
+
+    let group = byKey.get(key);
+    if (!group) {
+      group = { key, label, count: 0, sums: zeroSums() };
+      byKey.set(key, group);
+    }
+    group.count++;
+
+    for (const s of sumIndices) {
+      const v = row.values[s.idx];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        group.sums[s.id] += v;
+        summary.sums[s.id] += v;
+      }
+    }
+  }
+
+  const groups = Array.from(byKey.values());
+  // Stable, useful default: largest groups first.
+  groups.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+  return { groups, summary };
 }
 
 // ============================================================================

@@ -13,6 +13,9 @@ export type {
   PropertyCondition,
   ConditionOperator,
   ListClassificationRef,
+  ListGrouping,
+  ListGroup,
+  ListSummary,
   DiscoveredColumns,
   EntityAttribute,
 } from './types.js';

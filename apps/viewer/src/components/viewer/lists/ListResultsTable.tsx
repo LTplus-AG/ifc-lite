@@ -203,6 +203,11 @@ export function ListResultsTable({ result }: ListResultsTableProps) {
         </Tooltip>
       </div>
 
+      {/* Grouping & totals summary */}
+      {result.groups && result.summary && (
+        <GroupSummaryPanel result={result} />
+      )}
+
       {/* Table */}
       <div ref={parentRef} className="flex-1 overflow-auto min-h-0">
         <div style={{ minWidth: totalWidth }}>
@@ -290,6 +295,49 @@ export function ListResultsTable({ result }: ListResultsTableProps) {
             })}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function GroupSummaryPanel({ result }: { result: ListResult }) {
+  const groups = result.groups ?? [];
+  const summary = result.summary;
+  const sumColIds = summary ? Object.keys(summary.sums) : [];
+  const labelOf = (id: string): string => {
+    const col = result.columns.find(c => c.id === id);
+    return col?.label ?? col?.propertyName ?? id;
+  };
+
+  return (
+    <div className="border-b bg-muted/30 px-3 py-2 text-xs max-h-48 overflow-auto">
+      <div className="flex items-center gap-2 mb-1 font-medium">
+        <span>
+          {groups.length} group{groups.length === 1 ? '' : 's'} · {summary?.count ?? 0} elements
+        </span>
+        {sumColIds.length > 0 && (
+          <span className="ml-auto flex flex-wrap gap-x-3 gap-y-0.5 justify-end text-muted-foreground">
+            {sumColIds.map(id => (
+              <span key={id}>
+                Σ {labelOf(id)}:{' '}
+                <span className="font-mono text-foreground">{formatCellValue(summary!.sums[id])}</span>
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+      <div className="space-y-0.5">
+        {groups.map(g => (
+          <div key={g.key} className="flex items-center gap-2">
+            <span className="flex-1 truncate" title={g.label}>{g.label}</span>
+            <span className="font-mono text-muted-foreground w-14 text-right shrink-0">{g.count}</span>
+            {sumColIds.map(id => (
+              <span key={id} className="font-mono w-24 text-right shrink-0">
+                {formatCellValue(g.sums[id])}
+              </span>
+            ))}
+          </div>
+        ))}
       </div>
     </div>
   );

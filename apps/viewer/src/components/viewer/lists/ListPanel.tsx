@@ -40,7 +40,7 @@ import {
   exportListDefinition,
   createListDataProvider,
 } from '@/lib/lists';
-import type { ListDefinition, ListResult, ListDataProvider } from '@/lib/lists';
+import type { ListDefinition, ListResult, ListDataProvider, ListGrouping } from '@/lib/lists';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
@@ -184,6 +184,24 @@ export function ListPanel({ onClose }: ListPanelProps) {
     }
   }, [editingList]);
 
+  // Grouping/summing changed directly from the results table: update the
+  // executed definition (so Settings reflects it), persist if it's saved, and
+  // re-derive groups/summary over the current rows for a consistent result.
+  const handleGroupingFromTable = useCallback((grouping: ListGrouping | undefined) => {
+    const def = editingList;
+    if (!def) return;
+    const next: ListDefinition = { ...def, grouping };
+    setEditingList(next);
+    if (listDefinitions.some((d) => d.id === def.id)) {
+      updateListDefinition(def.id, { grouping });
+    }
+    const current = useViewerStore.getState().listResult;
+    if (current) {
+      const summ = summariseListRows(next, current.rows);
+      setListResult({ ...current, groups: summ.groups, summary: summ.summary });
+    }
+  }, [editingList, listDefinitions, updateListDefinition, setListResult]);
+
   const handleImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -280,7 +298,11 @@ export function ListPanel({ onClose }: ListPanelProps) {
       )}
 
       {view === 'results' && listResult && (
-        <ListResultsTable result={listResult} />
+        <ListResultsTable
+          result={listResult}
+          grouping={editingList?.grouping}
+          onGroupingChange={handleGroupingFromTable}
+        />
       )}
 
       {/* Hidden import input */}

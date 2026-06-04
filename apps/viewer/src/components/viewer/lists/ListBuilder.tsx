@@ -39,20 +39,27 @@ import { discoverColumns, ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 
 const NO_OPTIONS: readonly string[] = [];
 
-/** Distinct model values used to suggest condition values in the chip editors. */
+/**
+ * Distinct model values used to suggest condition values in the chip editors.
+ * Storeys are intentionally NOT here — they come cheaply from the spatial
+ * index, whereas these require sampling element property/material data.
+ */
 interface ListConditionValues {
   materials: string[];
   classifications: string[];
-  storeys: string[];
   /** propValueKey(pset, prop) → distinct values. */
   propertyValues: Map<string, string[]>;
 }
 
-/** Merge per-store value discovery into one suggestion set for the conditions. */
+/**
+ * Merge per-store value discovery into one suggestion set. This is the
+ * EXPENSIVE pass (samples element property/material/classification data), so
+ * it's only run when a property/material/classification condition exists —
+ * never for storey-only filters (storeys come from `discoverFilterSchema`).
+ */
 function discoverConditionValues(stores: IfcDataStore[]): ListConditionValues {
   const materials = new Set<string>();
   const classifications = new Set<string>();
-  const storeys = new Set<string>();
   const propertyValues = new Map<string, Set<string>>();
   for (const store of stores) {
     const v = discoverFilterValues(store);
@@ -63,12 +70,11 @@ function discoverConditionValues(stores: IfcDataStore[]): ListConditionValues {
       if (!bucket) { bucket = new Set(); propertyValues.set(k, bucket); }
       for (const val of arr) bucket.add(val);
     }
-    for (const [name] of discoverFilterSchema(store).storeys) storeys.add(name);
   }
   const sort = (s: Set<string>) => Array.from(s).sort();
   const pv = new Map<string, string[]>();
   for (const [k, s] of propertyValues) pv.set(k, sort(s));
-  return { materials: sort(materials), classifications: sort(classifications), storeys: sort(storeys), propertyValues: pv };
+  return { materials: sort(materials), classifications: sort(classifications), propertyValues: pv };
 }
 
 // Building element types available for selection
@@ -152,18 +158,29 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
   );
   const [columns, setColumns] = useState<ColumnDefinition[]>(initial?.columns ?? []);
   const [conditions, setConditions] = useState<PropertyCondition[]>(initial?.conditions ?? []);
-  // Lazily-discovered distinct values for condition suggestions. Computed the
-  // first time a condition that benefits (property / material / classification
-  // / storey) exists, then reused.
+  // Lazily-discovered distinct values for condition suggestions. This is the
+  // EXPENSIVE sampling pass, so only run it when a property / material /
+  // classification condition exists — storey-only filters never trigger it.
   const [conditionValues, setConditionValues] = useState<ListConditionValues | null>(null);
   React.useEffect(() => {
     if (conditionValues || stores.length === 0) return;
     const needs = conditions.some(
-      (c) => c.source === 'property' || c.source === 'material' || c.source === 'classification' || c.source === 'spatial',
+      (c) => c.source === 'property' || c.source === 'material' || c.source === 'classification',
     );
     if (!needs) return;
     setConditionValues(discoverConditionValues(stores));
   }, [conditions, stores, conditionValues]);
+
+  // Storey names come cheaply from the spatial index (no element sampling),
+  // so they're always available without the expensive value pass above.
+  const storeyNames = useMemo<string[]>(() => {
+    if (stores.length === 0) return [];
+    const set = new Set<string>();
+    for (const store of stores) {
+      for (const [name] of discoverFilterSchema(store).storeys) set.add(name);
+    }
+    return Array.from(set).sort();
+  }, [stores]);
   const [groupByColumnId, setGroupByColumnId] = useState<string>(initial?.grouping?.columnId ?? '');
   const [sumColumnIds, setSumColumnIds] = useState<Set<string>>(
     new Set(initial?.grouping?.sumColumnIds ?? [])
@@ -363,6 +380,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
               conditions={conditions}
               discovered={discovered}
               values={conditionValues}
+              storeys={storeyNames}
               onAdd={addCondition}
               onUpdate={updateCondition}
               onRemove={removeCondition}
@@ -812,6 +830,7 @@ function ConditionsBody({
   conditions,
   discovered,
   values,
+  storeys,
   onAdd,
   onUpdate,
   onRemove,
@@ -819,6 +838,7 @@ function ConditionsBody({
   conditions: PropertyCondition[];
   discovered: DiscoveredColumns;
   values: ListConditionValues | null;
+  storeys: string[];
   onAdd: (condition: PropertyCondition) => void;
   onUpdate: (idx: number, condition: PropertyCondition) => void;
   onRemove: (idx: number) => void;
@@ -831,6 +851,7 @@ function ConditionsBody({
           condition={condition}
           discovered={discovered}
           values={values}
+          storeys={storeys}
           onChange={(next) => onUpdate(idx, next)}
           onRemove={() => onRemove(idx)}
         />
@@ -849,12 +870,14 @@ function ConditionRow({
   condition,
   discovered,
   values,
+  storeys,
   onChange,
   onRemove,
 }: {
   condition: PropertyCondition;
   discovered: DiscoveredColumns;
   values: ListConditionValues | null;
+  storeys: string[];
   onChange: (next: PropertyCondition) => void;
   onRemove: () => void;
 }) {
@@ -883,10 +906,10 @@ function ConditionRow({
         return values?.propertyValues.get(propValueKey(condition.psetName ?? '', condition.propertyName)) ?? NO_OPTIONS;
       case 'material': return values?.materials ?? NO_OPTIONS;
       case 'classification': return values?.classifications ?? NO_OPTIONS;
-      case 'spatial': return values?.storeys ?? NO_OPTIONS;
+      case 'spatial': return storeys;
       default: return NO_OPTIONS;
     }
-  }, [condition.source, condition.psetName, condition.propertyName, values]);
+  }, [condition.source, condition.psetName, condition.propertyName, values, storeys]);
 
   const valuePlaceholder =
     condition.source === 'spatial' ? 'storey name'

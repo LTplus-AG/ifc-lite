@@ -35,7 +35,9 @@ mod material;
 pub(crate) use indexed_colour::{
     resolve_indexed_colour_map_full, split_mesh_by_indexed_colour, FullIndexedColourMap,
 };
-pub(crate) use material::build_element_material_color;
+pub(crate) use material::{
+    build_element_material_colors, pick_material_style_for_submesh, pick_opaque_first,
+};
 
 /// Alpha at or above which a color is treated as opaque.
 ///

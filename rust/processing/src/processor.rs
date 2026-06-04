@@ -1257,14 +1257,20 @@ pub fn process_geometry_streaming_filtered_with_options(
     merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
     let mut geometry_style_index = Arc::new(geometry_style_index);
     let indexed_colour_full = Arc::new(indexed_colour_full);
-    // Join the material chain into a single colour per element, used as a
-    // fallback when an element has no direct/indexed geometry style (#407).
-    let element_material_color = crate::style::build_element_material_color(
+    // Join the material chain into colours per element (#407). The single
+    // opaque-first colour is the general-path element fallback; the full list
+    // feeds the opening sub-mesh transparent/opaque split (#913 §2.3).
+    let element_material_colors = crate::style::build_element_material_colors(
         &material_def_reprs,
         &orphan_styled_items,
         &element_to_material,
         &mut decoder,
     );
+    let element_material_color: FxHashMap<u32, [f32; 4]> = element_material_colors
+        .iter()
+        .filter_map(|(&id, colors)| crate::style::pick_opaque_first(colors).map(|c| (id, c)))
+        .collect();
+    let element_material_colors = Arc::new(element_material_colors);
 
     let total_jobs = entity_jobs.len();
     let initial_chunk_size = options.initial_batch_size.max(1);
@@ -1384,6 +1390,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     skipped_entity_ids.as_ref(),
                     geometry_style_index.as_ref(),
                     indexed_colour_full.as_ref(),
+                    element_material_colors.as_ref(),
                     site_local_rotation,
                 )
             })
@@ -1486,6 +1493,7 @@ fn process_entity_job(
     skipped_entity_ids: &HashSet<u32>,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
     indexed_colour_full: &FxHashMap<u32, crate::style::FullIndexedColourMap>,
+    element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
     // Present only when the selected coordinate space is `site_local`; rotates
     // mesh vertices into the site's axis frame.
     site_local_rotation: Option<&Vec<f64>>,
@@ -1517,6 +1525,11 @@ fn process_entity_job(
         if let Ok(sub_meshes) = local_router.process_element_with_submeshes(&entity, &mut local_decoder) {
             if !sub_meshes.is_empty() {
                 let mut out: Vec<MeshData> = Vec::with_capacity(sub_meshes.len());
+                // Material colours for this element, used when a sub-mesh has no
+                // direct style — alternated so frame (opaque) and glazing
+                // (transparent) split across the window's parts (#913 §2.3).
+                let material_colors = element_material_colors.get(&job.id);
+                let mut mat_color_idx = 0usize;
 
                 for sub in sub_meshes.sub_meshes {
                     let mut sub_mesh = sub.mesh;
@@ -1529,7 +1542,16 @@ fn process_entity_job(
                     }
 
                     let style = geometry_style_index.get(&sub.geometry_id);
-                    let color = style.map(|s| s.color).unwrap_or(element_color);
+                    let color = if let Some(style) = style {
+                        style.color
+                    } else if let Some(colors) = material_colors {
+                        let prefer_transparent = mat_color_idx % 2 == 0;
+                        mat_color_idx += 1;
+                        crate::style::pick_material_style_for_submesh(colors, prefer_transparent)
+                            .unwrap_or(element_color)
+                    } else {
+                        element_color
+                    };
                     let material_name = style
                         .and_then(|s| s.material_name.as_ref())
                         .map(ToString::to_string);

@@ -1,11 +1,12 @@
 # IFC Styling & Default-Rendering Parity — Research & Plan
 
-Status: **Phases 0–1 + 2a/2b/2c landed.** Canonical `ifc_lite_processing::style`
+Status: **Phases 0–1 + 2a–2d(backend) landed.** Canonical `ifc_lite_processing::style`
 module is the single default-color table (consumed by `processing`, `wasm-bindings`,
-`apps/server`; CI guard forbids new copies). The backend now resolves
-`IfcIndexedColourMap` — dominant colour (#663) **and** per-triangle splitting
-(#858) — **and** the material chain (#407). Remaining Phase 2: submesh
-transparent/opaque preference, and pointing `wasm-bindings` at the shared resolver.
+`apps/server`; CI guard forbids new copies). The backend now has full styling parity
+with the browser's intent: `IfcIndexedColourMap` dominant (#663) **and** per-triangle
+(#858), the material chain (#407), and submesh transparent/opaque preference (§2.3).
+The **only** remaining Phase 2 item is pointing `wasm-bindings` at the shared resolver
+(needs a CI / LLVM-20 build to compile + verify — not buildable in the dev container).
 Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
 Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`,
@@ -333,12 +334,23 @@ Phase 0 first so every later refactor is provably behavior-preserving.
   empty and elements fall back to the default. CLI/FFI/server (the #407 context) use
   the eager path. Streaming material colour is a small follow-up.
 
-**Phase 2d — remaining (not started)**
-- Submesh transparent/opaque preference (§2.3) as a shared batch resolver — so a
-  window splits frame (opaque) vs glazing (transparent) across its sub-meshes.
-- Point `wasm-bindings` at the shared resolver (needs an LLVM-20 / CI build to verify;
-  not buildable in the current dev container). This also restores wasm's per-triangle
-  indexed-colour fidelity that #874 dropped.
+**Phase 2d — submesh transparent/opaque preference — done**
+- ✅ `processing::style::material::pick_material_style_for_submesh` ports the browser
+  rule (alpha `< 0.95` = transparent). The opening (window/door) sub-mesh loop now
+  looks up the element's full material colour list and, for sub-meshes without a
+  direct style, alternates transparent/opaque preference per sub-mesh — so a window's
+  frame (opaque) and glazing (transparent) colours split across its parts instead of
+  all rendering the same.
+- ✅ `tests/styling_submesh_split.rs`: a window with an opaque-frame + transparent-glass
+  material list emits two differently-coloured sub-meshes.
+
+**Phase 2e — remaining (not started)**
+- Point `wasm-bindings` at the shared resolver: delete `api/styling.rs`'s duplicated
+  extraction and call `processing::style` from the pre-pass, keeping only the `Rgba`
+  u8 SAB transport. Needs an LLVM-20 / CI build to compile + verify (not buildable in
+  the current dev container). This also restores wasm's per-triangle indexed-colour
+  fidelity that #874 dropped, and brings the material chain + submesh split to the
+  browser.
 
 ### Phase 3 — Consumers go thin
 - `processing` + `apps/server` call `resolve_element_submesh_colors` and delete their

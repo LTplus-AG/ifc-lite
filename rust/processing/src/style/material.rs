@@ -29,20 +29,22 @@ use super::TRANSPARENCY_ALPHA_THRESHOLD;
 /// Maximum recursion depth for material resolution (guards malformed cycles).
 const MAX_MATERIAL_RESOLVE_DEPTH: u8 = 4;
 
-/// Build the `element id → chosen colour` map: the single colour each element
-/// inherits from its associated material(s). Prefers an opaque colour so a wall
-/// carrying both a glass and an opaque constituent doesn't render as glass.
+/// Build the `element id → material colours` map: every colour each element
+/// inherits from its associated material(s), in resolution order. The single
+/// general-path fallback picks the first opaque colour ([`pick_opaque_first`]);
+/// the opening sub-mesh path alternates transparent/opaque
+/// ([`pick_material_style_for_submesh`]) to split glass vs frame.
 ///
 /// - `material_def_reprs`: material id → its `IfcStyledRepresentation` ids.
 /// - `orphan_styled_items`: styled-item id → colour, for styled items with a
 ///   null `Item` (i.e. material appearances).
 /// - `element_to_material`: element id → material `SELECT` id.
-pub(crate) fn build_element_material_color(
+pub(crate) fn build_element_material_colors(
     material_def_reprs: &FxHashMap<u32, Vec<u32>>,
     orphan_styled_items: &FxHashMap<u32, [f32; 4]>,
     element_to_material: &FxHashMap<u32, u32>,
     decoder: &mut EntityDecoder,
-) -> FxHashMap<u32, [f32; 4]> {
+) -> FxHashMap<u32, Vec<[f32; 4]>> {
     if element_to_material.is_empty() || orphan_styled_items.is_empty() {
         return FxHashMap::default();
     }
@@ -52,7 +54,7 @@ pub(crate) fn build_element_material_color(
         return FxHashMap::default();
     }
 
-    let mut out: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    let mut out: FxHashMap<u32, Vec<[f32; 4]>> = FxHashMap::default();
     for (&element_id, &material_select_id) in element_to_material {
         let mut colors: Vec<[f32; 4]> = Vec::new();
         for material_id in resolve_material_ids(material_select_id, decoder) {
@@ -60,15 +62,15 @@ pub(crate) fn build_element_material_color(
                 colors.extend(mat_colors);
             }
         }
-        if let Some(color) = pick_opaque_first(&colors) {
-            out.insert(element_id, color);
+        if !colors.is_empty() {
+            out.insert(element_id, colors);
         }
     }
     out
 }
 
 /// Pick the first opaque colour (alpha ≥ threshold), else the first colour.
-fn pick_opaque_first(colors: &[[f32; 4]]) -> Option<[f32; 4]> {
+pub(crate) fn pick_opaque_first(colors: &[[f32; 4]]) -> Option<[f32; 4]> {
     if colors.is_empty() {
         return None;
     }
@@ -79,6 +81,25 @@ fn pick_opaque_first(colors: &[[f32; 4]]) -> Option<[f32; 4]> {
             .copied()
             .unwrap_or(colors[0]),
     )
+}
+
+/// Pick a material colour for one sub-mesh, alternating preference so a window
+/// distributes its frame (opaque) and glazing (transparent) colours across
+/// sub-meshes instead of painting every part the same. `prefer_transparent`
+/// is toggled by the caller per sub-mesh.
+pub(crate) fn pick_material_style_for_submesh(
+    colors: &[[f32; 4]],
+    prefer_transparent: bool,
+) -> Option<[f32; 4]> {
+    if colors.is_empty() {
+        return None;
+    }
+    let matched = if prefer_transparent {
+        colors.iter().find(|c| c[3] < TRANSPARENCY_ALPHA_THRESHOLD)
+    } else {
+        colors.iter().find(|c| c[3] >= TRANSPARENCY_ALPHA_THRESHOLD)
+    };
+    Some(matched.copied().unwrap_or(colors[0]))
 }
 
 /// material id → colours, by following each material's styled representations to

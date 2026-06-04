@@ -29,6 +29,10 @@ import {
   type NumericOp,
   type ClassificationOp,
 } from '@/lib/search/filter-rules';
+import { ComboInput } from '@/components/ui/combo-input';
+import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema';
+
+const NO_OPTIONS: readonly string[] = [];
 
 // ── Op constants ──────────────────────────────────────────────────────
 
@@ -70,11 +74,13 @@ export interface RuleRowProps {
   ifcTypeOptions: string[];
   storeyOptions: ReadonlyArray<readonly [string, number | null]>;
   psetQto: { psets: ReadonlyArray<readonly [string, ReadonlyArray<string>]>; qtos: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string, string]>]> } | null;
+  /** Distinct model values for value suggestions (materials, classifications, property values). */
+  valueSchema: FilterValueSchema | null;
   onChange: (next: FilterRule) => void;
   onRemove: () => void;
 }
 
-export function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, onChange, onRemove }: RuleRowProps) {
+export function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, valueSchema, onChange, onRemove }: RuleRowProps) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
@@ -119,7 +125,7 @@ export function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, onChange
       )}
 
       {rule.kind === 'property' && (
-        <PropertyEditor rule={rule} psetQto={psetQto} onChange={onChange} />
+        <PropertyEditor rule={rule} psetQto={psetQto} valueSchema={valueSchema} onChange={onChange} />
       )}
 
       {rule.kind === 'quantity' && (
@@ -130,12 +136,13 @@ export function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, onChange
         <MaterialEditor
           op={rule.op}
           value={rule.value}
+          options={valueSchema?.materials ?? NO_OPTIONS}
           onChange={(op, value) => onChange(Rule.material(op, value))}
         />
       )}
 
       {rule.kind === 'classification' && (
-        <ClassificationEditor rule={rule} onChange={onChange} />
+        <ClassificationEditor rule={rule} valueSchema={valueSchema} onChange={onChange} />
       )}
 
       {rule.kind === 'elevation' && (
@@ -284,43 +291,49 @@ function NameEditor({
 interface PropertyEditorProps {
   rule: Extract<FilterRule, { kind: 'property' }>;
   psetQto: RuleRowProps['psetQto'];
+  valueSchema: FilterValueSchema | null;
   onChange: (next: FilterRule) => void;
 }
 
-function PropertyEditor({ rule, psetQto, onChange }: PropertyEditorProps) {
+function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditorProps) {
   const psetNames = useMemo(() => (psetQto ? psetQto.psets.map(([n]) => n) : []), [psetQto]);
   const propNames = useMemo(() => {
     if (!psetQto) return [];
     const entry = psetQto.psets.find(([n]) => n === rule.setName);
     return entry ? Array.from(entry[1]) : [];
   }, [psetQto, rule.setName]);
+  const valueOptions = useMemo(
+    () => valueSchema?.propertyValues.get(propValueKey(rule.setName, rule.propertyName)) ?? NO_OPTIONS,
+    [valueSchema, rule.setName, rule.propertyName],
+  );
 
   const valueless = rule.op === 'isSet' || rule.op === 'isNotSet';
 
   return (
     <>
-      <FreeOrPickInput
+      <ComboInput
         placeholder="Pset_… (e.g. Pset_WallCommon)"
         value={rule.setName}
         options={psetNames}
-        widthClass="w-52"
+        className="h-7 w-52 text-xs font-mono"
         onChange={(next) => onChange({ ...rule, setName: next, propertyName: '' })}
       />
       <span className="text-muted-foreground">.</span>
-      <FreeOrPickInput
+      <ComboInput
         placeholder="prop name"
         value={rule.propertyName}
         options={propNames}
-        widthClass="w-44"
+        className="h-7 w-44 text-xs font-mono"
         onChange={(next) => onChange({ ...rule, propertyName: next })}
       />
       <OpDropdown ops={VALUE_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       {!valueless && (
-        <Input
+        <ComboInput
           placeholder="value"
           value={rule.value}
-          onChange={(e) => onChange({ ...rule, value: e.target.value })}
-          className="h-7 w-40 text-xs font-mono"
+          options={valueOptions}
+          className="h-7 w-44 text-xs font-mono"
+          onChange={(value) => onChange({ ...rule, value })}
         />
       )}
     </>
@@ -343,19 +356,19 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
 
   return (
     <>
-      <FreeOrPickInput
+      <ComboInput
         placeholder="Qto_… (e.g. Qto_WallBaseQuantities)"
         value={rule.setName}
         options={qsetNames}
-        widthClass="w-56"
+        className="h-7 w-56 text-xs font-mono"
         onChange={(next) => onChange({ ...rule, setName: next, quantityName: '' })}
       />
       <span className="text-muted-foreground">.</span>
-      <FreeOrPickInput
+      <ComboInput
         placeholder="quantity name"
         value={rule.quantityName}
         options={qtyNames}
-        widthClass="w-44"
+        className="h-7 w-44 text-xs font-mono"
         onChange={(next) => onChange({ ...rule, quantityName: next })}
       />
       <OpDropdown ops={NUMERIC_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
@@ -373,20 +386,23 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
 function MaterialEditor({
   op,
   value,
+  options,
   onChange,
 }: {
   op: StringOp;
   value: string;
+  options: ReadonlyArray<string>;
   onChange: (op: StringOp, value: string) => void;
 }) {
   return (
     <>
       <OpDropdown ops={STRING_OPS} value={op} onChange={(next) => onChange(next, value)} />
-      <Input
+      <ComboInput
         placeholder="material name (e.g. Concrete)"
         value={value}
-        onChange={(e) => onChange(op, e.target.value)}
+        options={options}
         className="h-7 w-56 text-xs font-mono"
+        onChange={(v) => onChange(op, v)}
       />
     </>
   );
@@ -394,20 +410,23 @@ function MaterialEditor({
 
 function ClassificationEditor({
   rule,
+  valueSchema,
   onChange,
 }: {
   rule: Extract<FilterRule, { kind: 'classification' }>;
+  valueSchema: FilterValueSchema | null;
   onChange: (next: FilterRule) => void;
 }) {
   const valueless = rule.op === 'isSet' || rule.op === 'isNotSet';
   return (
     <>
-      <Input
+      <ComboInput
         placeholder="system (optional)"
         value={rule.system ?? ''}
-        onChange={(e) => onChange(Rule.classification(e.target.value, rule.op, rule.value))}
+        options={valueSchema?.classificationSystems ?? NO_OPTIONS}
         className="h-7 w-40 text-xs font-mono"
-        title="Restrict to one classification system, e.g. Uniclass 2015. Leave blank for any."
+        aria-label="Classification system — leave blank for any"
+        onChange={(v) => onChange(Rule.classification(v, rule.op, rule.value))}
       />
       <OpDropdown
         ops={CLASSIFICATION_OPS}
@@ -415,11 +434,12 @@ function ClassificationEditor({
         onChange={(next) => onChange(Rule.classification(rule.system ?? '', next, rule.value))}
       />
       {!valueless && (
-        <Input
+        <ComboInput
           placeholder="code or name"
           value={rule.value}
-          onChange={(e) => onChange(Rule.classification(rule.system ?? '', rule.op, e.target.value))}
+          options={valueSchema?.classifications ?? NO_OPTIONS}
           className="h-7 w-44 text-xs font-mono"
+          onChange={(v) => onChange(Rule.classification(rule.system ?? '', rule.op, v))}
         />
       )}
     </>
@@ -481,48 +501,3 @@ function OpDropdown<T extends string>({
   );
 }
 
-/**
- * Free-text input that exposes a small dropdown of known options when
- * the schema knows them. Users can either pick from the menu or type a
- * value not present in the schema (useful for typos / custom psets).
- */
-function FreeOrPickInput({
-  placeholder,
-  value,
-  options,
-  widthClass,
-  onChange,
-}: {
-  placeholder: string;
-  value: string;
-  options: ReadonlyArray<string>;
-  widthClass: string;
-  onChange: (next: string) => void;
-}) {
-  return (
-    <div className="relative inline-flex items-center gap-1">
-      <Input
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`h-7 ${widthClass} text-xs font-mono`}
-      />
-      {options.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 px-1 text-[10px] text-muted-foreground" title="Pick from schema">
-              ▾
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-            {options.map((o) => (
-              <DropdownMenuItem key={o} onSelect={() => onChange(o)} className="font-mono">
-                {o}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
-}

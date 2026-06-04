@@ -37,6 +37,7 @@ import {
 import {
   discoverFilterSchema,
   discoverPropertyAndQuantitySchema,
+  discoverFilterValues,
 } from '@/lib/search/filter-schema';
 import {
   loadSavedFilters,
@@ -61,6 +62,7 @@ export function SearchModalFilterBuilder() {
     clearFilterRules,
     setFilterSchema,
     setFilterPsetQtoSchema,
+    setFilterValueSchema,
     setSearchFilter,
   } = useViewerStore(
     useShallow((s) => ({
@@ -77,6 +79,7 @@ export function SearchModalFilterBuilder() {
       clearFilterRules: s.clearFilterRules,
       setFilterSchema: s.setFilterSchema,
       setFilterPsetQtoSchema: s.setFilterPsetQtoSchema,
+      setFilterValueSchema: s.setFilterValueSchema,
       setSearchFilter: s.setSearchFilter,
     })),
   );
@@ -103,6 +106,20 @@ export function SearchModalFilterBuilder() {
     if (!needs) return;
     setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore));
   }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterPsetQtoSchema]);
+
+  // Lazy value discovery — distinct material / classification / property
+  // values for the chip value suggestions. Fired the first time a rule that
+  // benefits from them (property, material, classification) appears.
+  useEffect(() => {
+    if (!activeModelId || !activeStore) return;
+    const entry = schemaMap.get(activeModelId);
+    if (entry?.values) return;
+    const needs = filter.rules.some(
+      (r) => r.kind === 'property' || r.kind === 'material' || r.kind === 'classification',
+    );
+    if (!needs) return;
+    setFilterValueSchema(activeModelId, discoverFilterValues(activeStore));
+  }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterValueSchema]);
 
   const ifcTypeOptions = useMemo<string[]>(() => {
     if (schemaEntry?.basic.ifcTypes && schemaEntry.basic.ifcTypes.length > 0) {
@@ -238,6 +255,7 @@ export function SearchModalFilterBuilder() {
             ifcTypeOptions={ifcTypeOptions}
             storeyOptions={storeyOptions}
             psetQto={schemaEntry?.psetQto ?? null}
+            valueSchema={schemaEntry?.values ?? null}
             onChange={(next) => updateFilterRule(i, next)}
             onRemove={() => removeFilterRule(i)}
           />

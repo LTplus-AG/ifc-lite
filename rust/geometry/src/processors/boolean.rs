@@ -362,6 +362,23 @@ impl BooleanClippingProcessor {
         }
         .normalize();
 
+        // The prism is extruded perpendicular to the polygon plane (along
+        // Position.Z), but ONLY toward the material side of the base surface —
+        // the side this DIFFERENCE removes. A spec-correct
+        // IfcPolygonalBoundedHalfSpace prism is infinite along ±Position.Z and
+        // then intersected with the half-space; our one-directional prism
+        // approximates that, so it MUST point at the material side. Position.Z
+        // is authored independently of AgreementFlag (the duplex "Party Wall"
+        // clips author Position.Z parallel to +normal while AgreementFlag puts
+        // the material on -normal), so flip its sign when it points away from
+        // the material side. The cross-section stays perpendicular to
+        // Position.Z, preserving the tilted-cutter fix (#583).
+        let ext_dir = if z_axis.dot(&material_side_dir) >= 0.0 {
+            z_axis
+        } else {
+            -z_axis
+        };
+
         // Project each polygon vertex from its position in Position's XY
         // plane onto the slope plane along Position's Z-axis. This yields a
         // (possibly tilted) polygon that lies ON the slope plane and forms
@@ -434,33 +451,33 @@ impl BooleanClippingProcessor {
         };
         let max_projection_z = host_corners
             .iter()
-            .map(|corner| (corner - base_centroid).dot(&z_axis))
+            .map(|corner| (corner - base_centroid).dot(&ext_dir))
             .fold(0.0_f64, f64::max);
         let depth = max_projection_z.max(host_diag) + 1.0;
 
-        // Top cap = base cap translated along POSITION.Z by `depth`.
+        // Top cap = base cap translated along the material-side extrusion
+        // direction by `depth`.
         let top_world: Vec<Point3<f64>> =
-            base_world.iter().map(|p| *p + z_axis * depth).collect();
+            base_world.iter().map(|p| *p + ext_dir * depth).collect();
 
         // Winding: build_tilted_prism_mesh REVERSES the bottom cap
         // (triangles emitted in reverse order) and KEEPS the top cap.
         // For a closed solid with outward-facing caps:
-        //   - Bottom cap outward normal: -z_axis (pointing DOWN, OUT of
-        //     prism whose interior is ABOVE the slope plane)
-        //   - Top cap outward normal: +z_axis (pointing UP, OUT)
+        //   - Bottom cap outward normal: -ext_dir (pointing OUT of the prism,
+        //     whose interior is on the +ext_dir side of the slope plane)
+        //   - Top cap outward normal: +ext_dir (pointing OUT)
         // After the in-builder reversal, the bottom cap inherits the
-        // polygon's REVERSED normal. We need REVERSED == -z_axis, so the
-        // polygon's natural normal must be +z_axis. Reverse the polygon
-        // ONLY if its natural normal currently points in -z_axis.
+        // polygon's REVERSED normal. We need REVERSED == -ext_dir, so the
+        // polygon's natural normal must be +ext_dir. Reverse the polygon
+        // ONLY if its natural normal currently points in -ext_dir.
         let mut base = base_world;
         let mut top = top_world;
         let mut contour_2d = contour_2d;
-        if Self::polygon_normal(&base).dot(&z_axis) < 0.0 {
+        if Self::polygon_normal(&base).dot(&ext_dir) < 0.0 {
             base.reverse();
             top.reverse();
             contour_2d.reverse();
         }
-        let _ = material_side_dir; // retained for clarity / future use
 
         self.build_tilted_prism_mesh(&contour_2d, &base, &top)
     }
@@ -730,12 +747,26 @@ impl BooleanClippingProcessor {
                     let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
                     self.drain_clipper_failures(&clipper);
                     if let Ok(clipped) = subtract_result {
-                        return Ok(self.guard_against_full_host_removal(
-                            mesh,
-                            clipped,
-                            plane_point,
-                            plane_normal,
-                        ));
+                        // The bounded-prism subtract is fragile on coincident
+                        // faces: when the clip polygon spans the full host
+                        // cross-section, the prism's in-plane side walls land
+                        // exactly on the host's side faces and the CSG kernel
+                        // can collapse the host to a near-empty sliver
+                        // (duplex.ifc "Party Wall" segments #4287/#4399 —
+                        // 12-tri box → 2-tri quad on the legacy BSP kernel the
+                        // native server uses). When the result looks degenerate
+                        // we fall through to the robust unbounded plane clip
+                        // below: a strict superset of the bounded cut that is
+                        // exactly correct whenever the polygon already covers
+                        // the host's projected cross-section.
+                        if !ClippingProcessor::difference_result_looks_degenerate(&mesh, &clipped) {
+                            return Ok(self.guard_against_full_host_removal(
+                                mesh,
+                                clipped,
+                                plane_point,
+                                plane_normal,
+                            ));
+                        }
                     }
                 }
 

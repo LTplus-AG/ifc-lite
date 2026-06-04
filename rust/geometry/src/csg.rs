@@ -1543,6 +1543,15 @@ impl ClippingProcessor {
         false
     }
 
+    /// Kernel-neutral check: does a DIFFERENCE result look collapsed relative
+    /// to its host? Wraps [`Self::manifold_result_looks_degenerate`] under a
+    /// name that reads correctly off the Manifold path too — used by the
+    /// polygonal-bounded half-space clip to fall back to a robust unbounded
+    /// plane clip when either kernel degenerates on coincident faces.
+    pub(crate) fn difference_result_looks_degenerate(host: &Mesh, result: &Mesh) -> bool {
+        Self::manifold_result_looks_degenerate(host, result)
+    }
+
     /// Run `host - opening` through the legacy in-tree BSP CSG kernel.
     /// Returns `None` if the BSP path can't accept the inputs (operands
     /// past the per-mesh polygon cap, degenerate polygon extraction,

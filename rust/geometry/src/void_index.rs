@@ -126,6 +126,33 @@ pub fn propagate_voids_to_parts(
     part_to_parent
 }
 
+/// Compute the set of aggregated `IfcBuildingElementPart` ids to skip when the
+/// "merge multilayer wall as a single solid" toggle is on (issue #540): a part
+/// is skipped when its parent's layered build-up is *sliceable*, so the parent's
+/// merged-layer geometry is drawn instead of the individual parts.
+///
+/// This is the layer/void **driver** — it composes the two shared geometry
+/// kernels ([`propagate_voids_to_parts`] for part→parent + void propagation, and
+/// [`MaterialLayerIndex::is_sliceable`]) so the driver lives in the geometry
+/// crate next to its kernels rather than inline in a consumer (#913 Phase 4 /
+/// §2.6). The browser's `merge_layers` path calls it; a `void_index` scratch map
+/// is filled and discarded (callers that also need the propagated voids should
+/// call [`propagate_voids_to_parts`] directly with their own `void_index`).
+#[must_use]
+pub fn compute_parts_to_skip(
+    content: &str,
+    decoder: &mut EntityDecoder,
+) -> rustc_hash::FxHashSet<u32> {
+    let material_layer_index = crate::MaterialLayerIndex::from_content(content, decoder);
+    let mut void_index_scratch: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    let part_to_parent = propagate_voids_to_parts(&mut void_index_scratch, content, decoder);
+    part_to_parent
+        .into_iter()
+        .filter(|(_, parent_id)| material_layer_index.is_sliceable(*parent_id))
+        .map(|(part_id, _)| part_id)
+        .collect()
+}
+
 /// Index mapping host elements to their voids
 ///
 /// Provides efficient lookup of void entity IDs for any host element,

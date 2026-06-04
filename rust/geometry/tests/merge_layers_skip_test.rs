@@ -23,8 +23,8 @@
 //! two unit-level guarantees.
 
 use ifc_lite_core::EntityDecoder;
-use ifc_lite_geometry::{propagate_voids_to_parts, MaterialLayerIndex};
-use rustc_hash::{FxHashMap, FxHashSet};
+use ifc_lite_geometry::compute_parts_to_skip;
+use rustc_hash::FxHashSet;
 
 /// Multilayer wall:
 ///  - parent `IfcWall` #100 with its own representation (#51)
@@ -89,18 +89,12 @@ END-ISO-10303-21;
     .to_string()
 }
 
-/// Compose the skip set the same way the WASM layer does.
+/// The skip set is now produced by the shared `compute_parts_to_skip` driver
+/// (#913 Phase 4) — the WASM layer and any future backend consumer call the
+/// exact same function this exercises.
 fn build_skip_set(content: &str) -> FxHashSet<u32> {
     let mut decoder = EntityDecoder::new(content);
-    let material_layer_index = MaterialLayerIndex::from_content(content, &mut decoder);
-    let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let part_to_parent = propagate_voids_to_parts(&mut void_index, content, &mut decoder);
-
-    part_to_parent
-        .iter()
-        .filter(|(_, parent_id)| material_layer_index.is_sliceable(**parent_id))
-        .map(|(part_id, _)| *part_id)
-        .collect()
+    compute_parts_to_skip(content, &mut decoder)
 }
 
 #[test]

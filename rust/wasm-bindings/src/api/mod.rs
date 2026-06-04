@@ -224,20 +224,10 @@ impl IfcAPI {
             }
         }
 
-        let material_layer_index =
-            ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder);
-        let mut void_index_scratch: rustc_hash::FxHashMap<u32, Vec<u32>> =
-            rustc_hash::FxHashMap::default();
-        let part_to_parent = ifc_lite_geometry::propagate_voids_to_parts(
-            &mut void_index_scratch,
-            content,
-            decoder,
-        );
-        let skip_set: rustc_hash::FxHashSet<u32> = part_to_parent
-            .into_iter()
-            .filter(|(_, parent_id)| material_layer_index.is_sliceable(*parent_id))
-            .map(|(part_id, _)| part_id)
-            .collect();
+        // The layer/void driver now lives in the geometry crate next to its
+        // kernels (#913 Phase 4 / §2.6); this method just caches its result
+        // per content so it isn't recomputed on every batch.
+        let skip_set = ifc_lite_geometry::compute_parts_to_skip(content, decoder);
 
         let arc = std::sync::Arc::new(skip_set);
         let mut slot = self

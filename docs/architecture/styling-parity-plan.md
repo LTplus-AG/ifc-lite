@@ -10,9 +10,14 @@ Phase 2e is done: `wasm-bindings` now delegates indexed-colour, material-chain, 
 submesh resolution to `processing::style` (the duplicated logic is deleted), so the
 two Rust paths share one resolver — verified by `cargo build -p ifc-lite-wasm
 --target wasm32-unknown-unknown`. The `IfcMappedItem` sub-mesh style traversal (§2.7)
-is now in the backend too (`find_geometry_item_color`). Remaining: the deeper §4.2
-single-batch `StyleIndex` API (cohesion, not correctness) and the Phase 4 layer/void
-driver reconciliation. Owner: geometry / processing core.
+is now in the backend too (`find_geometry_item_color`); the sub-mesh colour
+**precedence + transparent/opaque counter** are a single shared
+`style::resolve_submesh_color` (§4.2); and the layer/void **driver** is factored into
+`ifc_lite_geometry::compute_parts_to_skip`, consumed by the browser and validated by
+`merge_layers_skip_test` (Phase 4). **Remaining: only** the deeper §4.2 single-scan
+`StyleIndex::from_content` entry point — a pure cohesion refactor (every resolver, the
+precedence, and the counter are already shared functions; folding them into one
+stateful scan is the last step, not a correctness gap). Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
 Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`,
 `docs/architecture/clash-detection-plan.md` (the "one shared core" precedent).
@@ -369,16 +374,29 @@ Phase 0 first so every later refactor is provably behavior-preserving.
   + `resolve_element_submesh_colors`). The logic is now shared as leaf functions; folding
   it into one stateful resolver is a cohesion refactor, not a correctness gap.
 
-### Phase 3 — Consumers go thin
-- `processing` + `apps/server` call `resolve_element_submesh_colors` and delete their
-  own resolution. `wasm-bindings` keeps only the `StyleIndex` build + `Rgba` u8 SAB
-  transport + the worker-side batch call; `api/styling.rs` styling logic is removed.
-- Net: the full styling pipeline exists once.
+### Phase 3 — Consumers go thin — **mostly done**
+- ✅ `wasm-bindings` no longer carries colour-resolution logic: indexed-colour,
+  material-chain, submesh selection, the precedence and the transparent/opaque counter
+  all live in `processing::style` and are *called* from `api/styling.rs` (which keeps
+  only the span→entity decode + the `Rgba` u8 SAB transport).
+- ✅ The sub-mesh colour decision is a single shared
+  `style::resolve_submesh_color` (precedence + stateful counter); `processor.rs` and the
+  browser both call it.
+- ⏭️ Remaining: the literal §4.2 `resolve_element_submesh_colors` *whole-element* batch
+  call over a `StyleIndex::from_content` — a cohesion refactor on top of the now-shared
+  leaf functions, not a behaviour change.
 
-### Phase 4 — Reconcile `merge_layers` / void drivers (§2.6)
-- Factor the layer/void *driver* (parts-to-skip when parent sliceable; void
-  propagation to aggregated parts) into a shared `processing`/`geometry` helper used
-  by both `api/mod.rs` and `processor.rs`.
+### Phase 4 — Reconcile `merge_layers` / void drivers (§2.6) — **done**
+- ✅ The layer/void *driver* — parts-to-skip when the parent's build-up is sliceable —
+  is now `ifc_lite_geometry::compute_parts_to_skip`, composing the already-shared
+  `MaterialLayerIndex` + `propagate_voids_to_parts` kernels in the geometry crate.
+  `wasm-bindings/api/mod.rs` calls it (keeping only its per-content cache);
+  `tests/merge_layers_skip_test.rs` exercises the shared driver directly (its prior
+  inline copy of the composition is deleted). Void propagation to aggregated parts
+  (`propagate_voids_to_parts`) was already a shared geometry kernel.
+- Note: `merge_layers` is a browser-interactive feature; the backend renders all
+  aggregated parts (with propagated voids) and so doesn't consume the skip set today —
+  the driver lives in the shared crate ready for it if that changes.
 
 ### Phase 5 — Quantization contract (§2.5)
 - Express the browser's 8-bit step only via `Rgba::to_rgba8`/`from_rgba8`; document

@@ -35,46 +35,12 @@ fn extract_color_from_indexed_colour_map(
     end: usize,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<(u32, [f32; 4])> {
+    // Delegate to the canonical resolver in `ifc_lite_processing::style`
+    // (issue #913, Phase 2e). The browser keeps only the span→entity decode;
+    // the dominant-colour logic lives once, shared with the backend.
     let entity = decoder.decode_at_with_id(id, start, end).ok()?;
-    let geometry_id = entity.get_ref(0)?;
-    let opacity = entity
-        .get(1)
-        .and_then(|a| a.as_float())
-        .map(|v| v as f32)
-        .unwrap_or(1.0);
-    let colours_id = entity.get_ref(2)?;
-    let index_attr = entity.get(3)?;
-    let index_list = index_attr.as_list()?;
-
-    // Pick the dominant colour index. Single-colour maps (the common case)
-    // skip the histogram entirely.
-    let dominant_index: usize = if index_list.is_empty() {
-        return None;
-    } else if index_list.len() == 1 {
-        index_list[0].as_int()? as usize
-    } else {
-        let mut counts: rustc_hash::FxHashMap<i64, u32> = rustc_hash::FxHashMap::default();
-        for v in index_list {
-            if let Some(i) = v.as_int() {
-                *counts.entry(i).or_insert(0) += 1;
-            }
-        }
-        let dominant = counts.iter().max_by_key(|(_, c)| *c)?;
-        *dominant.0 as usize
-    };
-
-    // Resolve IfcColourRgbList.ColourList[dominant_index]. Index is 1-based
-    // per ISO 10303-21 LIST conventions.
-    let colours = decoder.decode_by_id(colours_id).ok()?;
-    let colour_list = colours.get(0)?.as_list()?;
-    let colour_idx_zero_based = dominant_index.checked_sub(1).unwrap_or(0);
-    let rgb_tuple = colour_list.get(colour_idx_zero_based)?.as_list()?;
-
-    let r = rgb_tuple.first().and_then(|v| v.as_float())? as f32;
-    let g = rgb_tuple.get(1).and_then(|v| v.as_float())? as f32;
-    let b = rgb_tuple.get(2).and_then(|v| v.as_float())? as f32;
-
-    Some((geometry_id, [r, g, b, opacity.clamp(0.0, 1.0)]))
+    let map = ifc_lite_processing::style::resolve_indexed_colour_map_full(&entity, decoder)?;
+    Some((map.geometry_id, map.dominant().to_array()))
 }
 
 /// Find color for a geometry item, following MappedItem references if needed.
@@ -554,42 +520,12 @@ pub(crate) fn build_material_style_index(
     orphan_styled_items: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> {
-    use rustc_hash::FxHashMap;
-
-    let mut material_styles: FxHashMap<u32, Vec<[f32; 4]>> = FxHashMap::default();
-
-    for (&material_id, styled_repr_ids) in material_def_reprs {
-        for &styled_repr_id in styled_repr_ids {
-            // Decode the IfcStyledRepresentation
-            // Inherits from IfcRepresentation: ContextOfItems(0), RepresentationIdentifier(1),
-            //   RepresentationType(2), Items(3)
-            let styled_repr = match decoder.decode_by_id(styled_repr_id) {
-                Ok(entity) => entity,
-                Err(_) => continue,
-            };
-
-            let items_attr = match styled_repr.get(3) {
-                Some(attr) => attr,
-                None => continue,
-            };
-
-            let items_list = match items_attr.as_list() {
-                Some(list) => list,
-                None => continue,
-            };
-
-            // Each item should be an orphan IfcStyledItem (already collected)
-            for item in items_list {
-                if let Some(styled_item_id) = item.as_entity_ref() {
-                    if let Some(&color) = orphan_styled_items.get(&styled_item_id) {
-                        material_styles.entry(material_id).or_default().push(color);
-                    }
-                }
-            }
-        }
-    }
-
-    material_styles
+    // Canonical implementation lives in `ifc_lite_processing::style` (#913).
+    ifc_lite_processing::style::build_material_style_index(
+        material_def_reprs,
+        orphan_styled_items,
+        decoder,
+    )
 }
 
 /// Build element → material colors map.
@@ -610,7 +546,9 @@ pub(crate) fn build_element_material_styles(
         let mut colors: Vec<[f32; 4]> = Vec::new();
 
         // Collect all individual material IDs from the material select
-        let material_ids = resolve_material_ids(material_select_id, decoder);
+        // (canonical SELECT-walk in `ifc_lite_processing::style`, #913).
+        let material_ids =
+            ifc_lite_processing::style::resolve_material_ids(material_select_id, decoder);
 
         for material_id in material_ids {
             if let Some(mat_colors) = material_styles.get(&material_id) {
@@ -626,135 +564,14 @@ pub(crate) fn build_element_material_styles(
     result
 }
 
-/// Resolve a material select (which could be IfcMaterial, IfcMaterialList,
-/// IfcMaterialLayerSet, IfcMaterialLayerSetUsage, IfcMaterialConstituentSet,
-/// IfcMaterialProfileSet) into a list of individual IfcMaterial IDs.
-fn resolve_material_ids(
-    material_select_id: u32,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Vec<u32> {
-    resolve_material_ids_inner(material_select_id, decoder, 0)
-}
-
-/// Maximum recursion depth for material resolution (guards against cycles in malformed IFC).
-const MAX_MATERIAL_RESOLVE_DEPTH: u8 = 4;
-
-fn resolve_material_ids_inner(
-    material_select_id: u32,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-    depth: u8,
-) -> Vec<u32> {
-    if depth >= MAX_MATERIAL_RESOLVE_DEPTH {
-        return vec![];
-    }
-
-    use ifc_lite_core::IfcType;
-
-    let entity = match decoder.decode_by_id(material_select_id) {
-        Ok(e) => e,
-        Err(_) => return vec![],
-    };
-
-    match entity.ifc_type {
-        IfcType::IfcMaterial => {
-            vec![material_select_id]
-        }
-        IfcType::IfcMaterialList => {
-            // Attr 0: Materials (list of IfcMaterial refs)
-            extract_refs_from_list(&entity, 0)
-        }
-        IfcType::IfcMaterialLayerSetUsage => {
-            // Attr 0: ForLayerSet (ref to IfcMaterialLayerSet)
-            if let Some(layer_set_id) = entity.get_ref(0) {
-                resolve_material_ids_inner(layer_set_id, decoder, depth + 1)
-            } else {
-                vec![]
-            }
-        }
-        IfcType::IfcMaterialLayerSet => {
-            // Attr 0: MaterialLayers (list of IfcMaterialLayer refs)
-            // IfcMaterialLayer: Attr 0: Material (ref to IfcMaterial)
-            extract_nested_material_ids(&entity, 0, 0, decoder)
-        }
-        IfcType::IfcMaterialConstituentSet => {
-            // Attr 2: MaterialConstituents (list of IfcMaterialConstituent refs)
-            // IfcMaterialConstituent: Attr 2: Material (ref to IfcMaterial)
-            extract_nested_material_ids(&entity, 2, 2, decoder)
-        }
-        IfcType::IfcMaterialProfileSet => {
-            // Attr 2: MaterialProfiles (list of IfcMaterialProfile refs)
-            // IfcMaterialProfile: Attr 2: Material (ref to IfcMaterial)
-            extract_nested_material_ids(&entity, 2, 2, decoder)
-        }
-        IfcType::IfcMaterialProfileSetUsage | IfcType::IfcMaterialProfileSetUsageTapering => {
-            // Attr 0: ForProfileSet (ref to IfcMaterialProfileSet)
-            // IfcMaterialProfileSetUsageTapering is a subtype with the same attr layout
-            if let Some(profile_set_id) = entity.get_ref(0) {
-                resolve_material_ids_inner(profile_set_id, decoder, depth + 1)
-            } else {
-                vec![]
-            }
-        }
-        _ => {
-            // Unknown material type — no colors to extract
-            vec![]
-        }
-    }
-}
-
-/// Extract material IDs from a list of container entities (layers, constituents, profiles).
-/// `container_list_attr_idx` is the attribute index of the list on the parent entity.
-/// `material_attr_idx` is the attribute index of the Material ref on each child entity.
-fn extract_nested_material_ids(
-    entity: &ifc_lite_core::DecodedEntity,
-    container_list_attr_idx: usize,
-    material_attr_idx: usize,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Vec<u32> {
-    let container_ids = extract_refs_from_list(entity, container_list_attr_idx);
-    let mut materials = Vec::new();
-    for container_id in container_ids {
-        if let Ok(container) = decoder.decode_by_id(container_id) {
-            if let Some(mat_id) = container.get_ref(material_attr_idx) {
-                materials.push(mat_id);
-            }
-        }
-    }
-    materials
-}
-
-/// Helper: extract entity references from a list attribute.
-fn extract_refs_from_list(entity: &ifc_lite_core::DecodedEntity, index: usize) -> Vec<u32> {
-    entity
-        .get(index)
-        .and_then(|attr| attr.as_list())
-        .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
-        .unwrap_or_default()
-}
-
 /// Flatten a `material_id -> Vec<color>` map into `material_id -> color` by
-/// picking the first opaque color per material (falling back to the first
-/// color overall). Used to key layered sub-mesh colour lookups on material
-/// ID — each layer slice's `geometry_id` is its `IfcMaterial` entity ID.
+/// picking the first opaque color per material. Used to key layered sub-mesh
+/// colour lookups on material ID — each layer slice's `geometry_id` is its
+/// `IfcMaterial` entity ID. Canonical impl in `ifc_lite_processing::style` (#913).
 pub(crate) fn flatten_material_color_index(
     material_styles: &rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
 ) -> rustc_hash::FxHashMap<u32, [f32; 4]> {
-    use rustc_hash::FxHashMap;
-    let mut out: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    for (&mat_id, colors) in material_styles {
-        if colors.is_empty() {
-            continue;
-        }
-        // Prefer an opaque color (alpha >= threshold) so walls don't end up
-        // rendered as the glass-style color when a material carries both.
-        let color = colors
-            .iter()
-            .find(|c| c[3] >= TRANSPARENCY_ALPHA_THRESHOLD)
-            .copied()
-            .unwrap_or(colors[0]);
-        out.insert(mat_id, color);
-    }
-    out
+    ifc_lite_processing::style::flatten_material_color_index(material_styles)
 }
 
 /// Process a single entity for material-related data collection.
@@ -839,54 +656,20 @@ pub(crate) fn resolve_submesh_color(
         return color;
     }
 
-    // 2. Material-based fallback (alternating transparent/opaque)
+    // 2. Material-based fallback (alternating transparent/opaque).
+    // Selection rule shared with the backend via `ifc_lite_processing::style`.
     if let Some(colors) = material_colors {
         let prefer_transparent = *mat_color_idx % 2 == 0;
         *mat_color_idx += 1;
-        if let Some(color) = pick_material_style_for_submesh(colors, prefer_transparent) {
+        if let Some(color) =
+            ifc_lite_processing::style::pick_material_style_for_submesh(colors, prefer_transparent)
+        {
             return color;
         }
     }
 
     // 3. Element-level style or default
     element_color.unwrap_or(default_color)
-}
-
-/// Alpha threshold for distinguishing transparent (glass) from opaque materials.
-const TRANSPARENCY_ALPHA_THRESHOLD: f32 = 0.95;
-
-/// Pick the best material style for a sub-mesh.
-/// Prefers transparent colors (glass) for sub-meshes without a direct style,
-/// since glass sub-elements are the most common case where material-based
-/// styling is the only source of appearance data.
-pub(crate) fn pick_material_style_for_submesh(
-    material_colors: &[[f32; 4]],
-    prefer_transparent: bool,
-) -> Option<[f32; 4]> {
-    if material_colors.is_empty() {
-        return None;
-    }
-
-    if prefer_transparent {
-        // Prefer transparent (glass) — alpha < threshold
-        if let Some(color) = material_colors
-            .iter()
-            .find(|c| c[3] < TRANSPARENCY_ALPHA_THRESHOLD)
-        {
-            return Some(*color);
-        }
-    } else {
-        // Prefer opaque (frame) — alpha >= threshold
-        if let Some(color) = material_colors
-            .iter()
-            .find(|c| c[3] >= TRANSPARENCY_ALPHA_THRESHOLD)
-        {
-            return Some(*color);
-        }
-    }
-
-    // Fallback: first available color
-    Some(material_colors[0])
 }
 
 /// Resolve element color inline during processing by following its

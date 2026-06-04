@@ -32,12 +32,16 @@ use ifc_lite_core::IfcType;
 
 mod indexed_colour;
 mod material;
-pub(crate) use indexed_colour::{
-    resolve_indexed_colour_map_full, split_mesh_by_indexed_colour, FullIndexedColourMap,
+// Public styling resolvers — the single shared implementation that both the
+// native pipeline and the browser `wasm-bindings` call (issue #913, Phase 2e).
+// `split_mesh_by_indexed_colour` stays crate-internal: it is a mesh-pipeline
+// concern the processor owns, not a colour-resolution primitive consumers need.
+pub use indexed_colour::{resolve_indexed_colour_map_full, FullIndexedColourMap};
+pub use material::{
+    build_element_material_colors, build_material_style_index, flatten_material_color_index,
+    pick_material_style_for_submesh, pick_opaque_first, resolve_material_ids,
 };
-pub(crate) use material::{
-    build_element_material_colors, pick_material_style_for_submesh, pick_opaque_first,
-};
+pub(crate) use indexed_colour::split_mesh_by_indexed_colour;
 
 /// Alpha at or above which a color is treated as opaque.
 ///

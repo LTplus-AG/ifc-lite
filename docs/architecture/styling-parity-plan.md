@@ -1,13 +1,17 @@
 # IFC Styling & Default-Rendering Parity — Research & Plan
 
-Status: **Phases 0–1 + 2a–2d(backend) landed.** Canonical `ifc_lite_processing::style`
-module is the single default-color table (consumed by `processing`, `wasm-bindings`,
-`apps/server`; CI guard forbids new copies). The backend now has full styling parity
-with the browser's intent: `IfcIndexedColourMap` dominant (#663) **and** per-triangle
+Status: **Phases 0–1 + 2a–2e landed.** Canonical `ifc_lite_processing::style`
+module is the single default-color table **and** the single colour-resolution
+implementation — `processing`, `wasm-bindings`, and `apps/server` all consume it
+(CI guard forbids new copies). The backend has full styling parity with the
+browser's intent: `IfcIndexedColourMap` dominant (#663) **and** per-triangle
 (#858), the material chain (#407), and submesh transparent/opaque preference (§2.3).
-The **only** remaining Phase 2 item is pointing `wasm-bindings` at the shared resolver
-(needs a CI / LLVM-20 build to compile + verify — not buildable in the dev container).
-Owner: geometry / processing core.
+Phase 2e is done: `wasm-bindings` now delegates indexed-colour, material-chain, and
+submesh resolution to `processing::style` (the duplicated logic is deleted), so the
+two Rust paths share one resolver — verified by `cargo build -p ifc-lite-wasm
+--target wasm32-unknown-unknown`. Remaining: the deeper §4.2 single-batch
+`StyleIndex` API (cohesion, not correctness), Phase 4 layer/void driver, and the
+`IfcMappedItem` style traversal (§2.7) on the backend. Owner: geometry / processing core.
 Tracking: [#913](https://github.com/LTplus-AG/ifc-lite/issues/913).
 Related: `docs/architecture/rendering-pipeline.md`, `docs/architecture/geometry-pipeline.md`,
 `docs/architecture/clash-detection-plan.md` (the "one shared core" precedent).
@@ -344,13 +348,22 @@ Phase 0 first so every later refactor is provably behavior-preserving.
 - ✅ `tests/styling_submesh_split.rs`: a window with an opaque-frame + transparent-glass
   material list emits two differently-coloured sub-meshes.
 
-**Phase 2e — remaining (not started)**
-- Point `wasm-bindings` at the shared resolver: delete `api/styling.rs`'s duplicated
-  extraction and call `processing::style` from the pre-pass, keeping only the `Rgba`
-  u8 SAB transport. Needs an LLVM-20 / CI build to compile + verify (not buildable in
-  the current dev container). This also restores wasm's per-triangle indexed-colour
-  fidelity that #874 dropped, and brings the material chain + submesh split to the
-  browser.
+**Phase 2e — point `wasm-bindings` at the shared resolver — done**
+- ✅ `wasm-bindings/src/api/styling.rs` no longer carries its own colour logic.
+  The duplicated `extract_color_from_indexed_colour_map`, `build_material_style_index`,
+  `resolve_material_ids` (+ the `IfcMaterialList`/`LayerSet`/`ConstituentSet`/`ProfileSet`
+  SELECT-walk and depth guard), `flatten_material_color_index`, and
+  `pick_material_style_for_submesh` are deleted; each call site now delegates to
+  `ifc_lite_processing::style`. The browser keeps only its span→entity decode, the
+  `combined_pre_pass` plumbing, and the `Rgba` u8 SAB transport — no colour decisions.
+- ✅ Verified locally with `cargo build -p ifc-lite-wasm --target wasm32-unknown-unknown`
+  (clang 21 compiles the manifold C++ shim; the LLVM-20 note applied only to the
+  old dev container). CI's `Build packages + WASM` job exercises the full wasm-pack build.
+- Note: `find_color_for_geometry` (the `IfcMappedItem` style traversal, §2.7) is the
+  one resolver still living only in wasm — tracked below.
+- Not yet done: the deeper §4.2 *single batch entry point* (`StyleIndex::from_content`
+  + `resolve_element_submesh_colors`). The logic is now shared as leaf functions; folding
+  it into one stateful resolver is a cohesion refactor, not a correctness gap.
 
 ### Phase 3 — Consumers go thin
 - `processing` + `apps/server` call `resolve_element_submesh_colors` and delete their

@@ -9,7 +9,7 @@
 
 mod georeferencing;
 mod processor;
-mod style;
+pub mod style;
 mod symbolic;
 mod types;
 

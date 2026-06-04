@@ -25,7 +25,7 @@ use ifc_lite_geometry::Mesh;
 /// index into it (in `CoordIndex` order, which the triangulated-face-set
 /// processor preserves 1:1).
 #[derive(Debug, Clone)]
-pub(crate) struct FullIndexedColourMap {
+pub struct FullIndexedColourMap {
     /// The face set this map colours (`MappedTo`).
     pub geometry_id: u32,
     /// The colour palette (`IfcColourRgbList.ColourList`).
@@ -36,7 +36,7 @@ pub(crate) struct FullIndexedColourMap {
 
 impl FullIndexedColourMap {
     /// Number of distinct palette entries actually referenced by triangles.
-    pub fn distinct_used(&self) -> usize {
+    pub(crate) fn distinct_used(&self) -> usize {
         let mut seen = self.triangle_palette.clone();
         seen.sort_unstable();
         seen.dedup();
@@ -66,7 +66,7 @@ impl FullIndexedColourMap {
 /// - attr 1: `Opacity` (optional `0..=1`, `1.0` when omitted)
 /// - attr 2: `Colours` → `IfcColourRgbList` (attr 0 = `ColourList`)
 /// - attr 3: `ColourIndex` → 1-based palette index per triangle
-pub(crate) fn resolve_indexed_colour_map_full(
+pub fn resolve_indexed_colour_map_full(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Option<FullIndexedColourMap> {

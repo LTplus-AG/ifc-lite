@@ -39,7 +39,7 @@ const MAX_MATERIAL_RESOLVE_DEPTH: u8 = 4;
 /// - `orphan_styled_items`: styled-item id → colour, for styled items with a
 ///   null `Item` (i.e. material appearances).
 /// - `element_to_material`: element id → material `SELECT` id.
-pub(crate) fn build_element_material_colors(
+pub fn build_element_material_colors(
     material_def_reprs: &FxHashMap<u32, Vec<u32>>,
     orphan_styled_items: &FxHashMap<u32, [f32; 4]>,
     element_to_material: &FxHashMap<u32, u32>,
@@ -69,8 +69,21 @@ pub(crate) fn build_element_material_colors(
     out
 }
 
+/// Flatten a `material id → colours` map into `material id → colour` by picking
+/// the first opaque colour per material ([`pick_opaque_first`]). Used to key
+/// layered sub-mesh colour lookups on material id — each layer slice's
+/// `geometry_id` is its `IfcMaterial` entity id.
+pub fn flatten_material_color_index(
+    material_styles: &FxHashMap<u32, Vec<[f32; 4]>>,
+) -> FxHashMap<u32, [f32; 4]> {
+    material_styles
+        .iter()
+        .filter_map(|(&mat_id, colors)| pick_opaque_first(colors).map(|c| (mat_id, c)))
+        .collect()
+}
+
 /// Pick the first opaque colour (alpha ≥ threshold), else the first colour.
-pub(crate) fn pick_opaque_first(colors: &[[f32; 4]]) -> Option<[f32; 4]> {
+pub fn pick_opaque_first(colors: &[[f32; 4]]) -> Option<[f32; 4]> {
     if colors.is_empty() {
         return None;
     }
@@ -87,7 +100,7 @@ pub(crate) fn pick_opaque_first(colors: &[[f32; 4]]) -> Option<[f32; 4]> {
 /// distributes its frame (opaque) and glazing (transparent) colours across
 /// sub-meshes instead of painting every part the same. `prefer_transparent`
 /// is toggled by the caller per sub-mesh.
-pub(crate) fn pick_material_style_for_submesh(
+pub fn pick_material_style_for_submesh(
     colors: &[[f32; 4]],
     prefer_transparent: bool,
 ) -> Option<[f32; 4]> {
@@ -104,7 +117,7 @@ pub(crate) fn pick_material_style_for_submesh(
 
 /// material id → colours, by following each material's styled representations to
 /// the orphan styled items they reference.
-fn build_material_style_index(
+pub fn build_material_style_index(
     material_def_reprs: &FxHashMap<u32, Vec<u32>>,
     orphan_styled_items: &FxHashMap<u32, [f32; 4]>,
     decoder: &mut EntityDecoder,
@@ -127,7 +140,7 @@ fn build_material_style_index(
 }
 
 /// Resolve a material `SELECT` to the individual `IfcMaterial` ids it contains.
-fn resolve_material_ids(material_select_id: u32, decoder: &mut EntityDecoder) -> Vec<u32> {
+pub fn resolve_material_ids(material_select_id: u32, decoder: &mut EntityDecoder) -> Vec<u32> {
     resolve_material_ids_inner(material_select_id, decoder, 0)
 }
 

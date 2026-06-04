@@ -69,6 +69,7 @@ import {
   computeSlabSplitGeometry,
   type SlabLikeType,
 } from '@/lib/slab-edit.js';
+import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
 
 /**
@@ -676,7 +677,9 @@ function generateChangeSetId(): string {
  */
 function getOrCreateStoreEditor(
   get: () => ViewerState,
-  set: (partial: Partial<ViewerState>) => void,
+  // Editors are cached in-place on the (non-reactive) `storeEditors`
+  // Map below, so the Zustand setter is intentionally unused here.
+  _set: (partial: Partial<ViewerState>) => void,
   modelId: string,
 ): StoreEditor | null {
   const state = get();
@@ -691,9 +694,14 @@ function getOrCreateStoreEditor(
   if (!dataStore) return null;
 
   const editor = new StoreEditor(dataStore, view);
-  const next = new Map(state.storeEditors);
-  next.set(modelId, editor);
-  set({ storeEditors: next });
+  // `storeEditors` is an internal, non-reactive cache (no component
+  // subscribes to it). Mutate the existing Map in place rather than
+  // `set({...})` — the read functions (readSlabFootprint, etc.) call
+  // this during render via GeometryEditCard's `splittable` memo, and a
+  // reactive `set()` there triggers React's "cannot update a component
+  // while rendering a different component" warning. In-place caching
+  // keeps the editor memoised without scheduling a render-phase update.
+  state.storeEditors.set(modelId, editor);
   return editor;
 }
 
@@ -1862,7 +1870,7 @@ export const createMutationSlice: StateCreator<
     if (!editor) return null;
     const dataStore = get().models.get(modelId)?.ifcDataStore;
     if (!dataStore) return null;
-    const chain = resolveSlabEditChain(dataStore, view, editor, expressId);
+    const chain = resolveSlabEditChain(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore));
     if (!chain) return null;
     const storeyId = dataStore.spatialHierarchy?.elementToStorey.get(expressId);
     const storeyElevation =
@@ -1883,7 +1891,7 @@ export const createMutationSlice: StateCreator<
     const { view, editor, dataStore, storeyExpressId } = ctx;
     const state = get();
 
-    const chain = resolveSlabEditChain(dataStore, view, editor, expressId);
+    const chain = resolveSlabEditChain(dataStore, view, editor, expressId, getModelLengthUnitScale(dataStore));
     if (!chain) {
       return {
         ok: false,

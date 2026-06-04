@@ -99,6 +99,78 @@ describe('slab-edit', () => {
     assert.deepStrictEqual(chain.footprint[2], [11, 22]);
   });
 
+  it('applies the IfcExtrudedAreaSolid.Position transform (offset + axis flip)', () => {
+    // Real authoring tools bake the slab's plan offset/rotation into the
+    // solid Position rather than the IfcLocalPlacement. Here the solid is
+    // placed at (100, 50) with RefDirection (-1,0,0) + Axis (0,0,-1) — the
+    // 180°-about-the-vertical flip seen in the BIMcollab fixture (#90).
+    const entities = makePolygonSlabFixture();
+    entities.push(
+      { expressId: 70, type: 'IFCCARTESIANPOINT', attributes: [[100, 50, 0]] },
+      { expressId: 71, type: 'IFCDIRECTION', attributes: [[0, 0, -1]] }, // Axis (Z)
+      { expressId: 72, type: 'IFCDIRECTION', attributes: [[-1, 0, 0]] }, // RefDirection (X)
+      { expressId: 73, type: 'IFCAXIS2PLACEMENT3D', attributes: [70, 71, 72] },
+    );
+    // Point the solid's Position slot (attr 1) at the new placement.
+    entities.find((e) => e.expressId === 93)!.attributes = [92, 73, null, 0.25];
+
+    const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveSlabEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveSlabEditChain>[1];
+    const chain = resolveSlabEditChain(dataStoreStub, view, editor, 100);
+    assert.ok(chain);
+    // X = (-1,0,0), Y = Z×X = (0,1,0) → solidXform(p) = (100 - p.x, 50 + p.y).
+    // Then + placement origin (10, 20).
+    //   (0,0) → (100,50) → (110,70)
+    //   (2,0) → (98,50)  → (108,70)
+    //   (1,2) → (99,52)  → (109,72)
+    assert.deepStrictEqual(chain.footprint[0], [110, 70]);
+    assert.deepStrictEqual(chain.footprint[1], [108, 70]);
+    assert.deepStrictEqual(chain.footprint[2], [109, 72]);
+  });
+
+  it('normalizes a non-unit-length Axis/RefDirection in the solid Position', () => {
+    // IfcDirection.DirectionRatios are ratios, not guaranteed unit
+    // vectors. A valid Axis=(0,0,2) must not leak its length into the
+    // Y basis (Y = Z×X) or skew the Gram-Schmidt projection — otherwise
+    // the footprint disagrees with the (normalizing) renderer. With
+    // proper normalization the result matches an identity-rotation
+    // placement: solidXform(p) = (100 + p.x, 50 + p.y).
+    const entities = makePolygonSlabFixture();
+    entities.push(
+      { expressId: 70, type: 'IFCCARTESIANPOINT', attributes: [[100, 50, 0]] },
+      { expressId: 71, type: 'IFCDIRECTION', attributes: [[0, 0, 2]] }, // non-unit Axis (Z)
+      { expressId: 72, type: 'IFCDIRECTION', attributes: [[3, 0, 0]] }, // non-unit RefDirection (X)
+      { expressId: 73, type: 'IFCAXIS2PLACEMENT3D', attributes: [70, 71, 72] },
+    );
+    entities.find((e) => e.expressId === 93)!.attributes = [92, 73, null, 0.25];
+
+    const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveSlabEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveSlabEditChain>[1];
+    const chain = resolveSlabEditChain(dataStoreStub, view, editor, 100);
+    assert.ok(chain);
+    //   (0,0) → (100,50) → +placement(10,20) → (110,70)
+    //   (2,0) → (102,50) → (112,70)
+    //   (1,2) → (101,52) → (111,72)   [buggy raw-Axis would give y=74]
+    assert.deepStrictEqual(chain.footprint[0], [110, 70]);
+    assert.deepStrictEqual(chain.footprint[1], [112, 70]);
+    assert.deepStrictEqual(chain.footprint[2], [111, 72]);
+  });
+
+  it('ignores lengthUnitScale for authored (overlay) entities', () => {
+    // The in-store builders already emit metres, so a freshly-authored
+    // slab must NOT be re-scaled even on a millimetre model — otherwise
+    // re-splitting a just-cut half would shrink it 1000×. The stub serves
+    // overlay entities, so the footprint stays in its given units despite
+    // the 0.001 scale.
+    const entities = makePolygonSlabFixture();
+    const editor = new StubStoreEditor(entities) as unknown as Parameters<typeof resolveSlabEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveSlabEditChain>[1];
+    const chain = resolveSlabEditChain(dataStoreStub, view, editor, 100, 0.001);
+    assert.ok(chain);
+    assert.deepStrictEqual(chain.footprint[0], [10, 20]);
+    assert.strictEqual(chain.thickness, 0.25);
+  });
+
   it('strips the redundant closing vertex from an IfcPolyline', () => {
     const entities = makePolygonSlabFixture();
     // Append a duplicate of the first vertex to the polyline.

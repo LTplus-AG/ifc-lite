@@ -970,21 +970,28 @@ export function PropertiesPanel() {
     }));
   }, [nativeDetails]);
 
+  // Overlay (authored) entities — split halves, duplicates, scripted
+  // adds — live only in the StoreEditor overlay, NOT the parsed store.
+  // `modelQuery.entity()` always returns a node, and its getters fall
+  // back to the 'Unknown'/'' sentinels for ids absent from the parsed
+  // table (entity-table.ts#getTypeName). Those non-null sentinels would
+  // shadow the overlay record in an `entityNode ?? overlay` chain, so
+  // when an overlay record exists it MUST take precedence.
   const renderedEntityType = isNativeLazySelection
     ? (nativeDetails?.summary.type ?? 'Loading...')
-    : (entityNode?.type ?? overlayEntity?.type ?? 'Unknown');
+    : (overlayEntity?.type ?? entityNode?.type ?? 'Unknown');
   const renderedEntityName = isNativeLazySelection
     ? (nativeDetails?.summary.name ?? `#${selectedEntity?.expressId ?? ''}`)
-    : (entityNode?.name ?? overlayAttr(2) ?? undefined);
+    : (overlayAttr(2) ?? entityNode?.name ?? undefined);
   const renderedEntityGlobalId = isNativeLazySelection
     ? (nativeDetails?.summary.globalId ?? null)
-    : (entityNode?.globalId ?? overlayAttr(0));
+    : (overlayAttr(0) ?? entityNode?.globalId);
   const renderedEntityDescription = isNativeLazySelection
     ? undefined
-    : (entityNode?.description ?? overlayAttr(3) ?? undefined);
+    : (overlayAttr(3) ?? entityNode?.description ?? undefined);
   const renderedEntityObjectType = isNativeLazySelection
     ? undefined
-    : (entityNode?.objectType ?? overlayAttr(4) ?? undefined);
+    : (overlayAttr(4) ?? entityNode?.objectType ?? undefined);
   const renderedSpatialInfo = isNativeLazySelection ? nativeSpatialInfo : spatialInfo;
   const renderedOccurrenceProperties = isNativeLazySelection ? nativeOccurrenceProperties : occurrenceProperties;
   const renderedInheritedTypeProperties = isNativeLazySelection ? [] : inheritedTypeProperties;

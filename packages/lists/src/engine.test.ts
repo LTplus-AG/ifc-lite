@@ -277,6 +277,38 @@ describe('executeList', () => {
     expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
   });
 
+  it('targets an explicit expressIds snapshot, dropping ids not in the model', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'snap',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+      expressIds: [1, 3, 999], // 1=Wall-01, 3=Slab-01 exist; 999 is foreign.
+    };
+    const result = executeList(def, provider);
+    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
+  });
+
+  it('expressIds snapshot still honours conditions on top', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'snap2',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [{ source: 'attribute', propertyName: 'Class', operator: 'equals', value: 'IfcWall' }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+      expressIds: [1, 2, 3], // all three, but condition keeps only walls.
+    };
+    const result = executeList(def, provider);
+    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Wall-01', 'Wall-02']);
+  });
+
   it('filters by material name (multi-valued, any-match)', () => {
     const provider = createMockProvider();
     const def: ListDefinition = {

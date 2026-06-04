@@ -65,6 +65,17 @@ export function ListPanel({ onClose }: ListPanelProps) {
   const setActiveListId = useViewerStore((s) => s.setActiveListId);
   const setListResult = useViewerStore((s) => s.setListResult);
   const setListExecuting = useViewerStore((s) => s.setListExecuting);
+  const pendingListDraft = useViewerStore((s) => s.pendingListDraft);
+  const setPendingListDraft = useViewerStore((s) => s.setPendingListDraft);
+
+  // A draft handed off from "Create list" (search filter) opens straight into
+  // the builder for column configuration, then is cleared so it fires once.
+  React.useEffect(() => {
+    if (!pendingListDraft) return;
+    setEditingList(pendingListDraft);
+    setView('builder');
+    setPendingListDraft(null);
+  }, [pendingListDraft, setPendingListDraft]);
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
 

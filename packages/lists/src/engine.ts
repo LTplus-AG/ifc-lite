@@ -135,10 +135,15 @@ export function summariseListRows(
 // ============================================================================
 
 function resolveSourceSet(definition: ListDefinition, provider: ListDataProvider): number[] {
-  const { entityTypes, conditions } = definition;
+  const { entityTypes, conditions, expressIds } = definition;
 
   let entityIds: number[];
-  if (entityTypes.length === 0) {
+  if (expressIds && expressIds.length > 0) {
+    // Explicit snapshot scope (e.g. from a filter result) — target exactly
+    // these ids, keeping only those that resolve to an element in THIS
+    // model (a federated list runs per model, so foreign ids drop out).
+    entityIds = expressIds.filter((id) => provider.getEntityTypeName(id) !== '');
+  } else if (entityTypes.length === 0) {
     // No class constraint — target every element in the model. Requires
     // the provider to enumerate all ids; older providers without it
     // resolve to an empty set rather than throwing.

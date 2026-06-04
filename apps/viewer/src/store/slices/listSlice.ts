@@ -17,6 +17,9 @@ export interface ListSlice {
   listResult: ListResult | null;
   listPanelVisible: boolean;
   listExecuting: boolean;
+  /** A list definition handed off from elsewhere (e.g. "Create list" in the
+   *  search filter) for the ListPanel to open straight into the builder. */
+  pendingListDraft: ListDefinition | null;
 
   // Actions
   setListDefinitions: (definitions: ListDefinition[]) => void;
@@ -28,6 +31,7 @@ export interface ListSlice {
   setListPanelVisible: (visible: boolean) => void;
   toggleListPanel: () => void;
   setListExecuting: (executing: boolean) => void;
+  setPendingListDraft: (definition: ListDefinition | null) => void;
 }
 
 export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set, get) => ({
@@ -37,6 +41,7 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   listResult: null,
   listPanelVisible: false,
   listExecuting: false,
+  pendingListDraft: null,
 
   // Actions
   setListDefinitions: (listDefinitions) => {
@@ -71,4 +76,5 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   setListPanelVisible: (listPanelVisible) => set({ listPanelVisible }),
   toggleListPanel: () => set((state) => ({ listPanelVisible: !state.listPanelVisible })),
   setListExecuting: (listExecuting) => set({ listExecuting }),
+  setPendingListDraft: (pendingListDraft) => set({ pendingListDraft }),
 });

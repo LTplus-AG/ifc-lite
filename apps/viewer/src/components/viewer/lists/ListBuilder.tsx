@@ -212,6 +212,8 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
       createdAt: initial?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
       entityTypes: Array.from(selectedTypes),
+      // Preserve a filter-snapshot scope (set at creation; not edited here).
+      expressIds: initial?.expressIds,
       conditions,
       columns,
       grouping,
@@ -227,6 +229,11 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
     for (const type of selectedTypes) count += typeCounts.get(type) ?? 0;
     return count;
   }, [selectedTypes, typeCounts]);
+
+  // A snapshot list (from "Create list" in the search filter) is frozen to an
+  // explicit element set; the entity-type scope doesn't apply.
+  const snapshotCount = initial?.expressIds?.length ?? 0;
+  const isSnapshot = snapshotCount > 0;
 
   const canRun = columns.length > 0;
 
@@ -250,34 +257,46 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
             />
           </div>
 
-          {/* Scope: entity types */}
+          {/* Scope: entity types — or a frozen filter snapshot */}
           <Section
             label="Scope"
-            hint={selectedTypes.size > 0
-              ? `${totalSelectedEntities.toLocaleString()} elements`
-              : 'All elements'}
+            hint={isSnapshot
+              ? `${snapshotCount.toLocaleString()} elements · snapshot`
+              : selectedTypes.size > 0
+                ? `${totalSelectedEntities.toLocaleString()} elements`
+                : 'All elements'}
           >
-            <div className="flex flex-wrap gap-1.5">
-              {SELECTABLE_TYPES.map(({ type, label }) => {
-                const count = typeCounts.get(type);
-                if (!count) return null;
-                return (
-                  <Chip
-                    key={type}
-                    selected={selectedTypes.has(type)}
-                    onClick={() => toggleType(type)}
-                    trailing={count.toLocaleString()}
-                  >
-                    {label}
-                  </Chip>
-                );
-              })}
-            </div>
-            {selectedTypes.size === 0 && (
-              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                No type selected — the list targets <strong className="font-medium text-foreground">all model elements</strong>.
-                Use filters to narrow by name, material, classification or storey.
+            {isSnapshot ? (
+              <p className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                <strong className="font-medium text-foreground">Filter snapshot</strong> — frozen to the{' '}
+                {snapshotCount.toLocaleString()} elements that matched the search filter. Entity-type scope
+                doesn&apos;t apply; configure columns and grouping below.
               </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {SELECTABLE_TYPES.map(({ type, label }) => {
+                    const count = typeCounts.get(type);
+                    if (!count) return null;
+                    return (
+                      <Chip
+                        key={type}
+                        selected={selectedTypes.has(type)}
+                        onClick={() => toggleType(type)}
+                        trailing={count.toLocaleString()}
+                      >
+                        {label}
+                      </Chip>
+                    );
+                  })}
+                </div>
+                {selectedTypes.size === 0 && (
+                  <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                    No type selected — the list targets <strong className="font-medium text-foreground">all model elements</strong>.
+                    Use filters to narrow by name, material, classification or storey.
+                  </p>
+                )}
+              </>
             )}
           </Section>
 

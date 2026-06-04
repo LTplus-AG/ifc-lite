@@ -101,6 +101,15 @@ export interface ListDefinition {
   /** Which entity types to include */
   entityTypes: IfcTypeEnum[];
 
+  /**
+   * Optional explicit element scope — a snapshot of express IDs (e.g. from a
+   * search/filter result). When present, the list targets exactly these
+   * elements (intersected with each model) and `entityTypes` is ignored;
+   * `conditions` still apply on top. IFC express IDs are file-stable, so the
+   * snapshot survives reloading the same model.
+   */
+  expressIds?: number[];
+
   /** Optional property-based filter conditions */
   conditions: PropertyCondition[];
 

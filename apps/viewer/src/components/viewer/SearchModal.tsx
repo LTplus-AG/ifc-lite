@@ -45,19 +45,23 @@ export function SearchModal() {
   const {
     searchQuery,
     searchModalOpen,
+    searchModalTab,
     searchIndexes,
     models,
     setSearchModalOpen,
     toggleSearchModal,
+    setSearchModalTab,
     setSearchQuery,
   } = useViewerStore(
     useShallow((s) => ({
       searchQuery: s.searchQuery,
       searchModalOpen: s.searchModalOpen,
+      searchModalTab: s.searchModalTab,
       searchIndexes: s.searchIndexes,
       models: s.models,
       setSearchModalOpen: s.setSearchModalOpen,
       toggleSearchModal: s.toggleSearchModal,
+      setSearchModalTab: s.setSearchModalTab,
       setSearchQuery: s.setSearchQuery,
     })),
   );
@@ -189,7 +193,11 @@ export function SearchModal() {
         onEscapeKeyDown={close}
       >
         <DialogTitle className="sr-only">Advanced Search</DialogTitle>
-        <Tabs defaultValue="search" className="flex flex-col flex-1 min-h-0">
+        <Tabs
+          value={searchModalTab}
+          onValueChange={(v) => setSearchModalTab(v as typeof searchModalTab)}
+          className="flex flex-col flex-1 min-h-0"
+        >
           <div className="flex items-center justify-between border-b px-4 py-3">
             <TabsList>
               <TabsTrigger value="search">

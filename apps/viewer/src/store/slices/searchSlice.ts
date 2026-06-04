@@ -60,6 +60,10 @@ export interface SearchVimCycleState {
  */
 export type SearchFieldFilter = MatchField | 'all';
 
+/** Which tab the advanced modal renders. Lets callers (e.g. the inline
+ *  filter button) open straight to the Filter builder. */
+export type SearchModalTab = 'search' | 'filter';
+
 /**
  * Tabular result from a Filter run. Flat snapshot so the modal can
  * re-render rows without holding live evaluator state.
@@ -109,6 +113,8 @@ export interface SearchSlice {
   searchVimCycle: SearchVimCycleState | null;
   /** Advanced search modal (⌘⇧F) is open. */
   searchModalOpen: boolean;
+  /** Which tab the advanced modal shows. Remembered across opens. */
+  searchModalTab: SearchModalTab;
   /** Field chip filter active inside the modal. Defaults to 'all'. */
   searchFieldFilter: SearchFieldFilter;
   /** Per-modelId include filter inside the modal. `null` means all models included. */
@@ -147,6 +153,7 @@ export interface SearchSlice {
 
   setSearchModalOpen: (open: boolean) => void;
   toggleSearchModal: () => void;
+  setSearchModalTab: (tab: SearchModalTab) => void;
   setSearchFieldFilter: (filter: SearchFieldFilter) => void;
   /** Toggle a model in/out of the include filter. If the filter is null,
    *  the first toggle materialises it as "all models except this one". */
@@ -187,6 +194,7 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchIndexes: new Map(),
   searchVimCycle: null,
   searchModalOpen: false,
+  searchModalTab: 'search',
   searchFieldFilter: 'all',
   searchModelFilter: null,
   searchFilterResult: null,
@@ -239,6 +247,7 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
 
   setSearchModalOpen: (searchModalOpen) => set({ searchModalOpen }),
   toggleSearchModal: () => set((state) => ({ searchModalOpen: !state.searchModalOpen })),
+  setSearchModalTab: (searchModalTab) => set({ searchModalTab }),
   setSearchFieldFilter: (searchFieldFilter) => set({ searchFieldFilter }),
 
   toggleSearchModelFilter: (modelId, availableModelIds) =>

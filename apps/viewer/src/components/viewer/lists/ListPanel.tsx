@@ -41,6 +41,7 @@ import {
   createListDataProvider,
 } from '@/lib/lists';
 import type { ListDefinition, ListResult, ListDataProvider } from '@/lib/lists';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
 
@@ -83,21 +84,22 @@ export function ListPanel({ onClose }: ListPanelProps) {
   // arrays can never drift out of alignment (skipping a model without
   // an ifcDataStore must not shift every later model's provider index).
   const modelProviderPairs = useMemo(() => {
-    const pairs: Array<{ modelId: string; provider: ListDataProvider }> = [];
+    const pairs: Array<{ modelId: string; provider: ListDataProvider; store: IfcDataStore }> = [];
     if (models.size > 0) {
       for (const [modelId, model] of models) {
         // Skip native-metadata models — they don't have a parsed
         // IfcDataStore, so the list provider can't query them.
         if (!model.ifcDataStore) continue;
-        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore) });
+        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore), store: model.ifcDataStore });
       }
     } else if (ifcDataStore) {
-      pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore) });
+      pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore), store: ifcDataStore });
     }
     return pairs;
   }, [models, ifcDataStore]);
 
   const allProviders = useMemo(() => modelProviderPairs.map((p) => p.provider), [modelProviderPairs]);
+  const allStores = useMemo(() => modelProviderPairs.map((p) => p.store), [modelProviderPairs]);
 
   const hasData = allProviders.length > 0;
 
@@ -269,6 +271,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
       {view === 'builder' && hasData && (
         <ListBuilder
           providers={allProviders}
+          stores={allStores}
           initial={editingList}
           onSave={handleSaveList}
           onCancel={() => setView('library')}

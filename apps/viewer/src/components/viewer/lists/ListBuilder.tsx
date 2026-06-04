@@ -16,10 +16,17 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ComboInput } from '@/components/ui/combo-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { IfcTypeEnum } from '@ifc-lite/data';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import {
+  discoverFilterValues,
+  discoverFilterSchema,
+  propValueKey,
+} from '@/lib/search/filter-schema';
 import type {
   ListDataProvider,
   ListDefinition,
@@ -29,6 +36,40 @@ import type {
   ConditionOperator,
 } from '@ifc-lite/lists';
 import { discoverColumns, ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
+
+const NO_OPTIONS: readonly string[] = [];
+
+/** Distinct model values used to suggest condition values in the chip editors. */
+interface ListConditionValues {
+  materials: string[];
+  classifications: string[];
+  storeys: string[];
+  /** propValueKey(pset, prop) → distinct values. */
+  propertyValues: Map<string, string[]>;
+}
+
+/** Merge per-store value discovery into one suggestion set for the conditions. */
+function discoverConditionValues(stores: IfcDataStore[]): ListConditionValues {
+  const materials = new Set<string>();
+  const classifications = new Set<string>();
+  const storeys = new Set<string>();
+  const propertyValues = new Map<string, Set<string>>();
+  for (const store of stores) {
+    const v = discoverFilterValues(store);
+    v.materials.forEach((m) => materials.add(m));
+    v.classifications.forEach((c) => classifications.add(c));
+    for (const [k, arr] of v.propertyValues) {
+      let bucket = propertyValues.get(k);
+      if (!bucket) { bucket = new Set(); propertyValues.set(k, bucket); }
+      for (const val of arr) bucket.add(val);
+    }
+    for (const [name] of discoverFilterSchema(store).storeys) storeys.add(name);
+  }
+  const sort = (s: Set<string>) => Array.from(s).sort();
+  const pv = new Map<string, string[]>();
+  for (const [k, s] of propertyValues) pv.set(k, sort(s));
+  return { materials: sort(materials), classifications: sort(classifications), storeys: sort(storeys), propertyValues: pv };
+}
 
 // Building element types available for selection
 const SELECTABLE_TYPES: { type: IfcTypeEnum; label: string }[] = [
@@ -95,13 +136,15 @@ function mergeDiscovered(parts: DiscoveredColumns[]): DiscoveredColumns {
 
 interface ListBuilderProps {
   providers: ListDataProvider[];
+  /** Backing stores for value discovery (condition value suggestions). */
+  stores: IfcDataStore[];
   initial: ListDefinition | null;
   onSave: (definition: ListDefinition) => void;
   onCancel: () => void;
   onExecute: (definition: ListDefinition) => void;
 }
 
-export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }: ListBuilderProps) {
+export function ListBuilder({ providers, stores, initial, onSave, onCancel, onExecute }: ListBuilderProps) {
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [selectedTypes, setSelectedTypes] = useState<Set<IfcTypeEnum>>(
@@ -109,6 +152,18 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
   );
   const [columns, setColumns] = useState<ColumnDefinition[]>(initial?.columns ?? []);
   const [conditions, setConditions] = useState<PropertyCondition[]>(initial?.conditions ?? []);
+  // Lazily-discovered distinct values for condition suggestions. Computed the
+  // first time a condition that benefits (property / material / classification
+  // / storey) exists, then reused.
+  const [conditionValues, setConditionValues] = useState<ListConditionValues | null>(null);
+  React.useEffect(() => {
+    if (conditionValues || stores.length === 0) return;
+    const needs = conditions.some(
+      (c) => c.source === 'property' || c.source === 'material' || c.source === 'classification' || c.source === 'spatial',
+    );
+    if (!needs) return;
+    setConditionValues(discoverConditionValues(stores));
+  }, [conditions, stores, conditionValues]);
   const [groupByColumnId, setGroupByColumnId] = useState<string>(initial?.grouping?.columnId ?? '');
   const [sumColumnIds, setSumColumnIds] = useState<Set<string>>(
     new Set(initial?.grouping?.sumColumnIds ?? [])
@@ -306,6 +361,8 @@ export function ListBuilder({ providers, initial, onSave, onCancel, onExecute }:
           <Section label="Filters" hint={conditions.length > 0 ? `${conditions.length}` : undefined}>
             <ConditionsBody
               conditions={conditions}
+              discovered={discovered}
+              values={conditionValues}
               onAdd={addCondition}
               onUpdate={updateCondition}
               onRemove={removeCondition}
@@ -753,11 +810,15 @@ const SELECT_CLASS =
 
 function ConditionsBody({
   conditions,
+  discovered,
+  values,
   onAdd,
   onUpdate,
   onRemove,
 }: {
   conditions: PropertyCondition[];
+  discovered: DiscoveredColumns;
+  values: ListConditionValues | null;
   onAdd: (condition: PropertyCondition) => void;
   onUpdate: (idx: number, condition: PropertyCondition) => void;
   onRemove: (idx: number) => void;
@@ -768,6 +829,8 @@ function ConditionsBody({
         <ConditionRow
           key={idx}
           condition={condition}
+          discovered={discovered}
+          values={values}
           onChange={(next) => onUpdate(idx, next)}
           onRemove={() => onRemove(idx)}
         />
@@ -784,16 +847,46 @@ function ConditionsBody({
 
 function ConditionRow({
   condition,
+  discovered,
+  values,
   onChange,
   onRemove,
 }: {
   condition: PropertyCondition;
+  discovered: DiscoveredColumns;
+  values: ListConditionValues | null;
   onChange: (next: PropertyCondition) => void;
   onRemove: () => void;
 }) {
   const ops = operatorsFor(condition.source);
   const showValue = condition.operator !== 'exists';
-  const showSetFields = condition.source === 'property' || condition.source === 'quantity';
+  const isProperty = condition.source === 'property';
+  const isQuantity = condition.source === 'quantity';
+  const showSetFields = isProperty || isQuantity;
+
+  const setNameOptions = useMemo<string[]>(() => {
+    if (isProperty) return Array.from(discovered.properties.keys()).sort();
+    if (isQuantity) return Array.from(discovered.quantities.keys()).sort();
+    return [];
+  }, [discovered, isProperty, isQuantity]);
+
+  const propNameOptions = useMemo<string[]>(() => {
+    const set = condition.psetName ?? '';
+    if (isProperty) return [...(discovered.properties.get(set) ?? [])];
+    if (isQuantity) return [...(discovered.quantities.get(set) ?? [])];
+    return [];
+  }, [discovered, condition.psetName, isProperty, isQuantity]);
+
+  const valueOptions = useMemo<readonly string[]>(() => {
+    switch (condition.source) {
+      case 'property':
+        return values?.propertyValues.get(propValueKey(condition.psetName ?? '', condition.propertyName)) ?? NO_OPTIONS;
+      case 'material': return values?.materials ?? NO_OPTIONS;
+      case 'classification': return values?.classifications ?? NO_OPTIONS;
+      case 'spatial': return values?.storeys ?? NO_OPTIONS;
+      default: return NO_OPTIONS;
+    }
+  }, [condition.source, condition.psetName, condition.propertyName, values]);
 
   const valuePlaceholder =
     condition.source === 'spatial' ? 'storey name'
@@ -829,17 +922,19 @@ function ConditionRow({
 
       {showSetFields && (
         <>
-          <Input
+          <ComboInput
             value={condition.psetName ?? ''}
-            placeholder={condition.source === 'quantity' ? 'Qto_…' : 'Pset_…'}
-            onChange={(e) => onChange({ ...condition, psetName: e.target.value })}
-            className="h-7 w-28 text-xs"
+            options={setNameOptions}
+            placeholder={isQuantity ? 'Qto_…' : 'Pset_…'}
+            className="h-7 w-32 text-xs"
+            onChange={(v) => onChange({ ...condition, psetName: v })}
           />
-          <Input
+          <ComboInput
             value={condition.propertyName}
+            options={propNameOptions}
             placeholder="name"
-            onChange={(e) => onChange({ ...condition, propertyName: e.target.value })}
-            className="h-7 w-24 text-xs"
+            className="h-7 w-28 text-xs"
+            onChange={(v) => onChange({ ...condition, propertyName: v })}
           />
         </>
       )}
@@ -856,11 +951,12 @@ function ConditionRow({
       </select>
 
       {showValue && (
-        <Input
+        <ComboInput
           value={String(condition.value ?? '')}
+          options={valueOptions}
           placeholder={valuePlaceholder}
-          onChange={(e) => onChange({ ...condition, value: e.target.value })}
-          className="h-7 flex-1 min-w-[6rem] text-xs"
+          className="h-7 w-44 text-xs"
+          onChange={(v) => onChange({ ...condition, value: v })}
         />
       )}
 

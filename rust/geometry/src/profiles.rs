@@ -482,6 +482,27 @@ fn rounded_rectangle_outline(
     points
 }
 
+/// Append a circular arc (radius `r`, centre (`cx`,`cy`)) sweeping from angle
+/// `a0` to `a1` as `segments + 1` points. Used to round parametric steel-section
+/// corners (IfcLShapeProfileDef FilletRadius / EdgeRadius, etc.). When the
+/// radius is below 1 µm the single corner point at `a0` is emitted instead.
+fn push_arc(
+    out: &mut Vec<Point2<f64>>,
+    cx: f64,
+    cy: f64,
+    r: f64,
+    a0: f64,
+    a1: f64,
+    segments: usize,
+) {
+    let n = segments.max(1);
+    for i in 0..=n {
+        let t = i as f64 / n as f64;
+        let a = a0 + (a1 - a0) * t;
+        out.push(Point2::new(cx + r * a.cos(), cy + r * a.sin()));
+    }
+}
+
 /// Profile processor - processes IFC profiles into 2D contours
 pub struct ProfileProcessor {
     schema: IfcSchema,
@@ -1174,27 +1195,57 @@ impl ProfileProcessor {
     /// Process L-shape profile (angle)
     /// IfcLShapeProfileDef: ProfileType, ProfileName, Position, Depth, Width, Thickness, ...
     fn process_l_shape(&self, profile: &DecodedEntity) -> Result<Profile2D> {
+        // IfcLShapeProfileDef: Depth(3), Width(4), Thickness(5), FilletRadius(6),
+        // EdgeRadius(7), LegSlope(8). Built corner-at-origin (heel at (0,0),
+        // horizontal leg along +X, vertical leg along +Y); `center_on_bbox`
+        // re-centres it. LegSlope (tapered legs) is rare and not modelled.
         let depth = profile
             .get_float(3)
             .ok_or_else(|| Error::geometry("L-Shape missing Depth".to_string()))?;
         let width = profile
             .get_float(4)
             .ok_or_else(|| Error::geometry("L-Shape missing Width".to_string()))?;
-        let thickness = profile
+        let t = profile
             .get_float(5)
             .ok_or_else(|| Error::geometry("L-Shape missing Thickness".to_string()))?;
 
-        // L-shape profile (counter-clockwise from origin)
-        let points = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(width, 0.0),
-            Point2::new(width, thickness),
-            Point2::new(thickness, thickness),
-            Point2::new(thickness, depth),
-            Point2::new(0.0, depth),
-        ];
+        // FilletRadius rounds the inner re-entrant corner (concave, adds
+        // material); EdgeRadius rounds the two leg toes (convex, removes the
+        // sharp tips). Both optional; clamp so the arcs stay inside the legs.
+        let rf = profile
+            .get_float(6)
+            .unwrap_or(0.0)
+            .clamp(0.0, (width - t).min(depth - t).max(0.0));
+        let re = profile.get_float(7).unwrap_or(0.0).clamp(0.0, t * 0.999);
+        const SEG: usize = 6;
+        let half_pi = std::f64::consts::FRAC_PI_2;
+        let pi = std::f64::consts::PI;
 
-        Ok(Profile2D::new(points))
+        // Counter-clockwise from the heel.
+        let mut p: Vec<Point2<f64>> = Vec::new();
+        p.push(Point2::new(0.0, 0.0)); // heel (outer corner) — sharp
+        p.push(Point2::new(width, 0.0)); // horizontal leg outer end — sharp
+        // horizontal leg toe (width, t): convex EdgeRadius
+        if re > 1.0e-9 {
+            push_arc(&mut p, width - re, t - re, re, 0.0, half_pi, SEG);
+        } else {
+            p.push(Point2::new(width, t));
+        }
+        // inner re-entrant corner (t, t): concave FilletRadius
+        if rf > 1.0e-9 {
+            push_arc(&mut p, t + rf, t + rf, rf, 1.5 * pi, pi, SEG);
+        } else {
+            p.push(Point2::new(t, t));
+        }
+        // vertical leg toe (t, depth): convex EdgeRadius
+        if re > 1.0e-9 {
+            push_arc(&mut p, t - re, depth - re, re, 0.0, half_pi, SEG);
+        } else {
+            p.push(Point2::new(t, depth));
+        }
+        p.push(Point2::new(0.0, depth)); // vertical leg outer end — sharp
+
+        Ok(Profile2D::new(p))
     }
 
     /// Process U-shape profile (channel)
@@ -2885,6 +2936,45 @@ mod tests {
         assert!((min_y + max_y).abs() < 1e-9, "Y not centred: {min_y}..{max_y}");
         assert!((max_x - min_x - 80.0).abs() < 1e-9, "width should be Width");
         assert!((max_y - min_y - 100.0).abs() < 1e-9, "height should be Depth");
+    }
+
+    // L-shape FilletRadius (inner re-entrant corner, adds material) and
+    // EdgeRadius (leg toes, removes material) must be honoured — pre-fix the
+    // section was a sharp 6-point polygon (~5% oversized convex hull on steel
+    // angles, ISSUE_021 beams). L100/100/10 with FilletRadius=12, EdgeRadius=6.
+    #[test]
+    fn test_l_shape_honours_fillet_and_edge_radii() {
+        let profile = process_content(
+            "#1=IFCLSHAPEPROFILEDEF(.AREA.,$,$,100.,100.,10.,12.,6.,$,$,$);\n",
+            1,
+        );
+        // Rounded corners => far more than the 6 sharp vertices.
+        assert!(
+            profile.outer.len() > 6,
+            "fillets not generated: {} points",
+            profile.outer.len()
+        );
+        // bbox is still Width × Depth (radii sit inside the legs).
+        let (min_x, min_y, max_x, max_y) = outer_bbox(&profile);
+        assert!((max_x - min_x - 100.0).abs() < 1e-6, "width {}", max_x - min_x);
+        assert!((max_y - min_y - 100.0).abs() < 1e-6, "height {}", max_y - min_y);
+        // Closed-form area: sharp 1900 + inner fillet r1²(1−π/4) − two toe
+        // edges 2·r2²(1−π/4) = 1900 + (144−72)(1−π/4) ≈ 1915.45 mm². The
+        // 6-segment arc tessellation introduces a small inscribed-polygon error.
+        let k = 1.0 - std::f64::consts::FRAC_PI_4;
+        let expected = 1900.0 + (144.0 - 72.0) * k;
+        let n = profile.outer.len();
+        let mut area = 0.0;
+        for i in 0..n {
+            let a = profile.outer[i];
+            let b = profile.outer[(i + 1) % n];
+            area += a.x * b.y - b.x * a.y;
+        }
+        area = area.abs() * 0.5;
+        assert!(
+            (area - expected).abs() < 5.0,
+            "L fillet area {area:.2} vs expected {expected:.2} — wrong fillet sign/placement"
+        );
     }
 
     // A T-shape is centred on its bounding box: Y spans -Depth/2..+Depth/2,

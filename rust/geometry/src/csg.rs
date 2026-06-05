@@ -518,6 +518,21 @@ impl ClippingProcessor {
         self.failures.borrow().len()
     }
 
+    /// Whether any failure recorded since index `since` (a prior
+    /// [`failure_count`](Self::failure_count)) was an `OperandTooLarge`
+    /// rejection — i.e. the BSP polygon cap returned the host unchanged for a
+    /// genuinely complex cutter (issue #635), as opposed to a kernel error /
+    /// no-overlap / no real intersection. Lets the void router tell "too complex
+    /// to cut, fall back to the AABB box" apart from "the cutter doesn't really
+    /// intersect, keep the host".
+    pub(crate) fn has_operand_too_large_since(&self, since: usize) -> bool {
+        let failures = self.failures.borrow();
+        let since = since.min(failures.len());
+        failures[since..]
+            .iter()
+            .any(|f| matches!(f.reason, BoolFailureReason::OperandTooLarge { .. }))
+    }
+
     /// Internal: append a failure record. Public-crate so the boolean
     /// processor in `processors/boolean.rs` can record fallbacks that
     /// happen above the kernel layer.

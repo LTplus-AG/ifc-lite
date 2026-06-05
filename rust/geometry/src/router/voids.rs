@@ -1305,6 +1305,7 @@ impl GeometryRouter {
                     }
 
                     let tri_before = result.triangle_count();
+                    let failures_before = clipper.failure_count();
                     let mut csg_succeeded = false;
                     // Tracks whether CSG returned the host *unchanged* (the kernel
                     // either found no real intersection, or errored on a grazing/
@@ -1397,7 +1398,16 @@ impl GeometryRouter {
                                 && covers(final_min.y, final_max.y, wall_min.y, wall_max.y)
                                 && covers(final_min.z, final_max.z, wall_min.z, wall_max.z)
                         };
-                        if !(csg_unchanged && engulfs_host) {
+                        // Only suppress the fallback when "unchanged" means the
+                        // kernel found no real cut (a kernel error / no-overlap on
+                        // a grazing engulfing cutter). If instead it was the BSP
+                        // polygon cap rejecting a genuinely complex cutter
+                        // (`OperandTooLarge`, issue #635 — the production server
+                        // runs the BSP kernel), the void is real and MUST get the
+                        // AABB box: skipping it on the 3% engulf heuristic would
+                        // leave the wall entirely uncut (Codex review, #947).
+                        let capped = clipper.has_operand_too_large_since(failures_before);
+                        if !(csg_unchanged && engulfs_host && !capped) {
                             let aabb_cut =
                                 self.cut_rectangular_opening(&result, final_min, final_max);
                             if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {

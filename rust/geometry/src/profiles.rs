@@ -1267,10 +1267,14 @@ impl ProfileProcessor {
     /// Process C-shape profile (channel with lips)
     /// IfcCShapeProfileDef: ProfileType, ProfileName, Position, Depth, Width, WallThickness, Girth, ...
     fn process_c_shape(&self, profile: &DecodedEntity) -> Result<Profile2D> {
+        // IfcCShapeProfileDef: Depth(3), Width(4), WallThickness(5), Girth(6),
+        // InternalFilletRadius(7). A lipped channel symmetric about its X-axis:
+        // a web on the left, top/bottom flanges spanning the full Width, and
+        // return lips of length Girth at the flange tips.
         let depth = profile
             .get_float(3)
             .ok_or_else(|| Error::geometry("C-Shape missing Depth".to_string()))?;
-        let _width = profile
+        let width = profile
             .get_float(4)
             .ok_or_else(|| Error::geometry("C-Shape missing Width".to_string()))?;
         let wall_thickness = profile
@@ -1279,17 +1283,25 @@ impl ProfileProcessor {
         let girth = profile.get_float(6).unwrap_or(wall_thickness * 2.0); // Lip length
 
         let half_depth = depth / 2.0;
+        let t = wall_thickness;
 
-        // C-shape profile (counter-clockwise)
+        // Counter-clockwise outline. Previously this used `girth` as the X
+        // extent and dropped `width` entirely, so the channel came out only
+        // ~girth wide (a few × the thickness) instead of its full Width. The
+        // flanges now span [0, Width]; the lips turn inward by Girth at x=Width.
         let points = vec![
-            Point2::new(girth, -half_depth),
-            Point2::new(0.0, -half_depth),
-            Point2::new(0.0, half_depth),
-            Point2::new(girth, half_depth),
-            Point2::new(girth, half_depth - wall_thickness),
-            Point2::new(wall_thickness, half_depth - wall_thickness),
-            Point2::new(wall_thickness, -half_depth + wall_thickness),
-            Point2::new(girth, -half_depth + wall_thickness),
+            Point2::new(0.0, -half_depth),                  // bottom-left outer
+            Point2::new(width, -half_depth),                // bottom-right outer
+            Point2::new(width, -half_depth + girth),        // bottom lip tip
+            Point2::new(width - t, -half_depth + girth),    // bottom lip inner
+            Point2::new(width - t, -half_depth + t),        // bottom flange inner
+            Point2::new(t, -half_depth + t),                // web inner bottom
+            Point2::new(t, half_depth - t),                 // web inner top
+            Point2::new(width - t, half_depth - t),         // top flange inner
+            Point2::new(width - t, half_depth - girth),     // top lip inner
+            Point2::new(width, half_depth - girth),         // top lip tip
+            Point2::new(width, half_depth),                 // top-right outer
+            Point2::new(0.0, half_depth),                   // top-left outer
         ];
 
         Ok(Profile2D::new(points))
@@ -2860,6 +2872,31 @@ mod tests {
         assert!((min_y + max_y).abs() < 1e-9, "Y not centred: {min_y}..{max_y}");
         assert!((max_x - min_x - 80.0).abs() < 1e-9, "width should be FlangeWidth");
         assert!((max_y - min_y - 100.0).abs() < 1e-9, "height should be Depth");
+    }
+
+    // A C-shape (lipped channel) must span its full Width × Depth. Pre-fix
+    // `process_c_shape` dropped the Width attribute (4) and used Girth (6) as
+    // the X extent, so the channel came out only ~Girth wide.
+    #[test]
+    fn test_c_shape_spans_width_and_depth() {
+        // Depth 200, Width 80, WallThickness 6, Girth 20.
+        let profile = process_content(
+            "#1=IFCCSHAPEPROFILEDEF(.AREA.,$,$,200.,80.,6.,20.,$);\n",
+            1,
+        );
+        let (min_x, min_y, max_x, max_y) = outer_bbox(&profile);
+        assert!((min_x + max_x).abs() < 1e-9, "X not centred: {min_x}..{max_x}");
+        assert!((min_y + max_y).abs() < 1e-9, "Y not centred: {min_y}..{max_y}");
+        assert!(
+            (max_x - min_x - 80.0).abs() < 1e-9,
+            "width should be Width (80), got {}",
+            max_x - min_x
+        );
+        assert!(
+            (max_y - min_y - 200.0).abs() < 1e-9,
+            "height should be Depth (200), got {}",
+            max_y - min_y
+        );
     }
 
     #[test]

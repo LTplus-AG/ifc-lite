@@ -1,5 +1,22 @@
 # @ifc-lite/wasm
 
+## 2.1.4
+
+### Patch Changes
+
+- [#949](https://github.com/LTplus-AG/ifc-lite/pull/949) [`9d9b344`](https://github.com/LTplus-AG/ifc-lite/commit/9d9b344c0234fcbc51279e2afa85bc04f0b12f09) Thanks [@louistrue](https://github.com/louistrue)! - Geometry correctness: seven fixes found by the IFC-vs-IfcOpenShell sweep ([#943](https://github.com/LTplus-AG/ifc-lite/issues/943)), each verified on both the Manifold and legacy BSP CSG kernels.
+
+  - `IfcPolygonalBoundedHalfSpace` clip now removes the side the `AgreementFlag` designates as material (party/outside walls no longer collapse to a sliver).
+  - Trimmed `IfcLine` basis on `IfcSurfaceOfRevolution` honours its cartesian trim (revolved fixtures were ~9.5× oversized).
+  - Opening-cut epsilons scale with coordinate magnitude, so thin walls at building-scale coordinates are actually cut through instead of left sealed.
+  - `IfcCShapeProfileDef` uses `Width` (not `Girth`) for the flange.
+  - Radius-aware arc tessellation for trimmed conics — large-radius curved walls render smooth instead of faceted.
+  - `IfcL/U/T/IShapeProfileDef` honour `FilletRadius` / `EdgeRadius` (rounded steel-section root fillets and toes).
+
+- [#949](https://github.com/LTplus-AG/ifc-lite/pull/949) [`9d9b344`](https://github.com/LTplus-AG/ifc-lite/commit/9d9b344c0234fcbc51279e2afa85bc04f0b12f09) Thanks [@louistrue](https://github.com/louistrue)! - Geometry: fix ~0.5 m vertex jitter on georeferenced models ([#948](https://github.com/LTplus-AG/ifc-lite/issues/948)). When a model's world offset lives in spatial-structure placements emitted late in the file (e.g. a Revit/French export with `IfcSite` at the end), `buildPrePassStreaming` detected the RTC offset from the partial index built up to the first ~50 geometry jobs, missed the offset, and the ~8×10⁶ m coordinates were cast to f32 (~0.5 m grid) before reaching the GPU. The streaming pre-pass now re-detects against a full index when the partial pass finds no offset and the `IfcSite` has not yet been scanned, so vertices are shifted local before the f32 cast. Gated so origin-local / early-site models do not pay for a second index build.
+
+- [#949](https://github.com/LTplus-AG/ifc-lite/pull/949) [`9d9b344`](https://github.com/LTplus-AG/ifc-lite/commit/9d9b344c0234fcbc51279e2afa85bc04f0b12f09) Thanks [@louistrue](https://github.com/louistrue)! - Geometry: a rotated/engulfing opening no longer over-cuts its host wall ([#947](https://github.com/LTplus-AG/ifc-lite/issues/947), advanced_model [#555433](https://github.com/LTplus-AG/ifc-lite/issues/555433), which collapsed to a ~1.5%-volume sliver). When a non-rectangular opening's bounding box engulfs the wall but its real profile excludes it, the kernel returns the un-cut host — which is correct — so the void router now keeps that result instead of falling back to a rectangular AABB cut that would delete the wall. High-poly openings rejected by the BSP operand cap (issue-635) still receive the AABB box, so genuinely-complex voids are not left uncut.
+
 ## 2.1.3
 
 ### Patch Changes

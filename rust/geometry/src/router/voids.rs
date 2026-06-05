@@ -1306,6 +1306,10 @@ impl GeometryRouter {
 
                     let tri_before = result.triangle_count();
                     let mut csg_succeeded = false;
+                    // Tracks whether CSG returned the host *unchanged* (the kernel
+                    // either found no real intersection, or errored on a grazing/
+                    // coplanar cutter and returned the un-cut host).
+                    let mut csg_unchanged = false;
                     match clipper.subtract_mesh(&result, opening_mesh) {
                         Ok(csg_result) => {
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
@@ -1319,6 +1323,7 @@ impl GeometryRouter {
                             // round/curved opening (issue #635) — the host mesh is
                             // returned unchanged, leaving the void uncut.
                             let changed = csg_result.triangle_count() != tri_before;
+                            csg_unchanged = !changed;
                             if !csg_result.is_empty()
                                 && csg_result.triangle_count() >= min_tris
                                 && changed
@@ -1367,10 +1372,37 @@ impl GeometryRouter {
                         } else {
                             (*open_min_pt, *open_max_pt)
                         };
-                        let aabb_cut =
-                            self.cut_rectangular_opening(&result, final_min, final_max);
-                        if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {
-                            result = aabb_cut;
+                        // Near-engulf guard. When CSG returned the host *unchanged*
+                        // (no cut) AND the opening's AABB covers the whole wall on
+                        // every axis, the rectangular fallback would cut that
+                        // engulfing box and delete the wall. This is the signature
+                        // of a non-rectangular opening whose bounding box engulfs
+                        // the host while its real profile excludes it: the kernel
+                        // errors on the grazing/coplanar cutter and returns the
+                        // un-cut host, which is already the correct result vs
+                        // IfcOpenShell (advanced #555433's facade-scale void
+                        // #555493). Keep the un-cut host instead of over-cutting.
+                        // Normal windows/doors — including the issue-635 high-poly
+                        // round openings the AABB box approximates — sit INSIDE the
+                        // wall and never engulf it, so they still take the fallback.
+                        // The 3% per-axis tolerance absorbs an opening that reaches
+                        // ~flush with a wall face (its near plane).
+                        let engulfs_host = {
+                            let tol = 0.03_f64;
+                            let covers = |omin: f64, omax: f64, wmin: f64, wmax: f64| {
+                                let slack = (wmax - wmin).abs().max(1.0e-9) * tol;
+                                omin <= wmin + slack && omax >= wmax - slack
+                            };
+                            covers(final_min.x, final_max.x, wall_min.x, wall_max.x)
+                                && covers(final_min.y, final_max.y, wall_min.y, wall_max.y)
+                                && covers(final_min.z, final_max.z, wall_min.z, wall_max.z)
+                        };
+                        if !(csg_unchanged && engulfs_host) {
+                            let aabb_cut =
+                                self.cut_rectangular_opening(&result, final_min, final_max);
+                            if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {
+                                result = aabb_cut;
+                            }
                         }
                     }
                 }

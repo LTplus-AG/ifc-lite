@@ -238,3 +238,31 @@ fn wall_555268_7_openings_cuts_take_effect() {
     );
     let _ = mn;
 }
+
+/// Wall #555433 ("Muro básico:STB 30") carries 3 openings, one of which
+/// (#555493) is a non-rectangular facade-scale void whose world-aligned
+/// bounding box engulfs the wall on every axis while its real profile excludes
+/// the wall. The Manifold kernel errors on the grazing/coplanar cutter and
+/// returns the un-cut host — which is the correct result (IfcOpenShell keeps the
+/// wall) — but the recorded failure used to trigger the rectangular AABB
+/// fallback, which cut the engulfing box and collapsed the wall to a 1.5%-volume
+/// sliver (bbox_iou 0.01 vs IOS). The near-engulf guard now keeps the un-cut
+/// host when CSG produced no change and the opening engulfs the wall. The wall
+/// is ~0.30 × 9.015 × 4.292 m; assert it survives at near-full extent.
+#[test]
+fn wall_555433_engulfing_opening_does_not_collapse_wall() {
+    let Some(mesh) = process(555433) else { return };
+    let (mn, mx) = bbox(&mesh.positions).expect(
+        "engulfing-opening fallback deleted the wall — the near-engulf guard in \
+         apply_void_context regressed",
+    );
+    let ext = (mx.0 - mn.0, mx.1 - mn.1, mx.2 - mn.2);
+    // IfcOpenShell keeps the full wall extent (0.30, 9.015, 4.292); the two
+    // genuine small openings don't change it. Require no collapse.
+    assert!(
+        ext.1 > 8.5 && ext.2 > 4.0,
+        "wall collapsed after engulfing-opening cut: extent ({}, {}, {})",
+        ext.0, ext.1, ext.2
+    );
+    let _ = mn;
+}

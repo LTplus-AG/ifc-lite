@@ -482,10 +482,26 @@ fn rounded_rectangle_outline(
     points
 }
 
+/// Append `pt` unless it coincides (within 1 µm on both axes) with the current
+/// last point. Adjacent arcs/segments in a steel-section contour can meet at the
+/// exact same coordinate — e.g. an L-shape where `width == thickness + fillet +
+/// edge` puts the toe arc's end on the inner fillet's start — and emitting both
+/// hands a zero-length edge to downstream tessellation/CSG. Mirrors the
+/// seam-degeneracy guard in `rounded_rectangle_outline`.
+fn push_dedup(out: &mut Vec<Point2<f64>>, pt: Point2<f64>) {
+    if out
+        .last()
+        .map_or(true, |p| (p.x - pt.x).abs() > 1.0e-9 || (p.y - pt.y).abs() > 1.0e-9)
+    {
+        out.push(pt);
+    }
+}
+
 /// Append a circular arc (radius `r`, centre (`cx`,`cy`)) sweeping from angle
-/// `a0` to `a1` as `segments + 1` points. Used to round parametric steel-section
-/// corners (IfcLShapeProfileDef FilletRadius / EdgeRadius, etc.). When the
-/// radius is below 1 µm the single corner point at `a0` is emitted instead.
+/// `a0` to `a1` as up to `segments + 1` points. Used to round parametric
+/// steel-section corners (IfcLShapeProfileDef FilletRadius / EdgeRadius, etc.).
+/// Coincident endpoints (with the prior contour point, or a zero-length arc) are
+/// dropped via [`push_dedup`].
 fn push_arc(
     out: &mut Vec<Point2<f64>>,
     cx: f64,
@@ -499,7 +515,7 @@ fn push_arc(
     for i in 0..=n {
         let t = i as f64 / n as f64;
         let a = a0 + (a1 - a0) * t;
-        out.push(Point2::new(cx + r * a.cos(), cy + r * a.sin()));
+        push_dedup(out, Point2::new(cx + r * a.cos(), cy + r * a.sin()));
     }
 }
 
@@ -571,15 +587,20 @@ fn fillet_outline(
             .map(|(_, r)| *r)
             .unwrap_or(0.0);
         if r > 1.0e-9 {
-            out.extend(round_corner(
-                sharp[(i + n - 1) % n],
-                sharp[i],
-                sharp[(i + 1) % n],
-                r,
-                segments,
-            ));
+            for pt in round_corner(sharp[(i + n - 1) % n], sharp[i], sharp[(i + 1) % n], r, segments)
+            {
+                push_dedup(&mut out, pt);
+            }
         } else {
-            out.push(sharp[i]);
+            push_dedup(&mut out, sharp[i]);
+        }
+    }
+    // Drop a closing-seam duplicate (first ≈ last) so the closed contour carries
+    // no zero-length edge across the wrap.
+    if out.len() > 1 {
+        let (first, last) = (out[0], out[out.len() - 1]);
+        if (first.x - last.x).abs() <= 1.0e-9 && (first.y - last.y).abs() <= 1.0e-9 {
+            out.pop();
         }
     }
     out

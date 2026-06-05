@@ -38,28 +38,32 @@ fn bbox_extent(p: &[f32]) -> (f32, f32, f32) {
     (mx.0 - mn.0, mx.1 - mn.1, mx.2 - mn.2)
 }
 
-fn process(id: u32) -> Option<Mesh> {
-    if !std::path::Path::new(FIXTURE).exists() {
-        eprintln!(
-            "skipping: fixture {FIXTURE} not present — run `pnpm fixtures` to download"
-        );
-        return None;
-    }
-    let content = std::fs::read_to_string(FIXTURE).ok()?;
+/// Process an element's geometry. Panics (fails the test loudly) on any
+/// parse/decode/geometry error — only a *missing fixture* is a legitimate skip,
+/// and that is checked by the caller before this runs.
+fn process(id: u32) -> Mesh {
+    let content =
+        std::fs::read_to_string(FIXTURE).unwrap_or_else(|e| panic!("read {FIXTURE}: {e}"));
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
     let router = GeometryRouter::with_units(&content, &mut decoder);
     let void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let entity = decoder.decode_by_id(id).ok()?;
+    let entity = decoder
+        .decode_by_id(id)
+        .unwrap_or_else(|e| panic!("decode #{id}: {e}"));
     router
         .process_element_with_voids(&entity, &mut decoder, &void_index)
-        .ok()
+        .unwrap_or_else(|e| panic!("process #{id}: {e}"))
 }
 
 #[test]
 fn party_wall_polygonal_clip_keeps_material_side() {
+    if !std::path::Path::new(FIXTURE).exists() {
+        eprintln!("skipping: fixture {FIXTURE} not present — run `pnpm fixtures` to download");
+        return;
+    }
     for id in [4287u32, 4399u32] {
-        let Some(mesh) = process(id) else { return };
+        let mesh = process(id);
         let ext = bbox_extent(&mesh.positions);
         // IOS reference: extent (4.201, 0.493, 2.795). Pre-fix Y collapsed to
         // 0.057 (kept the wrong half-space side).

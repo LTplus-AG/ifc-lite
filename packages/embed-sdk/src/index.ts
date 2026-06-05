@@ -344,12 +344,12 @@ export class IFCLiteEmbed {
     // Broadcast event to external listeners
     const kebab = msg.type.toLowerCase().replace(/_/g, '-');
     this.listeners.get(kebab)?.forEach(fn => {
-      try { fn(msg.data); } catch { /* consumer error */ }
+      try { fn(msg.data); } catch (err) { console.error('[ifc-lite-embed] event listener threw', err); }
     });
 
     // Also broadcast to internal listeners (for handshake)
     this.internalListeners.get(msg.type)?.forEach(fn => {
-      try { fn(msg); } catch { /* ignore */ }
+      try { fn(msg); } catch (err) { console.error('[ifc-lite-embed] internal listener threw', err); }
     });
   };
 

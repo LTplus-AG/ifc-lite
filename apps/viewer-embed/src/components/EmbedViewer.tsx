@@ -50,6 +50,19 @@ export function EmbedViewer() {
     if (bridgeInitialized.current) return;
     bridgeInitialized.current = true;
 
+    // Derive the expected parent origin (so content-bearing auto-load events
+    // are not broadcast to '*' before any inbound command arrives): prefer the
+    // explicit ?parentOrigin= param, then fall back to the referrer's origin.
+    let expectedParentOrigin = urlParams.parentOrigin;
+    if (!expectedParentOrigin && document.referrer) {
+      try {
+        expectedParentOrigin = new URL(document.referrer).origin;
+      } catch {
+        // Malformed referrer — leave undefined and rely on the inbound handshake.
+        expectedParentOrigin = undefined;
+      }
+    }
+
     initBridge({
       getState: () => useViewerStore.getState(),
       loadModelFromUrl: async (url: string) => {
@@ -81,10 +94,13 @@ export function EmbedViewer() {
           vertices: gr?.totalVertices ?? 0,
         };
       },
+    }, {
+      allowedOrigins: urlParams.allowOrigins,
+      expectedParentOrigin,
     });
 
     return () => destroyBridge();
-  }, [loadFile]);
+  }, [loadFile, urlParams.allowOrigins, urlParams.parentOrigin]);
 
   // Auto-load model from URL param
   useEffect(() => {
@@ -150,13 +166,6 @@ export function EmbedViewer() {
     const tryFit = () => {
       const cbs = useViewerStore.getState().cameraCallbacks;
       const ready = Boolean(cbs.home || cbs.fitAll || cbs.setPresetView);
-      console.log('[embed] auto-fit tick', {
-        ready,
-        cbs: Object.keys(cbs),
-        view: urlParams.view,
-        camera: urlParams.camera,
-        meshes: meshes.length,
-      });
       if (!ready) {
         if (performance.now() < deadline) {
           rafId = requestAnimationFrame(tryFit);
@@ -167,15 +176,12 @@ export function EmbedViewer() {
       }
       // Honour ?view= / ?camera= URL params first; only auto-fit if neither was set.
       if (urlParams.view) {
-        console.log('[embed] auto-fit: setPresetView', urlParams.view);
         cbs.setPresetView?.(urlParams.view);
       } else if (urlParams.camera) {
-        console.log('[embed] auto-fit: skipped (?camera= handled elsewhere)');
+        // ?camera= is handled elsewhere — nothing to do here.
       } else if (cbs.home) {
-        console.log('[embed] auto-fit: home()');
         cbs.home();
       } else if (cbs.fitAll) {
-        console.log('[embed] auto-fit: fitAll() fallback');
         cbs.fitAll();
       }
     };

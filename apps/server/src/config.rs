@@ -27,6 +27,15 @@ pub struct Config {
     pub cache_max_age_days: u64,
     /// Allowed CORS origins (comma-separated, or "*" for all in development).
     pub cors_origins: Vec<String>,
+    /// Optional bearer token for the compute/parse routes.
+    ///
+    /// Read from `IFC_SERVER_API_TOKEN` (falling back to `API_TOKEN`). When set,
+    /// the parse/cache routes require an `Authorization: Bearer <token>` header
+    /// and return 401 otherwise. When unset (the default), those routes stay
+    /// open so the public viewer -> server flow keeps working, and the server
+    /// logs a startup warning that it is unauthenticated. The health endpoint is
+    /// always open regardless of this setting (liveness probes).
+    pub api_token: Option<String>,
 }
 
 impl Config {
@@ -88,6 +97,11 @@ impl Config {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
+            api_token: std::env::var("IFC_SERVER_API_TOKEN")
+                .or_else(|_| std::env::var("API_TOKEN"))
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
         }
     }
 }

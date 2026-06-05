@@ -36,6 +36,10 @@ const RECOGNISED_IFC_VERSION_TOKENS = new Set([
   'IFC4X3_ADD2',
 ]);
 
+// Human-readable allowed-set text for enum-violation messages, derived from
+// the canonical token list so the message never drifts from what is accepted.
+const ALLOWED_IFC_VERSIONS_TEXT = [...RECOGNISED_IFC_VERSION_TOKENS].join(', ');
+
 function isRecognisedIfcVersionToken(t: string): boolean {
   return RECOGNISED_IFC_VERSION_TOKENS.has(
     t.toUpperCase().replace(/[^A-Z0-9_]/g, '')
@@ -129,7 +133,7 @@ function auditSpecification(
         issues.push({
           severity: 'error',
           code: 'E_XSD_ENUM',
-          message: `@ifcVersion "${v}" is not in {IFC2X3, IFC4, IFC4X3_ADD2}`,
+          message: `@ifcVersion "${v}" is not in {${ALLOWED_IFC_VERSIONS_TEXT}}`,
           path: `${path}.ifcVersion`,
           detail: { value: v },
         });
@@ -146,7 +150,7 @@ function auditSpecification(
         issues.push({
           severity: 'error',
           code: 'E_XSD_ENUM',
-          message: `@ifcVersion token "${t}" is not in {IFC2X3, IFC4, IFC4X3_ADD2}`,
+          message: `@ifcVersion token "${t}" is not in {${ALLOWED_IFC_VERSIONS_TEXT}}`,
           path: `${path}.ifcVersion`,
           detail: { value: t },
         });

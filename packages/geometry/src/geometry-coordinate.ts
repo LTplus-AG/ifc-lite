@@ -65,13 +65,16 @@ export function convertMeshCollectionToBatch(
             ? [shadingArray[0], shadingArray[1], shadingArray[2], shadingArray[3]]
             : undefined;
 
+        // Read each WASM copy-to-JS getter once; indexing the getter
+        // directly would copy a fresh Float32Array out of WASM per access.
+        const color = mesh.color;
         batch.push({
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
           positions: mesh.positions,
           normals: mesh.normals,
           indices: mesh.indices,
-          color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
+          color: [color[0], color[1], color[2], color[3]],
           ...(shadingColor ? { shadingColor } : {}),
         });
       } finally {

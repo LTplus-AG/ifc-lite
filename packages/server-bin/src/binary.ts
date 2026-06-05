@@ -36,8 +36,10 @@ async function getPackageVersion(): Promise<string> {
     const pkgPath = join(__dirname, '..', 'package.json');
     const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'));
     return pkg.version;
-  } catch {
-    return 'unknown';
+  } catch (error) {
+    throw new Error(
+      `Cannot determine @ifc-lite/server-bin package version (corrupt or unreadable package.json): ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 

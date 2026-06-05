@@ -337,11 +337,14 @@ function collectMeshes(
         const positions = new Float32Array(mesh.positions);
         const normals = new Float32Array(mesh.normals);
         const indices = new Uint32Array(mesh.indices);
+        // Read the WASM copy-to-JS color getter once; indexing it directly
+        // would copy a fresh Float32Array out of WASM per access.
+        const color = mesh.color;
         session.pendingMeshes.push({
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
           positions, normals, indices,
-          color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
+          color: [color[0], color[1], color[2], color[3]],
         });
         session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;

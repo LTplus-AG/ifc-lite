@@ -139,7 +139,14 @@ export async function readSseStream(
         if (!line.startsWith('data: ')) continue;
         const data = line.slice(6);
         if (data === '[DONE]') continue;
-        try { onEvent(data); } catch { /* skip malformed */ }
+        try {
+          onEvent(data);
+        } catch (err) {
+          // Malformed JSON payloads are expected and skipped, but a genuine
+          // callback failure (onChunk/onUsageInfo/logCacheHit/fullText) would
+          // otherwise be silently dropped — surface it for diagnosability.
+          console.debug('[sse] skipped event', err);
+        }
       }
     }
   };

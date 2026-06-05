@@ -28,6 +28,7 @@
 "@ifc-lite/spatial": patch
 "@ifc-lite/lens": patch
 "@ifc-lite/codegen": patch
+"@ifc-lite/ids": patch
 "create-ifc-lite": patch
 ---
 

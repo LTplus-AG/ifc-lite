@@ -13,6 +13,30 @@ import type { EmbedUrlParams, ViewPreset } from '@ifc-lite/embed-protocol';
 
 const VALID_VIEWS: ViewPreset[] = ['top', 'bottom', 'front', 'back', 'left', 'right'];
 
+/**
+ * Embed URL params plus viewer-side-only security knobs that are not part of
+ * the public embed protocol surface:
+ *  - allowOrigins: optional inbound origin allowlist. When set, the bridge
+ *    drops postMessage commands whose event.origin is not on the list.
+ *  - parentOrigin: optional expected parent origin used as the outbound
+ *    targetOrigin for content-bearing events before the first inbound message
+ *    is received (so auto-load events are not broadcast to '*').
+ */
+export interface EmbedViewerUrlParams extends EmbedUrlParams {
+  allowOrigins?: string[];
+  parentOrigin?: string;
+}
+
+/** Normalise an origin string (e.g. "https://app.example.com") or return null. */
+function normaliseOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    // Not a full URL — accept a bare scheme://host[:port] only if it parses.
+    return null;
+  }
+}
+
 const DEMO_MODELS: Record<string, string> = {
   default: '/demo/AC20-FZK-Haus.ifc',
 };
@@ -35,9 +59,9 @@ export function assertFetchableUrl(url: string): string {
   return parsed.href;
 }
 
-export function parseUrlParams(): EmbedUrlParams {
+export function parseUrlParams(): EmbedViewerUrlParams {
   const params = new URLSearchParams(window.location.search);
-  const result: EmbedUrlParams = {};
+  const result: EmbedViewerUrlParams = {};
 
   const demo = params.get('demo');
   if (demo !== null) {
@@ -102,6 +126,25 @@ export function parseUrlParams(): EmbedUrlParams {
 
   const view = params.get('view') as ViewPreset;
   if (VALID_VIEWS.includes(view)) result.view = view;
+
+  // Optional inbound origin allowlist (comma-separated full origins).
+  // When set, the bridge only accepts postMessage commands from these origins.
+  const allowOrigin = params.get('allowOrigin');
+  if (allowOrigin) {
+    const origins = allowOrigin
+      .split(',')
+      .map(s => normaliseOrigin(s.trim()))
+      .filter((o): o is string => o !== null);
+    if (origins.length > 0) result.allowOrigins = origins;
+  }
+
+  // Optional expected parent origin used as the outbound targetOrigin for
+  // content-bearing events before the first inbound message arrives.
+  const parentOrigin = params.get('parentOrigin');
+  if (parentOrigin) {
+    const origin = normaliseOrigin(parentOrigin.trim());
+    if (origin) result.parentOrigin = origin;
+  }
 
   return result;
 }

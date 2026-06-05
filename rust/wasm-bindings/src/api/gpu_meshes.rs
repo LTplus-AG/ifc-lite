@@ -505,12 +505,39 @@ impl IfcAPI {
                 };
 
                 let router = GeometryRouter::with_scale(unit_scale);
-                let rtc_offset = router
+                let is_large =
+                    |t: (f64, f64, f64)| t.0.abs() > 10000.0 || t.1.abs() > 10000.0 || t.2.abs() > 10000.0;
+                let mut rtc_offset = router
                     .detect_rtc_offset_from_jobs(&buffered_jobs, &mut decoder)
                     .unwrap_or((0.0, 0.0, 0.0));
-                let needs_shift = rtc_offset.0.abs() > 10000.0
-                    || rtc_offset.1.abs() > 10000.0
-                    || rtc_offset.2.abs() > 10000.0;
+
+                // Streaming emits this meta as soon as RTC_SAMPLE_THRESHOLD geometry
+                // jobs are buffered (~the 50th element, near the top of the file), so
+                // the partial index here only covers the file head. When a model's
+                // world offset lives in spatial-structure placements emitted LATE
+                // (a Revit/French export with IfcSite + its placement chain at the
+                // END of the file — observed at line 202 339 of a 202 691 line
+                // model), the element -> storey -> building -> site chain can't
+                // resolve from the partial index, detection returns (0,0,0), and the
+                // huge ~8e6 m world coordinates get cast to f32 downstream → ~0.5 m
+                // of vertex jitter. If no offset was found AND we haven't even
+                // scanned the IfcSite yet, re-detect against a FULL index so the
+                // complete chain resolves. Gated on both so the common early-site /
+                // origin-local model never pays for a second index build.
+                // (`buildPrePassOnce` and the small-file tail already use a full
+                // index, so only this early-meta path needs the fallback.)
+                if !is_large(rtc_offset) && site_position.is_none() {
+                    let full_index = ifc_lite_core::build_entity_index(content);
+                    let mut full_decoder = EntityDecoder::with_index(content, full_index);
+                    if let Some(full_rtc) =
+                        router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut full_decoder)
+                    {
+                        if is_large(full_rtc) {
+                            rtc_offset = full_rtc;
+                        }
+                    }
+                }
+                let needs_shift = is_large(rtc_offset);
 
                 let building_rotation = site_position
                     .and_then(|pos| extract_building_rotation_from_site(pos, &mut decoder));

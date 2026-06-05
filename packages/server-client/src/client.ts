@@ -848,6 +848,7 @@ export class IfcServerClient {
       headers: {
         Accept: 'text/event-stream',
       },
+      signal: AbortSignal.timeout(this.timeout),
     });
 
     if (!response.ok) {

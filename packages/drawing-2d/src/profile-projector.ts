@@ -143,7 +143,7 @@ function pushContourLines(
       entityId: profile.expressId,
       ifcType: profile.ifcType,
       modelIndex: profile.modelIndex,
-      depth: depthAlong(w0, w1, plane.axis, plane.position),
+      depth: depthAlong(w0, w1, plane.axis, plane.position, plane.flipped),
     });
   }
 }
@@ -207,13 +207,19 @@ function axisIndex(axis: 'x' | 'y' | 'z'): 0 | 1 | 2 {
   return axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
 }
 
-/** Average depth of a projected edge (distance from section plane, for sorting). */
+/**
+ * Average signed depth of a projected edge along the viewing direction.
+ * Negated when flipped so that smaller depth means nearer the viewer,
+ * matching the depth-buffer convention in HiddenLineClassifier.
+ */
 function depthAlong(
   w0: Vec3,
   w1: Vec3,
   axis: 'x' | 'y' | 'z',
   sectionPos: number,
+  flipped: boolean,
 ): number {
   const avg = (w0[axis] + w1[axis]) / 2;
-  return Math.abs(avg - sectionPos);
+  const signed = avg - sectionPos;
+  return flipped ? -signed : signed;
 }

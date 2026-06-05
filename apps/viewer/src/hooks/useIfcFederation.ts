@@ -604,6 +604,9 @@ export function useIfcFederation() {
     // wait. See `federationLoadGate.ts` for the budget formula. (#600)
     const fileSizeForGateMB = (typeof (file as File).size === 'number' ? (file as File).size : 0) / (1024 * 1024);
     const gateSlot = await acquireFederationLoadSlot(fileSizeForGateMB);
+    // Renderer handle for a streamed point cloud. Declared outside the try so the
+    // catch block can free the GPU asset if the model never made it into the store.
+    let pointCloudHandleId: number | undefined;
     try {
       // IMPORTANT: Before adding a new model, check if there's a legacy model
       // (loaded via loadFile) that's not in the Map yet. If so, migrate it first.
@@ -686,9 +689,6 @@ export function useIfcFederation() {
       let parsedDataStore: IfcDataStore | null = null;
       let parsedGeometry: FederatedModel['geometryResult'] = null;
       let schemaVersion: SchemaVersion = 'IFC4';
-      // Renderer handle for streamed point clouds; surviving model lifecycle
-      // depends on persisting it onto the FederatedModel record.
-      let pointCloudHandleId: number | undefined;
 
       if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
         const renderer = getGlobalRenderer();
@@ -937,6 +937,18 @@ export function useIfcFederation() {
       return modelId;
 
     } catch (err) {
+      // Free the streamed point-cloud GPU asset if it was opened but the
+      // model never made it into the store. The single-model loader does
+      // the analogous cleanup (useIfcLoader.ts); without it the
+      // GPU-resident cloud and its +1 pointCloudAssetCount leak, since
+      // removeModel can't reach a model that was never added. The
+      // models.has(modelId) guard avoids a double-free / negative count
+      // had the throw happened after storeAddModel.
+      if (pointCloudHandleId !== undefined && !useViewerStore.getState().models.has(modelId)) {
+        getGlobalRenderer()?.removePointCloudAsset({ id: pointCloudHandleId });
+        useViewerStore.getState().incrementPointCloudAssetCount(-1);
+        pointCloudHandleId = undefined;
+      }
       // Only mutate shared loading/error/progress state if our session
       // is still the active one. A second addModel() that started after
       // we were cancelled has already taken over the spinner — we must

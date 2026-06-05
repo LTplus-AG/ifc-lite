@@ -185,11 +185,15 @@ export class EdgeExtractor {
       const start = projectTo2D(edge.v0, axis, flipped);
       const end = projectTo2D(edge.v1, axis, flipped);
 
-      // Compute depth as distance from section plane
+      // Signed distance from the section plane along the viewing direction.
+      // Negate when flipped so that smaller depth means nearer the viewer,
+      // matching the depth-buffer convention in HiddenLineClassifier.
       const depthAxis = axis;
+      const signed0 = edge.v0[depthAxis] - sectionPosition;
+      const signed1 = edge.v1[depthAxis] - sectionPosition;
       const depth = Math.min(
-        Math.abs(edge.v0[depthAxis] - sectionPosition),
-        Math.abs(edge.v1[depthAxis] - sectionPosition)
+        flipped ? -signed0 : signed0,
+        flipped ? -signed1 : signed1
       );
 
       return {

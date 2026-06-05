@@ -27,8 +27,14 @@ function makeFakeS3() {
     constructor(public input: { Bucket: string; Key: string }) {}
   }
   class ListObjectsV2Command {
-    constructor(public input: { Bucket: string; Prefix?: string }) {}
+    constructor(
+      public input: { Bucket: string; Prefix?: string; ContinuationToken?: string },
+    ) {}
   }
+
+  // Page size for the paginated list mock. Real S3 caps at 1000; keep it
+  // small so the pagination test doesn't need thousands of keys.
+  const PAGE_SIZE = 3;
 
   const client: S3LikeClient = {
     async send(command) {
@@ -50,10 +56,22 @@ function makeFakeS3() {
       }
       if (command instanceof ListObjectsV2Command) {
         const prefix = command.input.Prefix ?? '';
-        const Contents = Array.from(store.keys())
+        // Deterministic order so the continuation token (an offset) pages
+        // through the full key set exactly once, mirroring S3 semantics.
+        const matching = Array.from(store.keys())
           .filter((k) => k.startsWith(prefix))
-          .map((Key) => ({ Key }));
-        return { Contents };
+          .sort();
+        const offset = command.input.ContinuationToken
+          ? Number(command.input.ContinuationToken)
+          : 0;
+        const page = matching.slice(offset, offset + PAGE_SIZE);
+        const nextOffset = offset + page.length;
+        const IsTruncated = nextOffset < matching.length;
+        return {
+          Contents: page.map((Key) => ({ Key })),
+          IsTruncated,
+          NextContinuationToken: IsTruncated ? String(nextOffset) : undefined,
+        };
       }
       throw new Error('unknown command');
     },
@@ -92,6 +110,34 @@ describe('S3Persistence', () => {
     expect(logKeys).toEqual([]);
     const merged = await p.load('room');
     expect(merged).toEqual(new Uint8Array([9, 9, 9, 9]));
+  });
+
+  it('load pages through a truncated ListObjectsV2 result (no dropped frames)', async () => {
+    const { client, commands } = makeFakeS3();
+    const p = new S3Persistence({ client, commands, bucket: 'b' });
+    // 7 frames > PAGE_SIZE (3) ⇒ spans 3 list pages. A single-page load
+    // would silently drop the tail; assert every frame is replayed in order.
+    const frames = [
+      [1],
+      [2],
+      [3],
+      [4],
+      [5],
+      [6],
+      [7],
+    ];
+    for (const f of frames) await p.append('room', new Uint8Array(f));
+    const all = await p.load('room');
+    expect(all).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7]));
+  });
+
+  it('compact paginates removeLog so no log frames are orphaned', async () => {
+    const { client, commands, store } = makeFakeS3();
+    const p = new S3Persistence({ client, commands, bucket: 'b' });
+    for (let i = 0; i < 7; i++) await p.append('room', new Uint8Array([i]));
+    await p.compact('room', new Uint8Array([42]));
+    const logKeys = Array.from(store.keys()).filter((k) => k.startsWith('room.log/'));
+    expect(logKeys).toEqual([]);
   });
 
   it('drop removes everything for the room', async () => {

@@ -17,6 +17,24 @@ const DEMO_MODELS: Record<string, string> = {
   default: '/demo/AC20-FZK-Haus.ifc',
 };
 
+/**
+ * Validate a model URL against the http(s)-only allowlist and return its
+ * resolved absolute href. Rejects javascript:, data:, file:, etc. so neither
+ * the URL-param path nor the postMessage bridge depends solely on CSP.
+ *
+ * @throws Error if the URL is empty, malformed, or uses an unsupported scheme.
+ */
+export function assertFetchableUrl(url: string): string {
+  if (typeof url !== 'string' || url.length === 0) {
+    throw new Error('Model URL must be a non-empty string');
+  }
+  const parsed = new URL(url, window.location.origin);
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(`Unsupported URL scheme: ${parsed.protocol}`);
+  }
+  return parsed.href;
+}
+
 export function parseUrlParams(): EmbedUrlParams {
   const params = new URLSearchParams(window.location.search);
   const result: EmbedUrlParams = {};
@@ -31,12 +49,10 @@ export function parseUrlParams(): EmbedUrlParams {
   if (modelUrl) {
     // Only allow http(s) URLs to prevent javascript: or data: injection
     try {
-      const parsed = new URL(modelUrl, window.location.origin);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-        result.modelUrl = modelUrl;
-      }
+      assertFetchableUrl(modelUrl);
+      result.modelUrl = modelUrl;
     } catch {
-      // Invalid URL, skip
+      // Invalid URL or unsupported scheme, skip
     }
   }
 

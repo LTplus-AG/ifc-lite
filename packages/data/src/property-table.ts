@@ -348,6 +348,16 @@ function compareValues(propValue: PropertyValue, operator: string, value: Proper
         return propValue.startsWith(value);
     }
   }
-  
+
+  if (typeof propValue === 'boolean' && typeof value === 'boolean') {
+    switch (operator) {
+      case '=':
+      case '==':
+        return propValue === value;
+      case '!=':
+        return propValue !== value;
+    }
+  }
+
   return false;
 }

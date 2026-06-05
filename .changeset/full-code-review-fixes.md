@@ -25,6 +25,9 @@
 "@ifc-lite/renderer": patch
 "@ifc-lite/extensions": patch
 "@ifc-lite/wasm": patch
+"@ifc-lite/spatial": patch
+"@ifc-lite/lens": patch
+"@ifc-lite/codegen": patch
 "create-ifc-lite": patch
 ---
 
@@ -70,3 +73,17 @@ data-loss, and resource/memory leaks). Highlights:
   instead of aborting the whole server.
 - desktop (Tauri): a Content-Security-Policy is set, and unused `shell:*` /
   `fs:allow-write|mkdir|remove` capabilities (and the unused shell plugin) are removed.
+
+**Second pass** (additional verified findings)
+- collab-server: S3 log load now follows `ListObjectsV2` pagination (no dropped frames);
+  awareness frames are size-capped + rate-limited; path-lock verify runs after role/rate-limit;
+  the blob route requires auth and `/metrics` can be token-gated.
+- server-bin: downloaded binaries are SHA-256 verified against a release sidecar (fail-closed on
+  mismatch, warn-if-absent for older releases).
+- extensions: inner-ring capability check fails *closed* for unknown namespaces; signing
+  canonicalization is now injective (length-prefixed).
+- correctness/leaks: mutations quantity type+unit preserved on replay; `findByProperty` boolean
+  comparisons; Parquet REAL columns kept as Float64; blob GC fail-safe on missing `uploadedAt`;
+  spatial-hierarchy + codegen cycle guards; BVH NaN edge; bSDD/playground caches bounded;
+  point-cloud GPU asset freed on federation error; mcp `parseColor` rejects non-hex; bcf/SVG/STEP
+  output escaping; and more.

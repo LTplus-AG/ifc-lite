@@ -524,37 +524,46 @@ export class GeometryProcessor {
         },
       });
 
-      while (!completed || queuedEvents.length > 0) {
-        while (queuedEvents.length > 0) {
-          const event = queuedEvents.shift()!;
-          if (event.type === 'colorUpdate') {
-            yield { type: 'colorUpdate', updates: event.updates };
-            continue;
+      try {
+        while (!completed || queuedEvents.length > 0) {
+          while (queuedEvents.length > 0) {
+            const event = queuedEvents.shift()!;
+            if (event.type === 'colorUpdate') {
+              yield { type: 'colorUpdate', updates: event.updates };
+              continue;
+            }
+            this.coordinateHandler.processMeshesIncremental(event.meshes);
+            totalMeshes += event.meshes.length;
+            const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
+            yield {
+              type: 'batch',
+              meshes: event.meshes,
+              totalSoFar: totalMeshes,
+              coordinateInfo: coordinateInfo || undefined,
+              nativeTelemetry: event.nativeTelemetry,
+            };
           }
-          this.coordinateHandler.processMeshesIncremental(event.meshes);
-          totalMeshes += event.meshes.length;
-          const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-          yield {
-            type: 'batch',
-            meshes: event.meshes,
-            totalSoFar: totalMeshes,
-            coordinateInfo: coordinateInfo || undefined,
-            nativeTelemetry: event.nativeTelemetry,
-          };
-        }
 
-        if (streamError) {
-          throw streamError;
-        }
+          if (streamError) {
+            throw streamError;
+          }
 
-        if (!completed) {
-          await new Promise<void>((resolve) => {
-            resolvePending = resolve;
-          });
+          if (!completed) {
+            await new Promise<void>((resolve) => {
+              resolvePending = resolve;
+            });
+          }
+        }
+      } finally {
+        // Ensure the native stream and its Tauri listeners are torn down
+        // deterministically even when this generator is abandoned (.return())
+        // while suspended at a `yield` or the pending-wake promise.
+        try {
+          await streamingPromise;
+        } catch {
+          /* ignore: drained-or-abandoned native stream errors */
         }
       }
-
-      await streamingPromise;
 
       const coordinateInfo = this.coordinateHandler.getFinalCoordinateInfo();
       yield { type: 'complete', totalMeshes: completedTotalMeshes ?? totalMeshes, coordinateInfo };

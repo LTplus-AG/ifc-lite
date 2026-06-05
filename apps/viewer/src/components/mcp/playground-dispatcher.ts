@@ -188,6 +188,9 @@ async function autoStageBcfDownload(): Promise<NonNullable<ToolDispatchResult['d
     description: `${project.topics.size} topic(s) · auto-updates as you edit`,
   });
   stagedBcfFileId = file.id;
+  // Exempt the always-current BCF bundle from store eviction so its tracked
+  // id can never be orphaned by later export/ids/model_save additions.
+  playgroundFiles.pin(file.id);
   return {
     fileId: file.id,
     filename,

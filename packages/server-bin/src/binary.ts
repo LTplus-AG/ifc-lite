@@ -16,6 +16,7 @@ import { fileURLToPath } from 'url';
 import { extract } from 'tar';
 import { execFileSync } from 'child_process';
 import { getPlatformInfo, getPlatformDescription, type PlatformInfo } from './platform.js';
+import { verifyArchiveChecksum } from './checksum.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -202,6 +203,10 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
   // Download archive
   console.log(`Downloading from: ${downloadUrl}`);
 
+  // Track the asset URL that actually succeeded so the checksum sidecar is
+  // fetched from the SAME release/asset that produced this archive.
+  let resolvedAssetUrl = downloadUrl;
+
   try {
     await downloadFile(downloadUrl, archivePath, onProgress);
   } catch (error) {
@@ -216,6 +221,7 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
       try {
         console.log(`Trying alternate URL: ${altUrl}`);
         await downloadFile(altUrl, archivePath, onProgress);
+        resolvedAssetUrl = altUrl;
         downloaded = true;
         break;
       } catch {
@@ -238,6 +244,11 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
       );
     }
   }
+
+  // Verify archive integrity before we extract / chmod / execute it. Fails
+  // closed on a checksum mismatch; fails open (with a warning) for older
+  // releases that predate the checksum pipeline.
+  await verifyArchiveChecksum(archivePath, resolvedAssetUrl, platformInfo.archiveName);
 
   console.log('Extracting archive...');
 

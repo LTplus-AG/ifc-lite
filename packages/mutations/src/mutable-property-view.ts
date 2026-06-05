@@ -737,6 +737,8 @@ export class MutablePropertyView {
       propName: quantName,
       oldValue: oldValue as PropertyValue,
       newValue: value,
+      quantityType: qType,
+      unit,
     };
 
     if (!skipHistory) {
@@ -1153,7 +1155,8 @@ export class MutablePropertyView {
               mutation.psetName,
               mutation.propName,
               Number(mutation.newValue),
-              QuantityType.Count,
+              (mutation.quantityType as QuantityType) ?? QuantityType.Count,
+              mutation.unit,
             );
           }
           break;

@@ -237,16 +237,23 @@ function toBase64(bytes: Uint8Array): string {
 // quietly into garbage.
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
+// C0/C1 control characters (incl. the 0x1f/0x1e separators that older
+// canonicalisations relied on). Defence-in-depth: paths are printable.
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR_RE = /[\u0000-\u001f\u007f-\u009f]/;
+
 /**
  * A bundle file key must be a plain relative path contained inside the
  * bundle root. Rejects absolute paths (POSIX `/…` and Windows `C:\…`),
- * any `..` segment, and empty/dot segments — so unpacking can never
- * escape the bundle root if a host adapter writes the file map to disk.
+ * any `..` segment, empty/dot segments, and any control characters — so
+ * unpacking can never escape the bundle root if a host adapter writes
+ * the file map to disk.
  */
 function isSafeBundlePath(path: string): boolean {
   if (typeof path !== 'string' || path.length === 0) return false;
   if (path.startsWith('/') || path.startsWith('\\')) return false;
   if (/^[A-Za-z]:/.test(path)) return false;
+  if (CONTROL_CHAR_RE.test(path)) return false;
   const segments = path.replace(/\\/g, '/').split('/');
   return segments.every((seg) => seg.length > 0 && seg !== '.' && seg !== '..');
 }

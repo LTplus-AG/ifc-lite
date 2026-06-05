@@ -109,4 +109,5 @@ export {
   type ServerBlobStorage,
   type ServerBlobMeta,
   type BlobRouteOptions,
+  type BlobAuthorizeFn,
 } from './blob-route.js';

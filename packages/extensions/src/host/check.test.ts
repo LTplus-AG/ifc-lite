@@ -70,6 +70,19 @@ describe('checkMethodCall — deny', () => {
     const r = checkMethodCall('viewer', 'colorize', []);
     expect(r.ok).toBe(false);
   });
+
+  it('fails closed on an un-catalogued namespace', () => {
+    // A namespace the inference catalogue does not know must be denied
+    // (no ambient authority), even with broad grants.
+    const r = checkMethodCall('unknownNs', 'anything', [p('model.mutate:*')]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.required).toEqual([]);
+  });
+
+  it('gates the read-only clash namespace behind model.read', () => {
+    expect(checkMethodCall('clash', 'run', [p('model.read')]).ok).toBe(true);
+    expect(checkMethodCall('clash', 'run', []).ok).toBe(false);
+  });
 });
 
 describe('assertMethodCall', () => {

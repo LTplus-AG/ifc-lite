@@ -5,25 +5,28 @@
 /**
  * Canonical content hashing for `.iflx` bundles.
  *
- * The hash signs a deterministic serialisation of the file map:
+ * The hash signs a deterministic, length-prefixed serialisation of the
+ * file map:
  *
  *   for each path (sorted ASCII ascending):
- *     append utf8(path) || 0x1f || file_bytes || 0x1e
+ *     append u64be(byteLength(path)) || utf8(path)
+ *            || u64be(byteLength(file_bytes)) || file_bytes
  *
- * `0x1f` (unit separator) and `0x1e` (record separator) are
- * non-printable ASCII control characters that cannot appear in path
- * names (paths are restricted to printable subset of UTF-8 by the
- * bundle loader). They give the hash unambiguous segment boundaries
- * without needing length prefixes.
+ * Each variable-length segment is preceded by a fixed-width (8-byte,
+ * big-endian) length, so the serialisation is unambiguous (injective)
+ * regardless of byte content. Earlier revisions used `0x1f`/`0x1e`
+ * delimiters, but those bytes can legitimately appear inside arbitrary
+ * binary `file_bytes`, which would have made the hashed stream
+ * ambiguous and weakened the second-preimage guarantee of the
+ * signature scheme.
  *
  * Spec: docs/architecture/ai-customization/10-registry-and-signing.md §3.2.
  */
 
 import type { BundleFile } from '../types.js';
 
-const UNIT_SEP = 0x1f;
-const RECORD_SEP = 0x1e;
 const HEX = '0123456789abcdef';
+const LENGTH_PREFIX_BYTES = 8;
 
 /** Compute the canonical content hash for a file map. */
 export async function canonicalContentHash(files: Map<string, BundleFile>): Promise<string> {
@@ -38,7 +41,7 @@ export async function canonicalContentHash(files: Map<string, BundleFile>): Prom
     pathBytes.push(p);
     const fileBytes = files.get(path)?.bytes;
     if (!fileBytes) continue;
-    total += p.byteLength + 1 + fileBytes.byteLength + 1;
+    total += LENGTH_PREFIX_BYTES + p.byteLength + LENGTH_PREFIX_BYTES + fileBytes.byteLength;
   }
 
   const concat = new Uint8Array(total);
@@ -47,19 +50,33 @@ export async function canonicalContentHash(files: Map<string, BundleFile>): Prom
     const path = sortedPaths[i];
     const file = files.get(path);
     if (!file) continue;
+    offset = writeLengthPrefix(concat, offset, pathBytes[i].byteLength);
     concat.set(pathBytes[i], offset);
     offset += pathBytes[i].byteLength;
-    concat[offset] = UNIT_SEP;
-    offset += 1;
+    offset = writeLengthPrefix(concat, offset, file.bytes.byteLength);
     concat.set(file.bytes, offset);
     offset += file.bytes.byteLength;
-    concat[offset] = RECORD_SEP;
-    offset += 1;
   }
 
   const buffer = concat.buffer.slice(0, concat.byteLength) as ArrayBuffer;
   const digest = await crypto.subtle.digest('SHA-256', buffer);
   return bufferToHex(digest);
+}
+
+/**
+ * Write an 8-byte big-endian length prefix at `offset` and return the
+ * new offset. JS bitwise ops truncate to 32 bits, so we shift via
+ * integer division to support lengths above 2^32 (Number is exact for
+ * byte lengths up to 2^53). Fills least-significant byte first, walking
+ * from the last byte back to the first.
+ */
+function writeLengthPrefix(out: Uint8Array, offset: number, length: number): number {
+  let remaining = length;
+  for (let i = LENGTH_PREFIX_BYTES - 1; i >= 0; i -= 1) {
+    out[offset + i] = remaining % 256;
+    remaining = Math.floor(remaining / 256);
+  }
+  return offset + LENGTH_PREFIX_BYTES;
 }
 
 function bufferToHex(buf: ArrayBuffer): string {

@@ -19,7 +19,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { parseUrlParams } from '../bridge/urlParams.js';
+import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
@@ -53,7 +53,10 @@ export function EmbedViewer() {
     initBridge({
       getState: () => useViewerStore.getState(),
       loadModelFromUrl: async (url: string) => {
-        const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+        // Enforce the same http(s)-only allowlist as the URL-param path so the
+        // postMessage bridge can't be steered to file:/data:/internal targets.
+        const safeUrl = assertFetchableUrl(url);
+        const response = await fetch(safeUrl, { signal: AbortSignal.timeout(60_000) });
         if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
         const buffer = await response.arrayBuffer();
         const filename = url.split('/').pop() || 'model.ifc';

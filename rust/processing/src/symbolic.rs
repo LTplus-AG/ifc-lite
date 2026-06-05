@@ -1618,10 +1618,13 @@ fn extract_color_from_fill_area_style(
     for fs_ref in fill_style_refs {
         let Ok(fs) = decoder.decode_by_id(fs_ref) else { continue };
         if fs.ifc_type == IfcType::IfcColourRgb {
-            let r = fs.get(1)?.as_float()? as f32;
-            let g = fs.get(2)?.as_float()? as f32;
-            let b = fs.get(3)?.as_float()? as f32;
-            return Some([r, g, b, 1.0]);
+            if let (Some(r), Some(g), Some(b)) = (
+                fs.get(1).and_then(|v| v.as_float()),
+                fs.get(2).and_then(|v| v.as_float()),
+                fs.get(3).and_then(|v| v.as_float()),
+            ) {
+                return Some([r as f32, g as f32, b as f32, 1.0]);
+            }
         }
     }
     None

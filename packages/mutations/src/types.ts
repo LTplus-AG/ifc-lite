@@ -69,6 +69,8 @@ export interface Mutation {
   newValue?: PropertyValue;
   /** Value type */
   valueType?: PropertyValueType;
+  /** Quantity type (Length, Area, Volume, etc.) — for CREATE/UPDATE_QUANTITY */
+  quantityType?: number;
   /** Unit (for quantities) */
   unit?: string;
 

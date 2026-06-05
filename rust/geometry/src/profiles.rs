@@ -503,6 +503,88 @@ fn push_arc(
     }
 }
 
+/// Round a (right-angle) corner with a tangent fillet of radius `r`, replacing
+/// the sharp `corner` with an arc tangent to the incoming edge `prev->corner`
+/// and the outgoing edge `corner->next`. Returns the arc points from the
+/// incoming tangent point to the outgoing one (so the caller drops the sharp
+/// corner). The fillet centre is placed on the side the edges turn toward, so
+/// the same call rounds a concave (re-entrant, material-adding) corner and a
+/// convex (toe, material-removing) corner correctly. When `r` is below 1 µm or
+/// the edges are degenerate, the sharp `corner` is returned unchanged.
+///
+/// Used for the steel-section web/flange fillets and toe edge radii
+/// (IfcL/U/T/I-ShapeProfileDef). For a 90° corner the tangent points sit `r`
+/// from the corner along each edge and the centre at `corner - e_in*r + e_out*r`.
+fn round_corner(
+    prev: Point2<f64>,
+    corner: Point2<f64>,
+    next: Point2<f64>,
+    r: f64,
+    segments: usize,
+) -> Vec<Point2<f64>> {
+    if r <= 1.0e-9 {
+        return vec![corner];
+    }
+    let ein = corner - prev;
+    let eout = next - corner;
+    let (ein_n, eout_n) = (ein.norm(), eout.norm());
+    // Need both edges at least `r` long to fit the tangent points, else the
+    // fillet would overrun the edge — fall back to a sharp corner.
+    if ein_n < r || eout_n < r {
+        return vec![corner];
+    }
+    let ein = ein / ein_n;
+    let eout = eout / eout_n;
+    let t_in = corner - ein * r; // tangent point on the incoming edge
+    let t_out = corner + eout * r; // tangent point on the outgoing edge
+    let center = corner - ein * r + eout * r;
+    let mut a0 = (t_in.y - center.y).atan2(t_in.x - center.x);
+    let mut a1 = (t_out.y - center.y).atan2(t_out.x - center.x);
+    // Sweep the short way (a 90° corner gives a quarter arc).
+    while a1 - a0 > std::f64::consts::PI {
+        a1 -= 2.0 * std::f64::consts::PI;
+    }
+    while a0 - a1 > std::f64::consts::PI {
+        a1 += 2.0 * std::f64::consts::PI;
+    }
+    let mut out = Vec::with_capacity(segments + 1);
+    push_arc(&mut out, center.x, center.y, r, a0, a1, segments);
+    out
+}
+
+/// Build a closed outline from `sharp` corners, rounding the corners named in
+/// `radii` (index → radius) with tangent fillets via [`round_corner`]. Corners
+/// not listed (or with radius ≤ 0) stay sharp. Indices wrap, so a corner at the
+/// seam still sees its true neighbours. Used by the L/U/T/I parametric steel
+/// sections; the radius's concave/convex sense is handled by `round_corner`.
+fn fillet_outline(
+    sharp: &[Point2<f64>],
+    radii: &[(usize, f64)],
+    segments: usize,
+) -> Vec<Point2<f64>> {
+    let n = sharp.len();
+    let mut out: Vec<Point2<f64>> = Vec::with_capacity(n + radii.len() * segments);
+    for i in 0..n {
+        let r = radii
+            .iter()
+            .find(|(idx, _)| *idx == i)
+            .map(|(_, r)| *r)
+            .unwrap_or(0.0);
+        if r > 1.0e-9 {
+            out.extend(round_corner(
+                sharp[(i + n - 1) % n],
+                sharp[i],
+                sharp[(i + 1) % n],
+                r,
+                segments,
+            ));
+        } else {
+            out.push(sharp[i]);
+        }
+    }
+    out
+}
+
 /// Profile processor - processes IFC profiles into 2D contours
 pub struct ProfileProcessor {
     schema: IfcSchema,
@@ -973,31 +1055,42 @@ impl ProfileProcessor {
             .get_float(6)
             .ok_or_else(|| Error::geometry("I-Shape missing FlangeThickness".to_string()))?;
 
+        // FilletRadius (attr 7) rounds the four web↔flange junctions (concave,
+        // adds the root-fillet material). FlangeEdgeRadius (8) and FlangeSlope
+        // (9) are not yet modelled (rare; absent in the ara3d set).
+        let fillet = profile
+            .get_float(7)
+            .unwrap_or(0.0)
+            .clamp(0.0, ((overall_depth - 2.0 * flange_thickness) * 0.5)
+                .min((overall_width - web_thickness) * 0.5)
+                .max(0.0));
+
         let half_width = overall_width / 2.0;
         let half_depth = overall_depth / 2.0;
         let half_web = web_thickness / 2.0;
+        let ftf_bot = -half_depth + flange_thickness;
+        let ftf_top = half_depth - flange_thickness;
 
-        // Create I-shape profile (counter-clockwise from bottom-left)
-        let points = vec![
-            // Bottom flange
-            Point2::new(-half_width, -half_depth),
-            Point2::new(half_width, -half_depth),
-            Point2::new(half_width, -half_depth + flange_thickness),
-            // Right side of web
-            Point2::new(half_web, -half_depth + flange_thickness),
-            Point2::new(half_web, half_depth - flange_thickness),
-            // Top flange
-            Point2::new(half_width, half_depth - flange_thickness),
-            Point2::new(half_width, half_depth),
-            Point2::new(-half_width, half_depth),
-            Point2::new(-half_width, half_depth - flange_thickness),
-            // Left side of web
-            Point2::new(-half_web, half_depth - flange_thickness),
-            Point2::new(-half_web, -half_depth + flange_thickness),
-            Point2::new(-half_width, -half_depth + flange_thickness),
+        // Sharp outline (counter-clockwise from bottom-left). Indices 3, 4, 9,
+        // 10 are the web↔flange junctions that take the fillet.
+        let sharp = [
+            Point2::new(-half_width, -half_depth), // 0
+            Point2::new(half_width, -half_depth),  // 1
+            Point2::new(half_width, ftf_bot),      // 2
+            Point2::new(half_web, ftf_bot),        // 3  junction
+            Point2::new(half_web, ftf_top),        // 4  junction
+            Point2::new(half_width, ftf_top),      // 5
+            Point2::new(half_width, half_depth),   // 6
+            Point2::new(-half_width, half_depth),  // 7
+            Point2::new(-half_width, ftf_top),     // 8
+            Point2::new(-half_web, ftf_top),       // 9  junction
+            Point2::new(-half_web, ftf_bot),       // 10 junction
+            Point2::new(-half_width, ftf_bot),     // 11
         ];
-
-        Ok(Profile2D::new(points))
+        const SEG: usize = 6;
+        // Indices 3, 4, 9, 10 are the four web↔flange junctions.
+        let radii = [(3, fillet), (4, fillet), (9, fillet), (10, fillet)];
+        Ok(Profile2D::new(fillet_outline(&sharp, &radii, SEG)))
     }
 
     /// Process asymmetric I-shape profile.
@@ -1264,21 +1357,31 @@ impl ProfileProcessor {
             .get_float(6)
             .ok_or_else(|| Error::geometry("U-Shape missing FlangeThickness".to_string()))?;
 
+        // FilletRadius (attr 7) rounds the two inner web↔flange junctions
+        // (concave); EdgeRadius (attr 8) rounds the two flange toes (convex).
+        // FlangeSlope (9) not modelled.
         let half_depth = depth / 2.0;
+        let ft = flange_thickness;
+        let rf = profile
+            .get_float(7)
+            .unwrap_or(0.0)
+            .clamp(0.0, (flange_width - web_thickness).min(half_depth - ft).max(0.0));
+        let re = profile.get_float(8).unwrap_or(0.0).clamp(0.0, ft * 0.999);
 
-        // U-shape profile (counter-clockwise)
-        let points = vec![
-            Point2::new(0.0, -half_depth),
-            Point2::new(flange_width, -half_depth),
-            Point2::new(flange_width, -half_depth + flange_thickness),
-            Point2::new(web_thickness, -half_depth + flange_thickness),
-            Point2::new(web_thickness, half_depth - flange_thickness),
-            Point2::new(flange_width, half_depth - flange_thickness),
-            Point2::new(flange_width, half_depth),
-            Point2::new(0.0, half_depth),
+        // Sharp outline (counter-clockwise). 2,5 = flange toes; 3,4 = junctions.
+        let sharp = [
+            Point2::new(0.0, -half_depth),               // 0 back-bottom outer
+            Point2::new(flange_width, -half_depth),       // 1 bottom toe outer
+            Point2::new(flange_width, -half_depth + ft),  // 2 bottom toe inner (edge)
+            Point2::new(web_thickness, -half_depth + ft), // 3 bottom junction (fillet)
+            Point2::new(web_thickness, half_depth - ft),  // 4 top junction (fillet)
+            Point2::new(flange_width, half_depth - ft),   // 5 top toe inner (edge)
+            Point2::new(flange_width, half_depth),        // 6 top toe outer
+            Point2::new(0.0, half_depth),                 // 7 back-top outer
         ];
-
-        Ok(Profile2D::new(points))
+        const SEG: usize = 6;
+        let radii = [(2, re), (3, rf), (4, rf), (5, re)];
+        Ok(Profile2D::new(fillet_outline(&sharp, &radii, SEG)))
     }
 
     /// Process T-shape profile
@@ -1297,22 +1400,42 @@ impl ProfileProcessor {
             .get_float(6)
             .ok_or_else(|| Error::geometry("T-Shape missing FlangeThickness".to_string()))?;
 
+        // FilletRadius (attr 7) rounds the two web↔flange junctions (concave);
+        // FlangeEdgeRadius (8) rounds the flange toes; WebEdgeRadius (9) rounds
+        // the web's free end. Flange/Web slopes (10/11) not modelled.
         let half_flange = flange_width / 2.0;
         let half_web = web_thickness / 2.0;
+        let ft = flange_thickness;
+        let ftf = depth - ft; // flange inner face Y
+        let rf = profile
+            .get_float(7)
+            .unwrap_or(0.0)
+            .clamp(0.0, (half_flange - half_web).min(ftf).max(0.0));
+        let r_fl = profile.get_float(8).unwrap_or(0.0).clamp(0.0, ft * 0.999);
+        let r_web = profile.get_float(9).unwrap_or(0.0).clamp(0.0, half_web * 0.999);
 
-        // T-shape profile (counter-clockwise)
-        let points = vec![
-            Point2::new(-half_web, 0.0),
-            Point2::new(-half_web, depth - flange_thickness),
-            Point2::new(-half_flange, depth - flange_thickness),
-            Point2::new(-half_flange, depth),
-            Point2::new(half_flange, depth),
-            Point2::new(half_flange, depth - flange_thickness),
-            Point2::new(half_web, depth - flange_thickness),
-            Point2::new(half_web, 0.0),
+        // Sharp outline (counter-clockwise). 1,6 = junctions; 2,5 = flange toes;
+        // 0,7 = web free-end corners.
+        let sharp = [
+            Point2::new(-half_web, 0.0),       // 0 web bottom-left (web edge)
+            Point2::new(-half_web, ftf),       // 1 left junction (fillet)
+            Point2::new(-half_flange, ftf),    // 2 flange left toe inner (flange edge)
+            Point2::new(-half_flange, depth),  // 3 flange left toe top
+            Point2::new(half_flange, depth),   // 4 flange right toe top
+            Point2::new(half_flange, ftf),     // 5 flange right toe inner (flange edge)
+            Point2::new(half_web, ftf),        // 6 right junction (fillet)
+            Point2::new(half_web, 0.0),        // 7 web bottom-right (web edge)
         ];
-
-        Ok(Profile2D::new(points))
+        const SEG: usize = 6;
+        let radii = [
+            (0, r_web),
+            (1, rf),
+            (2, r_fl),
+            (5, r_fl),
+            (6, rf),
+            (7, r_web),
+        ];
+        Ok(Profile2D::new(fillet_outline(&sharp, &radii, SEG)))
     }
 
     /// Process C-shape profile (channel with lips)
@@ -2885,6 +3008,111 @@ mod tests {
 
         assert_eq!(profile.outer.len(), 12); // I-shape has 12 vertices
         assert!(!profile.outer.is_empty());
+    }
+
+    /// Shoelace area of a profile's outer boundary.
+    fn outer_area(profile: &Profile2D) -> f64 {
+        let p = &profile.outer;
+        let n = p.len();
+        let mut a = 0.0;
+        for i in 0..n {
+            let b = p[(i + 1) % n];
+            a += p[i].x * b.y - b.x * p[i].y;
+        }
+        a.abs() * 0.5
+    }
+
+    // I-shape FilletRadius rounds the four web↔flange junctions (concave, adds
+    // root-fillet material). ISSUE_021 I-beam #4416: W180 D171 tw6 tf9.5,
+    // FilletRadius 15. Closed-form area: sharp 4332 + 4·r²(1−π/4) ≈ 4525.1 mm².
+    #[test]
+    fn test_i_shape_honours_fillet_radius() {
+        let sharp = process_content(
+            "#1=IFCISHAPEPROFILEDEF(.AREA.,$,$,180.,171.,6.,9.5,$,$,$);\n",
+            1,
+        );
+        let filleted = process_content(
+            "#1=IFCISHAPEPROFILEDEF(.AREA.,$,$,180.,171.,6.,9.5,15.,$,$);\n",
+            1,
+        );
+        assert_eq!(sharp.outer.len(), 12, "sharp I should stay 12 points");
+        assert!(
+            filleted.outer.len() > 12,
+            "fillets not generated: {} points",
+            filleted.outer.len()
+        );
+        // Closed-form uses ideal arcs; the 6-segment-per-corner tessellation of
+        // four concave fillets over-estimates by ~8 mm² (chords bow outward on a
+        // concave fillet). Tolerance absorbs that while still pinning the sign
+        // (filleted ≈ 4525, clearly above sharp 4332).
+        let k = 1.0 - std::f64::consts::FRAC_PI_4;
+        let expected = 4332.0 + 4.0 * 15.0 * 15.0 * k;
+        let area = outer_area(&filleted);
+        assert!(
+            (area - expected).abs() < 15.0 && area > outer_area(&sharp) + 100.0,
+            "I fillet area {area:.2} vs expected {expected:.2} (sharp {:.2})",
+            outer_area(&sharp)
+        );
+        // bbox unchanged (fillets are interior).
+        let (mnx, mny, mxx, mxy) = outer_bbox(&filleted);
+        assert!((mxx - mnx - 180.0).abs() < 1e-6 && (mxy - mny - 171.0).abs() < 1e-6);
+    }
+
+    // U-shape (channel): FilletRadius rounds the 2 inner web↔flange junctions
+    // (concave, +), EdgeRadius rounds the 2 flange toes (convex, −). Depth 200,
+    // FlangeWidth 80, WebThickness 10, FlangeThickness 12, FilletRadius 12,
+    // EdgeRadius 6. Sharp 3680 + 2·12²(1−π/4) − 2·6²(1−π/4) ≈ 3726.3 mm².
+    #[test]
+    fn test_u_shape_honours_radii() {
+        let sharp = process_content(
+            "#1=IFCUSHAPEPROFILEDEF(.AREA.,$,$,200.,80.,10.,12.,$,$,$,$);\n",
+            1,
+        );
+        let filleted = process_content(
+            "#1=IFCUSHAPEPROFILEDEF(.AREA.,$,$,200.,80.,10.,12.,12.,6.,$,$);\n",
+            1,
+        );
+        assert_eq!(sharp.outer.len(), 8);
+        assert!(filleted.outer.len() > 8, "U fillets not generated");
+        let k = 1.0 - std::f64::consts::FRAC_PI_4;
+        let expected = 3680.0 + 2.0 * 144.0 * k - 2.0 * 36.0 * k;
+        let area = outer_area(&filleted);
+        assert!(
+            (area - expected).abs() < 12.0,
+            "U area {area:.2} vs expected {expected:.2}"
+        );
+        // bbox unchanged: FlangeWidth × Depth.
+        let (mnx, mny, mxx, mxy) = outer_bbox(&filleted);
+        assert!((mxx - mnx - 80.0).abs() < 1e-6 && (mxy - mny - 200.0).abs() < 1e-6);
+    }
+
+    // T-shape: FilletRadius at the 2 web↔flange junctions (concave, +),
+    // FlangeEdgeRadius at the 2 flange toes and WebEdgeRadius at the 2 web-end
+    // corners (convex, −). Depth 100, FlangeWidth 80, WebThickness 10,
+    // FlangeThickness 12, FilletRadius 8, FlangeEdgeRadius 4, WebEdgeRadius 3.
+    // Sharp 1840 + 2·8²(1−π/4) − 2·4²(1−π/4) − 2·3²(1−π/4) ≈ 1856.8 mm².
+    #[test]
+    fn test_t_shape_honours_radii() {
+        let sharp = process_content(
+            "#1=IFCTSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,10.,12.,$,$,$,$,$);\n",
+            1,
+        );
+        let filleted = process_content(
+            "#1=IFCTSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,10.,12.,8.,4.,3.,$,$);\n",
+            1,
+        );
+        assert_eq!(sharp.outer.len(), 8);
+        assert!(filleted.outer.len() > 8, "T fillets not generated");
+        let k = 1.0 - std::f64::consts::FRAC_PI_4;
+        let expected = 1840.0 + 2.0 * 64.0 * k - 2.0 * 16.0 * k - 2.0 * 9.0 * k;
+        let area = outer_area(&filleted);
+        assert!(
+            (area - expected).abs() < 10.0,
+            "T area {area:.2} vs expected {expected:.2}"
+        );
+        // bbox unchanged: FlangeWidth × Depth.
+        let (mnx, mny, mxx, mxy) = outer_bbox(&filleted);
+        assert!((mxx - mnx - 80.0).abs() < 1e-6 && (mxy - mny - 100.0).abs() < 1e-6);
     }
 
     /// (min_x, min_y, max_x, max_y) of a profile's outer boundary.

@@ -525,3 +525,16 @@ export function IfcTypeEnumFromString(str: string): IfcTypeEnum {
 export function IfcTypeEnumToString(type: IfcTypeEnum): string {
   return TYPE_ENUM_TO_STRING.get(type) ?? 'Unknown';
 }
+
+export type IfcAttributeValue =
+  | string
+  | number
+  | boolean
+  | null
+  | IfcAttributeValue[];
+
+export interface IfcEntity {
+  expressId: number;
+  type: string;
+  attributes: IfcAttributeValue[];
+}

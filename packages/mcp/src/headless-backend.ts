@@ -44,7 +44,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import type { IfcStoreBase as IfcDataStore } from '@ifc-lite/data';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { EntityNode } from '@ifc-lite/query';
 import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';

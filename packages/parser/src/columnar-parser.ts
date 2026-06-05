@@ -25,7 +25,8 @@ import {
     RelationshipType,
     QuantityType,
 } from '@ifc-lite/data';
-import type { SpatialHierarchy, QuantityTable, PropertyValue } from '@ifc-lite/data';
+import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, QuantitySet, IfcStoreBase, IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
+import { BufferEntitySource } from './entity-source.js';
 import { batchExtractGlobalIdAndName } from './columnar-parser-attributes.js';
 import {
     GEOMETRY_TYPES,
@@ -48,10 +49,7 @@ import type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js
 // Re-export interfaces/types from extracted modules for public API compatibility
 export type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
-export interface IfcDataStore {
-    fileSize: number;
-    schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
-    entityCount: number;
+export interface IfcDataStore extends IfcStoreBase {
     parseTime: number;
 
     source: Uint8Array;
@@ -63,9 +61,6 @@ export interface IfcDataStore {
     properties: ReturnType<PropertyTableBuilder['build']>;
     quantities: QuantityTable;
     relationships: ReturnType<RelationshipGraphBuilder['build']>;
-
-    spatialHierarchy?: SpatialHierarchy;
-    spatialIndex?: SpatialIndex;
 
     /**
      * On-demand property lookup: entityId -> array of property set expressIds
@@ -513,6 +508,7 @@ export class ColumnarParser {
         // The hierarchy panel can render immediately while property/association
         // parsing continues. This lets the panel appear at the same time as
         // geometry streaming completes.
+        const entitySource = new BufferEntitySource(uint8Buffer, entityIndex);
         const earlyStore: IfcDataStore = {
             fileSize: buffer.byteLength,
             schemaVersion,
@@ -527,6 +523,10 @@ export class ColumnarParser {
             relationships: hierarchyRelGraph,
             spatialHierarchy,
             lengthUnitScale,
+            getEntity(expressId) { return entitySource.getEntity(expressId); },
+            getEntitiesByType(typeName) { return entitySource.getEntitiesByType(typeName); },
+            getProperties(expressId) { return this.properties.getForEntity(expressId); },
+            getQuantities(expressId) { return this.quantities.getForEntity(expressId); },
         };
         options.onSpatialReady?.(earlyStore);
 
@@ -638,7 +638,7 @@ export class ColumnarParser {
         const parseTime = performance.now() - startTime;
         options.onProgress?.({ phase: 'complete', percent: 100 });
 
-        return {
+        const finalStore: IfcDataStore = {
             ...earlyStore,
             parseTime,
             relationships: fullRelationshipGraph,
@@ -649,7 +649,18 @@ export class ColumnarParser {
             onDemandMaterialMap,
             onDemandDocumentMap,
             lengthUnitScale,
+            getEntity(expressId) { return entitySource.getEntity(expressId); },
+            getEntitiesByType(typeName) { return entitySource.getEntitiesByType(typeName); },
+            getProperties(expressId) {
+                if (onDemandPropertyMap.size > 0) return extractPropertiesOnDemand(this as IfcDataStore, expressId) as PropertySet[];
+                return this.properties.getForEntity(expressId);
+            },
+            getQuantities(expressId) {
+                if (onDemandQuantityMap.size > 0) return extractQuantitiesOnDemand(this as IfcDataStore, expressId) as QuantitySet[];
+                return this.quantities.getForEntity(expressId);
+            },
         };
+        return finalStore;
     }
 
     /**
@@ -944,6 +955,26 @@ export function extractAllEntityAttributes(
         }
     }
 
+    return result;
+}
+
+/**
+ * Returns named raw attribute pairs for an entity, filtered to display-relevant attributes.
+ * Skips structural/reference attributes using the IFC schema. Used by query layer for coercion.
+ */
+export function getRawNamedAttributes(
+    entity: IfcEntity
+): Array<{ name: string; raw: IfcAttributeValue }> {
+    const attrs = entity.attributes || [];
+    const attrNames = getAttributeNames(entity.type);
+
+    const result: Array<{ name: string; raw: IfcAttributeValue }> = [];
+    const len = Math.min(attrs.length, attrNames.length);
+    for (let i = 0; i < len; i++) {
+        const attrName = attrNames[i];
+        if (SKIP_DISPLAY_ATTRS.has(attrName)) continue;
+        result.push({ name: attrName, raw: attrs[i] });
+    }
     return result;
 }
 

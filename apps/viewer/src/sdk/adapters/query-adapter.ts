@@ -136,13 +136,13 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     if (!model?.ifcDataStore) return [];
 
     const node = new EntityNode(model.ifcDataStore, ref.expressId);
-    return node.properties().map((pset: { name: string; globalId?: string; properties: Array<{ name: string; type: number; value: string | number | boolean | null }> }) => ({
+    return node.properties().map((pset) => ({
       name: pset.name,
       globalId: pset.globalId,
-      properties: pset.properties.map((p: { name: string; type: number; value: string | number | boolean | null }) => ({
+      properties: pset.properties.map((p) => ({
         name: p.name,
         type: p.type,
-        value: p.value,
+        value: p.value as string | number | boolean | null,
       })),
     }));
   }

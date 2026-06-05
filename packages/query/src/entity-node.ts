@@ -6,7 +6,7 @@
  * Entity node for graph traversal
  */
 
-import type { IfcStoreBase as IfcDataStore, IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
+import type { IfcStoreBase as IfcDataStore, IfcEntity, IfcAttributeValue, PropertySet, QuantitySet, PropertyValue } from '@ifc-lite/data';
 import { getRawNamedAttributes } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
 
@@ -224,17 +224,17 @@ export class EntityNode {
   }
 
   // Data access - delegates to IfcDataStore interface methods
-  properties(): ReturnType<typeof this.store.getProperties> {
+  properties(): PropertySet[] {
     return this.store.getProperties(this.expressId);
   }
 
-  property(psetName: string, propName: string): ReturnType<typeof this.store.properties.getPropertyValue> {
+  property(psetName: string, propName: string): PropertyValue | null {
     const props = this.store.getProperties(this.expressId);
     const pset = props.find(p => p.name === psetName);
     return pset?.properties.find(p => p.name === propName)?.value ?? null;
   }
 
-  quantities(): ReturnType<typeof this.store.getQuantities> {
+  quantities(): QuantitySet[] {
     return this.store.getQuantities(this.expressId);
   }
 

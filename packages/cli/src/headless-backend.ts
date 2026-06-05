@@ -38,7 +38,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import type { IfcStoreBase as IfcDataStore } from '@ifc-lite/data';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
   addBeamToStore,
@@ -236,7 +236,7 @@ export class HeadlessBackend implements BimBackend {
         properties: pset.properties.map((p) => ({
           name: p.name,
           type: p.type,
-          value: p.value,
+          value: p.value as string | number | boolean | null,
         })),
       }));
     }

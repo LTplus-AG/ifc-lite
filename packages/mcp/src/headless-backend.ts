@@ -44,7 +44,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import type { IfcStoreBase as IfcDataStore } from '@ifc-lite/data';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { EntityNode } from '@ifc-lite/query';
 import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
@@ -208,7 +208,7 @@ export class HeadlessLikeBackend implements BimBackend {
       return node.properties().map((pset) => ({
         name: pset.name,
         globalId: pset.globalId,
-        properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value })),
+        properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value as string | number | boolean | null })),
       }));
     }
 

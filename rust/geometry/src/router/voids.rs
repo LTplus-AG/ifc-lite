@@ -2252,13 +2252,28 @@ impl GeometryRouter {
             let tri_min_z = v0.z.min(v1.z).min(v2.z);
             let tri_max_z = v0.z.max(v1.z).max(v2.z);
 
+            // Per-axis "completely outside" slack, scaled by the box-plane
+            // coordinate magnitude. The host mesh is stored f32 and promoted to
+            // f64 here, while the opening box bounds are pure f64; at
+            // building-scale world coordinates (tens of metres) the f32 quantum
+            // (|coord| * 2^-23 ≈ 1.2e-7 * |coord|, ~4e-6 m at 33 m) exceeds a
+            // fixed 1e-6 m EPSILON. A wall face authored exactly flush with the
+            // opening's near plane (door extruded from the back surface —
+            // ISSUE_126 #77438 / #83694) then rounds ~1.4e-6 m *outside* the
+            // box, so a fixed-epsilon test mis-classifies it as "completely
+            // outside", the back face survives un-cut, and the opening is sealed
+            // (non-manifold). Track the f32 round-trip error per axis.
+            let eps_x = EPSILON.max(open_min.x.abs().max(open_max.x.abs()) * 1e-6);
+            let eps_y = EPSILON.max(open_min.y.abs().max(open_max.y.abs()) * 1e-6);
+            let eps_z = EPSILON.max(open_min.z.abs().max(open_max.z.abs()) * 1e-6);
+
             // If triangle is completely outside opening, keep it as-is
-            if tri_max_x <= open_min.x - EPSILON
-                || tri_min_x >= open_max.x + EPSILON
-                || tri_max_y <= open_min.y - EPSILON
-                || tri_min_y >= open_max.y + EPSILON
-                || tri_max_z <= open_min.z - EPSILON
-                || tri_min_z >= open_max.z + EPSILON
+            if tri_max_x <= open_min.x - eps_x
+                || tri_min_x >= open_max.x + eps_x
+                || tri_max_y <= open_min.y - eps_y
+                || tri_min_y >= open_max.y + eps_y
+                || tri_max_z <= open_min.z - eps_z
+                || tri_min_z >= open_max.z + eps_z
             {
                 let base = result.vertex_count() as u32;
                 result.add_vertex(v0, n0);
@@ -2377,7 +2392,16 @@ impl GeometryRouter {
             let tri_max = p0.max(p1).max(p2);
             let box_extent = box_half_extents[axis_idx];
 
-            if tri_max < -box_extent - SAT_EPSILON || tri_min > box_extent + SAT_EPSILON {
+            // Scale the separation slack by the world-coordinate magnitude on
+            // this axis so it absorbs the f32 round-trip slop of the host mesh
+            // (stored f32, promoted to f64 here) at building-scale coordinates;
+            // a fixed 1e-6 m is below the f32 quantum at tens of metres, so a
+            // triangle exactly coplanar with the box face (ISSUE_126 #77438 back
+            // face, flush with the door opening's near plane) reads as separated
+            // and survives the cut un-clipped.
+            let axis_eps =
+                SAT_EPSILON.max(box_center[axis_idx].abs().max(box_extent.abs()) * 1e-6);
+            if tri_max < -box_extent - axis_eps || tri_min > box_extent + axis_eps {
                 return false; // Separated on this axis
             }
         }
@@ -2410,8 +2434,20 @@ impl GeometryRouter {
         // pipeline) becomes a separation gap of ~1.7e-6 in projection units,
         // which a fixed 1e-6 epsilon misses — leaving the wall's outer face
         // un-clipped (Smiley-West uncut walls, follow-up to #584).
+        //
+        // The *physical* slack must additionally absorb the f32 round-trip slop
+        // of the host mesh: at building-scale world coordinates (tens of metres)
+        // the f32 quantum is |coord| * 2^-23 ≈ 1.2e-7 * |coord|, which exceeds a
+        // fixed 1e-6 m. A wall face flush with the opening's near plane (door
+        // extruded from the back surface — ISSUE_126 #77438 / #83694, coords
+        // ~33 m) lands ~1.4e-6 m outside the box; a fixed 1e-6 physical slack
+        // still reports separation and the back face survives un-cut, sealing
+        // the opening. Scale the physical slack by the box-center magnitude so
+        // it tracks the f32 error, then by the normal magnitude as before.
+        let phys_slack = SAT_EPSILON
+            .max(box_center.x.abs().max(box_center.y.abs()).max(box_center.z.abs()) * 1e-6);
         let normal_magnitude = triangle_normal.norm();
-        let t2_epsilon = SAT_EPSILON * normal_magnitude.max(1.0);
+        let t2_epsilon = phys_slack * normal_magnitude.max(1.0);
         if triangle_offset.abs() > box_projection + t2_epsilon {
             return false; // Separated by triangle plane
         }
@@ -2450,8 +2486,14 @@ impl GeometryRouter {
                         box_half_extents[i] * axis_normalized.dot(&box_axis_vec).abs();
                 }
 
-                if tri_max < -box_projection - SAT_EPSILON
-                    || tri_min > box_projection + SAT_EPSILON
+                // Same f32-round-trip-aware physical slack as Test 2: the
+                // cross-product axis is normalized, so projections are physical
+                // units and a fixed 1e-6 m misses building-scale f32 slop on a
+                // triangle coplanar with a box face (ISSUE_126 #77438 back face
+                // — box-edge × triangle-edge yields a ±X axis, the very axis the
+                // coplanar back face is separated on).
+                if tri_max < -box_projection - phys_slack
+                    || tri_min > box_projection + phys_slack
                 {
                     return false; // Separated on this axis
                 }
@@ -2490,7 +2532,25 @@ impl GeometryRouter {
         open_max: &Point3<f64>,
     ) {
         let clipper = ClippingProcessor::new();
-        let epsilon = clipper.epsilon;
+        // The plane classification (`d >= -epsilon` = inside/front) must absorb
+        // the host mesh's f32 round-trip slop: the mesh is stored f32 and
+        // promoted to f64 here while the box planes are pure f64. At
+        // building-scale world coordinates (tens of metres) the f32 quantum
+        // (|coord| * 2^-23 ≈ 1.2e-7 * |coord|) exceeds a fixed 1e-6 m, so a wall
+        // face flush with a box plane (ISSUE_126 #77438 back face, ~33 m,
+        // ~1.4e-6 m off the +X plane) is classified entirely "outside" and the
+        // whole triangle survives un-clipped — the opening is sealed by the
+        // un-cut back face. Scale the classification epsilon by the box-plane
+        // coordinate magnitude so it tracks that f32 error.
+        let coord_mag = open_min
+            .x
+            .abs()
+            .max(open_max.x.abs())
+            .max(open_min.y.abs())
+            .max(open_max.y.abs())
+            .max(open_min.z.abs())
+            .max(open_max.z.abs());
+        let epsilon = clipper.epsilon.max(coord_mag * 1e-6);
 
         // Clear buffers for reuse (retains capacity)
         buffers.clear();

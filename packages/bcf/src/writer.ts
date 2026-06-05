@@ -107,6 +107,20 @@ async function writeTopicFolder(zip: JSZip, topic: BCFTopic): Promise<void> {
 }
 
 /**
+ * Derive the snapshot file extension from the viewpoint's data-URL prefix.
+ *
+ * `snapshotData` carries no MIME type, so it defaults to PNG. Only the
+ * `data:image/...` snapshot URL can be reliably format-detected.
+ */
+function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
+  const match = viewpoint.snapshot?.match(/^data:image\/(png|jpe?g)/i);
+  if (match) {
+    return match[1].toLowerCase().startsWith('jp') ? 'jpg' : 'png';
+  }
+  return 'png';
+}
+
+/**
  * Write markup.bcf file
  * Uses buildingSMART standard format
  */
@@ -169,7 +183,7 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
     const viewpoint = topic.viewpoints[i];
     // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
     const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-    const snapshotName = `Snapshot_${viewpoint.guid}.png`;
+    const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
 
     content += `\n  <Viewpoints Guid="${viewpoint.guid}">`;
     content += `\n    <Viewpoint>${filename}</Viewpoint>`;
@@ -212,7 +226,7 @@ async function writeViewpointFiles(
 ): Promise<void> {
   // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
   const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-  const snapshotName = `Snapshot_${viewpoint.guid}.png`;
+  const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
 
   // Write viewpoint XML - use buildingSMART standard format
   let content = `<?xml version="1.0" encoding="UTF-8"?>

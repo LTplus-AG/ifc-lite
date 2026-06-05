@@ -291,10 +291,16 @@ async function readJsonBody<T>(req: HandlerRequest): Promise<T> {
 }
 
 export async function getAnonymousUserId(req: HandlerRequest): Promise<string> {
-  const forwarded = getHeader(req.headers, 'x-forwarded-for')
-    ?? getHeader(req.headers, 'x-real-ip')
-    ?? getHeader(req.headers, 'cf-connecting-ip');
-  const ip = forwarded?.split(',')[0]?.trim();
+  // Do not trust the leftmost X-Forwarded-For entry: on a proxied deployment
+  // (Vercel/Cloudflare) the platform appends the real client IP to the right of
+  // any client-supplied value, so the leftmost hop is attacker-controlled and
+  // lets an attacker mint a fresh quota bucket per request. Prefer the
+  // platform-set true peer IP headers; for XFF, take the rightmost hop the
+  // platform appended.
+  const xff = getHeader(req.headers, 'x-forwarded-for');
+  const ip = getHeader(req.headers, 'x-real-ip')?.trim()
+    || getHeader(req.headers, 'cf-connecting-ip')?.trim()
+    || (xff ? xff.split(',').map((p) => p.trim()).filter(Boolean).pop() : undefined);
   if (!ip) return 'anonymous';
   const fingerprint = await hashValue(ip);
   return `anon:${fingerprint.slice(0, 24)}`;
@@ -372,6 +378,22 @@ export function createChatHandler(config: ChatConfig, deps: ChatHandlerDeps) {
 
     if (!body?.messages || !body?.model) {
       return corsResponse(config, 400, requestOrigin, url, { error: 'Missing messages or model' }, undefined, isDev);
+    }
+
+    // Bound the attacker-controlled prompt before consuming quota or contacting
+    // the provider on the server's secret key. Caps message count and total
+    // serialized prompt size (including body.system) well below the platform
+    // body limit to limit input-token cost amplification.
+    const MAX_MESSAGES = 100;
+    const MAX_PROMPT_BYTES = 256 * 1024;
+    if (!Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > MAX_MESSAGES) {
+      return corsResponse(config, 400, requestOrigin, url, { error: 'Invalid or too many messages', code: 'invalid_messages' }, undefined, isDev);
+    }
+    const promptBytes = new TextEncoder().encode(
+      (body.system ?? '') + JSON.stringify(body.messages),
+    ).length;
+    if (promptBytes > MAX_PROMPT_BYTES) {
+      return corsResponse(config, 413, requestOrigin, url, { error: 'Prompt too large', code: 'prompt_too_large' }, undefined, isDev);
     }
 
     if (!isFreeModel(config, body.model)) {

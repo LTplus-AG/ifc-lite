@@ -60,6 +60,7 @@ export function validateCode(source: string, opts: CodeValidationOptions = {}): 
       ecmaVersion: 'latest',
       sourceType: 'module',
       allowAwaitOutsideFunction: true,
+      locations: true,
     });
   } catch (err) {
     const e = err as Error & { loc?: { line: number; column: number } };

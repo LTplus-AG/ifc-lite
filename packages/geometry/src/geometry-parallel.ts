@@ -391,6 +391,14 @@ export async function* processParallel(
   console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}`);
 
   const prepassWorker = makePrepassWorker();
+  // Wrap the rest of the pipeline so worker teardown runs not only on
+  // normal completion / error / zero-jobs branches, but also when the
+  // consumer abandons the generator via `.return()` / `.throw()` while it
+  // is suspended at a `yield` or the `resolveWaiting` await. The viewer's
+  // `watchedGeometryStream` relies on this `finally` to tear down workers
+  // on break / abort / watchdog (see boundedIteratorReturn). The existing
+  // branch-local `terminate()` calls remain — `terminate()` is idempotent.
+  try {
   // Forward the consumer-supplied wasm URL to the pre-pass worker so it
   // doesn't fall back to wasm-bindgen's `import.meta.url` default. The
   // pre-pass worker uses the same `geometry.worker.ts` bundle and the
@@ -670,4 +678,10 @@ export async function* processParallel(
 
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
   yield { type: 'complete', totalMeshes, coordinateInfo };
+  } finally {
+    for (const w of workers) {
+      try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+    }
+    try { prepassWorker.terminate(); } catch { /* cleanup — safe to ignore */ }
+  }
 }

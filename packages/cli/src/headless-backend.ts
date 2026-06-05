@@ -513,10 +513,16 @@ export class HeadlessBackend implements BimBackend {
     const queryAdapter = this.query;
 
     function escapeCsv(value: string, sep: string): string {
-      if (value.includes(sep) || value.includes('"') || value.includes('\n')) {
-        return `"${value.replace(/"/g, '""')}"`;
+      // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
+      // formula trigger so Excel/Sheets treat the cell as text, not a formula.
+      let str = value;
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = `'${str}`;
       }
-      return value;
+      if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
     }
 
     function resolveColumn(data: EntityData, col: string, props: PropertySetData[] | null, qsets: QuantitySetData[] | null): string {

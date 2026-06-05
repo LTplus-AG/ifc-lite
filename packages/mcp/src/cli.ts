@@ -33,6 +33,8 @@ interface CliOptions {
   token?: string;
   bsdd?: string;
   allowedPaths?: string[];
+  /** Browser Origins allowed to read HTTP responses cross-origin. Empty = none. */
+  allowedOrigins?: string[];
   autoViewer: boolean;
   viewerPort: number;
   openBrowser: boolean;
@@ -67,6 +69,9 @@ function parseArgs(argv: string[]): CliOptions {
     else if (arg === '--allow') {
       const path = argv[++i];
       if (path) (opts.allowedPaths ??= []).push(resolve(path));
+    } else if (arg === '--allow-origin') {
+      const origin = argv[++i];
+      if (origin) (opts.allowedOrigins ??= []).push(origin);
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -101,6 +106,9 @@ function printHelp(): void {
                             --token. NEVER use in production.
     --bsdd <url>            Override bSDD endpoint.
     --allow <glob>          Restrict file-system access for stdio mode.
+    --allow-origin <origin> Permit a browser Origin to read HTTP responses
+                            cross-origin (repeatable). Default: none — visited
+                            web pages cannot read responses or invoke tools.
     --viewer                Auto-open the in-process WebGL viewer at startup.
     --viewer-port <n>       Preferred viewer port (0 = auto).
     --open                  Implies --viewer; also tries to open the URL in
@@ -217,7 +225,13 @@ async function main(): Promise<void> {
     const auth: HttpAuthenticator = opts.token
       ? new BearerTokenAuth(new Map([[opts.token, scope]]))
       : new AllowAllAuth(scope);
-    const transport = new HttpTransport({ port: opts.port, host, authenticator: auth, sessionFactory });
+    const transport = new HttpTransport({
+      port: opts.port,
+      host,
+      authenticator: auth,
+      sessionFactory,
+      allowedOrigins: opts.allowedOrigins,
+    });
     await transport.listen();
     process.stderr.write(
       `[ifc-lite-mcp] listening on http://${host}:${opts.port}` +

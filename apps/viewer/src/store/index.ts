@@ -211,6 +211,8 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // Selection (multi-model)
       selectedEntity: null,
       selectedEntitiesSet: new Set(),
+      selectedEntities: [],
+      selectedModelId: null,
 
       // Visibility (legacy)
       hiddenEntities: new Set(),

@@ -99,6 +99,7 @@ const DEFAULT_ORIGIN = 'https://embed.ifc-lite.com';
 export class IFCLiteEmbed {
   private iframe: HTMLIFrameElement;
   private origin: string;
+  private expectedOrigin: string;
   private pending = new Map<string, {
     resolve: (data: unknown) => void;
     reject: (err: Error) => void;
@@ -119,6 +120,9 @@ export class IFCLiteEmbed {
 
   private constructor(opts: EmbedOptions) {
     this.origin = opts.origin ?? DEFAULT_ORIGIN;
+    // Canonical scheme+host+port for strict event.origin comparison
+    // (tolerates a consumer-supplied origin with a trailing slash or path).
+    this.expectedOrigin = new URL(this.origin).origin;
 
     // Build URL with non-sensitive params
     const params = new URLSearchParams();
@@ -318,6 +322,7 @@ export class IFCLiteEmbed {
 
   private onMessage = (event: MessageEvent) => {
     // Filter: must be from our iframe, at our origin
+    if (event.origin !== this.expectedOrigin) return;
     if (event.source !== this.iframe.contentWindow) return;
     if (!isEmbedMessage(event.data)) return;
 

@@ -81,6 +81,15 @@ async function main() {
     }
   }
 
+  // Reject path separators, '..', and names that would yield an invalid npm
+  // `name`, so join(process.cwd(), projectName) stays under cwd and the
+  // generated package.json is valid. Mirrors config-fixers.ts VALID_PACKAGE_NAME.
+  const VALID_PROJECT_NAME = /^(?:@[\w.-]+\/)?[\w.-]+$/;
+  if (!VALID_PROJECT_NAME.test(projectName) || projectName === '.' || projectName === '..') {
+    console.error(`Invalid project name "${projectName}". Use letters, digits, '.', '-' or '_' (no path separators).`);
+    process.exit(1);
+  }
+
   const targetDir = join(process.cwd(), projectName);
 
   if (existsSync(targetDir)) {

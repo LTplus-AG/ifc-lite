@@ -36,8 +36,16 @@ export class IfcQuery {
       if (!available) {
         throw new Error('DuckDB-WASM is not available. Install @duckdb/duckdb-wasm to use SQL queries.');
       }
-      this.duckdb = new DuckDBIntegration();
-      await this.duckdb.init(this.store);
+      const duckdb = new DuckDBIntegration();
+      try {
+        await duckdb.init(this.store);
+      } catch (error) {
+        // Do not retain a half-initialized instance — a later sql() call would
+        // otherwise reuse a poisoned DuckDBIntegration and never re-init.
+        this.duckdb = null;
+        throw error;
+      }
+      this.duckdb = duckdb;
     }
   }
   

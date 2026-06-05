@@ -19,7 +19,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-shell = "2"
 
 # IFC-Lite crates (reuse existing)
 ifc-lite-core = { path = "../../../rust/core" }

@@ -531,6 +531,11 @@ function uploadGeometry(prevVerts = 0, prevIndices = 0) {
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuffer);
     gl.bindVertexArray(null);
+
+    // The color buffer was just re-uploaded from the merged default colors
+    // array, dropping any active overrides (isolate/hide/colorize/highlight). Force a
+    // full color reapply on the next refreshColors() so applyColorOverrides runs.
+    colorDirtyAll = true;
   } else if (prevVerts < totalVertices) {
     // Append-only: just upload the new data at the end of existing buffers
     const newPos = mergeFloat32(positions.slice(getChunkIndex(prevVerts)), (totalVertices - prevVerts) * 3);
@@ -560,7 +565,10 @@ function getChunkIndex(targetCount, isIndices = false) {
   const divisor = isIndices ? 1 : 3;
   for (let i = 0; i < arr.length; i++) {
     count += arr[i].length / divisor;
-    if (count >= targetCount) return i;
+    // Strict comparison: return the first chunk that STARTS after the boundary.
+    // prevVerts/prevIndices are always exact chunk boundaries, so '>=' would
+    // return the last already-uploaded chunk and re-include it in the slice.
+    if (count > targetCount) return i;
   }
   return arr.length;
 }

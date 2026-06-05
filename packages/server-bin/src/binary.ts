@@ -14,7 +14,7 @@ import { createGunzip, createInflateRaw } from 'zlib';
 import { spawn, type SpawnOptions } from 'child_process';
 import { fileURLToPath } from 'url';
 import { extract } from 'tar';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getPlatformInfo, getPlatformDescription, type PlatformInfo } from './platform.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -147,14 +147,20 @@ async function extractZip(archivePath: string, destDir: string): Promise<void> {
   mkdirSync(destDir, { recursive: true });
 
   if (process.platform === 'win32') {
-    // Use PowerShell on Windows
-    execSync(
-      `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`,
-      { stdio: 'pipe' }
-    );
+    // Use PowerShell on Windows. Pass paths via environment variables and
+    // reference them with $env: + -LiteralPath so quoting/wildcard handling in
+    // the path cannot break out of the command.
+    const psScript =
+      `$ErrorActionPreference='Stop'; ` +
+      `Expand-Archive -LiteralPath $env:IL_ARCHIVE -DestinationPath $env:IL_DEST -Force`;
+    execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+      stdio: 'pipe',
+      env: { ...process.env, IL_ARCHIVE: archivePath, IL_DEST: destDir },
+    });
   } else {
-    // Use unzip on Unix (fallback, shouldn't normally be needed)
-    execSync(`unzip -o "${archivePath}" -d "${destDir}"`, { stdio: 'pipe' });
+    // Use unzip on Unix (fallback, shouldn't normally be needed). execFileSync
+    // passes argv directly with no shell, so path metacharacters are inert.
+    execFileSync('unzip', ['-o', archivePath, '-d', destDir], { stdio: 'pipe' });
   }
 }
 
@@ -291,11 +297,27 @@ export async function runBinary(args: string[] = []): Promise<number> {
 
     const child = spawn(binaryPath, args, options);
 
+    // Forward signals to child process. Track the handlers so they can be
+    // removed once the child exits or fails to start, preventing unbounded
+    // listener accumulation and stale child.kill calls on subsequent calls.
+    const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+    const handlers = new Map<NodeJS.Signals, () => void>();
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      for (const [sig, handler] of handlers) {
+        process.removeListener(sig, handler);
+      }
+    };
+
     child.on('error', (error) => {
+      cleanup();
       reject(new Error(`Failed to start server: ${error.message}`));
     });
 
     child.on('exit', (code, signal) => {
+      cleanup();
       if (signal) {
         // Process was killed by a signal
         resolve(128 + (signal === 'SIGINT' ? 2 : signal === 'SIGTERM' ? 15 : 1));
@@ -304,12 +326,12 @@ export async function runBinary(args: string[] = []): Promise<number> {
       }
     });
 
-    // Forward signals to child process
-    const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
     for (const sig of signals) {
-      process.on(sig, () => {
+      const handler = () => {
         child.kill(sig);
-      });
+      };
+      handlers.set(sig, handler);
+      process.on(sig, handler);
     }
   });
 }

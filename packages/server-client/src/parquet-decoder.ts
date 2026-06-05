@@ -203,6 +203,23 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
     const indexStart = indexStarts[i];
     const indexCount = indexCounts[i];
 
+    // Validate per-mesh ranges against the actual (untrusted) column lengths
+    // before indexing, so an overrun fails loudly instead of silently
+    // writing NaN positions / 0 indices into the geometry.
+    if (
+      vertexStart + vertexCount > posX.length ||
+      vertexStart + vertexCount > normX.length ||
+      indexStart % 3 !== 0 ||
+      indexCount % 3 !== 0 ||
+      (indexStart + indexCount) / 3 > idx0.length
+    ) {
+      throw new Error(
+        `Malformed Parquet geometry: mesh ${i} range out of bounds ` +
+          `(vertexStart=${vertexStart}, vertexCount=${vertexCount}, vertices=${posX.length}; ` +
+          `indexStart=${indexStart}, indexCount=${indexCount}, triangles=${idx0.length})`
+      );
+    }
+
     // Reconstruct interleaved positions from columnar format
     // OPTIMIZATION: Z-up to Y-up transform is now done server-side
     // Server already transforms: X stays same, new Y = old Z, new Z = -old Y
@@ -386,10 +403,36 @@ export async function decodeOptimizedParquetGeometry(
     const meshIdx = meshIndices[i];
     const materialIdx = materialIndices[i];
 
+    // Validate the untrusted cross-table indices before dereferencing, so a
+    // bad index fails loudly instead of silently producing empty meshes /
+    // NaN colors.
+    if (meshIdx >= meshVertexOffsets.length || materialIdx >= matR.length) {
+      throw new Error(
+        `Malformed optimized Parquet geometry: instance ${i} references ` +
+          `mesh ${meshIdx} (of ${meshVertexOffsets.length}) / ` +
+          `material ${materialIdx} (of ${matR.length})`
+      );
+    }
+
     const vertexOffset = meshVertexOffsets[meshIdx];
     const vertexCount = meshVertexCounts[meshIdx];
     const indexOffset = meshIndexOffsets[meshIdx];
     const indexCount = meshIndexCounts[meshIdx];
+
+    // Validate the resolved ranges against the actual vertex/index column
+    // lengths (indices here are flat, not triangle-columnar — no %3 check).
+    if (
+      vertexOffset + vertexCount > vertexX.length ||
+      (normalX && vertexOffset + vertexCount > normalX.length) ||
+      indexOffset + indexCount > indices.length
+    ) {
+      throw new Error(
+        `Malformed optimized Parquet geometry: instance ${i} range out of bounds ` +
+          `(meshIdx=${meshIdx}, vertexOffset=${vertexOffset}, vertexCount=${vertexCount}, ` +
+          `vertices=${vertexX.length}; indexOffset=${indexOffset}, indexCount=${indexCount}, ` +
+          `indices=${indices.length})`
+      );
+    }
 
     // Dequantize and reconstruct positions
     // OPTIMIZATION: Z-up to Y-up transform is now done server-side for optimized format too

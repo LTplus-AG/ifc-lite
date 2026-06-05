@@ -292,7 +292,8 @@ function getPropertyValue(table: PropertyTable, idx: number, strings: StringTabl
     case PropertyValueType.Identifier:
     case PropertyValueType.Text:
     case PropertyValueType.Enum:
-      return table.valueString[idx] >= 0 ? strings.get(table.valueString[idx]) : null;
+      const si = table.valueString[idx];
+      return si >= 0 && si < strings.count ? strings.get(si) : null;
     case PropertyValueType.Real:
       return table.valueReal[idx];
     case PropertyValueType.Integer:

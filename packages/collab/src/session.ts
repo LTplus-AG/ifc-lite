@@ -68,6 +68,13 @@ export interface CollabSessionOptions {
   disableBc?: boolean;
   /** Presence config knobs. */
   presence?: { updateRateHz?: number; staleAfterMs?: number };
+  /**
+   * Bind to an existing `Presence` (e.g. a shared federation presence)
+   * instead of creating one. When supplied, this session does NOT own the
+   * instance and will not dispose it — the caller remains responsible for
+   * its lifecycle.
+   */
+  presenceInstance?: Presence;
 }
 
 export interface CollabSession {
@@ -102,7 +109,10 @@ export interface CollabSession {
 export async function createCollabSession(opts: CollabSessionOptions): Promise<CollabSession> {
   const doc = opts.doc ?? createCollabDoc();
 
-  const presence = createPresence(doc, opts.presence ?? {});
+  // When a shared presence is supplied (federation), bind to it and let the
+  // owner dispose it; otherwise create and own one for this session.
+  const ownsPresence = !opts.presenceInstance;
+  const presence = opts.presenceInstance ?? createPresence(doc, opts.presence ?? {});
   presence.setUser(opts.user);
   presence.setStatus('active');
 
@@ -196,7 +206,9 @@ export async function createCollabSession(opts: CollabSessionOptions): Promise<C
     dispose() {
       conflicts.destroy();
       undoController.destroy();
-      presence.dispose();
+      // Only dispose presence we created; a shared (federation) presence is
+      // owned and disposed by the caller that passed it in.
+      if (ownsPresence) presence.dispose();
       if (ws) ws.destroy();
       if (idb) idb.destroy();
     },

@@ -148,11 +148,27 @@ export class EntityExtractor {
       const items: any[] = [];
       let parenDepth = 0;
       let current = '';
+      let inString = false;
 
       for (let i = 0; i < listContent.length; i++) {
         const char = listContent[i];
 
-        if (char === '(') {
+        if (char === "'") {
+          if (inString) {
+            // Check for escaped quote ('') - STEP uses doubled quotes
+            if (i + 1 < listContent.length && listContent[i + 1] === "'") {
+              current += "''"; // Keep the escaped quote
+              i++; // Skip next quote
+              continue;
+            }
+            inString = false;
+          } else {
+            inString = true;
+          }
+          current += char;
+        } else if (inString) {
+          current += char;
+        } else if (char === '(') {
           parenDepth++;
           current += char;
         } else if (char === ')') {

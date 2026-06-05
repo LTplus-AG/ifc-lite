@@ -32,7 +32,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tower_http::{
-    compression::CompressionLayer, cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer,
+    catch_panic::CatchPanicLayer, compression::CompressionLayer, cors::CorsLayer,
+    timeout::TimeoutLayer, trace::TraceLayer,
 };
 
 mod config;
@@ -132,6 +133,12 @@ fn build_router(state: AppState) -> Router {
         )))
         .layer(TraceLayer::new_for_http())
         .layer(build_cors_layer(&config))
+        // Outermost: turn any panic that unwinds out of a request handler into a
+        // 500 instead of propagating. Combined with the `server-release` profile
+        // (`panic = "unwind"`), this contains a malformed-IFC panic to the single
+        // offending request rather than crashing the whole server. Requires the
+        // `tower-http` `catch-panic` feature and a build profile that unwinds.
+        .layer(CatchPanicLayer::new())
         .with_state(state)
 }
 

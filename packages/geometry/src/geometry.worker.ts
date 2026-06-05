@@ -329,23 +329,29 @@ function collectMeshes(
   session: ProcessingSession,
   collection: ReturnType<IfcAPI['processGeometryBatch']>,
 ): void {
-  for (let i = 0; i < collection.length; i++) {
-    const mesh = collection.get(i);
-    if (!mesh) continue;
-    const positions = new Float32Array(mesh.positions);
-    const normals = new Float32Array(mesh.normals);
-    const indices = new Uint32Array(mesh.indices);
-    session.pendingMeshes.push({
-      expressId: mesh.expressId,
-      ifcType: mesh.ifcType,
-      positions, normals, indices,
-      color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
-    });
-    session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
-    session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
-    mesh.free();
+  try {
+    for (let i = 0; i < collection.length; i++) {
+      const mesh = collection.get(i);
+      if (!mesh) continue;
+      try {
+        const positions = new Float32Array(mesh.positions);
+        const normals = new Float32Array(mesh.normals);
+        const indices = new Uint32Array(mesh.indices);
+        session.pendingMeshes.push({
+          expressId: mesh.expressId,
+          ifcType: mesh.ifcType,
+          positions, normals, indices,
+          color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
+        });
+        session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
+        session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
+      } finally {
+        mesh.free();
+      }
+    }
+  } finally {
+    collection.free();
   }
-  collection.free();
 }
 
 /**

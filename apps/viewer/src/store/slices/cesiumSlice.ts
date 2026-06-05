@@ -109,7 +109,7 @@ const STORAGE_KEY_DATA_SOURCE = 'ifc-lite:cesium-data-source';
  * Set via VITE_CESIUM_ION_TOKEN in .env or CI environment.
  * This means users never need to configure a token manually.
  */
-const DEFAULT_ION_TOKEN: string = (import.meta as any).env?.VITE_CESIUM_ION_TOKEN ?? '';
+const DEFAULT_ION_TOKEN: string = import.meta.env.VITE_CESIUM_ION_TOKEN ?? '';
 
 function loadFromStorage(key: string, fallback: string): string {
   try {

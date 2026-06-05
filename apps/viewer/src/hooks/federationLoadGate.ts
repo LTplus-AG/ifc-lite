@@ -21,6 +21,7 @@
  */
 
 interface PendingAcquire {
+  id: number;
   fileSizeMB: number;
   resolve: () => void;
 }
@@ -70,6 +71,11 @@ function tryAdmit(): void {
     // Always admit when nothing is active (single file should never wait).
     if (active.size === 0 || wouldCost <= available) {
       queue.shift();
+      // Reserve the budget synchronously so activeCostMB() reflects this
+      // admission for the rest of this pass. The awaited acquire resumes in a
+      // later microtask, so registering here (not after the await) prevents the
+      // freed budget from being counted in full against every queued item.
+      active.set(head.id, { id: head.id, fileSizeMB: head.fileSizeMB });
       head.resolve();
       // Loop continues — we may be able to admit several queued small loads
       // after a single large load releases.
@@ -95,9 +101,10 @@ export async function acquireFederationLoadSlot(fileSizeMB: number): Promise<num
   }
 
   await new Promise<void>((resolve) => {
-    queue.push({ fileSizeMB, resolve });
+    queue.push({ id, fileSizeMB, resolve });
   });
-  active.set(id, { id, fileSizeMB });
+  // The slot is registered into `active` by tryAdmit at the moment of
+  // admission, so no active.set is needed here.
   return id;
 }
 

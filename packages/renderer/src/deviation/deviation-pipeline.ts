@@ -52,6 +52,7 @@ export class DeviationPipeline {
   private bvhTriangleCount = 0;
   private bvhNodeCount = 0;
   private bvhBounds: TriangleBVHResult['bounds'] | null = null;
+  private paramsBuffer: GPUBuffer | null = null;
 
   constructor(device: GPUDevice) {
     this.device = device;
@@ -141,12 +142,19 @@ export class DeviationPipeline {
     if (!this.bvhNodesBuffer || !this.trianglesBuffer) return false;
     if (input.pointCount === 0) return true;
 
-    // Per-chunk uniform buffer with the dispatch params. Created
-    // fresh each call — 32 bytes is too small to bother caching.
-    const paramsBuffer = this.device.createBuffer({
-      size: PARAMS_UNIFORM_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
+    // Reuse one instance-cached uniform buffer for the dispatch params.
+    // Created lazily once; overwritten per chunk via writeBuffer. All
+    // chunk dispatches are recorded into one encoder and submitted once,
+    // and writeBuffer is queued in submission order relative to the
+    // dispatches, so overwriting between chunks within the same submit is
+    // safe (each chunk's bind group reads the value as enqueued).
+    if (!this.paramsBuffer) {
+      this.paramsBuffer = this.device.createBuffer({
+        size: PARAMS_UNIFORM_BYTES,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+    }
+    const paramsBuffer = this.paramsBuffer;
     const params = new Uint32Array(PARAMS_UNIFORM_BYTES / 4);
     const paramsF = new Float32Array(params.buffer);
     params[0] = input.pointCount;
@@ -190,5 +198,7 @@ export class DeviationPipeline {
 
   destroy(): void {
     this.disposeBvh();
+    this.paramsBuffer?.destroy();
+    this.paramsBuffer = null;
   }
 }

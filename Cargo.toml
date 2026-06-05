@@ -28,3 +28,13 @@ overflow-checks = false # Remove overflow checks in release
 opt-level = 3
 strip = true
 
+# Server-only release profile: re-enables stack unwinding so a panic while
+# parsing untrusted, attacker-supplied IFC bytes on a `spawn_blocking` thread
+# becomes a per-request `JoinError` (mapped to HTTP 500) instead of aborting
+# the whole multi-tenant process. The default `release` profile keeps
+# `panic = 'abort'` so the wasm bundle and desktop binary stay small.
+# Built via `cargo build --profile server-release` (see apps/server/Dockerfile).
+[profile.server-release]
+inherits = "release"
+panic = "unwind"
+

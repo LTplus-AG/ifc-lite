@@ -13,6 +13,22 @@
 import type { CallToolResult, ContentBlock } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { modelAllowed } from '../auth/scope.js';
+
+/**
+ * Throw PERMISSION_DENIED when the caller's scope carries a model allowlist
+ * that excludes `model`. Central guard so per-model access control is enforced
+ * at the model-resolution choke point rather than per-tool.
+ */
+export function assertModelAccess(ctx: ToolContext, model: LoadedModel): LoadedModel {
+  if (!modelAllowed(ctx.scope, model.id)) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.PERMISSION_DENIED,
+      message: `Access to model '${model.id}' is not permitted for this token.`,
+    });
+  }
+  return model;
+}
 
 export function resolveModel(ctx: ToolContext, modelId?: string): LoadedModel {
   if (ctx.registry.count() === 0) {
@@ -30,7 +46,7 @@ export function resolveModel(ctx: ToolContext, modelId?: string): LoadedModel {
         details: { available: ctx.registry.list().map((m) => m.id) },
       });
     }
-    return found;
+    return assertModelAccess(ctx, found);
   }
   if (ctx.registry.count() > 1) {
     throw new ToolExecutionError({
@@ -41,7 +57,7 @@ export function resolveModel(ctx: ToolContext, modelId?: string): LoadedModel {
   }
   const only = ctx.registry.resolve();
   if (!only) throw new ToolExecutionError({ code: ToolErrorCode.MODEL_NOT_FOUND, message: 'No model available.' });
-  return only;
+  return assertModelAccess(ctx, only);
 }
 
 export function okResult(text: string, structured?: Record<string, unknown>): CallToolResult {

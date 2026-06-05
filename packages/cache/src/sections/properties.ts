@@ -77,8 +77,13 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       case PropertyValueType.Label:
       case PropertyValueType.Identifier:
       case PropertyValueType.Text:
-      case PropertyValueType.Enum:
-        return valueString[idx] >= 0 ? strings.get(valueString[idx]) : null;
+      case PropertyValueType.Enum: {
+        // valueString is a Uint32Array, so a `< 0` check is dead (the NULL
+        // sentinel -1 wraps to 4294967295). Reject any index past the table so
+        // a genuine NULL property value stays null instead of becoming "".
+        const si = valueString[idx];
+        return si >= 0 && si < strings.count ? strings.get(si) : null;
+      }
       case PropertyValueType.Real:
         return valueReal[idx];
       case PropertyValueType.Integer:

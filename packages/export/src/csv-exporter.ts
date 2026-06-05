@@ -282,7 +282,14 @@ export class CSVExporter {
       return '';
     }
 
-    const str = String(value);
+    let str = String(value);
+
+    // CSV/formula-injection guard (CWE-1236): if the value starts with a
+    // spreadsheet formula trigger, prefix a single quote so Excel/Sheets
+    // treat it as text. Covers = + - @ and the tab/CR control prefixes.
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = `'${str}`;
+    }
 
     // If value contains delimiter, quote, or newline, wrap in quotes and escape quotes
     if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {

@@ -191,6 +191,20 @@ export class Room {
         return;
       }
     }
+    try {
+      this.dispatchMessage(conn, msg);
+    } catch {
+      // Malformed/truncated frame from a peer. lib0 decoding throws
+      // (errorUnexpectedEndOfArray / RangeError) on short or oversized
+      // varint frames; never let that reach the ws listener as an
+      // uncaughtException — it would kill the whole process.
+      this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'malformed' });
+      this.counters.reject?.('malformed');
+    }
+  }
+
+  /** Decode + dispatch a verified frame. May throw on malformed input. */
+  private dispatchMessage(conn: PeerConnection, msg: Uint8Array): void {
     const decoder = decoding.createDecoder(msg);
     const messageType = decoding.readVarUint(decoder);
     switch (messageType) {
@@ -371,6 +385,17 @@ export class RoomManager {
       await room.loadFromDisk();
       return room;
     })();
+    // Evict the cached promise if initialization fails so a transient load
+    // error or a corrupt persisted log does not permanently brick the room
+    // (and does not keep occupying a maxRooms slot / break sweepIdle's await).
+    pending.catch(() => {
+      // Only delete if it is still the same poisoned promise (avoid clobbering
+      // a successful re-create that may have replaced it concurrently).
+      if (this.rooms.get(roomId) === pending) {
+        this.rooms.delete(roomId);
+        this.lastActiveAt.delete(roomId);
+      }
+    });
     this.rooms.set(roomId, pending);
     this.lastActiveAt.set(roomId, Date.now());
     return pending;
@@ -397,7 +422,14 @@ export class RoomManager {
     const out: Array<{ roomId: string; peerCount: number; idleMs: number }> = [];
     const now = Date.now();
     for (const [roomId, pending] of this.rooms) {
-      const room = await pending;
+      let room: Room;
+      try {
+        room = await pending;
+      } catch {
+        // A poisoned (rejected) load promise is evicted by getOrCreate's
+        // own .catch handler; skip it here so one bad room can't abort stats.
+        continue;
+      }
       out.push({
         roomId,
         peerCount: room.peerCount,
@@ -434,7 +466,14 @@ export class RoomManager {
     const now = Date.now();
     const candidates: string[] = [];
     for (const [roomId, pending] of this.rooms) {
-      const room = await pending;
+      let room: Room;
+      try {
+        room = await pending;
+      } catch {
+        // A poisoned (rejected) load promise is evicted by getOrCreate's
+        // own .catch handler; skip it so one bad room can't abort the sweep.
+        continue;
+      }
       if (room.peerCount > 0) {
         // Active rooms reset the idle clock.
         this.lastActiveAt.set(roomId, now);

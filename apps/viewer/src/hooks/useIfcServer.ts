@@ -386,6 +386,9 @@ export function useIfcServer() {
 
           buildSpatialIndexGuarded(allMeshes, dataStore, setIfcDataStore);
         } catch (err) {
+          if (!isStale?.()) {
+            console.warn('[useIfc] Server data model fetch/decode failed; geometry shown without properties:', err);
+          }
         }
       })(); // End of async data model fetch block - runs in background, doesn't block
 

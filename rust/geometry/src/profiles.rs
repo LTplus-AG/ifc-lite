@@ -2311,7 +2311,8 @@ impl ProfileProcessor {
             if let Some(indices) = indices {
                 let idx_values: Vec<usize> = indices
                     .iter()
-                    .filter_map(|v| v.as_float().map(|f| f as usize - 1)) // 1-indexed to 0-indexed
+                    .filter_map(|v| v.as_float())
+                    .filter_map(|f| (f as usize).checked_sub(1)) // 1-indexed to 0-indexed; drop invalid (<1) indices
                     .collect();
 
                 if is_arc && idx_values.len() == 3 {
@@ -2536,7 +2537,8 @@ impl ProfileProcessor {
             let Some(indices) = indices else { continue };
             let idx_values: Vec<usize> = indices
                 .iter()
-                .filter_map(|v| v.as_float().map(|f| f as usize - 1))
+                .filter_map(|v| v.as_float())
+                .filter_map(|f| (f as usize).checked_sub(1)) // 1-indexed to 0-indexed; drop invalid (<1) indices
                 .collect();
 
             if is_arc && idx_values.len() == 3 {

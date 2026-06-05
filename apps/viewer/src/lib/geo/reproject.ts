@@ -347,8 +347,11 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
     // string itself when possible. `+datum=` is rare in modern proj4 output;
     // the typical hint is `+ellps=` which we already accept as a weak signal
     // inside DATUM_TOWGS84 keys above.
+    // Only positive-cache a successful result, so a transient network
+    // failure (offline/CDN hiccup/timeout) can be retried later instead of
+    // permanently poisoning this EPSG code for the rest of the session.
     const fetched = raw ? sanitizeProj4(raw, code, null) : null;
-    projDefCache.set(code, fetched);
+    if (fetched) projDefCache.set(code, fetched);
     return fetched;
   }
 

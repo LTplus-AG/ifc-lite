@@ -909,6 +909,7 @@ export class Section2DOverlayRenderer {
   dispose(): void {
     this.clearGeometry();
     this.clearAnnotationLines3D();
+    this.clearAlignmentLines3D();
     if (this.uniformBuffer) {
       this.uniformBuffer.destroy();
       this.uniformBuffer = null;

@@ -53,16 +53,26 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     const expressId = mesh.expressId;
     const node = new EntityNode(store, expressId);
 
+    // Read stored (table-backed) values directly. `node.globalId` / `node.name`
+    // fall back to `extractEntityAttributesOnDemand` when the table value is
+    // empty (common: Name is optional, globalId is empty for fallback-only /
+    // malformed roots) — and with a fresh node per mesh that fallback would fire
+    // once per element inside this loop (AGENTS.md hot-loop ban). The table
+    // getters never trigger on-demand extraction. `node.type` (getTypeName) and
+    // `node.storey()` (relationship-only) are table-backed and stay.
+    const storedGlobalId = store.entities.getGlobalId(expressId);
+    const storedName = store.entities.getName(expressId);
+
     // Fall back to a model-scoped synthetic key rather than dropping geometry:
     // malformed IFC roots / fallback-only elements still participate in clashes.
-    const key = node.globalId || `expressid:${expressId}`;
+    const key = storedGlobalId || `expressid:${expressId}`;
 
     const element: ClashElement = {
       key,
       ref: federation ? federation.toGlobalId(modelId, expressId) : expressId,
       model: modelId,
       tag: node.type || mesh.ifcType || 'IfcProduct',
-      name: node.name || undefined,
+      name: storedName || undefined,
       storey: node.storey()?.name || undefined,
       bounds: fromPositions(mesh.positions, worldTransform),
       positions: mesh.positions,
@@ -82,8 +92,10 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
 }
 
 /**
- * Pair-exclusions from IFC relationships, using cached `EntityNode` getters
- * (never `extractEntityAttributesOnDemand` in a loop, per AGENTS.md):
+ * Pair-exclusions from IFC relationships. Only relationship getters
+ * (`voids`/`filledBy`/`decomposedBy`/`decomposes`) are used here; these read
+ * the relationship graph and never call `extractEntityAttributesOnDemand`, so
+ * the per-element loop stays off the AGENTS.md hot-loop anti-pattern:
  * - host vs the filler of its opening (wall vs door/window)
  * - element vs its own (meshed) opening
  * - members of the same `IfcRelAggregates` assembly

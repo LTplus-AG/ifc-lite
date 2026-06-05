@@ -106,6 +106,21 @@ function convertUsdMesh(
   ifcType: string | undefined,
   transform: Float32Array | null
 ): MeshData {
+  // Pre-validate the homogeneous denominator (matches pointcloud-extractor):
+  // a zero / non-finite w from a malformed or singular usd::xformop would
+  // otherwise produce ±Infinity / NaN positions that silently poison the mesh.
+  // The matrix is shared across all points, so checking the first is sufficient.
+  if (transform && usd.points.length > 0) {
+    const [x0, y0, z0] = usd.points[0];
+    const w0 = transform[3] * x0 + transform[7] * y0 + transform[11] * z0 + transform[15];
+    if (!Number.isFinite(w0) || Math.abs(w0) < 1e-12) {
+      throw new Error(
+        'IFCx geometry: usd::xformop produces non-finite homogeneous w; ' +
+        'matrix is malformed or singular',
+      );
+    }
+  }
+
   // Process points: apply transform in Z-up space, then convert to Y-up
   const positions = new Float32Array(usd.points.length * 3);
   for (let i = 0; i < usd.points.length; i++) {

@@ -17,9 +17,6 @@ import { safeUtf8Decode } from '@ifc-lite/data';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 
-/** Regex to match #ID references in STEP entity text. */
-const STEP_REF_REGEX = /#(\d+)/g;
-
 /** Entity types forming shared infrastructure (deduplicated across models). */
 const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCUNITASSIGNMENT',
@@ -466,24 +463,63 @@ export class MergedExporter {
   /**
    * Remap all #ID references in a STEP entity line.
    * Applies offset to all IDs, then overrides with specific remappings.
+   *
+   * Only `#<digits>` tokens in code positions are rewritten; tokens inside
+   * single-quoted STEP strings (e.g. a 'Room #205' Name or a 'http://x#42'
+   * URL) are left untouched so string attribute values are not corrupted.
    */
   private remapEntityText(
     entityText: string,
     offset: number,
     sharedRemap: Map<number, number>,
   ): string {
-    return entityText.replace(STEP_REF_REGEX, (_match, idStr: string) => {
-      const originalId = parseInt(idStr, 10);
-
+    const remapId = (originalId: number): string => {
       // Check if this ID has a specific remap (project, shared infrastructure)
       const remapped = sharedRemap.get(originalId);
       if (remapped !== undefined) {
         return `#${remapped}`;
       }
-
       // Apply offset
       return `#${originalId + offset}`;
-    });
+    };
+
+    let out = '';
+    let inString = false;
+    for (let i = 0; i < entityText.length; i++) {
+      const char = entityText[i];
+
+      if (inString) {
+        out += char;
+        if (char === "'") {
+          // STEP escapes a literal quote by doubling it ('').
+          if (entityText[i + 1] === "'") {
+            out += entityText[i + 1];
+            i++;
+          } else {
+            inString = false;
+          }
+        }
+        continue;
+      }
+
+      if (char === "'") {
+        inString = true;
+        out += char;
+        continue;
+      }
+
+      if (char === '#' && entityText[i + 1] >= '0' && entityText[i + 1] <= '9') {
+        let j = i + 1;
+        while (j < entityText.length && entityText[j] >= '0' && entityText[j] <= '9') j++;
+        const originalId = parseInt(entityText.slice(i + 1, j), 10);
+        out += remapId(originalId);
+        i = j - 1;
+        continue;
+      }
+
+      out += char;
+    }
+    return out;
   }
 
   /**

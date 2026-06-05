@@ -2047,10 +2047,39 @@ impl ProfileProcessor {
             end_angle -= 2.0 * std::f64::consts::PI;
         }
 
-        // Calculate arc angle and adaptive segment count
-        // Use ~8 segments per 90° (quarter circle), minimum 2
+        // Adaptive segment count.
+        //
+        // Angular floor: ~8 segments per 90° (quarter circle), minimum 2 —
+        // preserves the previous density for small arcs so nothing regresses.
+        //
+        // Chord-deviation budget: the angular floor is radius-INDEPENDENT, so a
+        // large-radius arc collapses to a coarse polyline (a 12.5 m-radius, 17°
+        // arc got only 2 segments → 35 mm chord deviation on a 500 mm wall,
+        // ISSUE_129). Cap the sagitta to an absolute ~0.5 mm by adding segments
+        // for large physical radii. The budget is expressed in metres and
+        // converted through the file's length-unit scale, so it is the same
+        // 0.5 mm whether the model is authored in mm or m. The sagitta/radius
+        // ratio is `1 - cos(step/2)`; solve for the max step that keeps it
+        // within budget. Bounded so a mis-resolved unit can't explode the count.
         let arc_angle = (end_angle - start_angle).abs();
-        let num_segments = ((arc_angle / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize).max(2);
+        let by_angle = (arc_angle / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize;
+        let by_chord = {
+            const CHORD_TOL_M: f64 = 5.0e-4; // 0.5 mm absolute deviation budget
+            let r_eff = radius.abs().max(radius2.abs());
+            let radius_m = r_eff * decoder.length_unit_scale();
+            if radius_m > CHORD_TOL_M {
+                let rel = (CHORD_TOL_M / radius_m).clamp(1e-9, 0.5);
+                let max_step = 2.0 * (1.0 - rel).acos();
+                if max_step > 1e-9 {
+                    (arc_angle / max_step).ceil() as usize
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        };
+        let num_segments = by_angle.max(by_chord).clamp(2, 128);
         let mut points = Vec::with_capacity(num_segments + 1);
 
         let angle_range = if sense {

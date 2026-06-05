@@ -50,6 +50,11 @@ pub struct EntityDecoder<'a> {
     /// default (and Renga-style files) is 1.0 (RADIAN); degree-unit files
     /// resolve to π/180.
     plane_angle_to_radians_cache: Option<f64>,
+    /// Lazy-cached multiplier converting file length units to metres.
+    /// Populated on first call to [`Self::length_unit_scale`]. 1.0 for metre
+    /// files, 0.001 for millimetre files, etc. Used to express absolute
+    /// tolerances (e.g. curve-tessellation chord deviation) in file units.
+    length_unit_scale_cache: Option<f64>,
 }
 
 impl<'a> EntityDecoder<'a> {
@@ -61,6 +66,7 @@ impl<'a> EntityDecoder<'a> {
             entity_index: None,
             point_cache: FxHashMap::default(),
             plane_angle_to_radians_cache: None,
+            length_unit_scale_cache: None,
         }
     }
 
@@ -72,6 +78,7 @@ impl<'a> EntityDecoder<'a> {
             entity_index: Some(Arc::new(index)),
             point_cache: FxHashMap::default(),
             plane_angle_to_radians_cache: None,
+            length_unit_scale_cache: None,
         }
     }
 
@@ -83,6 +90,7 @@ impl<'a> EntityDecoder<'a> {
             entity_index: Some(index),
             point_cache: FxHashMap::default(),
             plane_angle_to_radians_cache: None,
+            length_unit_scale_cache: None,
         }
     }
 
@@ -213,6 +221,36 @@ impl<'a> EntityDecoder<'a> {
             None => 1.0,
         };
         self.plane_angle_to_radians_cache = Some(scale);
+        scale
+    }
+
+    /// Multiplier that converts file length units to metres (1.0 for metre
+    /// files, 0.001 for millimetre files, …). Lazy-resolved on first call by
+    /// scanning for IFCPROJECT and reading its IFCUNITASSIGNMENT, then cached.
+    /// Returns `1.0` when no length unit is declared.
+    ///
+    /// Use this to express an *absolute* metric tolerance in file units —
+    /// e.g. a curve-tessellation chord-deviation budget that stays constant in
+    /// millimetres whether the file is authored in mm or m.
+    pub fn length_unit_scale(&mut self) -> f64 {
+        if let Some(cached) = self.length_unit_scale_cache {
+            return cached;
+        }
+
+        let mut scanner = crate::parser::EntityScanner::new(self.content);
+        let mut project_id: Option<u32> = None;
+        while let Some((id, type_name, _, _)) = scanner.next_entity() {
+            if type_name == "IFCPROJECT" {
+                project_id = Some(id);
+                break;
+            }
+        }
+
+        let scale = match project_id {
+            Some(pid) => crate::units::try_extract_length_unit_scale(self, pid).unwrap_or(1.0),
+            None => 1.0,
+        };
+        self.length_unit_scale_cache = Some(scale);
         scale
     }
 

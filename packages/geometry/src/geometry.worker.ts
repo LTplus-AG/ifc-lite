@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
+import type { MeshData } from './types.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -138,6 +139,9 @@ export interface GeometryWorkerBatchMessage {
     normals: Float32Array;
     indices: Uint32Array;
     color: [number, number, number, number];
+    // #961: optional surface texture + per-vertex UVs (transferables).
+    uvs?: MeshData['uvs'];
+    texture?: MeshData['texture'];
   }[];
 }
 
@@ -335,14 +339,31 @@ function collectMeshes(
     const positions = new Float32Array(mesh.positions);
     const normals = new Float32Array(mesh.normals);
     const indices = new Uint32Array(mesh.indices);
-    session.pendingMeshes.push({
+    const meshData: MeshData = {
       expressId: mesh.expressId,
       ifcType: mesh.ifcType,
       positions, normals, indices,
       color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
-    });
+    };
     session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
     session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
+    // #961: surface texture + per-vertex UVs (decoded to RGBA8 in Rust). Carried
+    // as transferables so there is no SAB→scratch copy (see SAB-streaming memo).
+    if (mesh.hasTexture) {
+      const uvs = new Float32Array(mesh.uvs);
+      const rgba = new Uint8Array(mesh.textureRgba);
+      meshData.uvs = uvs;
+      meshData.texture = {
+        rgba,
+        width: mesh.textureWidth,
+        height: mesh.textureHeight,
+        repeatS: mesh.textureRepeatS,
+        repeatT: mesh.textureRepeatT,
+      };
+      session.pendingTransfers.push(uvs.buffer, rgba.buffer);
+      session.cumulativeMeshBytes += uvs.byteLength + rgba.byteLength;
+    }
+    session.pendingMeshes.push(meshData);
     mesh.free();
   }
   collection.free();

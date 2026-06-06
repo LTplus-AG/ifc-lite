@@ -65,7 +65,7 @@ export function convertMeshCollectionToBatch(
             ? [shadingArray[0], shadingArray[1], shadingArray[2], shadingArray[3]]
             : undefined;
 
-        batch.push({
+        const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
           positions: mesh.positions,
@@ -73,7 +73,23 @@ export function convertMeshCollectionToBatch(
           indices: mesh.indices,
           color: [mesh.color[0], mesh.color[1], mesh.color[2], mesh.color[3]],
           ...(shadingColor ? { shadingColor } : {}),
-        });
+        };
+
+        // #961: copy the Rust-decoded surface texture + per-vertex UVs (the
+        // getters return empty for the ~all untextured meshes). The browser
+        // only uploads `rgba` to a GPU texture — no image decoding in JS.
+        if ((mesh as { hasTexture?: boolean }).hasTexture) {
+          meshData.uvs = mesh.uvs;
+          meshData.texture = {
+            rgba: mesh.textureRgba,
+            width: mesh.textureWidth,
+            height: mesh.textureHeight,
+            repeatS: mesh.textureRepeatS,
+            repeatT: mesh.textureRepeatT,
+          };
+        }
+
+        batch.push(meshData);
       } finally {
         mesh.free();
       }

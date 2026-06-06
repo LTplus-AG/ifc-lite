@@ -27,6 +27,24 @@ export interface MeshData {
    *  for every vertex, so picking/selection resolves to the correct individual
    *  entity even though many entities share a single GPU batch. */
   entityIds?: Uint32Array;
+  /** Per-vertex texture coordinates (u, v pairs, 1:1 with positions), present
+   *  only for textured meshes (issue #961). */
+  uvs?: Float32Array;
+  /** Decoded surface texture (IfcBlobTexture / IfcPixelTexture), present only
+   *  for textured meshes (#961). Decoded to RGBA8 entirely in Rust; the
+   *  renderer uploads `rgba` verbatim to a GPU texture. */
+  texture?: MeshTexture;
+}
+
+/** A decoded RGBA8 surface texture attached to a mesh (issue #961). */
+export interface MeshTexture {
+  /** `width * height * 4` bytes, row-major, top-down, straight alpha. */
+  rgba: Uint8Array;
+  width: number;
+  height: number;
+  /** Sampler wrap from `IfcSurfaceTexture.RepeatS/RepeatT` (true = repeat). */
+  repeatS: boolean;
+  repeatT: boolean;
 }
 
 export interface Vec3 {

@@ -50,6 +50,11 @@ rayon = "1.10"
 # Fast hashing
 rustc-hash = "2.1"
 
+# PNG decode for IfcBlobTexture (issue #961). Already in the dependency tree
+# (transitive), so it adds no new wasm weight. Pure-Rust inflate
+# (miniz_oxide / fdeflate) — wasm-safe.
+png = "0.17"
+
 # Small vector optimization for frequently allocated small collections
 smallvec = "1.13"
 

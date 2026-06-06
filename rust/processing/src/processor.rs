@@ -1338,6 +1338,11 @@ pub fn process_geometry_streaming_filtered_with_options(
     merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
     let mut geometry_style_index = Arc::new(geometry_style_index);
     let indexed_colour_full = Arc::new(indexed_colour_full);
+    // #961: decode surface textures (IfcBlobTexture PNG / IfcPixelTexture) and
+    // their per-triangle UV maps once, keyed by face-set id. `build_texture_index`
+    // bails out on a cheap substring check for the (vast majority) untextured
+    // files. Consumed by the type-only render path below.
+    let texture_index = Arc::new(ifc_lite_geometry::build_texture_index(content, &mut decoder));
     // Join the material chain into colours per element (#407). The single
     // opaque-first colour is the general-path element fallback; the full list
     // feeds the opening sub-mesh transparent/opaque split (#913 §2.3).
@@ -1472,6 +1477,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     geometry_style_index.as_ref(),
                     indexed_colour_full.as_ref(),
                     element_material_colors.as_ref(),
+                    texture_index.as_ref(),
                     site_local_rotation,
                 )
             })
@@ -1575,6 +1581,9 @@ fn process_entity_job(
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
     indexed_colour_full: &FxHashMap<u32, crate::style::FullIndexedColourMap>,
     element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
+    // Surface textures + UV maps keyed by face-set id (#961). Empty for
+    // untextured models.
+    texture_index: &FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>,
     // Present only when the selected coordinate space is `site_local`; rotates
     // mesh vertices into the site's axis frame.
     site_local_rotation: Option<&Vec<f64>>,
@@ -1612,6 +1621,7 @@ fn process_entity_job(
             &local_router,
             &mut local_decoder,
             geometry_style_index,
+            texture_index,
             element_color,
             global_id,
             name,
@@ -1778,6 +1788,7 @@ fn process_type_representation_map_job(
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
+    texture_index: &FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>,
     element_color: [f32; 4],
     global_id: Option<String>,
     name: Option<String>,
@@ -1787,7 +1798,12 @@ fn process_type_representation_map_job(
     let Ok(rep_map) = decoder.decode_by_id(rep_map_id) else {
         return Vec::new();
     };
-    let Ok(mut mesh) = router.process_representation_map(&rep_map, decoder) else {
+    // Texture-aware build (#961): emits per-vertex UVs + the decoded image when
+    // the mapped face set carries an IfcIndexedTriangleTextureMap; otherwise
+    // returns the plain mesh with empty uvs / no texture.
+    let Ok((mut mesh, uvs, texture)) =
+        router.process_representation_map_with_texture(&rep_map, decoder, texture_index)
+    else {
         return Vec::new();
     };
     if mesh.is_empty() {
@@ -1809,6 +1825,22 @@ fn process_type_representation_map_job(
         color,
     )
     .with_element_metadata(global_id, name, presentation_layer);
+
+    // Attach the decoded texture + UVs (#961). `convert_mesh_to_site_local`
+    // rotates positions/normals only; UVs are 2D and pass through unchanged.
+    if let Some(tex) = texture {
+        mesh_data = mesh_data.with_texture(
+            uvs,
+            crate::types::mesh::MeshTextureData {
+                rgba: tex.rgba,
+                width: tex.width,
+                height: tex.height,
+                repeat_s: tex.repeat_s,
+                repeat_t: tex.repeat_t,
+            },
+        );
+    }
+
     convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
     vec![mesh_data]
 }

@@ -1473,7 +1473,10 @@ export class Renderer {
             // PERFORMANCE FIX: Always use batch rendering when we have batches
             // Apply visibility filtering at the BATCH level instead of creating individual meshes
             // This keeps draw calls at ~50-200 instead of 60K+
-            if (allBatchedMeshes.length > 0) {
+            // #961: also enter this block when there are textured meshes but no
+            // colour batches (e.g. a model that is only a textured type-geometry
+            // boiler) — the textured sub-pass lives inside this block.
+            if (allBatchedMeshes.length > 0 || this.scene.getTexturedMeshes().length > 0) {
                 // Frustum culling for batched meshes - skip entire batches outside the camera view
                 // This is the primary performance optimization for large models (200K+ meshes)
                 const frustum = FrustumUtils.fromViewProjMatrix(viewProj);
@@ -1679,6 +1682,30 @@ export class Renderer {
                 pass.setPipeline(this.pipeline.getPipeline());
                 for (const batch of opaqueBatches) {
                     renderBatch(batch);
+                }
+
+                // #961: textured meshes — dedicated sub-pass right after opaque
+                // batches (writes depth + object-id, so overlay/section/picking
+                // all behave like normal opaque geometry). Each mesh has its own
+                // vertex buffer (with a UV lane), texture, sampler and bindGroup.
+                const texturedMeshes = this.scene.getTexturedMeshes();
+                if (texturedMeshes.length > 0) {
+                    pass.setPipeline(this.pipeline.getTexturedPipeline());
+                    for (const tm of texturedMeshes) {
+                        // Tint multiplies the sampled texel; the IfcColourRgb base
+                        // is white in the annex-E fixtures → texture shows as-is.
+                        tpl[32] = tm.color[0];
+                        tpl[33] = tm.color[1];
+                        tpl[34] = tm.color[2];
+                        tpl[35] = tm.color[3];
+                        device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
+                        pass.setBindGroup(0, tm.bindGroup);
+                        pass.setVertexBuffer(0, tm.vertexBuffer);
+                        pass.setIndexBuffer(tm.indexBuffer, 'uint32');
+                        pass.drawIndexed(tm.indexCount);
+                    }
+                    // Restore the opaque pipeline for the passes that follow.
+                    pass.setPipeline(this.pipeline.getPipeline());
                 }
 
                 // PERFORMANCE FIX: Render partially visible batches as sub-batches (not individual meshes!)

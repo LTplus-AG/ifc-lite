@@ -2473,6 +2473,7 @@ dependencies = [
  "ifc-lite-core",
  "manifold-csg",
  "nalgebra",
+ "png 0.17.16",
  "rayon",
  "rustc-hash",
  "smallvec",

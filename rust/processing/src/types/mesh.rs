@@ -7,6 +7,20 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// A decoded RGBA8 surface texture attached to a mesh (issue #961).
+/// Decoded entirely in Rust (`IfcBlobTexture` PNG / `IfcPixelTexture` raw); the
+/// browser only uploads `rgba` to a GPU texture — no image logic in TS.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshTextureData {
+    /// `width * height * 4` bytes, row-major, top-down, straight alpha.
+    pub rgba: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    /// Sampler wrap from `IfcSurfaceTexture.RepeatS/RepeatT`.
+    pub repeat_s: bool,
+    pub repeat_t: bool,
+}
+
 /// Individual mesh data with geometry and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeshData {
@@ -41,6 +55,13 @@ pub struct MeshData {
     /// Primarily attached for IfcSpace/IfcZone so downstream tools can build room attribute UIs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<BTreeMap<String, String>>,
+    /// Per-vertex texture coordinates (u, v pairs, 1:1 with `positions`),
+    /// present only for textured meshes (issue #961).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uvs: Option<Vec<f32>>,
+    /// Decoded surface texture, present only for textured meshes (#961).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub texture: Option<MeshTextureData>,
 }
 
 impl MeshData {
@@ -66,7 +87,17 @@ impl MeshData {
             material_name: None,
             geometry_item_id: None,
             properties: None,
+            uvs: None,
+            texture: None,
         }
+    }
+
+    /// Attach per-vertex UVs + a decoded surface texture (issue #961).
+    /// `uvs` must be 1:1 with `positions` (2 floats per vertex).
+    pub fn with_texture(mut self, uvs: Vec<f32>, texture: MeshTextureData) -> Self {
+        self.uvs = Some(uvs);
+        self.texture = Some(texture);
+        self
     }
 
     /// Set element-level IFC metadata.

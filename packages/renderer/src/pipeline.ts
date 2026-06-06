@@ -8,6 +8,7 @@
 
 import { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
+import { texturedShaderSource } from './shaders/textured.wgsl.js';
 
 export class RenderPipeline {
     private device: GPUDevice;
@@ -16,6 +17,8 @@ export class RenderPipeline {
     private selectionPipeline: GPURenderPipeline;  // Pipeline for selected meshes (renders on top)
     private transparentPipeline: GPURenderPipeline;  // Pipeline for transparent meshes with alpha blending
     private overlayPipeline: GPURenderPipeline;  // Pipeline for color overlays (lens) - renders at exact same depth
+    private texturedPipeline: GPURenderPipeline;  // Pipeline for textured meshes (#961): UV lane + albedo texture/sampler
+    private texturedBindGroupLayout: GPUBindGroupLayout;  // group(0): uniform + texture + sampler
     private depthTexture: GPUTexture;
     private depthTextureView: GPUTextureView;
     // depth-only view of depthTexture for sampling as texture_depth_2d in
@@ -304,6 +307,65 @@ export class RenderPipeline {
 
         this.overlayPipeline = this.device.createRenderPipeline(overlayPipelineDescriptor);
 
+        // ── Textured pipeline (#961) ──
+        // A separate pipeline for meshes carrying an IFC surface texture. It
+        // adds a UV vertex lane and an albedo texture+sampler at group(0)
+        // bindings 1 & 2; everything else (depth, MSAA, both colour targets incl.
+        // the object-id picking target, flat-normal shading, section clip) mirrors
+        // the main opaque pipeline so picking/section/z-fight behave identically.
+        // Textured meshes are rare (a handful per model), so they draw
+        // per-mesh — the 28-byte hot path for the other ~all meshes is untouched.
+        this.texturedBindGroupLayout = this.device.createBindGroupLayout({
+            label: 'textured-bgl',
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                    buffer: { type: 'uniform' },
+                },
+                { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+                { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+            ],
+        });
+        const texturedModule = this.device.createShaderModule({
+            label: 'textured-shader',
+            code: texturedShaderSource,
+        });
+        this.texturedPipeline = this.device.createRenderPipeline({
+            label: 'textured-pipeline',
+            layout: this.device.createPipelineLayout({
+                bindGroupLayouts: [this.texturedBindGroupLayout],
+            }),
+            vertex: {
+                module: texturedModule,
+                entryPoint: 'vs_main',
+                buffers: [
+                    {
+                        // position(3f) + normal(3f) + entityId(u32) + uv(2f) = 36 bytes
+                        arrayStride: 36,
+                        attributes: [
+                            { shaderLocation: 0, offset: 0, format: 'float32x3' },
+                            { shaderLocation: 1, offset: 12, format: 'float32x3' },
+                            { shaderLocation: 2, offset: 24, format: 'uint32' },
+                            { shaderLocation: 3, offset: 28, format: 'float32x2' },
+                        ],
+                    },
+                ],
+            },
+            fragment: {
+                module: texturedModule,
+                entryPoint: 'fs_main',
+                targets: [{ format: this.colorFormat }, { format: this.objectIdFormat }],
+            },
+            primitive: { topology: 'triangle-list', cullMode: 'none' },
+            depthStencil: {
+                format: this.depthFormat,
+                depthWriteEnabled: true,
+                depthCompare: 'greater', // Reverse-Z, matches the opaque pipeline
+            },
+            multisample: { count: this.sampleCount },
+        } as GPURenderPipelineDescriptor);
+
         // Create bind group using the explicit bind group layout
         this.bindGroup = this.device.createBindGroup({
             layout: this.bindGroupLayout,
@@ -449,6 +511,30 @@ export class RenderPipeline {
 
     getOverlayPipeline(): GPURenderPipeline {
         return this.overlayPipeline;
+    }
+
+    /** Textured-mesh pipeline (#961). */
+    getTexturedPipeline(): GPURenderPipeline {
+        return this.texturedPipeline;
+    }
+
+    /**
+     * Create a bind group for a textured mesh (#961): the mesh's own uniform
+     * buffer at binding 0, plus its albedo texture view + sampler at 1 & 2.
+     */
+    createTexturedBindGroup(
+        uniformBuffer: GPUBuffer,
+        textureView: GPUTextureView,
+        sampler: GPUSampler,
+    ): GPUBindGroup {
+        return this.device.createBindGroup({
+            layout: this.texturedBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: uniformBuffer } },
+                { binding: 1, resource: textureView },
+                { binding: 2, resource: sampler },
+            ],
+        });
     }
 
     getDepthTextureView(): GPUTextureView {

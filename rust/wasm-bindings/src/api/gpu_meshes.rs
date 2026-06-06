@@ -1010,6 +1010,8 @@ impl IfcAPI {
                     if !rep_map_ids.is_empty() {
                         let referenced =
                             self.get_or_build_referenced_repmaps(content, &mut decoder);
+                        // Surface textures + UV maps (#961), built once per worker.
+                        let texture_index = self.get_or_build_texture_index(content, &mut decoder);
                         for rm_id in rep_map_ids {
                             if referenced.contains(&rm_id) {
                                 continue;
@@ -1017,8 +1019,12 @@ impl IfcAPI {
                             let Ok(rep_map) = decoder.decode_by_id(rm_id) else {
                                 continue;
                             };
-                            let Ok(mut mesh) =
-                                router.process_representation_map(&rep_map, &mut decoder)
+                            let Ok((mut mesh, uvs, texture)) = router
+                                .process_representation_map_with_texture(
+                                    &rep_map,
+                                    &mut decoder,
+                                    &texture_index,
+                                )
                             else {
                                 continue;
                             };
@@ -1038,7 +1044,18 @@ impl IfcAPI {
                                 .entry(ifc_type)
                                 .or_insert_with(|| ifc_type.name().to_string())
                                 .clone();
-                            mesh_collection.add(MeshDataJs::new(id, ifc_type_name, mesh, color));
+                            let mut mesh_js = MeshDataJs::new(id, ifc_type_name, mesh, color);
+                            if let Some(tex) = texture {
+                                mesh_js.set_texture(
+                                    uvs,
+                                    tex.rgba,
+                                    tex.width,
+                                    tex.height,
+                                    tex.repeat_s,
+                                    tex.repeat_t,
+                                );
+                            }
+                            mesh_collection.add(mesh_js);
                         }
                     }
                     continue;

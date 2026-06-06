@@ -24,6 +24,17 @@ pub struct MeshDataJs {
     /// DiffuseColour (so the two would differ). Consumed by the GLB
     /// exporter's "Shading" colour-source option; renderers ignore it.
     shading_color: Option<[f32; 4]>,
+    /// Per-vertex texture coordinates (u, v pairs, 1:1 with positions),
+    /// present only for textured meshes (#961). Empty otherwise.
+    uvs: Vec<f32>,
+    /// Decoded RGBA8 texture (`width*height*4`), present only for textured
+    /// meshes (#961). Empty otherwise. The browser uploads this verbatim to a
+    /// GPU texture — no image decoding happens in JS.
+    texture_rgba: Vec<u8>,
+    texture_width: u32,
+    texture_height: u32,
+    texture_repeat_s: bool,
+    texture_repeat_t: bool,
 }
 
 #[wasm_bindgen]
@@ -83,6 +94,47 @@ impl MeshDataJs {
     pub fn triangle_count(&self) -> usize {
         self.indices.len() / 3
     }
+
+    /// True when this mesh carries a surface texture (#961).
+    #[wasm_bindgen(getter, js_name = hasTexture)]
+    pub fn has_texture(&self) -> bool {
+        !self.texture_rgba.is_empty()
+    }
+
+    /// Per-vertex texture coordinates as Float32Array (u, v pairs). Empty when
+    /// the mesh is untextured.
+    #[wasm_bindgen(getter)]
+    pub fn uvs(&self) -> js_sys::Float32Array {
+        js_sys::Float32Array::from(&self.uvs[..])
+    }
+
+    /// Decoded RGBA8 texture bytes (`width*height*4`). Empty when untextured.
+    #[wasm_bindgen(getter, js_name = textureRgba)]
+    pub fn texture_rgba(&self) -> js_sys::Uint8Array {
+        js_sys::Uint8Array::from(&self.texture_rgba[..])
+    }
+
+    #[wasm_bindgen(getter, js_name = textureWidth)]
+    pub fn texture_width(&self) -> u32 {
+        self.texture_width
+    }
+
+    #[wasm_bindgen(getter, js_name = textureHeight)]
+    pub fn texture_height(&self) -> u32 {
+        self.texture_height
+    }
+
+    /// Sampler wrap for the S axis (`IfcSurfaceTexture.RepeatS`): true = repeat.
+    #[wasm_bindgen(getter, js_name = textureRepeatS)]
+    pub fn texture_repeat_s(&self) -> bool {
+        self.texture_repeat_s
+    }
+
+    /// Sampler wrap for the T axis (`IfcSurfaceTexture.RepeatT`): true = repeat.
+    #[wasm_bindgen(getter, js_name = textureRepeatT)]
+    pub fn texture_repeat_t(&self) -> bool {
+        self.texture_repeat_t
+    }
 }
 
 impl MeshDataJs {
@@ -124,6 +176,12 @@ impl MeshDataJs {
             indices: mesh.indices,
             color,
             shading_color: None,
+            uvs: Vec::new(),
+            texture_rgba: Vec::new(),
+            texture_width: 0,
+            texture_height: 0,
+            texture_repeat_s: true,
+            texture_repeat_t: true,
         }
     }
 
@@ -132,6 +190,27 @@ impl MeshDataJs {
     /// for the mesh's source geometry id should invoke this after `new`.
     pub fn set_shading_color(&mut self, shading: Option<[f32; 4]>) {
         self.shading_color = shading;
+    }
+
+    /// Attach per-vertex UVs + a decoded RGBA8 texture (#961). UVs are 1:1 with
+    /// `positions` and need no coordinate flip (they are 2D); the winding
+    /// reversal in `new` swaps indices, not vertices, so per-vertex UVs stay
+    /// aligned. Call after `new`.
+    pub fn set_texture(
+        &mut self,
+        uvs: Vec<f32>,
+        rgba: Vec<u8>,
+        width: u32,
+        height: u32,
+        repeat_s: bool,
+        repeat_t: bool,
+    ) {
+        self.uvs = uvs;
+        self.texture_rgba = rgba;
+        self.texture_width = width;
+        self.texture_height = height;
+        self.texture_repeat_s = repeat_s;
+        self.texture_repeat_t = repeat_t;
     }
 }
 
@@ -168,6 +247,12 @@ impl MeshCollection {
             indices: m.indices.clone(),
             color: m.color,
             shading_color: m.shading_color,
+            uvs: m.uvs.clone(),
+            texture_rgba: m.texture_rgba.clone(),
+            texture_width: m.texture_width,
+            texture_height: m.texture_height,
+            texture_repeat_s: m.texture_repeat_s,
+            texture_repeat_t: m.texture_repeat_t,
         })
     }
 
@@ -322,6 +407,12 @@ impl Clone for MeshCollection {
                     indices: m.indices.clone(),
                     color: m.color,
                     shading_color: m.shading_color,
+                    uvs: m.uvs.clone(),
+                    texture_rgba: m.texture_rgba.clone(),
+                    texture_width: m.texture_width,
+                    texture_height: m.texture_height,
+                    texture_repeat_s: m.texture_repeat_s,
+                    texture_repeat_t: m.texture_repeat_t,
                 })
                 .collect(),
             rtc_offset_x: self.rtc_offset_x,

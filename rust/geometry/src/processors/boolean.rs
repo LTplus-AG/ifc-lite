@@ -726,8 +726,16 @@ impl BooleanClippingProcessor {
         // Every cutter is a clean partial cut: union them (a true CSG union, so
         // abutting roof segments share no internal seam) and subtract once. This
         // is what eliminates the zero-thickness seam fins that sequential
-        // subtraction leaves behind.
-        let combined = clipper.union_meshes(&prisms)?;
+        // subtraction leaves behind. A union failure must defer to the
+        // sequential path (like every other guard here), never bubble up — a
+        // bubbled error would drop the whole wall instead of falling back.
+        let combined = match clipper.union_meshes(&prisms) {
+            Ok(m) if !m.is_empty() => m,
+            _ => {
+                let _ = clipper.take_failures();
+                return Ok(None);
+            }
+        };
         let result = clipper.subtract_mesh(&base_mesh, &combined);
         self.drain_clipper_failures(&clipper);
         let clipped = match result {

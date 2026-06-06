@@ -536,6 +536,14 @@ pub(crate) fn collect_orphan_type_geometry_jobs(
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
     use ifc_lite_core::{EntityScanner, IfcType};
 
+    // Fast bail-out: type-only geometry can only exist when the file authors at
+    // least one IfcRepresentationMap. The overwhelming majority of files (and
+    // every file that hits the latency-sensitive prepass without instancing)
+    // pay only a single substring search instead of a full entity scan + decode.
+    if !content.contains("IFCREPRESENTATIONMAP") {
+        return Vec::new();
+    }
+
     // Single pass: gather the IfcMappedItem-referenced RepresentationMaps and
     // the type-product candidates together, then filter to the orphans.
     let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();

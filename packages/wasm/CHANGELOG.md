@@ -1,5 +1,18 @@
 # @ifc-lite/wasm
 
+## 2.1.6
+
+### Patch Changes
+
+- [#959](https://github.com/LTplus-AG/ifc-lite/pull/959) [`e293b3e`](https://github.com/LTplus-AG/ifc-lite/commit/e293b3eb106b0f179372a3075629a74c7bb12df6) Thanks [@louistrue](https://github.com/louistrue)! - Fix `IfcIndexedColourMap` per-triangle colours being ignored in the viewer ([#858](https://github.com/LTplus-AG/ifc-lite/issues/858)).
+
+  The browser geometry path (`processGeometryBatch`) only carried one dominant
+  colour per tessellated face set, so a face set whose `ColourIndex` assigns
+  different colours to different triangles rendered as a single solid colour. The
+  per-palette-group split (shared with the native processor) is now applied on the
+  WASM batch path too, so multi-coloured `IfcTriangulatedFaceSet` geometry renders
+  with all its authored colours again.
+
 ## 2.1.5
 
 ### Patch Changes

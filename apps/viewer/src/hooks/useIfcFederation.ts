@@ -27,28 +27,10 @@ import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsing
 import {
   convertIfcxMeshes,
 } from './ingest/viewerModelIngest.js';
-import {
-  detectPointCloudFormat,
-  ingestPointCloud,
-  type PointCloudFormat,
-} from './ingest/pointCloudIngest.js';
-import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel, type ModelGeoref } from './ingest/federationAlign.js';
-import { getGlobalRenderer } from './useBCF.js';
-import { readNativeFile, type NativeFileHandle } from '../services/file-dialog.js';
+import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { type NativeFileHandle } from '../services/file-dialog.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
-import { acquireFileBuffer } from '../utils/acquireFileBuffer.js';
-
-function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
-  return typeof (file as NativeFileHandle).path === 'string';
-}
-
-function toExactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  if (bytes.buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength) {
-    return bytes.buffer;
-  }
-  return bytes.slice().buffer;
-}
 
 /**
  * Extended data store type for IFCX (IFC5) files.
@@ -143,51 +125,10 @@ export function useIfcFederation(
     const fileSizeForGateMB = (typeof (file as File).size === 'number' ? (file as File).size : 0) / (1024 * 1024);
     const gateSlot = await acquireFederationLoadSlot(fileSizeForGateMB);
     try {
-      // IMPORTANT: Before adding a new model, check if there's a legacy model
-      // (loaded via loadFile) that's not in the Map yet. If so, migrate it first.
-      const currentModels = useViewerStore.getState().models;
-      const currentIfcDataStore = useViewerStore.getState().ifcDataStore;
-      const currentGeometryResult = useViewerStore.getState().geometryResult;
-
-      if (currentModels.size === 0 && currentIfcDataStore && currentGeometryResult) {
-        // Migrate the legacy model to the Map
-        // Legacy model has offset 0 (IDs are unchanged)
-        const legacyModelId = crypto.randomUUID();
-        const legacyName = currentIfcDataStore.spatialHierarchy?.project?.name || 'Model 1';
-
-        // Find max expressId in legacy model for registry
-        // IMPORTANT: Include ALL entities, not just meshes, for proper globalId resolution
-        const legacyMeshes = currentGeometryResult.meshes || [];
-        const legacyMaxExpressIdFromMeshes = legacyMeshes.reduce((max: number, m: MeshData) => Math.max(max, m.expressId), 0);
-        // FIXED: Use iteration instead of spread to avoid stack overflow with large Maps
-        let legacyMaxExpressIdFromEntities = 0;
-        if (currentIfcDataStore.entityIndex?.byId) {
-          for (const key of currentIfcDataStore.entityIndex.byId.keys()) {
-            if (key > legacyMaxExpressIdFromEntities) legacyMaxExpressIdFromEntities = key;
-          }
-        }
-        const legacyMaxExpressId = Math.max(legacyMaxExpressIdFromMeshes, legacyMaxExpressIdFromEntities);
-
-        // Register legacy model with offset 0 (IDs already in use as-is)
-        const legacyOffset = registerModelOffset(legacyModelId, legacyMaxExpressId);
-
-        const legacyModel: FederatedModel = {
-          id: legacyModelId,
-          name: legacyName,
-          ifcDataStore: currentIfcDataStore,
-          geometryResult: currentGeometryResult,
-          visible: true,
-          collapsed: false,
-          schemaVersion: 'IFC4',
-          loadedAt: Date.now() - 1000,
-          fileSize: 0,
-          sourceFile: undefined,
-          idOffset: legacyOffset,
-          maxExpressId: legacyMaxExpressId,
-        };
-        storeAddModel(legacyModel);
-      }
-
+      // (Removed the legacy→Map migration: every model — including model #1 —
+      // now registers in the FederationRegistry + models Map via loadFile's
+      // upsertModel/finalizeModel, so a top-level-only "legacy" model can no
+      // longer exist. See PR description for the audit.)
       setLoading(true);
       setError(null);
       setProgress({ phase: 'Loading file', percent: 0 });
@@ -254,7 +195,7 @@ export function useIfcFederation(
     } finally {
       releaseFederationLoadSlot(gateSlot);
     }
-  }, [loadFile, setLoading, setError, setProgress, registerModelOffset, storeAddModel]);
+  }, [loadFile, setLoading, setError, setProgress]);
 
   /**
    * Re-apply federation alignment using the currently selected anchor

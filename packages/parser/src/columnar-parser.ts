@@ -831,8 +831,10 @@ function getEntityRefFromStore(store: IfcDataStore, expressId: number): EntityRe
 }
 
 /**
- * Extract entity attributes on-demand from source buffer
- * Returns globalId, name, description, objectType, tag for any IfcRoot-derived entity.
+ * Extract entity attributes on-demand from source buffer.
+ * Returns globalId, name, description, objectType, tag mapped by schema name
+ * (see {@link extractRootAttributesFromEntity}), so the result stays correct
+ * for entity types whose attribute order differs from the IfcElement layout.
  * This is used for entities that weren't fully parsed during initial load.
  */
 export function extractEntityAttributesOnDemand(
@@ -850,18 +852,7 @@ export function extractEntityAttributesOnDemand(
         return { globalId: '', name: '', description: '', objectType: '', tag: '' };
     }
 
-    const attrs = entity.attributes || [];
-    // IfcRoot attributes: [GlobalId, OwnerHistory, Name, Description]
-    // IfcObject adds: [ObjectType] at index 4
-    // IfcProduct adds: [ObjectPlacement, Representation] at indices 5-6
-    // IfcElement adds: [Tag] at index 7
-    const globalId = typeof attrs[0] === 'string' ? attrs[0] : '';
-    const name = typeof attrs[2] === 'string' ? attrs[2] : '';
-    const description = typeof attrs[3] === 'string' ? attrs[3] : '';
-    const objectType = typeof attrs[4] === 'string' ? attrs[4] : '';
-    const tag = typeof attrs[7] === 'string' ? attrs[7] : '';
-
-    return { globalId, name, description, objectType, tag };
+    return extractRootAttributesFromEntity(entity);
 }
 
 /**
@@ -976,6 +967,72 @@ export function getRawNamedAttributes(
         result.push({ name: attrName, raw: attrs[i] });
     }
     return result;
+}
+
+interface RootAttrIndices {
+    known: boolean;
+    globalId: number;
+    name: number;
+    description: number;
+    objectType: number;
+    tag: number;
+}
+
+// getAttributeNames() walks the schema registry (an O(types) scan for the
+// UPPERCASE STEP names entities carry), so memoise the per-type index lookup.
+// There are only a few hundred distinct types but potentially millions of
+// entities, keeping the on-demand path cheap even when called per entity.
+const rootAttrIndexCache = new Map<string, RootAttrIndices>();
+
+function getRootAttrIndices(type: string): RootAttrIndices {
+    let idx = rootAttrIndexCache.get(type);
+    if (!idx) {
+        const names = getAttributeNames(type);
+        idx = {
+            known: names.length > 0,
+            globalId: names.indexOf('GlobalId'),
+            name: names.indexOf('Name'),
+            description: names.indexOf('Description'),
+            objectType: names.indexOf('ObjectType'),
+            tag: names.indexOf('Tag'),
+        };
+        rootAttrIndexCache.set(type, idx);
+    }
+    return idx;
+}
+
+/**
+ * Resolve the common IfcRoot-family display attributes (GlobalId, Name,
+ * Description, ObjectType, Tag) from an entity's raw attribute array.
+ *
+ * These are mapped by schema-derived attribute *name*, not fixed index. The
+ * fixed indices `[0],[2],[3],[4],[7]` only hold for the IfcElement layout: for
+ * a spatial element `attrs[7]` is LongName (not Tag), and for a resource entity
+ * like IfcMaterial `attrs[0]` is Name (not GlobalId). Name-mapping keeps all of
+ * these correct for every entity type, returning '' for attributes the type
+ * does not declare.
+ *
+ * For types the schema registry does not recognise (e.g. an IFC4x3 infra leaf
+ * outside the codegen pin, or a vendor extension) we fall back to the canonical
+ * IfcRoot/IfcElement positions so we never regress vs. the old fixed-index path.
+ */
+export function extractRootAttributesFromEntity(
+    entity: IfcEntity
+): { globalId: string; name: string; description: string; objectType: string; tag: string } {
+    const attrs = entity.attributes || [];
+    const idx = getRootAttrIndices(entity.type);
+    const pick = (schemaIndex: number, fallbackIndex: number): string => {
+        const i = idx.known ? schemaIndex : fallbackIndex;
+        const raw = i >= 0 ? attrs[i] : undefined;
+        return typeof raw === 'string' ? raw : '';
+    };
+    return {
+        globalId: pick(idx.globalId, 0),
+        name: pick(idx.name, 2),
+        description: pick(idx.description, 3),
+        objectType: pick(idx.objectType, 4),
+        tag: pick(idx.tag, 7),
+    };
 }
 
 // Re-export on-demand extraction functions from focused module

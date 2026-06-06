@@ -7,7 +7,7 @@
  */
 
 import type { IfcStoreBase as IfcDataStore, IfcEntity, IfcAttributeValue, PropertySet, QuantitySet, PropertyValue } from '@ifc-lite/data';
-import { getRawNamedAttributes } from '@ifc-lite/parser';
+import { getRawNamedAttributes, extractRootAttributesFromEntity } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
 
 function coerceRaw(raw: IfcAttributeValue): string | number | boolean | null {
@@ -62,14 +62,12 @@ export class EntityNode {
   private getOnDemandAttributes(): { globalId: string; name: string; description: string; objectType: string; tag: string } {
     if (this._cachedAttributes) return this._cachedAttributes;
     const entity = this.store.getEntity(this.expressId);
-    const attrs = entity?.attributes ?? [];
-    const result = {
-      globalId: typeof attrs[0] === 'string' ? attrs[0] : '',
-      name: typeof attrs[2] === 'string' ? attrs[2] : '',
-      description: typeof attrs[3] === 'string' ? attrs[3] : '',
-      objectType: typeof attrs[4] === 'string' ? attrs[4] : '',
-      tag: typeof attrs[7] === 'string' ? attrs[7] : '',
-    };
+    // Map by schema attribute name, not fixed index: `attrs[7]` is Tag only for
+    // IfcElement — for an IfcSite it is LongName, and for an IfcMaterial
+    // `attrs[0]` is Name rather than GlobalId. See extractRootAttributesFromEntity.
+    const result = entity
+      ? extractRootAttributesFromEntity(entity)
+      : { globalId: '', name: '', description: '', objectType: '', tag: '' };
     this._cachedAttributes = result;
     return result;
   }

@@ -6,11 +6,12 @@
 
 Render IFC surface textures on tessellated geometry (#961).
 
-`IfcBlobTexture` (embedded PNG) and `IfcPixelTexture` (raw pixel literals) are now
-decoded to RGBA8 entirely in Rust (the `png` crate, already in the tree) and the
-per-triangle `IfcIndexedTriangleTextureMap` / `IfcTextureVertexList` coordinates
-are emitted as per-vertex UVs in lockstep with the flat-shaded tessellation (the
-`IfcCartesianTransformationOperator2D` scale is applied; the whole-shell
+`IfcBlobTexture` (embedded PNG **and** JPEG) and `IfcPixelTexture` (raw pixel
+literals) are now decoded to RGBA8 entirely in Rust (the `png` and
+`jpeg-decoder` crates) and the per-triangle `IfcIndexedTriangleTextureMap` /
+`IfcTextureVertexList` coordinates are emitted as per-vertex UVs in lockstep with
+the flat-shaded tessellation (the authored texture coordinates are used directly,
+mapping the image ~1:1 like the buildingSMART reference; the whole-shell
 orientation flip is mirrored onto the texture indices so UVs stay aligned). The
 decoded RGBA + UVs ride on `MeshData` across the wasm boundary; the WebGPU
 renderer gains a dedicated textured pipeline that uploads the texture and draws

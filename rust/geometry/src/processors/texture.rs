@@ -39,30 +39,14 @@ pub struct ResolvedTextureMap {
     /// `TexCoordIndex`: per-triangle 1-based indices into `tex_coords`,
     /// parallel to the face set's `CoordIndex`.
     pub tex_coord_index: Vec<[u32; 3]>,
-    /// `IfcCartesianTransformationOperator2D[nonUniform]` applied to each UV:
-    /// `uv' = origin + (scaleX, scaleY) * (axis ⊗ uv)`, `axis` = X ref-direction.
-    /// `uv_scale_y` equals `uv_scale` for the uniform operator and uses `Scale2`
-    /// for the non-uniform subtype.
-    pub uv_scale: f32,
-    pub uv_scale_y: f32,
-    pub uv_origin: [f32; 2],
-    pub uv_axis: [f32; 2],
 }
 
-impl ResolvedTextureMap {
-    /// Apply the 2D transform to a raw `[u, v]`.
-    #[inline]
-    pub fn transform_uv(&self, uv: [f32; 2]) -> [f32; 2] {
-        // axis = (cos, sin) → rotate, then (possibly non-uniform) scale, then translate.
-        let (ax, ay) = (self.uv_axis[0], self.uv_axis[1]);
-        let rx = ax * uv[0] - ay * uv[1];
-        let ry = ay * uv[0] + ax * uv[1];
-        [
-            self.uv_origin[0] + self.uv_scale * rx,
-            self.uv_origin[1] + self.uv_scale_y * ry,
-        ]
-    }
-}
+// NOTE: `IfcSurfaceTexture.TextureTransform` (IfcCartesianTransformationOperator2D)
+// is intentionally NOT applied. The authored `IfcTextureVertexList` coordinates
+// already map the image as intended (the buildingSMART annex-E reference renders
+// them ~1:1); applying the operator's Scale (e.g. 48 in the blob fixture)
+// over-tiles the texture into noise. If a future file genuinely needs a UV
+// rotation/offset we can revisit, but no test fixture requires it.
 
 /// Decode a STEP binary literal as surfaced by the decoder (the parser strips
 /// the surrounding double quotes; the first hex character is the count of
@@ -256,60 +240,6 @@ fn resolve_surface_texture(texture_id: u32, decoder: &mut EntityDecoder) -> Opti
     }
 }
 
-/// Parse the optional `IfcCartesianTransformationOperator2D` (or its
-/// `…2DnonUniform` subtype) texture transform. Returns
-/// `(origin, axis, scale_x, scale_y)`. Attributes: Axis1(0), Axis2(1),
-/// LocalOrigin(2), Scale(3 default 1); the non-uniform subtype adds Scale2(4)
-/// for the Y axis (defaults to Scale when absent).
-fn parse_texture_transform(
-    transform_id: u32,
-    decoder: &mut EntityDecoder,
-) -> ([f32; 2], [f32; 2], f32, f32) {
-    let mut origin = [0.0f32, 0.0];
-    let mut axis = [1.0f32, 0.0];
-    let mut scale = 1.0f32;
-    let mut scale_y = 1.0f32;
-    if let Ok(op) = decoder.decode_by_id(transform_id) {
-        let is_2d = op.ifc_type == IfcType::IfcCartesianTransformationOperator2D;
-        let is_2d_nonuniform =
-            op.ifc_type == IfcType::IfcCartesianTransformationOperator2DnonUniform;
-        if is_2d || is_2d_nonuniform {
-            if let Some(scale_v) = op.get(3).and_then(|a| a.as_float()) {
-                scale = scale_v as f32;
-            }
-            // Non-uniform: Scale2 (attr 4) drives the Y axis; default to Scale.
-            scale_y = if is_2d_nonuniform {
-                op.get(4).and_then(|a| a.as_float()).map(|v| v as f32).unwrap_or(scale)
-            } else {
-                scale
-            };
-            if let Some(origin_id) = op.get_ref(2) {
-                if let Some(p) = read_point2(origin_id, decoder) {
-                    origin = p;
-                }
-            }
-            if let Some(axis_id) = op.get_ref(0) {
-                if let Some(d) = read_point2(axis_id, decoder) {
-                    let len = (d[0] * d[0] + d[1] * d[1]).sqrt();
-                    if len > 1e-9 {
-                        axis = [d[0] / len, d[1] / len];
-                    }
-                }
-            }
-        }
-    }
-    (origin, axis, scale, scale_y)
-}
-
-/// Read a 2D `IfcCartesianPoint` / `IfcDirection` (first two coordinates).
-fn read_point2(id: u32, decoder: &mut EntityDecoder) -> Option<[f32; 2]> {
-    let p = decoder.decode_by_id(id).ok()?;
-    let coords = p.get(0)?.as_list()?;
-    let x = coords.first().and_then(|v| v.as_float())? as f32;
-    let y = coords.get(1).and_then(|v| v.as_float())? as f32;
-    Some([x, y])
-}
-
 /// Resolve a single `IfcIndexedTriangleTextureMap` entity into a
 /// [`ResolvedTextureMap`] keyed by the face set it maps to.
 /// Attributes: Maps(0 = list of IfcSurfaceTexture), MappedTo(1 = face set),
@@ -324,14 +254,6 @@ fn resolve_triangle_texture_map(
     let maps = entity.get(0)?.as_list()?;
     let texture_id = maps.iter().find_map(|m| m.as_entity_ref())?;
     let texture = resolve_surface_texture(texture_id, decoder)?;
-
-    // Pull the optional 2D transform off the surface texture (attr 3).
-    let (uv_origin, uv_axis, uv_scale, uv_scale_y) = decoder
-        .decode_by_id(texture_id)
-        .ok()
-        .and_then(|t| t.get_ref(3))
-        .map(|tid| parse_texture_transform(tid, decoder))
-        .unwrap_or(([0.0, 0.0], [1.0, 0.0], 1.0, 1.0));
 
     // TexCoords → IfcTextureVertexList.TexCoordsList (attr 0).
     let tvl_id = entity.get_ref(2)?;
@@ -372,10 +294,6 @@ fn resolve_triangle_texture_map(
             texture,
             tex_coords,
             tex_coord_index,
-            uv_scale,
-            uv_scale_y,
-            uv_origin,
-            uv_axis,
         },
     ))
 }

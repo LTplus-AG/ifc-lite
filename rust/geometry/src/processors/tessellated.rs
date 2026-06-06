@@ -144,7 +144,6 @@ impl TriangulatedFaceSetProcessor {
             &indices,
             &map.tex_coords,
             &tex_coord_index,
-            map,
         );
         mesh.validate_indices();
         Ok((mesh, uvs))
@@ -631,7 +630,6 @@ impl PolygonalFaceSetProcessor {
         indices: &[u32],
         tex_coords: &[[f32; 2]],
         tex_coord_index: &[[u32; 3]],
-        map: &crate::processors::texture::ResolvedTextureMap,
     ) -> (Mesh, Vec<f32>) {
         let mut flat_positions: Vec<f32> = Vec::with_capacity(indices.len() * 3);
         let mut flat_normals: Vec<f32> = Vec::with_capacity(indices.len() * 3);
@@ -673,12 +671,16 @@ impl PolygonalFaceSetProcessor {
                 flat_normals.push(nx as f32);
                 flat_normals.push(ny as f32);
                 flat_normals.push(nz as f32);
+                // Use the authored texture coordinates directly. The optional
+                // IfcSurfaceTexture.TextureTransform is intentionally NOT applied:
+                // its Scale over-tiles the texture (the buildingSMART annex-E
+                // reference renders these coords ~1:1), and the TexCoords already
+                // carry any intended offset.
                 let uv = tri_uv
                     .and_then(|t| {
                         let one_based = t[corner] as usize;
                         tex_coords.get(one_based.checked_sub(1)?).copied()
                     })
-                    .map(|raw| map.transform_uv(raw))
                     .unwrap_or([0.0, 0.0]);
                 uvs.push(uv[0]);
                 uvs.push(uv[1]);

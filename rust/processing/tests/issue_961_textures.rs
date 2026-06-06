@@ -52,10 +52,12 @@ fn blob_texture_decodes_to_rgba_with_uvs() {
     // Flat-shaded boiler cylinder: vertices = triangles * 3, all populated.
     let verts = mesh.positions.len() / 3;
     assert!(verts >= 3 && verts % 3 == 0, "flat-shaded vertex count, got {verts}");
-    // The *48 texture transform tiles the UVs well beyond [0,1] — confirms the
-    // IfcCartesianTransformationOperator2D scale was applied (sampler repeats).
-    let max_u = uvs.iter().step_by(2).cloned().fold(0.0f32, f32::max);
-    assert!(max_u > 1.5, "UV scale transform (×48) should be applied, max u = {max_u}");
+    // UVs use the authored IfcTextureVertexList coordinates directly (the
+    // IfcSurfaceTexture.TextureTransform scale is NOT applied — it over-tiles
+    // vs the buildingSMART reference). The authored coords map the image ~1:1,
+    // so they stay in a sane ~[0,1] range, not the ×48 noise of the raw scale.
+    let max_u = uvs.iter().step_by(2).cloned().fold(f32::MIN, f32::max);
+    assert!(max_u <= 1.5, "UVs should map ~1:1 (authored coords), got max u = {max_u}");
 }
 
 #[test]

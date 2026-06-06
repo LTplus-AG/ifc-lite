@@ -29,29 +29,37 @@ const BOILER_TYPE_ID = 43;
 function texturedBoiler(api, content) {
   const bytes = new TextEncoder().encode(content);
   const pre = api.buildPrePassOnce(bytes);
+  // Free every wasm handle (each MeshDataJs + the MeshCollection) + the prepass
+  // cache deterministically, even if an assertion-side error unwinds mid-loop.
   const col = api.processGeometryBatch(
     bytes, pre.jobs, pre.unitScale,
     pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
     pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
   );
-  let found = null;
-  for (let i = 0; i < col.length; i++) {
-    const m = col.get(i);
-    if (m && m.expressId === BOILER_TYPE_ID && m.hasTexture) {
-      found = {
-        tris: m.triangleCount,
-        uvsLen: m.uvs.length,
-        verts: m.vertexCount,
-        width: m.textureWidth,
-        height: m.textureHeight,
-        rgbaLen: m.textureRgba.length,
-      };
+  try {
+    let found = null;
+    for (let i = 0; i < col.length; i++) {
+      const m = col.get(i);
+      try {
+        if (m && m.expressId === BOILER_TYPE_ID && m.hasTexture) {
+          found = {
+            tris: m.triangleCount,
+            uvsLen: m.uvs.length,
+            verts: m.vertexCount,
+            width: m.textureWidth,
+            height: m.textureHeight,
+            rgbaLen: m.textureRgba.length,
+          };
+        }
+      } finally {
+        m.free();
+      }
     }
-    m.free();
+    return found;
+  } finally {
+    col.free();
+    if (api.clearPrePassCache) api.clearPrePassCache();
   }
-  col.free();
-  if (api.clearPrePassCache) api.clearPrePassCache();
-  return found;
 }
 
 describe('@ifc-lite/wasm surface textures on the viewer path (#961)', () => {
@@ -69,12 +77,15 @@ describe('@ifc-lite/wasm surface textures on the viewer path (#961)', () => {
       const { initSync, IfcAPI } = await import(wasmJsPath);
       initSync(readFileSync(wasmPath));
       const api = new IfcAPI();
-
-      const boiler = texturedBoiler(api, readFileSync(fixturePath, 'utf8'));
-      assert.ok(boiler, `boiler #${BOILER_TYPE_ID} should carry a texture`);
-      assert.ok(boiler.width > 0 && boiler.height > 0, 'texture has size');
-      assert.equal(boiler.rgbaLen, boiler.width * boiler.height * 4, 'RGBA8 buffer is w*h*4');
-      assert.equal(boiler.uvsLen, boiler.verts * 2, 'UVs are 1:1 with vertices (u,v per vertex)');
+      try {
+        const boiler = texturedBoiler(api, readFileSync(fixturePath, 'utf8'));
+        assert.ok(boiler, `boiler #${BOILER_TYPE_ID} should carry a texture`);
+        assert.ok(boiler.width > 0 && boiler.height > 0, 'texture has size');
+        assert.equal(boiler.rgbaLen, boiler.width * boiler.height * 4, 'RGBA8 buffer is w*h*4');
+        assert.equal(boiler.uvsLen, boiler.verts * 2, 'UVs are 1:1 with vertices (u,v per vertex)');
+      } finally {
+        api.free?.();
+      }
     });
   }
 });

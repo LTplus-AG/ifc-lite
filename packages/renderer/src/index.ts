@@ -1700,12 +1700,25 @@ export class Renderer {
                             if (options.hiddenIds?.has(tm.expressId)) continue;
                             if (hasIsolatedFilter && !options.isolatedIds!.has(tm.expressId)) continue;
                         }
-                        // Tint multiplies the sampled texel; the IfcColourRgb base
-                        // is white in the annex-E fixtures → texture shows as-is.
-                        tpl[32] = tm.color[0];
-                        tpl[33] = tm.color[1];
-                        tpl[34] = tm.color[2];
-                        tpl[35] = tm.color[3];
+                        // Per-entity transparency override (e.g. a Pset/lens alpha):
+                        // a fully-transparent override hides the mesh. NOTE: the
+                        // textured pipeline is opaque, so a *partial* alpha can't
+                        // blend — textured surfaces render opaque (acceptable for
+                        // the photo/pattern type-geometry these carry; a transparent
+                        // textured pipeline would be needed for true blending).
+                        const txAlpha = alphaForBatch(
+                            { expressIds: [tm.expressId], color: tm.color },
+                            tm.color[3],
+                        );
+                        if (txAlpha <= 0.01) continue;
+                        // Lens / Pset colour override tints the sampled texel — the
+                        // batch overlay paint pass doesn't iterate textured meshes,
+                        // so applying the override here is what recolours them.
+                        const txOverride = colorOverrides?.get(tm.expressId);
+                        tpl[32] = txOverride ? txOverride[0] : tm.color[0];
+                        tpl[33] = txOverride ? txOverride[1] : tm.color[1];
+                        tpl[34] = txOverride ? txOverride[2] : tm.color[2];
+                        tpl[35] = txAlpha;
                         device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
                         pass.setBindGroup(0, tm.bindGroup);
                         pass.setVertexBuffer(0, tm.vertexBuffer);

@@ -682,8 +682,14 @@ impl PolygonalFaceSetProcessor {
                         tex_coords.get(one_based.checked_sub(1)?).copied()
                     })
                     .unwrap_or([0.0, 0.0]);
+                // Flip V: IFC texture coordinates use a bottom-left origin (v up,
+                // OpenGL/STEP convention), but GPU sampling + glTF export use a
+                // top-left origin. Converting here (Rust = single source) keeps the
+                // image upright for every consumer (viewer, server, CLI, export)
+                // instead of each one re-flipping. Verified against the
+                // buildingSMART annex-E reference render.
                 uvs.push(uv[0]);
-                uvs.push(uv[1]);
+                uvs.push(1.0 - uv[1]);
                 flat_indices.push(next_index);
                 next_index += 1;
             }

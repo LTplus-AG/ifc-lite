@@ -83,6 +83,12 @@ fn hex_val(b: u8) -> Option<u8> {
     }
 }
 
+/// Upper bound on a decoded texture's width/height. 16384² RGBA ≈ 1 GiB — a
+/// hostile/garbage image header claiming larger dimensions is rejected BEFORE
+/// any pixel buffer is allocated, so a crafted file can't drive an OOM. Matches
+/// the `IfcPixelTexture` bound.
+const MAX_TEX_DIM: u32 = 16384;
+
 /// Decode a PNG byte buffer to RGBA8. Returns `(rgba, width, height)`.
 fn decode_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     let mut decoder = png::Decoder::new(bytes);
@@ -90,6 +96,15 @@ fn decode_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     // STRIP_16: 16-bit channels → 8-bit. Leaves Rgb/Rgba/Grayscale/GA at 8-bit.
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder.read_info().ok()?;
+    // Reject an oversized header before `output_buffer_size()` allocates.
+    let png_info = reader.info();
+    if png_info.width == 0
+        || png_info.height == 0
+        || png_info.width > MAX_TEX_DIM
+        || png_info.height > MAX_TEX_DIM
+    {
+        return None;
+    }
     let mut buf = vec![0u8; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf).ok()?;
     let (w, h) = (info.width, info.height);
@@ -125,8 +140,18 @@ fn decode_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
 /// Decode a JPEG byte buffer to RGBA8. Returns `(rgba, width, height)`.
 fn decode_jpeg(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     let mut decoder = jpeg_decoder::Decoder::new(bytes);
-    let pixels = decoder.decode().ok()?;
+    // Read just the headers first so an oversized image is rejected before the
+    // full `decode()` allocates its pixel buffer.
+    decoder.read_info().ok()?;
     let info = decoder.info()?;
+    if info.width == 0
+        || info.height == 0
+        || info.width as u32 > MAX_TEX_DIM
+        || info.height as u32 > MAX_TEX_DIM
+    {
+        return None;
+    }
+    let pixels = decoder.decode().ok()?;
     let (w, h) = (info.width as usize, info.height as usize);
     let px = w * h;
     let mut rgba = Vec::with_capacity(px * 4);
@@ -195,8 +220,12 @@ fn decode_pixel_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
     let width = entity.get(5).and_then(|a| a.as_int())?;
     let height = entity.get(6).and_then(|a| a.as_int())?;
     let components = entity.get(7).and_then(|a| a.as_int())?;
-    const MAX_DIM: i64 = 16384;
-    if width <= 0 || height <= 0 || width > MAX_DIM || height > MAX_DIM || !(1..=4).contains(&components)
+    let max_dim = MAX_TEX_DIM as i64;
+    if width <= 0
+        || height <= 0
+        || width > max_dim
+        || height > max_dim
+        || !(1..=4).contains(&components)
     {
         return None;
     }
@@ -263,35 +292,40 @@ fn resolve_triangle_texture_map(
     let texture_id = maps.iter().find_map(|m| m.as_entity_ref())?;
     let texture = resolve_surface_texture(texture_id, decoder)?;
 
-    // TexCoords → IfcTextureVertexList.TexCoordsList (attr 0).
+    // TexCoords → IfcTextureVertexList.TexCoordsList (attr 0). Use `map` +
+    // `collect::<Option<_>>` (NOT filter_map): a malformed entry must reject the
+    // whole map, not silently drop a row. Dropping one shifts every later row
+    // left, and `tex_coord_index[n]` must stay parallel to triangle `n` in
+    // build_flat_shaded_mesh_with_uvs — a compressed list scrambles all UVs.
     let tvl_id = entity.get_ref(2)?;
     let tvl = decoder.decode_by_id(tvl_id).ok()?;
     let coord_list = tvl.get(0)?.as_list()?;
     let tex_coords: Vec<[f32; 2]> = coord_list
         .iter()
-        .filter_map(|c| {
+        .map(|c| {
             let uv = c.as_list()?;
             let u = uv.first().and_then(|v| v.as_float())? as f32;
             let v = uv.get(1).and_then(|v| v.as_float())? as f32;
             Some([u, v])
         })
-        .collect();
+        .collect::<Option<Vec<_>>>()?;
     if tex_coords.is_empty() {
         return None;
     }
 
-    // TexCoordIndex (attr 3) → per-triangle [i, j, k].
+    // TexCoordIndex (attr 3) → per-triangle [i, j, k]. Same all-or-nothing rule
+    // so the index stays 1:1 with the triangle list.
     let index_attr = entity.get(3)?.as_list()?;
     let tex_coord_index: Vec<[u32; 3]> = index_attr
         .iter()
-        .filter_map(|tri| {
+        .map(|tri| {
             let t = tri.as_list()?;
             let a = t.first().and_then(|v| v.as_int())? as u32;
             let b = t.get(1).and_then(|v| v.as_int())? as u32;
             let c = t.get(2).and_then(|v| v.as_int())? as u32;
             Some([a, b, c])
         })
-        .collect();
+        .collect::<Option<Vec<_>>>()?;
     if tex_coord_index.is_empty() {
         return None;
     }

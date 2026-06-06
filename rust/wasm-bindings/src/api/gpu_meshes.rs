@@ -878,6 +878,15 @@ impl IfcAPI {
         // browser renders annex-E type-only "tessellated shape with style" files
         // (geometry on the type via RepresentationMaps, no occurrence). The
         // entity index is complete here, so this resolves cleanly.
+        //
+        // PERF (flagged, #962 review): for files WITH representation maps this is
+        // a second linear EntityScanner pass over `content` on top of the
+        // streaming scan above. A `IFCREPRESENTATIONMAP` substring guard inside
+        // the helper makes the ~all-files-without-type-geometry case free (just a
+        // SIMD memmem). The remaining instanced-file cost is a tracked follow-up:
+        // fold the mapped-item-source + type-candidate collection into the
+        // streaming scan loop so orphans resolve with no extra pass. Kept as a
+        // separate pass for now to avoid destabilising the streaming hot path.
         let type_jobs = super::styling::collect_orphan_type_geometry_jobs(content, &mut decoder);
         if !type_jobs.is_empty() {
             total_jobs += type_jobs.len() as u32;

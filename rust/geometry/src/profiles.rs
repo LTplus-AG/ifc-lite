@@ -58,6 +58,14 @@ const RDP_EPSILON_RATIO: f64 = 1.0 / 100.0;
 /// Prevents collapsing tiny profiles where ratio-derived epsilon would be
 /// numerically negligible.
 const RDP_EPSILON_MIN: f64 = 5.0e-3;
+/// Minimum ratio of a profile's half-thickness (`area / perimeter`, its
+/// hydraulic radius) to its bounding-box diagonal for simplification to be
+/// attempted. Below this the profile is a *thin* curved sliver — e.g. a
+/// trimmed-circle wall whose inner and outer arcs sit only a wall-thickness
+/// apart (issue #820) — and RDP's diagonal-scaled epsilon would distort or fold
+/// its feature size; such profiles are left untouched. A round window
+/// (half-thickness ≈ radius/2) sits far above this (~0.25) and still simplifies.
+const THIN_FEATURE_RATIO: f64 = 0.05;
 /// Only attempt simplification when the polyline has at least this many
 /// vertices. Below this the polyline is already cheap enough.
 const SMOOTH_CURVE_MIN_VERTICES: usize = 24;
@@ -143,6 +151,69 @@ fn rdp_simplify_open(points: &[Point2<f64>], epsilon: f64) -> Vec<Point2<f64>> {
         .collect()
 }
 
+/// Vertex-count ceiling for the brute-force O(n²) self-intersection scan.
+/// Above this the scan is too expensive to run per profile; the *caller*
+/// treats an over-ceiling simplified loop as unconfirmed and falls back to the
+/// faithful original (fail-safe) rather than trusting it. A simplification that
+/// still has this many vertices barely beat the original anyway, so the
+/// fallback is essentially free.
+const SELF_INTERSECT_SCAN_MAX_VERTICES: usize = 1024;
+
+/// Whether the closed polygon described by `loop_` (open form — the closing
+/// edge from the last vertex back to the first is implied) has any pair of
+/// non-adjacent edges that properly cross. Used to reject a simplification
+/// that turned a simple profile loop into a self-intersecting one.
+///
+/// Brute-force O(n²), so only meaningful up to `SELF_INTERSECT_SCAN_MAX_VERTICES`
+/// vertices; above that it returns `false` without scanning and callers must
+/// apply their own size cap (see `simplify_smooth_curve_polyline`). Adjacent
+/// edges (which legitimately share a vertex) are skipped, and only *proper*
+/// crossings count, so the shared endpoints of consecutive segments never
+/// register as intersections.
+fn closed_loop_self_intersects(loop_: &[Point2<f64>]) -> bool {
+    let n = loop_.len();
+    if !(4..=SELF_INTERSECT_SCAN_MAX_VERTICES).contains(&n) {
+        return false;
+    }
+    // Orientation of the triplet (a, b, c): >0 CCW, <0 CW, 0 collinear.
+    #[inline]
+    fn orient(a: Point2<f64>, b: Point2<f64>, c: Point2<f64>) -> f64 {
+        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    }
+    // Proper crossing of segment ab and segment cd (interiors intersect at a
+    // single point). Collinear/touching-endpoint cases return false — those
+    // are how consecutive boundary edges legitimately meet.
+    #[inline]
+    fn segments_properly_cross(
+        a: Point2<f64>,
+        b: Point2<f64>,
+        c: Point2<f64>,
+        d: Point2<f64>,
+    ) -> bool {
+        let d1 = orient(c, d, a);
+        let d2 = orient(c, d, b);
+        let d3 = orient(a, b, c);
+        let d4 = orient(a, b, d);
+        ((d1 > 0.0) != (d2 > 0.0)) && ((d3 > 0.0) != (d4 > 0.0))
+    }
+    for i in 0..n {
+        let a = loop_[i];
+        let b = loop_[(i + 1) % n];
+        for j in (i + 1)..n {
+            // Skip the two segments adjacent to edge i (they share a vertex).
+            if j == i || (j + 1) % n == i || (i + 1) % n == j {
+                continue;
+            }
+            let c = loop_[j];
+            let d = loop_[(j + 1) % n];
+            if segments_properly_cross(a, b, c, d) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Best-effort downsampling of a polyline that might approximate a smooth
 /// curve. Closed-loop aware (last == first is preserved). Returns the
 /// original polyline unchanged when it doesn't look over-tessellated or
@@ -205,6 +276,7 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     // define the silhouette and slice across the fillet region instead.
     let mut perimeter = 0.0;
     let mut longest_edge: f64 = 0.0;
+    let mut area2 = 0.0; // 2× signed shoelace area
     for i in 0..n {
         let a = core[i];
         let b = core[(i + 1) % n];
@@ -215,6 +287,7 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
         if len > longest_edge {
             longest_edge = len;
         }
+        area2 += a.x * b.y - b.x * a.y;
     }
     let mean_edge = perimeter / n as f64;
     if mean_edge / diag > SMOOTH_CURVE_SPACING_RATIO {
@@ -224,6 +297,33 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     if longest_edge / diag > SMOOTH_CURVE_LONGEST_EDGE_RATIO {
         // Mixed-geometry profile: at least one edge is too long to belong to
         // a uniformly-tessellated smooth curve. Leave the polyline alone.
+        return points.to_vec();
+    }
+
+    // Thin-feature gate (issue #820). RDP's epsilon is scaled to the bounding
+    // diagonal, which is right for a "fat" smooth shape — a round window is
+    // ~uniformly thick in every direction — but wrong for a *thin* one. A
+    // curved annular-sector wall is only a wall thickness deep yet metres
+    // across, so a diagonal-scaled chord-deviation budget is a large fraction
+    // of (or exceeds) the thickness. RDP then slides chords across the thin
+    // dimension, letting the inner and outer arcs drift independently: the
+    // footprint either folds into a self-intersecting flap (the visible #820
+    // bug) or silently gains/loses double-digit-percent area while staying
+    // topologically simple (the same distortion class as the +4.31% W410
+    // fillet bug). No epsilon you can still call "simplification" preserves a
+    // thin curved shape, so don't try — keep the faithful original.
+    //
+    // `area / perimeter` is the polygon's hydraulic radius (≈ half its mean
+    // thickness): ≈ thickness/2 for a thin sliver, ≈ radius/2 for a fat disk.
+    // Its ratio to the diagonal cleanly separates the two — ~0.0015 for the
+    // 100 mm × 24 m #820 wall vs ~0.25 for a round window — so a profile whose
+    // half-thickness is a tiny fraction of its extent is left untouched.
+    let half_thickness = if perimeter > f64::EPSILON {
+        area2.abs() / (2.0 * perimeter)
+    } else {
+        0.0
+    };
+    if half_thickness / diag < THIN_FEATURE_RATIO {
         return points.to_vec();
     }
 
@@ -252,6 +352,20 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     if simplified_core.len() < SIMPLIFIED_MIN_VERTICES || simplified_core.len() >= n {
         // Either too aggressive or no real reduction — keep the original
         // so we never make an opening worse than it already was.
+        return points.to_vec();
+    }
+
+    // Backstop: a valid simplification of a simple polygon stays simple. The
+    // thickness-capped epsilon above prevents RDP from crossing a thin seam in
+    // the common case, but pin placement and non-uniform sampling can still
+    // produce a self-intersecting loop, so reject any result we can't confirm
+    // is simple and keep the faithful original. Loops too large to scan within
+    // the O(n²) budget are treated as unconfirmed (fail-safe) rather than
+    // assumed clean — a simplification that still has >1024 vertices barely
+    // beat the original, so falling back to it costs almost nothing.
+    if simplified_core.len() > SELF_INTERSECT_SCAN_MAX_VERTICES
+        || closed_loop_self_intersects(&simplified_core)
+    {
         return points.to_vec();
     }
 
@@ -3062,6 +3176,127 @@ mod tests {
     use super::*;
 
     #[test]
+    fn closed_loop_self_intersects_detects_bowtie() {
+        // Simple unit square — no crossings.
+        let square = [
+            Point2::new(0.0, 0.0),
+            Point2::new(1.0, 0.0),
+            Point2::new(1.0, 1.0),
+            Point2::new(0.0, 1.0),
+        ];
+        assert!(!closed_loop_self_intersects(&square));
+
+        // Bow-tie: swapping the last two vertices makes the closing edges
+        // cross in the middle.
+        let bowtie = [
+            Point2::new(0.0, 0.0),
+            Point2::new(1.0, 0.0),
+            Point2::new(0.0, 1.0),
+            Point2::new(1.0, 1.0),
+        ];
+        assert!(closed_loop_self_intersects(&bowtie));
+
+        // Degenerate (fewer than 4 vertices) can't self-cross.
+        assert!(!closed_loop_self_intersects(&square[..3]));
+    }
+
+    /// Build a dense closed loop for a thin annular sector centred at
+    /// (0, -radius) (the issue #820 topology): an outer arc at `radius` and an
+    /// inner arc at `radius - thickness`, swept `span` radians and joined by
+    /// short radial caps. `seg` samples per arc.
+    fn annular_sector_loop(radius: f64, thickness: f64, span: f64, seg: usize) -> Vec<Point2<f64>> {
+        let c = Point2::new(0.0, -radius);
+        let mut loop_ = Vec::with_capacity(2 * seg + 2);
+        for i in 0..=seg {
+            let a = -span / 2.0 + span * (i as f64 / seg as f64);
+            loop_.push(Point2::new(c.x + radius * a.cos(), c.y + radius * a.sin()));
+        }
+        let inner = radius - thickness;
+        for i in 0..=seg {
+            let a = span / 2.0 - span * (i as f64 / seg as f64);
+            loop_.push(Point2::new(c.x + inner * a.cos(), c.y + inner * a.sin()));
+        }
+        loop_
+    }
+
+    fn loop_area(loop_: &[Point2<f64>]) -> f64 {
+        let n = loop_.len();
+        let mut a = 0.0;
+        for i in 0..n {
+            let p = loop_[i];
+            let q = loop_[(i + 1) % n];
+            a += p.x * q.y - q.x * p.y;
+        }
+        (a * 0.5).abs()
+    }
+
+    #[test]
+    fn simplify_thin_annular_sector_stays_simple_and_area_preserving() {
+        // Regression for issue #820 *and* the silent-area-distortion class the
+        // review flagged. A thin curved wall has a feature size (its thickness)
+        // far below the bbox diagonal; the thickness-capped RDP epsilon must
+        // keep every simplification both topologically simple (no folded-flap
+        // seam) and area-faithful. The first row is the real fixture's
+        // proportions (r=12000, 100 mm, 240°); the rest are the thicker/shorter
+        // sectors the reviewer reproduced losing/gaining 5–13% area under the
+        // un-capped epsilon.
+        let cases = [
+            (12000.0, 100.0, 240.0_f64),
+            (12000.0, 300.0, 240.0),
+            (12000.0, 600.0, 90.0),
+            (12000.0, 600.0, 180.0),
+        ];
+        for (radius, thickness, span_deg) in cases {
+            let span = span_deg.to_radians();
+            let dense = annular_sector_loop(radius, thickness, span, 200);
+            assert!(
+                !closed_loop_self_intersects(&dense),
+                "input sector r={radius} t={thickness} {span_deg}° should start simple",
+            );
+            let out = simplify_smooth_curve_polyline(&dense);
+
+            // Topology: never a folded-flap seam.
+            assert!(
+                !closed_loop_self_intersects(&out),
+                "simplified sector r={radius} t={thickness} {span_deg}° self-intersects",
+            );
+
+            // Area: within 2% of the dense original (was up to ±13% pre-fix).
+            let (a_in, a_out) = (loop_area(&dense), loop_area(&out));
+            let rel = (a_out - a_in).abs() / a_in;
+            assert!(
+                rel < 0.02,
+                "sector r={radius} t={thickness} {span_deg}°: area drift {:.1}% \
+                 (in={a_in:.0} out={a_out:.0}) — thin curved wall was distorted",
+                rel * 100.0,
+            );
+        }
+    }
+
+    #[test]
+    fn simplify_still_reduces_fat_round_disk() {
+        // Guards THIN_FEATURE_RATIO from being set so high it suppresses the
+        // issue #635 case it must preserve: an over-tessellated round window
+        // (a *fat* disk, half-thickness ≈ radius/2) must still simplify to a
+        // small recognizable polygon so void cuts fit the CSG polygon budget.
+        let mut disk = Vec::new();
+        let seg = 127;
+        for i in 0..seg {
+            let a = std::f64::consts::TAU * (i as f64 / seg as f64);
+            disk.push(Point2::new(0.5 * a.cos(), 0.5 * a.sin()));
+        }
+        let out = simplify_smooth_curve_polyline(&disk);
+        assert!(
+            out.len() < disk.len() && out.len() >= SIMPLIFIED_MIN_VERTICES,
+            "round disk should simplify from {} to [{SIMPLIFIED_MIN_VERTICES}, {}) verts, got {}",
+            disk.len(),
+            disk.len(),
+            out.len(),
+        );
+        assert!(!closed_loop_self_intersects(&out));
+    }
+
+    #[test]
     fn test_rectangle_profile() {
         let content = r#"
 #1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,100.0,200.0);
@@ -3744,4 +3979,15 @@ mod tests {
         assert!(approx_eq_p3(pts[0], Point3::new(0.0, 10.0, 0.0), 1e-9));
         assert!(approx_eq_p3(pts[1], Point3::new(0.0, 7.0, 0.0), 1e-9));
     }
+    #[test]
+    fn probe_ellipse_aspect_gate_TEMP() {
+        for &(asp, seg) in &[(8.0_f64,96usize),(9.0,96),(9.5,96),(10.0,96),(10.0,60),(20.0,96)] {
+            let (a,b)=(asp,1.0);
+            let mut pts=Vec::new();
+            for i in 0..seg { let t=std::f64::consts::TAU*(i as f64/seg as f64); pts.push(Point2::new(a*t.cos(),b*t.sin())); }
+            let out=simplify_smooth_curve_polyline(&pts);
+            eprintln!("PROBE aspect={} seg={} in={} out={} {}",asp,seg,pts.len(),out.len(), if out.len()==pts.len(){"SKIPPED"}else{"simplified"});
+        }
+    }
+
 }

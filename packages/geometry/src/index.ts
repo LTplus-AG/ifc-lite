@@ -40,7 +40,7 @@ import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GeometryQuality } from './progressive-loader.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
-import type { GeometryResult, MeshData, CoordinateInfo } from './types.js';
+import type { GeometryResult, MeshData, CoordinateInfo, GridAxis } from './types.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -288,6 +288,21 @@ export class GeometryProcessor {
    * without any per-call argument. Bytes are passed straight through —
    * no `TextDecoder` materialization of the whole file.
    */
+  /**
+   * Surface the world→render metadata (unit scale + the applied RTC offset)
+   * from a pre-pass result onto the coordinate handler, so it appears on the
+   * emitted `CoordinateInfo` (issue #945). Shared by the sync and streaming
+   * WASM paths to keep the RTC transform in one place.
+   */
+  private applyPrePassMetadata(prePass: ByteStreamingPrePassResult): void {
+    this.coordinateHandler.setWasmMetadata(
+      prePass.unitScale,
+      prePass.needsShift
+        ? { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 }
+        : null,
+    );
+  }
+
   private collectMeshesViaPrePass(buffer: Uint8Array): { meshes: MeshData[]; buildingRotation?: number } {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
@@ -295,6 +310,7 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+    this.applyPrePassMetadata(prePass);
     try {
       const meshes: MeshData[] = [];
       const totalJobs = prePass.totalJobs ?? 0;
@@ -346,6 +362,7 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
+    this.applyPrePassMetadata(prePass);
 
     // try/finally so the pre-pass cache is released on every exit: the
     // totalJobs===0 early return, a processGeometryBatch throw, or the
@@ -831,6 +848,65 @@ export class GeometryProcessor {
     // both Firefox and Chromium reject in raw `TextDecoder.decode`.
     const content = safeUtf8Decode(buffer);
     return this.bridge.parseAlignmentLines(content);
+  }
+
+  /**
+   * Parse `IfcGrid` / `IfcGridAxis` into a flat Float32Array of 3D line-list
+   * vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per axis) in renderer Y-up
+   * world space (RTC-subtracted, metres) — the same frame the streamed meshes
+   * render in, so grids overlay the model by construction (issue #945). Feed
+   * straight to a line pipeline (e.g. `renderer.uploadAnnotationLines3D`).
+   * @param buffer IFC file buffer
+   * @returns Flat line-list vertices, or null if not initialized
+   */
+  parseGridLines(buffer: Uint8Array): Float32Array | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    const content = safeUtf8Decode(buffer);
+    return this.bridge.parseGridLines(content);
+  }
+
+  /**
+   * Parse `IfcGrid` / `IfcGridAxis` into structured per-axis data (tag +
+   * endpoints) in renderer Y-up world space (RTC-subtracted, metres). Use when
+   * you also need the axis tags to render grid bubbles / labels (issue #945).
+   *
+   * Returns plain {@link GridAxis} objects (the underlying zero-copy WASM
+   * collection is consumed internally), or null if not initialized.
+   * @param buffer IFC file buffer
+   */
+  parseGridAxes(buffer: Uint8Array): GridAxis[] | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    const content = safeUtf8Decode(buffer);
+    // GridAxisCollection and each GridAxisJs from getAxis are wasm-bindgen
+    // handles owning WASM memory — free them deterministically (AGENTS.md §7).
+    const collection = this.bridge.parseGridAxes(content);
+    try {
+      const axes: GridAxis[] = [];
+      for (let i = 0; i < collection.length; i++) {
+        const a = collection.getAxis(i);
+        if (!a) continue;
+        try {
+          const start = a.start;
+          const end = a.end;
+          axes.push({
+            gridId: a.gridId,
+            axisId: a.axisId,
+            tag: a.tag,
+            start: [start[0], start[1], start[2]],
+            end: [end[0], end[1], end[2]],
+          });
+        } finally {
+          a.free();
+        }
+      }
+      return axes;
+    } finally {
+      collection.free();
+    }
   }
 
   /**

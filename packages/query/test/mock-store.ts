@@ -134,6 +134,21 @@ export function createMockStore(opts: MockStoreOptions = {}) {
     byType.get(upper)!.push(e.expressId);
   }
 
+  const entityMap = new Map<number, { expressId: number; type: string; attributes: unknown[] }>();
+  for (const e of opts.entities ?? []) {
+    entityMap.set(e.expressId, {
+      expressId: e.expressId,
+      type: e.type,
+      attributes: [
+        e.globalId || null,
+        null, // OwnerHistory
+        e.name || null,
+        e.description || null,
+        e.objectType || null,
+      ],
+    });
+  }
+
   return {
     fileSize: 0,
     schemaVersion: 'IFC4' as const,
@@ -148,6 +163,14 @@ export function createMockStore(opts: MockStoreOptions = {}) {
     properties,
     quantities,
     relationships,
+
+    getEntity: (expressId: number) => entityMap.get(expressId) ?? null,
+    getEntitiesByType: (typeName: string) => {
+      const ids = byType.get(typeName.toUpperCase()) ?? [];
+      return ids.map((id: number) => entityMap.get(id)).filter(Boolean);
+    },
+    getProperties: (expressId: number) => properties.getForEntity(expressId),
+    getQuantities: (expressId: number) => quantities.getForEntity(expressId),
 
     // These are optional on IfcDataStore and can be undefined for mock
     spatialHierarchy: undefined,

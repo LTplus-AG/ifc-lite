@@ -34,15 +34,17 @@ mod indexed_colour;
 mod material;
 // Public styling resolvers — the single shared implementation that both the
 // native pipeline and the browser `wasm-bindings` call (issue #913, Phase 2e).
-// `split_mesh_by_indexed_colour` stays crate-internal: it is a mesh-pipeline
-// concern the processor owns, not a colour-resolution primitive consumers need.
-pub use indexed_colour::{resolve_indexed_colour_map_full, FullIndexedColourMap};
+// `split_mesh_by_indexed_colour` is also public so the browser `processGeometryBatch`
+// path can restore the per-triangle palette split it lost in the #874 mesh-pipeline
+// unification (issue #858) — keeping one shared splitter rather than a wasm copy.
+pub use indexed_colour::{
+    resolve_indexed_colour_map_full, split_mesh_by_indexed_colour, FullIndexedColourMap,
+};
 pub use material::{
     build_element_material_colors, build_material_style_index, flatten_material_color_index,
     pick_material_style_for_submesh, pick_opaque_first, resolve_material_ids,
     resolve_submesh_color,
 };
-pub(crate) use indexed_colour::split_mesh_by_indexed_colour;
 
 /// Alpha at or above which a color is treated as opaque.
 ///

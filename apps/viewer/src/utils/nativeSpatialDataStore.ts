@@ -267,5 +267,11 @@ export function buildIfcDataStoreFromNativeMetadata(snapshot: NativeMetadataSnap
     quantities: undefined as unknown as IfcDataStore['quantities'],
     relationships: undefined as unknown as IfcDataStore['relationships'],
     spatialHierarchy: hierarchy,
+    // Native spatial snapshots are metadata-only (no source buffer / property
+    // or quantity tables), so the IfcStoreBase accessors return empties.
+    getEntity: () => null,
+    getEntitiesByType: () => [],
+    getProperties: () => [],
+    getQuantities: () => [],
   } as IfcDataStore;
 }

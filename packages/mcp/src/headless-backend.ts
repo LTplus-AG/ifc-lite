@@ -208,7 +208,7 @@ export class HeadlessLikeBackend implements BimBackend {
       return node.properties().map((pset) => ({
         name: pset.name,
         globalId: pset.globalId,
-        properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value })),
+        properties: pset.properties.map((p) => ({ name: p.name, type: p.type, value: p.value as string | number | boolean | null })),
       }));
     }
 

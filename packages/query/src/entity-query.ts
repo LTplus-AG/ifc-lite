@@ -6,7 +6,7 @@
  * Fluent query builder for entities
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import type { IfcStoreBase as IfcDataStore } from '@ifc-lite/data';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { QueryResultEntity } from './query-result-entity.js';
 

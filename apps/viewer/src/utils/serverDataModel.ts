@@ -711,5 +711,12 @@ export function convertServerDataModel(
     relationships,
     spatialHierarchy,
     spatialIndex,
+    // IfcStoreBase accessors: server-parsed models carry pre-built property/
+    // quantity tables but no source buffer, so entity extraction is unavailable
+    // (the `entities` table remains the primary path for basic attributes).
+    getEntity: () => null,
+    getEntitiesByType: () => [],
+    getProperties: (expressId: number) => properties.getForEntity(expressId),
+    getQuantities: (expressId: number) => quantities.getForEntity(expressId),
   };
 }

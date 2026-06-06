@@ -6,53 +6,10 @@
  * Query result entity - lazy-loaded entity data
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
-import type { PropertySet, QuantitySet, Property, Quantity, PropertyValue } from '@ifc-lite/data';
-import { PropertyValueType, QuantityType } from '@ifc-lite/data';
+import type { IfcStoreBase as IfcDataStore } from '@ifc-lite/data';
+import type { PropertySet, QuantitySet, PropertyValue } from '@ifc-lite/data';
 import type { MeshData } from '@ifc-lite/geometry';
 import { EntityNode } from './entity-node.js';
-
-function hasOnDemandProperties(store: IfcDataStore): boolean {
-  return !!store.onDemandPropertyMap && !!store.source && store.source.length > 0;
-}
-
-function hasOnDemandQuantities(store: IfcDataStore): boolean {
-  return !!store.onDemandQuantityMap && !!store.source && store.source.length > 0;
-}
-
-function loadPropertiesFromStore(store: IfcDataStore, expressId: number): PropertySet[] {
-  const preParsed = store.properties.getForEntity(expressId);
-  if (preParsed.length > 0 || !hasOnDemandProperties(store)) {
-    return preParsed;
-  }
-  const raw = extractPropertiesOnDemand(store, expressId);
-  return raw.map((pset): PropertySet => ({
-    name: pset.name,
-    globalId: pset.globalId ?? '',
-    properties: pset.properties.map((p): Property => ({
-      name: p.name,
-      type: p.type as PropertyValueType,
-      value: p.value as PropertyValue,
-    })),
-  }));
-}
-
-function loadQuantitiesFromStore(store: IfcDataStore, expressId: number): QuantitySet[] {
-  const preParsed = store.quantities ? store.quantities.getForEntity(expressId) : [];
-  if (preParsed.length > 0 || !hasOnDemandQuantities(store)) {
-    return preParsed;
-  }
-  const raw = extractQuantitiesOnDemand(store, expressId);
-  return raw.map((qset): QuantitySet => ({
-    name: qset.name,
-    quantities: qset.quantities.map((q): Quantity => ({
-      name: q.name,
-      type: q.type as QuantityType,
-      value: q.value,
-    })),
-  }));
-}
 
 export class QueryResultEntity {
   private store: IfcDataStore;
@@ -84,14 +41,14 @@ export class QueryResultEntity {
     if (this._properties !== undefined) {
       return this._properties;
     }
-    return loadPropertiesFromStore(this.store, this.expressId);
+    return this.store.getProperties(this.expressId);
   }
 
   get quantities(): QuantitySet[] {
     if (this._quantities !== undefined) {
       return this._quantities;
     }
-    return loadQuantitiesFromStore(this.store, this.expressId);
+    return this.store.getQuantities(this.expressId);
   }
 
   get geometry(): MeshData | null {
@@ -103,10 +60,7 @@ export class QueryResultEntity {
   }
 
   getProperty(psetName: string, propName: string): PropertyValue | null {
-    const direct = this.store.properties.getPropertyValue(this.expressId, psetName, propName);
-    if (direct !== null) return direct;
-    if (!hasOnDemandProperties(this.store)) return null;
-    for (const pset of loadPropertiesFromStore(this.store, this.expressId)) {
+    for (const pset of this.store.getProperties(this.expressId)) {
       if (pset.name !== psetName) continue;
       for (const p of pset.properties) {
         if (p.name === propName) return p.value;
@@ -117,13 +71,13 @@ export class QueryResultEntity {
 
   loadProperties(): void {
     if (this._properties === undefined) {
-      this._properties = loadPropertiesFromStore(this.store, this.expressId);
+      this._properties = this.store.getProperties(this.expressId);
     }
   }
 
   loadQuantities(): void {
     if (this._quantities === undefined) {
-      this._quantities = loadQuantitiesFromStore(this.store, this.expressId);
+      this._quantities = this.store.getQuantities(this.expressId);
     }
   }
   

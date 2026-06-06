@@ -123,7 +123,7 @@ pub fn resolve_indexed_colour_map_full(
 /// means CSG/void cutting changed the topology, so the per-triangle mapping no
 /// longer applies. Triangle `i` of the mesh corresponds to `CoordIndex[i]`
 /// because the triangulated-face-set processor preserves triangle order.
-pub(crate) fn split_mesh_by_indexed_colour(
+pub fn split_mesh_by_indexed_colour(
     mesh: &Mesh,
     map: &FullIndexedColourMap,
 ) -> Option<Vec<(Rgba, Mesh)>> {

@@ -6,9 +6,44 @@
  * Entity node for graph traversal
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { extractPropertiesOnDemand, extractQuantitiesOnDemand, extractEntityAttributesOnDemand, extractAllEntityAttributes } from '@ifc-lite/parser';
+import type { IfcStoreBase as IfcDataStore, IfcEntity, IfcAttributeValue, PropertySet, QuantitySet, PropertyValue } from '@ifc-lite/data';
+import { getRawNamedAttributes, extractRootAttributesFromEntity } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
+
+function coerceRaw(raw: IfcAttributeValue): string | number | boolean | null {
+  if (typeof raw === 'string') {
+    if (raw === '.U.' || raw === '.X.') return null;
+    if (raw === '.T.') return true;
+    if (raw === '.F.') return false;
+    return raw.startsWith('.') && raw.endsWith('.') ? raw.slice(1, -1) : raw;
+  }
+  if (typeof raw === 'number' || typeof raw === 'boolean') return raw;
+  if (Array.isArray(raw) && raw.length === 2) {
+    const tag = String(raw[0]).toUpperCase();
+    const inner = raw[1];
+    if (tag.includes('BOOLEAN')) return inner === '.T.' || inner === true;
+    if (tag.includes('LOGICAL')) {
+      if (inner === '.U.' || inner === '.X.') return null;
+      return inner === '.T.' || inner === true;
+    }
+    if (typeof inner === 'number' || typeof inner === 'boolean') return inner;
+    if (typeof inner === 'string' && inner) {
+      return inner.startsWith('.') && inner.endsWith('.') ? inner.slice(1, -1) : inner;
+    }
+  }
+  return null;
+}
+
+export function extractAllEntityAttributesFromEntity(
+  entity: IfcEntity
+): Array<{ name: string; value: string | number | boolean }> {
+  const result: Array<{ name: string; value: string | number | boolean }> = [];
+  for (const { name, raw } of getRawNamedAttributes(entity)) {
+    const value = coerceRaw(raw);
+    if (value !== null) result.push({ name, value });
+  }
+  return result;
+}
 
 export class EntityNode {
   private store: IfcDataStore;
@@ -25,17 +60,16 @@ export class EntityNode {
    * Only extracts if stored values are empty and source buffer is available
    */
   private getOnDemandAttributes(): { globalId: string; name: string; description: string; objectType: string; tag: string } {
-    if (this._cachedAttributes) {
-      return this._cachedAttributes;
-    }
-
-    // Only extract on-demand if source buffer is available
-    const attrs = (this.store.source && this.store.entityIndex)
-      ? extractEntityAttributesOnDemand(this.store, this.expressId)
+    if (this._cachedAttributes) return this._cachedAttributes;
+    const entity = this.store.getEntity(this.expressId);
+    // Map by schema attribute name, not fixed index: `attrs[7]` is Tag only for
+    // IfcElement — for an IfcSite it is LongName, and for an IfcMaterial
+    // `attrs[0]` is Name rather than GlobalId. See extractRootAttributesFromEntity.
+    const result = entity
+      ? extractRootAttributesFromEntity(entity)
       : { globalId: '', name: '', description: '', objectType: '', tag: '' };
-
-    this._cachedAttributes = attrs;
-    return attrs;
+    this._cachedAttributes = result;
+    return result;
   }
 
   get globalId(): string {
@@ -81,9 +115,11 @@ export class EntityNode {
    * Skips GlobalId (shown separately), OwnerHistory, and geometry references.
    */
   allAttributes(): Array<{ name: string; value: string | number | boolean }> {
-    if (this.store.source && this.store.entityIndex) {
-      return extractAllEntityAttributes(this.store, this.expressId);
+    const entity = this.store.getEntity(this.expressId);
+    if (entity) {
+      return extractAllEntityAttributesFromEntity(entity);
     }
+
     // Fallback: return individually known attributes
     const attrs: Array<{ name: string; value: string | number | boolean }> = [];
     if (this.name) attrs.push({ name: 'Name', value: this.name });
@@ -185,46 +221,25 @@ export class EntityNode {
     return null;
   }
 
-  // Data access - uses on-demand extraction when available (preferred)
-  properties(): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: any }> }> {
-    // Use on-demand extraction if map is available (fast single-entity access)
-    if (this.store.onDemandPropertyMap) {
-      return extractPropertiesOnDemand(this.store, this.expressId);
-    }
-    // Fallback to pre-computed property table (server-parsed data, IFCX)
-    return this.store.properties.getForEntity(this.expressId);
+  // Data access - delegates to IfcDataStore interface methods
+  properties(): PropertySet[] {
+    return this.store.getProperties(this.expressId);
   }
 
-  property(psetName: string, propName: string): ReturnType<typeof this.store.properties.getPropertyValue> {
-    // For single property lookup, on-demand would be slower than table lookup
-    // But if no table, extract on-demand and search
-    if (this.store.onDemandPropertyMap && !this.store.properties.getForEntity(this.expressId).length) {
-      const props = this.properties();
-      const pset = props.find(p => p.name === psetName);
-      const prop = pset?.properties.find(p => p.name === propName);
-      return prop?.value ?? null;
-    }
-    return this.store.properties.getPropertyValue(this.expressId, psetName, propName);
+  property(psetName: string, propName: string): PropertyValue | null {
+    const props = this.store.getProperties(this.expressId);
+    const pset = props.find(p => p.name === psetName);
+    return pset?.properties.find(p => p.name === propName)?.value ?? null;
   }
 
-  quantities(): Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> {
-    // Use on-demand extraction if map is available (fast single-entity access)
-    if (this.store.onDemandQuantityMap) {
-      return extractQuantitiesOnDemand(this.store, this.expressId);
-    }
-    // Fallback to pre-computed quantity table (server-parsed data, IFCX)
-    return this.store.quantities.getForEntity(this.expressId);
+  quantities(): QuantitySet[] {
+    return this.store.getQuantities(this.expressId);
   }
 
   quantity(qsetName: string, quantityName: string): number | null {
-    // For single quantity lookup, use on-demand if no table data
-    if (this.store.onDemandQuantityMap && !this.store.quantities.getForEntity(this.expressId).length) {
-      const qsets = this.quantities();
-      const qset = qsets.find(q => q.name === qsetName);
-      const qty = qset?.quantities.find(q => q.name === quantityName);
-      return qty?.value ?? null;
-    }
-    return this.store.quantities.getQuantityValue(this.expressId, qsetName, quantityName);
+    const qsets = this.store.getQuantities(this.expressId);
+    const qset = qsets.find(q => q.name === qsetName);
+    return qset?.quantities.find(q => q.name === quantityName)?.value ?? null;
   }
 
   private getRelated(relType: RelationshipType, direction: 'forward' | 'inverse'): EntityNode[] {

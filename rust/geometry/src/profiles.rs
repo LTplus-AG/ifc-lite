@@ -67,20 +67,23 @@ const RDP_EPSILON_MIN: f64 = 5.0e-3;
 /// above this (half-thickness ≈ r/2 against a bbox diagonal of 2·r·√2 gives
 /// ≈ 0.18, ~3.5× the gate) and still simplifies. Thinness alone is *not*
 /// sufficient to skip — an elongated filled ellipse is thin by this measure too
-/// yet simplifies fine — so it is paired with [`DOUBLE_BACK_REFLEX_FRACTION`].
+/// yet simplifies fine — so it is paired with [`DOUBLE_BACK_REFLEX_ARC_FRACTION`].
 const THIN_FEATURE_RATIO: f64 = 0.05;
-/// Fraction of a loop's vertices that must be *reflex* (turning against the
-/// loop's overall winding) for it to count as *doubling back* on itself rather
-/// than enclosing a convex-ish blob. A convex shape (filled ellipse, disk) has
-/// zero reflex vertices at any aspect ratio; an annular sector's entire inner
-/// arc is reflex, so ~half its vertices are (≈0.4–0.5). 0.15 sits clear of both
-/// — and, unlike a total-turning measure, it is insensitive to a *localized*
-/// spike: one inward notch or a sub-mm closing-seam jog on an otherwise convex
-/// thin opening is only 1–2 reflex vertices, far below the threshold, so such
-/// openings keep simplifying (else they regress to the issue #635 AABB cut).
-const DOUBLE_BACK_REFLEX_FRACTION: f64 = 0.15;
+/// Fraction of a loop's *perimeter length* that must run along reflex vertices
+/// (turning against the loop's overall winding) for it to count as *doubling
+/// back* on itself rather than enclosing a convex-ish blob. A convex shape
+/// (filled ellipse, disk) has zero reflex boundary at any aspect ratio; an
+/// annular sector's entire inner arc is reflex, so ~half its perimeter is
+/// (≈0.5). 0.15 sits clear of both, and measuring by arc *length* rather than
+/// vertex *count* makes it independent of how densely each boundary is sampled
+/// — a thin wall whose inner arc carries far fewer points than its outer arc
+/// still reads as ~0.5 (Codex review). It is likewise insensitive to a
+/// *localized* spike: one inward notch or a sub-mm closing-seam jog spans
+/// negligible arc length, so such convex thin openings keep simplifying (else
+/// they regress to the issue #635 AABB cut).
+const DOUBLE_BACK_REFLEX_ARC_FRACTION: f64 = 0.15;
 /// Per-vertex turning (as |sin| of the deflection angle) below which a vertex
-/// is treated as straight, not reflex — guards the reflex count against f64
+/// is treated as straight, not reflex — guards the reflex test against f64
 /// noise at near-collinear samples on a convex curve.
 const REFLEX_TURN_SIN_TOL: f64 = 1.0e-6;
 /// Only attempt simplification when the polyline has at least this many
@@ -235,21 +238,27 @@ fn closed_loop_self_intersects(loop_: &[Point2<f64>]) -> bool {
 }
 
 /// Whether the closed polygon (open form) `loop_` *doubles back* on itself —
-/// a large fraction of its vertices are reflex (turn against its winding),
-/// exceeding `DOUBLE_BACK_REFLEX_FRACTION`.
+/// the share of its perimeter that runs along reflex vertices (turning against
+/// its winding) exceeds `DOUBLE_BACK_REFLEX_ARC_FRACTION`.
 ///
-/// A convex shape (filled ellipse, disk) has no reflex vertices at any aspect
+/// A convex shape (filled ellipse, disk) has no reflex boundary at any aspect
 /// ratio. A loop that runs out along one boundary and back along another (an
 /// annular sector / thin curved wall) makes its entire return arc reflex, so
-/// ~half its vertices are. Counting reflex vertices — rather than summing total
-/// turning — is what makes this insensitive to a *localized* feature: one
-/// inward notch, or the sub-mm out-and-back jog where a composite curve closes,
-/// is only a vertex or two and cannot tip the fraction, whereas a total-turning
-/// measure double-counts such a spike and would wrongly flag the loop.
+/// ~half its perimeter is. Two properties matter:
+///   * Measuring reflex *arc length* (not vertex *count*) makes the test
+///     independent of per-boundary sampling density — a thin wall whose inner
+///     arc carries far fewer points than its outer arc still reads as ~0.5,
+///     whereas a count fraction would be skewed below the threshold.
+///   * It stays insensitive to a *localized* feature — one inward notch, or the
+///     sub-mm out-and-back jog where a composite curve closes — because that
+///     spans negligible arc length, whereas a total-turning measure
+///     double-counts such a spike and would wrongly flag the loop.
 ///
 /// Winding is taken from the signed area; a vertex is reflex when its turn
 /// opposes that winding by more than `REFLEX_TURN_SIN_TOL` (normalised so the
-/// tolerance is a true angle, not a length-scaled cross product).
+/// tolerance is a true angle, not a length-scaled cross product). Each reflex
+/// vertex contributes its outgoing edge length, so the reflex arc length and
+/// the perimeter are summed over the same edges.
 fn loop_doubles_back(loop_: &[Point2<f64>]) -> bool {
     let n = loop_.len();
     if n < 4 {
@@ -266,24 +275,28 @@ fn loop_doubles_back(loop_: &[Point2<f64>]) -> bool {
     }
     let winding = signed_area2.signum();
 
-    let mut reflex = 0usize;
+    let mut perimeter = 0.0;
+    let mut reflex_len = 0.0;
     for i in 0..n {
         let prev = loop_[(i + n - 1) % n];
         let cur = loop_[i];
         let next = loop_[(i + 1) % n];
         let (ex_in, ey_in) = (cur.x - prev.x, cur.y - prev.y);
         let (ex_out, ey_out) = (next.x - cur.x, next.y - cur.y);
-        let len = ((ex_in * ex_in + ey_in * ey_in) * (ex_out * ex_out + ey_out * ey_out)).sqrt();
-        if len <= 0.0 {
+        let out_len = (ex_out * ex_out + ey_out * ey_out).sqrt();
+        perimeter += out_len;
+        let in_len = (ex_in * ex_in + ey_in * ey_in).sqrt();
+        let denom = in_len * out_len;
+        if denom <= 0.0 {
             continue; // zero-length edge (duplicate vertex) — no turn
         }
         // sin(turn) = cross / (|e_in||e_out|); reflex when it opposes winding.
-        let sin_turn = (ex_in * ey_out - ey_in * ex_out) / len;
+        let sin_turn = (ex_in * ey_out - ey_in * ex_out) / denom;
         if sin_turn * winding < -REFLEX_TURN_SIN_TOL {
-            reflex += 1;
+            reflex_len += out_len;
         }
     }
-    (reflex as f64) / (n as f64) > DOUBLE_BACK_REFLEX_FRACTION
+    perimeter > 0.0 && reflex_len / perimeter > DOUBLE_BACK_REFLEX_ARC_FRACTION
 }
 
 /// Best-effort downsampling of a polyline that might approximate a smooth
@@ -394,11 +407,12 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     //    cut fits the BSP polygon budget (else round openings → AABB boxes,
     //    issue #635).
     //  * What actually breaks RDP is the boundary *doubling back* on itself.
-    //    A convex loop has no reflex vertices at any aspect ratio; an annular
-    //    sector's inner arc is entirely reflex, so ~half its vertices are.
-    //    `loop_doubles_back` measures that reflex fraction, which distinguishes
-    //    a thin ring from a thin ellipse and — unlike a total-turning measure —
-    //    ignores a lone notch or closing-seam jog. Requiring thinness too
+    //    A convex loop has no reflex boundary at any aspect ratio; an annular
+    //    sector's inner arc is entirely reflex, so ~half its perimeter is.
+    //    `loop_doubles_back` measures that reflex arc-length fraction, which
+    //    distinguishes a thin ring from a thin ellipse, is independent of how
+    //    densely each boundary is sampled, and — unlike a total-turning measure
+    //    — ignores a lone notch or closing-seam jog. Requiring thinness too
     //    leaves *fat* curved walls (thickness ≫ epsilon, no fold) free to
     //    simplify.
     let half_thickness = if perimeter > f64::EPSILON {
@@ -3472,6 +3486,36 @@ mod tests {
             !loop_doubles_back(&disk),
             "a sub-mm seam jog on a convex loop must not read as doubling back",
         );
+    }
+
+    #[test]
+    fn doubles_back_independent_of_per_boundary_sampling_density() {
+        // Codex review: measuring reflex VERTICES (not arc length) let a thin
+        // sector slip when its two arcs are sampled at very different densities.
+        // Their exact example: a 90° sector, r=12000, thickness=10, with the
+        // convex outer arc finely sampled (96 segs) and the reflex inner arc
+        // coarsely (16 segs). A count fraction reads ~0.13 (< gate) and the
+        // wall is wrongly simplified to ~55% area drift; an arc-length fraction
+        // reads ~0.5 because the inner and outer arcs are nearly equal LENGTH.
+        let centre = Point2::new(0.0, -12000.0);
+        let (r_out, r_in) = (12000.0, 12000.0 - 10.0);
+        let span = (90.0_f64).to_radians();
+        let mut loop_ = Vec::new();
+        for i in 0..=96 {
+            let a = -span / 2.0 + span * (i as f64 / 96.0);
+            loop_.push(Point2::new(centre.x + r_out * a.cos(), centre.y + r_out * a.sin()));
+        }
+        for i in 0..=16 {
+            let a = span / 2.0 - span * (i as f64 / 16.0);
+            loop_.push(Point2::new(centre.x + r_in * a.cos(), centre.y + r_in * a.sin()));
+        }
+        assert!(
+            loop_doubles_back(&loop_),
+            "a non-uniformly tessellated thin sector must still read as doubling back",
+        );
+        // And it is gated end-to-end: simplify returns the faithful original.
+        let out = simplify_smooth_curve_polyline(&loop_);
+        assert_eq!(out.len(), loop_.len(), "skewed-sampling thin sector must be gated");
     }
 
     #[test]

@@ -6,6 +6,12 @@ import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 
 export default defineConfig({
+  // The @ifc-lite geometry worker pool ships ES-module workers. Rollup's
+  // default worker format is IIFE, which it refuses to emit for a
+  // code-splitting build (multiple entries) — force ESM workers instead.
+  worker: {
+    format: 'es',
+  },
   build: {
     rollupOptions: {
       input: {

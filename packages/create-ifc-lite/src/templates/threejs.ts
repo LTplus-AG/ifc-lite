@@ -141,7 +141,10 @@ export function meshDataToThree(mesh: MeshData): THREE.Mesh {
     color: new THREE.Color(r, g, b),
     transparent: a < 1,
     opacity: a,
-    side: a < 1 ? THREE.DoubleSide : THREE.FrontSide,
+    // DoubleSide even for opaque: IFC triangle winding isn't reliably outward,
+    // and culling one side of two coincident coplanar walls (a facing wall flush
+    // on a thicker one) leaves the survivors z-fighting into a comb along the seam.
+    side: THREE.DoubleSide,
     depthWrite: a >= 1,
   });
 
@@ -165,7 +168,10 @@ if (!canvas || !fileInput || !status) {
 }
 
 // Three.js setup
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+// logarithmicDepthBuffer spreads depth precision across the scene so the
+// near-coplanar surfaces common in IFC (a roof slab on a gable wall, stacked
+// wall layers) far from the origin don't z-fight into stair-stepped seams.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 

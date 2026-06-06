@@ -610,14 +610,14 @@ importers:
         specifier: ^9.9.1
         version: 9.9.1
       '@ifc-lite/data':
-        specifier: ^1.11.5
-        version: 1.11.5
+        specifier: ^2.0.0
+        version: 2.0.0
       '@ifc-lite/geometry':
-        specifier: ^1.11.5
-        version: 1.11.5
+        specifier: ^2.1.0
+        version: 2.1.0
       '@ifc-lite/parser':
-        specifier: ^1.11.5
-        version: 1.11.5
+        specifier: ^3.0.0
+        version: 3.0.0
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -679,14 +679,14 @@ importers:
   examples/threejs-viewer:
     dependencies:
       '@ifc-lite/data':
-        specifier: ^1.11.0
-        version: 1.11.0
+        specifier: ^2.0.0
+        version: 2.0.0
       '@ifc-lite/geometry':
-        specifier: ^1.11.0
-        version: 1.11.0
+        specifier: ^2.1.0
+        version: 2.1.0
       '@ifc-lite/parser':
-        specifier: ^1.11.0
-        version: 1.11.0
+        specifier: ^3.0.0
+        version: 3.0.0
       three:
         specifier: ^0.184.0
         version: 0.184.0
@@ -1824,41 +1824,29 @@ packages:
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
 
-  '@ifc-lite/data@1.11.0':
-    resolution: {integrity: sha512-ADSzsFV60MXxFLL2+/7OiAKeQ6B5zGj97lRFJPsZ2CwCjoxMCcqmzYr83KIebbm0GTjUJ6cvY3+DMBLHVAQN7Q==}
+  '@ifc-lite/data@2.0.0':
+    resolution: {integrity: sha512-ZgCnit07avFUd1xxJZGq9eyQC2zlqbynZNhIw2Glm0/zmG0xcVS3SoAa2LbAoLOgH6E7RUAfyMirNFvt1mvfYw==}
 
-  '@ifc-lite/data@1.11.5':
-    resolution: {integrity: sha512-WYzujRFymvtjKBuRkeaihjKoBsbKI2eBk7rXPJ19It4PFLHFRJolZGUcTiWMN5y0Lr0DgCgmviIFk/b/UiRMyQ==}
+  '@ifc-lite/encoding@1.14.6':
+    resolution: {integrity: sha512-B3zTnUm8mQBa6kXNy7g2ad+WSvIChk8VVj87oFtmuMnipj6Kd9iwUGNVL3R/WEYhWgKSUkkXYTUvaDehI+eFqQ==}
 
-  '@ifc-lite/geometry@1.11.0':
-    resolution: {integrity: sha512-rCk/XhQJCOU4bROG2PE25euf/qX2QjPqfFjjkpwNeFeYm3up2bpXI1OhxYWZihERwUFSLMNyMWR0wbAoMPaqww==}
+  '@ifc-lite/geometry@2.1.0':
+    resolution: {integrity: sha512-HWA1RW5kvZYReqYCn3ouDlrolHQgjpNnuCgdU/sKzVVPZupIiasQYZMhgkZy7T4A27jJPsbJeRJAvtta7xa8bA==}
 
-  '@ifc-lite/geometry@1.11.5':
-    resolution: {integrity: sha512-RPCwxSQB/RGj2CNR2hXGDlu10DYBjf2qGEFtiRPvqnT3eNjiT54O6FrHS5MZqSYn5Ss96gpHwpwYB2lv17bk2Q==}
+  '@ifc-lite/ifcx@2.1.2':
+    resolution: {integrity: sha512-7yxMY0jW7OIQdo7doKbHeKJqHD0U7ie164h+fjwYYuNmvhU8shnFf137Kp22waeLkNzkJc7pTfKLDBEyLQVsKQ==}
 
-  '@ifc-lite/ifcx@1.11.0':
-    resolution: {integrity: sha512-qVwknS0UcmVXCxePWvjLvGsWpsTEeDqCZ9viUBA1yuNnsacKMmmxb8NKYMoGVdUvWgHCTpCsGHcdB7EdM1RTxw==}
+  '@ifc-lite/mutations@1.15.1':
+    resolution: {integrity: sha512-vz1FssQ9j7HOd3nekL8h4LEe+n1I/PAfPsyQM5z2IpodaqO8E9Nz36/St74h9S1qItKB1dqsMapThmcF6dzWhQ==}
 
-  '@ifc-lite/ifcx@1.11.5':
-    resolution: {integrity: sha512-S4kU+hFDmPOEnuzGrbOZp120dn9AOtZm8XQki1cJ9vhLNKIhZ/OxcfvmsxEWLO+zO2FBebjpYzqvh2uhZ3SKPQ==}
+  '@ifc-lite/parser@3.0.0':
+    resolution: {integrity: sha512-aaQBILuc1EEHjo2jgpTJX69ZYpIUFbUX1EdniFF6Bvo9dR/U5ZO/3t03XtKyzyfEz8d3a3dykJpX+xtyZJLS/Q==}
 
-  '@ifc-lite/mutations@1.11.0':
-    resolution: {integrity: sha512-FEaj4jjkT044HHW/kdS77r97Y8MCkR/wZtZhSU/JTA391y8/Ibr8AWfpQBCPkFde/ZbjKp/Supl3n/P0R2Mdjg==}
+  '@ifc-lite/pointcloud@0.3.1':
+    resolution: {integrity: sha512-wMLXmJFUfZPT5SrDDHsw0r3w2vk2+owKDDD28+WTaOecimpmOTcYW6G7HfRnLEdp99/UeFLIQz0gSM42VLURgA==}
 
-  '@ifc-lite/mutations@1.11.5':
-    resolution: {integrity: sha512-NRdS1mppf1fMEkvhB5XvhndoRgQcqaUJvkulUJ2NgnMm+9k0q88iN//79MViXL8fADqB+g4pSOHBA82TbOvmfg==}
-
-  '@ifc-lite/parser@1.11.0':
-    resolution: {integrity: sha512-eGMOrog0B+U+YifniNIH9cWmseM0qcmLbi+9pPr6VD1CISiOI77JrMW8+4JBT1HHzjxlclnz7JjfzQDDSTi41Q==}
-
-  '@ifc-lite/parser@1.11.5':
-    resolution: {integrity: sha512-r9rWhiyqNRSaGPlaQF5D2JtgVgZGaAzEBoIGA3KY0HQa+vQUQF6FvatQ62rLq7eT8tF9fSvlBmoCmJsJZnsi+w==}
-
-  '@ifc-lite/wasm@1.11.0':
-    resolution: {integrity: sha512-M+kJvR7wBfqsGjmSW2at8U5NfUyFL3MvVh7kzS2pPrgQhEwHK4xFw9IzEy8gyH0MMqAPjT5v+epk2ywzC4RpjA==}
-
-  '@ifc-lite/wasm@1.11.5':
-    resolution: {integrity: sha512-1+TMpnWiNjGhiP4u+uMENwpIERymFL29qFuT+jC6T5PjgcwyL/nJD0Bbkj6d1VwvCrcbgaqt3nyFSMMDANa0YA==}
+  '@ifc-lite/wasm@2.1.4':
+    resolution: {integrity: sha512-mQD1ViRt07oStJqbfLbjewDMOdUNqHsGQ6d076mPUFRbleNXXYQEHbjnmuJ9iRMdsEKiwpNHZ+Kpr1Yw1I2XLg==}
 
   '@inquirer/external-editor@1.0.3':
     resolution: {integrity: sha512-RWbSrDiYmO4LbejWY7ttpxczuwQyZLBUyygsA9Nsv95hpzUWwnNTVQmAq3xuh7vNwCp07UTmE5i11XAEExx4RA==}
@@ -4065,6 +4053,9 @@ packages:
   ktx-parse@1.1.0:
     resolution: {integrity: sha512-mKp3y+FaYgR7mXWAbyyzpa/r1zDWeaunH+INJO4fou3hb45XuNSwar+7llrRyvpMWafxSIi99RNFJ05MHedaJQ==}
 
+  laz-perf@0.0.6:
+    resolution: {integrity: sha512-ZBqC+BBlofznDIY3SfjXDBVdIhYfz7bq8HAHztlw4XOnu++nHiWtCGPgzpdeAhPkByc68DaKNy3E3rY4XrdRtQ==}
+
   laz-perf@0.0.7:
     resolution: {integrity: sha512-2xRqm/f/2UqDS5qqkjOyDb6uVIjkVw6SGmQlMoTQliVWkZhPfIbUJTubUl3mTloaWqKcjlS/urmP1CYoxelsEg==}
 
@@ -5787,56 +5778,39 @@ snapshots:
 
   '@floating-ui/utils@0.2.10': {}
 
-  '@ifc-lite/data@1.11.0': {}
+  '@ifc-lite/data@2.0.0': {}
 
-  '@ifc-lite/data@1.11.5': {}
+  '@ifc-lite/encoding@1.14.6': {}
 
-  '@ifc-lite/geometry@1.11.0':
+  '@ifc-lite/geometry@2.1.0':
     dependencies:
-      '@ifc-lite/wasm': 1.11.0
+      '@ifc-lite/data': 2.0.0
+      '@ifc-lite/wasm': 2.1.4
     optionalDependencies:
       '@tauri-apps/api': 2.11.0
 
-  '@ifc-lite/geometry@1.11.5':
+  '@ifc-lite/ifcx@2.1.2':
     dependencies:
-      '@ifc-lite/data': 1.11.5
-      '@ifc-lite/wasm': 1.11.5
-    optionalDependencies:
-      '@tauri-apps/api': 2.11.0
+      '@ifc-lite/data': 2.0.0
+      '@ifc-lite/mutations': 1.15.1
+      '@ifc-lite/pointcloud': 0.3.1
 
-  '@ifc-lite/ifcx@1.11.0':
+  '@ifc-lite/mutations@1.15.1':
     dependencies:
-      '@ifc-lite/data': 1.11.5
-      '@ifc-lite/mutations': 1.11.0
+      '@ifc-lite/data': 2.0.0
 
-  '@ifc-lite/ifcx@1.11.5':
+  '@ifc-lite/parser@3.0.0':
     dependencies:
-      '@ifc-lite/data': 1.11.5
-      '@ifc-lite/mutations': 1.11.5
+      '@ifc-lite/data': 2.0.0
+      '@ifc-lite/encoding': 1.14.6
+      '@ifc-lite/ifcx': 2.1.2
+      '@ifc-lite/wasm': 2.1.4
 
-  '@ifc-lite/mutations@1.11.0':
+  '@ifc-lite/pointcloud@0.3.1':
     dependencies:
-      '@ifc-lite/data': 1.11.5
-      '@ifc-lite/parser': 1.11.5
+      laz-perf: 0.0.6
 
-  '@ifc-lite/mutations@1.11.5':
-    dependencies:
-      '@ifc-lite/data': 1.11.5
-      '@ifc-lite/parser': 1.11.5
-
-  '@ifc-lite/parser@1.11.0':
-    dependencies:
-      '@ifc-lite/data': 1.11.5
-      '@ifc-lite/ifcx': 1.11.0
-
-  '@ifc-lite/parser@1.11.5':
-    dependencies:
-      '@ifc-lite/data': 1.11.5
-      '@ifc-lite/ifcx': 1.11.5
-
-  '@ifc-lite/wasm@1.11.0': {}
-
-  '@ifc-lite/wasm@1.11.5': {}
+  '@ifc-lite/wasm@2.1.4': {}
 
   '@inquirer/external-editor@1.0.3(@types/node@25.9.1)':
     dependencies:
@@ -7873,6 +7847,8 @@ snapshots:
       zod: 4.4.3
 
   ktx-parse@1.1.0: {}
+
+  laz-perf@0.0.6: {}
 
   laz-perf@0.0.7: {}
 

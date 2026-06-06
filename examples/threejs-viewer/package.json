@@ -10,9 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ifc-lite/data": "^1.11.0",
-    "@ifc-lite/geometry": "^1.11.0",
-    "@ifc-lite/parser": "^1.11.0",
+    "@ifc-lite/data": "^2.0.0",
+    "@ifc-lite/geometry": "^2.1.0",
+    "@ifc-lite/parser": "^3.0.0",
     "three": "^0.184.0"
   },
   "devDependencies": {

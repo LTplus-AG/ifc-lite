@@ -5,7 +5,10 @@
 //! Server configuration loaded from environment variables.
 
 /// Server configuration.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is implemented by hand (not derived) so the bearer token in
+/// `api_token` is never leaked through logs, traces, or panic reports.
+#[derive(Clone)]
 pub struct Config {
     /// Port to listen on.
     pub port: u16,
@@ -36,6 +39,25 @@ pub struct Config {
     /// logs a startup warning that it is unauthenticated. The health endpoint is
     /// always open regardless of this setting (liveness probes).
     pub api_token: Option<String>,
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("port", &self.port)
+            .field("cache_dir", &self.cache_dir)
+            .field("max_file_size_mb", &self.max_file_size_mb)
+            .field("request_timeout_secs", &self.request_timeout_secs)
+            .field("worker_threads", &self.worker_threads)
+            .field("initial_batch_size", &self.initial_batch_size)
+            .field("max_batch_size", &self.max_batch_size)
+            .field("batch_size", &self.batch_size)
+            .field("cache_max_age_days", &self.cache_max_age_days)
+            .field("cors_origins", &self.cors_origins)
+            // Redacted: never print the bearer token.
+            .field("api_token", &self.api_token.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 impl Config {

@@ -88,7 +88,7 @@ serialisation:
 
 ```
 for each path (sorted ASCII ascending):
-   append: u64be(len(path)) || utf8("path")
+   append: u64be(len(path)) || utf8(path)
         || u64be(len(file_bytes)) || file_bytes
 ```
 

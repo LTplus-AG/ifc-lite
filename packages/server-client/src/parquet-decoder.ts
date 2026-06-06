@@ -193,6 +193,25 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
   const idx1 = indexArrow.getChild('i1')?.toArray() as Uint32Array;
   const idx2 = indexArrow.getChild('i2')?.toArray() as Uint32Array;
 
+  // The per-mesh bounds check below only validates posX/normX/idx0, but the
+  // loop also reads the sibling columns (posY/posZ, normY/normZ, idx1/idx2).
+  // A malformed payload with a missing or short sibling would read `undefined`
+  // → NaN positions / bad indices, so verify presence + matching lengths once
+  // up front; the per-mesh check then transitively covers every sibling.
+  if (!posX || !posY || !posZ || !normX || !normY || !normZ || !idx0 || !idx1 || !idx2) {
+    throw new Error('Malformed Parquet geometry: missing required vertex/index column');
+  }
+  if (
+    posX.length !== posY.length ||
+    posX.length !== posZ.length ||
+    normX.length !== normY.length ||
+    normX.length !== normZ.length ||
+    idx0.length !== idx1.length ||
+    idx0.length !== idx2.length
+  ) {
+    throw new Error('Malformed Parquet geometry: inconsistent parallel column lengths');
+  }
+
   // Reconstruct MeshData array
   const meshCount = expressIds.length;
   const meshes: MeshData[] = new Array(meshCount);
@@ -393,6 +412,30 @@ export async function decodeOptimizedParquetGeometry(
 
   // Extract index column
   const indices = indexArrow.getChild('i')?.toArray() as Uint32Array;
+
+  // The per-instance check below validates only vertexX/normalX/indices/matR,
+  // but the loop also reads the sibling columns (vertexY/Z, normalY/Z, matG/B/A).
+  // Verify presence + length parity once up front so a malformed payload with a
+  // missing/short sibling fails loudly instead of producing NaN geometry/colors.
+  if (!vertexX || !vertexY || !vertexZ || !indices || !matR || !matG || !matB || !matA) {
+    throw new Error('Malformed optimized Parquet geometry: missing required column');
+  }
+  if (
+    vertexX.length !== vertexY.length ||
+    vertexX.length !== vertexZ.length ||
+    matR.length !== matG.length ||
+    matR.length !== matB.length ||
+    matR.length !== matA.length ||
+    (hasNormals &&
+      (!normalX ||
+        !normalY ||
+        !normalZ ||
+        normalX.length !== vertexX.length ||
+        normalY.length !== vertexX.length ||
+        normalZ.length !== vertexX.length))
+  ) {
+    throw new Error('Malformed optimized Parquet geometry: inconsistent parallel column lengths');
+  }
 
   // Reconstruct MeshData array from instances
   const instanceCount = entityIds.length;

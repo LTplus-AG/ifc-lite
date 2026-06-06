@@ -74,15 +74,28 @@ export class HttpTransport {
   private allowedOrigins: Set<string>;
   /** Host header values accepted, to defeat DNS rebinding. */
   private allowedHosts: Set<string>;
+  /**
+   * Whether to enforce the Host allowlist. DNS-rebinding is a loopback-bind
+   * concern; a deliberate public bind (`--host 0.0.0.0`/`::`, gated by
+   * `--token`/`--insecure`) is reached via arbitrary hostnames/IPs we cannot
+   * enumerate, so enforcing the allowlist there would 421 every real client.
+   */
+  private enforceHostCheck: boolean;
 
   constructor(opts: HttpTransportOptions) {
     this.opts = opts;
     this.allowedOrigins = new Set(opts.allowedOrigins ?? []);
+    // A wildcard bind has no single hostname to allowlist — real clients send
+    // the machine IP / DNS name, never `0.0.0.0`/`::`.
+    const isWildcardBind = opts.host === '0.0.0.0' || opts.host === '::' || opts.host === '';
+    this.enforceHostCheck = !isWildcardBind;
     // Accept the configured bind host plus the loopback aliases that resolve
     // to it. A DNS-rebinding attacker controls a name pointing at 127.0.0.1,
     // so requests arrive with an unexpected Host header and are rejected.
     this.allowedHosts = new Set(
-      ['127.0.0.1', 'localhost', '::1', opts.host].filter((h): h is string => Boolean(h)),
+      ['127.0.0.1', 'localhost', '::1', isWildcardBind ? undefined : opts.host].filter(
+        (h): h is string => Boolean(h),
+      ),
     );
     this.server = createServer((req, res) => {
       // Surface unhandled rejections via console.error rather than crashing
@@ -121,7 +134,7 @@ export class HttpTransport {
     // at our loopback IP, but the browser still sends that hostname in Host.
     // Reject any Host that isn't the expected bind host / loopback alias.
     const host = parseHostHeader(req.headers.host);
-    if (host && !this.allowedHosts.has(host)) {
+    if (this.enforceHostCheck && host && !this.allowedHosts.has(host)) {
       res.statusCode = 421; // Misdirected Request
       res.end('Misdirected Request');
       return;

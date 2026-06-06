@@ -227,7 +227,10 @@ export class BsddNamespace {
   constructor(options?: BsddOptions) {
     this.apiBase = options?.apiBase ?? 'https://api.bsdd.buildingsmart.org';
     this.cacheTtl = options?.cacheTtlMs ?? 10 * 60 * 1000;
-    this.maxCacheEntries = options?.maxCacheEntries ?? 500;
+    // Clamp to a positive integer: 0/negative/NaN would break the bounded
+    // eviction loop in setCache (and silently disable the LRU cap).
+    const rawMax = options?.maxCacheEntries ?? 500;
+    this.maxCacheEntries = Number.isFinite(rawMax) ? Math.max(1, Math.floor(rawMax)) : 500;
   }
 
   // --------------------------------------------------------------------------

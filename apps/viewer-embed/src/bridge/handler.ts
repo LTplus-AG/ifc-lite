@@ -89,8 +89,16 @@ export function initBridge(context: BridgeContext, options: BridgeOptions = {}) 
   initToken = options.initToken;
   // Seed the outbound targetOrigin from an expected parent origin so
   // content-bearing auto-load events are not broadcast to '*' before any
-  // inbound command is received.
-  if (options.expectedParentOrigin) captureParentOrigin(options.expectedParentOrigin);
+  // inbound command is received. Crucially this seed stays *overridable*: a
+  // stale/misconfigured ?parentOrigin= or referrer must not permanently lock
+  // the target, or replies/events would be addressed to the wrong origin and
+  // silently dropped. The first valid inbound message confirms the real origin
+  // (via captureParentOrigin in onMessage) and supersedes this seed.
+  const seed = options.expectedParentOrigin;
+  if (seed && seed !== 'null' && seed !== '*') {
+    parentOrigin = seed;
+    parentOriginResolved = false;
+  }
   window.addEventListener('message', onMessage);
 
   // Send READY event to parent (handshake bootstrap — allowed to use '*').

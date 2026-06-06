@@ -57,8 +57,9 @@ export function EmbedViewer() {
     if (!expectedParentOrigin && document.referrer) {
       try {
         expectedParentOrigin = new URL(document.referrer).origin;
-      } catch {
+      } catch (error) {
         // Malformed referrer — leave undefined and rely on the inbound handshake.
+        console.warn('[embed] Failed to derive parent origin from document.referrer', document.referrer, error);
         expectedParentOrigin = undefined;
       }
     }

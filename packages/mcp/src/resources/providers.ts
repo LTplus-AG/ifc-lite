@@ -254,6 +254,11 @@ class ViewerSelectionProvider implements ResourceProvider {
     if (!state) {
       return [jsonContents(uri, { open: false, selection: [] })];
     }
+    // A token scoped to specific modelIds must not observe selections from a
+    // model it cannot access (the viewer state is global, not per-token).
+    if (state.modelId && !modelAllowed(ctx.scope, state.modelId)) {
+      return [jsonContents(uri, { open: true, selection: [] })];
+    }
     return [jsonContents(uri, {
       open: true,
       modelId: state.modelId,
@@ -279,7 +284,13 @@ class ViewerStatusProvider implements ResourceProvider {
   }
   read(uri: string, ctx: ToolContext): ResourceContents[] {
     const state = ctx.viewer?.state();
-    return [jsonContents(uri, state ?? { open: false })];
+    if (!state) return [jsonContents(uri, { open: false })];
+    // Status (port/url/clients) is not model-specific, but redact the
+    // model-bound fields when the caller's scope excludes the loaded model.
+    if (state.modelId && !modelAllowed(ctx.scope, state.modelId)) {
+      return [jsonContents(uri, { ...state, modelId: null, selection: [] })];
+    }
+    return [jsonContents(uri, state)];
   }
 }
 

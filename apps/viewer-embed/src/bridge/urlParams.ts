@@ -31,8 +31,9 @@ export interface EmbedViewerUrlParams extends EmbedUrlParams {
 function normaliseOrigin(value: string): string | null {
   try {
     return new URL(value).origin;
-  } catch {
-    // Not a full URL — accept a bare scheme://host[:port] only if it parses.
+  } catch (error) {
+    // Not a full URL — reject (caller falls back to the inbound handshake).
+    console.warn('[embed] Ignoring invalid origin value', value, error);
     return null;
   }
 }
@@ -75,8 +76,9 @@ export function parseUrlParams(): EmbedViewerUrlParams {
     try {
       assertFetchableUrl(modelUrl);
       result.modelUrl = modelUrl;
-    } catch {
-      // Invalid URL or unsupported scheme, skip
+    } catch (error) {
+      // Invalid URL or unsupported scheme — skip, but surface why.
+      console.warn('[embed] Ignoring invalid modelUrl query param', modelUrl, error);
     }
   }
 

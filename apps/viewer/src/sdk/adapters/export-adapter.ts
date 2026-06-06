@@ -113,7 +113,7 @@ function escapeCsv(value: string, sep: string): string {
   // LibreOffice/Sheets. IFC values are attacker-controllable, so prefix
   // such cells with an apostrophe.
   if (/^[=+\-@\t\r]/.test(value)) value = `'${value}`;
-  if (value.includes(sep) || value.includes('"') || value.includes('\n')) {
+  if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;

@@ -524,6 +524,15 @@ function uploadGeometry(prevVerts = 0, prevIndices = 0) {
     gl.enableVertexAttribArray(1);
     gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
 
+    // Bake any active overrides (isolate/hide/colorize/highlight) into the
+    // merged default colors BEFORE uploading. The progressive-load path does
+    // not guarantee a follow-up refreshColors(), so relying on colorDirtyAll
+    // alone would leave overrides visually dropped until the next user command.
+    // Applying into allCol here keeps the over-allocated DYNAMIC_DRAW capacity
+    // intact (a full refreshColors would re-allocate the buffer to the exact
+    // size and break subsequent append-only chunk uploads).
+    // NB: this block is inside the page's HTML template literal — no backticks.
+    applyColorOverrides(allCol);
     gl.bindBuffer(gl.ARRAY_BUFFER, colBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, gpuCapVerts * 4 * 4, gl.DYNAMIC_DRAW);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, allCol);
@@ -551,9 +560,8 @@ function uploadGeometry(prevVerts = 0, prevIndices = 0) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuffer);
     gl.bindVertexArray(null);
 
-    // The color buffer was just re-uploaded from the merged default colors
-    // array, dropping any active overrides (isolate/hide/colorize/highlight). Force a
-    // full color reapply on the next refreshColors() so applyColorOverrides runs.
+    // Overrides were already baked into the uploaded buffer above; also mark a
+    // full reapply pending so any later refreshColors() stays consistent.
     colorDirtyAll = true;
   } else if (prevVerts < totalVertices) {
     // Append-only: just upload the new data at the end of existing buffers

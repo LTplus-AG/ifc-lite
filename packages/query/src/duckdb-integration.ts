@@ -80,7 +80,7 @@ export class DuckDBIntegration {
         try {
           await this.conn?.close();
         } catch {
-          /* best-effort cleanup */
+          /* cleanup — safe to ignore */
         }
         try {
           if (this.db) {
@@ -91,7 +91,7 @@ export class DuckDBIntegration {
             worker?.terminate();
           }
         } catch {
-          /* best-effort cleanup */
+          /* cleanup — safe to ignore */
         }
         this.conn = null;
         this.db = null;

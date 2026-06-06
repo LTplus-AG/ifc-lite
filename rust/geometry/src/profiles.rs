@@ -2841,7 +2841,14 @@ impl ProfileProcessor {
                 let idx_values: Vec<usize> = indices
                     .iter()
                     .filter_map(|v| v.as_float())
-                    .filter_map(|f| (f as usize).checked_sub(1)) // 1-indexed to 0-indexed; drop invalid (<1) indices
+                    // 1-indexed to 0-indexed; reject non-finite, <1, or fractional
+                    // values (e.g. 1.9) instead of truncating them to a wrong vertex.
+                    .filter_map(|f| {
+                        if !f.is_finite() || f < 1.0 || f.fract() != 0.0 {
+                            return None;
+                        }
+                        (f as usize).checked_sub(1)
+                    })
                     .collect();
 
                 if is_arc && idx_values.len() == 3 {
@@ -3067,7 +3074,14 @@ impl ProfileProcessor {
             let idx_values: Vec<usize> = indices
                 .iter()
                 .filter_map(|v| v.as_float())
-                .filter_map(|f| (f as usize).checked_sub(1)) // 1-indexed to 0-indexed; drop invalid (<1) indices
+                // 1-indexed to 0-indexed; reject non-finite, <1, or fractional
+                // values (e.g. 1.9) instead of truncating them to a wrong vertex.
+                .filter_map(|f| {
+                    if !f.is_finite() || f < 1.0 || f.fract() != 0.0 {
+                        return None;
+                    }
+                    (f as usize).checked_sub(1)
+                })
                 .collect();
 
             if is_arc && idx_values.len() == 3 {

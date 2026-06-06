@@ -85,7 +85,11 @@ async function main() {
   // `name`, so join(process.cwd(), projectName) stays under cwd and the
   // generated package.json is valid. Mirrors config-fixers.ts VALID_PACKAGE_NAME.
   const VALID_PROJECT_NAME = /^(?:@[\w.-]+\/)?[\w.-]+$/;
-  if (!VALID_PROJECT_NAME.test(projectName) || projectName === '.' || projectName === '..') {
+  // A scoped name like `@scope/..` passes the char regex but its last segment
+  // is a dot-segment that `join(cwd, name)` resolves outside the intended dir,
+  // so reject any `.`/`..` segment (scoped or not), not just a bare projectName.
+  const hasDotSegment = projectName.split('/').some((seg) => seg === '.' || seg === '..');
+  if (!VALID_PROJECT_NAME.test(projectName) || hasDotSegment) {
     console.error(`Invalid project name "${projectName}". Use letters, digits, '.', '-' or '_' (no path separators).`);
     process.exit(1);
   }

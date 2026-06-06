@@ -210,7 +210,7 @@ export async function* streamNativeGeometry(
     try {
       await streamingPromise;
     } catch {
-      /* ignore: drained-or-abandoned native stream errors */
+      /* cleanup — safe to ignore */
     }
   }
 

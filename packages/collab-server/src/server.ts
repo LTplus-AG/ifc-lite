@@ -134,7 +134,7 @@ export async function startCollabServer(
         // diagnostics detail is only surfaced to a caller presenting the
         // metrics token. When no token is configured, behaviour is unchanged
         // (open) — deployers opt in to gating by setting the token.
-        const diagAuthorized = !metricsToken || isMetricsAuthorized(req, reqUrl, metricsToken);
+        const diagAuthorized = !metricsToken || isMetricsAuthorized(req, metricsToken);
         if (pathname === '/healthz') {
           // Liveness probes must reach /healthz unauthenticated, but the
           // live room count leaks cross-tenant scale — only include it when
@@ -352,14 +352,20 @@ function makeBlobAuthorizer(authenticate: AuthenticateFn): BlobAuthorizeFn {
   };
 }
 
-/** Lift the bearer / `?token=` credential from a diagnostics request. */
-function extractDiagToken(req: http.IncomingMessage, url: URL): string | undefined {
+/**
+ * Lift the bearer credential from a diagnostics request — `Authorization`
+ * header only. Plain-HTTP diagnostics endpoints (`/metrics`) deliberately do
+ * NOT accept `?token=`: a query-string secret leaks via access logs, reverse
+ * proxies, traces, and copied URLs. (The WebSocket path keeps its `?token=`
+ * fallback because browsers can't set custom handshake headers.)
+ */
+function extractDiagToken(req: http.IncomingMessage): string | undefined {
   const header = req.headers['authorization'];
   if (typeof header === 'string') {
     const m = /^Bearer\s+(.+)$/i.exec(header.trim());
     if (m) return m[1];
   }
-  return url.searchParams.get('token') ?? undefined;
+  return undefined;
 }
 
 /**
@@ -368,10 +374,9 @@ function extractDiagToken(req: http.IncomingMessage, url: URL): string | undefin
  */
 function isMetricsAuthorized(
   req: http.IncomingMessage,
-  url: URL,
   metricsToken: string,
 ): boolean {
-  const presented = extractDiagToken(req, url);
+  const presented = extractDiagToken(req);
   if (typeof presented !== 'string') return false;
   const a = Buffer.from(presented);
   const b = Buffer.from(metricsToken);

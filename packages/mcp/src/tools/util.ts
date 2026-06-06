@@ -30,6 +30,11 @@ export function assertModelAccess(ctx: ToolContext, model: LoadedModel): LoadedM
   return model;
 }
 
+/** Model IDs the caller's scope permits — never leak identifiers outside scope. */
+function listAllowedModelIds(ctx: ToolContext): string[] {
+  return ctx.registry.list().filter((m) => modelAllowed(ctx.scope, m.id)).map((m) => m.id);
+}
+
 export function resolveModel(ctx: ToolContext, modelId?: string): LoadedModel {
   if (ctx.registry.count() === 0) {
     throw new ToolExecutionError({
@@ -43,7 +48,7 @@ export function resolveModel(ctx: ToolContext, modelId?: string): LoadedModel {
       throw new ToolExecutionError({
         code: ToolErrorCode.MODEL_NOT_FOUND,
         message: `Model '${modelId}' not loaded.`,
-        details: { available: ctx.registry.list().map((m) => m.id) },
+        details: { available: listAllowedModelIds(ctx) },
       });
     }
     return assertModelAccess(ctx, found);

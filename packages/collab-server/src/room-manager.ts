@@ -461,7 +461,11 @@ export class RoomManager {
     // Evict the cached promise if initialization fails so a transient load
     // error or a corrupt persisted log does not permanently brick the room
     // (and does not keep occupying a maxRooms slot / break sweepIdle's await).
-    pending.catch(() => {
+    pending.catch((err) => {
+      // Surface the failure: a broken loadFromDisk() (corrupt persisted log or
+      // a transient init error) must stay diagnosable, not vanish silently.
+      // eslint-disable-next-line no-console
+      console.error(`[collab-server] room load failed (room=${roomId}):`, err);
       // Only delete if it is still the same poisoned promise (avoid clobbering
       // a successful re-create that may have replaced it concurrently).
       if (this.rooms.get(roomId) === pending) {

@@ -291,24 +291,27 @@ function getPropertyValue(table: PropertyTable, idx: number, strings: StringTabl
     case PropertyValueType.Label:
     case PropertyValueType.Identifier:
     case PropertyValueType.Text:
-    case PropertyValueType.Enum:
+    case PropertyValueType.Enum: {
       const si = table.valueString[idx];
       return si >= 0 && si < strings.count ? strings.get(si) : null;
+    }
     case PropertyValueType.Real:
       return table.valueReal[idx];
     case PropertyValueType.Integer:
       return table.valueInt[idx];
     case PropertyValueType.Boolean:
-    case PropertyValueType.Logical:
+    case PropertyValueType.Logical: {
       const boolVal = table.valueBool[idx];
       return boolVal === 255 ? null : boolVal === 1;
-    case PropertyValueType.List:
+    }
+    case PropertyValueType.List: {
       const listStr = strings.get(table.valueString[idx]);
       try {
         return JSON.parse(listStr);
       } catch {
         return [];
       }
+    }
     default:
       return null;
   }

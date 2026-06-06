@@ -26,10 +26,6 @@ import { getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsingUtils.js';
 import {
   convertIfcxMeshes,
-  getMaxExpressId,
-  parseGlbViewerModel,
-  parseIfcxViewerModel,
-  parseStepBufferViewerModel,
 } from './ingest/viewerModelIngest.js';
 import {
   detectPointCloudFormat,
@@ -75,7 +71,11 @@ export interface IfcxDataStore extends IfcDataStore {
  * Includes addModel, removeModel, federated IFCX loading, overlay management,
  * and ID resolution helpers
  */
-export function useIfcFederation() {
+export function useIfcFederation(
+  // The ONE canonical loader. Federated adds route through it (target
+  // 'federated') so model #1 and model #N share an identical pipeline.
+  loadFile: (file: File | NativeFileHandle, target?: import('./useIfcLoader.js').LoadTarget) => Promise<void>,
+) {
   const {
     setLoading,
     setError,
@@ -192,287 +192,40 @@ export function useIfcFederation() {
       setError(null);
       setProgress({ phase: 'Loading file', percent: 0 });
 
-      // Read file from disk. The browser path streams files above
-      // `STREAM_SAB_THRESHOLD` directly into a SharedArrayBuffer, eliminating
-      // the doubled peak (ArrayBuffer + SAB) of `await file.arrayBuffer()`
-      // when the geometry pipeline copies into its own SAB. The native path
-      // still reads via Tauri's Rust IPC because it bounds memory differently.
-      // (#600)
-      let buffer: ArrayBuffer;
-      if (isNativeFileHandle(file)) {
-        buffer = toExactArrayBuffer(await readNativeFile(file.path));
-      } else {
-        // The cast preserves the previous ArrayBuffer-shaped contract for
-        // every downstream consumer. When the underlying store is a SAB,
-        // downstream code only ever reads bytes via `new Uint8Array(buffer)`
-        // / `new DataView(buffer)`, both of which work on either backing
-        // store. The cast is purely type-system; runtime is identical.
-        const acquired = await acquireFileBuffer(file as File);
-        buffer = acquired.buffer as ArrayBuffer;
-      }
-      const fileSizeMB = buffer.byteLength / (1024 * 1024);
-
-      // Detect point cloud formats first — we never run them through
-      // detectFormat() (which is IFC-shaped) because they have their own
-      // streaming pipeline that bypasses geometryResult.meshes.
-      const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
-
-      // Detect file format
-      const format: ReturnType<typeof detectFormat> | PointCloudFormat =
-        pointCloudFormat ?? detectFormat(buffer);
-
-      let parsedDataStore: IfcDataStore | null = null;
-      let parsedGeometry: FederatedModel['geometryResult'] = null;
-      let schemaVersion: SchemaVersion = 'IFC4';
-      // Renderer handle for streamed point clouds; surviving model lifecycle
-      // depends on persisting it onto the FederatedModel record.
-      let pointCloudHandleId: number | undefined;
-
-      if (format === 'las' || format === 'laz' || format === 'ply' || format === 'pcd' || format === 'e57' || format === 'pts' || format === 'xyz') {
-        const renderer = getGlobalRenderer();
-        if (!renderer) {
-          setError('Renderer not initialised — try again after the viewer mounts.');
-          setLoading(false);
-          return null;
-        }
-        setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
-        const blob = isNativeFileHandle(file)
-          ? new Blob([buffer])
-          : (file as File);
-        const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
-        const ingest = ingestPointCloud({
-          format,
-          blob,
-          fileName: file.name,
-          buffer,
-          renderer,
-          onProgress: setProgress,
-          onAssetCountDelta: incCount,
-        });
-        // Expose cancellation while the stream is in-flight. Capture
-        // the canceller as a named ref so the cleanup can verify the
-        // store still points at us before clearing — a second
-        // addModel() that began before this one settles must not lose
-        // its Cancel button to our finally block.
-        const { setActiveStreamCanceller } = useViewerStore.getState();
-        const cancelStream = () => ingest.streamHandle.cancel();
-        setActiveStreamCanceller(cancelStream);
-        // ingest.done rejects on stream errors; ingestPointCloud's onError
-        // callback already calls removePointCloudAsset + incCount(-1), so
-        // the outer catch must NOT repeat that cleanup or the count goes
-        // negative when other point clouds are still loaded.
-        try {
-          await ingest.done;
-        } finally {
-          if (useViewerStore.getState().activeStreamCanceller === cancelStream) {
-            setActiveStreamCanceller(null);
-          }
-        }
-        parsedDataStore = ingest.dataStore;
-        parsedGeometry = ingest.geometryResult;
-        schemaVersion = ingest.schemaVersion;
-        pointCloudHandleId = ingest.rendererHandle.id;
-      } else if (format === 'ifcx') {
-        setProgress({ phase: 'Parsing IFCX (client-side)', percent: 10 });
-        try {
-          const result = await parseIfcxViewerModel(buffer, setProgress);
-          parsedDataStore = result.dataStore;
-          parsedGeometry = result.geometryResult;
-          schemaVersion = result.schemaVersion;
-        } catch (error) {
-          if (error instanceof Error && error.message === 'overlay-only-ifcx') {
-            console.warn(`[useIfc] IFCX file "${file.name}" has no geometry - this is an overlay file.`);
-            setError(`"${file.name}" is an overlay file with no geometry. Please load it together with a base IFCX file (select all files at once for federated loading).`);
-            setLoading(false);
-            return null;
-          }
-          throw error;
-        }
-      } else if (format === 'glb') {
-        setProgress({ phase: 'Parsing GLB', percent: 10 });
-        const result = await parseGlbViewerModel(buffer);
-        parsedDataStore = result.dataStore;
-        parsedGeometry = result.geometryResult;
-        schemaVersion = result.schemaVersion;
-      } else {
-        setProgress({ phase: 'Starting geometry streaming', percent: 10 });
-
-        // For federated models: use the first model's RTC offset so all models
-        // share the same coordinate origin. This ensures pixel-perfect alignment
-        // without error-prone delta adjustments.
-        let sharedRtcOffset: { x: number; y: number; z: number } | undefined;
-        const existingModelsForRtc = Array.from(useViewerStore.getState().models.values()) as FederatedModel[];
-        if (existingModelsForRtc.length > 0) {
-          const sorted = [...existingModelsForRtc].sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
-          sharedRtcOffset = sorted.find(
-            (model) => model.geometryResult?.coordinateInfo?.wasmRtcOffset != null,
-          )?.geometryResult?.coordinateInfo?.wasmRtcOffset;
-        }
-
-        const result = await parseStepBufferViewerModel({
-          fileName: file.name,
-          buffer,
-          fileSizeMB,
-          getDynamicBatchSize: getDynamicBatchConfig,
-          onProgress: setProgress,
-          sharedRtcOffset,
-        });
-        parsedDataStore = result.dataStore;
-        parsedGeometry = result.geometryResult;
-        schemaVersion = result.schemaVersion;
+      // Pick the shared RTC origin from the earliest existing model so every
+      // federated model lands in one coordinate space (pixel-perfect alignment,
+      // no post-shift). Threaded into the canonical loader below.
+      let sharedRtcOffset: { x: number; y: number; z: number } | undefined;
+      const existingModelsForRtc = Array.from(useViewerStore.getState().models.values()) as FederatedModel[];
+      if (existingModelsForRtc.length > 0) {
+        const sorted = [...existingModelsForRtc].sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
+        sharedRtcOffset = sorted.find(
+          (model) => model.geometryResult?.coordinateInfo?.wasmRtcOffset != null,
+        )?.geometryResult?.coordinateInfo?.wasmRtcOffset;
       }
 
-      if (!parsedDataStore || !parsedGeometry) {
-        throw new Error('Failed to parse file');
+      // THE canonical load path. loadFile acquires bytes, detects format
+      // (IFC / IFCX / GLB / point cloud), produces geometry through the single
+      // GeometryProcessor pipeline, parses the data store, and — because the
+      // target is federated — finalizeModel aligns to the anchor, offsets ids,
+      // builds the spatial index, and registers the model via addModel. loadFile
+      // awaits that finalize, so on return the model is already in the map.
+      await loadFile(file, {
+        kind: 'federated',
+        modelId,
+        name: options?.name,
+        visible: options?.visible,
+        collapsed: options?.collapsed,
+        loadedAt: options?.loadedAt,
+        sharedRtcOffset,
+      });
+
+      if (loadSessionRef.current !== currentSession) return null;
+      const registered = useViewerStore.getState().models.has(modelId);
+      if (registered) {
+        console.log(`[ifc-lite] Added model ${file.name} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
       }
-
-      const referenceSelection = findReferenceGeorefModel();
-      const referenceGeoref = referenceSelection?.georef ?? null;
-      // Include any georef edits the user has already saved for this model so
-      // that a reload after editing reflects the new placement. Without this,
-      // extractModelGeoref reads only the raw parsed metadata and mutations
-      // are silently ignored.
-      const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
-      const parsedGeoref = extractModelGeoref(
-        parsedDataStore,
-        parsedGeometry.coordinateInfo,
-        parsedGeorefMutations,
-      );
-      // Cache of pre-alignment vertex positions/normals for realignFederation().
-      // Only populated when alignment actually runs, so single-model loads pay
-      // no memory cost. See FederatedModel.preAlignmentPositions for rationale.
-      let preAlignmentPositions: Float32Array[] | undefined;
-      let preAlignmentNormals: (Float32Array | undefined)[] | undefined;
-      let preAlignmentCoordinateInfo: CoordinateInfo | undefined;
-      let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
-
-      if (referenceGeoref && parsedGeoref) {
-        // referenceSelection.modelId !== modelId always holds — the anchor was
-        // already in the store before this addModel call.
-        setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
-        preAlignmentPositions = parsedGeometry.meshes.map((mesh) => new Float32Array(mesh.positions));
-        preAlignmentNormals = parsedGeometry.meshes.map((mesh) =>
-          mesh.normals && mesh.normals.length > 0 ? new Float32Array(mesh.normals) : undefined,
-        );
-        preAlignmentCoordinateInfo = parsedGeometry.coordinateInfo;
-        const status = await alignGeometryToReference(parsedGeometry, parsedGeoref, referenceGeoref);
-        federationAlignmentStatus = status;
-        if (status === 'reprojected') {
-          toast.info(
-            `Reprojected "${file.name}" from ${parsedGeoref.projectedCRS.name} `
-            + `to ${referenceGeoref.projectedCRS.name} for federation alignment.`,
-          );
-        } else if (status === 'failed') {
-          toast.error(
-            `Could not align "${file.name}" with the federation anchor — `
-            + `${parsedGeoref.projectedCRS.name} → ${referenceGeoref.projectedCRS.name} `
-            + 'reprojection failed. The model is shown in its own local frame and may '
-            + 'appear at the wrong real-world position.',
-          );
-        }
-      } else if (parsedGeoref) {
-        // This load is itself the federation anchor (first georeferenced model
-        // in the federation, or the only one). Surface that to the UI.
-        federationAlignmentStatus = 'anchor';
-      }
-
-      // =========================================================================
-      // FEDERATION REGISTRY: Transform expressIds to globally unique IDs
-      // This is the BULLETPROOF fix for multi-model ID collisions
-      // =========================================================================
-
-      // Step 1: Find max expressId in this model
-      // IMPORTANT: Use ALL entities from data store, not just meshes
-      // Spatial containers (IfcProject, IfcSite, etc.) don't have geometry but need valid globalId resolution
-      const maxExpressId = getMaxExpressId(parsedDataStore, parsedGeometry.meshes);
-
-      // Step 2: Register with federation registry to get unique offset
-      const idOffset = registerModelOffset(modelId, maxExpressId);
-
-      // Step 3: Transform ALL mesh expressIds to globalIds
-      // globalId = originalExpressId + offset
-      // This ensures no two models can have the same ID
-      if (idOffset > 0) {
-        for (const mesh of parsedGeometry.meshes) {
-          mesh.expressId = mesh.expressId + idOffset;
-        }
-        // Point clouds need the same offset so picking / isolation /
-        // property lookup resolve through the FederationRegistry's
-        // global ID space — otherwise two pointcloud models with the
-        // same local expressId collide.
-        for (const asset of parsedGeometry.pointClouds ?? []) {
-          asset.expressId = asset.expressId + idOffset;
-        }
-      }
-      // Streamed point cloud: the GPU asset was opened with a synthetic
-      // local expressId. After registerModelOffset() hands us an
-      // idOffset, the renderer needs to emit the post-offset globalId
-      // in picking + selection outputs — otherwise picks resolve to
-      // the local id and collide across federated models. The shader
-      // reads expressId from a per-asset uniform (`flags.x`) so this
-      // is just a metadata update; no GPU buffer rewrite.
-      if (idOffset > 0 && pointCloudHandleId !== undefined) {
-        const renderer = getGlobalRenderer();
-        if (renderer && parsedGeometry.pointClouds && parsedGeometry.pointClouds.length > 0) {
-          // Use the asset that's already had idOffset folded in above
-          // as the source of truth for the global id.
-          const asset = parsedGeometry.pointClouds[0];
-          renderer.relabelPointCloudAsset({ id: pointCloudHandleId }, asset.expressId);
-        }
-      }
-
-      // =========================================================================
-      // COORDINATE ALIGNMENT: All federated models use the same shared RTC offset
-      // (passed to WASM during parsing above), so no post-processing vertex
-      // adjustment is needed. All models are already in the same coordinate space.
-      // =========================================================================
-
-      // Build spatial index AFTER ID offset + RTC alignment so it stores
-      // correct globalIds and final world-space positions.
-      buildSpatialIndexGuarded(parsedGeometry.meshes, parsedDataStore, setIfcDataStore);
-
-      // Create the federated model with offset info
-      const federatedModel: FederatedModel = {
-        id: modelId,
-        name: options?.name ?? file.name,
-        ifcDataStore: parsedDataStore,
-        geometryResult: parsedGeometry,
-        visible: options?.visible ?? true,
-        collapsed: options?.collapsed ?? hasModels(), // Collapse if not first model
-        schemaVersion,
-        loadedAt: options?.loadedAt ?? Date.now(),
-        fileSize: buffer.byteLength,
-        sourceFile: file,
-        idOffset,
-        maxExpressId,
-        pointCloudHandleId,
-        preAlignmentPositions,
-        preAlignmentNormals,
-        preAlignmentCoordinateInfo,
-        federationAlignmentStatus,
-      };
-
-      // Add to store
-      storeAddModel(federatedModel);
-
-      // Don't touch the legacy top-level setters for added models. When this
-      // is the first model, modelSlice.addModel already mirrored it into the
-      // top-level fields. When subsequent models are added, activeModelId
-      // stays on the first model — writing here would alias the new model's
-      // data into the active (first) model's per-model entry and cause both
-      // viewport slots to render the same mesh (issue #661, PR #792).
-      //
-      // An earlier draft of this branch called `setActiveModel(modelId)`
-      // here, which also fixed #661 but had the side-effect of stealing
-      // focus to every added model — confusing UX. The main-branch fix
-      // (drop the legacy calls; keep activeModelId on the first model)
-      // is preferred and was kept on merge.
-
-      setProgress({ phase: 'Complete', percent: 100 });
-      setLoading(false);
-      console.log(`[ifc-lite] Added model ${file.name} (${fileSizeMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
-
-      return modelId;
+      return registered ? modelId : null;
 
     } catch (err) {
       // Only mutate shared loading/error/progress state if our session
@@ -501,7 +254,7 @@ export function useIfcFederation() {
     } finally {
       releaseFederationLoadSlot(gateSlot);
     }
-  }, [setLoading, setError, setProgress, setIfcDataStore, setGeometryResult, storeAddModel, hasModels, registerModelOffset]);
+  }, [loadFile, setLoading, setError, setProgress, registerModelOffset, storeAddModel]);
 
   /**
    * Re-apply federation alignment using the currently selected anchor

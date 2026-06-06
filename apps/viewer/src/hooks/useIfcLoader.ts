@@ -13,7 +13,7 @@
 import { useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { getViewerStoreApi, useViewerStore } from '@/store';
+import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
 import { IfcParser, detectFormat, type IfcDataStore } from '@ifc-lite/parser';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
@@ -23,6 +23,7 @@ import {
   getGeometryStreamWatchdogMs as getGeometryStreamWatchdogMsImpl,
   type MeshData,
   type CoordinateInfo,
+  type GeometryResult,
 } from '@ifc-lite/geometry';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import initIfcLiteWasm, { IfcAPI } from '@ifc-lite/wasm';
@@ -58,8 +59,8 @@ import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './in
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { getGlobalRenderer } from './useBCF.js';
-import type { ModelGeoref } from './ingest/federationAlign.js';
-import type { GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
+import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { toast } from '../components/ui/toast.js';
 
 /**
  * Where a {@link useIfcLoader.loadFile} call should land the model.
@@ -67,11 +68,13 @@ import type { GeorefMutationDataLike } from '../lib/geo/effective-georef.js';
  * `primary` is the historical single-model load: it resets all viewer state,
  * clears the model map, and streams progressively into the active slot.
  * `federated` is an additional model joining an existing federation — it does
- * NOT reset state, carries the pre-allocated `modelId`, the shared RTC origin
- * + georef anchor picked by the federation gate, and any saved georef edits.
- * Both flow through the SAME geometry pipeline + the SAME `finalizeModel`, so
- * load-time behaviour can never again diverge between the two (the cause of
- * the model-diff "all geometry changed" bug). Default is `primary`.
+ * NOT reset state, carries the pre-allocated `modelId`, and the shared RTC
+ * origin picked by the federation gate. Both flow through the SAME geometry
+ * pipeline + the SAME `finalizeModel`, so load-time behaviour can never again
+ * diverge between the two (the cause of the model-diff "all geometry changed"
+ * bug). The georef anchor + the user's saved georef edits are resolved inside
+ * `finalizeModel` from the live store, exactly as the old federated path did.
+ * Default is `primary`.
  */
 export type LoadTarget =
   | { kind: 'primary' }
@@ -84,10 +87,6 @@ export type LoadTarget =
       loadedAt?: number;
       /** Shared RTC offset from the earliest existing model (IFC Z-up). */
       sharedRtcOffset?: { x: number; y: number; z: number };
-      /** Georef anchor to align to, or null when this load is itself the anchor. */
-      referenceGeoref?: ModelGeoref | null;
-      /** User's saved georef edits for this modelId. */
-      georefMutations?: GeorefMutationDataLike;
     };
 
 /**
@@ -311,12 +310,95 @@ export function useIfcLoader() {
         interactiveReady: false,
       });
 
-      const finalizePrimaryModel = (
+      // The ONE finalizer for every format/platform/role. Primary keeps the
+      // historical updateModel-only behaviour; federated runs the georef-align
+      // → id-offset → relabel → spatial-index → addModel sequence lifted
+      // verbatim from the old useIfcFederation.addModel block (same order).
+      const finalizeModel = async (
         dataStore: IfcDataStore | null,
-        geometryResult: { meshes: MeshData[]; totalVertices: number; totalTriangles: number; coordinateInfo: CoordinateInfo } | null,
+        geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
         patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number },
-      ) => {
+      ): Promise<void> => {
+        if (target.kind === 'federated') {
+          if (!dataStore || !geometryResult) {
+            throw new Error('Federated model is missing its data store or geometry');
+          }
+          // Georef alignment against the federation anchor (resolved live from
+          // the store, exactly as the former addModel finalize did).
+          const referenceGeoref = findReferenceGeorefModel()?.georef ?? null;
+          const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
+          const parsedGeoref = extractModelGeoref(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
+          let preAlignmentPositions: Float32Array[] | undefined;
+          let preAlignmentNormals: (Float32Array | undefined)[] | undefined;
+          let preAlignmentCoordinateInfo: CoordinateInfo | undefined;
+          let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
+          if (referenceGeoref && parsedGeoref) {
+            setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
+            preAlignmentPositions = geometryResult.meshes.map((mesh) => new Float32Array(mesh.positions));
+            preAlignmentNormals = geometryResult.meshes.map((mesh) =>
+              mesh.normals && mesh.normals.length > 0 ? new Float32Array(mesh.normals) : undefined,
+            );
+            preAlignmentCoordinateInfo = geometryResult.coordinateInfo;
+            const status = await alignGeometryToReference(geometryResult, parsedGeoref, referenceGeoref);
+            federationAlignmentStatus = status;
+            if (status === 'reprojected') {
+              toast.info(
+                `Reprojected "${file.name}" from ${parsedGeoref.projectedCRS.name} `
+                + `to ${referenceGeoref.projectedCRS.name} for federation alignment.`,
+              );
+            } else if (status === 'failed') {
+              toast.error(
+                `Could not align "${file.name}" with the federation anchor — `
+                + `${parsedGeoref.projectedCRS.name} → ${referenceGeoref.projectedCRS.name} `
+                + 'reprojection failed. The model is shown in its own local frame and may '
+                + 'appear at the wrong real-world position.',
+              );
+            }
+          } else if (parsedGeoref) {
+            federationAlignmentStatus = 'anchor';
+          }
+
+          // Federation registry: transform expressIds to globally-unique ids.
+          const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
+          const idOffset = registerModelOffset(modelId, maxExpressId);
+          if (idOffset > 0) {
+            for (const mesh of geometryResult.meshes) mesh.expressId = mesh.expressId + idOffset;
+            for (const asset of geometryResult.pointClouds ?? []) asset.expressId = asset.expressId + idOffset;
+          }
+          if (idOffset > 0 && patch?.pointCloudHandleId !== undefined) {
+            const renderer = getGlobalRenderer();
+            if (renderer && geometryResult.pointClouds && geometryResult.pointClouds.length > 0) {
+              renderer.relabelPointCloudAsset({ id: patch.pointCloudHandleId }, geometryResult.pointClouds[0].expressId);
+            }
+          }
+          // Spatial index AFTER id offset + alignment so it stores final ids + positions.
+          buildSpatialIndexGuarded(geometryResult.meshes, dataStore, setIfcDataStore);
+
+          const federatedModel: FederatedModel = {
+            id: modelId,
+            name: target.name ?? file.name,
+            ifcDataStore: dataStore,
+            geometryResult,
+            visible: target.visible ?? true,
+            collapsed: target.collapsed ?? (useViewerStore.getState().models.size > 0),
+            schemaVersion,
+            loadedAt: target.loadedAt ?? Date.now(),
+            fileSize: buffer.byteLength,
+            sourceFile: file,
+            idOffset,
+            maxExpressId,
+            pointCloudHandleId: patch?.pointCloudHandleId,
+            preAlignmentPositions,
+            preAlignmentNormals,
+            preAlignmentCoordinateInfo,
+            federationAlignmentStatus,
+          };
+          useViewerStore.getState().addModel(federatedModel);
+          return;
+        }
+
+        // PRIMARY — unchanged from the former finalizePrimaryModel.
         let idOffset = 0;
         let maxExpressId = 0;
         if (dataStore && geometryResult) {
@@ -428,7 +510,7 @@ export function useIfcLoader() {
             }
           }
           setIfcDataStore(dataStore);
-          finalizePrimaryModel(
+          void finalizeModel(
             dataStore,
             null,
             getSchemaVersion(dataStore),
@@ -928,7 +1010,7 @@ export function useIfcLoader() {
           if (geometryCompleted) {
             nativeLoadStage = 'complete';
           }
-          finalizePrimaryModel(
+          void finalizeModel(
             dataStore,
             useViewerStore.getState().geometryResult,
             getSchemaVersion(dataStore),
@@ -963,7 +1045,7 @@ export function useIfcLoader() {
             state.models.get(modelId)?.geometryResult ??
             state.geometryResult;
           setIfcDataStore(spatialDataStore);
-          finalizePrimaryModel(
+          void finalizeModel(
             spatialDataStore,
             currentGeometryResult,
             nativeMetadata.schemaVersion,
@@ -1739,9 +1821,13 @@ export function useIfcLoader() {
           renderer.removePointCloudAsset(ingest.rendererHandle);
           return;
         }
-        setGeometryResult(ingest.geometryResult);
-        setIfcDataStore(ingest.dataStore);
-        finalizePrimaryModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
+        // Primary owns the active-model slots; a federated add must not touch
+        // them (finalizeModel's federated branch wires via addModel instead).
+        if (target.kind === 'primary') {
+          setGeometryResult(ingest.geometryResult);
+          setIfcDataStore(ingest.dataStore);
+        }
+        await finalizeModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
           pointCloudHandleId: ingest.rendererHandle.id,
         });
         setProgress({ phase: 'Complete', percent: 100 });
@@ -1756,9 +1842,11 @@ export function useIfcLoader() {
 
         try {
           const result = await parseIfcxViewerModel(buffer, setProgress);
-          setGeometryResult(result.geometryResult);
-          setIfcDataStore(result.dataStore);
-          finalizePrimaryModel(result.dataStore, result.geometryResult, result.schemaVersion);
+          if (target.kind === 'primary') {
+            setGeometryResult(result.geometryResult);
+            setIfcDataStore(result.dataStore);
+          }
+          await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
 
           setProgress({ phase: 'Complete', percent: 100 });
           setLoading(false);
@@ -1788,9 +1876,18 @@ export function useIfcLoader() {
 
         try {
           const result = await parseGlbViewerModel(buffer);
-          setGeometryResult(result.geometryResult);
-          setIfcDataStore(null);
-          finalizePrimaryModel(null, result.geometryResult, result.schemaVersion);
+          if (target.kind === 'primary') {
+            setGeometryResult(result.geometryResult);
+            setIfcDataStore(null);
+          }
+          // Primary keeps the historical null data store (GLB has no entities);
+          // a federated add needs the minimal store so finalizeModel can offset
+          // ids + register the model (matches the old addModel GLB path).
+          await finalizeModel(
+            target.kind === 'federated' ? result.dataStore : null,
+            result.geometryResult,
+            result.schemaVersion,
+          );
 
           setProgress({ phase: 'Complete', percent: 100 });
 
@@ -1813,7 +1910,9 @@ export function useIfcLoader() {
       // persisted key filename-safe and independent of the original filename.
       const cacheKey = `ifc-${buffer.byteLength}-${fingerprint}-v4`;
 
-      if (buffer.byteLength >= CACHE_SIZE_THRESHOLD) {
+      // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
+      // cache/server round-trip (matches the former parseStepBufferViewerModel).
+      if (target.kind === 'primary' && buffer.byteLength >= CACHE_SIZE_THRESHOLD) {
         setProgress({ phase: 'Checking cache', percent: 5 });
         const cacheResult = await getCached(cacheKey);
         if (cacheResult) {
@@ -1823,7 +1922,7 @@ export function useIfcLoader() {
           const cacheLoadResult = await loadFromCache(cacheResult, file.name, cacheKey, buffer);
           if (cacheLoadResult.success) {
             const state = useViewerStore.getState();
-            finalizePrimaryModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
+            await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
               loadState: 'complete',
               cacheState: 'hit',
             });
@@ -1838,12 +1937,12 @@ export function useIfcLoader() {
       // Only for IFC4 STEP files (server doesn't support IFCX). Native
       // file handles (Tauri) don't have an HTTP-uploadable body, so skip
       // the server path and fall through to the WASM loader.
-      if (format === 'ifc' && USE_SERVER && SERVER_URL && SERVER_URL !== '' && !isNativeFileHandle(file)) {
+      if (target.kind === 'primary' && format === 'ifc' && USE_SERVER && SERVER_URL && SERVER_URL !== '' && !isNativeFileHandle(file)) {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
           const state = useViewerStore.getState();
-          finalizePrimaryModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
+          await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
           setLoading(false);
           return;
@@ -1854,7 +1953,11 @@ export function useIfcLoader() {
 
       // Using local WASM parsing
       setProgress({ phase: 'Starting geometry streaming', percent: 10 });
-      setGeometryStreamingActive(true);
+      // Global streaming flag is a PRIMARY (active-model) concern; a federated
+      // add must not toggle it (the former federated path never did).
+      if (target.kind === 'primary') {
+        setGeometryStreamingActive(true);
+      }
 
       const shouldUseDesktopStableWasmGeometry =
         isNativeFileHandle(file)
@@ -2041,8 +2144,11 @@ export function useIfcLoader() {
       let metadataCompleteMs: number | null = null;
       let metadataFailedMs: number | null = null;
 
-      // Clear existing geometry result
-      setGeometryResult(null);
+      // Clear existing geometry result — PRIMARY only (federated must not
+      // disturb the active model's geometry).
+      if (target.kind === 'primary') {
+        setGeometryResult(null);
+      }
 
       // Timing instrumentation
       let batchCount = 0;
@@ -2065,6 +2171,11 @@ export function useIfcLoader() {
 
       // Declare at function scope so the catch block can always reach it.
       let closeGeometryIterator: (() => Promise<void>) | null = null;
+      // The background finalize (spatial index / cache for primary; align +
+      // addModel for federated). Primary leaves it running in the background
+      // for a fast first frame; federated MUST await it so the model is
+      // registered before loadFile resolves (loadFilesSequentially relies on it).
+      let finalizePromise: Promise<void> | null = null;
 
       try {
         // Use dynamic batch sizing for optimal throughput
@@ -2079,6 +2190,9 @@ export function useIfcLoader() {
               sizeThreshold: 2 * 1024 * 1024, // 2MB threshold
               batchSize: dynamicBatchConfig, // Dynamic batches: small first, then large
               existingSab: sharedSource ?? undefined,
+              // Federated adds share the anchor's RTC origin so all models sit in
+              // one coordinate space (pixel-perfect alignment, no post-shift).
+              sharedRtcOffset: target.kind === 'federated' ? target.sharedRtcOffset : undefined,
               // Hand the streaming pre-pass's entity index to the parser
               // worker so it skips a duplicate ~10 s WASM scan. Safe even
               // when the parser falls back to main-thread (instance is
@@ -2181,29 +2295,39 @@ export function useIfcLoader() {
               totalMeshes = event.totalSoFar;
               lastTotalMeshes = event.totalSoFar;
 
-              // Accumulate meshes for batched rendering
-              for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
+              if (target.kind === 'primary') {
+                // Accumulate meshes for batched rendering
+                for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
 
-              // FIRST BATCH: Render immediately for fast first frame
-              // SUBSEQUENT: Throttle to reduce React re-renders
-              const timeSinceLastRender = eventReceived - lastRenderTime;
-              const shouldRender = batchCount === 1 || timeSinceLastRender >= RENDER_INTERVAL_MS;
+                // FIRST BATCH: Render immediately for fast first frame
+                // SUBSEQUENT: Throttle to reduce React re-renders
+                const timeSinceLastRender = eventReceived - lastRenderTime;
+                const shouldRender = batchCount === 1 || timeSinceLastRender >= RENDER_INTERVAL_MS;
 
-              if (shouldRender && pendingMeshes.length > 0) {
-                if (firstAppendGeometryBatchMs === null) {
-                  firstAppendGeometryBatchMs = performance.now() - totalStartTime;
-                  console.log(`[useIfc] First appendGeometryBatch for ${file.name}: ${firstAppendGeometryBatchMs.toFixed(0)}ms`);
+                if (shouldRender && pendingMeshes.length > 0) {
+                  if (firstAppendGeometryBatchMs === null) {
+                    firstAppendGeometryBatchMs = performance.now() - totalStartTime;
+                    console.log(`[useIfc] First appendGeometryBatch for ${file.name}: ${firstAppendGeometryBatchMs.toFixed(0)}ms`);
+                  }
+                  appendGeometryBatch(pendingMeshes, event.coordinateInfo);
+                  pendingMeshes = [];
+                  lastRenderTime = eventReceived;
+                  markFirstVisibleGeometry();
+
+                  // Update progress
+                  const progressPercent = 50 + Math.min(45, (totalMeshes / Math.max(estimatedTotal / 10, totalMeshes)) * 45);
+                  setProgress({
+                    phase: `Rendering geometry (${totalMeshes} meshes)`,
+                    percent: progressPercent
+                  });
                 }
-                appendGeometryBatch(pendingMeshes, event.coordinateInfo);
-                pendingMeshes = [];
-                lastRenderTime = eventReceived;
-                markFirstVisibleGeometry();
-
-                // Update progress
-                const progressPercent = 50 + Math.min(45, (totalMeshes / Math.max(estimatedTotal / 10, totalMeshes)) * 45);
+              } else {
+                // Federated add: accumulate into allMeshes only (done above) and
+                // surface progress — it paints atomically at completion via
+                // finalizeModel's addModel, never touching the active slot.
                 setProgress({
-                  phase: `Rendering geometry (${totalMeshes} meshes)`,
-                  percent: progressPercent
+                  phase: `Processing geometry (${totalMeshes} meshes)`,
+                  percent: 10 + Math.min(80, (allMeshes.length / 1000) * 0.8),
                 });
               }
 
@@ -2211,8 +2335,9 @@ export function useIfcLoader() {
             }
             case 'complete':
               streamCompleteMs = performance.now() - totalStartTime;
-              // Flush any remaining pending meshes
-              if (pendingMeshes.length > 0) {
+              // Flush remaining pending meshes — PRIMARY only. A federated add
+              // never pushed to pendingMeshes; it paints atomically at finalize.
+              if (target.kind === 'primary' && pendingMeshes.length > 0) {
                 if (firstAppendGeometryBatchMs === null) {
                   firstAppendGeometryBatchMs = performance.now() - totalStartTime;
                   console.log(`[useIfc] First appendGeometryBatch for ${file.name}: ${firstAppendGeometryBatchMs.toFixed(0)}ms`);
@@ -2224,40 +2349,58 @@ export function useIfcLoader() {
 
               finalCoordinateInfo = event.coordinateInfo ?? null;
 
-              // Data model parsing already started in parallel (see above).
-              // No need to start it here — it runs concurrently with geometry.
-
-              // Apply all accumulated color updates in a single store update
-              // instead of one updateMeshColors() call per colorUpdate event.
-              if (cumulativeColorUpdates.size > 0) {
-                updateMeshColors(cumulativeColorUpdates);
-              }
-
-              // Store captured RTC offset in coordinate info for multi-model alignment
+              // Store captured RTC offset in coordinate info for multi-model alignment.
               if (finalCoordinateInfo && capturedRtcOffset) {
                 finalCoordinateInfo.wasmRtcOffset = capturedRtcOffset;
               }
 
-              // Update geometry result with final coordinate info
-              updateCoordinateInfo(finalCoordinateInfo);
+              if (target.kind === 'primary') {
+                // Active-model writes — PRIMARY only. Federated meshes already
+                // carry colours (applied during streaming) and their coordinate
+                // info rides the geometryResult handed to addModel at finalize.
+                if (cumulativeColorUpdates.size > 0) {
+                  updateMeshColors(cumulativeColorUpdates);
+                }
+                updateCoordinateInfo(finalCoordinateInfo);
+              }
 
               setProgress({ phase: 'Complete', percent: 100 });
               memoryAccounting.endPhase('geometry');
               memoryAccounting.recordPhase({ phase: 'geometry-complete' });
               console.log(memoryAccounting.formatSummary());
               await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-              if (loadSessionRef.current === currentSession) {
+              if (loadSessionRef.current === currentSession && target.kind === 'primary') {
                 setGeometryStreamingActive(false);
               }
               console.log(`[useIfc] Geometry streaming complete: ${batchCount} batches, ${lastTotalMeshes} meshes`);
               console.log(`[useIfc] Stream complete for ${file.name}: ${streamCompleteMs.toFixed(0)}ms`);
 
-              // Build spatial index and cache in background (non-blocking)
-              // Wait for data model to complete first
-              dataStorePromise.then(async dataStore => {
+              // Finalize once the data model is ready (parses in parallel).
+              finalizePromise = dataStorePromise.then(async dataStore => {
                 // Guard: skip if user loaded a new file since this load started
                 if (loadSessionRef.current !== currentSession) return;
-                finalizePrimaryModel(dataStore, useViewerStore.getState().geometryResult, getSchemaVersion(dataStore), {
+
+                if (target.kind === 'federated') {
+                  // Build the model's geometryResult from the accumulated meshes —
+                  // federated never streamed into the active slot — and hand it to
+                  // finalizeModel, which aligns, offsets ids, builds the spatial
+                  // index, and registers the model via addModel. NOT cached (the
+                  // former federated path never cached); allMeshes stays alive as
+                  // the model's geometryResult.meshes, so it is NOT cleared.
+                  applyColorUpdatesToMeshes(allMeshes, cumulativeColorUpdates);
+                  const federatedGeometry: GeometryResult = {
+                    meshes: allMeshes,
+                    totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
+                    totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
+                    coordinateInfo: finalCoordinateInfo ?? createCoordinateInfo(calculateMeshBounds(allMeshes).bounds),
+                  };
+                  await finalizeModel(dataStore, federatedGeometry, getSchemaVersion(dataStore), {
+                    loadState: 'complete',
+                  });
+                  return;
+                }
+
+                await finalizeModel(dataStore, useViewerStore.getState().geometryResult, getSchemaVersion(dataStore), {
                   loadState: 'complete',
                   cacheState: buffer.byteLength >= CACHE_SIZE_THRESHOLD ? 'writing' : 'none',
                 });
@@ -2324,6 +2467,14 @@ export function useIfcLoader() {
       }
 
       if (loadSessionRef.current !== currentSession) return;
+
+      // Federated adds register the model inside finalizePromise (georef align
+      // → id offset → spatial index → addModel). Await it so loadFile resolves
+      // only AFTER the model is in the map — loadFilesSequentially loads the
+      // next file serially and relies on this ordering for id-offset assignment.
+      if (target.kind === 'federated' && finalizePromise) {
+        await finalizePromise;
+      }
 
       if (firstVisibleGeometryMs === null && firstAppendGeometryBatchMs !== null) {
         await new Promise<void>((resolve) => {

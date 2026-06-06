@@ -582,6 +582,7 @@ impl BooleanClippingProcessor {
     /// batching) and subtracts once. See that method for why a single unioned
     /// subtract beats sequential subtraction here (issue #960: seam slivers +
     /// deep-chain depth-limit drops).
+    #[cfg(feature = "manifold-csg")]
     fn collect_polygonal_chain(
         &self,
         entity: DecodedEntity,
@@ -634,6 +635,10 @@ impl BooleanClippingProcessor {
     /// build, or when batching can't be proven safe (a full-cross-section
     /// cutter that needs the per-cutter unbounded-plane fallback, or a CSG
     /// union that silently under-removes).
+    ///
+    /// Only compiled with `manifold-csg`: it relies on a true CSG union of the
+    /// cutter prisms, which the BSP fallback can't guarantee.
+    #[cfg(feature = "manifold-csg")]
     fn try_union_polygonal_chain(
         &self,
         entity: &DecodedEntity,
@@ -814,6 +819,13 @@ impl BooleanClippingProcessor {
         // per-cutter bounded→unbounded fallback still rescues full-cross-section
         // clips (duplex.ifc "Party Wall"). Verified mm-identical to IfcOpenShell
         // on all five reported House.ifc walls.
+        //
+        // Gated on `manifold-csg`: the whole approach hinges on a *true* CSG
+        // union of the cutter prisms. The legacy BSP `union_mesh` can fall back
+        // to a non-manifold mesh-merge, which neither dissolves the seam nor is
+        // safe to subtract — so without Manifold (the BSP server build) we keep
+        // the unchanged sequential path rather than risk a worse result.
+        #[cfg(feature = "manifold-csg")]
         if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
             if let Some(result) = self.try_union_polygonal_chain(entity, decoder, depth)? {
                 return Ok(result);

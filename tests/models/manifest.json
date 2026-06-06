@@ -749,6 +749,11 @@
       "size": 129717
     },
     {
+      "path": "issues/960_house_segmented_roof_clip.ifc",
+      "sha256": "09cea73157338088f0fb1d2b5d341e45e4b91f4f0035adcf8c45e73f5434238f",
+      "size": 96960
+    },
+    {
       "path": "issues/964_slab_arbitrary_profile_voids.ifc",
       "sha256": "525d01150923b5a50277fd5ad3ba0dac7df3c27e76c0fbd87edcf110e2c8c674",
       "size": 682646

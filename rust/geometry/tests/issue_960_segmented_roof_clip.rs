@@ -17,23 +17,43 @@
 //!      a thin wall sliver poking *through* the roof (the original extrusion
 //!      reached z = 9.85 m instead of the gable line). (#2152, #4374.)
 //!
-//! This fixture is a minimal transitive-closure extract of the five reported
-//! walls from House.ifc (GitHub issue #960). The expected Z bounds below are
+//! The fixture is a minimal transitive-closure extract of the five reported
+//! walls from House.ifc (GitHub issue #960), fetched via `pnpm fixtures`
+//! (sha256 in `tests/models/manifest.json`). Expected Z bounds are
 //! IfcOpenShell's (pip 0.8.2, `use-world-coords`) — verified mm-identical to
-//! both the full model and this extract. Coordinates are millimetres (the
-//! model's `IfcSIUnit` length unit); the test processes each wall at unit
-//! scale 1.0.
+//! both the full model and this extract. Coordinates are millimetres; the test
+//! processes each wall at unit scale 1.0.
+//!
+//! The fix is gated on the Manifold CSG kernel (a true cutter union), so this
+//! test is too — the BSP build keeps the legacy sequential behaviour.
+#![cfg(feature = "manifold-csg")]
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter};
 use rustc_hash::FxHashMap;
-use std::fs;
 use std::path::PathBuf;
 
-fn fixture() -> String {
+const FIXTURE: &str = "issues/960_house_segmented_roof_clip.ifc";
+
+/// Read a `tests/models/` fixture, returning `None` (skip the test) when it is
+/// absent or still an LFS pointer — never panic, so fresh clones without
+/// `pnpm fixtures` stay green.
+fn read_fixture() -> Option<String> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/issue_960_segmented_roof_clip.ifc");
-    fs::read_to_string(path).expect("issue_960 fixture present (committed)")
+        .join("../../tests/models")
+        .join(FIXTURE);
+    match std::fs::read_to_string(&path) {
+        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            eprintln!("skipping: fixture {FIXTURE} is an LFS pointer — run `pnpm fixtures`");
+            None
+        }
+        Ok(s) => Some(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!("skipping: fixture {FIXTURE} not present — run `pnpm fixtures`");
+            None
+        }
+        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
+    }
 }
 
 /// Build the host→openings void index the same way production does.
@@ -56,7 +76,9 @@ fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
 
 #[test]
 fn segmented_roof_walls_render_without_slivers_or_drops() {
-    let content = fixture();
+    let Some(content) = read_fixture() else {
+        return;
+    };
     let void_index = build_void_index(&content);
     let entity_index = build_entity_index(&content);
 

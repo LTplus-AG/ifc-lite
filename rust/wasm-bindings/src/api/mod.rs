@@ -283,6 +283,19 @@ impl IfcAPI {
 
         let mut map: rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap> =
             rustc_hash::FxHashMap::default();
+        // Fast bail-out for the overwhelming common case: files with no
+        // IfcIndexedColourMap pay only a single substring search (SIMD memmem),
+        // not a full entity scan + decode, on the first batch of every worker.
+        // The empty result is still cached so later batches skip even that.
+        if !content.contains("IFCINDEXEDCOLOURMAP") {
+            let arc = std::sync::Arc::new(map);
+            let mut slot = self
+                .cached_indexed_colour_maps
+                .lock()
+                .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+            *slot = Some(std::sync::Arc::clone(&arc));
+            return arc;
+        }
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((_id, type_name, start, end)) = scanner.next_entity() {
             if type_name == "IFCINDEXEDCOLOURMAP" {

@@ -30,6 +30,7 @@
     "@ifc-lite/clash": "workspace:^",
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/diff": "workspace:^",
     "@ifc-lite/drawing-2d": "workspace:^",
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/export": "workspace:^",

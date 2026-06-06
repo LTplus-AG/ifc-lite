@@ -50,6 +50,12 @@ export function convertMeshCollectionToBatch(
 ): MeshData[] {
   const batch: MeshData[] = [];
 
+  // Per-entity geometry hashes — only populated when hashing was enabled via
+  // `IfcAPI.setComputeGeometryHashes` (issue #924); otherwise the parallel
+  // arrays are empty and this Map stays empty (zero overhead). Read here,
+  // before `collection.free()`, since the WASM object is released below.
+  const geometryHashes = extractGeometryHashes(collection);
+
   try {
     for (let i = 0; i < collection.length; i++) {
       const mesh = collection.get(i);
@@ -64,6 +70,8 @@ export function convertMeshCollectionToBatch(
           shadingArray && shadingArray.length === 4
             ? [shadingArray[0], shadingArray[1], shadingArray[2], shadingArray[3]]
             : undefined;
+
+        const geometryHash = geometryHashes.get(mesh.expressId);
 
         const meshData: MeshData = {
           expressId: mesh.expressId,
@@ -89,6 +97,10 @@ export function convertMeshCollectionToBatch(
           };
         }
 
+        // #924: attach the per-entity geometry fingerprint (empty Map → no-op
+        // unless geometry hashing was enabled).
+        if (geometryHash !== undefined) meshData.geometryHash = geometryHash;
+
         batch.push(meshData);
       } finally {
         mesh.free();
@@ -99,6 +111,37 @@ export function convertMeshCollectionToBatch(
   }
 
   return batch;
+}
+
+/**
+ * Read the per-entity geometry fingerprints off a WASM MeshCollection into a
+ * `Map<expressId, bigint>`. The collection exposes two parallel arrays
+ * (`geometryHashIds` ↔ `geometryHashValues`); both are empty unless hashing
+ * was enabled via `IfcAPI.setComputeGeometryHashes`. Must be called before
+ * `collection.free()`. Tolerates an older WASM build lacking the getters
+ * (returns an empty Map) so the geometry path never breaks.
+ */
+function extractGeometryHashes(
+  collection: import('@ifc-lite/wasm').MeshCollection
+): Map<number, bigint> {
+  const map = new Map<number, bigint>();
+  const c = collection as unknown as {
+    geometryHashCount?: number;
+    geometryHashIds?: Uint32Array;
+    geometryHashValues?: BigUint64Array;
+  };
+  const count = c.geometryHashCount ?? 0;
+  if (count === 0) return map;
+
+  const ids = c.geometryHashIds;
+  const values = c.geometryHashValues;
+  if (!ids || !values) return map;
+
+  const n = Math.min(ids.length, values.length);
+  for (let i = 0; i < n; i++) {
+    map.set(ids[i], values[i]);
+  }
+  return map;
 }
 
 // ── Coordinate-info helpers ──

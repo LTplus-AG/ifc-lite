@@ -34,6 +34,12 @@ export interface MeshData {
    *  for textured meshes (#961). Decoded to RGBA8 entirely in Rust; the
    *  renderer uploads `rgba` verbatim to a GPU texture. */
   texture?: MeshTexture;
+  /** RTC-invariant per-entity geometry fingerprint from the WASM mesh pass,
+   *  populated only when geometry hashing is enabled
+   *  (`GeometryProcessor.enableGeometryHashes()`). All submeshes of one entity
+   *  share the same value (it is the whole-entity hash). Consumed by the
+   *  model-diff / compare feature (issue #924); renderers ignore it. */
+  geometryHash?: bigint;
 }
 
 /** A decoded RGBA8 surface texture attached to a mesh (issue #961). */

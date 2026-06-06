@@ -29,6 +29,7 @@ import { BCFPanel } from './BCFPanel';
 import { IDSPanel } from './IDSPanel';
 import { LensPanel } from './LensPanel';
 import { ClashPanel } from './ClashPanel';
+import { ComparePanel } from './ComparePanel';
 import { ListPanel } from './lists/ListPanel';
 import { ScriptPanel } from './ScriptPanel';
 import { GanttPanel } from './schedule/GanttPanel';
@@ -135,6 +136,8 @@ export function ViewerLayout() {
   const setLensPanelVisible = useViewerStore((s) => s.setLensPanelVisible);
   const clashPanelVisible = useViewerStore((s) => s.clashPanelVisible);
   const setClashPanelVisible = useViewerStore((s) => s.setClashPanelVisible);
+  const comparePanelVisible = useViewerStore((s) => s.comparePanelVisible);
+  const setComparePanelVisible = useViewerStore((s) => s.setComparePanelVisible);
   const scriptPanelVisible = useViewerStore((s) => s.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
@@ -347,6 +350,8 @@ export function ViewerLayout() {
                       <LensPanel onClose={() => setLensPanelVisible(false)} />
                     ) : clashPanelVisible ? (
                       <ClashPanel onClose={() => setClashPanelVisible(false)} />
+                    ) : comparePanelVisible ? (
+                      <ComparePanel onClose={() => setComparePanelVisible(false)} />
                     ) : idsPanelVisible ? (
                       <IDSPanel onClose={() => setIdsPanelVisible(false)} />
                     ) : bcfPanelVisible ? (

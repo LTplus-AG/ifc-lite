@@ -288,6 +288,21 @@ export class GeometryProcessor {
    * without any per-call argument. Bytes are passed straight through —
    * no `TextDecoder` materialization of the whole file.
    */
+  /**
+   * Surface the world→render metadata (unit scale + the applied RTC offset)
+   * from a pre-pass result onto the coordinate handler, so it appears on the
+   * emitted `CoordinateInfo` (issue #945). Shared by the sync and streaming
+   * WASM paths to keep the RTC transform in one place.
+   */
+  private applyPrePassMetadata(prePass: ByteStreamingPrePassResult): void {
+    this.coordinateHandler.setWasmMetadata(
+      prePass.unitScale,
+      prePass.needsShift
+        ? { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 }
+        : null,
+    );
+  }
+
   private collectMeshesViaPrePass(buffer: Uint8Array): { meshes: MeshData[]; buildingRotation?: number } {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
@@ -295,14 +310,7 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-    // Surface the world→render metadata (unit scale + applied RTC) on
-    // coordinateInfo for downstream consumers (issue #945).
-    this.coordinateHandler.setWasmMetadata(
-      prePass.unitScale,
-      prePass.needsShift
-        ? { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 }
-        : null,
-    );
+    this.applyPrePassMetadata(prePass);
     try {
       const meshes: MeshData[] = [];
       const totalJobs = prePass.totalJobs ?? 0;
@@ -354,14 +362,7 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-    // Surface the world→render metadata (unit scale + applied RTC) on
-    // coordinateInfo for downstream consumers (issue #945).
-    this.coordinateHandler.setWasmMetadata(
-      prePass.unitScale,
-      prePass.needsShift
-        ? { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 }
-        : null,
-    );
+    this.applyPrePassMetadata(prePass);
 
     // try/finally so the pre-pass cache is released on every exit: the
     // totalJobs===0 early return, a processGeometryBatch throw, or the

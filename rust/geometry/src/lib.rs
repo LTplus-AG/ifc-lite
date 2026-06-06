@@ -110,8 +110,9 @@ pub use mesh::{CoordinateShift, Mesh, SubMesh, SubMeshCollection};
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
-    MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
-    SurfaceOfLinearExtrusionProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    build_texture_index, MappedItemProcessor, MeshTexture, PolygonalFaceSetProcessor,
+    ResolvedTextureMap, RevolvedAreaSolidProcessor, SurfaceOfLinearExtrusionProcessor,
+    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 pub use alignment::{AlignmentCurve, AlignmentFrame};
 pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};

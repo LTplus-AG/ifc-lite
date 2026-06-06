@@ -236,7 +236,7 @@ export class HeadlessBackend implements BimBackend {
         properties: pset.properties.map((p) => ({
           name: p.name,
           type: p.type,
-          value: p.value,
+          value: p.value as string | number | boolean | null,
         })),
       }));
     }

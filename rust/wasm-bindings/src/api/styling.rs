@@ -502,6 +502,12 @@ pub(crate) fn combined_pre_pass(
     // gpu_meshes), but the call mutates `void_index` in place — keep it.
     let _ = ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
 
+    // #957: render orphan IfcTypeProduct geometry (annex-E "tessellated shape
+    // with style" showcase files attach geometry to the type, not an
+    // occurrence). processGeometryBatch turns these type jobs into meshes via
+    // process_representation_map.
+    complex_jobs.extend(collect_orphan_type_geometry_jobs(content, decoder));
+
     PrePassData {
         geometry_styles,
         void_index,
@@ -511,6 +517,123 @@ pub(crate) fn combined_pre_pass(
         simple_jobs,
         complex_jobs,
     }
+}
+
+/// #957: collect render jobs for orphan `IfcTypeProduct` geometry — a type's
+/// `RepresentationMap` that no `IfcMappedItem` instantiates.
+///
+/// Returns `(id, start, end, ifc_type)` for each TYPE entity carrying at least
+/// one orphan RepresentationMap, to be appended to the prepass job list so the
+/// browser renders them. `processGeometryBatch` turns each into geometry via
+/// [`ifc_lite_geometry::GeometryRouter::process_representation_map`]. Normally-
+/// instanced typed products keep their geometry on the occurrence (whose
+/// IfcMappedItem references the map), so those maps are filtered out here — no
+/// double render. buildingSMART annex-E "tessellated shape with style" files
+/// declare the geometry only on the type, so without this they render nothing.
+pub(crate) fn collect_orphan_type_geometry_jobs(
+    content: &str,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
+    use ifc_lite_core::{EntityScanner, IfcType};
+
+    // Fast bail-out: type-only geometry can only exist when the file authors at
+    // least one IfcRepresentationMap. The overwhelming majority of files (and
+    // every file that hits the latency-sensitive prepass without instancing)
+    // pay only a single substring search instead of a full entity scan + decode.
+    if !content.contains("IFCREPRESENTATIONMAP") {
+        return Vec::new();
+    }
+
+    // Single pass: gather the IfcMappedItem-referenced RepresentationMaps and
+    // the type-product candidates together, then filter to the orphans.
+    let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
+    let mut candidates: Vec<(u32, usize, usize, IfcType, Vec<u32>)> = Vec::new();
+
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name == "IFCMAPPEDITEM" {
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                // IfcMappedItem.MappingSource = attr 0.
+                if let Some(source_id) = entity.get_ref(0) {
+                    referenced.insert(source_id);
+                }
+            }
+        } else if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
+            // Cheap suffix pre-filter keeps the is_subtype_of check off the hot
+            // path for the all-non-type majority of entities.
+            let ifc_type = IfcType::from_str(type_name);
+            if !ifc_type.is_subtype_of(IfcType::IfcTypeProduct) {
+                continue;
+            }
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                // IfcTypeProduct.RepresentationMaps = attr 6.
+                let rep_maps: Vec<u32> = entity
+                    .get(6)
+                    .and_then(|a| a.as_list())
+                    .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+                    .unwrap_or_default();
+                if !rep_maps.is_empty() {
+                    candidates.push((id, start, end, ifc_type, rep_maps));
+                }
+            }
+        }
+    }
+
+    candidates
+        .into_iter()
+        .filter(|(_, _, _, _, maps)| maps.iter().any(|rm| !referenced.contains(rm)))
+        .map(|(id, start, end, ifc_type, _)| (id, start, end, ifc_type))
+        .collect()
+}
+
+/// #957: the set of `RepresentationMap`s instantiated by an `IfcMappedItem`, so
+/// `processGeometryBatch` can tell which of a type's RepresentationMaps are
+/// orphan (rendered directly) vs already drawn through an occurrence.
+pub(crate) fn build_referenced_representation_maps(
+    content: &str,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> rustc_hash::FxHashSet<u32> {
+    use ifc_lite_core::EntityScanner;
+    let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name == "IFCMAPPEDITEM" {
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                // IfcMappedItem.MappingSource = attr 0 (the IfcRepresentationMap).
+                if let Some(source_id) = entity.get_ref(0) {
+                    referenced.insert(source_id);
+                }
+            }
+        }
+    }
+    referenced
+}
+
+/// #957: resolve the authored colour for a type's `IfcRepresentationMap` by
+/// looking up its mapped geometry items in the prepass geometry-style index
+/// (the annex-E samples author a white `IfcSurfaceStyle`). Returns `None` when
+/// no item carries a style (caller falls back to the type's default colour).
+pub(crate) fn color_for_representation_map(
+    rep_map_id: u32,
+    geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Option<[f32; 4]> {
+    let rep_map = decoder.decode_by_id(rep_map_id).ok()?;
+    // IfcRepresentationMap.MappedRepresentation = attr 1.
+    let mapped_rep_id = rep_map.get_ref(1)?;
+    let mapped_rep = decoder.decode_by_id(mapped_rep_id).ok()?;
+    // IfcShapeRepresentation.Items = attr 3.
+    let item_ids: Vec<u32> = mapped_rep
+        .get(3)
+        .and_then(|a| a.as_list())
+        .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+        .unwrap_or_default();
+    for item_id in item_ids {
+        if let Some(color) = find_color_for_geometry(item_id, geometry_styles, decoder) {
+            return Some(color);
+        }
+    }
+    None
 }
 
 /// Build material style index: maps material IDs to their colors.

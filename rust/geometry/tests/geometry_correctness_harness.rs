@@ -150,9 +150,11 @@ const FIXTURES: &[Fixture] = &[
     // ─── buildingSMART IFC 4.3 — Annex E / Tessellated Shape With Style ───
     // The three "with-*-texture" fixtures ship their tessellated geometry
     // attached via `IfcRepresentationMap` to an `IfcBoilerType` only — no
-    // `IfcBoiler` instance exists in the file, so the product-walking
-    // pipeline correctly produces no rendered geometry. They still parse
-    // cleanly and trigger no NaN, which is what this harness checks.
+    // `IfcBoiler` instance exists. This harness walks PRODUCTS only, so it
+    // still sees no geometry here. Type-only geometry is rendered one layer up,
+    // by the processing crate's orphan-RepresentationMap pass (#957) — see
+    // `ifc-lite-processing` test `issue_957_type_only_geometry`. They still
+    // parse cleanly with no NaN, which is what this harness checks.
     // `individual-colors` ships an actual instance and produces 12 tris.
     Fixture {
         path: "tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",

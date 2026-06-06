@@ -27,6 +27,24 @@ export interface MeshData {
    *  for every vertex, so picking/selection resolves to the correct individual
    *  entity even though many entities share a single GPU batch. */
   entityIds?: Uint32Array;
+  /** Per-vertex texture coordinates (u, v pairs, 1:1 with positions), present
+   *  only for textured meshes (issue #961). */
+  uvs?: Float32Array;
+  /** Decoded surface texture (IfcBlobTexture / IfcPixelTexture), present only
+   *  for textured meshes (#961). Decoded to RGBA8 entirely in Rust; the
+   *  renderer uploads `rgba` verbatim to a GPU texture. */
+  texture?: MeshTexture;
+}
+
+/** A decoded RGBA8 surface texture attached to a mesh (issue #961). */
+export interface MeshTexture {
+  /** `width * height * 4` bytes, row-major, top-down, straight alpha. */
+  rgba: Uint8Array;
+  width: number;
+  height: number;
+  /** Sampler wrap from `IfcSurfaceTexture.RepeatS/RepeatT` (true = repeat). */
+  repeatS: boolean;
+  repeatT: boolean;
 }
 
 export interface Vec3 {
@@ -40,6 +58,25 @@ export interface AABB {
   max: Vec3;
 }
 
+/**
+ * One resolved structural grid axis (`IfcGridAxis`), with its tag and the two
+ * endpoints of its curve in the renderer's Y-up world frame (RTC-subtracted,
+ * metres) — the same frame the streamed meshes render in, so grids overlay the
+ * model by construction. See issue #945.
+ */
+export interface GridAxis {
+  /** Express ID of the owning `IfcGrid`. */
+  gridId: number;
+  /** Express ID of the `IfcGridAxis`. */
+  axisId: number;
+  /** Axis tag (e.g. `"A"`, `"1"`); empty string when unauthored. */
+  tag: string;
+  /** Start endpoint `[x, y, z]` in renderer Y-up world space (metres). */
+  start: [number, number, number];
+  /** End endpoint `[x, y, z]` in renderer Y-up world space (metres). */
+  end: [number, number, number];
+}
+
 export interface CoordinateInfo {
   originShift: Vec3;        // Shift applied to positions
   originalBounds: AABB;     // Bounds before shift
@@ -50,6 +87,12 @@ export interface CoordinateInfo {
   wasmRtcOffset?: Vec3;
   /** Building rotation angle in radians (from IfcSite placement). Rotation of building's principal axes relative to world X/Y/Z. */
   buildingRotation?: number;
+  /**
+   * Length-unit scale (file units → metres) from IfcProject's unit assignment,
+   * e.g. `0.001` for millimetre files. Lets a consumer map externally-resolved
+   * geometry (grids, survey points) into the render frame. See issue #945.
+   */
+  lengthUnitScale?: number;
 }
 
 /**

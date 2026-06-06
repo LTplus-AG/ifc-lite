@@ -1282,6 +1282,23 @@ fn sample_curve_polyline(
                 return sample_bspline_edge_curve(&basis, &p_start, sense, decoder);
             }
         }
+        if basis_kind == "IFCLINE" {
+            // A trimmed line is just the segment between its two cartesian trim
+            // points. Falling through to `sample_curve_polyline(&basis)` below
+            // would discard Trim1/Trim2 and sample the *raw* IfcLine, whose
+            // IfcVector magnitude is a tool-emitted unit length (e.g. Revit's
+            // 0.3048 = 1 ft) wholly unrelated to the trimmed extent. For a
+            // surface-of-revolution generator profile that inflates the
+            // revolved radius/extent ~50-70x (light-fixture #189538 hull 9.5x,
+            // proxy #209435 hull 3.2x in ISSUE_159).
+            if let (Some(p_start), Some(p_end)) = (p1, p2) {
+                return if sense {
+                    vec![p_start, p_end]
+                } else {
+                    vec![p_end, p_start]
+                };
+            }
+        }
         return sample_curve_polyline(&basis, decoder);
     }
     Vec::new()

@@ -17,7 +17,7 @@ use ifc_lite_core::{
 };
 use ifc_lite_geometry::{calculate_normals, GeometryRouter};
 use rayon::prelude::*;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
@@ -177,6 +177,10 @@ struct EntityJob {
     name: Option<String>,
     presentation_layer: Option<String>,
     space_zone_properties: Option<BTreeMap<String, String>>,
+    /// Set for synthetic type-only-geometry jobs (#957): the `IfcRepresentationMap`
+    /// id to render directly (baking its MappingOrigin) instead of walking the
+    /// element's `IfcProductDefinitionShape`. `None` for ordinary product jobs.
+    representation_map_id: Option<u32>,
 }
 
 fn populate_entity_job_metadata(
@@ -829,6 +833,12 @@ pub fn process_geometry_streaming_filtered_with_options(
     // below.
     let mut aggregate_children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut entity_jobs: Vec<EntityJob> = Vec::with_capacity(2000);
+    // #957: type-product geometry (IfcXxxType + its RepresentationMaps) and the
+    // set of RepresentationMaps already instantiated by an IfcMappedItem. After
+    // the scan, RepresentationMaps NOT in the referenced set are rendered as
+    // orphan type geometry (buildingSMART annex-E showcase files).
+    let mut type_product_geometry: Vec<(u32, usize, usize, IfcType, Vec<u32>)> = Vec::new();
+    let mut referenced_representation_maps: FxHashSet<u32> = FxHashSet::default();
     let quick_metadata_enabled = options.emit_quick_metadata_bootstrap;
     let mut quick_spatial_nodes = quick_metadata_enabled.then(HashMap::<u32, QuickSpatialNodeEntry>::new);
     let mut quick_aggregate_links = if quick_metadata_enabled {
@@ -1095,6 +1105,60 @@ pub fn process_geometry_streaming_filtered_with_options(
                 name: None,
                 presentation_layer: None,
                 space_zone_properties: None,
+                representation_map_id: None,
+            });
+        }
+
+        // #957: collect type-product geometry (IfcXxxType carrying its own
+        // RepresentationMaps) and every IfcMappedItem's MappingSource, so after
+        // the scan we can render the RepresentationMaps that NO occurrence
+        // instantiates (orphan library/showcase geometry). The cheap suffix
+        // pre-filter keeps the is_subtype_of check off the hot path for the
+        // ~all-non-type majority of entities.
+        else if type_name == "IFCMAPPEDITEM" {
+            let args = parse_step_arguments(&content[start..end]);
+            if let Some(source_id) = args.first().and_then(|token| parse_step_ref(token)) {
+                referenced_representation_maps.insert(source_id);
+            }
+        } else if (type_name.ends_with("TYPE") || type_name.ends_with("STYLE"))
+            && IfcType::from_str(type_name).is_subtype_of(IfcType::IfcTypeProduct)
+        {
+            let args = parse_step_arguments(&content[start..end]);
+            // IfcTypeProduct.RepresentationMaps is attribute index 6.
+            let rep_map_ids = args
+                .get(6)
+                .map(|token| parse_step_ref_list(token))
+                .unwrap_or_default();
+            if !rep_map_ids.is_empty() {
+                type_product_geometry.push((id, start, end, IfcType::from_str(type_name), rep_map_ids));
+            }
+        }
+    }
+
+    // #957: synthesize render jobs for orphan type-product geometry — a
+    // RepresentationMap on an IfcXxxType that no IfcMappedItem instantiates.
+    // Normally-instanced typed products keep their geometry on the occurrence
+    // (whose IfcMappedItem references the map), so those maps are in
+    // `referenced_representation_maps` and skipped here — no double render.
+    // buildingSMART annex-E "tessellated shape with style" files declare the
+    // geometry only on the type, so without this they render nothing (#957).
+    for (type_id, start, end, ifc_type, rep_map_ids) in &type_product_geometry {
+        for &rep_map_id in rep_map_ids {
+            if referenced_representation_maps.contains(&rep_map_id) {
+                continue;
+            }
+            entity_jobs.push(EntityJob {
+                id: *type_id,
+                ifc_type: ifc_type.clone(),
+                start: *start,
+                end: *end,
+                product_definition_shape_id: None,
+                element_color: crate::style::default_color_for_type(*ifc_type).to_array(),
+                global_id: None,
+                name: None,
+                presentation_layer: None,
+                space_zone_properties: None,
+                representation_map_id: Some(rep_map_id),
             });
         }
     }
@@ -1274,6 +1338,11 @@ pub fn process_geometry_streaming_filtered_with_options(
     merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
     let mut geometry_style_index = Arc::new(geometry_style_index);
     let indexed_colour_full = Arc::new(indexed_colour_full);
+    // #961: decode surface textures (IfcBlobTexture PNG / IfcPixelTexture) and
+    // their per-triangle UV maps once, keyed by face-set id. `build_texture_index`
+    // bails out on a cheap substring check for the (vast majority) untextured
+    // files. Consumed by the type-only render path below.
+    let texture_index = Arc::new(ifc_lite_geometry::build_texture_index(content, &mut decoder));
     // Join the material chain into colours per element (#407). The single
     // opaque-first colour is the general-path element fallback; the full list
     // feeds the opening sub-mesh transparent/opaque split (#913 §2.3).
@@ -1408,6 +1477,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     geometry_style_index.as_ref(),
                     indexed_colour_full.as_ref(),
                     element_material_colors.as_ref(),
+                    texture_index.as_ref(),
                     site_local_rotation,
                 )
             })
@@ -1511,6 +1581,9 @@ fn process_entity_job(
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
     indexed_colour_full: &FxHashMap<u32, crate::style::FullIndexedColourMap>,
     element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
+    // Surface textures + UV maps keyed by face-set id (#961). Empty for
+    // untextured models.
+    texture_index: &FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>,
     // Present only when the selected coordinate space is `site_local`; rotates
     // mesh vertices into the site's axis frame.
     site_local_rotation: Option<&Vec<f64>>,
@@ -1537,6 +1610,25 @@ fn process_entity_job(
     let presentation_layer = job.presentation_layer.clone();
     let space_zone_properties = job.space_zone_properties.clone();
     let element_color = job.element_color;
+
+    // #957: synthetic type-only-geometry job — render the orphan
+    // RepresentationMap directly (baking its MappingOrigin) instead of walking
+    // the product's IfcProductDefinitionShape (a type has none).
+    if let Some(rep_map_id) = job.representation_map_id {
+        return process_type_representation_map_job(
+            job,
+            rep_map_id,
+            &local_router,
+            &mut local_decoder,
+            geometry_style_index,
+            texture_index,
+            element_color,
+            global_id,
+            name,
+            presentation_layer,
+            site_local_rotation,
+        );
+    }
 
     if is_opening_with_subparts(&job.ifc_type) {
         if let Ok(sub_meshes) = local_router.process_element_with_submeshes(&entity, &mut local_decoder) {
@@ -1681,6 +1773,111 @@ fn process_entity_job(
     Vec::new()
 }
 
+/// Render an orphan type-product `IfcRepresentationMap` (issue #957).
+///
+/// Tessellates the map's `MappedRepresentation` (baking its MappingOrigin) and
+/// builds a single [`MeshData`] keyed on the type's express id. The colour is
+/// resolved from the mapped geometry's `IfcStyledItem` chain when present (the
+/// blob/image/pixel-texture annex-E fixtures author a white `IfcSurfaceStyle`),
+/// otherwise the type's default colour. Texture fidelity is layered on
+/// separately; this path makes the geometry visible.
+#[allow(clippy::too_many_arguments)]
+fn process_type_representation_map_job(
+    job: &EntityJob,
+    rep_map_id: u32,
+    router: &GeometryRouter,
+    decoder: &mut EntityDecoder,
+    geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
+    texture_index: &FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>,
+    element_color: [f32; 4],
+    global_id: Option<String>,
+    name: Option<String>,
+    presentation_layer: Option<String>,
+    site_local_rotation: Option<&Vec<f64>>,
+) -> Vec<MeshData> {
+    let Ok(rep_map) = decoder.decode_by_id(rep_map_id) else {
+        return Vec::new();
+    };
+    // Texture-aware build (#961): one part per output mesh — each textured face
+    // set carries its own UVs + decoded image; untextured items merge into one
+    // part with no texture.
+    let Ok(parts) =
+        router.process_representation_map_with_texture(&rep_map, decoder, texture_index)
+    else {
+        return Vec::new();
+    };
+    if parts.is_empty() {
+        return Vec::new();
+    }
+
+    let color = resolve_color_for_representation_map(rep_map_id, geometry_style_index, decoder)
+        .unwrap_or(element_color);
+
+    let mut out: Vec<MeshData> = Vec::with_capacity(parts.len());
+    for (mut mesh, uvs, texture) in parts {
+        if mesh.is_empty() {
+            continue;
+        }
+        if mesh.normals.is_empty() {
+            calculate_normals(&mut mesh);
+        }
+        let mut mesh_data = MeshData::new(
+            job.id,
+            job.ifc_type.name().to_string(),
+            mesh.positions,
+            mesh.normals,
+            mesh.indices,
+            color,
+        )
+        .with_element_metadata(global_id.clone(), name.clone(), presentation_layer.clone());
+
+        // Attach the decoded texture + UVs (#961). `convert_mesh_to_site_local`
+        // rotates positions/normals only; UVs are 2D and pass through unchanged.
+        if let Some(tex) = texture {
+            mesh_data = mesh_data.with_texture(
+                uvs,
+                crate::types::mesh::MeshTextureData {
+                    rgba: tex.rgba,
+                    width: tex.width,
+                    height: tex.height,
+                    repeat_s: tex.repeat_s,
+                    repeat_t: tex.repeat_t,
+                },
+            );
+        }
+
+        convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
+        out.push(mesh_data);
+    }
+    out
+}
+
+/// Resolve the authored colour for a type's `IfcRepresentationMap` (issue #957)
+/// by looking up its mapped geometry items in the styled-item index — the same
+/// index that colours ordinary products. Returns `None` when no item carries a
+/// style (caller falls back to the type's default colour).
+fn resolve_color_for_representation_map(
+    rep_map_id: u32,
+    geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
+    decoder: &mut EntityDecoder,
+) -> Option<[f32; 4]> {
+    let rep_map = decoder.decode_by_id(rep_map_id).ok()?;
+    // IfcRepresentationMap.MappedRepresentation = attr 1.
+    let mapped_rep_id = rep_map.get_ref(1)?;
+    let mapped_rep = decoder.decode_by_id(mapped_rep_id).ok()?;
+    // IfcShapeRepresentation.Items = attr 3.
+    let item_ids = get_refs_from_list(&mapped_rep, 3)?;
+    for item_id in item_ids {
+        if let Some(style) = geometry_style_index.get(&item_id) {
+            return Some(style.color);
+        }
+        if let Some(color) = find_geometry_item_color(item_id, geometry_style_index, decoder) {
+            return Some(color);
+        }
+    }
+    None
+}
+
 /// Find the first representation item of `entity` that carries a full
 /// `IfcIndexedColourMap` (issue #858). Used to drive per-triangle sub-mesh
 /// splitting in the single-mesh emission path.
@@ -1752,6 +1949,21 @@ fn build_color_updates_for_jobs(
     let mut updates: Vec<(u32, [f32; 4])> = Vec::new();
 
     for job in jobs {
+        // #957: synthetic type-only-geometry jobs resolve their colour from the
+        // RepresentationMap (a type has no IfcProductDefinitionShape), so the
+        // product-definition path below never corrects them. Backfill them here
+        // or a deferred IfcStyledItem (fast_first_batch) leaves the orphan type
+        // geometry stuck at its fallback colour.
+        if let Some(rep_map_id) = job.representation_map_id {
+            if let Some(color) =
+                resolve_color_for_representation_map(rep_map_id, geometry_styles, &mut decoder)
+            {
+                if color != job.element_color {
+                    updates.push((job.id, color));
+                }
+            }
+            continue;
+        }
         let Ok(entity) = decoder.decode_at(job.start, job.end) else {
             continue;
         };

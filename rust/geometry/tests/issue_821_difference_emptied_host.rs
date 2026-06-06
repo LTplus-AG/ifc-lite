@@ -24,8 +24,16 @@
 //!
 //! Reference viewers (BIMVision in the user's comparison screenshot)
 //! defensively revert to the un-cut host when DIFFERENCE wipes out a
-//! non-empty host. The processor now does the same and records the
-//! fallback as `BoolFailureReason::DifferenceEmptiedHost`.
+//! non-empty host, and the processor's `DifferenceEmptiedHost` guard does the
+//! same as a safety net.
+//!
+//! Since the `IfcPolygonalBoundedHalfSpace` material-side fix, though, these
+//! walls no longer *empty* in the first place: the polygonal cutters were
+//! being built on the wrong side of the plane (engulfing the wall); built on
+//! the correct AgreementFlag side they clip to nothing here, so the walls
+//! survive at full extent matching IfcOpenShell without the fallback. So the
+//! first test pins that correct outcome, and the second exercises the guard
+//! directly with a synthetic full-cover clip.
 //!
 //! Fixture: `tests/models/issues/821_TallBuilding.ifc`.
 
@@ -93,16 +101,16 @@ fn level_1_outside_walls_are_not_emptied_by_top_trim_clips() {
 
         assert!(
             !mesh.positions.is_empty() && !mesh.indices.is_empty(),
-            "wall #{} produced an empty mesh — DIFFERENCE clip emptied the host \
-             (issue #821: the spec-strict subtract removes the whole wall, the \
-             fallback must revert to the un-cut host)",
+            "wall #{} produced an empty mesh — issue #821: the polygonal cutters \
+             must clip on the correct AgreementFlag side (and the emptied-host \
+             guard is the safety net), leaving the wall at full extent",
             wall_id,
         );
 
-        // Sanity: the un-cut wall body is an 8200×200×3850 (or rotated)
-        // extrusion. Verifying the Z-span survived at full height proves
-        // the fallback actually used the wall body rather than an
-        // unrelated mesh.
+        // Sanity: the wall body is an 8200×200×3850 (or rotated) extrusion, and
+        // IfcOpenShell keeps it at exactly that extent (the trims clip to
+        // nothing). Verifying the Z-span survived at full height proves the
+        // cutters clipped correctly rather than removing the wall.
         let mut min = [f32::INFINITY; 3];
         let mut max = [f32::NEG_INFINITY; 3];
         for p in mesh.positions.chunks_exact(3) {
@@ -142,69 +150,56 @@ fn level_1_outside_walls_are_not_emptied_by_top_trim_clips() {
     }
 }
 
+/// The `DifferenceEmptiedHost` guard reverts a DIFFERENCE that wipes out a
+/// non-empty host when the cutter plane rides the host surface (the defensive
+/// fallback BIMVision-style viewers use), recording the loss.
+///
+/// The issue #821 walls above no longer reach this guard: their emptying was
+/// caused by `IfcPolygonalBoundedHalfSpace` cutters built on the wrong side of
+/// the plane (engulfing the wall), and that root cause is now fixed — the
+/// cutters clip correctly and the walls survive at full extent without the
+/// fallback (see `level_1_outside_walls_are_not_emptied_by_top_trim_clips`).
+///
+/// So exercise the guard directly with a synthetic case that genuinely empties
+/// the host: a 10×10×10 box minus a half-space whose plane sits 5 mm above the
+/// box's top face (within the guard's coincidence tolerance) with
+/// `AgreementFlag = .T.`. The DIFFERENCE removes everything; the guard must
+/// revert to the box and record `DifferenceEmptiedHost`.
 #[test]
 fn difference_emptied_host_is_recorded_in_csg_failures() {
-    let Some(content) = read_fixture() else {
-        return;
-    };
-
-    let entity_index = ifc_lite_core::build_entity_index(&content);
-    let mut decoder = EntityDecoder::with_index(&content, entity_index);
-
-    // Process each wall's body chain directly through `BooleanClippingProcessor`
-    // so we can drain its own failure log. The router's `take_csg_failures`
-    // sees only the *router*-attributed failures (those routed through the
-    // void-aware path) and would silently report 0 here even when the guard
-    // is firing inside the boolean processor on every call.
+    let content = "\
+ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('','',(),(),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,10.,10.);
+#2=IFCCARTESIANPOINT((0.,0.,0.));
+#3=IFCDIRECTION((0.,0.,1.));
+#4=IFCAXIS2PLACEMENT3D(#2,#3,$);
+#5=IFCEXTRUDEDAREASOLID(#1,#4,#3,10.);
+#6=IFCCARTESIANPOINT((0.,0.,10.005));
+#7=IFCAXIS2PLACEMENT3D(#6,#3,$);
+#8=IFCPLANE(#7);
+#9=IFCHALFSPACESOLID(#8,.T.);
+#10=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#5,#9);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let entity_index = ifc_lite_core::build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, entity_index);
     let schema = ifc_lite_core::IfcSchema::new();
     let boolean = ifc_lite_geometry::BooleanClippingProcessor::new();
 
-    for &wall_id in BROKEN_OUTSIDE_WALLS {
-        let wall = decoder
-            .decode_by_id(wall_id)
-            .unwrap_or_else(|e| panic!("decode wall #{} ({})", wall_id, e));
-        let rep_id = wall.get_ref(6).expect("wall has representation");
-        let product_shape = decoder.decode_by_id(rep_id).expect("decode rep");
-        let reprs = product_shape
-            .get(2)
-            .and_then(|a| a.as_list())
-            .expect("rep list");
-        for r in reprs {
-            let Some(shape_repr_id) = r.as_entity_ref() else {
-                continue;
-            };
-            let shape_repr = decoder.decode_by_id(shape_repr_id).expect("decode shape");
-            let rep_type = shape_repr
-                .get(2)
-                .and_then(|a| a.as_string().map(String::from))
-                .unwrap_or_default();
-            if rep_type != "Clipping" && rep_type != "Body" {
-                continue;
-            }
-            let items = shape_repr
-                .get(3)
-                .and_then(|a| a.as_list())
-                .expect("items list");
-            for it in items {
-                let Some(item_id) = it.as_entity_ref() else {
-                    continue;
-                };
-                let Ok(item) = decoder.decode_by_id(item_id) else {
-                    continue;
-                };
-                if item.ifc_type != ifc_lite_core::IfcType::IfcBooleanClippingResult
-                    && item.ifc_type != ifc_lite_core::IfcType::IfcBooleanResult
-                {
-                    continue;
-                }
-                let _ =
-                    ifc_lite_geometry::GeometryProcessor::process(&boolean, &item, &mut decoder, &schema);
-            }
-        }
-    }
+    let item = decoder.decode_by_id(10).expect("decode boolean clipping result");
+    let mesh = ifc_lite_geometry::GeometryProcessor::process(&boolean, &item, &mut decoder, &schema)
+        .expect("process boolean clipping result");
 
-    let failures = boolean.take_failures();
-    let total_emptied: usize = failures
+    // The guard must revert to the un-cut box, not emit an empty mesh.
+    assert!(
+        !mesh.indices.is_empty(),
+        "expected the guard to revert to the host box, got an empty mesh",
+    );
+    let total_emptied: usize = boolean
+        .take_failures()
         .iter()
         .filter(|f| {
             matches!(
@@ -215,8 +210,7 @@ fn difference_emptied_host_is_recorded_in_csg_failures() {
         .count();
     assert!(
         total_emptied > 0,
-        "expected ≥1 DifferenceEmptiedHost diagnostic when processing the \
-         three broken outside walls — got 0 (the guard never fired and \
-         this test was previously a silent pass)",
+        "expected a DifferenceEmptiedHost diagnostic when a full-cover clip \
+         empties a non-empty host — got {total_emptied}",
     );
 }

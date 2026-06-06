@@ -32,6 +32,7 @@ mod sectioned;
 mod surface;
 mod swept;
 mod tessellated;
+pub mod texture;
 
 #[cfg(test)]
 mod tests;
@@ -51,6 +52,7 @@ pub use sectioned::SectionedSolidHorizontalProcessor;
 pub use surface::SurfaceOfLinearExtrusionProcessor;
 pub use swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
 pub use tessellated::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};
+pub use texture::{build_texture_index, MeshTexture, ResolvedTextureMap};
 
 /// Extract CoordIndex bytes from IfcTriangulatedFaceSet raw entity
 ///

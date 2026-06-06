@@ -1,5 +1,135 @@
 # @ifc-lite/wasm
 
+## 2.2.0
+
+### Minor Changes
+
+- [#962](https://github.com/LTplus-AG/ifc-lite/pull/962) [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC surface textures on tessellated geometry ([#961](https://github.com/LTplus-AG/ifc-lite/issues/961)).
+
+  `IfcBlobTexture` (embedded PNG **and** JPEG) and `IfcPixelTexture` (raw pixel
+  literals) are now decoded to RGBA8 entirely in Rust (the `png` and
+  `jpeg-decoder` crates) and the per-triangle `IfcIndexedTriangleTextureMap` /
+  `IfcTextureVertexList` coordinates are emitted as per-vertex UVs in lockstep with
+  the flat-shaded tessellation (the authored texture coordinates are used directly,
+  mapping the image ~1:1 like the buildingSMART reference; the whole-shell
+  orientation flip is mirrored onto the texture indices so UVs stay aligned). The
+  decoded RGBA + UVs ride on `MeshData` across the wasm boundary; the WebGPU
+  renderer gains a dedicated textured pipeline that uploads the texture and draws
+  textured meshes in their own sub-pass, preserving picking, section-clipping and
+  flat-shading. The buildingSMART annex-E "tessellated shape with style" boilers
+  now render textured instead of flat white.
+
+  All image/texture decoding lives in Rust so the server, CLI and SDK get the same
+  result — the browser only uploads the bytes to the GPU. `IfcImageTexture`
+  (external URL) remains out of scope (needs an async fetch resolver).
+
+- [#966](https://github.com/LTplus-AG/ifc-lite/pull/966) [`773b508`](https://github.com/LTplus-AG/ifc-lite/commit/773b5086456de3c61bdde8a72dd3d35325e2e995) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(grids): expose structural grids (IfcGrid/IfcGridAxis) in the render frame ([#945](https://github.com/LTplus-AG/ifc-lite/issues/945))
+
+  Resolve `IfcGridAxis` curves through the same placement + unit-scale + RTC
+  pipeline the meshes use and emit them in the renderer's Y-up, RTC-subtracted,
+  metres world frame, so structural grids overlay streamed geometry by
+  construction (no viewer re-implements the placement resolver).
+
+  - New WASM API `parseGridLines(content) -> Float32Array` (flat 3D line-list)
+    and `parseGridAxes(content) -> GridAxisCollection` (structured per-axis
+    `{ gridId, axisId, tag, start, end }`), mirroring `parseAlignmentLines`.
+  - New `@ifc-lite/geometry` `GeometryProcessor.parseGridLines` /
+    `parseGridAxes` (returns plain `GridAxis[]`) and a `GridAxis` type.
+  - `CoordinateInfo` now also reports `lengthUnitScale` and populates
+    `wasmRtcOffset` (the actually-applied RTC offset) directly from the geometry
+    pipeline, so any consumer can map externally-resolved geometry into the
+    render frame without viewer-side patching.
+
+### Patch Changes
+
+- [#962](https://github.com/LTplus-AG/ifc-lite/pull/962) [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719) Thanks [@louistrue](https://github.com/louistrue)! - Render type-only tessellated geometry that has no occurrence ([#957](https://github.com/LTplus-AG/ifc-lite/issues/957)).
+
+  buildingSMART annex-E "tessellated shape with style" files (and similar IFC
+  type libraries) attach their geometry to an `IfcXxxType` via `RepresentationMaps`
+  with no product instance, so the model displayed empty. The geometry now renders
+  for any `RepresentationMap` that no `IfcMappedItem` instantiates — both in the
+  native `process_geometry` path and the browser's `processGeometryBatch` viewer
+  path — without double-rendering normally-instanced typed products. (The reported
+  "unsupported `IfcBlobTexture`" was a red herring: the blob parses fine and the
+  surface style falls back to its base colour; the geometry now renders flat white.
+  Full texture rendering is tracked separately.)
+
+- [#973](https://github.com/LTplus-AG/ifc-lite/pull/973) [`f99666a`](https://github.com/LTplus-AG/ifc-lite/commit/f99666ae028a88f1378422dd20900929f026cd2b) Thanks [@louistrue](https://github.com/louistrue)! - fix(geometry): union segmented-roof clip cutters to stop wall slivers and dropped walls ([#960](https://github.com/LTplus-AG/ifc-lite/issues/960))
+
+  Gable walls trimmed by a segmented roof are authored as deep left-deep
+  `IfcBooleanClippingResult(.DIFFERENCE., x, IfcPolygonalBoundedHalfSpace)`
+  chains (one cutter per roof plane). Two defects on House.ifc:
+
+  - Walls clipped by 12+ roof planes blew the boolean recursion-depth limit and
+    rendered as nothing.
+  - Sequentially subtracting abutting roof-segment prisms left a zero-thickness,
+    full-height fin on the shared seam — a thin wall sliver poking through the
+    roof.
+
+  The chain is now walked iteratively and the cutter prisms are combined with a
+  true CSG union before a single subtract, so the seam face is dissolved and the
+  depth limit no longer bites. Two guards keep the well-tested per-cutter path
+  for full-cross-section clips (duplex.ifc "Party Wall") and reject any union the
+  kernel silently under-removes. Output is mm-identical to IfcOpenShell on all
+  five reported walls.
+
+## 2.1.6
+
+### Patch Changes
+
+- [#959](https://github.com/LTplus-AG/ifc-lite/pull/959) [`e293b3e`](https://github.com/LTplus-AG/ifc-lite/commit/e293b3eb106b0f179372a3075629a74c7bb12df6) Thanks [@louistrue](https://github.com/louistrue)! - Fix `IfcIndexedColourMap` per-triangle colours being ignored in the viewer ([#858](https://github.com/LTplus-AG/ifc-lite/issues/858)).
+
+  The browser geometry path (`processGeometryBatch`) only carried one dominant
+  colour per tessellated face set, so a face set whose `ColourIndex` assigns
+  different colours to different triangles rendered as a single solid colour. The
+  per-palette-group split (shared with the native processor) is now applied on the
+  WASM batch path too, so multi-coloured `IfcTriangulatedFaceSet` geometry renders
+  with all its authored colours again.
+
+## 2.1.5
+
+### Patch Changes
+
+- [#955](https://github.com/LTplus-AG/ifc-lite/pull/955) [`30235c9`](https://github.com/LTplus-AG/ifc-lite/commit/30235c90d922e12d383a6d9f60c028984709001b) Thanks [@louistrue](https://github.com/louistrue)! - Geometry: tessellate `IfcTrimmedCurve` arcs whose bounds are `IfcCartesianPoint`s ([#953](https://github.com/LTplus-AG/ifc-lite/issues/953)). When a profile's trimmed conic uses `MasterRepresentation = .CARTESIAN.` (the trims are points, not `IfcParameterValue`s), the bounds were dropped — the arc defaulted to a full circle that, with `SenseAgreement = .F.`, wrapped to a zero-length arc and collapsed the profile to flat triangles. The cartesian bounds are now inverted through the circle's placement into parametric angles, with `MasterRepresentation` selecting parameter-vs-cartesian and a fallback to whichever flavour is authored. Restores the semicircular wall profiles in `Roof-01_BCAD`.
+
+## 2.1.4
+
+### Patch Changes
+
+- [#949](https://github.com/LTplus-AG/ifc-lite/pull/949) [`9d9b344`](https://github.com/LTplus-AG/ifc-lite/commit/9d9b344c0234fcbc51279e2afa85bc04f0b12f09) Thanks [@louistrue](https://github.com/louistrue)! - Geometry correctness: seven fixes found by the IFC-vs-IfcOpenShell sweep ([#943](https://github.com/LTplus-AG/ifc-lite/issues/943)), each verified on both the Manifold and legacy BSP CSG kernels.
+
+  - `IfcPolygonalBoundedHalfSpace` clip now removes the side the `AgreementFlag` designates as material (party/outside walls no longer collapse to a sliver).
+  - Trimmed `IfcLine` basis on `IfcSurfaceOfRevolution` honours its cartesian trim (revolved fixtures were ~9.5× oversized).
+  - Opening-cut epsilons scale with coordinate magnitude, so thin walls at building-scale coordinates are actually cut through instead of left sealed.
+  - `IfcCShapeProfileDef` uses `Width` (not `Girth`) for the flange.
+  - Radius-aware arc tessellation for trimmed conics — large-radius curved walls render smooth instead of faceted.
+  - `IfcL/U/T/IShapeProfileDef` honour `FilletRadius` / `EdgeRadius` (rounded steel-section root fillets and toes).
+
+- [#949](https://github.com/LTplus-AG/ifc-lite/pull/949) [`9d9b344`](https://github.com/LTplus-AG/ifc-lite/commit/9d9b344c0234fcbc51279e2afa85bc04f0b12f09) Thanks [@louistrue](https://github.com/louistrue)! - Geometry: fix ~0.5 m vertex jitter on georeferenced models ([#948](https://github.com/LTplus-AG/ifc-lite/issues/948)). When a model's world offset lives in spatial-structure placements emitted late in the file (e.g. a Revit/French export with `IfcSite` at the end), `buildPrePassStreaming` detected the RTC offset from the partial index built up to the first ~50 geometry jobs, missed the offset, and the ~8×10⁶ m coordinates were cast to f32 (~0.5 m grid) before reaching the GPU. The streaming pre-pass now re-detects against a full index when the partial pass finds no offset and the `IfcSite` has not yet been scanned, so vertices are shifted local before the f32 cast. Gated so origin-local / early-site models do not pay for a second index build.
+
+- [#949](https://github.com/LTplus-AG/ifc-lite/pull/949) [`9d9b344`](https://github.com/LTplus-AG/ifc-lite/commit/9d9b344c0234fcbc51279e2afa85bc04f0b12f09) Thanks [@louistrue](https://github.com/louistrue)! - Geometry: a rotated/engulfing opening no longer over-cuts its host wall ([#947](https://github.com/LTplus-AG/ifc-lite/issues/947), advanced_model [#555433](https://github.com/LTplus-AG/ifc-lite/issues/555433), which collapsed to a ~1.5%-volume sliver). When a non-rectangular opening's bounding box engulfs the wall but its real profile excludes it, the kernel returns the un-cut host — which is correct — so the void router now keeps that result instead of falling back to a rectangular AABB cut that would delete the wall. High-poly openings rejected by the BSP operand cap (issue-635) still receive the AABB box, so genuinely-complex voids are not left uncut.
+
+## 2.1.3
+
+### Patch Changes
+
+- [#920](https://github.com/LTplus-AG/ifc-lite/pull/920) [`5b34809`](https://github.com/LTplus-AG/ifc-lite/commit/5b348091ac9094a25aaa685fe0674bad4ba4be06) Thanks [@louistrue](https://github.com/louistrue)! - Unify IFC mesh styling between the browser and backend rendering paths ([#913](https://github.com/LTplus-AG/ifc-lite/issues/913)).
+
+  Colour resolution now lives in one shared place (`ifc_lite_processing::style`);
+  the browser bindings delegate to it instead of carrying their own copy, so the
+  two Rust paths can no longer drift:
+
+  - Default type colours come from a single table. The four types that diverged
+    render consistently now — `IfcCurtainWall` (glass blue), `IfcStairFlight`,
+    `IfcFurnishingElement` (light wood), `IfcBuildingElementProxy`.
+  - `IfcIndexedColourMap` is honoured end to end, including the per-triangle split
+    ([#663](https://github.com/LTplus-AG/ifc-lite/issues/663) / [#858](https://github.com/LTplus-AG/ifc-lite/issues/858)), restoring per-triangle fidelity dropped in the [#874](https://github.com/LTplus-AG/ifc-lite/issues/874) pipeline
+    unification.
+  - Material-appearance styling (`IfcRelAssociatesMaterial` → material chain,
+    [#407](https://github.com/LTplus-AG/ifc-lite/issues/407)) and the window frame/glass transparent-vs-opaque split resolve
+    identically in both paths, and mapped (`IfcMappedItem`) sub-geometry inherits
+    its underlying style.
+
 ## 2.1.2
 
 ### Patch Changes

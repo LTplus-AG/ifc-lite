@@ -5,6 +5,11 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // The @ifc-lite geometry worker pool ships ES-module workers; emit them as
+  // ESM so a production build never trips over Rollup's IIFE worker default.
+  worker: {
+    format: 'es',
+  },
   optimizeDeps: {
     exclude: ['@ifc-lite/wasm', '@ifc-lite/geometry', '@ifc-lite/parser', '@ifc-lite/data'],
   },

@@ -20,16 +20,17 @@ impl TriangulatedFaceSetProcessor {
     pub fn new() -> Self {
         Self
     }
-}
 
-impl GeometryProcessor for TriangulatedFaceSetProcessor {
-    #[inline]
-    fn process(
-        &self,
+    /// Parse an `IfcTriangulatedFaceSet`'s positions + triangle indices and
+    /// apply the closed-shell outward orientation. Returns
+    /// `(positions, indices, flipped)` where `flipped` is whether the whole
+    /// shell was winding-flipped — the texture path needs it to keep the
+    /// parallel `TexCoordIndex` in lockstep (#961). Shared by `process` and
+    /// [`Self::process_with_texture`] so there is one parse/orient code path.
+    fn parse_positions_and_orient(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        _schema: &IfcSchema,
-    ) -> Result<Mesh> {
+    ) -> Result<(Vec<f32>, Vec<u32>, bool)> {
         // IfcTriangulatedFaceSet attributes:
         // 0: Coordinates (IfcCartesianPointList3D)
         // 1: Normals (optional)
@@ -111,9 +112,53 @@ impl GeometryProcessor for TriangulatedFaceSetProcessor {
             .unwrap_or(false);
 
         let mut indices = indices;
-        if !is_open {
-            PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices);
+        let flipped = if !is_open {
+            PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices)
+        } else {
+            false
+        };
+
+        Ok((positions, indices, flipped))
+    }
+
+    /// Tessellate a textured `IfcTriangulatedFaceSet` (#961): builds the same
+    /// flat-shaded mesh as [`process`] plus a per-vertex UV array aligned 1:1
+    /// with the emitted vertices. `map.tex_coord_index` is parallel to the
+    /// original `CoordIndex`; the same whole-shell winding flip is applied to it
+    /// so corners stay aligned after orientation.
+    pub fn process_with_texture(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        map: &crate::processors::texture::ResolvedTextureMap,
+    ) -> Result<(Mesh, Vec<f32>)> {
+        let (positions, indices, flipped) = Self::parse_positions_and_orient(entity, decoder)?;
+        let mut tex_coord_index = map.tex_coord_index.clone();
+        if flipped {
+            for tri in tex_coord_index.iter_mut() {
+                tri.swap(1, 2);
+            }
         }
+        let (mut mesh, uvs) = PolygonalFaceSetProcessor::build_flat_shaded_mesh_with_uvs(
+            &positions,
+            &indices,
+            &map.tex_coords,
+            &tex_coord_index,
+        );
+        mesh.validate_indices();
+        Ok((mesh, uvs))
+    }
+}
+
+impl GeometryProcessor for TriangulatedFaceSetProcessor {
+    #[inline]
+    fn process(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+    ) -> Result<Mesh> {
+        let (positions, indices, _flipped) = Self::parse_positions_and_orient(entity, decoder)?;
 
         // Flat-shade by duplicating vertices per-triangle. Without this, the
         // downstream per-vertex normal accumulator (`csg::calculate_normals`)
@@ -427,14 +472,18 @@ impl PolygonalFaceSetProcessor {
     }
 
     #[inline]
-    fn orient_closed_shell_outward(positions: &[f32], indices: &mut [u32]) {
+    /// Flip every triangle's winding to face outward when the shell is
+    /// inward-facing. Returns `true` if a (whole-shell) flip was applied — the
+    /// texture path needs this to swap the parallel `TexCoordIndex` in lockstep
+    /// (issue #961), or corners 1/2 of the UVs mirror on a flipped shell.
+    pub(crate) fn orient_closed_shell_outward(positions: &[f32], indices: &mut [u32]) -> bool {
         if indices.len() < 3 || positions.len() < 9 {
-            return;
+            return false;
         }
 
         let vertex_count = positions.len() / 3;
         if vertex_count == 0 {
-            return;
+            return false;
         }
 
         // Mesh centroid
@@ -498,7 +547,9 @@ impl PolygonalFaceSetProcessor {
             for tri in indices.chunks_exact_mut(3) {
                 tri.swap(1, 2);
             }
+            return true;
         }
+        false
     }
 
     #[inline]
@@ -564,6 +615,95 @@ impl PolygonalFaceSetProcessor {
             indices: flat_indices,
             rtc_applied: false,
         }
+    }
+
+    /// Like [`Self::build_flat_shaded_mesh`] but also emits a per-vertex UV
+    /// array aligned 1:1 with the duplicated vertices (issue #961).
+    ///
+    /// `tex_coord_index` is parallel to `indices` (and already winding-flipped
+    /// to match it); each triangle's three 1-based entries index `tex_coords`.
+    /// Triangles dropped by the out-of-range vertex guard are dropped from both
+    /// positions and UVs in lockstep, so the UV/vertex alignment is exact.
+    /// Out-of-range texcoord corners fall back to (0, 0).
+    pub(crate) fn build_flat_shaded_mesh_with_uvs(
+        positions: &[f32],
+        indices: &[u32],
+        tex_coords: &[[f32; 2]],
+        tex_coord_index: &[[u32; 3]],
+    ) -> (Mesh, Vec<f32>) {
+        let mut flat_positions: Vec<f32> = Vec::with_capacity(indices.len() * 3);
+        let mut flat_normals: Vec<f32> = Vec::with_capacity(indices.len() * 3);
+        let mut flat_indices: Vec<u32> = Vec::with_capacity(indices.len());
+        let mut uvs: Vec<f32> = Vec::with_capacity((indices.len() / 3) * 6);
+
+        let vertex_count = positions.len() / 3;
+        let mut next_index: u32 = 0;
+
+        for (tri_i, tri) in indices.chunks_exact(3).enumerate() {
+            let i0 = tri[0] as usize;
+            let i1 = tri[1] as usize;
+            let i2 = tri[2] as usize;
+            if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {
+                continue;
+            }
+
+            // Face normal — identical computation to build_flat_shaded_mesh.
+            let p0 = (positions[i0 * 3] as f64, positions[i0 * 3 + 1] as f64, positions[i0 * 3 + 2] as f64);
+            let p1 = (positions[i1 * 3] as f64, positions[i1 * 3 + 1] as f64, positions[i1 * 3 + 2] as f64);
+            let p2 = (positions[i2 * 3] as f64, positions[i2 * 3 + 1] as f64, positions[i2 * 3 + 2] as f64);
+            let e1 = (p1.0 - p0.0, p1.1 - p0.1, p1.2 - p0.2);
+            let e2 = (p2.0 - p0.0, p2.1 - p0.1, p2.2 - p0.2);
+            let nx = e1.1 * e2.2 - e1.2 * e2.1;
+            let ny = e1.2 * e2.0 - e1.0 * e2.2;
+            let nz = e1.0 * e2.1 - e1.1 * e2.0;
+            let len = (nx * nx + ny * ny + nz * nz).sqrt();
+            let (nx, ny, nz) = if len > 1e-12 {
+                (nx / len, ny / len, nz / len)
+            } else {
+                (0.0, 0.0, 1.0)
+            };
+
+            let tri_uv = tex_coord_index.get(tri_i);
+            for (corner, &idx) in [i0, i1, i2].iter().enumerate() {
+                flat_positions.push(positions[idx * 3]);
+                flat_positions.push(positions[idx * 3 + 1]);
+                flat_positions.push(positions[idx * 3 + 2]);
+                flat_normals.push(nx as f32);
+                flat_normals.push(ny as f32);
+                flat_normals.push(nz as f32);
+                // Use the authored texture coordinates directly. The optional
+                // IfcSurfaceTexture.TextureTransform is intentionally NOT applied:
+                // its Scale over-tiles the texture (the buildingSMART annex-E
+                // reference renders these coords ~1:1), and the TexCoords already
+                // carry any intended offset.
+                let uv = tri_uv
+                    .and_then(|t| {
+                        let one_based = t[corner] as usize;
+                        tex_coords.get(one_based.checked_sub(1)?).copied()
+                    })
+                    .unwrap_or([0.0, 0.0]);
+                // Flip V: IFC texture coordinates use a bottom-left origin (v up,
+                // OpenGL/STEP convention), but GPU sampling + glTF export use a
+                // top-left origin. Converting here (Rust = single source) keeps the
+                // image upright for every consumer (viewer, server, CLI, export)
+                // instead of each one re-flipping. Verified against the
+                // buildingSMART annex-E reference render.
+                uvs.push(uv[0]);
+                uvs.push(1.0 - uv[1]);
+                flat_indices.push(next_index);
+                next_index += 1;
+            }
+        }
+
+        (
+            Mesh {
+                positions: flat_positions,
+                normals: flat_normals,
+                indices: flat_indices,
+                rtc_applied: false,
+            },
+            uvs,
+        )
     }
 }
 

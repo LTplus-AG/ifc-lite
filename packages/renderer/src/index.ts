@@ -1473,7 +1473,10 @@ export class Renderer {
             // PERFORMANCE FIX: Always use batch rendering when we have batches
             // Apply visibility filtering at the BATCH level instead of creating individual meshes
             // This keeps draw calls at ~50-200 instead of 60K+
-            if (allBatchedMeshes.length > 0) {
+            // #961: also enter this block when there are textured meshes but no
+            // colour batches (e.g. a model that is only a textured type-geometry
+            // boiler) — the textured sub-pass lives inside this block.
+            if (allBatchedMeshes.length > 0 || this.scene.getTexturedMeshes().length > 0) {
                 // Frustum culling for batched meshes - skip entire batches outside the camera view
                 // This is the primary performance optimization for large models (200K+ meshes)
                 const frustum = FrustumUtils.fromViewProjMatrix(viewProj);
@@ -1679,6 +1682,51 @@ export class Renderer {
                 pass.setPipeline(this.pipeline.getPipeline());
                 for (const batch of opaqueBatches) {
                     renderBatch(batch);
+                }
+
+                // #961: textured meshes — dedicated sub-pass right after opaque
+                // batches (writes depth + object-id, so overlay/section/picking
+                // all behave like normal opaque geometry). Each mesh has its own
+                // vertex buffer (with a UV lane), texture, sampler and bindGroup.
+                const texturedMeshes = this.scene.getTexturedMeshes();
+                if (texturedMeshes.length > 0) {
+                    pass.setPipeline(this.pipeline.getTexturedPipeline());
+                    for (const tm of texturedMeshes) {
+                        // Honour hide/isolate — textured meshes bypass the batch
+                        // visibility filtering above, so apply it per-mesh here or
+                        // hidden/isolated elements would stay visible and keep
+                        // writing depth + object IDs.
+                        if (hasVisibilityFiltering) {
+                            if (options.hiddenIds?.has(tm.expressId)) continue;
+                            if (hasIsolatedFilter && !options.isolatedIds!.has(tm.expressId)) continue;
+                        }
+                        // Per-entity transparency override (e.g. a Pset/lens alpha):
+                        // a fully-transparent override hides the mesh. NOTE: the
+                        // textured pipeline is opaque, so a *partial* alpha can't
+                        // blend — textured surfaces render opaque (acceptable for
+                        // the photo/pattern type-geometry these carry; a transparent
+                        // textured pipeline would be needed for true blending).
+                        const txAlpha = alphaForBatch(
+                            { expressIds: [tm.expressId], color: tm.color },
+                            tm.color[3],
+                        );
+                        if (txAlpha <= 0.01) continue;
+                        // Lens / Pset colour override tints the sampled texel — the
+                        // batch overlay paint pass doesn't iterate textured meshes,
+                        // so applying the override here is what recolours them.
+                        const txOverride = colorOverrides?.get(tm.expressId);
+                        tpl[32] = txOverride ? txOverride[0] : tm.color[0];
+                        tpl[33] = txOverride ? txOverride[1] : tm.color[1];
+                        tpl[34] = txOverride ? txOverride[2] : tm.color[2];
+                        tpl[35] = txAlpha;
+                        device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
+                        pass.setBindGroup(0, tm.bindGroup);
+                        pass.setVertexBuffer(0, tm.vertexBuffer);
+                        pass.setIndexBuffer(tm.indexBuffer, 'uint32');
+                        pass.drawIndexed(tm.indexCount);
+                    }
+                    // Restore the opaque pipeline for the passes that follow.
+                    pass.setPipeline(this.pipeline.getPipeline());
                 }
 
                 // PERFORMANCE FIX: Render partially visible batches as sub-batches (not individual meshes!)
@@ -2028,6 +2076,9 @@ export class Renderer {
             }
             if (this.section2DOverlayRenderer?.hasAlignmentLines3D()) {
                 this.section2DOverlayRenderer.drawAlignmentLines3D(pass, viewProj);
+            }
+            if (this.section2DOverlayRenderer?.hasGridLines3D()) {
+                this.section2DOverlayRenderer.drawGridLines3D(pass, viewProj);
             }
             if (this.symbolicTextPipeline?.hasGeometry()) {
                 // Pass viewport pixel dimensions so the shader can scale glyphs
@@ -2451,6 +2502,29 @@ export class Renderer {
     clearAlignmentLines3D(): void {
         if (this.section2DOverlayRenderer) {
             this.section2DOverlayRenderer.clearAlignmentLines3D();
+            this.requestRender();
+        }
+    }
+
+    /**
+     * Upload structural-grid (IfcGridAxis) segments as a flat [x,y,z,x,y,z,...]
+     * line-list in world space (issue #967). Rendered as thin lines, mirroring
+     * the alignment overlay. Pass an empty Float32Array to clear.
+     *
+     * Unlike alignment, grids do NOT expand model bounds: they're behind a
+     * visibility toggle, so toggling them on must not reframe the camera (and
+     * grid axes routinely extend past the model envelope).
+     */
+    uploadGridLines3D(vertices: Float32Array): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.section2DOverlayRenderer.uploadGridLines3D(vertices);
+        this.requestRender();
+    }
+
+    /** Clear the structural-grid overlay. */
+    clearGridLines3D(): void {
+        if (this.section2DOverlayRenderer) {
+            this.section2DOverlayRenderer.clearGridLines3D();
             this.requestRender();
         }
     }

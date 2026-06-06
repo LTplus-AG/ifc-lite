@@ -1,5 +1,34 @@
 # @ifc-lite/viewer
 
+## 1.27.0
+
+### Minor Changes
+
+- [#969](https://github.com/LTplus-AG/ifc-lite/pull/969) [`f3cb460`](https://github.com/LTplus-AG/ifc-lite/commit/f3cb4600bf67f60a200a90bc70c233effbabe76e) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(grids): render structural grids in apps/viewer ([#967](https://github.com/LTplus-AG/ifc-lite/issues/967))
+
+  Wire the structural-grid SDK from [#966](https://github.com/LTplus-AG/ifc-lite/issues/966) into the in-repo viewer, mirroring the
+  alignment-lines stack (lines-only for now).
+
+  - **`@ifc-lite/renderer`**: `uploadGridLines3D` / `clearGridLines3D` (+ internal
+    `hasGridLines3D` / `drawGridLines3D`) — a dedicated grid line buffer drawn
+    through the existing line pipeline, independent of the annotation/alignment
+    overlays. Unlike alignment, grid lines don't expand model bounds (they sit
+    behind a visibility toggle and routinely extend past the envelope). Also frees
+    the alignment + grid line buffers on overlay `dispose()`.
+  - **`@ifc-lite/viewer`**: `useGridLines3D` hook (mirrors `useAlignmentLines3D`,
+    calls `GeometryProcessor.parseGridLines`), wired in `Viewport` and gated by the
+    existing `ifcGrid` type-visibility toggle.
+
+  3D tag/bubble labels and full polyline sampling for curved axes are deferred (see
+  [#967](https://github.com/LTplus-AG/ifc-lite/issues/967)).
+
+### Patch Changes
+
+- Updated dependencies [[`f3cb460`](https://github.com/LTplus-AG/ifc-lite/commit/f3cb4600bf67f60a200a90bc70c233effbabe76e), [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`f99666a`](https://github.com/LTplus-AG/ifc-lite/commit/f99666ae028a88f1378422dd20900929f026cd2b), [`773b508`](https://github.com/LTplus-AG/ifc-lite/commit/773b5086456de3c61bdde8a72dd3d35325e2e995)]:
+  - @ifc-lite/renderer@1.25.0
+  - @ifc-lite/wasm@2.2.0
+  - @ifc-lite/geometry@2.2.0
+
 ## 1.26.0
 
 ### Minor Changes

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
+import type { MeshData } from './types.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -138,6 +139,9 @@ export interface GeometryWorkerBatchMessage {
     normals: Float32Array;
     indices: Uint32Array;
     color: [number, number, number, number];
+    // #961: optional surface texture + per-vertex UVs (transferables).
+    uvs?: MeshData['uvs'];
+    texture?: MeshData['texture'];
   }[];
 }
 
@@ -340,14 +344,31 @@ function collectMeshes(
         // Read the WASM copy-to-JS color getter once; indexing it directly
         // would copy a fresh Float32Array out of WASM per access.
         const color = mesh.color;
-        session.pendingMeshes.push({
+        const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
           positions, normals, indices,
           color: [color[0], color[1], color[2], color[3]],
-        });
+        };
         session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
+        // #961: surface texture + per-vertex UVs (decoded to RGBA8 in Rust). Carried
+        // as transferables so there is no SAB→scratch copy (see SAB-streaming memo).
+        if (mesh.hasTexture) {
+          const uvs = new Float32Array(mesh.uvs);
+          const rgba = new Uint8Array(mesh.textureRgba);
+          meshData.uvs = uvs;
+          meshData.texture = {
+            rgba,
+            width: mesh.textureWidth,
+            height: mesh.textureHeight,
+            repeatS: mesh.textureRepeatS,
+            repeatT: mesh.textureRepeatT,
+          };
+          session.pendingTransfers.push(uvs.buffer, rgba.buffer);
+          session.cumulativeMeshBytes += uvs.byteLength + rgba.byteLength;
+        }
+        session.pendingMeshes.push(meshData);
       } finally {
         mesh.free();
       }

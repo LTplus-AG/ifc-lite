@@ -4,6 +4,11 @@
 
 import { IfcTypeEnum, IfcTypeEnumFromString, IfcTypeEnumToString } from './types.js';
 
+export interface SpatialIndex {
+  queryAABB(bounds: { min: [number, number, number]; max: [number, number, number] }): number[];
+  raycast(origin: [number, number, number], direction: [number, number, number]): number[];
+}
+
 export const SPATIAL_STRUCTURE_TYPE_ENUMS = [
   IfcTypeEnum.IfcProject,
   IfcTypeEnum.IfcSite,

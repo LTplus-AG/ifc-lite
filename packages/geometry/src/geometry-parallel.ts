@@ -183,20 +183,17 @@ export async function* processParallel(
           firstBatchByWorker[workerIndex] = elapsed();
           console.log(`[stream] worker[${workerIndex}] first batch @ ${elapsed()}ms (${msg.meshes?.length ?? 0} meshes)`);
         }
-        const meshes: MeshData[] = msg.meshes.map((m: {
-          expressId: number;
-          ifcType?: string;
-          positions: Float32Array;
-          normals: Float32Array;
-          indices: Uint32Array;
-          color: [number, number, number, number];
-        }) => ({
+        const meshes: MeshData[] = msg.meshes.map((m: MeshData) => ({
           expressId: m.expressId,
           ifcType: m.ifcType,
           positions: m.positions instanceof Float32Array ? m.positions : new Float32Array(m.positions),
           normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals),
           indices: m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices),
           color: m.color,
+          // #961: carry per-vertex UVs + decoded surface texture through to the
+          // renderer (transferables; already typed arrays from the worker).
+          ...(m.uvs ? { uvs: m.uvs } : {}),
+          ...(m.texture ? { texture: m.texture } : {}),
         }));
         if (meshes.length > 0) {
           // Update totalMeshes per batch so consumers see a live
@@ -305,6 +302,14 @@ export async function* processParallel(
     const rtcY = useSharedRtc ? sharedRtcOffset.y : prepassMeta.rtcOffset[1];
     const rtcZ = useSharedRtc ? sharedRtcOffset.z : prepassMeta.rtcOffset[2];
     const effectiveNeedsShift = useSharedRtc ? true : prepassMeta.needsShift;
+
+    // Surface the world→render metadata (unit scale + the effective applied
+    // RTC, which is the shared offset under federation) on coordinateInfo for
+    // downstream consumers (issue #945).
+    coordinator.setWasmMetadata(
+      prepassMeta.unitScale,
+      effectiveNeedsShift ? { x: rtcX, y: rtcY, z: rtcZ } : null,
+    );
 
     eventQueue.push({
       type: 'rtcOffset',

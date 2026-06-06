@@ -15,11 +15,7 @@ import {
     QuantityType,
 } from '@ifc-lite/data';
 
-// SpatialIndex interface - matches BVH from @ifc-lite/spatial
-export interface SpatialIndex {
-    queryAABB(bounds: { min: [number, number, number]; max: [number, number, number] }): number[];
-    raycast(origin: [number, number, number], direction: [number, number, number]): number[];
-}
+export type { SpatialIndex } from '@ifc-lite/data';
 
 /**
  * Entity-by-ID lookup interface. Supports both Map<number, EntityRef> (legacy)

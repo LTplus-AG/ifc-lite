@@ -54,7 +54,12 @@ export function meshDataToThree(mesh: MeshData): THREE.Mesh {
     color: new THREE.Color(r, g, b),
     transparent: a < 1,
     opacity: a,
-    side: a < 1 ? THREE.DoubleSide : THREE.FrontSide,
+    // DoubleSide even for opaque: IFC triangle winding is not reliably
+    // outward (the native renderer draws with cullMode 'none' for the same
+    // reason), and culling one side of two coincident coplanar walls — common
+    // where a facing wall sits flush on a thicker one — leaves the surviving
+    // faces z-fighting into a comb pattern along the seam.
+    side: THREE.DoubleSide,
     depthWrite: a >= 1,
   });
 
@@ -151,7 +156,9 @@ export function geometryResultToBatched(result: GeometryResult): {
       color: new THREE.Color(r, g, b),
       transparent: a < 1,
       opacity: a,
-      side: a < 1 ? THREE.DoubleSide : THREE.FrontSide,
+      // DoubleSide for opaque too — see meshDataToThree: IFC winding varies and
+      // coincident coplanar walls z-fight if one side is culled.
+      side: THREE.DoubleSide,
       depthWrite: a >= 1,
     });
 
@@ -301,7 +308,9 @@ function mergeWithVertexColors(
     vertexColors: true,
     transparent,
     opacity,
-    side: transparent ? THREE.DoubleSide : THREE.FrontSide,
+    // DoubleSide for opaque too — see meshDataToThree: IFC winding varies and
+    // coincident coplanar walls z-fight if one side is culled.
+    side: THREE.DoubleSide,
     depthWrite: !transparent,
   });
 

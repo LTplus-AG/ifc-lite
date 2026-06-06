@@ -512,7 +512,7 @@ export function PropertiesPanel() {
     if (!entityNode) return [];
 
     const rawProps = entityNode.properties();
-    let result = rawProps.map(pset => ({
+    let result: DisplayPropertySet[] = rawProps.map(pset => ({
       name: pset.name,
       properties: pset.properties.map(p => ({ name: p.name, value: p.value, isMutated: false })),
       isNewPset: false,

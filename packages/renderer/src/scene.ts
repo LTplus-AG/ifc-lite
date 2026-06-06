@@ -38,6 +38,22 @@ interface BatchBucket {
  * Accepts the structural shape so it works for both BatchedMesh and
  * Mesh — they each carry the same buffer trio.
  */
+/** A surface-textured mesh (#961): its own interleaved vertex buffer (with a UV
+ *  lane), index buffer, per-mesh uniform buffer, GPU texture + sampler, and a
+ *  bindGroup wiring all three. Drawn per-mesh in a dedicated sub-pass. */
+export interface TexturedMesh {
+  expressId: number;
+  vertexBuffer: GPUBuffer;
+  indexBuffer: GPUBuffer;
+  indexCount: number;
+  uniformBuffer: GPUBuffer;
+  texture: GPUTexture;
+  sampler: GPUSampler;
+  bindGroup: GPUBindGroup;
+  /** Authored tint (multiplies the sampled texel); white = texture passthrough. */
+  color: [number, number, number, number];
+}
+
 function destroyGpuResources(
   m: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; uniformBuffer?: GPUBuffer },
 ): void {
@@ -53,6 +69,8 @@ export class Scene {
   private meshDataBucket: Map<MeshData, BatchBucket> = new Map();   // reverse lookup: MeshData -> owning bucket
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
+  private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
+  private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
 
   // Buffer-size-aware bucket splitting: when a single color group's geometry
   // would exceed the GPU maxBufferSize, overflow is directed to a new
@@ -417,8 +435,26 @@ export class Scene {
 
     const retainStreamingGeometry = !(isStreaming && this.ephemeralStreamingMode);
 
+    // #961: divert meshes carrying an IFC surface texture to the dedicated
+    // textured pipeline. They have no single colour, so they must be kept out
+    // of BOTH the colour buckets AND the streaming-fragment path below —
+    // otherwise a flat-colour copy would be drawn over the texture. Still
+    // register them in meshDataMap (addMeshData) so CPU picking/bbox/frame work.
+    let renderable = meshDataArray;
+    if (meshDataArray.some((m) => m.texture && m.uvs)) {
+      renderable = [];
+      for (const meshData of meshDataArray) {
+        if (meshData.texture && meshData.uvs) {
+          this.createTexturedMesh(meshData, device, pipeline);
+          this.addMeshData(meshData);
+        } else {
+          renderable.push(meshData);
+        }
+      }
+    }
+
     // Route each mesh into a size-aware bucket for its color
-    for (const meshData of meshDataArray) {
+    for (const meshData of renderable) {
       const baseKey = this.colorKey(meshData.color);
       const bucketKey = this.resolveActiveBucket(baseKey, meshData);
 
@@ -450,7 +486,8 @@ export class Scene {
       // STREAMING: Create small fragment batches from ONLY the new meshes.
       // Avoids the O(N²) cost of re-merging all accumulated data every batch.
       // finalizeStreaming() destroys fragments and does one O(N) full merge.
-      this.createStreamingFragments(meshDataArray, device, pipeline);
+      // `renderable` excludes textured meshes (drawn via the textured pipeline).
+      this.createStreamingFragments(renderable, device, pipeline);
       return;
     }
 
@@ -578,6 +615,20 @@ export class Scene {
     this.meshDataMap.delete(expressId);
     this.boundingBoxes.delete(expressId);
 
+    // #961: textured meshes own GPU buffers outside the colour buckets, so the
+    // bucket cleanup above never touches them. Destroy + drop them here or a
+    // deleted textured entity keeps rendering (and leaks its GPU texture).
+    for (let i = this.texturedMeshes.length - 1; i >= 0; i--) {
+      const tm = this.texturedMeshes[i];
+      if (tm.expressId !== expressId) continue;
+      tm.vertexBuffer.destroy();
+      tm.indexBuffer.destroy();
+      tm.uniformBuffer.destroy();
+      tm.texture.destroy();
+      this.texturedMeshes.splice(i, 1);
+      removedDedicated = true;
+    }
+
     for (const key of affectedKeys) {
       this.pendingBatchKeys.add(key);
     }
@@ -644,6 +695,23 @@ export class Scene {
       anyMoved = true;
     }
     if (!anyMoved) return false;
+
+    // #961: a textured mesh's GPU vertex buffer lives outside the colour buckets,
+    // so the in-place position translation above won't reach the GPU on its own —
+    // re-interleave + re-upload the moved textured parts (paired by expressId,
+    // in creation order). Without this a moved textured entity renders stale.
+    if (this.texturedDevice && this.texturedMeshes.length > 0) {
+      const texturedData = meshDataList.filter((md) => md.texture && md.uvs);
+      if (texturedData.length > 0) {
+        const entries = this.texturedMeshes.filter((tm) => tm.expressId === expressId);
+        for (let i = 0; i < entries.length && i < texturedData.length; i++) {
+          const interleaved = this.interleaveTexturedVertices(texturedData[i]);
+          if (interleaved) {
+            this.texturedDevice.queue.writeBuffer(entries[i].vertexBuffer, 0, interleaved);
+          }
+        }
+      }
+    }
 
     this.boundingBoxes.delete(expressId);
     for (const key of affectedKeys) {
@@ -1562,9 +1630,120 @@ export class Scene {
   /**
    * Clear scene
    */
+  /** Textured meshes (#961) for the renderer's dedicated textured sub-pass. */
+  getTexturedMeshes(): readonly TexturedMesh[] {
+    return this.texturedMeshes;
+  }
+
+  /**
+   * Build a textured mesh (#961): interleave position+normal+entityId+uv into one
+   * vertex buffer, upload the decoded RGBA8 texture, create a sampler honouring
+   * the IFC RepeatS/RepeatT wrap, and wire a bindGroup (uniform+texture+sampler).
+   * The per-frame uniform (viewProj/section/flags + colour tint) is written by
+   * the renderer each frame, mirroring how colour batches are driven.
+   */
+  /**
+   * Interleave a textured mesh's vertices into the stride-36 layout
+   * `[px,py,pz, nx,ny,nz, entityId(u32), u,v]`. Shared by initial upload and
+   * the translate re-upload so the two can't drift. Returns null when the mesh
+   * has no texture/uvs/geometry.
+   */
+  private interleaveTexturedVertices(meshData: MeshData): ArrayBuffer | null {
+    const uvs = meshData.uvs;
+    if (!meshData.texture || !uvs) return null;
+    const positions = meshData.positions;
+    const normals = meshData.normals;
+    const vertexCount = positions.length / 3;
+    if (vertexCount === 0 || meshData.indices.length === 0) return null;
+
+    const interleaved = new ArrayBuffer(vertexCount * 36);
+    const f = new Float32Array(interleaved);
+    const u = new Uint32Array(interleaved);
+    const entityIds = meshData.entityIds;
+    for (let i = 0; i < vertexCount; i++) {
+      const o = i * 9;
+      f[o] = positions[i * 3];
+      f[o + 1] = positions[i * 3 + 1];
+      f[o + 2] = positions[i * 3 + 2];
+      f[o + 3] = normals[i * 3] ?? 0;
+      f[o + 4] = normals[i * 3 + 1] ?? 0;
+      f[o + 5] = normals[i * 3 + 2] ?? 0;
+      u[o + 6] = entityIds ? entityIds[i] : meshData.expressId;
+      f[o + 7] = uvs[i * 2] ?? 0;
+      f[o + 8] = uvs[i * 2 + 1] ?? 0;
+    }
+    return interleaved;
+  }
+
+  private createTexturedMesh(meshData: MeshData, device: GPUDevice, pipeline: RenderPipeline): void {
+    const tex = meshData.texture;
+    const interleaved = this.interleaveTexturedVertices(meshData);
+    if (!tex || !interleaved) return;
+    this.texturedDevice = device; // reused by translateMeshesForEntity re-upload
+
+    const vertexBuffer = device.createBuffer({
+      size: interleaved.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(vertexBuffer, 0, interleaved);
+
+    const indexBuffer = device.createBuffer({
+      size: meshData.indices.byteLength,
+      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
+
+    // Upload the Rust-decoded RGBA8 verbatim — no image decoding in JS.
+    const texture = device.createTexture({
+      size: { width: tex.width, height: tex.height },
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    });
+    device.queue.writeTexture(
+      { texture },
+      tex.rgba,
+      { bytesPerRow: tex.width * 4, rowsPerImage: tex.height },
+      { width: tex.width, height: tex.height },
+    );
+
+    const wrap = (repeat: boolean): GPUAddressMode => (repeat ? 'repeat' : 'clamp-to-edge');
+    const sampler = device.createSampler({
+      addressModeU: wrap(tex.repeatS),
+      addressModeV: wrap(tex.repeatT),
+      magFilter: 'linear',
+      minFilter: 'linear',
+      mipmapFilter: 'linear',
+    });
+
+    const uniformBuffer = device.createBuffer({
+      size: pipeline.getUniformBufferSize(),
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    const bindGroup = pipeline.createTexturedBindGroup(uniformBuffer, texture.createView(), sampler);
+
+    this.texturedMeshes.push({
+      expressId: meshData.expressId,
+      vertexBuffer,
+      indexBuffer,
+      indexCount: meshData.indices.length,
+      uniformBuffer,
+      texture,
+      sampler,
+      bindGroup,
+      color: meshData.color,
+    });
+  }
+
   clear(): void {
     for (const mesh of this.meshes) destroyGpuResources(mesh);
     for (const batch of this.batchedMeshes) destroyGpuResources(batch);
+    for (const tm of this.texturedMeshes) {
+      tm.vertexBuffer.destroy();
+      tm.indexBuffer.destroy();
+      tm.uniformBuffer.destroy();
+      tm.texture.destroy();
+    }
+    this.texturedMeshes = [];
     // Clear partial batch cache
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     // Destroy streaming fragments (already included in batchedMeshes, but tracked separately)

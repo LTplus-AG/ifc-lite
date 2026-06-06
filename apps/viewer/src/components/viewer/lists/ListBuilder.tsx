@@ -271,11 +271,11 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
 
   const buildDefinition = useCallback((): ListDefinition => {
     const groupValid = groupByColumnId && columns.some(c => c.id === groupByColumnId);
-    const grouping = groupValid
-      ? {
-          columnId: groupByColumnId,
-          sumColumnIds: columns.filter(c => sumColumnIds.has(c.id)).map(c => c.id),
-        }
+    const sumCols = columns.filter(c => sumColumnIds.has(c.id)).map(c => c.id);
+    // Keep grouping when there's a valid group column OR any sum column — sums
+    // alone still produce grand totals, and may have been set from the table.
+    const grouping = (groupValid || sumCols.length > 0)
+      ? { columnId: groupValid ? groupByColumnId : '', sumColumnIds: sumCols }
       : undefined;
     return {
       id: initial?.id ?? crypto.randomUUID(),

@@ -50,6 +50,16 @@ rayon = "1.10"
 # Fast hashing
 rustc-hash = "2.1"
 
+# PNG decode for IfcBlobTexture (issue #961). Already in the dependency tree
+# (transitive), so it adds no new wasm weight. Pure-Rust inflate
+# (miniz_oxide / fdeflate) — wasm-safe.
+png = "0.17"
+
+# JPEG decode for IfcBlobTexture with RasterFormat 'JPG'/'JPEG' (issue #961).
+# `default-features = false` drops the `rayon` parallelism (no threads on
+# wasm32) — pure-Rust, wasm-safe. ~adds a small decoder to the bundle.
+jpeg-decoder = { version = "0.3", default-features = false }
+
 # Small vector optimization for frequently allocated small collections
 smallvec = "1.13"
 

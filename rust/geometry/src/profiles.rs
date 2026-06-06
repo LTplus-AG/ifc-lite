@@ -17,6 +17,15 @@ use std::f64::consts::PI;
 /// Prevents stack overflow from deeply nested CompositeCurve → TrimmedCurve → CompositeCurve chains.
 const MAX_CURVE_DEPTH: u32 = 50;
 
+/// One bound of an `IfcTrimmingSelect` on a trimmed conic. A `Parameter` is an
+/// angle in the project's PLANEANGLEUNIT; a `Cartesian` point is resolved to an
+/// angle against the conic's own placement and radii once those are known.
+#[derive(Debug, Clone, Copy)]
+enum TrimSelect {
+    Parameter(f64),
+    Cartesian(Point2<f64>),
+}
+
 /// Issue #635 — when an `IfcArbitraryClosedProfileDef` is actually a smooth
 /// curve approximated by a many-vertex polyline (e.g. a 127-vertex circle
 /// stand-in for a round window), the resulting prism has too many side
@@ -49,6 +58,34 @@ const RDP_EPSILON_RATIO: f64 = 1.0 / 100.0;
 /// Prevents collapsing tiny profiles where ratio-derived epsilon would be
 /// numerically negligible.
 const RDP_EPSILON_MIN: f64 = 5.0e-3;
+/// Minimum ratio of a profile's half-thickness (`area / perimeter`, its
+/// hydraulic radius) to its bounding-box diagonal for simplification to be
+/// attempted. Below this the profile is a *thin* curved sliver — e.g. a
+/// trimmed-circle wall whose inner and outer arcs sit only a wall-thickness
+/// apart (issue #820) — and RDP's diagonal-scaled epsilon would distort or fold
+/// its feature size; such profiles are left untouched. A round window sits far
+/// above this (half-thickness ≈ r/2 against a bbox diagonal of 2·r·√2 gives
+/// ≈ 0.18, ~3.5× the gate) and still simplifies. Thinness alone is *not*
+/// sufficient to skip — an elongated filled ellipse is thin by this measure too
+/// yet simplifies fine — so it is paired with [`DOUBLE_BACK_REFLEX_ARC_FRACTION`].
+const THIN_FEATURE_RATIO: f64 = 0.05;
+/// Fraction of a loop's *perimeter length* that must run along reflex vertices
+/// (turning against the loop's overall winding) for it to count as *doubling
+/// back* on itself rather than enclosing a convex-ish blob. A convex shape
+/// (filled ellipse, disk) has zero reflex boundary at any aspect ratio; an
+/// annular sector's entire inner arc is reflex, so ~half its perimeter is
+/// (≈0.5). 0.15 sits clear of both, and measuring by arc *length* rather than
+/// vertex *count* makes it independent of how densely each boundary is sampled
+/// — a thin wall whose inner arc carries far fewer points than its outer arc
+/// still reads as ~0.5 (Codex review). It is likewise insensitive to a
+/// *localized* spike: one inward notch or a sub-mm closing-seam jog spans
+/// negligible arc length, so such convex thin openings keep simplifying (else
+/// they regress to the issue #635 AABB cut).
+const DOUBLE_BACK_REFLEX_ARC_FRACTION: f64 = 0.15;
+/// Per-vertex turning (as |sin| of the deflection angle) below which a vertex
+/// is treated as straight, not reflex — guards the reflex test against f64
+/// noise at near-collinear samples on a convex curve.
+const REFLEX_TURN_SIN_TOL: f64 = 1.0e-6;
 /// Only attempt simplification when the polyline has at least this many
 /// vertices. Below this the polyline is already cheap enough.
 const SMOOTH_CURVE_MIN_VERTICES: usize = 24;
@@ -134,6 +171,134 @@ fn rdp_simplify_open(points: &[Point2<f64>], epsilon: f64) -> Vec<Point2<f64>> {
         .collect()
 }
 
+/// Vertex-count ceiling for the brute-force O(n²) self-intersection scan.
+/// Above this the scan is too expensive to run per profile; the *caller*
+/// treats an over-ceiling simplified loop as unconfirmed and falls back to the
+/// faithful original (fail-safe) rather than trusting it. A simplification that
+/// still has this many vertices barely beat the original anyway, so the
+/// fallback is essentially free.
+const SELF_INTERSECT_SCAN_MAX_VERTICES: usize = 1024;
+
+/// Whether the closed polygon described by `loop_` (open form — the closing
+/// edge from the last vertex back to the first is implied) has any pair of
+/// non-adjacent edges that properly cross. Used to reject a simplification
+/// that turned a simple profile loop into a self-intersecting one.
+///
+/// Brute-force O(n²), so only meaningful up to `SELF_INTERSECT_SCAN_MAX_VERTICES`
+/// vertices; above that it returns `false` without scanning and callers must
+/// apply their own size cap (see `simplify_smooth_curve_polyline`). Adjacent
+/// edges (which legitimately share a vertex) are skipped, and only *proper*
+/// crossings count, so the shared endpoints of consecutive segments never
+/// register as intersections.
+fn closed_loop_self_intersects(loop_: &[Point2<f64>]) -> bool {
+    let n = loop_.len();
+    if !(4..=SELF_INTERSECT_SCAN_MAX_VERTICES).contains(&n) {
+        return false;
+    }
+    // Orientation of the triplet (a, b, c): >0 CCW, <0 CW, 0 collinear.
+    #[inline]
+    fn orient(a: Point2<f64>, b: Point2<f64>, c: Point2<f64>) -> f64 {
+        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    }
+    // Proper crossing of segment ab and segment cd (interiors intersect at a
+    // single point). Collinear/touching-endpoint cases return false — those
+    // are how consecutive boundary edges legitimately meet.
+    #[inline]
+    fn segments_properly_cross(
+        a: Point2<f64>,
+        b: Point2<f64>,
+        c: Point2<f64>,
+        d: Point2<f64>,
+    ) -> bool {
+        let d1 = orient(c, d, a);
+        let d2 = orient(c, d, b);
+        let d3 = orient(a, b, c);
+        let d4 = orient(a, b, d);
+        ((d1 > 0.0) != (d2 > 0.0)) && ((d3 > 0.0) != (d4 > 0.0))
+    }
+    for i in 0..n {
+        let a = loop_[i];
+        let b = loop_[(i + 1) % n];
+        for j in (i + 1)..n {
+            // Skip the two segments adjacent to edge i (they share a vertex).
+            // `j > i` already holds, so only the wrap-around adjacency
+            // (j is the segment just before i) and the immediate successor
+            // (j == i + 1) can touch edge i.
+            if (j + 1) % n == i || (i + 1) % n == j {
+                continue;
+            }
+            let c = loop_[j];
+            let d = loop_[(j + 1) % n];
+            if segments_properly_cross(a, b, c, d) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Whether the closed polygon (open form) `loop_` *doubles back* on itself —
+/// the share of its perimeter that runs along reflex vertices (turning against
+/// its winding) exceeds `DOUBLE_BACK_REFLEX_ARC_FRACTION`.
+///
+/// A convex shape (filled ellipse, disk) has no reflex boundary at any aspect
+/// ratio. A loop that runs out along one boundary and back along another (an
+/// annular sector / thin curved wall) makes its entire return arc reflex, so
+/// ~half its perimeter is. Two properties matter:
+///   * Measuring reflex *arc length* (not vertex *count*) makes the test
+///     independent of per-boundary sampling density — a thin wall whose inner
+///     arc carries far fewer points than its outer arc still reads as ~0.5,
+///     whereas a count fraction would be skewed below the threshold.
+///   * It stays insensitive to a *localized* feature — one inward notch, or the
+///     sub-mm out-and-back jog where a composite curve closes — because that
+///     spans negligible arc length, whereas a total-turning measure
+///     double-counts such a spike and would wrongly flag the loop.
+///
+/// Winding is taken from the signed area; a vertex is reflex when its turn
+/// opposes that winding by more than `REFLEX_TURN_SIN_TOL` (normalised so the
+/// tolerance is a true angle, not a length-scaled cross product). Each reflex
+/// vertex contributes its outgoing edge length, so the reflex arc length and
+/// the perimeter are summed over the same edges.
+fn loop_doubles_back(loop_: &[Point2<f64>]) -> bool {
+    let n = loop_.len();
+    if n < 4 {
+        return false;
+    }
+    let mut signed_area2 = 0.0;
+    for i in 0..n {
+        let a = loop_[i];
+        let b = loop_[(i + 1) % n];
+        signed_area2 += a.x * b.y - b.x * a.y;
+    }
+    if signed_area2 == 0.0 {
+        return false;
+    }
+    let winding = signed_area2.signum();
+
+    let mut perimeter = 0.0;
+    let mut reflex_len = 0.0;
+    for i in 0..n {
+        let prev = loop_[(i + n - 1) % n];
+        let cur = loop_[i];
+        let next = loop_[(i + 1) % n];
+        let (ex_in, ey_in) = (cur.x - prev.x, cur.y - prev.y);
+        let (ex_out, ey_out) = (next.x - cur.x, next.y - cur.y);
+        let out_len = (ex_out * ex_out + ey_out * ey_out).sqrt();
+        perimeter += out_len;
+        let in_len = (ex_in * ex_in + ey_in * ey_in).sqrt();
+        let denom = in_len * out_len;
+        if denom <= 0.0 {
+            continue; // zero-length edge (duplicate vertex) — no turn
+        }
+        // sin(turn) = cross / (|e_in||e_out|); reflex when it opposes winding.
+        let sin_turn = (ex_in * ey_out - ey_in * ex_out) / denom;
+        if sin_turn * winding < -REFLEX_TURN_SIN_TOL {
+            reflex_len += out_len;
+        }
+    }
+    perimeter > 0.0 && reflex_len / perimeter > DOUBLE_BACK_REFLEX_ARC_FRACTION
+}
+
 /// Best-effort downsampling of a polyline that might approximate a smooth
 /// curve. Closed-loop aware (last == first is preserved). Returns the
 /// original polyline unchanged when it doesn't look over-tessellated or
@@ -196,6 +361,7 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     // define the silhouette and slice across the fillet region instead.
     let mut perimeter = 0.0;
     let mut longest_edge: f64 = 0.0;
+    let mut area2 = 0.0; // 2× signed shoelace area
     for i in 0..n {
         let a = core[i];
         let b = core[(i + 1) % n];
@@ -206,6 +372,7 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
         if len > longest_edge {
             longest_edge = len;
         }
+        area2 += a.x * b.y - b.x * a.y;
     }
     let mean_edge = perimeter / n as f64;
     if mean_edge / diag > SMOOTH_CURVE_SPACING_RATIO {
@@ -215,6 +382,46 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     if longest_edge / diag > SMOOTH_CURVE_LONGEST_EDGE_RATIO {
         // Mixed-geometry profile: at least one edge is too long to belong to
         // a uniformly-tessellated smooth curve. Leave the polyline alone.
+        return points.to_vec();
+    }
+
+    // Thin doubling-back gate (issue #820). RDP's epsilon is scaled to the
+    // bounding diagonal, which is right for a "fat" smooth shape — a round
+    // window is ~uniformly thick in every direction — but wrong for a *thin*
+    // one that folds back on itself. A curved annular-sector wall is only a
+    // wall thickness deep yet metres across, so a diagonal-scaled chord budget
+    // is a large fraction of (or exceeds) the thickness; RDP then slides chords
+    // across the thin dimension, letting the inner and outer arcs drift
+    // independently: the footprint either folds into a self-intersecting flap
+    // (the visible #820 bug) or silently gains/loses double-digit-percent area
+    // while staying topologically simple (the same distortion class as the
+    // +4.31% W410 fillet bug). No epsilon you can still call "simplification"
+    // preserves such a shape, so don't try — keep the faithful original.
+    //
+    // Both conditions are required, because *thinness alone* is ambiguous:
+    //  * `area / perimeter` (the hydraulic radius, ≈ half the mean thickness)
+    //    over the diagonal is tiny both for a thin-walled ring (≈0.0015 for the
+    //    100 mm × 24 m #820 wall) AND for an elongated *filled* ellipse — an
+    //    8:1 opening sits at ≈0.048, below any thinness cutoff — yet the convex
+    //    ellipse simplifies perfectly and *must* keep simplifying so its void
+    //    cut fits the BSP polygon budget (else round openings → AABB boxes,
+    //    issue #635).
+    //  * What actually breaks RDP is the boundary *doubling back* on itself.
+    //    A convex loop has no reflex boundary at any aspect ratio; an annular
+    //    sector's inner arc is entirely reflex, so ~half its perimeter is.
+    //    `loop_doubles_back` measures that reflex arc-length fraction, which
+    //    distinguishes a thin ring from a thin ellipse, is independent of how
+    //    densely each boundary is sampled, and — unlike a total-turning measure
+    //    — ignores a lone notch or closing-seam jog. Requiring thinness too
+    //    leaves *fat* curved walls (thickness ≫ epsilon, no fold) free to
+    //    simplify.
+    let half_thickness = if perimeter > f64::EPSILON {
+        area2.abs() / (2.0 * perimeter)
+    } else {
+        0.0
+    };
+    let is_thin = half_thickness / diag < THIN_FEATURE_RATIO;
+    if is_thin && loop_doubles_back(core) {
         return points.to_vec();
     }
 
@@ -243,6 +450,20 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     if simplified_core.len() < SIMPLIFIED_MIN_VERTICES || simplified_core.len() >= n {
         // Either too aggressive or no real reduction — keep the original
         // so we never make an opening worse than it already was.
+        return points.to_vec();
+    }
+
+    // Backstop: a valid simplification of a simple polygon stays simple. The
+    // thickness-capped epsilon above prevents RDP from crossing a thin seam in
+    // the common case, but pin placement and non-uniform sampling can still
+    // produce a self-intersecting loop, so reject any result we can't confirm
+    // is simple and keep the faithful original. Loops too large to scan within
+    // the O(n²) budget are treated as unconfirmed (fail-safe) rather than
+    // assumed clean — a simplification that still has >1024 vertices barely
+    // beat the original, so falling back to it costs almost nothing.
+    if simplified_core.len() > SELF_INTERSECT_SCAN_MAX_VERTICES
+        || closed_loop_self_intersects(&simplified_core)
+    {
         return points.to_vec();
     }
 
@@ -480,6 +701,130 @@ fn rounded_rectangle_outline(
         points.reverse();
     }
     points
+}
+
+/// Append `pt` unless it coincides (within 1 µm on both axes) with the current
+/// last point. Adjacent arcs/segments in a steel-section contour can meet at the
+/// exact same coordinate — e.g. an L-shape where `width == thickness + fillet +
+/// edge` puts the toe arc's end on the inner fillet's start — and emitting both
+/// hands a zero-length edge to downstream tessellation/CSG. Mirrors the
+/// seam-degeneracy guard in `rounded_rectangle_outline`.
+fn push_dedup(out: &mut Vec<Point2<f64>>, pt: Point2<f64>) {
+    if out
+        .last()
+        .map_or(true, |p| (p.x - pt.x).abs() > 1.0e-9 || (p.y - pt.y).abs() > 1.0e-9)
+    {
+        out.push(pt);
+    }
+}
+
+/// Append a circular arc (radius `r`, centre (`cx`,`cy`)) sweeping from angle
+/// `a0` to `a1` as up to `segments + 1` points. Used to round parametric
+/// steel-section corners (IfcLShapeProfileDef FilletRadius / EdgeRadius, etc.).
+/// Coincident endpoints (with the prior contour point, or a zero-length arc) are
+/// dropped via [`push_dedup`].
+fn push_arc(
+    out: &mut Vec<Point2<f64>>,
+    cx: f64,
+    cy: f64,
+    r: f64,
+    a0: f64,
+    a1: f64,
+    segments: usize,
+) {
+    let n = segments.max(1);
+    for i in 0..=n {
+        let t = i as f64 / n as f64;
+        let a = a0 + (a1 - a0) * t;
+        push_dedup(out, Point2::new(cx + r * a.cos(), cy + r * a.sin()));
+    }
+}
+
+/// Round a (right-angle) corner with a tangent fillet of radius `r`, replacing
+/// the sharp `corner` with an arc tangent to the incoming edge `prev->corner`
+/// and the outgoing edge `corner->next`. Returns the arc points from the
+/// incoming tangent point to the outgoing one (so the caller drops the sharp
+/// corner). The fillet centre is placed on the side the edges turn toward, so
+/// the same call rounds a concave (re-entrant, material-adding) corner and a
+/// convex (toe, material-removing) corner correctly. When `r` is below 1 µm or
+/// the edges are degenerate, the sharp `corner` is returned unchanged.
+///
+/// Used for the steel-section web/flange fillets and toe edge radii
+/// (IfcL/U/T/I-ShapeProfileDef). For a 90° corner the tangent points sit `r`
+/// from the corner along each edge and the centre at `corner - e_in*r + e_out*r`.
+fn round_corner(
+    prev: Point2<f64>,
+    corner: Point2<f64>,
+    next: Point2<f64>,
+    r: f64,
+    segments: usize,
+) -> Vec<Point2<f64>> {
+    if r <= 1.0e-9 {
+        return vec![corner];
+    }
+    let ein = corner - prev;
+    let eout = next - corner;
+    let (ein_n, eout_n) = (ein.norm(), eout.norm());
+    // Need both edges at least `r` long to fit the tangent points, else the
+    // fillet would overrun the edge — fall back to a sharp corner.
+    if ein_n < r || eout_n < r {
+        return vec![corner];
+    }
+    let ein = ein / ein_n;
+    let eout = eout / eout_n;
+    let t_in = corner - ein * r; // tangent point on the incoming edge
+    let t_out = corner + eout * r; // tangent point on the outgoing edge
+    let center = corner - ein * r + eout * r;
+    let mut a0 = (t_in.y - center.y).atan2(t_in.x - center.x);
+    let mut a1 = (t_out.y - center.y).atan2(t_out.x - center.x);
+    // Sweep the short way (a 90° corner gives a quarter arc).
+    while a1 - a0 > std::f64::consts::PI {
+        a1 -= 2.0 * std::f64::consts::PI;
+    }
+    while a0 - a1 > std::f64::consts::PI {
+        a1 += 2.0 * std::f64::consts::PI;
+    }
+    let mut out = Vec::with_capacity(segments + 1);
+    push_arc(&mut out, center.x, center.y, r, a0, a1, segments);
+    out
+}
+
+/// Build a closed outline from `sharp` corners, rounding the corners named in
+/// `radii` (index → radius) with tangent fillets via [`round_corner`]. Corners
+/// not listed (or with radius ≤ 0) stay sharp. Indices wrap, so a corner at the
+/// seam still sees its true neighbours. Used by the L/U/T/I parametric steel
+/// sections; the radius's concave/convex sense is handled by `round_corner`.
+fn fillet_outline(
+    sharp: &[Point2<f64>],
+    radii: &[(usize, f64)],
+    segments: usize,
+) -> Vec<Point2<f64>> {
+    let n = sharp.len();
+    let mut out: Vec<Point2<f64>> = Vec::with_capacity(n + radii.len() * segments);
+    for i in 0..n {
+        let r = radii
+            .iter()
+            .find(|(idx, _)| *idx == i)
+            .map(|(_, r)| *r)
+            .unwrap_or(0.0);
+        if r > 1.0e-9 {
+            for pt in round_corner(sharp[(i + n - 1) % n], sharp[i], sharp[(i + 1) % n], r, segments)
+            {
+                push_dedup(&mut out, pt);
+            }
+        } else {
+            push_dedup(&mut out, sharp[i]);
+        }
+    }
+    // Drop a closing-seam duplicate (first ≈ last) so the closed contour carries
+    // no zero-length edge across the wrap.
+    if out.len() > 1 {
+        let (first, last) = (out[0], out[out.len() - 1]);
+        if (first.x - last.x).abs() <= 1.0e-9 && (first.y - last.y).abs() <= 1.0e-9 {
+            out.pop();
+        }
+    }
+    out
 }
 
 /// Profile processor - processes IFC profiles into 2D contours
@@ -952,31 +1297,42 @@ impl ProfileProcessor {
             .get_float(6)
             .ok_or_else(|| Error::geometry("I-Shape missing FlangeThickness".to_string()))?;
 
+        // FilletRadius (attr 7) rounds the four web↔flange junctions (concave,
+        // adds the root-fillet material). FlangeEdgeRadius (8) and FlangeSlope
+        // (9) are not yet modelled (rare; absent in the ara3d set).
+        let fillet = profile
+            .get_float(7)
+            .unwrap_or(0.0)
+            .clamp(0.0, ((overall_depth - 2.0 * flange_thickness) * 0.5)
+                .min((overall_width - web_thickness) * 0.5)
+                .max(0.0));
+
         let half_width = overall_width / 2.0;
         let half_depth = overall_depth / 2.0;
         let half_web = web_thickness / 2.0;
+        let ftf_bot = -half_depth + flange_thickness;
+        let ftf_top = half_depth - flange_thickness;
 
-        // Create I-shape profile (counter-clockwise from bottom-left)
-        let points = vec![
-            // Bottom flange
-            Point2::new(-half_width, -half_depth),
-            Point2::new(half_width, -half_depth),
-            Point2::new(half_width, -half_depth + flange_thickness),
-            // Right side of web
-            Point2::new(half_web, -half_depth + flange_thickness),
-            Point2::new(half_web, half_depth - flange_thickness),
-            // Top flange
-            Point2::new(half_width, half_depth - flange_thickness),
-            Point2::new(half_width, half_depth),
-            Point2::new(-half_width, half_depth),
-            Point2::new(-half_width, half_depth - flange_thickness),
-            // Left side of web
-            Point2::new(-half_web, half_depth - flange_thickness),
-            Point2::new(-half_web, -half_depth + flange_thickness),
-            Point2::new(-half_width, -half_depth + flange_thickness),
+        // Sharp outline (counter-clockwise from bottom-left). Indices 3, 4, 9,
+        // 10 are the web↔flange junctions that take the fillet.
+        let sharp = [
+            Point2::new(-half_width, -half_depth), // 0
+            Point2::new(half_width, -half_depth),  // 1
+            Point2::new(half_width, ftf_bot),      // 2
+            Point2::new(half_web, ftf_bot),        // 3  junction
+            Point2::new(half_web, ftf_top),        // 4  junction
+            Point2::new(half_width, ftf_top),      // 5
+            Point2::new(half_width, half_depth),   // 6
+            Point2::new(-half_width, half_depth),  // 7
+            Point2::new(-half_width, ftf_top),     // 8
+            Point2::new(-half_web, ftf_top),       // 9  junction
+            Point2::new(-half_web, ftf_bot),       // 10 junction
+            Point2::new(-half_width, ftf_bot),     // 11
         ];
-
-        Ok(Profile2D::new(points))
+        const SEG: usize = 6;
+        // Indices 3, 4, 9, 10 are the four web↔flange junctions.
+        let radii = [(3, fillet), (4, fillet), (9, fillet), (10, fillet)];
+        Ok(Profile2D::new(fillet_outline(&sharp, &radii, SEG)))
     }
 
     /// Process asymmetric I-shape profile.
@@ -1174,27 +1530,57 @@ impl ProfileProcessor {
     /// Process L-shape profile (angle)
     /// IfcLShapeProfileDef: ProfileType, ProfileName, Position, Depth, Width, Thickness, ...
     fn process_l_shape(&self, profile: &DecodedEntity) -> Result<Profile2D> {
+        // IfcLShapeProfileDef: Depth(3), Width(4), Thickness(5), FilletRadius(6),
+        // EdgeRadius(7), LegSlope(8). Built corner-at-origin (heel at (0,0),
+        // horizontal leg along +X, vertical leg along +Y); `center_on_bbox`
+        // re-centres it. LegSlope (tapered legs) is rare and not modelled.
         let depth = profile
             .get_float(3)
             .ok_or_else(|| Error::geometry("L-Shape missing Depth".to_string()))?;
         let width = profile
             .get_float(4)
             .ok_or_else(|| Error::geometry("L-Shape missing Width".to_string()))?;
-        let thickness = profile
+        let t = profile
             .get_float(5)
             .ok_or_else(|| Error::geometry("L-Shape missing Thickness".to_string()))?;
 
-        // L-shape profile (counter-clockwise from origin)
-        let points = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(width, 0.0),
-            Point2::new(width, thickness),
-            Point2::new(thickness, thickness),
-            Point2::new(thickness, depth),
-            Point2::new(0.0, depth),
-        ];
+        // FilletRadius rounds the inner re-entrant corner (concave, adds
+        // material); EdgeRadius rounds the two leg toes (convex, removes the
+        // sharp tips). Both optional; clamp so the arcs stay inside the legs.
+        let rf = profile
+            .get_float(6)
+            .unwrap_or(0.0)
+            .clamp(0.0, (width - t).min(depth - t).max(0.0));
+        let re = profile.get_float(7).unwrap_or(0.0).clamp(0.0, t * 0.999);
+        const SEG: usize = 6;
+        let half_pi = std::f64::consts::FRAC_PI_2;
+        let pi = std::f64::consts::PI;
 
-        Ok(Profile2D::new(points))
+        // Counter-clockwise from the heel.
+        let mut p: Vec<Point2<f64>> = Vec::new();
+        p.push(Point2::new(0.0, 0.0)); // heel (outer corner) — sharp
+        p.push(Point2::new(width, 0.0)); // horizontal leg outer end — sharp
+        // horizontal leg toe (width, t): convex EdgeRadius
+        if re > 1.0e-9 {
+            push_arc(&mut p, width - re, t - re, re, 0.0, half_pi, SEG);
+        } else {
+            p.push(Point2::new(width, t));
+        }
+        // inner re-entrant corner (t, t): concave FilletRadius
+        if rf > 1.0e-9 {
+            push_arc(&mut p, t + rf, t + rf, rf, 1.5 * pi, pi, SEG);
+        } else {
+            p.push(Point2::new(t, t));
+        }
+        // vertical leg toe (t, depth): convex EdgeRadius
+        if re > 1.0e-9 {
+            push_arc(&mut p, t - re, depth - re, re, 0.0, half_pi, SEG);
+        } else {
+            p.push(Point2::new(t, depth));
+        }
+        p.push(Point2::new(0.0, depth)); // vertical leg outer end — sharp
+
+        Ok(Profile2D::new(p))
     }
 
     /// Process U-shape profile (channel)
@@ -1213,21 +1599,31 @@ impl ProfileProcessor {
             .get_float(6)
             .ok_or_else(|| Error::geometry("U-Shape missing FlangeThickness".to_string()))?;
 
+        // FilletRadius (attr 7) rounds the two inner web↔flange junctions
+        // (concave); EdgeRadius (attr 8) rounds the two flange toes (convex).
+        // FlangeSlope (9) not modelled.
         let half_depth = depth / 2.0;
+        let ft = flange_thickness;
+        let rf = profile
+            .get_float(7)
+            .unwrap_or(0.0)
+            .clamp(0.0, (flange_width - web_thickness).min(half_depth - ft).max(0.0));
+        let re = profile.get_float(8).unwrap_or(0.0).clamp(0.0, ft * 0.999);
 
-        // U-shape profile (counter-clockwise)
-        let points = vec![
-            Point2::new(0.0, -half_depth),
-            Point2::new(flange_width, -half_depth),
-            Point2::new(flange_width, -half_depth + flange_thickness),
-            Point2::new(web_thickness, -half_depth + flange_thickness),
-            Point2::new(web_thickness, half_depth - flange_thickness),
-            Point2::new(flange_width, half_depth - flange_thickness),
-            Point2::new(flange_width, half_depth),
-            Point2::new(0.0, half_depth),
+        // Sharp outline (counter-clockwise). 2,5 = flange toes; 3,4 = junctions.
+        let sharp = [
+            Point2::new(0.0, -half_depth),               // 0 back-bottom outer
+            Point2::new(flange_width, -half_depth),       // 1 bottom toe outer
+            Point2::new(flange_width, -half_depth + ft),  // 2 bottom toe inner (edge)
+            Point2::new(web_thickness, -half_depth + ft), // 3 bottom junction (fillet)
+            Point2::new(web_thickness, half_depth - ft),  // 4 top junction (fillet)
+            Point2::new(flange_width, half_depth - ft),   // 5 top toe inner (edge)
+            Point2::new(flange_width, half_depth),        // 6 top toe outer
+            Point2::new(0.0, half_depth),                 // 7 back-top outer
         ];
-
-        Ok(Profile2D::new(points))
+        const SEG: usize = 6;
+        let radii = [(2, re), (3, rf), (4, rf), (5, re)];
+        Ok(Profile2D::new(fillet_outline(&sharp, &radii, SEG)))
     }
 
     /// Process T-shape profile
@@ -1246,31 +1642,55 @@ impl ProfileProcessor {
             .get_float(6)
             .ok_or_else(|| Error::geometry("T-Shape missing FlangeThickness".to_string()))?;
 
+        // FilletRadius (attr 7) rounds the two web↔flange junctions (concave);
+        // FlangeEdgeRadius (8) rounds the flange toes; WebEdgeRadius (9) rounds
+        // the web's free end. Flange/Web slopes (10/11) not modelled.
         let half_flange = flange_width / 2.0;
         let half_web = web_thickness / 2.0;
+        let ft = flange_thickness;
+        let ftf = depth - ft; // flange inner face Y
+        let rf = profile
+            .get_float(7)
+            .unwrap_or(0.0)
+            .clamp(0.0, (half_flange - half_web).min(ftf).max(0.0));
+        let r_fl = profile.get_float(8).unwrap_or(0.0).clamp(0.0, ft * 0.999);
+        let r_web = profile.get_float(9).unwrap_or(0.0).clamp(0.0, half_web * 0.999);
 
-        // T-shape profile (counter-clockwise)
-        let points = vec![
-            Point2::new(-half_web, 0.0),
-            Point2::new(-half_web, depth - flange_thickness),
-            Point2::new(-half_flange, depth - flange_thickness),
-            Point2::new(-half_flange, depth),
-            Point2::new(half_flange, depth),
-            Point2::new(half_flange, depth - flange_thickness),
-            Point2::new(half_web, depth - flange_thickness),
-            Point2::new(half_web, 0.0),
+        // Sharp outline (counter-clockwise). 1,6 = junctions; 2,5 = flange toes;
+        // 0,7 = web free-end corners.
+        let sharp = [
+            Point2::new(-half_web, 0.0),       // 0 web bottom-left (web edge)
+            Point2::new(-half_web, ftf),       // 1 left junction (fillet)
+            Point2::new(-half_flange, ftf),    // 2 flange left toe inner (flange edge)
+            Point2::new(-half_flange, depth),  // 3 flange left toe top
+            Point2::new(half_flange, depth),   // 4 flange right toe top
+            Point2::new(half_flange, ftf),     // 5 flange right toe inner (flange edge)
+            Point2::new(half_web, ftf),        // 6 right junction (fillet)
+            Point2::new(half_web, 0.0),        // 7 web bottom-right (web edge)
         ];
-
-        Ok(Profile2D::new(points))
+        const SEG: usize = 6;
+        let radii = [
+            (0, r_web),
+            (1, rf),
+            (2, r_fl),
+            (5, r_fl),
+            (6, rf),
+            (7, r_web),
+        ];
+        Ok(Profile2D::new(fillet_outline(&sharp, &radii, SEG)))
     }
 
     /// Process C-shape profile (channel with lips)
     /// IfcCShapeProfileDef: ProfileType, ProfileName, Position, Depth, Width, WallThickness, Girth, ...
     fn process_c_shape(&self, profile: &DecodedEntity) -> Result<Profile2D> {
+        // IfcCShapeProfileDef: Depth(3), Width(4), WallThickness(5), Girth(6),
+        // InternalFilletRadius(7). A lipped channel symmetric about its X-axis:
+        // a web on the left, top/bottom flanges spanning the full Width, and
+        // return lips of length Girth at the flange tips.
         let depth = profile
             .get_float(3)
             .ok_or_else(|| Error::geometry("C-Shape missing Depth".to_string()))?;
-        let _width = profile
+        let width = profile
             .get_float(4)
             .ok_or_else(|| Error::geometry("C-Shape missing Width".to_string()))?;
         let wall_thickness = profile
@@ -1279,17 +1699,25 @@ impl ProfileProcessor {
         let girth = profile.get_float(6).unwrap_or(wall_thickness * 2.0); // Lip length
 
         let half_depth = depth / 2.0;
+        let t = wall_thickness;
 
-        // C-shape profile (counter-clockwise)
+        // Counter-clockwise outline. Previously this used `girth` as the X
+        // extent and dropped `width` entirely, so the channel came out only
+        // ~girth wide (a few × the thickness) instead of its full Width. The
+        // flanges now span [0, Width]; the lips turn inward by Girth at x=Width.
         let points = vec![
-            Point2::new(girth, -half_depth),
-            Point2::new(0.0, -half_depth),
-            Point2::new(0.0, half_depth),
-            Point2::new(girth, half_depth),
-            Point2::new(girth, half_depth - wall_thickness),
-            Point2::new(wall_thickness, half_depth - wall_thickness),
-            Point2::new(wall_thickness, -half_depth + wall_thickness),
-            Point2::new(girth, -half_depth + wall_thickness),
+            Point2::new(0.0, -half_depth),                  // bottom-left outer
+            Point2::new(width, -half_depth),                // bottom-right outer
+            Point2::new(width, -half_depth + girth),        // bottom lip tip
+            Point2::new(width - t, -half_depth + girth),    // bottom lip inner
+            Point2::new(width - t, -half_depth + t),        // bottom flange inner
+            Point2::new(t, -half_depth + t),                // web inner bottom
+            Point2::new(t, half_depth - t),                 // web inner top
+            Point2::new(width - t, half_depth - t),         // top flange inner
+            Point2::new(width - t, half_depth - girth),     // top lip inner
+            Point2::new(width, half_depth - girth),         // top lip tip
+            Point2::new(width, half_depth),                 // top-right outer
+            Point2::new(0.0, half_depth),                   // top-left outer
         ];
 
         Ok(Profile2D::new(points))
@@ -1951,9 +2379,25 @@ impl ProfileProcessor {
             .resolve_ref(basis_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve BasisCurve".to_string()))?;
 
+        // MasterRepresentation (attribute 4) selects which trim flavour wins when
+        // both an IfcParameterValue and an IfcCartesianPoint are supplied for the
+        // same Trim*. `.CARTESIAN.` means resolve the bounds from the points;
+        // anything else (`.PARAMETER.`, `.UNSPECIFIED.`, or missing) keeps the
+        // parameter-first behaviour. Either way `extract_trim_select` falls back
+        // to whichever flavour is actually present.
+        let prefer_cartesian = curve
+            .get(4)
+            .and_then(|v| v.as_enum())
+            .map(|m| m == "CARTESIAN")
+            .unwrap_or(false);
+
         // Get trim parameters
-        let trim1 = curve.get(1).and_then(|v| self.extract_trim_param(v));
-        let trim2 = curve.get(2).and_then(|v| self.extract_trim_param(v));
+        let trim1 = curve
+            .get(1)
+            .and_then(|v| self.extract_trim_select(v, prefer_cartesian, decoder));
+        let trim2 = curve
+            .get(2)
+            .and_then(|v| self.extract_trim_select(v, prefer_cartesian, decoder));
 
         // Get sense agreement (attribute 3) - default true
         let sense = curve
@@ -1976,34 +2420,70 @@ impl ProfileProcessor {
         }
     }
 
-    /// Extract trim parameter (can be IFCPARAMETERVALUE or IFCCARTESIANPOINT)
-    fn extract_trim_param(&self, attr: &ifc_lite_core::AttributeValue) -> Option<f64> {
-        if let Some(list) = attr.as_list() {
-            for item in list {
-                // Check for IFCPARAMETERVALUE (stored as ["IFCPARAMETERVALUE", value])
-                if let Some(inner_list) = item.as_list() {
-                    if inner_list.len() >= 2 {
-                        if let Some(type_name) = inner_list.first().and_then(|v| v.as_string()) {
-                            if type_name == "IFCPARAMETERVALUE" {
-                                return inner_list.get(1).and_then(|v| v.as_float());
-                            }
+    /// Extract a single bound of an `IfcTrimmingSelect` list.
+    ///
+    /// Per the schema each `Trim1`/`Trim2` is a SET of 1..2 of
+    /// `IfcParameterValue` and/or `IfcCartesianPoint`. We gather both flavours
+    /// when present and let `prefer_cartesian` (derived from the curve's
+    /// MasterRepresentation) pick the winner, falling back to whichever one is
+    /// actually authored. Cartesian bounds are returned as raw points; the
+    /// caller converts them to an angle once it knows the conic's centre,
+    /// rotation, and radii — a point bound cannot be turned into a parameter
+    /// without that placement.
+    fn extract_trim_select(
+        &self,
+        attr: &ifc_lite_core::AttributeValue,
+        prefer_cartesian: bool,
+        decoder: &mut EntityDecoder,
+    ) -> Option<TrimSelect> {
+        let list = attr.as_list()?;
+        let mut param: Option<f64> = None;
+        let mut point: Option<Point2<f64>> = None;
+
+        for item in list {
+            // IFCPARAMETERVALUE(value) is stored as List(["IFCPARAMETERVALUE", value]).
+            if let Some(inner_list) = item.as_list() {
+                if let Some(type_name) = inner_list.first().and_then(|v| v.as_string()) {
+                    if type_name == "IFCPARAMETERVALUE" {
+                        param = inner_list.get(1).and_then(|v| v.as_float());
+                        continue;
+                    }
+                }
+            }
+            // A reference to an IfcCartesianPoint.
+            if item.as_entity_ref().is_some() {
+                if let Ok(Some(pt)) = decoder.resolve_ref(item) {
+                    if pt.ifc_type == IfcType::IfcCartesianPoint {
+                        if let Some(coords) = pt.get(0).and_then(|v| v.as_list()) {
+                            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                            point = Some(Point2::new(x, y));
                         }
                     }
                 }
-                if let Some(f) = item.as_float() {
-                    return Some(f);
-                }
+                continue;
+            }
+            // Bare numeric fallback: a parameter authored without the
+            // IFCPARAMETERVALUE wrapper.
+            if let Some(f) = item.as_float() {
+                param = Some(f);
             }
         }
-        None
+
+        match (prefer_cartesian, point, param) {
+            (true, Some(p), _) => Some(TrimSelect::Cartesian(p)),
+            (_, _, Some(f)) => Some(TrimSelect::Parameter(f)),
+            (_, Some(p), None) => Some(TrimSelect::Cartesian(p)),
+            _ => None,
+        }
     }
 
     /// Process trimmed conic (circle or ellipse arc)
     fn process_trimmed_conic(
         &self,
         basis: &DecodedEntity,
-        trim1: Option<f64>,
-        trim2: Option<f64>,
+        trim1: Option<TrimSelect>,
+        trim2: Option<TrimSelect>,
         sense: bool,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Point2<f64>>> {
@@ -2016,14 +2496,34 @@ impl ProfileProcessor {
 
         let (center, rotation) = self.get_placement_2d(basis, decoder)?;
 
-        // Convert trim parameters to angles using the project's PLANEANGLEUNIT.
-        // The IFC spec interprets IfcParameterValue on IfcCircle/IfcEllipse as
-        // an angle in that unit; defaulting to `.to_radians()` collapsed 240°
-        // arcs to ~4° on RADIAN-declared files (issue #820, Renga export).
+        // Convert each trim bound to an angle in the conic's local frame.
+        // IfcParameterValue bounds are angles in the project's PLANEANGLEUNIT
+        // (defaulting to `.to_radians()` collapsed 240° arcs to ~4° on
+        // RADIAN-declared files — issue #820, Renga export). IfcCartesianPoint
+        // bounds (MasterRepresentation `.CARTESIAN.`, issue #953) are inverted
+        // through the placement: un-rotate about the centre, then read the
+        // parametric angle off the radii. Without this the cartesian-trimmed
+        // semicircle wall profiles in Roof-01_BCAD lost their arc entirely.
         let angle_scale = decoder.plane_angle_to_radians();
-        let start_angle = trim1.unwrap_or(0.0) * angle_scale;
+        let to_angle = |trim: &TrimSelect| -> f64 {
+            match trim {
+                TrimSelect::Parameter(v) => v * angle_scale,
+                TrimSelect::Cartesian(p) => {
+                    let dx = p.x - center.x;
+                    let dy = p.y - center.y;
+                    let lx = dx * rotation.cos() + dy * rotation.sin();
+                    let ly = -dx * rotation.sin() + dy * rotation.cos();
+                    // Normalise by the radii so ellipse bounds map to the
+                    // parametric angle (for a circle radius == radius2, so this
+                    // is plain atan2(ly, lx)).
+                    (ly / radius2).atan2(lx / radius)
+                }
+            }
+        };
+        let start_angle = trim1.as_ref().map(&to_angle).unwrap_or(0.0);
         let mut end_angle = trim2
-            .map(|v| v * angle_scale)
+            .as_ref()
+            .map(&to_angle)
             .unwrap_or(2.0 * std::f64::consts::PI);
 
         // Handle angle wrapping for arcs that cross the 0°/360° boundary.
@@ -2035,10 +2535,39 @@ impl ProfileProcessor {
             end_angle -= 2.0 * std::f64::consts::PI;
         }
 
-        // Calculate arc angle and adaptive segment count
-        // Use ~8 segments per 90° (quarter circle), minimum 2
+        // Adaptive segment count.
+        //
+        // Angular floor: ~8 segments per 90° (quarter circle), minimum 2 —
+        // preserves the previous density for small arcs so nothing regresses.
+        //
+        // Chord-deviation budget: the angular floor is radius-INDEPENDENT, so a
+        // large-radius arc collapses to a coarse polyline (a 12.5 m-radius, 17°
+        // arc got only 2 segments → 35 mm chord deviation on a 500 mm wall,
+        // ISSUE_129). Cap the sagitta to an absolute ~0.5 mm by adding segments
+        // for large physical radii. The budget is expressed in metres and
+        // converted through the file's length-unit scale, so it is the same
+        // 0.5 mm whether the model is authored in mm or m. The sagitta/radius
+        // ratio is `1 - cos(step/2)`; solve for the max step that keeps it
+        // within budget. Bounded so a mis-resolved unit can't explode the count.
         let arc_angle = (end_angle - start_angle).abs();
-        let num_segments = ((arc_angle / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize).max(2);
+        let by_angle = (arc_angle / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize;
+        let by_chord = {
+            const CHORD_TOL_M: f64 = 5.0e-4; // 0.5 mm absolute deviation budget
+            let r_eff = radius.abs().max(radius2.abs());
+            let radius_m = r_eff * decoder.length_unit_scale();
+            if radius_m > CHORD_TOL_M {
+                let rel = (CHORD_TOL_M / radius_m).clamp(1e-9, 0.5);
+                let max_step = 2.0 * (1.0 - rel).acos();
+                if max_step > 1e-9 {
+                    (arc_angle / max_step).ceil() as usize
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        };
+        let num_segments = by_angle.max(by_chord).clamp(2, 128);
         let mut points = Vec::with_capacity(num_segments + 1);
 
         let angle_range = if sense {
@@ -2747,6 +3276,251 @@ mod tests {
     use super::*;
 
     #[test]
+    fn closed_loop_self_intersects_detects_bowtie() {
+        // Simple unit square — no crossings.
+        let square = [
+            Point2::new(0.0, 0.0),
+            Point2::new(1.0, 0.0),
+            Point2::new(1.0, 1.0),
+            Point2::new(0.0, 1.0),
+        ];
+        assert!(!closed_loop_self_intersects(&square));
+
+        // Bow-tie: swapping the last two vertices makes the closing edges
+        // cross in the middle.
+        let bowtie = [
+            Point2::new(0.0, 0.0),
+            Point2::new(1.0, 0.0),
+            Point2::new(0.0, 1.0),
+            Point2::new(1.0, 1.0),
+        ];
+        assert!(closed_loop_self_intersects(&bowtie));
+
+        // Degenerate (fewer than 4 vertices) can't self-cross.
+        assert!(!closed_loop_self_intersects(&square[..3]));
+    }
+
+    /// Build a dense closed loop for a thin annular sector centred at
+    /// (0, -radius) (the issue #820 topology): an outer arc at `radius` and an
+    /// inner arc at `radius - thickness`, swept `span` radians and joined by
+    /// short radial caps. `seg` samples per arc.
+    fn annular_sector_loop(radius: f64, thickness: f64, span: f64, seg: usize) -> Vec<Point2<f64>> {
+        let c = Point2::new(0.0, -radius);
+        let mut loop_ = Vec::with_capacity(2 * seg + 2);
+        for i in 0..=seg {
+            let a = -span / 2.0 + span * (i as f64 / seg as f64);
+            loop_.push(Point2::new(c.x + radius * a.cos(), c.y + radius * a.sin()));
+        }
+        let inner = radius - thickness;
+        for i in 0..=seg {
+            let a = span / 2.0 - span * (i as f64 / seg as f64);
+            loop_.push(Point2::new(c.x + inner * a.cos(), c.y + inner * a.sin()));
+        }
+        loop_
+    }
+
+    fn loop_area(loop_: &[Point2<f64>]) -> f64 {
+        let n = loop_.len();
+        let mut a = 0.0;
+        for i in 0..n {
+            let p = loop_[i];
+            let q = loop_[(i + 1) % n];
+            a += p.x * q.y - q.x * p.y;
+        }
+        (a * 0.5).abs()
+    }
+
+    #[test]
+    fn simplify_thin_annular_sector_stays_simple_and_area_preserving() {
+        // Regression for issue #820 *and* the silent-area-distortion class the
+        // review flagged. A thin curved wall has a feature size (its thickness)
+        // far below the bbox diagonal; the thickness-capped RDP epsilon must
+        // keep every simplification both topologically simple (no folded-flap
+        // seam) and area-faithful. The first row is the real fixture's
+        // proportions (r=12000, 100 mm, 240°); the rest are the thicker/shorter
+        // sectors the reviewer reproduced losing/gaining 5–13% area under the
+        // un-capped epsilon.
+        let cases = [
+            (12000.0, 100.0, 240.0_f64),
+            (12000.0, 300.0, 240.0),
+            (12000.0, 600.0, 90.0),
+            (12000.0, 600.0, 180.0),
+        ];
+        for (radius, thickness, span_deg) in cases {
+            let span = span_deg.to_radians();
+            let dense = annular_sector_loop(radius, thickness, span, 200);
+            assert!(
+                !closed_loop_self_intersects(&dense),
+                "input sector r={radius} t={thickness} {span_deg}° should start simple",
+            );
+            let out = simplify_smooth_curve_polyline(&dense);
+
+            // Topology: never a folded-flap seam.
+            assert!(
+                !closed_loop_self_intersects(&out),
+                "simplified sector r={radius} t={thickness} {span_deg}° self-intersects",
+            );
+
+            // Area: within 2% of the dense original (was up to ±13% pre-fix).
+            let (a_in, a_out) = (loop_area(&dense), loop_area(&out));
+            let rel = (a_out - a_in).abs() / a_in;
+            assert!(
+                rel < 0.02,
+                "sector r={radius} t={thickness} {span_deg}°: area drift {:.1}% \
+                 (in={a_in:.0} out={a_out:.0}) — thin curved wall was distorted",
+                rel * 100.0,
+            );
+        }
+    }
+
+    #[test]
+    fn simplify_still_reduces_fat_round_disk() {
+        // Guards THIN_FEATURE_RATIO from being set so high it suppresses the
+        // issue #635 case it must preserve: an over-tessellated round window
+        // (a *fat* disk, half-thickness ≈ radius/2) must still simplify to a
+        // small recognizable polygon so void cuts fit the CSG polygon budget.
+        let mut disk = Vec::new();
+        let seg = 127;
+        for i in 0..seg {
+            let a = std::f64::consts::TAU * (i as f64 / seg as f64);
+            disk.push(Point2::new(0.5 * a.cos(), 0.5 * a.sin()));
+        }
+        let out = simplify_smooth_curve_polyline(&disk);
+        assert!(
+            out.len() < disk.len() && out.len() >= SIMPLIFIED_MIN_VERTICES,
+            "round disk should simplify from {} to [{SIMPLIFIED_MIN_VERTICES}, {}) verts, got {}",
+            disk.len(),
+            disk.len(),
+            out.len(),
+        );
+        assert!(!closed_loop_self_intersects(&out));
+    }
+
+    fn ellipse_loop(ar: f64, seg: usize) -> Vec<Point2<f64>> {
+        let (a, b) = (ar * 0.5, 0.5);
+        (0..seg)
+            .map(|i| {
+                let t = std::f64::consts::TAU * (i as f64 / seg as f64);
+                Point2::new(a * t.cos(), b * t.sin())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn elongated_filled_ellipse_is_not_thin_gated() {
+        // Regression for the review's P1. An elongated *filled* ellipse is thin
+        // by the half-thickness/diagonal measure (an 8:1 ellipse sits at ~0.048,
+        // below THIN_FEATURE_RATIO, rising to ~0.020 at 20:1) — but it is convex
+        // and does NOT double back, so the thin gate must not fire on it. The
+        // earlier thinness-only gate wrongly skipped these, pinning a densely
+        // sampled elliptical opening at its full vertex count, overflowing the
+        // BSP void-cut budget and forcing the AABB-rectangle fallback (#635).
+        for ar in [6.0_f64, 8.0, 12.0, 20.0] {
+            assert!(
+                !loop_doubles_back(&ellipse_loop(ar, 128)),
+                "AR={ar} filled ellipse is convex — must not read as doubling back",
+            );
+        }
+
+        // With the gate no longer blocking it, an elongated ellipse simplifies
+        // exactly as it does without any thin gate (i.e. as on main): RDP +
+        // SIMPLIFIED_MIN_VERTICES. At 8:1, RDP retains ≥ the floor, so it
+        // genuinely reduces and stays simple. (Higher ratios bottom out at the
+        // floor and keep the original — a pre-existing #635 limitation, not the
+        // thin gate, and unchanged by this fix.)
+        let ellipse = ellipse_loop(8.0, 128);
+        let out = simplify_smooth_curve_polyline(&ellipse);
+        assert!(
+            out.len() < ellipse.len() && out.len() >= SIMPLIFIED_MIN_VERTICES,
+            "8:1 ellipse must still simplify (was wrongly thin-gated): {} -> {} verts",
+            ellipse.len(),
+            out.len(),
+        );
+        assert!(!closed_loop_self_intersects(&out));
+        // Inscribed simplification of an elongated convex opening shaves a few
+        // percent — acceptable for a void approximation (and the same as main).
+        let rel = (loop_area(&out) - loop_area(&ellipse)).abs() / loop_area(&ellipse);
+        assert!(rel < 0.08, "8:1 ellipse area drift {:.1}%", rel * 100.0);
+    }
+
+    #[test]
+    fn doubles_back_ignores_localized_spikes() {
+        // The reflex-fraction metric must flag a genuine two-arc annular sector
+        // but NOT a convex thin opening carrying a single localized defect — a
+        // lone inward notch or the sub-mm out-and-back jog where a composite
+        // curve closes. A total-turning measure double-counts such a spike and
+        // would wrongly gate these convex openings back into the #635 AABB cut.
+
+        // Genuine doubling-back: the #820 thin annular sector.
+        assert!(loop_doubles_back(&annular_sector_loop(
+            12000.0,
+            100.0,
+            (240.0_f64).to_radians(),
+            128
+        )));
+
+        // Clean convex ellipse — not doubling back.
+        let mut e = ellipse_loop(8.0, 128);
+        assert!(!loop_doubles_back(&e));
+
+        // ...with one deep inward notch at the blunt (x-tip) vertex. Find the
+        // vertex of greatest |x| and pull it 25% of the minor axis toward centre.
+        let tip = (0..e.len())
+            .max_by(|&i, &j| e[i].x.abs().partial_cmp(&e[j].x.abs()).unwrap())
+            .unwrap();
+        e[tip].x *= 0.75;
+        assert!(
+            !loop_doubles_back(&e),
+            "a single notch on a convex ellipse must not read as doubling back",
+        );
+
+        // Convex disk with a tiny out-and-back seam jog (a real, non-degenerate
+        // near-coincident self-intersection of the kind the #820 seam leaves).
+        let mut disk: Vec<Point2<f64>> = (0..128)
+            .map(|i| {
+                let t = std::f64::consts::TAU * (i as f64 / 128.0);
+                Point2::new(t.cos(), t.sin())
+            })
+            .collect();
+        // Insert a 1e-4 radial jog at vertex 0's neighbourhood.
+        disk.insert(1, Point2::new(disk[0].x * 0.9999, disk[0].y * 0.9999));
+        assert!(
+            !loop_doubles_back(&disk),
+            "a sub-mm seam jog on a convex loop must not read as doubling back",
+        );
+    }
+
+    #[test]
+    fn doubles_back_independent_of_per_boundary_sampling_density() {
+        // Codex review: measuring reflex VERTICES (not arc length) let a thin
+        // sector slip when its two arcs are sampled at very different densities.
+        // Their exact example: a 90° sector, r=12000, thickness=10, with the
+        // convex outer arc finely sampled (96 segs) and the reflex inner arc
+        // coarsely (16 segs). A count fraction reads ~0.13 (< gate) and the
+        // wall is wrongly simplified to ~55% area drift; an arc-length fraction
+        // reads ~0.5 because the inner and outer arcs are nearly equal LENGTH.
+        let centre = Point2::new(0.0, -12000.0);
+        let (r_out, r_in) = (12000.0, 12000.0 - 10.0);
+        let span = (90.0_f64).to_radians();
+        let mut loop_ = Vec::new();
+        for i in 0..=96 {
+            let a = -span / 2.0 + span * (i as f64 / 96.0);
+            loop_.push(Point2::new(centre.x + r_out * a.cos(), centre.y + r_out * a.sin()));
+        }
+        for i in 0..=16 {
+            let a = span / 2.0 - span * (i as f64 / 16.0);
+            loop_.push(Point2::new(centre.x + r_in * a.cos(), centre.y + r_in * a.sin()));
+        }
+        assert!(
+            loop_doubles_back(&loop_),
+            "a non-uniformly tessellated thin sector must still read as doubling back",
+        );
+        // And it is gated end-to-end: simplify returns the faithful original.
+        let out = simplify_smooth_curve_polyline(&loop_);
+        assert_eq!(out.len(), loop_.len(), "skewed-sampling thin sector must be gated");
+    }
+
+    #[test]
     fn test_rectangle_profile() {
         let content = r#"
 #1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,100.0,200.0);
@@ -2795,6 +3569,111 @@ mod tests {
 
         assert_eq!(profile.outer.len(), 12); // I-shape has 12 vertices
         assert!(!profile.outer.is_empty());
+    }
+
+    /// Shoelace area of a profile's outer boundary.
+    fn outer_area(profile: &Profile2D) -> f64 {
+        let p = &profile.outer;
+        let n = p.len();
+        let mut a = 0.0;
+        for i in 0..n {
+            let b = p[(i + 1) % n];
+            a += p[i].x * b.y - b.x * p[i].y;
+        }
+        a.abs() * 0.5
+    }
+
+    // I-shape FilletRadius rounds the four web↔flange junctions (concave, adds
+    // root-fillet material). ISSUE_021 I-beam #4416: W180 D171 tw6 tf9.5,
+    // FilletRadius 15. Closed-form area: sharp 4332 + 4·r²(1−π/4) ≈ 4525.1 mm².
+    #[test]
+    fn test_i_shape_honours_fillet_radius() {
+        let sharp = process_content(
+            "#1=IFCISHAPEPROFILEDEF(.AREA.,$,$,180.,171.,6.,9.5,$,$,$);\n",
+            1,
+        );
+        let filleted = process_content(
+            "#1=IFCISHAPEPROFILEDEF(.AREA.,$,$,180.,171.,6.,9.5,15.,$,$);\n",
+            1,
+        );
+        assert_eq!(sharp.outer.len(), 12, "sharp I should stay 12 points");
+        assert!(
+            filleted.outer.len() > 12,
+            "fillets not generated: {} points",
+            filleted.outer.len()
+        );
+        // Closed-form uses ideal arcs; the 6-segment-per-corner tessellation of
+        // four concave fillets over-estimates by ~8 mm² (chords bow outward on a
+        // concave fillet). Tolerance absorbs that while still pinning the sign
+        // (filleted ≈ 4525, clearly above sharp 4332).
+        let k = 1.0 - std::f64::consts::FRAC_PI_4;
+        let expected = 4332.0 + 4.0 * 15.0 * 15.0 * k;
+        let area = outer_area(&filleted);
+        assert!(
+            (area - expected).abs() < 15.0 && area > outer_area(&sharp) + 100.0,
+            "I fillet area {area:.2} vs expected {expected:.2} (sharp {:.2})",
+            outer_area(&sharp)
+        );
+        // bbox unchanged (fillets are interior).
+        let (mnx, mny, mxx, mxy) = outer_bbox(&filleted);
+        assert!((mxx - mnx - 180.0).abs() < 1e-6 && (mxy - mny - 171.0).abs() < 1e-6);
+    }
+
+    // U-shape (channel): FilletRadius rounds the 2 inner web↔flange junctions
+    // (concave, +), EdgeRadius rounds the 2 flange toes (convex, −). Depth 200,
+    // FlangeWidth 80, WebThickness 10, FlangeThickness 12, FilletRadius 12,
+    // EdgeRadius 6. Sharp 3680 + 2·12²(1−π/4) − 2·6²(1−π/4) ≈ 3726.3 mm².
+    #[test]
+    fn test_u_shape_honours_radii() {
+        let sharp = process_content(
+            "#1=IFCUSHAPEPROFILEDEF(.AREA.,$,$,200.,80.,10.,12.,$,$,$,$);\n",
+            1,
+        );
+        let filleted = process_content(
+            "#1=IFCUSHAPEPROFILEDEF(.AREA.,$,$,200.,80.,10.,12.,12.,6.,$,$);\n",
+            1,
+        );
+        assert_eq!(sharp.outer.len(), 8);
+        assert!(filleted.outer.len() > 8, "U fillets not generated");
+        let k = 1.0 - std::f64::consts::FRAC_PI_4;
+        let expected = 3680.0 + 2.0 * 144.0 * k - 2.0 * 36.0 * k;
+        let area = outer_area(&filleted);
+        assert!(
+            (area - expected).abs() < 12.0,
+            "U area {area:.2} vs expected {expected:.2}"
+        );
+        // bbox unchanged: FlangeWidth × Depth.
+        let (mnx, mny, mxx, mxy) = outer_bbox(&filleted);
+        assert!((mxx - mnx - 80.0).abs() < 1e-6 && (mxy - mny - 200.0).abs() < 1e-6);
+    }
+
+    // T-shape: FilletRadius at the 2 web↔flange junctions (concave, +),
+    // FlangeEdgeRadius at the 2 flange toes and WebEdgeRadius at the 2 web-end
+    // corners (convex, −). Depth 100, FlangeWidth 80, WebThickness 10,
+    // FlangeThickness 12, FilletRadius 8, FlangeEdgeRadius 4, WebEdgeRadius 3.
+    // Sharp 1840 + 2·8²(1−π/4) − 2·4²(1−π/4) − 2·3²(1−π/4) ≈ 1856.8 mm².
+    #[test]
+    fn test_t_shape_honours_radii() {
+        let sharp = process_content(
+            "#1=IFCTSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,10.,12.,$,$,$,$,$);\n",
+            1,
+        );
+        let filleted = process_content(
+            "#1=IFCTSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,10.,12.,8.,4.,3.,$,$);\n",
+            1,
+        );
+        assert_eq!(sharp.outer.len(), 8);
+        assert!(filleted.outer.len() > 8, "T fillets not generated");
+        let k = 1.0 - std::f64::consts::FRAC_PI_4;
+        let expected = 1840.0 + 2.0 * 64.0 * k - 2.0 * 16.0 * k - 2.0 * 9.0 * k;
+        let area = outer_area(&filleted);
+        assert!(
+            (area - expected).abs() < 10.0,
+            "T area {area:.2} vs expected {expected:.2}"
+        );
+        // bbox unchanged: FlangeWidth × Depth.
+        let (mnx, mny, mxx, mxy) = outer_bbox(&filleted);
+        assert!((mxx - mnx - 80.0).abs() < 1e-6 && (mxy - mny - 100.0).abs() < 1e-6);
     }
 
     /// (min_x, min_y, max_x, max_y) of a profile's outer boundary.
@@ -2848,6 +3727,45 @@ mod tests {
         assert!((max_y - min_y - 100.0).abs() < 1e-9, "height should be Depth");
     }
 
+    // L-shape FilletRadius (inner re-entrant corner, adds material) and
+    // EdgeRadius (leg toes, removes material) must be honoured — pre-fix the
+    // section was a sharp 6-point polygon (~5% oversized convex hull on steel
+    // angles, ISSUE_021 beams). L100/100/10 with FilletRadius=12, EdgeRadius=6.
+    #[test]
+    fn test_l_shape_honours_fillet_and_edge_radii() {
+        let profile = process_content(
+            "#1=IFCLSHAPEPROFILEDEF(.AREA.,$,$,100.,100.,10.,12.,6.,$,$,$);\n",
+            1,
+        );
+        // Rounded corners => far more than the 6 sharp vertices.
+        assert!(
+            profile.outer.len() > 6,
+            "fillets not generated: {} points",
+            profile.outer.len()
+        );
+        // bbox is still Width × Depth (radii sit inside the legs).
+        let (min_x, min_y, max_x, max_y) = outer_bbox(&profile);
+        assert!((max_x - min_x - 100.0).abs() < 1e-6, "width {}", max_x - min_x);
+        assert!((max_y - min_y - 100.0).abs() < 1e-6, "height {}", max_y - min_y);
+        // Closed-form area: sharp 1900 + inner fillet r1²(1−π/4) − two toe
+        // edges 2·r2²(1−π/4) = 1900 + (144−72)(1−π/4) ≈ 1915.45 mm². The
+        // 6-segment arc tessellation introduces a small inscribed-polygon error.
+        let k = 1.0 - std::f64::consts::FRAC_PI_4;
+        let expected = 1900.0 + (144.0 - 72.0) * k;
+        let n = profile.outer.len();
+        let mut area = 0.0;
+        for i in 0..n {
+            let a = profile.outer[i];
+            let b = profile.outer[(i + 1) % n];
+            area += a.x * b.y - b.x * a.y;
+        }
+        area = area.abs() * 0.5;
+        assert!(
+            (area - expected).abs() < 5.0,
+            "L fillet area {area:.2} vs expected {expected:.2} — wrong fillet sign/placement"
+        );
+    }
+
     // A T-shape is centred on its bounding box: Y spans -Depth/2..+Depth/2,
     // not 0..Depth.
     #[test]
@@ -2862,6 +3780,31 @@ mod tests {
         assert!((min_y + max_y).abs() < 1e-9, "Y not centred: {min_y}..{max_y}");
         assert!((max_x - min_x - 80.0).abs() < 1e-9, "width should be FlangeWidth");
         assert!((max_y - min_y - 100.0).abs() < 1e-9, "height should be Depth");
+    }
+
+    // A C-shape (lipped channel) must span its full Width × Depth. Pre-fix
+    // `process_c_shape` dropped the Width attribute (4) and used Girth (6) as
+    // the X extent, so the channel came out only ~Girth wide.
+    #[test]
+    fn test_c_shape_spans_width_and_depth() {
+        // Depth 200, Width 80, WallThickness 6, Girth 20.
+        let profile = process_content(
+            "#1=IFCCSHAPEPROFILEDEF(.AREA.,$,$,200.,80.,6.,20.,$);\n",
+            1,
+        );
+        let (min_x, min_y, max_x, max_y) = outer_bbox(&profile);
+        assert!((min_x + max_x).abs() < 1e-9, "X not centred: {min_x}..{max_x}");
+        assert!((min_y + max_y).abs() < 1e-9, "Y not centred: {min_y}..{max_y}");
+        assert!(
+            (max_x - min_x - 80.0).abs() < 1e-9,
+            "width should be Width (80), got {}",
+            max_x - min_x
+        );
+        assert!(
+            (max_y - min_y - 200.0).abs() < 1e-9,
+            "height should be Depth (200), got {}",
+            max_y - min_y
+        );
     }
 
     #[test]

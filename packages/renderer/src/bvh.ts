@@ -18,20 +18,58 @@ export class BVH {
   private root: BVHNode | null = null;
   private readonly maxMeshesPerLeaf = 8;
 
+  // Per-mesh AABB cache (6 floats/mesh: minX,minY,minZ,maxX,maxY,maxZ), filled
+  // once per build. Storing in a Float32Array is lossless for f32 positions, so
+  // unioning these and deriving centroids as (min+max)/2 reproduces exactly the
+  // split order and node bounds the old per-vertex recompute produced — without
+  // re-scanning every vertex at every recursion level.
+  private meshAABBs: Float32Array | null = null;
+
   /**
    * Build BVH from meshes
    */
   build(meshes: MeshData[]): void {
     if (meshes.length === 0) {
       this.root = null;
+      this.meshAABBs = null;
       return;
     }
+
+    // Single O(total verts) pass: cache each mesh's AABB. An empty mesh keeps
+    // Infinity/-Infinity, so it contributes nothing to a union (matching the old
+    // per-vertex calculateBounds) and yields a NaN centroid (matching the old
+    // getMeshCenter) — behaviour is unchanged for that degenerate case.
+    const aabbs = new Float32Array(meshes.length * 6);
+    for (let m = 0; m < meshes.length; m++) {
+      const positions = meshes[m].positions;
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (let i = 0; i < positions.length; i += 3) {
+        const x = positions[i];
+        const y = positions[i + 1];
+        const z = positions[i + 2];
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        minZ = Math.min(minZ, z);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+        maxZ = Math.max(maxZ, z);
+      }
+      const o = m * 6;
+      aabbs[o] = minX;
+      aabbs[o + 1] = minY;
+      aabbs[o + 2] = minZ;
+      aabbs[o + 3] = maxX;
+      aabbs[o + 4] = maxY;
+      aabbs[o + 5] = maxZ;
+    }
+    this.meshAABBs = aabbs;
 
     // Create mesh indices array
     const meshIndices = meshes.map((_, i) => i);
 
-    // Build tree recursively
-    this.root = this.buildNode(meshes, meshIndices);
+    // Build tree recursively (uses the cached AABBs, not the vertex arrays)
+    this.root = this.buildNode(meshIndices);
   }
 
   /**
@@ -50,9 +88,9 @@ export class BVH {
   /**
    * Build a BVH node recursively
    */
-  private buildNode(meshes: MeshData[], meshIndices: number[]): BVHNode {
-    // Calculate bounding box for all meshes
-    const bounds = this.calculateBounds(meshes, meshIndices);
+  private buildNode(meshIndices: number[]): BVHNode {
+    // Calculate bounding box by unioning the cached per-mesh AABBs
+    const bounds = this.unionCachedBounds(meshIndices);
 
     // Leaf node if few enough meshes
     if (meshIndices.length <= this.maxMeshesPerLeaf) {
@@ -63,13 +101,12 @@ export class BVH {
       };
     }
 
-    // Split meshes along longest axis
+    // Split meshes along longest axis, sorting on cached centroids
     const axis = this.getLongestAxis(bounds);
-    const sortedIndices = [...meshIndices].sort((a, b) => {
-      const centerA = this.getMeshCenter(meshes[a])[axis];
-      const centerB = this.getMeshCenter(meshes[b])[axis];
-      return centerA - centerB;
-    });
+    const k = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+    const sortedIndices = [...meshIndices].sort(
+      (a, b) => this.cachedCenter(a, k) - this.cachedCenter(b, k)
+    );
 
     const mid = Math.floor(sortedIndices.length / 2);
     const leftIndices = sortedIndices.slice(0, mid);
@@ -79,8 +116,8 @@ export class BVH {
     return {
       bounds,
       meshIndices: [],
-      left: this.buildNode(meshes, leftIndices),
-      right: this.buildNode(meshes, rightIndices),
+      left: this.buildNode(leftIndices),
+      right: this.buildNode(rightIndices),
       isLeaf: false,
     };
   }
@@ -148,63 +185,36 @@ export class BVH {
   }
 
   /**
-   * Calculate bounding box for a set of meshes
+   * Union the cached per-mesh AABBs for a set of mesh indices (no vertex scan)
    */
-  private calculateBounds(meshes: MeshData[], meshIndices: number[]): AABB {
+  private unionCachedBounds(meshIndices: number[]): AABB {
+    const aabbs = this.meshAABBs!;
     const bounds: AABB = {
       min: { x: Infinity, y: Infinity, z: Infinity },
       max: { x: -Infinity, y: -Infinity, z: -Infinity },
     };
 
     for (const index of meshIndices) {
-      const mesh = meshes[index];
-      const positions = mesh.positions;
-
-      for (let i = 0; i < positions.length; i += 3) {
-        const x = positions[i];
-        const y = positions[i + 1];
-        const z = positions[i + 2];
-
-        bounds.min.x = Math.min(bounds.min.x, x);
-        bounds.min.y = Math.min(bounds.min.y, y);
-        bounds.min.z = Math.min(bounds.min.z, z);
-
-        bounds.max.x = Math.max(bounds.max.x, x);
-        bounds.max.y = Math.max(bounds.max.y, y);
-        bounds.max.z = Math.max(bounds.max.z, z);
-      }
+      const o = index * 6;
+      bounds.min.x = Math.min(bounds.min.x, aabbs[o]);
+      bounds.min.y = Math.min(bounds.min.y, aabbs[o + 1]);
+      bounds.min.z = Math.min(bounds.min.z, aabbs[o + 2]);
+      bounds.max.x = Math.max(bounds.max.x, aabbs[o + 3]);
+      bounds.max.y = Math.max(bounds.max.y, aabbs[o + 4]);
+      bounds.max.z = Math.max(bounds.max.z, aabbs[o + 5]);
     }
 
     return bounds;
   }
 
   /**
-   * Get center of mesh bounding box
+   * Center of a cached mesh AABB along an axis (k = 0|1|2). Derived in f64 from
+   * the lossless f32 bounds, so it equals the old getMeshCenter exactly.
    */
-  private getMeshCenter(mesh: MeshData): { x: number; y: number; z: number } {
-    const positions = mesh.positions;
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-    for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i];
-      const y = positions[i + 1];
-      const z = positions[i + 2];
-
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      minZ = Math.min(minZ, z);
-
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-      maxZ = Math.max(maxZ, z);
-    }
-
-    return {
-      x: (minX + maxX) / 2,
-      y: (minY + maxY) / 2,
-      z: (minZ + maxZ) / 2,
-    };
+  private cachedCenter(index: number, k: number): number {
+    const aabbs = this.meshAABBs!;
+    const o = index * 6;
+    return (aabbs[o + k] + aabbs[o + 3 + k]) / 2;
   }
 
   /**

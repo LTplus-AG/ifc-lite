@@ -1,5 +1,55 @@
 # @ifc-lite/lists
 
+## 1.15.0
+
+### Minor Changes
+
+- [#933](https://github.com/LTplus-AG/ifc-lite/pull/933) [`34df1e2`](https://github.com/LTplus-AG/ifc-lite/commit/34df1e2573523e88b8a808b129d71d78057c14a6) Thanks [@louistrue](https://github.com/louistrue)! - Add material, classification, and storey list columns ([#922](https://github.com/LTplus-AG/ifc-lite/issues/922)).
+
+  `ColumnDefinition.source` gains `material` | `classification` | `spatial`
+  (storey). The engine resolves them via the optional `ListDataProvider`
+  material/classification/storey accessors; material and classification cells
+  are de-duplicated and joined.
+
+- [#935](https://github.com/LTplus-AG/ifc-lite/pull/935) [`398c59c`](https://github.com/LTplus-AG/ifc-lite/commit/398c59c942462dd38bea963247741ab298eae857) Thanks [@louistrue](https://github.com/louistrue)! - Add `ListDefinition.expressIdsByModel` — an explicit element-snapshot scope
+  keyed by model.
+
+  When set, `executeList` targets exactly the express IDs captured for the
+  current model (so a federated list never over-selects when local express IDs
+  collide across files), with `conditions` still applied on top and
+  `entityTypes` ignored. Lets a search/filter result be frozen into a list
+  ([#917](https://github.com/LTplus-AG/ifc-lite/issues/917) §4).
+
+- [#934](https://github.com/LTplus-AG/ifc-lite/pull/934) [`7bb46cd`](https://github.com/LTplus-AG/ifc-lite/commit/7bb46cd265cc93cd2cddc268591d8ee93a2a556b) Thanks [@louistrue](https://github.com/louistrue)! - Add `ListDataProvider.discoverAllColumns()` for complete, type-independent
+  column discovery.
+
+  Lets the list column picker offer every property set / property and quantity
+  set / quantity in the model — even when no entity type is selected — instead
+  of only the columns sampled from the selected types. Optional method; callers
+  fall back to the type-sampled `discoverColumns()` when it's absent.
+
+- [#934](https://github.com/LTplus-AG/ifc-lite/pull/934) [`7bb46cd`](https://github.com/LTplus-AG/ifc-lite/commit/7bb46cd265cc93cd2cddc268591d8ee93a2a556b) Thanks [@louistrue](https://github.com/louistrue)! - Add counts, sums, and grouping to list results ([#926](https://github.com/LTplus-AG/ifc-lite/issues/926)).
+
+  `ListDefinition.grouping` ({ columnId, sumColumnIds }) makes `executeList`
+  return a per-group breakdown (`ListResult.groups` — label, element count,
+  per-column sums) plus a whole-result `summary` (count + sums). Group by any
+  column (type, material, classification, storey, property value) and total
+  numeric columns per group and overall.
+
+  Also exports `summariseListRows(definition, rows)` so federated callers can
+  re-derive groups/summary after merging rows from several models.
+
+- [#932](https://github.com/LTplus-AG/ifc-lite/pull/932) [`3f697e8`](https://github.com/LTplus-AG/ifc-lite/commit/3f697e8818ee8da9dd45403bc00835ed421d94ca) Thanks [@louistrue](https://github.com/louistrue)! - Lists can now target elements beyond IFC class ([#925](https://github.com/LTplus-AG/ifc-lite/issues/925)).
+
+  - `ListDefinition` with an empty `entityTypes` targets all model elements
+    (resolved via the new optional `ListDataProvider.getAllEntityIds()`).
+  - `PropertyCondition.source` gains `material` | `classification` | `spatial`
+    (storey), backed by optional provider accessors `getMaterialNames`,
+    `getClassifications`, and `getStoreyName`.
+
+  All new provider methods are optional, so existing `ListDataProvider`
+  implementers keep working unchanged.
+
 ## 1.14.13
 
 ### Patch Changes

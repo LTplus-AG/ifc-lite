@@ -19,6 +19,53 @@ fn decode_ifc_bytes<'a>(data: &'a [u8]) -> &'a str {
     }
 }
 
+/// Emit a sub-mesh, splitting it into one mesh per `IfcIndexedColourMap` palette
+/// group when the face set carries a per-triangle colour map whose triangle
+/// count still matches the produced mesh (issue #858). This restores the split
+/// the live viewer lost when the geometry pipeline was unified onto
+/// `processGeometryBatch` (#874) — the prepass only carries one dominant colour
+/// per geometry, so without this the green/yellow triangles collapse into red.
+///
+/// Falls back to a single `color` mesh when there is no map, when the map no
+/// longer applies (CSG/void retopology changed the triangle count), or when
+/// fewer than two distinct palette colours are used — the same guards the native
+/// processor relies on (see `split_mesh_by_indexed_colour`).
+fn emit_submesh_with_palette_split(
+    mesh_collection: &mut MeshCollection,
+    express_id: u32,
+    ifc_type_name: &str,
+    geometry_id: u32,
+    mesh: ifc_lite_geometry::Mesh,
+    color: [f32; 4],
+    indexed_colour_full: &rustc_hash::FxHashMap<
+        u32,
+        ifc_lite_processing::style::FullIndexedColourMap,
+    >,
+) {
+    if let Some(full) = indexed_colour_full.get(&geometry_id) {
+        if let Some(groups) = ifc_lite_processing::style::split_mesh_by_indexed_colour(&mesh, full) {
+            for (rgba, mut part) in groups {
+                if part.normals.len() != part.positions.len() {
+                    ifc_lite_geometry::calculate_normals(&mut part);
+                }
+                mesh_collection.add(MeshDataJs::new(
+                    express_id,
+                    ifc_type_name.to_string(),
+                    part,
+                    rgba.to_array(),
+                ));
+            }
+            return;
+        }
+    }
+    mesh_collection.add(MeshDataJs::new(
+        express_id,
+        ifc_type_name.to_string(),
+        mesh,
+        color,
+    ));
+}
+
 #[wasm_bindgen]
 impl IfcAPI {
     /// Run the pre-pass ONCE and return serialized results for worker distribution.
@@ -230,6 +277,16 @@ impl IfcAPI {
         *slot = Some(entity_index.clone());
         drop(slot);
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
+
+        // #957: orphan IfcTypeProduct geometry (type RepresentationMaps, no
+        // occurrence) — keep the fast prepass consistent with the once/streaming
+        // paths so type-only models (annex-E) also render on the worker fast
+        // path. The helper is guarded by a cheap `IFCREPRESENTATIONMAP`
+        // substring check, so files without type geometry pay almost nothing.
+        complex_jobs.extend(super::styling::collect_orphan_type_geometry_jobs(
+            content,
+            &mut decoder,
+        ));
 
         let unit_scale = project_id
             .and_then(|pid| ifc_lite_core::extract_length_unit_scale(&mut decoder, pid).ok())
@@ -505,12 +562,39 @@ impl IfcAPI {
                 };
 
                 let router = GeometryRouter::with_scale(unit_scale);
-                let rtc_offset = router
+                let is_large =
+                    |t: (f64, f64, f64)| t.0.abs() > 10000.0 || t.1.abs() > 10000.0 || t.2.abs() > 10000.0;
+                let mut rtc_offset = router
                     .detect_rtc_offset_from_jobs(&buffered_jobs, &mut decoder)
                     .unwrap_or((0.0, 0.0, 0.0));
-                let needs_shift = rtc_offset.0.abs() > 10000.0
-                    || rtc_offset.1.abs() > 10000.0
-                    || rtc_offset.2.abs() > 10000.0;
+
+                // Streaming emits this meta as soon as RTC_SAMPLE_THRESHOLD geometry
+                // jobs are buffered (~the 50th element, near the top of the file), so
+                // the partial index here only covers the file head. When a model's
+                // world offset lives in spatial-structure placements emitted LATE
+                // (a Revit/French export with IfcSite + its placement chain at the
+                // END of the file — observed at line 202 339 of a 202 691 line
+                // model), the element -> storey -> building -> site chain can't
+                // resolve from the partial index, detection returns (0,0,0), and the
+                // huge ~8e6 m world coordinates get cast to f32 downstream → ~0.5 m
+                // of vertex jitter. If no offset was found AND we haven't even
+                // scanned the IfcSite yet, re-detect against a FULL index so the
+                // complete chain resolves. Gated on both so the common early-site /
+                // origin-local model never pays for a second index build.
+                // (`buildPrePassOnce` and the small-file tail already use a full
+                // index, so only this early-meta path needs the fallback.)
+                if !is_large(rtc_offset) && site_position.is_none() {
+                    let full_index = ifc_lite_core::build_entity_index(content);
+                    let mut full_decoder = EntityDecoder::with_index(content, full_index);
+                    if let Some(full_rtc) =
+                        router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut full_decoder)
+                    {
+                        if is_large(full_rtc) {
+                            rtc_offset = full_rtc;
+                        }
+                    }
+                }
+                let needs_shift = is_large(rtc_offset);
 
                 let building_rotation = site_position
                     .and_then(|pos| extract_building_rotation_from_site(pos, &mut decoder));
@@ -790,6 +874,25 @@ impl IfcAPI {
         super::set_js_prop(&index_event, "lengths", &lengths_arr);
         on_event.call1(&JsValue::NULL, &index_event.into())?;
 
+        // #957: emit orphan IfcTypeProduct geometry as a final jobs chunk so the
+        // browser renders annex-E type-only "tessellated shape with style" files
+        // (geometry on the type via RepresentationMaps, no occurrence). The
+        // entity index is complete here, so this resolves cleanly.
+        //
+        // PERF (flagged, #962 review): for files WITH representation maps this is
+        // a second linear EntityScanner pass over `content` on top of the
+        // streaming scan above. A `IFCREPRESENTATIONMAP` substring guard inside
+        // the helper makes the ~all-files-without-type-geometry case free (just a
+        // SIMD memmem). The remaining instanced-file cost is a tracked follow-up:
+        // fold the mapped-item-source + type-candidate collection into the
+        // streaming scan loop so orphans resolve with no extra pass. Kept as a
+        // separate pass for now to avoid destabilising the streaming hot path.
+        let type_jobs = super::styling::collect_orphan_type_geometry_jobs(content, &mut decoder);
+        if !type_jobs.is_empty() {
+            total_jobs += type_jobs.len() as u32;
+            emit_jobs_chunk(on_event, &type_jobs)?;
+        }
+
         // Complete event.
         let done = js_sys::Object::new();
         super::set_js_prop(&done, "type", &"complete".into());
@@ -935,6 +1038,13 @@ impl IfcAPI {
             std::sync::Arc::new(rustc_hash::FxHashSet::default())
         };
 
+        // IfcIndexedColourMap index (geometry id → full per-triangle palette),
+        // built once per worker. Drives the #858 per-palette-group split below
+        // so a face set whose ColourIndex assigns several colours to different
+        // triangles renders multi-coloured instead of collapsing to the single
+        // dominant colour the prepass `geometry_styles` carries.
+        let indexed_colour_full = self.get_or_build_indexed_colour_maps(content, &mut decoder);
+
         // Process only the entities specified in jobs_flat
         for chunk in jobs_flat.chunks(3) {
             if chunk.len() < 3 {
@@ -957,6 +1067,79 @@ impl IfcAPI {
                 }
 
                 let ifc_type = entity.ifc_type;
+
+                // #957: orphan type-product geometry — an IfcXxxType carrying its
+                // own RepresentationMaps with no occurrence to instantiate them
+                // (buildingSMART annex-E "tessellated shape with style" files).
+                // Render each RepresentationMap NOT referenced by an IfcMappedItem
+                // (the referenced ones draw through their occurrence — no double
+                // render).
+                if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
+                    let rep_map_ids: Vec<u32> = entity
+                        .get(6)
+                        .and_then(|a| a.as_list())
+                        .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+                        .unwrap_or_default();
+                    if !rep_map_ids.is_empty() {
+                        let referenced =
+                            self.get_or_build_referenced_repmaps(content, &mut decoder);
+                        // Surface textures + UV maps (#961), built once per worker.
+                        let texture_index = self.get_or_build_texture_index(content, &mut decoder);
+                        for rm_id in rep_map_ids {
+                            if referenced.contains(&rm_id) {
+                                continue;
+                            }
+                            let Ok(rep_map) = decoder.decode_by_id(rm_id) else {
+                                continue;
+                            };
+                            // One part per output mesh: each textured face set
+                            // carries its own image; untextured items merge (#961).
+                            let Ok(parts) = router.process_representation_map_with_texture(
+                                &rep_map,
+                                &mut decoder,
+                                &texture_index,
+                            ) else {
+                                continue;
+                            };
+                            if parts.is_empty() {
+                                continue;
+                            }
+                            let color = super::styling::color_for_representation_map(
+                                rm_id,
+                                &geometry_styles,
+                                &mut decoder,
+                            )
+                            .unwrap_or_else(|| default_color_for_type(ifc_type).to_array());
+                            let ifc_type_name = type_name_cache
+                                .entry(ifc_type)
+                                .or_insert_with(|| ifc_type.name().to_string())
+                                .clone();
+                            for (mut mesh, uvs, texture) in parts {
+                                if mesh.is_empty() {
+                                    continue;
+                                }
+                                if mesh.normals.len() != mesh.positions.len() {
+                                    calculate_normals(&mut mesh);
+                                }
+                                let mut mesh_js =
+                                    MeshDataJs::new(id, ifc_type_name.clone(), mesh, color);
+                                if let Some(tex) = texture {
+                                    mesh_js.set_texture(
+                                        uvs,
+                                        tex.rgba,
+                                        tex.width,
+                                        tex.height,
+                                        tex.repeat_s,
+                                        tex.repeat_t,
+                                    );
+                                }
+                                mesh_collection.add(mesh_js);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
                 let has_openings = void_index.contains_key(&id);
 
                 if has_openings {
@@ -1001,6 +1184,7 @@ impl IfcAPI {
                                 let element_color = element_styles.get(&id).copied();
                                 let mut mat_color_idx = 0usize;
                                 for sub in sub_meshes.sub_meshes {
+                                    let geometry_id = sub.geometry_id;
                                     let mut mesh = sub.mesh;
                                     if mesh.is_empty() {
                                         continue;
@@ -1009,7 +1193,7 @@ impl IfcAPI {
                                         calculate_normals(&mut mesh);
                                     }
                                     let color = resolve_submesh_color(
-                                        sub.geometry_id,
+                                        geometry_id,
                                         &geometry_styles,
                                         &mut decoder,
                                         None,
@@ -1021,12 +1205,15 @@ impl IfcAPI {
                                         .entry(ifc_type)
                                         .or_insert_with(|| ifc_type.name().to_string())
                                         .clone();
-                                    mesh_collection.add(MeshDataJs::new(
+                                    emit_submesh_with_palette_split(
+                                        &mut mesh_collection,
                                         id,
-                                        ifc_type_name,
+                                        &ifc_type_name,
+                                        geometry_id,
                                         mesh,
                                         color,
-                                    ));
+                                        &indexed_colour_full,
+                                    );
                                     used_submesh = true;
                                 }
                             }
@@ -1045,6 +1232,7 @@ impl IfcAPI {
                                 let element_color = element_styles.get(&id).copied();
                                 let mut mat_color_idx = 0usize;
                                 for sub in sub_meshes.sub_meshes {
+                                    let geometry_id = sub.geometry_id;
                                     let mut mesh = sub.mesh;
                                     if mesh.is_empty() {
                                         continue;
@@ -1053,7 +1241,7 @@ impl IfcAPI {
                                         calculate_normals(&mut mesh);
                                     }
                                     let color = resolve_submesh_color(
-                                        sub.geometry_id,
+                                        geometry_id,
                                         &geometry_styles,
                                         &mut decoder,
                                         None,
@@ -1065,12 +1253,15 @@ impl IfcAPI {
                                         .entry(ifc_type)
                                         .or_insert_with(|| ifc_type.name().to_string())
                                         .clone();
-                                    mesh_collection.add(MeshDataJs::new(
+                                    emit_submesh_with_palette_split(
+                                        &mut mesh_collection,
                                         id,
-                                        ifc_type_name,
+                                        &ifc_type_name,
+                                        geometry_id,
                                         mesh,
                                         color,
-                                    ));
+                                        &indexed_colour_full,
+                                    );
                                 }
                             }
                         }

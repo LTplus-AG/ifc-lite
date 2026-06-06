@@ -465,6 +465,119 @@ fn mesh_point(mesh: &Mesh, index: u32) -> Option<Point3<f64>> {
     ))
 }
 
+/// Möller–Trumbore ray/triangle intersection returning the signed ray
+/// parameter `t` (signed distance along `dir` from `origin`), or `None` when
+/// the ray misses the triangle or runs parallel to it. `dir` must be
+/// normalized. Used by [`host_already_open_along_axis`].
+fn ray_triangle_param(
+    origin: Point3<f64>,
+    dir: &Vector3<f64>,
+    a: Point3<f64>,
+    b: Point3<f64>,
+    c: Point3<f64>,
+) -> Option<f64> {
+    const EPS: f64 = 1e-9;
+    let e1 = b - a;
+    let e2 = c - a;
+    let pvec = dir.cross(&e2);
+    let det = e1.dot(&pvec);
+    if det.abs() < EPS {
+        return None; // ray parallel to the triangle plane
+    }
+    let inv_det = 1.0 / det;
+    let tvec = origin - a;
+    let u = tvec.dot(&pvec) * inv_det;
+    if !(-EPS..=1.0 + EPS).contains(&u) {
+        return None;
+    }
+    let qvec = tvec.cross(&e1);
+    let v = dir.dot(&qvec) * inv_det;
+    if v < -EPS || u + v > 1.0 + EPS {
+        return None;
+    }
+    Some(e2.dot(&qvec) * inv_det)
+}
+
+/// Whether the infinite line through `point` along `axis` crosses any
+/// triangle of `mesh`.
+fn axis_line_crosses_mesh(mesh: &Mesh, point: Point3<f64>, axis: &Vector3<f64>) -> bool {
+    for tri in mesh.indices.chunks_exact(3) {
+        let (Some(a), Some(b), Some(c)) = (
+            mesh_point(mesh, tri[0]),
+            mesh_point(mesh, tri[1]),
+            mesh_point(mesh, tri[2]),
+        ) else {
+            continue;
+        };
+        if ray_triangle_param(point, axis, a, b, c).is_some() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether `opening` is a redundant cutter — every column through its footprint
+/// (along `axis`) is *already* open in `host`, so subtracting it would remove
+/// nothing.
+///
+/// Issue #964: some exporters (Revit) double-encode a void — once baked into
+/// the host's `IfcArbitraryProfileDefWithVoids` profile and again as a
+/// redundant `IfcOpeningElement`. The body geometry already carries the
+/// (correct, possibly round/polygonal) hole, so when the redundant opening's
+/// CSG subtraction finds nothing to remove the AABB fallback must NOT fire:
+/// cutting the opening's bounding box would carve a rectangle over the
+/// already-correct hole.
+///
+/// Clearance is probed across the *whole* footprint, not just the centroid:
+/// the centroid plus every cutter vertex pulled slightly inward toward the
+/// centroid (so the samples stay strictly inside the real round/polygonal
+/// footprint rather than its bounding box). The opening is redundant only when
+/// a ray along `axis` through *every* sample hits zero host triangles. If any
+/// sample still finds host material — e.g. a circular opening centred inside an
+/// already-cut rectangle but spilling out into solid host beyond it — the
+/// cutter has real work left and the fallback proceeds. A genuinely solid host
+/// (the issue #635 round window in an un-voided wall) is rejected at the very
+/// first sample, so the fallback still fires there. No regression.
+fn opening_redundant_with_host(host: &Mesh, opening: &Mesh, axis: &Vector3<f64>) -> bool {
+    let Some(axis) = axis.try_normalize(NORMALIZE_EPSILON) else {
+        return false;
+    };
+    let Some(centroid) = mesh_vertex_centroid(opening) else {
+        return false;
+    };
+    // Pull each footprint sample 10% toward the centroid so a sample sitting
+    // exactly on a hole boundary that coincides with the cutter wall lands
+    // strictly inside the existing void.
+    const PULL_TO_CENTROID: f64 = 0.1;
+    if axis_line_crosses_mesh(host, centroid, &axis) {
+        return false;
+    }
+    for v in opening.positions.chunks_exact(3) {
+        let vertex = Point3::new(v[0] as f64, v[1] as f64, v[2] as f64);
+        let sample = vertex + (centroid - vertex) * PULL_TO_CENTROID;
+        if axis_line_crosses_mesh(host, sample, &axis) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Centroid (vertex average) of a mesh, or `None` when it has no vertices.
+fn mesh_vertex_centroid(mesh: &Mesh) -> Option<Point3<f64>> {
+    let n = mesh.positions.len() / 3;
+    if n == 0 {
+        return None;
+    }
+    let (mut sx, mut sy, mut sz) = (0.0f64, 0.0f64, 0.0f64);
+    for chunk in mesh.positions.chunks_exact(3) {
+        sx += chunk[0] as f64;
+        sy += chunk[1] as f64;
+        sz += chunk[2] as f64;
+    }
+    let inv = 1.0 / n as f64;
+    Some(Point3::new(sx * inv, sy * inv, sz * inv))
+}
+
 fn extent_along_axis(mesh: &Mesh, axis: &Vector3<f64>) -> Option<f64> {
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
@@ -1305,7 +1418,12 @@ impl GeometryRouter {
                     }
 
                     let tri_before = result.triangle_count();
+                    let failures_before = clipper.failure_count();
                     let mut csg_succeeded = false;
+                    // Tracks whether CSG returned the host *unchanged* (the kernel
+                    // either found no real intersection, or errored on a grazing/
+                    // coplanar cutter and returned the un-cut host).
+                    let mut csg_unchanged = false;
                     match clipper.subtract_mesh(&result, opening_mesh) {
                         Ok(csg_result) => {
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
@@ -1319,6 +1437,7 @@ impl GeometryRouter {
                             // round/curved opening (issue #635) — the host mesh is
                             // returned unchanged, leaving the void uncut.
                             let changed = csg_result.triangle_count() != tri_before;
+                            csg_unchanged = !changed;
                             if !csg_result.is_empty()
                                 && csg_result.triangle_count() >= min_tris
                                 && changed
@@ -1340,19 +1459,6 @@ impl GeometryRouter {
                     // dramatically less wrong than a missing void on a wall
                     // that is supposed to host a window or door.
                     if !csg_succeeded {
-                        // Diagnostic for issue #635: when the AABB fallback
-                        // fires, log the opening triangle count so we can
-                        // verify (e.g. round windows after Part A's profile
-                        // simplification) that normal openings hit CSG and
-                        // only genuinely-broken ones land here.
-                        #[cfg(any(debug_assertions, test))]
-                        {
-                            let opening_tris = opening_mesh.triangle_count();
-                            eprintln!(
-                                "[issue-635] AABB fallback used: opening={} tris (over MAX_CSG_POLYGONS_PER_MESH or no change)",
-                                opening_tris
-                            );
-                        }
                         let dir = extrusion_dir.or_else(|| {
                             Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
                         });
@@ -1367,10 +1473,75 @@ impl GeometryRouter {
                         } else {
                             (*open_min_pt, *open_max_pt)
                         };
-                        let aabb_cut =
-                            self.cut_rectangular_opening(&result, final_min, final_max);
-                        if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {
-                            result = aabb_cut;
+                        // Near-engulf guard. When CSG returned the host *unchanged*
+                        // (no cut) AND the opening's AABB covers the whole wall on
+                        // every axis, the rectangular fallback would cut that
+                        // engulfing box and delete the wall. This is the signature
+                        // of a non-rectangular opening whose bounding box engulfs
+                        // the host while its real profile excludes it: the kernel
+                        // errors on the grazing/coplanar cutter and returns the
+                        // un-cut host, which is already the correct result vs
+                        // IfcOpenShell (advanced #555433's facade-scale void
+                        // #555493). Keep the un-cut host instead of over-cutting.
+                        // Normal windows/doors — including the issue-635 high-poly
+                        // round openings the AABB box approximates — sit INSIDE the
+                        // wall and never engulf it, so they still take the fallback.
+                        // The 3% per-axis tolerance absorbs an opening that reaches
+                        // ~flush with a wall face (its near plane).
+                        let engulfs_host = {
+                            let tol = 0.03_f64;
+                            let covers = |omin: f64, omax: f64, wmin: f64, wmax: f64| {
+                                let slack = (wmax - wmin).abs().max(1.0e-9) * tol;
+                                omin <= wmin + slack && omax >= wmax - slack
+                            };
+                            covers(final_min.x, final_max.x, wall_min.x, wall_max.x)
+                                && covers(final_min.y, final_max.y, wall_min.y, wall_max.y)
+                                && covers(final_min.z, final_max.z, wall_min.z, wall_max.z)
+                        };
+                        // Only suppress the fallback when "unchanged" means the
+                        // kernel found no real cut (a kernel error / no-overlap on
+                        // a grazing engulfing cutter). If instead it was the BSP
+                        // polygon cap rejecting a genuinely complex cutter
+                        // (`OperandTooLarge`, issue #635 — the production server
+                        // runs the BSP kernel), the void is real and MUST get the
+                        // AABB box: skipping it on the 3% engulf heuristic would
+                        // leave the wall entirely uncut (Codex review, #947).
+                        let capped = clipper.has_operand_too_large_since(failures_before);
+                        // Issue #964: suppress the destructive AABB box when the
+                        // host already has this void cut into it (a void
+                        // double-encoded as both a profile inner curve and a
+                        // redundant IfcOpeningElement). When every column through
+                        // the opening footprint is already open in the host,
+                        // cutting the bounding box would replace a correct
+                        // round/polygonal hole with a rectangle. Unlike the
+                        // engulf heuristic this is a positive void detection, so
+                        // it overrides `capped` too (the void demonstrably
+                        // exists — there is nothing left to approximate).
+                        let probe_axis = dir.unwrap_or_else(|| {
+                            wall_thinnest_axis_dir(&wall_min, &wall_max)
+                        });
+                        let redundant_void =
+                            opening_redundant_with_host(&result, opening_mesh, &probe_axis);
+                        let suppress_fallback =
+                            redundant_void || (csg_unchanged && engulfs_host && !capped);
+                        if !suppress_fallback {
+                            // Diagnostic for issue #635: log the opening
+                            // triangle count when the AABB fallback actually
+                            // fires, so round windows (post profile
+                            // simplification) can be confirmed to hit CSG and
+                            // only genuinely-uncut voids land on the box cut.
+                            #[cfg(any(debug_assertions, test))]
+                            {
+                                eprintln!(
+                                    "[issue-635] AABB fallback used: opening={} tris (over MAX_CSG_POLYGONS_PER_MESH or no change)",
+                                    opening_mesh.triangle_count()
+                                );
+                            }
+                            let aabb_cut =
+                                self.cut_rectangular_opening(&result, final_min, final_max);
+                            if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {
+                                result = aabb_cut;
+                            }
                         }
                     }
                 }
@@ -2252,13 +2423,28 @@ impl GeometryRouter {
             let tri_min_z = v0.z.min(v1.z).min(v2.z);
             let tri_max_z = v0.z.max(v1.z).max(v2.z);
 
+            // Per-axis "completely outside" slack, scaled by the box-plane
+            // coordinate magnitude. The host mesh is stored f32 and promoted to
+            // f64 here, while the opening box bounds are pure f64; at
+            // building-scale world coordinates (tens of metres) the f32 quantum
+            // (|coord| * 2^-23 ≈ 1.2e-7 * |coord|, ~4e-6 m at 33 m) exceeds a
+            // fixed 1e-6 m EPSILON. A wall face authored exactly flush with the
+            // opening's near plane (door extruded from the back surface —
+            // ISSUE_126 #77438 / #83694) then rounds ~1.4e-6 m *outside* the
+            // box, so a fixed-epsilon test mis-classifies it as "completely
+            // outside", the back face survives un-cut, and the opening is sealed
+            // (non-manifold). Track the f32 round-trip error per axis.
+            let eps_x = EPSILON.max(open_min.x.abs().max(open_max.x.abs()) * 1e-6);
+            let eps_y = EPSILON.max(open_min.y.abs().max(open_max.y.abs()) * 1e-6);
+            let eps_z = EPSILON.max(open_min.z.abs().max(open_max.z.abs()) * 1e-6);
+
             // If triangle is completely outside opening, keep it as-is
-            if tri_max_x <= open_min.x - EPSILON
-                || tri_min_x >= open_max.x + EPSILON
-                || tri_max_y <= open_min.y - EPSILON
-                || tri_min_y >= open_max.y + EPSILON
-                || tri_max_z <= open_min.z - EPSILON
-                || tri_min_z >= open_max.z + EPSILON
+            if tri_max_x <= open_min.x - eps_x
+                || tri_min_x >= open_max.x + eps_x
+                || tri_max_y <= open_min.y - eps_y
+                || tri_min_y >= open_max.y + eps_y
+                || tri_max_z <= open_min.z - eps_z
+                || tri_min_z >= open_max.z + eps_z
             {
                 let base = result.vertex_count() as u32;
                 result.add_vertex(v0, n0);
@@ -2377,7 +2563,16 @@ impl GeometryRouter {
             let tri_max = p0.max(p1).max(p2);
             let box_extent = box_half_extents[axis_idx];
 
-            if tri_max < -box_extent - SAT_EPSILON || tri_min > box_extent + SAT_EPSILON {
+            // Scale the separation slack by the world-coordinate magnitude on
+            // this axis so it absorbs the f32 round-trip slop of the host mesh
+            // (stored f32, promoted to f64 here) at building-scale coordinates;
+            // a fixed 1e-6 m is below the f32 quantum at tens of metres, so a
+            // triangle exactly coplanar with the box face (ISSUE_126 #77438 back
+            // face, flush with the door opening's near plane) reads as separated
+            // and survives the cut un-clipped.
+            let axis_eps =
+                SAT_EPSILON.max(box_center[axis_idx].abs().max(box_extent.abs()) * 1e-6);
+            if tri_max < -box_extent - axis_eps || tri_min > box_extent + axis_eps {
                 return false; // Separated on this axis
             }
         }
@@ -2410,8 +2605,20 @@ impl GeometryRouter {
         // pipeline) becomes a separation gap of ~1.7e-6 in projection units,
         // which a fixed 1e-6 epsilon misses — leaving the wall's outer face
         // un-clipped (Smiley-West uncut walls, follow-up to #584).
+        //
+        // The *physical* slack must additionally absorb the f32 round-trip slop
+        // of the host mesh: at building-scale world coordinates (tens of metres)
+        // the f32 quantum is |coord| * 2^-23 ≈ 1.2e-7 * |coord|, which exceeds a
+        // fixed 1e-6 m. A wall face flush with the opening's near plane (door
+        // extruded from the back surface — ISSUE_126 #77438 / #83694, coords
+        // ~33 m) lands ~1.4e-6 m outside the box; a fixed 1e-6 physical slack
+        // still reports separation and the back face survives un-cut, sealing
+        // the opening. Scale the physical slack by the box-center magnitude so
+        // it tracks the f32 error, then by the normal magnitude as before.
+        let phys_slack = SAT_EPSILON
+            .max(box_center.x.abs().max(box_center.y.abs()).max(box_center.z.abs()) * 1e-6);
         let normal_magnitude = triangle_normal.norm();
-        let t2_epsilon = SAT_EPSILON * normal_magnitude.max(1.0);
+        let t2_epsilon = phys_slack * normal_magnitude.max(1.0);
         if triangle_offset.abs() > box_projection + t2_epsilon {
             return false; // Separated by triangle plane
         }
@@ -2450,8 +2657,14 @@ impl GeometryRouter {
                         box_half_extents[i] * axis_normalized.dot(&box_axis_vec).abs();
                 }
 
-                if tri_max < -box_projection - SAT_EPSILON
-                    || tri_min > box_projection + SAT_EPSILON
+                // Same f32-round-trip-aware physical slack as Test 2: the
+                // cross-product axis is normalized, so projections are physical
+                // units and a fixed 1e-6 m misses building-scale f32 slop on a
+                // triangle coplanar with a box face (ISSUE_126 #77438 back face
+                // — box-edge × triangle-edge yields a ±X axis, the very axis the
+                // coplanar back face is separated on).
+                if tri_max < -box_projection - phys_slack
+                    || tri_min > box_projection + phys_slack
                 {
                     return false; // Separated on this axis
                 }
@@ -2490,7 +2703,25 @@ impl GeometryRouter {
         open_max: &Point3<f64>,
     ) {
         let clipper = ClippingProcessor::new();
-        let epsilon = clipper.epsilon;
+        // The plane classification (`d >= -epsilon` = inside/front) must absorb
+        // the host mesh's f32 round-trip slop: the mesh is stored f32 and
+        // promoted to f64 here while the box planes are pure f64. At
+        // building-scale world coordinates (tens of metres) the f32 quantum
+        // (|coord| * 2^-23 ≈ 1.2e-7 * |coord|) exceeds a fixed 1e-6 m, so a wall
+        // face flush with a box plane (ISSUE_126 #77438 back face, ~33 m,
+        // ~1.4e-6 m off the +X plane) is classified entirely "outside" and the
+        // whole triangle survives un-clipped — the opening is sealed by the
+        // un-cut back face. Scale the classification epsilon by the box-plane
+        // coordinate magnitude so it tracks that f32 error.
+        let coord_mag = open_min
+            .x
+            .abs()
+            .max(open_max.x.abs())
+            .max(open_min.y.abs())
+            .max(open_max.y.abs())
+            .max(open_min.z.abs())
+            .max(open_max.z.abs());
+        let epsilon = clipper.epsilon.max(coord_mag * 1e-6);
 
         // Clear buffers for reuse (retains capacity)
         buffers.clear();

@@ -25,7 +25,8 @@ import {
     RelationshipType,
     QuantityType,
 } from '@ifc-lite/data';
-import type { SpatialHierarchy, QuantityTable, PropertyValue } from '@ifc-lite/data';
+import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, QuantitySet, IfcStoreBase, IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
+import { BufferEntitySource } from './entity-source.js';
 import { batchExtractGlobalIdAndName } from './columnar-parser-attributes.js';
 import {
     GEOMETRY_TYPES,
@@ -48,10 +49,7 @@ import type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js
 // Re-export interfaces/types from extracted modules for public API compatibility
 export type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
-export interface IfcDataStore {
-    fileSize: number;
-    schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
-    entityCount: number;
+export interface IfcDataStore extends IfcStoreBase {
     parseTime: number;
 
     source: Uint8Array;
@@ -63,9 +61,6 @@ export interface IfcDataStore {
     properties: ReturnType<PropertyTableBuilder['build']>;
     quantities: QuantityTable;
     relationships: ReturnType<RelationshipGraphBuilder['build']>;
-
-    spatialHierarchy?: SpatialHierarchy;
-    spatialIndex?: SpatialIndex;
 
     /**
      * On-demand property lookup: entityId -> array of property set expressIds
@@ -513,6 +508,7 @@ export class ColumnarParser {
         // The hierarchy panel can render immediately while property/association
         // parsing continues. This lets the panel appear at the same time as
         // geometry streaming completes.
+        const entitySource = new BufferEntitySource(uint8Buffer, entityIndex);
         const earlyStore: IfcDataStore = {
             fileSize: buffer.byteLength,
             schemaVersion,
@@ -527,6 +523,10 @@ export class ColumnarParser {
             relationships: hierarchyRelGraph,
             spatialHierarchy,
             lengthUnitScale,
+            getEntity(expressId) { return entitySource.getEntity(expressId); },
+            getEntitiesByType(typeName) { return entitySource.getEntitiesByType(typeName); },
+            getProperties(expressId) { return this.properties.getForEntity(expressId); },
+            getQuantities(expressId) { return this.quantities.getForEntity(expressId); },
         };
         options.onSpatialReady?.(earlyStore);
 
@@ -638,7 +638,7 @@ export class ColumnarParser {
         const parseTime = performance.now() - startTime;
         options.onProgress?.({ phase: 'complete', percent: 100 });
 
-        return {
+        const finalStore: IfcDataStore = {
             ...earlyStore,
             parseTime,
             relationships: fullRelationshipGraph,
@@ -649,7 +649,18 @@ export class ColumnarParser {
             onDemandMaterialMap,
             onDemandDocumentMap,
             lengthUnitScale,
+            getEntity(expressId) { return entitySource.getEntity(expressId); },
+            getEntitiesByType(typeName) { return entitySource.getEntitiesByType(typeName); },
+            getProperties(expressId) {
+                if (onDemandPropertyMap.size > 0) return extractPropertiesOnDemand(this as IfcDataStore, expressId) as PropertySet[];
+                return this.properties.getForEntity(expressId);
+            },
+            getQuantities(expressId) {
+                if (onDemandQuantityMap.size > 0) return extractQuantitiesOnDemand(this as IfcDataStore, expressId) as QuantitySet[];
+                return this.quantities.getForEntity(expressId);
+            },
         };
+        return finalStore;
     }
 
     /**
@@ -820,8 +831,10 @@ function getEntityRefFromStore(store: IfcDataStore, expressId: number): EntityRe
 }
 
 /**
- * Extract entity attributes on-demand from source buffer
- * Returns globalId, name, description, objectType, tag for any IfcRoot-derived entity.
+ * Extract entity attributes on-demand from source buffer.
+ * Returns globalId, name, description, objectType, tag mapped by schema name
+ * (see {@link extractRootAttributesFromEntity}), so the result stays correct
+ * for entity types whose attribute order differs from the IfcElement layout.
  * This is used for entities that weren't fully parsed during initial load.
  */
 export function extractEntityAttributesOnDemand(
@@ -839,18 +852,7 @@ export function extractEntityAttributesOnDemand(
         return { globalId: '', name: '', description: '', objectType: '', tag: '' };
     }
 
-    const attrs = entity.attributes || [];
-    // IfcRoot attributes: [GlobalId, OwnerHistory, Name, Description]
-    // IfcObject adds: [ObjectType] at index 4
-    // IfcProduct adds: [ObjectPlacement, Representation] at indices 5-6
-    // IfcElement adds: [Tag] at index 7
-    const globalId = typeof attrs[0] === 'string' ? attrs[0] : '';
-    const name = typeof attrs[2] === 'string' ? attrs[2] : '';
-    const description = typeof attrs[3] === 'string' ? attrs[3] : '';
-    const objectType = typeof attrs[4] === 'string' ? attrs[4] : '';
-    const tag = typeof attrs[7] === 'string' ? attrs[7] : '';
-
-    return { globalId, name, description, objectType, tag };
+    return extractRootAttributesFromEntity(entity);
 }
 
 /**
@@ -945,6 +947,92 @@ export function extractAllEntityAttributes(
     }
 
     return result;
+}
+
+/**
+ * Returns named raw attribute pairs for an entity, filtered to display-relevant attributes.
+ * Skips structural/reference attributes using the IFC schema. Used by query layer for coercion.
+ */
+export function getRawNamedAttributes(
+    entity: IfcEntity
+): Array<{ name: string; raw: IfcAttributeValue }> {
+    const attrs = entity.attributes || [];
+    const attrNames = getAttributeNames(entity.type);
+
+    const result: Array<{ name: string; raw: IfcAttributeValue }> = [];
+    const len = Math.min(attrs.length, attrNames.length);
+    for (let i = 0; i < len; i++) {
+        const attrName = attrNames[i];
+        if (SKIP_DISPLAY_ATTRS.has(attrName)) continue;
+        result.push({ name: attrName, raw: attrs[i] });
+    }
+    return result;
+}
+
+interface RootAttrIndices {
+    known: boolean;
+    globalId: number;
+    name: number;
+    description: number;
+    objectType: number;
+    tag: number;
+}
+
+// getAttributeNames() walks the schema registry (an O(types) scan for the
+// UPPERCASE STEP names entities carry), so memoise the per-type index lookup.
+// There are only a few hundred distinct types but potentially millions of
+// entities, keeping the on-demand path cheap even when called per entity.
+const rootAttrIndexCache = new Map<string, RootAttrIndices>();
+
+function getRootAttrIndices(type: string): RootAttrIndices {
+    let idx = rootAttrIndexCache.get(type);
+    if (!idx) {
+        const names = getAttributeNames(type);
+        idx = {
+            known: names.length > 0,
+            globalId: names.indexOf('GlobalId'),
+            name: names.indexOf('Name'),
+            description: names.indexOf('Description'),
+            objectType: names.indexOf('ObjectType'),
+            tag: names.indexOf('Tag'),
+        };
+        rootAttrIndexCache.set(type, idx);
+    }
+    return idx;
+}
+
+/**
+ * Resolve the common IfcRoot-family display attributes (GlobalId, Name,
+ * Description, ObjectType, Tag) from an entity's raw attribute array.
+ *
+ * These are mapped by schema-derived attribute *name*, not fixed index. The
+ * fixed indices `[0],[2],[3],[4],[7]` only hold for the IfcElement layout: for
+ * a spatial element `attrs[7]` is LongName (not Tag), and for a resource entity
+ * like IfcMaterial `attrs[0]` is Name (not GlobalId). Name-mapping keeps all of
+ * these correct for every entity type, returning '' for attributes the type
+ * does not declare.
+ *
+ * For types the schema registry does not recognise (e.g. an IFC4x3 infra leaf
+ * outside the codegen pin, or a vendor extension) we fall back to the canonical
+ * IfcRoot/IfcElement positions so we never regress vs. the old fixed-index path.
+ */
+export function extractRootAttributesFromEntity(
+    entity: IfcEntity
+): { globalId: string; name: string; description: string; objectType: string; tag: string } {
+    const attrs = entity.attributes || [];
+    const idx = getRootAttrIndices(entity.type);
+    const pick = (schemaIndex: number, fallbackIndex: number): string => {
+        const i = idx.known ? schemaIndex : fallbackIndex;
+        const raw = i >= 0 ? attrs[i] : undefined;
+        return typeof raw === 'string' ? raw : '';
+    };
+    return {
+        globalId: pick(idx.globalId, 0),
+        name: pick(idx.name, 2),
+        description: pick(idx.description, 3),
+        objectType: pick(idx.objectType, 4),
+        tag: pick(idx.tag, 7),
+    };
 }
 
 // Re-export on-demand extraction functions from focused module

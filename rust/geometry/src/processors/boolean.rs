@@ -362,6 +362,23 @@ impl BooleanClippingProcessor {
         }
         .normalize();
 
+        // The prism is extruded perpendicular to the polygon plane (along
+        // Position.Z), but ONLY toward the material side of the base surface —
+        // the side this DIFFERENCE removes. A spec-correct
+        // IfcPolygonalBoundedHalfSpace prism is infinite along ±Position.Z and
+        // then intersected with the half-space; our one-directional prism
+        // approximates that, so it MUST point at the material side. Position.Z
+        // is authored independently of AgreementFlag (the duplex "Party Wall"
+        // clips author Position.Z parallel to +normal while AgreementFlag puts
+        // the material on -normal), so flip its sign when it points away from
+        // the material side. The cross-section stays perpendicular to
+        // Position.Z, preserving the tilted-cutter fix (#583).
+        let ext_dir = if z_axis.dot(&material_side_dir) >= 0.0 {
+            z_axis
+        } else {
+            -z_axis
+        };
+
         // Project each polygon vertex from its position in Position's XY
         // plane onto the slope plane along Position's Z-axis. This yields a
         // (possibly tilted) polygon that lies ON the slope plane and forms
@@ -434,33 +451,33 @@ impl BooleanClippingProcessor {
         };
         let max_projection_z = host_corners
             .iter()
-            .map(|corner| (corner - base_centroid).dot(&z_axis))
+            .map(|corner| (corner - base_centroid).dot(&ext_dir))
             .fold(0.0_f64, f64::max);
         let depth = max_projection_z.max(host_diag) + 1.0;
 
-        // Top cap = base cap translated along POSITION.Z by `depth`.
+        // Top cap = base cap translated along the material-side extrusion
+        // direction by `depth`.
         let top_world: Vec<Point3<f64>> =
-            base_world.iter().map(|p| *p + z_axis * depth).collect();
+            base_world.iter().map(|p| *p + ext_dir * depth).collect();
 
         // Winding: build_tilted_prism_mesh REVERSES the bottom cap
         // (triangles emitted in reverse order) and KEEPS the top cap.
         // For a closed solid with outward-facing caps:
-        //   - Bottom cap outward normal: -z_axis (pointing DOWN, OUT of
-        //     prism whose interior is ABOVE the slope plane)
-        //   - Top cap outward normal: +z_axis (pointing UP, OUT)
+        //   - Bottom cap outward normal: -ext_dir (pointing OUT of the prism,
+        //     whose interior is on the +ext_dir side of the slope plane)
+        //   - Top cap outward normal: +ext_dir (pointing OUT)
         // After the in-builder reversal, the bottom cap inherits the
-        // polygon's REVERSED normal. We need REVERSED == -z_axis, so the
-        // polygon's natural normal must be +z_axis. Reverse the polygon
-        // ONLY if its natural normal currently points in -z_axis.
+        // polygon's REVERSED normal. We need REVERSED == -ext_dir, so the
+        // polygon's natural normal must be +ext_dir. Reverse the polygon
+        // ONLY if its natural normal currently points in -ext_dir.
         let mut base = base_world;
         let mut top = top_world;
         let mut contour_2d = contour_2d;
-        if Self::polygon_normal(&base).dot(&z_axis) < 0.0 {
+        if Self::polygon_normal(&base).dot(&ext_dir) < 0.0 {
             base.reverse();
             top.reverse();
             contour_2d.reverse();
         }
-        let _ = material_side_dir; // retained for clarity / future use
 
         self.build_tilted_prism_mesh(&contour_2d, &base, &top)
     }
@@ -555,21 +572,17 @@ impl BooleanClippingProcessor {
 
     /// Walk the left-spine of a chained
     /// `IfcBooleanClippingResult(.DIFFERENCE., x, polygonalBoundedHalfSpace)`
-    /// pattern (typical for gable walls clipped by both roof slopes) and
-    /// collect every consecutive `IfcPolygonalBoundedHalfSpace` cutter.
+    /// pattern (typical for gable walls clipped by a segmented roof) and
+    /// collect every consecutive `IfcPolygonalBoundedHalfSpace` cutter, plus
+    /// the base solid the chain bottoms out on.
     ///
-    /// **Currently unused.** The batched-CSG path that this fed (combine
-    /// all cutter prisms into one mesh, run one CSG subtract) was incorrect
-    /// when chained cutters overlapped or duplicated — mesh-merging two
-    /// closed solids occupying the same volume produces a non-manifold
-    /// cutter and CSG sliver artefacts. See `docs/research/csg-clipping-
-    /// fidelity.md` for the comparison with ifcopenshell/web-ifc, and
-    /// `process_with_depth` for the new sequential path.
-    ///
-    /// Kept here `#[allow(dead_code)]` because a future cap-aware
-    /// optimisation might re-batch ONLY chains whose cutters are
-    /// coplanar AND non-overlapping (where the mesh-merge IS manifold).
-    #[allow(dead_code)]
+    /// Returns `(base_entity, cutters)` with `cutters` ordered innermost-first.
+    /// Consumed by [`Self::try_union_polygonal_chain`], which unions the cutter
+    /// prisms (a true CSG union — overlap-safe, unlike the old mesh-*merge*
+    /// batching) and subtracts once. See that method for why a single unioned
+    /// subtract beats sequential subtraction here (issue #960: seam slivers +
+    /// deep-chain depth-limit drops).
+    #[cfg(feature = "manifold-csg")]
     fn collect_polygonal_chain(
         &self,
         entity: DecodedEntity,
@@ -610,6 +623,155 @@ impl BooleanClippingProcessor {
         Ok((current, chain))
     }
 
+    /// Resolve a left-deep chain of
+    /// `IfcBooleanClippingResult(.DIFFERENCE., x, IfcPolygonalBoundedHalfSpace)`
+    /// clips by unioning every cutter prism into one solid and subtracting it
+    /// from the base in a single operation. See the call site in
+    /// [`Self::process_with_depth`] for the full rationale (issue #960: seam
+    /// slivers + deep-chain depth-limit drops).
+    ///
+    /// Returns `Ok(None)` — defer to the standard sequential path — when the
+    /// chain has fewer than two PBHS cutters, when a cutter prism fails to
+    /// build, or when batching can't be proven safe (a full-cross-section
+    /// cutter that needs the per-cutter unbounded-plane fallback, or a CSG
+    /// union that silently under-removes).
+    ///
+    /// Only compiled with `manifold-csg`: it relies on a true CSG union of the
+    /// cutter prisms, which the BSP fallback can't guarantee.
+    #[cfg(feature = "manifold-csg")]
+    fn try_union_polygonal_chain(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        depth: u32,
+    ) -> Result<Option<Mesh>> {
+        let (base_entity, cutters) = self.collect_polygonal_chain(entity.clone(), decoder)?;
+        if cutters.len() < 2 {
+            return Ok(None);
+        }
+
+        // Process the base solid (the innermost first-operand). The chain is
+        // walked iteratively above, so a 12-cutter chain reaches here at the
+        // SAME `depth` as a 2-cutter one — the recursion-depth limit can't drop
+        // it.
+        let base_mesh = self.process_operand_with_depth(&base_entity, decoder, depth)?;
+        if base_mesh.is_empty() {
+            return Ok(Some(base_mesh));
+        }
+
+        // Build each cutter prism (bounds-clamped to the base).
+        let mut prisms: Vec<Mesh> = Vec::with_capacity(cutters.len());
+        for cutter in &cutters {
+            let (plane_point, plane_normal, agreement) =
+                self.parse_half_space_solid(cutter, decoder)?;
+            match self.build_polygonal_bounded_half_space_mesh(
+                cutter,
+                decoder,
+                &base_mesh,
+                plane_point,
+                plane_normal,
+                agreement,
+            ) {
+                Ok(prism) if !prism.is_empty() => prisms.push(prism),
+                // A cutter we can't build a prism for would be silently dropped
+                // here; defer to the sequential path, which records the loss as
+                // `PolygonalBoundedHalfSpaceFallback`.
+                _ => return Ok(None),
+            }
+        }
+
+        let clipper = ClippingProcessor::new();
+
+        // Per-cutter trial subtracts serve two roles:
+        //   * reject the chain if any single cutter is degenerate (a full-
+        //     cross-section coincident-face clip whose bounded subtract is
+        //     fragile — duplex.ifc "Party Wall" #4287/#4399, which the
+        //     sequential path rescues via its bounded→unbounded fallback), and
+        //   * record the intersection of every single-cutter result's bounds.
+        //     The true answer (base minus the union of ALL cutters) is a subset
+        //     of each single-cutter result, so its bounds can't exceed that
+        //     intersection. If the unioned subtract below pokes outside it, the
+        //     CSG union silently under-removed (manifold does this for near-
+        //     coincident/duplicate cutters) and must not be trusted.
+        let mut tight_min = Point3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut tight_max = Point3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        for prism in &prisms {
+            let trial = match clipper.subtract_mesh(&base_mesh, prism) {
+                Ok(m) if !m.is_empty() => m,
+                // Empty or errored single cut — the sequential path's per-cutter
+                // fallback handles it better than a batched union would.
+                _ => {
+                    let _ = clipper.take_failures();
+                    return Ok(None);
+                }
+            };
+            if ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &trial) {
+                let _ = clipper.take_failures();
+                return Ok(None);
+            }
+            let (tmn, tmx) = trial.bounds();
+            tight_min = Point3::new(
+                tight_min.x.max(tmn.x),
+                tight_min.y.max(tmn.y),
+                tight_min.z.max(tmn.z),
+            );
+            tight_max = Point3::new(
+                tight_max.x.min(tmx.x),
+                tight_max.y.min(tmx.y),
+                tight_max.z.min(tmx.z),
+            );
+        }
+        let _ = clipper.take_failures();
+
+        // Every cutter is a clean partial cut: union them (a true CSG union, so
+        // abutting roof segments share no internal seam) and subtract once. This
+        // is what eliminates the zero-thickness seam fins that sequential
+        // subtraction leaves behind. A union failure must defer to the
+        // sequential path (like every other guard here), never bubble up — a
+        // bubbled error would drop the whole wall instead of falling back.
+        let combined = match clipper.union_meshes(&prisms) {
+            Ok(m) if !m.is_empty() => m,
+            _ => {
+                let _ = clipper.take_failures();
+                return Ok(None);
+            }
+        };
+        let result = clipper.subtract_mesh(&base_mesh, &combined);
+        self.drain_clipper_failures(&clipper);
+        let clipped = match result {
+            Ok(m)
+                if !m.is_empty()
+                    && !ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &m) =>
+            {
+                m
+            }
+            // Kernel error or a degenerate union result — fall back to the
+            // sequential per-cutter path.
+            _ => return Ok(None),
+        };
+
+        // Reject a silently under-removing union: the result must fit inside the
+        // intersection of the single-cutter result bounds (tolerance scaled to
+        // the host size). If it pokes outside, the union dropped a cut — defer
+        // to sequential. (duplex.ifc: a near-coincident cutter pair unions to
+        // less than either alone.)
+        let (rmn, rmx) = clipped.bounds();
+        let diag = (tight_max.x - tight_min.x)
+            .hypot(tight_max.y - tight_min.y)
+            .hypot(tight_max.z - tight_min.z);
+        let tol = (diag * 1e-3).max(1e-4);
+        let under_removed = rmx.x > tight_max.x + tol
+            || rmx.y > tight_max.y + tol
+            || rmx.z > tight_max.z + tol
+            || rmn.x < tight_min.x - tol
+            || rmn.y < tight_min.y - tol
+            || rmn.z < tight_min.z - tol;
+        if under_removed {
+            return Ok(None);
+        }
+        Ok(Some(clipped))
+    }
+
     /// Internal processing with depth tracking to prevent stack overflow
     fn process_with_depth(
         &self,
@@ -639,6 +801,44 @@ impl BooleanClippingProcessor {
                 _ => None,
             })
             .unwrap_or(".DIFFERENCE.");
+
+        // A left-deep chain of `IfcBooleanClippingResult(.DIFFERENCE., x,
+        // IfcPolygonalBoundedHalfSpace)` clips — the canonical "gable wall
+        // trimmed by a segmented roof" pattern — is resolved by unioning all
+        // cutter prisms into one solid and subtracting it once, rather than
+        // applying each cutter sequentially. Two reasons (issue #960,
+        // House.ifc):
+        //
+        //  1. **No seam slivers.** Sequentially subtracting two prisms that
+        //     abut along a shared edge (adjacent roof segments meeting at a
+        //     hip/valley) leaves the host material exactly on the seam as a
+        //     zero-thickness, full-height fin — rendered double-sided, it is a
+        //     visible wall sliver poking through the roof. A real CSG *union*
+        //     dissolves the shared face, so the single subtract leaves nothing
+        //     behind. (This is NOT the old mesh-*merge* batching that produced
+        //     non-manifold cutters — `union_meshes` runs a true CSG union,
+        //     which handles overlapping/duplicate cutters correctly.)
+        //  2. **No depth-limit drops.** The chain is walked iteratively, so a
+        //     wall clipped by 12+ roof planes no longer blows MAX_BOOLEAN_DEPTH
+        //     and vanishes (House.ifc walls #4148/#2797/#5904).
+        //
+        // `try_union_polygonal_chain` returns `None` (fall through to the
+        // sequential path below) whenever batching isn't provably safe, so the
+        // per-cutter bounded→unbounded fallback still rescues full-cross-section
+        // clips (duplex.ifc "Party Wall"). Verified mm-identical to IfcOpenShell
+        // on all five reported House.ifc walls.
+        //
+        // Gated on `manifold-csg`: the whole approach hinges on a *true* CSG
+        // union of the cutter prisms. The legacy BSP `union_mesh` can fall back
+        // to a non-manifold mesh-merge, which neither dissolves the seam nor is
+        // safe to subtract — so without Manifold (the BSP server build) we keep
+        // the unchanged sequential path rather than risk a worse result.
+        #[cfg(feature = "manifold-csg")]
+        if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
+            if let Some(result) = self.try_union_polygonal_chain(entity, decoder, depth)? {
+                return Ok(result);
+            }
+        }
 
         // NOTE: a previous version had a "fast path for chained polygonal-
         // bounded half-space clips" here that mesh-merged every cutter in
@@ -730,12 +930,26 @@ impl BooleanClippingProcessor {
                     let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
                     self.drain_clipper_failures(&clipper);
                     if let Ok(clipped) = subtract_result {
-                        return Ok(self.guard_against_full_host_removal(
-                            mesh,
-                            clipped,
-                            plane_point,
-                            plane_normal,
-                        ));
+                        // The bounded-prism subtract is fragile on coincident
+                        // faces: when the clip polygon spans the full host
+                        // cross-section, the prism's in-plane side walls land
+                        // exactly on the host's side faces and the CSG kernel
+                        // can collapse the host to a near-empty sliver
+                        // (duplex.ifc "Party Wall" segments #4287/#4399 —
+                        // 12-tri box → 2-tri quad on the legacy BSP kernel the
+                        // native server uses). When the result looks degenerate
+                        // we fall through to the robust unbounded plane clip
+                        // below: a strict superset of the bounded cut that is
+                        // exactly correct whenever the polygon already covers
+                        // the host's projected cross-section.
+                        if !ClippingProcessor::difference_result_looks_degenerate(&mesh, &clipped) {
+                            return Ok(self.guard_against_full_host_removal(
+                                mesh,
+                                clipped,
+                                plane_point,
+                                plane_normal,
+                            ));
+                        }
                     }
                 }
 

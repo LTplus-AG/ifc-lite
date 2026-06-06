@@ -68,7 +68,7 @@ export function convertMeshCollectionToBatch(
         // Read each WASM copy-to-JS getter once; indexing the getter
         // directly would copy a fresh Float32Array out of WASM per access.
         const color = mesh.color;
-        batch.push({
+        const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
           positions: mesh.positions,
@@ -76,7 +76,23 @@ export function convertMeshCollectionToBatch(
           indices: mesh.indices,
           color: [color[0], color[1], color[2], color[3]],
           ...(shadingColor ? { shadingColor } : {}),
-        });
+        };
+
+        // #961: copy the Rust-decoded surface texture + per-vertex UVs (the
+        // getters return empty for the ~all untextured meshes). The browser
+        // only uploads `rgba` to a GPU texture — no image decoding in JS.
+        if ((mesh as { hasTexture?: boolean }).hasTexture) {
+          meshData.uvs = mesh.uvs;
+          meshData.texture = {
+            rgba: mesh.textureRgba,
+            width: mesh.textureWidth,
+            height: mesh.textureHeight,
+            repeatS: mesh.textureRepeatS,
+            repeatT: mesh.textureRepeatT,
+          };
+        }
+
+        batch.push(meshData);
       } finally {
         mesh.free();
       }

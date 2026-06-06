@@ -46,6 +46,9 @@ import {
 import { CompactEntityIndex } from './compact-entity-index.js';
 import type { EntityRef } from './types.js';
 import type { IfcDataStore, EntityByIdIndex } from './columnar-parser.js';
+import { BufferEntitySource } from './entity-source.js';
+import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from './columnar-parser.js';
+import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 
 // ────────────────────────────────────────────────────────────────────────────
 // CompactEntityIndex transport
@@ -465,6 +468,14 @@ export function fromTransport(payload: DataStoreTransport, source: Uint8Array): 
     ? spatialHierarchyFromColumns(payload.spatialHierarchy)
     : undefined;
 
+  const entityIndex = {
+    byId: byIdIndex as unknown as EntityByIdIndex,
+    byType,
+  };
+  const onDemandPropertyMap = new Map(payload.onDemandPropertyMap.map(([k, v]) => [k, [...v]]));
+  const onDemandQuantityMap = new Map(payload.onDemandQuantityMap.map(([k, v]) => [k, [...v]]));
+  const entitySource = new BufferEntitySource(source, entityIndex);
+
   const store: IfcDataStore = {
     fileSize: payload.fileSize,
     schemaVersion: payload.schemaVersion,
@@ -473,10 +484,7 @@ export function fromTransport(payload: DataStoreTransport, source: Uint8Array): 
     lengthUnitScale: payload.lengthUnitScale,
 
     source,
-    entityIndex: {
-      byId: byIdIndex as unknown as EntityByIdIndex,
-      byType,
-    },
+    entityIndex,
     deferredEntityIndex: deferredEntityIndex as unknown as EntityByIdIndex | undefined,
 
     strings,
@@ -486,11 +494,21 @@ export function fromTransport(payload: DataStoreTransport, source: Uint8Array): 
     relationships,
     spatialHierarchy,
 
-    onDemandPropertyMap: new Map(payload.onDemandPropertyMap.map(([k, v]) => [k, [...v]])),
-    onDemandQuantityMap: new Map(payload.onDemandQuantityMap.map(([k, v]) => [k, [...v]])),
+    onDemandPropertyMap,
+    onDemandQuantityMap,
     onDemandClassificationMap: new Map(payload.onDemandClassificationMap.map(([k, v]) => [k, [...v]])),
     onDemandMaterialMap: new Map(payload.onDemandMaterialMap),
     onDemandDocumentMap: new Map(payload.onDemandDocumentMap.map(([k, v]) => [k, [...v]])),
+    getEntity(expressId) { return entitySource.getEntity(expressId); },
+    getEntitiesByType(typeName) { return entitySource.getEntitiesByType(typeName); },
+    getProperties(expressId) {
+      if (onDemandPropertyMap.size > 0) return extractPropertiesOnDemand(store, expressId) as unknown as PropertySet[];
+      return store.properties.getForEntity(expressId) as PropertySet[];
+    },
+    getQuantities(expressId) {
+      if (onDemandQuantityMap.size > 0) return extractQuantitiesOnDemand(store, expressId) as unknown as QuantitySet[];
+      return store.quantities.getForEntity(expressId) as QuantitySet[];
+    },
   };
   return store;
 }

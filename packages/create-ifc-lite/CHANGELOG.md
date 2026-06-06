@@ -1,5 +1,11 @@
 # create-ifc-lite
 
+## 1.14.8
+
+### Patch Changes
+
+- [#955](https://github.com/LTplus-AG/ifc-lite/pull/955) [`30235c9`](https://github.com/LTplus-AG/ifc-lite/commit/30235c90d922e12d383a6d9f60c028984709001b) Thanks [@louistrue](https://github.com/louistrue)! - three.js template: render opaque IFC meshes double-sided and enable `logarithmicDepthBuffer`. IFC triangle winding is not reliably outward (the native renderer draws with `cullMode: 'none'` for the same reason), so culling one side of two coincident coplanar walls left the survivors z-fighting into a comb along the seam; and IFC models far from the origin with stacked near-coplanar slabs (a roof on a gable wall) stair-stepped without a logarithmic depth buffer. Both are fixed in the scaffolded viewer.
+
 ## 1.14.7
 
 ### Patch Changes

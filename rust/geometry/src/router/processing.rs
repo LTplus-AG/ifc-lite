@@ -984,6 +984,73 @@ impl GeometryRouter {
         Ok(mesh)
     }
 
+    /// Tessellate an `IfcRepresentationMap`'s `MappedRepresentation` and bake
+    /// its `MappingOrigin` placement (issue #957).
+    ///
+    /// Used to render geometry that hangs off an `IfcTypeProduct` (e.g.
+    /// `IfcBoilerType`) through its `RepresentationMaps` when no occurrence
+    /// instantiates it — the buildingSMART annex-E "tessellated shape with
+    /// style" samples ship exactly this shape (geometry on the type, declared
+    /// via `IfcRelDeclares`, with no product instance).
+    ///
+    /// Unlike [`Self::process_mapped_item_cached`], this applies `MappingOrigin`
+    /// (`IfcRepresentationMap` attr 0) rather than a `MappingTarget`: there is
+    /// no occurrence placement and no `IfcMappedItem` to carry one, so the
+    /// MappingOrigin axis placement is the only transform. It is the caller's
+    /// responsibility to only invoke this for orphan representation maps so
+    /// normally-instanced typed products aren't double-rendered.
+    pub fn process_representation_map(
+        &self,
+        rep_map: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Mesh> {
+        // attr 1: MappedRepresentation (IfcShapeRepresentation)
+        let mapped_rep_attr = rep_map.get(1).ok_or_else(|| {
+            Error::geometry("RepresentationMap missing MappedRepresentation".to_string())
+        })?;
+        let mapped_rep = decoder
+            .resolve_ref(mapped_rep_attr)?
+            .ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))?;
+
+        // attr 3: Items
+        let items_attr = mapped_rep
+            .get(3)
+            .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
+        let items = decoder.resolve_ref_list(items_attr)?;
+
+        let mut mesh = Mesh::new();
+        for item in items {
+            // Skip nested MappedItems to avoid recursion (a type's own
+            // representation referencing another mapped item is unusual);
+            // mirrors process_mapped_item_cached.
+            if item.ifc_type == IfcType::IfcMappedItem {
+                continue;
+            }
+            if let Some(processor) = self.processors.get(&item.ifc_type) {
+                if let Ok(mut sub_mesh) = processor.process(&item, decoder, &self.schema) {
+                    sub_mesh.validate_indices();
+                    self.scale_mesh(&mut sub_mesh);
+                    mesh.merge(&sub_mesh);
+                }
+            }
+        }
+
+        // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only transform.
+        if let Some(origin_attr) = rep_map.get(0) {
+            if !origin_attr.is_null() {
+                if let Some(origin) = decoder.resolve_ref(origin_attr)? {
+                    if origin.ifc_type == IfcType::IfcAxis2Placement3D {
+                        let mut transform = self.parse_axis2_placement_3d(&origin, decoder)?;
+                        self.scale_transform(&mut transform);
+                        self.transform_mesh_local(&mut mesh, &transform);
+                    }
+                }
+            }
+        }
+
+        Ok(mesh)
+    }
+
     /// Run an `IfcAlignment` through the dedicated alignment processor, then
     /// apply the standard unit scale + placement transform. Returns `None`
     /// when the alignment has no recognisable directrix curve (the caller

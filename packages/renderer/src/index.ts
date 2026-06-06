@@ -1692,6 +1692,14 @@ export class Renderer {
                 if (texturedMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTexturedPipeline());
                     for (const tm of texturedMeshes) {
+                        // Honour hide/isolate — textured meshes bypass the batch
+                        // visibility filtering above, so apply it per-mesh here or
+                        // hidden/isolated elements would stay visible and keep
+                        // writing depth + object IDs.
+                        if (hasVisibilityFiltering) {
+                            if (options.hiddenIds?.has(tm.expressId)) continue;
+                            if (hasIsolatedFilter && !options.isolatedIds!.has(tm.expressId)) continue;
+                        }
                         // Tint multiplies the sampled texel; the IfcColourRgb base
                         // is white in the annex-E fixtures → texture shows as-is.
                         tpl[32] = tm.color[0];

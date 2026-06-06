@@ -1019,20 +1019,17 @@ impl IfcAPI {
                             let Ok(rep_map) = decoder.decode_by_id(rm_id) else {
                                 continue;
                             };
-                            let Ok((mut mesh, uvs, texture)) = router
-                                .process_representation_map_with_texture(
-                                    &rep_map,
-                                    &mut decoder,
-                                    &texture_index,
-                                )
-                            else {
+                            // One part per output mesh: each textured face set
+                            // carries its own image; untextured items merge (#961).
+                            let Ok(parts) = router.process_representation_map_with_texture(
+                                &rep_map,
+                                &mut decoder,
+                                &texture_index,
+                            ) else {
                                 continue;
                             };
-                            if mesh.is_empty() {
+                            if parts.is_empty() {
                                 continue;
-                            }
-                            if mesh.normals.len() != mesh.positions.len() {
-                                calculate_normals(&mut mesh);
                             }
                             let color = super::styling::color_for_representation_map(
                                 rm_id,
@@ -1044,18 +1041,27 @@ impl IfcAPI {
                                 .entry(ifc_type)
                                 .or_insert_with(|| ifc_type.name().to_string())
                                 .clone();
-                            let mut mesh_js = MeshDataJs::new(id, ifc_type_name, mesh, color);
-                            if let Some(tex) = texture {
-                                mesh_js.set_texture(
-                                    uvs,
-                                    tex.rgba,
-                                    tex.width,
-                                    tex.height,
-                                    tex.repeat_s,
-                                    tex.repeat_t,
-                                );
+                            for (mut mesh, uvs, texture) in parts {
+                                if mesh.is_empty() {
+                                    continue;
+                                }
+                                if mesh.normals.len() != mesh.positions.len() {
+                                    calculate_normals(&mut mesh);
+                                }
+                                let mut mesh_js =
+                                    MeshDataJs::new(id, ifc_type_name.clone(), mesh, color);
+                                if let Some(tex) = texture {
+                                    mesh_js.set_texture(
+                                        uvs,
+                                        tex.rgba,
+                                        tex.width,
+                                        tex.height,
+                                        tex.repeat_s,
+                                        tex.repeat_t,
+                                    );
+                                }
+                                mesh_collection.add(mesh_js);
                             }
-                            mesh_collection.add(mesh_js);
                         }
                     }
                     continue;

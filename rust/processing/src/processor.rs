@@ -1798,51 +1798,58 @@ fn process_type_representation_map_job(
     let Ok(rep_map) = decoder.decode_by_id(rep_map_id) else {
         return Vec::new();
     };
-    // Texture-aware build (#961): emits per-vertex UVs + the decoded image when
-    // the mapped face set carries an IfcIndexedTriangleTextureMap; otherwise
-    // returns the plain mesh with empty uvs / no texture.
-    let Ok((mut mesh, uvs, texture)) =
+    // Texture-aware build (#961): one part per output mesh — each textured face
+    // set carries its own UVs + decoded image; untextured items merge into one
+    // part with no texture.
+    let Ok(parts) =
         router.process_representation_map_with_texture(&rep_map, decoder, texture_index)
     else {
         return Vec::new();
     };
-    if mesh.is_empty() {
+    if parts.is_empty() {
         return Vec::new();
-    }
-    if mesh.normals.is_empty() {
-        calculate_normals(&mut mesh);
     }
 
     let color = resolve_color_for_representation_map(rep_map_id, geometry_style_index, decoder)
         .unwrap_or(element_color);
 
-    let mut mesh_data = MeshData::new(
-        job.id,
-        job.ifc_type.name().to_string(),
-        mesh.positions,
-        mesh.normals,
-        mesh.indices,
-        color,
-    )
-    .with_element_metadata(global_id, name, presentation_layer);
+    let mut out: Vec<MeshData> = Vec::with_capacity(parts.len());
+    for (mut mesh, uvs, texture) in parts {
+        if mesh.is_empty() {
+            continue;
+        }
+        if mesh.normals.is_empty() {
+            calculate_normals(&mut mesh);
+        }
+        let mut mesh_data = MeshData::new(
+            job.id,
+            job.ifc_type.name().to_string(),
+            mesh.positions,
+            mesh.normals,
+            mesh.indices,
+            color,
+        )
+        .with_element_metadata(global_id.clone(), name.clone(), presentation_layer.clone());
 
-    // Attach the decoded texture + UVs (#961). `convert_mesh_to_site_local`
-    // rotates positions/normals only; UVs are 2D and pass through unchanged.
-    if let Some(tex) = texture {
-        mesh_data = mesh_data.with_texture(
-            uvs,
-            crate::types::mesh::MeshTextureData {
-                rgba: tex.rgba,
-                width: tex.width,
-                height: tex.height,
-                repeat_s: tex.repeat_s,
-                repeat_t: tex.repeat_t,
-            },
-        );
+        // Attach the decoded texture + UVs (#961). `convert_mesh_to_site_local`
+        // rotates positions/normals only; UVs are 2D and pass through unchanged.
+        if let Some(tex) = texture {
+            mesh_data = mesh_data.with_texture(
+                uvs,
+                crate::types::mesh::MeshTextureData {
+                    rgba: tex.rgba,
+                    width: tex.width,
+                    height: tex.height,
+                    repeat_s: tex.repeat_s,
+                    repeat_t: tex.repeat_t,
+                },
+            );
+        }
+
+        convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
+        out.push(mesh_data);
     }
-
-    convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
-    vec![mesh_data]
+    out
 }
 
 /// Resolve the authored colour for a type's `IfcRepresentationMap` (issue #957)

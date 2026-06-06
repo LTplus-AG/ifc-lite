@@ -39,9 +39,12 @@ pub struct ResolvedTextureMap {
     /// `TexCoordIndex`: per-triangle 1-based indices into `tex_coords`,
     /// parallel to the face set's `CoordIndex`.
     pub tex_coord_index: Vec<[u32; 3]>,
-    /// `IfcCartesianTransformationOperator2D` applied to each UV:
-    /// `uv' = origin + scale * (axis ⊗ uv)` where `axis` is the X ref-direction.
+    /// `IfcCartesianTransformationOperator2D[nonUniform]` applied to each UV:
+    /// `uv' = origin + (scaleX, scaleY) * (axis ⊗ uv)`, `axis` = X ref-direction.
+    /// `uv_scale_y` equals `uv_scale` for the uniform operator and uses `Scale2`
+    /// for the non-uniform subtype.
     pub uv_scale: f32,
+    pub uv_scale_y: f32,
     pub uv_origin: [f32; 2],
     pub uv_axis: [f32; 2],
 }
@@ -50,13 +53,13 @@ impl ResolvedTextureMap {
     /// Apply the 2D transform to a raw `[u, v]`.
     #[inline]
     pub fn transform_uv(&self, uv: [f32; 2]) -> [f32; 2] {
-        // axis = (cos, sin) → rotate, then scale, then translate.
+        // axis = (cos, sin) → rotate, then (possibly non-uniform) scale, then translate.
         let (ax, ay) = (self.uv_axis[0], self.uv_axis[1]);
         let rx = ax * uv[0] - ay * uv[1];
         let ry = ay * uv[0] + ax * uv[1];
         [
             self.uv_origin[0] + self.uv_scale * rx,
-            self.uv_origin[1] + self.uv_scale * ry,
+            self.uv_origin[1] + self.uv_scale_y * ry,
         ]
     }
 }
@@ -135,6 +138,48 @@ fn decode_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     Some((rgba, w, h))
 }
 
+/// Decode a JPEG byte buffer to RGBA8. Returns `(rgba, width, height)`.
+fn decode_jpeg(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+    let mut decoder = jpeg_decoder::Decoder::new(bytes);
+    let pixels = decoder.decode().ok()?;
+    let info = decoder.info()?;
+    let (w, h) = (info.width as usize, info.height as usize);
+    let px = w * h;
+    let mut rgba = Vec::with_capacity(px * 4);
+    match info.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => {
+            for c in pixels.chunks_exact(3) {
+                rgba.extend_from_slice(&[c[0], c[1], c[2], 255]);
+            }
+        }
+        jpeg_decoder::PixelFormat::L8 => {
+            for &g in pixels.iter() {
+                rgba.extend_from_slice(&[g, g, g, 255]);
+            }
+        }
+        // L16 / CMYK32 are rare for IFC textures; bail to the white fallback.
+        _ => return None,
+    }
+    if rgba.len() != px * 4 {
+        return None;
+    }
+    Some((rgba, w as u32, h as u32))
+}
+
+/// Decode raster image bytes to RGBA8 by sniffing the magic bytes (PNG or
+/// JPEG), so any `RasterFormat` string spelling resolves correctly.
+fn decode_raster_image(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+    const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    if bytes.len() >= 8 && bytes[..8] == PNG_MAGIC {
+        return decode_png(bytes);
+    }
+    // JPEG: starts with FF D8 FF.
+    if bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
+        return decode_jpeg(bytes);
+    }
+    None
+}
+
 /// Decode `IfcBlobTexture` → RGBA8. Attributes (IFC4):
 /// RepeatS(0), RepeatT(1), Mode(2), TextureTransform(3), Parameter(4),
 /// RasterFormat(5), RasterCode(6).
@@ -144,13 +189,9 @@ fn decode_blob_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
     if bytes.len() < 8 {
         return None;
     }
-    // Only PNG is handled here (RasterFormat == 'PNG'); the magic check guards
-    // against other RasterFormats slipping through.
-    const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-    if bytes[..8] != PNG_MAGIC {
-        return None;
-    }
-    let (rgba, width, height) = decode_png(&bytes)?;
+    // Dispatch on the image's magic bytes (PNG or JPEG) rather than trusting the
+    // RasterFormat string spelling ('PNG' / 'JPG' / 'JPEG' all occur).
+    let (rgba, width, height) = decode_raster_image(&bytes)?;
     Some(MeshTexture {
         rgba,
         width,
@@ -215,17 +256,33 @@ fn resolve_surface_texture(texture_id: u32, decoder: &mut EntityDecoder) -> Opti
     }
 }
 
-/// Parse the optional `IfcCartesianTransformationOperator2D` texture transform.
-/// Attributes: Axis1(0), Axis2(1), LocalOrigin(2), Scale(3 default 1).
-fn parse_texture_transform(transform_id: u32, decoder: &mut EntityDecoder) -> ([f32; 2], [f32; 2], f32) {
+/// Parse the optional `IfcCartesianTransformationOperator2D` (or its
+/// `…2DnonUniform` subtype) texture transform. Returns
+/// `(origin, axis, scale_x, scale_y)`. Attributes: Axis1(0), Axis2(1),
+/// LocalOrigin(2), Scale(3 default 1); the non-uniform subtype adds Scale2(4)
+/// for the Y axis (defaults to Scale when absent).
+fn parse_texture_transform(
+    transform_id: u32,
+    decoder: &mut EntityDecoder,
+) -> ([f32; 2], [f32; 2], f32, f32) {
     let mut origin = [0.0f32, 0.0];
     let mut axis = [1.0f32, 0.0];
     let mut scale = 1.0f32;
+    let mut scale_y = 1.0f32;
     if let Ok(op) = decoder.decode_by_id(transform_id) {
-        if op.ifc_type == IfcType::IfcCartesianTransformationOperator2D {
+        let is_2d = op.ifc_type == IfcType::IfcCartesianTransformationOperator2D;
+        let is_2d_nonuniform =
+            op.ifc_type == IfcType::IfcCartesianTransformationOperator2DnonUniform;
+        if is_2d || is_2d_nonuniform {
             if let Some(scale_v) = op.get(3).and_then(|a| a.as_float()) {
                 scale = scale_v as f32;
             }
+            // Non-uniform: Scale2 (attr 4) drives the Y axis; default to Scale.
+            scale_y = if is_2d_nonuniform {
+                op.get(4).and_then(|a| a.as_float()).map(|v| v as f32).unwrap_or(scale)
+            } else {
+                scale
+            };
             if let Some(origin_id) = op.get_ref(2) {
                 if let Some(p) = read_point2(origin_id, decoder) {
                     origin = p;
@@ -241,7 +298,7 @@ fn parse_texture_transform(transform_id: u32, decoder: &mut EntityDecoder) -> ([
             }
         }
     }
-    (origin, axis, scale)
+    (origin, axis, scale, scale_y)
 }
 
 /// Read a 2D `IfcCartesianPoint` / `IfcDirection` (first two coordinates).
@@ -269,12 +326,12 @@ fn resolve_triangle_texture_map(
     let texture = resolve_surface_texture(texture_id, decoder)?;
 
     // Pull the optional 2D transform off the surface texture (attr 3).
-    let (uv_origin, uv_axis, uv_scale) = decoder
+    let (uv_origin, uv_axis, uv_scale, uv_scale_y) = decoder
         .decode_by_id(texture_id)
         .ok()
         .and_then(|t| t.get_ref(3))
         .map(|tid| parse_texture_transform(tid, decoder))
-        .unwrap_or(([0.0, 0.0], [1.0, 0.0], 1.0));
+        .unwrap_or(([0.0, 0.0], [1.0, 0.0], 1.0, 1.0));
 
     // TexCoords → IfcTextureVertexList.TexCoordsList (attr 0).
     let tvl_id = entity.get_ref(2)?;
@@ -316,6 +373,7 @@ fn resolve_triangle_texture_map(
             tex_coords,
             tex_coord_index,
             uv_scale,
+            uv_scale_y,
             uv_origin,
             uv_axis,
         },

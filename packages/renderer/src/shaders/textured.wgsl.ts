@@ -73,10 +73,17 @@ function deriveTexturedShader(): string {
   );
 
   // 5. Sample the texture; multiply by the authored tint (white = passthrough).
+  //    Honour the texel alpha as a cutout (alpha-keyed textures) by discarding
+  //    fully-transparent texels — the textured pipeline is opaque/depth-writing,
+  //    so without this RGBA textures with transparent regions would render
+  //    fully opaque. (Partial translucency would need a transparent textured
+  //    pipeline — out of scope for the cutout case.)
   s = replaceOnce(
     s,
     'var baseColor = uniforms.baseColor.rgb;',
-    'var baseColor = textureSample(albedoTex, albedoSampler, input.uv).rgb * uniforms.baseColor.rgb;',
+    'let albedoTexel = textureSample(albedoTex, albedoSampler, input.uv);\n' +
+      '          if (albedoTexel.a < 0.004) { discard; }\n' +
+      '          var baseColor = albedoTexel.rgb * uniforms.baseColor.rgb;',
     'albedo sample',
   );
 

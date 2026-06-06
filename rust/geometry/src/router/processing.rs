@@ -1005,23 +1005,27 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
         let empty = rustc_hash::FxHashMap::default();
-        let (mesh, _uvs, _texture) =
-            self.process_representation_map_with_texture(rep_map, decoder, &empty)?;
+        let parts = self.process_representation_map_with_texture(rep_map, decoder, &empty)?;
+        let mut mesh = Mesh::new();
+        for (part, _uvs, _texture) in parts {
+            mesh.merge(&part);
+        }
         Ok(mesh)
     }
 
     /// Texture-aware variant of [`Self::process_representation_map`] (issue
-    /// #961). When a tessellated face-set item is present in `texture_index`,
-    /// its mesh is built with per-vertex UVs and the decoded image is returned
-    /// alongside. Returns `(mesh, uvs, texture)` where `uvs` is empty and
-    /// `texture` is `None` for untextured representations. UVs are kept aligned
-    /// across mixed textured/untextured items by padding the latter with (0,0).
+    /// #961). Returns one render part per output mesh: each textured
+    /// `IfcTriangulatedFaceSet` item becomes its OWN part carrying its UVs +
+    /// decoded image (so a representation with several differently-textured
+    /// items renders each with the correct image), and all untextured items are
+    /// merged into a single part with empty UVs / no texture. The MappingOrigin
+    /// placement is baked into every part.
     pub fn process_representation_map_with_texture(
         &self,
         rep_map: &DecodedEntity,
         decoder: &mut EntityDecoder,
         texture_index: &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
-    ) -> Result<(Mesh, Vec<f32>, Option<crate::processors::MeshTexture>)> {
+    ) -> Result<Vec<(Mesh, Vec<f32>, Option<crate::processors::MeshTexture>)>> {
         // attr 1: MappedRepresentation (IfcShapeRepresentation)
         let mapped_rep_attr = rep_map.get(1).ok_or_else(|| {
             Error::geometry("RepresentationMap missing MappedRepresentation".to_string())
@@ -1036,19 +1040,20 @@ impl GeometryRouter {
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
         let items = decoder.resolve_ref_list(items_attr)?;
 
-        // Collect each item's sub-mesh + optional UVs first, so UV padding for
-        // mixed textured/untextured items stays aligned regardless of order.
-        let mut parts: Vec<(Mesh, Option<Vec<f32>>)> = Vec::new();
-        let mut texture: Option<crate::processors::MeshTexture> = None;
+        let mut untextured = Mesh::new();
+        // One entry per textured item — keeps each item with its own image.
+        let mut textured: Vec<(Mesh, Vec<f32>, crate::processors::MeshTexture)> = Vec::new();
         for item in items {
-            // Skip nested MappedItems to avoid recursion (a type's own
-            // representation referencing another mapped item is unusual);
-            // mirrors process_mapped_item_cached.
+            // A nested IfcMappedItem inside a type's own representation: process
+            // it (applies its MappingTarget) rather than dropping its geometry.
             if item.ifc_type == IfcType::IfcMappedItem {
+                if let Ok(sub_mesh) = self.process_mapped_item_cached(&item, decoder) {
+                    untextured.merge(&sub_mesh); // already scaled inside the cached path
+                }
                 continue;
             }
 
-            // Textured tessellated face set → build with per-vertex UVs (#961).
+            // Textured tessellated face set → its own part with per-vertex UVs (#961).
             if item.ifc_type == IfcType::IfcTriangulatedFaceSet {
                 if let Some(map) = texture_index.get(&item.id) {
                     let proc = crate::processors::TriangulatedFaceSetProcessor::new();
@@ -1056,10 +1061,7 @@ impl GeometryRouter {
                         proc.process_with_texture(&item, decoder, map)
                     {
                         self.scale_mesh(&mut sub_mesh); // UVs are unaffected by scale
-                        if texture.is_none() {
-                            texture = Some(map.texture.clone());
-                        }
-                        parts.push((sub_mesh, Some(sub_uvs)));
+                        textured.push((sub_mesh, sub_uvs, map.texture.clone()));
                         continue;
                     }
                 }
@@ -1069,46 +1071,40 @@ impl GeometryRouter {
                 if let Ok(mut sub_mesh) = processor.process(&item, decoder, &self.schema) {
                     sub_mesh.validate_indices();
                     self.scale_mesh(&mut sub_mesh);
-                    parts.push((sub_mesh, None));
+                    untextured.merge(&sub_mesh);
                 }
             }
-        }
-
-        let has_uvs = parts.iter().any(|(_, u)| u.is_some());
-        let mut mesh = Mesh::new();
-        let mut uvs: Vec<f32> = Vec::new();
-        for (sub_mesh, sub_uvs) in parts {
-            if has_uvs {
-                match sub_uvs {
-                    Some(u) => uvs.extend_from_slice(&u),
-                    None => {
-                        let verts = sub_mesh.positions.len() / 3;
-                        uvs.extend(std::iter::repeat(0.0f32).take(verts * 2));
-                    }
-                }
-            }
-            mesh.merge(&sub_mesh);
         }
 
         // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;
-        // UVs are 2D and unaffected.
-        if let Some(origin_attr) = rep_map.get(0) {
-            if !origin_attr.is_null() {
-                if let Some(origin) = decoder.resolve_ref(origin_attr)? {
-                    if origin.ifc_type == IfcType::IfcAxis2Placement3D {
-                        let mut transform = self.parse_axis2_placement_3d(&origin, decoder)?;
-                        self.scale_transform(&mut transform);
-                        self.transform_mesh_local(&mut mesh, &transform);
-                    }
+        // UVs are 2D and unaffected. Parse once, bake into every part.
+        let origin_transform: Option<nalgebra::Matrix4<f64>> = match rep_map.get(0) {
+            Some(origin_attr) if !origin_attr.is_null() => match decoder.resolve_ref(origin_attr)? {
+                Some(origin) if origin.ifc_type == IfcType::IfcAxis2Placement3D => {
+                    let mut t = self.parse_axis2_placement_3d(&origin, decoder)?;
+                    self.scale_transform(&mut t);
+                    Some(t)
                 }
+                _ => None,
+            },
+            _ => None,
+        };
+
+        let mut out: Vec<(Mesh, Vec<f32>, Option<crate::processors::MeshTexture>)> = Vec::new();
+        for (mut mesh, uvs, texture) in textured {
+            if let Some(t) = &origin_transform {
+                self.transform_mesh_local(&mut mesh, t);
             }
+            out.push((mesh, uvs, Some(texture)));
+        }
+        if !untextured.is_empty() {
+            if let Some(t) = &origin_transform {
+                self.transform_mesh_local(&mut untextured, t);
+            }
+            out.push((untextured, Vec::new(), None));
         }
 
-        if has_uvs {
-            Ok((mesh, uvs, texture))
-        } else {
-            Ok((mesh, Vec::new(), None))
-        }
+        Ok(out)
     }
 
     /// Run an `IfcAlignment` through the dedicated alignment processor, then

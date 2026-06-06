@@ -91,7 +91,9 @@ fn redundant_openings_do_not_rectangularize_profile_voids() {
     let content = match std::fs::read_to_string(fixture_path()) {
         Ok(s) => s,
         Err(_) => {
-            eprintln!("skipping issue-964 regression: fixture missing at {FIXTURE}");
+            eprintln!(
+                "skipping issue-964 regression: fixture missing at {FIXTURE}; run `pnpm fixtures`"
+            );
             return;
         }
     };

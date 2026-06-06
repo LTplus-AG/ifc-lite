@@ -498,29 +498,9 @@ fn ray_triangle_param(
     Some(e2.dot(&qvec) * inv_det)
 }
 
-/// Whether `mesh` is already hollow at `point` along `axis` — i.e. the
-/// infinite line through `point` in the `axis` direction does not cross a
-/// single host triangle.
-///
-/// Issue #964: some exporters (Revit) double-encode a void — once baked into
-/// the host's `IfcArbitraryProfileDefWithVoids` profile and again as a
-/// redundant `IfcOpeningElement`. The body geometry already carries the
-/// (correct, possibly round/polygonal) hole, so when the redundant opening's
-/// CSG subtraction finds nothing to remove the AABB fallback must NOT fire:
-/// cutting the opening's bounding box would carve a rectangle over the
-/// already-correct hole. A ray cast through the opening centroid along its
-/// extrusion axis hits zero host triangles exactly when the hole is already
-/// open there.
-///
-/// Deliberately strict: returns `true` only when there is NO host material on
-/// the line (both sides clear). A genuinely solid host — e.g. the issue #635
-/// round window in an un-voided wall — sandwiches `point` between two faces,
-/// so the fallback still fires there. Any ambiguity (material on one side)
-/// keeps the existing cut behaviour.
-fn host_already_open_along_axis(mesh: &Mesh, point: Point3<f64>, axis: &Vector3<f64>) -> bool {
-    let Some(axis) = axis.try_normalize(NORMALIZE_EPSILON) else {
-        return false;
-    };
+/// Whether the infinite line through `point` along `axis` crosses any
+/// triangle of `mesh`.
+fn axis_line_crosses_mesh(mesh: &Mesh, point: Point3<f64>, axis: &Vector3<f64>) -> bool {
     for tri in mesh.indices.chunks_exact(3) {
         let (Some(a), Some(b), Some(c)) = (
             mesh_point(mesh, tri[0]),
@@ -529,8 +509,54 @@ fn host_already_open_along_axis(mesh: &Mesh, point: Point3<f64>, axis: &Vector3<
         ) else {
             continue;
         };
-        if ray_triangle_param(point, &axis, a, b, c).is_some() {
-            return false; // host material on the line — not an existing void
+        if ray_triangle_param(point, axis, a, b, c).is_some() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether `opening` is a redundant cutter — every column through its footprint
+/// (along `axis`) is *already* open in `host`, so subtracting it would remove
+/// nothing.
+///
+/// Issue #964: some exporters (Revit) double-encode a void — once baked into
+/// the host's `IfcArbitraryProfileDefWithVoids` profile and again as a
+/// redundant `IfcOpeningElement`. The body geometry already carries the
+/// (correct, possibly round/polygonal) hole, so when the redundant opening's
+/// CSG subtraction finds nothing to remove the AABB fallback must NOT fire:
+/// cutting the opening's bounding box would carve a rectangle over the
+/// already-correct hole.
+///
+/// Clearance is probed across the *whole* footprint, not just the centroid:
+/// the centroid plus every cutter vertex pulled slightly inward toward the
+/// centroid (so the samples stay strictly inside the real round/polygonal
+/// footprint rather than its bounding box). The opening is redundant only when
+/// a ray along `axis` through *every* sample hits zero host triangles. If any
+/// sample still finds host material — e.g. a circular opening centred inside an
+/// already-cut rectangle but spilling out into solid host beyond it — the
+/// cutter has real work left and the fallback proceeds. A genuinely solid host
+/// (the issue #635 round window in an un-voided wall) is rejected at the very
+/// first sample, so the fallback still fires there. No regression.
+fn opening_redundant_with_host(host: &Mesh, opening: &Mesh, axis: &Vector3<f64>) -> bool {
+    let Some(axis) = axis.try_normalize(NORMALIZE_EPSILON) else {
+        return false;
+    };
+    let Some(centroid) = mesh_vertex_centroid(opening) else {
+        return false;
+    };
+    // Pull each footprint sample 10% toward the centroid so a sample sitting
+    // exactly on a hole boundary that coincides with the cutter wall lands
+    // strictly inside the existing void.
+    const PULL_TO_CENTROID: f64 = 0.1;
+    if axis_line_crosses_mesh(host, centroid, &axis) {
+        return false;
+    }
+    for v in opening.positions.chunks_exact(3) {
+        let vertex = Point3::new(v[0] as f64, v[1] as f64, v[2] as f64);
+        let sample = vertex + (centroid - vertex) * PULL_TO_CENTROID;
+        if axis_line_crosses_mesh(host, sample, &axis) {
+            return false;
         }
     }
     true
@@ -1484,9 +1510,8 @@ impl GeometryRouter {
                         // Issue #964: suppress the destructive AABB box when the
                         // host already has this void cut into it (a void
                         // double-encoded as both a profile inner curve and a
-                        // redundant IfcOpeningElement). A ray through the
-                        // opening centroid along its extrusion axis hits no host
-                        // material exactly when the hole is already open there;
+                        // redundant IfcOpeningElement). When every column through
+                        // the opening footprint is already open in the host,
                         // cutting the bounding box would replace a correct
                         // round/polygonal hole with a rectangle. Unlike the
                         // engulf heuristic this is a positive void detection, so
@@ -1495,11 +1520,8 @@ impl GeometryRouter {
                         let probe_axis = dir.unwrap_or_else(|| {
                             wall_thinnest_axis_dir(&wall_min, &wall_max)
                         });
-                        let redundant_void = mesh_vertex_centroid(opening_mesh)
-                            .map(|centroid| {
-                                host_already_open_along_axis(&result, centroid, &probe_axis)
-                            })
-                            .unwrap_or(false);
+                        let redundant_void =
+                            opening_redundant_with_host(&result, opening_mesh, &probe_axis);
                         let suppress_fallback =
                             redundant_void || (csg_unchanged && engulfs_host && !capped);
                         if !suppress_fallback {

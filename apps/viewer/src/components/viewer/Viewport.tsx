@@ -46,6 +46,7 @@ import {
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
+import { useGridLines3D } from '../../hooks/useGridLines3D.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -900,6 +901,20 @@ export function Viewport({
       renderer.uploadAlignmentLines3D(alignmentVertices3D);
     }
   }, [alignmentVertices3D, isInitialized]);
+
+  // Structural-grid (IfcGridAxis) lines, gated by the `ifcGrid` type-visibility
+  // toggle (issue #967). Parsed once per source + cached; only the upload/clear
+  // is toggled so flipping visibility doesn't re-parse.
+  const gridVertices3D = useGridLines3D();
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    if (!ifcGridVisible || gridVertices3D.length === 0) {
+      renderer.clearGridLines3D();
+    } else {
+      renderer.uploadGridLines3D(gridVertices3D);
+    }
+  }, [gridVertices3D, ifcGridVisible, isInitialized]);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput

@@ -2029,6 +2029,9 @@ export class Renderer {
             if (this.section2DOverlayRenderer?.hasAlignmentLines3D()) {
                 this.section2DOverlayRenderer.drawAlignmentLines3D(pass, viewProj);
             }
+            if (this.section2DOverlayRenderer?.hasGridLines3D()) {
+                this.section2DOverlayRenderer.drawGridLines3D(pass, viewProj);
+            }
             if (this.symbolicTextPipeline?.hasGeometry()) {
                 // Pass viewport pixel dimensions so the shader can scale glyphs
                 // to a constant on-screen size (BIMvision-style annotations)
@@ -2451,6 +2454,29 @@ export class Renderer {
     clearAlignmentLines3D(): void {
         if (this.section2DOverlayRenderer) {
             this.section2DOverlayRenderer.clearAlignmentLines3D();
+            this.requestRender();
+        }
+    }
+
+    /**
+     * Upload structural-grid (IfcGridAxis) segments as a flat [x,y,z,x,y,z,...]
+     * line-list in world space (issue #967). Rendered as thin lines, mirroring
+     * the alignment overlay. Pass an empty Float32Array to clear.
+     *
+     * Unlike alignment, grids do NOT expand model bounds: they're behind a
+     * visibility toggle, so toggling them on must not reframe the camera (and
+     * grid axes routinely extend past the model envelope).
+     */
+    uploadGridLines3D(vertices: Float32Array): void {
+        if (!this.section2DOverlayRenderer) return;
+        this.section2DOverlayRenderer.uploadGridLines3D(vertices);
+        this.requestRender();
+    }
+
+    /** Clear the structural-grid overlay. */
+    clearGridLines3D(): void {
+        if (this.section2DOverlayRenderer) {
+            this.section2DOverlayRenderer.clearGridLines3D();
             this.requestRender();
         }
     }

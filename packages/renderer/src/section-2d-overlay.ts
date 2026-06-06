@@ -131,6 +131,12 @@ export class Section2DOverlayRenderer {
   private alignmentLineVertexBuffer: GPUBuffer | null = null;
   private alignmentLineVertexCount = 0;
 
+  // Standalone 3D structural-grid (IfcGridAxis) overlay. Independent buffer so
+  // grid visibility is independent of the annotation/alignment overlays, but
+  // reuses the same line pipeline (issue #967).
+  private gridLineVertexBuffer: GPUBuffer | null = null;
+  private gridLineVertexCount = 0;
+
   constructor(device: GPUDevice, format: GPUTextureFormat, sampleCount: number = 4) {
     this.device = device;
     this.format = format;
@@ -793,6 +799,63 @@ export class Section2DOverlayRenderer {
   }
 
   /**
+   * Upload structural-grid (IfcGridAxis) segments as a flat
+   * `[x,y,z, x,y,z, …]` line-list in world space (issue #967). Mirrors
+   * `uploadAlignmentLines3D` with a separate buffer so grid visibility is
+   * independent. Pass an empty array (or omit) to clear.
+   */
+  uploadGridLines3D(vertices: Float32Array): void {
+    this.init();
+
+    if (this.gridLineVertexBuffer) {
+      this.gridLineVertexBuffer.destroy();
+      this.gridLineVertexBuffer = null;
+    }
+    this.gridLineVertexCount = 0;
+
+    if (vertices.length < 6) return;
+
+    this.gridLineVertexBuffer = this.device.createBuffer({
+      size: vertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.gridLineVertexBuffer, 0, vertices);
+    this.gridLineVertexCount = vertices.length / 3;
+  }
+
+  clearGridLines3D(): void {
+    if (this.gridLineVertexBuffer) {
+      this.gridLineVertexBuffer.destroy();
+      this.gridLineVertexBuffer = null;
+    }
+    this.gridLineVertexCount = 0;
+  }
+
+  hasGridLines3D(): boolean {
+    return this.gridLineVertexCount > 0;
+  }
+
+  /**
+   * Draw the structural-grid overlay. Identical pipeline/uniform setup as
+   * `drawAlignmentLines3D`, reading from the separate grid buffer.
+   */
+  drawGridLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+    this.init();
+    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
+    if (!this.gridLineVertexBuffer || this.gridLineVertexCount === 0) return;
+
+    const uniforms = new Float32Array(20);
+    uniforms.set(viewProj, 0);
+    // planeOffset = 0 — vertices are already in world space.
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
+
+    pass.setPipeline(this.linePipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    pass.setVertexBuffer(0, this.gridLineVertexBuffer);
+    pass.draw(this.gridLineVertexCount);
+  }
+
+  /**
    * Check if there is geometry to draw
    */
   hasGeometry(): boolean {
@@ -909,6 +972,8 @@ export class Section2DOverlayRenderer {
   dispose(): void {
     this.clearGeometry();
     this.clearAnnotationLines3D();
+    this.clearAlignmentLines3D();
+    this.clearGridLines3D();
     if (this.uniformBuffer) {
       this.uniformBuffer.destroy();
       this.uniformBuffer = null;

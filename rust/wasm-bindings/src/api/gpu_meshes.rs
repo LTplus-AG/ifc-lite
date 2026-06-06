@@ -817,6 +817,16 @@ impl IfcAPI {
         super::set_js_prop(&index_event, "lengths", &lengths_arr);
         on_event.call1(&JsValue::NULL, &index_event.into())?;
 
+        // #957: emit orphan IfcTypeProduct geometry as a final jobs chunk so the
+        // browser renders annex-E type-only "tessellated shape with style" files
+        // (geometry on the type via RepresentationMaps, no occurrence). The
+        // entity index is complete here, so this resolves cleanly.
+        let type_jobs = super::styling::collect_orphan_type_geometry_jobs(content, &mut decoder);
+        if !type_jobs.is_empty() {
+            total_jobs += type_jobs.len() as u32;
+            emit_jobs_chunk(on_event, &type_jobs)?;
+        }
+
         // Complete event.
         let done = js_sys::Object::new();
         super::set_js_prop(&done, "type", &"complete".into());
@@ -984,6 +994,56 @@ impl IfcAPI {
                 }
 
                 let ifc_type = entity.ifc_type;
+
+                // #957: orphan type-product geometry — an IfcXxxType carrying its
+                // own RepresentationMaps with no occurrence to instantiate them
+                // (buildingSMART annex-E "tessellated shape with style" files).
+                // Render each RepresentationMap NOT referenced by an IfcMappedItem
+                // (the referenced ones draw through their occurrence — no double
+                // render).
+                if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
+                    let rep_map_ids: Vec<u32> = entity
+                        .get(6)
+                        .and_then(|a| a.as_list())
+                        .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+                        .unwrap_or_default();
+                    if !rep_map_ids.is_empty() {
+                        let referenced =
+                            self.get_or_build_referenced_repmaps(content, &mut decoder);
+                        for rm_id in rep_map_ids {
+                            if referenced.contains(&rm_id) {
+                                continue;
+                            }
+                            let Ok(rep_map) = decoder.decode_by_id(rm_id) else {
+                                continue;
+                            };
+                            let Ok(mut mesh) =
+                                router.process_representation_map(&rep_map, &mut decoder)
+                            else {
+                                continue;
+                            };
+                            if mesh.is_empty() {
+                                continue;
+                            }
+                            if mesh.normals.len() != mesh.positions.len() {
+                                calculate_normals(&mut mesh);
+                            }
+                            let color = super::styling::color_for_representation_map(
+                                rm_id,
+                                &geometry_styles,
+                                &mut decoder,
+                            )
+                            .unwrap_or_else(|| default_color_for_type(ifc_type).to_array());
+                            let ifc_type_name = type_name_cache
+                                .entry(ifc_type)
+                                .or_insert_with(|| ifc_type.name().to_string())
+                                .clone();
+                            mesh_collection.add(MeshDataJs::new(id, ifc_type_name, mesh, color));
+                        }
+                    }
+                    continue;
+                }
+
                 let has_openings = void_index.contains_key(&id);
 
                 if has_openings {

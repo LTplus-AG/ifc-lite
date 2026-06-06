@@ -65,6 +65,14 @@ pub struct IfcAPI {
     /// and by `setMergeLayers` (so toggling rebuilds against the latest
     /// flag value).
     cached_parts_to_skip: std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
+
+    /// Lazily-built set of `IfcRepresentationMap` ids that an `IfcMappedItem`
+    /// instantiates (issue #957). `processGeometryBatch` uses it to decide which
+    /// of a type's RepresentationMaps are orphan and should be rendered directly
+    /// (the rest are drawn through their occurrence). Built once per worker on
+    /// the first type-product job and cleared by `clearPrePassCache`.
+    cached_referenced_repmaps:
+        std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
 }
 
 #[wasm_bindgen]
@@ -80,6 +88,7 @@ impl IfcAPI {
             cached_entity_index: std::sync::Mutex::new(None),
             merge_layers: std::sync::atomic::AtomicBool::new(false),
             cached_parts_to_skip: std::sync::Mutex::new(None),
+            cached_referenced_repmaps: std::sync::Mutex::new(None),
         }
     }
 
@@ -112,6 +121,13 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
         parts_slot.take();
+        // The referenced-RepresentationMap set is keyed off the previous load's
+        // content; drop it so the next file rebuilds against fresh content.
+        let mut repmap_slot = self
+            .cached_referenced_repmaps
+            .lock()
+            .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
+        repmap_slot.take();
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.
@@ -234,6 +250,36 @@ impl IfcAPI {
             .cached_parts_to_skip
             .lock()
             .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+        *slot = Some(std::sync::Arc::clone(&arc));
+        arc
+    }
+
+    /// Get or lazily build the set of `IfcRepresentationMap` ids instantiated by
+    /// an `IfcMappedItem` (issue #957). `processGeometryBatch` uses it to render
+    /// only the ORPHAN RepresentationMaps of a type-product (the rest are drawn
+    /// through their occurrence). Cached per worker so the scan is paid once.
+    pub(crate) fn get_or_build_referenced_repmaps(
+        &self,
+        content: &str,
+        decoder: &mut ifc_lite_core::EntityDecoder,
+    ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
+        {
+            let slot = self
+                .cached_referenced_repmaps
+                .lock()
+                .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
+            if let Some(existing) = slot.as_ref() {
+                return std::sync::Arc::clone(existing);
+            }
+        }
+
+        let referenced = styling::build_referenced_representation_maps(content, decoder);
+
+        let arc = std::sync::Arc::new(referenced);
+        let mut slot = self
+            .cached_referenced_repmaps
+            .lock()
+            .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }

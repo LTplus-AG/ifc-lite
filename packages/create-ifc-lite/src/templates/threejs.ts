@@ -54,6 +54,11 @@ export function createThreejsTemplate(targetDir: string, projectName: string) {
   writeFileSync(join(targetDir, 'vite.config.ts'), `import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // @ifc-lite ships ES-module geometry workers; emit them as ESM so a
+  // production build never trips over Rollup's IIFE worker default.
+  worker: {
+    format: 'es',
+  },
   optimizeDeps: {
     exclude: ['@ifc-lite/wasm'],
   },

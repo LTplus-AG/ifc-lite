@@ -156,7 +156,9 @@ export function geometryResultToBatched(result: GeometryResult): {
       color: new THREE.Color(r, g, b),
       transparent: a < 1,
       opacity: a,
-      side: a < 1 ? THREE.DoubleSide : THREE.FrontSide,
+      // DoubleSide for opaque too — see meshDataToThree: IFC winding varies and
+      // coincident coplanar walls z-fight if one side is culled.
+      side: THREE.DoubleSide,
       depthWrite: a >= 1,
     });
 

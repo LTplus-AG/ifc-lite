@@ -643,7 +643,8 @@ function normalizeValue(value: unknown): string | number | boolean | null {
   }
   try {
     return JSON.stringify(value);
-  } catch {
+  } catch (error) {
+    console.warn('[compare] normalizeValue: failed to stringify value', error);
     return String(value);
   }
 }

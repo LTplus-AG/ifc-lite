@@ -70,6 +70,7 @@ export class Scene {
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
+  private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
 
   // Buffer-size-aware bucket splitting: when a single color group's geometry
   // would exceed the GPU maxBufferSize, overflow is directed to a new
@@ -614,6 +615,20 @@ export class Scene {
     this.meshDataMap.delete(expressId);
     this.boundingBoxes.delete(expressId);
 
+    // #961: textured meshes own GPU buffers outside the colour buckets, so the
+    // bucket cleanup above never touches them. Destroy + drop them here or a
+    // deleted textured entity keeps rendering (and leaks its GPU texture).
+    for (let i = this.texturedMeshes.length - 1; i >= 0; i--) {
+      const tm = this.texturedMeshes[i];
+      if (tm.expressId !== expressId) continue;
+      tm.vertexBuffer.destroy();
+      tm.indexBuffer.destroy();
+      tm.uniformBuffer.destroy();
+      tm.texture.destroy();
+      this.texturedMeshes.splice(i, 1);
+      removedDedicated = true;
+    }
+
     for (const key of affectedKeys) {
       this.pendingBatchKeys.add(key);
     }
@@ -680,6 +695,23 @@ export class Scene {
       anyMoved = true;
     }
     if (!anyMoved) return false;
+
+    // #961: a textured mesh's GPU vertex buffer lives outside the colour buckets,
+    // so the in-place position translation above won't reach the GPU on its own —
+    // re-interleave + re-upload the moved textured parts (paired by expressId,
+    // in creation order). Without this a moved textured entity renders stale.
+    if (this.texturedDevice && this.texturedMeshes.length > 0) {
+      const texturedData = meshDataList.filter((md) => md.texture && md.uvs);
+      if (texturedData.length > 0) {
+        const entries = this.texturedMeshes.filter((tm) => tm.expressId === expressId);
+        for (let i = 0; i < entries.length && i < texturedData.length; i++) {
+          const interleaved = this.interleaveTexturedVertices(texturedData[i]);
+          if (interleaved) {
+            this.texturedDevice.queue.writeBuffer(entries[i].vertexBuffer, 0, interleaved);
+          }
+        }
+      }
+    }
 
     this.boundingBoxes.delete(expressId);
     for (const key of affectedKeys) {
@@ -1610,17 +1642,20 @@ export class Scene {
    * The per-frame uniform (viewProj/section/flags + colour tint) is written by
    * the renderer each frame, mirroring how colour batches are driven.
    */
-  private createTexturedMesh(meshData: MeshData, device: GPUDevice, pipeline: RenderPipeline): void {
-    const tex = meshData.texture;
+  /**
+   * Interleave a textured mesh's vertices into the stride-36 layout
+   * `[px,py,pz, nx,ny,nz, entityId(u32), u,v]`. Shared by initial upload and
+   * the translate re-upload so the two can't drift. Returns null when the mesh
+   * has no texture/uvs/geometry.
+   */
+  private interleaveTexturedVertices(meshData: MeshData): ArrayBuffer | null {
     const uvs = meshData.uvs;
-    if (!tex || !uvs) return;
-
+    if (!meshData.texture || !uvs) return null;
     const positions = meshData.positions;
     const normals = meshData.normals;
     const vertexCount = positions.length / 3;
-    if (vertexCount === 0 || meshData.indices.length === 0) return;
+    if (vertexCount === 0 || meshData.indices.length === 0) return null;
 
-    // Interleave: [px,py,pz, nx,ny,nz, entityId(u32), u,v] = 9 * 4 = 36 bytes.
     const interleaved = new ArrayBuffer(vertexCount * 36);
     const f = new Float32Array(interleaved);
     const u = new Uint32Array(interleaved);
@@ -1637,6 +1672,14 @@ export class Scene {
       f[o + 7] = uvs[i * 2] ?? 0;
       f[o + 8] = uvs[i * 2 + 1] ?? 0;
     }
+    return interleaved;
+  }
+
+  private createTexturedMesh(meshData: MeshData, device: GPUDevice, pipeline: RenderPipeline): void {
+    const tex = meshData.texture;
+    const interleaved = this.interleaveTexturedVertices(meshData);
+    if (!tex || !interleaved) return;
+    this.texturedDevice = device; // reused by translateMeshesForEntity re-upload
 
     const vertexBuffer = device.createBuffer({
       size: interleaved.byteLength,

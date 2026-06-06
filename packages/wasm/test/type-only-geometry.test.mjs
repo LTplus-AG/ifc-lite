@@ -67,26 +67,32 @@ describe('@ifc-lite/wasm type-only IfcRepresentationMap geometry (#957)', () => 
 
       initSync(readFileSync(wasmPath));
       const api = new IfcAPI();
+      // `parseMeshesViaPrePass` frees its own wasm handles (each MeshDataJs +
+      // the MeshCollection) internally and calls clearPrePassCache, returning a
+      // plain JS facade — so only the IfcAPI handle needs freeing here.
+      try {
+        const content = readFileSync(fixturePath, 'utf8');
+        const result = parseMeshesViaPrePass(api, content);
 
-      const content = readFileSync(fixturePath, 'utf8');
-      const result = parseMeshesViaPrePass(api, content);
+        const boiler = [];
+        for (let i = 0; i < result.length; i++) {
+          const m = result.get(i);
+          if (m && m.expressId === BOILER_TYPE_ID) boiler.push(m);
+        }
 
-      const boiler = [];
-      for (let i = 0; i < result.length; i++) {
-        const m = result.get(i);
-        if (m && m.expressId === BOILER_TYPE_ID) boiler.push(m);
+        assert.ok(
+          boiler.length >= 1,
+          `expected the IfcBoilerType #${BOILER_TYPE_ID} type-only geometry to render; got 0 meshes`,
+        );
+        const totalTris = boiler.reduce((n, m) => n + m.triangleCount, 0);
+        assert.equal(totalTris, 64, `boiler should produce 64 triangles, got ${totalTris}`);
+        assert.ok(
+          boiler.every((m) => approxColor(m.color, WHITE)),
+          'type geometry should inherit the authored white IfcSurfaceStyle',
+        );
+      } finally {
+        api.free?.();
       }
-
-      assert.ok(
-        boiler.length >= 1,
-        `expected the IfcBoilerType #${BOILER_TYPE_ID} type-only geometry to render; got 0 meshes`,
-      );
-      const totalTris = boiler.reduce((n, m) => n + m.triangleCount, 0);
-      assert.equal(totalTris, 64, `boiler should produce 64 triangles, got ${totalTris}`);
-      assert.ok(
-        boiler.every((m) => approxColor(m.color, WHITE)),
-        'type geometry should inherit the authored white IfcSurfaceStyle',
-      );
     });
   }
 });

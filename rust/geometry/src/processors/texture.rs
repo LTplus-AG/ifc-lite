@@ -189,12 +189,20 @@ fn decode_blob_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
 /// RepeatS(0), RepeatT(1), Mode(2), TextureTransform(3), Parameter(4),
 /// Width(5), Height(6), ColourComponents(7), Pixel(8 = list of BINARY).
 fn decode_pixel_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
-    let width = entity.get(5).and_then(|a| a.as_int())? as u32;
-    let height = entity.get(6).and_then(|a| a.as_int())? as u32;
-    let components = entity.get(7).and_then(|a| a.as_int())? as usize;
-    if width == 0 || height == 0 || !(1..=4).contains(&components) {
+    // Validate the signed values BEFORE casting — a malformed `-1` would become
+    // u32::MAX and try to reserve absurd memory. Bound the dimensions
+    // (16384² RGBA ≈ 1 GiB) so a hostile/garbage file is rejected cleanly.
+    let width = entity.get(5).and_then(|a| a.as_int())?;
+    let height = entity.get(6).and_then(|a| a.as_int())?;
+    let components = entity.get(7).and_then(|a| a.as_int())?;
+    const MAX_DIM: i64 = 16384;
+    if width <= 0 || height <= 0 || width > MAX_DIM || height > MAX_DIM || !(1..=4).contains(&components)
+    {
         return None;
     }
+    let width = width as u32;
+    let height = height as u32;
+    let components = components as usize;
     let pixels = entity.get(8).and_then(|a| a.as_list())?;
     let expected = (width as usize) * (height as usize);
     let mut rgba = Vec::with_capacity(expected * 4);

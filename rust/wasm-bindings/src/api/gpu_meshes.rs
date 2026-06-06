@@ -231,6 +231,16 @@ impl IfcAPI {
         drop(slot);
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
 
+        // #957: orphan IfcTypeProduct geometry (type RepresentationMaps, no
+        // occurrence) — keep the fast prepass consistent with the once/streaming
+        // paths so type-only models (annex-E) also render on the worker fast
+        // path. The helper is guarded by a cheap `IFCREPRESENTATIONMAP`
+        // substring check, so files without type geometry pay almost nothing.
+        complex_jobs.extend(super::styling::collect_orphan_type_geometry_jobs(
+            content,
+            &mut decoder,
+        ));
+
         let unit_scale = project_id
             .and_then(|pid| ifc_lite_core::extract_length_unit_scale(&mut decoder, pid).ok())
             .unwrap_or(1.0);

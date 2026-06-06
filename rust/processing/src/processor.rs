@@ -1949,6 +1949,21 @@ fn build_color_updates_for_jobs(
     let mut updates: Vec<(u32, [f32; 4])> = Vec::new();
 
     for job in jobs {
+        // #957: synthetic type-only-geometry jobs resolve their colour from the
+        // RepresentationMap (a type has no IfcProductDefinitionShape), so the
+        // product-definition path below never corrects them. Backfill them here
+        // or a deferred IfcStyledItem (fast_first_batch) leaves the orphan type
+        // geometry stuck at its fallback colour.
+        if let Some(rep_map_id) = job.representation_map_id {
+            if let Some(color) =
+                resolve_color_for_representation_map(rep_map_id, geometry_styles, &mut decoder)
+            {
+                if color != job.element_color {
+                    updates.push((job.id, color));
+                }
+            }
+            continue;
+        }
         let Ok(entity) = decoder.decode_at(job.start, job.end) else {
             continue;
         };

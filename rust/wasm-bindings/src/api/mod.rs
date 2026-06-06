@@ -183,6 +183,25 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_entity_index Mutex poisoned");
         *slot = Some(std::sync::Arc::new(index));
+        drop(slot);
+
+        // Swapping the entity index means a different file. The other caches are
+        // content-scoped (keyed off the previous load) — carrying them into the
+        // next file would wrongly suppress/keep orphan type geometry, reuse a
+        // stale texture index, or skip the wrong parts. Drop them so they
+        // rebuild against the new content (#962 review). Mirrors clearPrePassCache.
+        self.cached_parts_to_skip
+            .lock()
+            .expect("ifc-lite cached_parts_to_skip Mutex poisoned")
+            .take();
+        self.cached_referenced_repmaps
+            .lock()
+            .expect("ifc-lite cached_referenced_repmaps Mutex poisoned")
+            .take();
+        self.cached_texture_index
+            .lock()
+            .expect("ifc-lite cached_texture_index Mutex poisoned")
+            .take();
     }
 
     /// Get WASM memory for zero-copy access

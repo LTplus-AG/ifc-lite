@@ -10,6 +10,7 @@ mod alignment_lines;
 mod clash;
 mod extract_profiles;
 mod gpu_meshes;
+mod grid_lines;
 mod parsing;
 pub(crate) mod styling;
 mod symbolic;

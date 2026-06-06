@@ -15,6 +15,8 @@ import init, {
   SymbolicCircle,
   ProfileCollection,
   ProfileEntryJs,
+  GridAxisCollection,
+  GridAxisJs,
 } from '@ifc-lite/wasm';
 export type {
   SymbolicRepresentationCollection,
@@ -22,6 +24,8 @@ export type {
   SymbolicCircle,
   ProfileCollection,
   ProfileEntryJs,
+  GridAxisCollection,
+  GridAxisJs,
 };
 
 const log = createLogger('Geometry');
@@ -151,6 +155,60 @@ export class IfcLiteBridge {
     } catch (error) {
       log.error('Failed to parse alignment lines', error, {
         operation: 'parseAlignmentLines',
+        data: { contentLength: content.length },
+      });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Parse `IfcGrid` / `IfcGridAxis` into a flat Float32Array of 3D line-list
+   * vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per axis) in renderer Y-up
+   * world space (RTC-subtracted, metres) — the same frame the streamed meshes
+   * render in, so grids overlay the model by construction (issue #945). Feed
+   * straight to a line pipeline (e.g. `renderer.uploadAnnotationLines3D`).
+   * Empty when the file has no grids.
+   */
+  parseGridLines(content: string): Float32Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      const vertices = this.ifcApi.parseGridLines(content);
+      log.debug(`Parsed ${vertices.length / 3} grid line vertices`, { operation: 'parseGridLines' });
+      return vertices;
+    } catch (error) {
+      log.error('Failed to parse grid lines', error, {
+        operation: 'parseGridLines',
+        data: { contentLength: content.length },
+      });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Parse `IfcGrid` / `IfcGridAxis` into structured per-axis data
+   * (`{ gridId, axisId, tag, start, end }`) in renderer Y-up world space
+   * (RTC-subtracted, metres). Use this when you also need the axis tags to
+   * render grid bubbles / labels. See issue #945.
+   */
+  parseGridAxes(content: string): GridAxisCollection {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      const collection = this.ifcApi.parseGridAxes(content);
+      log.debug(`Parsed ${collection.length} grid axes`, { operation: 'parseGridAxes' });
+      return collection;
+    } catch (error) {
+      log.error('Failed to parse grid axes', error, {
+        operation: 'parseGridAxes',
         data: { contentLength: content.length },
       });
       if (this.isWasmRuntimeError(error)) {

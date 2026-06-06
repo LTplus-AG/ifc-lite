@@ -306,6 +306,14 @@ export async function* processParallel(
     const rtcZ = useSharedRtc ? sharedRtcOffset.z : prepassMeta.rtcOffset[2];
     const effectiveNeedsShift = useSharedRtc ? true : prepassMeta.needsShift;
 
+    // Surface the world→render metadata (unit scale + the effective applied
+    // RTC, which is the shared offset under federation) on coordinateInfo for
+    // downstream consumers (issue #945).
+    coordinator.setWasmMetadata(
+      prepassMeta.unitScale,
+      effectiveNeedsShift ? { x: rtcX, y: rtcY, z: rtcZ } : null,
+    );
+
     eventQueue.push({
       type: 'rtcOffset',
       rtcOffset: { x: rtcX, y: rtcY, z: rtcZ },

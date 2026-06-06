@@ -17,6 +17,15 @@ use std::f64::consts::PI;
 /// Prevents stack overflow from deeply nested CompositeCurve → TrimmedCurve → CompositeCurve chains.
 const MAX_CURVE_DEPTH: u32 = 50;
 
+/// One bound of an `IfcTrimmingSelect` on a trimmed conic. A `Parameter` is an
+/// angle in the project's PLANEANGLEUNIT; a `Cartesian` point is resolved to an
+/// angle against the conic's own placement and radii once those are known.
+#[derive(Debug, Clone, Copy)]
+enum TrimSelect {
+    Parameter(f64),
+    Cartesian(Point2<f64>),
+}
+
 /// Issue #635 — when an `IfcArbitraryClosedProfileDef` is actually a smooth
 /// curve approximated by a many-vertex polyline (e.g. a 127-vertex circle
 /// stand-in for a round window), the resulting prism has too many side
@@ -2158,9 +2167,25 @@ impl ProfileProcessor {
             .resolve_ref(basis_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve BasisCurve".to_string()))?;
 
+        // MasterRepresentation (attribute 4) selects which trim flavour wins when
+        // both an IfcParameterValue and an IfcCartesianPoint are supplied for the
+        // same Trim*. `.CARTESIAN.` means resolve the bounds from the points;
+        // anything else (`.PARAMETER.`, `.UNSPECIFIED.`, or missing) keeps the
+        // parameter-first behaviour. Either way `extract_trim_select` falls back
+        // to whichever flavour is actually present.
+        let prefer_cartesian = curve
+            .get(4)
+            .and_then(|v| v.as_enum())
+            .map(|m| m == "CARTESIAN")
+            .unwrap_or(false);
+
         // Get trim parameters
-        let trim1 = curve.get(1).and_then(|v| self.extract_trim_param(v));
-        let trim2 = curve.get(2).and_then(|v| self.extract_trim_param(v));
+        let trim1 = curve
+            .get(1)
+            .and_then(|v| self.extract_trim_select(v, prefer_cartesian, decoder));
+        let trim2 = curve
+            .get(2)
+            .and_then(|v| self.extract_trim_select(v, prefer_cartesian, decoder));
 
         // Get sense agreement (attribute 3) - default true
         let sense = curve
@@ -2183,34 +2208,70 @@ impl ProfileProcessor {
         }
     }
 
-    /// Extract trim parameter (can be IFCPARAMETERVALUE or IFCCARTESIANPOINT)
-    fn extract_trim_param(&self, attr: &ifc_lite_core::AttributeValue) -> Option<f64> {
-        if let Some(list) = attr.as_list() {
-            for item in list {
-                // Check for IFCPARAMETERVALUE (stored as ["IFCPARAMETERVALUE", value])
-                if let Some(inner_list) = item.as_list() {
-                    if inner_list.len() >= 2 {
-                        if let Some(type_name) = inner_list.first().and_then(|v| v.as_string()) {
-                            if type_name == "IFCPARAMETERVALUE" {
-                                return inner_list.get(1).and_then(|v| v.as_float());
-                            }
+    /// Extract a single bound of an `IfcTrimmingSelect` list.
+    ///
+    /// Per the schema each `Trim1`/`Trim2` is a SET of 1..2 of
+    /// `IfcParameterValue` and/or `IfcCartesianPoint`. We gather both flavours
+    /// when present and let `prefer_cartesian` (derived from the curve's
+    /// MasterRepresentation) pick the winner, falling back to whichever one is
+    /// actually authored. Cartesian bounds are returned as raw points; the
+    /// caller converts them to an angle once it knows the conic's centre,
+    /// rotation, and radii — a point bound cannot be turned into a parameter
+    /// without that placement.
+    fn extract_trim_select(
+        &self,
+        attr: &ifc_lite_core::AttributeValue,
+        prefer_cartesian: bool,
+        decoder: &mut EntityDecoder,
+    ) -> Option<TrimSelect> {
+        let list = attr.as_list()?;
+        let mut param: Option<f64> = None;
+        let mut point: Option<Point2<f64>> = None;
+
+        for item in list {
+            // IFCPARAMETERVALUE(value) is stored as List(["IFCPARAMETERVALUE", value]).
+            if let Some(inner_list) = item.as_list() {
+                if let Some(type_name) = inner_list.first().and_then(|v| v.as_string()) {
+                    if type_name == "IFCPARAMETERVALUE" {
+                        param = inner_list.get(1).and_then(|v| v.as_float());
+                        continue;
+                    }
+                }
+            }
+            // A reference to an IfcCartesianPoint.
+            if item.as_entity_ref().is_some() {
+                if let Ok(Some(pt)) = decoder.resolve_ref(item) {
+                    if pt.ifc_type == IfcType::IfcCartesianPoint {
+                        if let Some(coords) = pt.get(0).and_then(|v| v.as_list()) {
+                            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                            point = Some(Point2::new(x, y));
                         }
                     }
                 }
-                if let Some(f) = item.as_float() {
-                    return Some(f);
-                }
+                continue;
+            }
+            // Bare numeric fallback: a parameter authored without the
+            // IFCPARAMETERVALUE wrapper.
+            if let Some(f) = item.as_float() {
+                param = Some(f);
             }
         }
-        None
+
+        match (prefer_cartesian, point, param) {
+            (true, Some(p), _) => Some(TrimSelect::Cartesian(p)),
+            (_, _, Some(f)) => Some(TrimSelect::Parameter(f)),
+            (_, Some(p), None) => Some(TrimSelect::Cartesian(p)),
+            _ => None,
+        }
     }
 
     /// Process trimmed conic (circle or ellipse arc)
     fn process_trimmed_conic(
         &self,
         basis: &DecodedEntity,
-        trim1: Option<f64>,
-        trim2: Option<f64>,
+        trim1: Option<TrimSelect>,
+        trim2: Option<TrimSelect>,
         sense: bool,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Point2<f64>>> {
@@ -2223,14 +2284,34 @@ impl ProfileProcessor {
 
         let (center, rotation) = self.get_placement_2d(basis, decoder)?;
 
-        // Convert trim parameters to angles using the project's PLANEANGLEUNIT.
-        // The IFC spec interprets IfcParameterValue on IfcCircle/IfcEllipse as
-        // an angle in that unit; defaulting to `.to_radians()` collapsed 240°
-        // arcs to ~4° on RADIAN-declared files (issue #820, Renga export).
+        // Convert each trim bound to an angle in the conic's local frame.
+        // IfcParameterValue bounds are angles in the project's PLANEANGLEUNIT
+        // (defaulting to `.to_radians()` collapsed 240° arcs to ~4° on
+        // RADIAN-declared files — issue #820, Renga export). IfcCartesianPoint
+        // bounds (MasterRepresentation `.CARTESIAN.`, issue #953) are inverted
+        // through the placement: un-rotate about the centre, then read the
+        // parametric angle off the radii. Without this the cartesian-trimmed
+        // semicircle wall profiles in Roof-01_BCAD lost their arc entirely.
         let angle_scale = decoder.plane_angle_to_radians();
-        let start_angle = trim1.unwrap_or(0.0) * angle_scale;
+        let to_angle = |trim: &TrimSelect| -> f64 {
+            match trim {
+                TrimSelect::Parameter(v) => v * angle_scale,
+                TrimSelect::Cartesian(p) => {
+                    let dx = p.x - center.x;
+                    let dy = p.y - center.y;
+                    let lx = dx * rotation.cos() + dy * rotation.sin();
+                    let ly = -dx * rotation.sin() + dy * rotation.cos();
+                    // Normalise by the radii so ellipse bounds map to the
+                    // parametric angle (for a circle radius == radius2, so this
+                    // is plain atan2(ly, lx)).
+                    (ly / radius2).atan2(lx / radius)
+                }
+            }
+        };
+        let start_angle = trim1.as_ref().map(&to_angle).unwrap_or(0.0);
         let mut end_angle = trim2
-            .map(|v| v * angle_scale)
+            .as_ref()
+            .map(&to_angle)
             .unwrap_or(2.0 * std::f64::consts::PI);
 
         // Handle angle wrapping for arcs that cross the 0°/360° boundary.

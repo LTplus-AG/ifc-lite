@@ -65,6 +65,16 @@ pub struct IfcAPI {
     /// and by `setMergeLayers` (so toggling rebuilds against the latest
     /// flag value).
     cached_parts_to_skip: std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
+
+    /// Lazily-built `IfcIndexedColourMap` index keyed by target geometry id,
+    /// used by `processGeometryBatch` to split a tessellated face set into one
+    /// sub-mesh per palette group (issue #858). The browser geometry path lost
+    /// this split in the #874 mesh-pipeline unification — it kept only the
+    /// dominant colour per geometry. Built once per worker on first batch call
+    /// (a single extra entity scan, cached) and cleared by `clearPrePassCache`.
+    cached_indexed_colour_maps: std::sync::Mutex<
+        Option<std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>>,
+    >,
 }
 
 #[wasm_bindgen]
@@ -80,6 +90,7 @@ impl IfcAPI {
             cached_entity_index: std::sync::Mutex::new(None),
             merge_layers: std::sync::atomic::AtomicBool::new(false),
             cached_parts_to_skip: std::sync::Mutex::new(None),
+            cached_indexed_colour_maps: std::sync::Mutex::new(None),
         }
     }
 
@@ -112,6 +123,13 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
         parts_slot.take();
+        // The indexed-colour-map index is also keyed off the previous load's
+        // content; drop it so the next file rebuilds against fresh content.
+        let mut icm_slot = self
+            .cached_indexed_colour_maps
+            .lock()
+            .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+        icm_slot.take();
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.
@@ -234,6 +252,55 @@ impl IfcAPI {
             .cached_parts_to_skip
             .lock()
             .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+        *slot = Some(std::sync::Arc::clone(&arc));
+        arc
+    }
+
+    /// Get or lazily build the `IfcIndexedColourMap` index (geometry id →
+    /// full per-triangle palette) used by `processGeometryBatch` to split a
+    /// tessellated face set into one sub-mesh per palette group (issue #858).
+    ///
+    /// Mirrors the native processor's collection pass (processor.rs ~905):
+    /// one entity scan that decodes every `IFCINDEXEDCOLOURMAP` and resolves
+    /// it to a [`FullIndexedColourMap`]. Cached per worker so the scan is paid
+    /// once, not per batch. Returns an empty map when the file authors none
+    /// (the common case), so callers can cheaply `.get(&geometry_id)`.
+    pub(crate) fn get_or_build_indexed_colour_maps(
+        &self,
+        content: &str,
+        decoder: &mut ifc_lite_core::EntityDecoder,
+    ) -> std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>
+    {
+        {
+            let slot = self
+                .cached_indexed_colour_maps
+                .lock()
+                .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+            if let Some(existing) = slot.as_ref() {
+                return std::sync::Arc::clone(existing);
+            }
+        }
+
+        let mut map: rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap> =
+            rustc_hash::FxHashMap::default();
+        let mut scanner = ifc_lite_core::EntityScanner::new(content);
+        while let Some((_id, type_name, start, end)) = scanner.next_entity() {
+            if type_name == "IFCINDEXEDCOLOURMAP" {
+                if let Ok(icm) = decoder.decode_at(start, end) {
+                    if let Some(full) =
+                        ifc_lite_processing::style::resolve_indexed_colour_map_full(&icm, decoder)
+                    {
+                        map.entry(full.geometry_id).or_insert(full);
+                    }
+                }
+            }
+        }
+
+        let arc = std::sync::Arc::new(map);
+        let mut slot = self
+            .cached_indexed_colour_maps
+            .lock()
+            .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }

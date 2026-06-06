@@ -19,6 +19,53 @@ fn decode_ifc_bytes<'a>(data: &'a [u8]) -> &'a str {
     }
 }
 
+/// Emit a sub-mesh, splitting it into one mesh per `IfcIndexedColourMap` palette
+/// group when the face set carries a per-triangle colour map whose triangle
+/// count still matches the produced mesh (issue #858). This restores the split
+/// the live viewer lost when the geometry pipeline was unified onto
+/// `processGeometryBatch` (#874) — the prepass only carries one dominant colour
+/// per geometry, so without this the green/yellow triangles collapse into red.
+///
+/// Falls back to a single `color` mesh when there is no map, when the map no
+/// longer applies (CSG/void retopology changed the triangle count), or when
+/// fewer than two distinct palette colours are used — the same guards the native
+/// processor relies on (see `split_mesh_by_indexed_colour`).
+fn emit_submesh_with_palette_split(
+    mesh_collection: &mut MeshCollection,
+    express_id: u32,
+    ifc_type_name: &str,
+    geometry_id: u32,
+    mesh: ifc_lite_geometry::Mesh,
+    color: [f32; 4],
+    indexed_colour_full: &rustc_hash::FxHashMap<
+        u32,
+        ifc_lite_processing::style::FullIndexedColourMap,
+    >,
+) {
+    if let Some(full) = indexed_colour_full.get(&geometry_id) {
+        if let Some(groups) = ifc_lite_processing::style::split_mesh_by_indexed_colour(&mesh, full) {
+            for (rgba, mut part) in groups {
+                if part.normals.len() != part.positions.len() {
+                    ifc_lite_geometry::calculate_normals(&mut part);
+                }
+                mesh_collection.add(MeshDataJs::new(
+                    express_id,
+                    ifc_type_name.to_string(),
+                    part,
+                    rgba.to_array(),
+                ));
+            }
+            return;
+        }
+    }
+    mesh_collection.add(MeshDataJs::new(
+        express_id,
+        ifc_type_name.to_string(),
+        mesh,
+        color,
+    ));
+}
+
 #[wasm_bindgen]
 impl IfcAPI {
     /// Run the pre-pass ONCE and return serialized results for worker distribution.
@@ -962,6 +1009,13 @@ impl IfcAPI {
             std::sync::Arc::new(rustc_hash::FxHashSet::default())
         };
 
+        // IfcIndexedColourMap index (geometry id → full per-triangle palette),
+        // built once per worker. Drives the #858 per-palette-group split below
+        // so a face set whose ColourIndex assigns several colours to different
+        // triangles renders multi-coloured instead of collapsing to the single
+        // dominant colour the prepass `geometry_styles` carries.
+        let indexed_colour_full = self.get_or_build_indexed_colour_maps(content, &mut decoder);
+
         // Process only the entities specified in jobs_flat
         for chunk in jobs_flat.chunks(3) {
             if chunk.len() < 3 {
@@ -1028,6 +1082,7 @@ impl IfcAPI {
                                 let element_color = element_styles.get(&id).copied();
                                 let mut mat_color_idx = 0usize;
                                 for sub in sub_meshes.sub_meshes {
+                                    let geometry_id = sub.geometry_id;
                                     let mut mesh = sub.mesh;
                                     if mesh.is_empty() {
                                         continue;
@@ -1036,7 +1091,7 @@ impl IfcAPI {
                                         calculate_normals(&mut mesh);
                                     }
                                     let color = resolve_submesh_color(
-                                        sub.geometry_id,
+                                        geometry_id,
                                         &geometry_styles,
                                         &mut decoder,
                                         None,
@@ -1048,12 +1103,15 @@ impl IfcAPI {
                                         .entry(ifc_type)
                                         .or_insert_with(|| ifc_type.name().to_string())
                                         .clone();
-                                    mesh_collection.add(MeshDataJs::new(
+                                    emit_submesh_with_palette_split(
+                                        &mut mesh_collection,
                                         id,
-                                        ifc_type_name,
+                                        &ifc_type_name,
+                                        geometry_id,
                                         mesh,
                                         color,
-                                    ));
+                                        &indexed_colour_full,
+                                    );
                                     used_submesh = true;
                                 }
                             }
@@ -1072,6 +1130,7 @@ impl IfcAPI {
                                 let element_color = element_styles.get(&id).copied();
                                 let mut mat_color_idx = 0usize;
                                 for sub in sub_meshes.sub_meshes {
+                                    let geometry_id = sub.geometry_id;
                                     let mut mesh = sub.mesh;
                                     if mesh.is_empty() {
                                         continue;
@@ -1080,7 +1139,7 @@ impl IfcAPI {
                                         calculate_normals(&mut mesh);
                                     }
                                     let color = resolve_submesh_color(
-                                        sub.geometry_id,
+                                        geometry_id,
                                         &geometry_styles,
                                         &mut decoder,
                                         None,
@@ -1092,12 +1151,15 @@ impl IfcAPI {
                                         .entry(ifc_type)
                                         .or_insert_with(|| ifc_type.name().to_string())
                                         .clone();
-                                    mesh_collection.add(MeshDataJs::new(
+                                    emit_submesh_with_palette_split(
+                                        &mut mesh_collection,
                                         id,
-                                        ifc_type_name,
+                                        &ifc_type_name,
+                                        geometry_id,
                                         mesh,
                                         color,
-                                    ));
+                                        &indexed_colour_full,
+                                    );
                                 }
                             }
                         }

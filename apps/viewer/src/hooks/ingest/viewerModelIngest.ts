@@ -6,7 +6,7 @@ import { parseIfcx, type IfcDataStore, type PointCloudExtraction } from '@ifc-li
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
-import { calculateMeshBounds, calculateStoreyHeights, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
+import { calculateMeshBounds, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
 
 interface RawIfcxMesh {
   expressId?: number;
@@ -58,16 +58,6 @@ export function createMinimalGlbDataStore(buffer: ArrayBuffer, meshCount: number
     relationships: { count: 0, getRelationships: () => [], getRelated: () => [] } as unknown as IfcDataStore['relationships'],
     spatialHierarchy: null as unknown as IfcDataStore['spatialHierarchy'],
   } as unknown as IfcDataStore;
-}
-
-export function normalizeDataStoreStoreys(dataStore: IfcDataStore): IfcDataStore {
-  if (dataStore.spatialHierarchy && dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
-    const calculatedHeights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
-    for (const [storeyId, height] of calculatedHeights) {
-      dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-    }
-  }
-  return dataStore;
 }
 
 export function getMaxExpressId(dataStore: IfcDataStore, meshes: MeshData[]): number {

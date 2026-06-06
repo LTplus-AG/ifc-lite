@@ -264,44 +264,52 @@ export function useIfcLoader() {
       memoryAccounting.recordPhase({ phase: 'load-start' });
 
       setLoading(true);
-      setGeometryStreamingActive(false);
       setError(null);
-      setBoundedGeometryMode(false);
-      setGeometryProgress(null);
-      setMetadataProgress(null);
       setProgress({ phase: 'Loading file', percent: 0 });
 
       const fileName = file.name;
       const fileSize = file.size;
       const fileSizeMB = fileSize / (1024 * 1024);
 
-      upsertModel({
-        id: modelId,
-        name: fileName,
-        ifcDataStore: null,
-        geometryResult: null,
-        visible: true,
-        collapsed: false,
-        schemaVersion: 'IFC4',
-        loadedAt: Date.now(),
-        fileSize,
-        sourceFile: file,
-        idOffset: 0,
-        maxExpressId: 0,
-        loadState: 'pending',
+      // PRIMARY owns the active-model slots + top-level UI/memory flags and
+      // creates the model record. A federated add leaves all of that untouched
+      // (model #1 must not be disturbed) and registers atomically at finalize
+      // via addModel — so it creates NO placeholder entry here (which also
+      // keeps the `collapsed` default counting only the other models).
+      if (target.kind === 'primary') {
+        setGeometryStreamingActive(false);
+        setBoundedGeometryMode(false);
+        setGeometryProgress(null);
+        setMetadataProgress(null);
+
+        upsertModel({
+          id: modelId,
+          name: fileName,
+          ifcDataStore: null,
+          geometryResult: null,
+          visible: true,
+          collapsed: false,
+          schemaVersion: 'IFC4',
+          loadedAt: Date.now(),
+          fileSize,
+          sourceFile: file,
+          idOffset: 0,
+          maxExpressId: 0,
+          loadState: 'pending',
           geometryLoadState: 'pending',
           metadataLoadState: 'idle',
           interactiveReady: false,
           nativeMetadata: null,
-        cacheState: 'none',
-        loadError: null,
-      });
-      updateModel(modelId, {
-        loadState: 'streaming-geometry',
-        geometryLoadState: 'opening',
-        metadataLoadState: 'idle',
-        interactiveReady: false,
-      });
+          cacheState: 'none',
+          loadError: null,
+        });
+        updateModel(modelId, {
+          loadState: 'streaming-geometry',
+          geometryLoadState: 'opening',
+          metadataLoadState: 'idle',
+          interactiveReady: false,
+        });
+      }
 
       // The ONE finalizer for every format/platform/role. Primary keeps the
       // historical updateModel-only behaviour; federated runs the georef-align
@@ -423,8 +431,13 @@ export function useIfcLoader() {
       // Desktop native streaming path is reserved for truly large IFC files.
       // Mid-size files are more stable on the shared WASM/web loader and still
       // provide full viewer parity without the native streaming complexity.
+      // PRIMARY only: the native path paints the active slot and isn't target-
+      // aware, so a federated huge .ifc routes through the awaited WASM stream
+      // (which gates active-model writes) instead — matching the former
+      // federated path, which always used the WASM ingest regardless of size.
       if (
-        isNativeFileHandle(file)
+        target.kind === 'primary'
+        && isNativeFileHandle(file)
         && fileName.toLowerCase().endsWith('.ifc')
         && file.size >= HUGE_NATIVE_FILE_THRESHOLD
       ) {
@@ -1662,7 +1675,10 @@ export function useIfcLoader() {
             partialStore.spatialHierarchy.storeyHeights.set(storeyId, height);
           }
         }
-        setIfcDataStore(partialStore);
+        // PRIMARY only: setIfcDataStore writes the ACTIVE model. A federated
+        // add must not touch model #1's store — it wires its own via
+        // finalizeModel → addModel once dataStorePromise resolves.
+        if (target.kind === 'primary') setIfcDataStore(partialStore);
       };
 
       const onFullDataStore = (dataStore: IfcDataStore) => {
@@ -1674,7 +1690,10 @@ export function useIfcLoader() {
             dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
           }
         }
-        setIfcDataStore(dataStore);
+        // PRIMARY only (active-model write); federated wires via finalizeModel.
+        // resolveDataStore stays unconditional so the federated finalizePromise
+        // still resolves and registers the model.
+        if (target.kind === 'primary') setIfcDataStore(dataStore);
         console.log(`[useIfc] Data model parsing complete for ${file.name}: ${metadataCompleteMs.toFixed(0)}ms`);
         memoryAccounting.endPhase('parser-worker');
         memoryAccounting.recordPhase({ phase: 'parser-complete' });
@@ -2096,6 +2115,11 @@ export function useIfcLoader() {
         if (closeGeometryIterator) {
           await closeGeometryIterator();
         }
+        // The parser worker may be parked in `waitForEntityIndex` (the aborted
+        // geometry pre-pass would have unblocked it); it self-terminates on its
+        // own watchdog. Swallow the now-orphaned dataStorePromise rejection so
+        // it doesn't surface as an unhandled rejection.
+        void dataStorePromise.catch(() => {});
         if (loadSessionRef.current !== currentSession) return;
         console.error('[useIfc] Error in processing:', err);
         setError(err instanceof Error ? err.message : 'Unknown error during geometry processing');

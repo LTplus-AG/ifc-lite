@@ -67,16 +67,22 @@ const RDP_EPSILON_MIN: f64 = 5.0e-3;
 /// above this (half-thickness ≈ r/2 against a bbox diagonal of 2·r·√2 gives
 /// ≈ 0.18, ~3.5× the gate) and still simplifies. Thinness alone is *not*
 /// sufficient to skip — an elongated filled ellipse is thin by this measure too
-/// yet simplifies fine — so it is paired with [`DOUBLE_BACK_TURN_RATIO`].
+/// yet simplifies fine — so it is paired with [`DOUBLE_BACK_REFLEX_FRACTION`].
 const THIN_FEATURE_RATIO: f64 = 0.05;
-/// Total-absolute-turning threshold (in units of a full 2π turn) above which a
-/// closed loop is treated as *doubling back* on itself rather than enclosing a
-/// convex-ish blob. A convex polygon turns exactly 2π (ratio 1.0); an annular
-/// sector whose inner and outer arcs run opposite ways turns ≥ ~1.5× (the #820
-/// wall ~2.3×). 1.25 sits clear of both — above any convex shape's turning (so
-/// filled ellipses and disks are never gated) and below the thinnest
-/// doubling-back sector that distorts under RDP.
-const DOUBLE_BACK_TURN_RATIO: f64 = 1.25;
+/// Fraction of a loop's vertices that must be *reflex* (turning against the
+/// loop's overall winding) for it to count as *doubling back* on itself rather
+/// than enclosing a convex-ish blob. A convex shape (filled ellipse, disk) has
+/// zero reflex vertices at any aspect ratio; an annular sector's entire inner
+/// arc is reflex, so ~half its vertices are (≈0.4–0.5). 0.15 sits clear of both
+/// — and, unlike a total-turning measure, it is insensitive to a *localized*
+/// spike: one inward notch or a sub-mm closing-seam jog on an otherwise convex
+/// thin opening is only 1–2 reflex vertices, far below the threshold, so such
+/// openings keep simplifying (else they regress to the issue #635 AABB cut).
+const DOUBLE_BACK_REFLEX_FRACTION: f64 = 0.15;
+/// Per-vertex turning (as |sin| of the deflection angle) below which a vertex
+/// is treated as straight, not reflex — guards the reflex count against f64
+/// noise at near-collinear samples on a convex curve.
+const REFLEX_TURN_SIN_TOL: f64 = 1.0e-6;
 /// Only attempt simplification when the polyline has at least this many
 /// vertices. Below this the polyline is already cheap enough.
 const SMOOTH_CURVE_MIN_VERTICES: usize = 24;
@@ -212,7 +218,10 @@ fn closed_loop_self_intersects(loop_: &[Point2<f64>]) -> bool {
         let b = loop_[(i + 1) % n];
         for j in (i + 1)..n {
             // Skip the two segments adjacent to edge i (they share a vertex).
-            if j == i || (j + 1) % n == i || (i + 1) % n == j {
+            // `j > i` already holds, so only the wrap-around adjacency
+            // (j is the segment just before i) and the immediate successor
+            // (j == i + 1) can touch edge i.
+            if (j + 1) % n == i || (i + 1) % n == j {
                 continue;
             }
             let c = loop_[j];
@@ -226,31 +235,55 @@ fn closed_loop_self_intersects(loop_: &[Point2<f64>]) -> bool {
 }
 
 /// Whether the closed polygon (open form) `loop_` *doubles back* on itself —
-/// its total absolute turning exceeds `DOUBLE_BACK_TURN_RATIO` full turns.
+/// a large fraction of its vertices are reflex (turn against its winding),
+/// exceeding `DOUBLE_BACK_REFLEX_FRACTION`.
 ///
-/// A simple convex polygon turns by exactly 2π; any reflex structure adds to
-/// the absolute total, and a loop that runs out along one boundary and back
-/// along another (an annular sector / thin curved wall) turns ≥ ~1.5×. This
-/// separates such doubling-back loops from convex-ish blobs (filled ellipses,
-/// disks) which sit at exactly 1.0× regardless of how elongated they are.
+/// A convex shape (filled ellipse, disk) has no reflex vertices at any aspect
+/// ratio. A loop that runs out along one boundary and back along another (an
+/// annular sector / thin curved wall) makes its entire return arc reflex, so
+/// ~half its vertices are. Counting reflex vertices — rather than summing total
+/// turning — is what makes this insensitive to a *localized* feature: one
+/// inward notch, or the sub-mm out-and-back jog where a composite curve closes,
+/// is only a vertex or two and cannot tip the fraction, whereas a total-turning
+/// measure double-counts such a spike and would wrongly flag the loop.
+///
+/// Winding is taken from the signed area; a vertex is reflex when its turn
+/// opposes that winding by more than `REFLEX_TURN_SIN_TOL` (normalised so the
+/// tolerance is a true angle, not a length-scaled cross product).
 fn loop_doubles_back(loop_: &[Point2<f64>]) -> bool {
     let n = loop_.len();
-    if n < 3 {
+    if n < 4 {
         return false;
     }
-    let mut total_turn = 0.0;
+    let mut signed_area2 = 0.0;
+    for i in 0..n {
+        let a = loop_[i];
+        let b = loop_[(i + 1) % n];
+        signed_area2 += a.x * b.y - b.x * a.y;
+    }
+    if signed_area2 == 0.0 {
+        return false;
+    }
+    let winding = signed_area2.signum();
+
+    let mut reflex = 0usize;
     for i in 0..n {
         let prev = loop_[(i + n - 1) % n];
         let cur = loop_[i];
         let next = loop_[(i + 1) % n];
         let (ex_in, ey_in) = (cur.x - prev.x, cur.y - prev.y);
         let (ex_out, ey_out) = (next.x - cur.x, next.y - cur.y);
-        let cross = ex_in * ey_out - ey_in * ex_out;
-        let dot = ex_in * ex_out + ey_in * ey_out;
-        // atan2(0, 0) — a zero-length edge — yields 0, contributing nothing.
-        total_turn += cross.atan2(dot).abs();
+        let len = ((ex_in * ex_in + ey_in * ey_in) * (ex_out * ex_out + ey_out * ey_out)).sqrt();
+        if len <= 0.0 {
+            continue; // zero-length edge (duplicate vertex) — no turn
+        }
+        // sin(turn) = cross / (|e_in||e_out|); reflex when it opposes winding.
+        let sin_turn = (ex_in * ey_out - ey_in * ex_out) / len;
+        if sin_turn * winding < -REFLEX_TURN_SIN_TOL {
+            reflex += 1;
+        }
     }
-    total_turn > std::f64::consts::TAU * DOUBLE_BACK_TURN_RATIO
+    (reflex as f64) / (n as f64) > DOUBLE_BACK_REFLEX_FRACTION
 }
 
 /// Best-effort downsampling of a polyline that might approximate a smooth
@@ -361,11 +394,13 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     //    cut fits the BSP polygon budget (else round openings → AABB boxes,
     //    issue #635).
     //  * What actually breaks RDP is the boundary *doubling back* on itself.
-    //    A convex loop's total absolute turning is exactly 2π; an annular
-    //    sector's inner and outer arcs run opposite ways so it turns ≥ ~1.5×
-    //    that. Gating on turning distinguishes a thin ring (≈2.3×) from a thin
-    //    ellipse (1.0×); requiring thinness too leaves *fat* curved walls
-    //    (thickness ≫ epsilon, no fold) free to simplify.
+    //    A convex loop has no reflex vertices at any aspect ratio; an annular
+    //    sector's inner arc is entirely reflex, so ~half its vertices are.
+    //    `loop_doubles_back` measures that reflex fraction, which distinguishes
+    //    a thin ring from a thin ellipse and — unlike a total-turning measure —
+    //    ignores a lone notch or closing-seam jog. Requiring thinness too
+    //    leaves *fat* curved walls (thickness ≫ epsilon, no fold) free to
+    //    simplify.
     let half_thickness = if perimeter > f64::EPSILON {
         area2.abs() / (2.0 * perimeter)
     } else {
@@ -3390,6 +3425,53 @@ mod tests {
         // percent — acceptable for a void approximation (and the same as main).
         let rel = (loop_area(&out) - loop_area(&ellipse)).abs() / loop_area(&ellipse);
         assert!(rel < 0.08, "8:1 ellipse area drift {:.1}%", rel * 100.0);
+    }
+
+    #[test]
+    fn doubles_back_ignores_localized_spikes() {
+        // The reflex-fraction metric must flag a genuine two-arc annular sector
+        // but NOT a convex thin opening carrying a single localized defect — a
+        // lone inward notch or the sub-mm out-and-back jog where a composite
+        // curve closes. A total-turning measure double-counts such a spike and
+        // would wrongly gate these convex openings back into the #635 AABB cut.
+
+        // Genuine doubling-back: the #820 thin annular sector.
+        assert!(loop_doubles_back(&annular_sector_loop(
+            12000.0,
+            100.0,
+            (240.0_f64).to_radians(),
+            128
+        )));
+
+        // Clean convex ellipse — not doubling back.
+        let mut e = ellipse_loop(8.0, 128);
+        assert!(!loop_doubles_back(&e));
+
+        // ...with one deep inward notch at the blunt (x-tip) vertex. Find the
+        // vertex of greatest |x| and pull it 25% of the minor axis toward centre.
+        let tip = (0..e.len())
+            .max_by(|&i, &j| e[i].x.abs().partial_cmp(&e[j].x.abs()).unwrap())
+            .unwrap();
+        e[tip].x *= 0.75;
+        assert!(
+            !loop_doubles_back(&e),
+            "a single notch on a convex ellipse must not read as doubling back",
+        );
+
+        // Convex disk with a tiny out-and-back seam jog (a real, non-degenerate
+        // near-coincident self-intersection of the kind the #820 seam leaves).
+        let mut disk: Vec<Point2<f64>> = (0..128)
+            .map(|i| {
+                let t = std::f64::consts::TAU * (i as f64 / 128.0);
+                Point2::new(t.cos(), t.sin())
+            })
+            .collect();
+        // Insert a 1e-4 radial jog at vertex 0's neighbourhood.
+        disk.insert(1, Point2::new(disk[0].x * 0.9999, disk[0].y * 0.9999));
+        assert!(
+            !loop_doubles_back(&disk),
+            "a sub-mm seam jog on a convex loop must not read as doubling back",
+        );
     }
 
     #[test]

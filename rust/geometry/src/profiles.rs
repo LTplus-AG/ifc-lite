@@ -65,8 +65,18 @@ const RDP_EPSILON_MIN: f64 = 5.0e-3;
 /// apart (issue #820) — and RDP's diagonal-scaled epsilon would distort or fold
 /// its feature size; such profiles are left untouched. A round window sits far
 /// above this (half-thickness ≈ r/2 against a bbox diagonal of 2·r·√2 gives
-/// ≈ 0.18, ~3.5× the gate) and still simplifies.
+/// ≈ 0.18, ~3.5× the gate) and still simplifies. Thinness alone is *not*
+/// sufficient to skip — an elongated filled ellipse is thin by this measure too
+/// yet simplifies fine — so it is paired with [`DOUBLE_BACK_TURN_RATIO`].
 const THIN_FEATURE_RATIO: f64 = 0.05;
+/// Total-absolute-turning threshold (in units of a full 2π turn) above which a
+/// closed loop is treated as *doubling back* on itself rather than enclosing a
+/// convex-ish blob. A convex polygon turns exactly 2π (ratio 1.0); an annular
+/// sector whose inner and outer arcs run opposite ways turns ≥ ~1.5× (the #820
+/// wall ~2.3×). 1.25 sits clear of both — above any convex shape's turning (so
+/// filled ellipses and disks are never gated) and below the thinnest
+/// doubling-back sector that distorts under RDP.
+const DOUBLE_BACK_TURN_RATIO: f64 = 1.25;
 /// Only attempt simplification when the polyline has at least this many
 /// vertices. Below this the polyline is already cheap enough.
 const SMOOTH_CURVE_MIN_VERTICES: usize = 24;
@@ -215,6 +225,34 @@ fn closed_loop_self_intersects(loop_: &[Point2<f64>]) -> bool {
     false
 }
 
+/// Whether the closed polygon (open form) `loop_` *doubles back* on itself —
+/// its total absolute turning exceeds `DOUBLE_BACK_TURN_RATIO` full turns.
+///
+/// A simple convex polygon turns by exactly 2π; any reflex structure adds to
+/// the absolute total, and a loop that runs out along one boundary and back
+/// along another (an annular sector / thin curved wall) turns ≥ ~1.5×. This
+/// separates such doubling-back loops from convex-ish blobs (filled ellipses,
+/// disks) which sit at exactly 1.0× regardless of how elongated they are.
+fn loop_doubles_back(loop_: &[Point2<f64>]) -> bool {
+    let n = loop_.len();
+    if n < 3 {
+        return false;
+    }
+    let mut total_turn = 0.0;
+    for i in 0..n {
+        let prev = loop_[(i + n - 1) % n];
+        let cur = loop_[i];
+        let next = loop_[(i + 1) % n];
+        let (ex_in, ey_in) = (cur.x - prev.x, cur.y - prev.y);
+        let (ex_out, ey_out) = (next.x - cur.x, next.y - cur.y);
+        let cross = ex_in * ey_out - ey_in * ex_out;
+        let dot = ex_in * ex_out + ey_in * ey_out;
+        // atan2(0, 0) — a zero-length edge — yields 0, contributing nothing.
+        total_turn += cross.atan2(dot).abs();
+    }
+    total_turn > std::f64::consts::TAU * DOUBLE_BACK_TURN_RATIO
+}
+
 /// Best-effort downsampling of a polyline that might approximate a smooth
 /// curve. Closed-loop aware (last == first is preserved). Returns the
 /// original polyline unchanged when it doesn't look over-tessellated or
@@ -301,31 +339,40 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
         return points.to_vec();
     }
 
-    // Thin-feature gate (issue #820). RDP's epsilon is scaled to the bounding
-    // diagonal, which is right for a "fat" smooth shape — a round window is
-    // ~uniformly thick in every direction — but wrong for a *thin* one. A
-    // curved annular-sector wall is only a wall thickness deep yet metres
-    // across, so a diagonal-scaled chord-deviation budget is a large fraction
-    // of (or exceeds) the thickness. RDP then slides chords across the thin
-    // dimension, letting the inner and outer arcs drift independently: the
-    // footprint either folds into a self-intersecting flap (the visible #820
-    // bug) or silently gains/loses double-digit-percent area while staying
-    // topologically simple (the same distortion class as the +4.31% W410
-    // fillet bug). No epsilon you can still call "simplification" preserves a
-    // thin curved shape, so don't try — keep the faithful original.
+    // Thin doubling-back gate (issue #820). RDP's epsilon is scaled to the
+    // bounding diagonal, which is right for a "fat" smooth shape — a round
+    // window is ~uniformly thick in every direction — but wrong for a *thin*
+    // one that folds back on itself. A curved annular-sector wall is only a
+    // wall thickness deep yet metres across, so a diagonal-scaled chord budget
+    // is a large fraction of (or exceeds) the thickness; RDP then slides chords
+    // across the thin dimension, letting the inner and outer arcs drift
+    // independently: the footprint either folds into a self-intersecting flap
+    // (the visible #820 bug) or silently gains/loses double-digit-percent area
+    // while staying topologically simple (the same distortion class as the
+    // +4.31% W410 fillet bug). No epsilon you can still call "simplification"
+    // preserves such a shape, so don't try — keep the faithful original.
     //
-    // `area / perimeter` is the polygon's hydraulic radius (≈ half its mean
-    // thickness): ≈ thickness/2 for a thin sliver, ≈ radius/2 for a fat disk.
-    // Its ratio to the diagonal cleanly separates the two — ~0.0015 for the
-    // 100 mm × 24 m #820 wall vs ~0.18 for a round window (r/2 over a 2·r·√2
-    // bbox diagonal) — so a profile whose half-thickness is a tiny fraction of
-    // its extent is left untouched.
+    // Both conditions are required, because *thinness alone* is ambiguous:
+    //  * `area / perimeter` (the hydraulic radius, ≈ half the mean thickness)
+    //    over the diagonal is tiny both for a thin-walled ring (≈0.0015 for the
+    //    100 mm × 24 m #820 wall) AND for an elongated *filled* ellipse — an
+    //    8:1 opening sits at ≈0.048, below any thinness cutoff — yet the convex
+    //    ellipse simplifies perfectly and *must* keep simplifying so its void
+    //    cut fits the BSP polygon budget (else round openings → AABB boxes,
+    //    issue #635).
+    //  * What actually breaks RDP is the boundary *doubling back* on itself.
+    //    A convex loop's total absolute turning is exactly 2π; an annular
+    //    sector's inner and outer arcs run opposite ways so it turns ≥ ~1.5×
+    //    that. Gating on turning distinguishes a thin ring (≈2.3×) from a thin
+    //    ellipse (1.0×); requiring thinness too leaves *fat* curved walls
+    //    (thickness ≫ epsilon, no fold) free to simplify.
     let half_thickness = if perimeter > f64::EPSILON {
         area2.abs() / (2.0 * perimeter)
     } else {
         0.0
     };
-    if half_thickness / diag < THIN_FEATURE_RATIO {
+    let is_thin = half_thickness / diag < THIN_FEATURE_RATIO;
+    if is_thin && loop_doubles_back(core) {
         return points.to_vec();
     }
 
@@ -3296,6 +3343,53 @@ mod tests {
             out.len(),
         );
         assert!(!closed_loop_self_intersects(&out));
+    }
+
+    fn ellipse_loop(ar: f64, seg: usize) -> Vec<Point2<f64>> {
+        let (a, b) = (ar * 0.5, 0.5);
+        (0..seg)
+            .map(|i| {
+                let t = std::f64::consts::TAU * (i as f64 / seg as f64);
+                Point2::new(a * t.cos(), b * t.sin())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn elongated_filled_ellipse_is_not_thin_gated() {
+        // Regression for the review's P1. An elongated *filled* ellipse is thin
+        // by the half-thickness/diagonal measure (an 8:1 ellipse sits at ~0.048,
+        // below THIN_FEATURE_RATIO, rising to ~0.020 at 20:1) — but it is convex
+        // and does NOT double back, so the thin gate must not fire on it. The
+        // earlier thinness-only gate wrongly skipped these, pinning a densely
+        // sampled elliptical opening at its full vertex count, overflowing the
+        // BSP void-cut budget and forcing the AABB-rectangle fallback (#635).
+        for ar in [6.0_f64, 8.0, 12.0, 20.0] {
+            assert!(
+                !loop_doubles_back(&ellipse_loop(ar, 128)),
+                "AR={ar} filled ellipse is convex — must not read as doubling back",
+            );
+        }
+
+        // With the gate no longer blocking it, an elongated ellipse simplifies
+        // exactly as it does without any thin gate (i.e. as on main): RDP +
+        // SIMPLIFIED_MIN_VERTICES. At 8:1, RDP retains ≥ the floor, so it
+        // genuinely reduces and stays simple. (Higher ratios bottom out at the
+        // floor and keep the original — a pre-existing #635 limitation, not the
+        // thin gate, and unchanged by this fix.)
+        let ellipse = ellipse_loop(8.0, 128);
+        let out = simplify_smooth_curve_polyline(&ellipse);
+        assert!(
+            out.len() < ellipse.len() && out.len() >= SIMPLIFIED_MIN_VERTICES,
+            "8:1 ellipse must still simplify (was wrongly thin-gated): {} -> {} verts",
+            ellipse.len(),
+            out.len(),
+        );
+        assert!(!closed_loop_self_intersects(&out));
+        // Inscribed simplification of an elongated convex opening shaves a few
+        // percent — acceptable for a void approximation (and the same as main).
+        let rel = (loop_area(&out) - loop_area(&ellipse)).abs() / loop_area(&ellipse);
+        assert!(rel < 0.08, "8:1 ellipse area drift {:.1}%", rel * 100.0);
     }
 
     #[test]

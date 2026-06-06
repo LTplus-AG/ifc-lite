@@ -1,5 +1,69 @@
 # @ifc-lite/geometry
 
+## 2.2.0
+
+### Minor Changes
+
+- [#962](https://github.com/LTplus-AG/ifc-lite/pull/962) [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC surface textures on tessellated geometry ([#961](https://github.com/LTplus-AG/ifc-lite/issues/961)).
+
+  `IfcBlobTexture` (embedded PNG **and** JPEG) and `IfcPixelTexture` (raw pixel
+  literals) are now decoded to RGBA8 entirely in Rust (the `png` and
+  `jpeg-decoder` crates) and the per-triangle `IfcIndexedTriangleTextureMap` /
+  `IfcTextureVertexList` coordinates are emitted as per-vertex UVs in lockstep with
+  the flat-shaded tessellation (the authored texture coordinates are used directly,
+  mapping the image ~1:1 like the buildingSMART reference; the whole-shell
+  orientation flip is mirrored onto the texture indices so UVs stay aligned). The
+  decoded RGBA + UVs ride on `MeshData` across the wasm boundary; the WebGPU
+  renderer gains a dedicated textured pipeline that uploads the texture and draws
+  textured meshes in their own sub-pass, preserving picking, section-clipping and
+  flat-shading. The buildingSMART annex-E "tessellated shape with style" boilers
+  now render textured instead of flat white.
+
+  All image/texture decoding lives in Rust so the server, CLI and SDK get the same
+  result — the browser only uploads the bytes to the GPU. `IfcImageTexture`
+  (external URL) remains out of scope (needs an async fetch resolver).
+
+- [#966](https://github.com/LTplus-AG/ifc-lite/pull/966) [`773b508`](https://github.com/LTplus-AG/ifc-lite/commit/773b5086456de3c61bdde8a72dd3d35325e2e995) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(grids): expose structural grids (IfcGrid/IfcGridAxis) in the render frame ([#945](https://github.com/LTplus-AG/ifc-lite/issues/945))
+
+  Resolve `IfcGridAxis` curves through the same placement + unit-scale + RTC
+  pipeline the meshes use and emit them in the renderer's Y-up, RTC-subtracted,
+  metres world frame, so structural grids overlay streamed geometry by
+  construction (no viewer re-implements the placement resolver).
+
+  - New WASM API `parseGridLines(content) -> Float32Array` (flat 3D line-list)
+    and `parseGridAxes(content) -> GridAxisCollection` (structured per-axis
+    `{ gridId, axisId, tag, start, end }`), mirroring `parseAlignmentLines`.
+  - New `@ifc-lite/geometry` `GeometryProcessor.parseGridLines` /
+    `parseGridAxes` (returns plain `GridAxis[]`) and a `GridAxis` type.
+  - `CoordinateInfo` now also reports `lengthUnitScale` and populates
+    `wasmRtcOffset` (the actually-applied RTC offset) directly from the geometry
+    pipeline, so any consumer can map externally-resolved geometry into the
+    render frame without viewer-side patching.
+
+### Patch Changes
+
+- [#973](https://github.com/LTplus-AG/ifc-lite/pull/973) [`f99666a`](https://github.com/LTplus-AG/ifc-lite/commit/f99666ae028a88f1378422dd20900929f026cd2b) Thanks [@louistrue](https://github.com/louistrue)! - fix(geometry): union segmented-roof clip cutters to stop wall slivers and dropped walls ([#960](https://github.com/LTplus-AG/ifc-lite/issues/960))
+
+  Gable walls trimmed by a segmented roof are authored as deep left-deep
+  `IfcBooleanClippingResult(.DIFFERENCE., x, IfcPolygonalBoundedHalfSpace)`
+  chains (one cutter per roof plane). Two defects on House.ifc:
+
+  - Walls clipped by 12+ roof planes blew the boolean recursion-depth limit and
+    rendered as nothing.
+  - Sequentially subtracting abutting roof-segment prisms left a zero-thickness,
+    full-height fin on the shared seam — a thin wall sliver poking through the
+    roof.
+
+  The chain is now walked iteratively and the cutter prisms are combined with a
+  true CSG union before a single subtract, so the seam face is dissolved and the
+  depth limit no longer bites. Two guards keep the well-tested per-cutter path
+  for full-cross-section clips (duplex.ifc "Party Wall") and reject any union the
+  kernel silently under-removes. Output is mm-identical to IfcOpenShell on all
+  five reported walls.
+
+- Updated dependencies [[`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`778fc99`](https://github.com/LTplus-AG/ifc-lite/commit/778fc9989fc44bf1be70b81d25a635da7e857719), [`f99666a`](https://github.com/LTplus-AG/ifc-lite/commit/f99666ae028a88f1378422dd20900929f026cd2b), [`773b508`](https://github.com/LTplus-AG/ifc-lite/commit/773b5086456de3c61bdde8a72dd3d35325e2e995)]:
+  - @ifc-lite/wasm@2.2.0
+
 ## 2.1.0
 
 ### Minor Changes

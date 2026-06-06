@@ -881,22 +881,32 @@ export class GeometryProcessor {
       return null;
     }
     const content = safeUtf8Decode(buffer);
+    // GridAxisCollection and each GridAxisJs from getAxis are wasm-bindgen
+    // handles owning WASM memory — free them deterministically (AGENTS.md §7).
     const collection = this.bridge.parseGridAxes(content);
-    const axes: GridAxis[] = [];
-    for (let i = 0; i < collection.length; i++) {
-      const a = collection.getAxis(i);
-      if (!a) continue;
-      const start = a.start;
-      const end = a.end;
-      axes.push({
-        gridId: a.gridId,
-        axisId: a.axisId,
-        tag: a.tag,
-        start: [start[0], start[1], start[2]],
-        end: [end[0], end[1], end[2]],
-      });
+    try {
+      const axes: GridAxis[] = [];
+      for (let i = 0; i < collection.length; i++) {
+        const a = collection.getAxis(i);
+        if (!a) continue;
+        try {
+          const start = a.start;
+          const end = a.end;
+          axes.push({
+            gridId: a.gridId,
+            axisId: a.axisId,
+            tag: a.tag,
+            start: [start[0], start[1], start[2]],
+            end: [end[0], end[1], end[2]],
+          });
+        } finally {
+          a.free();
+        }
+      }
+      return axes;
+    } finally {
+      collection.free();
     }
-    return axes;
   }
 
   /**

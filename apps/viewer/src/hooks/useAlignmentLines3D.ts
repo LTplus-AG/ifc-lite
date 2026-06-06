@@ -23,34 +23,9 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { sourceKey } from './source-key.js';
 
 const EMPTY_F32 = new Float32Array(0);
-
-/**
- * Stable per-source cache key — FNV-1a over head/mid/tail byte windows folded
- * with the length, so two structurally distinct sources can't alias even when
- * they share an exact byte length (a real risk in federated views). Identical
- * scheme to `useSymbolicAnnotations`' `sourceKey`.
- */
-function sourceKey(store: IfcDataStore | null | undefined): string | null {
-  const source = store?.source;
-  if (!source || source.byteLength === 0) return null;
-  const len = source.byteLength;
-  const sampleLen = Math.min(32, len);
-  const head = source.subarray(0, sampleLen);
-  const tail = source.subarray(len - sampleLen, len);
-  const midOffset = Math.max(0, Math.floor(len / 2) - Math.floor(sampleLen / 2));
-  const mid = source.subarray(midOffset, Math.min(midOffset + sampleLen, len));
-  const hashOne = (bytes: Uint8Array): string => {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < bytes.length; i++) {
-      h ^= bytes[i];
-      h = Math.imul(h, 0x01000193);
-    }
-    return (h >>> 0).toString(16);
-  };
-  return `b${len}-${hashOne(head)}-${hashOne(mid)}-${hashOne(tail)}`;
-}
 
 // ─── Shared parse cache ──────────────────────────────────────────────────────
 // One WASM walk per model source; cached so re-renders (and federated views

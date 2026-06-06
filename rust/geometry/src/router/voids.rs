@@ -465,6 +465,93 @@ fn mesh_point(mesh: &Mesh, index: u32) -> Option<Point3<f64>> {
     ))
 }
 
+/// Möller–Trumbore ray/triangle intersection returning the signed ray
+/// parameter `t` (signed distance along `dir` from `origin`), or `None` when
+/// the ray misses the triangle or runs parallel to it. `dir` must be
+/// normalized. Used by [`host_already_open_along_axis`].
+fn ray_triangle_param(
+    origin: Point3<f64>,
+    dir: &Vector3<f64>,
+    a: Point3<f64>,
+    b: Point3<f64>,
+    c: Point3<f64>,
+) -> Option<f64> {
+    const EPS: f64 = 1e-9;
+    let e1 = b - a;
+    let e2 = c - a;
+    let pvec = dir.cross(&e2);
+    let det = e1.dot(&pvec);
+    if det.abs() < EPS {
+        return None; // ray parallel to the triangle plane
+    }
+    let inv_det = 1.0 / det;
+    let tvec = origin - a;
+    let u = tvec.dot(&pvec) * inv_det;
+    if !(-EPS..=1.0 + EPS).contains(&u) {
+        return None;
+    }
+    let qvec = tvec.cross(&e1);
+    let v = dir.dot(&qvec) * inv_det;
+    if v < -EPS || u + v > 1.0 + EPS {
+        return None;
+    }
+    Some(e2.dot(&qvec) * inv_det)
+}
+
+/// Whether `mesh` is already hollow at `point` along `axis` — i.e. the
+/// infinite line through `point` in the `axis` direction does not cross a
+/// single host triangle.
+///
+/// Issue #964: some exporters (Revit) double-encode a void — once baked into
+/// the host's `IfcArbitraryProfileDefWithVoids` profile and again as a
+/// redundant `IfcOpeningElement`. The body geometry already carries the
+/// (correct, possibly round/polygonal) hole, so when the redundant opening's
+/// CSG subtraction finds nothing to remove the AABB fallback must NOT fire:
+/// cutting the opening's bounding box would carve a rectangle over the
+/// already-correct hole. A ray cast through the opening centroid along its
+/// extrusion axis hits zero host triangles exactly when the hole is already
+/// open there.
+///
+/// Deliberately strict: returns `true` only when there is NO host material on
+/// the line (both sides clear). A genuinely solid host — e.g. the issue #635
+/// round window in an un-voided wall — sandwiches `point` between two faces,
+/// so the fallback still fires there. Any ambiguity (material on one side)
+/// keeps the existing cut behaviour.
+fn host_already_open_along_axis(mesh: &Mesh, point: Point3<f64>, axis: &Vector3<f64>) -> bool {
+    let Some(axis) = axis.try_normalize(NORMALIZE_EPSILON) else {
+        return false;
+    };
+    for tri in mesh.indices.chunks_exact(3) {
+        let (Some(a), Some(b), Some(c)) = (
+            mesh_point(mesh, tri[0]),
+            mesh_point(mesh, tri[1]),
+            mesh_point(mesh, tri[2]),
+        ) else {
+            continue;
+        };
+        if ray_triangle_param(point, &axis, a, b, c).is_some() {
+            return false; // host material on the line — not an existing void
+        }
+    }
+    true
+}
+
+/// Centroid (vertex average) of a mesh, or `None` when it has no vertices.
+fn mesh_vertex_centroid(mesh: &Mesh) -> Option<Point3<f64>> {
+    let n = mesh.positions.len() / 3;
+    if n == 0 {
+        return None;
+    }
+    let (mut sx, mut sy, mut sz) = (0.0f64, 0.0f64, 0.0f64);
+    for chunk in mesh.positions.chunks_exact(3) {
+        sx += chunk[0] as f64;
+        sy += chunk[1] as f64;
+        sz += chunk[2] as f64;
+    }
+    let inv = 1.0 / n as f64;
+    Some(Point3::new(sx * inv, sy * inv, sz * inv))
+}
+
 fn extent_along_axis(mesh: &Mesh, axis: &Vector3<f64>) -> Option<f64> {
     let mut min = f64::INFINITY;
     let mut max = f64::NEG_INFINITY;
@@ -1346,19 +1433,6 @@ impl GeometryRouter {
                     // dramatically less wrong than a missing void on a wall
                     // that is supposed to host a window or door.
                     if !csg_succeeded {
-                        // Diagnostic for issue #635: when the AABB fallback
-                        // fires, log the opening triangle count so we can
-                        // verify (e.g. round windows after Part A's profile
-                        // simplification) that normal openings hit CSG and
-                        // only genuinely-broken ones land here.
-                        #[cfg(any(debug_assertions, test))]
-                        {
-                            let opening_tris = opening_mesh.triangle_count();
-                            eprintln!(
-                                "[issue-635] AABB fallback used: opening={} tris (over MAX_CSG_POLYGONS_PER_MESH or no change)",
-                                opening_tris
-                            );
-                        }
                         let dir = extrusion_dir.or_else(|| {
                             Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
                         });
@@ -1407,7 +1481,40 @@ impl GeometryRouter {
                         // AABB box: skipping it on the 3% engulf heuristic would
                         // leave the wall entirely uncut (Codex review, #947).
                         let capped = clipper.has_operand_too_large_since(failures_before);
-                        if !(csg_unchanged && engulfs_host && !capped) {
+                        // Issue #964: suppress the destructive AABB box when the
+                        // host already has this void cut into it (a void
+                        // double-encoded as both a profile inner curve and a
+                        // redundant IfcOpeningElement). A ray through the
+                        // opening centroid along its extrusion axis hits no host
+                        // material exactly when the hole is already open there;
+                        // cutting the bounding box would replace a correct
+                        // round/polygonal hole with a rectangle. Unlike the
+                        // engulf heuristic this is a positive void detection, so
+                        // it overrides `capped` too (the void demonstrably
+                        // exists — there is nothing left to approximate).
+                        let probe_axis = dir.unwrap_or_else(|| {
+                            wall_thinnest_axis_dir(&wall_min, &wall_max)
+                        });
+                        let redundant_void = mesh_vertex_centroid(opening_mesh)
+                            .map(|centroid| {
+                                host_already_open_along_axis(&result, centroid, &probe_axis)
+                            })
+                            .unwrap_or(false);
+                        let suppress_fallback =
+                            redundant_void || (csg_unchanged && engulfs_host && !capped);
+                        if !suppress_fallback {
+                            // Diagnostic for issue #635: log the opening
+                            // triangle count when the AABB fallback actually
+                            // fires, so round windows (post profile
+                            // simplification) can be confirmed to hit CSG and
+                            // only genuinely-uncut voids land on the box cut.
+                            #[cfg(any(debug_assertions, test))]
+                            {
+                                eprintln!(
+                                    "[issue-635] AABB fallback used: opening={} tris (over MAX_CSG_POLYGONS_PER_MESH or no change)",
+                                    opening_mesh.triangle_count()
+                                );
+                            }
                             let aabb_cut =
                                 self.cut_rectangular_opening(&result, final_min, final_max);
                             if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {

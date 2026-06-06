@@ -749,6 +749,11 @@
       "size": 129717
     },
     {
+      "path": "issues/964_slab_arbitrary_profile_voids.ifc",
+      "sha256": "525d01150923b5a50277fd5ad3ba0dac7df3c27e76c0fbd87edcf110e2c8c674",
+      "size": 682646
+    },
+    {
       "path": "various/01_BIMcollab_Example_ARC.ifc",
       "sha256": "87392cf24264b023e65d8ca1dab1eb8996643c1aa51b9dff9d518ed8904151fc",
       "size": 18230149

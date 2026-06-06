@@ -63,8 +63,9 @@ const RDP_EPSILON_MIN: f64 = 5.0e-3;
 /// attempted. Below this the profile is a *thin* curved sliver — e.g. a
 /// trimmed-circle wall whose inner and outer arcs sit only a wall-thickness
 /// apart (issue #820) — and RDP's diagonal-scaled epsilon would distort or fold
-/// its feature size; such profiles are left untouched. A round window
-/// (half-thickness ≈ radius/2) sits far above this (~0.25) and still simplifies.
+/// its feature size; such profiles are left untouched. A round window sits far
+/// above this (half-thickness ≈ r/2 against a bbox diagonal of 2·r·√2 gives
+/// ≈ 0.18, ~3.5× the gate) and still simplifies.
 const THIN_FEATURE_RATIO: f64 = 0.05;
 /// Only attempt simplification when the polyline has at least this many
 /// vertices. Below this the polyline is already cheap enough.
@@ -316,8 +317,9 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     // `area / perimeter` is the polygon's hydraulic radius (≈ half its mean
     // thickness): ≈ thickness/2 for a thin sliver, ≈ radius/2 for a fat disk.
     // Its ratio to the diagonal cleanly separates the two — ~0.0015 for the
-    // 100 mm × 24 m #820 wall vs ~0.25 for a round window — so a profile whose
-    // half-thickness is a tiny fraction of its extent is left untouched.
+    // 100 mm × 24 m #820 wall vs ~0.18 for a round window (r/2 over a 2·r·√2
+    // bbox diagonal) — so a profile whose half-thickness is a tiny fraction of
+    // its extent is left untouched.
     let half_thickness = if perimeter > f64::EPSILON {
         area2.abs() / (2.0 * perimeter)
     } else {
@@ -3979,15 +3981,4 @@ mod tests {
         assert!(approx_eq_p3(pts[0], Point3::new(0.0, 10.0, 0.0), 1e-9));
         assert!(approx_eq_p3(pts[1], Point3::new(0.0, 7.0, 0.0), 1e-9));
     }
-    #[test]
-    fn probe_ellipse_aspect_gate_TEMP() {
-        for &(asp, seg) in &[(8.0_f64,96usize),(9.0,96),(9.5,96),(10.0,96),(10.0,60),(20.0,96)] {
-            let (a,b)=(asp,1.0);
-            let mut pts=Vec::new();
-            for i in 0..seg { let t=std::f64::consts::TAU*(i as f64/seg as f64); pts.push(Point2::new(a*t.cos(),b*t.sin())); }
-            let out=simplify_smooth_curve_polyline(&pts);
-            eprintln!("PROBE aspect={} seg={} in={} out={} {}",asp,seg,pts.len(),out.len(), if out.len()==pts.len(){"SKIPPED"}else{"simplified"});
-        }
-    }
-
 }

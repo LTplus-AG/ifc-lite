@@ -298,18 +298,12 @@ export default defineConfig({
     target: 'esnext',
     chunkSizeWarningLimit: 6000,
     rollupOptions: {
-      // Desktop-only Tauri APIs are dynamically imported (under isTauri(), never
-      // reached on web) by @ifc-lite/geometry's NativeBridge. Rollup still
-      // resolves them statically, so externalize to prevent a build failure.
-      // ifc-lite no longer ships a desktop app; downstream desktop builders
-      // supply @tauri-apps in their own host layer.
-      external: [
-        '@tauri-apps/api/core',
-        '@tauri-apps/api/event',
-        '@tauri-apps/plugin-dialog',
-        '@tauri-apps/plugin-fs',
-        '@tauri-apps/plugin-shell',
-      ],
+      // @ifc-lite/geometry's NativeBridge does a dynamic `import('@tauri-apps/api/event')`
+      // (under isTauri(), never reached on web). Rollup still resolves it
+      // statically, so externalize it to prevent a build failure. ifc-lite no
+      // longer ships a desktop app; downstream desktop builders supply
+      // @tauri-apps in their own host layer.
+      external: ['@tauri-apps/api/event'],
       output: {
         manualChunks(id) {
           if (id.includes('/packages/sandbox/')) return 'sandbox';

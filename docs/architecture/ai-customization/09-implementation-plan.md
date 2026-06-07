@@ -1185,8 +1185,9 @@ Action log + pattern miner + personal memory + SDK-update repair.
 
 - [x] **P4.T19** — ~~Settings → Privacy section~~ → PrivacyPanel tab
   with action-log toggle, export, delete.
-  **Where:** the former `SettingsPage.tsx` (removed with the desktop
-  decommission).
+  **Where:** `apps/viewer/src/components/extensions/PrivacyPanel.tsx`
+  (the former `SettingsPage.tsx` Settings entry was removed with the
+  desktop decommission).
   **Depends on:** P4.T2.
   **Acceptance:** all three actions work; explanatory copy from
   `06-self-improvement.md §7` verbatim.

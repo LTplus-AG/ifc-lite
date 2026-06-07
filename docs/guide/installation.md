@@ -250,7 +250,7 @@ git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
 
 - **Node.js** 18.0 or higher
 - **pnpm** 8.0 or higher
-- **Rust** toolchain (stable) - only for WASM builds (and your own desktop builds, if any)
+- **Rust** toolchain (the pinned nightly in `rust-toolchain.toml`, installed automatically by `rustup`) - only for WASM builds (and your own desktop builds, if any)
 
 ### Clone and Build
 

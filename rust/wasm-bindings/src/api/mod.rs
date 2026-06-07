@@ -92,6 +92,21 @@ pub struct IfcAPI {
     cached_indexed_colour_maps: std::sync::Mutex<
         Option<std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>>,
     >,
+
+    /// When `true`, `processGeometryBatch` computes a per-entity geometry
+    /// fingerprint (see `ifc_lite_geometry::geom_hash`) and returns it on the
+    /// `MeshCollection`. Powers the viewer's "compare two revisions" diff: an
+    /// unchanged element hashes identically across files, a moved/reshaped one
+    /// differs. Default `false` so normal rendering pays nothing.
+    ///
+    /// Atomic so it can be toggled from JS between parse calls without locking;
+    /// the batch path reads it once at the top.
+    compute_geometry_hashes: std::sync::atomic::AtomicBool,
+
+    /// Quantization grid (metres) used when `compute_geometry_hashes` is on.
+    /// Stored as `f64::to_bits` in a `u64` atomic so the `(enabled, tolerance)`
+    /// pair stays lock-free. Only read when `compute_geometry_hashes` is true.
+    geometry_hash_tolerance_bits: std::sync::atomic::AtomicU64,
 }
 
 #[wasm_bindgen]
@@ -110,6 +125,10 @@ impl IfcAPI {
             cached_referenced_repmaps: std::sync::Mutex::new(None),
             cached_texture_index: std::sync::Mutex::new(None),
             cached_indexed_colour_maps: std::sync::Mutex::new(None),
+            compute_geometry_hashes: std::sync::atomic::AtomicBool::new(false),
+            geometry_hash_tolerance_bits: std::sync::atomic::AtomicU64::new(
+                ifc_lite_geometry::DEFAULT_GEOM_HASH_TOLERANCE.to_bits(),
+            ),
         }
     }
 
@@ -262,6 +281,26 @@ impl IfcAPI {
             .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
         parts_slot.take();
     }
+
+    /// Enable or disable per-entity geometry fingerprinting in
+    /// `processGeometryBatch`, used by the viewer's revision-diff feature.
+    ///
+    /// Pass a positive `tolerance` (metres) to enable — it is the quantization
+    /// grid the hash snaps positions to (larger = more tolerant of float noise,
+    /// smaller = catches finer edits; the `f32` precision floor of model-local
+    /// coordinates means values below ~1 mm mostly hash noise). Pass `null`/
+    /// `undefined` (or a non-positive value) to disable. Default: disabled.
+    #[wasm_bindgen(js_name = setComputeGeometryHashes)]
+    pub fn set_compute_geometry_hashes(&self, tolerance: Option<f64>) {
+        use std::sync::atomic::Ordering::Relaxed;
+        match tolerance {
+            Some(t) if t > 0.0 => {
+                self.geometry_hash_tolerance_bits.store(t.to_bits(), Relaxed);
+                self.compute_geometry_hashes.store(true, Relaxed);
+            }
+            _ => self.compute_geometry_hashes.store(false, Relaxed),
+        }
+    }
 }
 
 impl IfcAPI {
@@ -271,6 +310,18 @@ impl IfcAPI {
     pub(crate) fn merge_layers(&self) -> bool {
         self.merge_layers
             .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Active geometry-hash tolerance (metres), or `None` when fingerprinting
+    /// is disabled. Read once at the top of `processGeometryBatch`. JS controls
+    /// it via [`Self::set_compute_geometry_hashes`].
+    pub(crate) fn geometry_hash_tolerance(&self) -> Option<f64> {
+        use std::sync::atomic::Ordering::Relaxed;
+        if self.compute_geometry_hashes.load(Relaxed) {
+            Some(f64::from_bits(self.geometry_hash_tolerance_bits.load(Relaxed)))
+        } else {
+            None
+        }
     }
 
     /// Get or lazily build the cached parts-to-skip set used by

@@ -144,6 +144,13 @@ impl GeometryHasher {
         }
     }
 
+    /// `true` until at least one (non-degenerate, in-range) triangle has been
+    /// hashed. Lets callers skip emitting a fingerprint for entities that
+    /// produced no geometry.
+    pub fn is_empty(&self) -> bool {
+        self.triangle_count == 0
+    }
+
     /// Finalize the entity's geometry hash. Folds in the triangle count so two
     /// distinct shapes that happen to collide on the commutative triangle sum
     /// are still separated by their cardinality. Vertex count is intentionally

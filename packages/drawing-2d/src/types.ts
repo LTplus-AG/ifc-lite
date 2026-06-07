@@ -297,6 +297,28 @@ export interface EdgeData {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// MESH OUTLINE (from WASM meshOutline2d — winding-robust footprint, issue #979)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A winding-robust 2D footprint outline of a mesh, produced by the Rust
+ * `meshOutline2d` WASM binding (it unions projected triangle areas, so it is
+ * correct regardless of ifc-lite's unreliable triangle winding — unlike
+ * normal-based silhouette extraction).
+ *
+ * `contours` are closed rings in **drawing 2D space** (the same basis as
+ * `projectTo2D`, so they coincide with the section-cut polygons); each is a
+ * flat `[u0, v0, u1, v1, …]` with NO duplicated closing vertex. `axisMin` /
+ * `axisMax` are the element's extent along the cut axis (world units), used to
+ * classify the outline into the visible/overhead projection band.
+ */
+export interface MeshOutline2D {
+  contours: ReadonlyArray<ArrayLike<number>>;
+  axisMin: number;
+  axisMax: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PROFILE ENTRY (from WASM extractProfiles)
 // ═══════════════════════════════════════════════════════════════════════════
 

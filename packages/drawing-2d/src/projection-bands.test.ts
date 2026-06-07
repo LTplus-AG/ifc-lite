@@ -11,7 +11,9 @@ import {
   signedDepth,
   bandVisibility,
   getViewDirectionForPlane,
+  outlineToProjectionLines,
 } from './projection-bands.js';
+import type { MeshOutline2D } from './types.js';
 import { projectProfiles } from './profile-projector.js';
 import { EdgeExtractor } from './edge-extractor.js';
 
@@ -195,5 +197,69 @@ describe('silhouette footprint under a downward plan view', () => {
 
     expect(lines.length).toBeGreaterThanOrEqual(4);
     expect(lines.every((l) => l.visibility === 'hidden')).toBe(true);
+  });
+});
+
+// ── Rust outline → projection lines (winding-robust footprint path) ──────────
+
+describe('outlineToProjectionLines (Rust meshOutline2d adapter)', () => {
+  const meta = { entityId: 7, ifcType: 'IfcRoof', modelIndex: 0 };
+  // A unit-square ring in drawing 2D space, flat [u0,v0,...] (no closing vertex).
+  const square: MeshOutline2D['contours'][number] = [0, 0, 2, 0, 2, 2, 0, 2];
+
+  it('emits a closed loop (one segment per edge) as projection lines', () => {
+    const outline: MeshOutline2D = { contours: [square], axisMin: -0.2, axisMax: 0.0 };
+    const lines = outlineToProjectionLines(outline, meta, planPlane, { below: 3, above: 3 });
+    expect(lines.length).toBe(4); // 4 edges of the square, loop closed
+    expect(lines.every((l) => l.category === 'projection' && l.entityId === 7)).toBe(true);
+  });
+
+  it('classifies a below-cut element solid and an above-cut element dashed', () => {
+    const below = outlineToProjectionLines(
+      { contours: [square], axisMin: -0.2, axisMax: 0.5 }, // straddles low → below-dominant
+      meta, planPlane, { below: 3, above: 3 },
+    );
+    const above = outlineToProjectionLines(
+      { contours: [square], axisMin: 2.0, axisMax: 2.6 }, // wholly above cut(1)
+      meta, planPlane, { below: 3, above: 3 },
+    );
+    expect(below.every((l) => l.visibility === 'visible')).toBe(true);
+    expect(above.every((l) => l.visibility === 'hidden')).toBe(true);
+  });
+
+  it('culls an outline outside both bands', () => {
+    const lines = outlineToProjectionLines(
+      { contours: [square], axisMin: 50, axisMax: 51 },
+      meta, planPlane, { below: 3, above: 3 },
+    );
+    expect(lines.length).toBe(0);
+  });
+
+  it('the generator uses outlineProvider when supplied, else falls back to silhouette', async () => {
+    const { Drawing2DGenerator } = await import('./drawing-generator.js');
+    const gen = new Drawing2DGenerator();
+    const mesh = boxMesh(99, 0, 0.5);
+    // Provider returns a fixed footprint marked with a sentinel ifcType via meta.
+    const drawing = await gen.generate(
+      [mesh],
+      {
+        plane: planPlane,
+        projectionDepth: 5,
+        includeHiddenLines: false,
+        creaseAngle: 30,
+        scale: 100,
+      },
+      {
+        useGPU: false,
+        includeHiddenLines: false,
+        includeProjection: true,
+        includeEdges: true,
+        mergeLines: false,
+        outlineProvider: () => ({ contours: [square], axisMin: 0, axisMax: 0.5 }),
+      },
+    );
+    const proj = drawing.lines.filter((l) => l.category === 'projection');
+    expect(proj.length).toBe(4); // came from the provider's square, not silhouette
+    expect(proj.every((l) => l.entityId === 99 && l.visibility === 'visible')).toBe(true);
   });
 });

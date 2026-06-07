@@ -22,9 +22,32 @@ import {
   type DrawingLine,
   type SectionConfig,
   type ProfileEntry,
+  type MeshOutline2D,
 } from '@ifc-lite/drawing-2d';
 import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
+import * as IfcWasm from '@ifc-lite/wasm';
 import { customPlaneCenter } from '@/store';
+
+// The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
+// CI-built, so reference it defensively: against an older wasm bundle it's
+// undefined and projection falls back to the TS mesh silhouette. The wasm
+// module is already initialised (the model loaded through it), so the free
+// function can be called without a GeometryProcessor instance.
+interface MeshOutlineHandle {
+  readonly axisMin: number;
+  readonly axisMax: number;
+  readonly contourCount: number;
+  contour(index: number): Float32Array | undefined;
+  free(): void;
+}
+type MeshOutline2dFn = (
+  positions: Float32Array,
+  indices: Uint32Array,
+  axis: number,
+  flipped: boolean,
+) => MeshOutlineHandle | undefined;
+const meshOutline2dFn = (IfcWasm as unknown as { meshOutline2d?: MeshOutline2dFn }).meshOutline2d;
+const AXIS_CODE: Record<'x' | 'y' | 'z', number> = { x: 0, y: 1, z: 2 };
 
 // Axis conversion from semantic (down/front/side) to geometric (x/y/z)
 export const AXIS_MAP: Record<'down' | 'front' | 'side', 'x' | 'y' | 'z'> = {
@@ -547,6 +570,34 @@ export function useDrawingGeneration({
         }
       }
 
+      // Winding-robust outline provider for non-extruded geometry (roofs,
+      // stairs, site). Calls the Rust meshOutline2d binding per mesh; each call
+      // copies the contour data off the WASM heap and frees the handle inline.
+      // Undefined when projection is off or the binding isn't in this wasm
+      // build → the generator falls back to the TS mesh silhouette.
+      const outlineProvider =
+        projectionOn && typeof meshOutline2dFn === 'function'
+          ? (mesh: { positions: Float32Array; indices: Uint32Array }, axis: 'x' | 'y' | 'z', flipped: boolean): MeshOutline2D | null => {
+              try {
+                const handle = meshOutline2dFn(mesh.positions, mesh.indices, AXIS_CODE[axis], flipped);
+                if (!handle) return null;
+                try {
+                  const contours: Float32Array[] = [];
+                  for (let i = 0; i < handle.contourCount; i++) {
+                    const ring = handle.contour(i);
+                    if (ring) contours.push(ring.slice()); // copy off the WASM heap
+                  }
+                  if (contours.length === 0) return null;
+                  return { contours, axisMin: handle.axisMin, axisMax: handle.axisMax };
+                } finally {
+                  handle.free();
+                }
+              } catch {
+                return null; // binding unavailable/failed → silhouette fallback
+              }
+            }
+          : undefined;
+
       const result = await generator.generate(
         meshesToProcess,
         config,
@@ -555,6 +606,7 @@ export function useDrawingGeneration({
           includeProjection: projectionOn,
           includeEdges: projectionOn,
           mergeLines: true,
+          outlineProvider,
           onProgress: progressCallback,
         },
         projectionOn ? projectionProfiles : undefined,

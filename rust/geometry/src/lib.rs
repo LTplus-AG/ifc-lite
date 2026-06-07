@@ -89,6 +89,7 @@ pub mod processors;
 pub mod profile;
 pub mod profile_extractor;
 pub mod profiles;
+pub mod projection_outline;
 pub mod router;
 pub mod transform;
 pub mod triangulation;

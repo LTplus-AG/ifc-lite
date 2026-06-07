@@ -56,6 +56,9 @@ export type {
   // Profile extraction
   ProfileEntry,
 
+  // Mesh outline (winding-robust footprint, issue #979)
+  MeshOutline2D,
+
   // Utility types
   EntityKey,
 } from './types.js';
@@ -110,6 +113,7 @@ export {
   bandVisibility,
   projectPointForPlane,
   getViewDirectionForPlane,
+  outlineToProjectionLines,
 } from './projection-bands.js';
 export type { ProjectionBand, ProjectionBandDepths } from './projection-bands.js';
 

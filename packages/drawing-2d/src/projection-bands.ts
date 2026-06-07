@@ -34,7 +34,7 @@
  * cutter and `MeshData.positions` use (WASM applies `unit_scale` upstream).
  */
 
-import type { SectionPlaneConfig, Vec3 } from './types.js';
+import type { SectionPlaneConfig, Vec3, DrawingLine, MeshOutline2D } from './types.js';
 import { projectTo2D, projectTo2DBasis } from './math.js';
 import type { Point2D } from './types.js';
 
@@ -199,4 +199,54 @@ export function bandVisibility(band: ProjectionBand): 'visible' | 'hidden' | nul
     case 'cull':
       return null;
   }
+}
+
+/**
+ * Convert a winding-robust mesh footprint outline (from the Rust
+ * `meshOutline2d` binding) into band-classified construction-projection lines
+ * (issue #979). The whole element is classified by its axis extent
+ * (`axisMin`/`axisMax`) — below the cut → solid, above → dashed. Contours are
+ * already in drawing 2D space, so they're emitted as closed loops verbatim.
+ *
+ * This is the winding-robust alternative to the normal-based silhouette path:
+ * it draws the true projected footprint even when the source mesh is wound
+ * inconsistently (common for ifc-lite roofs/stairs/site).
+ */
+export function outlineToProjectionLines(
+  outline: MeshOutline2D,
+  meta: { entityId: number; ifcType: string; modelIndex: number },
+  plane: SectionPlaneConfig,
+  depths: ProjectionBandDepths,
+): DrawingLine[] {
+  // The outline path is cardinal-only (the toggle is gated off for custom
+  // planes), so classify against the cardinal plane position.
+  const pos = plane.customPlane ? plane.customPlane.distance : plane.position;
+  const dMin = plane.flipped ? -(outline.axisMin - pos) : outline.axisMin - pos;
+  const dMax = plane.flipped ? -(outline.axisMax - pos) : outline.axisMax - pos;
+  const visibility = bandVisibility(classifyDepthRange(dMin, dMax, depths));
+  if (visibility === null) return [];
+
+  const lines: DrawingLine[] = [];
+  for (const ring of outline.contours) {
+    const n = Math.floor(ring.length / 2);
+    if (n < 2) continue;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n; // close the loop (last → first)
+      const sx = ring[i * 2];
+      const sy = ring[i * 2 + 1];
+      const ex = ring[j * 2];
+      const ey = ring[j * 2 + 1];
+      if (Math.abs(sx - ex) < 1e-7 && Math.abs(sy - ey) < 1e-7) continue;
+      lines.push({
+        line: { start: { x: sx, y: sy }, end: { x: ex, y: ey } },
+        category: 'projection',
+        visibility,
+        entityId: meta.entityId,
+        ifcType: meta.ifcType,
+        modelIndex: meta.modelIndex,
+        depth: 0,
+      });
+    }
+  }
+  return lines;
 }

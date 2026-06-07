@@ -17,6 +17,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type {
   SectionConfig,
   SectionPlaneConfig,
+  SectionAxis,
   Drawing2D,
   DrawingLine,
   DrawingPolygon,
@@ -25,6 +26,7 @@ import type {
   LineCategory,
   ProfileEntry,
   EntityKey,
+  MeshOutline2D,
 } from './types.js';
 import { DEFAULT_SECTION_CONFIG, makeEntityKey } from './types.js';
 import { SectionCutter } from './section-cutter.js';
@@ -37,7 +39,11 @@ import { SVGExporter } from './svg-exporter.js';
 import type { SVGExportOptions } from './svg-exporter.js';
 import { GPUSectionCutter } from './gpu-section-cutter.js';
 import { projectProfiles } from './profile-projector.js';
-import { type ProjectionBandDepths, getViewDirectionForPlane } from './projection-bands.js';
+import {
+  type ProjectionBandDepths,
+  getViewDirectionForPlane,
+  outlineToProjectionLines,
+} from './projection-bands.js';
 import {
   boundsEmpty,
   boundsExtendPoint,
@@ -60,6 +66,14 @@ export interface GeneratorOptions {
   includeEdges: boolean;
   /** Merge collinear line segments */
   mergeLines: boolean;
+  /**
+   * Optional winding-robust outline provider (the Rust `meshOutline2d` WASM
+   * binding, issue #979). When supplied, non-extruded geometry projects via
+   * this footprint outline instead of the normal-based mesh silhouette (which
+   * ifc-lite's unreliable winding can break). Return `null` to fall back to
+   * silhouette extraction for that mesh.
+   */
+  outlineProvider?: (mesh: MeshData, axis: SectionAxis, flipped: boolean) => MeshOutline2D | null;
   /** Progress callback */
   onProgress?: (stage: string, progress: number) => void;
 }
@@ -205,9 +219,11 @@ export class Drawing2DGenerator {
       }
 
       if (opts.includeEdges) {
-        // Silhouette outline for non-extruded geometry (roofs, stairs, site,
-        // BReps) that has no extracted profile — the elements issue #979
-        // specifically calls out.
+        // Outline for non-extruded geometry (roofs, stairs, site, BReps) with
+        // no extracted profile — the elements issue #979 specifically calls
+        // out. Prefer the winding-robust Rust `meshOutline2d` footprint when an
+        // outlineProvider is supplied; fall back per-mesh to the normal-based
+        // silhouette (which can break on ifc-lite's unreliable winding).
         const meshesForSilhouette =
           coveredKeys.size > 0
             ? meshes.filter(
@@ -215,12 +231,32 @@ export class Drawing2DGenerator {
               )
             : meshes;
 
-        const allEdges = this.edgeExtractor.extractEdgesFromMeshes(meshesForSilhouette);
         const viewDir = getViewDirectionForPlane(config.plane);
-        const silhouettes = this.edgeExtractor.extractSilhouettes(allEdges, viewDir);
-        projectionLines.push(
-          ...this.edgeExtractor.edgesToProjectionLines(silhouettes, config.plane, bands),
-        );
+        for (const mesh of meshesForSilhouette) {
+          const outline = opts.outlineProvider
+            ? opts.outlineProvider(mesh, config.plane.axis, config.plane.flipped)
+            : null;
+          if (outline && outline.contours.length > 0) {
+            projectionLines.push(
+              ...outlineToProjectionLines(
+                outline,
+                {
+                  entityId: mesh.expressId,
+                  ifcType: mesh.ifcType ?? 'Unknown',
+                  modelIndex: mesh.modelIndex ?? 0,
+                },
+                config.plane,
+                bands,
+              ),
+            );
+          } else {
+            const edges = this.edgeExtractor.extractEdges(mesh);
+            const silhouettes = this.edgeExtractor.extractSilhouettes(edges, viewDir);
+            projectionLines.push(
+              ...this.edgeExtractor.edgesToProjectionLines(silhouettes, config.plane, bands),
+            );
+          }
+        }
       }
 
       // Drop outlier lines abnormally longer than the cut area (artifacts).

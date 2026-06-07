@@ -31,6 +31,7 @@ export function generateDoorSymbol(
 
 /**
  * Generate a door symbol at a specific position
+ * @public
  */
 export function generateDoorSymbolAt(
   center: Point2D,
@@ -58,6 +59,7 @@ export function generateWindowSymbol(
 
 /**
  * Generate a window symbol at a specific position
+ * @public
  */
 export function generateWindowSymbolAt(
   center: Point2D,
@@ -96,6 +98,7 @@ export function generateStairArrow(
 
 /**
  * Generate a north arrow symbol
+ * @public
  */
 export function generateNorthArrow(
   position: Point2D,
@@ -113,6 +116,7 @@ export function generateNorthArrow(
 
 /**
  * Generate a section mark symbol
+ * @public
  */
 export function generateSectionMark(
   position: Point2D,
@@ -134,6 +138,7 @@ export function generateSectionMark(
 
 /**
  * Generate a level mark symbol
+ * @public
  */
 export function generateLevelMark(
   position: Point2D,
@@ -156,6 +161,7 @@ export function generateLevelMark(
 /**
  * Determine wall direction from opening bounds
  * Returns normalized direction along the longer axis
+ * @public
  */
 export function inferWallDirection(bounds2D: Bounds2D): Point2D {
   const width = bounds2D.max.x - bounds2D.min.x;
@@ -170,6 +176,7 @@ export function inferWallDirection(bounds2D: Bounds2D): Point2D {
 
 /**
  * Generate symbols for all openings
+ * @public
  */
 export function generateOpeningSymbols(
   openings: OpeningInfo[],

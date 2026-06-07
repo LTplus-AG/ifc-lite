@@ -9,6 +9,16 @@
     "packages/create-ifc-lite/src/templates/**",
     "apps/viewer/src/lib/scripts/templates/**"
   ],
-  "ignoreBinaries": ["wasm-pack", "cargo", "rustup", "serve"],
-  "ignoreWorkspaces": ["examples/*"]
+  "ignoreBinaries": [
+    "wasm-pack",
+    "cargo",
+    "rustup",
+    "serve"
+  ],
+  "ignoreWorkspaces": [
+    "examples/*"
+  ],
+  "tags": [
+    "-public"
+  ]
 }

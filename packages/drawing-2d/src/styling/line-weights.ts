@@ -209,12 +209,3 @@ export class LineWeightAssigner {
     return LINE_WEIGHT_CONFIG[weight].widthPx;
   }
 }
-
-/**
- * Create a default line weight assigner
- */
-export function createLineWeightAssigner(
-  customWeights?: Record<string, LineWeight>
-): LineWeightAssigner {
-  return new LineWeightAssigner(customWeights);
-}

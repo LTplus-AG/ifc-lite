@@ -287,6 +287,7 @@ export class WindowSymbolGenerator {
 
 /**
  * Generate simple window lines (frame only, no symbol object)
+ * @public
  */
 export function generateSimpleWindowLines(
   center: Point2D,

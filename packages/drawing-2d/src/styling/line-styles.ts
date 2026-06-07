@@ -131,22 +131,3 @@ export class LineStyler {
     return rules.join('\n');
   }
 }
-
-/**
- * Create a default line styler
- */
-export function createLineStyler(): LineStyler {
-  return new LineStyler();
-}
-
-/**
- * Apply hidden line style (for lines marked as hidden)
- */
-export function applyHiddenStyle(line: ArchitecturalLine): ArchitecturalLine {
-  return {
-    ...line,
-    lineStyle: 'dashed',
-    lineWeight: 'hairline',
-    semanticType: 'hidden',
-  };
-}

@@ -13,7 +13,6 @@ import type {
   FillRelationship,
   EntityMetadata,
   DoorOperationType,
-  Vec3,
 } from '../types.js';
 
 /**
@@ -134,19 +133,4 @@ export class OpeningRelationshipBuilder {
 
     return 'SINGLE_SWING_LEFT'; // Default
   }
-}
-
-/**
- * Create OpeningRelationships from raw data
- */
-export function buildOpeningRelationshipsFromData(
-  voids: VoidRelationship[],
-  fills: FillRelationship[],
-  entityMetadata?: Map<number, EntityMetadata>,
-  modelIndex: number = 0
-): OpeningRelationships {
-  return new OpeningRelationshipBuilder(entityMetadata)
-    .addVoidRelationships(voids)
-    .addFillRelationships(fills)
-    .build(modelIndex);
 }

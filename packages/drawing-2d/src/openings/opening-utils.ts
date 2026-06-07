@@ -8,7 +8,6 @@
 
 import type {
   OpeningRelationships,
-  OpeningInfo,
   VoidRelationship,
   FillRelationship,
   EntityMetadata,
@@ -51,16 +50,6 @@ export function getFillingElement(
 }
 
 /**
- * Get opening info by entity ID (works for both opening and filling elements)
- */
-export function getOpeningInfo(
-  relationships: OpeningRelationships,
-  entityId: number
-): OpeningInfo | undefined {
-  return relationships.openingInfo.get(entityId);
-}
-
-/**
  * Check if an IFC type represents an opening element
  */
 export function isOpeningElement(ifcType: string): boolean {
@@ -83,109 +72,3 @@ export function isDoorOrWindow(ifcType: string): boolean {
   );
 }
 
-/**
- * Check if an IFC type is a host element that can have openings
- */
-export function isHostElement(ifcType: string): boolean {
-  const upper = ifcType.toUpperCase();
-  return (
-    upper.includes('WALL') ||
-    upper.includes('SLAB') ||
-    upper.includes('ROOF') ||
-    upper.includes('FLOOR')
-  );
-}
-
-/**
- * Get all host element IDs that have openings
- */
-export function getHostsWithOpenings(
-  relationships: OpeningRelationships
-): number[] {
-  return Array.from(relationships.voidedBy.keys());
-}
-
-/**
- * Get all door opening infos
- */
-export function getDoorOpenings(
-  relationships: OpeningRelationships
-): OpeningInfo[] {
-  const result: OpeningInfo[] = [];
-  const seen = new Set<number>();
-
-  for (const [, info] of relationships.openingInfo) {
-    if (info.type === 'door' && !seen.has(info.openingId)) {
-      result.push(info);
-      seen.add(info.openingId);
-    }
-  }
-  return result;
-}
-
-/**
- * Get all window opening infos
- */
-export function getWindowOpenings(
-  relationships: OpeningRelationships
-): OpeningInfo[] {
-  const result: OpeningInfo[] = [];
-  const seen = new Set<number>();
-
-  for (const [, info] of relationships.openingInfo) {
-    if (info.type === 'window' && !seen.has(info.openingId)) {
-      result.push(info);
-      seen.add(info.openingId);
-    }
-  }
-  return result;
-}
-
-/**
- * Filter entity IDs to exclude opening elements
- * Useful for filtering meshes before section cutting
- */
-export function filterOutOpeningElements(
-  entityIds: number[],
-  relationships: OpeningRelationships
-): number[] {
-  const openingIds = new Set<number>();
-
-  // Collect all opening and filling element IDs
-  for (const openingIdList of relationships.voidedBy.values()) {
-    for (const id of openingIdList) {
-      openingIds.add(id);
-    }
-  }
-  for (const fillingId of relationships.filledBy.values()) {
-    openingIds.add(fillingId);
-  }
-
-  return entityIds.filter((id) => !openingIds.has(id));
-}
-
-/**
- * Get the entity IDs that should be included in cut lines (hosts only)
- * Excludes opening elements and their filling elements
- */
-export function getHostEntityIds(
-  allEntityIds: number[],
-  relationships: OpeningRelationships,
-  ifcTypes: Map<number, string>
-): number[] {
-  const result: number[] = [];
-
-  for (const id of allEntityIds) {
-    const ifcType = ifcTypes.get(id);
-    if (!ifcType) continue;
-
-    // Skip opening elements and doors/windows
-    if (isOpeningElement(ifcType) || isDoorOrWindow(ifcType)) {
-      continue;
-    }
-
-    result.push(id);
-  }
-
-  return result;
-}

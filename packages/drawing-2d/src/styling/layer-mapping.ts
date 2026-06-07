@@ -14,7 +14,6 @@ import type {
   AIALayerCode,
   SemanticLineType,
   ArchitecturalLine,
-  LineWeight,
 } from '../types.js';
 
 /**
@@ -334,13 +333,4 @@ export class LayerMapper {
  */
 export function getLayerForIfcType(ifcType: string): AIALayerCode {
   return IFC_TYPE_TO_LAYER[ifcType] ?? 'A-WALL';
-}
-
-/**
- * Create a default layer mapper
- */
-export function createLayerMapper(
-  customLayers?: LayerDefinition[]
-): LayerMapper {
-  return new LayerMapper(customLayers ?? DEFAULT_LAYERS);
 }

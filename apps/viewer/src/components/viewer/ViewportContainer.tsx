@@ -67,6 +67,7 @@ export function ViewportContainer() {
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   const typeViewMode = useViewerStore((s) => s.typeViewMode);
+  const setHasTypeGeometry = useViewerStore((s) => s.setHasTypeGeometry);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const classFilter = useViewerStore((s) => s.classFilter);
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
@@ -501,6 +502,52 @@ export function ViewportContainer() {
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
+  // Does the rendered geometry carry any type-library geometry? geometryClass
+  // 1 = orphan type, 2 = instanced type; class 0 = placed occurrence. The
+  // Model/Types switch is only meaningful — and "Types" only renders anything —
+  // when class 1/2 meshes exist, so we surface this to gate the toolbar control
+  // (#957 follow-up). Scanned incrementally (O(batch)) and short-circuited once
+  // any type mesh is seen, so the common occurrence-only model costs at most a
+  // single linear pass that stops early.
+  const typeGeoSourceRef = useRef<MeshData[] | null>(null);
+  const typeGeoScanLenRef = useRef(0);
+  const sawTypeGeometryRef = useRef(false);
+  const hasTypeGeometry = useMemo(() => {
+    const meshes = mergedGeometryResult?.meshes;
+    if (!meshes || meshes.length === 0) {
+      typeGeoSourceRef.current = meshes ?? null;
+      typeGeoScanLenRef.current = meshes?.length ?? 0;
+      sawTypeGeometryRef.current = false;
+      return false;
+    }
+    // New source array, or it shrank (new file / replace) → rescan from scratch.
+    if (typeGeoSourceRef.current !== meshes || meshes.length < typeGeoScanLenRef.current) {
+      typeGeoSourceRef.current = meshes;
+      typeGeoScanLenRef.current = 0;
+      sawTypeGeometryRef.current = false;
+    }
+    if (!sawTypeGeometryRef.current) {
+      for (let i = typeGeoScanLenRef.current; i < meshes.length; i++) {
+        if ((meshes[i].geometryClass ?? 0) !== 0) { sawTypeGeometryRef.current = true; break; }
+      }
+    }
+    typeGeoScanLenRef.current = meshes.length;
+    return sawTypeGeometryRef.current;
+    // geometryContentVersion bumps per streaming batch — picks up type geometry
+    // that arrives in a later batch even when the meshes array is mutated in place.
+  }, [mergedGeometryResult, geometryContentVersion]);
+
+  // Persisted view mode may be 'types' from a prior model; fall back to 'model'
+  // when the current geometry has no type library so "Types" never renders an
+  // empty scene (and the now-hidden switch can't be used to recover).
+  const effectiveViewMode = hasTypeGeometry ? typeViewMode : 'model';
+
+  // Publish to the store so the toolbar can hide the Model/Types switch when
+  // there is no type geometry to reveal.
+  useEffect(() => {
+    setHasTypeGeometry(hasTypeGeometry);
+  }, [hasTypeGeometry, setHasTypeGeometry]);
+
   // PERF: Incremental geometry filtering using refs.
   // Instead of creating a new 200K+ element array every batch (~200ms),
   // we push ONLY new meshes into a cached array — O(batch_size) not O(total).
@@ -509,7 +556,7 @@ export function ViewportContainer() {
   const filteredSourceLenRef = useRef(0);
   const filteredSourceRef = useRef<MeshData[] | null>(null);
   const filteredTypeVisRef = useRef(typeVisibility);
-  const filteredTypeModeRef = useRef(typeViewMode);
+  const filteredTypeModeRef = useRef(effectiveViewMode);
   const filteredVersionRef = useRef(0);
 
   const filteredGeometry = useMemo(() => {
@@ -531,14 +578,14 @@ export function ViewportContainer() {
       prevVis.spaces !== typeVisibility.spaces ||
       prevVis.openings !== typeVisibility.openings ||
       prevVis.site !== typeVisibility.site ||
-      filteredTypeModeRef.current !== typeViewMode;
+      filteredTypeModeRef.current !== effectiveViewMode;
     const sourceChanged = filteredSourceRef.current !== allMeshes;
     if (typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current) {
       cache.length = 0;
       filteredSourceLenRef.current = 0;
       filteredSourceRef.current = allMeshes;
       filteredTypeVisRef.current = typeVisibility;
-      filteredTypeModeRef.current = typeViewMode;
+      filteredTypeModeRef.current = effectiveViewMode;
     }
 
     const needsFilter = !typeVisibility.spaces || !typeVisibility.openings || !typeVisibility.site;
@@ -555,7 +602,7 @@ export function ViewportContainer() {
       // (else the AC20 duplicate boxes at the MappingOrigin reappear); in 'types'
       // mode hide occurrences (class 0) so only the type library shows.
       const geometryClass = mesh.geometryClass ?? 0;
-      if (typeViewMode === 'types') {
+      if (effectiveViewMode === 'types') {
         if (geometryClass === 0) continue;
       } else if (geometryClass === 2) {
         continue;
@@ -587,7 +634,7 @@ export function ViewportContainer() {
     // Return the same array reference — downstream change detection uses
     // geometryVersion (which increments each batch) instead of array identity.
     return cache;
-  }, [mergedGeometryResult, typeVisibility, typeViewMode]);
+  }, [mergedGeometryResult, typeVisibility, effectiveViewMode]);
 
   // Version counter that changes every batch — triggers useGeometryStreaming
   // without requiring a new geometry array reference.

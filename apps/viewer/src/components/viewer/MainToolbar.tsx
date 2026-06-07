@@ -462,6 +462,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // occurrences (default), 'types' shows the type-library shapes.
   const typeViewMode = useViewerStore((state) => state.typeViewMode);
   const setTypeViewMode = useViewerStore((state) => state.setTypeViewMode);
+  // Only models with type-library geometry (RepresentationMap shapes) can show
+  // anything in "Types" mode, so the switch is hidden for the common
+  // occurrence-only model. Derived in ViewportContainer from the merged meshes.
+  const hasTypeGeometry = useViewerStore((state) => state.hasTypeGeometry);
   // How many of the five class toggles are on — surfaced in the menu
   // header so the user sees scene state at a glance.
   const visibleClassCount = [
@@ -1414,46 +1418,52 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               RepresentationMap whose shape is drawn at its MappingOrigin; "Types"
               shows that type library, "Model" shows the placed occurrences. The
               two are mutually exclusive — toggling re-filters the cached mesh set
-              instantly (no reload). */}
-          <div className="px-1.5 pb-1 pt-0.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              3D View
-            </span>
-          </div>
-          <div className="flex gap-1 px-1.5 pb-1.5" role="radiogroup" aria-label="3D view mode">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={typeViewMode === 'model'}
-              onClick={() => setTypeViewMode('model')}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
-                typeViewMode === 'model'
-                  ? 'border-primary/40 bg-primary/10 text-foreground'
-                  : 'border-transparent text-muted-foreground hover:bg-muted/50',
-              )}
-            >
-              <Boxes className="h-3.5 w-3.5 shrink-0" />
-              Model
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={typeViewMode === 'types'}
-              onClick={() => setTypeViewMode('types')}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
-                typeViewMode === 'types'
-                  ? 'border-primary/40 bg-primary/10 text-foreground'
-                  : 'border-transparent text-muted-foreground hover:bg-muted/50',
-              )}
-            >
-              <Shapes className="h-3.5 w-3.5 shrink-0" />
-              Types
-            </button>
-          </div>
+              instantly (no reload). Only rendered when the model actually has
+              type-library geometry — most carry only occurrence geometry, where
+              "Types" would be empty, so the switch would just be a dead control. */}
+          {hasTypeGeometry && (
+            <>
+              <div className="px-1.5 pb-1 pt-0.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  3D View
+                </span>
+              </div>
+              <div className="flex gap-1 px-1.5 pb-1.5" role="radiogroup" aria-label="3D view mode">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={typeViewMode === 'model'}
+                  onClick={() => setTypeViewMode('model')}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                    typeViewMode === 'model'
+                      ? 'border-primary/40 bg-primary/10 text-foreground'
+                      : 'border-transparent text-muted-foreground hover:bg-muted/50',
+                  )}
+                >
+                  <Boxes className="h-3.5 w-3.5 shrink-0" />
+                  Model
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={typeViewMode === 'types'}
+                  onClick={() => setTypeViewMode('types')}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                    typeViewMode === 'types'
+                      ? 'border-primary/40 bg-primary/10 text-foreground'
+                      : 'border-transparent text-muted-foreground hover:bg-muted/50',
+                  )}
+                >
+                  <Shapes className="h-3.5 w-3.5 shrink-0" />
+                  Types
+                </button>
+              </div>
 
-          <DropdownMenuSeparator className="my-1" />
+              <DropdownMenuSeparator className="my-1" />
+            </>
+          )}
 
           <div className="flex items-center justify-between gap-2 px-1.5 pb-1 pt-0.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

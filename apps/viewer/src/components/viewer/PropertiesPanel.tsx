@@ -36,7 +36,7 @@ import { getNativeEntityDetails } from '@/services/desktop-native-metadata';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import type { NewEntity } from '@ifc-lite/mutations';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
@@ -47,6 +47,7 @@ import { QuantitySetCard } from './properties/QuantitySetCard';
 import { ModelMetadataPanel } from './properties/ModelMetadataPanel';
 import { ClassificationCard } from './properties/ClassificationCard';
 import { MaterialCard } from './properties/MaterialCard';
+import { MaterialTotalsPanel } from './properties/MaterialTotalsPanel';
 import { ScheduleCard } from './properties/ScheduleCard';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
@@ -55,6 +56,17 @@ import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
 import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
+
+/** IFC material *definition* classes selectable from the Materials tab. */
+const MATERIAL_DEF_TYPES = new Set([
+  'IFCMATERIAL',
+  'IFCMATERIALLAYERSET',
+  'IFCMATERIALLAYERSETUSAGE',
+  'IFCMATERIALPROFILESET',
+  'IFCMATERIALPROFILESETUSAGE',
+  'IFCMATERIALCONSTITUENTSET',
+  'IFCMATERIALLIST',
+]);
 
 type DisplayProperty = { name: string; value: unknown; isMutated: boolean };
 type DisplayPropertySet = {
@@ -450,6 +462,16 @@ export function PropertiesPanel() {
     return typeName.endsWith('Type');
   }, [selectedEntity, model, ifcDataStore]);
 
+  // Detect a material definition selected from the "Materials" hierarchy tab.
+  // Materials aren't products, so the EntityTable's getTypeName doesn't cover
+  // them — read the raw class from the entity index instead.
+  const selectedMaterialId = useMemo(() => {
+    if (!selectedEntity) return null;
+    const dataStore = model?.ifcDataStore ?? ifcDataStore;
+    const rawType = (dataStore as IfcDataStore | null)?.entityIndex?.byId?.get(selectedEntity.expressId)?.type;
+    return rawType && MATERIAL_DEF_TYPES.has(rawType.toUpperCase()) ? selectedEntity.expressId : null;
+  }, [selectedEntity, model, ifcDataStore]);
+
   // Unified property/quantity access - EntityNode handles on-demand extraction automatically
   // These hooks must be called before any early return to maintain hook order
   // Use MutablePropertyView as primary source when available (it handles base + mutations)
@@ -625,6 +647,17 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore) return null;
     return extractMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+  }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+
+  // Property sets attached to the selected entity's material(s) via
+  // IfcMaterialProperties (e.g. Pset_MaterialConcrete). These live on the
+  // IfcMaterial — not on the object — so they never surface through the
+  // occurrence/type pset paths; resolve them through the material association.
+  const materialProperties: MaterialPsetGroup[] = useMemo(() => {
+    if (!selectedEntity || lookupExpressId === null) return [];
+    const dataStore = model?.ifcDataStore ?? ifcDataStore;
+    if (!dataStore) return [];
+    return extractMaterialPropertiesOnDemand(dataStore as IfcDataStore, lookupExpressId);
   }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Extract documents for the selected entity from the IFC data store
@@ -1002,6 +1035,7 @@ export function PropertiesPanel() {
   const renderedAttributes = isNativeLazySelection ? [] : attributes;
   const renderedClassifications = isNativeLazySelection ? [] : classifications;
   const renderedMaterialInfo = isNativeLazySelection ? null : materialInfo;
+  const renderedMaterialProperties = isNativeLazySelection ? [] : materialProperties;
   const renderedDocuments = isNativeLazySelection ? [] : documents;
   const renderedEntityRelationships = isNativeLazySelection ? null : entityRelationships;
   const renderedGeoref = isNativeLazySelection ? null : georef;
@@ -1051,6 +1085,12 @@ export function PropertiesPanel() {
     if (selectedModel) {
       return <ModelMetadataPanel model={selectedModel} />;
     }
+  }
+
+  // Material selected from the "Materials" hierarchy tab — show the material's
+  // own property sets plus quantities aggregated across all using elements.
+  if (selectedMaterialId !== null && selectedEntity) {
+    return <MaterialTotalsPanel materialId={selectedMaterialId} modelId={selectedEntity.modelId} />;
   }
 
   // Multi-entity selection (unified storeys) - render combined view
@@ -1481,6 +1521,7 @@ export function PropertiesPanel() {
             {renderedMergedProperties.length === 0
               && renderedClassifications.length === 0
               && !renderedMaterialInfo
+              && renderedMaterialProperties.length === 0
               && renderedDocuments.length === 0
               && !renderedEntityRelationships
               && !hasScheduleForSelection ? (
@@ -1560,10 +1601,38 @@ export function PropertiesPanel() {
                   </>
                 )}
 
+                {/* Material Property Sets (Pset_Material* attached to the
+                    IfcMaterial via IfcMaterialProperties). Grouped per material,
+                    mirroring the Type Properties block. */}
+                {renderedMaterialProperties.length > 0 && (
+                  <>
+                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfo) && (
+                      <div className="border-t border-amber-200 dark:border-amber-800/50 pt-2 mt-2" />
+                    )}
+                    {renderedMaterialProperties.map((group) => (
+                      <div key={`matpset-${group.materialId}`} className="space-y-3">
+                        <div className="flex items-center gap-2 px-1 pb-0.5 text-[11px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider font-semibold">
+                          <Layers className="h-3 w-3 shrink-0" />
+                          <span className="truncate">Material Properties ({group.materialName})</span>
+                        </div>
+                        {group.psets.map((pset) => (
+                          <PropertySetCard
+                            key={`matpset-${group.materialId}-${pset.name}`}
+                            pset={{
+                              name: pset.name,
+                              properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false })),
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </>
+                )}
+
                 {/* Documents */}
                 {renderedDocuments.length > 0 && (
                   <>
-                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfo) && (
+                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfo || renderedMaterialProperties.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
                     {renderedDocuments.map((doc, i) => (

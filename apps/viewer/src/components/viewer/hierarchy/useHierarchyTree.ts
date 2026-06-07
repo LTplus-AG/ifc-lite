@@ -13,11 +13,12 @@ import {
   buildTreeData,
   buildTypeTree,
   buildIfcTypeTree,
+  buildMaterialTree,
   filterNodes,
   splitNodes,
 } from './treeDataBuilder';
 
-export type GroupingMode = 'spatial' | 'type' | 'ifc-type';
+export type GroupingMode = 'spatial' | 'type' | 'ifc-type' | 'material';
 
 interface UseHierarchyTreeParams {
   models: Map<string, FederatedModel>;
@@ -192,6 +193,9 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       if (groupingMode === 'ifc-type') {
         return buildIfcTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
       }
+      if (groupingMode === 'material') {
+        return buildMaterialTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
+      }
       return buildTreeData(models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys);
     },
     [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, groupingMode, geometricIds]
@@ -223,7 +227,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
 
   // Get all elements for a node (handles type groups, ifc-type, unified storeys, single storeys, model contributions, and elements)
   const getNodeElements = useCallback((node: TreeNode): number[] => {
-    if (node.type === 'type-group' || node.type === 'ifc-type') {
+    if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group') {
       // GlobalIds are pre-stored on the node during tree construction — O(1)
       return node.globalIds;
     }

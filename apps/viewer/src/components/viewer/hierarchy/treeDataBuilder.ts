@@ -12,6 +12,7 @@ import {
   type SpatialNode,
 } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { buildMaterialUsageIndex } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { TreeNode, NodeType, StoreyData, UnifiedStorey } from './types';
@@ -707,6 +708,92 @@ export function buildIfcTypeTree(
         }
       }
     }
+  }
+
+  return nodes;
+}
+
+/**
+ * Build a flat "By Material" tree: one row per base material (IfcMaterial),
+ * grouped by name so the same-named material across federated models merges.
+ * Each row carries the using elements' global ids for click-to-isolate and the
+ * representative material express id for the properties panel. Mirrors
+ * {@link buildIfcTypeTree} but keyed on the parser's material usage index.
+ */
+export function buildMaterialTree(
+  models: Map<string, FederatedModel>,
+  ifcDataStore: IfcDataStore | null | undefined,
+  _expandedNodes: Set<string>,
+  _isMultiModel: boolean,
+  geometricIds?: Set<number>,
+): TreeNode[] {
+  interface MatEntry {
+    name: string;
+    ifcClass: string;
+    materialId: number;          // representative material express id
+    modelIds: Set<string>;       // contributing models (insertion order)
+    elements: Map<number, number>; // globalId -> expressId (deduped)
+  }
+
+  const byName = new Map<string, MatEntry>();
+  const applyGeomFilter = !!geometricIds && geometricIds.size > 0;
+
+  const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
+    const usage = buildMaterialUsageIndex(dataStore);
+    for (const u of usage.values()) {
+      let entry = byName.get(u.name);
+      if (!entry) {
+        // Invariant: the representative `materialId` and the first entry in
+        // `modelIds` come from the SAME (first-contributing) model, so the click
+        // handler's `node.modelIds[0]` + `node.entityExpressId` always resolve a
+        // valid (model, material) pair. Sets preserve insertion order.
+        entry = {
+          name: u.name,
+          ifcClass: u.ifcClass,
+          materialId: u.id,
+          modelIds: new Set([modelId]),
+          elements: new Map(),
+        };
+        byName.set(u.name, entry);
+      } else {
+        entry.modelIds.add(modelId);
+      }
+      for (const { entityId } of u.entries) {
+        const globalId = resolveTreeGlobalId(modelId, entityId, models);
+        if (applyGeomFilter && !geometricIds!.has(globalId)) continue;
+        entry.elements.set(globalId, entityId);
+      }
+    }
+  };
+
+  if (models.size > 0) {
+    for (const [modelId, model] of models) {
+      if (model.ifcDataStore) processDataStore(model.ifcDataStore, modelId);
+    }
+  } else if (ifcDataStore) {
+    processDataStore(ifcDataStore, 'legacy');
+  }
+
+  const nodes: TreeNode[] = [];
+  const names = Array.from(byName.keys()).sort((a, b) => a.localeCompare(b));
+  for (const name of names) {
+    const entry = byName.get(name)!;
+    if (entry.elements.size === 0) continue; // skip materials with no visible elements (dead clicks)
+    nodes.push({
+      id: `material-${name}`,
+      expressIds: Array.from(entry.elements.values()),
+      globalIds: Array.from(entry.elements.keys()),
+      entityExpressId: entry.materialId,
+      modelIds: Array.from(entry.modelIds),
+      name,
+      type: 'material-group',
+      ifcType: entry.ifcClass,
+      depth: 0,
+      hasChildren: false,
+      isExpanded: false,
+      isVisible: true,
+      elementCount: entry.elements.size,
+    });
   }
 
   return nodes;

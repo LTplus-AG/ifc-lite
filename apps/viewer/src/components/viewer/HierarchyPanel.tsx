@@ -11,6 +11,7 @@ import {
   LayoutTemplate,
   FileBox,
   GripHorizontal,
+  Palette,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -322,6 +323,34 @@ export function HierarchyPanel() {
       return;
     }
 
+    // Material group nodes (Materials tab) - select the material entity for the
+    // totals panel + isolate the elements that use it.
+    if (node.type === 'material-group') {
+      const modelId = node.modelIds[0];
+      const materialExpressId = node.entityExpressId;
+
+      // Clear multi-selection first (setSelectedEntityIds([]) resets selectedEntityId)
+      setSelectedEntityIds([]);
+
+      if (materialExpressId !== undefined) {
+        if (modelId && modelId !== 'legacy') {
+          setSelectedEntityId(toGlobalId(modelId, materialExpressId));
+          setSelectedEntity({ modelId, expressId: materialExpressId });
+          setActiveModel(modelId);
+        } else {
+          setSelectedEntityId(materialExpressId);
+          setSelectedEntity({ modelId: 'legacy', expressId: materialExpressId });
+        }
+      }
+
+      // Isolate the elements using this material
+      const elements = getNodeElements(node);
+      if (elements.length > 0) {
+        isolateEntities(elements);
+      }
+      return;
+    }
+
     // IFC type entity nodes (e.g. IfcWallType/W01) - select type entity for property panel + isolate instances
     if (node.type === 'ifc-type') {
       const modelId = node.modelIds[0];
@@ -478,14 +507,14 @@ export function HierarchyPanel() {
         ? selectedStoreys.has(node.expressIds[0])
         : node.type === 'IfcSpace' || node.type === 'element'
           ? selectedEntityId === (node.globalIds[0] ?? node.expressIds[0])
-          : node.type === 'ifc-type'
+          : node.type === 'ifc-type' || node.type === 'material-group'
             ? (() => {
-                const typeExpressId = node.entityExpressId;
-                if (!typeExpressId) return false;
+                const entityExpressId = node.entityExpressId;
+                if (!entityExpressId) return false;
                 const mId = node.modelIds[0];
                 const gId = mId && mId !== 'legacy'
-                  ? toGlobalId(mId, typeExpressId)
-                  : typeExpressId;
+                  ? toGlobalId(mId, entityExpressId)
+                  : entityExpressId;
                 return selectedEntityId === gId;
               })()
             : false;
@@ -495,7 +524,7 @@ export function HierarchyPanel() {
     if (node.type === 'element') {
       nodeHidden = hiddenEntities.has(node.globalIds[0] ?? node.expressIds[0]);
     } else if (node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'unified-storey' ||
-               node.type === 'type-group' || node.type === 'ifc-type' ||
+               node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
                (node.type === 'model-header' && node.id.startsWith('contrib-'))) {
       const elements = getNodeElements(node);
       nodeHidden = elements.length > 0 && elements.every(id => hiddenEntities.has(id));
@@ -732,6 +761,16 @@ export function HierarchyPanel() {
         <FileBox className="h-3 w-3 shrink-0 panel-compact-icon" />
         <span className="panel-compact-text">Type</span>
       </Button>
+      <Button
+        variant={groupingMode === 'material' ? 'default' : 'outline'}
+        size="sm"
+        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        onClick={() => setGroupingMode('material')}
+        title="Materials"
+      >
+        <Palette className="h-3 w-3 shrink-0 panel-compact-icon" />
+        <span className="panel-compact-text">Material</span>
+      </Button>
     </div>
   );
 
@@ -871,7 +910,7 @@ export function HierarchyPanel() {
       </div>
 
       {/* Section Header */}
-      <SectionHeader icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : FileBox} title={groupingMode === 'spatial' ? 'Hierarchy' : groupingMode === 'type' ? 'By Class' : 'By Type'} count={filteredNodes.length} />
+      <SectionHeader icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : groupingMode === 'material' ? Palette : FileBox} title={groupingMode === 'spatial' ? 'Hierarchy' : groupingMode === 'type' ? 'By Class' : groupingMode === 'material' ? 'By Material' : 'By Type'} count={filteredNodes.length} />
 
       {/* Tree */}
       <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">

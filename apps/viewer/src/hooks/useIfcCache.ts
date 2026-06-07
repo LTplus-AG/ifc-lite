@@ -17,7 +17,7 @@ import {
   type IfcDataStore as CacheDataStore,
   type GeometryData,
 } from '@ifc-lite/cache';
-import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, attachDataStoreAccessors, type IfcDataStore } from '@ifc-lite/parser';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
@@ -162,6 +162,14 @@ export function useIfcCache() {
         );
         dataStore.onDemandPropertyMap = onDemandPropertyMap;
         dataStore.onDemandQuantityMap = onDemandQuantityMap;
+
+        // Reattach the lazy entity/property/quantity accessors. A freshly parsed
+        // store carries these (wired by attachDataStoreAccessors), but the cache
+        // format only serialises data — so a cache-restored store would be
+        // missing getEntity()/getProperties()/etc. and crash any query path
+        // (e.g. the Properties panel: "store.getEntity is not a function").
+        // Safe here: source, entityIndex and the on-demand maps are all set.
+        attachDataStoreAccessors(dataStore as IfcDataStore);
       } else {
         console.warn('[useIfcCache] No source buffer in cache - on-demand property extraction disabled');
         dataStore.source = new Uint8Array(0);

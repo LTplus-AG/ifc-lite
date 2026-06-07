@@ -96,14 +96,24 @@ Two structural problems:
 
 ### 3a. Set each project's Ignored Build Step (dashboard → Settings → Git)
 
+GOTCHA — Vercel runs the Ignored Build Step from each project's **Root
+Directory**, not the repo root. So the command path is relative to that root.
+The viewer's root is `./`; embed's is `apps/viewer-embed` (hence `../../`);
+landing's is `apps/landing` (so it just checks `.`, its own folder).
+
 ```
-ifc-lite               →  bash scripts/vercel-ignore-build.sh viewer
-ifc-lite-viewer-embed  →  bash scripts/vercel-ignore-build.sh embed
-ifc-lite-dev           →  bash scripts/vercel-ignore-build.sh landing
+ifc-lite (root ./)                  →  bash scripts/vercel-ignore-build.sh viewer
+ifc-lite-viewer-embed (apps/viewer-embed) →  bash ../../scripts/vercel-ignore-build.sh embed
+ifc-lite-dev (apps/landing)         →  git diff HEAD^ HEAD --quiet -- .
 ```
 
+The landing page is static and depends only on `apps/landing`, so the plain
+`git diff -- .` (`.` = the landing folder, since the step runs from there) is
+simpler than the script. viewer/embed need the script because their relevant
+inputs span `rust/**`, `packages/**`, and config.
+
 After this, `ifc-lite-dev` skips ~all commits (only rebuilds when
-`apps/landing/**` changes), and viewer/embed stop rebuilding for each other.
+`apps/landing` changes), and viewer/embed stop rebuilding for each other.
 
 ### 3b. Build machine + previews (dashboard, per project)
 - **`ifc-lite-dev` → Build machine: Standard or Elastic** (NOT Turbo). It's a

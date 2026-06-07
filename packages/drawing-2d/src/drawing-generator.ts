@@ -44,6 +44,7 @@ import {
   getViewDirectionForPlane,
   outlineToProjectionLines,
 } from './projection-bands.js';
+import { isFeatureElementType } from './feature-elements.js';
 import {
   boundsEmpty,
   boundsExtendPoint,
@@ -207,15 +208,26 @@ export class Drawing2DGenerator {
         above: config.projectionAboveDepth ?? config.projectionDepth,
       };
 
+      // Feature elements (IfcOpeningElement & the void/feature family) are
+      // boolean operands, not building structure — they must never project
+      // (issue #979 follow-up). Filter them from BOTH the profile path and the
+      // silhouette path: dropping them only from profiles would push them onto
+      // the silhouette path (they'd fall out of `coveredKeys` and their raw
+      // mesh would then be silhouetted), so the two must be filtered together.
+      // The Rust extractor already skips them at the source, but a CI-lagged
+      // WASM bundle can still emit opening profiles, and opening MESHES always
+      // reach `meshes` — so this TS filter is the load-bearing guard.
+      const projectionProfiles = profiles?.filter((p) => !isFeatureElementType(p.ifcType));
+
       // Per-element dedup: elements with an extracted profile take their
       // projection from the clean profile path only; the silhouette fallback
       // skips them.
       const coveredKeys = new Set<EntityKey>();
-      if (profiles && profiles.length > 0) {
-        for (const profile of profiles) {
+      if (projectionProfiles && projectionProfiles.length > 0) {
+        for (const profile of projectionProfiles) {
           coveredKeys.add(makeEntityKey(profile.modelIndex, profile.expressId));
         }
-        projectionLines.push(...projectProfiles(profiles, config.plane, bands));
+        projectionLines.push(...projectProfiles(projectionProfiles, config.plane, bands));
       }
 
       if (opts.includeEdges) {
@@ -224,12 +236,11 @@ export class Drawing2DGenerator {
         // out. Prefer the winding-robust Rust `meshOutline2d` footprint when an
         // outlineProvider is supplied; fall back per-mesh to the normal-based
         // silhouette (which can break on ifc-lite's unreliable winding).
-        const meshesForSilhouette =
-          coveredKeys.size > 0
-            ? meshes.filter(
-                (m) => !coveredKeys.has(makeEntityKey(m.modelIndex ?? 0, m.expressId)),
-              )
-            : meshes;
+        const meshesForSilhouette = meshes.filter(
+          (m) =>
+            !isFeatureElementType(m.ifcType) &&
+            !coveredKeys.has(makeEntityKey(m.modelIndex ?? 0, m.expressId)),
+        );
 
         const viewDir = getViewDirectionForPlane(config.plane);
         for (const mesh of meshesForSilhouette) {
@@ -294,7 +305,13 @@ export class Drawing2DGenerator {
         config.projectionAboveDepth ?? config.projectionDepth,
       );
 
-      // Build depth buffer and classify lines
+      // Build depth buffer and classify lines. The occluder set deliberately
+      // keeps the FULL `meshes` (incl. feature-element/opening meshes that are
+      // filtered out of projection above): an opening mesh is coincident with
+      // the void in its host wall, which writes the same depth, so it never
+      // changes occlusion — and dropping it could only ever REVEAL a
+      // through-wall line that should stay hidden. Don't "tidy" this to the
+      // filtered set.
       this.hiddenLineClassifier.buildDepthBuffer(
         meshes,
         config.plane.axis,

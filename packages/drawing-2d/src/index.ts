@@ -118,6 +118,11 @@ export {
 } from './projection-bands.js';
 export type { ProjectionBand, ProjectionBandDepths } from './projection-bands.js';
 
+// Current-floor scoping + feature-element exclusion (issue #979 follow-up)
+export { currentFloorBands, storeyFloorsFromMeshes } from './storey-bands.js';
+export type { StoreyFloorMesh } from './storey-bands.js';
+export { isFeatureElementType } from './feature-elements.js';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // HIDDEN LINE REMOVAL
 // ═══════════════════════════════════════════════════════════════════════════

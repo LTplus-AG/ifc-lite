@@ -11,7 +11,14 @@
 
 import type { StateCreator } from 'zustand';
 import type { TypeVisibility, EntityRef } from '../types.js';
-import { getPersistedTypeVisibility, TYPE_VISIBILITY_STORAGE_KEYS, TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '../constants.js';
+import {
+  getPersistedTypeVisibility,
+  TYPE_VISIBILITY_STORAGE_KEYS,
+  TYPE_VISIBILITY_SEMANTIC_DEFAULTS,
+  getPersistedTypeViewMode,
+  TYPE_VIEW_MODE_STORAGE_KEY,
+  type TypeViewMode,
+} from '../constants.js';
 
 export interface VisibilitySlice {
   // State (legacy - single model)
@@ -20,6 +27,9 @@ export interface VisibilitySlice {
   /** Class-level filter (from Class tab type-group clicks) — independent of isolatedEntities */
   classFilter: { ids: Set<number>; label: string } | null;
   typeVisibility: TypeVisibility;
+  /** 3D view mode for the Model/Types switch (#957 follow-up). 'model' shows
+   *  placed occurrences (default); 'types' shows the type-library shapes. */
+  typeViewMode: TypeViewMode;
 
   // State (multi-model)
   /** Hidden entities per model */
@@ -46,6 +56,8 @@ export interface VisibilitySlice {
   toggleTypeVisibility: (type: 'spaces' | 'openings' | 'site' | 'ifcAnnotations' | 'ifcGrid') => void;
   /** Restore every type-visibility toggle to its semantic default (and persist). */
   resetTypeVisibility: () => void;
+  /** Set the Model/Types 3D view mode (and persist). */
+  setTypeViewMode: (mode: TypeViewMode) => void;
   /** Set all hidden entities at once (for BCF viewpoint application) */
   setHiddenEntities: (ids: Set<number>) => void;
   /** Set all isolated entities at once (for BCF viewpoint with defaultVisibility=false) */
@@ -79,6 +91,7 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
   classFilter: null,
   // Read persisted toggles fresh so the user's choices survive reloads.
   typeVisibility: getPersistedTypeVisibility(),
+  typeViewMode: getPersistedTypeViewMode(),
 
   // Initial state (multi-model)
   hiddenEntitiesByModel: new Map(),
@@ -219,6 +232,14 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
         });
     }
     return { typeVisibility: { ...TYPE_VISIBILITY_SEMANTIC_DEFAULTS } };
+  }),
+
+  setTypeViewMode: (mode) => set(() => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(TYPE_VIEW_MODE_STORAGE_KEY, mode); }
+      catch { /* private-mode storage rejection — non-fatal */ }
+    }
+    return { typeViewMode: mode };
   }),
 
   // Actions (multi-model)

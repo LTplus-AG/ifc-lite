@@ -502,11 +502,10 @@ pub(crate) fn combined_pre_pass(
     // gpu_meshes), but the call mutates `void_index` in place — keep it.
     let _ = ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
 
-    // #957: render orphan IfcTypeProduct geometry (annex-E "tessellated shape
-    // with style" showcase files attach geometry to the type, not an
-    // occurrence). processGeometryBatch turns these type jobs into meshes via
-    // process_representation_map.
-    complex_jobs.extend(collect_orphan_type_geometry_jobs(content, decoder));
+    // #957 + Model/Types switch: emit IfcTypeProduct RepresentationMap geometry
+    // (annex-E orphan types AND instanced type-library shapes). processGeometryBatch
+    // tags each with a geometry_class so the viewer can show/hide it per view mode.
+    complex_jobs.extend(collect_type_geometry_jobs(content, decoder));
 
     PrePassData {
         geometry_styles,
@@ -519,43 +518,40 @@ pub(crate) fn combined_pre_pass(
     }
 }
 
-/// #957: collect render jobs for orphan `IfcTypeProduct` geometry — a type's
-/// `RepresentationMap` that no `IfcMappedItem` instantiates.
+/// Collect render jobs for `IfcTypeProduct` `RepresentationMap` geometry — every
+/// type carrying at least one map that no `IfcMappedItem` already draws.
 ///
-/// Returns `(id, start, end, ifc_type)` for each TYPE entity carrying at least
-/// one orphan RepresentationMap, to be appended to the prepass job list so the
-/// browser renders them. `processGeometryBatch` turns each into geometry via
-/// [`ifc_lite_geometry::GeometryRouter::process_representation_map`]. Normally-
-/// instanced typed products keep their geometry on the occurrence (whose
-/// IfcMappedItem references the map), so those maps are filtered out here — no
-/// double render. buildingSMART annex-E "tessellated shape with style" files
-/// declare the geometry only on the type, so without this they render nothing.
-pub(crate) fn collect_orphan_type_geometry_jobs(
+/// Returns `(id, start, end, ifc_type)` per type, appended to the prepass job
+/// list. `processGeometryBatch` turns each into geometry via
+/// [`ifc_lite_geometry::GeometryRouter::process_representation_map`] and tags it
+/// with a `geometry_class` — orphan (no occurrence) vs instanced (an
+/// `IfcRelDefinesByType` links it to an occurrence) — so the viewer's Model/Types
+/// switch can show or hide it (see `gpu_meshes.rs`). A map already referenced by
+/// an `IfcMappedItem` is drawn through its occurrence's mapped representation, so
+/// a type whose maps are ALL referenced yields no renderable job and is skipped.
+///
+/// buildingSMART annex-E "tessellated shape with style" files declare geometry
+/// only on the type (orphan, class 1); ArchiCAD/AC20 files attach a map to nearly
+/// every instanced type while the occurrence carries its own body (class 2,
+/// hidden in Model mode so it does not double-render at the MappingOrigin).
+pub(crate) fn collect_type_geometry_jobs(
     content: &str,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
     use ifc_lite_core::{EntityScanner, IfcType};
 
-    // Fast bail-out: type-only geometry can only exist when the file authors at
-    // least one IfcRepresentationMap. The overwhelming majority of files (and
-    // every file that hits the latency-sensitive prepass without instancing)
-    // pay only a single substring search instead of a full entity scan + decode.
+    // Fast bail-out: type geometry can only exist when the file authors at least
+    // one IfcRepresentationMap. The overwhelming majority of files pay only a
+    // single substring search instead of a full entity scan + decode.
     if !content.contains("IFCREPRESENTATIONMAP") {
         return Vec::new();
     }
 
-    // Single pass: gather the IfcMappedItem-referenced RepresentationMaps, the
-    // types that an IfcRelDefinesByType instantiates, and the type-product
-    // candidates together, then filter to the orphans.
+    // Single pass: gather the IfcMappedItem-referenced RepresentationMaps and the
+    // type-product candidates, then drop types whose maps are all referenced
+    // (those are drawn through their occurrence's mapped representation). The
+    // orphan-vs-instanced class is assigned later, in the render loop.
     let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
-    // Types with at least one occurrence (IfcRelDefinesByType). Their geometry is
-    // already drawn through the occurrence — directly or via IfcMappedItem — so the
-    // type's own RepresentationMap must NOT be rendered as orphan type-only
-    // geometry. ArchiCAD/AC20 exports attach a RepresentationMap to nearly every
-    // typed product while the occurrence carries its own body, so the map is
-    // referenced by no IfcMappedItem; without this gate the type double-renders at
-    // its MappingOrigin (duplicate boxes at the wrong position).
-    let mut instantiated: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
     let mut candidates: Vec<(u32, usize, usize, IfcType, Vec<u32>)> = Vec::new();
 
     let mut scanner = EntityScanner::new(content);
@@ -565,13 +561,6 @@ pub(crate) fn collect_orphan_type_geometry_jobs(
                 // IfcMappedItem.MappingSource = attr 0.
                 if let Some(source_id) = entity.get_ref(0) {
                     referenced.insert(source_id);
-                }
-            }
-        } else if type_name == "IFCRELDEFINESBYTYPE" {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                // IfcRelDefinesByType.RelatingType = attr 5 (the typed product).
-                if let Some(type_id) = entity.get_ref(5) {
-                    instantiated.insert(type_id);
                 }
             }
         } else if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
@@ -597,7 +586,6 @@ pub(crate) fn collect_orphan_type_geometry_jobs(
 
     candidates
         .into_iter()
-        .filter(|(id, _, _, _, _)| !instantiated.contains(id))
         .filter(|(_, _, _, _, maps)| maps.iter().any(|rm| !referenced.contains(rm)))
         .map(|(id, start, end, ifc_type, _)| (id, start, end, ifc_type))
         .collect()

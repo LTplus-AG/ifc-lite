@@ -34,6 +34,13 @@ export interface MeshData {
    *  for textured meshes (#961). Decoded to RGBA8 entirely in Rust; the
    *  renderer uploads `rgba` verbatim to a GPU texture. */
   texture?: MeshTexture;
+  /** Geometry provenance for the viewer's Model/Types view switch (#957 follow-up):
+   *  0 = occurrence (placed IfcProduct), 1 = orphan type geometry (an
+   *  IfcTypeProduct RepresentationMap with no occurrence — shown in BOTH modes),
+   *  2 = instanced type geometry (the type-library shape of a type that HAS an
+   *  occurrence — hidden in Model mode, shown in Types mode). Absent/0 for caches
+   *  and non-wasm paths. */
+  geometryClass?: number;
 }
 
 /** A decoded RGBA8 surface texture attached to a mesh (issue #961). */

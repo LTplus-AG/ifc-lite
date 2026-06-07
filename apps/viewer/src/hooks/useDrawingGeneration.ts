@@ -21,6 +21,7 @@ import {
   type Drawing2D,
   type DrawingLine,
   type SectionConfig,
+  type ProfileEntry,
 } from '@ifc-lite/drawing-2d';
 import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
 import { customPlaneCenter } from '@/store';
@@ -61,7 +62,7 @@ interface UseDrawingGenerationParams {
       bitangent: [number, number, number];
     };
   };
-  displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number };
+  displayOptions: { showHiddenLines: boolean; useSymbolicRepresentations: boolean; show3DOverlay: boolean; scale: number; showConstructionProjection: boolean };
   combinedHiddenIds: Set<number>;
   combinedIsolatedIds: Set<number> | null;
   computedIsolatedIds?: Set<number> | null;
@@ -125,6 +126,17 @@ export function useDrawingGeneration({
     entities: Set<number>;
     sourceId: string | null;
     useSymbolic: boolean;
+  } | null>(null);
+
+  // Cache for extracted extruded-solid profiles (issue #979 construction
+  // projection). Like symbolic reps these are section-position-independent, so
+  // they're parsed once per model and reused across section moves. Every typed
+  // array is copied off the WASM heap (`.slice()`) and the WASM handles freed
+  // deterministically before caching — caching a live view would dangle once
+  // the shared dlmalloc heap grows/reuses (AGENTS.md §7).
+  const profileCacheRef = useRef<{
+    profiles: ProfileEntry[];
+    sourceId: string | null;
   } | null>(null);
 
   // Generate drawing when panel opens
@@ -341,6 +353,70 @@ export function useDrawingGeneration({
       }
     }
 
+    // ── Construction projection profiles (issue #979) ────────────────────────
+    // Extract extruded-area-solid profiles for the clean projection path. Only
+    // when the toggle is on; cached per model since they don't move with the
+    // section. Single-model (modelIndex 0) for now, mirroring the symbolic
+    // path's federation limitation.
+    let profiles: ProfileEntry[] = [];
+    if (displayOptions.showConstructionProjection && ifcDataStore?.source) {
+      const pcache = profileCacheRef.current;
+      if (pcache && pcache.sourceId === modelCacheKey) {
+        profiles = pcache.profiles;
+      } else {
+        if (!isRegenerate) {
+          setDrawingProgress(10, 'Extracting profiles...');
+        }
+        try {
+          const processor = new GeometryProcessor();
+          try {
+            await processor.init();
+            // ProfileCollection + each ProfileEntryJs are WASM-bindgen handles
+            // owning WASM memory. Copy every typed array off the heap with
+            // `.slice()` and free each handle deterministically before caching
+            // (AGENTS.md §7 — leaking to GC corrupts the shared dlmalloc heap).
+            const collection = processor.extractProfiles(ifcDataStore.source, 0);
+            if (collection) {
+              try {
+                const len = collection.length;
+                for (let i = 0; i < len; i++) {
+                  const entry = collection.get(i);
+                  if (!entry) continue;
+                  try {
+                    profiles.push({
+                      expressId: entry.expressId,
+                      ifcType: entry.ifcType,
+                      outerPoints: entry.outerPoints.slice(),
+                      holeCounts: entry.holeCounts.slice(),
+                      holePoints: entry.holePoints.slice(),
+                      transform: entry.transform.slice(),
+                      extrusionDir: entry.extrusionDir.slice(),
+                      extrusionDepth: entry.extrusionDepth,
+                      modelIndex: 0,
+                    });
+                  } finally {
+                    entry.free();
+                  }
+                }
+              } finally {
+                collection.free();
+              }
+            }
+            profileCacheRef.current = { profiles, sourceId: modelCacheKey };
+          } finally {
+            processor.dispose();
+          }
+        } catch (error) {
+          // Degrade gracefully: the drawing still renders without projection.
+          console.warn('Profile extraction failed:', error);
+          profiles = [];
+        }
+      }
+    } else if (profileCacheRef.current) {
+      // Toggle off: drop the cache so a re-enable re-extracts cleanly.
+      profileCacheRef.current = null;
+    }
+
     let generator: Drawing2DGenerator | null = null;
     try {
       generator = new Drawing2DGenerator();
@@ -359,6 +435,15 @@ export function useDrawingGeneration({
       // Calculate max depth as half the model extent
       const maxDepth = (axisMax - axisMin) * 0.5;
 
+      // Construction-projection bands (issue #979). Project the full model
+      // extent on each side of the cut and let the band classifier split by
+      // side (below → solid, above → dashed). Full extent makes single-storey
+      // models with an overhead roof (e.g. AC20) "just work"; multi-storey
+      // bleed is naturally scoped when the user isolates a storey (the meshes
+      // are already filtered to it below). Flip-invariant: the classifier
+      // applies the flip sign itself.
+      const fullExtent = axisMax - axisMin;
+
       // Adjust progress to account for symbolic parsing phase (0-20%)
       const progressOffset = symbolicLines.length > 0 ? 20 : 0;
       const progressScale = symbolicLines.length > 0 ? 0.8 : 1;
@@ -369,6 +454,8 @@ export function useDrawingGeneration({
       // Create section config
       const config: SectionConfig = createSectionConfig(axis, position, {
         projectionDepth: maxDepth,
+        projectionBelowDepth: fullExtent,
+        projectionAboveDepth: fullExtent,
         includeHiddenLines: displayOptions.showHiddenLines,
         scale: displayOptions.scale,
       });
@@ -434,13 +521,44 @@ export function useDrawingGeneration({
         return;
       }
 
-      const result = await generator.generate(meshesToProcess, config, {
-        includeHiddenLines: false,  // Disable - causes internal mesh edges
-        includeProjection: false,   // Disable - causes triangulation lines
-        includeEdges: false,        // Disable - causes triangulation lines
-        mergeLines: true,
-        onProgress: progressCallback,
-      });
+      // Construction projection (issue #979): when enabled, project geometry
+      // beyond the cut. The clean profile path handles extruded solids; the
+      // silhouette path (includeEdges) covers non-extruded geometry — roofs,
+      // stairs, site — that has no profile. Hidden-line removal stays off
+      // (the below/above band split, not occlusion, drives solid vs dashed).
+      const projectionOn = displayOptions.showConstructionProjection;
+
+      // Apply the SAME hiding/isolation filters to the profiles as to the
+      // meshes, so projection respects 3D hiding and storey isolation —
+      // otherwise other storeys' profiles project through the plan and the
+      // dedup keys (built from profiles) would suppress silhouettes for
+      // entities that aren't actually drawn.
+      let projectionProfiles = profiles;
+      if (projectionOn && profiles.length > 0) {
+        if (combinedHiddenIds.size > 0) {
+          projectionProfiles = projectionProfiles.filter((p) => !combinedHiddenIds.has(p.expressId));
+        }
+        if (combinedIsolatedIds !== null) {
+          projectionProfiles = projectionProfiles.filter((p) => combinedIsolatedIds.has(p.expressId));
+        }
+        if (computedIsolatedIds !== null && computedIsolatedIds !== undefined && computedIsolatedIds.size > 0) {
+          const isolatedSet = computedIsolatedIds;
+          projectionProfiles = projectionProfiles.filter((p) => isolatedSet.has(p.expressId));
+        }
+      }
+
+      const result = await generator.generate(
+        meshesToProcess,
+        config,
+        {
+          includeHiddenLines: false,
+          includeProjection: projectionOn,
+          includeEdges: projectionOn,
+          mergeLines: true,
+          onProgress: progressCallback,
+        },
+        projectionOn ? projectionProfiles : undefined,
+      );
 
       // If we have symbolic representations, create a hybrid drawing
       if (symbolicLines.length > 0 && entitiesWithSymbols.size > 0) {

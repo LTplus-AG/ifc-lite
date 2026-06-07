@@ -100,6 +100,20 @@ export { EdgeExtractor, getViewDirection } from './edge-extractor.js';
 export { projectProfiles } from './profile-projector.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CONSTRUCTION PROJECTION BANDS (issue #979)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export {
+  classifyDepthRange,
+  classifySegmentBand,
+  signedDepth,
+  bandVisibility,
+  projectPointForPlane,
+  getViewDirectionForPlane,
+} from './projection-bands.js';
+export type { ProjectionBand, ProjectionBandDepths } from './projection-bands.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // HIDDEN LINE REMOVAL
 // ═══════════════════════════════════════════════════════════════════════════
 

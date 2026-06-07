@@ -63,6 +63,15 @@ export interface SectionConfig {
   plane: SectionPlaneConfig;
   /** Depth range beyond cut plane to include for projection lines (world units) */
   projectionDepth: number;
+  /**
+   * Construction-projection band depths (issue #979). When set, projection
+   * lines split into a VISIBLE band below the cut (thin solid) within
+   * `projectionBelowDepth`, and an OVERHEAD band above the cut (dashed) within
+   * `projectionAboveDepth`. Both default to `projectionDepth` when omitted, so
+   * legacy callers keep their single-window behaviour.
+   */
+  projectionBelowDepth?: number;
+  projectionAboveDepth?: number;
   /** Whether to compute hidden lines */
   includeHiddenLines: boolean;
   /** Crease angle threshold in degrees (edges sharper than this are feature edges) */

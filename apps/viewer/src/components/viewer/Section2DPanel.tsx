@@ -12,7 +12,7 @@
  */
 
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
-import { X, Download, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag } from 'lucide-react';
+import { X, Download, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -321,6 +321,15 @@ export function Section2DPanel({
     updateDisplayOptions({ showIfcAnnotations: !displayOptions.showIfcAnnotations });
   }, [displayOptions.showIfcAnnotations, updateDisplayOptions]);
 
+  // Construction projection (issue #979): toggling changes which geometry the
+  // generator emits, so clear the current drawing to force a regenerate —
+  // same pattern as the symbolic/section-cut toggle.
+  const toggleConstructionProjection = useCallback(() => {
+    updateDisplayOptions({ showConstructionProjection: !displayOptions.showConstructionProjection });
+    setDrawing(null);
+    setDrawingStatus('idle');
+  }, [displayOptions.showConstructionProjection, updateDisplayOptions, setDrawing, setDrawingStatus]);
+
   const annotationHandlers = useAnnotation2D({
     drawing, viewTransform, sectionAxis: sectionPlane.axis, containerRef,
     activeTool: annotation2DActiveTool, setActiveTool: setAnnotation2DActiveTool,
@@ -589,6 +598,21 @@ export function Section2DPanel({
                 <Tag className="h-4 w-4" />
               </Button>
 
+              {/* Construction projection toggle (issue #979) — plan only */}
+              <Button
+                variant={displayOptions.showConstructionProjection ? 'default' : 'ghost'}
+                size="icon-sm"
+                onClick={toggleConstructionProjection}
+                title={
+                  displayOptions.showConstructionProjection
+                    ? 'Hide construction projection (overhead & visible reference lines)'
+                    : 'Show construction projection (overhead & visible reference lines)'
+                }
+                disabled={sectionPlane.axis !== 'down' || sectionPlane.custom !== undefined}
+              >
+                <BoxSelect className="h-4 w-4" />
+              </Button>
+
               {/* Annotation Tools Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -759,6 +783,13 @@ export function Section2DPanel({
                   <DropdownMenuItem onClick={toggleIfcAnnotations} disabled={sectionPlane.axis !== 'down'}>
                     <Tag className="h-4 w-4 mr-2" />
                     IFC Annotations {displayOptions.showIfcAnnotations ? 'On' : 'Off'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={toggleConstructionProjection}
+                    disabled={sectionPlane.axis !== 'down' || sectionPlane.custom !== undefined}
+                  >
+                    <BoxSelect className="h-4 w-4 mr-2" />
+                    Construction Projection {displayOptions.showConstructionProjection ? 'On' : 'Off'}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setAnnotation2DActiveTool('none')}>
                     <MousePointer2 className="h-4 w-4 mr-2" />

@@ -12,7 +12,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Vec3, EdgeData, Point2D, DrawingLine, LineCategory } from './types.js';
+import type { Vec3, EdgeData, Point2D, DrawingLine, LineCategory, SectionPlaneConfig } from './types.js';
 import {
   vec3,
   vec3Sub,
@@ -23,6 +23,30 @@ import {
   EPSILON,
   projectTo2D,
 } from './math.js';
+import {
+  type ProjectionBandDepths,
+  classifySegmentBand,
+  bandVisibility,
+  projectPointForPlane,
+} from './projection-bands.js';
+
+/**
+ * Dot-product deadband for the silhouette test (issue #979).
+ *
+ * A silhouette edge separates a face that is front-facing (normal points
+ * toward the viewer, `dot < -ε`) from one that is NOT front-facing. For an
+ * axis-aligned box viewed straight down — the common floor-plan case — the top
+ * face is front-facing while the four side faces are exactly perpendicular
+ * (`dot ≈ 0`); the footprint outline is precisely the top-vs-side edges, so
+ * "not front-facing" must include the perpendicular (deadband) faces, not just
+ * strictly-back ones.
+ *
+ * The deadband must be larger than f32 normal noise so two perpendicular side
+ * faces (`dot ≈ 0`) are classified identically and their shared vertical edge
+ * doesn't flicker as a spurious silhouette. 1e-4 (~0.006°) absorbs the noise
+ * without excluding any genuinely tilted face (e.g. a pitched roof).
+ */
+const SILHOUETTE_EPSILON = 1e-4;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -166,8 +190,15 @@ export class EdgeExtractor {
       const dot0 = vec3Dot(edge.face0Normal, normalizedView);
       const dot1 = vec3Dot(edge.face1Normal, normalizedView);
 
-      // Silhouette: one face toward viewer (dot < 0), one away (dot > 0)
-      return (dot0 < 0) !== (dot1 < 0);
+      // Silhouette: exactly one adjacent face is front-facing (normal toward
+      // the viewer). "Not front-facing" deliberately includes perpendicular
+      // (deadband) faces so the top-vs-side outline edges of an axis-aligned
+      // box survive, while two perpendicular side faces (both not-front) don't
+      // flicker into a spurious silhouette under f32 noise. See
+      // SILHOUETTE_EPSILON.
+      const front0 = dot0 < -SILHOUETTE_EPSILON;
+      const front1 = dot1 < -SILHOUETTE_EPSILON;
+      return front0 !== front1;
     });
   }
 
@@ -206,6 +237,52 @@ export class EdgeExtractor {
         depth,
       };
     });
+  }
+
+  /**
+   * Convert silhouette edges into band-classified construction-projection
+   * lines (issue #979). Each edge is classified by its own endpoints:
+   *  - below the cut → `visibility: 'visible'` (thin solid)
+   *  - above the cut → `visibility: 'hidden'`  (dashed)
+   *  - outside both bands → dropped
+   *
+   * Projection uses the SAME basis as the section cutter
+   * (`projectPointForPlane`), so silhouette lines coincide with cut polygons.
+   * Emitted as `category: 'projection'` (the issue's "thin solid projected
+   * edge"), not the heavier `silhouette` weight.
+   */
+  edgesToProjectionLines(
+    edges: EdgeData[],
+    plane: SectionPlaneConfig,
+    depths: ProjectionBandDepths,
+  ): DrawingLine[] {
+    const lines: DrawingLine[] = [];
+
+    for (const edge of edges) {
+      const band = classifySegmentBand(edge.v0, edge.v1, plane, depths);
+      const visibility = bandVisibility(band);
+      if (visibility === null) continue;
+
+      const start = projectPointForPlane(edge.v0, plane);
+      const end = projectPointForPlane(edge.v1, plane);
+
+      // Skip degenerate (zero-length) projected segments.
+      if (Math.abs(start.x - end.x) < EPSILON && Math.abs(start.y - end.y) < EPSILON) {
+        continue;
+      }
+
+      lines.push({
+        line: { start, end },
+        category: 'projection',
+        visibility,
+        entityId: edge.entityId,
+        ifcType: edge.ifcType,
+        modelIndex: edge.modelIndex,
+        depth: 0,
+      });
+    }
+
+    return lines;
   }
 
   /**

@@ -24,23 +24,24 @@ import type {
   Bounds2D,
   LineCategory,
   ProfileEntry,
+  EntityKey,
 } from './types.js';
 import { DEFAULT_SECTION_CONFIG, makeEntityKey } from './types.js';
 import { SectionCutter } from './section-cutter.js';
 import { PolygonBuilder } from './polygon-builder.js';
-import { EdgeExtractor, getViewDirection } from './edge-extractor.js';
+import { EdgeExtractor } from './edge-extractor.js';
 import { HiddenLineClassifier } from './hidden-line.js';
-import { mergeDrawingLines, deduplicateLines } from './line-merger.js';
+import { mergeDrawingLines } from './line-merger.js';
 import { HatchGenerator } from './hatch-generator.js';
 import { SVGExporter } from './svg-exporter.js';
 import type { SVGExportOptions } from './svg-exporter.js';
-import { GPUSectionCutter, isGPUComputeAvailable } from './gpu-section-cutter.js';
+import { GPUSectionCutter } from './gpu-section-cutter.js';
 import { projectProfiles } from './profile-projector.js';
+import { type ProjectionBandDepths, getViewDirectionForPlane } from './projection-bands.js';
 import {
   boundsEmpty,
   boundsExtendPoint,
   boundsExtendLine,
-  projectTo2D,
   lineLength,
 } from './math.js';
 
@@ -171,105 +172,58 @@ export class Drawing2DGenerator {
     }));
 
     // ─────────────────────────────────────────────────────────────────────────
-    // STAGE 4: Edge Extraction (Projection Lines)
+    // STAGE 4: Construction Projection Lines (issue #979)
+    //
+    // Project geometry BEYOND the cut into two architectural bands:
+    //   • below the cut → VISIBLE  (thin solid)
+    //   • above the cut → OVERHEAD (dashed, carried as `visibility:'hidden'`)
+    //
+    // Sources, picked per element to avoid double-drawing the same wall:
+    //   • extruded-area solids → clean profile boundaries (`projectProfiles`)
+    //   • everything else      → mesh SILHOUETTE outline (NOT crease edges,
+    //     which draw every tessellation facet). Runs only when `includeEdges`.
     // ─────────────────────────────────────────────────────────────────────────
     let projectionLines: DrawingLine[] = [];
-    let silhouetteLines: DrawingLine[] = [];
 
-    if (opts.includeProjection || opts.includeEdges) {
+    if (opts.includeProjection) {
       report('edges', 0);
 
-      if (profiles && profiles.length > 0 && opts.includeProjection) {
-        // ── Clean path: profile-based projection (no tessellation artifacts) ──
-        projectionLines = projectProfiles(profiles, config.plane, config.projectionDepth);
+      const bands: ProjectionBandDepths = {
+        below: config.projectionBelowDepth ?? config.projectionDepth,
+        above: config.projectionAboveDepth ?? config.projectionDepth,
+      };
+
+      // Per-element dedup: elements with an extracted profile take their
+      // projection from the clean profile path only; the silhouette fallback
+      // skips them.
+      const coveredKeys = new Set<EntityKey>();
+      if (profiles && profiles.length > 0) {
+        for (const profile of profiles) {
+          coveredKeys.add(makeEntityKey(profile.modelIndex, profile.expressId));
+        }
+        projectionLines.push(...projectProfiles(profiles, config.plane, bands));
       }
 
       if (opts.includeEdges) {
-        // Feature edges and silhouettes always come from the mesh edge extractor
-        // Extract feature edges from all meshes
-        const allEdges = this.edgeExtractor.extractEdgesFromMeshes(meshes);
+        // Silhouette outline for non-extruded geometry (roofs, stairs, site,
+        // BReps) that has no extracted profile — the elements issue #979
+        // specifically calls out.
+        const meshesForSilhouette =
+          coveredKeys.size > 0
+            ? meshes.filter(
+                (m) => !coveredKeys.has(makeEntityKey(m.modelIndex ?? 0, m.expressId)),
+              )
+            : meshes;
 
-        // Filter edges in projection range
-        const projectionEdges = this.edgeExtractor.filterEdgesByDepth(
-          allEdges,
-          config.plane.axis,
-          config.plane.position,
-          config.projectionDepth,
-          config.plane.flipped
+        const allEdges = this.edgeExtractor.extractEdgesFromMeshes(meshesForSilhouette);
+        const viewDir = getViewDirectionForPlane(config.plane);
+        const silhouettes = this.edgeExtractor.extractSilhouettes(allEdges, viewDir);
+        projectionLines.push(
+          ...this.edgeExtractor.edgesToProjectionLines(silhouettes, config.plane, bands),
         );
-
-        // Get view direction for silhouette detection
-        const viewDir = getViewDirection(config.plane.axis, config.plane.flipped);
-
-        // Extract silhouettes
-        const silhouettes = this.edgeExtractor.extractSilhouettes(projectionEdges, viewDir);
-
-        silhouetteLines = this.edgeExtractor.edgesToDrawingLines(
-          silhouettes,
-          config.plane.axis,
-          config.plane.flipped,
-          'silhouette',
-          config.plane.position
-        );
-
-        if (opts.includeProjection) {
-          const profileKeys = new Set(
-            (profiles ?? []).map((profile) => makeEntityKey(profile.modelIndex, profile.expressId))
-          );
-          const creaseEdges = projectionEdges.filter((edge) => {
-            if (edge.type !== 'crease' || silhouettes.includes(edge)) {
-              return false;
-            }
-            if (profileKeys.size === 0) {
-              return true;
-            }
-            return !profileKeys.has(makeEntityKey(edge.modelIndex, edge.entityId));
-          });
-
-          projectionLines = [
-            ...projectionLines,
-            ...this.edgeExtractor.edgesToDrawingLines(
-              creaseEdges,
-              config.plane.axis,
-              config.plane.flipped,
-              'projection',
-              config.plane.position
-            ),
-          ];
-        }
-      } else if (opts.includeProjection) {
-        // No edge extraction requested, but projection is enabled.
-        // Use crease-edge fallback for entities not covered by profile extraction.
-        const profileKeys = new Set(
-          (profiles ?? []).map((profile) => makeEntityKey(profile.modelIndex, profile.expressId))
-        );
-        const allEdges = this.edgeExtractor.extractEdgesFromMeshes(meshes);
-        const projectionEdges = this.edgeExtractor.filterEdgesByDepth(
-          allEdges,
-          config.plane.axis,
-          config.plane.position,
-          config.projectionDepth,
-          config.plane.flipped
-        );
-        const creaseEdges = projectionEdges.filter((e) => {
-          if (e.type !== 'crease') return false;
-          if (profileKeys.size === 0) return true;
-          return !profileKeys.has(makeEntityKey(e.modelIndex, e.entityId));
-        });
-        projectionLines = [
-          ...projectionLines,
-          ...this.edgeExtractor.edgesToDrawingLines(
-            creaseEdges,
-            config.plane.axis,
-            config.plane.flipped,
-            'projection',
-            config.plane.position
-          ),
-        ];
       }
 
-      // Filter out outlier lines that are abnormally long (likely artifacts)
-      // Use cut polygon bounds to determine reasonable max line length
+      // Drop outlier lines abnormally longer than the cut area (artifacts).
       const cutBounds = this.computeBounds(cutLines);
       if (cutBounds.min.x < cutBounds.max.x && cutBounds.min.y < cutBounds.max.y) {
         const boundsWidth = cutBounds.max.x - cutBounds.min.x;
@@ -277,8 +231,6 @@ export class Drawing2DGenerator {
         const boundsDiagonal = Math.sqrt(boundsWidth * boundsWidth + boundsHeight * boundsHeight);
         // Allow lines up to 1.5x the diagonal of the cut area
         const maxLineLength = boundsDiagonal * 1.5;
-
-        silhouetteLines = silhouetteLines.filter((line) => lineLength(line.line) <= maxLineLength);
         projectionLines = projectionLines.filter((line) => lineLength(line.line) <= maxLineLength);
       }
 
@@ -288,9 +240,9 @@ export class Drawing2DGenerator {
     // ─────────────────────────────────────────────────────────────────────────
     // STAGE 5: Hidden Line Removal
     // ─────────────────────────────────────────────────────────────────────────
-    let allLines = [...cutLines, ...projectionLines, ...silhouetteLines];
+    let allLines = [...cutLines, ...projectionLines];
 
-    if (opts.includeHiddenLines && (projectionLines.length > 0 || silhouetteLines.length > 0)) {
+    if (opts.includeHiddenLines && projectionLines.length > 0) {
       report('hidden', 0);
 
       // Compute bounds for depth buffer
@@ -306,12 +258,16 @@ export class Drawing2DGenerator {
         bounds
       );
 
-      // Only classify non-cut lines
-      const linesToClassify = allLines.filter((l) => l.category !== 'cut');
-      const classifiedLines = this.hiddenLineClassifier.applyVisibility(linesToClassify);
+      // Occlusion only DOWNGRADES visible → hidden; it can never reveal an
+      // already-dashed OVERHEAD line. So classify the visible (below-cut)
+      // projection lines and pass overhead lines through unchanged — otherwise
+      // an unoccluded overhead beam would be re-marked 'visible' (solid).
+      const toClassify = allLines.filter((l) => l.category !== 'cut' && l.visibility === 'visible');
+      const passthrough = allLines.filter((l) => l.category !== 'cut' && l.visibility !== 'visible');
+      const classifiedLines = this.hiddenLineClassifier.applyVisibility(toClassify);
 
-      // Recombine with cut lines (always visible)
-      allLines = [...cutLines, ...classifiedLines];
+      // Recombine with cut lines (always visible) + overhead pass-through.
+      allLines = [...cutLines, ...classifiedLines, ...passthrough];
 
       report('hidden', 1);
     }

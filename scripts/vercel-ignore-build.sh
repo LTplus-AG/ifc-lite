@@ -43,6 +43,14 @@ set -uo pipefail
 # Defaults to `viewer` so the historical no-arg command keeps working.
 SCOPE="${1:-viewer}"
 
+# Run from the git repo root so the pathspecs below resolve correctly no
+# matter which Root Directory a Vercel project sets — Vercel invokes the
+# Ignored Build Step from the project's Root Directory, and the embed
+# project's root is `apps/viewer-embed`, not the repo root. Fall back to the
+# current dir if we're somehow not in a git work tree (git diff then fails
+# closed → DEPLOY, the safe default).
+cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" || true
+
 # Vercel exposes the commit being built and its parent. Use the parent
 # pointer that Vercel sets (`VERCEL_GIT_PREVIOUS_SHA`) when available
 # — for production deploys this points at the previous *successful*

@@ -83,6 +83,9 @@ export function convertMeshCollectionToBatch(
           indices: mesh.indices,
           color: [color[0], color[1], color[2], color[3]],
           ...(shadingColor ? { shadingColor } : {}),
+          // #957 follow-up: carry the Model/Types geometry class so the viewer's
+          // view-mode filter can show/hide type-library geometry.
+          geometryClass: (mesh as { geometryClass?: number }).geometryClass ?? 0,
         };
 
         // #961: copy the Rust-decoded surface texture + per-vertex UVs (the

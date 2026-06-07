@@ -202,6 +202,7 @@ export async function* processParallel(
           uvs?: MeshData['uvs'];
           texture?: MeshData['texture'];
           geometryHash?: bigint;
+          geometryClass?: number;
         }) => ({
           expressId: m.expressId,
           ifcType: m.ifcType,
@@ -216,6 +217,10 @@ export async function* processParallel(
           // Carry the model-diff fingerprint through the worker boundary
           // (issue #924); undefined when hashing is off.
           ...(m.geometryHash !== undefined ? { geometryHash: m.geometryHash } : {}),
+          // #957 follow-up: carry the Model/Types geometry class through the
+          // worker→main re-map (else the viewer's view-mode filter sees only
+          // class 0 and the Types view renders nothing).
+          ...(m.geometryClass !== undefined ? { geometryClass: m.geometryClass } : {}),
         }));
         if (meshes.length > 0) {
           // Update totalMeshes per batch so consumers see a live

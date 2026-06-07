@@ -923,9 +923,21 @@ impl IfcAPI {
         use super::styling::{resolve_element_color, resolve_submesh_color};
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_processing::default_color_for_type;
-        use ifc_lite_geometry::{calculate_normals, GeometryRouter};
+        use ifc_lite_geometry::{calculate_normals, GeometryHasher, GeometryRouter};
 
         let content = decode_ifc_bytes(data);
+
+        // Geometry fingerprinting for the viewer's revision-diff feature.
+        // When enabled we hash each entity's meshes *before* MeshDataJs::new
+        // applies the Z-up→Y-up swap, in the native IFC frame, reconstructing
+        // world coordinates as `local + rtc` so the file's RTC choice never
+        // registers as a change. Disabled (None) => zero overhead.
+        let hash_tolerance = self.geometry_hash_tolerance();
+        let hash_world_rtc: [f64; 3] = if needs_shift {
+            [rtc_x, rtc_y, rtc_z]
+        } else {
+            [0.0, 0.0, 0.0]
+        };
 
         // Reuse the cached Arc<EntityIndex> across calls so we don't
         // re-clone the 14 M-entry HashMap on every batch. On streaming
@@ -1142,6 +1154,12 @@ impl IfcAPI {
 
                 let has_openings = void_index.contains_key(&id);
 
+                // One fingerprint accumulator per entity. All of an entity's
+                // submeshes are produced within this single loop iteration, so
+                // the hash is fully resolved here — no cross-batch merge.
+                let mut entity_hasher =
+                    hash_tolerance.map(|tol| GeometryHasher::new(tol, hash_world_rtc));
+
                 if has_openings {
                     if let Ok(mut mesh) =
                         router.process_element_with_voids(&entity, &mut decoder, &void_index)
@@ -1158,6 +1176,9 @@ impl IfcAPI {
                                 .entry(ifc_type)
                                 .or_insert_with(|| ifc_type.name().to_string())
                                 .clone();
+                            if let Some(h) = entity_hasher.as_mut() {
+                                h.add_mesh(&mesh.positions, &mesh.indices);
+                            }
                             mesh_collection.add(MeshDataJs::new(id, ifc_type_name, mesh, color));
                         }
                     }
@@ -1205,6 +1226,9 @@ impl IfcAPI {
                                         .entry(ifc_type)
                                         .or_insert_with(|| ifc_type.name().to_string())
                                         .clone();
+                                    if let Some(h) = entity_hasher.as_mut() {
+                                        h.add_mesh(&mesh.positions, &mesh.indices);
+                                    }
                                     emit_submesh_with_palette_split(
                                         &mut mesh_collection,
                                         id,
@@ -1253,6 +1277,9 @@ impl IfcAPI {
                                         .entry(ifc_type)
                                         .or_insert_with(|| ifc_type.name().to_string())
                                         .clone();
+                                    if let Some(h) = entity_hasher.as_mut() {
+                                        h.add_mesh(&mesh.positions, &mesh.indices);
+                                    }
                                     emit_submesh_with_palette_split(
                                         &mut mesh_collection,
                                         id,
@@ -1265,6 +1292,14 @@ impl IfcAPI {
                                 }
                             }
                         }
+                    }
+                }
+
+                // Record the entity's geometry fingerprint (if any geometry
+                // was produced and hashing is enabled).
+                if let Some(h) = entity_hasher {
+                    if !h.is_empty() {
+                        mesh_collection.push_geometry_hash(id, h.finish());
                     }
                 }
             }

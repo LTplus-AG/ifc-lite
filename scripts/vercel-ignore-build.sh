@@ -51,13 +51,19 @@ SCOPE="${1:-viewer}"
 # closed → DEPLOY, the safe default).
 cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" || true
 
-# Vercel exposes the commit being built and its parent. Use the parent
-# pointer that Vercel sets (`VERCEL_GIT_PREVIOUS_SHA`) when available
-# — for production deploys this points at the previous *successful*
-# production deploy's commit, which is what we want to compare against.
-# Fall back to HEAD^ for branch/preview deploys with no previous.
-BASE="${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}"
+# Pick the commit to diff against. `VERCEL_GIT_PREVIOUS_SHA` (the previous
+# successful deploy) is the most accurate base, BUT it usually points at a
+# commit that ISN'T in Vercel's shallow clone — `git diff` then dies with
+# "fatal: bad object <sha>", the check fails, and we deploy every time
+# (never skipping). So only use it when it's actually present in the clone;
+# otherwise fall back to HEAD^, which the shallow clone does include.
+BASE="${VERCEL_GIT_PREVIOUS_SHA:-}"
+if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+  BASE="HEAD^"
+fi
 HEAD_SHA="${VERCEL_GIT_COMMIT_SHA:-HEAD}"
+# Guard HEAD_SHA too: if Vercel's SHA isn't in the clone, use the literal HEAD.
+git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null || HEAD_SHA="HEAD"
 
 # Shared inputs every Rust+WASM app (viewer, viewer-embed) depends on.
 # The landing page is static and depends on NONE of these.

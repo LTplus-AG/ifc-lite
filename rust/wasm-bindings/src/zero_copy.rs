@@ -226,6 +226,12 @@ pub struct MeshCollection {
     /// Building rotation angle in radians (from IfcSite's top-level placement)
     /// This is the rotation of the building's principal axes relative to world X/Y/Z
     building_rotation: Option<f64>,
+    /// Per-entity geometry fingerprints for revision diffing, populated only
+    /// when `IfcAPI::set_compute_geometry_hashes` is enabled. Parallel arrays:
+    /// `geometry_hash_ids[i]` is the entity express id, `geometry_hash_values[i]`
+    /// its fingerprint (see `ifc_lite_geometry::geom_hash`). Empty otherwise.
+    geometry_hash_ids: Vec<u32>,
+    geometry_hash_values: Vec<u64>,
 }
 
 #[wasm_bindgen]
@@ -303,6 +309,29 @@ impl MeshCollection {
         self.building_rotation
     }
 
+    /// Express ids for the per-entity geometry fingerprints, parallel to
+    /// [`Self::geometry_hash_values`]. Empty unless geometry hashing was
+    /// enabled via `IfcAPI.setComputeGeometryHashes`.
+    #[wasm_bindgen(getter, js_name = geometryHashIds)]
+    pub fn geometry_hash_ids(&self) -> js_sys::Uint32Array {
+        js_sys::Uint32Array::from(&self.geometry_hash_ids[..])
+    }
+
+    /// Per-entity geometry fingerprints as a `BigUint64Array`, parallel to
+    /// [`Self::geometry_hash_ids`]. `u64` is exposed (not hex strings) so JS
+    /// can compare with `===` and key maps without allocation. Empty unless
+    /// geometry hashing was enabled.
+    #[wasm_bindgen(getter, js_name = geometryHashValues)]
+    pub fn geometry_hash_values(&self) -> js_sys::BigUint64Array {
+        js_sys::BigUint64Array::from(&self.geometry_hash_values[..])
+    }
+
+    /// Number of per-entity geometry fingerprints recorded.
+    #[wasm_bindgen(getter, js_name = geometryHashCount)]
+    pub fn geometry_hash_count(&self) -> usize {
+        self.geometry_hash_ids.len()
+    }
+
     /// Convert local coordinates to world coordinates
     /// Use this to convert mesh positions back to original IFC coordinates
     #[wasm_bindgen(js_name = localToWorld)]
@@ -324,6 +353,8 @@ impl MeshCollection {
             rtc_offset_y: 0.0,
             rtc_offset_z: 0.0,
             building_rotation: None,
+            geometry_hash_ids: Vec::new(),
+            geometry_hash_values: Vec::new(),
         }
     }
 
@@ -335,6 +366,8 @@ impl MeshCollection {
             rtc_offset_y: 0.0,
             rtc_offset_z: 0.0,
             building_rotation: None,
+            geometry_hash_ids: Vec::new(),
+            geometry_hash_values: Vec::new(),
         }
     }
 
@@ -342,6 +375,13 @@ impl MeshCollection {
     #[inline]
     pub fn add(&mut self, mesh: MeshDataJs) {
         self.meshes.push(mesh);
+    }
+
+    /// Record a per-entity geometry fingerprint (for revision diffing).
+    #[inline]
+    pub fn push_geometry_hash(&mut self, express_id: u32, hash: u64) {
+        self.geometry_hash_ids.push(express_id);
+        self.geometry_hash_values.push(hash);
     }
 
     /// Create from vec of meshes
@@ -352,6 +392,8 @@ impl MeshCollection {
             rtc_offset_y: 0.0,
             rtc_offset_z: 0.0,
             building_rotation: None,
+            geometry_hash_ids: Vec::new(),
+            geometry_hash_values: Vec::new(),
         }
     }
 
@@ -419,6 +461,8 @@ impl Clone for MeshCollection {
             rtc_offset_y: self.rtc_offset_y,
             rtc_offset_z: self.rtc_offset_z,
             building_rotation: self.building_rotation,
+            geometry_hash_ids: self.geometry_hash_ids.clone(),
+            geometry_hash_values: self.geometry_hash_values.clone(),
         }
     }
 }

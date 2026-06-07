@@ -35,6 +35,14 @@ pub struct MeshDataJs {
     texture_height: u32,
     texture_repeat_s: bool,
     texture_repeat_t: bool,
+    /// Geometry provenance for the viewer's Model/Types view switch:
+    /// 0 = occurrence (a placed IfcProduct), 1 = orphan type geometry (an
+    /// IfcTypeProduct RepresentationMap with NO occurrence — buildingSMART
+    /// annex-E showcase files; part of "the model" since nothing else renders
+    /// it), 2 = instanced type geometry (an IfcTypeProduct that IS instantiated
+    /// via IfcRelDefinesByType — the type-library shape, hidden in Model mode to
+    /// avoid double-rendering, shown in Types mode). See #957 follow-up.
+    geometry_class: u8,
 }
 
 #[wasm_bindgen]
@@ -135,6 +143,14 @@ impl MeshDataJs {
     pub fn texture_repeat_t(&self) -> bool {
         self.texture_repeat_t
     }
+
+    /// Geometry provenance for the viewer's Model/Types switch (#957 follow-up):
+    /// 0 = occurrence, 1 = orphan type geometry (no occurrence), 2 = instanced
+    /// type geometry (hidden in Model mode, shown in Types mode).
+    #[wasm_bindgen(getter, js_name = geometryClass)]
+    pub fn geometry_class(&self) -> u8 {
+        self.geometry_class
+    }
 }
 
 impl MeshDataJs {
@@ -182,7 +198,14 @@ impl MeshDataJs {
             texture_height: 0,
             texture_repeat_s: true,
             texture_repeat_t: true,
+            geometry_class: 0,
         }
+    }
+
+    /// Tag this mesh's geometry provenance for the Model/Types view switch
+    /// (0 = occurrence, 1 = orphan type, 2 = instanced type). Call after `new`.
+    pub fn set_geometry_class(&mut self, class: u8) {
+        self.geometry_class = class;
     }
 
     /// Attach an optional SurfaceColour for the GLB exporter's "Shading"
@@ -259,6 +282,7 @@ impl MeshCollection {
             texture_height: m.texture_height,
             texture_repeat_s: m.texture_repeat_s,
             texture_repeat_t: m.texture_repeat_t,
+            geometry_class: m.geometry_class,
         })
     }
 
@@ -455,6 +479,7 @@ impl Clone for MeshCollection {
                     texture_height: m.texture_height,
                     texture_repeat_s: m.texture_repeat_s,
                     texture_repeat_t: m.texture_repeat_t,
+                    geometry_class: m.geometry_class,
                 })
                 .collect(),
             rtc_offset_x: self.rtc_offset_x,

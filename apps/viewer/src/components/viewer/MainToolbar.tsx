@@ -51,6 +51,8 @@ import {
   ChevronsUpDown,
   Undo2,
   Redo2,
+  Boxes,
+  Shapes,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -541,6 +543,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
   const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
   const resetTypeVisibility = useViewerStore((state) => state.resetTypeVisibility);
+  // #957 follow-up: Model/Types 3D view switch — 'model' shows placed
+  // occurrences (default), 'types' shows the type-library shapes.
+  const typeViewMode = useViewerStore((state) => state.typeViewMode);
+  const setTypeViewMode = useViewerStore((state) => state.setTypeViewMode);
   // How many of the five class toggles are on — surfaced in the menu
   // header so the user sees scene state at a glance.
   const visibleClassCount = [
@@ -1549,6 +1555,51 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           model lacks is a no-op.
         */}
         <DropdownMenuContent align="start" className="w-[300px] p-1.5">
+          {/* Model / Types 3D view switch (#957 follow-up). A type carries a
+              RepresentationMap whose shape is drawn at its MappingOrigin; "Types"
+              shows that type library, "Model" shows the placed occurrences. The
+              two are mutually exclusive — toggling re-filters the cached mesh set
+              instantly (no reload). */}
+          <div className="px-1.5 pb-1 pt-0.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              3D View
+            </span>
+          </div>
+          <div className="flex gap-1 px-1.5 pb-1.5" role="radiogroup" aria-label="3D view mode">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={typeViewMode === 'model'}
+              onClick={() => setTypeViewMode('model')}
+              className={cn(
+                'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                typeViewMode === 'model'
+                  ? 'border-primary/40 bg-primary/10 text-foreground'
+                  : 'border-transparent text-muted-foreground hover:bg-muted/50',
+              )}
+            >
+              <Boxes className="h-3.5 w-3.5 shrink-0" />
+              Model
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={typeViewMode === 'types'}
+              onClick={() => setTypeViewMode('types')}
+              className={cn(
+                'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                typeViewMode === 'types'
+                  ? 'border-primary/40 bg-primary/10 text-foreground'
+                  : 'border-transparent text-muted-foreground hover:bg-muted/50',
+              )}
+            >
+              <Shapes className="h-3.5 w-3.5 shrink-0" />
+              Types
+            </button>
+          </div>
+
+          <DropdownMenuSeparator className="my-1" />
+
           <div className="flex items-center justify-between gap-2 px-1.5 pb-1 pt-0.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Visibility

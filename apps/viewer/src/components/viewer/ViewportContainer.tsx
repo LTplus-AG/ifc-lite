@@ -69,6 +69,7 @@ export function ViewportContainer() {
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const typeViewMode = useViewerStore((s) => s.typeViewMode);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const classFilter = useViewerStore((s) => s.classFilter);
   const resetViewerState = useViewerStore((s) => s.resetViewerState);
@@ -526,6 +527,7 @@ export function ViewportContainer() {
   const filteredSourceLenRef = useRef(0);
   const filteredSourceRef = useRef<MeshData[] | null>(null);
   const filteredTypeVisRef = useRef(typeVisibility);
+  const filteredTypeModeRef = useRef(typeViewMode);
   const filteredVersionRef = useRef(0);
 
   const filteredGeometry = useMemo(() => {
@@ -540,18 +542,21 @@ export function ViewportContainer() {
     const allMeshes = mergedGeometryResult.meshes;
     const cache = filteredCacheRef.current;
 
-    // Full rebuild if: type visibility changed, source shrunk (new file), or empty cache
+    // Full rebuild if: type visibility changed, view mode changed, source shrunk
+    // (new file), or empty cache
     const prevVis = filteredTypeVisRef.current;
     const typeVisChanged =
       prevVis.spaces !== typeVisibility.spaces ||
       prevVis.openings !== typeVisibility.openings ||
-      prevVis.site !== typeVisibility.site;
+      prevVis.site !== typeVisibility.site ||
+      filteredTypeModeRef.current !== typeViewMode;
     const sourceChanged = filteredSourceRef.current !== allMeshes;
     if (typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current) {
       cache.length = 0;
       filteredSourceLenRef.current = 0;
       filteredSourceRef.current = allMeshes;
       filteredTypeVisRef.current = typeVisibility;
+      filteredTypeModeRef.current = typeViewMode;
     }
 
     const needsFilter = !typeVisibility.spaces || !typeVisibility.openings || !typeVisibility.site;
@@ -561,6 +566,18 @@ export function ViewportContainer() {
     for (let i = filteredSourceLenRef.current; i < allMeshes.length; i++) {
       const mesh = allMeshes[i];
       const ifcType = mesh.ifcType;
+
+      // Model/Types view switch (#957 follow-up). geometryClass: 0 = occurrence,
+      // 1 = orphan type (no occurrence — shown in BOTH modes since it's the only
+      // geometry), 2 = instanced type-library shape. In 'model' mode hide class 2
+      // (else the AC20 duplicate boxes at the MappingOrigin reappear); in 'types'
+      // mode hide occurrences (class 0) so only the type library shows.
+      const geometryClass = mesh.geometryClass ?? 0;
+      if (typeViewMode === 'types') {
+        if (geometryClass === 0) continue;
+      } else if (geometryClass === 2) {
+        continue;
+      }
 
       if (needsFilter) {
         if (ifcType === 'IfcSpace' && !typeVisibility.spaces) continue;
@@ -588,7 +605,7 @@ export function ViewportContainer() {
     // Return the same array reference — downstream change detection uses
     // geometryVersion (which increments each batch) instead of array identity.
     return cache;
-  }, [mergedGeometryResult, typeVisibility]);
+  }, [mergedGeometryResult, typeVisibility, typeViewMode]);
 
   // Version counter that changes every batch — triggers useGeometryStreaming
   // without requiring a new geometry array reference.

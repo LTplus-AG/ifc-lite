@@ -278,12 +278,13 @@ impl IfcAPI {
         drop(slot);
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
 
-        // #957: orphan IfcTypeProduct geometry (type RepresentationMaps, no
-        // occurrence) — keep the fast prepass consistent with the once/streaming
-        // paths so type-only models (annex-E) also render on the worker fast
-        // path. The helper is guarded by a cheap `IFCREPRESENTATIONMAP`
-        // substring check, so files without type geometry pay almost nothing.
-        complex_jobs.extend(super::styling::collect_orphan_type_geometry_jobs(
+        // #957 + Model/Types switch: IfcTypeProduct RepresentationMap geometry
+        // (orphan annex-E types AND instanced type-library shapes) — keep the fast
+        // prepass consistent with the once/streaming paths. processGeometryBatch
+        // tags each with a geometry_class for the viewer's view mode. The helper is
+        // guarded by a cheap `IFCREPRESENTATIONMAP` substring check, so files
+        // without type geometry pay almost nothing.
+        complex_jobs.extend(super::styling::collect_type_geometry_jobs(
             content,
             &mut decoder,
         ));
@@ -887,7 +888,7 @@ impl IfcAPI {
         // fold the mapped-item-source + type-candidate collection into the
         // streaming scan loop so orphans resolve with no extra pass. Kept as a
         // separate pass for now to avoid destabilising the streaming hot path.
-        let type_jobs = super::styling::collect_orphan_type_geometry_jobs(content, &mut decoder);
+        let type_jobs = super::styling::collect_type_geometry_jobs(content, &mut decoder);
         if !type_jobs.is_empty() {
             total_jobs += type_jobs.len() as u32;
             emit_jobs_chunk(on_event, &type_jobs)?;
@@ -1087,17 +1088,22 @@ impl IfcAPI {
                 // (the referenced ones draw through their occurrence — no double
                 // render).
                 if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
-                    // #957 follow-up: a type that an IfcRelDefinesByType instantiates
-                    // already renders through its occurrences (directly or via an
-                    // IfcMappedItem). Drawing its RepresentationMap here too would
-                    // double-render it at the MappingOrigin — the AC20/ArchiCAD
-                    // "duplicate boxes at the wrong position" regression. Only
-                    // genuinely orphan types (no occurrence) reach the render below.
+                    // #957 follow-up + Model/Types view switch: type-product
+                    // RepresentationMap geometry is ALWAYS emitted here, tagged with
+                    // a geometry_class so the viewer can choose what to show:
+                    //   class 1 = orphan type (no occurrence) — part of "the model"
+                    //             since nothing else renders it (annex-E showcase).
+                    //   class 2 = instanced type (an IfcRelDefinesByType links it to
+                    //             an occurrence that already draws the real geometry).
+                    //             Hidden in Model mode (else the AC20/ArchiCAD
+                    //             duplicate-boxes-at-MappingOrigin regression returns);
+                    //             shown in Types mode as the type-library shape.
+                    // The native process_geometry path still SUPPRESSES class 2 (an
+                    // export must not duplicate geometry); only the interactive viewer
+                    // emits both and filters by view mode at render time.
                     let instantiated =
                         self.get_or_build_instantiated_type_ids(content, &mut decoder);
-                    if instantiated.contains(&id) {
-                        continue;
-                    }
+                    let type_class: u8 = if instantiated.contains(&id) { 2 } else { 1 };
                     let rep_map_ids: Vec<u32> = entity
                         .get(6)
                         .and_then(|a| a.as_list())
@@ -1146,6 +1152,7 @@ impl IfcAPI {
                                 }
                                 let mut mesh_js =
                                     MeshDataJs::new(id, ifc_type_name.clone(), mesh, color);
+                                mesh_js.set_geometry_class(type_class);
                                 if let Some(tex) = texture {
                                     mesh_js.set_texture(
                                         uvs,

@@ -52,6 +52,7 @@ export function parseMeshesViaPrePass(api, content) {
             color: m.color,
             vertexCount: m.vertexCount,
             triangleCount: m.triangleCount,
+            geometryClass: m.geometryClass,
             free: () => {},
           });
           totalVertices += m.vertexCount;

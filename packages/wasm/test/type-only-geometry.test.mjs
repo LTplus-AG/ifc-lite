@@ -90,6 +90,11 @@ describe('@ifc-lite/wasm type-only IfcRepresentationMap geometry (#957)', () => 
           boiler.every((m) => approxColor(m.color, WHITE)),
           'type geometry should inherit the authored white IfcSurfaceStyle',
         );
+        assert.ok(
+          boiler.every((m) => m.geometryClass === 1),
+          'a genuinely-orphan type (no occurrence) must be geometryClass=1 so it shows in BOTH ' +
+            'Model and Types modes (it is the only geometry the file has)',
+        );
       } finally {
         api.free?.();
       }
@@ -98,14 +103,15 @@ describe('@ifc-lite/wasm type-only IfcRepresentationMap geometry (#957)', () => 
 });
 
 /**
- * Issue #957 follow-up regression guard — the LIVE VIEWER path.
+ * Issue #957 follow-up + Model/Types view switch — the LIVE VIEWER path.
  *
  * ArchiCAD/AC20 exports attach a RepresentationMap to a typed product while the
  * OCCURRENCE carries its own direct body geometry (no IfcMappedItem). The type
  * and occurrence are linked only by IfcRelDefinesByType, so the map is referenced
- * by no IfcMappedItem. Without the IfcRelDefinesByType gate, processGeometryBatch
- * draws the type's map at its MappingOrigin — a duplicate of the occurrence at the
- * wrong position. The instanced type must render ZERO type-only meshes here.
+ * by no IfcMappedItem. The viewer path now EMITS the instanced type's geometry
+ * tagged geometryClass=2 (vs class 1 for genuinely-orphan annex-E types, class 0
+ * for occurrences) so the Model/Types switch can hide it in Model mode (avoiding
+ * the duplicate-box-at-MappingOrigin regression) and show it in Types mode.
  */
 const INSTANCED_DIRECT_GEOMETRY_IFC = `ISO-10303-21;
 HEADER;
@@ -137,8 +143,8 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
-describe('@ifc-lite/wasm instanced-type geometry is not double-rendered (#957 follow-up)', () => {
-  it('does not draw a type-only mesh when the type has an occurrence (IfcRelDefinesByType)', async (t) => {
+describe('@ifc-lite/wasm instanced-type geometry is tagged for the Model/Types switch (#957 follow-up)', () => {
+  it('emits the instanced type as geometryClass=2 and the occurrence as class 0', async (t) => {
     if (!existsSync(wasmPath) || !existsSync(wasmJsPath)) {
       t.skip('wasm bundle not built — run `bash scripts/build-wasm.sh` first');
       return;
@@ -154,21 +160,28 @@ describe('@ifc-lite/wasm instanced-type geometry is not double-rendered (#957 fo
     try {
       const result = parseMeshesViaPrePass(api, INSTANCED_DIRECT_GEOMETRY_IFC);
 
-      let occurrence = 0;
-      let typeDirect = 0;
+      const occurrence = [];
+      const typeDirect = [];
       for (let i = 0; i < result.length; i++) {
         const m = result.get(i);
         if (!m) continue;
-        if (m.expressId === 100) occurrence++;
-        if (m.expressId === 43) typeDirect++;
+        if (m.expressId === 100) occurrence.push(m);
+        if (m.expressId === 43) typeDirect.push(m);
       }
 
-      assert.ok(occurrence >= 1, 'the IfcBoiler occurrence #100 (direct geometry) should render');
-      assert.equal(
-        typeDirect,
-        0,
-        'an IfcRelDefinesByType-instanced type must NOT render its RepresentationMap as ' +
-          'orphan type geometry on the viewer path (the AC20 duplicate-box regression)',
+      assert.ok(occurrence.length >= 1, 'the IfcBoiler occurrence #100 (direct geometry) should render');
+      assert.ok(
+        occurrence.every((m) => m.geometryClass === 0),
+        'occurrence meshes must be geometryClass=0 (Model)',
+      );
+      assert.ok(
+        typeDirect.length >= 1,
+        'the instanced type #43 geometry is now EMITTED (for the Types view), not suppressed',
+      );
+      assert.ok(
+        typeDirect.every((m) => m.geometryClass === 2),
+        'an IfcRelDefinesByType-instanced type must be tagged geometryClass=2 so the viewer ' +
+          'hides it in Model mode (no duplicate box) and shows it in Types mode',
       );
     } finally {
       api.free?.();

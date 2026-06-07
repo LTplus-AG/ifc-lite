@@ -51,7 +51,7 @@ import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } fro
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
-import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, getPersistedTypeVisibility } from './constants.js';
+import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, getPersistedTypeVisibility, getPersistedTypeViewMode } from './constants.js';
 
 // Re-export types for consumers
 export type * from './types.js';
@@ -225,6 +225,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // Re-read persisted toggles on every file load so a new model never
       // reverts the user's visibility choices (e.g. "Show Annotations").
       typeVisibility: getPersistedTypeVisibility(),
+      typeViewMode: getPersistedTypeViewMode(),
 
       // Visibility (multi-model)
       hiddenEntitiesByModel: new Map(),

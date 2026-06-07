@@ -395,6 +395,9 @@ function collectMeshes(
           ifcType: mesh.ifcType,
           positions, normals, indices,
           color: [color[0], color[1], color[2], color[3]],
+          // Provenance for the Model/Types switch (0=occurrence, 1=orphan type,
+          // 2=instanced type). Older wasm bundles lack the getter → default 0.
+          geometryClass: mesh.geometryClass ?? 0,
         };
         session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;

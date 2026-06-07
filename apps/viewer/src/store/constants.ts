@@ -222,6 +222,29 @@ export function getPersistedTypeVisibility(): TypeVisibility {
   };
 }
 
+/**
+ * The 3D view mode for the Model/Types switch (#957 follow-up).
+ *   'model' — show placed occurrences (the default; the building as designed).
+ *   'types' — show the type-library shapes (each IfcTypeProduct's
+ *             RepresentationMap at its MappingOrigin), hiding occurrences.
+ * Orphan type geometry (a type with no occurrence, e.g. annex-E showcase files)
+ * shows in BOTH modes since it is the only geometry the file has.
+ */
+export type TypeViewMode = 'model' | 'types';
+
+export const TYPE_VIEW_MODE_STORAGE_KEY = 'ifc-lite-type-view-mode';
+export const TYPE_VIEW_MODE_DEFAULT: TypeViewMode = 'model';
+
+/** Resolve the persisted Model/Types view mode (read fresh, like type visibility). */
+export function getPersistedTypeViewMode(): TypeViewMode {
+  if (typeof window === 'undefined') return TYPE_VIEW_MODE_DEFAULT;
+  try {
+    return localStorage.getItem(TYPE_VIEW_MODE_STORAGE_KEY) === 'types' ? 'types' : 'model';
+  } catch {
+    return TYPE_VIEW_MODE_DEFAULT;
+  }
+}
+
 // ============================================================================
 // Data Defaults
 // ============================================================================

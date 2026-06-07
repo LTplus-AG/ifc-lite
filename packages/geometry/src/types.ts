@@ -40,6 +40,13 @@ export interface MeshData {
    *  share the same value (it is the whole-entity hash). Consumed by the
    *  model-diff / compare feature (issue #924); renderers ignore it. */
   geometryHash?: bigint;
+  /** Geometry provenance for the viewer's Model/Types view switch (#957 follow-up):
+   *  0 = occurrence (placed IfcProduct), 1 = orphan type geometry (an
+   *  IfcTypeProduct RepresentationMap with no occurrence — shown in BOTH modes),
+   *  2 = instanced type geometry (the type-library shape of a type that HAS an
+   *  occurrence — hidden in Model mode, shown in Types mode). Absent/0 for caches
+   *  and non-wasm paths. */
+  geometryClass?: number;
 }
 
 /** A decoded RGBA8 surface texture attached to a mesh (issue #961). */

@@ -67,6 +67,15 @@ export const AXIS_MAP: Record<'down' | 'front' | 'side', 'x' | 'y' | 'z'> = {
 // live in is already in metres (WASM applies `unit_scale` upstream).
 export const ANNOTATION_VIEW_DEPTH = 1.2;
 
+// View depth BEHIND a vertical (front/side) section cut within which
+// construction projection is drawn, as a fraction of the model extent along the
+// cut axis (issue #979 follow-up). A vertical section has no "storey" to scope
+// to, so it projects a bounded slab behind the cut — near geometry solid,
+// occluded/far dashed (hidden-line pass) — and culls the cut-away front half
+// and anything past this depth. Half the model depth is a sensible default;
+// tune here if sections feel too deep or too shallow.
+export const SECTION_VIEW_DEPTH_FRACTION = 0.5;
+
 interface UseDrawingGenerationParams {
   geometryResult: GeometryResult | null | undefined;
   // `spatialHierarchy` (optional — absent on cache-reopened models) backs the
@@ -392,21 +401,27 @@ export function useDrawingGeneration({
       }
     }
 
-    // Construction projection is plan-only (issue #979): the cut must be the
-    // cardinal 'down' axis and not a face-picked custom plane. The UI disables
-    // the toggle off-plan, but the persisted flag can stay true when the user
-    // switches axis — so gate generation here too, otherwise front/side/custom
-    // sections keep emitting projection the user can't turn off.
-    const projectionSupported = sectionPlane.axis === 'down' && !sectionPlane.custom;
+    // Construction projection runs on any CARDINAL cut (plan 'down' + vertical
+    // 'front'/'side'), but NOT a face-picked custom plane (the band classifier
+    // and outline binding are cardinal-only). Plan and section use different
+    // boundaries: plan scopes to the current storey; a vertical section has no
+    // "storey", so it projects a bounded view depth behind the cut (see the
+    // band computation below). The UI gates the toggle to the same set; the
+    // persisted flag can survive a switch to a custom plane, so gate here too.
+    const projectionSupported = !sectionPlane.custom;
     const projectionOn = projectionSupported && displayOptions.showConstructionProjection;
 
     // ── Construction projection profiles (issue #979) ────────────────────────
     // Extract extruded-area-solid profiles for the clean projection path. Only
-    // when projection is on; cached per model since they don't move with the
-    // section. Single-model (modelIndex 0) for now, mirroring the symbolic
-    // path's federation limitation.
+    // for PLAN cuts: the profile projector draws a solid's base footprint, which
+    // is the plan representation but collapses to a base edge on a vertical
+    // section — so front/side cuts use the mesh-silhouette/outline path instead
+    // (profiles stay empty → every mesh silhouettes). Cached per model since
+    // they don't move with the section. Single-model (modelIndex 0) for now,
+    // mirroring the symbolic path's federation limitation.
+    const profilesNeeded = projectionOn && sectionPlane.axis === 'down';
     let profiles: ProfileEntry[] = [];
-    if (projectionOn && ifcDataStore?.source) {
+    if (profilesNeeded && ifcDataStore?.source) {
       const pcache = profileCacheRef.current;
       if (pcache && pcache.sourceId === modelCacheKey) {
         profiles = pcache.profiles;
@@ -477,8 +492,10 @@ export function useDrawingGeneration({
           profiles = [];
         }
       }
-    } else if (profileCacheRef.current) {
-      // Toggle off: drop the cache so a re-enable re-extracts cleanly.
+    } else if (!projectionOn && profileCacheRef.current) {
+      // Projection fully off: drop the cache so a re-enable re-extracts cleanly.
+      // A plan↔section switch (projection still on) keeps the cache so flipping
+      // back to a plan reuses the extracted profiles.
       profileCacheRef.current = null;
     }
 
@@ -559,6 +576,18 @@ export function useDrawingGeneration({
           belowDepth = sectionPlane.flipped ? bands.above : bands.below;
           aboveDepth = sectionPlane.flipped ? bands.below : bands.above;
         }
+      }
+
+      // Vertical section (front/side): storeys don't bound it. Project a
+      // bounded view depth BEHIND the cut and cull the cut-away front half +
+      // anything past that depth. "Behind" is always the `below` (d<0) band:
+      // the band classifier's flip and the view direction's flip cancel, so
+      // this is flip-invariant (no swap needed). Near geometry draws solid;
+      // the hidden-line pass dashes occluded/far parts. (Profiles aren't
+      // extracted off-plan, so this geometry comes from the mesh silhouette.)
+      if (projectionOn && !sectionPlane.custom && sectionPlane.axis !== 'down') {
+        belowDepth = Math.max((axisMax - axisMin) * SECTION_VIEW_DEPTH_FRACTION, 1e-3);
+        aboveDepth = 1e-3; // cull the half in front of the cut
       }
 
       // Adjust progress to account for symbolic parsing phase (0-20%)

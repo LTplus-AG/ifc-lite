@@ -598,7 +598,7 @@ export function Section2DPanel({
                 <Tag className="h-4 w-4" />
               </Button>
 
-              {/* Construction projection toggle (issue #979) — plan only */}
+              {/* Construction projection toggle (issue #979) — cardinal cuts only */}
               <Button
                 variant={displayOptions.showConstructionProjection ? 'default' : 'ghost'}
                 size="icon-sm"
@@ -608,7 +608,7 @@ export function Section2DPanel({
                     ? 'Hide construction projection (overhead & visible reference lines)'
                     : 'Show construction projection (overhead & visible reference lines)'
                 }
-                disabled={sectionPlane.axis !== 'down' || sectionPlane.custom !== undefined}
+                disabled={sectionPlane.custom !== undefined}
               >
                 <BoxSelect className="h-4 w-4" />
               </Button>
@@ -786,7 +786,7 @@ export function Section2DPanel({
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={toggleConstructionProjection}
-                    disabled={sectionPlane.axis !== 'down' || sectionPlane.custom !== undefined}
+                    disabled={sectionPlane.custom !== undefined}
                   >
                     <BoxSelect className="h-4 w-4 mr-2" />
                     Construction Projection {displayOptions.showConstructionProjection ? 'On' : 'Off'}

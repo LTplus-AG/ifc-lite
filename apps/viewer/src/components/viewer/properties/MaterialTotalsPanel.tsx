@@ -217,7 +217,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
               <div className="flex items-start gap-1.5 px-2.5 py-2 text-[10px] text-zinc-500 dark:text-zinc-400 border-t border-amber-100 dark:border-amber-900/30">
                 <Info className="h-3 w-3 shrink-0 mt-px" />
                 <span>
-                  Volume from {totals.elementsWithVolume} of {totals.elementCount} elements with reported quantities;
+                  Volume from {totals.elementsWithVolume.toLocaleString()} of {totals.elementCount.toLocaleString()} elements with reported quantities;
                   multi-material elements are split by layer thickness / constituent fraction.
                 </span>
               </div>
@@ -235,7 +235,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                 {totals.byClass.map((c) => (
                   <div key={c.ifcClass} className="flex items-center justify-between px-2.5 py-1.5 text-xs">
                     <span className="font-mono text-zinc-600 dark:text-zinc-400 truncate">{c.ifcClass}</span>
-                    <span className="font-mono text-zinc-900 dark:text-zinc-100">{c.count}</span>
+                    <span className="font-mono text-zinc-900 dark:text-zinc-100">{c.count.toLocaleString()}</span>
                   </div>
                 ))}
               </div>

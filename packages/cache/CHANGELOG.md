@@ -1,5 +1,18 @@
 # @ifc-lite/cache
 
+## 2.0.0
+
+### Major Changes
+
+- [#993](https://github.com/LTplus-AG/ifc-lite/pull/993) [`ea7c132`](https://github.com/LTplus-AG/ifc-lite/commit/ea7c1324e77b5fde4b7d0775a013f2fdf90b26d2) Thanks [@louistrue](https://github.com/louistrue)! - Rename the serialized data-store type `IfcDataStore` → `CacheDataStore`.
+
+  This removes the name collision with `@ifc-lite/parser`'s runtime `IfcDataStore` — the two are structurally different (the cache type is the on-disk/serialized shape, keyed on a numeric `schema` enum, with no `source`/`parseTime`/accessors). Consumers importing the type from `@ifc-lite/cache` must switch `IfcDataStore` → `CacheDataStore`.
+
+### Patch Changes
+
+- Updated dependencies [[`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f)]:
+  - @ifc-lite/geometry@2.4.0
+
 ## 1.14.9
 
 ### Patch Changes

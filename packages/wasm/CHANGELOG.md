@@ -1,5 +1,33 @@
 # @ifc-lite/wasm
 
+## 2.4.0
+
+### Minor Changes
+
+- [#989](https://github.com/LTplus-AG/ifc-lite/pull/989) [`1effb90`](https://github.com/LTplus-AG/ifc-lite/commit/1effb900edd0a70db75f90839a4cc9f8fecb8d5e) Thanks [@louistrue](https://github.com/louistrue)! - Add `meshOutline2d(positions, indices, axis, flipped)` — a winding-robust 2D
+  footprint outline of a triangle mesh for construction projection ([#979](https://github.com/LTplus-AG/ifc-lite/issues/979)). It
+  projects every triangle to the section plane and unions the areas via
+  `i_overlay`, so the footprint is correct regardless of the mesh's (unreliable)
+  triangle winding — unlike normal-based silhouette extraction. Returns a
+  `MeshOutlineJs` handle exposing the contour rings plus the element's extent
+  along the cut axis for band classification.
+
+- [#998](https://github.com/LTplus-AG/ifc-lite/pull/998) [`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f) Thanks [@louistrue](https://github.com/louistrue)! - Add a 3D **Model / Types** view switch (turns the [#957](https://github.com/LTplus-AG/ifc-lite/issues/957) type geometry into a feature).
+
+  The viewer mesh path (`processGeometryBatch`) now always emits an `IfcTypeProduct`'s `RepresentationMap` geometry, tagging each mesh with a `geometryClass`: `0` = occurrence, `1` = orphan type (no occurrence — buildingSMART annex-E showcase files), `2` = instanced type-library shape (a type linked to an occurrence via `IfcRelDefinesByType`). `MeshDataJs.geometryClass` (wasm) and `MeshData.geometryClass` (`@ifc-lite/geometry`) carry it across the boundary.
+
+  The viewer's Visibility menu gains a Model/Types segmented control. **Model** (default) shows occurrences + orphan types and hides class‑2 type-library shapes — so the AC20/ArchiCAD "duplicate boxes at the wrong position" never appear. **Types** shows the type library (classes 1 + 2 at their map origins) and hides occurrences. The switch re-filters the cached mesh set instantly (no reload) and the choice persists across reloads.
+
+  The native `process_geometry` path is unchanged — it still suppresses instanced-type geometry so server/CLI/SDK exports never duplicate it.
+
+### Patch Changes
+
+- [#994](https://github.com/LTplus-AG/ifc-lite/pull/994) [`35413b9`](https://github.com/LTplus-AG/ifc-lite/commit/35413b9efd0178cff6022f2b1092ac532868d6cd) Thanks [@louistrue](https://github.com/louistrue)! - Fix duplicate geometry rendered at wrong positions for ArchiCAD/AC20-style IFC files (regression from [#957](https://github.com/LTplus-AG/ifc-lite/issues/957)/[#962](https://github.com/LTplus-AG/ifc-lite/issues/962) "type-only geometry").
+
+  The [#957](https://github.com/LTplus-AG/ifc-lite/issues/957) orphan-`IfcTypeProduct` pass rendered a type's `IfcRepresentationMap` whenever no `IfcMappedItem` referenced it. But real-world exporters (e.g. ArchiCAD AC20: `AC20-FZK-Haus`, `C20-Institute-Var-2`) attach a `RepresentationMap` to nearly every door/window/furniture **type** while the **occurrence** carries its own direct body geometry — the type and occurrence are linked only by `IfcRelDefinesByType`, so the map is referenced by no `IfcMappedItem`. Every such type was therefore mis-classified as "orphan" and double-rendered at its `MappingOrigin`, producing a cluster of duplicate boxes at the wrong position (e.g. ~140 spurious meshes in `AC20-FZK-Haus`).
+
+  Type-only geometry is now rendered only when the type has **no occurrence** — i.e. it is not the `RelatingType` of any `IfcRelDefinesByType`. The genuinely-orphan buildingSMART annex-E "tessellated shape with style" case (a type with no occurrence) still renders. Fixed across both mesh pipelines (the native `process_geometry` path and the viewer `buildPrePass*` + `processGeometryBatch` path) plus the render-time gate, with regression tests on both.
+
 ## 2.3.0
 
 ### Minor Changes

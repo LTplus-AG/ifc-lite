@@ -1,5 +1,34 @@
 # @ifc-lite/drawing-2d
 
+## 1.17.0
+
+### Minor Changes
+
+- [#989](https://github.com/LTplus-AG/ifc-lite/pull/989) [`1effb90`](https://github.com/LTplus-AG/ifc-lite/commit/1effb900edd0a70db75f90839a4cc9f8fecb8d5e) Thanks [@louistrue](https://github.com/louistrue)! - Construction projection for 2D floor plans ([#979](https://github.com/LTplus-AG/ifc-lite/issues/979)). Project geometry beyond the
+  section cut as architectural reference lines — thin solid for the visible floor
+  side, dashed for overhead elements (beams, roofs, eaves).
+
+  New public API:
+
+  - `SectionConfig.projectionBelowDepth` / `projectionAboveDepth` — band depths
+    for the visible/overhead split (default to `projectionDepth`).
+  - `GeneratorOptions.outlineProvider` — inject a winding-robust footprint outline
+    (the Rust `meshOutline2d` binding) for non-extruded geometry; falls back to
+    the mesh silhouette when absent.
+  - `projection-bands` exports: `classifyDepthRange`, `classifySegmentBand`,
+    `signedDepth`, `bandVisibility`, `projectPointForPlane`,
+    `getViewDirectionForPlane`, `outlineToProjectionLines`, and the
+    `ProjectionBand` / `ProjectionBandDepths` / `MeshOutline2D` types.
+
+  `Drawing2DGenerator.generate`'s projection stage now sources lines from
+  profile boundaries + mesh silhouettes (replacing the noisy crease-edge path)
+  and classifies them into the below/above bands.
+
+### Patch Changes
+
+- Updated dependencies [[`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f)]:
+  - @ifc-lite/geometry@2.4.0
+
 ## 1.16.2
 
 ### Patch Changes

@@ -47,6 +47,7 @@ import { getEntityBounds } from '@/utils/viewportUtils';
 import { toGlobalIdFromModels } from '../globalId.js';
 import { buildElementMesh, type ElementMeshPayload } from './addElementMeshes.js';
 import type { AddElementType } from './addElementSlice.js';
+import type { TypeViewMode } from '../constants.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
@@ -91,6 +92,23 @@ export const DUPLICATE_DEFAULT_DIRECTION: DuplicateDirection = '+X';
 
 /** Fallback step in metres when the source has no mesh in geometry. */
 const DUPLICATE_FALLBACK_STEP = 1;
+
+/**
+ * New occurrence geometry from an authoring action (add element, duplicate,
+ * split) is a class-0 mesh, which the 3D "Types" view deliberately hides. If
+ * the user is in Types view when they commit such an action, flip back to
+ * Model so the element they just created actually renders — otherwise the
+ * toast says "added" but nothing appears. No-op when already in Model view
+ * (so it never needlessly overwrites the persisted preference). Reads the
+ * live store via the cross-slice `get()`.
+ */
+function revealAddedGeometryInModelView(get: () => unknown): void {
+  const cross = get() as {
+    typeViewMode?: TypeViewMode;
+    setTypeViewMode?: (mode: TypeViewMode) => void;
+  };
+  if (cross.typeViewMode === 'types') cross.setTypeViewMode?.('model');
+}
 
 interface ViewerBox {
   /** Per-axis sizes in viewer scene coordinates. */
@@ -921,6 +939,7 @@ function runInStoreElementBuilder(
         appendGeometryBatch?: (batch: MeshData[]) => void;
       };
       cross.appendGeometryBatch?.([mesh]);
+      revealAddedGeometryInModelView(get);
     }
   }
 
@@ -2104,6 +2123,7 @@ export const createMutationSlice: StateCreator<
         appendGeometryBatch?: (batch: MeshData[]) => void;
       };
       cross.appendGeometryBatch?.([columnMesh]);
+      revealAddedGeometryInModelView(get);
     }
 
     set((s) => {
@@ -2352,6 +2372,7 @@ export const createMutationSlice: StateCreator<
         appendGeometryBatch?: (batch: MeshData[]) => void;
       };
       cross.appendGeometryBatch?.(clonedMeshes);
+      revealAddedGeometryInModelView(get);
     }
 
     return { expressId: newId, globalId: newGlobalId };

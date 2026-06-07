@@ -271,6 +271,9 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../../packages/data
+      '@ifc-lite/diff':
+        specifier: workspace:^
+        version: link:../../packages/diff
       '@ifc-lite/drawing-2d':
         specifier: workspace:^
         version: link:../../packages/drawing-2d

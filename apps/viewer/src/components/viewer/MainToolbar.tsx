@@ -15,6 +15,7 @@ import {
   EyeOff,
   Equal,
   Crosshair,
+  GitCompareArrows,
   Home,
   Maximize2,
   Grid3x3,
@@ -562,6 +563,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const setIdsPanelVisible = useViewerStore((state) => state.setIdsPanelVisible);
   const clashPanelVisible = useViewerStore((state) => state.clashPanelVisible);
   const setClashPanelVisible = useViewerStore((state) => state.setClashPanelVisible);
+  const comparePanelVisible = useViewerStore((state) => state.comparePanelVisible);
+  const setComparePanelVisible = useViewerStore((state) => state.setComparePanelVisible);
   const listPanelVisible = useViewerStore((state) => state.listPanelVisible);
   const setListPanelVisible = useViewerStore((state) => state.setListPanelVisible);
   const setRightPanelCollapsed = useViewerStore((state) => state.setRightPanelCollapsed);
@@ -761,7 +764,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'addElement' | 'extensions') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
@@ -779,6 +782,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;
     const nextLensVisible = panel === 'lens' ? !lensPanelVisible : false;
     const nextClashVisible = panel === 'clash' ? !clashPanelVisible : false;
+    const nextCompareVisible = panel === 'compare' ? !comparePanelVisible : false;
     const nextExtensionsVisible = panel === 'extensions' ? !extensionsPanelVisible : false;
     const isAddElementActive = activeTool === 'addElement';
     const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
@@ -787,6 +791,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setIdsPanelVisible(nextIdsVisible);
     setLensPanelVisible(nextLensVisible);
     setClashPanelVisible(nextClashVisible);
+    setComparePanelVisible(nextCompareVisible);
     setExtensionsPanelVisible(nextExtensionsVisible);
 
     if (panel === 'addElement') {
@@ -795,7 +800,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       setActiveTool('select');
     }
 
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextExtensionsVisible || nextAddElementActive) {
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextAddElementActive) {
       setRightPanelCollapsed(false);
     }
   }, [
@@ -803,6 +808,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     activeTool,
     bcfPanelVisible,
     clashPanelVisible,
+    comparePanelVisible,
     extensionsPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
@@ -810,6 +816,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setActiveTool,
     setBcfPanelVisible,
     setClashPanelVisible,
+    setComparePanelVisible,
     setExtensionsPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
@@ -877,6 +884,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
     if (clashPanelVisible) panels.add('clash');
+    if (comparePanelVisible) panels.add('compare');
     if (extensionsPanelVisible) panels.add('extensions');
     if (activeTool === 'addElement') panels.add('addElement');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
@@ -886,6 +894,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     analysisExtensionState.activeId,
     bcfPanelVisible,
     clashPanelVisible,
+    comparePanelVisible,
     extensionsPanelVisible,
     ganttPanelVisible,
     idsPanelVisible,
@@ -904,6 +913,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
     if (activeWorkspacePanels.has('clash')) return 'Clash Detection';
+    if (activeWorkspacePanels.has('compare')) return 'Compare Models';
     if (activeWorkspacePanels.has('extensions')) return 'Extensions';
     if (activeWorkspacePanels.has('addElement')) return 'Add Element';
     return activeAnalysisExtension?.label ?? 'Analysis';
@@ -1264,6 +1274,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <Crosshair className="h-4 w-4 mr-2" />
             Clash Detection
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('compare')}
+            onCheckedChange={() => handleToggleRightPanel('compare')}
+          >
+            <GitCompareArrows className="h-4 w-4 mr-2" />
+            Compare Models
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">

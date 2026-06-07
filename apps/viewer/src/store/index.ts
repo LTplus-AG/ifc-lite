@@ -34,6 +34,7 @@ import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
 import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
+import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -85,6 +86,7 @@ export type { PinboardSlice } from './slices/pinboardSlice.js';
 
 // Re-export Lens types
 export type { LensSlice, Lens, LensRule, LensCriteria } from './slices/lensSlice.js';
+export type { CompareSlice, CompareResult } from './slices/compareSlice.js';
 
 // Re-export Script types
 export type { ScriptSlice } from './slices/scriptSlice.js';
@@ -131,6 +133,7 @@ export type ViewerState = LoadingSlice &
   PinboardSlice &
   LensSlice &
   ClashSlice &
+  CompareSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
@@ -155,7 +158,7 @@ export type ViewerState = LoadingSlice &
      * the right panel. Routed through by the toolbar, command palette, and the
      * BCF overlay so every entry point behaves identically.
      */
-    openWorkspacePanel: (panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'extensions') => void;
+    openWorkspacePanel: (panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions') => void;
   };
 
 /**
@@ -182,6 +185,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createPinboardSlice(...args),
   ...createLensSlice(...args),
   ...createClashSlice(...args),
+  ...createCompareSlice(...args),
   ...createScriptSlice(...args),
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),
@@ -236,6 +240,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       error: null,
       pendingColorUpdates: null,
       pendingMeshColorUpdates: null,
+
+      // Compare (#924): drop any stale diff result — it references models by
+      // id and the loaded set is changing. Keep panel visibility + A/B/scope
+      // choices (UI prefs); the user re-runs against the new set.
+      compareResult: null,
+      compareSelectedKey: null,
+      compareRunning: false,
+      compareError: null,
 
       // Hover/Context
       hoverState: { entityId: null, screenX: 0, screenY: 0 },
@@ -462,6 +474,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       idsPanelVisible: panel === 'ids',
       lensPanelVisible: panel === 'lens',
       clashPanelVisible: panel === 'clash',
+      comparePanelVisible: panel === 'compare',
       extensionsPanelVisible: panel === 'extensions',
       rightPanelCollapsed: false,
     });

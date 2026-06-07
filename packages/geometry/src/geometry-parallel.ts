@@ -58,6 +58,14 @@ export interface ProcessParallelOptions {
    */
   mergeLayers?: boolean;
   /**
+   * Issue #924 — per-entity geometry-hash tolerance in metres. When a
+   * positive value is given, each geometry worker's IfcAPI receives
+   * `setComputeGeometryHashes(tol)` before the first stream-chunk, so the
+   * RTC-invariant `geometryHash` lands on every emitted mesh for the
+   * model-diff / compare feature. `undefined`/`null` ⇒ off (zero overhead).
+   */
+  geometryHashTolerance?: number | null;
+  /**
    * Explicit URL for the wasm-bindgen `.wasm` binary. When provided,
    * forwarded to the geometry workers' init messages so they call
    * `init(wasmUrl)` instead of relying on wasm-bindgen's default
@@ -183,7 +191,18 @@ export async function* processParallel(
           firstBatchByWorker[workerIndex] = elapsed();
           console.log(`[stream] worker[${workerIndex}] first batch @ ${elapsed()}ms (${msg.meshes?.length ?? 0} meshes)`);
         }
-        const meshes: MeshData[] = msg.meshes.map((m: MeshData) => ({
+        const meshes: MeshData[] = msg.meshes.map((m: {
+          expressId: number;
+          ifcType?: string;
+          positions: Float32Array;
+          normals: Float32Array;
+          indices: Uint32Array;
+          color: [number, number, number, number];
+          // #961: optional per-vertex UVs + decoded surface texture.
+          uvs?: MeshData['uvs'];
+          texture?: MeshData['texture'];
+          geometryHash?: bigint;
+        }) => ({
           expressId: m.expressId,
           ifcType: m.ifcType,
           positions: m.positions instanceof Float32Array ? m.positions : new Float32Array(m.positions),
@@ -194,6 +213,9 @@ export async function* processParallel(
           // renderer (transferables; already typed arrays from the worker).
           ...(m.uvs ? { uvs: m.uvs } : {}),
           ...(m.texture ? { texture: m.texture } : {}),
+          // Carry the model-diff fingerprint through the worker boundary
+          // (issue #924); undefined when hashing is off.
+          ...(m.geometryHash !== undefined ? { geometryHash: m.geometryHash } : {}),
         }));
         if (meshes.length > 0) {
           // Update totalMeshes per batch so consumers see a live
@@ -280,6 +302,12 @@ export async function* processParallel(
     worker.postMessage({
       type: 'set-merge-layers',
       enabled: options?.mergeLayers === true,
+    });
+    // Issue #924: forward the geometry-hash tolerance the same way — always
+    // sent so the controller path stays uniform; null is a cheap no-op.
+    worker.postMessage({
+      type: 'set-compute-geometry-hashes',
+      tolerance: options?.geometryHashTolerance ?? null,
     });
   }
 

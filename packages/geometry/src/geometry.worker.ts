@@ -119,6 +119,18 @@ export interface GeometryWorkerSetMergeLayersMessage {
   enabled: boolean;
 }
 
+/**
+ * Forward the model-diff "compute geometry hashes" toggle (issue #924) down
+ * to this worker's IfcAPI. Send AFTER `init` and BEFORE the first
+ * `stream-start`, mirroring `set-merge-layers`. A positive `tolerance`
+ * (metres) enables fingerprinting; `null` disables. Default Rust state is
+ * off, so never sending the message keeps zero overhead.
+ */
+export interface GeometryWorkerSetComputeGeometryHashesMessage {
+  type: 'set-compute-geometry-hashes';
+  tolerance: number | null;
+}
+
 export type GeometryWorkerRequest =
   | GeometryWorkerInitMessage
   | GeometryWorkerProcessMessage
@@ -128,6 +140,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetStylesMessage
   | GeometryWorkerSetEntityIndexMessage
   | GeometryWorkerSetMergeLayersMessage
+  | GeometryWorkerSetComputeGeometryHashesMessage
   | GeometryWorkerPrePassMessage;
 
 export interface GeometryWorkerBatchMessage {
@@ -142,6 +155,10 @@ export interface GeometryWorkerBatchMessage {
     // #961: optional surface texture + per-vertex UVs (transferables).
     uvs?: MeshData['uvs'];
     texture?: MeshData['texture'];
+    /** RTC-invariant per-entity geometry fingerprint, present only when
+     *  geometry hashing was enabled via `set-compute-geometry-hashes`.
+     *  A `bigint` survives the structured-clone `postMessage`. */
+    geometryHash?: bigint;
   }[];
 }
 
@@ -195,6 +212,8 @@ async function ensureInit(): Promise<IfcAPI> {
   api = new IfcAPI();
   mergeLayersApplied = false;
   applyMergeLayersToApi();
+  geometryHashApplied = false;
+  applyComputeGeometryHashesToApi();
   return api;
 }
 
@@ -209,7 +228,10 @@ let mergeLayersFlag: boolean = false;
 let mergeLayersApplied: boolean = false;
 
 /** Narrow typed wrapper for the optional `setMergeLayers` extension. */
-type IfcAPIWithMerge = IfcAPI & { setMergeLayers?: (enabled: boolean) => void };
+type IfcAPIWithMerge = IfcAPI & {
+  setMergeLayers?: (enabled: boolean) => void;
+  setComputeGeometryHashes?: (tolerance?: number | null) => void;
+};
 
 /**
  * Push the cached `mergeLayersFlag` onto the IfcAPI. Idempotent — only
@@ -223,6 +245,24 @@ function applyMergeLayersToApi(): void {
     merging.setMergeLayers(mergeLayersFlag);
   }
   mergeLayersApplied = true;
+}
+
+/**
+ * Cached geometry-hash tolerance for this worker (issue #924), mirroring
+ * the merge-layers replay contract: the host may post the toggle before
+ * `init`, so we remember it and re-apply once the IfcAPI exists.
+ */
+let geometryHashTolerance: number | null = null;
+let geometryHashApplied: boolean = false;
+
+/** Push the cached geometry-hash tolerance onto the IfcAPI (once per API). */
+function applyComputeGeometryHashesToApi(): void {
+  if (!api || geometryHashApplied) return;
+  const hashing = api as IfcAPIWithMerge;
+  if (typeof hashing.setComputeGeometryHashes === 'function') {
+    hashing.setComputeGeometryHashes(geometryHashTolerance);
+  }
+  geometryHashApplied = true;
 }
 
 /**
@@ -334,6 +374,11 @@ function collectMeshes(
   collection: ReturnType<IfcAPI['processGeometryBatch']>,
 ): void {
   try {
+    // Per-entity geometry fingerprints (issue #924) — empty unless hashing was
+    // enabled via `set-compute-geometry-hashes`. Read inside the try so
+    // `collection.free()` in finally still runs if extraction throws.
+    const geometryHashes = extractGeometryHashesFromCollection(collection);
+
     for (let i = 0; i < collection.length; i++) {
       const mesh = collection.get(i);
       if (!mesh) continue;
@@ -344,6 +389,7 @@ function collectMeshes(
         // Read the WASM copy-to-JS color getter once; indexing it directly
         // would copy a fresh Float32Array out of WASM per access.
         const color = mesh.color;
+        const geometryHash = geometryHashes.get(mesh.expressId);
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
@@ -368,6 +414,9 @@ function collectMeshes(
           session.pendingTransfers.push(uvs.buffer, rgba.buffer);
           session.cumulativeMeshBytes += uvs.byteLength + rgba.byteLength;
         }
+        // #924: attach the per-entity geometry fingerprint (empty Map → no-op
+        // unless geometry hashing was enabled).
+        if (geometryHash !== undefined) meshData.geometryHash = geometryHash;
         session.pendingMeshes.push(meshData);
       } finally {
         mesh.free();
@@ -376,6 +425,31 @@ function collectMeshes(
   } finally {
     collection.free();
   }
+}
+
+/**
+ * Read the per-entity geometry hashes off a MeshCollection's parallel
+ * `geometryHashIds`/`geometryHashValues` arrays into a `Map`. Empty when
+ * hashing is off or the WASM build predates the getters. Must run before
+ * `collection.free()`.
+ */
+function extractGeometryHashesFromCollection(
+  collection: ReturnType<IfcAPI['processGeometryBatch']>,
+): Map<number, bigint> {
+  const map = new Map<number, bigint>();
+  const c = collection as unknown as {
+    geometryHashCount?: number;
+    geometryHashIds?: Uint32Array;
+    geometryHashValues?: BigUint64Array;
+  };
+  const count = c.geometryHashCount ?? 0;
+  if (count === 0) return map;
+  const ids = c.geometryHashIds;
+  const values = c.geometryHashValues;
+  if (!ids || !values) return map;
+  const n = Math.min(ids.length, values.length);
+  for (let i = 0; i < n; i++) map.set(ids[i], values[i]);
+  return map;
 }
 
 /**
@@ -536,6 +610,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         api = new IfcAPI();
         mergeLayersApplied = false;
         applyMergeLayersToApi();
+        geometryHashApplied = false;
+        applyComputeGeometryHashesToApi();
       } else {
         await ensureInit();
       }
@@ -617,6 +693,15 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       mergeLayersFlag = e.data.enabled === true;
       mergeLayersApplied = false;
       applyMergeLayersToApi();
+      return;
+    }
+
+    if (e.data.type === 'set-compute-geometry-hashes') {
+      // Same cache-and-replay contract as set-merge-layers (issue #924).
+      const tol = e.data.tolerance;
+      geometryHashTolerance = tol != null && tol > 0 ? tol : null;
+      geometryHashApplied = false;
+      applyComputeGeometryHashesToApi();
       return;
     }
 

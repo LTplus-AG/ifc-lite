@@ -1631,6 +1631,11 @@ export function useIfcLoader() {
         mergeLayers: mergeLayersAtLoad,
       });
       await geometryProcessor.init();
+      // Issue #924: enable RTC-invariant per-entity geometry fingerprints so
+      // the model-compare feature can detect geometry changes. The hash rides
+      // on each MeshData.geometryHash (and through the worker pool); cost is
+      // the O(verts) quantized hash, negligible next to tessellation.
+      geometryProcessor.enableGeometryHashes();
 
       // Allocate (or reuse) a SharedArrayBuffer so the parser worker and
       // the geometry workers read the same memory zero-copy. When

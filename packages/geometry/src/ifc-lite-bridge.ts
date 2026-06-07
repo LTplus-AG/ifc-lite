@@ -40,7 +40,10 @@ let fatalWasmRuntimeError: Error | null = null;
  * becomes redundant, but until then it lets us call the method without
  * relying on `as any` or `@ts-ignore`.
  */
-type IfcAPIWithMerge = IfcAPI & { setMergeLayers?: (enabled: boolean) => void };
+type IfcAPIWithMerge = IfcAPI & {
+  setMergeLayers?: (enabled: boolean) => void;
+  setComputeGeometryHashes?: (tolerance?: number | null) => void;
+};
 
 export class IfcLiteBridge {
   private ifcApi: IfcAPI | null = null;
@@ -54,6 +57,15 @@ export class IfcLiteBridge {
    * getter for telemetry / UI badges.
    */
   private mergeLayers: boolean = false;
+  /**
+   * Per-entity geometry-hash tolerance in metres, or `null` when
+   * fingerprinting is off (the default — zero overhead). When set, the
+   * WASM mesh pass emits an RTC-invariant `geometryHashValues` array used
+   * by the model-diff / compare feature (issue #924). Cached here and
+   * forwarded to the IfcAPI on `init` + every `setComputeGeometryHashes`
+   * call, mirroring the `mergeLayers` replay pattern.
+   */
+  private geometryHashTolerance: number | null = null;
 
   private isWasmRuntimeError(error: unknown): boolean {
     return error instanceof WebAssembly.RuntimeError;
@@ -90,6 +102,8 @@ export class IfcLiteBridge {
       // `setMergeLayers(true)` BEFORE `init()` and still get the
       // expected behaviour on the freshly-constructed IfcAPI.
       this.applyMergeLayers();
+      // Same replay contract for the geometry-hash toggle.
+      this.applyComputeGeometryHashes();
       this.initialized = true;
       log.info('WASM geometry engine initialized');
     } catch (error) {
@@ -306,5 +320,46 @@ export class IfcLiteBridge {
     }
     api.setMergeLayers(this.mergeLayers);
     log.debug(`mergeLayers=${this.mergeLayers}`, { operation: 'setMergeLayers' });
+  }
+
+  /**
+   * Enable / disable per-entity geometry fingerprinting (issue #924).
+   * Pass a positive tolerance in metres to enable; `null` disables.
+   * Safe to call before `init()` — the value is cached and re-applied on
+   * the freshly-constructed IfcAPI.
+   */
+  setComputeGeometryHashes(tolerance: number | null): void {
+    this.geometryHashTolerance = tolerance != null && tolerance > 0 ? tolerance : null;
+    if (!this.ifcApi) return; // init() will apply on the new IfcAPI
+    this.applyComputeGeometryHashes();
+  }
+
+  /** Read back the active geometry-hash tolerance (null = disabled). */
+  getComputeGeometryHashes(): number | null {
+    return this.geometryHashTolerance;
+  }
+
+  /**
+   * Forward the cached geometry-hash tolerance to the underlying IfcAPI.
+   * Guards against an older WASM build that predates the binding (the
+   * artifact is rebuilt in CI) so the flag degrades to a no-op rather
+   * than throwing — same defensive shape as `applyMergeLayers`.
+   */
+  private applyComputeGeometryHashes(): void {
+    if (!this.ifcApi) return;
+    const api = this.ifcApi as IfcAPIWithMerge;
+    if (typeof api.setComputeGeometryHashes !== 'function') {
+      if (this.geometryHashTolerance != null) {
+        log.warn('setComputeGeometryHashes not present on WASM API — geometry diff hashes unavailable until WASM is rebuilt', {
+          operation: 'setComputeGeometryHashes',
+          data: { requested: this.geometryHashTolerance },
+        });
+      }
+      return;
+    }
+    api.setComputeGeometryHashes(this.geometryHashTolerance);
+    log.debug(`computeGeometryHashes=${this.geometryHashTolerance ?? 'off'}`, {
+      operation: 'setComputeGeometryHashes',
+    });
   }
 }

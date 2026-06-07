@@ -736,6 +736,7 @@ interface MaterialPsetEntry { name: string; properties: MaterialPsetGroup['psets
 
 const materialPropertyIndexCache = new WeakMap<IfcDataStore, Map<number, MaterialPsetEntry[]>>();
 
+/** Resolve an entity ref from the primary index, falling back to deferred atoms. */
 function refFromStore(store: IfcDataStore, id: number) {
     return store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id);
 }

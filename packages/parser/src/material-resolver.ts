@@ -360,10 +360,12 @@ export interface MaterialUsage {
     entries: Array<{ entityId: number; weight: number }>;
 }
 
+/** Resolve an entity ref from the primary index, falling back to deferred atoms. */
 function getRef(store: IfcDataStore, id: number) {
     return store.entityIndex.byId.get(id) ?? store.deferredEntityIndex?.get(id);
 }
 
+/** Read an IfcMaterial's Name (attr 0) and Category (attr 2). */
 function readMaterialNameCategory(
     store: IfcDataStore,
     extractor: EntityExtractor,
@@ -432,6 +434,7 @@ export function collectMaterialLeaves(store: IfcDataStore, defId: number): Mater
     return result;
 }
 
+/** Accumulate a leaf into the map, summing weights when the material repeats. */
 function mergeLeaves(into: Map<number, MaterialLeaf>, leaf: MaterialLeaf): void {
     const existing = into.get(leaf.id);
     if (existing) {
@@ -443,6 +446,8 @@ function mergeLeaves(into: Map<number, MaterialLeaf>, leaf: MaterialLeaf): void 
     }
 }
 
+/** Recursively resolve a material definition into weighted base-material leaves
+ *  (cycle-guarded via `visited`). See {@link collectMaterialLeaves}. */
 function resolveLeaves(
     store: IfcDataStore,
     extractor: EntityExtractor,

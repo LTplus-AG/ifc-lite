@@ -53,6 +53,7 @@ function pickQuantity(
   return undefined;
 }
 
+/** Format an aggregated quantity with magnitude-appropriate precision. */
 function formatNumber(value: number): string {
   if (value === 0) return '0';
   if (Math.abs(value) >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -109,6 +110,12 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
 
     for (const store of allStores) {
       const usageIndex = buildMaterialUsageIndex(store);
+      // Forward map of entity -> quantity-set ids (when on-demand parsing is
+      // active). Used to skip the per-element extractor allocation for elements
+      // that carry no quantities — the common case in large models, so a
+      // material used by thousands of elements only pays the parse cost for the
+      // subset that actually has Qto data.
+      const qMap = store.onDemandQuantityMap;
       for (const usage of usageIndex.values()) {
         if (usage.name !== targetName) continue;
         for (const { entityId, weight } of usage.entries) {
@@ -117,6 +124,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
           const ifcClass = store.entityIndex.byId.get(entityId)?.type || usage.ifcClass;
           classCounts.set(ifcClass, (classCounts.get(ifcClass) ?? 0) + 1);
 
+          if (qMap && !qMap.get(entityId)?.length) continue; // no quantities — skip extraction
           const qsets = extractQuantitiesOnDemand(store, entityId);
           if (qsets.length === 0) continue;
           const volByName = new Map<string, number>();
@@ -264,6 +272,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
   );
 }
 
+/** A single label/value row in the material totals card. */
 function TotalRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between px-2.5 py-2 text-xs">

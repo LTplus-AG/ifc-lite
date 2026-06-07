@@ -28,10 +28,10 @@ import { RelationshipType } from '@ifc-lite/data';
 import {
   extractAllEntityAttributes,
   extractPropertiesOnDemand,
-  extractQuantitiesOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
+import { isGeometricDataName } from './geometricData.js';
 
 /**
  * Adapter handle threaded through the diff onto each {@link CompareDiffEntry}.
@@ -120,21 +120,21 @@ function buildDataInput(
     (attribute) => attribute.name === 'PredefinedType',
   )?.value;
 
-  const propertySets = extractPropertiesOnDemand(store, localId).map((set) => ({
-    name: set.name,
-    properties: set.properties.map((property) => ({
-      name: property.name,
-      value: property.value,
-    })),
-  }));
-
-  const quantitySets = extractQuantitiesOnDemand(store, localId).map((set) => ({
-    name: set.name,
-    quantities: set.quantities.map((quantity) => ({
-      name: quantity.name,
-      value: quantity.value,
-    })),
-  }));
+  // Data vs geometry: placement/coordinate data (elevation, level offsets, …)
+  // is owned by the geometry hash, so strip it from the data fingerprint — a
+  // pure move must read as a geometry change only, never "data · geometry"
+  // (see geometricData.ts). Quantities (Volume/Area/Length/…) are
+  // geometry-derived measurements and are excluded wholesale for the same
+  // reason: a reshape already shows up as a geometry change.
+  const propertySets = extractPropertiesOnDemand(store, localId)
+    .filter((set) => !isGeometricDataName(set.name))
+    .map((set) => ({
+      name: set.name,
+      properties: set.properties
+        .filter((property) => !isGeometricDataName(property.name))
+        .map((property) => ({ name: property.name, value: property.value })),
+    }))
+    .filter((set) => set.properties.length > 0);
 
   const typeAssignments = store.relationships
     .getRelated(localId, RelationshipType.DefinesByType, 'inverse')
@@ -151,7 +151,6 @@ function buildDataInput(
     objectType: store.entities.getObjectType(localId) || undefined,
     predefinedType: predefinedType != null ? String(predefinedType) : undefined,
     propertySets,
-    quantitySets,
     typeAssignments,
   };
 }

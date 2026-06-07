@@ -62,10 +62,10 @@ impl MeshOutlineJs {
 /// has no triangles or projects to nothing.
 ///
 /// ```javascript
-/// const outline = meshOutline2d(positions, indices, 1 /* y */, false);
+/// const outline = meshOutline2d(positions, indices, 1, false); // axis 1 = y
 /// if (outline) {
 ///   for (let i = 0; i < outline.contourCount; i++) {
-///     const ring = outline.contour(i); // Float32Array [u0,v0,u1,v1,…]
+///     const ring = outline.contour(i); // Float32Array of [u0, v0, u1, v1, ...]
 ///   }
 ///   outline.free();
 /// }

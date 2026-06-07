@@ -194,6 +194,10 @@ export async function* processParallel(
           // renderer (transferables; already typed arrays from the worker).
           ...(m.uvs ? { uvs: m.uvs } : {}),
           ...(m.texture ? { texture: m.texture } : {}),
+          // #957 follow-up: carry the Model/Types geometry class through the
+          // worker→main re-map (else the viewer's view-mode filter sees only
+          // class 0 and the Types view renders nothing).
+          ...(m.geometryClass !== undefined ? { geometryClass: m.geometryClass } : {}),
         }));
         if (meshes.length > 0) {
           // Update totalMeshes per batch so consumers see a live

@@ -112,27 +112,39 @@ After this, `ifc-lite-dev` skips ~all commits (only rebuilds when
   production, or ignore non-`main` refs). A landing page rarely needs PR previews.
 - `ifc-lite` and `ifc-lite-viewer-embed`: keep **Standard 4-core** (correct).
 
-### 3c. Biggest remaining viewer-build lever (needs a decision) 🔬
-Every viewer/embed build re-provisions the WASM toolchain from scratch —
+### 3c. Prebuilt-WASM fast path — IMPLEMENTED (option A) ✅
+Every viewer/embed build was re-provisioning the WASM toolchain from scratch —
 re-cloning emsdk and **re-downloading ~270 MB of wasm-binaries** + the Rust
 toolchain — *despite* "Restored build cache from previous deployment". The
-`/vercel/cache/emsdk` dir is not surviving between builds (likely a Vercel
-build-cache size/scope limit). That's ~40–60 s of wasted build on every viewer
-build, on two projects, on every relevant commit.
+`/vercel/cache/emsdk` dir does not reliably survive between builds. That was
+~40–60 s of wasted bootstrap on every viewer/embed build, on every commit.
 
 `rust/wasm-bindings/Cargo.toml` enables `manifold-csg-wasm-uu`, so emsdk **is**
-genuinely required to compile from source — it is not dead weight. Two ways out,
-pick one (out of scope for this PR — flag for follow-up):
+genuinely required to compile from source — it is not dead weight.
 
-- **(A) Use the published WASM instead of compiling.** `scripts/fetch-prebuilt-wasm.mjs`
-  already downloads `@ifc-lite/wasm@<version>` from npm. Wiring the Vercel build
-  to fetch prebuilt when `rust/**` is unchanged turns multi-minute builds into
-  ~30 s for the ~2/3 of commits that don't touch Rust. Tradeoff: a *preview* of a
-  Rust-changing PR would ship the last-published WASM (production after release is
-  always correct). Acceptable for most previews; confirm before adopting.
-- **(B) Make `/vercel/cache/emsdk` actually persist** (pin emsdk version, shrink
-  the cached prefix to just `upstream/bin` + libc++ headers, verify it survives).
-  Keeps from-source correctness on every preview; needs cache-size investigation.
+**What was implemented:** `scripts/vercel-install.sh` now has an early fast path.
+It computes `@ifc-lite/wasm@<version>` from `packages/wasm/package.json`, makes
+the tag reachable (best-effort `git fetch`), and only when `git diff` proves
+`rust/** + Cargo.{toml,lock} + rust-toolchain.toml + scripts/build-wasm.sh` are
+**byte-identical to that release tag**, it runs `scripts/fetch-prebuilt-wasm.mjs`
+to drop the published bundle into `packages/wasm/pkg/` and skips the entire
+Rust/emsdk bootstrap. The from-source build phase then no-ops via the existing
+soft-skip in `build-wasm.sh` (no wasm-pack on PATH + artifact present → success).
+
+**Why it's safe:** any uncertainty — version unreadable, tag not reachable in
+Vercel's shallow clone, npm 404, fetch failure, or *any* Rust change since the
+release — falls through to the unchanged from-source build. It can never ship a
+stale WASM bundle. On Rust-changing PR previews it compiles from source exactly
+as before; on the ~2/3 of deploys that don't touch Rust it skips minutes of work.
+
+**Needs one real-deploy check:** confirm Vercel's shallow clone lets the
+`git fetch` of the release tag succeed (logs will print `🅰 … using prebuilt`
+vs `🛠 … building from source`). If tags are unreachable, set the project's
+Git "fetch tags"/depth or switch to the alternative below.
+
+**Alternative (B), not used:** make `/vercel/cache/emsdk` persist (pin emsdk,
+shrink the cached prefix, verify survival). Keeps from-source on every preview;
+needs cache-size investigation. Kept here in case (A)'s tag fetch proves flaky.
 
 ---
 

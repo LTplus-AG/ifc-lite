@@ -18,6 +18,49 @@
 # ~30-60 s; warm cache adds essentially nothing.
 set -euo pipefail
 
+# ── Prebuilt-WASM fast path (see scripts/README-vercel-cost.md §3c) ───────────
+#
+# The from-source bootstrap below re-clones emsdk and re-downloads ~270 MB of
+# wasm-binaries + the Rust toolchain on every deploy (the /vercel/cache copy
+# doesn't reliably persist). On the ~2/3 of deploys that don't touch Rust we
+# can skip ALL of that and use the already-published @ifc-lite/wasm from npm.
+#
+# CORRECTNESS GUARD — we only take this path when git proves the WASM source
+# (rust/** + Cargo manifests + toolchain pin + build script) is byte-identical
+# to the `@ifc-lite/wasm@<version>` release tag that produced the published
+# binary. Any uncertainty — version unreadable, tag unreachable in Vercel's
+# shallow clone, npm 404, fetch failure — falls through to the full from-source
+# build below (today's behaviour). This path can never ship a stale WASM bundle.
+WASM_VERSION="$(node -p "require('./packages/wasm/package.json').version" 2>/dev/null || true)"
+WASM_TAG="@ifc-lite/wasm@${WASM_VERSION}"
+# Conservative superset: any Rust workspace change invalidates the fast path,
+# even one that doesn't reach the wasm-bindings crate. Correctness over savings.
+WASM_SRC_PATHS=(rust Cargo.lock Cargo.toml rust-toolchain.toml scripts/build-wasm.sh)
+
+if [ -n "${WASM_VERSION:-}" ] && command -v git >/dev/null 2>&1; then
+  # Vercel clones shallow and usually without tags — best-effort fetch the one
+  # release tag we need. Failure is fine; the verify below then falls through.
+  if ! git rev-parse -q --verify "refs/tags/${WASM_TAG}^{commit}" >/dev/null 2>&1; then
+    git fetch --no-tags --depth=1 origin \
+      "refs/tags/${WASM_TAG}:refs/tags/${WASM_TAG}" >/dev/null 2>&1 || true
+  fi
+  if git rev-parse -q --verify "refs/tags/${WASM_TAG}^{commit}" >/dev/null 2>&1 \
+     && git diff --quiet "refs/tags/${WASM_TAG}" HEAD -- "${WASM_SRC_PATHS[@]}"; then
+    echo "🅰  WASM source identical to ${WASM_TAG} — using prebuilt npm bundle,"
+    echo "   skipping Rust toolchain + emsdk bootstrap + from-source compile."
+    if node scripts/fetch-prebuilt-wasm.mjs; then
+      echo "📦 Running pnpm install --frozen-lockfile..."
+      pnpm install --frozen-lockfile
+      exit 0
+    fi
+    echo "⚠️  Prebuilt WASM fetch failed — falling back to from-source build."
+  else
+    echo "🛠  WASM source differs from ${WASM_TAG} (or tag unreachable) —"
+    echo "   building WASM from source."
+  fi
+fi
+# ── From-source build (Rust changed, or no matching/reachable release tag) ────
+
 if ! command -v rustup >/dev/null 2>&1; then
   echo "📦 Installing rustup (minimal profile, no default toolchain)..."
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \

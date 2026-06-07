@@ -35,6 +35,7 @@ import {
   classifyDepthRange,
   bandVisibility,
   projectPointForPlane,
+  signedDepth,
 } from './projection-bands.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -189,7 +190,7 @@ function getProfileDepthRange(
   let max = Number.NEGATIVE_INFINITY;
 
   const consider = (point: Vec3) => {
-    const d = signedDepthLocal(point, plane);
+    const d = signedDepth(point, plane);
     if (d < min) min = d;
     if (d > max) max = d;
   };
@@ -219,8 +220,8 @@ function getProfileDepthRange(
       y: matTranslation(profile.transform, 'y'),
       z: matTranslation(profile.transform, 'z'),
     };
-    const base = signedDepthLocal(t, plane);
-    const top = signedDepthLocal(
+    const base = signedDepth(t, plane);
+    const top = signedDepth(
       { x: t.x + extrusion.x, y: t.y + extrusion.y, z: t.z + extrusion.z },
       plane,
     );
@@ -230,20 +231,6 @@ function getProfileDepthRange(
   return { min, max };
 }
 
-/**
- * Flip-adjusted signed depth (local copy mirroring `signedDepth` in
- * projection-bands to keep this module's hot loop allocation-free).
- */
-function signedDepthLocal(point: Vec3, plane: SectionPlaneConfig): number {
-  if (plane.customPlane) {
-    const n = plane.customPlane.normal;
-    const raw = point.x * n.x + point.y * n.y + point.z * n.z - plane.customPlane.distance;
-    return plane.flipped ? -raw : raw;
-  }
-  const coord = plane.axis === 'x' ? point.x : plane.axis === 'y' ? point.y : point.z;
-  const raw = coord - plane.position;
-  return plane.flipped ? -raw : raw;
-}
 
 function axisIndex(axis: 'x' | 'y' | 'z'): 0 | 1 | 2 {
   return axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
@@ -255,5 +242,5 @@ function axisIndex(axis: 'x' | 'y' | 'z'): 0 | 1 | 2 {
  * in HiddenLineClassifier.
  */
 function depthAlong(w0: Vec3, w1: Vec3, plane: SectionPlaneConfig): number {
-  return (signedDepthLocal(w0, plane) + signedDepthLocal(w1, plane)) / 2;
+  return (signedDepth(w0, plane) + signedDepth(w1, plane)) / 2;
 }

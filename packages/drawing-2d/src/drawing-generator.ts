@@ -284,12 +284,22 @@ export class Drawing2DGenerator {
       // Compute bounds for depth buffer
       const bounds = this.computeBounds(allLines);
 
+      // The depth buffer must cover everything projection can emit — including
+      // the (possibly wider) construction-projection bands — or in-band lines
+      // beyond projectionDepth would be classified against an incomplete buffer
+      // and wrongly stay visible because their occluders were never rasterized.
+      const occluderDepth = Math.max(
+        config.projectionDepth,
+        config.projectionBelowDepth ?? config.projectionDepth,
+        config.projectionAboveDepth ?? config.projectionDepth,
+      );
+
       // Build depth buffer and classify lines
       this.hiddenLineClassifier.buildDepthBuffer(
         meshes,
         config.plane.axis,
         config.plane.position,
-        config.projectionDepth,
+        occluderDepth,
         config.plane.flipped,
         bounds
       );

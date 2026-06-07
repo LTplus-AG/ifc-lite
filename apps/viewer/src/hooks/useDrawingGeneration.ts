@@ -376,13 +376,21 @@ export function useDrawingGeneration({
       }
     }
 
+    // Construction projection is plan-only (issue #979): the cut must be the
+    // cardinal 'down' axis and not a face-picked custom plane. The UI disables
+    // the toggle off-plan, but the persisted flag can stay true when the user
+    // switches axis — so gate generation here too, otherwise front/side/custom
+    // sections keep emitting projection the user can't turn off.
+    const projectionSupported = sectionPlane.axis === 'down' && !sectionPlane.custom;
+    const projectionOn = projectionSupported && displayOptions.showConstructionProjection;
+
     // ── Construction projection profiles (issue #979) ────────────────────────
     // Extract extruded-area-solid profiles for the clean projection path. Only
-    // when the toggle is on; cached per model since they don't move with the
+    // when projection is on; cached per model since they don't move with the
     // section. Single-model (modelIndex 0) for now, mirroring the symbolic
     // path's federation limitation.
     let profiles: ProfileEntry[] = [];
-    if (displayOptions.showConstructionProjection && ifcDataStore?.source) {
+    if (projectionOn && ifcDataStore?.source) {
       const pcache = profileCacheRef.current;
       if (pcache && pcache.sourceId === modelCacheKey) {
         profiles = pcache.profiles;
@@ -401,18 +409,36 @@ export function useDrawingGeneration({
             const collection = processor.extractProfiles(ifcDataStore.source, 0);
             if (collection) {
               try {
+                // Profiles come back in UNSHIFTED WebGL world space, but the
+                // meshes and the section position live in the render frame
+                // (issue #945 RTC / large-coordinate shift). Subtract the same
+                // shift so projection lines land on the cut geometry for
+                // georeferenced models — a no-op for small-coordinate models
+                // (AC20). The WASM mesh path subtracts the RTC offset in IFC
+                // Z-up then converts to Y-up via (x,y,z)→(x,z,−y), so the Y-up
+                // shift is (rtc.x, rtc.z, −rtc.y); the TS path instead
+                // subtracts `originShift`, already in Y-up.
+                const ci = geometryResult.coordinateInfo;
+                const rtc = ci.wasmRtcOffset;
+                const shift = rtc
+                  ? { x: rtc.x, y: rtc.z, z: -rtc.y }
+                  : ci.originShift;
                 const len = collection.length;
                 for (let i = 0; i < len; i++) {
                   const entry = collection.get(i);
                   if (!entry) continue;
                   try {
+                    const transform = entry.transform.slice();
+                    transform[12] -= shift.x;
+                    transform[13] -= shift.y;
+                    transform[14] -= shift.z;
                     profiles.push({
                       expressId: entry.expressId,
                       ifcType: entry.ifcType,
                       outerPoints: entry.outerPoints.slice(),
                       holeCounts: entry.holeCounts.slice(),
                       holePoints: entry.holePoints.slice(),
-                      transform: entry.transform.slice(),
+                      transform,
                       extrusionDir: entry.extrusionDir.slice(),
                       extrusionDepth: entry.extrusionDepth,
                       modelIndex: 0,
@@ -547,9 +573,9 @@ export function useDrawingGeneration({
       // Construction projection (issue #979): when enabled, project geometry
       // beyond the cut. The clean profile path handles extruded solids; the
       // silhouette path (includeEdges) covers non-extruded geometry — roofs,
-      // stairs, site — that has no profile. Hidden-line removal stays off
-      // (the below/above band split, not occlusion, drives solid vs dashed).
-      const projectionOn = displayOptions.showConstructionProjection;
+      // stairs, site — that has no profile. The below/above band split drives
+      // solid vs dashed; hidden-line removal (below `includeHiddenLines`) is an
+      // additional occlusion pass the user controls via "show hidden lines".
 
       // Apply the SAME hiding/isolation filters to the profiles as to the
       // meshes, so projection respects 3D hiding and storey isolation —
@@ -602,7 +628,10 @@ export function useDrawingGeneration({
         meshesToProcess,
         config,
         {
-          includeHiddenLines: false,
+          // Respect the "show hidden lines" toggle: occlusion can downgrade
+          // visible (below-cut) projection lines to dashed. Overhead lines stay
+          // dashed regardless (the generator passes them through unchanged).
+          includeHiddenLines: projectionOn ? displayOptions.showHiddenLines : false,
           includeProjection: projectionOn,
           includeEdges: projectionOn,
           mergeLines: true,

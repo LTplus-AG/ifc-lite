@@ -229,7 +229,7 @@ export function outlineToProjectionLines(
   const lines: DrawingLine[] = [];
   for (const ring of outline.contours) {
     const n = Math.floor(ring.length / 2);
-    if (n < 2) continue;
+    if (n < 3) continue; // a closed ring needs ≥3 vertices (matches the Rust source)
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n; // close the loop (last → first)
       const sx = ring[i * 2];

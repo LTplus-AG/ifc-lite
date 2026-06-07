@@ -20,14 +20,34 @@ import {
   vec3Normalize,
   vec3Dot,
   vec3Length,
+  vec3Lerp,
   EPSILON,
   projectTo2D,
 } from './math.js';
+
+/**
+ * Clip a segment to the depth window `[lo, hi]` in flip-adjusted depth.
+ * `d0`/`d1` are the endpoint depths; returns the `[t0, t1]` parameter range
+ * (0 = start, 1 = end) inside the window, or `null` if the segment is entirely
+ * outside it. A segment parallel to the plane is in-or-out as a whole.
+ */
+function clipSegmentDepth(d0: number, d1: number, lo: number, hi: number): [number, number] | null {
+  const dd = d1 - d0;
+  if (Math.abs(dd) < 1e-12) {
+    return d0 >= lo && d0 <= hi ? [0, 1] : null;
+  }
+  const ta = (lo - d0) / dd;
+  const tb = (hi - d0) / dd;
+  const t0 = Math.max(0, Math.min(ta, tb));
+  const t1 = Math.min(1, Math.max(ta, tb));
+  return t0 <= t1 ? [t0, t1] : null;
+}
 import {
   type ProjectionBandDepths,
   classifySegmentBand,
   bandVisibility,
   projectPointForPlane,
+  signedDepth,
 } from './projection-bands.js';
 
 /**
@@ -257,14 +277,28 @@ export class EdgeExtractor {
     depths: ProjectionBandDepths,
   ): DrawingLine[] {
     const lines: DrawingLine[] = [];
+    // Band window in flip-adjusted depth: visible [-below, 0] ∪ overhead [0, above].
+    const windowLo = -depths.below;
+    const windowHi = depths.above;
 
     for (const edge of edges) {
-      const band = classifySegmentBand(edge.v0, edge.v1, plane, depths);
-      const visibility = bandVisibility(band);
+      const d0 = signedDepth(edge.v0, plane);
+      const d1 = signedDepth(edge.v1, plane);
+
+      // Clip the 3D segment to the band window first, so a long sloped roof /
+      // stair / ramp edge with only a small in-band overlap doesn't get
+      // projected full-length outside the configured projection window.
+      const clip = clipSegmentDepth(d0, d1, windowLo, windowHi);
+      if (!clip) continue;
+
+      const a = vec3Lerp(edge.v0, edge.v1, clip[0]);
+      const b = vec3Lerp(edge.v0, edge.v1, clip[1]);
+
+      const visibility = bandVisibility(classifySegmentBand(a, b, plane, depths));
       if (visibility === null) continue;
 
-      const start = projectPointForPlane(edge.v0, plane);
-      const end = projectPointForPlane(edge.v1, plane);
+      const start = projectPointForPlane(a, plane);
+      const end = projectPointForPlane(b, plane);
 
       // Skip degenerate (zero-length) projected segments.
       if (Math.abs(start.x - end.x) < EPSILON && Math.abs(start.y - end.y) < EPSILON) {

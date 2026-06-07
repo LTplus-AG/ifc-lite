@@ -1,5 +1,69 @@
 # @ifc-lite/viewer
 
+## 1.28.0
+
+### Minor Changes
+
+- [#987](https://github.com/LTplus-AG/ifc-lite/pull/987) [`55fd14e`](https://github.com/LTplus-AG/ifc-lite/commit/55fd14e5017f626567b10622bb41ddac3311e70c) Thanks [@louistrue](https://github.com/louistrue)! - Model comparison in the viewer ([#924](https://github.com/LTplus-AG/ifc-lite/issues/924)). A new **Compare** panel (Analysis menu)
+  lets you pick two loaded models as version A/B, run a comparison, and review
+  **added / changed / deleted** elements — colour-coded in 3D (green / yellow /
+  red, with unchanged ghosted or hidden) and listed in the panel; clicking a row
+  selects and frames the element. A **data / geometry / both** scope toggle
+  switches what counts as a change.
+
+  `@ifc-lite/geometry` now surfaces the WASM mesh pass's RTC-invariant per-entity
+  geometry fingerprint: `GeometryProcessor.enableGeometryHashes()` turns it on and
+  each `MeshData.geometryHash` carries the hash (threaded through the streaming +
+  parallel worker paths). This feeds the geometry side of the diff: a moved or
+  reshaped element reads as a geometry change, while the global georeferencing
+  offset (RTC) does not — the hash is RTC-invariant.
+
+- [#982](https://github.com/LTplus-AG/ifc-lite/pull/982) [`ca293ed`](https://github.com/LTplus-AG/ifc-lite/commit/ca293ed7080495b29dd555b191ae0095ff267e4b) Thanks [@louistrue](https://github.com/louistrue)! - feat(materials): expose material property sets and a Materials inspector tab
+
+  Material property sets attached to an `IfcMaterial` via `IfcMaterialProperties`
+  (e.g. `Pset_MaterialConcrete`) are now resolved and shown:
+
+  - **On the selected object** — a "Material Properties" group in the inspector,
+    resolved through the element's material association (fanning a layer / profile /
+    constituent set out to each member material), mirroring how type psets surface
+    on an occurrence.
+  - **A new "Materials" hierarchy tab** — lists every base material; selecting one
+    isolates its elements and shows the material's own psets plus quantities
+    (volume / area / weight) aggregated across all using elements, apportioned by
+    each element's material share (layer thickness / constituent fraction).
+
+  New parser exports: `extractMaterialPropertiesOnDemand`,
+  `extractMaterialPropertiesForMaterialId`, `buildMaterialUsageIndex`,
+  `collectMaterialLeaves`, `resolveMaterialDefId`, `getMaterialDisplay`, and the
+  `MaterialPsetGroup` / `MaterialLeaf` / `MaterialUsage` types.
+
+### Patch Changes
+
+- Updated dependencies [[`b33e1f7`](https://github.com/LTplus-AG/ifc-lite/commit/b33e1f7c4706fe4b0d850d3da782ea84267dd525), [`55fd14e`](https://github.com/LTplus-AG/ifc-lite/commit/55fd14e5017f626567b10622bb41ddac3311e70c), [`90060b7`](https://github.com/LTplus-AG/ifc-lite/commit/90060b7eaad7a07bdab13907c1b52bb24fbc8597), [`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0), [`ca293ed`](https://github.com/LTplus-AG/ifc-lite/commit/ca293ed7080495b29dd555b191ae0095ff267e4b), [`90060b7`](https://github.com/LTplus-AG/ifc-lite/commit/90060b7eaad7a07bdab13907c1b52bb24fbc8597)]:
+  - @ifc-lite/parser@3.1.0
+  - @ifc-lite/geometry@2.3.0
+  - @ifc-lite/diff@0.2.0
+  - @ifc-lite/query@1.14.9
+  - @ifc-lite/mutations@1.15.2
+  - @ifc-lite/drawing-2d@1.16.2
+  - @ifc-lite/export@1.19.4
+  - @ifc-lite/mcp@0.3.1
+  - @ifc-lite/data@2.0.1
+  - @ifc-lite/sdk@1.17.1
+  - @ifc-lite/clash@1.1.1
+  - @ifc-lite/pointcloud@0.3.2
+  - @ifc-lite/bcf@1.15.5
+  - @ifc-lite/server-client@1.16.1
+  - @ifc-lite/sandbox@1.15.1
+  - @ifc-lite/cache@1.14.9
+  - @ifc-lite/lists@1.15.1
+  - @ifc-lite/renderer@1.25.1
+  - @ifc-lite/extensions@0.3.1
+  - @ifc-lite/wasm@2.3.0
+  - @ifc-lite/spatial@1.14.7
+  - @ifc-lite/lens@1.15.1
+  - @ifc-lite/ids@1.15.5
+
 ## 1.27.0
 
 ### Minor Changes

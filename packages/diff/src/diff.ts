@@ -56,7 +56,12 @@ export function diffModels<TRef = unknown>(
   head: Iterable<EntityFingerprint<TRef>>,
   options: DiffOptions = {},
 ): ModelDiff<TRef> {
-  const scope: DiffScope = options.scope ?? 'both';
+  // Coerce an out-of-range scope (untyped JS caller) to 'both' — otherwise both
+  // flags would be false and every real modification would read as 'unchanged'.
+  const scope: DiffScope =
+    options.scope === 'data' || options.scope === 'geometry' || options.scope === 'both'
+      ? options.scope
+      : 'both';
   const considerData = scope === 'data' || scope === 'both';
   const considerGeometry = scope === 'geometry' || scope === 'both';
 

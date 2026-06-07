@@ -56,8 +56,25 @@ export function stableHash(value: string): string {
 }
 
 /**
+ * Order-independent serialization: object keys are sorted, so two semantically
+ * equal values with different key insertion order serialize identically (plain
+ * `JSON.stringify` preserves key order and would produce a spurious "modified").
+ */
+function stableSerialize(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) ?? 'null';
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableSerialize).join(',')}]`;
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`).join(',')}}`;
+}
+
+/**
  * Normalize a property/quantity value to a stable scalar so that structurally
- * equal values hash identically regardless of object identity.
+ * equal values hash identically regardless of object identity or key order.
  */
 export function normalizeValue(value: unknown): string | number | boolean | null {
   if (value == null) return null;
@@ -65,10 +82,11 @@ export function normalizeValue(value: unknown): string | number | boolean | null
     return value;
   }
   try {
-    return JSON.stringify(value);
-  } catch {
+    return stableSerialize(value);
+  } catch (error) {
     // Circular or otherwise non-serializable — fall back to a string form so
     // hashing never throws (an unstable-but-present token beats a crash).
+    console.warn('[diff] normalizeValue: non-serializable value, using String() fallback:', error);
     return String(value);
   }
 }

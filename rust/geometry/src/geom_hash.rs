@@ -132,6 +132,31 @@ impl GeometryHasher {
             ];
             tri.sort_unstable();
 
+            // Skip degenerate (zero-area) triangles. After quantization,
+            // coincident or colinear corners carry no shape signal, and
+            // counting them lets triangulation noise (sliver/zero-area faces)
+            // flip the fingerprint even when the rendered geometry is
+            // unchanged. The cross product of two edges is the zero vector
+            // exactly when the three quantized corners are colinear (which
+            // includes the coincident case). i128 avoids overflow on the
+            // quantized-coordinate products.
+            let e1 = [
+                tri[1][0] as i128 - tri[0][0] as i128,
+                tri[1][1] as i128 - tri[0][1] as i128,
+                tri[1][2] as i128 - tri[0][2] as i128,
+            ];
+            let e2 = [
+                tri[2][0] as i128 - tri[0][0] as i128,
+                tri[2][1] as i128 - tri[0][1] as i128,
+                tri[2][2] as i128 - tri[0][2] as i128,
+            ];
+            let cross_x = e1[1] * e2[2] - e1[2] * e2[1];
+            let cross_y = e1[2] * e2[0] - e1[0] * e2[2];
+            let cross_z = e1[0] * e2[1] - e1[1] * e2[0];
+            if cross_x == 0 && cross_y == 0 && cross_z == 0 {
+                continue;
+            }
+
             let mut h = 0x5bd1_e995_u64; // arbitrary non-zero seed
             for corner in tri {
                 for c in corner {
@@ -241,6 +266,21 @@ mod tests {
             hash_mesh_world(&moved, &idx, [0.0; 3], TOL),
             "a 1 m move must change the hash"
         );
+    }
+
+    #[test]
+    fn degenerate_triangles_do_not_affect_hash() {
+        let (pos, idx) = cube([0.0, 0.0, 0.0]);
+        let base = hash_mesh_world(&pos, &idx, [0.0; 3], TOL);
+
+        // Append zero-area triangles (repeated/coincident corners) — the kind
+        // of triangulation noise that must not move the fingerprint.
+        let mut noisy = idx.clone();
+        noisy.extend_from_slice(&[0, 0, 1]);
+        noisy.extend_from_slice(&[2, 2, 2]);
+        let with_noise = hash_mesh_world(&pos, &noisy, [0.0; 3], TOL);
+
+        assert_eq!(base, with_noise, "zero-area triangles must not change the hash");
     }
 
     #[test]

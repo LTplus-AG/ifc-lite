@@ -75,6 +75,15 @@ pub struct IfcAPI {
     cached_referenced_repmaps:
         std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
 
+    /// Lazily-built set of type ids that an `IfcRelDefinesByType` instantiates
+    /// (the type has an occurrence). `processGeometryBatch` uses it to suppress
+    /// type-only geometry for instanced types — their geometry already draws
+    /// through their occurrences, so rendering the type's RepresentationMap too
+    /// would double-render it at the MappingOrigin. Built once per worker and
+    /// cleared by `clearPrePassCache`.
+    cached_instantiated_type_ids:
+        std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
+
     /// Lazily-built surface-texture index keyed by face-set id (issue #961):
     /// decoded RGBA images + per-triangle UV maps from
     /// `IfcIndexedTriangleTextureMap`. Built once per worker (cheap substring
@@ -123,6 +132,7 @@ impl IfcAPI {
             merge_layers: std::sync::atomic::AtomicBool::new(false),
             cached_parts_to_skip: std::sync::Mutex::new(None),
             cached_referenced_repmaps: std::sync::Mutex::new(None),
+            cached_instantiated_type_ids: std::sync::Mutex::new(None),
             cached_texture_index: std::sync::Mutex::new(None),
             cached_indexed_colour_maps: std::sync::Mutex::new(None),
             compute_geometry_hashes: std::sync::atomic::AtomicBool::new(false),
@@ -168,6 +178,12 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
         repmap_slot.take();
+        // The instantiated-type-ids set is keyed off the previous load's content.
+        let mut inst_slot = self
+            .cached_instantiated_type_ids
+            .lock()
+            .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned");
+        inst_slot.take();
         // The texture index is keyed off the previous load's content; drop it.
         let mut texture_slot = self
             .cached_texture_index
@@ -235,6 +251,10 @@ impl IfcAPI {
         self.cached_referenced_repmaps
             .lock()
             .expect("ifc-lite cached_referenced_repmaps Mutex poisoned")
+            .take();
+        self.cached_instantiated_type_ids
+            .lock()
+            .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned")
             .take();
         self.cached_texture_index
             .lock()
@@ -388,6 +408,36 @@ impl IfcAPI {
             .cached_referenced_repmaps
             .lock()
             .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
+        *slot = Some(std::sync::Arc::clone(&arc));
+        arc
+    }
+
+    /// Get or lazily build the set of type ids that an `IfcRelDefinesByType`
+    /// instantiates (#957 follow-up). `processGeometryBatch` uses it to suppress
+    /// type-only geometry for instanced types (the geometry already draws through
+    /// their occurrences). Cached per worker so the scan is paid once.
+    pub(crate) fn get_or_build_instantiated_type_ids(
+        &self,
+        content: &str,
+        decoder: &mut ifc_lite_core::EntityDecoder,
+    ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
+        {
+            let slot = self
+                .cached_instantiated_type_ids
+                .lock()
+                .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned");
+            if let Some(existing) = slot.as_ref() {
+                return std::sync::Arc::clone(existing);
+            }
+        }
+
+        let instantiated = styling::build_instantiated_type_ids(content, decoder);
+
+        let arc = std::sync::Arc::new(instantiated);
+        let mut slot = self
+            .cached_instantiated_type_ids
+            .lock()
+            .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned");
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }

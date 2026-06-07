@@ -96,3 +96,82 @@ describe('@ifc-lite/wasm type-only IfcRepresentationMap geometry (#957)', () => 
     });
   }
 });
+
+/**
+ * Issue #957 follow-up regression guard — the LIVE VIEWER path.
+ *
+ * ArchiCAD/AC20 exports attach a RepresentationMap to a typed product while the
+ * OCCURRENCE carries its own direct body geometry (no IfcMappedItem). The type
+ * and occurrence are linked only by IfcRelDefinesByType, so the map is referenced
+ * by no IfcMappedItem. Without the IfcRelDefinesByType gate, processGeometryBatch
+ * draws the type's map at its MappingOrigin — a duplicate of the occurrence at the
+ * wrong position. The instanced type must render ZERO type-only meshes here.
+ */
+const INSTANCED_DIRECT_GEOMETRY_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-957 instanced type, direct-geometry occurrence'),'2;1');
+FILE_NAME('t.ifc','2026-06-07T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#43=IFCBOILERTYPE('2n5ASfQfT84eP9h$zLLJ4A',$,'Boiler',$,$,$,(#44),$,$,.NOTDEFINED.);
+#44=IFCREPRESENTATIONMAP(#45,#46);
+#45=IFCAXIS2PLACEMENT3D(#4,$,$);
+#46=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#48));
+#48=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#49=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#100=IFCBOILER('1occurrenceDirect000',$,'Occ',$,$,#101,#102,$,.NOTDEFINED.);
+#101=IFCLOCALPLACEMENT($,#5);
+#102=IFCPRODUCTDEFINITIONSHAPE($,$,(#103));
+#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#106));
+#106=IFCTRIANGULATEDFACESET(#107,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#107=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(2.,0.,0.),(0.,2.,0.),(0.,0.,2.)));
+#110=IFCRELDEFINESBYTYPE('3defByTypeLink00000000',$,$,$,(#100),#43);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+describe('@ifc-lite/wasm instanced-type geometry is not double-rendered (#957 follow-up)', () => {
+  it('does not draw a type-only mesh when the type has an occurrence (IfcRelDefinesByType)', async (t) => {
+    if (!existsSync(wasmPath) || !existsSync(wasmJsPath)) {
+      t.skip('wasm bundle not built — run `bash scripts/build-wasm.sh` first');
+      return;
+    }
+
+    const { initSync, IfcAPI } = await import(wasmJsPath);
+    const { parseMeshesViaPrePass } = await import(
+      join(rootDir, 'scripts', 'lib', 'mesh-via-prepass.mjs')
+    );
+
+    initSync(readFileSync(wasmPath));
+    const api = new IfcAPI();
+    try {
+      const result = parseMeshesViaPrePass(api, INSTANCED_DIRECT_GEOMETRY_IFC);
+
+      let occurrence = 0;
+      let typeDirect = 0;
+      for (let i = 0; i < result.length; i++) {
+        const m = result.get(i);
+        if (!m) continue;
+        if (m.expressId === 100) occurrence++;
+        if (m.expressId === 43) typeDirect++;
+      }
+
+      assert.ok(occurrence >= 1, 'the IfcBoiler occurrence #100 (direct geometry) should render');
+      assert.equal(
+        typeDirect,
+        0,
+        'an IfcRelDefinesByType-instanced type must NOT render its RepresentationMap as ' +
+          'orphan type geometry on the viewer path (the AC20 duplicate-box regression)',
+      );
+    } finally {
+      api.free?.();
+    }
+  });
+});

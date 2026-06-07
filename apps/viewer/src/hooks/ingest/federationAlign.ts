@@ -172,6 +172,13 @@ function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeor
 
   const yVx = (-refAxis.o * eVx + refAxis.a * nVx) * invRefDenom;
   const yVz = (-refAxis.o * eVz + refAxis.a * nVz) * invRefDenom;
+  // NOTE: the refOffset handling is intentionally asymmetric between X and Z and
+  // must NOT be "symmetrised". refOffset is subtracted from the FINAL viewer
+  // coordinate on every axis. X maps positively (`tx = +xC`), so its offset is
+  // folded into xC above. Z maps to the NEGATED north axis (`tz = -yC`), so its
+  // offset is applied after the negation, leaving yC offset-free here. This
+  // matches alignGeometryAcrossCrs: alignedZ = refWorldZ - refOffset.z with
+  // refWorldZ = -ifcYr. Folding -refOffset.z into yC would flip its sign.
   const yC = (-refAxis.o * eC + refAxis.a * nC) * invRefDenom;
 
   return {

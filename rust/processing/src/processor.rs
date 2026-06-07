@@ -839,6 +839,15 @@ pub fn process_geometry_streaming_filtered_with_options(
     // orphan type geometry (buildingSMART annex-E showcase files).
     let mut type_product_geometry: Vec<(u32, usize, usize, IfcType, Vec<u32>)> = Vec::new();
     let mut referenced_representation_maps: FxHashSet<u32> = FxHashSet::default();
+    // #957 follow-up: type ids that an IfcRelDefinesByType instantiates (the type
+    // has at least one occurrence). Such a type's geometry is already drawn through
+    // its occurrences — directly or via an IfcMappedItem — so it must NOT also be
+    // rendered as orphan type-only geometry. Real-world exporters (e.g. ArchiCAD
+    // AC20) attach a RepresentationMap to nearly every door/window/furniture type
+    // while the occurrence carries its own body, leaving the type map referenced by
+    // no IfcMappedItem; without this gate every such type double-renders at its
+    // MappingOrigin (duplicate boxes at the wrong position).
+    let mut instantiated_type_ids: FxHashSet<u32> = FxHashSet::default();
     let quick_metadata_enabled = options.emit_quick_metadata_bootstrap;
     let mut quick_spatial_nodes = quick_metadata_enabled.then(HashMap::<u32, QuickSpatialNodeEntry>::new);
     let mut quick_aggregate_links = if quick_metadata_enabled {
@@ -1120,6 +1129,13 @@ pub fn process_geometry_streaming_filtered_with_options(
             if let Some(source_id) = args.first().and_then(|token| parse_step_ref(token)) {
                 referenced_representation_maps.insert(source_id);
             }
+        } else if type_name == "IFCRELDEFINESBYTYPE" {
+            // IfcRelDefinesByType.RelatingType is the last attribute (index 5);
+            // record it so its type-only geometry is suppressed (it has occurrences).
+            let args = parse_step_arguments(&content[start..end]);
+            if let Some(type_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
+                instantiated_type_ids.insert(type_id);
+            }
         } else if (type_name.ends_with("TYPE") || type_name.ends_with("STYLE"))
             && IfcType::from_str(type_name).is_subtype_of(IfcType::IfcTypeProduct)
         {
@@ -1143,6 +1159,11 @@ pub fn process_geometry_streaming_filtered_with_options(
     // buildingSMART annex-E "tessellated shape with style" files declare the
     // geometry only on the type, so without this they render nothing (#957).
     for (type_id, start, end, ifc_type, rep_map_ids) in &type_product_geometry {
+        // A type with occurrences (IfcRelDefinesByType) already renders through
+        // them; only genuinely orphan types (no occurrence) render their own map.
+        if instantiated_type_ids.contains(type_id) {
+            continue;
+        }
         for &rep_map_id in rep_map_ids {
             if referenced_representation_maps.contains(&rep_map_id) {
                 continue;

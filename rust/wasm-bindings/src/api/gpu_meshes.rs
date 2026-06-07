@@ -1087,6 +1087,17 @@ impl IfcAPI {
                 // (the referenced ones draw through their occurrence — no double
                 // render).
                 if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
+                    // #957 follow-up: a type that an IfcRelDefinesByType instantiates
+                    // already renders through its occurrences (directly or via an
+                    // IfcMappedItem). Drawing its RepresentationMap here too would
+                    // double-render it at the MappingOrigin — the AC20/ArchiCAD
+                    // "duplicate boxes at the wrong position" regression. Only
+                    // genuinely orphan types (no occurrence) reach the render below.
+                    let instantiated =
+                        self.get_or_build_instantiated_type_ids(content, &mut decoder);
+                    if instantiated.contains(&id) {
+                        continue;
+                    }
                     let rep_map_ids: Vec<u32> = entity
                         .get(6)
                         .and_then(|a| a.as_list())

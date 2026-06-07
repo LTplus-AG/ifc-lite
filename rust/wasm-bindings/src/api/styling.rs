@@ -544,9 +544,18 @@ pub(crate) fn collect_orphan_type_geometry_jobs(
         return Vec::new();
     }
 
-    // Single pass: gather the IfcMappedItem-referenced RepresentationMaps and
-    // the type-product candidates together, then filter to the orphans.
+    // Single pass: gather the IfcMappedItem-referenced RepresentationMaps, the
+    // types that an IfcRelDefinesByType instantiates, and the type-product
+    // candidates together, then filter to the orphans.
     let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
+    // Types with at least one occurrence (IfcRelDefinesByType). Their geometry is
+    // already drawn through the occurrence — directly or via IfcMappedItem — so the
+    // type's own RepresentationMap must NOT be rendered as orphan type-only
+    // geometry. ArchiCAD/AC20 exports attach a RepresentationMap to nearly every
+    // typed product while the occurrence carries its own body, so the map is
+    // referenced by no IfcMappedItem; without this gate the type double-renders at
+    // its MappingOrigin (duplicate boxes at the wrong position).
+    let mut instantiated: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
     let mut candidates: Vec<(u32, usize, usize, IfcType, Vec<u32>)> = Vec::new();
 
     let mut scanner = EntityScanner::new(content);
@@ -556,6 +565,13 @@ pub(crate) fn collect_orphan_type_geometry_jobs(
                 // IfcMappedItem.MappingSource = attr 0.
                 if let Some(source_id) = entity.get_ref(0) {
                     referenced.insert(source_id);
+                }
+            }
+        } else if type_name == "IFCRELDEFINESBYTYPE" {
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                // IfcRelDefinesByType.RelatingType = attr 5 (the typed product).
+                if let Some(type_id) = entity.get_ref(5) {
+                    instantiated.insert(type_id);
                 }
             }
         } else if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
@@ -581,6 +597,7 @@ pub(crate) fn collect_orphan_type_geometry_jobs(
 
     candidates
         .into_iter()
+        .filter(|(id, _, _, _, _)| !instantiated.contains(id))
         .filter(|(_, _, _, _, maps)| maps.iter().any(|rm| !referenced.contains(rm)))
         .map(|(id, start, end, ifc_type, _)| (id, start, end, ifc_type))
         .collect()
@@ -607,6 +624,31 @@ pub(crate) fn build_referenced_representation_maps(
         }
     }
     referenced
+}
+
+/// #957 follow-up: the set of type ids that an `IfcRelDefinesByType` instantiates
+/// (i.e. the type has at least one occurrence). `processGeometryBatch` uses it to
+/// suppress type-only geometry for such types — their geometry is already drawn
+/// through their occurrences, so rendering the type's RepresentationMap as well
+/// would double-render it at the MappingOrigin (duplicate at the wrong position).
+pub(crate) fn build_instantiated_type_ids(
+    content: &str,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> rustc_hash::FxHashSet<u32> {
+    use ifc_lite_core::EntityScanner;
+    let mut instantiated: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name == "IFCRELDEFINESBYTYPE" {
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                // IfcRelDefinesByType.RelatingType = attr 5 (the typed product).
+                if let Some(type_id) = entity.get_ref(5) {
+                    instantiated.insert(type_id);
+                }
+            }
+        }
+    }
+    instantiated
 }
 
 /// #957: resolve the authored colour for a type's `IfcRepresentationMap` by

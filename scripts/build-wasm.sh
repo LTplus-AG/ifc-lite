@@ -19,13 +19,14 @@ echo "📦 Running wasm-pack..."
 
 # Find wasm-pack - check PATH first, then cargo bin directory.
 #
-# Soft-skip path (issue #654 follow-up): the wasm artifacts are checked
-# into git as the canonical published bundle. Environments without a Rust
-# toolchain — most CI runners, Vercel build hosts, contributors who don't
-# touch Rust — should rebuild from source when possible but fall back to
-# the committed artifact when not. Hard-failing here would break every
-# `turbo build` on those hosts even though the .wasm they need is already
-# present in the repo.
+# Soft-skip path (#654, #952). The wasm *runtime* (ifc-lite_bg.wasm /
+# ifc-lite.js) is NOT committed — it's gitignored and rebuilt from rust/** on
+# every Rust-capable host. The *type surface* (pkg/ifc-lite.d.ts) IS committed
+# so type-checking never needs Rust. Environments without a Rust toolchain —
+# e.g. a contributor who doesn't touch Rust, or a typecheck-only lane — should
+# rebuild from source when possible but soft-skip when not, so a missing
+# wasm-pack doesn't hard-fail `turbo build` / `turbo typecheck`. (CI's build
+# job and Vercel do install Rust and rebuild from source.)
 WASM_PACK="wasm-pack"
 if ! command -v wasm-pack &> /dev/null; then
   CARGO_BIN="$HOME/.cargo/bin/wasm-pack"
@@ -36,12 +37,24 @@ if ! command -v wasm-pack &> /dev/null; then
     WASM_PACK="$CARGO_BIN"
     echo "   Using wasm-pack from cargo bin: $WASM_PACK"
   else
-    # Treat the committed pre-built artifact's presence as a successful build.
+    # No wasm-pack. Don't hard-fail the turbo `^build` graph that `typecheck`
+    # depends on: succeed when a previously built runtime OR the committed type
+    # surface is already on disk. Type-checking works either way; running or
+    # bundling the app still needs the real runtime (the viewer's vite build
+    # demands the .js/.wasm), so this can't silently mask a missing runtime.
+    EXPECTED_DTS="packages/wasm/pkg/ifc-lite.d.ts"
     EXPECTED_WASM="packages/wasm/pkg/ifc-lite_bg.wasm"
     if [ -f "$EXPECTED_WASM" ]; then
-      echo "⚠️  wasm-pack not found — using committed artifact at $EXPECTED_WASM"
+      echo "⚠️  wasm-pack not found — using the wasm runtime already on disk at $EXPECTED_WASM"
       echo "   (To rebuild from Rust sources, install Rust + wasm-pack:"
       echo "    https://rustwasm.github.io/wasm-pack/installer/)"
+      exit 0
+    fi
+    if [ -f "$EXPECTED_DTS" ]; then
+      echo "⚠️  wasm-pack not found — committed types at $EXPECTED_DTS are present,"
+      echo "   so type-checking works, but the wasm runtime is NOT built. The app"
+      echo "   won't run or bundle until you install Rust + wasm-pack and rebuild:"
+      echo "     https://rustwasm.github.io/wasm-pack/installer/"
       exit 0
     fi
     echo "❌ Error: wasm-pack not found in PATH or ~/.cargo/bin/ and no pre-built artifact at $EXPECTED_WASM"
@@ -73,6 +86,19 @@ rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
 # history of miscompiling the wasm-bindgen closure/async machinery
 # (RuntimeError: unreachable in production), so it stays off.
 echo "ℹ️  wasm-opt disabled — using LLVM -O3 only"
+
+# Strip wasm-bindgen's internal trampoline indices from the committed type
+# surface (#952). The `__wasm_bindgen_func_elem_<N>` members of `InitOutput`
+# are internal closure indices that wasm-bindgen renumbers per platform for the
+# same source (e.g. 709 on linux CI vs 714 on macOS) — nothing outside
+# packages/wasm/pkg/ ever references them. Removing them makes pkg/ifc-lite.d.ts
+# platform-independent so the CI "types in sync" gate can do an exact diff. The
+# runtime .js still carries them; only the .d.ts type omits them.
+DTS_PATH="$(echo "$OUT_DIR" | sed 's|^../../||')/ifc-lite.d.ts"
+if [ -f "$DTS_PATH" ]; then
+  grep -v '__wasm_bindgen_func_elem_' "$DTS_PATH" > "$DTS_PATH.tmp" && mv "$DTS_PATH.tmp" "$DTS_PATH"
+  echo "🧹 stripped internal __wasm_bindgen_func_elem_* indices from $DTS_PATH"
+fi
 
 # Show bundle size
 echo ""

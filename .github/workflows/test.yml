@@ -137,12 +137,31 @@ jobs:
       - name: Verify fixtures
         run: pnpm fixtures:check
 
-      # Rebuild the wasm bindings from rust/wasm-bindings/ on every run.
-      # packages/wasm/pkg/ is committed but goes stale whenever Rust changes
-      # ship without a maintainer running scripts/build-wasm.sh first; this
-      # step catches Rust → wasm breakage before downstream consumers see it.
+      # Rebuild the wasm bindings from rust/wasm-bindings/ on every run. The
+      # runtime (ifc-lite_bg.wasm / ifc-lite.js) is gitignored and rebuilt here
+      # so a stale binary can never ship (#654); the type surface
+      # (pkg/ifc-lite.d.ts) is committed for the wasm-free typecheck lane
+      # (#952). This step catches Rust → wasm breakage before downstream
+      # consumers see it.
       - name: Build WASM
         run: bash scripts/build-wasm.sh
+
+      # Guard the wasm-free typecheck lane (#952): the committed
+      # packages/wasm/pkg/ifc-lite.d.ts must stay in sync with the Rust source.
+      # The build above just regenerated it (and stripped the platform-variant
+      # __wasm_bindgen_func_elem_* trampoline indices, so this diff is stable
+      # across linux/macOS), so any diff means the committed types are stale —
+      # fail the PR. Scoped to the .d.ts only; pkg/README.md and pkg/package.json
+      # churn on every wasm-pack run (see AGENTS.md) and are intentionally
+      # excluded.
+      - name: Verify committed wasm types are in sync
+        run: |
+          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts; then
+            echo "::error file=packages/wasm/pkg/ifc-lite.d.ts::Committed wasm types are out of sync with the Rust source. Run 'bash scripts/build-wasm.sh' and commit the regenerated packages/wasm/pkg/ifc-lite.d.ts."
+            git diff -- packages/wasm/pkg/ifc-lite.d.ts
+            exit 1
+          fi
+          echo "✅ committed wasm types match the Rust source"
 
       # Build all workspace packages so their dist/ artifacts exist for
       # downstream consumers — turbo handles the dep graph.

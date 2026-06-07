@@ -45,15 +45,17 @@ test_*.sh
 # WASM files - use packages/wasm/pkg/ as canonical source
 apps/viewer/public/ifc-lite_bg.wasm
 
-# WASM build outputs — not committed; produced from rust/** by
-# scripts/build-wasm.sh on every fresh build. CI and Vercel install the
-# Rust toolchain and rebuild from source so a stale binary can never
-# ship (issue #654 root cause was a stale committed .wasm bundle).
-# The README.md and package.json in these dirs stay tracked.
+# WASM build outputs. The *runtime* (.wasm/.js) is NOT committed — it's
+# produced from rust/** by scripts/build-wasm.sh on every fresh build, and
+# CI + Vercel install the Rust toolchain and rebuild from source so a stale
+# binary can never ship (issue #654 root cause was a stale committed .wasm).
+# The *type surface* pkg/ifc-lite.d.ts IS committed (force-added past the
+# wasm-pack-generated pkg/.gitignore `*`) so `tsc` / `turbo typecheck` resolve
+# @ifc-lite/wasm without compiling Rust (#952); CI verifies it stays in sync.
+# pkg/README.md + pkg/package.json likewise stay tracked.
 packages/wasm/pkg/ifc-lite_bg.wasm
 packages/wasm/pkg/ifc-lite_bg.wasm.d.ts
 packages/wasm/pkg/ifc-lite.js
-packages/wasm/pkg/ifc-lite.d.ts
 
 # Tauri/Claude temp files
 tmpclaude*

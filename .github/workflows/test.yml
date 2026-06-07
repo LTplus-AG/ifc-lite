@@ -29,7 +29,12 @@ jobs:
   # Doc-only and non-test changes skip every expensive job below.
   changes:
     name: Detect changes
-    runs-on: depot-ubuntu-24.04
+    # Free GitHub-hosted runner. ifc-lite is a PUBLIC repo, so standard
+    # `ubuntu-latest` runners are free + unlimited (GitHub only bills public
+    # repos for *larger* runners). Light jobs — path filter, lint, the gate —
+    # don't need Depot's paid cores; only the Rust/WASM-compile jobs do.
+    # See scripts/README-vercel-cost.md for the full runner-cost rationale.
+    runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -163,8 +168,9 @@ jobs:
     name: Typecheck
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 10
+    # tsc is not CPU-bound; the free 2-core runner is fine and costs nothing.
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -187,7 +193,8 @@ jobs:
     name: Lint
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: depot-ubuntu-24.04
+    # Free runner — eslint runs against source, no compile.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -207,8 +214,9 @@ jobs:
     name: Node tests
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 15
+    # Free runner — vitest consumes the prebuilt artifact; not compile-bound.
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -240,8 +248,13 @@ jobs:
     name: Rust tests
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: depot-ubuntu-24.04-8
-    timeout-minutes: 20
+    # Stays on Depot for the uncapped, fast cargo cache (GitHub's free cache
+    # is 10 GB LRU and would thrash the Rust target dir). Right-sized 8→4
+    # cores: Depot bills minutes × (vCPU/2), so -8 is 4× and -4 is 2× the
+    # base rate — halving per-minute cost for ~1.5× wall-clock. Timeout
+    # bumped to absorb the slower wall-clock.
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 28
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -292,8 +305,11 @@ jobs:
     name: Rust tests (Manifold CSG kernel)
     needs: changes
     if: needs.changes.outputs.geometry == 'true'
-    runs-on: depot-ubuntu-24.04-8
-    timeout-minutes: 25
+    # Stays on Depot (cmake + Manifold/Clipper2 C++ compile + cargo cache).
+    # Right-sized 8→4 cores (Depot bills × vCPU/2). Timeout bumped for the
+    # slower wall-clock on 4 cores.
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -327,7 +343,8 @@ jobs:
     name: Build + WASM + Rust + Node
     needs: [changes, build, typecheck, lint, node-tests, rust-tests, manifold-tests]
     if: always()
-    runs-on: depot-ubuntu-24.04
+    # Free runner — the gate just inspects upstream job results.
+    runs-on: ubuntu-latest
     steps:
       - name: Gate on dependencies
         run: |

@@ -17,7 +17,7 @@ import {
   type IfcDataStore as CacheDataStore,
   type GeometryData,
 } from '@ifc-lite/cache';
-import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, attachDataStoreAccessors, type IfcDataStore } from '@ifc-lite/parser';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
@@ -109,7 +109,8 @@ export function useIfcCache() {
   const loadFromCache = useCallback(async (
     cacheResult: CacheResult,
     fileName: string,
-    cacheKey?: string
+    cacheKey?: string,
+    fallbackSourceBuffer?: ArrayBufferLike,
   ): Promise<CacheLoadResult> => {
     try {
       const cacheLoadStart = performance.now();
@@ -125,9 +126,15 @@ export function useIfcCache() {
       // Convert cache data store to viewer data store format
       const dataStore = result.dataStore as any;
 
-      // Restore source buffer for on-demand property extraction
-      if (cacheResult.sourceBuffer) {
-        dataStore.source = new Uint8Array(cacheResult.sourceBuffer);
+      // Restore the source buffer — required for on-demand property extraction
+      // AND the lazy entity accessors (getEntity/getProperties/...). The web
+      // cache persists `sourceBuffer`; the desktop cache does not, so fall back
+      // to the freshly read file buffer when the caller provides it. Without a
+      // source, the accessors can't be attached and a cache hit would crash the
+      // Properties panel with "store.getEntity is not a function".
+      const sourceBuffer = cacheResult.sourceBuffer ?? fallbackSourceBuffer;
+      if (sourceBuffer) {
+        dataStore.source = new Uint8Array(sourceBuffer);
 
         if (result.entityIndex) {
           dataStore.entityIndex = buildEntityIndexFromCachedColumns(result.entityIndex);
@@ -162,6 +169,14 @@ export function useIfcCache() {
         );
         dataStore.onDemandPropertyMap = onDemandPropertyMap;
         dataStore.onDemandQuantityMap = onDemandQuantityMap;
+
+        // Reattach the lazy entity/property/quantity accessors. A freshly parsed
+        // store carries these (wired by attachDataStoreAccessors), but the cache
+        // format only serialises data — so a cache-restored store would be
+        // missing getEntity()/getProperties()/etc. and crash any query path
+        // (e.g. the Properties panel: "store.getEntity is not a function").
+        // Safe here: source, entityIndex and the on-demand maps are all set.
+        attachDataStoreAccessors(dataStore as IfcDataStore);
       } else {
         console.warn('[useIfcCache] No source buffer in cache - on-demand property extraction disabled');
         dataStore.source = new Uint8Array(0);

@@ -55,7 +55,12 @@ jobs:
           lfs: false
           persist-credentials: false
 
+      # QEMU is only needed to emulate the non-native arm64 build, which we
+      # now only do on `release: published` (see the `platforms` expression
+      # below). Skipping it on main pushes shaves setup time off the frequent
+      # amd64-only builds.
       - name: Set up QEMU
+        if: github.event_name == 'release'
         uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
 
       - name: Set up Docker Buildx
@@ -93,5 +98,15 @@ jobs:
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha
+          # mode=max keeps the cargo-chef "cooked deps" stage in the cache —
+          # that layer is what makes warm builds finish in minutes instead of
+          # recompiling the whole workspace (incl. the manifold-csg-sys C++
+          # kernel), so dropping to mode=min would *raise* compute minutes.
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          # Build arm64 only for actual releases (distribution images). On the
+          # frequent push-to-main builds (~1/3 of commits touch rust/** and
+          # trigger this workflow) we build amd64 only — the arm64 leg runs
+          # under slow QEMU emulation and doubled both build time AND the gha
+          # cache that drives Depot's per-GB storage bill. The `latest`/sha
+          # main images stay amd64; multi-arch manifests ship on release.
+          platforms: ${{ github.event_name == 'release' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}

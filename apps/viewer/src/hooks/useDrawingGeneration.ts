@@ -179,18 +179,29 @@ export function useDrawingGeneration({
           try {
             await processor.init();
 
+            // SymbolicRepresentationCollection and each getPolyline/getCircle
+            // item are wasm-bindgen handles owning WASM memory — free them
+            // deterministically (AGENTS.md §7). Leaking them to GC lets the
+            // FinalizationRegistry free them later against an already-grown/
+            // reused shared dlmalloc heap, corrupting the allocator free-list.
             const symbolicCollection = processor.parseSymbolicRepresentations(ifcDataStore!.source);
             // For single-model (legacy) mode, model index is always 0
             // Multi-model symbolic parsing would require iterating over each model separately
             const symbolicModelIndex = 0;
 
-            if (symbolicCollection && !symbolicCollection.isEmpty) {
+            if (symbolicCollection) {
+              try {
+                if (!symbolicCollection.isEmpty) {
               // Process polylines
               for (let i = 0; i < symbolicCollection.polylineCount; i++) {
                 const poly = symbolicCollection.getPolyline(i);
                 if (!poly) continue;
+                try {
 
                 entitiesWithSymbols.add(poly.expressId);
+                // poly.points is consumed synchronously within this iteration
+                // (centroid sum + segment pushes read scalar values out of it);
+                // the array itself is never stored, so no copy is needed.
                 const points = poly.points;
                 const pointCount = poly.pointCount;
                 // WASM exposes `worldY` on every symbolic primitive — the
@@ -249,12 +260,16 @@ export function useDrawingGeneration({
                     worldZ: polyWorldZ,
                   });
                 }
+                } finally {
+                  poly.free();
+                }
               }
 
               // Process circles/arcs
               for (let i = 0; i < symbolicCollection.circleCount; i++) {
                 const circle = symbolicCollection.getCircle(i);
                 if (!circle) continue;
+                try {
 
                 entitiesWithSymbols.add(circle.expressId);
                 const numSegments = circle.isFullCircle ? 32 : 16;
@@ -293,6 +308,13 @@ export function useDrawingGeneration({
                     worldZ: circleWorldZ,
                   });
                 }
+                } finally {
+                  circle.free();
+                }
+              }
+                }
+              } finally {
+                symbolicCollection.free();
               }
             }
           } finally {

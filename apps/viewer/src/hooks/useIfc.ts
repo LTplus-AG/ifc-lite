@@ -82,7 +82,7 @@ export function useIfc() {
     findModelForEntity,
     resolveGlobalId,
     realignFederation,
-  } = useIfcFederation();
+  } = useIfcFederation(loadFile);
 
   // Memoize query to prevent recreation on every render
   // For single-model backward compatibility

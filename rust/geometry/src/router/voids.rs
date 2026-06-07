@@ -398,6 +398,23 @@ fn pad_cutter_at_host_faces(
     (mn, mx)
 }
 
+/// Host element types that are profile-section structural members (channels,
+/// I-/H-beams, hollow tubes, gusset plates) whose cross-section does NOT fill
+/// an arbitrary opening footprint. Recesses/notches/slots on these must use a
+/// real boolean — the analytic AABB clip fabricates reveal/cap walls in empty
+/// space (issue #977). Solid plate hosts (slab/wall/roof) keep the analytic
+/// path: it's correct there AND deterministic (Manifold's triangulation is not
+/// bit-stable across platforms, which would flake fixture tests like #853).
+fn is_profile_section_host(t: IfcType) -> bool {
+    matches!(
+        t,
+        IfcType::IfcBeam | IfcType::IfcColumn | IfcType::IfcMember | IfcType::IfcPlate
+    ) || t.is_subtype_of(IfcType::IfcBeam)
+        || t.is_subtype_of(IfcType::IfcColumn)
+        || t.is_subtype_of(IfcType::IfcMember)
+        || t.is_subtype_of(IfcType::IfcPlate)
+}
+
 /// Diagonal-opening variant of [`opening_needs_boolean`]. Projects the
 /// opening's actual mesh vertices (not its world AABB — a rotated thin plate's
 /// AABB wildly overestimates its depth) onto the penetration axis `depth` and
@@ -1393,7 +1410,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Mesh {
         let ctx = self.build_void_context(element, opening_ids, decoder);
-        self.apply_void_context(mesh, &ctx, element.id)
+        self.apply_void_context(mesh, &ctx, element.id, element.ifc_type)
     }
 
     /// Classify openings and extract clipping planes for an element.
@@ -1445,7 +1462,14 @@ impl GeometryRouter {
         mesh: Mesh,
         ctx: &VoidContext,
         element_id: u32,
+        host_type: IfcType,
     ) -> Mesh {
+        // Recesses/notches go to a real boolean only for profile-section members
+        // and only when the Manifold kernel is available; solid plate hosts
+        // (slab/wall/roof) keep the deterministic analytic path. See
+        // `is_profile_section_host` (issue #977 / #853 determinism).
+        let recess_to_boolean =
+            cfg!(feature = "manifold-csg") && is_profile_section_host(host_type);
         // Capture the input triangle count + bounds so the per-host
         // diagnostic can flag the "cuts attempted but produced no
         // change" case — the silent-no-op signature when an opening
@@ -1496,7 +1520,9 @@ impl GeometryRouter {
             let mut diagonal_recess_meshes: Vec<&Mesh> = Vec::new();
             for opening in &ctx.openings {
                 if let OpeningType::DiagonalRectangular(mesh, frame) = opening {
-                    if diagonal_opening_needs_boolean(mesh, wall_min, wall_max, frame.depth) {
+                    if recess_to_boolean
+                        && diagonal_opening_needs_boolean(mesh, wall_min, wall_max, frame.depth)
+                    {
                         diagonal_recess_meshes.push(mesh);
                     } else {
                         through_diagonals.push(opening.clone());
@@ -1532,10 +1558,13 @@ impl GeometryRouter {
         for opening in &ctx.merged_openings {
             match opening {
                 OpeningType::Rectangular(open_min, open_max, extrusion_dir) => {
-                    if let Some(dir) = extrusion_dir {
-                        if opening_needs_boolean(*open_min, *open_max, wall_min, wall_max, *dir) {
-                            recess_boxes.push((*open_min, *open_max));
-                            continue;
+                    if recess_to_boolean {
+                        if let Some(dir) = extrusion_dir {
+                            if opening_needs_boolean(*open_min, *open_max, wall_min, wall_max, *dir)
+                            {
+                                recess_boxes.push((*open_min, *open_max));
+                                continue;
+                            }
                         }
                     }
                     let (final_min, final_max) = if let Some(dir) = extrusion_dir {
@@ -1872,7 +1901,7 @@ impl GeometryRouter {
         let mut voided = SubMeshCollection::new();
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;
-            let voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
+            let voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id, element.ifc_type);
             if !voided_mesh.is_empty() {
                 voided
                     .sub_meshes

@@ -58,13 +58,21 @@ fn ac20_extracts_no_feature_element_profiles() {
         "feature/void elements must not produce projection profiles, got: {feature_profiles:?}"
     );
 
-    // The fix must not have nuked real structure: walls still extrude profiles.
-    let wall_profiles = profiles
-        .iter()
-        .filter(|p| p.ifc_type.eq_ignore_ascii_case("IfcWall"))
-        .count();
+    // The fix must not have nuked real structure: AC20 is full of extruded
+    // walls/slabs/columns, so extraction must still yield structural profiles.
+    // Match by substring (case-insensitive) rather than an exact type string —
+    // FZK-Haus walls are `IfcWallStandardCase`, not `IfcWall`.
+    let types: Vec<&str> = profiles.iter().map(|p| p.ifc_type.as_str()).collect();
     assert!(
-        wall_profiles > 0,
-        "real building elements (walls) should still produce profiles"
+        !profiles.is_empty(),
+        "feature-element exclusion must not nuke real structure; AC20 should still yield profiles"
+    );
+    let structural = profiles.iter().filter(|p| {
+        let t = p.ifc_type.to_ascii_lowercase();
+        t.contains("wall") || t.contains("slab") || t.contains("column") || t.contains("beam")
+    }).count();
+    assert!(
+        structural > 0,
+        "common structural elements (wall/slab/column/beam) should still produce profiles; got: {types:?}"
     );
 }

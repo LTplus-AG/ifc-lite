@@ -518,10 +518,14 @@ export function useDrawingGeneration({
       // a plan ('down') cut with projection on, a single model (storey ids are
       // LOCAL express ids — federation would mismatch global mesh ids), no
       // active manual isolation or storey selection (those already scope the
-      // set and the user's explicit choice wins), and spatial-hierarchy data
-      // present (absent on cache-reopened models). Otherwise keep the shipped
-      // full-extent behavior so single-storey / cache-loaded / federated models
-      // don't regress.
+      // set and the user's explicit choice wins), spatial-hierarchy data
+      // present (absent on cache-reopened models), and at most ONE building.
+      // A single IFC can hold several IfcBuildings with staggered storey
+      // elevations; flattening all their storey minima into one band mis-scopes
+      // (a cut on building B's ground floor capped by building A's upper
+      // storey), so multi-building models fall back to full extent too.
+      // Otherwise keep the shipped full-extent behavior so single-storey /
+      // cache-loaded / federated / multi-building models don't regress.
       const sh = ifcDataStore?.spatialHierarchy;
       const canScopeFloor =
         projectionOn &&
@@ -530,7 +534,8 @@ export function useDrawingGeneration({
         models.size <= 1 &&
         combinedIsolatedIds === null &&
         !(computedIsolatedIds && computedIsolatedIds.size > 0) &&
-        !!sh;
+        sh !== undefined &&
+        sh.byBuilding.size <= 1;
       if (canScopeFloor && sh) {
         const cached = storeyFloorsCacheRef.current;
         const floors =

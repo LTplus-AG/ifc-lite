@@ -12,17 +12,15 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Vec3, EdgeData, Point2D, DrawingLine, LineCategory, SectionPlaneConfig } from './types.js';
+import type { Vec3, EdgeData, DrawingLine, SectionPlaneConfig } from './types.js';
 import {
   vec3,
   vec3Sub,
   vec3Cross,
   vec3Normalize,
   vec3Dot,
-  vec3Length,
   vec3Lerp,
   EPSILON,
-  projectTo2D,
 } from './math.js';
 
 /**
@@ -178,18 +176,6 @@ export class EdgeExtractor {
   }
 
   /**
-   * Extract edges from multiple meshes
-   */
-  extractEdgesFromMeshes(meshes: MeshData[]): EdgeData[] {
-    const allEdges: EdgeData[] = [];
-    for (const mesh of meshes) {
-      const edges = this.extractEdges(mesh);
-      allEdges.push(...edges);
-    }
-    return allEdges;
-  }
-
-  /**
    * Extract silhouette edges for a given view direction
    * Silhouette edges are where one adjacent face is front-facing and the other is back-facing
    */
@@ -219,43 +205,6 @@ export class EdgeExtractor {
       const front0 = dot0 < -SILHOUETTE_EPSILON;
       const front1 = dot1 < -SILHOUETTE_EPSILON;
       return front0 !== front1;
-    });
-  }
-
-  /**
-   * Convert edges to 2D drawing lines
-   */
-  edgesToDrawingLines(
-    edges: EdgeData[],
-    axis: 'x' | 'y' | 'z',
-    flipped: boolean,
-    category: LineCategory,
-    sectionPosition: number
-  ): DrawingLine[] {
-    return edges.map((edge) => {
-      const start = projectTo2D(edge.v0, axis, flipped);
-      const end = projectTo2D(edge.v1, axis, flipped);
-
-      // Signed distance from the section plane along the viewing direction.
-      // Negate when flipped so that smaller depth means nearer the viewer,
-      // matching the depth-buffer convention in HiddenLineClassifier.
-      const depthAxis = axis;
-      const signed0 = edge.v0[depthAxis] - sectionPosition;
-      const signed1 = edge.v1[depthAxis] - sectionPosition;
-      const depth = Math.min(
-        flipped ? -signed0 : signed0,
-        flipped ? -signed1 : signed1
-      );
-
-      return {
-        line: { start, end },
-        category,
-        visibility: 'visible' as const,
-        entityId: edge.entityId,
-        ifcType: edge.ifcType,
-        modelIndex: edge.modelIndex,
-        depth,
-      };
     });
   }
 
@@ -319,41 +268,6 @@ export class EdgeExtractor {
     return lines;
   }
 
-  /**
-   * Filter edges that are within a depth range from the section plane.
-   * Includes edges where:
-   * - Either endpoint is within range
-   * - The edge crosses through the depth band (one endpoint before, one after)
-   */
-  filterEdgesByDepth(
-    edges: EdgeData[],
-    axis: 'x' | 'y' | 'z',
-    sectionPosition: number,
-    maxDepth: number,
-    flipped: boolean
-  ): EdgeData[] {
-    return edges.filter((edge) => {
-      const d0 = edge.v0[axis] - sectionPosition;
-      const d1 = edge.v1[axis] - sectionPosition;
-
-      // Define the valid depth range
-      // When not flipped: [0, maxDepth] (positive direction from plane)
-      // When flipped: [-maxDepth, 0] (negative direction from plane)
-      const rangeMin = flipped ? -maxDepth : 0;
-      const rangeMax = flipped ? 0 : maxDepth;
-
-      // Check if endpoints are within range
-      const inRange0 = d0 >= rangeMin && d0 <= rangeMax;
-      const inRange1 = d1 >= rangeMin && d1 <= rangeMax;
-
-      // Check if edge crosses the depth band
-      // This happens when one endpoint is before rangeMin and the other is after rangeMax
-      const crossesBand = (d0 < rangeMin && d1 > rangeMax) || (d1 < rangeMin && d0 > rangeMax);
-
-      return inRange0 || inRange1 || crossesBand;
-    });
-  }
-
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIVATE HELPERS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -392,21 +306,3 @@ export class EdgeExtractor {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Get view direction from section axis
- */
-export function getViewDirection(axis: 'x' | 'y' | 'z', flipped: boolean): Vec3 {
-  const sign = flipped ? 1 : -1;
-  switch (axis) {
-    case 'x':
-      return { x: sign, y: 0, z: 0 };
-    case 'y':
-      return { x: 0, y: sign, z: 0 };
-    case 'z':
-      return { x: 0, y: 0, z: sign };
-  }
-}

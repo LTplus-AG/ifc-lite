@@ -189,7 +189,7 @@ describe('silhouette footprint under a downward plan view', () => {
   it('produces the footprint rectangle outline (>=4 edges) for an axis-aligned box', () => {
     const extractor = new EdgeExtractor(30);
     const mesh = boxMesh(40, 0, 0.5); // below the cut at Y=1
-    const edges = extractor.extractEdgesFromMeshes([mesh]);
+    const edges = extractor.extractEdges(mesh);
     const viewDir = getViewDirectionForPlane(planPlane); // (0,-1,0)
     const silhouettes = extractor.extractSilhouettes(edges, viewDir);
     const lines = extractor.edgesToProjectionLines(silhouettes, planPlane, { below: 3, above: 3 });
@@ -206,7 +206,7 @@ describe('silhouette footprint under a downward plan view', () => {
   it('marks an overhead box dashed (overhead band)', () => {
     const extractor = new EdgeExtractor(30);
     const mesh = boxMesh(41, 2, 2.5); // above the cut at Y=1
-    const edges = extractor.extractEdgesFromMeshes([mesh]);
+    const edges = extractor.extractEdges(mesh);
     const silhouettes = extractor.extractSilhouettes(edges, getViewDirectionForPlane(planPlane));
     const lines = extractor.edgesToProjectionLines(silhouettes, planPlane, { below: 3, above: 3 });
 

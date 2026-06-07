@@ -94,7 +94,7 @@ export type { LineMergerOptions } from './line-merger.js';
 // EDGE EXTRACTION
 // ═══════════════════════════════════════════════════════════════════════════
 
-export { EdgeExtractor, getViewDirection } from './edge-extractor.js';
+export { EdgeExtractor } from './edge-extractor.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PROFILE PROJECTION (clean silhouettes from WASM profiles)

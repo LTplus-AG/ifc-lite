@@ -18,9 +18,9 @@
  *
  *   `d = flipped ? -(coord - position) : (coord - position)`
  *
- * which is exactly `depthAlong` (profile-projector) / `edgesToDrawingLines`
- * (edge-extractor) / the `HiddenLineClassifier` depth-buffer convention, and
- * the mirror of the annotation-cull half-space test in `useDrawingGeneration`.
+ * which is exactly `depthAlong` (profile-projector) / the
+ * `HiddenLineClassifier` depth-buffer convention, and the mirror of the
+ * annotation-cull half-space test in `useDrawingGeneration`.
  * With `d`:
  *
  *   - `d < 0` ⇒ BELOW the cut (toward the floor, nearer the viewer) ⇒ VISIBLE
@@ -109,9 +109,8 @@ export function signedDepth(point: Vec3, plane: SectionPlaneConfig): number {
 
 /**
  * The camera viewing direction (unit, pointing away from the viewer into the
- * scene) for silhouette detection. Matches `getViewDirection` in
- * `edge-extractor` for cardinal axes and extends it to custom planes via the
- * plane normal. `flipped` reverses it.
+ * scene) for silhouette detection. For a cardinal axis it is the −axis (or
+ * +axis when flipped); for a custom plane it follows the plane normal.
  */
 export function getViewDirectionForPlane(plane: SectionPlaneConfig): Vec3 {
   const sign = plane.flipped ? 1 : -1;

@@ -703,10 +703,7 @@ export function useDrawingGeneration({
         // The kept window is `−ANNOTATION_VIEW_DEPTH ≤ signedDist ≤ 0` on
         // the −normal side — the side BELOW a down-looking camera, where
         // IFC dimensions live (authored at the storey's floor elevation,
-        // not at the cut height). This DIVERGES from
-        // `EdgeExtractor.filterEdgesByDepth`, which projects above the
-        // cut: annotations and projection edges are naturally on opposite
-        // sides of the cut plane. Flipped sections look at the same world
+        // not at the cut height). Flipped sections look at the same world
         // from the opposite side, so the slab mirrors to
         // `0 ≤ signedDist ≤ ANNOTATION_VIEW_DEPTH`.
         //

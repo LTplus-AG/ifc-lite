@@ -27,7 +27,7 @@ import {
 } from '@ifc-lite/geometry';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import initIfcLiteWasm, { IfcAPI } from '@ifc-lite/wasm';
-import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
+import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { type GeometryData } from '@ifc-lite/cache';
 
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, HUGE_NATIVE_FILE_THRESHOLD, getDynamicBatchConfig } from '../utils/ifcConfig.js';
@@ -244,7 +244,13 @@ export function useIfcLoader() {
     target: LoadTarget = { kind: 'primary' },
   ) => {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
-    const currentSession = ++loadSessionRef.current;
+    // Only a primary (destructive, replace-everything) load bumps the session.
+    // Federated adds are independent and run concurrently — they capture the
+    // current session without invalidating each other; a subsequent primary
+    // load still bumps it and aborts any in-flight federated adds.
+    const currentSession = target.kind === 'primary'
+      ? ++loadSessionRef.current
+      : loadSessionRef.current;
     // Federated adds carry a pre-allocated id; primary loads mint a fresh one.
     const modelId = target.kind === 'federated' ? target.modelId : crypto.randomUUID();
 
@@ -373,9 +379,6 @@ export function useIfcLoader() {
               renderer.relabelPointCloudAsset({ id: patch.pointCloudHandleId }, geometryResult.pointClouds[0].expressId);
             }
           }
-          // Spatial index AFTER id offset + alignment so it stores final ids + positions.
-          buildSpatialIndexGuarded(geometryResult.meshes, dataStore, setIfcDataStore);
-
           const federatedModel: FederatedModel = {
             id: modelId,
             name: target.name ?? file.name,
@@ -396,6 +399,9 @@ export function useIfcLoader() {
             federationAlignmentStatus,
           };
           useViewerStore.getState().addModel(federatedModel);
+          // Spatial index AFTER id offset + alignment (final ids + world positions)
+          // and AFTER addModel so it attaches to THIS model, not the active slot.
+          buildSpatialIndexForModel(geometryResult.meshes, modelId, dataStore);
           return;
         }
 
@@ -2101,10 +2107,19 @@ export function useIfcLoader() {
               }).catch(err => {
                 // Data model parsing failed - spatial index and caching skipped
                 console.warn('[useIfc] Skipping spatial index/cache - data model unavailable:', err);
-                updateModel(modelId, {
-                  loadState: 'error',
-                  loadError: err instanceof Error ? err.message : String(err),
-                });
+                const message = err instanceof Error ? err.message : String(err);
+                if (target.kind === 'federated') {
+                  // No placeholder model exists for a federated add (it is only
+                  // registered on success via finalizeModel→addModel), so
+                  // updateModel would no-op and the failure would vanish —
+                  // addModel just returns null. Surface it to the user instead.
+                  toast.error(`Failed to load "${file.name}": ${message}`);
+                } else {
+                  updateModel(modelId, {
+                    loadState: 'error',
+                    loadError: message,
+                  });
+                }
               });
               break;
           }

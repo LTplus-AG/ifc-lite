@@ -32,6 +32,7 @@ use ifc_lite_core::IfcType;
 
 mod indexed_colour;
 mod material;
+mod surface;
 // Public styling resolvers — the single shared implementation that both the
 // native pipeline and the browser `wasm-bindings` call (issue #913, Phase 2e).
 // `split_mesh_by_indexed_colour` is also public so the browser `processGeometryBatch`
@@ -45,6 +46,7 @@ pub use material::{
     pick_material_style_for_submesh, pick_opaque_first, resolve_material_ids,
     resolve_submesh_color,
 };
+pub use surface::extract_surface_style_colors;
 
 /// Alpha at or above which a color is treated as opaque.
 ///

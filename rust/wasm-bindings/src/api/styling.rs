@@ -95,8 +95,9 @@ pub(crate) fn find_color_for_geometry(
     None
 }
 
-/// Extract `(rendering_color, shading_color)` from IfcStyledItem.Styles.
-/// See `extract_color_from_rendering` for the tuple semantics.
+/// Extract `(apparent_color, shading_color)` from IfcStyledItem.Styles.
+/// See [`ifc_lite_processing::style::extract_surface_style_colors`] for the
+/// tuple semantics.
 pub(crate) fn extract_color_pair_from_styles(
     styles_attr: &ifc_lite_core::AttributeValue,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -127,8 +128,12 @@ pub(crate) fn extract_color_from_styles(
     extract_color_pair_from_styles(styles_attr, decoder).map(|(c, _)| c)
 }
 
-/// Extract color from IfcPresentationStyleAssignment or IfcSurfaceStyle.
-/// See `extract_color_from_rendering` for the tuple semantics.
+/// Extract colour from `IfcPresentationStyle(Assignment)` or `IfcSurfaceStyle`,
+/// delegating the surface-style colour leaf to the canonical
+/// [`ifc_lite_processing::style::extract_surface_style_colors`] (#913-style
+/// single source of truth — so the viewer and server can't disagree on
+/// `SurfaceColour` vs `DiffuseColour` precedence). Returns
+/// `(apparent_color, optional_shading_color)`.
 fn extract_color_from_style_assignment(
     style_id: u32,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -139,12 +144,14 @@ fn extract_color_from_style_assignment(
 
     match style.ifc_type {
         IfcType::IfcPresentationStyle => {
-            // IfcPresentationStyle has Styles at attr 0
+            // IfcPresentationStyle has Styles at attr 0.
             let styles_attr = style.get(0)?;
             if let Some(list) = styles_attr.as_list() {
                 for item in list {
                     if let Some(inner_id) = item.as_entity_ref() {
-                        if let Some(pair) = extract_color_from_surface_style(inner_id, decoder) {
+                        if let Some(pair) =
+                            ifc_lite_processing::style::extract_surface_style_colors(inner_id, decoder)
+                        {
                             return Some(pair);
                         }
                     }
@@ -152,17 +159,18 @@ fn extract_color_from_style_assignment(
             }
         }
         IfcType::IfcSurfaceStyle => {
-            return extract_color_from_surface_style(style_id, decoder);
+            return ifc_lite_processing::style::extract_surface_style_colors(style_id, decoder);
         }
         _ => {
-            // FIX: Handle IfcPresentationStyleAssignment (IFC2x3 entity not in IFC4 schema)
-            // IfcPresentationStyleAssignment has Styles list at attribute 0
-            // It's decoded as Unknown type, so we check by structure
+            // IfcPresentationStyleAssignment (IFC2x3 entity absent from the IFC4
+            // schema) decodes as Unknown; its Styles list is at attribute 0.
             let styles_attr = style.get(0)?;
             if let Some(list) = styles_attr.as_list() {
                 for item in list {
                     if let Some(inner_id) = item.as_entity_ref() {
-                        if let Some(pair) = extract_color_from_surface_style(inner_id, decoder) {
+                        if let Some(pair) =
+                            ifc_lite_processing::style::extract_surface_style_colors(inner_id, decoder)
+                        {
                             return Some(pair);
                         }
                     }
@@ -172,145 +180,6 @@ fn extract_color_from_style_assignment(
     }
 
     None
-}
-
-/// Extract color from IfcSurfaceStyle. See `extract_color_from_rendering`
-/// for the meaning of the tuple.
-fn extract_color_from_surface_style(
-    style_id: u32,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<([f32; 4], Option<[f32; 4]>)> {
-    use ifc_lite_core::IfcType;
-
-    let style = decoder.decode_by_id(style_id).ok()?;
-
-    if style.ifc_type != IfcType::IfcSurfaceStyle {
-        return None;
-    }
-
-    // IfcSurfaceStyle: Name, Side, Styles (list of surface style elements)
-    // Attribute 2: Styles
-    let styles_attr = style.get(2)?;
-
-    if let Some(list) = styles_attr.as_list() {
-        for item in list {
-            if let Some(element_id) = item.as_entity_ref() {
-                if let Some(pair) = extract_color_from_rendering(element_id, decoder) {
-                    return Some(pair);
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Extract color from IfcSurfaceStyleRendering or IfcSurfaceStyleShading.
-///
-/// Returns `(rendering_color, shading_color)`:
-///   - `rendering_color` is the apparent surface colour: `SurfaceColour`
-///     (attr 0) by default, scaled by `DiffuseColour` (attr 2) when the
-///     author supplied it as an `IfcNormalisedRatioMeasure` factor.
-///     Matches how web-ifc, IfcOpenShell, BlenderBIM, and the IFC spec
-///     prose treat the chain — `SurfaceColour` IS the apparent surface
-///     colour; `DiffuseColour` is the diffuse-reflection contribution
-///     used by full PBR/Phong renderers and is meaningless for the flat
-///     viewer pipeline when its only effect is to drop everything to
-///     black.
-///   - `shading_color` is the alternative the GLB exporter's "Shading"
-///     source picks up — populated only when a distinct `DiffuseColour`
-///     IfcColourRgb is authored, so downstream pipelines that DO want
-///     the per-component diffuse override can still get it.
-///
-/// Pre-fix this preferred `DiffuseColour` over `SurfaceColour`. That
-/// regressed on every IFC file that authors `DiffuseColour =
-/// IfcColourRgb(0, 0, 0)` (which the spec defines as "no diffuse
-/// reflection contribution", NOT "render the surface in black") — most
-/// notably the railway fixture on issue #859 / PR #871, where every
-/// IfcSignal / IfcReferent rendered as opaque black on the dark
-/// viewport background and the user reported "viewport blank" even
-/// though 33 meshes had streamed correctly.
-fn extract_color_from_rendering(
-    rendering_id: u32,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<([f32; 4], Option<[f32; 4]>)> {
-    use ifc_lite_core::IfcType;
-
-    let rendering = decoder.decode_by_id(rendering_id).ok()?;
-
-    match rendering.ifc_type {
-        IfcType::IfcSurfaceStyleRendering | IfcType::IfcSurfaceStyleShading => {
-            // Attr 0: SurfaceColour (inherited from IfcSurfaceStyleShading)
-            // Attr 1: Transparency (inherited, 0.0=opaque, 1.0=transparent)
-            // Attr 2: DiffuseColour — SELECT(IfcColourRgb,
-            //         IfcNormalisedRatioMeasure). Only on IfcSurfaceStyleRendering.
-            let color_ref = rendering.get_ref(0)?;
-            let [sr, sg, sb, _] = extract_color_rgb(color_ref, decoder)?;
-
-            let transparency = rendering.get_float(1).unwrap_or(0.0);
-            let alpha = (1.0 - transparency as f32).clamp(0.0, 1.0);
-            let surface_rgba = [sr, sg, sb, alpha];
-
-            // SurfaceColour is the canonical apparent colour. Only let
-            // DiffuseColour modulate it when it's a normalised-ratio
-            // factor (which IS a multiplicative modifier of
-            // SurfaceColour per spec). When DiffuseColour is an
-            // IfcColourRgb we store it as the optional `shading`
-            // override for downstream consumers (GLB exporter's
-            // "Shading" source) but do NOT use it as the rendered
-            // colour — that would replace the entire surface tint
-            // with a value the IFC author intended as a reflectance
-            // coefficient, which turns most files black on the flat
-            // viewer pipeline.
-            let mut rendering_rgba = surface_rgba;
-            let mut shading: Option<[f32; 4]> = None;
-
-            if rendering.ifc_type == IfcType::IfcSurfaceStyleRendering {
-                if let Some(diffuse_id) = rendering.get_ref(2) {
-                    if let Some([dr, dg, db, _]) = extract_color_rgb(diffuse_id, decoder) {
-                        let diffuse_rgba = [dr, dg, db, alpha];
-                        // Surface the diffuse override to the GLB
-                        // exporter only when it actually differs from
-                        // the surface colour.
-                        if diffuse_rgba != surface_rgba {
-                            shading = Some(diffuse_rgba);
-                        }
-                    }
-                } else if let Some(factor) = rendering.get_float(2) {
-                    let f = (factor as f32).clamp(0.0, 1.0);
-                    rendering_rgba = [sr * f, sg * f, sb * f, alpha];
-                }
-            }
-
-            return Some((rendering_rgba, shading));
-        }
-        _ => {}
-    }
-
-    None
-}
-
-/// Extract RGB color from IfcColourRgb
-fn extract_color_rgb(
-    color_id: u32,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<[f32; 4]> {
-    use ifc_lite_core::IfcType;
-
-    let color = decoder.decode_by_id(color_id).ok()?;
-
-    if color.ifc_type != IfcType::IfcColourRgb {
-        return None;
-    }
-
-    // IfcColourRgb: Name, Red, Green, Blue
-    // Note: In IFC2x3, attributes are at indices 1, 2, 3 (0 is Name)
-    // In IFC4, attributes are also at 1, 2, 3
-    let red = color.get_float(1).unwrap_or(0.8);
-    let green = color.get_float(2).unwrap_or(0.8);
-    let blue = color.get_float(3).unwrap_or(0.8);
-
-    Some([red as f32, green as f32, blue as f32, 1.0])
 }
 
 // ---------------------------------------------------------------------------

@@ -278,3 +278,69 @@ fn no_duplicate_default_color_tables() {
          `processing::style` — use `default_color_for_type` instead (issue #913): {offenders:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// "No second surface-style colour extractor" guard.
+//
+// The `IfcSurfaceStyle → IfcSurfaceStyleRendering → IfcColourRgb` leaf has one
+// home: `ifc_lite_processing::style::extract_surface_style_colors`. The browser
+// `wasm-bindings` used to carry its own copy (`extract_color_from_rendering` /
+// `extract_color_rgb`), which silently disagreed with the server on
+// SurfaceColour-vs-DiffuseColour precedence (#859/#871). Forbid those function
+// names from reappearing so the two pipelines can't re-fork. (The 2D drafting
+// palette in `symbolic.rs` uses differently-named `extract_color_from_*`
+// helpers and is unaffected.)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn no_duplicate_surface_style_color_extraction() {
+    let Some(root) = repo_root() else {
+        eprintln!("repo root not found (packaged context) — skipping guard");
+        return;
+    };
+
+    let allow = |rel: &str| {
+        rel.ends_with("rust/processing/tests/styling_parity.rs")
+            // Standalone debug examples can't depend on the downstream
+            // `processing` crate, so they carry their own ad-hoc extraction.
+            // They are not a production pipeline and don't affect server/viewer
+            // parity, so they're exempt from this guard.
+            || rel.starts_with("rust/geometry/examples/")
+    };
+
+    let mut files = Vec::new();
+    collect_rs_files(&root.join("rust"), &mut files);
+    collect_rs_files(&root.join("apps"), &mut files);
+
+    let mut offenders = Vec::new();
+    for path in files {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if allow(&rel) {
+            continue;
+        }
+        let Ok(src) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let declares = src.lines().any(|line| {
+            let line = line.trim_start();
+            ["fn ", "pub fn ", "pub(crate) fn "].iter().any(|p| {
+                line.starts_with(&format!("{p}extract_color_from_rendering"))
+                    || line.starts_with(&format!("{p}extract_color_rgb"))
+            })
+        });
+        if declares {
+            offenders.push(rel);
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "surface-style colour extraction must live only in \
+         `ifc_lite_processing::style::extract_surface_style_colors`; found a per-pipeline \
+         copy in: {offenders:?}"
+    );
+}

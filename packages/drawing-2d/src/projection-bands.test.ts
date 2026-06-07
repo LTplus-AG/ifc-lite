@@ -9,6 +9,7 @@ import {
   classifyDepthRange,
   classifySegmentBand,
   signedDepth,
+  signedAxisDepth,
   bandVisibility,
   getViewDirectionForPlane,
   outlineToProjectionLines,
@@ -47,6 +48,20 @@ describe('classifyDepthRange', () => {
 
   it('tolerates swapped min/max', () => {
     expect(classifyDepthRange(-0.5, -2, bands)).toBe('visible');
+  });
+
+  it('zero-width bands cull a near-plane element; the 1mm floor keeps it (R1)', () => {
+    const dNearBelow = -0.0005; // just below the cut
+    expect(classifyDepthRange(dNearBelow, dNearBelow, { below: 0, above: 0 })).toBe('cull');
+    expect(classifyDepthRange(dNearBelow, dNearBelow, { below: 1e-3, above: 1e-3 })).toBe('visible');
+  });
+});
+
+describe('signedAxisDepth (scalar mirror of signedDepth)', () => {
+  it('equals signedDepth for a point along the cardinal cut axis', () => {
+    // axis 'y', position 1: depth depends only on world Y; X/Z are irrelevant.
+    expect(signedAxisDepth(0.3, 1, false)).toBeCloseTo(signedDepth({ x: 9, y: 0.3, z: -4 }, planPlane));
+    expect(signedAxisDepth(2.5, 1, true)).toBeCloseTo(signedDepth({ x: 0, y: 2.5, z: 7 }, planPlaneFlipped));
   });
 });
 

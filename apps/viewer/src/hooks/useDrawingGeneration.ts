@@ -187,7 +187,7 @@ export function useDrawingGeneration({
     // For multi-model: create cache key from model count and visible model IDs
     // For single-model: use source byteLength as before
     const modelCacheKey = models.size > 0
-      ? `${models.size}-${[...models.values()].filter(m => m.visible).map(m => m.id).sort().join(',')}`
+      ? `${models.size}-${[...models.values()].filter(m => m.visible).map(m => m.id).sort().join('|')}`
       : (ifcDataStore?.source ? String(ifcDataStore.source.byteLength) : null);
 
     const useSymbolic = displayOptions.useSymbolicRepresentations && !!ifcDataStore?.source;
@@ -490,8 +490,10 @@ export function useDrawingGeneration({
       // models with an overhead roof (e.g. AC20) "just work"; multi-storey
       // bleed is naturally scoped when the user isolates a storey (the meshes
       // are already filtered to it below). Flip-invariant: the classifier
-      // applies the flip sign itself.
-      const fullExtent = axisMax - axisMin;
+      // applies the flip sign itself. Floor at 1mm so a degenerate zero-extent
+      // model (or a storey collapsed to a single slab) doesn't yield 0-width
+      // bands that cull every element sitting on the plane.
+      const fullExtent = Math.max(axisMax - axisMin, 1e-3);
 
       // Adjust progress to account for symbolic parsing phase (0-20%)
       const progressOffset = symbolicLines.length > 0 ? 20 : 0;

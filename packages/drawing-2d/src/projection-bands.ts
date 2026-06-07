@@ -87,6 +87,17 @@ function planeNormalDistance(plane: SectionPlaneConfig): { normal: Vec3; offset:
 }
 
 /**
+ * Flip-adjusted depth of a raw coordinate along the cut axis — the scalar
+ * mirror of {@link signedDepth} for callers that only have an axis coordinate
+ * (e.g. an element's `axisMin`/`axisMax`) rather than a full 3D point. Keeps
+ * the `flipped ? -raw : raw` sign convention in a single place.
+ */
+export function signedAxisDepth(coord: number, position: number, flipped: boolean): number {
+  const raw = coord - position;
+  return flipped ? -raw : raw;
+}
+
+/**
  * Flip-adjusted signed depth of a world point from the cut plane.
  * `d < 0` ⇒ below (visible side); `d > 0` ⇒ above (overhead side).
  */
@@ -221,8 +232,8 @@ export function outlineToProjectionLines(
   // The outline path is cardinal-only (the toggle is gated off for custom
   // planes), so classify against the cardinal plane position.
   const pos = plane.customPlane ? plane.customPlane.distance : plane.position;
-  const dMin = plane.flipped ? -(outline.axisMin - pos) : outline.axisMin - pos;
-  const dMax = plane.flipped ? -(outline.axisMax - pos) : outline.axisMax - pos;
+  const dMin = signedAxisDepth(outline.axisMin, pos, plane.flipped);
+  const dMax = signedAxisDepth(outline.axisMax, pos, plane.flipped);
   const visibility = bandVisibility(classifyDepthRange(dMin, dMax, depths));
   if (visibility === null) return [];
 

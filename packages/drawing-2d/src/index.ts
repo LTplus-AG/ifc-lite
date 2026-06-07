@@ -110,6 +110,7 @@ export {
   classifyDepthRange,
   classifySegmentBand,
   signedDepth,
+  signedAxisDepth,
   bandVisibility,
   projectPointForPlane,
   getViewDirectionForPlane,

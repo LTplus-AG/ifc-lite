@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { PropertySet, QuantitySet } from '@ifc-lite/data';
-import type { IfcDataStore, EntityByIdIndex } from './columnar-parser.js';
+import type { PropertySet } from '@ifc-lite/data';
+import type { IfcDataStore } from './columnar-parser.js';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from './columnar-parser.js';
 import { BufferEntitySource } from './entity-source.js';
 
@@ -34,26 +34,23 @@ export type IfcStoreData = Omit<
  */
 export function attachDataStoreAccessors(store: IfcStoreData): IfcDataStore {
   const full = store as IfcDataStore;
-  const entitySource = new BufferEntitySource(full.source, {
-    // The store's interface widens `byId` to a read-only map of `unknown`;
-    // at runtime it is always the byte index a BufferEntitySource needs.
-    byId: full.entityIndex.byId as unknown as EntityByIdIndex,
-    byType: full.entityIndex.byType,
-  });
+  const entitySource = new BufferEntitySource(full.source, full.entityIndex);
 
   full.getEntity = (expressId) => entitySource.getEntity(expressId);
   full.getEntitiesByType = (typeName) => entitySource.getEntitiesByType(typeName);
   full.getProperties = (expressId) => {
     if (full.onDemandPropertyMap && full.onDemandPropertyMap.size > 0) {
-      return extractPropertiesOnDemand(full, expressId) as unknown as PropertySet[];
+      // extractPropertiesOnDemand returns a richer pset shape (extra type/value
+      // metadata); narrow to the PropertySet[] the store contract exposes.
+      return extractPropertiesOnDemand(full, expressId) as PropertySet[];
     }
-    return full.properties.getForEntity(expressId) as PropertySet[];
+    return full.properties.getForEntity(expressId);
   };
   full.getQuantities = (expressId) => {
     if (full.onDemandQuantityMap && full.onDemandQuantityMap.size > 0) {
-      return extractQuantitiesOnDemand(full, expressId) as unknown as QuantitySet[];
+      return extractQuantitiesOnDemand(full, expressId);
     }
-    return full.quantities.getForEntity(expressId) as QuantitySet[];
+    return full.quantities.getForEntity(expressId);
   };
 
   return full;

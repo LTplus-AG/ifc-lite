@@ -1780,7 +1780,10 @@ export function useIfcLoader() {
         setProgress({ phase: 'Checking cache', percent: 5 });
         const cacheResult = await getCached(cacheKey);
         if (cacheResult) {
-          const cacheLoadResult = await loadFromCache(cacheResult, file.name, cacheKey);
+          // Pass the freshly read file buffer as the source fallback: the
+          // desktop cache doesn't persist a sourceBuffer, and without one the
+          // restored store can't carry the lazy entity accessors.
+          const cacheLoadResult = await loadFromCache(cacheResult, file.name, cacheKey, buffer);
           if (cacheLoadResult.success) {
             const state = useViewerStore.getState();
             finalizePrimaryModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {

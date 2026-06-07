@@ -118,7 +118,7 @@ export interface CacheHeaderInfo {
 /**
  * Complete data store for IFC model
  */
-export interface IfcDataStore {
+export interface CacheDataStore {
   schema: SchemaVersion;
   entityCount: number;
   strings: StringTable;
@@ -154,7 +154,7 @@ export interface CachedEntityIndexColumns {
  * Result from reading cache
  */
 export interface CacheReadResult {
-  dataStore: IfcDataStore;
+  dataStore: CacheDataStore;
   entityIndex?: CachedEntityIndexColumns;
   geometry?: {
     meshes: MeshData[];

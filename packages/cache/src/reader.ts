@@ -12,7 +12,7 @@ import {
   type CacheHeaderInfo,
   type CacheReadOptions,
   type CacheReadResult,
-  type IfcDataStore,
+  type CacheDataStore,
 } from './types.js';
 import { BufferReader } from './utils/buffer-utils.js';
 import { xxhash64 } from './utils/hash.js';
@@ -106,7 +106,7 @@ export class BinaryCacheReader {
     reader.position = relationshipsSection.offset;
     const relationships = readRelationships(reader);
 
-    const dataStore: IfcDataStore = {
+    const dataStore: CacheDataStore = {
       schema: header.schema,
       entityCount: header.entityCount,
       strings,

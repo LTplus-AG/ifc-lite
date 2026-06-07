@@ -17,7 +17,7 @@ import {
   type CacheHeader,
   type SectionEntry,
   type CacheWriteOptions,
-  type IfcDataStore,
+  type CacheDataStore,
 } from './types.js';
 import { BufferWriter } from './utils/buffer-utils.js';
 import { xxhash64 } from './utils/hash.js';
@@ -47,7 +47,7 @@ export class BinaryCacheWriter {
    * @returns ArrayBuffer containing the binary cache
    */
   async write(
-    dataStore: IfcDataStore,
+    dataStore: CacheDataStore,
     geometry: GeometryData | undefined,
     sourceBuffer: ArrayBuffer,
     options: CacheWriteOptions = {}

@@ -48,7 +48,7 @@ export type {
   CachedEntityIndexColumns,
   CacheEntityIndex,
   CacheEntityRef,
-  IfcDataStore,
+  CacheDataStore,
 } from './types.js';
 
 // Utilities

@@ -24,6 +24,15 @@ import { buildCompareOverlay } from '@/lib/compare/overlay';
 
 type ViewerStore = ReturnType<typeof useViewerStore.getState>;
 
+/** Hand the shared colour channel back to its prior owner when compare lets go:
+ *  if a lens is still active, restore its overlay; otherwise clear. Prevents the
+ *  compare panel from blanking lens colours on close (an active lens only has
+ *  its panel hidden, not deactivated). */
+function handBackColorChannel(store: ViewerStore): void {
+  const lensColors = store.lensAppliedColors;
+  store.setPendingColorUpdates(lensColors && lensColors.size > 0 ? new Map(lensColors) : new Map());
+}
+
 /** Re-show ids we hid that the user wasn't already hiding, then drop ownership. */
 function restoreOwnedHidden(owned: Map<number, boolean>, store: ViewerStore): void {
   if (owned.size === 0) return;
@@ -79,7 +88,7 @@ export function useCompareOverlay(): void {
 
     if (!compareResult) {
       if (colorActiveRef.current) {
-        store.setPendingColorUpdates(new Map());
+        handBackColorChannel(store);
         colorActiveRef.current = false;
       }
       restoreOwnedHidden(ownedHiddenRef.current, store);
@@ -98,7 +107,7 @@ export function useCompareOverlay(): void {
     return () => {
       const store = useViewerStore.getState();
       if (colorActiveRef.current) {
-        store.setPendingColorUpdates(new Map());
+        handBackColorChannel(store);
         colorActiveRef.current = false;
       }
       restoreOwnedHidden(ownedHiddenRef.current, store);

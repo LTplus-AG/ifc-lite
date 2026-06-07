@@ -235,6 +235,14 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
             </Button>
 
             {error && <p className="text-xs text-[#f7768e]">{error}</p>}
+
+            {result?.geometryUnavailable && scope !== 'data' && (
+              <p className="text-xs text-[#e0af68]">
+                One model has no geometry fingerprints (loaded outside the WASM
+                mesh path), so geometry changes can’t be detected. Data changes
+                are still accurate — switch to the Data scope for reliable results.
+              </p>
+            )}
           </div>
 
           {/* Counts */}

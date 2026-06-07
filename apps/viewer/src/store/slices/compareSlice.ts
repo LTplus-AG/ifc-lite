@@ -27,6 +27,9 @@ export interface CompareResult {
   headName: string;
   /** The scope the diff was computed with. */
   scope: DiffScope;
+  /** True when a compared model carries no geometry hashes (loaded outside the
+   *  WASM mesh path), so geometry-scope changes can't be detected. */
+  geometryUnavailable: boolean;
   /** The engine output — entries keyed by GlobalId, with per-entity refs. */
   diff: ModelDiff<CompareRef>;
 }

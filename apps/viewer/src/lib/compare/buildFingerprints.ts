@@ -69,9 +69,9 @@ export interface BuildFingerprintsModel {
  * without a resolvable GlobalId fall back to a per-model synthetic key so they
  * never collide across A/B and simply read as added/deleted.
  */
-export function buildEntityFingerprints(
+export async function buildEntityFingerprints(
   model: BuildFingerprintsModel,
-): EntityFingerprint<CompareRef>[] {
+): Promise<EntityFingerprint<CompareRef>[]> {
   const { store, meshes, idOffset, modelId } = model;
 
   // local express id → first geometry hash seen for it (may be undefined when
@@ -87,6 +87,7 @@ export function buildEntityFingerprints(
   }
 
   const fingerprints: EntityFingerprint<CompareRef>[] = [];
+  let processed = 0;
   for (const [localId, geometryHash] of geometryByLocalId) {
     const ifcType = store.entities.getTypeName(localId) || 'IfcProduct';
     const globalId = store.entities.getGlobalId(localId);
@@ -99,9 +100,25 @@ export function buildEntityFingerprints(
       geometryHash,
       ref: { modelId, localId, globalId: localId + idOffset },
     });
+
+    // Per-entity property extraction reparses from the source buffer, so on a
+    // large model this loop is heavy; yield to the main thread periodically so
+    // the viewport stays responsive and the "Comparing…" spinner keeps
+    // animating instead of the UI freezing (#924).
+    if (++processed % 1500 === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   }
 
   return fingerprints;
+}
+
+/** Does this side carry at least one usable geometry hash? Compares run on
+ *  models loaded outside the WASM mesh path (e.g. huge native desktop loads)
+ *  produce no hashes, which would make geometry diffs silently read every
+ *  element as unchanged — callers warn when this is false. */
+export function hasGeometryHashes(side: readonly EntityFingerprint<CompareRef>[]): boolean {
+  return side.some((fingerprint) => fingerprint.geometryHash !== undefined);
 }
 
 /**

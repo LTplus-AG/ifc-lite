@@ -56,6 +56,7 @@ export function useLens() {
       useViewerStore.getState().setLensRuleCounts(new Map());
       useViewerStore.getState().setLensRuleEntityIds(new Map());
       useViewerStore.getState().setLensAutoColorLegend([]);
+      useViewerStore.getState().setLensAppliedColors(null);
 
       // Send empty map to signal "clear overlays" to useGeometryStreaming
       useViewerStore.getState().setPendingColorUpdates(new Map());
@@ -101,7 +102,10 @@ export function useLens() {
       useViewerStore.getState().setLensAutoColorLegend([]);
     }
 
-    // Apply colors via overlay system — original batches are never modified
+    // Apply colors via overlay system — original batches are never modified.
+    // Remember the exact overlay so the compare overlay can restore it on
+    // teardown instead of blanking the channel the lens still owns.
+    useViewerStore.getState().setLensAppliedColors(colorMap.size > 0 ? colorMap : null);
     if (colorMap.size > 0) {
       useViewerStore.getState().setPendingColorUpdates(colorMap);
     }

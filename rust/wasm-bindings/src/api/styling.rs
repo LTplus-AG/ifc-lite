@@ -868,115 +868,21 @@ fn walk_representation_for_direct_color(
 // `ifc_lite_processing::default_color_for_type` (issue #913). The browser path
 // calls it directly (see `gpu_meshes.rs`); do not reintroduce a table here.
 
-/// Extract building rotation from a pre-collected IfcSite position (avoids re-scanning).
-/// Returns rotation angle in radians, or None if not found.
+/// Site/building rotation angle (radians) for the viewer's render-frame
+/// rotation, or `None` if absent. Derived from the **canonical** resolved
+/// placement matrix (`GeometryRouter::resolve_scaled_placement`) + the shared
+/// [`ifc_lite_geometry::rotation_angle_about_z`], so it cannot drift from the
+/// processor's site-local frame on nested / scaled / tilted placements (the old
+/// `atan2`-of-raw-top-level-RefDirection walk was incomplete for those).
 pub(crate) fn extract_building_rotation_from_site(
     site_pos: (u32, usize, usize),
+    router: &ifc_lite_geometry::GeometryRouter,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<f64> {
     let (site_id, start, end) = site_pos;
     let site_entity = decoder.decode_at_with_id(site_id, start, end).ok()?;
-
-    // Get ObjectPlacement (attribute 5 for IfcProduct)
-    let placement_attr = site_entity.get(5).filter(|a| !a.is_null())?;
-    let placement = decoder.resolve_ref(placement_attr).ok()??;
-
-    // Find top-level placement (parent is null)
-    let top_level_placement = find_top_level_placement(&placement, decoder);
-
-    // Extract rotation from top-level placement's RefDirection
-    extract_rotation_from_placement(&top_level_placement, decoder)
-}
-
-/// Find the top-level placement (one with null parent)
-fn find_top_level_placement(
-    placement: &ifc_lite_core::DecodedEntity,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> ifc_lite_core::DecodedEntity {
-    use ifc_lite_core::IfcType;
-
-    // Check if this is a local placement
-    if placement.ifc_type != IfcType::IfcLocalPlacement {
-        return placement.clone();
-    }
-
-    // Check parent (attribute 0: PlacementRelTo)
-    let parent_attr = match placement.get(0) {
-        Some(attr) if !attr.is_null() => attr,
-        _ => return placement.clone(), // No parent - this is top-level
-    };
-
-    // Resolve parent and recurse
-    if let Ok(Some(parent)) = decoder.resolve_ref(parent_attr) {
-        find_top_level_placement(&parent, decoder)
-    } else {
-        placement.clone() // Parent resolution failed - return current
-    }
-}
-
-/// Extract rotation angle from IfcAxis2Placement3D's RefDirection
-/// Returns rotation angle in radians (atan2 of RefDirection Y/X components)
-fn extract_rotation_from_placement(
-    placement: &ifc_lite_core::DecodedEntity,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<f64> {
-    use ifc_lite_core::IfcType;
-
-    // Get RelativePlacement (attribute 1: IfcAxis2Placement3D)
-    let rel_attr = match placement.get(1) {
-        Some(attr) if !attr.is_null() => attr,
-        _ => return None,
-    };
-
-    let axis_placement = match decoder.resolve_ref(rel_attr) {
-        Ok(Some(p)) => p,
-        _ => return None,
-    };
-
-    // Check if it's IfcAxis2Placement3D
-    if axis_placement.ifc_type != IfcType::IfcAxis2Placement3D {
-        return None;
-    }
-
-    // Get RefDirection (attribute 2: IfcDirection)
-    let ref_dir_attr = match axis_placement.get(2) {
-        Some(attr) if !attr.is_null() => attr,
-        _ => return None,
-    };
-
-    let ref_dir = match decoder.resolve_ref(ref_dir_attr) {
-        Ok(Some(d)) => d,
-        _ => return None,
-    };
-
-    if ref_dir.ifc_type != IfcType::IfcDirection {
-        return None;
-    }
-
-    // Get direction ratios (attribute 0: list of floats)
-    let ratios_attr = match ref_dir.get(0) {
-        Some(attr) => attr,
-        _ => return None,
-    };
-
-    let ratios = match ratios_attr.as_list() {
-        Some(list) => list,
-        _ => return None,
-    };
-
-    // Extract X and Y components (Z is up in IFC)
-    let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-    let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-
-    // Calculate rotation angle: atan2(dy, dx)
-    // This gives the angle of the building's X-axis relative to world X-axis
-    let len_sq = dx * dx + dy * dy;
-    if len_sq < 1e-10 {
-        return None; // Zero-length direction
-    }
-
-    let rotation = dy.atan2(dx);
-    Some(rotation)
+    let matrix = router.resolve_scaled_placement(&site_entity, decoder).ok()?;
+    ifc_lite_geometry::rotation_angle_about_z(&matrix)
 }
 
 #[cfg(test)]

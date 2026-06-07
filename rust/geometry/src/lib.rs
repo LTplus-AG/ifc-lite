@@ -127,6 +127,7 @@ pub use router::{
 pub use transform::{
     apply_rtc_offset, parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,
     parse_cartesian_point, parse_cartesian_point_from_id, parse_direction, parse_direction_from_id,
+    rotation_angle_about_z,
 };
 pub use triangulation::triangulate_polygon;
 pub use void_analysis::{

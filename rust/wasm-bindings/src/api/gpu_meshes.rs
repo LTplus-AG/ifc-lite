@@ -122,7 +122,7 @@ impl IfcAPI {
         // Extract building rotation
         let building_rotation = pre_pass
             .site_position
-            .and_then(|pos| extract_building_rotation_from_site(pos, &mut decoder));
+            .and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
 
         // Build combined job list: simple first, then complex
         let total_jobs = pre_pass.simple_jobs.len() + pre_pass.complex_jobs.len();
@@ -307,7 +307,7 @@ impl IfcAPI {
             || rtc_offset.2.abs() > 10000.0;
 
         let building_rotation =
-            site_position.and_then(|pos| extract_building_rotation_from_site(pos, &mut decoder));
+            site_position.and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
 
         // Serialize job list
         let total_jobs = simple_jobs.len() + complex_jobs.len();
@@ -597,7 +597,7 @@ impl IfcAPI {
                 let needs_shift = is_large(rtc_offset);
 
                 let building_rotation = site_position
-                    .and_then(|pos| extract_building_rotation_from_site(pos, &mut decoder));
+                    .and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
 
                 // Emit meta event.
                 let meta = js_sys::Object::new();
@@ -649,7 +649,7 @@ impl IfcAPI {
                 || rtc_offset.1.abs() > 10000.0
                 || rtc_offset.2.abs() > 10000.0;
             let building_rotation = site_position
-                .and_then(|pos| extract_building_rotation_from_site(pos, &mut decoder));
+                .and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
 
             let meta = js_sys::Object::new();
             super::set_js_prop(&meta, "type", &"meta".into());

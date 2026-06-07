@@ -36,6 +36,10 @@ WASM_TAG="@ifc-lite/wasm@${WASM_VERSION}"
 # Conservative superset: any Rust workspace change invalidates the fast path,
 # even one that doesn't reach the wasm-bindings crate. Correctness over savings.
 WASM_SRC_PATHS=(rust Cargo.lock Cargo.toml rust-toolchain.toml scripts/build-wasm.sh)
+# Vercel's build checkout has NO usable `origin` remote (confirmed: `git fetch
+# origin` → "'origin' does not appear to be a git repository"). Fetch the tag
+# straight from the public GitHub URL instead — anonymous read needs no auth.
+WASM_REPO_URL="https://github.com/${VERCEL_GIT_REPO_OWNER:-LTplus-AG}/${VERCEL_GIT_REPO_SLUG:-ifc-lite}.git"
 
 if [ -n "${WASM_VERSION:-}" ] && command -v git >/dev/null 2>&1; then
   _tag_present() { git rev-parse -q --verify "refs/tags/${WASM_TAG}^{commit}" >/dev/null 2>&1; }
@@ -43,8 +47,8 @@ if [ -n "${WASM_VERSION:-}" ] && command -v git >/dev/null 2>&1; then
     # Vercel clones shallow without tags — fetch just this one release tag so
     # we can diff against it. Surfaced (not silenced) so a blocked fetch is
     # visible in the build log rather than masquerading as "source changed".
-    echo "ℹ️  Fetching release tag ${WASM_TAG} (shallow)…"
-    git fetch --depth=1 origin "+refs/tags/${WASM_TAG}:refs/tags/${WASM_TAG}" 2>&1 \
+    echo "ℹ️  Fetching release tag ${WASM_TAG} from ${WASM_REPO_URL} (shallow)…"
+    git fetch --depth=1 "${WASM_REPO_URL}" "+refs/tags/${WASM_TAG}:refs/tags/${WASM_TAG}" 2>&1 \
       | sed 's/^/     git-fetch: /' || true
   fi
   if ! _tag_present; then

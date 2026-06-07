@@ -385,15 +385,21 @@ fn mesh_to_manifold(mesh: &Mesh) -> Result<Manifold, BoolFailureReason> {
 ///
 /// The textbook fix in robust computational-geometry literature is to
 /// regularize the input so all intersections are strictly transversal.
-/// Uniform inflation around the centroid pushes every face outward by
-/// the same fraction, eliminating coincidence with anything in the
-/// host without changing the cutter's topology.
+/// Uniform inflation around the centroid pushes every face rigidly
+/// outward along its own normal for any orientation (so it never shears a
+/// rotated Tekla cutter), eliminating coincidence with the host without
+/// changing the cutter's topology.
 ///
-/// Magnitude is set so the corner displacement is **~10 µm** regardless
-/// of mesh scale — well above Manifold's ~`bbox × 1e-7` coplanarity
-/// epsilon yet far below any visible feature size (10 µm in a 5.5 m
-/// wall is sub-screen-pixel at any practical zoom).
-fn mesh_to_manifold_perturbed(mesh: &Mesh) -> Result<Manifold, BoolFailureReason> {
+/// `tolerance_scale` is the combined host+void bbox extent — Manifold's
+/// coplanarity epsilon is bbox-relative (~`bbox × 1e-7`), NOT cutter-
+/// relative, so the clearance target is keyed off it. See
+/// [`perturb_around_centroid`] for the magnitude/clamp reasoning (issue
+/// #977: the previous cutter-relative magnitude under-inflated the flush
+/// cut face of long-member shallow recesses in Tekla exports).
+fn mesh_to_manifold_perturbed(
+    mesh: &Mesh,
+    tolerance_scale: f64,
+) -> Result<Manifold, BoolFailureReason> {
     if mesh.is_empty() {
         return Err(BoolFailureReason::EmptyOperand);
     }
@@ -404,18 +410,59 @@ fn mesh_to_manifold_perturbed(mesh: &Mesh) -> Result<Manifold, BoolFailureReason
     }
 
     reorient_outward(&vert_props, &mut tri_indices);
-    perturb_around_centroid(&mut vert_props);
+    perturb_around_centroid(&mut vert_props, tolerance_scale);
 
     Manifold::from_mesh_f64(&vert_props, 3, &tri_indices)
         .map_err(|e| BoolFailureReason::KernelError(format!("mesh_to_manifold_perturbed: {e}")))
 }
 
-/// Move every vertex outward from the mesh centroid such that the
-/// vertex farthest from the centroid moves by ~10 µm (in whatever
-/// units the mesh is authored in — works equally for mm or m IFC).
-fn perturb_around_centroid(positions: &mut [f64]) {
-    const TARGET_CORNER_DISPLACEMENT: f64 = 1.0e-5; // 10 µm in unit-agnostic terms
+/// Combined bounding-box extent (largest axis span) of two meshes — the
+/// scale Manifold sets its coplanarity tolerance from for a boolean of
+/// the two. Used to key [`perturb_around_centroid`]'s clearance target.
+fn combined_bbox_extent(a: &Mesh, b: &Mesh) -> f64 {
+    let (a_min, a_max) = a.bounds();
+    let (b_min, b_max) = b.bounds();
+    let dx = a_max.x.max(b_max.x) - a_min.x.min(b_min.x);
+    let dy = a_max.y.max(b_max.y) - a_min.y.min(b_min.y);
+    let dz = a_max.z.max(b_max.z) - a_min.z.min(b_min.z);
+    dx.max(dy).max(dz) as f64
+}
 
+/// Clearance target as a fraction of the combined bbox extent. Manifold's
+/// coplanarity epsilon is ~`bbox × 1e-7`; 1e-5 gives a ~100× margin while
+/// staying invisible (~0.12 mm on a 12 m member).
+const CLEARANCE_REL: f64 = 1.0e-5;
+/// Ceiling on how far the *largest* cutter face may move outward, as a
+/// fraction of the combined bbox extent — bounds over-cut on very wide +
+/// thin cutters where keying off the smallest half-extent would otherwise
+/// blow up the scale. Sub-mm on member-scale hosts (~0.6 mm on 12 m).
+const CEILING_REL: f64 = 5.0e-5;
+/// Legacy floor (AC20 Traufe wall #3448): never inflate *less* than the
+/// original cutter-relative mechanism this was built for, so that fix
+/// stays green. `1e-5 / max_half` ≈ 10 µm corner displacement, scale
+/// floored at 1 ppm.
+const LEGACY_TARGET_CORNER: f64 = 1.0e-5;
+const LEGACY_MIN_SCALE: f64 = 1.0e-6;
+
+/// Uniformly scale every vertex outward from the mesh centroid so the
+/// cutter clears Manifold's coplanarity epsilon at all coincident faces.
+///
+/// Issue #977 — re-tuned from a cutter-relative to a host-relative target.
+/// A uniform centroid scale moves a face at half-extent `h` (from the
+/// centroid, along its normal) outward by `h × scale_delta`. The flush cut
+/// face of a wide, shallow recess sits at the *smallest* half-extent, so:
+///
+/// - **Key the scale off the smallest positive half-extent** (`min_half`)
+///   so that thin face itself clears the target — not the largest extent,
+///   which under-inflated it by the cutter's aspect ratio (the Tekla bug).
+/// - **Target the clearance to the combined host+void bbox**
+///   (`tolerance_scale × CLEARANCE_REL`), Manifold's actual tolerance
+///   scale, instead of a cutter-relative fixed displacement.
+/// - **Clamp**: a floor preserves the legacy AC20 behaviour; a ceiling
+///   (`tolerance_scale × CEILING_REL / max_half`) bounds over-cut on very
+///   wide+thin cutters (keeping the worst case sub-mm — this is the viewer
+///   mesh, not authored manufacturing data).
+fn perturb_around_centroid(positions: &mut [f64], tolerance_scale: f64) {
     let n = positions.len() / 3;
     if n == 0 {
         return;
@@ -441,8 +488,6 @@ fn perturb_around_centroid(positions: &mut [f64]) {
         (min[2] + max[2]) * 0.5,
     ];
 
-    // Half-extent farthest from centroid sets the scale: a vertex at
-    // that corner moves by `TARGET_CORNER_DISPLACEMENT` after scaling.
     let half = [
         (max[0] - min[0]).abs() * 0.5,
         (max[1] - min[1]).abs() * 0.5,
@@ -452,13 +497,32 @@ fn perturb_around_centroid(positions: &mut [f64]) {
     if max_half <= 0.0 {
         return; // degenerate; nothing to do
     }
-    // For IFC fixtures the units vary (mm vs m). Pick an absolute
-    // displacement that's invisible at the smaller scale: 1e-5 of one
-    // unit (10 µm when units=mm, 10 nm when units=m). The latter is
-    // below Manifold's tolerance for m-scale geometry, so cap the
-    // SCALE at 1e-6 (= 1 part-per-million) to guarantee a meaningful
-    // perturbation regardless of authored units.
-    let scale_delta = (TARGET_CORNER_DISPLACEMENT / max_half).max(1.0e-6);
+    // Smallest *positive* half-extent: a planar/degenerate axis (half ≈ 0)
+    // is ignored so a flat cutter doesn't force an unbounded scale (the
+    // ceiling clamp below is the backstop either way).
+    let planar_eps = max_half * 1.0e-6;
+    let min_half = half
+        .iter()
+        .copied()
+        .filter(|h| *h > planar_eps)
+        .fold(f64::INFINITY, f64::min);
+    let min_half = if min_half.is_finite() {
+        min_half
+    } else {
+        max_half
+    };
+
+    // Scale needed so the THINNEST cut face moves out by the clearance target.
+    let target = (tolerance_scale * CLEARANCE_REL).max(0.0);
+    let delta_needed = target / min_half;
+    // Ceiling bounds the LARGEST face's outward move (over-cut).
+    let delta_ceiling = (tolerance_scale * CEILING_REL) / max_half;
+    // Floor preserves the legacy AC20 Traufe-wall inflation.
+    let delta_floor = (LEGACY_TARGET_CORNER / max_half).max(LEGACY_MIN_SCALE);
+
+    // Floor always wins over the ceiling (legacy never over-cut), so widen
+    // the upper bound to the floor when the ceiling would dip below it.
+    let scale_delta = delta_needed.clamp(delta_floor, delta_ceiling.max(delta_floor));
     let scale = 1.0 + scale_delta;
 
     for i in 0..n {
@@ -588,9 +652,15 @@ fn manifold_to_mesh(m: &Manifold) -> Mesh {
 /// native diverged for House.ifc Traufe wall #3448; the cutter shared
 /// all four top corners and two side edges with the host, and WASM's
 /// coplanar-face classifier landed on the wrong side).
+///
+/// The inflation magnitude is keyed off the **combined host+void bbox**
+/// (Manifold's tolerance scale), so a flush cut face clears the kernel's
+/// coplanarity epsilon even for long members with shallow recesses —
+/// issue #977 (Tekla flush end recesses under-cut in mm-unit models).
 pub fn difference(host: &Mesh, void: &Mesh) -> Result<Mesh, BoolFailureReason> {
     let host_m = mesh_to_manifold(host)?;
-    let void_m = mesh_to_manifold_perturbed(void)?;
+    let tolerance_scale = combined_bbox_extent(host, void);
+    let void_m = mesh_to_manifold_perturbed(void, tolerance_scale)?;
     let result = host_m.difference(&void_m);
     Ok(manifold_to_mesh(&result))
 }
@@ -732,6 +802,99 @@ mod tests {
         // And the public path should not panic — it should either succeed
         // or return a structured failure.
         let _ = mesh_to_manifold(&m);
+    }
+
+    /// 8 box corners (positions only) centred on `center` with `half` extents.
+    fn box_positions(center: [f64; 3], half: [f64; 3]) -> Vec<f64> {
+        let mut p = Vec::with_capacity(24);
+        for &sx in &[-1.0_f64, 1.0] {
+            for &sy in &[-1.0_f64, 1.0] {
+                for &sz in &[-1.0_f64, 1.0] {
+                    p.push(center[0] + sx * half[0]);
+                    p.push(center[1] + sy * half[1]);
+                    p.push(center[2] + sz * half[2]);
+                }
+            }
+        }
+        p
+    }
+
+    fn axis_max(p: &[f64], axis: usize) -> f64 {
+        p.chunks_exact(3)
+            .map(|c| c[axis])
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    /// Issue #977 invariant: with the host-relative re-tuning, EVERY face of a
+    /// long-member shallow flush recess cutter moves outward by at least the
+    /// clearance target (and never beyond the over-cut ceiling). Deterministic —
+    /// it asserts the perturbation geometry directly, not Manifold's
+    /// platform-variable coplanar classifier.
+    #[test]
+    fn perturb_clears_target_on_shallow_flush_recess() {
+        // Thin on the cut axis (x), wide on y/z — the wide+shallow recess that
+        // the old cutter-relative magnitude under-inflated. Aspect 3:1 (< the
+        // CEILING_REL/CLEARANCE_REL = 5:1 clamp threshold) so the clean
+        // "every face >= target" invariant holds.
+        let center = [100.0_f64, 0.0, 0.0];
+        let half = [50.0_f64, 150.0, 150.0];
+        let before = box_positions(center, half);
+        let mut after = before.clone();
+
+        // Host is a ~12 m member in mm; the combined bbox dwarfs the cutter.
+        let tolerance_scale = 12_000.0_f64;
+        perturb_around_centroid(&mut after, tolerance_scale);
+
+        let manifold_eps = tolerance_scale * 1.0e-7; // ~Manifold coplanarity eps
+        let target = tolerance_scale * CLEARANCE_REL;
+        let ceiling = tolerance_scale * CEILING_REL;
+
+        for axis in 0..3 {
+            let disp = axis_max(&after, axis) - axis_max(&before, axis);
+            assert!(
+                disp > manifold_eps,
+                "axis {axis}: face moved {disp}, must clear Manifold eps {manifold_eps}"
+            );
+            assert!(
+                disp >= target - 1e-9,
+                "axis {axis}: face moved {disp}, must reach clearance target {target}"
+            );
+            assert!(
+                disp <= ceiling + 1e-9,
+                "axis {axis}: face moved {disp}, must stay under over-cut ceiling {ceiling}"
+            );
+        }
+    }
+
+    /// Even when the ceiling clamps a very wide+thin cutter (so the thin face
+    /// can no longer reach the full target), it must STILL clear Manifold's
+    /// epsilon, and the widest face must stay under the over-cut ceiling.
+    /// Documents the deliberate clamp trade-off from issue #977.
+    #[test]
+    fn perturb_ceiling_clamp_still_clears_manifold_eps() {
+        let center = [100.0_f64, 0.0, 0.0];
+        let half = [5.0_f64, 300.0, 300.0]; // aspect 60:1 → ceiling-clamped
+        let before = box_positions(center, half);
+        let mut after = before.clone();
+
+        let tolerance_scale = 12_000.0_f64;
+        perturb_around_centroid(&mut after, tolerance_scale);
+
+        let manifold_eps = tolerance_scale * 1.0e-7;
+        let ceiling = tolerance_scale * CEILING_REL;
+
+        let thin_disp = axis_max(&after, 0) - axis_max(&before, 0);
+        assert!(
+            thin_disp > manifold_eps,
+            "thin face moved {thin_disp}, must still clear Manifold eps {manifold_eps}"
+        );
+        for axis in 0..3 {
+            let disp = axis_max(&after, axis) - axis_max(&before, axis);
+            assert!(
+                disp <= ceiling + 1e-9,
+                "axis {axis}: face moved {disp}, must stay under over-cut ceiling {ceiling}"
+            );
+        }
     }
 
     #[test]

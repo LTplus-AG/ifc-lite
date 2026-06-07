@@ -871,10 +871,25 @@ impl ClippingProcessor {
         let (host_min, host_max) = host_mesh.bounds();
         let (open_min, open_max) = opening_mesh.bounds();
 
-        // Check for overlap in all three dimensions
-        let overlap_x = open_min.x < host_max.x && open_max.x > host_min.x;
-        let overlap_y = open_min.y < host_max.y && open_max.y > host_min.y;
-        let overlap_z = open_min.z < host_max.z && open_max.z > host_min.z;
+        // Issue #977: this runs on the *un-inflated* cutter, before
+        // `manifold_kernel::difference` inflates it. A recess whose cut face is
+        // exactly flush with a host face touches the host's AABB right at the
+        // boundary; strict `<`/`>` would classify it as non-overlapping and drop
+        // the cut before inflation ever runs. Use inclusive `<=`/`>=` with a small
+        // *relative* epsilon (scaled to the operands, so it is unit-robust across
+        // mm/m models) to keep flush cutters in play without admitting genuinely
+        // disjoint operands.
+        let span = (host_max.x - host_min.x)
+            .max(host_max.y - host_min.y)
+            .max(host_max.z - host_min.z)
+            .max(open_max.x - open_min.x)
+            .max(open_max.y - open_min.y)
+            .max(open_max.z - open_min.z);
+        let eps = span * 1e-6;
+
+        let overlap_x = open_min.x - eps <= host_max.x && open_max.x + eps >= host_min.x;
+        let overlap_y = open_min.y - eps <= host_max.y && open_max.y + eps >= host_min.y;
+        let overlap_z = open_min.z - eps <= host_max.z && open_max.z + eps >= host_min.z;
 
         overlap_x && overlap_y && overlap_z
     }

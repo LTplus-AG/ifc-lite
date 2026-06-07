@@ -253,6 +253,15 @@ impl IfcAPI {
                 _ => {
                     if ifc_lite_core::has_geometry_by_name(type_name) {
                         let ifc_type = IfcType::from_str(type_name);
+                        // Feature-subtraction elements (IfcOpeningElement and
+                        // siblings) are void *cutters*, not renderable products:
+                        // they're subtracted from their host via IfcRelVoidsElement.
+                        // Emitting them as render jobs draws the cutter solid on
+                        // top of the cut host — e.g. a thin recess plate sealing
+                        // the notch it was meant to remove (issue #977).
+                        if ifc_type.is_subtype_of(IfcType::IfcFeatureElementSubtraction) {
+                            continue;
+                        }
                         if is_simple_geometry_type(type_name) {
                             simple_jobs.push((id, start, end, ifc_type));
                         } else {
@@ -515,6 +524,12 @@ impl IfcAPI {
                 _ => {
                     if has_geometry_by_name(type_name) {
                         let ifc_type = IfcType::from_str(type_name);
+                        // Skip feature-subtraction voids (IfcOpeningElement &c.):
+                        // they're cutters, not renderable products. See the
+                        // matching guard in `build_pre_pass_once` (issue #977).
+                        if ifc_type.is_subtype_of(IfcType::IfcFeatureElementSubtraction) {
+                            continue;
+                        }
                         // We don't bucket by simple/complex here — the host
                         // distributes work across N geometry workers anyway,
                         // and the simple/complex split was a heuristic for

@@ -346,13 +346,14 @@ export async function restoreDesktopMetadataSnapshot(
   };
   dataStore.spatialHierarchy = deserializeSpatialHierarchy(metadata.spatialHierarchy);
 
-  const { onDemandPropertyMap, onDemandQuantityMap } = rebuildOnDemandMaps(
+  const { onDemandPropertyMap, onDemandQuantityMap, onDemandMaterialMap } = rebuildOnDemandMaps(
     dataStore.entities,
     dataStore.relationships,
     dataStore.entityIndex,
   );
   dataStore.onDemandPropertyMap = onDemandPropertyMap;
   dataStore.onDemandQuantityMap = onDemandQuantityMap;
+  dataStore.onDemandMaterialMap = onDemandMaterialMap;
 
   return dataStore;
 }

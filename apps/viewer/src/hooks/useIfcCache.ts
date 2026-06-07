@@ -162,13 +162,16 @@ export function useIfcCache() {
         // Rebuild on-demand maps from relationships
         // Pass entityIndex which contains ALL entity types including IfcPropertySet/IfcElementQuantity
         // (the entity table may not include these since they're filtered during fresh parse)
-        const { onDemandPropertyMap, onDemandQuantityMap } = rebuildOnDemandMaps(
+        const { onDemandPropertyMap, onDemandQuantityMap, onDemandMaterialMap } = rebuildOnDemandMaps(
           dataStore.entities,
           dataStore.relationships,
           dataStore.entityIndex
         );
         dataStore.onDemandPropertyMap = onDemandPropertyMap;
         dataStore.onDemandQuantityMap = onDemandQuantityMap;
+        // Materials tab + per-material totals read onDemandMaterialMap; without
+        // this a cache hit left the Materials grouping empty (#982 follow-up).
+        dataStore.onDemandMaterialMap = onDemandMaterialMap;
 
         // Reattach the lazy entity/property/quantity accessors. A freshly parsed
         // store carries these (wired by attachDataStoreAccessors), but the cache

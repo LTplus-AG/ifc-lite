@@ -11,7 +11,7 @@ import {
   RelationshipType,
   StringTable,
 } from '@ifc-lite/data';
-import { rebuildSpatialHierarchy } from './spatialHierarchy';
+import { rebuildSpatialHierarchy, rebuildOnDemandMaps } from './spatialHierarchy';
 
 describe('rebuildSpatialHierarchy', () => {
   it('preserves IFC4.3 facility-part trees during cache rebuilds', () => {
@@ -150,5 +150,57 @@ describe('rebuildSpatialHierarchy', () => {
     assert.equal(hierarchy.elementToStorey.get(4), 3);
     assert.equal(hierarchy.elementToStorey.get(5), 3);
     assert.equal(hierarchy.elementToStorey.get(6), 3);
+  });
+});
+
+describe('rebuildOnDemandMaps', () => {
+  const makeEntityIndex = (byType: Map<string, number[]>) => ({
+    byId: { get: () => undefined, has: () => false, size: 0 },
+    byType,
+  });
+
+  it('rebuilds onDemandMaterialMap from AssociatesMaterial edges (cache parity)', () => {
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(2, strings);
+    entities.add(5, 'IFCBEAM', 'b0', 'Beam', '', '', true);
+    entities.add(10, 'IFCMATERIAL', 'm0', 'Concrete', '', '');
+
+    const builder = new RelationshipGraphBuilder();
+    // material(10) -> element(5) forward, matching the columnar parser.
+    builder.addEdge(10, 5, RelationshipType.AssociatesMaterial, 100);
+    // pset(20) -> element(5), so the property map still rebuilds too.
+    builder.addEdge(20, 5, RelationshipType.DefinesByProperties, 101);
+
+    const entityIndex = makeEntityIndex(new Map<string, number[]>([
+      ['IFCMATERIAL', [10]],
+      ['IFCPROPERTYSET', [20]],
+    ]));
+
+    const { onDemandMaterialMap, onDemandPropertyMap } = rebuildOnDemandMaps(
+      entities.build(),
+      builder.build(),
+      entityIndex,
+    );
+
+    assert.equal(onDemandMaterialMap.size, 1);
+    assert.equal(onDemandMaterialMap.get(5), 10);
+    assert.deepEqual(onDemandPropertyMap.get(5), [20]);
+  });
+
+  it('matches material definitions case-insensitively (mixed-case byType keys)', () => {
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(2, strings);
+    entities.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    entities.add(40, 'IFCMATERIALLAYERSET', 'ls0', 'Buildup', '', '');
+
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(40, 5, RelationshipType.AssociatesMaterial, 100);
+
+    const entityIndex = makeEntityIndex(new Map<string, number[]>([
+      ['IfcMaterialLayerSet', [40]], // mixed-case, as some cache writers emit
+    ]));
+
+    const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
+    assert.equal(onDemandMaterialMap.get(5), 40);
   });
 });

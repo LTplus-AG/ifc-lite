@@ -208,7 +208,21 @@ export interface EntityIndex {
 export interface OnDemandMaps {
   onDemandPropertyMap: Map<number, number[]>;
   onDemandQuantityMap: Map<number, number[]>;
+  /** element/type expressId -> associated material definition expressId. */
+  onDemandMaterialMap: Map<number, number>;
 }
+
+/** IFC material *definition* classes that can be the RelatingMaterial of an
+ *  IfcRelAssociatesMaterial — the source nodes of AssociatesMaterial edges. */
+const MATERIAL_DEF_TYPES = new Set([
+  'IFCMATERIAL',
+  'IFCMATERIALLAYERSET',
+  'IFCMATERIALLAYERSETUSAGE',
+  'IFCMATERIALPROFILESET',
+  'IFCMATERIALPROFILESETUSAGE',
+  'IFCMATERIALCONSTITUENTSET',
+  'IFCMATERIALLIST',
+]);
 
 /**
  * Rebuild on-demand property/quantity maps from relationships and entity types
@@ -228,6 +242,7 @@ export function rebuildOnDemandMaps(
 ): OnDemandMaps {
   const onDemandPropertyMap = new Map<number, number[]>();
   const onDemandQuantityMap = new Map<number, number[]>();
+  const onDemandMaterialMap = new Map<number, number>();
 
   // Use entityIndex.byType if available (needed for cache loads where entity table
   // doesn't include IfcPropertySet/IfcElementQuantity entities)
@@ -288,8 +303,33 @@ export function rebuildOnDemandMaps(
     }
   }
 
+  // Process material associations (FORWARD: material definition -> elements),
+  // mirroring the columnar parser's onDemandMaterialMap. Needed so cache-loaded
+  // models populate the Materials tab + per-material totals, which read this map
+  // (the relationship-graph fallback only covers single-element lookups, not the
+  // model-wide usage index). Requires entityIndex.byType to enumerate material
+  // definitions — the cached graph preserves AssociatesMaterial edges.
+  let materialDefCount = 0;
+  if (entityIndex?.byType) {
+    for (const [typeKey, ids] of entityIndex.byType) {
+      if (!MATERIAL_DEF_TYPES.has(typeKey.toUpperCase())) continue;
+      for (const materialId of ids) {
+        materialDefCount += 1;
+        const associated = relationships.getRelated(
+          materialId,
+          RelationshipType.AssociatesMaterial,
+          'forward'
+        );
+        for (const entityId of associated) {
+          // Last association wins, matching the columnar parser's `.set` build.
+          onDemandMaterialMap.set(entityId, materialId);
+        }
+      }
+    }
+  }
+
   console.log(
-    `[spatialHierarchy] Rebuilt on-demand maps: ${propertySets.length} psets, ${quantitySets.length} qsets -> ${onDemandPropertyMap.size} entities with properties, ${onDemandQuantityMap.size} with quantities`
+    `[spatialHierarchy] Rebuilt on-demand maps: ${propertySets.length} psets, ${quantitySets.length} qsets, ${materialDefCount} material defs -> ${onDemandPropertyMap.size} entities with properties, ${onDemandQuantityMap.size} with quantities, ${onDemandMaterialMap.size} with materials`
   );
-  return { onDemandPropertyMap, onDemandQuantityMap };
+  return { onDemandPropertyMap, onDemandQuantityMap, onDemandMaterialMap };
 }

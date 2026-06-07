@@ -54,12 +54,18 @@ import { IfcParser } from '@ifc-lite/parser';
 const parser = new IfcParser();
 const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
 const t0 = performance.now();
-const store = await parser.parseColumnar(buffer, {
+const result = await parser.parse(buffer, {
   onProgress: ({ phase, percent }) => console.log(`${phase}: ${percent}%`),
 });
 
+console.log(`Parsed ${result.entityCount} entities in ${(performance.now() - t0).toFixed(0)}ms`);
+```
+
+For columnar storage (recommended for large models — TypedArray-backed, query-friendly):
+
+```typescript
+const store = await parser.parseColumnar(buffer);
 console.log(`${store.entityCount} entities, schema ${store.schemaVersion}`);
-console.log(`Parsed in ${(performance.now() - t0).toFixed(0)}ms`);
 ```
 
 ## View in 3D
@@ -75,12 +81,9 @@ const renderer = new Renderer(canvas);
 
 await Promise.all([geometry.init(), renderer.init()]);
 
-const arrayBuffer = await file.arrayBuffer();
-const store = await parser.parseColumnar(arrayBuffer);
-const meshes = [];
-for await (const event of geometry.processAdaptive(new Uint8Array(arrayBuffer))) {
-  if (event.type === 'batch') meshes.push(...event.meshes);
-}
+const buffer = new Uint8Array(await file.arrayBuffer());
+const parseResult = await parser.parse(buffer);
+const meshes = await geometry.process(buffer);
 
 renderer.loadGeometry(meshes);
 renderer.requestRender();

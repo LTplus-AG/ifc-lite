@@ -255,8 +255,11 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
   }),
 
   setHasTypeGeometry: (value) => set((state) => (
-    // No-op when unchanged so the toolbar doesn't re-render on every batch.
-    state.hasTypeGeometry === value ? {} : { hasTypeGeometry: value }
+    // Return the SAME state reference when unchanged — a fresh `{}` would still
+    // merge into a new state object and notify every subscriber (incl. the
+    // whole-state useSyncExternalStore in ViewportContainer). Same ref → Zustand
+    // skips the notification entirely.
+    state.hasTypeGeometry === value ? state : { hasTypeGeometry: value }
   )),
 
   // Actions (multi-model)

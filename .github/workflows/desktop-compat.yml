@@ -33,8 +33,10 @@ permissions:
 jobs:
   desktop-frontend-build:
     name: Desktop frontend build
+    # Stays on Depot: this job compiles the WASM bundle from source
+    # (setup-wasm-build + pnpm build + build:desktop).
     runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 10
+    timeout-minutes: 12
 
     steps:
       - name: Checkout ifc-lite (PR branch)
@@ -76,7 +78,9 @@ jobs:
 
   desktop-override-audit:
     name: Desktop override audit
-    runs-on: depot-ubuntu-24.04-4
+    # Free runner — this job only checks that override-target files exist
+    # (a few `[ -f ]` tests). No build, no compile, no cache needed.
+    runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:

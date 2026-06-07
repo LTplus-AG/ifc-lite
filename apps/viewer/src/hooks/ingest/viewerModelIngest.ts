@@ -2,16 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { IfcParser, parseIfcx, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
-import { WorkerParser } from '@ifc-lite/parser/browser';
-import { GeometryProcessor, GeometryQuality, type CoordinateInfo, type DynamicBatchConfig, type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
+import { parseIfcx, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
+import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
-import { calculateMeshBounds, calculateStoreyHeights, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
-import { resolveDataStoreOrAbort } from './resolveDataStoreOrAbort.js';
-import { watchedGeometryStream } from './watchedGeometryStream.js';
-
-type RgbaColor = [number, number, number, number];
+import { calculateMeshBounds, createCoordinateInfo, normalizeColor } from '../../utils/localParsingUtils.js';
 
 interface RawIfcxMesh {
   expressId?: number;
@@ -29,40 +24,6 @@ export interface ViewerModelPayload {
   dataStore: IfcDataStore;
   geometryResult: GeometryResult;
   schemaVersion: SchemaVersion;
-}
-
-export interface StepBatchEvent {
-  batchIndex: number;
-  estimatedTotal: number;
-  totalSoFar: number;
-  meshes: MeshData[];
-  coordinateInfo?: CoordinateInfo | null;
-}
-
-export interface StepRtcOffsetEvent {
-  rtcOffset: { x: number; y: number; z: number };
-}
-
-export interface StepBufferIngestOptions {
-  fileName: string;
-  buffer: ArrayBuffer;
-  fileSizeMB: number;
-  getDynamicBatchSize: (fileSizeMB: number) => number | DynamicBatchConfig;
-  onProgress?: (progress: { phase: string; percent: number }) => void;
-  onBatch?: (event: StepBatchEvent) => void;
-  onColorUpdate?: (updates: Map<number, RgbaColor>) => void;
-  onSpatialReady?: (dataStore: IfcDataStore) => void;
-  onRtcOffset?: (event: StepRtcOffsetEvent) => void;
-  shouldAbort?: () => boolean;
-  /** Shared RTC offset from first federated model (IFC Z-up coords).
-   *  When set, this model uses the same RTC as the first model instead of
-   *  computing its own, ensuring all models share the same coordinate space. */
-  sharedRtcOffset?: { x: number; y: number; z: number };
-}
-
-export interface StepBufferIngestResult extends ViewerModelPayload {
-  allMeshes: MeshData[];
-  cumulativeColorUpdates: Map<number, RgbaColor>;
 }
 
 export function convertIfcxMeshes(rawMeshes: RawIfcxMesh[]): MeshData[] {
@@ -97,16 +58,6 @@ export function createMinimalGlbDataStore(buffer: ArrayBuffer, meshCount: number
     relationships: { count: 0, getRelationships: () => [], getRelated: () => [] } as unknown as IfcDataStore['relationships'],
     spatialHierarchy: null as unknown as IfcDataStore['spatialHierarchy'],
   } as unknown as IfcDataStore;
-}
-
-export function normalizeDataStoreStoreys(dataStore: IfcDataStore): IfcDataStore {
-  if (dataStore.spatialHierarchy && dataStore.spatialHierarchy.storeyHeights.size === 0 && dataStore.spatialHierarchy.storeyElevations.size > 1) {
-    const calculatedHeights = calculateStoreyHeights(dataStore.spatialHierarchy.storeyElevations);
-    for (const [storeyId, height] of calculatedHeights) {
-      dataStore.spatialHierarchy.storeyHeights.set(storeyId, height);
-    }
-  }
-  return dataStore;
 }
 
 export function getMaxExpressId(dataStore: IfcDataStore, meshes: MeshData[]): number {
@@ -211,165 +162,5 @@ export async function parseGlbViewerModel(buffer: ArrayBuffer): Promise<ViewerMo
       coordinateInfo: createCoordinateInfo(bounds),
     },
     schemaVersion: 'IFC4',
-  };
-}
-
-export async function parseStepBufferViewerModel(options: StepBufferIngestOptions): Promise<StepBufferIngestResult> {
-  const geometryProcessor = new GeometryProcessor({ quality: GeometryQuality.Balanced });
-  await geometryProcessor.init();
-
-  const parser = new IfcParser();
-  const wasmApi = geometryProcessor.getApi();
-  const canShareSource = WorkerParser.isSupported();
-  const sharedSource = canShareSource ? new SharedArrayBuffer(options.buffer.byteLength) : null;
-  if (sharedSource) {
-    new Uint8Array(sharedSource).set(new Uint8Array(options.buffer));
-  }
-  const geometryWillEmitEntityIndex =
-    sharedSource !== null
-    && options.fileSizeMB >= 2
-    && typeof Worker !== 'undefined'
-    && typeof navigator !== 'undefined'
-    && (navigator.hardwareConcurrency ?? 1) > 1;
-  let workerParser: WorkerParser | null = null;
-  const allMeshes: MeshData[] = [];
-  const cumulativeColorUpdates = new Map<number, RgbaColor>();
-  let finalCoordinateInfo: CoordinateInfo | null = null;
-  let batchIndex = 0;
-  let estimatedTotal = 0;
-  let capturedRtcOffset: { x: number; y: number; z: number } | null = null;
-
-  const handleSpatialReady = (partialStore: IfcDataStore) => {
-    if (options.shouldAbort?.()) {
-      return;
-    }
-    options.onSpatialReady?.(normalizeDataStoreStoreys(partialStore));
-  };
-  const dataStorePromise = sharedSource
-    ? (() => {
-        workerParser = new WorkerParser();
-        return workerParser.parseColumnar(sharedSource, {
-          waitForEntityIndex: geometryWillEmitEntityIndex,
-          onSpatialReady: handleSpatialReady,
-        }).catch((error) => {
-          console.warn('[viewerModelIngest] Parser worker failed, falling back to main-thread parse:', error);
-          return parser.parseColumnar(options.buffer, {
-            wasmApi: wasmApi ?? undefined,
-            onSpatialReady: handleSpatialReady,
-          });
-        });
-      })()
-    : parser.parseColumnar(options.buffer, {
-        wasmApi: wasmApi ?? undefined,
-        onSpatialReady: handleSpatialReady,
-      });
-
-  const geometryView = sharedSource ? new Uint8Array(sharedSource) : new Uint8Array(options.buffer);
-  const geometryStream = geometryProcessor.processAdaptive(geometryView, {
-    sizeThreshold: 2 * 1024 * 1024,
-    batchSize: options.getDynamicBatchSize(options.fileSizeMB),
-    sharedRtcOffset: options.sharedRtcOffset,
-    existingSab: sharedSource ?? undefined,
-    onEntityIndex: (ids, starts, lengths) => {
-      workerParser?.setEntityIndex(ids, starts, lengths);
-    },
-  });
-  let lastTotalMeshes = 0;
-  // The federated/added-model path was missing the size-aware stream watchdog
-  // the single-model loader has, so a geometry worker that failed to spawn would
-  // hang the load forever on "Processing geometry (N meshes)" instead of
-  // surfacing a recoverable error. watchedGeometryStream re-yields each event
-  // under that watchdog and bounds iterator teardown on every exit path.
-  try {
-    for await (const event of watchedGeometryStream(geometryStream, {
-      fileName: options.fileName,
-      fileSizeMB: options.fileSizeMB,
-      shouldAbort: options.shouldAbort,
-      getBatchCount: () => batchIndex,
-      getLastTotalMeshes: () => lastTotalMeshes,
-    })) {
-      switch (event.type) {
-        case 'start':
-          estimatedTotal = event.totalEstimate;
-          break;
-        case 'colorUpdate':
-          for (const [expressId, color] of event.updates) {
-            cumulativeColorUpdates.set(expressId, color);
-          }
-          options.onColorUpdate?.(event.updates);
-          break;
-        case 'rtcOffset':
-          if (event.hasRtc) {
-            capturedRtcOffset = event.rtcOffset;
-            options.onRtcOffset?.({ rtcOffset: event.rtcOffset });
-          }
-          break;
-        case 'batch':
-          batchIndex += 1;
-          for (let i = 0; i < event.meshes.length; i++) {
-            allMeshes.push(event.meshes[i]);
-          }
-          finalCoordinateInfo = event.coordinateInfo ?? null;
-          lastTotalMeshes = event.totalSoFar;
-          options.onBatch?.({
-            batchIndex,
-            estimatedTotal,
-            totalSoFar: event.totalSoFar,
-            meshes: event.meshes,
-            coordinateInfo: event.coordinateInfo ?? null,
-          });
-          options.onProgress?.({
-            phase: `Processing geometry (${event.totalSoFar} meshes)`,
-            percent: 10 + Math.min(80, (allMeshes.length / 1000) * 0.8),
-          });
-          break;
-        case 'complete':
-          finalCoordinateInfo = event.coordinateInfo ?? null;
-          break;
-      }
-    }
-  } catch (err) {
-    // Watchdog stall (or other stream error): the parser worker may be
-    // blocked in `waitForEntityIndex`, which only the geometry pre-pass would
-    // unblock. Terminate it here so it doesn't leak — the normal path below
-    // still awaits it via resolveDataStoreOrAbort. watchedGeometryStream's
-    // finally has already bounded teardown of the geometry iterator itself.
-    workerParser?.terminate();
-    throw err;
-  }
-
-  // If the load was cancelled, don't await dataStorePromise: a worker parse
-  // started with waitForEntityIndex blocks until the geometry pre-pass hands
-  // over the entity index, which never happens once the geometry loop has been
-  // aborted above. resolveDataStoreOrAbort terminates the worker and throws an
-  // AbortError instead of hanging here.
-  const dataStore = normalizeDataStoreStoreys(
-    await resolveDataStoreOrAbort(dataStorePromise, {
-      aborted: options.shouldAbort?.() ?? false,
-      terminate: () => workerParser?.terminate(),
-    }),
-  );
-  if (!finalCoordinateInfo) {
-    finalCoordinateInfo = createCoordinateInfo(calculateMeshBounds(allMeshes).bounds);
-  }
-  if (capturedRtcOffset) {
-    finalCoordinateInfo.wasmRtcOffset = capturedRtcOffset;
-  }
-
-  return {
-    dataStore,
-    geometryResult: {
-      meshes: allMeshes,
-      totalVertices: allMeshes.reduce((sum, mesh) => sum + mesh.positions.length / 3, 0),
-      totalTriangles: allMeshes.reduce((sum, mesh) => sum + mesh.indices.length / 3, 0),
-      coordinateInfo: finalCoordinateInfo,
-    },
-    schemaVersion: dataStore.schemaVersion === 'IFC4X3'
-      ? 'IFC4X3'
-      : dataStore.schemaVersion === 'IFC4'
-        ? 'IFC4'
-        : 'IFC2X3',
-    allMeshes,
-    cumulativeColorUpdates,
   };
 }

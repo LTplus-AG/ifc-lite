@@ -21,6 +21,7 @@ export { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 export { extractLengthUnitScale } from './unit-extractor.js';
 export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractEntityAttributesOnDemand, extractAllEntityAttributes, getRawNamedAttributes, extractRootAttributesFromEntity, extractClassificationsOnDemand, extractMaterialsOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, type ClassificationInfo, type MaterialInfo, type MaterialLayerInfo, type MaterialProfileInfo, type MaterialConstituentInfo, type TypePropertyInfo, type DocumentInfo, type EntityRelationships } from './columnar-parser.js';
 export type { IfcStoreBase } from '@ifc-lite/data';
+export { attachDataStoreAccessors, type IfcStoreData } from './data-store-accessors.js';
 // WorkerParser is browser-only due to Vite worker imports
 // Import from '@ifc-lite/parser/browser' instead
 

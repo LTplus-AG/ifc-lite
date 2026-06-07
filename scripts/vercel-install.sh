@@ -38,14 +38,18 @@ WASM_TAG="@ifc-lite/wasm@${WASM_VERSION}"
 WASM_SRC_PATHS=(rust Cargo.lock Cargo.toml rust-toolchain.toml scripts/build-wasm.sh)
 
 if [ -n "${WASM_VERSION:-}" ] && command -v git >/dev/null 2>&1; then
-  # Vercel clones shallow and usually without tags — best-effort fetch the one
-  # release tag we need. Failure is fine; the verify below then falls through.
-  if ! git rev-parse -q --verify "refs/tags/${WASM_TAG}^{commit}" >/dev/null 2>&1; then
-    git fetch --no-tags --depth=1 origin \
-      "refs/tags/${WASM_TAG}:refs/tags/${WASM_TAG}" >/dev/null 2>&1 || true
+  _tag_present() { git rev-parse -q --verify "refs/tags/${WASM_TAG}^{commit}" >/dev/null 2>&1; }
+  if ! _tag_present; then
+    # Vercel clones shallow without tags — fetch just this one release tag so
+    # we can diff against it. Surfaced (not silenced) so a blocked fetch is
+    # visible in the build log rather than masquerading as "source changed".
+    echo "ℹ️  Fetching release tag ${WASM_TAG} (shallow)…"
+    git fetch --depth=1 origin "+refs/tags/${WASM_TAG}:refs/tags/${WASM_TAG}" 2>&1 \
+      | sed 's/^/     git-fetch: /' || true
   fi
-  if git rev-parse -q --verify "refs/tags/${WASM_TAG}^{commit}" >/dev/null 2>&1 \
-     && git diff --quiet "refs/tags/${WASM_TAG}" HEAD -- "${WASM_SRC_PATHS[@]}"; then
+  if ! _tag_present; then
+    echo "🛠  Release tag ${WASM_TAG} not reachable in this clone — building WASM from source."
+  elif git diff --quiet "refs/tags/${WASM_TAG}" HEAD -- "${WASM_SRC_PATHS[@]}"; then
     echo "🅰  WASM source identical to ${WASM_TAG} — using prebuilt npm bundle,"
     echo "   skipping Rust toolchain + emsdk bootstrap + from-source compile."
     if node scripts/fetch-prebuilt-wasm.mjs; then
@@ -55,8 +59,9 @@ if [ -n "${WASM_VERSION:-}" ] && command -v git >/dev/null 2>&1; then
     fi
     echo "⚠️  Prebuilt WASM fetch failed — falling back to from-source build."
   else
-    echo "🛠  WASM source differs from ${WASM_TAG} (or tag unreachable) —"
-    echo "   building WASM from source."
+    echo "🛠  Rust sources changed since ${WASM_TAG} — building WASM from source."
+    git diff --name-only "refs/tags/${WASM_TAG}" HEAD -- "${WASM_SRC_PATHS[@]}" \
+      | sed 's/^/     changed: /' | head -20 || true
   fi
 fi
 # ── From-source build (Rust changed, or no matching/reachable release tag) ────

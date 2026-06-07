@@ -44,8 +44,6 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { GLTFExporter } from '@ifc-lite/export';
-import { openIfcFileDialog } from '@/services/file-dialog';
-import { logToDesktopTerminal } from '@/services/desktop-logger';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
 
@@ -181,13 +179,7 @@ export function MobileToolbar() {
         variant="ghost"
         size="icon-sm"
         className="h-9 w-9 flex-shrink-0"
-        onClick={async () => {
-          const file = await openIfcFileDialog();
-          if (file) {
-            recordRecentFiles([{ name: file.name, size: file.size, path: file.path, modifiedMs: file.modifiedMs ?? null }]);
-            void loadFile(file);
-            return;
-          }
+        onClick={() => {
           fileInputRef.current?.click();
         }}
         disabled={loading}

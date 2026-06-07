@@ -267,9 +267,6 @@ export default defineConfig({
       '@ifc-lite/encoding': path.resolve(__dirname, '../../packages/encoding/src'),
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
       '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
-      '@tauri-apps/api/core': path.resolve(__dirname, './src/services/tauri-core-stub.ts'),
-      '@tauri-apps/plugin-dialog': path.resolve(__dirname, './src/services/tauri-dialog-stub.ts'),
-      '@tauri-apps/plugin-fs': path.resolve(__dirname, './src/services/tauri-fs-stub.ts'),
     },
   },
   server: {
@@ -301,6 +298,18 @@ export default defineConfig({
     target: 'esnext',
     chunkSizeWarningLimit: 6000,
     rollupOptions: {
+      // Desktop-only Tauri APIs are dynamically imported (under isTauri(), never
+      // reached on web) by @ifc-lite/geometry's NativeBridge. Rollup still
+      // resolves them statically, so externalize to prevent a build failure.
+      // ifc-lite no longer ships a desktop app; downstream desktop builders
+      // supply @tauri-apps in their own host layer.
+      external: [
+        '@tauri-apps/api/core',
+        '@tauri-apps/api/event',
+        '@tauri-apps/plugin-dialog',
+        '@tauri-apps/plugin-fs',
+        '@tauri-apps/plugin-shell',
+      ],
       output: {
         manualChunks(id) {
           if (id.includes('/packages/sandbox/')) return 'sandbox';

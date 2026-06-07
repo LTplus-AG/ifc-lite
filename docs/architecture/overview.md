@@ -13,7 +13,7 @@ flowchart TB
     subgraph Clients["Clients"]
         direction LR
         Web["Web App"]
-        Desktop["Desktop"]
+        Desktop["Desktop (3rd-party Tauri)"]
         CLI["CLI"]
     end
 
@@ -227,7 +227,7 @@ graph TB
 
     subgraph Apps["Applications"]
         Viewer["Viewer App"]
-        Desktop["Desktop (Tauri)"]
+        Desktop["Desktop (3rd-party Tauri)"]
         CLI["create-ifc-lite"]
     end
 

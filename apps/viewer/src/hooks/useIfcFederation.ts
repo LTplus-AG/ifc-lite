@@ -28,7 +28,6 @@ import {
   convertIfcxMeshes,
 } from './ingest/viewerModelIngest.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
-import { type NativeFileHandle } from '../services/file-dialog.js';
 import { toast } from '../components/ui/toast.js';
 import { acquireFederationLoadSlot, releaseFederationLoadSlot } from './federationLoadGate.js';
 
@@ -56,7 +55,7 @@ export interface IfcxDataStore extends IfcDataStore {
 export function useIfcFederation(
   // The ONE canonical loader. Federated adds route through it (target
   // 'federated') so model #1 and model #N share an identical pipeline.
-  loadFile: (file: File | NativeFileHandle, target?: import('./useIfcLoader.js').LoadTarget) => Promise<void>,
+  loadFile: (file: File, target?: import('./useIfcLoader.js').LoadTarget) => Promise<void>,
 ) {
   const {
     setLoading,
@@ -103,7 +102,7 @@ export function useIfcFederation(
    * Returns the model ID on success, null on failure
    */
   const addModel = useCallback(async (
-    file: File | NativeFileHandle,
+    file: File,
     options?: {
       name?: string;
       modelId?: string;

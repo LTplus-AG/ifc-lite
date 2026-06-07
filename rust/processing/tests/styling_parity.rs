@@ -239,12 +239,8 @@ fn no_duplicate_default_color_tables() {
     };
 
     // Paths allowed to still contain a `fn get_default_color*`:
-    //  - this guard test itself (it names the pattern in prose/snapshots);
-    //  - the discontinued desktop app, deleted with its decommission (#913).
-    let allow = |rel: &str| {
-        rel.ends_with("rust/processing/tests/styling_parity.rs")
-            || rel.starts_with("apps/desktop/")
-    };
+    //  - this guard test itself (it names the pattern in prose/snapshots).
+    let allow = |rel: &str| rel.ends_with("rust/processing/tests/styling_parity.rs");
 
     let mut files = Vec::new();
     collect_rs_files(&root.join("rust"), &mut files);

@@ -46,9 +46,6 @@ export const CACHE_SIZE_THRESHOLD = 10 * 1024 * 1024;
  *  and including it would make the IndexedDB write prohibitively large. */
 export const CACHE_MAX_SOURCE_SIZE = 150 * 1024 * 1024;
 
-/** Route desktop IFCs above this threshold through the bounded-memory path. */
-export const HUGE_NATIVE_FILE_THRESHOLD = 128 * 1024 * 1024;
-
 /**
  * File size at which the browser-File-API entry path streams directly into a
  * `SharedArrayBuffer` instead of going through `await file.arrayBuffer()`.
@@ -86,15 +83,6 @@ export const THRESHOLDS = {
   /** Don't cache files smaller than this (10MB) */
   CACHE_MIN_MB: 10,
 } as const;
-
-// ============================================================================
-// Platform Detection
-// ============================================================================
-
-/** Detect if running in Tauri (desktop) environment */
-export function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
 
 // ============================================================================
 // Dynamic Batch Configuration

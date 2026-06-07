@@ -15,14 +15,11 @@ import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { isTauri } from '@/lib/platform';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { BasepointOverlay } from './BasepointOverlay';
 import { PointCloudPanel } from './PointCloudPanel';
 import { Crosshair } from 'lucide-react';
-
-const isDesktop = isTauri();
 
 export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: boolean } = {}) {
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
@@ -144,7 +141,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
     <>
       <PointCloudPanelMount />
       {/* Bottom-right: Navigation controls (hidden when Cesium active — Cesium is web-only) */}
-      {!(cesiumEnabled && !isDesktop) && (
+      {!cesiumEnabled && (
         <div
           className={cn(
             'absolute flex flex-col gap-1 bg-background/90 backdrop-blur-sm border p-1',

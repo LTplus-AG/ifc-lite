@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/wasm-bindings", "apps/server", "apps/desktop/src-tauri"]
+members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/wasm-bindings", "apps/server"]
 resolver = "2"
 
 [workspace.package]
@@ -32,7 +32,7 @@ strip = true
 # parsing untrusted, attacker-supplied IFC bytes on a `spawn_blocking` thread
 # becomes a per-request `JoinError` (mapped to HTTP 500) instead of aborting
 # the whole multi-tenant process. The default `release` profile keeps
-# `panic = 'abort'` so the wasm bundle and desktop binary stay small.
+# `panic = 'abort'` so the wasm bundle stays small.
 # Built via `cargo build --profile server-release` (see apps/server/Dockerfile).
 [profile.server-release]
 inherits = "release"

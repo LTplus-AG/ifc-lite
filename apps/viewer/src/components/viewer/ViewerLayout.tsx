@@ -35,7 +35,6 @@ import { GanttPanel } from './schedule/GanttPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
-import { DesktopEntitlementBanner } from './DesktopEntitlementBanner';
 import {
   closeActiveAnalysisExtension,
   getAnalysisExtensionById,
@@ -283,7 +282,6 @@ export function ViewerLayout() {
 
         {/* Main Toolbar — use compact MobileToolbar on mobile */}
         {isMobile ? <MobileToolbar /> : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
-        {!isMobile && <DesktopEntitlementBanner />}
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (

@@ -19,10 +19,7 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
-import { openIfcFileDialog } from '@/services/file-dialog';
-import { logToDesktopTerminal } from '@/services/desktop-logger';
 import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
-import { isTauri } from '@/lib/platform';
 import { toast } from '@/components/ui/toast';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
 import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus } from 'lucide-react';
@@ -392,20 +389,6 @@ export function ViewportContainer() {
     setCesiumSourceModelId(georef?.sourceModelId ?? null);
   }, [georef?.sourceModelId, setCesiumSourceModelId]);
 
-  useEffect(() => {
-    // Recent files are a desktop-only feature — the web viewer should not
-    // show previously opened files in the landing page empty state.
-    if (!isTauri()) return;
-
-    const refreshRecentFiles = () => {
-      setRecentFiles(getRecentFiles().slice(0, 3));
-    };
-
-    refreshRecentFiles();
-    window.addEventListener('focus', refreshRecentFiles);
-    return () => window.removeEventListener('focus', refreshRecentFiles);
-  }, []);
-
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -504,7 +487,6 @@ export function ViewportContainer() {
 
   const handleStartBlank = useCallback(async () => {
     if (!webgpu.supported) return;
-    void logToDesktopTerminal('info', '[ViewportContainer] Start blank IFC clicked');
     const file = createBlankIfcFile();
     // Must await: loadFile() calls resetViewerState() internally which
     // resets activeTool back to 'select'. Setting addElement before that
@@ -882,27 +864,10 @@ export function ViewportContainer() {
             */}
             {/* Track 1 — open / drag */}
             <button
-              onClick={async () => {
+              onClick={() => {
                 if (!webgpu.supported) {
                   return;
                 }
-
-                void logToDesktopTerminal('info', '[ViewportContainer] Empty-state open button clicked');
-                const file = await openIfcFileDialog();
-                if (file) {
-                  void logToDesktopTerminal('info', `[ViewportContainer] Native dialog selected ${file.path}`);
-                  recordRecentFiles([{
-                    name: file.name,
-                    size: file.size,
-                    path: file.path,
-                    modifiedMs: file.modifiedMs ?? null,
-                  }]);
-                  setRecentFiles(getRecentFiles().slice(0, 3));
-                  loadFile(file);
-                  return;
-                }
-
-                void logToDesktopTerminal('info', '[ViewportContainer] Falling back to browser file input');
                 fileInputRef.current?.click();
               }}
               disabled={!webgpu.supported || webgpu.checking}
@@ -1064,7 +1029,7 @@ export function ViewportContainer() {
       )}
 
       {/* Cesium 3D world context overlay — rendered behind the WebGPU canvas (web only) */}
-      {cesiumEnabled && georef && !isTauri() && (
+      {cesiumEnabled && georef && (
         <CesiumOverlay
           mapConversion={georef.mapConversion}
           cameraMapConversion={georef.baseMapConversion}
@@ -1075,7 +1040,7 @@ export function ViewportContainer() {
           storeyElevations={georef.storeyElevations}
         />
       )}
-      {cesiumEnabled && georef?.mapConversion && !isTauri() && georef.baseMapConversion && (
+      {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
         <CesiumPlacementEditor
           modelId={georef.sourceModelId}
           mapConversion={georef.mapConversion}
@@ -1094,7 +1059,7 @@ export function ViewportContainer() {
         coordinateInfo={mergedGeometryResult?.coordinateInfo}
         computedIsolatedIds={computedIsolatedIds}
         modelIdToIndex={modelIdToIndex}
-        cesiumActive={cesiumEnabled && georef !== null && !isTauri()}
+        cesiumActive={cesiumEnabled && georef !== null}
         releaseGeometryAfterStream={false}
         onGeometryReleased={releaseGeometryMemory}
       />

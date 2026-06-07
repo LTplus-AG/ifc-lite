@@ -50,7 +50,6 @@ jobs:
             rust:
               - 'rust/**'
               - 'apps/server/**'
-              - 'apps/desktop/src-tauri/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -59,7 +58,6 @@ jobs:
               - '.github/workflows/test.yml'
             frontend:
               - 'apps/viewer/**'
-              - 'apps/desktop/**'
               - 'apps/viewer-embed/**'
               - 'packages/**'
               - 'package.json'
@@ -279,10 +277,8 @@ jobs:
         run: node scripts/fixtures/fetch-fixtures.mjs
       # Workspace exclusions:
       #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
-      #   - ifc-lite-desktop: Tauri crate needs gtk/webkit2gtk system libs;
-      #     desktop-compat.yml validates the desktop frontend separately.
       - name: Rust tests
-        run: cargo test --workspace --exclude ifc-lite-wasm --exclude ifc-lite-desktop
+        run: cargo test --workspace --exclude ifc-lite-wasm
 
   # Validates the Manifold CSG kernel path (T1.1 +). Only runs when files
   # that affect the kernel actually changed — first run on a runner

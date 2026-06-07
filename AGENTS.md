@@ -20,7 +20,8 @@ Project-specific gotchas and guardrails — the things that bite you *here* and 
 
 ## Build, CI & generated artifacts
 - Don't edit `packages/wasm/pkg/*` — change the Rust crates and regenerate. `scripts/build-wasm.sh` also rewrites `pkg/README.md` + `pkg/package.json` (version/README churn); `git checkout` those two before committing.
-- `scripts/build-wasm.sh` needs the pinned Rust toolchain + `wasm-pack` + clang/LLVM-20 and runs in **four** workflows (`test`, `release`, `desktop-compat`, `sdk-canary`) — change its toolchain requirements in all four together, or one drifts and fails only when its path filter triggers.
+- `scripts/build-wasm.sh` needs the pinned Rust toolchain + `wasm-pack` + clang/LLVM-20 and runs in **three** workflows (`test`, `release`, `sdk-canary`) — change its toolchain requirements in all three together, or one drifts and fails only when its path filter triggers.
+- ifc-lite ships a **web viewer** + headless CLI/MCP/server only — there is no first-party desktop app (removed; the `apps/desktop` Tauri shell and the viewer override-contract are gone). The desktop **capability** lives in `@ifc-lite/geometry` (`IPlatformBridge` / `NativeBridge` / `isTauri()`, `@tauri-apps/api` optional dep) for third parties building their own Tauri shell — keep it web-pure (it must never be imported on the web path; it's lazy-loaded only under `isTauri()`).
 - `Cargo.lock` is committed (app crates need reproducibility; an upstream yank broke CI once). Refresh with `cargo update -p <crate>`, never by deleting it. `[patch.crates-io]` lives in the root `Cargo.toml`; vendored stubs under `rust/vendor/<crate>/` must document why they exist.
 
 ## Changesets & published API

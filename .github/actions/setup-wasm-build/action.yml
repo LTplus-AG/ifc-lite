@@ -10,10 +10,10 @@
 # history for the full diagnostic). Ubuntu Noble's main repo tops out at
 # clang-18, so add apt.llvm.org for clang-20.
 #
-# Used by test.yml, release.yml, desktop-compat.yml and sdk-canary.yml so the
-# four stay in lock-step — a toolchain change here updates all of them at once,
-# instead of one drifting (which is how sdk-canary once shipped without LLVM-20
-# and went red on an unrelated PR).
+# Used by test.yml, release.yml and sdk-canary.yml so the three stay in
+# lock-step — a toolchain change here updates all of them at once, instead of
+# one drifting (which is how sdk-canary once shipped without LLVM-20 and went
+# red on an unrelated PR).
 name: 'Setup WASM build toolchain'
 description: 'Rust (rust-toolchain.toml) + wasm-pack + LLVM-20 for the manifold-csg-sys wasm32 build'
 

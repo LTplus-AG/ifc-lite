@@ -15,7 +15,7 @@
  * - Multi-language support (EN/DE/FR)
  */
 
-import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import React, { useCallback, useState, useMemo, useRef } from 'react';
 import {
   X,
   Upload,
@@ -75,7 +75,6 @@ import { cn } from '@/lib/utils';
 import { IDSAuditSummary } from './IDSAuditSummary';
 import { IDSExportDialog } from './IDSExportDialog';
 import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
-import { claimNextDesktopPanelAction, subscribeDesktopPanelActions } from '@/services/desktop-panel-actions';
 
 // ============================================================================
 // Types
@@ -512,30 +511,6 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     }
     fileInputRef.current?.click();
   }, [loadIdsFromDialog]);
-
-  const handleDesktopRunValidation = useCallback(async () => {
-    if (!document) {
-      const loaded = await loadIdsFromDialog();
-      if (!loaded) {
-        return;
-      }
-    }
-    await runValidation();
-  }, [document, loadIdsFromDialog, runValidation]);
-
-  useEffect(() => {
-    const drainDesktopActions = () => {
-      if (claimNextDesktopPanelAction('ids-open')) {
-        void loadIdsFromDialog();
-      }
-      if (claimNextDesktopPanelAction('ids-run-validation')) {
-        void handleDesktopRunValidation();
-      }
-    };
-
-    drainDesktopActions();
-    return subscribeDesktopPanelActions(drainDesktopActions);
-  }, [handleDesktopRunValidation, loadIdsFromDialog]);
 
   // Handle entity click
   const handleEntityClick = useCallback((modelId: string, expressId: number) => {

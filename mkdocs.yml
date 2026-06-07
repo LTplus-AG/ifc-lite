@@ -116,7 +116,7 @@ nav:
     - CLI Toolkit: guide/cli.md
     - 3D Viewer & Analysis: guide/viewer-api.md
     - Server Guide: guide/server.md
-    - Desktop App: guide/desktop.md
+    - Building for Desktop: guide/desktop.md
     - Browser Requirements: guide/browser-requirements.md
   - User Guide:
     - Parsing IFC Files: guide/parsing.md

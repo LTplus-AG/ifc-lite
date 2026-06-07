@@ -32,7 +32,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
-import { getNativeEntityDetails } from '@/services/desktop-native-metadata';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -162,7 +161,7 @@ export function PropertiesPanel() {
       const m = models.get(selectedEntity.modelId);
       if (m) {
         return {
-          modelQuery: m.nativeMetadata ? null : (m.ifcDataStore ? new IfcQuery(m.ifcDataStore) : null),
+          modelQuery: m.ifcDataStore ? new IfcQuery(m.ifcDataStore) : null,
           model: m,
         };
       }
@@ -201,8 +200,6 @@ export function PropertiesPanel() {
   const [copied, setCopied] = useState(false);
   const [coordCopied, setCoordCopied] = useState<string | null>(null);
   const [coordOpen, setCoordOpen] = useState(false);
-  const [nativeDetails, setNativeDetails] = useState<import('@/store/types').NativeMetadataEntityDetails | null>(null);
-  const [nativeDetailsState, setNativeDetailsState] = useState<'idle' | 'loading' | 'error'>('idle');
 
   // Inline property editing is gated by the global edit-mode pill in
   // the main toolbar (see `uiSlice.editEnabled`). Reading it from the
@@ -210,32 +207,6 @@ export function PropertiesPanel() {
   // geometry manipulators, georeference placement, add-element draw
   // tools — behind a single switch.
   const editMode = useViewerStore((s) => s.editEnabled);
-
-  useEffect(() => {
-    if (!selectedEntity || !model?.nativeMetadata) {
-      setNativeDetails(null);
-      setNativeDetailsState('idle');
-      return;
-    }
-    let cancelled = false;
-    setNativeDetailsState('loading');
-    void getNativeEntityDetails(model.nativeMetadata.cacheKey, selectedEntity.expressId)
-      .then((details) => {
-        if (!cancelled) {
-          setNativeDetails(details);
-          setNativeDetailsState('idle');
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setNativeDetails(null);
-          setNativeDetailsState('error');
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedEntity, model?.nativeMetadata]);
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
@@ -958,51 +929,6 @@ export function PropertiesPanel() {
     return names;
   }, [attributes]);
 
-  const isNativeLazySelection = Boolean(selectedEntity && model?.nativeMetadata);
-
-  // Native-lazy entities (server-streamed without full STEP data) can
-  // never be edited; the per-row editors below self-guard via
-  // `enableEditing={editMode && !isNativeLazySelection}`. The old
-  // panel-local `editMode` would flip itself off when a native-lazy
-  // entity was selected; now that the flag is global it stays on, and
-  // the field-level guards do the work.
-
-  const nativeSpatialInfo = useMemo(() => {
-    if (!nativeDetails?.spatial?.storeyName) return null;
-    return {
-      storeyId: nativeDetails.spatial.storeyId ?? undefined,
-      storeyName: nativeDetails.spatial.storeyName,
-      elevation: nativeDetails.spatial.elevation ?? undefined,
-      height: nativeDetails.spatial.height ?? undefined,
-    };
-  }, [nativeDetails]);
-
-  const nativeOccurrenceProperties = useMemo<PropertySet[]>(() => {
-    if (!nativeDetails) return [];
-    return nativeDetails.properties.map((pset) => ({
-      name: pset.name,
-      properties: pset.properties.map((property) => ({
-        name: property.name,
-        value: property.value,
-        isMutated: false,
-      })),
-      isNewPset: false,
-      source: 'instance' as const,
-    }));
-  }, [nativeDetails]);
-
-  const nativeQuantities = useMemo<QuantitySet[]>(() => {
-    if (!nativeDetails) return [];
-    return nativeDetails.quantities.map((qset) => ({
-      name: qset.name,
-      quantities: qset.quantities.map((quantity) => ({
-        name: quantity.name,
-        value: quantity.value,
-        type: quantity.type ?? 0,
-      })),
-    }));
-  }, [nativeDetails]);
-
   // Overlay (authored) entities — split halves, duplicates, scripted
   // adds — live only in the StoreEditor overlay, NOT the parsed store.
   // `modelQuery.entity()` always returns a node, and its getters fall
@@ -1010,49 +936,27 @@ export function PropertiesPanel() {
   // table (entity-table.ts#getTypeName). Those non-null sentinels would
   // shadow the overlay record in an `entityNode ?? overlay` chain, so
   // when an overlay record exists it MUST take precedence.
-  const renderedEntityType = isNativeLazySelection
-    ? (nativeDetails?.summary.type ?? 'Loading...')
-    : (overlayEntity?.type ?? entityNode?.type ?? 'Unknown');
-  const renderedEntityName = isNativeLazySelection
-    ? (nativeDetails?.summary.name ?? `#${selectedEntity?.expressId ?? ''}`)
-    : (overlayAttr(2) ?? entityNode?.name ?? undefined);
-  const renderedEntityGlobalId = isNativeLazySelection
-    ? (nativeDetails?.summary.globalId ?? null)
-    : (overlayAttr(0) ?? entityNode?.globalId);
-  const renderedEntityDescription = isNativeLazySelection
-    ? undefined
-    : (overlayAttr(3) ?? entityNode?.description ?? undefined);
-  const renderedEntityObjectType = isNativeLazySelection
-    ? undefined
-    : (overlayAttr(4) ?? entityNode?.objectType ?? undefined);
-  const renderedSpatialInfo = isNativeLazySelection ? nativeSpatialInfo : spatialInfo;
-  const renderedOccurrenceProperties = isNativeLazySelection ? nativeOccurrenceProperties : occurrenceProperties;
-  const renderedInheritedTypeProperties = isNativeLazySelection ? [] : inheritedTypeProperties;
-  const renderedMergedProperties = isNativeLazySelection
-    ? nativeOccurrenceProperties
-    : mergedProperties;
-  const renderedQuantities = isNativeLazySelection ? nativeQuantities : quantities;
-  const renderedAttributes = isNativeLazySelection ? [] : attributes;
-  const renderedClassifications = isNativeLazySelection ? [] : classifications;
-  const renderedMaterialInfo = isNativeLazySelection ? null : materialInfo;
-  const renderedMaterialProperties = isNativeLazySelection ? [] : materialProperties;
-  const renderedDocuments = isNativeLazySelection ? [] : documents;
-  const renderedEntityRelationships = isNativeLazySelection ? null : entityRelationships;
-  const renderedGeoref = isNativeLazySelection ? null : georef;
-  const renderedSpatialContainment = isNativeLazySelection ? null : spatialContainment;
-  const renderedTypeProperties = isNativeLazySelection
-    ? (nativeDetails?.typeSummary
-        ? {
-            typeName: nativeDetails.typeSummary.name,
-            typeId: nativeDetails.typeSummary.expressId,
-            psets: [] as PropertySet[],
-          }
-        : null)
-    : typeProperties;
-  const renderedTypeEditImpact = isNativeLazySelection ? null : typeEditImpact;
-  const renderedIsTypeEntity = isNativeLazySelection
-    ? ((nativeDetails?.summary.type ?? '').endsWith('Type'))
-    : isTypeEntity;
+  const renderedEntityType = overlayEntity?.type ?? entityNode?.type ?? 'Unknown';
+  const renderedEntityName = overlayAttr(2) ?? entityNode?.name ?? undefined;
+  const renderedEntityGlobalId = overlayAttr(0) ?? entityNode?.globalId;
+  const renderedEntityDescription = overlayAttr(3) ?? entityNode?.description ?? undefined;
+  const renderedEntityObjectType = overlayAttr(4) ?? entityNode?.objectType ?? undefined;
+  const renderedSpatialInfo = spatialInfo;
+  const renderedOccurrenceProperties = occurrenceProperties;
+  const renderedInheritedTypeProperties = inheritedTypeProperties;
+  const renderedMergedProperties = mergedProperties;
+  const renderedQuantities = quantities;
+  const renderedAttributes = attributes;
+  const renderedClassifications = classifications;
+  const renderedMaterialInfo = materialInfo;
+  const renderedMaterialProperties = materialProperties;
+  const renderedDocuments = documents;
+  const renderedEntityRelationships = entityRelationships;
+  const renderedGeoref = georef;
+  const renderedSpatialContainment = spatialContainment;
+  const renderedTypeProperties = typeProperties;
+  const renderedTypeEditImpact = typeEditImpact;
+  const renderedIsTypeEntity = isTypeEntity;
   const renderedExistingProps = useMemo(() => {
     const keys = new Set<string>();
     for (const pset of renderedMergedProperties) {
@@ -1109,7 +1013,7 @@ export function PropertiesPanel() {
   // `overlayEntity` when `entityNode` is empty. Without including
   // `overlayEntity` here the panel collapses to the model-metadata
   // view the moment a fresh add lands.
-  if (!selectedEntityId || (!isNativeLazySelection && (!modelQuery || (!entityNode && !overlayEntity)))) {
+  if (!selectedEntityId || !modelQuery || (!entityNode && !overlayEntity)) {
     // Show model metadata when a single model is loaded and nothing selected.
     // Handles both federated models (models.size >= 1) and legacy single-model path (models.size === 0).
     if (models.size === 1) {
@@ -1501,7 +1405,7 @@ export function PropertiesPanel() {
               </div>
             )}
             {/* Edit toolbar - only shown when edit mode is active */}
-            {editMode && selectedEntity && !isNativeLazySelection && (
+            {editMode && selectedEntity && (
               <>
                 <GeometryEditCard
                   modelId={selectedEntity.modelId}
@@ -1547,7 +1451,7 @@ export function PropertiesPanel() {
                         pset={pset}
                         modelId={selectedEntity?.modelId}
                         entityId={selectedEntity?.expressId}
-                        enableEditing={editMode && !isNativeLazySelection}
+                        enableEditing={editMode}
                         isTypeProperty={renderedIsTypeEntity}
                         typeEditScope={renderedIsTypeEntity ? renderedTypeEditImpact ?? undefined : undefined}
                       />
@@ -1571,7 +1475,7 @@ export function PropertiesPanel() {
                         pset={pset}
                         modelId={selectedEntity?.modelId}
                         entityId={renderedTypeProperties.typeId}
-                        enableEditing={editMode && !isNativeLazySelection}
+                        enableEditing={editMode}
                         isTypeProperty
                         typeEditScope={renderedTypeEditImpact?.mode === 'inherited' ? renderedTypeEditImpact : undefined}
                       />
@@ -1695,7 +1599,7 @@ export function PropertiesPanel() {
           </TabsContent>
 
           <TabsContent value="raw-step" className="m-0 p-3 overflow-hidden">
-            {selectedEntity && !isNativeLazySelection ? (
+            {selectedEntity ? (
               <RawStepCard
                 modelId={selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId}
                 entityId={selectedEntity.expressId}
@@ -1705,9 +1609,7 @@ export function PropertiesPanel() {
               />
             ) : (
               <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8 font-mono">
-                {isNativeLazySelection
-                  ? 'Raw STEP is not available for native-metadata selections'
-                  : 'Select an entity to inspect raw STEP arguments'}
+                Select an entity to inspect raw STEP arguments
               </p>
             )}
           </TabsContent>

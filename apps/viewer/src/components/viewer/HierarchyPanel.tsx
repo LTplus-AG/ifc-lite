@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useRef, useEffect, useMemo, type ReactElement } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Search,
@@ -19,7 +19,6 @@ import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
-import { getNativeMetadataChildren, searchNativeMetadataEntities } from '@/services/desktop-native-metadata';
 
 import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
@@ -38,7 +37,6 @@ export function HierarchyPanel() {
     removeModel,
   } = useIfc();
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
-  const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
@@ -92,33 +90,6 @@ export function HierarchyPanel() {
 
   // Check if we have multiple models loaded
   const isMultiModel = models.size > 1;
-  const nativeLazyModel = useMemo(() => {
-    if (models.size !== 1) return null;
-    const [, model] = Array.from(models.entries())[0];
-    if (!model.nativeMetadata) return null;
-    return model.ifcDataStore?.spatialHierarchy ? null : model;
-  }, [models]);
-  const [nativeChildren, setNativeChildren] = useState<Record<number, Array<{
-    expressId: number;
-    type: string;
-    name: string;
-    globalId?: string | null;
-    kind: 'spatial' | 'element';
-    hasChildren: boolean;
-    elementCount?: number;
-    elevation?: number | null;
-  }>>>({});
-  const [nativeExpanded, setNativeExpanded] = useState<Set<number>>(new Set());
-  const [nativeSearchResults, setNativeSearchResults] = useState<Array<{
-    expressId: number;
-    type: string;
-    name: string;
-    globalId?: string | null;
-    kind: 'spatial' | 'element';
-    hasChildren: boolean;
-    elementCount?: number;
-    elevation?: number | null;
-  }>>([]);
 
   // Use extracted hook for tree data management
   const {
@@ -221,29 +192,6 @@ export function HierarchyPanel() {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDragging]);
-
-  useEffect(() => {
-    if (!nativeLazyModel?.nativeMetadata) {
-      setNativeSearchResults([]);
-      return;
-    }
-    const query = searchQuery.trim();
-    if (!query) {
-      setNativeSearchResults([]);
-      return;
-    }
-    let cancelled = false;
-    void searchNativeMetadataEntities(nativeLazyModel.nativeMetadata.cacheKey, query, 200)
-      .then((results) => {
-        if (!cancelled) setNativeSearchResults(results);
-      })
-      .catch(() => {
-        if (!cancelled) setNativeSearchResults([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [nativeLazyModel, searchQuery]);
 
   // Toggle visibility for a node
   const handleVisibilityToggle = useCallback((node: TreeNode) => {
@@ -560,7 +508,7 @@ export function HierarchyPanel() {
   }
 
   const singleModel = models.size === 1 ? Array.from(models.values())[0] : null;
-  if (!ifcDataStore && singleModel && !nativeLazyModel) {
+  if (!ifcDataStore && singleModel) {
     const metadataState = singleModel.metadataLoadState;
     const message = metadataState === 'error'
       ? (singleModel.loadError || 'Native metadata failed to load.')
@@ -576,128 +524,6 @@ export function HierarchyPanel() {
           <div className="max-w-[220px] text-xs text-zinc-500 dark:text-zinc-400">
             {message}
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (nativeLazyModel?.nativeMetadata) {
-    const nativeMetadata = nativeLazyModel.nativeMetadata;
-    const nativeSelectedGlobalId =
-      selectedEntity?.modelId === nativeLazyModel.id
-        ? toGlobalId(nativeLazyModel.id, selectedEntity.expressId)
-        : null;
-
-    const selectNativeEntity = (expressId: number) => {
-      const globalId = toGlobalId(nativeLazyModel.id, expressId);
-      setSelectedEntityIds([]);
-      setSelectedEntityId(globalId);
-      setSelectedEntity({
-        modelId: nativeLazyModel.id,
-        expressId,
-      });
-      setActiveModel(nativeLazyModel.id);
-    };
-
-    const toggleNativeNode = async (expressId: number) => {
-      setNativeExpanded((prev) => {
-        const next = new Set(prev);
-        if (next.has(expressId)) {
-          next.delete(expressId);
-        } else {
-          next.add(expressId);
-        }
-        return next;
-      });
-      if (nativeChildren[expressId]) return;
-      try {
-        const children = await getNativeMetadataChildren(nativeMetadata.cacheKey, expressId);
-        setNativeChildren((prev) => ({ ...prev, [expressId]: children }));
-      } catch {
-        setNativeChildren((prev) => ({ ...prev, [expressId]: [] }));
-      }
-    };
-
-    const renderNativeSummary = (
-      summary: {
-        expressId: number;
-        type: string;
-        name: string;
-        kind: 'spatial' | 'element';
-        hasChildren: boolean;
-        elementCount?: number;
-      },
-      depth: number,
-    ): ReactElement => {
-      const expanded = nativeExpanded.has(summary.expressId);
-      return (
-        <div key={`${summary.kind}-${summary.expressId}`}>
-          <button
-            type="button"
-            className={cn(
-              'w-full flex items-center gap-2 px-3 py-2 text-left border-b border-zinc-100 dark:border-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-950',
-              nativeSelectedGlobalId === toGlobalId(nativeLazyModel.id, summary.expressId) && 'bg-primary/10 text-primary'
-            )}
-            style={{ paddingLeft: `${12 + depth * 16}px` }}
-            onClick={() => selectNativeEntity(summary.expressId)}
-          >
-            {summary.hasChildren ? (
-              <span
-                className="w-4 text-center text-xs text-zinc-500"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void toggleNativeNode(summary.expressId);
-                }}
-              >
-                {expanded ? 'v' : '>'}
-              </span>
-            ) : (
-              <span className="w-4" />
-            )}
-            <span className="truncate flex-1 text-sm">{summary.name || `${summary.type} #${summary.expressId}`}</span>
-            <span className="text-[10px] uppercase tracking-wide text-zinc-500">{summary.type}</span>
-            {typeof summary.elementCount === 'number' && summary.elementCount > 0 && (
-              <span className="text-[10px] text-zinc-400">{summary.elementCount}</span>
-            )}
-          </button>
-          {expanded && (nativeChildren[summary.expressId] ?? []).map((child) => renderNativeSummary(child, depth + 1))}
-        </div>
-      );
-    };
-
-    return (
-      <div className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
-        <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
-          <Input
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            leftIcon={<Search className="h-4 w-4" />}
-            className="h-9 text-sm rounded-none border-2 border-zinc-200 dark:border-zinc-800 focus:border-primary focus:ring-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
-          />
-        </div>
-        <SectionHeader
-          icon={Building2}
-          title={searchQuery.trim() ? 'Search Results' : 'Hierarchy'}
-          count={searchQuery.trim() ? nativeSearchResults.length : 1}
-        />
-        <div className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
-          {searchQuery.trim()
-            ? nativeSearchResults.map((result) => renderNativeSummary(result, 0))
-            : nativeMetadata.spatialTree
-              ? renderNativeSummary(nativeMetadata.spatialTree, 0)
-              : (
-                <div className="p-4 text-xs text-zinc-500">
-                  {nativeLazyModel.metadataLoadState === 'error'
-                    ? (nativeLazyModel.loadError || 'Native spatial metadata is unavailable for this model.')
-                    : nativeLazyModel.metadataLoadState === 'bootstrapping'
-                      ? 'Native spatial metadata is still loading.'
-                      : 'Native spatial metadata tree is unavailable for this model.'}
-                </div>
-              )}
-        </div>
-        <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-500 text-center bg-zinc-50 dark:bg-black font-mono">
-          On-demand desktop metadata
         </div>
       </div>
     );

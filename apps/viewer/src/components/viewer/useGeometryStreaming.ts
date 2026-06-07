@@ -21,7 +21,6 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
-import { logToDesktopTerminal } from '@/services/desktop-logger';
 import { toast } from '../ui/toast.js';
 
 // Session-scoped flag so the linear-infrastructure hint fires at most once
@@ -87,7 +86,6 @@ const MAX_VALID_COORD = 10000;
 
 function traceGeometrySync(message: string): void {
   console.log(`[GeomSync] ${message}`);
-  void logToDesktopTerminal('info', `[GeomSync] ${message}`);
 }
 
 export function useGeometryStreaming(params: UseGeometryStreamingParams): void {

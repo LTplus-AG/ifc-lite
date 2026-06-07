@@ -49,13 +49,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { toast } from '@/components/ui/toast';
-import { buildDesktopUpgradeUrl, hasDesktopFeatureAccess } from '@/lib/desktop-product';
 import { cn, formatDuration } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useSandbox } from '@/hooks/useSandbox';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
-import { navigateToPath } from '@/services/app-navigation';
 import { CodeEditor } from './CodeEditor';
 import { ChatPanel } from './ChatPanel';
 import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
@@ -154,8 +151,6 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
   const [outputCollapsed, setOutputCollapsed] = useState(false);
   const chatPanelVisible = useViewerStore((s) => s.chatPanelVisible);
   const setChatPanelVisible = useViewerStore((s) => s.setChatPanelVisible);
-  const desktopEntitlement = useViewerStore((s) => s.desktopEntitlement);
-  const canUseAiAssistant = hasDesktopFeatureAccess(desktopEntitlement, 'ai_assistant');
 
   // Chat panel width (px) — resizable via drag handle
   const [chatWidth, setChatWidth] = useState(380);
@@ -165,27 +160,14 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
   // Open chat by default when script panel mounts
   useEffect(() => {
     try {
-      if (canUseAiAssistant && localStorage.getItem('ifc-lite-chat-panel-visible') === null) {
+      if (localStorage.getItem('ifc-lite-chat-panel-visible') === null) {
         setChatPanelVisible(true);
       }
     } catch {
-      if (canUseAiAssistant) {
-        setChatPanelVisible(true);
-      }
+      setChatPanelVisible(true);
     }
     return () => { cleanupChatDragRef.current?.(); };
-  }, [canUseAiAssistant, setChatPanelVisible]);
-
-  useEffect(() => {
-    if (!canUseAiAssistant && chatPanelVisible) {
-      setChatPanelVisible(false);
-    }
-  }, [canUseAiAssistant, chatPanelVisible, setChatPanelVisible]);
-
-  const promptAiUpgrade = useCallback(() => {
-    toast.info('AI assistant is available with Desktop Pro');
-    navigateToPath(buildDesktopUpgradeUrl());
-  }, []);
+  }, [setChatPanelVisible]);
 
   const handleChatResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -259,10 +241,6 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
 
   const handleFixWithLlm = useCallback(() => {
     if (!lastError) return;
-    if (!canUseAiAssistant) {
-      promptAiUpgrade();
-      return;
-    }
     setChatPanelVisible(true);
     const state = useViewerStore.getState();
     queueChatRepairRequest({
@@ -270,15 +248,11 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
       diagnostics: state.scriptLastDiagnostics,
       reason: lastError.startsWith('Preflight validation failed:') ? 'preflight' : 'runtime',
     });
-  }, [canUseAiAssistant, lastError, promptAiUpgrade, queueChatRepairRequest, setChatPanelVisible]);
+  }, [lastError, queueChatRepairRequest, setChatPanelVisible]);
 
   const toggleChat = useCallback(() => {
-    if (!canUseAiAssistant) {
-      promptAiUpgrade();
-      return;
-    }
     setChatPanelVisible(!chatPanelVisible);
-  }, [canUseAiAssistant, chatPanelVisible, promptAiUpgrade, setChatPanelVisible]);
+  }, [chatPanelVisible, setChatPanelVisible]);
 
   return (
     <div className="h-full flex bg-background">
@@ -333,12 +307,12 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                 variant={chatPanelVisible ? 'default' : 'ghost'}
                 size="icon-xs"
                 onClick={toggleChat}
-                className={cn(canUseAiAssistant && chatPanelVisible && 'bg-blue-500 hover:bg-blue-600 text-white')}
+                className={cn(chatPanelVisible && 'bg-blue-500 hover:bg-blue-600 text-white')}
               >
                 <Bot className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{canUseAiAssistant ? (chatPanelVisible ? 'Hide AI Chat' : 'Show AI Chat') : 'Desktop Pro required for AI Chat'}</TooltipContent>
+            <TooltipContent>{chatPanelVisible ? 'Hide AI Chat' : 'Show AI Chat'}</TooltipContent>
           </Tooltip>
 
           {onClose && (
@@ -578,7 +552,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                           className="h-6 px-2 text-xs border-destructive/40 text-destructive bg-transparent hover:bg-destructive/10"
                           onClick={handleFixWithLlm}
                         >
-                          {canUseAiAssistant ? 'Fix with LLM' : 'Upgrade for AI Fix'}
+                          Fix with LLM
                         </Button>
                       </div>
                     </div>

@@ -10,18 +10,23 @@
 //! positions, the TPI cases, and indirect `orient2d` land in later increments —
 //! each verified `≡` the exact tier here.
 
-use super::rational;
+use super::{interval, rational};
 use super::{ImplicitPoint, Sign};
 
 /// Exact `orient3d` over a mix of explicit + implicit points.
+///
+/// Cascade: explicit args go through the Shewchuk adaptive predicate (its own
+/// semi-static→exact ladder). Indirect args try the interval tier first and
+/// escalate to the exact (BigRational) tier only on a straddle. Every tier
+/// returns the SAME sign — verified against the oracle in tests.
 pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &ImplicitPoint) -> Sign {
     use ImplicitPoint::{Explicit, Lpi};
     match (a, b, c, d) {
         (Explicit(a), Explicit(b), Explicit(c), Explicit(d)) => {
-            // Explicit fast path: Shewchuk adaptive predicate (FMA-free, exact sign).
             Sign::from_f64(geometry_predicates::orient3d(*a, *b, *c, *d))
         }
-        (Lpi(l), Explicit(b), Explicit(c), Explicit(d)) => rational::lpi_orient3d(l, *b, *c, *d),
+        (Lpi(l), Explicit(b), Explicit(c), Explicit(d)) => interval::lpi_orient3d(l, *b, *c, *d)
+            .unwrap_or_else(|| rational::lpi_orient3d(l, *b, *c, *d)),
         _ => unimplemented!(
             "kernel::orient3d: this implicit-point configuration lands in a later M1 increment"
         ),
@@ -126,5 +131,62 @@ mod tests {
         assert_eq!(assemble_sign(Sign::Negative, &[Sign::Positive]), Sign::Negative);
         assert_eq!(assemble_sign(Sign::Positive, &[Sign::Zero]), Sign::Zero);
         assert_eq!(assemble_sign(Sign::Positive, &[]), Sign::Positive);
+    }
+
+    #[test]
+    fn next_up_down_are_adjacent() {
+        use super::super::interval::{next_down, next_up};
+        for &x in &[1.0, -1.0, 0.0, 1e7, -1e-9, 12.3456789, f64::MIN_POSITIVE] {
+            assert!(next_up(x) > x, "next_up({x}) not strictly greater");
+            assert!(next_down(x) < x, "next_down({x}) not strictly less");
+            // Round-trip = adjacency: nothing representable strictly between.
+            assert_eq!(next_down(next_up(x)), x, "next_up/next_down not adjacent at {x}");
+        }
+    }
+
+    /// Deterministic LCG for the soundness fuzz (no Math::random; fixed seed).
+    struct Lcg(u64);
+    impl Lcg {
+        fn u(&mut self) -> u64 {
+            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0
+        }
+        fn f(&mut self, lo: f64, hi: f64) -> f64 {
+            let unit = (self.u() >> 11) as f64 / (1u64 << 53) as f64; // [0,1)
+            lo + (hi - lo) * unit
+        }
+        fn p(&mut self) -> [f64; 3] {
+            [self.f(-10., 10.), self.f(-10., 10.), self.f(-10., 10.)]
+        }
+    }
+
+    #[test]
+    fn interval_tier_is_sound_and_the_cascade_equals_exact() {
+        use super::super::{interval, rational, Lpi};
+        let mut rng = Lcg(0x1234_5678_9abc_def0);
+        let (mut definite, mut escalated) = (0u32, 0u32);
+        for _ in 0..3000 {
+            let l = Lpi { p: rng.p(), q: rng.p(), r: rng.p(), s: rng.p(), t: rng.p() };
+            let (p2, p3, p4) = (rng.p(), rng.p(), rng.p());
+            let exact = rational::lpi_orient3d(&l, p2, p3, p4);
+            // Soundness: a definite interval sign must equal the exact sign.
+            match interval::lpi_orient3d(&l, p2, p3, p4) {
+                Some(s) => {
+                    assert_eq!(s, exact, "interval returned a WRONG definite sign for {l:?}");
+                    definite += 1;
+                }
+                None => escalated += 1,
+            }
+            // The public cascade (interval → escalate) must always equal exact.
+            let cascade = orient3d(&ImplicitPoint::Lpi(l), &e(p2), &e(p3), &e(p4));
+            assert_eq!(cascade, exact, "cascade != exact for {l:?}");
+        }
+        // The interval fast path must carry the overwhelming majority (perf gate).
+        assert!(
+            definite as f64 / (definite + escalated) as f64 > 0.95,
+            "interval resolved only {definite}/{} — fast path too cold",
+            definite + escalated
+        );
+        eprintln!("interval tier: {definite} definite, {escalated} escalated to exact");
     }
 }

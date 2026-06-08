@@ -127,6 +127,47 @@ const MAX_CSG_POLYGONS_PER_MESH: usize = 128;
 /// Maximum combined polygon count for CSG operations.
 const MAX_CSG_POLYGONS: usize = MAX_CSG_POLYGONS_PER_MESH * 2;
 
+/// One recorded invocation of a CSG kernel op (M0 perf-census instrumentation
+/// for the pure-Rust kernel migration). `op`: 0=subtract 1=union 2=intersection
+/// 3=clip. `a_tris`/`b_tris` are the operand triangle counts — the arrangement
+/// cost driver — so the census measures the *real* heavy-path workload reaching
+/// the kernel (analytic AABB box clips never get here).
+#[derive(Clone, Copy, Debug)]
+pub struct CsgOpRecord {
+    pub op: u8,
+    pub a_tris: u32,
+    pub b_tris: u32,
+}
+
+// Global (Mutex) so it captures ops on rayon worker threads, not just the caller.
+static CSG_CENSUS: std::sync::Mutex<Vec<CsgOpRecord>> = std::sync::Mutex::new(Vec::new());
+
+/// Clear the CSG op census (call before a measured run).
+pub fn reset_csg_census() {
+    if let Ok(mut g) = CSG_CENSUS.lock() {
+        g.clear();
+    }
+}
+
+/// Drain the CSG op census (call after a measured run).
+pub fn take_csg_census() -> Vec<CsgOpRecord> {
+    CSG_CENSUS
+        .lock()
+        .map(|mut g| std::mem::take(&mut *g))
+        .unwrap_or_default()
+}
+
+#[inline]
+fn record_csg_op(op: u8, a_tris: usize, b_tris: usize) {
+    if let Ok(mut g) = CSG_CENSUS.lock() {
+        g.push(CsgOpRecord {
+            op,
+            a_tris: a_tris as u32,
+            b_tris: b_tris as u32,
+        });
+    }
+}
+
 /// CSG Clipping Processor
 pub struct ClippingProcessor {
     /// Epsilon for floating point comparisons
@@ -892,6 +933,7 @@ impl ClippingProcessor {
     /// [`Self::take_failures`]). An empty host returns an empty mesh without
     /// recording a failure (it's a fast path, not a fallback).
     pub fn subtract_mesh(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> Result<Mesh> {
+        record_csg_op(0, host_mesh.triangle_count(), opening_mesh.triangle_count());
         if host_mesh.is_empty() {
             return Ok(Mesh::new());
         }
@@ -1276,6 +1318,7 @@ impl ClippingProcessor {
     ///
     /// Empty operands are handled silently — they have a unique correct answer.
     pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
+        record_csg_op(1, mesh_a.triangle_count(), mesh_b.triangle_count());
         if mesh_a.is_empty() {
             return Ok(mesh_b.clone());
         }
@@ -1339,6 +1382,7 @@ impl ClippingProcessor {
     /// Without the feature the legacy BSP path returns an empty mesh
     /// when its cap is exceeded — recording a [`BoolFailure`].
     pub fn intersection_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
+        record_csg_op(2, mesh_a.triangle_count(), mesh_b.triangle_count());
         if mesh_a.is_empty() || mesh_b.is_empty() {
             return Ok(Mesh::new());
         }
@@ -1626,6 +1670,7 @@ impl ClippingProcessor {
 
     /// Clip an entire mesh against a plane
     pub fn clip_mesh(&self, mesh: &Mesh, plane: &Plane) -> Result<Mesh> {
+        record_csg_op(3, mesh.triangle_count(), 0);
         let mut result = Mesh::new();
 
         // Process each triangle

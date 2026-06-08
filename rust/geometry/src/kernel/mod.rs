@@ -19,6 +19,7 @@ pub mod arrangement;
 pub mod interner;
 pub mod interval;
 pub mod manifest;
+pub mod mesh_bridge;
 pub mod predicates;
 pub mod rational;
 pub mod retriangulate;

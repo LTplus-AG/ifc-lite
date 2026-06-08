@@ -20,13 +20,15 @@ use super::{ImplicitPoint, Sign};
 /// escalate to the exact (BigRational) tier only on a straddle. Every tier
 /// returns the SAME sign — verified against the oracle in tests.
 pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &ImplicitPoint) -> Sign {
-    use ImplicitPoint::{Explicit, Lpi};
+    use ImplicitPoint::{Explicit, Lpi, Tpi};
     match (a, b, c, d) {
         (Explicit(a), Explicit(b), Explicit(c), Explicit(d)) => {
             Sign::from_f64(geometry_predicates::orient3d(*a, *b, *c, *d))
         }
         (Lpi(l), Explicit(b), Explicit(c), Explicit(d)) => interval::lpi_orient3d(l, *b, *c, *d)
             .unwrap_or_else(|| rational::lpi_orient3d(l, *b, *c, *d)),
+        (Tpi(t), Explicit(b), Explicit(c), Explicit(d)) => interval::tpi_orient3d(t, *b, *c, *d)
+            .unwrap_or_else(|| rational::tpi_orient3d(t, *b, *c, *d)),
         _ => unimplemented!(
             "kernel::orient3d: this implicit-point configuration lands in a later M1 increment"
         ),
@@ -35,7 +37,7 @@ pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &Imp
 
 #[cfg(test)]
 mod tests {
-    use super::super::{rational, Lpi};
+    use super::super::{rational, Lpi, Tpi};
     use super::{orient3d, ImplicitPoint, Sign};
 
     fn e(p: [f64; 3]) -> ImplicitPoint {
@@ -188,5 +190,90 @@ mod tests {
             definite + escalated
         );
         eprintln!("interval tier: {definite} definite, {escalated} escalated to exact");
+    }
+
+    /// TPI cases: three planes (each a triangle) + a query triangle.
+    fn tpi_cases() -> Vec<(Tpi, [f64; 3], [f64; 3], [f64; 3])> {
+        // planes x=0.3, y=0.4, z=0 -> point (0.3,0.4,0)
+        let axis_aligned = Tpi {
+            planes: [
+                [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]],     // z=0
+                [[0.3, 0., 0.], [0.3, 1., 0.], [0.3, 0., 1.]],  // x=0.3
+                [[0., 0.4, 0.], [1., 0.4, 0.], [0., 0.4, 1.]],  // y=0.4
+            ],
+        };
+        // three tilted planes meeting at a general point
+        let tilted = Tpi {
+            planes: [
+                [[0., 0., 1.], [3., 0., 2.], [0., 3., 2.]],
+                [[1., 0., 0.], [1., 2., 1.], [2., 0., 3.]],
+                [[-1., -1., 0.], [2., -1., 1.], [-1., 2., 2.]],
+            ],
+        };
+        vec![
+            (axis_aligned, [0., 0., 1.], [1., 0., 1.], [0., 1., 1.]),   // query above
+            (axis_aligned, [0., 0., -1.], [1., 0., -1.], [0., 1., -1.]), // query below
+            (tilted, [5., -2., 0.], [-1., 4., 3.], [2., 2., -3.]),
+            (tilted, [10., 10., 10.], [-5., 0., 0.], [0., -5., 8.]),
+        ]
+    }
+
+    #[test]
+    fn tpi_orient3d_matches_materialised_point() {
+        // The homogenised TPI-orient3d must equal the direct orient3d on the
+        // exact materialised λ/d point — proving the TPI Cramer λ + the flip.
+        for (t, p2, p3, p4) in tpi_cases() {
+            let homog = rational::tpi_orient3d(&t, p2, p3, p4);
+            let direct = rational::orient3d_exact_pt(&rational::tpi_point(&t), p2, p3, p4);
+            assert_eq!(homog, direct, "TPI homogenisation/flip wrong for {t:?}");
+            assert_ne!(homog, Sign::Zero, "test TPI case should be off-plane: {t:?}");
+        }
+    }
+
+    #[test]
+    fn tpi_orient3d_sign_invariant_to_plane_winding() {
+        // Re-wind plane 0 (swap its 2nd/3rd points): flips that plane's normal
+        // and hence sign(d), but the meeting point is identical → the sign(d)
+        // flip must yield the SAME geometric sign.
+        for (t, p2, p3, p4) in tpi_cases() {
+            let mut rewound = t;
+            rewound.planes[0].swap(1, 2);
+            assert_eq!(
+                rational::tpi_orient3d(&t, p2, p3, p4),
+                rational::tpi_orient3d(&rewound, p2, p3, p4),
+                "TPI-orient3d sign changed under plane re-winding — the sign(d) flip is wrong/missing"
+            );
+        }
+    }
+
+    #[test]
+    fn tpi_interval_is_sound_and_the_cascade_equals_exact() {
+        use super::super::interval;
+        let mut rng = Lcg(0xfeed_face_cafe_d00d);
+        let (mut definite, mut escalated) = (0u32, 0u32);
+        for _ in 0..2000 {
+            // a random TPI = three random planes (generically meet at a point)
+            let plane = |rng: &mut Lcg| [rng.p(), rng.p(), rng.p()];
+            let t = Tpi { planes: [plane(&mut rng), plane(&mut rng), plane(&mut rng)] };
+            let (p2, p3, p4) = (rng.p(), rng.p(), rng.p());
+            let exact = rational::tpi_orient3d(&t, p2, p3, p4);
+            match interval::tpi_orient3d(&t, p2, p3, p4) {
+                Some(s) => {
+                    assert_eq!(s, exact, "TPI interval returned a WRONG definite sign for {t:?}");
+                    definite += 1;
+                }
+                None => escalated += 1,
+            }
+            let cascade = orient3d(&ImplicitPoint::Tpi(t), &e(p2), &e(p3), &e(p4));
+            assert_eq!(cascade, exact, "TPI cascade != exact for {t:?}");
+        }
+        // TPI Λ′ is degree-3 in the planes (heavier than LPI) so the interval is
+        // wider — still expect a healthy majority to resolve in f64.
+        assert!(
+            definite as f64 / (definite + escalated) as f64 > 0.80,
+            "TPI interval resolved only {definite}/{}",
+            definite + escalated
+        );
+        eprintln!("TPI interval tier: {definite} definite, {escalated} escalated");
     }
 }

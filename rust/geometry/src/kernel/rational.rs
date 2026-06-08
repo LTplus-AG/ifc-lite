@@ -6,7 +6,7 @@
 //! cascade's last-resort exact fallback. f64 coordinates are exactly
 //! representable as `BigRational`, so every sign here is mathematically exact.
 
-use super::{DropAxis, Lpi, Sign};
+use super::{DropAxis, Lpi, Sign, Tpi};
 use num_rational::BigRational;
 use num_traits::Signed;
 
@@ -43,6 +43,15 @@ fn det3(u: &V3, v: &V3, w: &V3) -> BigRational {
     &u[0] * (&v[1] * &w[2] - &v[2] * &w[1])
         + &u[1] * (&v[2] * &w[0] - &v[0] * &w[2])
         + &u[2] * (&v[0] * &w[1] - &v[1] * &w[0])
+}
+
+#[inline]
+fn cross(u: &V3, v: &V3) -> V3 {
+    [
+        &u[1] * &v[2] - &u[2] * &v[1],
+        &u[2] * &v[0] - &u[0] * &v[2],
+        &u[0] * &v[1] - &u[1] * &v[0],
+    ]
 }
 
 /// Exact explicit orient3d — Shewchuk's sign convention (matches
@@ -94,25 +103,69 @@ pub fn lpi_point(l: &Lpi) -> V3 {
     [&lambda[0] / &d, &lambda[1] / &d, &lambda[2] / &d]
 }
 
-/// Exact indirect orient3d for the 1-implicit / LPI-first-arg configuration:
-/// `orient3d(p1=LPI, p2, p3, p4)` with `p2,p3,p4` explicit.
-///
-/// `orient3d = (1/d)·Λ′` where `Λ′ = det3( (λ − d·p4), (p2−p4), (p3−p4) )`.
-/// Hence `sign = assemble_sign(sign(Λ′), &[sign(d)])` — the flip on `sign(d)`
-/// (odd-multiplicity denominator) is mandatory; omitting it inverts inside/
-/// outside whenever the plane winding makes `d<0`.
-pub fn lpi_orient3d(l: &Lpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Sign {
-    let (lambda, d) = lpi_lambda(l);
+/// Homogenised indirect orient3d for ONE implicit first-argument point `(λ/d)`
+/// against three explicit points. `orient3d = (1/d)·Λ′`, where
+/// `Λ′ = det3( (λ − d·p4), (p2−p4), (p3−p4) )`, so the geometric sign is
+/// `assemble_sign(sign(Λ′), &[sign(d)])`. Shared by LPI and TPI — the
+/// homogenisation depends only on the implicit-row count, not the point's
+/// origin. The `sign(d)` flip (odd-multiplicity denominator) is mandatory.
+fn indirect_orient3d(lambda: &V3, d: &BigRational, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Sign {
     let p4r = vec(p4);
     let row1 = [
-        &lambda[0] - &d * &p4r[0],
-        &lambda[1] - &d * &p4r[1],
-        &lambda[2] - &d * &p4r[2],
+        &lambda[0] - d * &p4r[0],
+        &lambda[1] - d * &p4r[1],
+        &lambda[2] - d * &p4r[2],
     ];
     let row2 = sub3(&vec(p2), &p4r);
     let row3 = sub3(&vec(p3), &p4r);
-    let lambda_det = det3(&row1, &row2, &row3);
-    super::assemble_sign(sign_of(&lambda_det), &[sign_of(&d)])
+    super::assemble_sign(sign_of(&det3(&row1, &row2, &row3)), &[sign_of(d)])
+}
+
+/// Exact `orient3d(p1=LPI, p2, p3, p4)` with `p2,p3,p4` explicit.
+pub fn lpi_orient3d(l: &Lpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Sign {
+    let (lambda, d) = lpi_lambda(l);
+    indirect_orient3d(&lambda, &d, p2, p3, p4)
+}
+
+/// TPI λ-construction (exact) via Cramer on the three plane equations
+/// `nᵢ·x = cᵢ`, with `nᵢ=(Bᵢ−Aᵢ)×(Cᵢ−Aᵢ)`, `cᵢ=nᵢ·Aᵢ` (un-normalised → all
+/// polynomials, no sqrt). Cite: Attene 2020 §4. `d=det3(n1,n2,n3)`, `λ` =
+/// the Cramer numerators (column k replaced by `(c1,c2,c3)`).
+pub fn tpi_lambda(t: &Tpi) -> (V3, BigRational) {
+    let plane = |pl: &[[f64; 3]; 3]| -> (V3, BigRational) {
+        let a = vec(pl[0]);
+        let ba = sub3(&vec(pl[1]), &a);
+        let ca = sub3(&vec(pl[2]), &a);
+        let n = cross(&ba, &ca);
+        let off = &n[0] * &a[0] + &n[1] * &a[1] + &n[2] * &a[2];
+        (n, off)
+    };
+    let (n1, c1) = plane(&t.planes[0]);
+    let (n2, c2) = plane(&t.planes[1]);
+    let (n3, c3) = plane(&t.planes[2]);
+    let d = det3(&n1, &n2, &n3);
+    let ns = [&n1, &n2, &n3];
+    let cs = [&c1, &c2, &c3];
+    let cramer = |k: usize| -> BigRational {
+        let mut rows: [V3; 3] = [ns[0].clone(), ns[1].clone(), ns[2].clone()];
+        for (row, ci) in rows.iter_mut().zip(cs.iter()) {
+            row[k] = (*ci).clone();
+        }
+        det3(&rows[0], &rows[1], &rows[2])
+    };
+    ([cramer(0), cramer(1), cramer(2)], d)
+}
+
+/// Exact `orient3d(p1=TPI, p2, p3, p4)` with `p2,p3,p4` explicit.
+pub fn tpi_orient3d(t: &Tpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Sign {
+    let (lambda, d) = tpi_lambda(t);
+    indirect_orient3d(&lambda, &d, p2, p3, p4)
+}
+
+/// Materialised TPI point `λ/d` (exact) — for the oracle cross-check.
+pub fn tpi_point(t: &Tpi) -> V3 {
+    let (lambda, d) = tpi_lambda(t);
+    [&lambda[0] / &d, &lambda[1] / &d, &lambda[2] / &d]
 }
 
 /// Oracle cross-check: orient3d with the first argument already materialised

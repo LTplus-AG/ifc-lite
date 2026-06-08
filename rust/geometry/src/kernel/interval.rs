@@ -15,7 +15,7 @@
 //! widening is bit-identical across x86_64/aarch64/wasm — the determinism bar.
 //! No `mul_add`/FMA anywhere (contraction would break the directed rounding).
 
-use super::{Lpi, Sign};
+use super::{Lpi, Sign, Tpi};
 
 #[derive(Clone, Copy, Debug)]
 pub struct RnInterval {
@@ -109,9 +109,16 @@ fn idet3(u: &Iv3, v: &Iv3, w: &Iv3) -> RnInterval {
         .add(u[2].mul(v[0].mul(w[1]).sub(v[1].mul(w[0]))))
 }
 
-/// Interval-tier LPI-orient3d (mirrors `rational::lpi_orient3d`). `None` ⇒ the
-/// `Λ′` or `d` interval straddles zero ⇒ escalate to the exact tier.
-pub fn lpi_orient3d(l: &Lpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Option<Sign> {
+#[inline]
+fn icross(u: &Iv3, v: &Iv3) -> Iv3 {
+    [
+        u[1].mul(v[2]).sub(u[2].mul(v[1])),
+        u[2].mul(v[0]).sub(u[0].mul(v[2])),
+        u[0].mul(v[1]).sub(u[1].mul(v[0])),
+    ]
+}
+
+fn lpi_lambda(l: &Lpi) -> (Iv3, RnInterval) {
     let p = ivec(l.p);
     let q = ivec(l.q);
     let rr = ivec(l.r);
@@ -126,13 +133,63 @@ pub fn lpi_orient3d(l: &Lpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Option
     let lx = d.mul(p[0]).add(n.mul(qp[0]));
     let ly = d.mul(p[1]).add(n.mul(qp[1]));
     let lz = d.mul(p[2]).add(n.mul(qp[2]));
+    ([lx, ly, lz], d)
+}
+
+fn tpi_lambda(t: &Tpi) -> (Iv3, RnInterval) {
+    let plane = |pl: &[[f64; 3]; 3]| -> (Iv3, RnInterval) {
+        let a = ivec(pl[0]);
+        let ba = isub(&ivec(pl[1]), &a);
+        let ca = isub(&ivec(pl[2]), &a);
+        let n = icross(&ba, &ca);
+        let off = n[0].mul(a[0]).add(n[1].mul(a[1])).add(n[2].mul(a[2]));
+        (n, off)
+    };
+    let (n1, c1) = plane(&t.planes[0]);
+    let (n2, c2) = plane(&t.planes[1]);
+    let (n3, c3) = plane(&t.planes[2]);
+    let d = idet3(&n1, &n2, &n3);
+    let ns = [n1, n2, n3];
+    let cs = [c1, c2, c3];
+    let cramer = |k: usize| -> RnInterval {
+        let mut rows = [ns[0], ns[1], ns[2]];
+        for (row, ci) in rows.iter_mut().zip(cs.iter()) {
+            row[k] = *ci;
+        }
+        idet3(&rows[0], &rows[1], &rows[2])
+    };
+    ([cramer(0), cramer(1), cramer(2)], d)
+}
+
+/// Interval-tier indirect orient3d for one implicit point `(λ/d)`. `None` ⇒ the
+/// `Λ′` or `d` interval straddles zero ⇒ escalate to the exact tier.
+fn indirect_orient3d(
+    lambda: &Iv3,
+    d: RnInterval,
+    p2: [f64; 3],
+    p3: [f64; 3],
+    p4: [f64; 3],
+) -> Option<Sign> {
     let p4i = ivec(p4);
-    let row1 = [lx.sub(d.mul(p4i[0])), ly.sub(d.mul(p4i[1])), lz.sub(d.mul(p4i[2]))];
+    let row1 = [
+        lambda[0].sub(d.mul(p4i[0])),
+        lambda[1].sub(d.mul(p4i[1])),
+        lambda[2].sub(d.mul(p4i[2])),
+    ];
     let row2 = isub(&ivec(p2), &p4i);
     let row3 = isub(&ivec(p3), &p4i);
     let lambda_det = idet3(&row1, &row2, &row3);
-    // Both the homogenised determinant and the denominator must be sign-definite.
     let sd = d.sign()?;
     let sld = lambda_det.sign()?;
     Some(super::assemble_sign(sld, &[sd]))
+}
+
+pub fn lpi_orient3d(l: &Lpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Option<Sign> {
+    let (lambda, d) = lpi_lambda(l);
+    indirect_orient3d(&lambda, d, p2, p3, p4)
+}
+
+pub fn tpi_orient3d(t: &Tpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Option<Sign> {
+    let (lambda, d) = tpi_lambda(t);
+    indirect_orient3d(&lambda, d, p2, p3, p4)
 }

@@ -224,23 +224,17 @@ fn point_inside(p: [f64; 3], tris: &[Tri]) -> bool {
     tris.iter().filter(|t| ray_hits(p, dir, t)).count() % 2 == 1
 }
 
-/// Compute the boolean `op` of operand meshes `a` and `b`, materialised to f64
-/// triangles. Each arrangement sub-triangle is classified inside/outside the
-/// OTHER operand by its centroid, then selected (and flipped where the op needs
-/// the inner boundary). `A−B = (A outside B) ∪ flip(B inside A)`;
-/// `A∪B = (A outside B) ∪ (B outside A)`; `A∩B = (A inside B) ∪ (B inside A)`.
-pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
-    let arr = arrange(a, b);
-    let to_f = |v: Vid| -> [f64; 3] {
-        let p = point_of(arr.interner.get(v));
-        [
-            p[0].to_f64().unwrap(),
-            p[1].to_f64().unwrap(),
-            p[2].to_f64().unwrap(),
-        ]
-    };
-    let coords = |tri: [Vid; 3]| [to_f(tri[0]), to_f(tri[1]), to_f(tri[2])];
-    let centroid = |c: &Tri| {
+fn to_f64_pt(arr: &Arrangement, v: Vid) -> [f64; 3] {
+    let p = point_of(arr.interner.get(v));
+    [p[0].to_f64().unwrap(), p[1].to_f64().unwrap(), p[2].to_f64().unwrap()]
+}
+
+/// The boolean result as ORIENTED Vid triangles (the classification core). Each
+/// arrangement sub-triangle is classified inside/outside the OTHER operand by its
+/// centroid, then selected (and flipped where the op needs the inner boundary).
+fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid; 3]> {
+    let centroid = |tri: [Vid; 3]| {
+        let c = [to_f64_pt(arr, tri[0]), to_f64_pt(arr, tri[1]), to_f64_pt(arr, tri[2])];
         [
             (c[0][0] + c[1][0] + c[2][0]) / 3.0,
             (c[0][1] + c[1][1] + c[2][1]) / 3.0,
@@ -249,29 +243,82 @@ pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
     };
     let mut out = Vec::new();
     for &tri in &arr.tris_a {
-        let c = coords(tri);
-        let inside_b = point_inside(centroid(&c), b);
+        let inside_b = point_inside(centroid(tri), b);
         let keep = match op {
-            BoolOp::Difference | BoolOp::Union => !inside_b,
             BoolOp::Intersection => inside_b,
+            _ => !inside_b,
         };
         if keep {
-            out.push(c);
+            out.push(tri);
         }
     }
     for &tri in &arr.tris_b {
-        let c = coords(tri);
-        let inside_a = point_inside(centroid(&c), a);
+        let inside_a = point_inside(centroid(tri), a);
         let (keep, flip) = match op {
             BoolOp::Difference => (inside_a, true),
             BoolOp::Union => (!inside_a, false),
             BoolOp::Intersection => (inside_a, false),
         };
         if keep {
-            out.push(if flip { [c[0], c[2], c[1]] } else { c });
+            out.push(if flip { [tri[0], tri[2], tri[1]] } else { tri });
         }
     }
     out
+}
+
+/// Compute the boolean `op` of operand meshes `a` and `b`, materialised to f64
+/// triangles. `A−B = (A outside B) ∪ flip(B inside A)`;
+/// `A∪B = (A outside B) ∪ (B outside A)`; `A∩B = (A inside B) ∪ (B inside A)`.
+pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
+    let arr = arrange(a, b);
+    boolean_vids(&arr, a, b, op)
+        .into_iter()
+        .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
+        .collect()
+}
+
+#[inline]
+fn rotate_min_first(t: [Vid; 3]) -> [Vid; 3] {
+    let i = (0..3).min_by_key(|&k| t[k]).unwrap();
+    [t[i], t[(i + 1) % 3], t[(i + 2) % 3]]
+}
+
+/// Topology fingerprint of a boolean result: each oriented Vid triangle rotated
+/// min-first (canonical start vertex, winding preserved), the list sorted,
+/// FNV-1a-hashed. Platform-stable — Vids are deterministic symbolic identities
+/// and the ray-cast classification is FMA-free f64.
+pub fn boolean_topology_hash(a: &[Tri], b: &[Tri], op: BoolOp) -> u64 {
+    let arr = arrange(a, b);
+    let mut tris: Vec<[Vid; 3]> =
+        boolean_vids(&arr, a, b, op).into_iter().map(rotate_min_first).collect();
+    tris.sort_unstable();
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for t in tris {
+        for v in t {
+            h ^= v as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    h
+}
+
+/// Axis-aligned cube `[lo,hi]³` as 12 outward-wound triangles.
+pub fn cube_mesh(lo: f64, hi: f64) -> Vec<Tri> {
+    let p = [
+        [lo, lo, lo], [hi, lo, lo], [hi, hi, lo], [lo, hi, lo],
+        [lo, lo, hi], [hi, lo, hi], [hi, hi, hi], [lo, hi, hi],
+    ];
+    let idx = [
+        [0, 3, 2], [0, 2, 1], [4, 5, 6], [4, 6, 7],
+        [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5],
+        [0, 1, 5], [0, 5, 4], [3, 7, 6], [3, 6, 2],
+    ];
+    idx.iter().map(|f| [p[f[0]], p[f[1]], p[f[2]]]).collect()
+}
+
+/// Cross-platform full-boolean determinism manifest: `cube[0,2]³ − cube[1,3]³`.
+pub fn boolean_manifest() -> u64 {
+    boolean_topology_hash(&cube_mesh(0.0, 2.0), &cube_mesh(1.0, 3.0), BoolOp::Difference)
 }
 
 #[cfg(test)]
@@ -279,21 +326,8 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
-    /// Axis-aligned cube `[lo,hi]³` as 12 outward-wound triangles.
     fn cube(lo: f64, hi: f64) -> Vec<Tri> {
-        let p = [
-            [lo, lo, lo], [hi, lo, lo], [hi, hi, lo], [lo, hi, lo],
-            [lo, lo, hi], [hi, lo, hi], [hi, hi, hi], [lo, hi, hi],
-        ];
-        let idx = [
-            [0, 3, 2], [0, 2, 1], // z=lo (−z)
-            [4, 5, 6], [4, 6, 7], // z=hi (+z)
-            [0, 4, 7], [0, 7, 3], // x=lo (−x)
-            [1, 2, 6], [1, 6, 5], // x=hi (+x)
-            [0, 1, 5], [0, 5, 4], // y=lo (−y)
-            [3, 7, 6], [3, 6, 2], // y=hi (+y)
-        ];
-        idx.iter().map(|f| [p[f[0]], p[f[1]], p[f[2]]]).collect()
+        super::cube_mesh(lo, hi)
     }
 
     /// Signed volume of a closed mesh (divergence theorem): (1/6)Σ v0·(v1×v2).
@@ -363,5 +397,15 @@ mod tests {
         assert!((inter - 1.0).abs() < 1e-6, "A∩B volume = {inter}, expected 1");
         let uni = volume(&boolean(&a, &b, BoolOp::Union));
         assert!((uni - 15.0).abs() < 1e-6, "A∪B volume = {uni}, expected 15");
+    }
+
+    #[test]
+    fn boolean_manifest_is_pinned() {
+        // The full-boolean topology fingerprint (cube[0,2]³ − cube[1,3]³),
+        // byte-identical across x86_64/aarch64/wasm (re-pin + re-run the wasm
+        // cross-check if the boolean logic legitimately changes).
+        const PINNED: u64 = 0x0465_b83a_5fdb_8b2b;
+        let m = super::boolean_manifest();
+        assert_eq!(m, PINNED, "boolean topology manifest changed: 0x{m:016x}");
     }
 }

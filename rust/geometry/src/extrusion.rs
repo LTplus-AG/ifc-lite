@@ -203,6 +203,33 @@ pub fn extrude_profile_with_voids(
     Ok(mesh)
 }
 
+/// Pure-Rust tier-1 through-opening carve (CSG-kernel-free).
+///
+/// Subtracts each opening's cross-section contour from the host swept profile
+/// via the robust 2D boolean ([`crate::bool2d::subtract_multiple_2d`],
+/// i_overlay — **no polygon cap**, so round/arched openings are cut exactly),
+/// then re-extrudes. `extrude_profile` turns the resulting holes into the
+/// opening reveal walls automatically, with no internal cap (a true
+/// through-opening).
+///
+/// This is the kernel-free fast path for coplanar through-openings — the
+/// dominant window/door case — replacing the BSP/Manifold mesh subtract for
+/// that class. Because i_overlay is robust and deterministic, the result is
+/// platform-identical: no BSP 128-poly cap (→ no square AABB holes), no C++.
+///
+/// `openings` are closed contours in the host profile's 2D coordinate system;
+/// contours that don't overlap the profile are dropped by the boolean, so a
+/// non-overlapping or empty set degrades to a plain extrusion.
+pub fn extrude_profile_through_openings(
+    host: &Profile2D,
+    openings: &[Vec<Point2<f64>>],
+    depth: f64,
+    transform: Option<Matrix4<f64>>,
+) -> Result<Mesh> {
+    let carved = crate::bool2d::subtract_multiple_2d(host, openings)?;
+    extrude_profile(&carved, depth, transform)
+}
+
 /// Create geometry for a partial-depth void
 ///
 /// Generates:
@@ -929,5 +956,40 @@ mod tests {
         // Original perimeter is 28; resampled chord-perimeter is ≤ original
         // (chords cut corners). Allow up to 5% loss.
         assert!(total > 26.5 && total <= 28.0 + 1e-6, "resampled perimeter = {}", total);
+    }
+
+    #[test]
+    fn carve_round_through_opening_keeps_round_hole_no_cap() {
+        // Tier-1 pure-Rust carve: a round (24-gon) opening through a 4×3 m wall.
+        let wall = create_rectangle(4.0, 3.0); // centred at origin
+        let circle: Vec<Point2<f64>> = (0..24)
+            .map(|i| {
+                let a = i as f64 * core::f64::consts::TAU / 24.0;
+                Point2::new(0.5 * a.cos(), 0.5 * a.sin())
+            })
+            .collect();
+        let openings = vec![circle.clone()];
+
+        let mesh = extrude_profile_through_openings(&wall, &openings, 0.2, None).unwrap();
+        assert!(!mesh.is_empty(), "carve must yield geometry");
+
+        // The 2D boolean keeps the ROUND hole (i_overlay preserves the 24-gon) —
+        // it is NOT collapsed to a 4-vertex AABB square (the BSP-cap failure that
+        // makes the server export square holes).
+        let carved = crate::bool2d::subtract_multiple_2d(&wall, &openings).unwrap();
+        assert_eq!(carved.holes.len(), 1, "one through-opening hole");
+        assert!(
+            carved.holes[0].len() >= 8,
+            "round hole preserved, not square-reduced: {} verts",
+            carved.holes[0].len()
+        );
+
+        // True through-opening: spans the full extrusion depth, no internal cap.
+        let (mn, mx) = mesh.bounds();
+        assert!((mn.z - 0.0).abs() < 1e-5 && (mx.z - 0.2).abs() < 1e-4, "through-depth z=[{},{}]", mn.z, mx.z);
+
+        // Deterministic (i_overlay): identical bytes on repeat.
+        let mesh2 = extrude_profile_through_openings(&wall, &openings, 0.2, None).unwrap();
+        assert_eq!(mesh.positions, mesh2.positions, "carve must be deterministic");
     }
 }

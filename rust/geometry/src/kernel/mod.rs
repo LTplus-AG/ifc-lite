@@ -16,6 +16,7 @@
 //! land next, each verified `≡` exact.
 
 pub mod arrangement;
+pub mod broadphase;
 pub mod coplanar;
 pub mod interner;
 pub mod interval;

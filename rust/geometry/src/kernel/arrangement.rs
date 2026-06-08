@@ -49,24 +49,6 @@ pub struct Arrangement {
     pub tris_b: Vec<[Vid; 3]>,
 }
 
-fn aabb(t: &Tri) -> ([f64; 3], [f64; 3]) {
-    let mut lo = t[0];
-    let mut hi = t[0];
-    for p in t.iter().skip(1) {
-        for k in 0..3 {
-            lo[k] = lo[k].min(p[k]);
-            hi[k] = hi[k].max(p[k]);
-        }
-    }
-    (lo, hi)
-}
-
-fn bbox_overlap(a: &Tri, b: &Tri) -> bool {
-    let (alo, ahi) = aabb(a);
-    let (blo, bhi) = aabb(b);
-    (0..3).all(|k| alo[k] <= bhi[k] && blo[k] <= ahi[k])
-}
-
 /// A raw intersection segment on a triangle, tagged with the cutter triangle that
 /// produced it (needed to locate seg×seg crossing points as triple points).
 struct RawSeg {
@@ -139,22 +121,18 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     let mut raw_b: Vec<Vec<RawSeg>> = (0..b.len()).map(|_| Vec::new()).collect();
     let mut cop_a: Vec<Vec<Constraint>> = (0..a.len()).map(|_| Vec::new()).collect();
     let mut cop_b: Vec<Vec<Constraint>> = (0..b.len()).map(|_| Vec::new()).collect();
-    for (i, ta) in a.iter().enumerate() {
-        for (j, tb) in b.iter().enumerate() {
-            if !bbox_overlap(ta, tb) {
-                continue;
+    for (i, j) in super::broadphase::candidate_pairs(a, b) {
+        let (ta, tb) = (&a[i], &b[j]);
+        match tri_tri_intersection(ta, tb) {
+            TriTri::Segment([s, t]) => {
+                raw_a[i].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
+                raw_b[j].push(RawSeg { a: s, b: t, cutter: *ta });
             }
-            match tri_tri_intersection(ta, tb) {
-                TriTri::Segment([s, t]) => {
-                    raw_a[i].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
-                    raw_b[j].push(RawSeg { a: s, b: t, cutter: *ta });
-                }
-                TriTri::Coplanar => {
-                    cop_a[i].extend(coplanar_clip(ta, tb).into_iter().map(|(a, b)| Constraint { a, b }));
-                    cop_b[j].extend(coplanar_clip(tb, ta).into_iter().map(|(a, b)| Constraint { a, b }));
-                }
-                TriTri::None | TriTri::Point(_) => {}
+            TriTri::Coplanar => {
+                cop_a[i].extend(coplanar_clip(ta, tb).into_iter().map(|(a, b)| Constraint { a, b }));
+                cop_b[j].extend(coplanar_clip(tb, ta).into_iter().map(|(a, b)| Constraint { a, b }));
             }
+            TriTri::None | TriTri::Point(_) => {}
         }
     }
     // 2. seg×seg pre-pass on the segment constraints, then append the coplanar ones

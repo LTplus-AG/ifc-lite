@@ -628,4 +628,39 @@ mod tests {
             "coincident LPI/TPI not welded by cmp_lex"
         );
     }
+
+    #[test]
+    fn cmp_along_matches_materialised_oracle() {
+        use num_rational::BigRational;
+        use num_traits::Signed;
+        let mut pts: Vec<ImplicitPoint> =
+            vec![e([0., 0., 0.]), e([3., 1., -2.]), e([1.5, -2., 0.25])];
+        pts.extend(lpi_cases().into_iter().take(2).map(|(l, ..)| ImplicitPoint::Lpi(l)));
+        pts.extend(tpi_cases().into_iter().take(2).map(|(t, ..)| ImplicitPoint::Tpi(t)));
+        let dirs = [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.], [1., 2., -1.], [-0.3, 1.7, 0.5]];
+        for u in dirs {
+            let ur = [
+                BigRational::from_float(u[0]).unwrap(),
+                BigRational::from_float(u[1]).unwrap(),
+                BigRational::from_float(u[2]).unwrap(),
+            ];
+            for a in &pts {
+                for b in &pts {
+                    let pa = rational::point_of(a);
+                    let pb = rational::point_of(b);
+                    let dot = (&pa[0] - &pb[0]) * &ur[0]
+                        + (&pa[1] - &pb[1]) * &ur[1]
+                        + (&pa[2] - &pb[2]) * &ur[2];
+                    let want = if dot.is_negative() {
+                        Sign::Negative
+                    } else if dot.is_positive() {
+                        Sign::Positive
+                    } else {
+                        Sign::Zero
+                    };
+                    assert_eq!(rational::cmp_along(a, b, u), want, "cmp_along != oracle (u={u:?})");
+                }
+            }
+        }
+    }
 }

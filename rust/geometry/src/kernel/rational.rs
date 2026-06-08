@@ -252,6 +252,28 @@ pub(crate) fn lambda_of(p: &ImplicitPoint) -> (V3, BigRational) {
     }
 }
 
+/// λ/d of ANY point: an `Explicit` coordinate is `(λ=coord, d=1)`. Inline here so
+/// `cmp_along` never routes an `Explicit` through `lambda_of`'s `unreachable!`.
+fn lambda_or_explicit(p: &ImplicitPoint) -> (V3, BigRational) {
+    match p {
+        ImplicitPoint::Explicit(e) => (vec(*e), r(1.0)),
+        _ => lambda_of(p),
+    }
+}
+
+/// Exact sign of `(a − b)·u` — order two points along direction `u`, over ANY
+/// Explicit/Lpi/Tpi mix (generalises [`lpi_compare_along`]). With `a=λa/da`,
+/// `b=λb/db`: `(a−b)·u = ((λa·u)·db − (λb·u)·da)/(da·db)`.
+pub fn cmp_along(a: &ImplicitPoint, b: &ImplicitPoint, u: [f64; 3]) -> Sign {
+    let (la, da) = lambda_or_explicit(a);
+    let (lb, db) = lambda_or_explicit(b);
+    let ur = vec(u);
+    let dot_a = &la[0] * &ur[0] + &la[1] * &ur[1] + &la[2] * &ur[2];
+    let dot_b = &lb[0] * &ur[0] + &lb[1] * &ur[1] + &lb[2] * &ur[2];
+    let num = &dot_a * &db - &dot_b * &da;
+    super::assemble_sign(sign_of(&num), &[sign_of(&da), sign_of(&db)])
+}
+
 /// Exact materialised coordinates of any point (for the oracle).
 pub(crate) fn point_of(p: &ImplicitPoint) -> V3 {
     match p {

@@ -410,3 +410,24 @@ Honest verdict: no-regression is NOT yet provable — it is an UNVERIFIED HYPOTH
 - #960 pre-union of cutters: confirmed unnecessary if M4 shows k separate winding slots dissolve the seam slivers — but if classification re-introduces an edge case at shared hip/valley seams (the §5.4 coplanar path the draft flags), a maintainer decides whether to pre-union cutters (perf cost) or accept per-slot (correctness-clean). Resolve by the M4 #960 fixture result.
 - BoolFailureReason variant naming for the migration (ArrangementBudgetExceeded / NonWatertightOperand / ArrangementNoOp / KernelPanic / CoordinateOutOfRange): these strings surface in the viewer overlay (router/mod.rs:579) — maintainer confirms the user-facing wording and whether any removed variant needs a back-compat alias for serialized diagnostics consumers outside the repo.
 - #1007 fixture: confirm the path/existence for G5 (the draft listed it as to-be-verified). If it does not exist, maintainer decides whether to author it or drop it from the hard-required refutation-fuzz set.
+
+---
+
+## M0 measurements (captured 2026-06-08)
+
+### CSG op census — the real heavy-path workload
+Instrumented at the 4 kernel entry points (`csg.rs` `record_csg_op`); measured over 16 real-world
+fixtures (FZK-Haus, duplex, dental, C20, advanced_model, schependomlaan, FM_ARC, ISSUE steel/school/infra,
+Roof-01_BCAD) = **1323 kernel ops** (1082 subtract + 241 clip + 0 union/intersection).
+
+Operand max-triangle distribution:
+
+| ≤12 | 13–32 | 33–128 | 129–512 | 513+ |
+|---|---|---|---|---|
+| 31.0% | 38.2% | 16.2% | 9.3% | 5.4% |
+
+- **~85% of ops have ≤128-tri operands** → fast-path / cheap-arrangement territory (no-regression thesis holds for the bulk).
+- **Heavy tail is real but bounded: 14.7% >128 tris, worst case 3636 tris** — concentrated in steel/school/tower models (ARK 451 ops, ISSUE_129 215, advanced_model 168). This is the perf-gate risk + the server cap-removal exposure (194 ops BSP refuses in O(1) today → square holes — the arrangement would actually cut them).
+- **Corpus is difference+clip-dominated; 0 union/intersection** across these fixtures → the kernel's priority paths are DIFFERENCE and HALF-SPACE CLIP; union/intersection are rare `IfcBooleanResult` cases (need the #960 segmented-roof + steel-union fixtures to exercise).
+
+Implication for the perf gate: the `pre-arrangement O(1) operand-complexity budget` threshold (open decision) is the lever for the 194 heavy ops; the question is the per-op arrangement cost at 128…3636 tris vs Manifold — answered by the timing baseline below.

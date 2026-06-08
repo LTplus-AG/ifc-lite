@@ -102,10 +102,21 @@ fn cross_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 fn plane_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
     cross_f64(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]))
 }
-/// Approximate direction of the crossing line L = t1.plane ∩ t2.plane (n1 × n2).
-/// Only the direction matters — the exact ordering predicate tolerates rounding.
+/// Approximate direction of the crossing line L = t1.plane ∩ t2.plane (n1 × n2),
+/// rounded to an INTEGER-valued direction. The raw cross product lands on a ~2^64
+/// grid (cross of 2^32 vectors) — off the 2^16 snap grid — so `gi(u)` fails and
+/// EVERY `cmp_along` falls into slow BigRational. Only the SIGN of `(a−b)·u`
+/// matters and `u` need only be approximately along L, so we normalise + round to
+/// integers: `gi` then scales it on-grid and the exact fixed-width tier resolves
+/// the 1-D ordering. (~600µs/intersection → microseconds.)
 fn line_direction(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> [f64; 3] {
-    cross_f64(plane_normal(t1), plane_normal(t2))
+    let n = cross_f64(plane_normal(t1), plane_normal(t2));
+    let m = n[0].abs().max(n[1].abs()).max(n[2].abs());
+    if m == 0.0 || !m.is_finite() {
+        return n;
+    }
+    let s = 1_048_576.0 / m; // normalise the max component to ~2^20
+    [(n[0] * s).round(), (n[1] * s).round(), (n[2] * s).round()]
 }
 
 /// Result of an exact triangle–triangle intersection test.

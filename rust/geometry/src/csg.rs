@@ -946,12 +946,13 @@ impl ClippingProcessor {
             return Ok(host_mesh.clone());
         }
 
-        // Pure-Rust exact mesh-arrangement kernel (the flip): replaces the C++
-        // Manifold + legacy BSP dispatch with one proven path (13/13 parity vs
-        // Manifold, examples/csg_parity.rs). Panic-free by construction —
-        // kernel::mesh_bridge sanitises NaN/Inf + out-of-range coords at the
-        // boundary — so the never-Err contract holds without catch_unwind. An
-        // empty result is a legitimate full-containment outcome.
+        #[cfg(feature = "manifold-csg")]
+        if std::env::var("CSG_MANIFOLD").is_ok() {
+            return Ok(crate::manifold_kernel::difference(host_mesh, opening_mesh)
+                .unwrap_or_else(|_| host_mesh.clone()));
+        }
+        // Pure-Rust exact mesh-arrangement kernel (the flip), with consolidate_coplanar
+        // merging per-face fragments to match Manifold's clean output.
         let result = Self::consolidate_coplanar(crate::kernel::mesh_bridge::subtract(
             host_mesh,
             opening_mesh,

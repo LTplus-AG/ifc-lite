@@ -116,14 +116,26 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
 
 /// Compute the conforming arrangement of operand meshes `a` and `b`.
 pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ts = std::time::Instant::now();
     // 1. accumulate raw intersection segments (Segment pairs) + coplanar overlaps
     let mut raw_a: Vec<Vec<RawSeg>> = (0..a.len()).map(|_| Vec::new()).collect();
     let mut raw_b: Vec<Vec<RawSeg>> = (0..b.len()).map(|_| Vec::new()).collect();
     let mut cop_a: Vec<Vec<Constraint>> = (0..a.len()).map(|_| Vec::new()).collect();
     let mut cop_b: Vec<Vec<Constraint>> = (0..b.len()).map(|_| Vec::new()).collect();
-    for (i, j) in super::broadphase::candidate_pairs(a, b) {
+    let pairs = super::broadphase::candidate_pairs(a, b);
+    #[cfg(not(target_arch = "wasm32"))]
+    let n_pairs = pairs.len();
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut n_hit = 0usize;
+    for (i, j) in pairs {
         let (ta, tb) = (&a[i], &b[j]);
-        match tri_tri_intersection(ta, tb) {
+        let _r = tri_tri_intersection(ta, tb);
+        #[cfg(not(target_arch = "wasm32"))]
+        if !matches!(_r, TriTri::None | TriTri::Point(_)) {
+            n_hit += 1;
+        }
+        match _r {
             TriTri::Segment([s, t]) => {
                 raw_a[i].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
                 raw_b[j].push(RawSeg { a: s, b: t, cutter: *ta });
@@ -145,12 +157,29 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
             })
             .collect()
     };
+    #[cfg(not(target_arch = "wasm32"))]
+    let t_pairs = _ts.elapsed();
     let ca = build(a, &raw_a, &mut cop_a);
     let cb = build(b, &raw_b, &mut cop_b);
     // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
+    #[cfg(not(target_arch = "wasm32"))]
+    let t_build = _ts.elapsed();
     let mut interner = Interner::new();
     let tris_a = retriangulate_each(a, &ca, &mut interner);
     let tris_b = retriangulate_each(b, &cb, &mut interner);
+    #[cfg(not(target_arch = "wasm32"))]
+    if std::env::var("KERNEL_PROFILE").is_ok() && _ts.elapsed().as_millis() > 100 {
+        eprintln!(
+            "    arrange: pairs {:.0}ms ({} cand, {} hit)  build {:.0}ms  retri {:.0}ms ({} subA {} subB)",
+            t_pairs.as_secs_f64() * 1e3,
+            n_pairs,
+            n_hit,
+            (t_build - t_pairs).as_secs_f64() * 1e3,
+            (_ts.elapsed() - t_build).as_secs_f64() * 1e3,
+            tris_a.len(),
+            tris_b.len(),
+        );
+    }
     Arrangement { interner, tris_a, tris_b }
 }
 
@@ -342,11 +371,30 @@ fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid
 /// triangles. `A−B = (A outside B) ∪ flip(B inside A)`;
 /// `A∪B = (A outside B) ∪ (B outside A)`; `A∩B = (A inside B) ∪ (B inside A)`.
 pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
+    #[cfg(not(target_arch = "wasm32"))]
+    let t0 = std::time::Instant::now();
     let arr = arrange(a, b);
-    boolean_vids(&arr, a, b, op)
+    #[cfg(not(target_arch = "wasm32"))]
+    let t_arr = t0.elapsed();
+    let vids = boolean_vids(&arr, a, b, op);
+    let out: Vec<Tri> = vids
         .into_iter()
         .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
-        .collect()
+        .collect();
+    #[cfg(not(target_arch = "wasm32"))]
+    if std::env::var("KERNEL_PROFILE").is_ok() && t0.elapsed().as_millis() > 200 {
+        eprintln!(
+            "  SLOW boolean |a|={} |b|={}: arrange {:.0}ms (subA={} subB={}) classify {:.0}ms out={}",
+            a.len(),
+            b.len(),
+            t_arr.as_secs_f64() * 1e3,
+            arr.tris_a.len(),
+            arr.tris_b.len(),
+            (t0.elapsed() - t_arr).as_secs_f64() * 1e3,
+            out.len()
+        );
+    }
+    out
 }
 
 #[inline]

@@ -45,3 +45,6 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.num-rational]
 opt-level = 3
+
+[profile.dev.package.ifc-lite-geometry]
+opt-level = 3

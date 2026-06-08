@@ -26,7 +26,7 @@ fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
 }
 
 fn main() {
-    let path = "../tests/models/ara3d/schependomlaan.ifc";
+    let path = "../tests/models/issues/841_house_stack_overflow.ifc";
     let content = std::fs::read_to_string(path).expect("fixture present");
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
@@ -57,10 +57,12 @@ fn main() {
         }
     }
     let total_ms = total.elapsed().as_secs_f64() * 1e3;
-    times.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-    println!("\n=== total CSG {total_ms:.0}ms over {} walls ===", times.len());
-    println!("slowest:");
-    for (h, ms, n, tris) in times.iter().take(12) {
-        println!("  host {h}: {ms:.1}ms  {n} openings  {tris} tris");
+    let kernel = if std::env::var("CSG_MANIFOLD").is_ok() { "MANIFOLD" } else { "KERNEL" };
+    let empties = times.iter().filter(|(_, _, _, t)| *t == 0).count();
+    eprintln!("\n=== [{kernel}] total CSG {total_ms:.0}ms over {} walls ({empties} produced 0 tris) ===", times.len());
+    // per-wall table (sorted by host) for diffing kernel vs manifold
+    times.sort_by_key(|&(h, ..)| h);
+    for (h, _ms, n, tris) in &times {
+        println!("{h} {n} {tris}");
     }
 }

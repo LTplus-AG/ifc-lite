@@ -113,43 +113,111 @@ fn line_direction(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> [f64; 3] {
 pub enum TriTri {
     /// No intersection.
     None,
-    /// The triangles are coplanar (a 2D-overlap case — a later increment).
+    /// The triangles are coplanar (a 2D-overlap case — handled in `coplanar.rs`).
     Coplanar,
-    /// A vertex/edge-on-plane contact degeneracy — a later increment.
-    Degenerate,
-    /// The proper intersection segment; endpoints are LPI points on line L.
-    Segment([Lpi; 2]),
+    /// Contact at a single point (a vertex touch) — no cutting segment.
+    Point(ImplicitPoint),
+    /// The intersection segment; endpoints lie on line L = plane(T1) ∩ plane(T2).
+    /// An endpoint is `Explicit` (an on-plane vertex) or `Lpi` (an edge crossing).
+    Segment([ImplicitPoint; 2]),
 }
 
 #[inline]
-fn cmp_along(a: &Lpi, b: &Lpi, u: [f64; 3]) -> Sign {
-    super::rational::lpi_compare_along(a, b, u)
+fn cmp_along(a: &ImplicitPoint, b: &ImplicitPoint, u: [f64; 3]) -> Sign {
+    super::rational::cmp_along(a, b, u)
 }
 
-/// Exact triangle–triangle intersection. For the proper-crossing case the
-/// result is the overlap of each triangle's crossing interval along line L:
-/// `[max(lo1,lo2), min(hi1,hi2)]`, or `None` if the intervals are disjoint.
+/// A triangle's intersection with another triangle's supporting plane — the
+/// generalisation that admits on-plane vertices (Touches), not just clean
+/// edge crossings. Every endpoint lies on BOTH planes ⇒ on line L.
+enum PlaneInterval {
+    /// Triangle strictly on one side — no plane intersection.
+    None,
+    /// Triangle lies in the plane.
+    Coplanar,
+    /// Touches the plane at a single vertex only (no chord).
+    Point(ImplicitPoint),
+    /// A chord (2 on-plane endpoints): 2 edge crossings, vertex + edge crossing,
+    /// or an on-plane edge.
+    Chord([ImplicitPoint; 2]),
+}
+
+fn plane_interval(tri: &[[f64; 3]; 3], plane: &[[f64; 3]; 3]) -> PlaneInterval {
+    let s = [
+        orient3d(&e(plane[0]), &e(plane[1]), &e(plane[2]), &e(tri[0])),
+        orient3d(&e(plane[0]), &e(plane[1]), &e(plane[2]), &e(tri[1])),
+        orient3d(&e(plane[0]), &e(plane[1]), &e(plane[2]), &e(tri[2])),
+    ];
+    let zeros: Vec<usize> = (0..3).filter(|&i| s[i] == Sign::Zero).collect();
+    match zeros.len() {
+        3 => PlaneInterval::Coplanar,
+        2 => PlaneInterval::Chord([e(tri[zeros[0]]), e(tri[zeros[1]])]), // an on-plane edge
+        1 => {
+            let vz = zeros[0];
+            let (o1, o2) = ((vz + 1) % 3, (vz + 2) % 3);
+            if s[o1] == s[o2] {
+                PlaneInterval::Point(e(tri[vz])) // both others same side: single vertex touch
+            } else {
+                // the far edge crosses: chord [on-plane vertex, edge∩plane]
+                PlaneInterval::Chord([e(tri[vz]), ImplicitPoint::Lpi(edge_plane_lpi(tri[o1], tri[o2], plane))])
+            }
+        }
+        _ => {
+            let pos = s.iter().filter(|&&x| x == Sign::Positive).count();
+            if pos == 0 || pos == 3 {
+                PlaneInterval::None
+            } else {
+                let apex = if s[0] != s[1] && s[0] != s[2] {
+                    0
+                } else if s[1] != s[0] && s[1] != s[2] {
+                    1
+                } else {
+                    2
+                };
+                let [a, b] = crossing_lpis(tri, apex, plane);
+                PlaneInterval::Chord([ImplicitPoint::Lpi(a), ImplicitPoint::Lpi(b)])
+            }
+        }
+    }
+}
+
+/// Exact triangle–triangle intersection: the overlap of each triangle's
+/// plane-interval along line L = `[max(lo1,lo2), min(hi1,hi2)]`. Handles clean
+/// crossings AND Touches (on-plane vertices/edges). Coplanar is deferred to
+/// `coplanar.rs`; a single shared point returns `Point` (no cut).
 pub fn tri_tri_intersection(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> TriTri {
-    use PlaneCross::{Coplanar, Crosses, Disjoint, Touches};
-    let (apex1, apex2) = match (classify_vs_plane(t1, t2), classify_vs_plane(t2, t1)) {
-        (Coplanar, _) | (_, Coplanar) => return TriTri::Coplanar,
-        (Touches, _) | (_, Touches) => return TriTri::Degenerate,
-        (Disjoint, _) | (_, Disjoint) => return TriTri::None,
-        (Crosses { apex: a1 }, Crosses { apex: a2 }) => (a1, a2),
+    use PlaneInterval as PI;
+    let (i1, i2) = (plane_interval(t1, t2), plane_interval(t2, t1));
+    let ends = |pi: &PI| -> Option<[ImplicitPoint; 2]> {
+        match pi {
+            PI::Point(p) => Some([p.clone(), p.clone()]),
+            PI::Chord([a, b]) => Some([a.clone(), b.clone()]),
+            _ => None,
+        }
     };
-    let [i1a, i1b] = crossing_lpis(t1, apex1, t2); // t1's interval (points on t2's plane)
-    let [i2a, i2b] = crossing_lpis(t2, apex2, t1); // t2's interval (points on t1's plane)
+    if matches!(i1, PI::Coplanar) || matches!(i2, PI::Coplanar) {
+        return TriTri::Coplanar;
+    }
+    let ([a1, b1], [a2, b2]) = match (ends(&i1), ends(&i2)) {
+        (Some(s1), Some(s2)) => (s1, s2),
+        _ => return TriTri::None,
+    };
     let u = line_direction(t1, t2);
-    let order = |a: Lpi, b: Lpi| if cmp_along(&a, &b, u) == Sign::Positive { (b, a) } else { (a, b) };
-    let (lo1, hi1) = order(i1a, i1b);
-    let (lo2, hi2) = order(i2a, i2b);
-    // overlap = [max(lo1,lo2), min(hi1,hi2)]
+    let order = |a: ImplicitPoint, b: ImplicitPoint| {
+        if cmp_along(&a, &b, u) == Sign::Positive {
+            (b, a)
+        } else {
+            (a, b)
+        }
+    };
+    let (lo1, hi1) = order(a1, b1);
+    let (lo2, hi2) = order(a2, b2);
     let lo = if cmp_along(&lo1, &lo2, u) == Sign::Positive { lo1 } else { lo2 };
     let hi = if cmp_along(&hi1, &hi2, u) == Sign::Negative { hi1 } else { hi2 };
-    if cmp_along(&lo, &hi, u) == Sign::Positive {
-        TriTri::None // intervals disjoint along L
-    } else {
-        TriTri::Segment([lo, hi])
+    match cmp_along(&lo, &hi, u) {
+        Sign::Positive => TriTri::None,           // intervals disjoint
+        Sign::Zero => TriTri::Point(lo),          // a single shared point
+        Sign::Negative => TriTri::Segment([lo, hi]),
     }
 }
 
@@ -229,27 +297,50 @@ mod tests {
         let t2 = [[1., -2., 1.], [1., 2., 1.], [1., 0.5, -3.]]; // plane x=1
         match tri_tri_intersection(&t1, &t2) {
             TriTri::Segment([a, b]) => {
-                // Every segment endpoint lies on BOTH triangles' planes (on L).
-                for ep in [a, b] {
-                    assert_eq!(
-                        orient3d(&ImplicitPoint::Lpi(ep), &e(t1[0]), &e(t1[1]), &e(t1[2])),
-                        Sign::Zero,
-                        "segment endpoint off t1's plane"
-                    );
-                    assert_eq!(
-                        orient3d(&ImplicitPoint::Lpi(ep), &e(t2[0]), &e(t2[1]), &e(t2[2])),
-                        Sign::Zero,
-                        "segment endpoint off t2's plane"
-                    );
-                }
                 // The two endpoints are distinct (a non-degenerate segment).
                 assert_ne!(
                     super::cmp_along(&a, &b, super::line_direction(&t1, &t2)),
                     Sign::Zero,
                     "segment collapsed to a point"
                 );
+                // Every segment endpoint lies on BOTH triangles' planes (on L).
+                for ep in [&a, &b] {
+                    assert_eq!(
+                        orient3d(ep, &e(t1[0]), &e(t1[1]), &e(t1[2])),
+                        Sign::Zero,
+                        "segment endpoint off t1's plane"
+                    );
+                    assert_eq!(
+                        orient3d(ep, &e(t2[0]), &e(t2[1]), &e(t2[2])),
+                        Sign::Zero,
+                        "segment endpoint off t2's plane"
+                    );
+                }
             }
             other => panic!("expected a segment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn touches_vertex_on_plane_yields_segment_with_explicit_endpoint() {
+        // M1: t2 crosses t1's plane (y=0) but with ONE vertex EXACTLY on it.
+        let t1 = [[-2., 0., -1.], [2., 0., -1.], [0., 0., 2.]]; // plane y=0
+        let t2 = [[0., 0., 0.5], [0.5, -1., 0.5], [0.5, 1., 0.5]]; // v0 at y=0, in plane z=0.5
+        match tri_tri_intersection(&t1, &t2) {
+            TriTri::Segment([a, b]) => {
+                // exactly one endpoint is the Explicit on-plane vertex (0,0,0.5)
+                let explicits = [&a, &b]
+                    .iter()
+                    .filter(|p| matches!(p, ImplicitPoint::Explicit(_)))
+                    .count();
+                assert_eq!(explicits, 1, "expected one Explicit (on-plane vertex) endpoint");
+                // both endpoints lie on BOTH planes (on L)
+                for ep in [&a, &b] {
+                    assert_eq!(orient3d(ep, &e(t1[0]), &e(t1[1]), &e(t1[2])), Sign::Zero);
+                    assert_eq!(orient3d(ep, &e(t2[0]), &e(t2[1]), &e(t2[2])), Sign::Zero);
+                }
+            }
+            other => panic!("Touches case should yield a Segment, got {other:?}"),
         }
     }
 

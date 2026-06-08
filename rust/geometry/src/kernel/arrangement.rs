@@ -22,7 +22,7 @@ use super::predicates::{cmp_lex, orient2d_any};
 use super::rational::point_of;
 use super::retriangulate::{projection_axis, triangulate, Constraint, RetriInput};
 use super::tritri::{tri_tri_intersection, TriTri};
-use super::{ImplicitPoint, Lpi, Sign, Tpi};
+use super::{ImplicitPoint, Sign, Tpi};
 use num_traits::ToPrimitive;
 use std::cmp::Ordering;
 
@@ -69,8 +69,8 @@ fn bbox_overlap(a: &Tri, b: &Tri) -> bool {
 /// A raw intersection segment on a triangle, tagged with the cutter triangle that
 /// produced it (needed to locate seg×seg crossing points as triple points).
 struct RawSeg {
-    a: Lpi,
-    b: Lpi,
+    a: ImplicitPoint,
+    b: ImplicitPoint,
     cutter: Tri,
 }
 
@@ -100,11 +100,10 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
         None => return Vec::new(),
     };
     let n = raws.len();
-    let pt = |l: &Lpi| ImplicitPoint::Lpi(*l);
     let mut splits: Vec<Vec<ImplicitPoint>> = vec![Vec::new(); n];
     for k in 0..n {
         for l in (k + 1)..n {
-            if segments_cross(&pt(&raws[k].a), &pt(&raws[k].b), &pt(&raws[l].a), &pt(&raws[l].b), axis) {
+            if segments_cross(&raws[k].a, &raws[k].b, &raws[l].a, &raws[l].b, axis) {
                 let x = ImplicitPoint::Tpi(Tpi {
                     planes: [tri_plane(t), tri_plane(&raws[k].cutter), tri_plane(&raws[l].cutter)],
                 });
@@ -115,9 +114,9 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
     }
     let mut out = Vec::new();
     for k in 0..n {
-        let mut chain = vec![pt(&raws[k].a)];
+        let mut chain = vec![raws[k].a.clone()];
         chain.append(&mut splits[k]);
-        chain.push(pt(&raws[k].b));
+        chain.push(raws[k].b.clone());
         // order along the segment (collinear ⇒ lex order = line order) + dedup coincident
         chain.sort_by(|p, q| match cmp_lex(p, q) {
             Sign::Negative => Ordering::Less,
@@ -143,7 +142,7 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
                 continue;
             }
             if let TriTri::Segment([s, t]) = tri_tri_intersection(ta, tb) {
-                raw_a[i].push(RawSeg { a: s, b: t, cutter: *tb });
+                raw_a[i].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
                 raw_b[j].push(RawSeg { a: s, b: t, cutter: *ta });
             }
         }

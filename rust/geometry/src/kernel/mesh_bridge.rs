@@ -10,19 +10,35 @@
 use super::arrangement::{boolean, BoolOp, Tri};
 use crate::mesh::Mesh;
 
-/// `Mesh` → the kernel's triangle list (f32 → f64).
+/// f32-near-coplanar reconciliation snap grid (metres). A POWER OF TWO so the
+/// snap `(c/G).round()*G` is an EXACT f64 op ⇒ bit-deterministic across
+/// x86_64/aarch64/wasm. Real IFC is authored in f32, so an intended-flush face is
+/// NOT exactly coplanar after import; snapping both operands to a shared grid
+/// makes such faces EXACTLY coplanar so the exact coplanar path fires instead of
+/// emitting a noise sliver. Resolution is tunable against the corpus (flip plan
+/// M7 / the open decision); 2^-16 m ≈ 15 µm.
+const SNAP_GRID: f64 = 1.0 / 65536.0;
+
+#[inline]
+fn snap(c: f64) -> f64 {
+    (c / SNAP_GRID).round() * SNAP_GRID
+}
+
+/// `Mesh` → the kernel's triangle list (f32 → f64, snapped to the reconcile
+/// grid). Panic-free: an out-of-range index drops that triangle rather than
+/// indexing past the end (one of the enumerated kernel panic sites).
 pub fn mesh_to_tris(m: &Mesh) -> Vec<Tri> {
-    let vertex = |i: u32| {
+    let vertex = |i: u32| -> Option<[f64; 3]> {
         let b = (i as usize) * 3;
-        [
-            m.positions[b] as f64,
-            m.positions[b + 1] as f64,
-            m.positions[b + 2] as f64,
-        ]
+        Some([
+            snap(*m.positions.get(b)? as f64),
+            snap(*m.positions.get(b + 1)? as f64),
+            snap(*m.positions.get(b + 2)? as f64),
+        ])
     };
     m.indices
         .chunks_exact(3)
-        .map(|c| [vertex(c[0]), vertex(c[1]), vertex(c[2])])
+        .filter_map(|c| Some([vertex(c[0])?, vertex(c[1])?, vertex(c[2])?]))
         .collect()
 }
 
@@ -100,6 +116,19 @@ mod tests {
             })
             .sum::<f64>()
             / 6.0
+    }
+
+    #[test]
+    fn snap_reconciles_near_coplanar_and_is_deterministic() {
+        // coords closer than the grid snap to the SAME value (f32-flush → exact)
+        assert_eq!(super::snap(1.0), super::snap(1.0 + 1e-6));
+        assert_eq!(super::snap(2.5), super::snap(2.5 - 5e-6));
+        // grid multiples (incl. integers) are exact fixed points
+        assert_eq!(super::snap(3.0), 3.0);
+        assert_eq!(super::snap(0.0), 0.0);
+        assert_eq!(super::snap(7.0 / 65536.0), 7.0 / 65536.0);
+        // distinct grid cells stay distinct
+        assert_ne!(super::snap(1.0), super::snap(1.0 + 1e-3));
     }
 
     #[test]

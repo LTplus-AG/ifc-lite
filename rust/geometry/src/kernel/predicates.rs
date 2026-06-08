@@ -74,10 +74,47 @@ pub fn cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint) -> Sign {
     interval::cmp_lex(a, b).unwrap_or_else(|| rational::cmp_lex(a, b))
 }
 
+#[inline]
+fn explicit_coord(p: &ImplicitPoint) -> [f64; 3] {
+    match p {
+        ImplicitPoint::Explicit(c) => *c,
+        _ => unreachable!("explicit_coord on an implicit point"),
+    }
+}
+
+/// `orient2d` over ANY mix of explicit/implicit points in ANY argument position
+/// (the predicate the re-triangulation's point location needs). `orient2d` is
+/// antisymmetric, so we canonicalise the args to implicit-first (stable, to keep
+/// it a pure function), dispatch to the 0I/1I/2I/3I config, and flip the result
+/// once per transposition (the permutation parity).
+pub fn orient2d_any(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Sign {
+    let pts = [a, b, c];
+    let key = |p: &ImplicitPoint| u8::from(matches!(p, ImplicitPoint::Explicit(_))); // implicit=0
+    let keys = [key(a), key(b), key(c)];
+    let mut perm = [0usize, 1, 2];
+    perm.sort_by_key(|&i| keys[i]); // stable → implicit first, original order kept
+    let inversions = u8::from(perm[0] > perm[1]) + u8::from(perm[0] > perm[2]) + u8::from(perm[1] > perm[2]);
+    let rp = [pts[perm[0]], pts[perm[1]], pts[perm[2]]];
+    let n_implicit = 3 - (keys[0] + keys[1] + keys[2]) as usize;
+    let canonical = match n_implicit {
+        // (E,E,E) and (I,E,E) are handled by the position-specific dispatch.
+        0 | 1 => orient2d(rp[0], rp[1], rp[2], axis),
+        2 => orient2d_2i(rp[0], rp[1], explicit_coord(rp[2]), axis),
+        _ => orient2d_3i(rp[0], rp[1], rp[2], axis),
+    };
+    if inversions % 2 == 1 {
+        canonical.flip()
+    } else {
+        canonical
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{rational, DropAxis, Lpi, Tpi};
-    use super::{cmp_lex, orient2d, orient2d_2i, orient2d_3i, orient3d, ImplicitPoint, Sign};
+    use super::{
+        cmp_lex, orient2d, orient2d_2i, orient2d_3i, orient2d_any, orient3d, ImplicitPoint, Sign,
+    };
 
     fn e(p: [f64; 3]) -> ImplicitPoint {
         ImplicitPoint::Explicit(p)
@@ -461,6 +498,32 @@ mod tests {
                 rational::orient2d_3i(&a_rw, &b, &cc, axis),
                 "3I sign changed under plane re-winding"
             );
+        }
+    }
+
+    #[test]
+    fn orient2d_any_matches_oracle_for_every_permutation_and_mix() {
+        // The general dispatch must equal the direct orient2d on the materialised
+        // points for EVERY ordered triple (covers all positions + permutation
+        // parities) and every drop axis, across explicit/LPI/TPI mixes.
+        let mut pts: Vec<ImplicitPoint> = vec![e([0.0, 0.0, 0.0]), e([3.0, 1.0, -2.0])];
+        pts.extend(lpi_cases().into_iter().take(2).map(|(l, ..)| ImplicitPoint::Lpi(l)));
+        pts.extend(tpi_cases().into_iter().take(2).map(|(t, ..)| ImplicitPoint::Tpi(t)));
+        for axis in AXES {
+            for a in &pts {
+                for b in &pts {
+                    for c in &pts {
+                        let got = orient2d_any(a, b, c, axis);
+                        let want = rational::orient2d_pts(
+                            &rational::point_of(a),
+                            &rational::point_of(b),
+                            &rational::point_of(c),
+                            axis,
+                        );
+                        assert_eq!(got, want, "orient2d_any mismatch (axis {axis:?})");
+                    }
+                }
+            }
         }
     }
 

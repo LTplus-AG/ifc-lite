@@ -263,9 +263,13 @@ pub(crate) fn point_of(p: &ImplicitPoint) -> V3 {
 
 /// orient2d on three already-materialised points (oracle), projected by `axis`.
 pub(crate) fn orient2d_pts(a: &V3, b: &V3, c: &V3, axis: DropAxis) -> Sign {
+    sign_of(&tri_area2(a, b, c, axis))
+}
+
+/// Exact twice-signed-area of a projected triangle (for coverage checks).
+pub(crate) fn tri_area2(a: &V3, b: &V3, c: &V3, axis: DropAxis) -> BigRational {
     let (i, j) = axis_idx(axis);
-    let det = (&a[i] - &c[i]) * (&b[j] - &c[j]) - (&a[j] - &c[j]) * (&b[i] - &c[i]);
-    sign_of(&det)
+    (&a[i] - &c[i]) * (&b[j] - &c[j]) - (&a[j] - &c[j]) * (&b[i] - &c[i])
 }
 
 /// orient2d with TWO implicit points (a,b) and one explicit (c), projected after

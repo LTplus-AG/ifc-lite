@@ -16,9 +16,10 @@
 //! segment insertion, earcut, emit) build on the canonical list produced here.
 
 use super::interner::{Interner, Vid};
-use super::predicates::{cmp_lex, orient2d};
+use super::predicates::{cmp_lex, orient2d, orient2d_any};
 use super::{DropAxis, ImplicitPoint, Sign};
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
 
 #[inline]
 fn e(p: [f64; 3]) -> ImplicitPoint {
@@ -135,6 +136,120 @@ pub fn canonicalize(input: &RetriInput, interner: &mut Interner) -> Canonical {
     Canonical { corners, segments }
 }
 
+/// A sub-triangle of `T` (interned Vids), oriented to match `w0`.
+pub type SubTri = [Vid; 3];
+
+/// The evolving 2D triangulation of `T` during phases C–E.
+pub struct Mesh2d {
+    pub tris: Vec<SubTri>,
+    pub axis: DropAxis,
+    pub w0: Sign,
+}
+
+enum Locate {
+    Interior,
+    OnEdge,
+    OnVertex,
+    Outside,
+}
+
+/// Classify point `p` against sub-triangle `tri` (oriented `w0`): the three edge
+/// `orient2d` signs say inside (all `w0`), on an edge (one `Zero`), on a vertex,
+/// or outside (any sign opposite `w0`).
+fn locate(it: &Interner, tri: SubTri, p: Vid, axis: DropAxis, w0: Sign) -> Locate {
+    if tri.contains(&p) {
+        return Locate::OnVertex;
+    }
+    let g = |v: Vid| it.get(v);
+    let s = [
+        orient2d_any(g(tri[0]), g(tri[1]), g(p), axis),
+        orient2d_any(g(tri[1]), g(tri[2]), g(p), axis),
+        orient2d_any(g(tri[2]), g(tri[0]), g(p), axis),
+    ];
+    if s.iter().any(|&x| x == w0.flip()) {
+        return Locate::Outside;
+    }
+    match s.iter().filter(|&&x| x == Sign::Zero).count() {
+        0 => Locate::Interior,
+        1 => Locate::OnEdge,
+        _ => Locate::OnVertex, // 2+ zeros ⇒ coincident with a vertex
+    }
+}
+
+/// PHASE C — insert point `p` (interned), splitting the triangle(s) containing
+/// it. Uniform cavity-fan: gather the triangles that contain `p` (one if
+/// interior, two across a shared edge), take the cavity's boundary edges, and
+/// fan `p` to each. `p` is interior to the cavity, so every boundary edge `u→v`
+/// has `p` on its left ⇒ `[u,v,p]` preserves `w0`. Handles interior (1→3) and
+/// on-edge (→4) uniformly; an already-present vertex is a no-op.
+fn insert_point(mesh: &mut Mesh2d, it: &Interner, p: Vid) {
+    let mut cavity = Vec::new();
+    for ti in 0..mesh.tris.len() {
+        match locate(it, mesh.tris[ti], p, mesh.axis, mesh.w0) {
+            Locate::OnVertex => return,
+            Locate::Interior | Locate::OnEdge => cavity.push(ti),
+            Locate::Outside => {}
+        }
+    }
+    if cavity.is_empty() {
+        return; // p not inside T
+    }
+    let axis = mesh.axis;
+    let cavity_set: BTreeSet<usize> = cavity.iter().copied().collect();
+    let mut edges: BTreeSet<(Vid, Vid)> = BTreeSet::new();
+    for &ti in &cavity {
+        let [a, b, c] = mesh.tris[ti];
+        edges.insert((a, b));
+        edges.insert((b, c));
+        edges.insert((c, a));
+    }
+    // Boundary edges = those whose reverse is not also in the cavity, EXCLUDING
+    // any edge `p` lies on (collinear): fanning `p` to an edge it's on would make
+    // a degenerate triangle — that edge is split instead, by the adjacent fans.
+    let boundary: Vec<(Vid, Vid)> = edges
+        .iter()
+        .copied()
+        .filter(|&(u, v)| !edges.contains(&(v, u)))
+        .filter(|&(u, v)| orient2d_any(it.get(u), it.get(v), it.get(p), axis) != Sign::Zero)
+        .collect();
+    mesh.tris = mesh
+        .tris
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !cavity_set.contains(i))
+        .map(|(_, t)| *t)
+        .collect();
+    for (u, v) in boundary {
+        mesh.tris.push([u, v, p]);
+    }
+}
+
+/// Phases A–C: project, canonicalise, and insert every constraint-endpoint point
+/// into a triangulation of `T`. `None` ⇒ `T` is degenerate. (Phase D — forcing
+/// the constraint segments to be edges — is a later increment.)
+pub fn triangulate_points(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d> {
+    let (axis, w0) = projection_axis(&input.tri)?;
+    let canon = canonicalize(input, interner);
+    // The initial triangle is T's corners in input order; by Phase A its
+    // orientation is exactly w0.
+    let mut mesh = Mesh2d { tris: vec![canon.corners], axis, w0 };
+    let mut pts: BTreeSet<Vid> = BTreeSet::new();
+    for &(lo, hi) in &canon.segments {
+        pts.insert(lo);
+        pts.insert(hi);
+    }
+    for &c in &canon.corners {
+        pts.remove(&c);
+    }
+    // insert in canonical lex order ⇒ order-independent topology
+    let mut ordered: Vec<Vid> = pts.into_iter().collect();
+    ordered.sort_by(|&a, &b| lex_cmp(interner, a, b));
+    for p in ordered {
+        insert_point(&mut mesh, interner, p);
+    }
+    Some(mesh)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::rational::point_of;
@@ -195,5 +310,89 @@ mod tests {
         // a duplicate constraint is deduplicated
         let with_dup = materialise(vec![c1.clone(), c1.clone(), c2.clone()]);
         assert_eq!(with_dup.len(), 2, "duplicate constraint not deduped");
+    }
+
+    #[test]
+    fn phase_c_covers_t_exactly_with_correct_orientation() {
+        use super::super::rational::tri_area2;
+        use num_rational::BigRational;
+        use num_traits::Zero;
+        let t = [[0., 0., 0.], [6., 0., 0.], [0., 6., 0.]]; // z=0, CCW
+        let lpi = ImplicitPoint::Lpi(Lpi {
+            p: [2., 2., -1.],
+            q: [2., 2., 1.],
+            r: [0., 0., 0.],
+            s: [1., 0., 0.],
+            t: [0., 1., 0.],
+        }); // (2,2,0), interior
+        let cons = vec![
+            Constraint { a: lpi, b: e([3., 3., 0.]) }, // (3,3,0) on the hypotenuse x+y=6
+            Constraint { a: e([1., 1., 0.]), b: e([4., 1., 0.]) },
+        ];
+        let mut it = Interner::new();
+        let mesh = triangulate_points(&RetriInput { tri: t, constraints: cons }, &mut it).unwrap();
+        // every sub-triangle is oriented w0 (none flipped or degenerate)
+        for &tri in &mesh.tris {
+            assert_eq!(
+                orient2d_any(it.get(tri[0]), it.get(tri[1]), it.get(tri[2]), mesh.axis),
+                mesh.w0,
+                "sub-tri not oriented w0: {tri:?}"
+            );
+        }
+        // exact coverage: Σ sub-triangle area == T's area
+        let area2 = |tri: SubTri| {
+            tri_area2(
+                &point_of(it.get(tri[0])),
+                &point_of(it.get(tri[1])),
+                &point_of(it.get(tri[2])),
+                mesh.axis,
+            )
+        };
+        let sum = mesh.tris.iter().fold(BigRational::zero(), |acc, &tr| acc + area2(tr));
+        let t_area = tri_area2(
+            &point_of(&e(t[0])),
+            &point_of(&e(t[1])),
+            &point_of(&e(t[2])),
+            mesh.axis,
+        );
+        assert_eq!(sum, t_area, "sub-triangles do not exactly cover T");
+    }
+
+    #[test]
+    fn phase_c_topology_is_input_order_independent() {
+        let t = [[0., 0., 0.], [5., 0., 0.], [0., 5., 0.]];
+        let lpi = ImplicitPoint::Lpi(Lpi {
+            p: [1., 1., -1.],
+            q: [1., 1., 1.],
+            r: [0., 0., 0.],
+            s: [1., 0., 0.],
+            t: [0., 1., 0.],
+        });
+        let c1 = Constraint { a: lpi, b: e([2., 2., 0.]) };
+        let c2 = Constraint { a: e([3., 1., 0.]), b: e([1., 3., 0.]) };
+        let topo = |cons: Vec<Constraint>| {
+            let mut it = Interner::new();
+            let mesh = triangulate_points(&RetriInput { tri: t, constraints: cons }, &mut it).unwrap();
+            let mut tris: Vec<_> = mesh
+                .tris
+                .iter()
+                .map(|&tri| {
+                    let mut p = [
+                        point_of(it.get(tri[0])),
+                        point_of(it.get(tri[1])),
+                        point_of(it.get(tri[2])),
+                    ];
+                    p.sort();
+                    p
+                })
+                .collect();
+            tris.sort();
+            tris
+        };
+        assert_eq!(
+            topo(vec![c1.clone(), c2.clone()]),
+            topo(vec![c2, c1]),
+            "Phase C topology depends on input order"
+        );
     }
 }

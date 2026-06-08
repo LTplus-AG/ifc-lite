@@ -17,7 +17,7 @@
 
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d, orient2d_any};
-use super::{DropAxis, ImplicitPoint, Sign};
+use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -462,6 +462,71 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
     Some(mesh)
 }
 
+/// PHASE F — a deterministic TOPOLOGY fingerprint of the triangulation: every
+/// sub-triangle as its sorted Vid triple, the set sorted, FNV-1a-hashed. Vids are
+/// symbolic identities assigned in a deterministic (input-driven, exact-cmp_lex
+/// dedup) order and every geometric decision is exact, so this hash is
+/// byte-identical across x86_64/aarch64/wasm. (We hash Vid CONNECTIVITY, not
+/// coordinates — the determinism bar is topology, not coordinates.)
+pub fn triangulation_topology_hash(input: &RetriInput) -> u64 {
+    let mut interner = Interner::new();
+    let mesh = match triangulate(input, &mut interner) {
+        Some(m) => m,
+        None => return 0,
+    };
+    let mut tris: Vec<[Vid; 3]> = mesh
+        .tris
+        .iter()
+        .map(|&t| {
+            let mut s = t;
+            s.sort_unstable();
+            s
+        })
+        .collect();
+    tris.sort_unstable();
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for t in tris {
+        for v in t {
+            h ^= v as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    h
+}
+
+/// Cross-platform re-triangulation determinism manifest: the topology hash of a
+/// fixed fixture (a triangle + constraints with explicit/LPI/TPI endpoints, some
+/// requiring recovery / on-edge), for the wasm/ARM cross-check (analogous to the
+/// predicate sign manifest).
+pub fn retriangulation_manifest() -> u64 {
+    let t = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]];
+    // LPI at (3,3,0): vertical line ∩ z=0
+    let lpi = ImplicitPoint::Lpi(Lpi {
+        p: [3.0, 3.0, -1.0],
+        q: [3.0, 3.0, 1.0],
+        r: [0.0, 0.0, 0.0],
+        s: [1.0, 0.0, 0.0],
+        t: [0.0, 1.0, 0.0],
+    });
+    // TPI at (3,5,0): planes z=0, x=3, y=5
+    let tpi = ImplicitPoint::Tpi(Tpi {
+        planes: [
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            [[3.0, 0.0, 0.0], [3.0, 1.0, 0.0], [3.0, 0.0, 1.0]],
+            [[0.0, 5.0, 0.0], [1.0, 5.0, 0.0], [0.0, 5.0, 1.0]],
+        ],
+    });
+    let x = ImplicitPoint::Explicit;
+    let cons = vec![
+        Constraint { a: x([2.0, 2.0, 0.0]), b: x([6.0, 2.0, 0.0]) },
+        Constraint { a: x([2.0, 2.0, 0.0]), b: x([2.0, 6.0, 0.0]) },
+        Constraint { a: lpi.clone(), b: x([6.0, 2.0, 0.0]) },
+        Constraint { a: tpi, b: x([2.0, 6.0, 0.0]) },
+        Constraint { a: x([5.0, 1.0, 0.0]), b: lpi },
+    ];
+    triangulation_topology_hash(&RetriInput { tri: t, constraints: cons })
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::rational::point_of;
@@ -739,5 +804,15 @@ mod tests {
             .fold(BigRational::zero(), |acc, &tr| acc + tri_area2(&pt(tr[0]), &pt(tr[1]), &pt(tr[2]), mesh.axis));
         let t_area = tri_area2(&pt(corners[0]), &pt(corners[1]), &pt(corners[2]), mesh.axis);
         assert_eq!(sum, t_area, "triangulation does not exactly cover T");
+    }
+
+    #[test]
+    fn retriangulation_manifest_is_pinned() {
+        // PHASE F (G2) — the full-triangulation topology fingerprint, byte-identical
+        // across x86_64/aarch64/wasm (re-pin + re-run the wasm cross-check if the
+        // triangulation logic legitimately changes).
+        const PINNED: u64 = 0xef5b_32fd_d838_4776;
+        let m = super::retriangulation_manifest();
+        assert_eq!(m, PINNED, "retriangulation topology manifest changed: 0x{m:016x}");
     }
 }

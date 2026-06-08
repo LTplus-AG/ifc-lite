@@ -107,7 +107,8 @@ fn decode_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     {
         return None;
     }
-    let mut buf = vec![0u8; reader.output_buffer_size()];
+    // png 0.18 returns Option here (None on size overflow); propagate as a decode failure.
+    let mut buf = vec![0u8; reader.output_buffer_size()?];
     let info = reader.next_frame(&mut buf).ok()?;
     let (w, h) = (info.width, info.height);
     let px = (w as usize) * (h as usize);

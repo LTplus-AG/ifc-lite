@@ -349,6 +349,12 @@ jobs:
           pnpm fixtures
       - name: Manifold CSG tests
         run: cargo test -p ifc-lite-geometry --features manifold-csg
+      # Pure-Rust CSG kernel (Phase 1): runs the geometry suite with the exact
+      # `orient3d` plane-clip classifier on x86_64, so the exact path (incl. the
+      # wall-opening regression fixtures) is continuously covered, not just the
+      # feature-off default. `--no-default-features` skips the Manifold C++ build.
+      - name: Exact-predicate CSG tests (pure-Rust kernel)
+        run: cargo test -p ifc-lite-geometry --no-default-features --features exact-predicates
 
   # Aggregate gate. Keeps the existing required status check name green
   # for the branch protection rule so we don't have to retouch settings.

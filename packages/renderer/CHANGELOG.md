@@ -1,5 +1,11 @@
 # @ifc-lite/renderer
 
+## 1.25.2
+
+### Patch Changes
+
+- [#1015](https://github.com/LTplus-AG/ifc-lite/pull/1015) [`417ea3f`](https://github.com/LTplus-AG/ifc-lite/commit/417ea3fa5a6a0bcd71b06ba08b83d824af49bf3c) Thanks [@louistrue](https://github.com/louistrue)! - Fix selected-object colour bleeding through the selection highlight. The highlight was a fresnel _glow_ — `mix(litColor, highlightColor, fresnel * 0.5 + 0.2)` — so at a face viewed head-on the mix factor floored at 0.2, leaving ~80% of the lit object colour visible (e.g. the green IfcSite and red roof slab showed through the blue highlight, as a lighting-dependent gradient). The selection highlight is now a single flat colour, so a selected object reads as one uniform blue with no base-colour bleed and no gradient.
+
 ## 1.25.1
 
 ### Patch Changes

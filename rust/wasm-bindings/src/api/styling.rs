@@ -448,15 +448,6 @@ pub(crate) fn combined_pre_pass(
             _ => {
                 if ifc_lite_core::has_geometry_by_name(type_name) {
                     let ifc_type = ifc_lite_core::IfcType::from_str(type_name);
-                    // Feature-subtraction voids (IfcOpeningElement &c.) are
-                    // cutters, not renderable products — skip them so they
-                    // aren't drawn as solids. Mirrors the guards in
-                    // gpu_meshes::{build_pre_pass_fast, streaming pre-pass}
-                    // (issue #977).
-                    if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcFeatureElementSubtraction)
-                    {
-                        continue;
-                    }
                     if ifc_lite_core::is_simple_geometry_type(type_name) {
                         simple_jobs.push((id, start, end, ifc_type));
                     } else {

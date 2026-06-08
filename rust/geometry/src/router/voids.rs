@@ -328,76 +328,6 @@ fn generate_recess_cap(
     add_reveal_quad(mesh, a, b, c, d, vec_along_axis(ea, normal_sign));
 }
 
-/// Build a closed axis-aligned box mesh (12 triangles) spanning `min`..`max`.
-/// Used as a real-boolean cutter for recess openings (issue #977). Winding is
-/// irrelevant — the Manifold kernel reorients faces outward on import.
-fn make_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
-    let mut m = Mesh::with_capacity(8, 36);
-    let n = Vector3::new(0.0, 0.0, 0.0);
-    let v = |i: usize| {
-        Point3::new(
-            if i & 1 == 0 { min.x } else { max.x },
-            if i & 2 == 0 { min.y } else { max.y },
-            if i & 4 == 0 { min.z } else { max.z },
-        )
-    };
-    for i in 0..8 {
-        m.add_vertex(v(i), n);
-    }
-    let faces: [[u32; 6]; 6] = [
-        [0, 1, 3, 0, 3, 2],
-        [4, 6, 7, 4, 7, 5],
-        [0, 4, 5, 0, 5, 1],
-        [2, 3, 7, 2, 7, 6],
-        [0, 2, 6, 0, 6, 4],
-        [1, 5, 7, 1, 7, 3],
-    ];
-    for f in &faces {
-        m.add_triangle(f[0], f[1], f[2]);
-        m.add_triangle(f[3], f[4], f[5]);
-    }
-    m
-}
-
-/// Grow a recess box cutter OUTWARD by `pad` on each face that sits flush with
-/// (or already outside) a host AABB face, leaving interior faces untouched.
-///
-/// A flush cut face is exactly coplanar with the host surface, so the boolean
-/// can stop a hair short there (residual under-cut). Extending such a face
-/// outward — into the empty space beyond the host surface — forces a clean
-/// through-cut without deepening the recess or over-cutting visible material;
-/// interior faces (the new cut surfaces / pocket floor) keep the authored depth.
-fn pad_cutter_at_host_faces(
-    mut mn: Point3<f64>,
-    mut mx: Point3<f64>,
-    wall_min: Point3<f64>,
-    wall_max: Point3<f64>,
-    pad: f64,
-) -> (Point3<f64>, Point3<f64>) {
-    let tol_x = (wall_max.x - wall_min.x).abs() * 1e-5 + 1e-9;
-    let tol_y = (wall_max.y - wall_min.y).abs() * 1e-5 + 1e-9;
-    let tol_z = (wall_max.z - wall_min.z).abs() * 1e-5 + 1e-9;
-    if mn.x <= wall_min.x + tol_x {
-        mn.x -= pad;
-    }
-    if mx.x >= wall_max.x - tol_x {
-        mx.x += pad;
-    }
-    if mn.y <= wall_min.y + tol_y {
-        mn.y -= pad;
-    }
-    if mx.y >= wall_max.y - tol_y {
-        mx.y += pad;
-    }
-    if mn.z <= wall_min.z + tol_z {
-        mn.z -= pad;
-    }
-    if mx.z >= wall_max.z - tol_z {
-        mx.z += pad;
-    }
-    (mn, mx)
-}
-
 /// Host element types that are profile-section structural members (channels,
 /// I-/H-beams, hollow tubes, gusset plates) whose cross-section does NOT fill
 /// an arbitrary opening footprint. Recesses/notches/slots on these must use a
@@ -413,103 +343,6 @@ fn is_profile_section_host(t: IfcType) -> bool {
         || t.is_subtype_of(IfcType::IfcColumn)
         || t.is_subtype_of(IfcType::IfcMember)
         || t.is_subtype_of(IfcType::IfcPlate)
-}
-
-/// Diagonal-opening variant of [`opening_needs_boolean`]. Projects the
-/// opening's actual mesh vertices (not its world AABB — a rotated thin plate's
-/// AABB wildly overestimates its depth) onto the penetration axis `depth` and
-/// compares against the host's extent. Returns true unless the opening spans
-/// the host along `depth` (a clean through-cut). Recesses / shallow slots on
-/// thin or round members must take the real boolean path, not the analytic
-/// diagonal clip which fabricates a bloated reveal box (issue #977).
-fn diagonal_opening_needs_boolean(
-    opening_mesh: &Mesh,
-    wall_min: Point3<f64>,
-    wall_max: Point3<f64>,
-    depth: Vector3<f64>,
-) -> bool {
-    if opening_mesh.positions.len() < 9 {
-        return false;
-    }
-    let mut o_lo = f64::INFINITY;
-    let mut o_hi = f64::NEG_INFINITY;
-    for v in opening_mesh.positions.chunks_exact(3) {
-        let p = v[0] as f64 * depth.x + v[1] as f64 * depth.y + v[2] as f64 * depth.z;
-        o_lo = o_lo.min(p);
-        o_hi = o_hi.max(p);
-    }
-    let corners = [
-        Point3::new(wall_min.x, wall_min.y, wall_min.z),
-        Point3::new(wall_max.x, wall_min.y, wall_min.z),
-        Point3::new(wall_min.x, wall_max.y, wall_min.z),
-        Point3::new(wall_max.x, wall_max.y, wall_min.z),
-        Point3::new(wall_min.x, wall_min.y, wall_max.z),
-        Point3::new(wall_max.x, wall_min.y, wall_max.z),
-        Point3::new(wall_min.x, wall_max.y, wall_max.z),
-        Point3::new(wall_max.x, wall_max.y, wall_max.z),
-    ];
-    let mut w_lo = f64::INFINITY;
-    let mut w_hi = f64::NEG_INFINITY;
-    for c in &corners {
-        let p = c.x * depth.x + c.y * depth.y + c.z * depth.z;
-        w_lo = w_lo.min(p);
-        w_hi = w_hi.max(p);
-    }
-    let tol = (w_hi - w_lo).abs() * 1e-5;
-    let spans_through = o_lo <= w_lo + tol && o_hi >= w_hi - tol;
-    !spans_through
-}
-
-/// Whether an opening needs a real boolean subtraction rather than the
-/// analytic AABB-clip + fabricated reveal/cap path.
-///
-/// The analytic path is only correct for a **through** opening in a solid host
-/// (a door/window that spans the host along its extrusion axis, flush or past
-/// on BOTH ends): the host's own near/far faces become the entrance/exit and
-/// the four reveal walls sit on real material. Anything that does NOT span the
-/// host along `dir` — a recess/pocket (one end inside), or a corner/edge notch
-/// that poked past the host on a cross-axis (Tekla channel/beam end cuts) —
-/// has reveal/cap walls fabricated in empty space (issue #977). Route those to
-/// a real boolean instead, which only emits cut faces where material exists.
-fn opening_needs_boolean(
-    open_min: Point3<f64>,
-    open_max: Point3<f64>,
-    wall_min: Point3<f64>,
-    wall_max: Point3<f64>,
-    dir: Vector3<f64>,
-) -> bool {
-    let open_center = Point3::new(
-        (open_min.x + open_max.x) * 0.5,
-        (open_min.y + open_max.y) * 0.5,
-        (open_min.z + open_max.z) * 0.5,
-    );
-    let proj_bounds = |mn: Point3<f64>, mx: Point3<f64>| {
-        let corners = [
-            Point3::new(mn.x, mn.y, mn.z),
-            Point3::new(mx.x, mn.y, mn.z),
-            Point3::new(mn.x, mx.y, mn.z),
-            Point3::new(mx.x, mx.y, mn.z),
-            Point3::new(mn.x, mn.y, mx.z),
-            Point3::new(mx.x, mn.y, mx.z),
-            Point3::new(mn.x, mx.y, mx.z),
-            Point3::new(mx.x, mx.y, mx.z),
-        ];
-        let mut lo = f64::INFINITY;
-        let mut hi = f64::NEG_INFINITY;
-        for c in &corners {
-            let p = (c - open_center).dot(&dir);
-            lo = lo.min(p);
-            hi = hi.max(p);
-        }
-        (lo, hi)
-    };
-    let (wall_lo, wall_hi) = proj_bounds(wall_min, wall_max);
-    let (open_lo, open_hi) = proj_bounds(open_min, open_max);
-    let tol = (wall_hi - wall_lo).abs() * 1e-5;
-    // Spans the host along `dir` (flush or past on both ends) ⇒ a clean
-    // through-cut the analytic path handles. Otherwise it needs a real boolean.
-    let spans_through = open_lo <= wall_lo + tol && open_hi >= wall_hi - tol;
-    !spans_through
 }
 
 /// Whether the representation type is geometry we can process.
@@ -1410,7 +1243,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Mesh {
         let ctx = self.build_void_context(element, opening_ids, decoder);
-        self.apply_void_context(mesh, &ctx, element.id, element.ifc_type)
+        self.apply_void_context(mesh, &ctx, element.id)
     }
 
     /// Classify openings and extract clipping planes for an element.
@@ -1457,19 +1290,7 @@ impl GeometryRouter {
     /// [`GeometryRouter::take_csg_failures`]). The router's failure log is
     /// the only path failures reach the caller; `apply_void_context` itself
     /// always returns the (possibly un-cut) mesh.
-    pub(super) fn apply_void_context(
-        &self,
-        mesh: Mesh,
-        ctx: &VoidContext,
-        element_id: u32,
-        host_type: IfcType,
-    ) -> Mesh {
-        // Recesses/notches go to a real boolean only for profile-section members
-        // and only when the Manifold kernel is available; solid plate hosts
-        // (slab/wall/roof) keep the deterministic analytic path. See
-        // `is_profile_section_host` (issue #977 / #853 determinism).
-        let recess_to_boolean =
-            cfg!(feature = "manifold-csg") && is_profile_section_host(host_type);
+    pub(super) fn apply_void_context(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // Capture the input triangle count + bounds so the per-host
         // diagnostic can flag the "cuts attempted but produced no
         // change" case — the silent-no-op signature when an opening
@@ -1509,64 +1330,16 @@ impl GeometryRouter {
         let mut csg_operation_count = 0;
         const MAX_CSG_OPERATIONS: usize = 10;
 
-        // Diagonal openings: route recesses / shallow slots (anything not
-        // spanning the host along its penetration axis) to a real boolean
-        // subtract with the opening's own mesh. The analytic diagonal clip
-        // fabricates a bloated reveal box around thin / round members
-        // (issue #977 — Tekla slot in a circular tube). Genuine through-
-        // openings stay on the analytic diagonal path.
-        {
-            let mut through_diagonals: Vec<OpeningType> = Vec::new();
-            let mut diagonal_recess_meshes: Vec<&Mesh> = Vec::new();
-            for opening in &ctx.openings {
-                if let OpeningType::DiagonalRectangular(mesh, frame) = opening {
-                    if recess_to_boolean
-                        && diagonal_opening_needs_boolean(mesh, wall_min, wall_max, frame.depth)
-                    {
-                        diagonal_recess_meshes.push(mesh);
-                    } else {
-                        through_diagonals.push(opening.clone());
-                    }
-                }
-            }
-            self.apply_diagonal_openings(&mut result, &through_diagonals);
-            for m in diagonal_recess_meshes {
-                if csg_operation_count >= MAX_CSG_OPERATIONS {
-                    break;
-                }
-                let tri_before = result.triangle_count();
-                if let Ok(cut) = clipper.subtract_mesh(&result, m) {
-                    if !cut.is_empty() && cut.triangle_count() != tri_before {
-                        result = cut;
-                    }
-                }
-                csg_operation_count += 1;
-            }
-        }
+        self.apply_diagonal_openings(&mut result, &ctx.openings);
 
         let mut rect_boxes: Vec<(Point3<f64>, Point3<f64>)> = Vec::new();
         // Keep extrusion directions alongside boxes for reveal generation.
         let mut rect_dirs: Vec<Option<Vector3<f64>>> = Vec::new();
-        // Recess openings routed to a real boolean subtract (issue #977): the
-        // analytic AABB clip + fabricated reveal/cap is only correct when the
-        // host is solid across the opening footprint. On non-solid sections
-        // (Tekla channel/beam end notches) those fabricated walls hang in empty
-        // space. A real subtract produces cut faces only where material exists.
-        let mut recess_boxes: Vec<(Point3<f64>, Point3<f64>)> = Vec::new();
         let mut non_rect_openings: Vec<&OpeningType> = Vec::new();
 
         for opening in &ctx.merged_openings {
             match opening {
                 OpeningType::Rectangular(open_min, open_max, extrusion_dir) => {
-                    if recess_to_boolean {
-                        if let Some(dir) = extrusion_dir {
-                            if opening_needs_boolean(*open_min, *open_max, wall_min, wall_max, *dir)
-                            {
-                                recess_boxes.push((*open_min, *open_max));
-                                continue;
-                            }
-                        }
-                    }
                     let (final_min, final_max) = if let Some(dir) = extrusion_dir {
                         self.extend_opening_along_direction(
                             *open_min, *open_max, wall_min, wall_max, *dir,
@@ -1582,7 +1355,6 @@ impl GeometryRouter {
                 }
             }
         }
-
 
         if !rect_boxes.is_empty() {
             let (new_result, processed) =
@@ -1614,38 +1386,6 @@ impl GeometryRouter {
                     &wall_max,
                     rect_dirs[i].as_ref(),
                 );
-            }
-        }
-
-        // Recess openings: real boolean subtraction with a box cutter (issue
-        // #977). Unlike the analytic clip this only emits cut faces where the
-        // host actually has material, so notches on channel/beam sections don't
-        // get reveal walls fabricated in empty space.
-        //
-        // The cutter is grown OUTWARD by a small pad on every face that sits
-        // flush with (or outside) a host face, so the cut penetrates fully
-        // through the surface instead of stopping a hair short on the coplanar
-        // boundary (the residual under-cut). Interior faces (the actual new cut
-        // surfaces / pocket floor) are left untouched, so the recess keeps its
-        // authored depth and nothing is over-cut.
-        if !recess_boxes.is_empty() {
-            let host_extent = (wall_max.x - wall_min.x)
-                .max(wall_max.y - wall_min.y)
-                .max(wall_max.z - wall_min.z);
-            let pad = (host_extent * 1e-4).max(1e-4);
-            for (mn, mx) in &recess_boxes {
-                if csg_operation_count >= MAX_CSG_OPERATIONS {
-                    break;
-                }
-                let (pmin, pmax) = pad_cutter_at_host_faces(*mn, *mx, wall_min, wall_max, pad);
-                let cutter = make_box_mesh(pmin, pmax);
-                let tri_before = result.triangle_count();
-                if let Ok(cut) = clipper.subtract_mesh(&result, &cutter) {
-                    if !cut.is_empty() && cut.triangle_count() != tri_before {
-                        result = cut;
-                    }
-                }
-                csg_operation_count += 1;
             }
         }
 
@@ -1901,7 +1641,7 @@ impl GeometryRouter {
         let mut voided = SubMeshCollection::new();
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;
-            let voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id, element.ifc_type);
+            let voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
             if !voided_mesh.is_empty() {
                 voided
                     .sub_meshes
@@ -2043,6 +1783,31 @@ impl GeometryRouter {
                             .into_iter()
                             .zip(item_meshes.into_iter())
                         {
+                            // Tekla steel members are profile sections (channels,
+                            // tubes, I-beams, gusset plates), usually tilted in
+                            // world. The analytic AABB / diagonal clip mishandles
+                            // them: a tilted opening's world AABB is far larger
+                            // than the authored cutter (→ over-cut), and reveal
+                            // walls get fabricated in the open profile. Cut every
+                            // opening on such a host with its REAL mesh via the
+                            // boolean path, so the cut matches the authored shape
+                            // and the kernel's perturbation clears coplanarity
+                            // with the profile's inner faces / fillets (issue #977).
+                            if is_profile_section_host(host.ifc_type) {
+                                bump(
+                                    self,
+                                    ClassificationKind::NonRectangular,
+                                    OpeningKindDiag::NonRectangular,
+                                    false,
+                                );
+                                openings.push(OpeningType::NonRectangular(
+                                    item_mesh,
+                                    min_pt,
+                                    max_pt,
+                                    extrusion_dir,
+                                ));
+                                continue;
+                            }
                             let frame = infer_opening_frame(&item_mesh, extrusion_dir.as_ref());
                             let direction_is_diagonal = extrusion_dir
                                 .map(|d| !is_axis_aligned_direction(&d))
@@ -3189,51 +2954,20 @@ mod reveal_tests {
     use super::*;
     use crate::Mesh;
 
-    // ── Issue #977 opening-routing helpers ────────────────────────────────
+    // ── Issue #977 opening routing ────────────────────────────────────────
 
     #[test]
-    fn through_opening_stays_analytic() {
-        // Wall 4 × 0.2 × 3 m; opening spans the 0.2 m thickness (door/window).
-        let wall_min = Point3::new(0.0, 0.0, 0.0);
-        let wall_max = Point3::new(4.0, 0.2, 3.0);
-        let open_min = Point3::new(1.0, -0.05, 1.0);
-        let open_max = Point3::new(2.0, 0.25, 2.5);
-        let dir = Vector3::new(0.0, 1.0, 0.0);
-        assert!(
-            !opening_needs_boolean(open_min, open_max, wall_min, wall_max, dir),
-            "a through opening must stay on the analytic path"
-        );
-    }
-
-    #[test]
-    fn flush_recess_needs_boolean() {
-        // 12 m member; shallow 50 mm recess flush with the +x end.
-        let wall_min = Point3::new(0.0, 0.0, 0.0);
-        let wall_max = Point3::new(12.0, 0.3, 0.3);
-        let open_min = Point3::new(11.95, 0.0, 0.2);
-        let open_max = Point3::new(12.0, 0.3, 0.3);
-        let dir = Vector3::new(1.0, 0.0, 0.0);
-        assert!(
-            opening_needs_boolean(open_min, open_max, wall_min, wall_max, dir),
-            "a shallow flush recess must take the real-boolean path"
-        );
-    }
-
-    #[test]
-    fn shallow_slot_needs_boolean() {
-        // Thin slot near the +z surface of a Ø0.12 m member — must not take the
-        // analytic diagonal path (which would fabricate a bloated reveal box).
-        let wall_min = Point3::new(0.0, 0.0, 0.0);
-        let wall_max = Point3::new(2.0, 0.12, 0.12);
-        let depth = Vector3::new(0.0, 0.0, 1.0);
-        let slot = make_box_mesh(
-            Point3::new(0.9, 0.0, 0.10),
-            Point3::new(1.1, 0.12, 0.13),
-        );
-        assert!(
-            diagonal_opening_needs_boolean(&slot, wall_min, wall_max, depth),
-            "a shallow slot must take the real-boolean path"
-        );
+    fn profile_section_hosts_route_to_real_boolean() {
+        // Steel members are profile sections → openings cut with their real
+        // mesh (boolean), not the analytic AABB/diagonal clip.
+        assert!(is_profile_section_host(IfcType::IfcBeam));
+        assert!(is_profile_section_host(IfcType::IfcColumn));
+        assert!(is_profile_section_host(IfcType::IfcMember));
+        assert!(is_profile_section_host(IfcType::IfcPlate));
+        // Solid plate hosts keep the analytic (deterministic) path.
+        assert!(!is_profile_section_host(IfcType::IfcSlab));
+        assert!(!is_profile_section_host(IfcType::IfcWall));
+        assert!(!is_profile_section_host(IfcType::IfcRoof));
     }
 
     /// Build a simple box mesh (12 triangles) for testing.

@@ -25,16 +25,22 @@ fn snap(c: f64) -> f64 {
 }
 
 /// `Mesh` → the kernel's triangle list (f32 → f64, snapped to the reconcile
-/// grid). Panic-free: an out-of-range index drops that triangle rather than
-/// indexing past the end (one of the enumerated kernel panic sites).
+/// grid). Panic-free: an out-of-range index OR a non-finite (NaN/Inf) coord drops
+/// that triangle rather than indexing past the end or crashing
+/// `BigRational::from_float` deep in the predicates (the two empirically-found
+/// reachable panic sites — see examples/csg_robustness.rs).
 pub fn mesh_to_tris(m: &Mesh) -> Vec<Tri> {
     let vertex = |i: u32| -> Option<[f64; 3]> {
         let b = (i as usize) * 3;
-        Some([
-            snap(*m.positions.get(b)? as f64),
-            snap(*m.positions.get(b + 1)? as f64),
-            snap(*m.positions.get(b + 2)? as f64),
-        ])
+        let c = [
+            *m.positions.get(b)? as f64,
+            *m.positions.get(b + 1)? as f64,
+            *m.positions.get(b + 2)? as f64,
+        ];
+        if !c.iter().all(|v| v.is_finite()) {
+            return None;
+        }
+        Some([snap(c[0]), snap(c[1]), snap(c[2])])
     };
     m.indices
         .chunks_exact(3)

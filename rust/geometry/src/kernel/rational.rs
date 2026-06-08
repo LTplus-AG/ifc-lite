@@ -1,0 +1,127 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Exact (BigRational) predicate tier — the correctness ground truth and the
+//! cascade's last-resort exact fallback. f64 coordinates are exactly
+//! representable as `BigRational`, so every sign here is mathematically exact.
+
+use super::{DropAxis, Lpi, Sign};
+use num_rational::BigRational;
+use num_traits::Signed;
+
+#[inline]
+fn r(x: f64) -> BigRational {
+    BigRational::from_float(x).expect("kernel: non-finite coordinate reached the exact predicate")
+}
+
+#[inline]
+fn sign_of(x: &BigRational) -> Sign {
+    if x.is_negative() {
+        Sign::Negative
+    } else if x.is_positive() {
+        Sign::Positive
+    } else {
+        Sign::Zero
+    }
+}
+
+type V3 = [BigRational; 3];
+
+#[inline]
+fn vec(p: [f64; 3]) -> V3 {
+    [r(p[0]), r(p[1]), r(p[2])]
+}
+
+#[inline]
+fn sub3(a: &V3, b: &V3) -> V3 {
+    [&a[0] - &b[0], &a[1] - &b[1], &a[2] - &b[2]]
+}
+
+/// det of the 3×3 matrix with rows u, v, w  (= u · (v × w)).
+fn det3(u: &V3, v: &V3, w: &V3) -> BigRational {
+    &u[0] * (&v[1] * &w[2] - &v[2] * &w[1])
+        + &u[1] * (&v[2] * &w[0] - &v[0] * &w[2])
+        + &u[2] * (&v[0] * &w[1] - &v[1] * &w[0])
+}
+
+/// Exact explicit orient3d — Shewchuk's sign convention (matches
+/// `geometry_predicates::orient3d`).
+pub fn orient3d_exact(a: [f64; 3], b: [f64; 3], c: [f64; 3], d: [f64; 3]) -> Sign {
+    let (a, b, c, d) = (vec(a), vec(b), vec(c), vec(d));
+    let ad = sub3(&a, &d);
+    let bd = sub3(&b, &d);
+    let cd = sub3(&c, &d);
+    sign_of(&det3(&ad, &bd, &cd))
+}
+
+/// Exact orient2d on the two axes remaining after dropping `axis`.
+pub fn orient2d_exact(a: [f64; 3], b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Sign {
+    let (i, j) = match axis {
+        DropAxis::X => (1, 2),
+        DropAxis::Y => (0, 2),
+        DropAxis::Z => (0, 1),
+    };
+    let det = (r(a[i]) - r(c[i])) * (r(b[j]) - r(c[j])) - (r(a[j]) - r(c[j])) * (r(b[i]) - r(c[i]));
+    sign_of(&det)
+}
+
+/// LPI λ-construction (exact): the implicit point is `(λx/d, λy/d, λz/d)`.
+/// Cite: Attene "Indirect Predicates…" 2020 §4.2 — `qp=Q−P; sr=S−R; tr=T−R;
+/// pr=P−R; d=det3(qp,sr,tr); n=det3(pr,sr,tr); λ = d·P + n·(Q−P)`.
+pub fn lpi_lambda(l: &Lpi) -> (V3, BigRational) {
+    let p = vec(l.p);
+    let q = vec(l.q);
+    let rr = vec(l.r);
+    let s = vec(l.s);
+    let t = vec(l.t);
+    let qp = sub3(&q, &p);
+    let sr = sub3(&s, &rr);
+    let tr = sub3(&t, &rr);
+    let pr = sub3(&p, &rr);
+    let d = det3(&qp, &sr, &tr);
+    let n = det3(&pr, &sr, &tr);
+    let lx = &d * &p[0] + &n * &qp[0];
+    let ly = &d * &p[1] + &n * &qp[1];
+    let lz = &d * &p[2] + &n * &qp[2];
+    ([lx, ly, lz], d)
+}
+
+/// The materialised LPI point `λ/d` (exact). Used by the oracle test that
+/// independently checks the homogenised form in [`lpi_orient3d`].
+pub fn lpi_point(l: &Lpi) -> V3 {
+    let (lambda, d) = lpi_lambda(l);
+    [&lambda[0] / &d, &lambda[1] / &d, &lambda[2] / &d]
+}
+
+/// Exact indirect orient3d for the 1-implicit / LPI-first-arg configuration:
+/// `orient3d(p1=LPI, p2, p3, p4)` with `p2,p3,p4` explicit.
+///
+/// `orient3d = (1/d)·Λ′` where `Λ′ = det3( (λ − d·p4), (p2−p4), (p3−p4) )`.
+/// Hence `sign = assemble_sign(sign(Λ′), &[sign(d)])` — the flip on `sign(d)`
+/// (odd-multiplicity denominator) is mandatory; omitting it inverts inside/
+/// outside whenever the plane winding makes `d<0`.
+pub fn lpi_orient3d(l: &Lpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Sign {
+    let (lambda, d) = lpi_lambda(l);
+    let p4r = vec(p4);
+    let row1 = [
+        &lambda[0] - &d * &p4r[0],
+        &lambda[1] - &d * &p4r[1],
+        &lambda[2] - &d * &p4r[2],
+    ];
+    let row2 = sub3(&vec(p2), &p4r);
+    let row3 = sub3(&vec(p3), &p4r);
+    let lambda_det = det3(&row1, &row2, &row3);
+    super::assemble_sign(sign_of(&lambda_det), &[sign_of(&d)])
+}
+
+/// Oracle cross-check: orient3d with the first argument already materialised
+/// (the exact LPI point). Independent of the homogenisation above — the two
+/// MUST agree, which is what proves the `Λ′`/flip construction is correct.
+pub fn orient3d_exact_pt(a: &V3, b: [f64; 3], c: [f64; 3], d: [f64; 3]) -> Sign {
+    let (b, c, d) = (vec(b), vec(c), vec(d));
+    let ad = sub3(a, &d);
+    let bd = sub3(&b, &d);
+    let cd = sub3(&c, &d);
+    sign_of(&det3(&ad, &bd, &cd))
+}

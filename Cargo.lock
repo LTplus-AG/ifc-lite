@@ -1157,6 +1157,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "geometry-predicates"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dba84198cf199c11b83f1cb9243eaeb70dc50b719d2835ebf34bf2481bca010"
+
+[[package]]
 name = "getrandom"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1461,11 +1467,15 @@ version = "3.1.0"
 dependencies = [
  "approx",
  "earcutr",
+ "geometry-predicates",
  "i_overlay",
  "ifc-lite-core",
  "jpeg-decoder",
  "manifold-csg",
  "nalgebra",
+ "num-bigint",
+ "num-rational",
+ "num-traits",
  "png",
  "rayon",
  "robust",

@@ -83,6 +83,9 @@ pub mod geom_hash;
 #[cfg(feature = "manifold-csg")]
 mod manifold_kernel;
 pub mod extrusion;
+/// Pure-Rust exact mesh-arrangement CSG kernel (work in progress; see
+/// docs/architecture/pure-rust-csg-kernel.md). M1 = the exact predicate layer.
+pub mod kernel;
 pub mod material_layer_index;
 pub mod mesh;
 pub mod processors;

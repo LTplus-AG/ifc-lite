@@ -225,3 +225,20 @@ pub fn orient2d_exact_pt(a: &V3, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Si
     let det = (&a[i] - &cr[i]) * (&br[j] - &cr[j]) - (&a[j] - &cr[j]) * (&br[i] - &cr[i]);
     sign_of(&det)
 }
+
+/// Exact sign of `(proj_u(l1) − proj_u(l2))` where `proj_u(X)=X·u` — i.e. order
+/// two LPI points along direction `u`. `proj = (λ·u)/d`, so the sign is
+/// `assemble_sign(sign((λ1·u)·d2 − (λ2·u)·d1), &[sign(d1), sign(d2)])`.
+///
+/// `u` need only be APPROXIMATELY along the points' shared line L: for points on
+/// L, `proj_u(p1)−proj_u(p2) = (s1−s2)(L_dir·u)`, so as long as `L_dir·u > 0` the
+/// exact sign equals the true 1D order along L regardless of `u`'s rounding.
+pub fn lpi_compare_along(l1: &Lpi, l2: &Lpi, u: [f64; 3]) -> Sign {
+    let (lam1, d1) = lpi_lambda(l1);
+    let (lam2, d2) = lpi_lambda(l2);
+    let ur = vec(u);
+    let dot1 = &lam1[0] * &ur[0] + &lam1[1] * &ur[1] + &lam1[2] * &ur[2];
+    let dot2 = &lam2[0] * &ur[0] + &lam2[1] * &ur[1] + &lam2[2] * &ur[2];
+    let num = &dot1 * &d2 - &dot2 * &d1;
+    super::assemble_sign(sign_of(&num), &[sign_of(&d1), sign_of(&d2)])
+}

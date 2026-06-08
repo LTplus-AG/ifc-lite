@@ -90,6 +90,69 @@ pub fn planes_mutually_cross(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
         && matches!(classify_vs_plane(t2, t1), PlaneCross::Crosses { .. })
 }
 
+#[inline]
+fn sub_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+#[inline]
+fn cross_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+}
+#[inline]
+fn plane_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
+    cross_f64(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]))
+}
+/// Approximate direction of the crossing line L = t1.plane ∩ t2.plane (n1 × n2).
+/// Only the direction matters — the exact ordering predicate tolerates rounding.
+fn line_direction(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> [f64; 3] {
+    cross_f64(plane_normal(t1), plane_normal(t2))
+}
+
+/// Result of an exact triangle–triangle intersection test.
+#[derive(Clone, Debug)]
+pub enum TriTri {
+    /// No intersection.
+    None,
+    /// The triangles are coplanar (a 2D-overlap case — a later increment).
+    Coplanar,
+    /// A vertex/edge-on-plane contact degeneracy — a later increment.
+    Degenerate,
+    /// The proper intersection segment; endpoints are LPI points on line L.
+    Segment([Lpi; 2]),
+}
+
+#[inline]
+fn cmp_along(a: &Lpi, b: &Lpi, u: [f64; 3]) -> Sign {
+    super::rational::lpi_compare_along(a, b, u)
+}
+
+/// Exact triangle–triangle intersection. For the proper-crossing case the
+/// result is the overlap of each triangle's crossing interval along line L:
+/// `[max(lo1,lo2), min(hi1,hi2)]`, or `None` if the intervals are disjoint.
+pub fn tri_tri_intersection(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> TriTri {
+    use PlaneCross::{Coplanar, Crosses, Disjoint, Touches};
+    let (apex1, apex2) = match (classify_vs_plane(t1, t2), classify_vs_plane(t2, t1)) {
+        (Coplanar, _) | (_, Coplanar) => return TriTri::Coplanar,
+        (Touches, _) | (_, Touches) => return TriTri::Degenerate,
+        (Disjoint, _) | (_, Disjoint) => return TriTri::None,
+        (Crosses { apex: a1 }, Crosses { apex: a2 }) => (a1, a2),
+    };
+    let [i1a, i1b] = crossing_lpis(t1, apex1, t2); // t1's interval (points on t2's plane)
+    let [i2a, i2b] = crossing_lpis(t2, apex2, t1); // t2's interval (points on t1's plane)
+    let u = line_direction(t1, t2);
+    let order = |a: Lpi, b: Lpi| if cmp_along(&a, &b, u) == Sign::Positive { (b, a) } else { (a, b) };
+    let (lo1, hi1) = order(i1a, i1b);
+    let (lo2, hi2) = order(i2a, i2b);
+    // overlap = [max(lo1,lo2), min(hi1,hi2)]
+    let lo = if cmp_along(&lo1, &lo2, u) == Sign::Positive { lo1 } else { lo2 };
+    let hi = if cmp_along(&hi1, &hi2, u) == Sign::Negative { hi1 } else { hi2 };
+    if cmp_along(&lo, &hi, u) == Sign::Positive {
+        TriTri::None // intervals disjoint along L
+    } else {
+        TriTri::Segment([lo, hi])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +221,46 @@ mod tests {
         } else {
             panic!("expected t1 to cross t2's plane");
         }
+    }
+
+    #[test]
+    fn proper_crossing_yields_segment_on_both_planes() {
+        let t1 = [[-2., 0., -1.], [2., 0., -1.], [0., 0., 2.]]; // plane y=0
+        let t2 = [[1., -2., 1.], [1., 2., 1.], [1., 0.5, -3.]]; // plane x=1
+        match tri_tri_intersection(&t1, &t2) {
+            TriTri::Segment([a, b]) => {
+                // Every segment endpoint lies on BOTH triangles' planes (on L).
+                for ep in [a, b] {
+                    assert_eq!(
+                        orient3d(&ImplicitPoint::Lpi(ep), &e(t1[0]), &e(t1[1]), &e(t1[2])),
+                        Sign::Zero,
+                        "segment endpoint off t1's plane"
+                    );
+                    assert_eq!(
+                        orient3d(&ImplicitPoint::Lpi(ep), &e(t2[0]), &e(t2[1]), &e(t2[2])),
+                        Sign::Zero,
+                        "segment endpoint off t2's plane"
+                    );
+                }
+                // The two endpoints are distinct (a non-degenerate segment).
+                assert_ne!(
+                    super::cmp_along(&a, &b, super::line_direction(&t1, &t2)),
+                    Sign::Zero,
+                    "segment collapsed to a point"
+                );
+            }
+            other => panic!("expected a segment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn planes_cross_but_intervals_disjoint_is_none() {
+        let t1 = [[-2., 0., -1.], [2., 0., -1.], [0., 0., 2.]]; // y=0, crosses x=1 at z∈[-1,0.5]
+        let t2 = [[1., -2., 5.], [1., 2., 5.], [1., 0.5, 9.]]; // x=1, crosses y=0 at z∈[5,8.2]
+        assert!(planes_mutually_cross(&t1, &t2)); // both planes DO cross
+        assert!(
+            matches!(tri_tri_intersection(&t1, &t2), TriTri::None),
+            "disjoint intervals along L should give no intersection"
+        );
     }
 }

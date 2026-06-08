@@ -250,6 +250,60 @@ pub fn triangulate_points(input: &RetriInput, interner: &mut Interner) -> Option
     Some(mesh)
 }
 
+/// Is `p` strictly OUTSIDE the closed triangle `(a,b,c)` (oriented `w0`)? — true
+/// iff some edge has `p` on its far (opposite-`w0`) side. Used by the ear test:
+/// an ear is valid only when every other vertex is strictly outside (a vertex on
+/// the ear's boundary blocks it, else clipping leaves a degenerate sliver).
+fn strictly_outside(it: &Interner, a: Vid, b: Vid, c: Vid, p: Vid, axis: DropAxis, w0: Sign) -> bool {
+    let g = |v: Vid| it.get(v);
+    let opp = w0.flip();
+    orient2d_any(g(a), g(b), g(p), axis) == opp
+        || orient2d_any(g(b), g(c), g(p), axis) == opp
+        || orient2d_any(g(c), g(a), g(p), axis) == opp
+}
+
+/// PHASE E — triangulate a simple polygon `ring` (oriented `w0`) by deterministic
+/// ear clipping. An ear is a strictly-convex corner whose triangle contains no
+/// other ring vertex; among all ears we always clip the one with the
+/// lexicographically-least APEX, so the output is a pure function of the ring
+/// (independent of where the ring starts). The two-ears theorem guarantees a
+/// simple polygon always has an ear → termination.
+pub fn earcut(it: &Interner, ring: &[Vid], axis: DropAxis, w0: Sign) -> Vec<SubTri> {
+    let mut poly: Vec<Vid> = ring.to_vec();
+    let mut out = Vec::new();
+    while poly.len() > 3 {
+        let n = poly.len();
+        let mut best: Option<usize> = None;
+        for i in 0..n {
+            let a = poly[(i + n - 1) % n];
+            let b = poly[i];
+            let c = poly[(i + 1) % n];
+            // strictly convex under w0
+            if orient2d_any(it.get(a), it.get(b), it.get(c), axis) != w0 {
+                continue;
+            }
+            // empty: every other ring vertex is strictly outside the closed ear
+            let empty = poly
+                .iter()
+                .all(|&v| v == a || v == b || v == c || strictly_outside(it, a, b, c, v, axis, w0));
+            if !empty {
+                continue;
+            }
+            best = Some(match best {
+                None => i,
+                Some(j) if cmp_lex(it.get(b), it.get(poly[j])) == Sign::Negative => i,
+                Some(j) => j,
+            });
+        }
+        let i = best.expect("earcut: no ear found — pocket is not a simple polygon");
+        let n = poly.len();
+        out.push([poly[(i + n - 1) % n], poly[i], poly[(i + 1) % n]]);
+        poly.remove(i);
+    }
+    out.push([poly[0], poly[1], poly[2]]);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::rational::point_of;
@@ -394,5 +448,56 @@ mod tests {
             topo(vec![c2, c1]),
             "Phase C topology depends on input order"
         );
+    }
+
+    #[test]
+    fn phase_e_earcut_covers_a_concave_polygon_deterministically() {
+        use super::super::rational::tri_area2;
+        use num_rational::BigRational;
+        use num_traits::Zero;
+        // concave polygon (reflex at (2,1.5)) in z=0, wound CCW
+        let pts = [[0., 0., 0.], [4., 0., 0.], [4., 3., 0.], [2., 1.5, 0.], [0., 3., 0.]];
+        let mut it = Interner::new();
+        let ring: Vec<Vid> = pts.iter().map(|&p| it.intern(e(p))).collect();
+        let axis = DropAxis::Z;
+        let pt = |v: Vid| point_of(it.get(v));
+        let origin = point_of(&e([0., 0., 0.]));
+        // polygon 2-area (shoelace) + orientation
+        let mut poly2a = BigRational::zero();
+        for i in 0..ring.len() {
+            let j = (i + 1) % ring.len();
+            poly2a += tri_area2(&pt(ring[i]), &pt(ring[j]), &origin, axis);
+        }
+        let w0 = if poly2a > BigRational::zero() { Sign::Positive } else { Sign::Negative };
+        let tris = earcut(&it, &ring, axis, w0);
+        assert_eq!(tris.len(), ring.len() - 2, "wrong triangle count");
+        for &tri in &tris {
+            assert_eq!(
+                orient2d_any(it.get(tri[0]), it.get(tri[1]), it.get(tri[2]), axis),
+                w0,
+                "earcut triangle not oriented w0"
+            );
+        }
+        let area_sum = tris
+            .iter()
+            .fold(BigRational::zero(), |acc, &t| acc + tri_area2(&pt(t[0]), &pt(t[1]), &pt(t[2]), axis));
+        assert_eq!(area_sum, poly2a, "earcut does not exactly cover the polygon");
+        // determinism: rotating the ring's start vertex yields the SAME triangle set
+        let mut rotated = ring.clone();
+        rotated.rotate_left(2);
+        let tris2 = earcut(&it, &rotated, axis, w0);
+        let canon = |ts: &[SubTri]| {
+            let mut v: Vec<_> = ts
+                .iter()
+                .map(|&t| {
+                    let mut s = [pt(t[0]), pt(t[1]), pt(t[2])];
+                    s.sort();
+                    s
+                })
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(canon(&tris), canon(&tris2), "earcut depends on ring start vertex");
     }
 }

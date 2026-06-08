@@ -49,9 +49,11 @@ Cite: Attene 2020 §4.2.
 
 > REFUTATION-FIX (L1-flaw #1, CRITICAL — the design's own pseudocode encoded the bug): the blanket "XOR parity over all negative denominators" rule is WRONG because it ignores per-term denominator MULTIPLICITY. Replace it with a per-(predicate, configuration) sign derivation, encoded as a const table and verified by the G3 oracle. The denominator polynomial `D′` and the flip rule for each instance (Attene 2020 §4.3–4.6, extracted verbatim):
 
-| predicate | implicit args | `D′` | flip rule |
+> ⚠️ CONVENTION CORRECTION (M2.3 finding): the rows below quote Attene's RAW-Cramer-λ `D′`. The SHIPPED kernel pre-scales λ by one factor of `d` (`rational::lpi_lambda`: `λ = d·P − n·(Q−P)`), so the *projected* numerator `Λ′₂` is degree-1 (ODD) in `d`. The CODE is ground truth and is verified by `indirect_orient2d_matches_materialised_point` + the orient2d plane-winding-invariance test. Do NOT copy Attene's `D′` rows for the pre-scaled λ without dividing out the pre-scale; derive the flip from the materialised-point oracle. Corrected `orient2d 1I` row below.
+
+| predicate | implicit args | `D′` (shipped, pre-scaled λ) | flip rule |
 |---|---|---|---|
-| orient2d | 1I | `d²` (square) | **NO flip** (denominator squared → dropped) |
+| orient2d | 1I | `d` (odd) | **flip on `sign(d)`** (NOT `d²`/no-flip — that is Attene's raw-λ convention) |
 | orient2d | 3I | `d1²·d2·d3` | flip on `sign(d2)·sign(d3)` only (d1 squared) |
 | orient3d | 1I (**LPI — the hot case**) | `d` (odd) | **MUST flip on `sign(d)`** |
 | orient3d | 3I (TPI) | `(d1·d2·d3·d4)²` (square) | **NO flip** |
@@ -300,7 +302,7 @@ fn next_down(x:f64)->f64;
 
 ### The per-configuration sign table (CONST, verified by G3)
 ```
-orient2d, 1 implicit (1I): D' = d^2        -> NO flip
+orient2d, 1 implicit (1I): D' = d (odd)    -> flip on sign(d)   [SHIPPED pre-scaled-λ convention; code is ground truth, NOT Attene's raw-λ d^2/no-flip]
 orient2d, 3 implicit (3I): D' = d1^2 d2 d3 -> flip on sign(d2)*sign(d3)
 orient3d, 1 implicit (1I, LPI): D' = d     -> flip on sign(d)            <-- the hot case
 orient3d, 3 implicit (3I, TPI): D' = (d1 d2 d3 d4)^2 -> NO flip
@@ -450,3 +452,267 @@ Implication for the perf gate: the `pre-arrangement O(1) operand-complexity budg
 
 ### M0 verdict
 No-regression is now PLAUSIBLE, not proven: the 85% small-operand bulk is cheap in both kernels; the heavy tail is bounded (worst 3636 tris ≈ 5 ms Manifold) and rare (5.4%). The two open perf items: (1) measure the dense-intersection baseline; (2) tune the pre-arrangement operand-complexity budget against these numbers (the server's BSP "0 ms but wrong" on heavy ops is not a baseline to preserve — correctness wins, budget caps the cost). Full no-regression proof lands at M7 when the kernel exists and runs the same harness.
+
+
+---
+
+# M2.3 — In-plane constrained re-triangulation (hardened design)
+
+> From the M2.3 design-hardening pass (9 agents). New predicates + 9 sub-increments (M2.3.0–M2.3.8); the predicate layer (2I/3I orient2d + cmp_lex + G2 manifest) gates BEFORE any topology output.
+
+# M2.3 — In-Plane Constrained Re-Triangulation: Implementation-Ready Spec
+
+**Module:** `rust/geometry/src/kernel/retriangulate.rs` (new). **Milestone:** M2/L2→L3 (design doc `docs/architecture/pure-rust-csg-kernel.md:390-391`, `:99-103`). **Input:** per intersected input triangle `T`, the in-plane intersection sub-segments produced by `tritri::tri_tri_intersection` (`TriTri::Segment([Lpi;2])`, `tritri.rs:120-121`) plus the points those segments and `T`'s own corners contribute. **Output:** a conforming, intersection-free fan of sub-triangles over `T`, vertices referenced **symbolically** (never a float coordinate), **topology invariant to insertion order and byte-identical across x86_64/aarch64/wasm**. This is the conforming-mesh step L3 glues into one complex and L4 winding-classifies.
+
+Algorithm = **Cherchi/Livesu/Scateni/Attene 2020** *Fast and Robust Mesh Arrangements* (SIGGRAPH Asia 2020) §5.2–5.3 per-triangle refinement (point-split then segment-insert), pocket fill via **Livesu/Cherchi/Scateni/Attene** *Deterministic Linear Time Constrained Triangulation using Simplified Earcut* (IEEE TVCG 28(12) 2022, arXiv:2009.04294) §4 Alg.1 / §5.1–5.4. It is **not a Delaunay CDT**: only `orient2d` is used, **no incircle/insphere** (Simplified Earcut §6: triangulations "do not necessarily have the Delaunay property"). **Order-independence + cross-platform determinism is an ifc-lite-engineered layer on top — the papers guarantee linear *time* only, not output uniqueness** (Simplified Earcut §4 "extract one ear from E" is unordered; the reference inserts in raw input order with LIFO stacks). Every load-bearing addition below exists to discharge that gap.
+
+---
+
+## 0. Decisions where the facets/refutations conflict — resolved
+
+**D1. BOTH doc sign-tables are WRONG for `orient2d 1I`; the shipped kernel is RIGHT — and the *reason* must be recorded or it gets re-broken.** Doc `pure-rust-csg-kernel.md:54` (primary markdown table) AND `:303` (code-block table) both state `orient2d 1I: D'=d² → NO flip`. The shipped code `rational.rs:199-207` (`indirect_orient2d`) and its interval twin `interval.rs:209-225` use `den_signs=[sign(d)]` — a **d¹ ODD flip**. The kernel is geometrically correct, verified two independent ways: (i) the shipped oracle test `indirect_orient2d_matches_materialised_point` (`predicates.rs:318-338`) passes — homogenised orient2d == direct orient2d on the exact materialised λ/d point for every axis; (ii) the plane-rewind invariance: rewinding the defining plane flips `sign(d)` while leaving the materialised point + 2D query geometrically identical, so the TRUE sign is unchanged — the kernel's d¹-flip preserves it, the doc's d²-no-flip inverts it. **Root cause:** the kernel's λ is **pre-scaled by one factor of d** (`rational.rs:96`: `lx = d·P − n·(Q−P)`), so the projected numerator `Λ'₂` is degree-1 (odd) in d. Attene's `D'=d²` is correct only for his **raw-Cramer-λ** convention (Attene 2020 §4.3), which the kernel does *not* use. **Actions:** (a) correct **both** doc rows `:54` and `:303` to `orient2d 1I: D'=d (odd) → flip on sign(d)`; (b) add the inline note: *"shipped code (`rational.rs:206`) is ground truth (pre-scales λ by d — NON-Attene convention); do NOT copy Attene's published `D'` rows for 2I/3I without dividing out the pre-scale — derive the flip from the verified joint-homogeneity property below; regression-guarded by `indirect_orient2d_matches_materialised_point` (`predicates.rs:318`)"*; (c) **do NOT change the code**; (d) add the missing **orient2d** plane-winding-invariance regression test (orient3d has it at `predicates.rs:137,258`; orient2d does not). A future implementer following the doc table would invert point-location over every LPI/TPI vertex whose construction gives `d<0` (≈half of host faces) — **risk #1**.
+
+**D2. Canonical pre-sort + min-VID ear tie-break, NOT raw LIFO.** The reference is order-sensitive (verified: arXiv:2009.04294 §4–5). Adopt: (a) a global symbolic VID per arrangement vertex (D3); (b) point insertion in **lex-rank** order; (c) segments processed in `(min-rank, max-rank)` order; (d) the otherwise-unspecified "extract one ear" pinned to **least apex lex-rank**. This is the only way requirement (d) holds.
+
+**D3. VID is GLOBAL across the operand (per-arrangement), assigned + owned by L3 — NOT per-T.** Two adjacent input triangles share an intersection segment whose endpoints are the *same* LPI construction; for the two re-triangulated surfaces to *conform* (the entire point of M2.3) that point must get the **same** VID in both. M2.3 therefore consumes a **global** symbolic interner (L3-owned, read-mostly), and mints any new Phase-D TPI into it. Per-T-local VIDs would pick mismatched diagonals along the shared seam → non-conforming. Reject per-T-local.
+
+**D4. Vid (stable id) is DECOUPLED from lex-rank (computed by `cmp_lex`).** A facet caught the draft's contradiction ("Vid IS the lex rank" + "intern mints new mid-algorithm Vids"). Inserting a new TPI mid-algorithm (Phase D) would shift every later rank if Vid==rank, breaking the "plain integer sort" shortcut. **Resolution:** `Vid(u32)` = stable insertion-order id (append-only). **Lex-rank** is a separate `Vid→u32` index recomputed (or incrementally maintained) by `cmp_lex` at sort time. Phase B sorts points **by `cmp_lex`** (or by a current rank snapshot), **not** by raw Vid arithmetic. The interner's dedup search is a `cmp_lex`-ordered structure (a sorted `Vec<Vid>` rank-index with binary-search-insert, or a `BTreeMap` keyed by a `cmp_lex`-consistent comparator). This keeps Vids stable across Phase-D TPI insertions while preserving a total exact order.
+
+**D5. The refinement uses a flat current-leaves work-stack, not a refinement tree.** Census (doc `:425-430` referenced; ~85% of operands ≤128 tris, `k` small) → a flat walk + canonical pre-sort is simpler and in-budget; the O(log) refinement tree (Cherchi §5.2) is deferred unless a measured heavy-`k` fixture demands it. Point location stays exact regardless.
+
+**D6. Scope = the proper-crossing `TriTri::Segment` case + its induced seg×seg TPI only.** `TriTri::Coplanar` (Cherchi §5.4 auxiliary-tetrahedron) and `TriTri::Degenerate` (vertex/edge-on-plane) stay deferred exactly as in `tritri.rs:116-119`. The §5.4 path, when built, must pre-decompose its overlap polygon into boundary segments fed into the SAME `RetriInput` vectors. **The d=0 (coplanar/parallel cutter) seg×seg case routes to a deterministic `BoolFailure` drain (un-cut host) until §5.4 lands** — see D7 — never a panic, never a silent dropped constraint.
+
+**D7. The seg×seg TPI cutter-plane source is the reference `computeTriangleOfSegment` mechanism, NOT the two coplanar-with-T cutter triangles.** (Refutation high-flaw #1, decisive for conformity.) The **typical** in-plane crossing is two intersection segments *both lying in T's plane* crossing each other; their immediate supporting cutter triangles are frequently coplanar with T, so `det3(n_T, n_c1, n_c2)=0` and a naive TPI is degenerate. The reference does **not** defer here: `computeTriangleOfSegment()` searches the cutter mesh for an **alternative** incident triangle that is exact-`orient3d`-non-coplanar with T and uses THAT plane. M2.3 does the same: for each crossing constraint, derive its cutter plane from the **lexicographically-least** (by the cutter triangle's input-id, exact tie) cutter-incident triangle whose `orient3d` against T's three corners is non-`Zero`. Only if NO non-coplanar cutter triangle exists (a genuinely coplanar cutter) → route to the deferred §5.4 path / `BoolFailure` drain (D6). `mod.rs:87` `Tpi{planes:[[[f64;3];3];3]}` already represents an arbitrary 3-plane TPI → this is a spec gap, not a representation gap.
+
+---
+
+## 1. NEW kernel prerequisites this milestone REQUIRES (hard, gated before any topology output)
+
+M2.3 cannot run on real data with only the shipped 1I predicates. After the first point split a sub-triangle's own corners are implicit (LPI/TPI), so point-location and ear tests routinely have 2 or 3 implicit args; `predicates.rs:32,56` `unimplemented!()` every non-1I config. These are **hard prerequisites**, gated exactly like the shipped 1I configs: BigRational oracle (`predicates.rs:318`-style) + CW/CCW winding-invariance + interval fast tier + the G2 FNV cross-platform sign manifest (`manifest.rs:50,82`) — **all green on x86_64/aarch64/wasm BEFORE M2.3 emits any topology** (doc `:86`: indirect topology-determinism is UNVERIFIED until G2 runs on each config).
+
+### 1.1 Multi-implicit `orient2d` (2I, 3I) — verified sign rules
+
+Verified against the exact materialised oracle, including the discriminating `d<0` plane-rewind cases. All feed the **existing** `assemble_sign` (`mod.rs:108-123`) unchanged (its per-odd-negative-denominator parity flip already implements this):
+
+| config | `Λ'` numerator (drop axis → coords `i,j`) | `D'` | `den_signs` passed to `assemble_sign` |
+|---|---|---|---|
+| 1I `(I,E,E)` **SHIPPED** `rational.rs:199-206` | `(λ_i−d·c_i)(b_j−c_j) − (λ_j−d·c_j)(b_i−c_i)` | `d` | `[sign(d)]` |
+| 2I `(I,I,E)` **NEW** | `(λ1_i−d1·c_i)(λ2_j−d2·c_j) − (λ1_j−d1·c_j)(λ2_i−d2·c_i)` | `d1·d2` | `[sign(d1),sign(d2)]` |
+| 3I `(I,I,I)` **NEW** | `(d1·λ2_i−d2·λ1_i)(d1·λ3_j−d3·λ1_j) − (d1·λ2_j−d2·λ1_j)(d1·λ3_i−d3·λ1_i)` | `d1²·d2·d3` | `[sign(d2),sign(d3)]` (d1² squared → dropped) |
+
+The 3I form matches Attene 2020 §4.3 *algebraically*; under the kernel's pre-scaled-λ convention the 2I/3I **flip rules are convention-stable** because `assemble_sign` flips only on odd-multiplicity negative denominators, and the flip is invariant under joint ±rescaling of `(λ_i,d_i)` (the joint-homogeneity property — must be re-asserted as a test for 3I, since the kernel diverges from Attene's raw-λ at 1I). Each config dispatches over `{Lpi,Tpi}` for **every** implicit arg; λ/d come from `lpi_lambda`/`tpi_lambda` (`rational.rs:84,137`) regardless of origin — the homogenisation depends only on implicit-row count (`rational.rs:112-114`), so 2I/3I are **type-agnostic** over LPI/TPI mixtures (one code path, not 2³ hand-written variants). Add `interval::` 2I/3I analogues mirroring `interval::indirect_orient2d` (`interval.rs:209-225`) so the BigRational fire rate stays low on coincident building faces (the existing interval gate asserts >0.95/0.80 definite, `predicates.rs:211,296`). `orient3d` stays 0/1-implicit in this layer (only the in-plane 2D earcut runs here); 2I/3I/4I `orient3d` remain deferred — discharged by audit in §6.
+
+### 1.2 Full exact lexicographic comparator `cmp_lex(a,b) -> Sign` over `{Explicit,Lpi,Tpi}` — NEW
+
+`lpi_compare_along` (`rational.rs:236-244`) orders two **LPI** points along **one** direction. M2.3's canonical sort and interner-weld need a **total** order over mixed `{Explicit,Lpi,Tpi}` (mirrors Attene `genericPoint::lessThan` → `lessThanOnX→Y→Z`):
+
+```
+cmp_lex(a,b): r = cmp_axis(a,b,0); if r==Zero { r = cmp_axis(a,b,1) }; if r==Zero { r = cmp_axis(a,b,2) }; r
+```
+`cmp_axis(a,b,k)` = exact sign of `(a_k − b_k)`:
+- **E vs E:** `sign_of(a[k]−b[k])` on the raw f64 (exactly representable as BigRational, `rational.rs:14`).
+- **I vs E** (a=λ/d, explicit b): `assemble_sign(sign(λ_a[k] − d_a·b[k]), [sign(d_a)])`.
+- **I vs I:** `assemble_sign(sign(λ_a[k]·d_b − λ_b[k]·d_a), [sign(d_a), sign(d_b)])` — exactly `lpi_compare_along`'s shape (`rational.rs:242`) specialised to the axis unit vector `u=ê_k`, **extended to TPI** via `tpi_lambda`. With an axis-exact `u` this is the literal exact coordinate order (stronger than the approx-`u`/collinear precondition `lpi_compare_along` needs).
+
+`cmp_lex(a,b)==Zero` ⇔ the two points are exactly coincident → the interner's symbolic weld. **Strict total order:** axis tie-break exhausts all 3 coordinates; if all three are exactly equal the points ARE the same point (collapse to one Vid, never compared by float). `cmp_lex` gets the same interval-first cascade as `orient2d` + an `interval::cmp_axis`. **Obligation (refutation low-flaw #5 + #2):** a property test must prove `cmp_lex` is a strict total order over a mixed `{E,Lpi,Tpi}` sample — **antisymmetry, transitivity, and Zero⇔coincidence** — and that a TPI and an LPI built from **different** line/plane triples but at the **same physical point** intern to the **same Vid regardless of insertion order** (interner search-path independence). This is the **determinism keystone** and a hard G2 prerequisite, not a deferred fixture.
+
+---
+
+## 2. Rust types
+
+```rust
+// kernel/retriangulate.rs
+
+/// Stable symbolic identity of an arrangement vertex — NEVER a float coordinate.
+/// Append-only insertion-order id (decision D4). GLOBAL across the operand (D3)
+/// so a shared intersection point on two adjacent input triangles has ONE Vid.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct Vid(pub u32);
+
+/// A canonical sub-segment constraint, endpoints by Vid, normalized (lo<hi by
+/// LEX-RANK, not by raw Vid — D4). `constrained` half-edges are flagged on insert.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Constraint { pub lo: Vid, pub hi: Vid }   // lo,hi ordered by cmp_lex rank
+
+pub struct RetriInput<'a> {
+    pub tri: [Vid; 3],          // the 3 original-T corner Vids (already interned)
+    pub drop_axis: DropAxis,    // PHASE A result; passed for reuse by L3
+    pub w0: Sign,               // T's reference winding (PHASE A); every emitted sub-tri matches it
+    pub points: &'a [Vid],      // interior + edge inserted points, ALREADY interner-deduped
+    pub segments: &'a [Constraint],
+    pub interner: &'a mut Interner, // GLOBAL: Vid -> &ImplicitPoint; Phase D MINTS new TPI Vids
+    pub cutter_planes: &'a dyn Fn(Constraint) -> CutterPlaneSource, // D7: non-coplanar cutter tri lookup
+}
+
+pub struct RetriOutput {
+    /// Each sub-tri's 3 Vids in T's winding orientation w0 (NOT sorted — L4 needs
+    /// the orientation; the canonical SORTED form is produced only for hashing).
+    pub tris: Vec<[Vid; 3]>,
+    /// Set if Phase D hit a d=0 coplanar-cutter case (D6/D7): the host is emitted
+    /// un-cut and L3 records a deterministic BoolFailure for this triangle.
+    pub coplanar_cutter_deferred: bool,
+}
+
+/// Interner is owned by L3; M2.3 reads it and (Phase D only) appends TPI Vids.
+/// Identity is SYMBOLIC: intern-or-find by EXACT cmp_lex, never rounded coords.
+pub struct Interner {
+    pts: Vec<ImplicitPoint>,   // Vid == index (stable, append-only)
+    rank: Vec<Vid>,            // cmp_lex-sorted index for binary-search dedup (D4)
+}
+impl Interner {
+    pub fn get(&self, v: Vid) -> &ImplicitPoint { &self.pts[v.0 as usize] }
+    /// Returns the existing Vid on exact coincidence (cmp_lex==Zero), else a NEW Vid.
+    pub fn intern(&mut self, p: ImplicitPoint) -> Vid { /* binary search `rank` via cmp_lex */ }
+    pub fn lex_rank(&self, v: Vid) -> u32 { /* position of v in `rank` */ }
+}
+```
+
+Working mesh during refinement: an index-based tri-adjacency `Vec` over `Vid`; any edge→tri lookup uses a `BTreeMap`/sorted-`Vec` keyed on `(Vid,Vid)` (no `HashMap` reaching output, doc `:209`). Pocket ring: `Vec<Vid>` from the boundary walk + `prev[]`/`next[]`. Ear selection: a `BinaryHeap` keyed by apex **lex-rank** (min at top).
+
+---
+
+## 3. Algorithm — step by step
+
+### PHASE A — projection axis + reference winding (exact, once per T)
+`DropAxis` chosen by the **exact** nonzero-projected-area condition (doc `:62-63`, Attene §4.5 *correctness* condition, not the "largest normal magnitude" first guess):
+```
+for axis in [largest-|normal-component| first, then the remaining two in fixed X,Y,Z order]:
+    if orient2d(T0,T1,T2, axis) != Sign::Zero { return axis }   // EXACT, all-explicit
+```
+A non-degenerate `T` has ≥1 nonzero projection → pure function of input bytes, no ~45° platform divergence. Fix `w0 = orient2d(T0,T1,T2,axis)` as T's reference winding. **Every emitted sub-tri is oriented to match `w0`** so L4's normals are untouched by canonicalisation. (`orient3d` on T's three explicit corners may verify T's plane here — all-explicit, SHIPPED.)
+
+### PHASE B — canonicalise (the determinism gate; ifc-lite addition)
+1. Points are interner-deduped (`cmp_lex==Zero` ⇒ same Vid). Sort `points` ascending by **lex-rank** (`interner.lex_rank`) — O(k log k), the only superlinear step.
+2. Normalise each segment to `Constraint{lo,hi}` with `lo<hi` **by lex-rank**; dedupe into a `BTreeSet<Constraint>` (key = the rank pair); iterate in `(lo-rank,hi-rank)` order. Replaces the reference LIFO `segment_list`.
+
+After Phase B, insertion is a pure function of the input point/segment **set**.
+
+### PHASE C — point insertion (Cherchi §5.2, "split triangles before edges")
+Start from `[T0,T1,T2]`. For each point `p` in lex-rank order:
+- **Locate** the current sub-triangle containing `p`: the three `orient2d(t0,t1,p)`, `orient2d(t1,t2,p)`, `orient2d(t2,t0,p)` are **all compatible with `w0`** under the perimeter-admitting rule *(no `Negative` present) OR (no `Positive` present)*, `Zero` compatible with both (Cherchi §5.2). After the first split these corners are implicit → **2I/3I orient2d** fire here.
+- **Exactly one `Zero`** → `p` on that sub-edge → **edge split** (split both sub-tris sharing the edge; in a single-tri mesh, the one). **HARD canonical tie (doc `:102`):** an on-edge point ALWAYS edge-splits, never tri-splits — removes the two-valid-hosts ambiguity (matches reference `fastPointOnLine` precedence).
+- **Two `Zero`** → `p` coincides with an existing vertex → **skip** (the interner already collapsed it; this is the `cmp_lex==Zero` case, never a float weld).
+- **Zero `Zero`s** (strict interior) → **1→3 fan split**, all `w0`-oriented.
+Redistribute not-yet-inserted points to children by the same exact test. Result: a triangulation of `T` with vertices = 3 originals + inserted points; constraints not yet enforced.
+
+### PHASE D — segment (constraint) insertion (Cherchi §5.3 Alg.1)
+For each `Constraint{a,b}` in canonical `(lo-rank,hi-rank)` order:
+1. **Already an edge chain?** If `(a,b)` is a union of existing sub-tri edges, flag every one constrained, continue.
+2. **Partial collinear overlap with a T edge / existing edge (refutation medium-flaw #3):** if `(a,b)` is collinear with an existing edge's supporting line but only partially overlaps (one endpoint strictly interior to that edge), Phase C has already edge-split the interior endpoint; **propagate the `constrained` flag to EVERY half-edge along the constraint's span** (the freshly-split sub-segments included). Detect collinearity by `orient2d(edge0,edge1,p)==Zero` first, then strict betweenness via the `lpi_compare_along` projection (§3.4). The conformity check (postcondition b) verifies `(a,b)` as a contiguous chain that **may include split T-edge sub-segments**.
+3. **Walk** from `a` toward `b`, collecting every sub-triangle whose interior the **open** segment crosses (exact `inner_segments_cross` + `point_on_inner_segment`, §3.4).
+4. **Seg×seg interior crossing → NEW TPI vertex** (Cherchi §5.3 Fig 6, `createTPI`). The crossing point's TPI is built from {**a non-coplanar-with-T cutter triangle for constraint 1**, **... for constraint 2**, and a third independent plane} per **D7** — NOT the coplanar immediate supporting triangles. Concretely: TPI planes = the two cutter planes from `cutter_planes(c1)`,`cutter_planes(c2)` (each the lexicographically-least cutter-incident triangle with `orient3d` vs T ≠ `Zero`) plus T's own plane — giving 3 linearly-independent planes (doc `:218`). **Guard BEFORE constructing:** exact `inner_segments_cross` with *strict* interior (reject collinear-overlap / shared-endpoint → those reuse an existing Vid, handled by step 1/2, not a TPI); compute `d=det3(n1,n2,n3)` exactly — if `d==0` (no non-coplanar cutter found → genuinely coplanar cutter) set `coplanar_cutter_deferred=true`, emit the host un-cut, and **route to the §5.4/`BoolFailure` drain (D6)** — never materialise a bad point, never panic. Else construct `ImplicitPoint::Tpi` (`mod.rs:87`, first kernel use), `intern()` it (gets a Vid via `cmp_lex` — collapses to the same Vid if the geometrically-identical crossing already exists in an adjacent triangle, D3), `splitEdge` the crossed existing constraint at the TPI, split `(a,b)` into `(a,TPI)+(TPI,b)`, **recurse in canonical `(lo-rank,hi-rank)` order** (preserves Phase-D order-independence).
+5. **Delete** the crossed sub-triangles → a polygonal hole; `(a,b)` splits it into **two pockets** `Pl,Pr` sharing `(a,b)` as base.
+6. **Triangulate each pocket** with the deterministic Simplified Earcut (Phase E); re-insert the new ears.
+
+### PHASE E — deterministic Simplified Earcut of one pocket `P=[p1..pn]`, base `(p1,pn)=(a,b)`
+Doubly-linked ring via `prev[]`/`next[]`, extracted by an explicit **border march** (Simplified Earcut §4 / Fig 4) that **duplicates geometrically-coincident vertices into distinct ring positions** so the ring is *topologically* simple even where symbolic-Vid welding made two boundary vertices the same point (refutation low-flaw #6). **Debug assert** each pocket is a simple, non-degenerate ring **weakly visible from `(a,b)`** (§5.1) before the earcut; a pocket whose welding collapsed two boundary vertices to a zero-area ring routes to the §5.4 degenerate drain (D6), never feeds the no-containment earcut.
+
+**Pocket interior sign — HARD exact rule, NOT bootstrapped from the walk** (refutation medium-flaw on the open question): `interior_sign(P) = orient2d(a, b, r, axis)` where `r` = the **least-lex-rank pocket-interior vertex**; the opposite pocket's interior sign is its flip. Pure exact function of the directed base `a→b` + drop axis. Referenced by every ear convexity test in `P`.
+
+**Theorem (Simplified Earcut §5.2):** any **strictly-convex** internal vertex `v` along the chain connecting the base endpoints forms a valid ear — the five points `{v,vl,ṽl,ṽr,vr}` form a strictly-convex pentagon ⊂ P, so the ear contains no other vertex → **no in-ear/containment test**. The two **lateral** (base-endpoint) ears are **NEVER cut** (§5.3). Convexity of internal `v`: `orient2d(prev(v),v,next(v),axis) == interior_sign(P)` (one orient2d; 0/1/2/3 implicit args → §1.1). **Collinear chain vertices (refutation low-flaw #4):** a vertex with `orient2d(prev,v,next)==Zero` is an interior angle of exactly π → classified **non-ear** (not strictly convex); it is removed only when an adjacent ear cut splices it out. So the invariant is **`≤ n−2` distinct apex cuts, terminating because a strictly-convex internal ear always exists** (§5.4: any simple polygon has ≥3 convex vertices; with exactly 2 lateral ears the 3rd is internal) — **not** the unconditional `n−2` the paper states. **Determinise ear order (ifc-lite):** a min-heap of cuttable internal ears keyed by apex **lex-rank**; each step pop the least-rank ear, emit `(prev,apex,next)` oriented to `w0`, splice `apex` out, re-test the two neighbours, push if newly strictly-convex → diagonals a pure function of the (geometry-determined) ring sequence. **All-`orient2d`-Zero degenerate fan** (cocircular-square / collinear-Steiner, doc `:102`): the apex-lex-rank min already breaks it; stated as a HARD rule in `retriangulate.rs`, never deferred to G2. Complexity O(k log k) with the heap (the paper's O(n) becomes O(n log n) only via the determinism heap — within the design's O(k log k) target already set by Phase B).
+
+### PHASE F — emit
+Each sub-tri carries `[Vid;3]` in `w0` orientation; its operand tag = T's input-tri id (for L4's per-cell winding-vector slot). For the **canonical hash** (G2) only: also produce the sorted-Vid triple + an orientation-parity bit and sort the whole list — that is what gets hashed; emitted `tris` keep `w0` order.
+
+**Postconditions (exact oracles, debug):** (a) **covers exactly T** — BigRational signed-area sum of all sub-tris (via `orient2d` magnitude) equals T's, no sub-tri zero/flipped; (b) **conforming** — every `Constraint` (including partial-T-edge spans, D-step 2) appears as a contiguous chain of `constrained` sub-tri edges; (c) **intersection-free** — no sub-tri interior crosses any constraint (exact `inner_segments_cross` against all constraints).
+
+### 3.4 Derived exact wrappers (compose `orient2d`/`cmp_lex`, all NEW thin helpers)
+- `point_in_triangle(p,t0,t1,t2,axis)` = three `orient2d` signs perimeter-admitting (§Phase C).
+- `point_on_inner_segment(p,a,b,axis)` = `orient2d(a,b,p)==Zero` **first**, THEN strict betweenness via `lpi_compare_along`-style projection on the segment direction (refutation low-flaw #4: use the along-line projection, **not** `cmp_lex`, with the collinearity precondition asserted first). Edge-split + partial-overlap detection.
+- `inner_segments_cross(a0,a1,b0,b1,axis)` = four `orient2d` signs (each endpoint pair strictly straddles the other segment). Phase-D conflict / TPI trigger. When endpoints are themselves implicit (an already-inserted TPI/LPI crossed again), this is a 2I/3I `orient2d` chain — covered by §1.1.
+
+---
+
+## 4. Conformity & determinism arguments
+
+**Conformity** (Cherchi §5.2–5.3): Phase C makes every inserted point a mesh vertex; Phase D enforces every segment (and every partial-T-edge span, D-step 2) as a union of `constrained` edges; the earcut theorem fills each pocket with no constraint-crossing diagonal; the D7 TPI handling turns seg×seg crossings into **shared** vertices with a **non-degenerate** defining plane triple, so two constraints never pass through each other unrecorded and no genuine crossing is silently dropped (the §5.4/`BoolFailure` drain handles only true coplanar-cutter degeneracies, deterministically).
+
+**Determinism / order-independence** (ifc-lite-engineered; NOT inherited): the output is a pure function of `(T, point-set, segment-set)` because **every** decision uses only (i) exact predicate **signs** — proven platform-identical for the explicit substrate (floor spike) and to be proven for 2I/3I/`cmp_lex` by the G2 manifest before M2.3 ships (`manifest.rs:50,82`; doc `:86`) — and (ii) the exact **lex-rank** total order. **The pocket RING fed to Phase E is itself a pure function of the set** (refutation high-flaw on ring construction): the deleted-triangle set for each constraint is exactly the set the open segment's interior crosses, decided only by `orient2d`/`inner_segments_cross` signs against the **current mesh**, and the current mesh after Phase C + earlier **canonical-order** constraints is (by induction) itself a pure function of the set; the seg×seg TPI subdivision recurses in canonical `(lo-rank,hi-rank)` order. Insertion order is fixed by lex-rank (Phase B); ear order by apex-lex-rank (Phase E); on-edge/coincident ties by HARD canonical rules (always-edge-split; always-reuse-Vid via `cmp_lex==Zero`); the all-`orient2d`-Zero fan by lexicographically-least lex-rank, stated as a HARD rule in `retriangulate.rs` (doc `:102` — "G2 detects divergence, it does not prevent it"). Vertex identity is **symbolic only** (Vid via `cmp_lex`), never a float weld — the documented FATAL risk (doc `:198-204`). **Global** Vids (D3) make the shared seam between adjacent re-triangulated triangles match. The load-bearing claim — that this whole pipeline is order-/platform-invariant — is **discharged by a constructive proof obligation, not assertion**: a fuzz harness that runs the SAME `(point-set, segment-set)` through random pre-canonicalisation shuffles and asserts a byte-identical `(sorted-Vid-set + orientation-parity)` hash, plus the x86/aarch64/wasm triple (testMatrix T7/T8).
+
+---
+
+## 5. Interface to L3 / L4
+
+- **From L3 (consumes):** `RetriInput` per intersected input triangle. L3 **owns the global `Interner` (D3)** and builds it over the whole-arrangement vertex set before M2.3 runs, deduping by `cmp_lex` (§1.2). L3 Phase-2 (doc `:215`) produces the `Lpi` segment endpoints (from `tritri::tri_tri_intersection`, exact) and interns them; L3 also supplies the `cutter_planes` lookup (D7: per constraint, the non-coplanar-with-T cutter triangle from the operand's mesh). L3 Phase-3/4 (doc `:216-218`) **are** this module's Phases C/D. Phase-D TPIs are interned into the same global space (shared if the same crossing arises in an adjacent triangle). On `coplanar_cutter_deferred`, L3 records a deterministic per-triangle `BoolFailure` (un-cut host) until §5.4 lands.
+- **To L4 (produces):** `RetriOutput.tris` — `w0`-oriented `[Vid;3]` sub-triangles. L4 reads `(sorted Vids + orientation parity)` for its winding-number vector + radial sort (doc `:234`-onward); `w0` orientation is preserved so L4 normals are not silently flipped. Each sub-tri inherits T's operand tag. The global Vid space is exactly what L4's symbolic vertex identity (doc `:225`) and BTreeMap-keyed cell graphs (doc `:209`) require.
+
+---
+
+## 6. Predicate call inventory (NEW vs SHIPPED)
+
+| call | where | status |
+|---|---|---|
+| `orient2d` 1I `(I,E,E)` over `{Lpi,Tpi}` | Phase A axis, point-loc vs original corners | **SHIPPED** `predicates.rs:41`, `rational.rs:199` |
+| `orient2d` **2I** `(I,I,E)` | location/ear after first split | **NEW** §1.1 (verified) |
+| `orient2d` **3I** `(I,I,I)` | all-implicit pocket ear | **NEW** §1.1 (verified, = Attene §4.3 algebraically) |
+| interval 2I/3I `orient2d` | fast tier | **NEW** mirror `interval.rs:209` |
+| `cmp_lex(a,b)` total lex order over `{E,Lpi,Tpi}` (+ interval `cmp_axis`) | Phase B sort, interner dedup, min-rank ties | **NEW** §1.2 (only `lpi_compare_along` exists, `rational.rs:236`) |
+| `point_in_triangle` / `point_on_inner_segment` / `inner_segments_cross` | Phase C/D | **NEW** thin compositions §3.4 |
+| seg×seg TPI constructor + D7 cutter-plane source + `d≠0` guard | Phase D | **NEW** *use* of `Tpi` (`mod.rs:87`); `det3` of explicit normals (safe, all-explicit) |
+| `orient3d` | Phase A plane verify; D7 cutter non-coplanar test (all-explicit T corners) | **SHIPPED** (0/1-implicit suffices — §6 audit) |
+| incircle / insphere | — | **NONE** — deliberately absent (Simplified Earcut §6) |
+
+**§6 audit (discharges the draft's "confirm no multi-implicit orient3d" TODO):** Phase A calls `orient3d`/`orient2d` on T's explicit corners only. D7's cutter-non-coplanar test is `orient3d(T0,T1,T2, cutter_vertex)` — cutter vertices are explicit input coords, T corners explicit → all-explicit `orient3d` (SHIPPED). The TPI `d≠0` guard is `det3` of three explicit plane normals → all-explicit. No call site reaches multi-implicit `orient3d`; 2I/3I/4I `orient3d` remain correctly deferred. **Add a debug guard** asserting the `orient3d` dispatch never hits its `unimplemented!()` arm (`predicates.rs:32`).
+
+**Sources:** Cherchi/Livesu/Scateni/Attene, *Fast and Robust Mesh Arrangements*, SIGGRAPH Asia 2020, §4.1–4.5, §5.1–5.4. • Livesu/Cherchi/Scateni/Attene, *Deterministic Linear Time Constrained Triangulation using Simplified Earcut*, IEEE TVCG 28(12) 2022, arXiv:2009.04294, §4 Alg.1, §5.1–5.4, §6 (no Delaunay property; "extract one ear" unordered; border-march duplicates coincident vertices, Fig 4). • Cherchi/Pellacini/Attene/Livesu, *Interactive and Robust Mesh Booleans*, SIGGRAPH Asia 2022, arXiv:2205.14151, §4. • Attene, *Indirect Predicates for Geometric Constructions*, CAD 2020, arXiv:2105.09772v2, §4.2–4.6 (`D'`/flip per config — raw-Cramer-λ convention; projection axis). • kernel: `mod.rs:66-123`, `predicates.rs:22-60,318-338`, `rational.rs:84-244`, `interval.rs:121-235`, `tritri.rs:111-154`. • design doc `pure-rust-csg-kernel.md:54-55,62-63,86,99-103,109-119,205-218,225,303-306,373,390-391`.
+
+**Two corrections the implementer MUST apply before coding:** (1) correct **both** doc sign-table rows `pure-rust-csg-kernel.md:54` AND `:303` to `orient2d 1I: D'=d (odd) → flip on sign(d)` with the pre-scaled-λ-convention note (D1); the shipped code is ground truth — do NOT change it; add the missing orient2d plane-winding-invariance regression test. (2) `cmp_lex` + 2I/3I `orient2d` (rational + interval) are HARD prerequisites that must pass the G2 cross-platform sign manifest (`manifest.rs:82`) before any topology output is trusted.
+
+
+## M2.3 new predicates required
+
+- orient2d 2I (I,I,E) over {Lpi,Tpi}^2 — rational (kernel/rational.rs). Construction: from lpi_lambda/tpi_lambda get (λ1,d1),(λ2,d2); project with axis_idx; Λ' = (λ1_i−d1·c_i)(λ2_j−d2·c_j) − (λ1_j−d1·c_j)(λ2_i−d2·c_i); return assemble_sign(sign(Λ'), &[sign(d1),sign(d2)]). Mirrors rational::indirect_orient2d (rational.rs:199) generalised to two implicit rows; type-agnostic over LPI/TPI because λ/d depend only on row count.
+- orient2d 3I (I,I,I) over {Lpi,Tpi}^3 — rational. Construction: (λ1,d1),(λ2,d2),(λ3,d3); Λ' = (d1·λ2_i−d2·λ1_i)(d1·λ3_j−d3·λ1_j) − (d1·λ2_j−d2·λ1_j)(d1·λ3_i−d3·λ1_i); D'=d1²·d2·d3 so den_signs=&[sign(d2),sign(d3)] (d1² dropped — squared denominators MUST NOT enter assemble_sign, mod.rs:98). Algebraically = Attene 2020 §4.3; flip-rule convention-stable under the kernel's pre-scaled λ by the joint-homogeneity property (asserted by test).
+- interval::orient2d 2I + 3I — fast tier (kernel/interval.rs). Mirror interval::indirect_orient2d (interval.rs:209-225): same Λ' built over RnInterval (next_up/next_down directed rounding, no FMA), each d_i.sign()? short-circuits on a straddle (None ⇒ escalate to rational). Keeps BigRational fire-rate under the existing >0.95/0.80 gate (predicates.rs:211,296).
+- cmp_lex(a,b: &ImplicitPoint) -> Sign — full lexicographic total order over {Explicit,Lpi,Tpi} (kernel/rational.rs + interval cmp_axis). Construction: cmp_axis(a,b,0) then ,1 then ,2; cmp_axis = E/E: sign_of(a[k]−b[k]); I/E: assemble_sign(sign(λ_a[k]−d_a·b[k]),&[sign(d_a)]); I/I: assemble_sign(sign(λ_a[k]·d_b−λ_b[k]·d_a),&[sign(d_a),sign(d_b)]) (= lpi_compare_along shape rational.rs:242 specialised to u=ê_k, extended to TPI via tpi_lambda). Zero on all three axes ⇔ exact coincidence (interner weld). Strict total order — proven by property test (antisymmetry+transitivity+coincidence). Interval-first cascade like orient2d.
+- point_in_triangle(p,t0,t1,t2,axis) -> bool — thin orient2d composition: three orient2d signs perimeter-admitting (no Negative present OR no Positive present, Zero compatible). NEW wrapper, no new math.
+- point_on_inner_segment(p,a,b,axis) -> bool — orient2d(a,b,p)==Zero (collinearity precondition FIRST) then strict betweenness via the lpi_compare_along projection on the segment direction (rational.rs:236), NOT cmp_lex. NEW wrapper.
+- inner_segments_cross(a0,a1,b0,b1,axis) -> bool — four orient2d signs, each endpoint pair strictly straddles the other segment (strict interior). When endpoints are implicit, the orient2d calls are 2I/3I. NEW wrapper.
+- Seg×seg TPI constructor + D7 cutter-plane source — NEW use of ImplicitPoint::Tpi (mod.rs:87). Planes = {non-coplanar cutter tri for constraint 1, ... for constraint 2, T's plane} (3 linearly-independent, doc:218); cutter tri = lexicographically-least cutter-incident triangle with orient3d vs T's corners != Zero (computeTriangleOfSegment analogue). Validity guard: d=det3(n1,n2,n3) exact; d==0 ⇒ coplanar-cutter ⇒ BoolFailure/§5.4 drain, never a panic or dropped constraint.
+
+## M2.3 increments
+
+- **M2.3.0** — Multi-implicit orient2d (2I, 3I) rational tier + interval fast tier, over all {Lpi,Tpi} mixtures, feeding the existing assemble_sign unchanged.
+  - *exit:* Per-config BigRational oracle test (homogenised == direct orient2d on the materialised λ/d point, mirroring predicates.rs:318) passes for 2I and 3I on an adversarial battery; plane-rewind winding-invariance test passes (catches a missing/extra sign(d) flip); interval tier is sound vs oracle with >0.95 (2I)/>0.80 (3I) definite rate; cascade==exact on a fixed-seed fuzz.
+- **M2.3.1** — cmp_lex total lexicographic comparator over {Explicit,Lpi,Tpi} (rational + interval cmp_axis), plus the global Interner with cmp_lex intern-or-find and a decoupled stable-Vid/lex-rank index (D4).
+  - *exit:* Property test proves cmp_lex is a strict total order (antisymmetry + transitivity + Zero⇔coincidence) over a mixed E/LPI/TPI sample; a TPI and an LPI built from DIFFERENT triples at the SAME physical point intern to the SAME Vid regardless of insertion order; Vids stay stable across mid-stream interns.
+- **M2.3.2** — G2 cross-platform sign manifest extended to cover 2I/3I orient2d + cmp_lex (append to manifest.rs:50 battery, re-pin SIGN_MANIFEST).
+  - *exit:* indirect_sign_manifest_is_pinned passes; the SAME pinned hash verified byte-identical on x86_64, aarch64 (real ARM runner), wasm32 — the determinism bar for the new predicate configs BEFORE any topology output.
+- **M2.3.3** — PHASE A (exact projection axis + w0 reference winding) and PHASE B (canonical lex-rank point sort + (lo,hi)-rank segment BTreeSet).
+  - *exit:* Axis chosen by the exact nonzero-projected-area condition (near-axis-aligned + ~45° fixtures, no magnitude tiebreak divergence); permuting the input point/segment order yields an identical canonical (sorted) work list; w0 fixed and reused.
+- **M2.3.4** — PHASE C point insertion (locate via 3× orient2d, interior 1→3 / on-edge 4-split / on-vertex skip, with the HARD always-edge-split and always-reuse-Vid tie rules); child point redistribution.
+  - *exit:* A triangle with interior + on-edge + on-vertex inserted points triangulates to the right child count, covers exactly T (BigRational signed-area oracle), no flipped/zero sub-tri; on-edge points never tri-split; coincident points collapse to one Vid.
+- **M2.3.5** — PHASE D segment insertion for the NON-crossing cases: already-an-edge-chain (flag constrained) + partial-collinear-T-edge-overlap flag propagation (D-step 2) + crossed-triangle walk/delete + two-pocket extraction by border march.
+  - *exit:* Every constraint (full-edge, partial-T-edge span, and clean interior) appears as a contiguous chain of constrained sub-tri edges (conformity postcondition b); a constraint that is a sub-segment of a T edge with one interior endpoint is fully flagged; pockets are simple non-degenerate rings (debug assert).
+- **M2.3.6** — PHASE E deterministic Simplified Earcut per pocket: HARD exact interior_sign rule (least-lex-rank interior vertex), strict-convexity ear test, min-apex-lex-rank ear heap, lateral ears never cut, collinear vertices non-ear, termination-not-exact-count invariant.
+  - *exit:* Non-convex pockets on both sides of the base triangulate correctly (w0-oriented, cover the pocket, no overlap); a pocket with three collinear boundary vertices terminates with ≤ n−2 cuts; ear diagonals are a pure function of the ring sequence (shuffle test).
+- **M2.3.7** — PHASE D seg×seg TPI: D7 non-coplanar cutter-plane source (computeTriangleOfSegment analogue), exact d≠0 guard, intern + edge-split + canonical-order recurse; coplanar-cutter (d==0) BoolFailure/§5.4 deterministic drain.
+  - *exit:* Two segments both in T's plane crossing, whose immediate supporting cutter triangles are coplanar-with-T, construct a VALID TPI (d≠0) from an alternative non-coplanar cutter triangle and yield a conforming result; the same crossing arising in an adjacent triangle interns to the SAME Vid (seam conforms); a genuinely coplanar-cutter case routes to BoolFailure un-cut, never panics, never drops the constraint.
+- **M2.3.8** — PHASE F emit (w0-oriented [Vid;3] + canonical sorted-Vid/parity hash) + the L3/L4 RetriInput/RetriOutput interface + the three debug postcondition oracles (coverage, conformity, intersection-free).
+  - *exit:* All three postconditions assert clean on the full fixture battery; a single (point,segment) set run through random pre-canonicalisation shuffles produces a byte-identical topology hash; output consumed by a stub L4 winding pass without orientation flips.
+
+## M2.3 critical risks
+
+- #1 Wrong indirect orient2d sign flip (the doc-vs-code conflict). BOTH doc sign tables (pure-rust-csg-kernel.md:54 AND :303) say orient2d 1I = d² → NO flip; the shipped code (rational.rs:206, indirect_orient2d) correctly uses a d¹ flip because the kernel pre-scales λ by d (rational.rs:96). An implementer following the doc — or copying Attene's raw-λ D' for 2I/3I — inverts point-location over every LPI/TPI vertex with d<0 (≈half of host faces), invisible to tri-count tests. Mitigation: correct BOTH doc rows + record the pre-scaled-λ convention; keep the code; add the missing orient2d plane-winding-invariance regression test; gate 2I/3I via the materialised-point oracle.
+- #2 Pipeline-wide order-/platform-NON-invariance of the POCKET RING, not just the final ear step. The papers guarantee linear TIME only, not output uniqueness (arXiv:2009.04294 §4 'extract one ear' unordered, raw-input-order LIFO reference). The draft determinises the earcut but the ring it consumes is produced by Phase C + canonical-order Phase D + mid-stream TPI subdivision; if the deleted-triangle set or TPI recursion is order-dependent, two platforms hand the earcut DIFFERENT rings → different topology, silently corrupting the boolean. Mitigation: the constructive purity argument (§4) PLUS a fuzz harness asserting byte-identical (sorted-Vid+parity) hash across random pre-canonicalisation shuffles + the x86/aarch64/wasm triple — discharge by test, never by assertion.
+- #3 Seg×seg TPI cutter-plane source + the d=0 degeneracy. The COMMON in-plane crossing has both cutter segments coplanar-with-T, so a naive TPI from the immediate supporting triangles is degenerate (d=0); 'assert d≠0 else defer' would mis-handle the MAJORITY of real crossings and silently drop/defer constraints (non-conforming). Mitigation: D7 — derive each cutter plane from a non-coplanar-with-T cutter-incident triangle (computeTriangleOfSegment analogue, lexicographically least); only a genuinely coplanar cutter (no non-coplanar triangle exists) routes to a deterministic BoolFailure/§5.4 drain. Near-coplanar wall/slab stacks (the L5 motivation) are not rare → this must be built, not hand-waved.
+- #4 Float weld re-introducing cross-platform topology divergence. Any rounding of an implicit point to identify vertices buckets differently near a half-cell boundary across platforms → different adjacency → different topology (doc:198-204, the documented FATAL risk). Mitigation: vertex identity is SYMBOLIC ONLY via cmp_lex==Zero (the interner); never a float weld anywhere in M2.3; the interner-weld correctness (cmp_lex total-order + insertion-order independence) is a hard G2 prerequisite proven by property test before topology output.
+- #5 The new predicate layer (2I/3I orient2d + cmp_lex + interval twins) is UNVERIFIED for cross-platform determinism until it clears the G2 sign manifest — and it is a substantial build buried inside what reads as 'just re-triangulation'. Mitigation: sequence M2.3.0–M2.3.2 (predicates + G2 manifest) as hard gates BEFORE any topology increment; mirror exactly the proof apparatus the shipped 1I configs already have (oracle + winding-invariance + interval-soundness + FNV manifest on x86_64/aarch64/wasm).
+- #6 Pocket non-simplicity / weak-visibility precondition violated by symbolic-Vid welding. The earcut's no-containment guarantee rests on a SIMPLE pocket weakly visible from the base (§5.1); a TPI welded to an existing boundary vertex could collapse the ring to non-simple/zero-area. Mitigation: extract the ring via the explicit border march that duplicates coincident vertices (Fig 4) → topologically simple; debug-assert simplicity + weak visibility; route a collapsed-ring pocket to the §5.4 degenerate drain rather than feeding the earcut.
+
+## M2.3 test matrix
+
+- T1 Conformity: every inserted Constraint appears as a contiguous chain of constrained sub-tri edges — for full-edge, clean-interior, AND partial-T-edge-overlap (constraint = sub-segment of a T edge with one interior endpoint, D-step 2) constraints.
+- T2 Coverage: BigRational signed-area sum of all sub-tris == T's signed area; no zero-area or w0-flipped sub-tri (PHASE C and after each PHASE D constraint).
+- T3 Intersection-free: exact inner_segments_cross of every sub-tri edge against every constraint returns no strict-interior crossing (debug postcondition c).
+- T4 Order-invariance (the keystone): the SAME (point-set, segment-set) run through N random pre-canonicalisation shuffles yields a byte-identical (sorted-Vid-set + orientation-parity) topology hash — covers Phase B sort, Phase C insertion, Phase D segment + TPI recursion, Phase E ear order.
+- T5 Cross-platform determinism: the topology hash AND the extended G2 sign manifest (manifest.rs, now covering 2I/3I orient2d + cmp_lex) are byte-identical on x86_64, aarch64 (real ARM runner), wasm32.
+- T6 Predicate oracle: 2I/3I orient2d homogenised == direct orient2d on the materialised λ/d point for every drop axis + every {Lpi,Tpi} mixture, on an adversarial battery (coincident faces, near-coplanar at k·ULP for k∈{0,1,2,16}, collinear, near-axis-aligned); plane-rewind winding-invariance for orient2d 1I/2I/3I (the d<0 discriminator).
+- T7 cmp_lex total order: property test for antisymmetry + transitivity + Zero⇔coincidence over a mixed {E,Lpi,Tpi} sample; a TPI and an LPI from DIFFERENT line/plane triples at the SAME physical point intern to the SAME Vid regardless of insertion order (interner search-path independence).
+- T8 Seg×seg TPI (D7): two segments both in T's plane crossing, immediate supporting cutter triangles coplanar-with-T — assert a valid TPI with d≠0 is built from an alternative non-coplanar cutter triangle and the result is conforming; the same crossing in an adjacent triangle interns to one Vid (seam conforms).
+- T9 Coplanar/parallel-cutter degeneracy: a genuinely coplanar cutter (no non-coplanar incident triangle) deterministically routes to BoolFailure (un-cut host) — never panics, never drops the constraint; IFC-realistic near-coplanar wall/slab-stack fixture.
+- T10 Degenerate-fan tie-break: cocircular-square + collinear-Steiner pockets (all orient2d Zero) resolve by lexicographically-least lex-rank as a coded HARD rule; output identical across shuffles and platforms.
+- T11 Collinear pocket boundary: a pocket with three collinear boundary vertices terminates (≤ n−2 distinct apex cuts), no infinite loop, collinear vertex classified non-ear and spliced out only as an adjacent-cut neighbour.
+- T12 On-edge / on-vertex point classification: an inserted point exactly on a sub-edge ALWAYS edge-splits (never tri-splits); a point coincident with a vertex is skipped (one Vid); covers the two-Zero / one-Zero / zero-Zero branches and their HARD precedence.
+- T13 Projection-axis exactness: near-axis-aligned and ~45° T planes select the drop axis by the exact nonzero-projected-area condition with no float-magnitude tiebreak divergence across platforms.
+- T14 No multi-implicit orient3d reached (§6 audit guard): a debug assertion / test confirms the orient3d dispatch never hits its unimplemented!() arm during a full M2.3 run; D7's cutter-non-coplanar test and the d≠0 det3 guard are all-explicit.

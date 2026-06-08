@@ -380,4 +380,24 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn orient2d_1i_sign_invariant_to_plane_winding() {
+        // Guards Risk #1 (the doc-vs-code sign-table conflict): rewinding the
+        // implicit point's defining plane flips sign(d) while leaving the point +
+        // 2D query geometrically identical, so the TRUE orient2d sign is
+        // unchanged. The shipped d¹ flip preserves it; the doc's old d²/no-flip
+        // would invert it. The orient3d analogue is tested at line ~137 — this
+        // closes the matching gap for orient2d (the gap the LPI λ-sign bug used).
+        for axis in AXES {
+            for (l, p2, p3, _p4) in lpi_cases() {
+                let rewound = Lpi { s: l.t, t: l.s, ..l };
+                assert_eq!(
+                    rational::lpi_orient2d(&l, p2, p3, axis),
+                    rational::lpi_orient2d(&rewound, p2, p3, axis),
+                    "orient2d 1I sign changed under plane re-winding (axis {axis:?})"
+                );
+            }
+        }
+    }
 }

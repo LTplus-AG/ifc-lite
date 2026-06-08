@@ -16,6 +16,7 @@
 //! land next, each verified `≡` exact.
 
 pub mod interval;
+pub mod manifest;
 pub mod predicates;
 pub mod rational;
 

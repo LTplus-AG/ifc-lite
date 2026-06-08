@@ -19,7 +19,7 @@ use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d, orient2d_any};
 use super::{DropAxis, ImplicitPoint, Sign};
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[inline]
 fn e(p: [f64; 3]) -> ImplicitPoint {
@@ -304,6 +304,164 @@ pub fn earcut(it: &Interner, ring: &[Vid], axis: DropAxis, w0: Sign) -> Vec<SubT
     out
 }
 
+#[inline]
+fn tri_edges(t: SubTri) -> [(Vid, Vid); 3] {
+    [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])]
+}
+
+/// Is there a triangle with both `s` and `t` as vertices? (In a triangle any two
+/// vertices form an edge, so this is exactly "the segment s–t is already an edge".)
+fn edge_exists(mesh: &Mesh2d, s: Vid, t: Vid) -> bool {
+    mesh.tris.iter().any(|tri| tri.contains(&s) && tri.contains(&t))
+}
+
+/// Reverse `ring` if its winding doesn't match `w0`, so earcut sees a CCW polygon.
+/// The lexicographically-least vertex is convex, so its turn gives the winding.
+fn orient_ring(it: &Interner, ring: Vec<Vid>, axis: DropAxis, w0: Sign) -> Vec<Vid> {
+    let n = ring.len();
+    let i = (0..n).min_by(|&x, &y| lex_cmp(it, ring[x], ring[y])).unwrap();
+    let w = orient2d_any(
+        it.get(ring[(i + n - 1) % n]),
+        it.get(ring[i]),
+        it.get(ring[(i + 1) % n]),
+        axis,
+    );
+    if w == w0 {
+        ring
+    } else {
+        let mut r = ring;
+        r.reverse();
+        r
+    }
+}
+
+/// PHASE D (core) — force sub-segment `(a,b)` (no vertex strictly between them) to
+/// be an edge. If it already is, done. Otherwise delete the triangles the open
+/// segment crosses (the "channel"), split the channel's boundary loop at `a` and
+/// `b` into two pocket rings, and earcut each — after which `a–b` is a shared
+/// edge of both pockets. (seg×seg — a crossed edge that is itself a constraint —
+/// is a later increment.)
+fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
+    if edge_exists(mesh, a, b) {
+        return;
+    }
+    let (axis, w0) = (mesh.axis, mesh.w0);
+    let g = |v: Vid| it.get(v);
+    // open segment (a,b) properly crosses open edge (u,v)?
+    let crosses = |u: Vid, v: Vid| {
+        let s1 = orient2d_any(g(a), g(b), g(u), axis);
+        let s2 = orient2d_any(g(a), g(b), g(v), axis);
+        let s3 = orient2d_any(g(u), g(v), g(a), axis);
+        let s4 = orient2d_any(g(u), g(v), g(b), axis);
+        s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2
+            && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
+    };
+    let channel: Vec<usize> = (0..mesh.tris.len())
+        .filter(|&ti| tri_edges(mesh.tris[ti]).iter().any(|&(u, v)| crosses(u, v)))
+        .collect();
+    if channel.is_empty() {
+        return;
+    }
+    // boundary loop of the channel (directed edges whose reverse isn't internal)
+    let channel_set: BTreeSet<usize> = channel.iter().copied().collect();
+    let mut edges: BTreeSet<(Vid, Vid)> = BTreeSet::new();
+    for &ti in &channel {
+        for e in tri_edges(mesh.tris[ti]) {
+            edges.insert(e);
+        }
+    }
+    let mut next: BTreeMap<Vid, Vid> = BTreeMap::new();
+    for &(u, v) in &edges {
+        if !edges.contains(&(v, u)) {
+            next.insert(u, v);
+        }
+    }
+    let mut loop_v = vec![a];
+    let mut cur = next[&a];
+    while cur != a {
+        loop_v.push(cur);
+        cur = next[&cur];
+    }
+    let ib = loop_v.iter().position(|&x| x == b).expect("b not on channel boundary");
+    let arc1: Vec<Vid> = loop_v[0..=ib].to_vec(); // a .. b
+    let mut arc2: Vec<Vid> = loop_v[ib..].to_vec(); // b .. end
+    arc2.push(a); // .. a
+    mesh.tris = mesh
+        .tris
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !channel_set.contains(i))
+        .map(|(_, t)| *t)
+        .collect();
+    for ring in [arc1, arc2] {
+        if ring.len() >= 3 {
+            let oriented = orient_ring(it, ring, axis, w0);
+            mesh.tris.extend(earcut(it, &oriented, axis, w0));
+        }
+    }
+}
+
+/// Strictly-between test for COLLINEAR points: `v` lies strictly inside segment
+/// `(s,t)`. The lex order equals the line order for collinear points, so `v` is
+/// between iff it compares the same way against both ends.
+fn between(it: &Interner, s: Vid, t: Vid, v: Vid) -> bool {
+    let sv = cmp_lex(it.get(s), it.get(v));
+    sv != Sign::Zero && sv == cmp_lex(it.get(v), it.get(t))
+}
+
+/// PHASE D — force constraint `(s,t)` to be a chain of edges: split it at any
+/// mesh vertices lying strictly on it (collinear, ordered s→t), then recover each
+/// sub-segment.
+fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
+    let axis = mesh.axis;
+    let verts: BTreeSet<Vid> = mesh.tris.iter().flatten().copied().collect();
+    let mut on_seg: Vec<Vid> = verts
+        .into_iter()
+        .filter(|&v| {
+            v != s
+                && v != t
+                && orient2d_any(it.get(s), it.get(t), it.get(v), axis) == Sign::Zero
+                && between(it, s, t, v)
+        })
+        .collect();
+    on_seg.sort_by(|&x, &y| lex_cmp(it, x, y));
+    if cmp_lex(it.get(s), it.get(t)) == Sign::Positive {
+        on_seg.reverse(); // order from s toward t
+    }
+    let mut chain = vec![s];
+    chain.extend(on_seg);
+    chain.push(t);
+    for w in chain.windows(2) {
+        recover_subsegment(mesh, it, w[0], w[1]);
+    }
+}
+
+/// Phases A–D: project, canonicalise, insert all constraint points, then force
+/// every constraint to appear as an edge (chain). `None` ⇒ `T` is degenerate.
+/// (seg×seg crossings and coplanar/touching cases are deferred increments.)
+pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d> {
+    let (axis, w0) = projection_axis(&input.tri)?;
+    let canon = canonicalize(input, interner);
+    let mut mesh = Mesh2d { tris: vec![canon.corners], axis, w0 };
+    let mut pts: BTreeSet<Vid> = BTreeSet::new();
+    for &(lo, hi) in &canon.segments {
+        pts.insert(lo);
+        pts.insert(hi);
+    }
+    for &c in &canon.corners {
+        pts.remove(&c);
+    }
+    let mut ordered: Vec<Vid> = pts.into_iter().collect();
+    ordered.sort_by(|&a, &b| lex_cmp(interner, a, b));
+    for p in ordered {
+        insert_point(&mut mesh, interner, p);
+    }
+    for &(s, t) in &canon.segments {
+        enforce_constraint(&mut mesh, interner, s, t);
+    }
+    Some(mesh)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::rational::point_of;
@@ -499,5 +657,87 @@ mod tests {
             v
         };
         assert_eq!(canon(&tris), canon(&tris2), "earcut depends on ring start vertex");
+    }
+
+    #[test]
+    fn phase_d_recovers_a_crossing_diagonal() {
+        use super::super::rational::tri_area2;
+        use num_rational::BigRational;
+        use num_traits::Zero;
+        let mut it = Interner::new();
+        let a = it.intern(e([0., 0., 0.]));
+        let b = it.intern(e([2., 0., 0.]));
+        let c = it.intern(e([2., 2., 0.]));
+        let d = it.intern(e([0., 2., 0.]));
+        // a quad split by the diagonal a–c
+        let mut mesh = Mesh2d { tris: vec![[a, b, c], [a, c, d]], axis: DropAxis::Z, w0: Sign::Positive };
+        let pt = |v: Vid| point_of(it.get(v));
+        let origin = point_of(&e([0., 0., 0.]));
+        let ring = [a, b, c, d];
+        let quad_area = (0..4).fold(BigRational::zero(), |s, i| {
+            s + tri_area2(&pt(ring[i]), &pt(ring[(i + 1) % 4]), &origin, DropAxis::Z)
+        });
+        // recover the OTHER diagonal b–d, which crosses a–c
+        recover_subsegment(&mut mesh, &it, b, d);
+        assert!(
+            mesh.tris.iter().any(|t| t.contains(&b) && t.contains(&d)),
+            "b–d was not recovered as an edge"
+        );
+        assert!(
+            !mesh.tris.iter().any(|t| t.contains(&a) && t.contains(&c)),
+            "the crossed diagonal a–c is still present"
+        );
+        for &tri in &mesh.tris {
+            assert_eq!(
+                orient2d_any(it.get(tri[0]), it.get(tri[1]), it.get(tri[2]), mesh.axis),
+                mesh.w0,
+                "recovered triangle not oriented w0"
+            );
+        }
+        let sum = mesh
+            .tris
+            .iter()
+            .fold(BigRational::zero(), |acc, &t| acc + tri_area2(&pt(t[0]), &pt(t[1]), &pt(t[2]), mesh.axis));
+        assert_eq!(sum, quad_area, "recovery changed the covered area");
+    }
+
+    #[test]
+    fn phase_d_full_triangulate_satisfies_constraints_and_covers_t() {
+        use super::super::rational::tri_area2;
+        use num_rational::BigRational;
+        use num_traits::Zero;
+        let t = [[0., 0., 0.], [6., 0., 0.], [0., 6., 0.]];
+        // an interior quad (1,1)(3,1)(3,3)(1,3); the (3,1)-(1,3) diagonal likely
+        // crosses the (1,1)-(3,3) edge Phase C makes ⇒ exercises recovery.
+        let cons = vec![
+            Constraint { a: e([1., 1., 0.]), b: e([3., 1., 0.]) },
+            Constraint { a: e([3., 1., 0.]), b: e([1., 3., 0.]) },
+            Constraint { a: e([3., 3., 0.]), b: e([1., 3., 0.]) },
+        ];
+        let mut it = Interner::new();
+        let mesh = triangulate(&RetriInput { tri: t, constraints: cons.clone() }, &mut it).unwrap();
+        // intern everything we need (mutable) BEFORE the read-only checks
+        let cverts: Vec<(Vid, Vid)> =
+            cons.iter().map(|c| (it.intern(c.a.clone()), it.intern(c.b.clone()))).collect();
+        let corners = [it.intern(e(t[0])), it.intern(e(t[1])), it.intern(e(t[2]))];
+        // every constraint is now an edge
+        for &(s, tt) in &cverts {
+            assert!(edge_exists(&mesh, s, tt), "constraint {s}-{tt} not satisfied as an edge");
+        }
+        // orientation + exact coverage of T
+        let pt = |v: Vid| point_of(it.get(v));
+        for &tri in &mesh.tris {
+            assert_eq!(
+                orient2d_any(it.get(tri[0]), it.get(tri[1]), it.get(tri[2]), mesh.axis),
+                mesh.w0,
+                "triangle not oriented w0"
+            );
+        }
+        let sum = mesh
+            .tris
+            .iter()
+            .fold(BigRational::zero(), |acc, &tr| acc + tri_area2(&pt(tr[0]), &pt(tr[1]), &pt(tr[2]), mesh.axis));
+        let t_area = tri_area2(&pt(corners[0]), &pt(corners[1]), &pt(corners[2]), mesh.axis);
+        assert_eq!(sum, t_area, "triangulation does not exactly cover T");
     }
 }

@@ -32,6 +32,30 @@ fn volume(m: &Mesh) -> f64 {
         / 6.0
 }
 
+/// Worst triangle aspect ratio (longest/shortest edge) + count of spikes >50:1 —
+/// the triangulation-quality metric the FZK gable-wall regression test uses.
+fn worst_aspect(m: &Mesh) -> (f64, u32) {
+    let mut worst = 0.0f64;
+    let mut spikes = 0;
+    for t in m.indices.chunks_exact(3) {
+        let (a, b, c) = (vtx(m, t[0]), vtx(m, t[1]), vtx(m, t[2]));
+        let d = |p: [f64; 3], q: [f64; 3]| {
+            ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt()
+        };
+        let (e0, e1, e2) = (d(a, b), d(b, c), d(c, a));
+        let mn = e0.min(e1).min(e2);
+        let mx = e0.max(e1).max(e2);
+        if mn > 1e-6 {
+            let r = mx / mn;
+            worst = worst.max(r);
+            if r > 50.0 {
+                spikes += 1;
+            }
+        }
+    }
+    (worst, spikes)
+}
+
 /// 2-manifold = every undirected edge used exactly twice (vertices welded on a
 /// fine quantization grid, since outputs carry independent float coords).
 fn is_manifold(m: &Mesh) -> bool {
@@ -143,6 +167,8 @@ fn main() {
         let (vk, vm) = (volume(&k), volume(&m));
         let rel = (vk - vm).abs() / vm.abs().max(1e-9);
         let (mk, mm) = (is_manifold(&k), is_manifold(&m));
+        let (wk, sk) = worst_aspect(&k);
+        let (wm, sm) = worst_aspect(&m);
         // disjoint union legitimately yields two shells (non-manifold by the single
         // -component edge test only if welded wrong); accept when both agree.
         let pass = rel < 1e-3 && (mk || !mm);
@@ -150,8 +176,8 @@ fn main() {
             fails += 1;
         }
         println!(
-            "{:<28} {:>5} {:>10.4} {:>10.4} {:>9.1e}  {:>6} {:>6}  {}",
-            c.name, op_str(c.op), vk, vm, rel, mk, mm, if pass { "PASS" } else { "FAIL" }
+            "{:<28} {:>5} {:>9.4} {:>9.4} {:>8.1e}  {:>5} {:>5}  asp K {:>6.0}:1/{} M {:>6.0}:1/{}  {}",
+            c.name, op_str(c.op), vk, vm, rel, mk, mm, wk, sk, wm, sm, if pass { "PASS" } else { "FAIL" }
         );
     }
     println!("\n{}/{} cases passed", cases.len() - fails, cases.len());

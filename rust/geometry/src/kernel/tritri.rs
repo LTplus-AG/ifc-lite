@@ -124,7 +124,7 @@ pub enum TriTri {
 
 #[inline]
 fn cmp_along(a: &ImplicitPoint, b: &ImplicitPoint, u: [f64; 3]) -> Sign {
-    super::rational::cmp_along(a, b, u)
+    super::fixed::cmp_along(a, b, u).unwrap_or_else(|| super::rational::cmp_along(a, b, u))
 }
 
 /// A triangle's intersection with another triangle's supporting plane — the

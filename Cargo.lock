@@ -569,6 +569,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bnum"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1b08cb4ecbb540b940016b0a0f35b7e48ab0cc372ab88150c351de4cc469959"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1466,6 +1476,7 @@ name = "ifc-lite-geometry"
 version = "3.1.0"
 dependencies = [
  "approx",
+ "bnum",
  "earcutr",
  "geometry-predicates",
  "i_overlay",

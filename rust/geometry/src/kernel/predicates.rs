@@ -10,7 +10,7 @@
 //! positions, the TPI cases, and indirect `orient2d` land in later increments —
 //! each verified `≡` the exact tier here.
 
-use super::{interval, rational};
+use super::{fixed, interval, rational};
 use super::{DropAxis, ImplicitPoint, Sign};
 
 /// Exact `orient3d` over a mix of explicit + implicit points.
@@ -26,8 +26,10 @@ pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &Imp
             Sign::from_f64(geometry_predicates::orient3d(*a, *b, *c, *d))
         }
         (Lpi(l), Explicit(b), Explicit(c), Explicit(d)) => interval::lpi_orient3d(l, *b, *c, *d)
+            .or_else(|| fixed::indirect_orient3d(a, *b, *c, *d))
             .unwrap_or_else(|| rational::lpi_orient3d(l, *b, *c, *d)),
         (Tpi(t), Explicit(b), Explicit(c), Explicit(d)) => interval::tpi_orient3d(t, *b, *c, *d)
+            .or_else(|| fixed::indirect_orient3d(a, *b, *c, *d))
             .unwrap_or_else(|| rational::tpi_orient3d(t, *b, *c, *d)),
         _ => unimplemented!(
             "kernel::orient3d: this implicit-point configuration lands in a later M1 increment"
@@ -50,8 +52,10 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
             Sign::from_f64(geometry_predicates::orient2d([a[i], a[j]], [b[i], b[j]], [c[i], c[j]]))
         }
         (Lpi(l), Explicit(b), Explicit(c)) => interval::lpi_orient2d(l, *b, *c, axis)
+            .or_else(|| fixed::indirect_orient2d(a, *b, *c, axis))
             .unwrap_or_else(|| rational::lpi_orient2d(l, *b, *c, axis)),
         (Tpi(t), Explicit(b), Explicit(c)) => interval::tpi_orient2d(t, *b, *c, axis)
+            .or_else(|| fixed::indirect_orient2d(a, *b, *c, axis))
             .unwrap_or_else(|| rational::tpi_orient2d(t, *b, *c, axis)),
         _ => unimplemented!(
             "kernel::orient2d: this implicit-point configuration lands in a later M1 increment"
@@ -61,17 +65,22 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
 
 /// orient2d with two implicit points (a,b) + one explicit (c) — cascade.
 pub fn orient2d_2i(a: &ImplicitPoint, b: &ImplicitPoint, c: [f64; 3], axis: DropAxis) -> Sign {
-    interval::orient2d_2i(a, b, c, axis).unwrap_or_else(|| rational::orient2d_2i(a, b, c, axis))
+    // cascade: interval filter → fixed-width exact (fast) → BigRational (off-grid / overflow)
+    interval::orient2d_2i(a, b, c, axis)
+        .or_else(|| fixed::orient2d_2i(a, b, c, axis))
+        .unwrap_or_else(|| rational::orient2d_2i(a, b, c, axis))
 }
 
 /// orient2d with three implicit points (a,b,c) — cascade.
 pub fn orient2d_3i(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Sign {
-    interval::orient2d_3i(a, b, c, axis).unwrap_or_else(|| rational::orient2d_3i(a, b, c, axis))
+    interval::orient2d_3i(a, b, c, axis)
+        .or_else(|| fixed::orient2d_3i(a, b, c, axis))
+        .unwrap_or_else(|| rational::orient2d_3i(a, b, c, axis))
 }
 
 /// Exact lexicographic total order on points — the interner's comparison (cascade).
 pub fn cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint) -> Sign {
-    interval::cmp_lex(a, b).unwrap_or_else(|| rational::cmp_lex(a, b))
+    interval::cmp_lex(a, b).or_else(|| fixed::cmp_lex(a, b)).unwrap_or_else(|| rational::cmp_lex(a, b))
 }
 
 #[inline]
@@ -87,6 +96,7 @@ fn explicit_coord(p: &ImplicitPoint) -> [f64; 3] {
 /// antisymmetric, so we canonicalise the args to implicit-first (stable, to keep
 /// it a pure function), dispatch to the 0I/1I/2I/3I config, and flip the result
 /// once per transposition (the permutation parity).
+
 pub fn orient2d_any(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Sign {
     let pts = [a, b, c];
     let key = |p: &ImplicitPoint| u8::from(matches!(p, ImplicitPoint::Explicit(_))); // implicit=0

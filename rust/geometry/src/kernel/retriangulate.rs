@@ -376,13 +376,29 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
             next.insert(u, v);
         }
     }
+    // Walk the boundary loop from `a`. A degenerate channel (the segment crosses a
+    // non-simply-connected region, or the boundary branches) yields a non-traversable
+    // loop — bail gracefully (leave the constraint unrecovered) rather than panic.
+    // The triangulation stays valid; only this one sub-segment isn't forced as an edge.
     let mut loop_v = vec![a];
-    let mut cur = next[&a];
+    let mut cur = match next.get(&a) {
+        Some(&v) => v,
+        None => return,
+    };
     while cur != a {
         loop_v.push(cur);
-        cur = next[&cur];
+        cur = match next.get(&cur) {
+            Some(&v) => v,
+            None => return,
+        };
+        if loop_v.len() > next.len() + 1 {
+            return; // cycle that never returns to `a` — degenerate
+        }
     }
-    let ib = loop_v.iter().position(|&x| x == b).expect("b not on channel boundary");
+    let ib = match loop_v.iter().position(|&x| x == b) {
+        Some(i) => i,
+        None => return,
+    };
     let arc1: Vec<Vid> = loop_v[0..=ib].to_vec(); // a .. b
     let mut arc2: Vec<Vid> = loop_v[ib..].to_vec(); // b .. end
     arc2.push(a); // .. a

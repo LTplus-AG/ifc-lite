@@ -145,12 +145,21 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
             })
             .collect()
     };
+    let _tp = std::time::Instant::now();
     let ca = build(a, &raw_a, &mut cop_a);
     let cb = build(b, &raw_b, &mut cop_b);
     // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
     let mut interner = Interner::new();
+    let _tr = std::time::Instant::now();
     let tris_a = retriangulate_each(a, &ca, &mut interner);
     let tris_b = retriangulate_each(b, &cb, &mut interner);
+    if std::env::var("KERNEL_PROFILE").is_ok() {
+        eprintln!(
+            "    arrange: tritri+split {:.1}ms  retriangulate {:.1}ms",
+            (_tr - _tp).as_secs_f64() * 1e3,
+            _tr.elapsed().as_secs_f64() * 1e3
+        );
+    }
     Arrangement { interner, tris_a, tris_b }
 }
 
@@ -207,12 +216,28 @@ fn exact_seg_hits_tri(q1: [f64; 3], q2: [f64; 3], t: &Tri) -> bool {
     ea != Sign::Zero && ea == eb && eb == ec
 }
 
-/// Is point `p` inside the closed mesh `tris`? Exact ray-cast parity: a segment
-/// from `p` to a far point along a fixed generic direction (guaranteed outside
-/// the mesh), each crossing tested by the exact predicate above.
-fn point_inside(p: [f64; 3], tris: &[Tri]) -> bool {
+/// Ray-cast "far" distance: just past the operand's actual extent. Critically NOT
+/// a huge constant (1e7) — that blows the orient3d float-filter error bound so
+/// EVERY predicate escalates to BigRational (≈5000× slower). Sized to the operand,
+/// the float filter resolves the common case and only true grazing escalates.
+fn operand_extent(tris: &[Tri]) -> f64 {
+    let mut hi = 1.0f64;
+    for t in tris {
+        for v in t {
+            for &c in v {
+                hi = hi.max(c.abs());
+            }
+        }
+    }
+    2.0 * hi + 1.0
+}
+
+/// Is point `p` inside the closed mesh `tris`? Exact ray-cast parity to a far
+/// point (`far_l` past the extent) along a fixed generic direction; each crossing
+/// tested by the exact predicate above.
+fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
     let dir = [0.572_581, 0.573_006, 0.586_521];
-    let far = [p[0] + dir[0] * 1e7, p[1] + dir[1] * 1e7, p[2] + dir[2] * 1e7];
+    let far = [p[0] + dir[0] * far_l, p[1] + dir[1] * far_l, p[2] + dir[2] * far_l];
     tris.iter().filter(|t| exact_seg_hits_tri(p, far, t)).count() % 2 == 1
 }
 
@@ -280,6 +305,7 @@ fn on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
 /// internal interface (union/intersection remove both), the A-copy survives a
 /// difference's outer boundary; the B-copy is always dropped (dedup).
 fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid; 3]> {
+    let (ext_a, ext_b) = (operand_extent(a), operand_extent(b));
     let mut out = Vec::new();
     for &tri in &arr.tris_a {
         let c = centroid(arr, tri);
@@ -293,7 +319,7 @@ fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid
                 out.push(tri); // the A-copy, oriented as-is
             }
         } else {
-            let inside_b = point_inside(c, b);
+            let inside_b = point_inside(c, b, ext_b);
             let keep = match op {
                 BoolOp::Intersection => inside_b,
                 _ => !inside_b,
@@ -308,7 +334,7 @@ fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid
         if on_surface_normal(c, a).is_some() {
             continue; // coplanar-shared B-copy: dropped (the A-copy is the kept one)
         }
-        let inside_a = point_inside(c, a);
+        let inside_a = point_inside(c, a, ext_a);
         let (keep, flip) = match op {
             BoolOp::Difference => (inside_a, true),
             BoolOp::Union => (!inside_a, false),
@@ -325,11 +351,24 @@ fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid
 /// triangles. `A−B = (A outside B) ∪ flip(B inside A)`;
 /// `A∪B = (A outside B) ∪ (B outside A)`; `A∩B = (A inside B) ∪ (B inside A)`.
 pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
+    let _t0 = std::time::Instant::now();
     let arr = arrange(a, b);
-    boolean_vids(&arr, a, b, op)
+    let _t1 = std::time::Instant::now();
+    let vids = boolean_vids(&arr, a, b, op);
+    let _t2 = std::time::Instant::now();
+    let out = vids
         .into_iter()
         .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
-        .collect()
+        .collect();
+    if std::env::var("KERNEL_PROFILE").is_ok() {
+        eprintln!(
+            "  boolean: arrange {:.1}ms  classify {:.1}ms  materialize {:.1}ms",
+            (_t1 - _t0).as_secs_f64() * 1e3,
+            (_t2 - _t1).as_secs_f64() * 1e3,
+            _t2.elapsed().as_secs_f64() * 1e3
+        );
+    }
+    out
 }
 
 #[inline]

@@ -946,105 +946,21 @@ impl ClippingProcessor {
             return Ok(host_mesh.clone());
         }
 
-        #[cfg(feature = "manifold-csg")]
-        {
-            match crate::manifold_kernel::difference(host_mesh, opening_mesh) {
-                Ok(result) => {
-                    // An empty result is a legitimate outcome — the cutter
-                    // can fully contain the host. Only treat non-finite /
-                    // invalid kernel output as a failure.
-                    if !self.validate_mesh(&result) {
-                        self.record_failure(
-                            BoolOp::Difference,
-                            BoolFailureReason::KernelOutputInvalid,
-                        );
-                        return Ok(host_mesh.clone());
-                    }
-                    // Defensive: Manifold has been observed (Linux x86_64 CI,
-                    // AC20-FZK-Haus gable walls #60012/#67828) to return an
-                    // implausibly small result — e.g. 1 triangle from a
-                    // 12-triangle box host clipped by a polygonal-bounded
-                    // half-space prism that does NOT fully contain the host.
-                    // macOS aarch64 produces the expected pentagon on the
-                    // same input, so this is a cross-platform Manifold
-                    // determinism issue. When we detect a clearly-truncated
-                    // result, re-run the same op through the legacy BSP
-                    // path and keep whichever output looks like a real
-                    // clip. See `looks_degenerate` for the heuristic.
-                    if Self::manifold_result_looks_degenerate(host_mesh, &result) {
-                        let host_tris = host_mesh.indices.len() / 3;
-                        let result_tris = result.indices.len() / 3;
-                        eprintln!(
-                            "[manifold-csg] difference result looks degenerate \
-                             (host {} tris -> result {} tris); retrying via BSP fallback",
-                            host_tris, result_tris,
-                        );
-                        if let Some(bsp_result) = self.try_bsp_difference(host_mesh, opening_mesh) {
-                            if !Self::manifold_result_looks_degenerate(host_mesh, &bsp_result) {
-                                self.record_failure(
-                                    BoolOp::Difference,
-                                    BoolFailureReason::ManifoldOutputDegenerate {
-                                        host_tris,
-                                        result_tris,
-                                    },
-                                );
-                                return Ok(bsp_result);
-                            }
-                        }
-                        // BSP also failed or produced suspicious output —
-                        // record but keep Manifold's result (better than
-                        // un-cut, in many cases).
-                        self.record_failure(
-                            BoolOp::Difference,
-                            BoolFailureReason::ManifoldOutputDegenerate {
-                                host_tris,
-                                result_tris,
-                            },
-                        );
-                    }
-                    return Ok(result);
-                }
-                Err(reason) => {
-                    self.record_failure(BoolOp::Difference, reason);
-                    return Ok(host_mesh.clone());
-                }
-            }
+        // Pure-Rust exact mesh-arrangement kernel (the flip): replaces the C++
+        // Manifold + legacy BSP dispatch with one proven path (13/13 parity vs
+        // Manifold, examples/csg_parity.rs). Panic-free by construction —
+        // kernel::mesh_bridge sanitises NaN/Inf + out-of-range coords at the
+        // boundary — so the never-Err contract holds without catch_unwind. An
+        // empty result is a legitimate full-containment outcome.
+        let result = Self::consolidate_coplanar(crate::kernel::mesh_bridge::subtract(
+            host_mesh,
+            opening_mesh,
+        ));
+        if !result.is_empty() && !self.validate_mesh(&result) {
+            self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
+            return Ok(host_mesh.clone());
         }
-
-        #[cfg(not(feature = "manifold-csg"))]
-        {
-            let host_polys = Self::mesh_to_polygons(host_mesh);
-            let opening_polys = Self::mesh_to_polygons(opening_mesh);
-
-            if host_polys.is_empty() || opening_polys.is_empty() {
-                self.record_failure(BoolOp::Difference, BoolFailureReason::DegenerateOperand);
-                return Ok(host_mesh.clone());
-            }
-
-            if !Self::can_run_csg_operation(host_polys.len(), opening_polys.len()) {
-                self.record_failure(
-                    BoolOp::Difference,
-                    BoolFailureReason::OperandTooLarge {
-                        polys_a: host_polys.len(),
-                        polys_b: opening_polys.len(),
-                    },
-                );
-                return Ok(host_mesh.clone());
-            }
-
-            let result_polys = crate::bsp_csg::difference(host_polys, opening_polys);
-
-            match Self::polygons_to_mesh(&result_polys) {
-                Ok(result) => Ok(Self::consolidate_coplanar(result)),
-                Err(e) => {
-                    self.record_failure(
-                        BoolOp::Difference,
-                        BoolFailureReason::KernelError(e.to_string()),
-                    );
-                    Ok(host_mesh.clone())
-                }
-            }
-        }
+        Ok(result)
     }
 
     /// Re-merge BSP's per-plane fragments via 2D polygon union, then earcut
@@ -1063,7 +979,7 @@ impl ClippingProcessor {
     /// Returns the input mesh unchanged if the consolidate fails or yields
     /// nothing — never worse than the BSP-direct output.
     #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
-    fn consolidate_coplanar(mesh: Mesh) -> Mesh {
+    pub(crate) fn consolidate_coplanar(mesh: Mesh) -> Mesh {
         use crate::triangulation::{
             project_to_2d_with_basis, triangulate_polygon_with_holes,
         };
@@ -1326,53 +1242,17 @@ impl ClippingProcessor {
             return Ok(mesh_a.clone());
         }
 
-        #[cfg(feature = "manifold-csg")]
-        {
-            match crate::manifold_kernel::union(mesh_a, mesh_b) {
-                Ok(result) if !result.is_empty() => return Ok(result),
-                Ok(_) => {
-                    self.record_failure(BoolOp::Union, BoolFailureReason::KernelOutputInvalid);
-                    let mut merged = mesh_a.clone();
-                    merged.merge(mesh_b);
-                    return Ok(merged);
-                }
-                Err(reason) => {
-                    self.record_failure(BoolOp::Union, reason);
-                    let mut merged = mesh_a.clone();
-                    merged.merge(mesh_b);
-                    return Ok(merged);
-                }
-            }
+        // Pure-Rust exact kernel (the flip). On an empty/invalid kernel result
+        // fall back to a plain merge (overlap not removed) + record the failure,
+        // preserving the legacy never-Err contract.
+        let result = Self::consolidate_coplanar(crate::kernel::mesh_bridge::union(mesh_a, mesh_b));
+        if result.is_empty() || !self.validate_mesh(&result) {
+            self.record_failure(BoolOp::Union, BoolFailureReason::KernelOutputInvalid);
+            let mut merged = mesh_a.clone();
+            merged.merge(mesh_b);
+            return Ok(merged);
         }
-
-        #[cfg(not(feature = "manifold-csg"))]
-        {
-            let polys_a = Self::mesh_to_polygons(mesh_a);
-            let polys_b = Self::mesh_to_polygons(mesh_b);
-
-            if polys_a.is_empty() || polys_b.is_empty() {
-                self.record_failure(BoolOp::Union, BoolFailureReason::DegenerateOperand);
-                let mut merged = mesh_a.clone();
-                merged.merge(mesh_b);
-                return Ok(merged);
-            }
-
-            if !Self::can_run_csg_operation(polys_a.len(), polys_b.len()) {
-                self.record_failure(
-                    BoolOp::Union,
-                    BoolFailureReason::OperandTooLarge {
-                        polys_a: polys_a.len(),
-                        polys_b: polys_b.len(),
-                    },
-                );
-                let mut merged = mesh_a.clone();
-                merged.merge(mesh_b);
-                return Ok(merged);
-            }
-
-            let result_polys = crate::bsp_csg::union(polys_a, polys_b);
-            Self::polygons_to_mesh(&result_polys)
-        }
+        Ok(result)
     }
 
     /// Intersect two meshes using CSG boolean operations.
@@ -1387,41 +1267,15 @@ impl ClippingProcessor {
             return Ok(Mesh::new());
         }
 
-        #[cfg(feature = "manifold-csg")]
-        {
-            match crate::manifold_kernel::intersection(mesh_a, mesh_b) {
-                Ok(result) => return Ok(result),
-                Err(reason) => {
-                    self.record_failure(BoolOp::Intersection, reason);
-                    return Ok(Mesh::new());
-                }
-            }
+        // Pure-Rust exact kernel (the flip). An empty result is legitimate
+        // (disjoint operands → empty intersection).
+        let result =
+            Self::consolidate_coplanar(crate::kernel::mesh_bridge::intersection(mesh_a, mesh_b));
+        if !result.is_empty() && !self.validate_mesh(&result) {
+            self.record_failure(BoolOp::Intersection, BoolFailureReason::KernelOutputInvalid);
+            return Ok(Mesh::new());
         }
-
-        #[cfg(not(feature = "manifold-csg"))]
-        {
-            let polys_a = Self::mesh_to_polygons(mesh_a);
-            let polys_b = Self::mesh_to_polygons(mesh_b);
-
-            if polys_a.is_empty() || polys_b.is_empty() {
-                self.record_failure(BoolOp::Intersection, BoolFailureReason::DegenerateOperand);
-                return Ok(Mesh::new());
-            }
-
-            if !Self::can_run_csg_operation(polys_a.len(), polys_b.len()) {
-                self.record_failure(
-                    BoolOp::Intersection,
-                    BoolFailureReason::OperandTooLarge {
-                        polys_a: polys_a.len(),
-                        polys_b: polys_b.len(),
-                    },
-                );
-                return Ok(Mesh::new());
-            }
-
-            let result_polys = crate::bsp_csg::intersection(polys_a, polys_b);
-            Self::polygons_to_mesh(&result_polys)
-        }
+        Ok(result)
     }
 
     /// Union multiple meshes together

@@ -82,6 +82,7 @@ num-traits = { version = "0.2", default-features = false }
 # `default-features = false` drops TBB-backed parallelism, which doesn't
 # work on WASM anyway and isn't required for correctness on native.
 manifold-csg = { version = "0.3", default-features = false, optional = true }
+bnum = { version = "0.14.4", features = ["numtraits"] }
 
 [dev-dependencies]
 approx = "0.5"

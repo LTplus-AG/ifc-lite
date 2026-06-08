@@ -18,6 +18,7 @@
 pub mod arrangement;
 pub mod broadphase;
 pub mod coplanar;
+pub mod fixed;
 pub mod interner;
 pub mod interval;
 pub mod manifest;

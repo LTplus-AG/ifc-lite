@@ -38,3 +38,10 @@ strip = true
 inherits = "release"
 panic = "unwind"
 
+
+[profile.dev.package.bnum]
+opt-level = 3
+[profile.dev.package.num-bigint]
+opt-level = 3
+[profile.dev.package.num-rational]
+opt-level = 3

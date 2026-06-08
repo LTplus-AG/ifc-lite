@@ -79,7 +79,7 @@ mod tests {
     /// Pinned cross-platform determinism fingerprint (G2 L1 slice). If this
     /// changes: either the predicate sign logic changed (intended → re-pin and
     /// re-run the wasm/ARM cross-check) or determinism broke (investigate).
-    const SIGN_MANIFEST: u64 = 0x65b5_f9c5_b6c6_280f;
+    const SIGN_MANIFEST: u64 = 0x0940_7b79_f526_b6df;
 
     #[test]
     fn indirect_sign_manifest_is_pinned() {

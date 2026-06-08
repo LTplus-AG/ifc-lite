@@ -130,9 +130,10 @@ fn lpi_lambda(l: &Lpi) -> (Iv3, RnInterval) {
     let pr = isub(&p, &rr);
     let d = idet3(&qp, &sr, &tr);
     let n = idet3(&pr, &sr, &tr);
-    let lx = d.mul(p[0]).add(n.mul(qp[0]));
-    let ly = d.mul(p[1]).add(n.mul(qp[1]));
-    let lz = d.mul(p[2]).add(n.mul(qp[2]));
+    // λ = d·P − n·(Q−P)  (see rational::lpi_lambda — the minus is load-bearing).
+    let lx = d.mul(p[0]).sub(n.mul(qp[0]));
+    let ly = d.mul(p[1]).sub(n.mul(qp[1]));
+    let lz = d.mul(p[2]).sub(n.mul(qp[2]));
     ([lx, ly, lz], d)
 }
 

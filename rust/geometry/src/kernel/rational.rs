@@ -76,8 +76,11 @@ pub fn orient2d_exact(a: [f64; 3], b: [f64; 3], c: [f64; 3], axis: DropAxis) -> 
 }
 
 /// LPI λ-construction (exact): the implicit point is `(λx/d, λy/d, λz/d)`.
-/// Cite: Attene "Indirect Predicates…" 2020 §4.2 — `qp=Q−P; sr=S−R; tr=T−R;
-/// pr=P−R; d=det3(qp,sr,tr); n=det3(pr,sr,tr); λ = d·P + n·(Q−P)`.
+/// Line `PQ` ∩ plane `RST`: parametrise `X = P + τ·(Q−P)`; on-plane gives
+/// `(P−R)·(SR×TR) + τ·(Q−P)·(SR×TR) = 0`, i.e. `n + τ·d = 0`, so `τ = −n/d`
+/// and `λ = d·P − n·(Q−P)` (the MINUS is load-bearing — `+` lands off the
+/// plane; verified by `tritri::edge_crossing_lpi_lies_exactly_on_the_plane`).
+/// `qp=Q−P; sr=S−R; tr=T−R; pr=P−R; d=det3(qp,sr,tr); n=det3(pr,sr,tr)`.
 pub fn lpi_lambda(l: &Lpi) -> (V3, BigRational) {
     let p = vec(l.p);
     let q = vec(l.q);
@@ -90,9 +93,9 @@ pub fn lpi_lambda(l: &Lpi) -> (V3, BigRational) {
     let pr = sub3(&p, &rr);
     let d = det3(&qp, &sr, &tr);
     let n = det3(&pr, &sr, &tr);
-    let lx = &d * &p[0] + &n * &qp[0];
-    let ly = &d * &p[1] + &n * &qp[1];
-    let lz = &d * &p[2] + &n * &qp[2];
+    let lx = &d * &p[0] - &n * &qp[0];
+    let ly = &d * &p[1] - &n * &qp[1];
+    let lz = &d * &p[2] - &n * &qp[2];
     ([lx, ly, lz], d)
 }
 

@@ -353,4 +353,31 @@ mod tests {
             assert_eq!(orient2d(&ImplicitPoint::Lpi(l), &e(b), &e(c), axis), exact);
         }
     }
+
+    #[test]
+    fn lpi_point_lies_on_its_defining_plane() {
+        // GEOMETRIC correctness (not just self-consistency): orient3d(LPI, R,S,T)
+        // must be 0 — the LPI point is on plane RST by definition. This guard is
+        // what the consistency tests miss; it caught the λ = d·P ± n·qp sign bug.
+        for (l, _, _, _) in lpi_cases() {
+            assert_eq!(
+                orient3d(&ImplicitPoint::Lpi(l), &e(l.r), &e(l.s), &e(l.t)),
+                Sign::Zero,
+                "LPI point is not on its defining plane R,S,T: {l:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tpi_point_lies_on_all_three_defining_planes() {
+        for (t, _, _, _) in tpi_cases() {
+            for plane in &t.planes {
+                assert_eq!(
+                    orient3d(&ImplicitPoint::Tpi(t), &e(plane[0]), &e(plane[1]), &e(plane[2])),
+                    Sign::Zero,
+                    "TPI point is not on one of its defining planes: {t:?}"
+                );
+            }
+        }
+    }
 }

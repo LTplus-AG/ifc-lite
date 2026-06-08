@@ -328,21 +328,51 @@ fn generate_recess_cap(
     add_reveal_quad(mesh, a, b, c, d, vec_along_axis(ea, normal_sign));
 }
 
-/// Host element types that are profile-section structural members (channels,
-/// I-/H-beams, hollow tubes, gusset plates) whose cross-section does NOT fill
-/// an arbitrary opening footprint. Recesses/notches/slots on these must use a
-/// real boolean — the analytic AABB clip fabricates reveal/cap walls in empty
-/// space (issue #977). Solid plate hosts (slab/wall/roof) keep the analytic
-/// path: it's correct there AND deterministic (Manifold's triangulation is not
-/// bit-stable across platforms, which would flake fixture tests like #853).
-fn is_profile_section_host(t: IfcType) -> bool {
-    matches!(
-        t,
-        IfcType::IfcBeam | IfcType::IfcColumn | IfcType::IfcMember | IfcType::IfcPlate
-    ) || t.is_subtype_of(IfcType::IfcBeam)
-        || t.is_subtype_of(IfcType::IfcColumn)
-        || t.is_subtype_of(IfcType::IfcMember)
-        || t.is_subtype_of(IfcType::IfcPlate)
+/// Whether an opening's world AABB over-approximates its actual cutter solid —
+/// the signal that the analytic axis-aligned-box clip would over-cut it.
+///
+/// Type-independent (works regardless of how the exporter labels the host).
+/// `aabb_volume / cutter_volume ≈ 1` for an axis-aligned box → the analytic clip
+/// is exact and deterministic (kept for flat slab/wall openings, issue #853).
+/// A tilted thin plate or a non-box profile has an AABB far larger than its
+/// solid → ratio ≫ 1 → route to the real-mesh boolean so the cut matches the
+/// authored shape instead of an inflated bounding box (the project-wide over-cut
+/// on tilted steel members, issue #977).
+fn opening_aabb_overcuts(mesh: &Mesh, min_pt: Point3<f64>, max_pt: Point3<f64>) -> bool {
+    /// AABB may exceed the real cutter by this factor before we switch to the
+    /// real-mesh boolean. 1.0 = perfect axis-aligned box; even a few degrees of
+    /// tilt on a thin plate pushes well past this, while float noise on a true
+    /// box stays under it.
+    const OVERCUT_RATIO: f64 = 1.10;
+
+    let aabb_volume =
+        (max_pt.x - min_pt.x).abs() * (max_pt.y - min_pt.y).abs() * (max_pt.z - min_pt.z).abs();
+    if aabb_volume <= 0.0 {
+        return false;
+    }
+
+    // Signed-tetrahedron volume of the (closed) cutter solid.
+    let mut vol6 = 0.0_f64;
+    for tri in mesh.indices.chunks_exact(3) {
+        let p = |i: u32| {
+            let o = i as usize * 3;
+            (
+                mesh.positions[o] as f64,
+                mesh.positions[o + 1] as f64,
+                mesh.positions[o + 2] as f64,
+            )
+        };
+        let (ax, ay, az) = p(tri[0]);
+        let (bx, by, bz) = p(tri[1]);
+        let (cx, cy, cz) = p(tri[2]);
+        vol6 += ax * (by * cz - bz * cy) + bx * (cy * az - cz * ay) + cx * (ay * bz - az * by);
+    }
+    let cutter_volume = (vol6 / 6.0).abs();
+    if cutter_volume <= 0.0 {
+        return false; // degenerate cutter — let the normal classifier handle it
+    }
+
+    aabb_volume > cutter_volume * OVERCUT_RATIO
 }
 
 /// Whether the representation type is geometry we can process.
@@ -1783,17 +1813,22 @@ impl GeometryRouter {
                             .into_iter()
                             .zip(item_meshes.into_iter())
                         {
-                            // Tekla steel members are profile sections (channels,
-                            // tubes, I-beams, gusset plates), usually tilted in
-                            // world. The analytic AABB / diagonal clip mishandles
-                            // them: a tilted opening's world AABB is far larger
-                            // than the authored cutter (→ over-cut), and reveal
-                            // walls get fabricated in the open profile. Cut every
-                            // opening on such a host with its REAL mesh via the
-                            // boolean path, so the cut matches the authored shape
-                            // and the kernel's perturbation clears coplanarity
-                            // with the profile's inner faces / fillets (issue #977).
-                            if is_profile_section_host(host.ifc_type) {
+                            // Geometry-driven routing (type-independent, so it
+                            // works regardless of how an exporter labels the host
+                            // — IfcBeam, IfcMember, or a project that models
+                            // everything as IfcBuildingElementProxy). When the
+                            // opening's world AABB is much larger than the actual
+                            // cutter solid, the cutter is TILTED (or non-box): the
+                            // analytic AABB clip would over-cut it badly (a tilted
+                            // thin plate's AABB removes far more than the authored
+                            // shape — the project-wide over-cut on steel members,
+                            // issue #977). Cut those with the REAL mesh via the
+                            // boolean path instead — exact shape, and the kernel's
+                            // perturbation clears coplanarity with inner faces /
+                            // fillets. Axis-aligned boxes (AABB ≈ cutter) keep the
+                            // cheap, deterministic analytic clip, so flat-slab/wall
+                            // openings stay stable on CI (issue #853).
+                            if opening_aabb_overcuts(&item_mesh, min_pt, max_pt) {
                                 bump(
                                     self,
                                     ClassificationKind::NonRectangular,
@@ -2954,20 +2989,30 @@ mod reveal_tests {
     use super::*;
     use crate::Mesh;
 
-    // ── Issue #977 opening routing ────────────────────────────────────────
+    // ── Issue #977 opening routing (geometry-driven, type-independent) ─────
 
     #[test]
-    fn profile_section_hosts_route_to_real_boolean() {
-        // Steel members are profile sections → openings cut with their real
-        // mesh (boolean), not the analytic AABB/diagonal clip.
-        assert!(is_profile_section_host(IfcType::IfcBeam));
-        assert!(is_profile_section_host(IfcType::IfcColumn));
-        assert!(is_profile_section_host(IfcType::IfcMember));
-        assert!(is_profile_section_host(IfcType::IfcPlate));
-        // Solid plate hosts keep the analytic (deterministic) path.
-        assert!(!is_profile_section_host(IfcType::IfcSlab));
-        assert!(!is_profile_section_host(IfcType::IfcWall));
-        assert!(!is_profile_section_host(IfcType::IfcRoof));
+    fn axis_aligned_box_opening_stays_analytic() {
+        // AABB == cutter solid → ratio ≈ 1 → cheap, deterministic analytic clip.
+        let m = make_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+        assert!(!opening_aabb_overcuts(
+            &m,
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 1.0)
+        ));
+    }
+
+    #[test]
+    fn tilted_or_nonbox_opening_routes_to_real_boolean() {
+        // A thin cutter solid whose world AABB is far larger than the solid (as a
+        // tilted plate's is) → ratio ≫ 1 → real-mesh boolean, regardless of host
+        // IFC type. Plate solid volume ≈ 0.02; world AABB volume = 0.6.
+        let plate = make_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 0.02));
+        assert!(opening_aabb_overcuts(
+            &plate,
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.6)
+        ));
     }
 
     /// Build a simple box mesh (12 triangles) for testing.

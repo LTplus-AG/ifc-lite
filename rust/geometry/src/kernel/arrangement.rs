@@ -17,6 +17,7 @@
 //! `Segment` case. BVH broadphase, coplanar overlap, and vertex/edge `Touches`
 //! degeneracies are later increments.
 
+use super::coplanar::coplanar_clip;
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d_any};
 use super::rational::point_of;
@@ -133,23 +134,41 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
 
 /// Compute the conforming arrangement of operand meshes `a` and `b`.
 pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
-    // 1. accumulate raw intersection segments (with cutter triangles)
+    // 1. accumulate raw intersection segments (Segment pairs) + coplanar overlaps
     let mut raw_a: Vec<Vec<RawSeg>> = (0..a.len()).map(|_| Vec::new()).collect();
     let mut raw_b: Vec<Vec<RawSeg>> = (0..b.len()).map(|_| Vec::new()).collect();
+    let mut cop_a: Vec<Vec<Constraint>> = (0..a.len()).map(|_| Vec::new()).collect();
+    let mut cop_b: Vec<Vec<Constraint>> = (0..b.len()).map(|_| Vec::new()).collect();
     for (i, ta) in a.iter().enumerate() {
         for (j, tb) in b.iter().enumerate() {
             if !bbox_overlap(ta, tb) {
                 continue;
             }
-            if let TriTri::Segment([s, t]) = tri_tri_intersection(ta, tb) {
-                raw_a[i].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
-                raw_b[j].push(RawSeg { a: s, b: t, cutter: *ta });
+            match tri_tri_intersection(ta, tb) {
+                TriTri::Segment([s, t]) => {
+                    raw_a[i].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
+                    raw_b[j].push(RawSeg { a: s, b: t, cutter: *ta });
+                }
+                TriTri::Coplanar => {
+                    cop_a[i].extend(coplanar_clip(ta, tb).into_iter().map(|(a, b)| Constraint { a, b }));
+                    cop_b[j].extend(coplanar_clip(tb, ta).into_iter().map(|(a, b)| Constraint { a, b }));
+                }
+                TriTri::None | TriTri::Point(_) => {}
             }
         }
     }
-    // 2. seg×seg pre-pass ⇒ crossing-free constraints
-    let ca: Vec<Vec<Constraint>> = a.iter().zip(&raw_a).map(|(t, r)| split_crossings(t, r)).collect();
-    let cb: Vec<Vec<Constraint>> = b.iter().zip(&raw_b).map(|(t, r)| split_crossings(t, r)).collect();
+    // 2. seg×seg pre-pass on the segment constraints, then append the coplanar ones
+    let build = |tris: &[Tri], raw: &[Vec<RawSeg>], cop: &mut [Vec<Constraint>]| -> Vec<Vec<Constraint>> {
+        (0..tris.len())
+            .map(|i| {
+                let mut c = split_crossings(&tris[i], &raw[i]);
+                c.append(&mut cop[i]);
+                c
+            })
+            .collect()
+    };
+    let ca = build(a, &raw_a, &mut cop_a);
+    let cb = build(b, &raw_b, &mut cop_b);
     // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
     let mut interner = Interner::new();
     let tris_a = retriangulate_each(a, &ca, &mut interner);

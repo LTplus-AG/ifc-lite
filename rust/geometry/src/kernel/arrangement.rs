@@ -145,21 +145,12 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
             })
             .collect()
     };
-    let _tp = std::time::Instant::now();
     let ca = build(a, &raw_a, &mut cop_a);
     let cb = build(b, &raw_b, &mut cop_b);
     // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
     let mut interner = Interner::new();
-    let _tr = std::time::Instant::now();
     let tris_a = retriangulate_each(a, &ca, &mut interner);
     let tris_b = retriangulate_each(b, &cb, &mut interner);
-    if std::env::var("KERNEL_PROFILE").is_ok() {
-        eprintln!(
-            "    arrange: tritri+split {:.1}ms  retriangulate {:.1}ms",
-            (_tr - _tp).as_secs_f64() * 1e3,
-            _tr.elapsed().as_secs_f64() * 1e3
-        );
-    }
     Arrangement { interner, tris_a, tris_b }
 }
 
@@ -351,24 +342,11 @@ fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid
 /// triangles. `A−B = (A outside B) ∪ flip(B inside A)`;
 /// `A∪B = (A outside B) ∪ (B outside A)`; `A∩B = (A inside B) ∪ (B inside A)`.
 pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
-    let _t0 = std::time::Instant::now();
     let arr = arrange(a, b);
-    let _t1 = std::time::Instant::now();
-    let vids = boolean_vids(&arr, a, b, op);
-    let _t2 = std::time::Instant::now();
-    let out = vids
+    boolean_vids(&arr, a, b, op)
         .into_iter()
         .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
-        .collect();
-    if std::env::var("KERNEL_PROFILE").is_ok() {
-        eprintln!(
-            "  boolean: arrange {:.1}ms  classify {:.1}ms  materialize {:.1}ms",
-            (_t1 - _t0).as_secs_f64() * 1e3,
-            (_t2 - _t1).as_secs_f64() * 1e3,
-            _t2.elapsed().as_secs_f64() * 1e3
-        );
-    }
-    out
+        .collect()
 }
 
 #[inline]

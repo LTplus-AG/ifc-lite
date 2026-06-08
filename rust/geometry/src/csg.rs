@@ -884,7 +884,7 @@ impl ClippingProcessor {
     /// With the `manifold-csg` feature enabled, dispatches to Google's
     /// Manifold kernel — no operand-size cap, manifold-by-construction
     /// output. Without the feature, uses the legacy BSP port (`bsp_csg`)
-    /// which silently falls back to the un-cut host when its 24-polygon
+    /// which silently falls back to the un-cut host when its 128-polygon
     /// cap is exceeded.
     ///
     /// On any failure path the host is returned un-cut and a [`BoolFailure`]
@@ -1272,7 +1272,7 @@ impl ClippingProcessor {
     /// With the `manifold-csg` feature, dispatches to the Manifold kernel
     /// (no operand cap). Without it, the legacy BSP path is used and
     /// silently falls back to mesh-merge (no overlap removal) when the
-    /// 24-polygon cap is exceeded — recording a [`BoolFailure`].
+    /// 128-polygon cap is exceeded — recording a [`BoolFailure`].
     ///
     /// Empty operands are handled silently — they have a unique correct answer.
     pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {

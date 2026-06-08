@@ -6,7 +6,7 @@
 //!
 //! Replaces the legacy in-tree BSP port (`bsp_csg.rs`) with Google's
 //! Manifold kernel for `subtract` / `union` / `intersection` on triangle
-//! meshes. Removes the 24-polygon operand cap and produces
+//! meshes. Removes the 128-polygon operand cap and produces
 //! manifold-by-construction output.
 //!
 //! Gated behind the `manifold-csg` Cargo feature. While the migration is
@@ -812,7 +812,7 @@ mod tests {
         }
         assert_eq!(host.triangle_count(), 60);
         let cutter = unit_box_at(Point3::new(0.05, 0.05, -0.5));
-        let result = difference(&host, &cutter).expect("difference ok past 24-poly cap");
+        let result = difference(&host, &cutter).expect("difference ok past 128-poly cap");
         assert!(!result.is_empty());
     }
 

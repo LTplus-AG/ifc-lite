@@ -480,33 +480,70 @@ async function processGeometryBatches(
 
 ## CSG Kernel
 
-Two boolean / CSG kernels coexist behind a Cargo feature flag.
+Two boolean / CSG kernels coexist behind a Cargo feature flag. **Manifold
+is the canonical kernel; the in-tree BSP port is the fallback.** Kernel
+selection is purely compile-time — *which kernel a binary ships depends on
+its Cargo features* (see the build matrix below), so it is possible for two
+binaries built from the same source to produce different boolean results.
 
-### Default (legacy BSP)
+### Manifold (canonical)
 
-`rust/geometry/src/bsp_csg.rs` — a Rust port of csg.js (Evan Wallace,
-MIT). Triangle-mesh BSP. Hard-caps at 24 polygons per operand
-(`csg.rs:117`). On cap exceeded or kernel error, falls back to the
-un-cut host mesh and emits a structured `BoolFailure` record (drainable
-via `GeometryRouter::take_csg_failures`). This is the default for the
-`wasm32-unknown-unknown` build target since the alternative (Manifold)
-has unresolved upstream toolchain dependencies on that target.
+Behind the `manifold-csg` feature, which is **on by default** for native
+consumers (`rust/geometry/Cargo.toml` `default = ["manifold-csg"]`) and
+enabled for the viewer via `manifold-csg-wasm-uu`. Uses
+[Manifold](https://github.com/elalish/manifold) (Apache-2/MIT, native C++
+kernel built through cmake) for `IfcBooleanResult.{DIFFERENCE, UNION,
+INTERSECTION}`. No operand-polygon cap, manifold-by-construction output. A
+vertex-weld pre-pass in `rust/geometry/src/manifold_kernel.rs` collapses the
+polygon-soup mesh layout ifc-lite's extruded-solid builder produces (24
+verts per cube → 8) so Manifold accepts the input, and a global
+signed-volume `reorient_outward` pass fixes Brep operand winding.
 
-### Optional (Manifold)
+Manifold is cross-platform **non-deterministic** for some near-coincident /
+near-coplanar clips (Linux x86_64 can collapse a result that macOS aarch64
+resolves correctly — see `manifold_kernel.rs` and `csg.rs`
+`manifold_result_looks_degenerate`). The dispatcher backstops this by
+retrying such cases through BSP (`try_bsp_difference`).
 
-Behind `--features manifold-csg`. Uses [Manifold](https://github.com/elalish/manifold)
-via the `manifold-csg` crate (Apache-2/MIT, native C++ kernel built
-through cmake). No operand cap, manifold-by-construction output, real
-solid-solid `IfcBooleanResult.{DIFFERENCE, UNION, INTERSECTION}`. A
-vertex-weld pre-pass in `rust/geometry/src/manifold_kernel.rs`
-collapses the polygon-soup mesh layout ifc-lite's extruded-solid
-builder produces (24 verts per cube → 8) so Manifold accepts the
-input.
+### BSP (fallback + determinism backstop)
 
-`BoolFailure` records and `GeometryRouter::take_csg_failures` work
-identically under both kernels. Sprint 2 acceptance gates assert
-`total_failures == 0` on `AC20-FZK-Haus.ifc` and
-`C20-Institute-Var-2.ifc` under `--features manifold-csg`; both pass.
+`rust/geometry/src/bsp_csg.rs` — a Rust port of csg.js (Evan Wallace, MIT),
+triangle-mesh BSP. It is compiled into **every** build (not cfg-removed) and
+serves two roles:
+
+1. **The de-facto kernel on any `default-features = false` build.**
+   `rust/processing` and `apps/server` declare the geometry dependency
+   *without* `manifold-csg` (no C++ toolchain in the server image), so **the
+   Railway `/api/v1/parse` server runs BSP, not Manifold** (confirmed:
+   `cargo tree -p ifc-lite-server` links zero `manifold-*` crates).
+2. **The determinism backstop on Manifold builds** (`try_bsp_difference`),
+   for the cross-platform collapse described above.
+
+BSP hard-caps each operand at **128 polygons** (`MAX_CSG_POLYGONS_PER_MESH`,
+256 combined; `csg.rs`). On cap-exceeded it records `OperandTooLarge` and the
+void router falls back to an analytic axis-aligned-box cut — so **curved /
+arched openings that exceed the cap export as square holes on the BSP (server)
+path while the viewer's Manifold carves the true profile.** `BoolFailure`
+records and `GeometryRouter::take_csg_failures` work identically under both
+kernels (drained on the viewer path; not yet on the server path).
+
+### Kernel build matrix
+
+| Build | Feature | Kernel |
+|---|---|---|
+| native default / CLI / tests | `manifold-csg` (default) | Manifold |
+| viewer (`ifc-lite-wasm`) | `manifold-csg-wasm-uu` | Manifold |
+| Railway server (`apps/server` → `rust/processing`) | `default-features = false` | **BSP** |
+
+### Direction
+
+The standing goal is **one canonical pure-Rust kernel** everywhere — removing
+the server↔viewer drift, the C++ FFI process-abort surface, and Manifold's
+cross-platform non-determinism in one move. Phase 1 routes plane-clip
+front/back decisions through exact Shewchuk predicates (opt-in
+`exact-predicates` feature, `robust` crate) so topology is platform-identical;
+see `exact_predicate_determinism.rs` (the cross-platform sign floor) and
+`Plane::orient_front`.
 
 ### WASM status
 

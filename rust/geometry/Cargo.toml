@@ -21,8 +21,8 @@ readme = "../../README.md"
 default = ["manifold-csg"]
 # Use the Manifold (https://github.com/elalish/manifold) C++ kernel for
 # `subtract_mesh` / `union_mesh` / `intersection_mesh` instead of the
-# legacy in-tree BSP port (`bsp_csg.rs`). Removes the 24-polygon operand
-# cap and gives manifold-by-construction output.
+# legacy in-tree BSP port (`bsp_csg.rs`). Removes the 128-polygon-per-operand
+# cap (`MAX_CSG_POLYGONS_PER_MESH`) and gives manifold-by-construction output.
 manifold-csg = ["dep:manifold-csg"]
 # Enable Manifold on `wasm32-unknown-unknown`. Implies `manifold-csg`.
 # Requires the build host to have LLVM 18+ with libc++ headers and

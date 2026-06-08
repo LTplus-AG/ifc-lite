@@ -23,7 +23,7 @@ use super::predicates::{cmp_lex, orient2d_any, orient3d};
 use super::rational::point_of;
 use super::retriangulate::{projection_axis, triangulate, Constraint, RetriInput};
 use super::tritri::{tri_tri_intersection, TriTri};
-use super::{ImplicitPoint, Sign, Tpi};
+use super::{DropAxis, ImplicitPoint, Sign, Tpi};
 use num_traits::ToPrimitive;
 use std::cmp::Ordering;
 
@@ -243,31 +243,94 @@ fn to_f64_pt(arr: &Arrangement, v: Vid) -> [f64; 3] {
     [p[0].to_f64().unwrap(), p[1].to_f64().unwrap(), p[2].to_f64().unwrap()]
 }
 
-/// The boolean result as ORIENTED Vid triangles (the classification core). Each
-/// arrangement sub-triangle is classified inside/outside the OTHER operand by its
-/// centroid, then selected (and flipped where the op needs the inner boundary).
+fn sub_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn centroid(arr: &Arrangement, tri: [Vid; 3]) -> [f64; 3] {
+    let c = [to_f64_pt(arr, tri[0]), to_f64_pt(arr, tri[1]), to_f64_pt(arr, tri[2])];
+    [
+        (c[0][0] + c[1][0] + c[2][0]) / 3.0,
+        (c[0][1] + c[1][1] + c[2][1]) / 3.0,
+        (c[0][2] + c[1][2] + c[2][2]) / 3.0,
+    ]
+}
+
+fn tri_normal(arr: &Arrangement, tri: [Vid; 3]) -> [f64; 3] {
+    let (a, b, c) = (to_f64_pt(arr, tri[0]), to_f64_pt(arr, tri[1]), to_f64_pt(arr, tri[2]));
+    cross3(sub_f64(b, a), sub_f64(c, a))
+}
+
+fn drop_axis_of(n: [f64; 3]) -> DropAxis {
+    let an = [n[0].abs(), n[1].abs(), n[2].abs()];
+    if an[0] >= an[1] && an[0] >= an[2] {
+        DropAxis::X
+    } else if an[1] >= an[2] {
+        DropAxis::Y
+    } else {
+        DropAxis::Z
+    }
+}
+
+/// If point `c` lies exactly on a triangle of `others` (coplanar AND inside it),
+/// return that triangle's f64 normal — i.e. detect that a sub-triangle whose
+/// centroid is `c` sits on a coplanar SHARED face of the other operand.
+fn on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
+    for t in others {
+        if orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(c)) != Sign::Zero {
+            continue; // c not on t's plane
+        }
+        let n = cross3(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]));
+        let axis = drop_axis_of(n);
+        let w0 = orient2d_any(&e(t[0]), &e(t[1]), &e(t[2]), axis);
+        if w0 == Sign::Zero {
+            continue; // degenerate t
+        }
+        let inside = |u: [f64; 3], v: [f64; 3]| orient2d_any(&e(u), &e(v), &e(c), axis) != w0.flip();
+        if inside(t[0], t[1]) && inside(t[1], t[2]) && inside(t[2], t[0]) {
+            return Some(n);
+        }
+    }
+    None
+}
+
+/// The boolean result as ORIENTED Vid triangles. A sub-triangle whose centroid is
+/// strictly inside/outside the other operand is classified by exact ray-cast;
+/// one whose centroid lies on a coplanar SHARED face of the other operand is
+/// classified by NORMAL AGREEMENT (the ray-cast is undefined there): keep only
+/// the A-copy, and only when the op's winding agrees — back-to-back faces are an
+/// internal interface (union/intersection remove both), the A-copy survives a
+/// difference's outer boundary; the B-copy is always dropped (dedup).
 fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid; 3]> {
-    let centroid = |tri: [Vid; 3]| {
-        let c = [to_f64_pt(arr, tri[0]), to_f64_pt(arr, tri[1]), to_f64_pt(arr, tri[2])];
-        [
-            (c[0][0] + c[1][0] + c[2][0]) / 3.0,
-            (c[0][1] + c[1][1] + c[2][1]) / 3.0,
-            (c[0][2] + c[1][2] + c[2][2]) / 3.0,
-        ]
-    };
     let mut out = Vec::new();
     for &tri in &arr.tris_a {
-        let inside_b = point_inside(centroid(tri), b);
-        let keep = match op {
-            BoolOp::Intersection => inside_b,
-            _ => !inside_b,
-        };
-        if keep {
-            out.push(tri);
+        let c = centroid(arr, tri);
+        if let Some(n_other) = on_surface_normal(c, b) {
+            let co_oriented = dot3(tri_normal(arr, tri), n_other) > 0.0;
+            let keep = match op {
+                BoolOp::Union | BoolOp::Intersection => co_oriented,
+                BoolOp::Difference => !co_oriented,
+            };
+            if keep {
+                out.push(tri); // the A-copy, oriented as-is
+            }
+        } else {
+            let inside_b = point_inside(c, b);
+            let keep = match op {
+                BoolOp::Intersection => inside_b,
+                _ => !inside_b,
+            };
+            if keep {
+                out.push(tri);
+            }
         }
     }
     for &tri in &arr.tris_b {
-        let inside_a = point_inside(centroid(tri), a);
+        let c = centroid(arr, tri);
+        if on_surface_normal(c, a).is_some() {
+            continue; // coplanar-shared B-copy: dropped (the A-copy is the kept one)
+        }
+        let inside_a = point_inside(c, a);
         let (keep, flip) = match op {
             BoolOp::Difference => (inside_a, true),
             BoolOp::Union => (!inside_a, false),
@@ -418,12 +481,44 @@ mod tests {
         assert!((uni - 15.0).abs() < 1e-6, "A∪B volume = {uni}, expected 15");
     }
 
-    // NOTE: a coplanar SHARED-FACE boolean (e.g. two abutting boxes' union) is
-    // NOT yet manifold — the shared-face centroid sits exactly on the other
-    // operand's surface, so ray-cast parity can't classify it. That needs the M4
-    // coplanar keep/flip-by-normal-agreement (back-to-back faces ⇒ remove both),
-    // not yet implemented. M3b (coplanar constraints) + the exact ray-cast handle
-    // everything EXCEPT the shared-face keep/flip. Test re-added at that milestone.
+    #[test]
+    fn abutting_boxes_union_is_manifold_and_correct_volume() {
+        use num_rational::BigRational;
+        use num_traits::ToPrimitive;
+        use std::collections::BTreeMap;
+        // two unit cubes sharing the x=1 face (a coplanar SHARED-FACE degeneracy)
+        let a = box_mesh([0., 0., 0.], [1., 1., 1.]);
+        let b = box_mesh([1., 0., 0.], [2., 1., 1.]);
+        let arr = arrange(&a, &b);
+        let result = boolean_vids(&arr, &a, &b, BoolOp::Union);
+        assert!(!result.is_empty(), "union is empty");
+        // manifold: every undirected edge used exactly twice (no doubled face)
+        let mut edges: BTreeMap<(Vid, Vid), u32> = BTreeMap::new();
+        for t in &result {
+            for (u, v) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+                *edges.entry(if u < v { (u, v) } else { (v, u) }).or_insert(0) += 1;
+            }
+        }
+        assert!(
+            edges.values().all(|&c| c == 2),
+            "abutting union is non-manifold (the shared x=1 face was not deduped)"
+        );
+        // volume == 2 (the merged [0,2]×[0,1]×[0,1] box)
+        let co = |v: Vid| {
+            let p = point_of(arr.interner.get(v));
+            [
+                BigRational::to_f64(&p[0]).unwrap(),
+                BigRational::to_f64(&p[1]).unwrap(),
+                BigRational::to_f64(&p[2]).unwrap(),
+            ]
+        };
+        let vol: f64 = result
+            .iter()
+            .map(|t| dot3(co(t[0]), cross3(co(t[1]), co(t[2]))))
+            .sum::<f64>()
+            / 6.0;
+        assert!((vol - 2.0).abs() < 1e-6, "abutting-boxes union volume = {vol}, expected 2");
+    }
 
     #[test]
     fn boolean_manifest_is_pinned() {

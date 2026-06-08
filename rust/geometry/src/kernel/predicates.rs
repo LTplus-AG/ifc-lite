@@ -448,4 +448,74 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn cmp_lex_matches_materialised_order_and_is_a_total_order() {
+        use std::cmp::Ordering;
+        let mut pts: Vec<ImplicitPoint> =
+            lpi_cases().into_iter().map(|(l, ..)| ImplicitPoint::Lpi(l)).collect();
+        pts.extend(tpi_cases().into_iter().map(|(t, ..)| ImplicitPoint::Tpi(t)));
+        pts.push(e([1.5, -2.0, 0.25]));
+        pts.push(e([0.0, 0.0, 0.0]));
+        let oracle = |a: &ImplicitPoint, b: &ImplicitPoint| -> Sign {
+            let (pa, pb) = (rational::point_of(a), rational::point_of(b));
+            for k in 0..3 {
+                match pa[k].cmp(&pb[k]) {
+                    Ordering::Less => return Sign::Negative,
+                    Ordering::Greater => return Sign::Positive,
+                    Ordering::Equal => {}
+                }
+            }
+            Sign::Zero
+        };
+        for a in &pts {
+            assert_eq!(rational::cmp_lex(a, a), Sign::Zero, "cmp_lex not reflexive-zero");
+            for b in &pts {
+                assert_eq!(rational::cmp_lex(a, b), oracle(a, b), "cmp_lex != materialised lex");
+                assert_eq!(
+                    rational::cmp_lex(a, b),
+                    rational::cmp_lex(b, a).flip(),
+                    "cmp_lex not antisymmetric"
+                );
+            }
+        }
+        // transitivity: a<b<c ⇒ a<c (no ordering cycles).
+        for a in &pts {
+            for b in &pts {
+                for c in &pts {
+                    if rational::cmp_lex(a, b) == Sign::Negative
+                        && rational::cmp_lex(b, c) == Sign::Negative
+                    {
+                        assert_eq!(rational::cmp_lex(a, c), Sign::Negative, "cmp_lex not transitive");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cmp_lex_welds_coincident_lpi_and_tpi() {
+        // An LPI and a TPI built from DIFFERENT constructions at the SAME physical
+        // point must compare equal (Zero) so the interner welds them to one VID.
+        let lpi = ImplicitPoint::Lpi(Lpi {
+            p: [0.3, 0.4, -1.],
+            q: [0.3, 0.4, 1.],
+            r: [0., 0., 0.],
+            s: [1., 0., 0.],
+            t: [0., 1., 0.],
+        });
+        let tpi = ImplicitPoint::Tpi(Tpi {
+            planes: [
+                [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]],    // z=0
+                [[0.3, 0., 0.], [0.3, 1., 0.], [0.3, 0., 1.]], // x=0.3
+                [[0., 0.4, 0.], [1., 0.4, 0.], [0., 0.4, 1.]], // y=0.4
+            ],
+        });
+        assert_eq!(rational::point_of(&lpi), rational::point_of(&tpi), "test points not coincident");
+        assert_eq!(
+            rational::cmp_lex(&lpi, &tpi),
+            Sign::Zero,
+            "coincident LPI/TPI not welded by cmp_lex"
+        );
+    }
 }

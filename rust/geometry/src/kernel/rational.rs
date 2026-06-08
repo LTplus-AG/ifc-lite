@@ -300,3 +300,43 @@ pub fn orient2d_3i(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis
     let det = &u_i * &v_j - &u_j * &v_i;
     super::assemble_sign(sign_of(&det), &[sign_of(&d2), sign_of(&d3)])
 }
+
+/// Exact sign of `a[k] − b[k]` (coordinate `k`) over any explicit/implicit mix.
+fn cmp_axis(a: &ImplicitPoint, b: &ImplicitPoint, k: usize) -> Sign {
+    use ImplicitPoint::Explicit;
+    match (a, b) {
+        (Explicit(ae), Explicit(be)) => sign_of(&(r(ae[k]) - r(be[k]))),
+        (_, Explicit(be)) => {
+            // a implicit: (λa_k − da·b_k)/da
+            let (lam, d) = lambda_of(a);
+            let bk = r(be[k]);
+            super::assemble_sign(sign_of(&(&lam[k] - &d * &bk)), &[sign_of(&d)])
+        }
+        (Explicit(ae), _) => {
+            // b implicit: (a_k·db − λb_k)/db
+            let (lam, d) = lambda_of(b);
+            let ak = r(ae[k]);
+            super::assemble_sign(sign_of(&(&ak * &d - &lam[k])), &[sign_of(&d)])
+        }
+        (_, _) => {
+            // both implicit: (λa_k·db − λb_k·da)/(da·db)
+            let (la, da) = lambda_of(a);
+            let (lb, db) = lambda_of(b);
+            super::assemble_sign(sign_of(&(&la[k] * &db - &lb[k] * &da)), &[sign_of(&da), sign_of(&db)])
+        }
+    }
+}
+
+/// Exact lexicographic total order on points (x, then y, then z), over any mix
+/// of `Explicit`/`Lpi`/`Tpi`. `Zero` ⇔ the two points are EXACTLY coincident —
+/// this is the interner's symbolic vertex-identity test (no float weld). A
+/// strict total order: antisymmetric, transitive (proven by property test).
+pub fn cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint) -> Sign {
+    for k in 0..3 {
+        let s = cmp_axis(a, b, k);
+        if s != Sign::Zero {
+            return s;
+        }
+    }
+    Sign::Zero
+}

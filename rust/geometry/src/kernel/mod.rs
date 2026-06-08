@@ -15,6 +15,7 @@
 //! construction and the oracle for the faster interval/expansion tiers that
 //! land next, each verified `≡` exact.
 
+pub mod interner;
 pub mod interval;
 pub mod manifest;
 pub mod predicates;

@@ -260,6 +260,21 @@ mod perf_compare {
     }
 
     #[test]
+    fn perf_realistic_openings() {
+        use super::super::arrangement::box_mesh;
+        let wall = tris_to_mesh(&box_mesh([0., 0., 0.], [6., 3., 0.3]));
+        // a rectangular door (the COMMON case) + a single curved window
+        let door = tris_to_mesh(&box_mesh([1., 0., -0.5], [2., 2.1, 0.8]));
+        let t = std::time::Instant::now();
+        for _ in 0..10 { let _ = subtract(&wall, &door); }
+        let rect = t.elapsed().as_secs_f64() * 1e3 / 10.0;
+        let m = std::time::Instant::now();
+        for _ in 0..10 { let _ = crate::manifold_kernel::difference(&wall, &door).unwrap(); }
+        let mrect = m.elapsed().as_secs_f64() * 1e3 / 10.0;
+        println!("rectangular door: kernel {:.2}ms  manifold {:.2}ms  ratio {:.0}x", rect, mrect, rect / mrect.max(1e-9));
+    }
+
+    #[test]
     fn perf_wall_with_cylinder_opening() {
         let wall = tris_to_mesh(&box_mesh([0., 0., 0.], [4., 3., 0.3]));
         for n in [8usize, 12, 16, 24, 32] {

@@ -400,4 +400,52 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn multi_implicit_orient2d_matches_materialised_oracle() {
+        // M2.3.0: orient2d_2i / orient2d_3i over all {Lpi,Tpi} mixtures must equal
+        // the direct orient2d on the materialised λ/d points, for every drop axis.
+        let mut pts: Vec<ImplicitPoint> =
+            lpi_cases().into_iter().map(|(l, ..)| ImplicitPoint::Lpi(l)).collect();
+        pts.extend(tpi_cases().into_iter().map(|(t, ..)| ImplicitPoint::Tpi(t)));
+        let c = [1.3, -0.7, 2.1];
+        let cpt = rational::point_of(&ImplicitPoint::Explicit(c));
+        for axis in AXES {
+            for a in &pts {
+                for b in &pts {
+                    let oracle = rational::orient2d_pts(
+                        &rational::point_of(a), &rational::point_of(b), &cpt, axis);
+                    assert_eq!(rational::orient2d_2i(a, b, c, axis), oracle, "orient2d_2i (axis {axis:?})");
+                    for cc in &pts {
+                        let oracle3 = rational::orient2d_pts(
+                            &rational::point_of(a), &rational::point_of(b), &rational::point_of(cc), axis);
+                        assert_eq!(rational::orient2d_3i(a, b, cc, axis), oracle3, "orient2d_3i (axis {axis:?})");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn multi_implicit_orient2d_winding_invariant() {
+        // Rewinding a's defining plane flips sign(d); 2I/3I must keep the sign.
+        let l = lpi_cases()[2].0;
+        let a = ImplicitPoint::Lpi(l);
+        let a_rw = ImplicitPoint::Lpi(Lpi { s: l.t, t: l.s, ..l });
+        let b = ImplicitPoint::Tpi(tpi_cases()[0].0);
+        let cc = ImplicitPoint::Lpi(lpi_cases()[0].0);
+        let c = [0.4, 1.1, -0.3];
+        for axis in AXES {
+            assert_eq!(
+                rational::orient2d_2i(&a, &b, c, axis),
+                rational::orient2d_2i(&a_rw, &b, c, axis),
+                "2I sign changed under plane re-winding"
+            );
+            assert_eq!(
+                rational::orient2d_3i(&a, &b, &cc, axis),
+                rational::orient2d_3i(&a_rw, &b, &cc, axis),
+                "3I sign changed under plane re-winding"
+            );
+        }
+    }
 }

@@ -6,7 +6,7 @@
 //! cascade's last-resort exact fallback. f64 coordinates are exactly
 //! representable as `BigRational`, so every sign here is mathematically exact.
 
-use super::{DropAxis, Lpi, Sign, Tpi};
+use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use num_rational::BigRational;
 use num_traits::Signed;
 
@@ -241,4 +241,62 @@ pub fn lpi_compare_along(l1: &Lpi, l2: &Lpi, u: [f64; 3]) -> Sign {
     let dot2 = &lam2[0] * &ur[0] + &lam2[1] * &ur[1] + &lam2[2] * &ur[2];
     let num = &dot1 * &d2 - &dot2 * &d1;
     super::assemble_sign(sign_of(&num), &[sign_of(&d1), sign_of(&d2)])
+}
+
+/// λ/d of an implicit point (Lpi or Tpi). Callers dispatch — never `Explicit`.
+pub(crate) fn lambda_of(p: &ImplicitPoint) -> (V3, BigRational) {
+    match p {
+        ImplicitPoint::Lpi(l) => lpi_lambda(l),
+        ImplicitPoint::Tpi(t) => tpi_lambda(t),
+        ImplicitPoint::Explicit(_) => unreachable!("lambda_of: Explicit point"),
+    }
+}
+
+/// Exact materialised coordinates of any point (for the oracle).
+pub(crate) fn point_of(p: &ImplicitPoint) -> V3 {
+    match p {
+        ImplicitPoint::Lpi(l) => lpi_point(l),
+        ImplicitPoint::Tpi(t) => tpi_point(t),
+        ImplicitPoint::Explicit(e) => vec(*e),
+    }
+}
+
+/// orient2d on three already-materialised points (oracle), projected by `axis`.
+pub(crate) fn orient2d_pts(a: &V3, b: &V3, c: &V3, axis: DropAxis) -> Sign {
+    let (i, j) = axis_idx(axis);
+    let det = (&a[i] - &c[i]) * (&b[j] - &c[j]) - (&a[j] - &c[j]) * (&b[i] - &c[i]);
+    sign_of(&det)
+}
+
+/// orient2d with TWO implicit points (a,b) and one explicit (c), projected after
+/// `axis`. `orient2d = Λ′/(d1·d2)` with
+/// `Λ′ = (λ1_i−d1·c_i)(λ2_j−d2·c_j) − (λ1_j−d1·c_j)(λ2_i−d2·c_i)`; both
+/// denominators are odd → `den_signs = [sign(d1), sign(d2)]`.
+pub fn orient2d_2i(a: &ImplicitPoint, b: &ImplicitPoint, c: [f64; 3], axis: DropAxis) -> Sign {
+    let (i, j) = axis_idx(axis);
+    let (lam1, d1) = lambda_of(a);
+    let (lam2, d2) = lambda_of(b);
+    let cr = vec(c);
+    let a_i = &lam1[i] - &d1 * &cr[i];
+    let a_j = &lam1[j] - &d1 * &cr[j];
+    let b_i = &lam2[i] - &d2 * &cr[i];
+    let b_j = &lam2[j] - &d2 * &cr[j];
+    let det = &a_i * &b_j - &a_j * &b_i;
+    super::assemble_sign(sign_of(&det), &[sign_of(&d1), sign_of(&d2)])
+}
+
+/// orient2d with THREE implicit points (a,b,c), projected after `axis`, based on
+/// `a`: `Λ′ = (d1·λ2_i−d2·λ1_i)(d1·λ3_j−d3·λ1_j) − (d1·λ2_j−d2·λ1_j)(d1·λ3_i−d3·λ1_i)`.
+/// `D′ = d1²·d2·d3`, so the squared `d1` is dropped → `den_signs = [sign(d2), sign(d3)]`.
+pub fn orient2d_3i(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Sign {
+    let (i, j) = axis_idx(axis);
+    let (lam1, d1) = lambda_of(a);
+    let (lam2, d2) = lambda_of(b);
+    let (lam3, d3) = lambda_of(c);
+    let u_i = &d1 * &lam2[i] - &d2 * &lam1[i];
+    let u_j = &d1 * &lam2[j] - &d2 * &lam1[j];
+    let v_i = &d1 * &lam3[i] - &d3 * &lam1[i];
+    let v_j = &d1 * &lam3[j] - &d3 * &lam1[j];
+    let det = &u_i * &v_j - &u_j * &v_i;
+    super::assemble_sign(sign_of(&det), &[sign_of(&d2), sign_of(&d3)])
 }

@@ -46,6 +46,43 @@ impl Plane {
     pub fn is_front(&self, point: &Point3<f64>) -> bool {
         self.signed_distance(point) >= 0.0
     }
+
+    /// Exact, platform-deterministic front test via Shewchuk `orient3d`.
+    ///
+    /// The float [`Self::is_front`] rounds `(p - point)·normal` and can flip sign
+    /// on a coincident/near-coplanar vertex — differently across platforms (the
+    /// class that makes Manifold's CSG collapse on Linux x86_64 but not aarch64).
+    /// This routes the decision through an exact predicate: build two in-plane
+    /// basis vectors `u = n×helper`, `v = n×u` (both ⊥ n), so the triple
+    /// `(point, point+u, point+v)` spans this plane with `(b-a)×(c-a) = n·|u|²`
+    /// — hence `orient3d ≥ 0` means the same side the normal points to (front),
+    /// and an exactly-on-plane point yields exactly `0` (front), deterministically.
+    /// The basis is derived by the same float ops on every target, so `a,b,c` are
+    /// bit-identical and the exact sign is identical across platforms.
+    #[cfg(feature = "exact-predicates")]
+    pub fn orient_front(&self, point: &Point3<f64>) -> bool {
+        use robust::{orient3d, Coord3D};
+        let n = self.normal;
+        // Any axis least aligned with n gives a well-conditioned in-plane basis.
+        let helper = if n.x.abs() <= n.y.abs() && n.x.abs() <= n.z.abs() {
+            Vector3::new(1.0, 0.0, 0.0)
+        } else if n.y.abs() <= n.z.abs() {
+            Vector3::new(0.0, 1.0, 0.0)
+        } else {
+            Vector3::new(0.0, 0.0, 1.0)
+        };
+        let u = n.cross(&helper);
+        let v = n.cross(&u);
+        let a = self.point;
+        let b = a + u;
+        let c = a + v;
+        let to = |q: Point3<f64>| Coord3D { x: q.x, y: q.y, z: q.z };
+        // `(b-a)×(c-a) = n·|u|²`, so (a,b,c) wind counter-clockwise about +n.
+        // Shewchuk `orient3d` is NEGATIVE when the query point is on that
+        // counter-clockwise (front, +n) side and zero exactly on the plane —
+        // so `<= 0` is "front", matching `is_front`'s `signed_distance >= 0`.
+        orient3d(to(a), to(b), to(c), to(*point)) <= 0.0
+    }
 }
 
 /// Triangle clipping result
@@ -540,25 +577,44 @@ impl ClippingProcessor {
         self.failures.borrow_mut().push(BoolFailure::new(op, reason));
     }
 
+    /// Front/back classification for one vertex of a plane clip.
+    ///
+    /// With `exact-predicates` the decision is an exact Shewchuk `orient3d` sign
+    /// (platform-deterministic; exactly-on-plane counts as front) — this is the
+    /// Phase-1 pure-Rust kernel change that removes the float-epsilon
+    /// misclassification behind the coincident-face determinism failures.
+    /// Without the feature it is the historical float epsilon-band heuristic,
+    /// byte-identical to before. Either way the signed distance `d` is still
+    /// used for the (float) split-point interpolation.
+    #[inline]
+    fn vert_front(&self, plane: &Plane, p: &Point3<f64>, d: f64) -> bool {
+        #[cfg(feature = "exact-predicates")]
+        {
+            let _ = d;
+            plane.orient_front(p)
+        }
+        #[cfg(not(feature = "exact-predicates"))]
+        {
+            let _ = (plane, p);
+            d >= -self.epsilon
+        }
+    }
+
     /// Clip a triangle against a plane
     /// Returns triangles that are in front of the plane
     pub fn clip_triangle(&self, triangle: &Triangle, plane: &Plane) -> ClipResult {
-        // Calculate signed distances for all vertices
+        // Signed distances (used only for the split-point interpolation).
         let d0 = plane.signed_distance(&triangle.v0);
         let d1 = plane.signed_distance(&triangle.v1);
         let d2 = plane.signed_distance(&triangle.v2);
 
-        // Count vertices in front of plane
-        let mut front_count = 0;
-        if d0 >= -self.epsilon {
-            front_count += 1;
-        }
-        if d1 >= -self.epsilon {
-            front_count += 1;
-        }
-        if d2 >= -self.epsilon {
-            front_count += 1;
-        }
+        // Front/back decision — exact `orient3d` sign under `exact-predicates`,
+        // else the float epsilon band. `front_count` matches the old behaviour
+        // exactly when the feature is off.
+        let f0 = self.vert_front(plane, &triangle.v0, d0);
+        let f1 = self.vert_front(plane, &triangle.v1, d1);
+        let f2 = self.vert_front(plane, &triangle.v2, d2);
+        let front_count = f0 as u8 + f1 as u8 + f2 as u8;
 
         match front_count {
             // All vertices behind - discard triangle
@@ -569,36 +625,18 @@ impl ClippingProcessor {
 
             // One vertex in front - create 1 smaller triangle
             1 => {
-                let (front, back1, back2) = if d0 >= -self.epsilon {
+                let (front, back1, back2) = if f0 {
                     (triangle.v0, triangle.v1, triangle.v2)
-                } else if d1 >= -self.epsilon {
+                } else if f1 {
                     (triangle.v1, triangle.v2, triangle.v0)
                 } else {
                     (triangle.v2, triangle.v0, triangle.v1)
                 };
 
                 // Interpolate to find intersection points
-                let d_front = if d0 >= -self.epsilon {
-                    d0
-                } else if d1 >= -self.epsilon {
-                    d1
-                } else {
-                    d2
-                };
-                let d_back1 = if d0 >= -self.epsilon {
-                    d1
-                } else if d1 >= -self.epsilon {
-                    d2
-                } else {
-                    d0
-                };
-                let d_back2 = if d0 >= -self.epsilon {
-                    d2
-                } else if d1 >= -self.epsilon {
-                    d0
-                } else {
-                    d1
-                };
+                let d_front = if f0 { d0 } else if f1 { d1 } else { d2 };
+                let d_back1 = if f0 { d1 } else if f1 { d2 } else { d0 };
+                let d_back2 = if f0 { d2 } else if f1 { d0 } else { d1 };
 
                 let t1 = d_front / (d_front - d_back1);
                 let t2 = d_front / (d_front - d_back2);
@@ -611,36 +649,18 @@ impl ClippingProcessor {
 
             // Two vertices in front - create 2 triangles
             2 => {
-                let (front1, front2, back) = if d0 < -self.epsilon {
+                let (front1, front2, back) = if !f0 {
                     (triangle.v1, triangle.v2, triangle.v0)
-                } else if d1 < -self.epsilon {
+                } else if !f1 {
                     (triangle.v2, triangle.v0, triangle.v1)
                 } else {
                     (triangle.v0, triangle.v1, triangle.v2)
                 };
 
                 // Interpolate to find intersection points
-                let d_back = if d0 < -self.epsilon {
-                    d0
-                } else if d1 < -self.epsilon {
-                    d1
-                } else {
-                    d2
-                };
-                let d_front1 = if d0 < -self.epsilon {
-                    d1
-                } else if d1 < -self.epsilon {
-                    d2
-                } else {
-                    d0
-                };
-                let d_front2 = if d0 < -self.epsilon {
-                    d2
-                } else if d1 < -self.epsilon {
-                    d0
-                } else {
-                    d1
-                };
+                let d_back = if !f0 { d0 } else if !f1 { d1 } else { d2 };
+                let d_front1 = if !f0 { d1 } else if !f1 { d2 } else { d0 };
+                let d_front2 = if !f0 { d2 } else if !f1 { d0 } else { d1 };
 
                 let t1 = d_front1 / (d_front1 - d_back);
                 let t2 = d_front2 / (d_front2 - d_back);
@@ -2537,6 +2557,71 @@ mod tests {
             assert!((chunk[0]).abs() < 1e-5);
             assert!((chunk[1]).abs() < 1e-5);
             assert!((chunk[2] - 1.0).abs() < 1e-5);
+        }
+    }
+}
+
+/// Parity + correctness for the exact-predicate plane-clip classifier (Phase-1
+/// pure-Rust kernel). Only built/run with `--features exact-predicates`.
+#[cfg(all(test, feature = "exact-predicates"))]
+mod exact_predicate_clip_tests {
+    use super::{ClipResult, ClippingProcessor, Plane, Triangle};
+    use nalgebra::{Point3, Vector3};
+
+    #[test]
+    fn orient_front_agrees_with_float_on_separated_points() {
+        // For points unambiguously clear of the plane, the exact predicate and
+        // the float dot-product must classify identically — the exact path only
+        // changes the answer in the coincident/near-coplanar band.
+        let p = Plane::new(Point3::new(0.3, -1.2, 4.5), Vector3::new(1.0, 2.0, 3.0));
+        for &q in &[
+            Point3::new(10.0, 10.0, 10.0),
+            Point3::new(-9.0, -8.0, -7.0),
+            Point3::new(0.3, -1.2, 14.5),
+            Point3::new(0.3, -1.2, -5.5),
+        ] {
+            assert_eq!(
+                p.orient_front(&q),
+                p.is_front(&q),
+                "exact and float must agree for the unambiguous point {q:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn orient_front_is_exact_and_deterministic_on_plane() {
+        // A point lying exactly on a building-scale plane -> orient3d == 0 ->
+        // classified front, deterministically (no epsilon-band waffling), and a
+        // nanometre below -> definite back.
+        let p = Plane::new(Point3::new(1.0, 2.0, 12.3456789), Vector3::new(0.0, 0.0, 1.0));
+        let on = Point3::new(7.0, -4.0, 12.3456789);
+        assert!(p.orient_front(&on), "exactly-on-plane point must be front (orient3d == 0)");
+        assert_eq!(p.orient_front(&on), p.orient_front(&on), "must be deterministic");
+        let below = Point3::new(7.0, -4.0, 12.3456789 - 1e-9);
+        assert!(!p.orient_front(&below), "1 nm below must be a definite back");
+    }
+
+    #[test]
+    fn clip_triangle_with_exact_classifier_keeps_front_side() {
+        // Triangle straddling z = 0 (two front, one back). The exact-classified
+        // clip keeps the front portion as a Split with no vertex left below.
+        let cp = ClippingProcessor::new();
+        let plane = Plane::new(Point3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0));
+        let tri = Triangle::new(
+            Point3::new(-1.0, 0.0, 1.0),
+            Point3::new(1.0, 0.0, 1.0),
+            Point3::new(0.0, 0.0, -1.0),
+        );
+        match cp.clip_triangle(&tri, &plane) {
+            ClipResult::Split(out) => {
+                assert!(!out.is_empty(), "straddling triangle must produce a front fragment");
+                for t in &out {
+                    for v in [t.v0, t.v1, t.v2] {
+                        assert!(v.z >= -1e-9, "clipped vertex must be on/above the plane, got z={}", v.z);
+                    }
+                }
+            }
+            other => panic!("expected Split, got {other:?}"),
         }
     }
 }

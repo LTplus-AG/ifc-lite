@@ -29,6 +29,10 @@ manifold-csg = ["dep:manifold-csg"]
 # `wasm-ld` (see scripts/vercel-install.sh + docs/architecture/geometry-pipeline.md).
 manifold-csg-wasm-uu = ["manifold-csg", "manifold-csg/unstable-wasm-uu"]
 debug_geometry = []
+# Pure-Rust CSG kernel (Phase 1): route plane-clip front/back decisions through
+# exact Shewchuk `orient3d` instead of the float epsilon band, so topology is
+# platform-deterministic. Off by default; opt in with `--features exact-predicates`.
+exact-predicates = ["dep:robust"]
 
 [dependencies]
 
@@ -71,6 +75,10 @@ thiserror = "2.0"
 # `default-features = false` drops TBB-backed parallelism, which doesn't
 # work on WASM anyway and isn't required for correctness on native.
 manifold-csg = { version = "0.3", default-features = false, optional = true }
+
+# Exact geometric predicates for the pure-Rust CSG kernel (`exact-predicates`
+# feature). Shewchuk adaptive orient3d — sign-exact, no_std, no C deps, wasm-clean.
+robust = { version = "1.2", optional = true }
 
 [dev-dependencies]
 approx = "0.5"

@@ -61,4 +61,34 @@ describe('blob GC', () => {
     });
     expect(decision.drop).toEqual([]); // too young
   });
+
+  it('fails safe when uploadedAt is unknown (does not sweep)', async () => {
+    const store = new MemoryBlobStore();
+    const orphan = await store.put(new Uint8Array([7, 7, 7]));
+
+    // Backend that can't recover uploadedAt (e.g. raw-bytes fallback).
+    const metaProvider = async (hash: string) => ({ hash, byteLength: 3 });
+
+    const decision = await planBlobSweep(store, new Set(), {
+      epochMs: 0, // even with an aggressive epoch, age-unknown is protected
+      metaProvider,
+    });
+    expect(decision.drop).toEqual([]); // age unknown → not eligible
+    expect(decision.reclaimBytes).toBe(0);
+  });
+
+  it('sweeps age-unknown blobs only under the explicit opt-in flag', async () => {
+    const store = new MemoryBlobStore();
+    const orphan = await store.put(new Uint8Array([8, 8, 8]));
+
+    const metaProvider = async (hash: string) => ({ hash, byteLength: 3 });
+
+    const decision = await planBlobSweep(store, new Set(), {
+      epochMs: 60_000,
+      metaProvider,
+      sweepUnknownAge: true,
+    });
+    expect(decision.drop).toEqual([orphan.hash]);
+    expect(decision.reclaimBytes).toBe(3);
+  });
 });

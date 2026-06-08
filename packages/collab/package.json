@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/collab",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Real-time collaborative BIM via CRDT on IFCX",
   "type": "module",
   "main": "./dist/index.js",
@@ -45,7 +45,7 @@
     "y-indexeddb": "^9.0.12",
     "y-protocols": "^1.0.6",
     "y-websocket": "^3.0.0",
-    "yjs": "^13.6.20"
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@types/ws": "^8.5.13",

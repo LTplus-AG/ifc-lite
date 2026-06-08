@@ -95,8 +95,9 @@ pub(crate) fn find_color_for_geometry(
     None
 }
 
-/// Extract `(rendering_color, shading_color)` from IfcStyledItem.Styles.
-/// See `extract_color_from_rendering` for the tuple semantics.
+/// Extract `(apparent_color, shading_color)` from IfcStyledItem.Styles.
+/// See [`ifc_lite_processing::style::extract_surface_style_colors`] for the
+/// tuple semantics.
 pub(crate) fn extract_color_pair_from_styles(
     styles_attr: &ifc_lite_core::AttributeValue,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -127,8 +128,12 @@ pub(crate) fn extract_color_from_styles(
     extract_color_pair_from_styles(styles_attr, decoder).map(|(c, _)| c)
 }
 
-/// Extract color from IfcPresentationStyleAssignment or IfcSurfaceStyle.
-/// See `extract_color_from_rendering` for the tuple semantics.
+/// Extract colour from `IfcPresentationStyle(Assignment)` or `IfcSurfaceStyle`,
+/// delegating the surface-style colour leaf to the canonical
+/// [`ifc_lite_processing::style::extract_surface_style_colors`] (#913-style
+/// single source of truth — so the viewer and server can't disagree on
+/// `SurfaceColour` vs `DiffuseColour` precedence). Returns
+/// `(apparent_color, optional_shading_color)`.
 fn extract_color_from_style_assignment(
     style_id: u32,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -139,12 +144,14 @@ fn extract_color_from_style_assignment(
 
     match style.ifc_type {
         IfcType::IfcPresentationStyle => {
-            // IfcPresentationStyle has Styles at attr 0
+            // IfcPresentationStyle has Styles at attr 0.
             let styles_attr = style.get(0)?;
             if let Some(list) = styles_attr.as_list() {
                 for item in list {
                     if let Some(inner_id) = item.as_entity_ref() {
-                        if let Some(pair) = extract_color_from_surface_style(inner_id, decoder) {
+                        if let Some(pair) =
+                            ifc_lite_processing::style::extract_surface_style_colors(inner_id, decoder)
+                        {
                             return Some(pair);
                         }
                     }
@@ -152,17 +159,18 @@ fn extract_color_from_style_assignment(
             }
         }
         IfcType::IfcSurfaceStyle => {
-            return extract_color_from_surface_style(style_id, decoder);
+            return ifc_lite_processing::style::extract_surface_style_colors(style_id, decoder);
         }
         _ => {
-            // FIX: Handle IfcPresentationStyleAssignment (IFC2x3 entity not in IFC4 schema)
-            // IfcPresentationStyleAssignment has Styles list at attribute 0
-            // It's decoded as Unknown type, so we check by structure
+            // IfcPresentationStyleAssignment (IFC2x3 entity absent from the IFC4
+            // schema) decodes as Unknown; its Styles list is at attribute 0.
             let styles_attr = style.get(0)?;
             if let Some(list) = styles_attr.as_list() {
                 for item in list {
                     if let Some(inner_id) = item.as_entity_ref() {
-                        if let Some(pair) = extract_color_from_surface_style(inner_id, decoder) {
+                        if let Some(pair) =
+                            ifc_lite_processing::style::extract_surface_style_colors(inner_id, decoder)
+                        {
                             return Some(pair);
                         }
                     }
@@ -172,145 +180,6 @@ fn extract_color_from_style_assignment(
     }
 
     None
-}
-
-/// Extract color from IfcSurfaceStyle. See `extract_color_from_rendering`
-/// for the meaning of the tuple.
-fn extract_color_from_surface_style(
-    style_id: u32,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<([f32; 4], Option<[f32; 4]>)> {
-    use ifc_lite_core::IfcType;
-
-    let style = decoder.decode_by_id(style_id).ok()?;
-
-    if style.ifc_type != IfcType::IfcSurfaceStyle {
-        return None;
-    }
-
-    // IfcSurfaceStyle: Name, Side, Styles (list of surface style elements)
-    // Attribute 2: Styles
-    let styles_attr = style.get(2)?;
-
-    if let Some(list) = styles_attr.as_list() {
-        for item in list {
-            if let Some(element_id) = item.as_entity_ref() {
-                if let Some(pair) = extract_color_from_rendering(element_id, decoder) {
-                    return Some(pair);
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Extract color from IfcSurfaceStyleRendering or IfcSurfaceStyleShading.
-///
-/// Returns `(rendering_color, shading_color)`:
-///   - `rendering_color` is the apparent surface colour: `SurfaceColour`
-///     (attr 0) by default, scaled by `DiffuseColour` (attr 2) when the
-///     author supplied it as an `IfcNormalisedRatioMeasure` factor.
-///     Matches how web-ifc, IfcOpenShell, BlenderBIM, and the IFC spec
-///     prose treat the chain — `SurfaceColour` IS the apparent surface
-///     colour; `DiffuseColour` is the diffuse-reflection contribution
-///     used by full PBR/Phong renderers and is meaningless for the flat
-///     viewer pipeline when its only effect is to drop everything to
-///     black.
-///   - `shading_color` is the alternative the GLB exporter's "Shading"
-///     source picks up — populated only when a distinct `DiffuseColour`
-///     IfcColourRgb is authored, so downstream pipelines that DO want
-///     the per-component diffuse override can still get it.
-///
-/// Pre-fix this preferred `DiffuseColour` over `SurfaceColour`. That
-/// regressed on every IFC file that authors `DiffuseColour =
-/// IfcColourRgb(0, 0, 0)` (which the spec defines as "no diffuse
-/// reflection contribution", NOT "render the surface in black") — most
-/// notably the railway fixture on issue #859 / PR #871, where every
-/// IfcSignal / IfcReferent rendered as opaque black on the dark
-/// viewport background and the user reported "viewport blank" even
-/// though 33 meshes had streamed correctly.
-fn extract_color_from_rendering(
-    rendering_id: u32,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<([f32; 4], Option<[f32; 4]>)> {
-    use ifc_lite_core::IfcType;
-
-    let rendering = decoder.decode_by_id(rendering_id).ok()?;
-
-    match rendering.ifc_type {
-        IfcType::IfcSurfaceStyleRendering | IfcType::IfcSurfaceStyleShading => {
-            // Attr 0: SurfaceColour (inherited from IfcSurfaceStyleShading)
-            // Attr 1: Transparency (inherited, 0.0=opaque, 1.0=transparent)
-            // Attr 2: DiffuseColour — SELECT(IfcColourRgb,
-            //         IfcNormalisedRatioMeasure). Only on IfcSurfaceStyleRendering.
-            let color_ref = rendering.get_ref(0)?;
-            let [sr, sg, sb, _] = extract_color_rgb(color_ref, decoder)?;
-
-            let transparency = rendering.get_float(1).unwrap_or(0.0);
-            let alpha = (1.0 - transparency as f32).clamp(0.0, 1.0);
-            let surface_rgba = [sr, sg, sb, alpha];
-
-            // SurfaceColour is the canonical apparent colour. Only let
-            // DiffuseColour modulate it when it's a normalised-ratio
-            // factor (which IS a multiplicative modifier of
-            // SurfaceColour per spec). When DiffuseColour is an
-            // IfcColourRgb we store it as the optional `shading`
-            // override for downstream consumers (GLB exporter's
-            // "Shading" source) but do NOT use it as the rendered
-            // colour — that would replace the entire surface tint
-            // with a value the IFC author intended as a reflectance
-            // coefficient, which turns most files black on the flat
-            // viewer pipeline.
-            let mut rendering_rgba = surface_rgba;
-            let mut shading: Option<[f32; 4]> = None;
-
-            if rendering.ifc_type == IfcType::IfcSurfaceStyleRendering {
-                if let Some(diffuse_id) = rendering.get_ref(2) {
-                    if let Some([dr, dg, db, _]) = extract_color_rgb(diffuse_id, decoder) {
-                        let diffuse_rgba = [dr, dg, db, alpha];
-                        // Surface the diffuse override to the GLB
-                        // exporter only when it actually differs from
-                        // the surface colour.
-                        if diffuse_rgba != surface_rgba {
-                            shading = Some(diffuse_rgba);
-                        }
-                    }
-                } else if let Some(factor) = rendering.get_float(2) {
-                    let f = (factor as f32).clamp(0.0, 1.0);
-                    rendering_rgba = [sr * f, sg * f, sb * f, alpha];
-                }
-            }
-
-            return Some((rendering_rgba, shading));
-        }
-        _ => {}
-    }
-
-    None
-}
-
-/// Extract RGB color from IfcColourRgb
-fn extract_color_rgb(
-    color_id: u32,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<[f32; 4]> {
-    use ifc_lite_core::IfcType;
-
-    let color = decoder.decode_by_id(color_id).ok()?;
-
-    if color.ifc_type != IfcType::IfcColourRgb {
-        return None;
-    }
-
-    // IfcColourRgb: Name, Red, Green, Blue
-    // Note: In IFC2x3, attributes are at indices 1, 2, 3 (0 is Name)
-    // In IFC4, attributes are also at 1, 2, 3
-    let red = color.get_float(1).unwrap_or(0.8);
-    let green = color.get_float(2).unwrap_or(0.8);
-    let blue = color.get_float(3).unwrap_or(0.8);
-
-    Some([red as f32, green as f32, blue as f32, 1.0])
 }
 
 // ---------------------------------------------------------------------------
@@ -502,11 +371,10 @@ pub(crate) fn combined_pre_pass(
     // gpu_meshes), but the call mutates `void_index` in place — keep it.
     let _ = ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
 
-    // #957: render orphan IfcTypeProduct geometry (annex-E "tessellated shape
-    // with style" showcase files attach geometry to the type, not an
-    // occurrence). processGeometryBatch turns these type jobs into meshes via
-    // process_representation_map.
-    complex_jobs.extend(collect_orphan_type_geometry_jobs(content, decoder));
+    // #957 + Model/Types switch: emit IfcTypeProduct RepresentationMap geometry
+    // (annex-E orphan types AND instanced type-library shapes). processGeometryBatch
+    // tags each with a geometry_class so the viewer can show/hide it per view mode.
+    complex_jobs.extend(collect_type_geometry_jobs(content, decoder));
 
     PrePassData {
         geometry_styles,
@@ -519,33 +387,39 @@ pub(crate) fn combined_pre_pass(
     }
 }
 
-/// #957: collect render jobs for orphan `IfcTypeProduct` geometry — a type's
-/// `RepresentationMap` that no `IfcMappedItem` instantiates.
+/// Collect render jobs for `IfcTypeProduct` `RepresentationMap` geometry — every
+/// type carrying at least one map that no `IfcMappedItem` already draws.
 ///
-/// Returns `(id, start, end, ifc_type)` for each TYPE entity carrying at least
-/// one orphan RepresentationMap, to be appended to the prepass job list so the
-/// browser renders them. `processGeometryBatch` turns each into geometry via
-/// [`ifc_lite_geometry::GeometryRouter::process_representation_map`]. Normally-
-/// instanced typed products keep their geometry on the occurrence (whose
-/// IfcMappedItem references the map), so those maps are filtered out here — no
-/// double render. buildingSMART annex-E "tessellated shape with style" files
-/// declare the geometry only on the type, so without this they render nothing.
-pub(crate) fn collect_orphan_type_geometry_jobs(
+/// Returns `(id, start, end, ifc_type)` per type, appended to the prepass job
+/// list. `processGeometryBatch` turns each into geometry via
+/// [`ifc_lite_geometry::GeometryRouter::process_representation_map`] and tags it
+/// with a `geometry_class` — orphan (no occurrence) vs instanced (an
+/// `IfcRelDefinesByType` links it to an occurrence) — so the viewer's Model/Types
+/// switch can show or hide it (see `gpu_meshes.rs`). A map already referenced by
+/// an `IfcMappedItem` is drawn through its occurrence's mapped representation, so
+/// a type whose maps are ALL referenced yields no renderable job and is skipped.
+///
+/// buildingSMART annex-E "tessellated shape with style" files declare geometry
+/// only on the type (orphan, class 1); ArchiCAD/AC20 files attach a map to nearly
+/// every instanced type while the occurrence carries its own body (class 2,
+/// hidden in Model mode so it does not double-render at the MappingOrigin).
+pub(crate) fn collect_type_geometry_jobs(
     content: &str,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
     use ifc_lite_core::{EntityScanner, IfcType};
 
-    // Fast bail-out: type-only geometry can only exist when the file authors at
-    // least one IfcRepresentationMap. The overwhelming majority of files (and
-    // every file that hits the latency-sensitive prepass without instancing)
-    // pay only a single substring search instead of a full entity scan + decode.
+    // Fast bail-out: type geometry can only exist when the file authors at least
+    // one IfcRepresentationMap. The overwhelming majority of files pay only a
+    // single substring search instead of a full entity scan + decode.
     if !content.contains("IFCREPRESENTATIONMAP") {
         return Vec::new();
     }
 
-    // Single pass: gather the IfcMappedItem-referenced RepresentationMaps and
-    // the type-product candidates together, then filter to the orphans.
+    // Single pass: gather the IfcMappedItem-referenced RepresentationMaps and the
+    // type-product candidates, then drop types whose maps are all referenced
+    // (those are drawn through their occurrence's mapped representation). The
+    // orphan-vs-instanced class is assigned later, in the render loop.
     let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
     let mut candidates: Vec<(u32, usize, usize, IfcType, Vec<u32>)> = Vec::new();
 
@@ -607,6 +481,31 @@ pub(crate) fn build_referenced_representation_maps(
         }
     }
     referenced
+}
+
+/// #957 follow-up: the set of type ids that an `IfcRelDefinesByType` instantiates
+/// (i.e. the type has at least one occurrence). `processGeometryBatch` uses it to
+/// suppress type-only geometry for such types — their geometry is already drawn
+/// through their occurrences, so rendering the type's RepresentationMap as well
+/// would double-render it at the MappingOrigin (duplicate at the wrong position).
+pub(crate) fn build_instantiated_type_ids(
+    content: &str,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> rustc_hash::FxHashSet<u32> {
+    use ifc_lite_core::EntityScanner;
+    let mut instantiated: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
+    let mut scanner = EntityScanner::new(content);
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name == "IFCRELDEFINESBYTYPE" {
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                // IfcRelDefinesByType.RelatingType = attr 5 (the typed product).
+                if let Some(type_id) = entity.get_ref(5) {
+                    instantiated.insert(type_id);
+                }
+            }
+        }
+    }
+    instantiated
 }
 
 /// #957: resolve the authored colour for a type's `IfcRepresentationMap` by
@@ -868,115 +767,21 @@ fn walk_representation_for_direct_color(
 // `ifc_lite_processing::default_color_for_type` (issue #913). The browser path
 // calls it directly (see `gpu_meshes.rs`); do not reintroduce a table here.
 
-/// Extract building rotation from a pre-collected IfcSite position (avoids re-scanning).
-/// Returns rotation angle in radians, or None if not found.
+/// Site/building rotation angle (radians) for the viewer's render-frame
+/// rotation, or `None` if absent. Derived from the **canonical** resolved
+/// placement matrix (`GeometryRouter::resolve_scaled_placement`) + the shared
+/// [`ifc_lite_geometry::rotation_angle_about_z`], so it cannot drift from the
+/// processor's site-local frame on nested / scaled / tilted placements (the old
+/// `atan2`-of-raw-top-level-RefDirection walk was incomplete for those).
 pub(crate) fn extract_building_rotation_from_site(
     site_pos: (u32, usize, usize),
+    router: &ifc_lite_geometry::GeometryRouter,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<f64> {
     let (site_id, start, end) = site_pos;
     let site_entity = decoder.decode_at_with_id(site_id, start, end).ok()?;
-
-    // Get ObjectPlacement (attribute 5 for IfcProduct)
-    let placement_attr = site_entity.get(5).filter(|a| !a.is_null())?;
-    let placement = decoder.resolve_ref(placement_attr).ok()??;
-
-    // Find top-level placement (parent is null)
-    let top_level_placement = find_top_level_placement(&placement, decoder);
-
-    // Extract rotation from top-level placement's RefDirection
-    extract_rotation_from_placement(&top_level_placement, decoder)
-}
-
-/// Find the top-level placement (one with null parent)
-fn find_top_level_placement(
-    placement: &ifc_lite_core::DecodedEntity,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> ifc_lite_core::DecodedEntity {
-    use ifc_lite_core::IfcType;
-
-    // Check if this is a local placement
-    if placement.ifc_type != IfcType::IfcLocalPlacement {
-        return placement.clone();
-    }
-
-    // Check parent (attribute 0: PlacementRelTo)
-    let parent_attr = match placement.get(0) {
-        Some(attr) if !attr.is_null() => attr,
-        _ => return placement.clone(), // No parent - this is top-level
-    };
-
-    // Resolve parent and recurse
-    if let Ok(Some(parent)) = decoder.resolve_ref(parent_attr) {
-        find_top_level_placement(&parent, decoder)
-    } else {
-        placement.clone() // Parent resolution failed - return current
-    }
-}
-
-/// Extract rotation angle from IfcAxis2Placement3D's RefDirection
-/// Returns rotation angle in radians (atan2 of RefDirection Y/X components)
-fn extract_rotation_from_placement(
-    placement: &ifc_lite_core::DecodedEntity,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<f64> {
-    use ifc_lite_core::IfcType;
-
-    // Get RelativePlacement (attribute 1: IfcAxis2Placement3D)
-    let rel_attr = match placement.get(1) {
-        Some(attr) if !attr.is_null() => attr,
-        _ => return None,
-    };
-
-    let axis_placement = match decoder.resolve_ref(rel_attr) {
-        Ok(Some(p)) => p,
-        _ => return None,
-    };
-
-    // Check if it's IfcAxis2Placement3D
-    if axis_placement.ifc_type != IfcType::IfcAxis2Placement3D {
-        return None;
-    }
-
-    // Get RefDirection (attribute 2: IfcDirection)
-    let ref_dir_attr = match axis_placement.get(2) {
-        Some(attr) if !attr.is_null() => attr,
-        _ => return None,
-    };
-
-    let ref_dir = match decoder.resolve_ref(ref_dir_attr) {
-        Ok(Some(d)) => d,
-        _ => return None,
-    };
-
-    if ref_dir.ifc_type != IfcType::IfcDirection {
-        return None;
-    }
-
-    // Get direction ratios (attribute 0: list of floats)
-    let ratios_attr = match ref_dir.get(0) {
-        Some(attr) => attr,
-        _ => return None,
-    };
-
-    let ratios = match ratios_attr.as_list() {
-        Some(list) => list,
-        _ => return None,
-    };
-
-    // Extract X and Y components (Z is up in IFC)
-    let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-    let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-
-    // Calculate rotation angle: atan2(dy, dx)
-    // This gives the angle of the building's X-axis relative to world X-axis
-    let len_sq = dx * dx + dy * dy;
-    if len_sq < 1e-10 {
-        return None; // Zero-length direction
-    }
-
-    let rotation = dy.atan2(dx);
-    Some(rotation)
+    let matrix = router.resolve_scaled_placement(&site_entity, decoder).ok()?;
+    ifc_lite_geometry::rotation_angle_about_z(&matrix)
 }
 
 #[cfg(test)]

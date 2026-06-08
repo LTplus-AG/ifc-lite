@@ -213,7 +213,7 @@ export class SVGExporter {
      width="${paperSize.width}mm"
      height="${paperSize.height}mm"
      viewBox="0 0 ${paperSize.width} ${paperSize.height}">
-  <rect width="100%" height="100%" fill="${backgroundColor}"/>
+  <rect width="100%" height="100%" fill="${this.escapeXml(backgroundColor)}"/>
 `;
   }
 
@@ -298,7 +298,7 @@ export class SVGExporter {
     return `    <line x1="${p0.x.toFixed(3)}" y1="${p0.y.toFixed(3)}" x2="${p1.x.toFixed(3)}" y2="${p1.y.toFixed(3)}"
           stroke="${style.color}" stroke-width="${style.weight}"
           stroke-linecap="${style.lineCap}"${dashArray}
-          data-entity-id="${line.entityId}" data-ifc-type="${line.ifcType}"/>\n`;
+          data-entity-id="${line.entityId}" data-ifc-type="${this.escapeXml(line.ifcType)}"/>\n`;
   }
 
   private createHatchingLayer(
@@ -350,7 +350,7 @@ export class SVGExporter {
 
     return `    <path d="${pathData}" fill="${fill}"
           stroke="${pattern.strokeColor}" stroke-width="${pattern.lineWeight}"
-          data-entity-id="${polygon.entityId}" data-ifc-type="${polygon.ifcType}"/>\n`;
+          data-entity-id="${polygon.entityId}" data-ifc-type="${this.escapeXml(polygon.ifcType)}"/>\n`;
   }
 
   private polygonToPath(polygon: { outer: Point2D[]; holes: Point2D[][] }, transform: Transform2D): string {

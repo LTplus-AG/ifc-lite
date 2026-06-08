@@ -29,13 +29,18 @@ jobs:
   # Doc-only and non-test changes skip every expensive job below.
   changes:
     name: Detect changes
-    runs-on: depot-ubuntu-24.04
+    # Free GitHub-hosted runner. ifc-lite is a PUBLIC repo, so standard
+    # `ubuntu-latest` runners are free + unlimited (GitHub only bills public
+    # repos for *larger* runners). Light jobs — path filter, lint, the gate —
+    # don't need Depot's paid cores; only the Rust/WASM-compile jobs do.
+    # See scripts/README-vercel-cost.md for the full runner-cost rationale.
+    runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       geometry: ${{ steps.filter.outputs.geometry }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
@@ -45,7 +50,6 @@ jobs:
             rust:
               - 'rust/**'
               - 'apps/server/**'
-              - 'apps/desktop/src-tauri/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -54,7 +58,6 @@ jobs:
               - '.github/workflows/test.yml'
             frontend:
               - 'apps/viewer/**'
-              - 'apps/desktop/**'
               - 'apps/viewer-embed/**'
               - 'packages/**'
               - 'package.json'
@@ -82,7 +85,7 @@ jobs:
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Fixtures live in a GitHub Release (see tests/models/manifest.json
           # and AGENTS.md §9). The repo no longer uses Git LFS — explicitly
@@ -134,12 +137,31 @@ jobs:
       - name: Verify fixtures
         run: pnpm fixtures:check
 
-      # Rebuild the wasm bindings from rust/wasm-bindings/ on every run.
-      # packages/wasm/pkg/ is committed but goes stale whenever Rust changes
-      # ship without a maintainer running scripts/build-wasm.sh first; this
-      # step catches Rust → wasm breakage before downstream consumers see it.
+      # Rebuild the wasm bindings from rust/wasm-bindings/ on every run. The
+      # runtime (ifc-lite_bg.wasm / ifc-lite.js) is gitignored and rebuilt here
+      # so a stale binary can never ship (#654); the type surface
+      # (pkg/ifc-lite.d.ts) is committed for the wasm-free typecheck lane
+      # (#952). This step catches Rust → wasm breakage before downstream
+      # consumers see it.
       - name: Build WASM
         run: bash scripts/build-wasm.sh
+
+      # Guard the wasm-free typecheck lane (#952): the committed
+      # packages/wasm/pkg/ifc-lite.d.ts must stay in sync with the Rust source.
+      # The build above just regenerated it (and stripped the platform-variant
+      # __wasm_bindgen_func_elem_* trampoline indices, so this diff is stable
+      # across linux/macOS), so any diff means the committed types are stale —
+      # fail the PR. Scoped to the .d.ts only; pkg/README.md and pkg/package.json
+      # churn on every wasm-pack run (see AGENTS.md) and are intentionally
+      # excluded.
+      - name: Verify committed wasm types are in sync
+        run: |
+          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts; then
+            echo "::error file=packages/wasm/pkg/ifc-lite.d.ts::Committed wasm types are out of sync with the Rust source. Run 'bash scripts/build-wasm.sh' and commit the regenerated packages/wasm/pkg/ifc-lite.d.ts."
+            git diff -- packages/wasm/pkg/ifc-lite.d.ts
+            exit 1
+          fi
+          echo "✅ committed wasm types match the Rust source"
 
       # Build all workspace packages so their dist/ artifacts exist for
       # downstream consumers — turbo handles the dep graph.
@@ -163,10 +185,11 @@ jobs:
     name: Typecheck
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 10
+    # tsc is not CPU-bound; the free 2-core runner is fine and costs nothing.
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           lfs: false
           persist-credentials: false
@@ -187,10 +210,11 @@ jobs:
     name: Lint
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: depot-ubuntu-24.04
+    # Free runner — eslint runs against source, no compile.
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           lfs: false
           persist-credentials: false
@@ -207,10 +231,11 @@ jobs:
     name: Node tests
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 15
+    # Free runner — vitest consumes the prebuilt artifact; not compile-bound.
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           lfs: false
           persist-credentials: false
@@ -240,10 +265,15 @@ jobs:
     name: Rust tests
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    runs-on: depot-ubuntu-24.04-8
-    timeout-minutes: 20
+    # Stays on Depot for the uncapped, fast cargo cache (GitHub's free cache
+    # is 10 GB LRU and would thrash the Rust target dir). Right-sized 8→4
+    # cores: Depot bills minutes × (vCPU/2), so -8 is 4× and -4 is 2× the
+    # base rate — halving per-minute cost for ~1.5× wall-clock. Timeout
+    # bumped to absorb the slower wall-clock.
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 28
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           lfs: false
           persist-credentials: false
@@ -266,10 +296,8 @@ jobs:
         run: node scripts/fixtures/fetch-fixtures.mjs
       # Workspace exclusions:
       #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
-      #   - ifc-lite-desktop: Tauri crate needs gtk/webkit2gtk system libs;
-      #     desktop-compat.yml validates the desktop frontend separately.
       - name: Rust tests
-        run: cargo test --workspace --exclude ifc-lite-wasm --exclude ifc-lite-desktop
+        run: cargo test --workspace --exclude ifc-lite-wasm
 
   # Validates the Manifold CSG kernel path (T1.1 +). Only runs when files
   # that affect the kernel actually changed — first run on a runner
@@ -292,10 +320,13 @@ jobs:
     name: Rust tests (Manifold CSG kernel)
     needs: changes
     if: needs.changes.outputs.geometry == 'true'
-    runs-on: depot-ubuntu-24.04-8
-    timeout-minutes: 25
+    # Stays on Depot (cmake + Manifold/Clipper2 C++ compile + cargo cache).
+    # Right-sized 8→4 cores (Depot bills × vCPU/2). Timeout bumped for the
+    # slower wall-clock on 4 cores.
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 35
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           lfs: false
           persist-credentials: false
@@ -327,7 +358,8 @@ jobs:
     name: Build + WASM + Rust + Node
     needs: [changes, build, typecheck, lint, node-tests, rust-tests, manifold-tests]
     if: always()
-    runs-on: depot-ubuntu-24.04
+    # Free runner — the gate just inspects upstream job results.
+    runs-on: ubuntu-latest
     steps:
       - name: Gate on dependencies
         run: |

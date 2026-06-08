@@ -21,6 +21,7 @@ import type { Tool } from './types.js';
 import { resolveModel, okResult } from './util.js';
 import { loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
+import { modelAllowed } from '../auth/scope.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 export const modelInfo: Tool = {
@@ -72,7 +73,9 @@ export const modelList: Tool = {
   scope: 'read',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   handler(_input, ctx) {
-    const list = ctx.registry.list();
+    // Filter to models the caller's scope allows so a per-model allowlist is
+    // not leaked via enumeration.
+    const list = ctx.registry.list().filter((m) => modelAllowed(ctx.scope, m.id));
     return okResult(
       list.length === 0
         ? 'No models currently loaded.'
@@ -152,6 +155,12 @@ export const modelUnload: Tool = {
       throw new ToolExecutionError({
         code: ToolErrorCode.MODEL_NOT_FOUND,
         message: `Model '${id}' is not loaded.`,
+      });
+    }
+    if (!modelAllowed(ctx.scope, id)) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.PERMISSION_DENIED,
+        message: `Access to model '${id}' is not permitted for this token.`,
       });
     }
     ctx.registry.remove(id);

@@ -334,6 +334,39 @@ describe('evaluateAutoColorLens', () => {
     expect(result.colorMap.get(3)).toEqual(GHOST_COLOR); // no classification → ghost
   });
 
+  it('should honor psetName as a classification-system filter for multi-system entities', () => {
+    const entities = [
+      { id: 1, type: 'IfcWall' },
+      { id: 2, type: 'IfcSlab' },
+    ];
+    const provider = createMockProvider(entities);
+    // Each entity carries references from two classification systems. The first
+    // reference is Uniclass; psetName must steer grouping to OmniClass instead.
+    (provider as Record<string, unknown>).getClassifications = (id: number) => {
+      if (id === 1) {
+        return [
+          { system: 'Uniclass', identification: 'EF_25_10', name: 'Walls' },
+          { system: 'OmniClass', identification: '23-13', name: 'Walls' },
+        ];
+      }
+      if (id === 2) {
+        return [
+          { system: 'Uniclass', identification: 'EF_25_30', name: 'Floors' },
+          { system: 'OmniClass', identification: '23-13', name: 'Floors' },
+        ];
+      }
+      return [];
+    };
+
+    const spec: AutoColorSpec = { source: 'classification', psetName: 'OmniClass' };
+    const result = evaluateAutoColorLens(spec, provider);
+
+    // Both entities share the same OmniClass code → a single group.
+    expect(result.legend.length).toBe(1);
+    expect(result.legend[0].name).toBe('OmniClass: 23-13');
+    expect(result.legend[0].count).toBe(2);
+  });
+
   it('should auto-color by material when provider supports getMaterialName', () => {
     const entities = [
       { id: 1, type: 'IfcWall' },

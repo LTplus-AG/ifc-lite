@@ -107,13 +107,27 @@ async function writeTopicFolder(zip: JSZip, topic: BCFTopic): Promise<void> {
 }
 
 /**
+ * Derive the snapshot file extension from the viewpoint's data-URL prefix.
+ *
+ * `snapshotData` carries no MIME type, so it defaults to PNG. Only the
+ * `data:image/...` snapshot URL can be reliably format-detected.
+ */
+function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
+  const match = viewpoint.snapshot?.match(/^data:image\/(png|jpe?g)/i);
+  if (match) {
+    return match[1].toLowerCase().startsWith('jp') ? 'jpg' : 'png';
+  }
+  return 'png';
+}
+
+/**
  * Write markup.bcf file
  * Uses buildingSMART standard format
  */
 function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
   let content = `<?xml version="1.0" encoding="UTF-8"?>
 <Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <Topic Guid="${topic.guid}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
+  <Topic Guid="${escapeXml(topic.guid)}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
     <Title>${escapeXml(topic.title)}</Title>`;
 
   if (topic.description) {
@@ -128,18 +142,18 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
     content += `\n    <Index>${topic.index}</Index>`;
   }
 
-  content += `\n    <CreationDate>${topic.creationDate}</CreationDate>`;
+  content += `\n    <CreationDate>${escapeXml(topic.creationDate)}</CreationDate>`;
   content += `\n    <CreationAuthor>${escapeXml(topic.creationAuthor)}</CreationAuthor>`;
 
   if (topic.modifiedDate) {
-    content += `\n    <ModifiedDate>${topic.modifiedDate}</ModifiedDate>`;
+    content += `\n    <ModifiedDate>${escapeXml(topic.modifiedDate)}</ModifiedDate>`;
     // BCF spec requires ModifiedAuthor when ModifiedDate is present
     const modifiedAuthor = topic.modifiedAuthor || topic.creationAuthor;
     content += `\n    <ModifiedAuthor>${escapeXml(modifiedAuthor)}</ModifiedAuthor>`;
   }
 
   if (topic.dueDate) {
-    content += `\n    <DueDate>${topic.dueDate}</DueDate>`;
+    content += `\n    <DueDate>${escapeXml(topic.dueDate)}</DueDate>`;
   }
 
   if (topic.assignedTo) {
@@ -158,7 +172,7 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
 
   if (topic.relatedTopics && topic.relatedTopics.length > 0) {
     for (const relatedGuid of topic.relatedTopics) {
-      content += `\n    <RelatedTopic Guid="${relatedGuid}"/>`;
+      content += `\n    <RelatedTopic Guid="${escapeXml(relatedGuid)}"/>`;
     }
   }
 
@@ -169,9 +183,9 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
     const viewpoint = topic.viewpoints[i];
     // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
     const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-    const snapshotName = `Snapshot_${viewpoint.guid}.png`;
+    const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
 
-    content += `\n  <Viewpoints Guid="${viewpoint.guid}">`;
+    content += `\n  <Viewpoints Guid="${escapeXml(viewpoint.guid)}">`;
     content += `\n    <Viewpoint>${filename}</Viewpoint>`;
     if (viewpoint.snapshot || viewpoint.snapshotData) {
       content += `\n    <Snapshot>${snapshotName}</Snapshot>`;
@@ -181,15 +195,15 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
 
   // Write comments
   for (const comment of topic.comments) {
-    content += `\n  <Comment Guid="${comment.guid}">`;
-    content += `\n    <Date>${comment.date}</Date>`;
+    content += `\n  <Comment Guid="${escapeXml(comment.guid)}">`;
+    content += `\n    <Date>${escapeXml(comment.date)}</Date>`;
     content += `\n    <Author>${escapeXml(comment.author)}</Author>`;
     content += `\n    <Comment>${escapeXml(comment.comment)}</Comment>`;
     if (comment.viewpointGuid) {
-      content += `\n    <Viewpoint Guid="${comment.viewpointGuid}"/>`;
+      content += `\n    <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
     }
     if (comment.modifiedDate) {
-      content += `\n    <ModifiedDate>${comment.modifiedDate}</ModifiedDate>`;
+      content += `\n    <ModifiedDate>${escapeXml(comment.modifiedDate)}</ModifiedDate>`;
     }
     if (comment.modifiedAuthor) {
       content += `\n    <ModifiedAuthor>${escapeXml(comment.modifiedAuthor)}</ModifiedAuthor>`;
@@ -212,11 +226,11 @@ async function writeViewpointFiles(
 ): Promise<void> {
   // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
   const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-  const snapshotName = `Snapshot_${viewpoint.guid}.png`;
+  const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
 
   // Write viewpoint XML - use buildingSMART standard format
   let content = `<?xml version="1.0" encoding="UTF-8"?>
-<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Guid="${viewpoint.guid}">`;
+<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Guid="${escapeXml(viewpoint.guid)}">`;
 
   // Write components
   if (viewpoint.components) {
@@ -270,12 +284,19 @@ async function writeViewpointFiles(
   } else if (viewpoint.snapshot && viewpoint.snapshot.startsWith('data:')) {
     // Convert data URL to binary
     const base64Data = viewpoint.snapshot.split(',')[1];
-    const binaryString = atob(base64Data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
+    if (base64Data) {
+      try {
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        folder.file(snapshotName, bytes);
+      } catch (e) {
+        // Skip a single malformed snapshot data URL rather than aborting the export
+        console.warn('[BCF] Skipping malformed snapshot data URL:', e);
+      }
     }
-    folder.file(snapshotName, bytes);
   }
 }
 
@@ -373,7 +394,7 @@ function writeComponent(component: BCFComponent, indent = '      '): string {
   let content = `\n${indent}<Component`;
 
   if (component.ifcGuid) {
-    content += ` IfcGuid="${component.ifcGuid}"`;
+    content += ` IfcGuid="${escapeXml(component.ifcGuid)}"`;
   }
 
   if (hasChildren) {
@@ -396,7 +417,7 @@ function writeComponent(component: BCFComponent, indent = '      '): string {
  * Write coloring entry XML
  */
 function writeColoringEntry(coloring: BCFColoring): string {
-  let content = `\n      <Color Color="${coloring.color}">`;
+  let content = `\n      <Color Color="${escapeXml(coloring.color)}">`;
   for (const component of coloring.components) {
     content += writeComponent(component, '        ');
   }

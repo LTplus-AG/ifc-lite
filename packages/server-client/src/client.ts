@@ -536,8 +536,8 @@ export class IfcServerClient {
       geometryData = payloadBuffer.slice(offset, offset + geometryLen);
       offset += geometryLen;
 
-      // Extract data model if present
-      if (offset < payloadBuffer.byteLength) {
+      // Extract data model if present (need at least 4 bytes for the u32 length prefix)
+      if (offset + 4 <= payloadBuffer.byteLength) {
         const dataModelLen = view.getUint32(offset, true);
         offset += 4;
         if (dataModelLen > 0 && offset + dataModelLen <= payloadBuffer.byteLength) {
@@ -848,6 +848,7 @@ export class IfcServerClient {
       headers: {
         Accept: 'text/event-stream',
       },
+      signal: AbortSignal.timeout(this.timeout),
     });
 
     if (!response.ok) {

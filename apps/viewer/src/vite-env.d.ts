@@ -17,6 +17,8 @@ interface ImportMetaEnv {
   readonly VITE_LLM_IMAGE_MODELS?: string;
   /** Comma-separated model IDs that support file attachment context */
   readonly VITE_LLM_FILE_ATTACHMENT_MODELS?: string;
+  /** Build-time default Cesium ion access token */
+  readonly VITE_CESIUM_ION_TOKEN?: string;
 }
 
 interface ImportMeta {

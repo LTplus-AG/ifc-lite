@@ -473,6 +473,29 @@ export async function parseFederatedIfcx(
 
   options.onProgress?.({ phase: 'compose', percent: 100 });
 
+  return finalizeFederatedResult(
+    layerStack,
+    compositionResult,
+    totalSize,
+    startTime,
+    options
+  );
+}
+
+/**
+ * Run the post-composition extraction phases and assemble the final result.
+ *
+ * Shared by parseFederatedIfcx (initial parse) and addIfcxOverlay (incremental
+ * overlay add) so that adding an overlay only pays for composing the existing
+ * layer stack plus extraction, instead of re-parsing every layer buffer.
+ */
+function finalizeFederatedResult(
+  layerStack: LayerStack,
+  compositionResult: FederatedCompositionResult,
+  totalSize: number,
+  startTime: number,
+  options: FederatedParseOptions
+): FederatedIfcxParseResult {
   // Convert composed nodes to standard ComposedNode format for extractors
   const composed = new Map<string, ComposedNode>();
   for (const [path, node] of compositionResult.composed) {
@@ -570,21 +593,38 @@ export async function addIfcxOverlay(
   }
 
   // Add to layer stack (at top = strongest)
-  baseResult.layerStack.addLayer(file, overlayBuffer, overlayName, {
+  const layerStack = baseResult.layerStack;
+  layerStack.addLayer(file, overlayBuffer, overlayName, {
     type: 'file',
     filename: overlayName,
     size: overlayBuffer.byteLength,
   });
 
-  // Re-compose with new layer
-  // Collect all files from the layer stack
-  const files: FederatedFileInput[] = baseResult.layerStack
-    .getLayers()
-    .map((layer) => ({
-      buffer: layer.buffer,
-      name: layer.name,
-    }))
-    .reverse(); // Reverse because layers are stored strongest-first
+  // Re-compose with the new layer directly from the already-parsed stack.
+  // Avoid round-tripping every layer buffer back through parseFederatedIfcx
+  // (re-JSON.parsing all prior layers), which would make the k-th overlay
+  // cost O(total bytes of all layers).
+  const startTime = performance.now();
+  options.onProgress?.({ phase: 'compose', percent: 0 });
+  const compositionResult = composeFederated(layerStack, {
+    onProgress: (phase, percent) => {
+      options.onProgress?.({ phase: `compose-${phase}`, percent });
+    },
+    maxInheritDepth: options.maxInheritDepth,
+  });
+  options.onProgress?.({ phase: 'compose', percent: 100 });
 
-  return parseFederatedIfcx(files, options);
+  // fileSize reflects the total bytes of every layer (matching parseFederatedIfcx).
+  let totalSize = 0;
+  for (const layer of layerStack.getLayers()) {
+    totalSize += layer.buffer.byteLength;
+  }
+
+  return finalizeFederatedResult(
+    layerStack,
+    compositionResult,
+    totalSize,
+    startTime,
+    options
+  );
 }

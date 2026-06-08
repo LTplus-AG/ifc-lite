@@ -418,6 +418,18 @@ export class MutablePropertyView {
 
     this.setPropertyMutation(entityId, key, { operation: 'DELETE' });
 
+    // Keep the verbatim newPsets read path (getForEntity / STEP export)
+    // consistent with getPropertyValue when the prop lives in an in-session
+    // pset: splice it out, and drop the pset if it becomes empty.
+    const entityPsets = this.newPsets.get(entityId);
+    const newPset = entityPsets?.get(psetName);
+    if (entityPsets && newPset) {
+      newPset.properties = newPset.properties.filter(p => p.name !== propName);
+      if (newPset.properties.length === 0) {
+        entityPsets.delete(psetName);
+      }
+    }
+
     const mutation: Mutation = {
       id: generateMutationId(),
       type: 'DELETE_PROPERTY',
@@ -725,6 +737,8 @@ export class MutablePropertyView {
       propName: quantName,
       oldValue: oldValue as PropertyValue,
       newValue: value,
+      quantityType: qType,
+      unit,
     };
 
     if (!skipHistory) {
@@ -1141,7 +1155,8 @@ export class MutablePropertyView {
               mutation.psetName,
               mutation.propName,
               Number(mutation.newValue),
-              QuantityType.Count,
+              (mutation.quantityType as QuantityType) ?? QuantityType.Count,
+              mutation.unit,
             );
           }
           break;
@@ -1161,6 +1176,29 @@ export class MutablePropertyView {
           break;
         }
 
+        case 'UPDATE_ATTRIBUTE':
+          if (mutation.attributeName && mutation.newValue !== undefined && mutation.newValue !== null) {
+            this.setAttribute(
+              mutation.entityId,
+              mutation.attributeName,
+              String(mutation.newValue),
+              mutation.oldValue == null ? undefined : String(mutation.oldValue),
+            );
+          }
+          break;
+
+        case 'CREATE_PROPERTY_SET':
+          if (mutation.psetName && Array.isArray(mutation.newValue)) {
+            // newValue is the original properties array (see createPropertySet,
+            // where newValue = properties: Array<{ name; value; type?; unit? }>).
+            this.createPropertySet(
+              mutation.entityId,
+              mutation.psetName,
+              mutation.newValue as unknown as Array<{ name: string; value: PropertyValue; type?: PropertyValueType; unit?: string }>,
+            );
+          }
+          break;
+
         case 'CREATE_ENTITY': {
           // Replay creates rely on the importer providing the entity body
           // via `restoreNewEntity` separately. The history record alone
@@ -1179,6 +1217,15 @@ export class MutablePropertyView {
         case 'DELETE_ENTITY':
           if (skippedCreateIds.has(mutation.entityId)) break;
           this.deleteEntity(mutation.entityId);
+          break;
+
+        default:
+          // Surface unhandled mutation types instead of silently dropping
+          // them, so future gaps in this switch are visible.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `applyMutations: unhandled mutation type '${mutation.type}' for #${mutation.entityId} — skipped`,
+          );
           break;
       }
     }

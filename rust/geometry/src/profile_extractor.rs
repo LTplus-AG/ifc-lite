@@ -105,6 +105,17 @@ pub fn extract_profiles(content: &str, model_index: u32) -> Vec<ExtractedProfile
             Err(_) => continue,
         };
 
+        // Issue #979: feature elements (IfcOpeningElement and the rest of the
+        // void/feature family) are boolean subtraction/addition operands, not
+        // building structure — they must never emit a construction-projection
+        // profile. `is_subtype_of` walks the supertype chain, so this single
+        // check covers Opening / Voiding / Earthworks / Projection / Surface
+        // features without touching IfcDoor/IfcWindow (which descend from
+        // IfcBuiltElement, not IfcFeatureElement).
+        if entity.ifc_type.is_subtype_of(IfcType::IfcFeatureElement) {
+            continue;
+        }
+
         // ObjectPlacement (attr 5) → element world transform (IFC Z-up, native units)
         let element_transform = get_placement_transform(entity.get(5), &mut decoder);
 

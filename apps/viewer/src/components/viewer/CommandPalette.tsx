@@ -24,6 +24,7 @@ import {
   Home,
   Maximize2,
   Crosshair,
+  GitCompareArrows,
   ArrowUp,
   ArrowDown,
   ArrowLeft,
@@ -203,12 +204,13 @@ function downloadBlob(data: BlobPart, name: string, mime: string) {
  *  Closes all others first so the if-else chain in ViewerLayout renders it.
  *  If the target is already active, closes it (back to Properties). */
 
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'extensions') {
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions') {
   const s = useViewerStore.getState();
   const isActive =
     panel === 'bcf' ? s.bcfPanelVisible :
     panel === 'ids' ? s.idsPanelVisible :
     panel === 'clash' ? s.clashPanelVisible :
+    panel === 'compare' ? s.comparePanelVisible :
     panel === 'extensions' ? s.extensionsPanelVisible :
     s.lensPanelVisible;
 
@@ -220,6 +222,7 @@ function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'extension
     s.setIdsPanelVisible(false);
     s.setLensPanelVisible(false);
     s.setClashPanelVisible(false);
+    s.setComparePanelVisible(false);
     s.setExtensionsPanelVisible(false);
   } else {
     // Open exclusively (closes every sibling, including clash) and un-collapse.
@@ -431,6 +434,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('ids'); } },
       { id: 'panel:clash', label: 'Clash Detection', keywords: 'collision interference clearance coordination clash matrix mep', category: 'Panels', icon: Crosshair,
         action: () => { activateRightPanel('clash'); } },
+      { id: 'panel:compare', label: 'Compare Models', keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
+        action: () => { activateRightPanel('compare'); } },
       { id: 'panel:lists', label: 'Entity Lists', keywords: 'table spreadsheet', category: 'Panels', icon: FileSpreadsheet,
         action: () => { activateBottomPanel('list'); } },
       { id: 'panel:gantt', label: 'Construction Schedule (Gantt)', keywords: '4d timeline tasks ifctask sequence playback animation', category: 'Panels', icon: CalendarClock,

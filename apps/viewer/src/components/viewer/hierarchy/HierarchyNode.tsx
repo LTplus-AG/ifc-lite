@@ -275,7 +275,7 @@ export function HierarchyNode({
         {/* Name */}
         <span className={cn(
           'flex-1 text-sm truncate ml-1.5',
-          isSpatialContainer(node.type) || node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'unified-storey' || node.type === 'type-group'
+          isSpatialContainer(node.type) || node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'unified-storey' || node.type === 'type-group' || node.type === 'material-group'
             ? 'font-medium text-zinc-900 dark:text-zinc-100'
             : 'text-zinc-700 dark:text-zinc-300',
           nodeHidden && 'line-through decoration-zinc-400 dark:decoration-zinc-600'
@@ -306,11 +306,11 @@ export function HierarchyNode({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-950 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-none">
-                {node.elementCount}
+                {node.elementCount.toLocaleString()}
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <p className="text-xs">{node.elementCount} {node.elementCount === 1 ? 'element' : 'elements'}</p>
+              <p className="text-xs">{node.elementCount.toLocaleString()} {node.elementCount === 1 ? 'element' : 'elements'}</p>
             </TooltipContent>
           </Tooltip>
         )}

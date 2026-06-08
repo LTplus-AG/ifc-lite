@@ -481,8 +481,13 @@ function compareCellValues(a: CellValue, b: CellValue): number {
 export function listResultToCSV(result: ListResult, delimiter = ','): string {
   const csvEscape = (val: CellValue): string => {
     if (val === null || val === undefined) return '';
-    const str = String(val);
-    if (str.includes(delimiter) || str.includes('"') || str.includes('\n')) {
+    let str = String(val);
+    // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
+    // formula trigger so Excel/Sheets treat the cell as text, not a formula.
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = `'${str}`;
+    }
+    if (str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
     return str;

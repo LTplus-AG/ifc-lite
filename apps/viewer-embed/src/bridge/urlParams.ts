@@ -13,13 +13,56 @@ import type { EmbedUrlParams, ViewPreset } from '@ifc-lite/embed-protocol';
 
 const VALID_VIEWS: ViewPreset[] = ['top', 'bottom', 'front', 'back', 'left', 'right'];
 
+/**
+ * Embed URL params plus viewer-side-only security knobs that are not part of
+ * the public embed protocol surface:
+ *  - allowOrigins: optional inbound origin allowlist. When set, the bridge
+ *    drops postMessage commands whose event.origin is not on the list.
+ *  - parentOrigin: optional expected parent origin used as the outbound
+ *    targetOrigin for content-bearing events before the first inbound message
+ *    is received (so auto-load events are not broadcast to '*').
+ */
+export interface EmbedViewerUrlParams extends EmbedUrlParams {
+  allowOrigins?: string[];
+  parentOrigin?: string;
+}
+
+/** Normalise an origin string (e.g. "https://app.example.com") or return null. */
+function normaliseOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch (error) {
+    // Not a full URL — reject (caller falls back to the inbound handshake).
+    console.warn('[embed] Ignoring invalid origin value', value, error);
+    return null;
+  }
+}
+
 const DEMO_MODELS: Record<string, string> = {
   default: '/demo/AC20-FZK-Haus.ifc',
 };
 
-export function parseUrlParams(): EmbedUrlParams {
+/**
+ * Validate a model URL against the http(s)-only allowlist and return its
+ * resolved absolute href. Rejects javascript:, data:, file:, etc. so neither
+ * the URL-param path nor the postMessage bridge depends solely on CSP.
+ *
+ * @throws Error if the URL is empty, malformed, or uses an unsupported scheme.
+ */
+export function assertFetchableUrl(url: string): string {
+  if (typeof url !== 'string' || url.length === 0) {
+    throw new Error('Model URL must be a non-empty string');
+  }
+  const parsed = new URL(url, window.location.origin);
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(`Unsupported URL scheme: ${parsed.protocol}`);
+  }
+  return parsed.href;
+}
+
+export function parseUrlParams(): EmbedViewerUrlParams {
   const params = new URLSearchParams(window.location.search);
-  const result: EmbedUrlParams = {};
+  const result: EmbedViewerUrlParams = {};
 
   const demo = params.get('demo');
   if (demo !== null) {
@@ -31,12 +74,11 @@ export function parseUrlParams(): EmbedUrlParams {
   if (modelUrl) {
     // Only allow http(s) URLs to prevent javascript: or data: injection
     try {
-      const parsed = new URL(modelUrl, window.location.origin);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-        result.modelUrl = modelUrl;
-      }
-    } catch {
-      // Invalid URL, skip
+      assertFetchableUrl(modelUrl);
+      result.modelUrl = modelUrl;
+    } catch (error) {
+      // Invalid URL or unsupported scheme — skip, but surface why.
+      console.warn('[embed] Ignoring invalid modelUrl query param', modelUrl, error);
     }
   }
 
@@ -86,6 +128,25 @@ export function parseUrlParams(): EmbedUrlParams {
 
   const view = params.get('view') as ViewPreset;
   if (VALID_VIEWS.includes(view)) result.view = view;
+
+  // Optional inbound origin allowlist (comma-separated full origins).
+  // When set, the bridge only accepts postMessage commands from these origins.
+  const allowOrigin = params.get('allowOrigin');
+  if (allowOrigin) {
+    const origins = allowOrigin
+      .split(',')
+      .map(s => normaliseOrigin(s.trim()))
+      .filter((o): o is string => o !== null);
+    if (origins.length > 0) result.allowOrigins = origins;
+  }
+
+  // Optional expected parent origin used as the outbound targetOrigin for
+  // content-bearing events before the first inbound message arrives.
+  const parentOrigin = params.get('parentOrigin');
+  if (parentOrigin) {
+    const origin = normaliseOrigin(parentOrigin.trim());
+    if (origin) result.parentOrigin = origin;
+  }
 
   return result;
 }

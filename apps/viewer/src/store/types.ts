@@ -298,75 +298,7 @@ export type MetadataLoadState =
   | 'complete'
   | 'error';
 
-export interface NativeMetadataProperty {
-  name: string;
-  value: string | number | boolean | null;
-  type?: number;
-}
-
-export interface NativeMetadataPropertySet {
-  name: string;
-  globalId?: string;
-  properties: NativeMetadataProperty[];
-}
-
-export interface NativeMetadataQuantity {
-  name: string;
-  value: number;
-  type?: number;
-}
-
-export interface NativeMetadataQuantitySet {
-  name: string;
-  quantities: NativeMetadataQuantity[];
-}
-
-export interface NativeMetadataEntitySummary {
-  expressId: number;
-  type: string;
-  name: string;
-  globalId?: string | null;
-  kind: 'spatial' | 'element';
-  hasChildren: boolean;
-  elementCount?: number;
-  elevation?: number | null;
-}
-
-export interface NativeMetadataSpatialNode extends NativeMetadataEntitySummary {
-  children: NativeMetadataSpatialNode[];
-  elements: NativeMetadataEntitySummary[];
-}
-
-export interface NativeMetadataSpatialInfo {
-  storeyId?: number | null;
-  storeyName?: string | null;
-  elevation?: number | null;
-  height?: number | null;
-}
-
-export interface NativeMetadataEntityDetails {
-  summary: NativeMetadataEntitySummary;
-  typeSummary?: NativeMetadataEntitySummary | null;
-  spatial?: NativeMetadataSpatialInfo | null;
-  properties: NativeMetadataPropertySet[];
-  quantities: NativeMetadataQuantitySet[];
-}
-
-export interface NativeMetadataSnapshot {
-  mode: 'desktop-lazy';
-  cacheKey: string;
-  filePath: string;
-  schemaVersion: SchemaVersion;
-  entityCount: number;
-  spatialTree: NativeMetadataSpatialNode | null;
-}
-
-export type ModelSourceFile = File | {
-  path: string;
-  name: string;
-  size: number;
-  modifiedMs?: number | null;
-};
+export type ModelSourceFile = File;
 
 /** Complete model container for federation */
 export interface FederatedModel {
@@ -406,8 +338,6 @@ export interface FederatedModel {
   metadataLoadState?: MetadataLoadState;
   /** True once the model is visibly interactive in the viewport. */
   interactiveReady?: boolean;
-  /** Optional sparse desktop metadata snapshot for huge native loads. */
-  nativeMetadata?: NativeMetadataSnapshot | null;
   /** Cache state for the current load session. */
   cacheState?: 'none' | 'hit' | 'miss' | 'writing';
   /** Optional load error for this model. */

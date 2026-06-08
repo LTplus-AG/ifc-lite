@@ -126,14 +126,16 @@ impl<'a> EntityDecoder<'a> {
         }
         let line = &self.content[start..end];
         let (id, ifc_type, tokens) = parse_entity(line).map_err(|e| {
-            // Add debug info about what failed to parse
+            // Add debug info about what failed to parse. Truncate on a UTF-8
+            // char boundary so multi-byte UTF-8 in the entity body cannot
+            // panic the worker (decode_at must be panic-safe).
+            let mut cut = line.len().min(100);
+            while cut > 0 && !line.is_char_boundary(cut) {
+                cut -= 1;
+            }
             Error::parse(
                 0,
-                format!(
-                    "Failed to parse entity: {:?}, input: {:?}",
-                    e,
-                    &line[..line.len().min(100)]
-                ),
+                format!("Failed to parse entity: {:?}, input: {:?}", e, &line[..cut]),
             )
         })?;
 

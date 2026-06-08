@@ -72,7 +72,8 @@ export class SpatialHierarchyBuilder {
       storeyElevations,
       elementToStorey,
       entityTypeMap,
-      lengthUnitScale
+      lengthUnitScale,
+      new Set<number>()
     );
 
     // Note: storeyHeights remains empty for client path - uses on-demand property extraction
@@ -171,10 +172,26 @@ export class SpatialHierarchyBuilder {
     storeyElevations: Map<number, number>,
     elementToStorey: Map<number, number>,
     entityTypeMap: Map<number, IfcTypeEnum>,
-    lengthUnitScale: number
+    lengthUnitScale: number,
+    visited: Set<number>
   ): SpatialNode {
     const typeEnum = entityTypeMap.get(expressId) ?? IfcTypeEnum.Unknown;
     const name = entities.getName(expressId);
+
+    // Guard against cyclic IfcRelAggregates chains (A aggregates B, B aggregates A),
+    // which would otherwise recurse unbounded and overflow the stack. A revisited node
+    // is returned as a leaf so the rest of the hierarchy still builds.
+    if (visited.has(expressId)) {
+      return {
+        expressId,
+        type: typeEnum,
+        name,
+        elevation: undefined,
+        children: [],
+        elements: [],
+      };
+    }
+    visited.add(expressId);
 
     // Extract elevation for storeys (apply unit scale to convert to meters)
     let elevation: number | undefined;
@@ -232,7 +249,8 @@ export class SpatialHierarchyBuilder {
           storeyElevations,
           elementToStorey,
           entityTypeMap,
-          lengthUnitScale
+          lengthUnitScale,
+          visited
         );
         childNodes.push(childNode);
       }

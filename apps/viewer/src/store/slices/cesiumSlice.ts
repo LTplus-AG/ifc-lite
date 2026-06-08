@@ -108,8 +108,15 @@ const STORAGE_KEY_DATA_SOURCE = 'ifc-lite:cesium-data-source';
  * Default Cesium ion token provided at build time.
  * Set via VITE_CESIUM_ION_TOKEN in .env or CI environment.
  * This means users never need to configure a token manually.
+ *
+ * NOTE: `import.meta.env` is undefined under the Vitest/Node test runner (the
+ * Vite define plugin doesn't run there), so this module-top-level read would
+ * crash with "Cannot read properties of undefined" — every viewer test imports
+ * the store, which imports this slice. The optional chaining on `.env` keeps the
+ * read safe in that environment. `import.meta.env` is typed via vite-env.d.ts so
+ * no `as any` cast is needed. Do NOT drop the optional chaining.
  */
-const DEFAULT_ION_TOKEN: string = (import.meta as any).env?.VITE_CESIUM_ION_TOKEN ?? '';
+const DEFAULT_ION_TOKEN: string = import.meta.env?.VITE_CESIUM_ION_TOKEN ?? '';
 
 function loadFromStorage(key: string, fallback: string): string {
   try {

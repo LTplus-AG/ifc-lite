@@ -88,11 +88,16 @@ serialisation:
 
 ```
 for each path (sorted ASCII ascending):
-   append: utf8("path") || 0x1f || file_bytes || 0x1e
+   append: u64be(len(path)) || utf8(path)
+        || u64be(len(file_bytes)) || file_bytes
 ```
 
-(`0x1f` is the ASCII unit separator, `0x1e` the record separator;
-neither appears in path names — they are control characters.)
+Each variable-length segment is preceded by a fixed-width (8-byte,
+big-endian) byte length. Length-prefixing makes the serialisation
+unambiguous (injective) regardless of byte content — earlier revisions
+used `0x1f`/`0x1e` delimiters, but those bytes can legitimately occur
+inside arbitrary binary `file_bytes`, which made the hashed stream
+ambiguous and weakened the second-preimage guarantee.
 
 Excluded from the hash: the `signature` field itself. The bundle is
 signed *before* the signature is embedded.

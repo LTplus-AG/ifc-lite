@@ -209,13 +209,17 @@ export const mainShaderSource = `
           let isSelected = (uniforms.flags.x & 1u) == 1u;
           let isOverlay = (uniforms.flags.x & 2u) == 2u;
 
-          // Selection highlight - add glow/fresnel effect
+          // Selection highlight — a single FLAT selection colour.
+          //
+          // No lighting-dependent (luminance) or view-dependent (fresnel)
+          // term: the selected object must read as one uniform colour, not
+          // a shaded/gradient surface. The previous fresnel-glow mix left
+          // 80 % of the lit object colour visible at face centres (the
+          // green-site / red-roof bleed-through). A constant colour here
+          // also stays flat through the downstream tone-mapping, since
+          // those are per-pixel functions of a now-constant input.
           if (isSelected) {
-            let V = normalize(-input.worldPos);
-            let NdotV = max(dot(N, V), 0.0);
-            let fresnel = pow(1.0 - NdotV, 2.0);
-            let highlightColor = vec3<f32>(0.3, 0.6, 1.0);
-            color = mix(color, highlightColor, fresnel * 0.5 + 0.2);
+            color = vec3<f32>(0.3, 0.6, 1.0);
           }
 
           // Beautiful fresnel effect for transparent materials (glass)

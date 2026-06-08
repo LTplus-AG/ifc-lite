@@ -248,6 +248,11 @@ async function parseAnnotations(
   const processor = new GeometryProcessor();
   try {
     await processor.init();
+    // SymbolicRepresentationCollection and each getPolyline/getCircle/getText/
+    // getFill item are wasm-bindgen handles owning WASM memory — free them
+    // deterministically (AGENTS.md §7). Leaking them to GC lets the
+    // FinalizationRegistry free them later against an already-grown/reused
+    // shared dlmalloc heap, corrupting the allocator free-list.
     const collection = processor.parseSymbolicRepresentations(source);
     if (debugEnabled()) {
       console.log(
@@ -257,7 +262,9 @@ async function parseAnnotations(
           : 'null',
       );
     }
-    if (!collection || collection.isEmpty) return result;
+    if (!collection) return result;
+    try {
+    if (collection.isEmpty) return result;
 
     // Resolve a bucket by elevation rather than by storey id.
     //
@@ -313,34 +320,44 @@ async function parseAnnotations(
     for (let i = 0; i < collection.polylineCount; i++) {
       const poly = collection.getPolyline(i);
       if (!poly) continue;
-      if (poly.ifcType !== 'IfcAnnotation' && poly.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(poly.expressId, poly.worldY, poly.ifcType);
-      const looseTarget = poly.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
-      const out = bucket ? bucket.lines : looseTarget;
-      polylineToSegments(poly.points, poly.pointCount, poly.isClosed, out);
+      try {
+        if (poly.ifcType !== 'IfcAnnotation' && poly.ifcType !== 'IfcGridAxis') continue;
+        const bucket = ensureBucket(poly.expressId, poly.worldY, poly.ifcType);
+        const looseTarget = poly.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+        const out = bucket ? bucket.lines : looseTarget;
+        // poly.points is consumed synchronously here (not stored), so no copy needed.
+        polylineToSegments(poly.points, poly.pointCount, poly.isClosed, out);
+      } finally {
+        poly.free();
+      }
     }
 
     for (let i = 0; i < collection.circleCount; i++) {
       const circle = collection.getCircle(i);
       if (!circle) continue;
-      if (circle.ifcType !== 'IfcAnnotation' && circle.ifcType !== 'IfcGridAxis') continue;
-      const bucket = ensureBucket(circle.expressId, circle.worldY, circle.ifcType);
-      const looseTarget = circle.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
-      const out = bucket ? bucket.lines : looseTarget;
-      circleToSegments(
-        circle.centerX,
-        circle.centerY,
-        circle.radius,
-        circle.startAngle,
-        circle.endAngle,
-        circle.isFullCircle,
-        out,
-      );
+      try {
+        if (circle.ifcType !== 'IfcAnnotation' && circle.ifcType !== 'IfcGridAxis') continue;
+        const bucket = ensureBucket(circle.expressId, circle.worldY, circle.ifcType);
+        const looseTarget = circle.ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+        const out = bucket ? bucket.lines : looseTarget;
+        circleToSegments(
+          circle.centerX,
+          circle.centerY,
+          circle.radius,
+          circle.startAngle,
+          circle.endAngle,
+          circle.isFullCircle,
+          out,
+        );
+      } finally {
+        circle.free();
+      }
     }
 
     for (let i = 0; i < collection.textCount; i++) {
       const text = collection.getText(i);
       if (!text) continue;
+      try {
       if (text.ifcType !== 'IfcAnnotation' && text.ifcType !== 'IfcGridAxis') continue;
       // Skip empty literals so the renderer doesn't waste an instance slot.
       // Decode STEP escapes — `\X2\NNNN\X0\` (UTF-16 hex code units) and
@@ -398,30 +415,45 @@ async function parseAnnotations(
         };
         (bucket ? bucket.texts : looseTextTarget).push(t2d);
       }
+      } finally {
+        text.free();
+      }
     }
 
     for (let i = 0; i < collection.fillCount; i++) {
       const fill = collection.getFill(i);
       if (!fill) continue;
-      if (fill.ifcType !== 'IfcAnnotation' && fill.ifcType !== 'IfcGridAxis') continue;
-      const points = fill.points;
-      if (points.length < 6) continue; // <3 vertices = no polygon
-      const f2d: AnnotationFill2D = {
-        points,
-        holesOffsets: fill.holesOffsets,
-        color: [fill.fillR, fill.fillG, fill.fillB, fill.fillA],
-        hatching: fill.hasHatching
-          ? {
-              spacing: fill.hatchSpacing,
-              angle: fill.hatchAngle,
-              angleSecondary: Number.isNaN(fill.hatchAngleSecondary) ? null : fill.hatchAngleSecondary,
-              lineWidth: fill.hatchLineWidth,
-            }
-          : undefined,
-      };
-      const bucket = ensureBucket(fill.expressId, fill.worldY, fill.ifcType);
-      const looseFillTarget = fill.ifcType === 'IfcGridAxis' ? result.gridLooseFills : result.looseFills;
-      (bucket ? bucket.fills : looseFillTarget).push(f2d);
+      try {
+        if (fill.ifcType !== 'IfcAnnotation' && fill.ifcType !== 'IfcGridAxis') continue;
+        // fill.points / fill.holesOffsets are getter results that may be views
+        // into WASM memory; they're STORED into f2d (outlive this iteration),
+        // so copy them before the handle is freed below. Element types match
+        // the AnnotationFill2D fields (Float32Array / Uint32Array).
+        const points = new Float32Array(fill.points);
+        if (points.length < 6) continue; // <3 vertices = no polygon
+        const holesOffsets = new Uint32Array(fill.holesOffsets);
+        const f2d: AnnotationFill2D = {
+          points,
+          holesOffsets,
+          color: [fill.fillR, fill.fillG, fill.fillB, fill.fillA],
+          hatching: fill.hasHatching
+            ? {
+                spacing: fill.hatchSpacing,
+                angle: fill.hatchAngle,
+                angleSecondary: Number.isNaN(fill.hatchAngleSecondary) ? null : fill.hatchAngleSecondary,
+                lineWidth: fill.hatchLineWidth,
+              }
+            : undefined,
+        };
+        const bucket = ensureBucket(fill.expressId, fill.worldY, fill.ifcType);
+        const looseFillTarget = fill.ifcType === 'IfcGridAxis' ? result.gridLooseFills : result.looseFills;
+        (bucket ? bucket.fills : looseFillTarget).push(f2d);
+      } finally {
+        fill.free();
+      }
+    }
+    } finally {
+      collection.free();
     }
   } finally {
     processor.dispose();

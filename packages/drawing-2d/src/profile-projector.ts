@@ -5,54 +5,69 @@
 /**
  * ProfileProjector — Clean 2D projection from WASM-extracted profile polygons.
  *
- * Replaces `EdgeExtractor` for projection lines, eliminating tessellation
- * artifacts caused by drawing every internal mesh triangle edge.
+ * Replaces `EdgeExtractor` for projection lines of extruded-area solids,
+ * eliminating tessellation artifacts caused by drawing every internal mesh
+ * triangle edge.
  *
  * # Algorithm
  * For each `ProfileEntry` (from `IfcAPI.extractProfiles()`):
  *  1. Determine the element's bounding range along the section axis.
- *  2. If it falls within the projection window, transform the profile boundary
- *     points to world space (applying the 4×4 column-major transform).
- *  3. Project each boundary edge onto the drawing plane and emit `DrawingLine[]`
- *     with `category: 'projection'`.
+ *  2. Classify it into a projection band (issue #979):
+ *       - below the cut → VISIBLE  (thin solid)
+ *       - above the cut → OVERHEAD (dashed; emitted as `visibility:'hidden'`)
+ *       - straddling    → drawn solid
+ *       - outside both bands → dropped
+ *  3. Transform the profile boundary points to world space and project each
+ *     boundary edge onto the drawing plane, emitting `DrawingLine[]` with
+ *     `category: 'projection'` and the band's visibility.
  *
  * # Coordinates
  * All geometry (profile points, transform, extrusionDir) is in **WebGL Y-up**
- * world space (metres), consistent with `MeshData.positions`.
+ * world space (metres), consistent with `MeshData.positions`. Projection uses
+ * the SAME basis as the section cutter (`projectPointForPlane`) so projected
+ * lines coincide with cut polygons.
  */
 
 import type { ProfileEntry, SectionPlaneConfig, DrawingLine, LineCategory, Vec3 } from './types.js';
-import { projectTo2D } from './math.js';
+import {
+  type ProjectionBand,
+  type ProjectionBandDepths,
+  classifyDepthRange,
+  bandVisibility,
+  projectPointForPlane,
+  signedDepth,
+} from './projection-bands.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Project profile polygons into 2D drawing lines.
+ * Project profile polygons into 2D drawing lines, classified into the
+ * construction-projection bands.
  *
- * @param profiles    Profiles from `IfcAPI.extractProfiles()`.
- * @param plane       Section plane (axis + position).
- * @param viewDepth   Depth window beyond the cut plane (metres).  Elements
- *                    whose bounding range along the section axis falls within
- *                    `[sectionPos, sectionPos + viewDepth]` (or the flipped
- *                    equivalent) are projected.
- * @returns           `DrawingLine[]` with `category: 'projection'`.
+ * @param profiles  Profiles from `IfcAPI.extractProfiles()`.
+ * @param plane     Section plane (axis + position, or custom).
+ * @param depths    Below/above projection-band depths (world units, both > 0).
+ * @returns         `DrawingLine[]` with `category: 'projection'`; overhead
+ *                  lines carry `visibility: 'hidden'` (dashed downstream).
  */
 export function projectProfiles(
   profiles: ProfileEntry[],
   plane: SectionPlaneConfig,
-  viewDepth: number,
+  depths: ProjectionBandDepths,
 ): DrawingLine[] {
   const lines: DrawingLine[] = [];
 
   for (const profile of profiles) {
-    if (!isInProjectionRange(profile, plane, viewDepth)) {
-      continue;
+    const band = classifyProfileBand(profile, plane, depths);
+    const visibility = bandVisibility(band);
+    if (visibility === null) {
+      continue; // outside both bands
     }
 
     // Project outer boundary
-    pushContourLines(lines, profile, profile.outerPoints, 'projection', plane);
+    pushContourLines(lines, profile, profile.outerPoints, 'projection', plane, visibility);
 
     // Project holes
     let offset = 0;
@@ -63,7 +78,7 @@ export function projectProfiles(
         continue;
       }
       const holeSlice = profile.holePoints.subarray(offset, offset + count * 2);
-      pushContourLines(lines, profile, holeSlice, 'projection', plane);
+      pushContourLines(lines, profile, holeSlice, 'projection', plane, visibility);
       offset += count * 2;
     }
   }
@@ -76,29 +91,17 @@ export function projectProfiles(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Check whether a profile's extruded volume intersects the projection window.
- *
- * For section `axis = 'y'` (plan view up/down):
- * - Not flipped: window is `[sectionPos, sectionPos + viewDepth]`  (above cut)
- * - Flipped:     window is `[sectionPos - viewDepth, sectionPos]`  (below cut)
- *
- * The element's range along the axis is `[baseCoord, topCoord]` where
- * `topCoord = baseCoord + extrusionDir[axis] * extrusionDepth`.
+ * Classify a profile's extruded volume into a projection band by its
+ * flip-adjusted axis range. For a custom plane the depth is measured against
+ * the plane normal; for cardinal axes against the canonical +axis.
  */
-function isInProjectionRange(
+function classifyProfileBand(
   profile: ProfileEntry,
   plane: SectionPlaneConfig,
-  viewDepth: number,
-): boolean {
-  const { axis, position: sectionPos, flipped } = plane;
-  const { min, max } = getProfileAxisRange(profile, axis);
-
-  // Projection window (elements on the "far" side of the cut plane)
-  const rangeMin = flipped ? sectionPos - viewDepth : sectionPos;
-  const rangeMax = flipped ? sectionPos : sectionPos + viewDepth;
-
-  // Overlap test: [lo, hi] ∩ [rangeMin, rangeMax] ≠ ∅
-  return min <= rangeMax && max >= rangeMin;
+  depths: ProjectionBandDepths,
+): ProjectionBand {
+  const { min, max } = getProfileDepthRange(profile, plane);
+  return classifyDepthRange(min, max, depths);
 }
 
 /**
@@ -111,6 +114,7 @@ function pushContourLines(
   points2d: Float32Array,
   category: LineCategory,
   plane: SectionPlaneConfig,
+  visibility: 'visible' | 'hidden',
 ): void {
   const n = Math.floor(points2d.length / 2);
   if (n < 2) return;
@@ -128,8 +132,8 @@ function pushContourLines(
     const w0 = transformPoint2D(x0, y0, m);
     const w1 = transformPoint2D(x1, y1, m);
 
-    const p0 = projectTo2D(w0, plane.axis, plane.flipped);
-    const p1 = projectTo2D(w1, plane.axis, plane.flipped);
+    const p0 = projectPointForPlane(w0, plane);
+    const p1 = projectPointForPlane(w1, plane);
 
     // Skip degenerate (zero-length) segments
     if (Math.abs(p0.x - p1.x) < 1e-7 && Math.abs(p0.y - p1.y) < 1e-7) {
@@ -139,11 +143,11 @@ function pushContourLines(
     out.push({
       line: { start: p0, end: p1 },
       category,
-      visibility: 'visible',
+      visibility,
       entityId: profile.expressId,
       ifcType: profile.ifcType,
       modelIndex: profile.modelIndex,
-      depth: depthAlong(w0, w1, plane.axis, plane.position),
+      depth: depthAlong(w0, w1, plane),
     });
   }
 }
@@ -170,24 +174,39 @@ function matTranslation(m: Float32Array, axis: 'x' | 'y' | 'z'): number {
   return m[12 + axisIndex(axis)];
 }
 
-function getProfileAxisRange(
+/**
+ * Flip-adjusted depth range of a profile's extruded volume relative to the
+ * cut plane. Returns `{ min, max }` where `min < 0` means below the cut.
+ *
+ * For a cardinal axis this is `coord - position` along that axis; for a custom
+ * plane it is the signed distance to the plane. The flip sign is applied so
+ * the result is in the same convention as {@link classifyDepthRange}.
+ */
+function getProfileDepthRange(
   profile: ProfileEntry,
-  axis: 'x' | 'y' | 'z',
+  plane: SectionPlaneConfig,
 ): { min: number; max: number } {
-  const axisName = axis;
-  const extrusionDelta = profile.extrusionDir[axisIndex(axis)] * profile.extrusionDepth;
-
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
+
+  const consider = (point: Vec3) => {
+    const d = signedDepth(point, plane);
+    if (d < min) min = d;
+    if (d > max) max = d;
+  };
+
+  const extrusion: Vec3 = {
+    x: profile.extrusionDir[0] * profile.extrusionDepth,
+    y: profile.extrusionDir[1] * profile.extrusionDepth,
+    z: profile.extrusionDir[2] * profile.extrusionDepth,
+  };
 
   const updateRange = (points2d: Float32Array) => {
     const count = Math.floor(points2d.length / 2);
     for (let index = 0; index < count; index++) {
-      const point = transformPoint2D(points2d[index * 2], points2d[index * 2 + 1], profile.transform);
-      const base = point[axisName];
-      const top = base + extrusionDelta;
-      min = Math.min(min, base, top);
-      max = Math.max(max, base, top);
+      const base = transformPoint2D(points2d[index * 2], points2d[index * 2 + 1], profile.transform);
+      consider(base);
+      consider({ x: base.x + extrusion.x, y: base.y + extrusion.y, z: base.z + extrusion.z });
     }
   };
 
@@ -195,25 +214,33 @@ function getProfileAxisRange(
   updateRange(profile.holePoints);
 
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    const base = matTranslation(profile.transform, axis);
-    const top = base + extrusionDelta;
+    // Degenerate profile: fall back to the placement translation.
+    const t: Vec3 = {
+      x: matTranslation(profile.transform, 'x'),
+      y: matTranslation(profile.transform, 'y'),
+      z: matTranslation(profile.transform, 'z'),
+    };
+    const base = signedDepth(t, plane);
+    const top = signedDepth(
+      { x: t.x + extrusion.x, y: t.y + extrusion.y, z: t.z + extrusion.z },
+      plane,
+    );
     return { min: Math.min(base, top), max: Math.max(base, top) };
   }
 
   return { min, max };
 }
 
+
 function axisIndex(axis: 'x' | 'y' | 'z'): 0 | 1 | 2 {
   return axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
 }
 
-/** Average depth of a projected edge (distance from section plane, for sorting). */
-function depthAlong(
-  w0: Vec3,
-  w1: Vec3,
-  axis: 'x' | 'y' | 'z',
-  sectionPos: number,
-): number {
-  const avg = (w0[axis] + w1[axis]) / 2;
-  return Math.abs(avg - sectionPos);
+/**
+ * Average flip-adjusted depth of a projected edge along the viewing direction.
+ * Smaller depth means nearer the viewer, matching the depth-buffer convention
+ * in HiddenLineClassifier.
+ */
+function depthAlong(w0: Vec3, w1: Vec3, plane: SectionPlaneConfig): number {
+  return (signedDepth(w0, plane) + signedDepth(w1, plane)) / 2;
 }

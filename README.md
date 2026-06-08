@@ -180,7 +180,7 @@ const ifcx = new Ifc5Exporter(store, meshes).export({ includeGeometry: true });
 | [**Browser (WebGPU)**](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/) | Viewing and inspecting models | Full-featured 3D viewer, runs entirely client-side |
 | [**Three.js / Babylon.js**](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
 | [**Server**](https://ltplus-ag.github.io/ifc-lite/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
-| [**Desktop (Tauri)**](https://ltplus-ag.github.io/ifc-lite/guide/desktop/) | Offline use, very large files (500 MB+) | Native app with multi-threading and direct filesystem access |
+| [**Build for Desktop**](https://ltplus-ag.github.io/ifc-lite/guide/desktop/) | Your own offline native app, very large files (500 MB+) | Extension points to wrap the packages in Tauri, with an optional native-Rust geometry fast path |
 
 Not sure? Start with the browser setup. You can add a server or switch engines later.
 

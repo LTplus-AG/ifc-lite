@@ -140,6 +140,15 @@ export const IFC_ICON_CODEPOINTS: Record<string, string> = {
   IfcTrackElement: '\ue260', // "linear_scale"
   IfcVehicle: '\ue531', // "directions_car"
 
+  // Materials (Materials hierarchy tab)
+  IfcMaterial: '\ue4f4', // "texture"
+  IfcMaterialLayerSet: '\ue8fe', // "layers"
+  IfcMaterialLayerSetUsage: '\ue8fe',
+  IfcMaterialProfileSet: '\ue8fe',
+  IfcMaterialProfileSetUsage: '\ue8fe',
+  IfcMaterialConstituentSet: '\ue4f4',
+  IfcMaterialList: '\ue4f4',
+
   // Proxy / generic fallback
   IfcProduct: '\ue047',
   IfcBuildingElementProxy: '\ue047',

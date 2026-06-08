@@ -34,10 +34,10 @@ import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
 import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
+import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
-import { createDesktopEntitlementSlice, type DesktopEntitlementSlice } from './slices/desktopEntitlementSlice.js';
 import { createScheduleSlice, type ScheduleSlice } from './slices/scheduleSlice.js';
 import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.js';
 import { createOverlaySlice, type OverlaySlice } from './slices/overlaySlice.js';
@@ -50,7 +50,7 @@ import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } fro
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
-import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, getPersistedTypeVisibility } from './constants.js';
+import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, getPersistedTypeVisibility, getPersistedTypeViewMode } from './constants.js';
 
 // Re-export types for consumers
 export type * from './types.js';
@@ -85,13 +85,13 @@ export type { PinboardSlice } from './slices/pinboardSlice.js';
 
 // Re-export Lens types
 export type { LensSlice, Lens, LensRule, LensCriteria } from './slices/lensSlice.js';
+export type { CompareSlice, CompareResult } from './slices/compareSlice.js';
 
 // Re-export Script types
 export type { ScriptSlice } from './slices/scriptSlice.js';
 
 // Re-export Chat types
 export type { ChatSlice } from './slices/chatSlice.js';
-export type { DesktopEntitlementSlice } from './slices/desktopEntitlementSlice.js';
 
 // Re-export Cesium types
 export type { CesiumSlice, CesiumDataSource, CesiumPlacementDraft } from './slices/cesiumSlice.js';
@@ -131,10 +131,10 @@ export type ViewerState = LoadingSlice &
   PinboardSlice &
   LensSlice &
   ClashSlice &
+  CompareSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
-  DesktopEntitlementSlice &
   ScheduleSlice &
   PlaybackSlice &
   OverlaySlice &
@@ -155,7 +155,7 @@ export type ViewerState = LoadingSlice &
      * the right panel. Routed through by the toolbar, command palette, and the
      * BCF overlay so every entry point behaves identically.
      */
-    openWorkspacePanel: (panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'extensions') => void;
+    openWorkspacePanel: (panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions') => void;
   };
 
 /**
@@ -182,10 +182,10 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createPinboardSlice(...args),
   ...createLensSlice(...args),
   ...createClashSlice(...args),
+  ...createCompareSlice(...args),
   ...createScriptSlice(...args),
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),
-  ...createDesktopEntitlementSlice(...args),
   ...createScheduleSlice(...args),
   ...createPlaybackSlice(...args),
   ...createOverlaySlice(...args),
@@ -211,6 +211,8 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // Selection (multi-model)
       selectedEntity: null,
       selectedEntitiesSet: new Set(),
+      selectedEntities: [],
+      selectedModelId: null,
 
       // Visibility (legacy)
       hiddenEntities: new Set(),
@@ -219,6 +221,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // Re-read persisted toggles on every file load so a new model never
       // reverts the user's visibility choices (e.g. "Show Annotations").
       typeVisibility: getPersistedTypeVisibility(),
+      typeViewMode: getPersistedTypeViewMode(),
 
       // Visibility (multi-model)
       hiddenEntitiesByModel: new Map(),
@@ -234,6 +237,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       error: null,
       pendingColorUpdates: null,
       pendingMeshColorUpdates: null,
+
+      // Compare (#924): drop any stale diff result — it references models by
+      // id and the loaded set is changing. Keep panel visibility + A/B/scope
+      // choices (UI prefs); the user re-runs against the new set.
+      compareResult: null,
+      compareSelectedKey: null,
+      compareRunning: false,
+      compareError: null,
 
       // Hover/Context
       hoverState: { entityId: null, screenX: 0, screenY: 0 },
@@ -316,6 +327,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         scale: 100,
         useSymbolicRepresentations: false,
         showIfcAnnotations: true,
+        showConstructionProjection: false,
       },
       // Graphic overrides (keep presets, reset active and custom)
       activePresetId: 'preset-3d-colors',
@@ -460,6 +472,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       idsPanelVisible: panel === 'ids',
       lensPanelVisible: panel === 'lens',
       clashPanelVisible: panel === 'clash',
+      comparePanelVisible: panel === 'compare',
       extensionsPanelVisible: panel === 'extensions',
       rightPanelCollapsed: false,
     });

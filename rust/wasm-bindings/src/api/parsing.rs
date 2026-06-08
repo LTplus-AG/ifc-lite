@@ -10,6 +10,28 @@ use js_sys::{Function, Promise};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
+/// Length-preserving replacement of every non-ASCII byte (>= 0x80) with `b'?'`.
+///
+/// Real IFC/STEP files routinely contain Latin-1 / Windows-1252 bytes in the
+/// HEADER section (e.g. accented author names), which are invalid UTF-8.
+/// Building a `&str` from such bytes via `from_utf8_unchecked` is undefined
+/// behavior, so callers validate first and only fall back to this when the
+/// bytes are not valid UTF-8. Each invalid byte is replaced 1:1 so the byte
+/// offsets returned to JS stay aligned to the original buffer (JS re-reads it
+/// via safeUtf8Decode). ASCII — including the entire DATA section — is
+/// untouched.
+fn sanitize_ascii(data: &[u8]) -> String {
+    let mut buf = data.to_vec();
+    for b in buf.iter_mut() {
+        if *b >= 0x80 {
+            *b = b'?';
+        }
+    }
+    // SAFETY-equivalent: every byte is now < 0x80, i.e. valid ASCII / UTF-8,
+    // so this conversion cannot fail.
+    String::from_utf8(buf).expect("ascii after sanitize")
+}
+
 fn is_relevant_metadata_type(type_name: &str) -> bool {
     matches!(
         type_name,
@@ -198,8 +220,18 @@ impl IfcAPI {
     /// JS string creation and UTF-16→UTF-8 conversion.
     #[wasm_bindgen(js_name = scanEntitiesFastBytes)]
     pub fn scan_entities_fast_bytes(&self, data: &[u8]) -> JsValue {
-        // IFC/STEP files are ASCII — safe to convert without full UTF-8 validation
-        let content = unsafe { std::str::from_utf8_unchecked(data) };
+        // IFC/STEP DATA is ASCII, but HEADER fields may carry non-UTF-8 bytes
+        // (Latin-1/Windows-1252). Validate first; only allocate a sanitized,
+        // length-preserving buffer when invalid so entity byte offsets stay
+        // aligned to the original buffer JS re-reads.
+        let owned: String;
+        let content: &str = match std::str::from_utf8(data) {
+            Ok(s) => s,
+            Err(_) => {
+                owned = sanitize_ascii(data);
+                &owned
+            }
+        };
         Self::scan_entities_fast_inner(content)
     }
 
@@ -313,7 +345,18 @@ impl IfcAPI {
             line_number: usize,
         }
 
-        let content = unsafe { std::str::from_utf8_unchecked(data) };
+        // HEADER fields may carry non-UTF-8 bytes (Latin-1/Windows-1252).
+        // Validate first; only allocate a sanitized, length-preserving buffer
+        // when invalid so entity byte offsets stay aligned to the original
+        // buffer JS re-reads.
+        let owned: String;
+        let content: &str = match std::str::from_utf8(data) {
+            Ok(s) => s,
+            Err(_) => {
+                owned = sanitize_ascii(data);
+                &owned
+            }
+        };
         let mut scanner = EntityScanner::new(content);
         let mut refs = Vec::new();
         let bytes = content.as_bytes();

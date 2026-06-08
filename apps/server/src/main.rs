@@ -32,7 +32,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tower_http::{
-    compression::CompressionLayer, cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer,
+    catch_panic::CatchPanicLayer, compression::CompressionLayer, cors::CorsLayer,
+    timeout::TimeoutLayer, trace::TraceLayer,
 };
 
 mod config;
@@ -87,11 +88,19 @@ pub struct AppState {
 /// table in-process (via `tower`'s `oneshot`) without binding a socket.
 fn build_router(state: AppState) -> Router {
     let config = state.config.clone();
-    Router::new()
+
+    // Open routes: liveness/info probes are always reachable, even when an
+    // API token is configured (so health checks keep working).
+    let open_routes = Router::new()
         // Root endpoint - API information
         .route("/", get(routes::health::info))
         // Health check
-        .route("/api/v1/health", get(routes::health::check))
+        .route("/api/v1/health", get(routes::health::check));
+
+    // Protected routes: the compute-heavy parse endpoints and cache reads. When
+    // `config.api_token` is set these require an `Authorization: Bearer <token>`
+    // header; otherwise the layer is a pass-through (see `middleware::auth`).
+    let protected_routes = Router::new()
         // Parse endpoints
         .route("/api/v1/parse", post(routes::parse::parse_full))
         .route("/api/v1/parse/stream", post(routes::parse::parse_stream))
@@ -123,7 +132,15 @@ fn build_router(state: AppState) -> Router {
             "/api/v1/cache/geometry/{hash}",
             get(routes::parse::get_cached_geometry),
         )
-        // Middleware
+        // Optional bearer-token auth (off unless `api_token` is configured).
+        .layer(axum::middleware::from_fn_with_state(
+            config.clone(),
+            middleware::auth::require_bearer_token,
+        ));
+
+    open_routes
+        .merge(protected_routes)
+        // Middleware (applies to all routes below this point)
         .layer(DefaultBodyLimit::max(config.max_file_size_mb * 1024 * 1024)) // Match max_file_size_mb
         .layer(CompressionLayer::new()) // Compress responses (gzip)
         // Note: Request decompression handled manually in extract_file() to support multipart
@@ -132,6 +149,12 @@ fn build_router(state: AppState) -> Router {
         )))
         .layer(TraceLayer::new_for_http())
         .layer(build_cors_layer(&config))
+        // Outermost: turn any panic that unwinds out of a request handler into a
+        // 500 instead of propagating. Combined with the `server-release` profile
+        // (`panic = "unwind"`), this contains a malformed-IFC panic to the single
+        // offending request rather than crashing the whole server. Requires the
+        // `tower-http` `catch-panic` feature and a build profile that unwinds.
+        .layer(CatchPanicLayer::new())
         .with_state(state)
 }
 
@@ -156,6 +179,16 @@ async fn main() {
         batch_size = config.batch_size,
         "Starting IFC-Lite Server"
     );
+
+    if config.api_token.is_some() {
+        tracing::info!(
+            "Bearer-token auth ENABLED on compute/parse routes (IFC_SERVER_API_TOKEN set); /api/v1/health stays open"
+        );
+    } else {
+        tracing::warn!(
+            "Server is UNAUTHENTICATED: parse/cache routes are open to anyone. Set IFC_SERVER_API_TOKEN to require an Authorization: Bearer <token> header, and/or front the deployment with an edge rate limiter."
+        );
+    }
 
     // Initialize rayon thread pool
     rayon::ThreadPoolBuilder::new()

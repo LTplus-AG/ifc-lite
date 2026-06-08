@@ -36,7 +36,7 @@ debug_geometry = []
 earcutr = "0.5"
 
 # 2D polygon boolean operations for profile-level void subtraction
-i_overlay = "6.0"
+i_overlay = "7.0"
 
 # Core IFC parsing
 ifc-lite-core.workspace = true
@@ -53,7 +53,7 @@ rustc-hash = "2.1"
 # PNG decode for IfcBlobTexture (issue #961). Already in the dependency tree
 # (transitive), so it adds no new wasm weight. Pure-Rust inflate
 # (miniz_oxide / fdeflate) — wasm-safe.
-png = "0.17"
+png = "0.18"
 
 # JPEG decode for IfcBlobTexture with RasterFormat 'JPG'/'JPEG' (issue #961).
 # `default-features = false` drops the `rayon` parallelism (no threads on
@@ -70,10 +70,14 @@ thiserror = "2.0"
 # `manifold-csg` feature above for the activation contract.
 # `default-features = false` drops TBB-backed parallelism, which doesn't
 # work on WASM anyway and isn't required for correctness on native.
-manifold-csg = { version = "0.2", default-features = false, optional = true }
+manifold-csg = { version = "0.3", default-features = false, optional = true }
 
 [dev-dependencies]
 approx = "0.5"
+# Shewchuk adaptive exact geometric predicates (sign-exact, no_std, no C deps).
+# Used by the cross-platform determinism floor test that underpins the planned
+# pure-Rust CSG kernel. Dev-only: not linked into the shipping crate.
+robust = "1.2"
 
 [[example]]
 name = "color_extraction_test"

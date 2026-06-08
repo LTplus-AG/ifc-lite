@@ -18,7 +18,7 @@ import {
   RelationshipType,
 } from '@ifc-lite/data';
 import { BinaryCacheWriter, BinaryCacheReader, xxhash64, SchemaVersion, FORMAT_VERSION } from './index.js';
-import type { IfcDataStore } from './types.js';
+import type { CacheDataStore } from './types.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
 describe('xxhash64', () => {
@@ -44,7 +44,7 @@ describe('xxhash64', () => {
 });
 
 describe('BinaryCacheWriter and BinaryCacheReader', () => {
-  let dataStore: IfcDataStore;
+  let dataStore: CacheDataStore;
   let sourceBuffer: ArrayBuffer;
 
   beforeEach(() => {

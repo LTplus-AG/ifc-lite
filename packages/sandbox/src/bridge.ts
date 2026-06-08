@@ -59,9 +59,33 @@ export function buildBridge(
 function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
   const consoleHandle = vm.newObject();
 
+  // vm.dump copies sandbox strings onto the host JS heap, which is NOT bound by
+  // the QuickJS memoryBytes limit. Cap both entry count and cumulative
+  // serialized size so an untrusted script (e.g. `for(;;) console.log('x'.repeat(1e6))`)
+  // cannot exhaust host memory before the eval timeout fires.
+  const MAX_LOG_ENTRIES = 1000;
+  const MAX_TOTAL_BYTES = 4 * 1024 * 1024; // 4MB host budget for captured logs
+  let totalBytes = 0;
+  let truncated = false;
+
   for (const level of ['log', 'warn', 'error', 'info'] as const) {
     const fn = vm.newFunction(level, (...args: QuickJSHandle[]) => {
+      if (truncated) return;
+      if (logs.length >= MAX_LOG_ENTRIES || totalBytes >= MAX_TOTAL_BYTES) {
+        truncated = true;
+        logs.push({ level: 'warn', args: ['[log output truncated: limit reached]'], timestamp: Date.now() });
+        return;
+      }
       const nativeArgs = args.map(a => vm.dump(a));
+      // Approximate host cost of retaining this entry; treat unserializable
+      // args (e.g. cyclic) as zero-cost rather than failing the log call.
+      let entryBytes = 0;
+      try {
+        entryBytes = JSON.stringify(nativeArgs)?.length ?? 0;
+      } catch {
+        entryBytes = 0; /* unserializable args — skip cost accounting */
+      }
+      totalBytes += entryBytes;
       logs.push({ level, args: nativeArgs, timestamp: Date.now() });
     });
     vm.setProp(consoleHandle, level, fn);

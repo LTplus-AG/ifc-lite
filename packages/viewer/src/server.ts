@@ -125,11 +125,9 @@ function readBody(req: IncomingMessage): Promise<string> {
 export async function startViewerServer(opts: ViewerServerOptions): Promise<ViewerServer> {
   const { filePath, fileName, port: requestedPort, createHandler } = opts;
 
-  // Validate file exists and get size
-  let ifcSize = 0;
+  // Validate file exists (size is re-stat'd per /model.ifc request)
   if (filePath) {
-    const ifcStat = await stat(filePath);
-    ifcSize = ifcStat.size;
+    await stat(filePath);
   }
 
   const wasmDir = await resolveWasmDir();
@@ -188,9 +186,12 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
         res.end();
         return;
       }
+      // Re-stat per request so Content-Length always matches the streamed body
+      // even if the file was modified/truncated since server start.
+      const { size } = await stat(filePath);
       res.writeHead(200, {
         'Content-Type': MIME['.ifc'],
-        'Content-Length': ifcSize.toString(),
+        'Content-Length': size.toString(),
       });
       createReadStream(filePath).pipe(res);
       return;

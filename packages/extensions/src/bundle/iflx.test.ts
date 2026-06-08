@@ -91,4 +91,22 @@ describe('unpackBundle — invalid inputs', () => {
     const r = unpackBundle(env);
     expect(r.ok).toBe(false);
   });
+
+  it('rejects a path containing control characters', () => {
+    // Defence-in-depth: control chars (incl. the old 0x1f/0x1e signing
+    // separators) must never appear in a bundle path.
+    const env = gzipSync(
+      new TextEncoder().encode(JSON.stringify({
+        format: 'iflx',
+        version: 1,
+        files: {
+          'manifest.json': Buffer.from('{}').toString('base64'),
+          // 0x1f unit separator embedded in the path segment.
+          ['src/a\u001fb.js']: Buffer.from('x').toString('base64'),
+        },
+      })),
+    );
+    const r = unpackBundle(env);
+    expect(r.ok).toBe(false);
+  });
 });

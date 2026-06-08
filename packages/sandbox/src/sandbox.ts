@@ -61,29 +61,40 @@ export class Sandbox {
   /** Initialize the sandbox (loads WASM module if not cached) */
   async init(): Promise<void> {
     const module = await getModule();
+    // Set this.runtime before the try so dispose() can free it if any
+    // subsequent step (newContext / buildBridge) throws — otherwise a failed
+    // init() leaks the WASM runtime for the page/process lifetime, since the
+    // caller never receives a handle to dispose.
     this.runtime = module.newRuntime();
 
-    // Apply resource limits
-    this.runtime.setMemoryLimit(this.config.limits.memoryBytes ?? DEFAULT_LIMITS.memoryBytes);
-    this.runtime.setMaxStackSize(this.config.limits.maxStackBytes ?? DEFAULT_LIMITS.maxStackBytes);
+    try {
+      // Apply resource limits
+      this.runtime.setMemoryLimit(this.config.limits.memoryBytes ?? DEFAULT_LIMITS.memoryBytes);
+      this.runtime.setMaxStackSize(this.config.limits.maxStackBytes ?? DEFAULT_LIMITS.maxStackBytes);
 
-    // CPU limit via interrupt handler — reads instance field set by eval()
-    const timeoutMs = this.config.limits.timeoutMs ?? DEFAULT_LIMITS.timeoutMs;
-    this.runtime.setInterruptHandler(() => {
-      if (this.evalStartTime > 0 && Date.now() - this.evalStartTime > timeoutMs) {
-        return true; // Interrupt execution
-      }
-      return false;
-    });
+      // CPU limit via interrupt handler — reads instance field set by eval()
+      const timeoutMs = this.config.limits.timeoutMs ?? DEFAULT_LIMITS.timeoutMs;
+      this.runtime.setInterruptHandler(() => {
+        if (this.evalStartTime > 0 && Date.now() - this.evalStartTime > timeoutMs) {
+          return true; // Interrupt execution
+        }
+        return false;
+      });
 
-    this.vm = this.runtime.newContext();
+      this.vm = this.runtime.newContext();
 
-    // Build the bim API inside the sandbox
-    const { logs, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
-      sandboxSessionId: this.sessionId,
-    });
-    this.logs = logs;
-    this.bridgeDispose = dispose;
+      // Build the bim API inside the sandbox
+      const { logs, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
+        sandboxSessionId: this.sessionId,
+      });
+      this.logs = logs;
+      this.bridgeDispose = dispose;
+    } catch (err) {
+      // dispose() is idempotent and null-checks each field, freeing the
+      // bridge, vm, and runtime in order without risk of double-free.
+      this.dispose();
+      throw err;
+    }
   }
 
   /**

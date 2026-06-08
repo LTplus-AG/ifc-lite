@@ -1,5 +1,129 @@
 # @ifc-lite/wasm
 
+## 2.4.1
+
+### Patch Changes
+
+- [#1001](https://github.com/LTplus-AG/ifc-lite/pull/1001) [`8862e79`](https://github.com/LTplus-AG/ifc-lite/commit/8862e790491f334ab3aeb36fca8b9ee5bb69e832) Thanks [@louistrue](https://github.com/louistrue)! - Scope construction projection to the current floor and exclude openings ([#979](https://github.com/LTplus-AG/ifc-lite/issues/979) follow-up).
+
+  - **Current-floor scoping.** On a plan cut of a multi-storey model the projection
+    bands now clamp to the storey the cut sits in, instead of projecting the whole
+    model height — so a roof two levels up no longer draws on the ground-floor plan.
+    New `@ifc-lite/drawing-2d` exports back this: `currentFloorBands` (pure band
+    math) and `storeyFloorsFromMeshes` (per-storey floor levels from mesh-Y in the
+    render frame, plus the `StoreyFloorMesh` type). The caller derives band depths
+    from these; storey-less / single-storey / federated models fall back to the
+    full-extent bands unchanged.
+  - **Opening exclusion.** `IfcOpeningElement` and the rest of the
+    `IfcFeatureElement` family no longer participate in projection.
+    `Drawing2DGenerator.generate` filters them from BOTH the profile and the
+    mesh-silhouette paths via the new `isFeatureElementType` helper, and the Rust
+    `extract_profiles` (`@ifc-lite/wasm`) skips `is_subtype_of(IfcFeatureElement)`
+    at the source so opening void cross-sections never become projection profiles.
+
+## 2.4.0
+
+### Minor Changes
+
+- [#989](https://github.com/LTplus-AG/ifc-lite/pull/989) [`1effb90`](https://github.com/LTplus-AG/ifc-lite/commit/1effb900edd0a70db75f90839a4cc9f8fecb8d5e) Thanks [@louistrue](https://github.com/louistrue)! - Add `meshOutline2d(positions, indices, axis, flipped)` — a winding-robust 2D
+  footprint outline of a triangle mesh for construction projection ([#979](https://github.com/LTplus-AG/ifc-lite/issues/979)). It
+  projects every triangle to the section plane and unions the areas via
+  `i_overlay`, so the footprint is correct regardless of the mesh's (unreliable)
+  triangle winding — unlike normal-based silhouette extraction. Returns a
+  `MeshOutlineJs` handle exposing the contour rings plus the element's extent
+  along the cut axis for band classification.
+
+- [#998](https://github.com/LTplus-AG/ifc-lite/pull/998) [`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f) Thanks [@louistrue](https://github.com/louistrue)! - Add a 3D **Model / Types** view switch (turns the [#957](https://github.com/LTplus-AG/ifc-lite/issues/957) type geometry into a feature).
+
+  The viewer mesh path (`processGeometryBatch`) now always emits an `IfcTypeProduct`'s `RepresentationMap` geometry, tagging each mesh with a `geometryClass`: `0` = occurrence, `1` = orphan type (no occurrence — buildingSMART annex-E showcase files), `2` = instanced type-library shape (a type linked to an occurrence via `IfcRelDefinesByType`). `MeshDataJs.geometryClass` (wasm) and `MeshData.geometryClass` (`@ifc-lite/geometry`) carry it across the boundary.
+
+  The viewer's Visibility menu gains a Model/Types segmented control. **Model** (default) shows occurrences + orphan types and hides class‑2 type-library shapes — so the AC20/ArchiCAD "duplicate boxes at the wrong position" never appear. **Types** shows the type library (classes 1 + 2 at their map origins) and hides occurrences. The switch re-filters the cached mesh set instantly (no reload) and the choice persists across reloads.
+
+  The native `process_geometry` path is unchanged — it still suppresses instanced-type geometry so server/CLI/SDK exports never duplicate it.
+
+### Patch Changes
+
+- [#994](https://github.com/LTplus-AG/ifc-lite/pull/994) [`35413b9`](https://github.com/LTplus-AG/ifc-lite/commit/35413b9efd0178cff6022f2b1092ac532868d6cd) Thanks [@louistrue](https://github.com/louistrue)! - Fix duplicate geometry rendered at wrong positions for ArchiCAD/AC20-style IFC files (regression from [#957](https://github.com/LTplus-AG/ifc-lite/issues/957)/[#962](https://github.com/LTplus-AG/ifc-lite/issues/962) "type-only geometry").
+
+  The [#957](https://github.com/LTplus-AG/ifc-lite/issues/957) orphan-`IfcTypeProduct` pass rendered a type's `IfcRepresentationMap` whenever no `IfcMappedItem` referenced it. But real-world exporters (e.g. ArchiCAD AC20: `AC20-FZK-Haus`, `C20-Institute-Var-2`) attach a `RepresentationMap` to nearly every door/window/furniture **type** while the **occurrence** carries its own direct body geometry — the type and occurrence are linked only by `IfcRelDefinesByType`, so the map is referenced by no `IfcMappedItem`. Every such type was therefore mis-classified as "orphan" and double-rendered at its `MappingOrigin`, producing a cluster of duplicate boxes at the wrong position (e.g. ~140 spurious meshes in `AC20-FZK-Haus`).
+
+  Type-only geometry is now rendered only when the type has **no occurrence** — i.e. it is not the `RelatingType` of any `IfcRelDefinesByType`. The genuinely-orphan buildingSMART annex-E "tessellated shape with style" case (a type with no occurrence) still renders. Fixed across both mesh pipelines (the native `process_geometry` path and the viewer `buildPrePass*` + `processGeometryBatch` path) plus the render-time gate, with regression tests on both.
+
+## 2.3.0
+
+### Minor Changes
+
+- [#939](https://github.com/LTplus-AG/ifc-lite/pull/939) [`90060b7`](https://github.com/LTplus-AG/ifc-lite/commit/90060b7eaad7a07bdab13907c1b52bb24fbc8597) Thanks [@louistrue](https://github.com/louistrue)! - Expose per-entity geometry hashes from `processGeometryBatch`:
+  `IfcAPI.setComputeGeometryHashes(enabled, tolerance)` plus the
+  `MeshCollection.geometryHashCount` / `geometryHashIds` / `geometryHashValues`
+  getters. RTC-invariant and opt-in (off by default, so normal rendering pays
+  nothing); consumed by the model-diff / compare feature to detect per-element
+  geometry changes across revisions.
+
+### Patch Changes
+
+- [#946](https://github.com/LTplus-AG/ifc-lite/pull/946) [`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0) Thanks [@louistrue](https://github.com/louistrue)! - Fix a batch of verified findings from a full-codebase review (security, correctness,
+  data-loss, and resource/memory leaks). Highlights:
+
+  **Security**
+
+  - collab-server: a malformed WebSocket frame no longer crashes the whole process
+    (decode is wrapped; a bad frame is rejected/audited instead of throwing).
+  - mcp: the local HTTP transport now validates `Host`/`Origin` and no longer sends a
+    wildcard `Access-Control-Allow-Origin`, closing a DNS-rebinding/CSRF hole; the
+    `AuthScope.modelIds` allowlist is now enforced at model resolution.
+  - server-bin: `extractZip` uses `execFileSync` (argv, no shell), removing command
+    injection via archive/destination paths.
+  - export / sdk / cli / mcp / lists / viewer CSV exporters now neutralize spreadsheet
+    formula injection (CWE-1236) consistently.
+  - create-ifc-lite: validates the project name (no path traversal) and drops the
+    unused `execSync`-based downloader.
+  - embed-sdk: inbound `postMessage` now validates `event.origin`.
+
+  **Correctness / data-loss**
+
+  - parser: `lengthUnitScale` survives the worker transport; the nested STEP list
+    parser is string-aware (commas/parens inside quoted values no longer mis-split).
+  - mutations: deleting a property from a session-created pset and replaying
+    `UPDATE_ATTRIBUTE` / `CREATE_PROPERTY_SET` mutations now work.
+  - export: merged-export ID remapping no longer rewrites `#N` inside quoted strings.
+  - drawing-2d: GPU section cutter triangle upload/readback use correct WGSL std-layout
+    offsets and strides.
+  - ifcx: cyclic children no longer abort the parse; spatial children round-trip; the
+    mesh transform guards a zero/non-finite homogeneous `w`.
+  - data / cache: a `NULL` string property value stays `null` instead of becoming `""`.
+  - pointcloud, bcf, server-client, query, viewer-core, viewer store/federation: assorted
+    decoding, federation-id, and selection-state fixes.
+
+  **Resource / memory leaks**
+
+  - geometry, query (DuckDB), renderer (GPU buffers), collab (federation presence),
+    sandbox (host log capture + runtime), mcp (clash mesh cache), server-bin (signal
+    listeners), and the viewer renderer on unmount now release resources deterministically.
+
+  **Hardening (apps, not published)**
+
+  - server: a dedicated `server-release` Cargo profile (`panic = "unwind"`) plus a
+    `CatchPanicLayer` contain a malformed-IFC parse panic to the offending request
+    instead of aborting the whole server.
+  - desktop (Tauri): a Content-Security-Policy is set, and unused `shell:*` /
+    `fs:allow-write|mkdir|remove` capabilities (and the unused shell plugin) are removed.
+
+  **Second pass** (additional verified findings)
+
+  - collab-server: S3 log load now follows `ListObjectsV2` pagination (no dropped frames);
+    awareness frames are size-capped + rate-limited; path-lock verify runs after role/rate-limit;
+    the blob route requires auth and `/metrics` can be token-gated.
+  - server-bin: downloaded binaries are SHA-256 verified against a release sidecar (fail-closed on
+    mismatch, warn-if-absent for older releases).
+  - extensions: inner-ring capability check fails _closed_ for unknown namespaces; signing
+    canonicalization is now injective (length-prefixed).
+  - correctness/leaks: mutations quantity type+unit preserved on replay; `findByProperty` boolean
+    comparisons; Parquet REAL columns kept as Float64; blob GC fail-safe on missing `uploadedAt`;
+    spatial-hierarchy + codegen cycle guards; BVH NaN edge; bSDD/playground caches bounded;
+    point-cloud GPU asset freed on federation error; mcp `parseColor` rejects non-hex; bcf/SVG/STEP
+    output escaping; and more.
+
 ## 2.2.0
 
 ### Minor Changes

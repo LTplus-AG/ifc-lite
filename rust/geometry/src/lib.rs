@@ -79,6 +79,7 @@ mod bsp_csg;
 pub mod csg;
 pub mod diagnostics;
 pub mod error;
+pub mod geom_hash;
 #[cfg(feature = "manifold-csg")]
 mod manifold_kernel;
 pub mod extrusion;
@@ -88,6 +89,7 @@ pub mod processors;
 pub mod profile;
 pub mod profile_extractor;
 pub mod profiles;
+pub mod projection_outline;
 pub mod router;
 pub mod transform;
 pub mod triangulation;
@@ -104,6 +106,7 @@ pub use bool2d::{
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
+pub use geom_hash::{hash_mesh_world, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE};
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use material_layer_index::{LayerAxis, LayerBuildup, LayerInfo, MaterialLayerIndex};
 pub use mesh::{CoordinateShift, Mesh, SubMesh, SubMeshCollection};
@@ -125,6 +128,7 @@ pub use router::{
 pub use transform::{
     apply_rtc_offset, parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,
     parse_cartesian_point, parse_cartesian_point_from_id, parse_direction, parse_direction_from_id,
+    rotation_angle_about_z,
 };
 pub use triangulation::triangulate_polygon;
 pub use void_analysis::{

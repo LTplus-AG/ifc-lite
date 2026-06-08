@@ -221,6 +221,14 @@ export class BVH {
     let tmax = Infinity;
     
     for (let i = 0; i < 3; i++) {
+      if (direction[i] === 0) {
+        // Ray is parallel to this axis' slab; reject if origin is outside it.
+        // Avoids 0 * Infinity = NaN poisoning tmin/tmax below.
+        if (origin[i] < aabb.min[i] || origin[i] > aabb.max[i]) {
+          return false;
+        }
+        continue;
+      }
       const invD = 1.0 / direction[i];
       let t0 = (aabb.min[i] - origin[i]) * invD;
       let t1 = (aabb.max[i] - origin[i]) * invD;

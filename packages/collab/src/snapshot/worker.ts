@@ -86,9 +86,10 @@ export function runSnapshotWorker(scope: WorkerScopeLike): void {
         }
         case 'seed': {
           const doc = createCollabDoc({ gc: false });
-          // Decode whatever shape the caller hands us.
-          parseIfcxInput(msg.source);
-          seedFromIfcx(doc, msg.source);
+          // Decode whatever shape the caller hands us, then seed from the
+          // already-parsed file so the source isn't JSON.parsed twice.
+          const file = parseIfcxInput(msg.source);
+          seedFromIfcx(doc, file);
           const update = Y.encodeStateAsUpdate(doc);
           scope.postMessage(
             { kind: 'seed:ok', requestId: msg.requestId, update },

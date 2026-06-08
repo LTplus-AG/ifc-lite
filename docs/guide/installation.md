@@ -223,28 +223,7 @@ cargo add ifc-lite-core ifc-lite-geometry
 
 ## Desktop App (Tauri)
 
-Build and run the native desktop application:
-
-```bash
-# Clone the repository
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/LTplus-AG/ifc-lite.git
-cd ifc-lite
-
-# Install dependencies
-pnpm install
-
-# Development mode
-cd apps/desktop
-pnpm dev
-
-# Build for current platform
-pnpm build
-
-# Build for specific platforms
-pnpm build:windows   # Windows (.exe, .msi)
-pnpm build:macos     # macOS (.app, .dmg)
-pnpm build:linux     # Linux (.deb, .AppImage)
-```
+ifc-lite no longer ships its own desktop app. The published `@ifc-lite/*` packages still support native desktop targets (via the platform bridge in `@ifc-lite/geometry`), so you can build your own native Tauri app on top of them. See the [Building for Desktop](desktop.md) guide for a step-by-step walkthrough.
 
 If you need large IFC benchmark fixtures, fetch only the specific files you plan to use:
 
@@ -252,8 +231,8 @@ If you need large IFC benchmark fixtures, fetch only the specific files you plan
 git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
 ```
 
-!!! note "Prerequisites for Desktop Build"
-    Building the desktop app requires the Rust toolchain. See [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/).
+!!! note "Prerequisites for a Desktop Build"
+    Building a desktop app on the packages requires the Rust toolchain. See [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ### Desktop vs Web Comparison
 
@@ -271,7 +250,7 @@ git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
 
 - **Node.js** 18.0 or higher
 - **pnpm** 8.0 or higher
-- **Rust** toolchain (stable) - only for WASM/desktop builds
+- **Rust** toolchain (the pinned nightly in `rust-toolchain.toml`, installed automatically by `rustup`) - only for WASM builds (and your own desktop builds, if any)
 
 ### Clone and Build
 
@@ -413,8 +392,7 @@ ifc-lite/
 │
 ├── apps/
 │   ├── viewer/                # React web application
-│   ├── server/                # Rust HTTP server
-│   └── desktop/               # Tauri desktop application
+│   └── server/                # Rust HTTP server
 │
 └── docs/                      # Documentation (MkDocs)
 ```

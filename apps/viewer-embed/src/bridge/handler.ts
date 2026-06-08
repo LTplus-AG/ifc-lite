@@ -34,15 +34,74 @@ interface BridgeContext {
   loadModelFromBuffer: (buffer: ArrayBuffer, name?: string) => Promise<{ entities: number; triangles: number; vertices: number }>;
 }
 
+/** Optional security knobs for the bridge (all opt-in; defaults preserve the public-widget behaviour). */
+interface BridgeOptions {
+  /**
+   * Optional inbound origin allowlist. When non-empty, postMessage commands
+   * whose event.origin is not on the list are dropped. When empty/undefined
+   * the bridge accepts any sender (public read-only embed default).
+   */
+  allowedOrigins?: string[];
+  /**
+   * Optional expected parent origin (e.g. from ?parentOrigin= or
+   * document.referrer). Used as the outbound targetOrigin for content-bearing
+   * events before the first inbound message arrives, so they are not broadcast
+   * to '*'. The READY handshake still uses '*' regardless.
+   */
+  expectedParentOrigin?: string;
+  /**
+   * Optional INIT token. When set, the INIT command's payload.token must match
+   * or the INIT is rejected.
+   */
+  initToken?: string;
+}
+
 let ctx: BridgeContext | null = null;
+let allowedOrigins: string[] = [];
+let initToken: string | undefined;
+/**
+ * Outbound targetOrigin. '*' until a concrete parent origin is known. The
+ * READY handshake is always allowed to post to '*'; content-bearing events are
+ * withheld while this is '*' (see emitToParent).
+ */
 let parentOrigin: string = '*';
+/** True once a concrete (non-'*') parentOrigin has been captured. */
+let parentOriginResolved = false;
+
+/** Is `origin` permitted given the configured allowlist? Empty allowlist permits all. */
+function isOriginAllowed(origin: string): boolean {
+  if (allowedOrigins.length === 0) return true;
+  return allowedOrigins.includes(origin);
+}
+
+/** Adopt a concrete outbound targetOrigin once, ignoring '*'/'null'. */
+function captureParentOrigin(origin: string | undefined) {
+  if (parentOriginResolved) return;
+  if (!origin || origin === 'null' || origin === '*') return;
+  parentOrigin = origin;
+  parentOriginResolved = true;
+}
 
 /** Initialize the bridge with store and callback references */
-export function initBridge(context: BridgeContext) {
+export function initBridge(context: BridgeContext, options: BridgeOptions = {}) {
   ctx = context;
+  allowedOrigins = options.allowedOrigins ?? [];
+  initToken = options.initToken;
+  // Seed the outbound targetOrigin from an expected parent origin so
+  // content-bearing auto-load events are not broadcast to '*' before any
+  // inbound command is received. Crucially this seed stays *overridable*: a
+  // stale/misconfigured ?parentOrigin= or referrer must not permanently lock
+  // the target, or replies/events would be addressed to the wrong origin and
+  // silently dropped. The first valid inbound message confirms the real origin
+  // (via captureParentOrigin in onMessage) and supersedes this seed.
+  const seed = options.expectedParentOrigin;
+  if (seed && seed !== 'null' && seed !== '*') {
+    parentOrigin = seed;
+    parentOriginResolved = false;
+  }
   window.addEventListener('message', onMessage);
 
-  // Send READY event to parent
+  // Send READY event to parent (handshake bootstrap — allowed to use '*').
   emitToParent(createEvent('READY', { version: PROTOCOL_VERSION }));
 }
 
@@ -50,11 +109,19 @@ export function initBridge(context: BridgeContext) {
 export function destroyBridge() {
   window.removeEventListener('message', onMessage);
   ctx = null;
+  allowedOrigins = [];
+  initToken = undefined;
+  parentOrigin = '*';
+  parentOriginResolved = false;
 }
 
 /** Emit an event to the parent window */
 export function emitToParent(msg: EmbedMessageEnvelope, transfer?: Transferable[]) {
   if (window.parent === window) return; // Not in an iframe
+  // Only the READY handshake (carries no model data) may broadcast to '*'.
+  // Withhold every other message until a concrete parentOrigin is known so we
+  // don't leak content/responses to unknown ancestor origins.
+  if (parentOrigin === '*' && msg.type !== 'READY') return;
   window.parent.postMessage(msg, parentOrigin, transfer ?? []);
 }
 
@@ -74,12 +141,16 @@ function onMessage(event: MessageEvent) {
   if (!isEmbedMessage(event.data)) return;
   if (!ctx) return;
 
+  // When an allowlist is configured, drop inbound commands from any other
+  // origin. With no allowlist (the public-widget default) every sender is
+  // accepted, preserving generic embedding.
+  if (!isOriginAllowed(event.origin)) return;
+
   const msg = event.data as EmbedMessageEnvelope;
 
-  // Track parent origin for responses (but accept * initially for handshake)
-  if (event.origin && event.origin !== 'null') {
-    parentOrigin = event.origin;
-  }
+  // Capture the first valid inbound origin as the outbound targetOrigin so all
+  // subsequent replies/events go only to that origin instead of '*'.
+  captureParentOrigin(event.origin);
 
   const { type, requestId, data } = msg;
 
@@ -107,6 +178,17 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
   switch (type) {
     case 'INIT': {
       const payload = data as InboundPayloads['INIT'];
+      // When an INIT token is configured, the handshake must present a matching
+      // token; otherwise reject without applying config or ACKing.
+      if (initToken !== undefined && payload?.token !== initToken) {
+        if (requestId) {
+          emitToParent(createResponse(requestId, undefined, {
+            code: 'UNAUTHORIZED',
+            message: 'INIT token mismatch',
+          }));
+        }
+        return;
+      }
       // Apply initial config if provided
       if (payload?.config?.theme) state.setTheme(payload.config.theme);
       // ACK the init

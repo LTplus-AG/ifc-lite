@@ -15,6 +15,7 @@ import {
   EyeOff,
   Equal,
   Crosshair,
+  GitCompareArrows,
   Home,
   Maximize2,
   Grid3x3,
@@ -43,13 +44,14 @@ import {
   CalendarClock,
   Globe2,
   Move,
-  Settings,
   PenLine,
   Layers3,
   SquareStack,
   ChevronsUpDown,
   Undo2,
   Redo2,
+  Boxes,
+  Shapes,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -82,16 +84,10 @@ import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
 import { SearchInline } from './SearchInline';
 import { useFloorplanView } from '@/hooks/useFloorplanView';
-import { buildDesktopUpgradeUrl, hasDesktopFeatureAccess, type DesktopFeature } from '@/lib/desktop-product';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { toast } from '@/components/ui/toast';
-import { navigateToPath } from '@/services/app-navigation';
-import { getStartupHarnessRequest, setActiveHarnessRequest, tryClaimStartupHarnessRequest } from '@/services/desktop-harness';
-import { logToDesktopTerminal } from '@/services/desktop-logger';
-import { openIfcFileDialog, type NativeFileHandle } from '@/services/file-dialog';
-import { isTauri } from '@/lib/platform';
 import {
   closeActiveAnalysisExtension,
   getAnalysisExtensionsSnapshot,
@@ -101,10 +97,6 @@ import {
 
 type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split';
 type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'addElement' | string;
-
-function isNativeFileHandle(file: File | NativeFileHandle): file is NativeFileHandle {
-  return typeof (file as NativeFileHandle).path === 'string';
-}
 
 // #region FIX: Move ToolButton OUTSIDE MainToolbar to prevent recreation on every render
 // This fixes Radix UI Tooltip's asChild prop becoming stale during re-renders
@@ -437,88 +429,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // Listen for programmatic file-load requests (from command palette recent files)
   useEffect(() => {
     const handler = (e: Event) => {
-      const file = (e as CustomEvent<File | NativeFileHandle>).detail;
+      const file = (e as CustomEvent<File>).detail;
       if (file) {
-        recordRecentFiles([isNativeFileHandle(file)
-          ? { name: file.name, size: file.size, path: file.path, modifiedMs: file.modifiedMs ?? null }
-          : { name: file.name, size: file.size }]);
+        recordRecentFiles([{ name: file.name, size: file.size }]);
         void loadFile(file);
       }
     };
     window.addEventListener('ifc-lite:load-file', handler);
     return () => window.removeEventListener('ifc-lite:load-file', handler);
-  }, [loadFile]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const sleep = (ms: number) => new Promise((resolve) => globalThis.setTimeout(resolve, ms));
-
-    const waitForViewerToSettle = async (label: string) => {
-      const timeoutMs = 120_000;
-      const pollMs = 100;
-      const start = performance.now();
-      while (!cancelled) {
-        const state = useViewerStore.getState();
-        const meshCount = state.geometryResult?.meshes.length ?? 0;
-        if (!state.loading && meshCount > 0) {
-          void logToDesktopTerminal(
-            'info',
-            `[DesktopHarness] ${label} settled: loading=${state.loading} meshes=${meshCount} progress=${state.progress?.phase ?? 'none'}`
-          );
-          return;
-        }
-        if (performance.now() - start >= timeoutMs) {
-          throw new Error(`[DesktopHarness] Timed out waiting for ${label} to settle`);
-        }
-        await sleep(pollMs);
-      }
-    };
-
-    void (async () => {
-      void logToDesktopTerminal('info', '[DesktopHarness] MainToolbar startup harness effect running');
-      const request = await getStartupHarnessRequest();
-      if (!request || cancelled) {
-        void logToDesktopTerminal(
-          'info',
-          `[DesktopHarness] No startup harness request available (cancelled=${cancelled})`
-        );
-        return;
-      }
-      if (!tryClaimStartupHarnessRequest(request)) {
-        void logToDesktopTerminal('info', `[DesktopHarness] Startup harness request already claimed for ${request.file.path}`);
-        return;
-      }
-      void logToDesktopTerminal('info', `[DesktopHarness] Claimed startup harness request for ${request.file.path}`);
-      console.log(`[DesktopHarness] Auto-loading startup file: ${request.file.path}`);
-      if (!request.replaceFile) {
-        void logToDesktopTerminal('info', `[DesktopHarness] Calling loadFile for ${request.file.path}`);
-        await loadFile(request.file);
-        return;
-      }
-
-      void logToDesktopTerminal(
-        'info',
-        `[DesktopHarness] Running replacement sequence first=${request.file.path} second=${request.replaceFile.path}`
-      );
-      setActiveHarnessRequest(null);
-      await loadFile(request.file);
-      await waitForViewerToSettle(`first load ${request.file.name}`);
-      if (cancelled) {
-        return;
-      }
-
-      setActiveHarnessRequest({
-        ...request,
-        file: request.replaceFile,
-        replaceFile: undefined,
-      });
-      void logToDesktopTerminal('info', `[DesktopHarness] Calling replacement loadFile for ${request.replaceFile.path}`);
-      await loadFile(request.replaceFile);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [loadFile]);
 
   // Floorplan view
@@ -540,6 +458,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
   const toggleTypeVisibility = useViewerStore((state) => state.toggleTypeVisibility);
   const resetTypeVisibility = useViewerStore((state) => state.resetTypeVisibility);
+  // #957 follow-up: Model/Types 3D view switch — 'model' shows placed
+  // occurrences (default), 'types' shows the type-library shapes.
+  const typeViewMode = useViewerStore((state) => state.typeViewMode);
+  const setTypeViewMode = useViewerStore((state) => state.setTypeViewMode);
+  // Only models with type-library geometry (RepresentationMap shapes) can show
+  // anything in "Types" mode, so the switch is hidden for the common
+  // occurrence-only model. Derived in ViewportContainer from the merged meshes.
+  const hasTypeGeometry = useViewerStore((state) => state.hasTypeGeometry);
   // How many of the five class toggles are on — surfaced in the menu
   // header so the user sees scene state at a glance.
   const visibleClassCount = [
@@ -562,6 +488,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const setIdsPanelVisible = useViewerStore((state) => state.setIdsPanelVisible);
   const clashPanelVisible = useViewerStore((state) => state.clashPanelVisible);
   const setClashPanelVisible = useViewerStore((state) => state.setClashPanelVisible);
+  const comparePanelVisible = useViewerStore((state) => state.comparePanelVisible);
+  const setComparePanelVisible = useViewerStore((state) => state.setComparePanelVisible);
   const listPanelVisible = useViewerStore((state) => state.listPanelVisible);
   const setListPanelVisible = useViewerStore((state) => state.setListPanelVisible);
   const setRightPanelCollapsed = useViewerStore((state) => state.setRightPanelCollapsed);
@@ -588,7 +516,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const cesiumPlacementEditMode = useViewerStore((state) => state.cesiumPlacementEditMode);
   const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
   const storeModels = useViewerStore((state) => state.models);
-  const desktopEntitlement = useViewerStore((state) => state.desktopEntitlement);
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
     getAnalysisExtensionsSnapshot,
@@ -606,7 +533,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     () => analysisExtensionState.extensions.filter((extension) => (extension.placement ?? 'right') === 'bottom'),
     [analysisExtensionState.extensions],
   );
-  const desktopShell = isTauri();
 
   // NOTE: The Class Visibility dropdown used to gate each toggle on whether
   // the loaded model actually contained that class (scanning meshes for
@@ -722,19 +648,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     goHomeFromStore();
   }, []);
 
-  const promptDesktopUpgrade = useCallback((featureLabel: string) => {
-    toast.info(`${featureLabel} is available with Desktop Pro`);
-    navigateToPath(buildDesktopUpgradeUrl());
-  }, []);
-
-  const requireDesktopFeature = useCallback((feature: DesktopFeature, label: string) => {
-    if (hasDesktopFeatureAccess(desktopEntitlement, feature)) {
-      return true;
-    }
-    promptDesktopUpgrade(label);
-    return false;
-  }, [desktopEntitlement, promptDesktopUpgrade]);
-
   const handleToggleBottomPanel = useCallback((panel: 'script' | 'list' | 'gantt') => {
     if (activeAnalysisExtension?.placement === 'bottom') {
       closeActiveAnalysisExtension();
@@ -761,24 +674,16 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'addElement' | 'extensions') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
-    }
-    if (panel === 'bcf' && !requireDesktopFeature('bcf_issue_management', 'BCF issue management')) {
-      return;
-    }
-    if (panel === 'ids' && !requireDesktopFeature('ids_validation', 'IDS validation')) {
-      return;
-    }
-    if (panel === 'extensions' && !requireDesktopFeature('extensions', 'Extensions')) {
-      return;
     }
 
     const nextBcfVisible = panel === 'bcf' ? !bcfPanelVisible : false;
     const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;
     const nextLensVisible = panel === 'lens' ? !lensPanelVisible : false;
     const nextClashVisible = panel === 'clash' ? !clashPanelVisible : false;
+    const nextCompareVisible = panel === 'compare' ? !comparePanelVisible : false;
     const nextExtensionsVisible = panel === 'extensions' ? !extensionsPanelVisible : false;
     const isAddElementActive = activeTool === 'addElement';
     const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
@@ -787,6 +692,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setIdsPanelVisible(nextIdsVisible);
     setLensPanelVisible(nextLensVisible);
     setClashPanelVisible(nextClashVisible);
+    setComparePanelVisible(nextCompareVisible);
     setExtensionsPanelVisible(nextExtensionsVisible);
 
     if (panel === 'addElement') {
@@ -795,7 +701,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       setActiveTool('select');
     }
 
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextExtensionsVisible || nextAddElementActive) {
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextAddElementActive) {
       setRightPanelCollapsed(false);
     }
   }, [
@@ -803,13 +709,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     activeTool,
     bcfPanelVisible,
     clashPanelVisible,
+    comparePanelVisible,
     extensionsPanelVisible,
     idsPanelVisible,
     lensPanelVisible,
-    requireDesktopFeature,
     setActiveTool,
     setBcfPanelVisible,
     setClashPanelVisible,
+    setComparePanelVisible,
     setExtensionsPanelVisible,
     setIdsPanelVisible,
     setLensPanelVisible,
@@ -877,6 +784,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (idsPanelVisible) panels.add('ids');
     if (lensPanelVisible) panels.add('lens');
     if (clashPanelVisible) panels.add('clash');
+    if (comparePanelVisible) panels.add('compare');
     if (extensionsPanelVisible) panels.add('extensions');
     if (activeTool === 'addElement') panels.add('addElement');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
@@ -886,6 +794,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     analysisExtensionState.activeId,
     bcfPanelVisible,
     clashPanelVisible,
+    comparePanelVisible,
     extensionsPanelVisible,
     ganttPanelVisible,
     idsPanelVisible,
@@ -904,13 +813,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';
     if (activeWorkspacePanels.has('lens')) return 'Lens Rules';
     if (activeWorkspacePanels.has('clash')) return 'Clash Detection';
+    if (activeWorkspacePanels.has('compare')) return 'Compare Models';
     if (activeWorkspacePanels.has('extensions')) return 'Extensions';
     if (activeWorkspacePanels.has('addElement')) return 'Add Element';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 
   const handleScreenshot = useCallback(() => {
-    if (!requireDesktopFeature('exports', 'Exports')) return;
     const canvas = document.querySelector('canvas');
     if (!canvas) return;
     try {
@@ -924,10 +833,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       console.error('Screenshot failed:', err);
       toast.error('Screenshot failed');
     }
-  }, [requireDesktopFeature]);
+  }, []);
 
   const handleExportCSV = useCallback((type: 'entities' | 'properties' | 'quantities' | 'spatial') => {
-    if (!requireDesktopFeature('exports', 'Exports')) return;
     if (!ifcDataStore) return;
     try {
       const exporter = new CSVExporter(ifcDataStore);
@@ -965,10 +873,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       console.error('CSV export failed:', err);
       toast.error(`CSV export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [ifcDataStore, requireDesktopFeature]);
+  }, [ifcDataStore]);
 
   const handleExportJSON = useCallback(() => {
-    if (!requireDesktopFeature('exports', 'Exports')) return;
     if (!ifcDataStore) return;
     try {
       const entities: Record<string, unknown>[] = [];
@@ -996,7 +903,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       console.error('JSON export failed:', err);
       toast.error(`JSON export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [ifcDataStore, requireDesktopFeature]);
+  }, [ifcDataStore]);
 
   return (
     <div className="flex items-center gap-1 px-2 h-12 border-b bg-white dark:bg-black border-zinc-200 dark:border-zinc-800 relative z-50">
@@ -1024,25 +931,9 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={async (e) => {
+            onClick={(e) => {
               // Blur button to close tooltip before opening file dialog
               (e.currentTarget as HTMLButtonElement).blur();
-
-              void logToDesktopTerminal('info', '[MainToolbar] Open file button clicked');
-              const file = await openIfcFileDialog();
-              if (file) {
-                void logToDesktopTerminal('info', `[MainToolbar] Native dialog selected ${file.path}`);
-                recordRecentFiles([{
-                  name: file.name,
-                  size: file.size,
-                  path: file.path,
-                  modifiedMs: file.modifiedMs ?? null,
-                }]);
-                void loadFile(file);
-                return;
-              }
-
-              void logToDesktopTerminal('info', '[MainToolbar] Falling back to browser file input');
               fileInputRef.current?.click();
             }}
             disabled={loading}
@@ -1085,37 +976,23 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          {hasDesktopFeatureAccess(desktopEntitlement, 'exports') ? (
-            <ExportDialog
-              trigger={
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Export IFC (with changes)
-                </DropdownMenuItem>
-              }
-            />
-          ) : (
-            <DropdownMenuItem onClick={() => promptDesktopUpgrade('Exports')}>
-              <FileText className="h-4 w-4 mr-2" />
-              Export IFC (with changes)
-            </DropdownMenuItem>
-          )}
+          <ExportDialog
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <FileText className="h-4 w-4 mr-2" />
+                Export IFC (with changes)
+              </DropdownMenuItem>
+            }
+          />
           <DropdownMenuSeparator />
-          {hasDesktopFeatureAccess(desktopEntitlement, 'exports') ? (
-            <GLBExportDialog
-              trigger={
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export GLB (3D Model)
-                </DropdownMenuItem>
-              }
-            />
-          ) : (
-            <DropdownMenuItem onClick={() => promptDesktopUpgrade('Exports')}>
-              <Download className="h-4 w-4 mr-2" />
-              Export GLB (3D Model)
-            </DropdownMenuItem>
-          )}
+          <GLBExportDialog
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <Download className="h-4 w-4 mr-2" />
+                Export GLB (3D Model)
+              </DropdownMenuItem>
+            }
+          />
           <DropdownMenuSeparator />
           <DropdownMenuSub>
             <DropdownMenuSubTrigger disabled={!ifcDataStore}>
@@ -1187,9 +1064,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       </DropdownMenu>
 
       {/* Export Changes Button - shows when there are pending mutations */}
-      {hasDesktopFeatureAccess(desktopEntitlement, 'exports') ? (
-        <ExportChangesButton />
-      ) : null}
+      <ExportChangesButton />
 
       {/* ── Panels ── */}
       <DropdownMenu>
@@ -1264,6 +1139,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <Crosshair className="h-4 w-4 mr-2" />
             Clash Detection
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('compare')}
+            onCheckedChange={() => handleToggleRightPanel('compare')}
+          >
+            <GitCompareArrows className="h-4 w-4 mr-2" />
+            Compare Models
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -1532,6 +1414,57 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           model lacks is a no-op.
         */}
         <DropdownMenuContent align="start" className="w-[300px] p-1.5">
+          {/* Model / Types 3D view switch (#957 follow-up). A type carries a
+              RepresentationMap whose shape is drawn at its MappingOrigin; "Types"
+              shows that type library, "Model" shows the placed occurrences. The
+              two are mutually exclusive — toggling re-filters the cached mesh set
+              instantly (no reload). Only rendered when the model actually has
+              type-library geometry — most carry only occurrence geometry, where
+              "Types" would be empty, so the switch would just be a dead control. */}
+          {hasTypeGeometry && (
+            <>
+              <div className="px-1.5 pb-1 pt-0.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  3D View
+                </span>
+              </div>
+              <div className="flex gap-1 px-1.5 pb-1.5" role="radiogroup" aria-label="3D view mode">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={typeViewMode === 'model'}
+                  onClick={() => setTypeViewMode('model')}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                    typeViewMode === 'model'
+                      ? 'border-primary/40 bg-primary/10 text-foreground'
+                      : 'border-transparent text-muted-foreground hover:bg-muted/50',
+                  )}
+                >
+                  <Boxes className="h-3.5 w-3.5 shrink-0" />
+                  Model
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={typeViewMode === 'types'}
+                  onClick={() => setTypeViewMode('types')}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-colors',
+                    typeViewMode === 'types'
+                      ? 'border-primary/40 bg-primary/10 text-foreground'
+                      : 'border-transparent text-muted-foreground hover:bg-muted/50',
+                  )}
+                >
+                  <Shapes className="h-3.5 w-3.5 shrink-0" />
+                  Types
+                </button>
+              </div>
+
+              <DropdownMenuSeparator className="my-1" />
+            </>
+          )}
+
           <div className="flex items-center justify-between gap-2 px-1.5 pb-1 pt-0.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Visibility
@@ -1621,7 +1554,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         appears beside it (its amber tint signals a modal pose whose
         exit affordance must stay visible).
       */}
-      {cesiumAvailable && !desktopShell && (
+      {cesiumAvailable && (
         <>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1783,22 +1716,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           the toolbar's meta cluster stays focused on shell chrome
           (Settings · Theme · Help). */}
       <div className="flex items-center gap-2 ml-2 pl-2 border-l border-zinc-200 dark:border-zinc-700/60">
-        {desktopShell ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full"
-                onClick={() => navigateToPath('/settings')}
-              >
-                <Settings className="!h-[20px] !w-[20px]" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Settings</TooltipContent>
-          </Tooltip>
-        ) : null}
-
         <Tooltip>
           <TooltipTrigger asChild>
             <div>

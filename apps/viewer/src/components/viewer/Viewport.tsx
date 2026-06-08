@@ -808,6 +808,9 @@ export function Viewport({
       }
       setIsInitialized(false);
       rendererRef.current = null;
+      // Free all WebGPU resources held by this renderer instance.
+      // destroy() is idempotent, so this is safe even if init() rejected.
+      renderer.destroy();
       // Clear BCF global refs to prevent memory leaks
       clearGlobalRefs();
     };

@@ -108,7 +108,12 @@ export function resolveVisibilityFilterSets(
  * double-quotes, or newlines.
  */
 function escapeCsv(value: string, sep: string): string {
-  if (value.includes(sep) || value.includes('"') || value.includes('\n')) {
+  // Neutralize spreadsheet formula injection (CWE-1236): a leading
+  // =, +, -, @, TAB or CR makes a cell execute as a formula in Excel/
+  // LibreOffice/Sheets. IFC values are attacker-controllable, so prefix
+  // such cells with an apostrophe.
+  if (/^[=+\-@\t\r]/.test(value)) value = `'${value}`;
+  if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;

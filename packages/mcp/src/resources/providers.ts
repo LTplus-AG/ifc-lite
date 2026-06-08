@@ -13,10 +13,23 @@
 import { EntityNode } from '@ifc-lite/query';
 import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 import type { ResourceContents, ResourceDefinition } from '../protocol/index.js';
-import type { ToolContext } from '../context.js';
+import type { LoadedModel, ToolContext } from '../context.js';
+import { modelAllowed } from '../auth/scope.js';
 import type { ResourceProvider } from './types.js';
 
 const URI_PREFIX = 'ifc-lite://';
+
+/** Models the caller's scope permits — used to filter per-model resource listings. */
+function allowedModels(ctx: ToolContext): LoadedModel[] {
+  return ctx.registry.list().filter((m) => modelAllowed(ctx.scope, m.id));
+}
+
+/** Resolve a model by id, returning null when missing OR not permitted by scope. */
+function getAllowedModel(ctx: ToolContext, id: string): LoadedModel | null {
+  const m = ctx.registry.get(id);
+  if (!m || !modelAllowed(ctx.scope, m.id)) return null;
+  return m;
+}
 
 function jsonContents(uri: string, value: unknown): ResourceContents {
   return {
@@ -29,7 +42,7 @@ function jsonContents(uri: string, value: unknown): ResourceContents {
 class ManifestProvider implements ResourceProvider {
   name = 'manifest';
   list(ctx: ToolContext): ResourceDefinition[] {
-    return ctx.registry.list().map((m) => ({
+    return allowedModels(ctx).map((m) => ({
       uri: `${URI_PREFIX}model/${m.id}/manifest`,
       name: `${m.name} — manifest`,
       description: `Schema, entity counts, georef, units for model '${m.id}'.`,
@@ -41,7 +54,7 @@ class ManifestProvider implements ResourceProvider {
   }
   read(uri: string, ctx: ToolContext): ResourceContents[] {
     const id = uri.replace(/^ifc-lite:\/\/model\//, '').replace(/\/manifest$/, '');
-    const m = ctx.registry.get(id);
+    const m = getAllowedModel(ctx, id);
     if (!m) return [];
     const georef = extractGeoreferencingOnDemand(m.store);
     return [jsonContents(uri, {
@@ -73,7 +86,7 @@ class EntityProvider implements ResourceProvider {
   read(uri: string, ctx: ToolContext): ResourceContents[] {
     const m = uri.match(/^ifc-lite:\/\/model\/([^/]+)\/entity\/(.+)$/);
     if (!m) return [];
-    const model = ctx.registry.get(m[1]);
+    const model = getAllowedModel(ctx, m[1]);
     if (!model) return [];
     const gid = decodeURIComponent(m[2]);
     for (const [, ids] of model.store.entityIndex.byType) {
@@ -103,7 +116,7 @@ class EntityProvider implements ResourceProvider {
 class SpatialTreeProvider implements ResourceProvider {
   name = 'spatial-tree';
   list(ctx: ToolContext): ResourceDefinition[] {
-    return ctx.registry.list().map((m) => ({
+    return allowedModels(ctx).map((m) => ({
       uri: `${URI_PREFIX}model/${m.id}/spatial-tree`,
       name: `${m.name} — spatial tree`,
       mimeType: 'application/json',
@@ -114,7 +127,7 @@ class SpatialTreeProvider implements ResourceProvider {
   }
   read(uri: string, ctx: ToolContext): ResourceContents[] {
     const id = uri.replace(/^ifc-lite:\/\/model\//, '').replace(/\/spatial-tree$/, '');
-    const m = ctx.registry.get(id);
+    const m = getAllowedModel(ctx, id);
     if (!m) return [];
     const projectIds = m.store.entityIndex.byType.get('IFCPROJECT') ?? [];
     if (projectIds.length === 0) return [jsonContents(uri, null)];
@@ -144,7 +157,7 @@ function buildTreeNode(store: import('@ifc-lite/parser').IfcDataStore, expressId
 class MaterialsProvider implements ResourceProvider {
   name = 'materials';
   list(ctx: ToolContext): ResourceDefinition[] {
-    return ctx.registry.list().map((m) => ({
+    return allowedModels(ctx).map((m) => ({
       uri: `${URI_PREFIX}model/${m.id}/materials`,
       name: `${m.name} — materials`,
       mimeType: 'application/json',
@@ -155,7 +168,7 @@ class MaterialsProvider implements ResourceProvider {
   }
   read(uri: string, ctx: ToolContext): ResourceContents[] {
     const id = uri.replace(/^ifc-lite:\/\/model\//, '').replace(/\/materials$/, '');
-    const m = ctx.registry.get(id);
+    const m = getAllowedModel(ctx, id);
     if (!m) return [];
     const counts = new Map<string, number>();
     for (const e of m.bim.query().toArray()) {
@@ -173,7 +186,7 @@ class MaterialsProvider implements ResourceProvider {
 class PropertySetsProvider implements ResourceProvider {
   name = 'property-sets';
   list(ctx: ToolContext): ResourceDefinition[] {
-    return ctx.registry.list().map((m) => ({
+    return allowedModels(ctx).map((m) => ({
       uri: `${URI_PREFIX}model/${m.id}/property-sets`,
       name: `${m.name} — property sets`,
       mimeType: 'application/json',
@@ -184,7 +197,7 @@ class PropertySetsProvider implements ResourceProvider {
   }
   read(uri: string, ctx: ToolContext): ResourceContents[] {
     const id = uri.replace(/^ifc-lite:\/\/model\//, '').replace(/\/property-sets$/, '');
-    const m = ctx.registry.get(id);
+    const m = getAllowedModel(ctx, id);
     if (!m) return [];
     const seen = new Set<string>();
     const psets: Array<{ name: string; properties: string[] }> = [];
@@ -218,7 +231,7 @@ class ServerManifestProvider implements ResourceProvider {
       samplingEnabled: ctx.config.samplingEnabled,
       bsddEndpoint: ctx.config.bsddEndpoint ?? 'https://api.bsdd.buildingsmart.org',
       viewerOpen: ctx.viewer?.isOpen() ?? false,
-      modelsLoaded: ctx.registry.list().map((m) => ({ id: m.id, name: m.name, schema: m.store.schemaVersion })),
+      modelsLoaded: allowedModels(ctx).map((m) => ({ id: m.id, name: m.name, schema: m.store.schemaVersion })),
     })];
   }
 }
@@ -240,6 +253,11 @@ class ViewerSelectionProvider implements ResourceProvider {
     const state = ctx.viewer?.state();
     if (!state) {
       return [jsonContents(uri, { open: false, selection: [] })];
+    }
+    // A token scoped to specific modelIds must not observe selections from a
+    // model it cannot access (the viewer state is global, not per-token).
+    if (state.modelId && !modelAllowed(ctx.scope, state.modelId)) {
+      return [jsonContents(uri, { open: true, selection: [] })];
     }
     return [jsonContents(uri, {
       open: true,
@@ -266,7 +284,13 @@ class ViewerStatusProvider implements ResourceProvider {
   }
   read(uri: string, ctx: ToolContext): ResourceContents[] {
     const state = ctx.viewer?.state();
-    return [jsonContents(uri, state ?? { open: false })];
+    if (!state) return [jsonContents(uri, { open: false })];
+    // Status (port/url/clients) is not model-specific, but redact the
+    // model-bound fields when the caller's scope excludes the loaded model.
+    if (state.modelId && !modelAllowed(ctx.scope, state.modelId)) {
+      return [jsonContents(uri, { ...state, modelId: null, selection: [] })];
+    }
+    return [jsonContents(uri, state)];
   }
 }
 

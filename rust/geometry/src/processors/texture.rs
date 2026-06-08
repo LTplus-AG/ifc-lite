@@ -91,7 +91,9 @@ const MAX_TEX_DIM: u32 = 16384;
 
 /// Decode a PNG byte buffer to RGBA8. Returns `(rgba, width, height)`.
 fn decode_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
-    let mut decoder = png::Decoder::new(bytes);
+    // png 0.18 requires the reader to be `BufRead + Seek`. `&[u8]` is `BufRead`
+    // but not `Seek`, so wrap it in a `Cursor`, which satisfies both.
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     // EXPAND: palette → RGB, sub-8-bit grayscale → 8-bit, tRNS → alpha.
     // STRIP_16: 16-bit channels → 8-bit. Leaves Rgb/Rgba/Grayscale/GA at 8-bit.
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
@@ -105,7 +107,8 @@ fn decode_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     {
         return None;
     }
-    let mut buf = vec![0u8; reader.output_buffer_size()];
+    // png 0.18 returns Option here (None on size overflow); propagate as a decode failure.
+    let mut buf = vec![0u8; reader.output_buffer_size()?];
     let info = reader.next_frame(&mut buf).ok()?;
     let (w, h) = (info.width, info.height);
     let px = (w as usize) * (h as usize);

@@ -54,12 +54,32 @@ const PARTOF_REL_MAP: Record<PartOfRelation, RelationshipType | undefined> = {
  * substitution, partOf transitivity, etc.
  */
 export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
+  // Memoize per-entity attribute extraction. extractAllEntityAttributes
+  // re-parses the entity from the raw source buffer on every call, and the
+  // validator hits Name/GlobalId/Description/getAttribute(Names) for the same
+  // entity many times per specification. Caching collapses those repeated
+  // full re-parses to a single extraction per entity for this accessor's store.
+  const attrCache = new Map<
+    number,
+    Array<{ name: string; value: string | number | boolean }>
+  >();
+  function getEntityAttributes(
+    expressId: number
+  ): Array<{ name: string; value: string | number | boolean }> {
+    let all = attrCache.get(expressId);
+    if (!all) {
+      all = extractAllEntityAttributes(store, expressId);
+      attrCache.set(expressId, all);
+    }
+    return all;
+  }
+
   function findAttributeValue(
     expressId: number,
     attributeName: string
   ): string | number | boolean | undefined {
     const lower = attributeName.toLowerCase();
-    const all = extractAllEntityAttributes(store, expressId);
+    const all = getEntityAttributes(expressId);
     for (const a of all) {
       if (a.name.toLowerCase() === lower) return a.value;
     }
@@ -112,7 +132,7 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
     },
 
     getAttributeNames(expressId: number): string[] {
-      return extractAllEntityAttributes(store, expressId).map((a) => a.name);
+      return getEntityAttributes(expressId).map((a) => a.name);
     },
 
     getAttributeXsdTypes(

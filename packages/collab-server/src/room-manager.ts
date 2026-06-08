@@ -34,6 +34,29 @@ import { createRateLimiter, type RateLimitOptions, type RateLimiter } from './ra
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 
+// Inner sync-message subtypes (mirror y-protocols/sync constants) used for
+// the cheap pre-verify frame peek. Kept local so the peek never has to call
+// the full readSyncMessage (which applies payloads to the doc as a side
+// effect). Step2 (1) and Update (2) carry a doc-mutating payload.
+const SYNC_STEP2 = syncProtocol.messageYjsSyncStep2;
+const SYNC_UPDATE = syncProtocol.messageYjsUpdate;
+
+/**
+ * Hard ceiling on a single sync write-frame, enforced before the
+ * path-lock verifier parses it through a throwaway Y.Doc. Bounds the
+ * O(update_size) allocation an attacker can force per message. 8 MB is
+ * far above any legitimate incremental Y update; whole-doc state lands
+ * via persistence, not a single wire frame.
+ */
+const MAX_SYNC_PAYLOAD_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Hard ceiling on a single awareness frame. Presence/cursor payloads are
+ * tiny; anything larger is abuse. Caps the decode + broadcast amplification
+ * an unmetered awareness flood could drive.
+ */
+const MAX_AWARENESS_BYTES = 128 * 1024;
+
 export interface VerifyDecision {
   ok: boolean;
   /** Audit-friendly reason string when ok=false. */
@@ -56,10 +79,14 @@ export interface RoomOptions {
    */
   rateLimit?: RateLimitOptions | ((principal: Principal) => RateLimitOptions);
   /**
-   * Optional per-message verifier. Runs BEFORE rate limit / role check.
-   * Consumers using the anti-replay protector pass a wrapper here that
-   * decodes their envelope and calls `replayProtector.verify(...)`.
-   * Returning `{ ok: false }` audits as `reject` with `reason`.
+   * Optional per-message verifier. For plain sync write-frames the cheap
+   * role + rate-limit + payload-size gate (preCheckWriteFrame) runs FIRST,
+   * so a non-writer / rate-limited / oversized frame is rejected before the
+   * verifier parses it (avoids Y.Doc-parse amplification). Signed-envelope
+   * frames (e.g. the anti-replay protector's `0xff`-tagged frames) aren't
+   * recognised as sync write-frames, so the verifier still runs first for
+   * them and sees every signed frame. Returning `{ ok: false }` audits as
+   * `reject` with `reason`.
    */
   verifyMessage?: VerifyMessageFn;
   /** Internal: metric counters injected by the manager. */
@@ -182,6 +209,13 @@ export class Room {
   /** Receive a binary message from a peer and dispatch it. */
   handleMessage(conn: PeerConnection, msg: Uint8Array): void {
     if (this.destroyed) return;
+    // Gate write-frames on role + rate-limit + payload size BEFORE the
+    // (potentially expensive) verifyMessage. The path-lock verifier runs
+    // a throwaway Y.applyUpdate on the payload, so a non-writer or a
+    // rate-limited peer must be rejected before any parse — otherwise a
+    // 'viewer' could force unbounded full-Y.Doc parses by flooding
+    // write-tagged frames (asymmetric CPU/GC DoS). Cheap peeks only here.
+    if (!this.preCheckWriteFrame(conn, msg)) return;
     if (this.verifyMessage) {
       const decision = this.verifyMessage(msg, conn);
       if (!decision.ok) {
@@ -191,33 +225,71 @@ export class Room {
         return;
       }
     }
+    try {
+      this.dispatchMessage(conn, msg);
+    } catch {
+      // Malformed/truncated frame from a peer. lib0 decoding throws
+      // (errorUnexpectedEndOfArray / RangeError) on short or oversized
+      // varint frames; never let that reach the ws listener as an
+      // uncaughtException — it would kill the whole process.
+      this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'malformed' });
+      this.counters.reject?.('malformed');
+    }
+  }
+
+  /**
+   * Cheap pre-verify guard. Peeks the outer + inner frame type without
+   * applying anything to the doc and, for sync write-frames, enforces the
+   * role gate, the per-connection rate limiter, and a payload-size bound.
+   * Returns `false` (already audited + counted) when the frame is rejected;
+   * `true` when it is safe to continue to verifyMessage / dispatch.
+   *
+   * A frame whose header can't be peeked is waved through — the downstream
+   * decode in dispatchMessage owns the `malformed` audit so we don't
+   * double-count it here.
+   */
+  private preCheckWriteFrame(conn: PeerConnection, msg: Uint8Array): boolean {
+    let outerType: number;
+    let subtype: number;
+    try {
+      const decoder = decoding.createDecoder(msg);
+      outerType = decoding.readVarUint(decoder);
+      if (outerType !== MESSAGE_SYNC) return true;
+      subtype = decoding.peekVarUint(decoder);
+    } catch {
+      // Unreadable header: let dispatchMessage produce the malformed audit.
+      return true;
+    }
+    const isWriteFrame = subtype === SYNC_UPDATE || subtype === SYNC_STEP2;
+    if (!isWriteFrame) return true;
+    if (!canWrite(conn.principal)) {
+      this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'role' });
+      this.counters.reject?.('role');
+      return false;
+    }
+    if (conn.limiter && !conn.limiter.tryConsume(1)) {
+      this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'rate-limit' });
+      this.counters.reject?.('rate-limit');
+      return false;
+    }
+    if (msg.byteLength > MAX_SYNC_PAYLOAD_BYTES) {
+      this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'sync-size' });
+      this.counters.reject?.('sync-size');
+      return false;
+    }
+    return true;
+  }
+
+  /** Decode + dispatch a verified frame. May throw on malformed input. */
+  private dispatchMessage(conn: PeerConnection, msg: Uint8Array): void {
     const decoder = decoding.createDecoder(msg);
     const messageType = decoding.readVarUint(decoder);
     switch (messageType) {
       case MESSAGE_SYNC: {
-        // Peek the inner sync subtype BEFORE calling readSyncMessage —
-        // y-protocols/sync applies the wire payload to the doc as a side
-        // effect for both messageYjsSyncStep2 and messageYjsUpdate. Doing
-        // the capability/rate-limit check after readSyncMessage means a
-        // viewer can mutate state (and have it broadcast and persisted by
-        // onDocUpdate) before this branch returns reject — the auth
-        // gate would be cosmetic.
-        const subtype = decoding.peekVarUint(decoder);
-        const isWriteFrame =
-          subtype === syncProtocol.messageYjsUpdate ||
-          subtype === syncProtocol.messageYjsSyncStep2;
-        if (isWriteFrame) {
-          if (!canWrite(conn.principal)) {
-            this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'role' });
-            this.counters.reject?.('role');
-            return;
-          }
-          if (conn.limiter && !conn.limiter.tryConsume(1)) {
-            this.audit(conn.principal, 'reject', shortHash(msg), { reason: 'rate-limit' });
-            this.counters.reject?.('rate-limit');
-            return;
-          }
-        }
+        // The capability/rate-limit/size gate for write-frames already ran
+        // in preCheckWriteFrame (BEFORE verifyMessage), so a viewer can't
+        // mutate state and a rate-limited peer can't force a parse. Here we
+        // only apply the (now-authorized) frame to the doc.
         const enc = encoding.createEncoder();
         encoding.writeVarUint(enc, MESSAGE_SYNC);
         const replyType = syncProtocol.readSyncMessage(decoder, enc, this.doc, conn);
@@ -236,6 +308,21 @@ export class Room {
       }
       case MESSAGE_AWARENESS: {
         const update = decoding.readVarUint8Array(decoder);
+        // Awareness frames are decoded, applied to the shared Awareness, and
+        // re-broadcast to every peer — an unmetered amplification channel
+        // that even non-writers (viewer/commenter) can drive. Bound the size
+        // and charge the per-connection budget before applying, mirroring the
+        // sync write path.
+        if (update.byteLength > MAX_AWARENESS_BYTES) {
+          this.audit(conn.principal, 'reject', shortHash(update), { reason: 'awareness-size' });
+          this.counters.reject?.('awareness-size');
+          return;
+        }
+        if (conn.limiter && !conn.limiter.tryConsume(1)) {
+          this.audit(conn.principal, 'reject', shortHash(update), { reason: 'rate-limit' });
+          this.counters.reject?.('rate-limit');
+          return;
+        }
         applyAwarenessUpdate(this.awareness, update, conn);
         this.audit(conn.principal, 'awareness', shortHash(update));
         break;
@@ -371,6 +458,21 @@ export class RoomManager {
       await room.loadFromDisk();
       return room;
     })();
+    // Evict the cached promise if initialization fails so a transient load
+    // error or a corrupt persisted log does not permanently brick the room
+    // (and does not keep occupying a maxRooms slot / break sweepIdle's await).
+    pending.catch((err) => {
+      // Surface the failure: a broken loadFromDisk() (corrupt persisted log or
+      // a transient init error) must stay diagnosable, not vanish silently.
+      // eslint-disable-next-line no-console
+      console.error(`[collab-server] room load failed (room=${roomId}):`, err);
+      // Only delete if it is still the same poisoned promise (avoid clobbering
+      // a successful re-create that may have replaced it concurrently).
+      if (this.rooms.get(roomId) === pending) {
+        this.rooms.delete(roomId);
+        this.lastActiveAt.delete(roomId);
+      }
+    });
     this.rooms.set(roomId, pending);
     this.lastActiveAt.set(roomId, Date.now());
     return pending;
@@ -397,7 +499,14 @@ export class RoomManager {
     const out: Array<{ roomId: string; peerCount: number; idleMs: number }> = [];
     const now = Date.now();
     for (const [roomId, pending] of this.rooms) {
-      const room = await pending;
+      let room: Room;
+      try {
+        room = await pending;
+      } catch {
+        // A poisoned (rejected) load promise is evicted by getOrCreate's
+        // own .catch handler; skip it here so one bad room can't abort stats.
+        continue;
+      }
       out.push({
         roomId,
         peerCount: room.peerCount,
@@ -434,7 +543,14 @@ export class RoomManager {
     const now = Date.now();
     const candidates: string[] = [];
     for (const [roomId, pending] of this.rooms) {
-      const room = await pending;
+      let room: Room;
+      try {
+        room = await pending;
+      } catch {
+        // A poisoned (rejected) load promise is evicted by getOrCreate's
+        // own .catch handler; skip it so one bad room can't abort the sweep.
+        continue;
+      }
       if (room.peerCount > 0) {
         // Active rooms reset the idle clock.
         this.lastActiveAt.set(roomId, now);

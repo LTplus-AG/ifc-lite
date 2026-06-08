@@ -1,20 +1,20 @@
 [workspace]
-members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/wasm-bindings", "apps/server", "apps/desktop/src-tauri"]
+members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/wasm-bindings", "apps/server"]
 resolver = "2"
 
 [workspace.package]
-version = "3.0.0"
+version = "3.1.0"
 edition = "2021"
 authors = ["IFC-Lite Contributors"]
 license = "MPL-2.0"
 repository = "https://github.com/LTplus-AG/ifc-lite"
 
 [workspace.dependencies]
-ifc-lite-core = { version = "3.0.0", path = "rust/core" }
-ifc-lite-geometry = { version = "3.0.0", path = "rust/geometry" }
+ifc-lite-core = { version = "3.1.0", path = "rust/core" }
+ifc-lite-geometry = { version = "3.1.0", path = "rust/geometry" }
 ifc-lite-processing = { version = "2.1.7", path = "rust/processing" }
 ifc-lite-clash = { version = "3.0.0", path = "rust/clash" }
-ifc-lite-wasm = { version = "3.0.0", path = "rust/wasm-bindings" }
+ifc-lite-wasm = { version = "3.1.0", path = "rust/wasm-bindings" }
 
 [profile.release]
 opt-level = 3           # Optimize for speed
@@ -27,4 +27,14 @@ overflow-checks = false # Remove overflow checks in release
 [profile.release.package."*"]
 opt-level = 3
 strip = true
+
+# Server-only release profile: re-enables stack unwinding so a panic while
+# parsing untrusted, attacker-supplied IFC bytes on a `spawn_blocking` thread
+# becomes a per-request `JoinError` (mapped to HTTP 500) instead of aborting
+# the whole multi-tenant process. The default `release` profile keeps
+# `panic = 'abort'` so the wasm bundle stays small.
+# Built via `cargo build --profile server-release` (see apps/server/Dockerfile).
+[profile.server-release]
+inherits = "release"
+panic = "unwind"
 

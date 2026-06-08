@@ -1,5 +1,124 @@
 # @ifc-lite/drawing-2d
 
+## 1.18.0
+
+### Minor Changes
+
+- [#1001](https://github.com/LTplus-AG/ifc-lite/pull/1001) [`8862e79`](https://github.com/LTplus-AG/ifc-lite/commit/8862e790491f334ab3aeb36fca8b9ee5bb69e832) Thanks [@louistrue](https://github.com/louistrue)! - Scope construction projection to the current floor and exclude openings ([#979](https://github.com/LTplus-AG/ifc-lite/issues/979) follow-up).
+
+  - **Current-floor scoping.** On a plan cut of a multi-storey model the projection
+    bands now clamp to the storey the cut sits in, instead of projecting the whole
+    model height — so a roof two levels up no longer draws on the ground-floor plan.
+    New `@ifc-lite/drawing-2d` exports back this: `currentFloorBands` (pure band
+    math) and `storeyFloorsFromMeshes` (per-storey floor levels from mesh-Y in the
+    render frame, plus the `StoreyFloorMesh` type). The caller derives band depths
+    from these; storey-less / single-storey / federated models fall back to the
+    full-extent bands unchanged.
+  - **Opening exclusion.** `IfcOpeningElement` and the rest of the
+    `IfcFeatureElement` family no longer participate in projection.
+    `Drawing2DGenerator.generate` filters them from BOTH the profile and the
+    mesh-silhouette paths via the new `isFeatureElementType` helper, and the Rust
+    `extract_profiles` (`@ifc-lite/wasm`) skips `is_subtype_of(IfcFeatureElement)`
+    at the source so opening void cross-sections never become projection profiles.
+
+## 1.17.0
+
+### Minor Changes
+
+- [#989](https://github.com/LTplus-AG/ifc-lite/pull/989) [`1effb90`](https://github.com/LTplus-AG/ifc-lite/commit/1effb900edd0a70db75f90839a4cc9f8fecb8d5e) Thanks [@louistrue](https://github.com/louistrue)! - Construction projection for 2D floor plans ([#979](https://github.com/LTplus-AG/ifc-lite/issues/979)). Project geometry beyond the
+  section cut as architectural reference lines — thin solid for the visible floor
+  side, dashed for overhead elements (beams, roofs, eaves).
+
+  New public API:
+
+  - `SectionConfig.projectionBelowDepth` / `projectionAboveDepth` — band depths
+    for the visible/overhead split (default to `projectionDepth`).
+  - `GeneratorOptions.outlineProvider` — inject a winding-robust footprint outline
+    (the Rust `meshOutline2d` binding) for non-extruded geometry; falls back to
+    the mesh silhouette when absent.
+  - `projection-bands` exports: `classifyDepthRange`, `classifySegmentBand`,
+    `signedDepth`, `bandVisibility`, `projectPointForPlane`,
+    `getViewDirectionForPlane`, `outlineToProjectionLines`, and the
+    `ProjectionBand` / `ProjectionBandDepths` / `MeshOutline2D` types.
+
+  `Drawing2DGenerator.generate`'s projection stage now sources lines from
+  profile boundaries + mesh silhouettes (replacing the noisy crease-edge path)
+  and classifies them into the below/above bands.
+
+### Patch Changes
+
+- Updated dependencies [[`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f)]:
+  - @ifc-lite/geometry@2.4.0
+
+## 1.16.2
+
+### Patch Changes
+
+- [#946](https://github.com/LTplus-AG/ifc-lite/pull/946) [`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0) Thanks [@louistrue](https://github.com/louistrue)! - Fix a batch of verified findings from a full-codebase review (security, correctness,
+  data-loss, and resource/memory leaks). Highlights:
+
+  **Security**
+
+  - collab-server: a malformed WebSocket frame no longer crashes the whole process
+    (decode is wrapped; a bad frame is rejected/audited instead of throwing).
+  - mcp: the local HTTP transport now validates `Host`/`Origin` and no longer sends a
+    wildcard `Access-Control-Allow-Origin`, closing a DNS-rebinding/CSRF hole; the
+    `AuthScope.modelIds` allowlist is now enforced at model resolution.
+  - server-bin: `extractZip` uses `execFileSync` (argv, no shell), removing command
+    injection via archive/destination paths.
+  - export / sdk / cli / mcp / lists / viewer CSV exporters now neutralize spreadsheet
+    formula injection (CWE-1236) consistently.
+  - create-ifc-lite: validates the project name (no path traversal) and drops the
+    unused `execSync`-based downloader.
+  - embed-sdk: inbound `postMessage` now validates `event.origin`.
+
+  **Correctness / data-loss**
+
+  - parser: `lengthUnitScale` survives the worker transport; the nested STEP list
+    parser is string-aware (commas/parens inside quoted values no longer mis-split).
+  - mutations: deleting a property from a session-created pset and replaying
+    `UPDATE_ATTRIBUTE` / `CREATE_PROPERTY_SET` mutations now work.
+  - export: merged-export ID remapping no longer rewrites `#N` inside quoted strings.
+  - drawing-2d: GPU section cutter triangle upload/readback use correct WGSL std-layout
+    offsets and strides.
+  - ifcx: cyclic children no longer abort the parse; spatial children round-trip; the
+    mesh transform guards a zero/non-finite homogeneous `w`.
+  - data / cache: a `NULL` string property value stays `null` instead of becoming `""`.
+  - pointcloud, bcf, server-client, query, viewer-core, viewer store/federation: assorted
+    decoding, federation-id, and selection-state fixes.
+
+  **Resource / memory leaks**
+
+  - geometry, query (DuckDB), renderer (GPU buffers), collab (federation presence),
+    sandbox (host log capture + runtime), mcp (clash mesh cache), server-bin (signal
+    listeners), and the viewer renderer on unmount now release resources deterministically.
+
+  **Hardening (apps, not published)**
+
+  - server: a dedicated `server-release` Cargo profile (`panic = "unwind"`) plus a
+    `CatchPanicLayer` contain a malformed-IFC parse panic to the offending request
+    instead of aborting the whole server.
+  - desktop (Tauri): a Content-Security-Policy is set, and unused `shell:*` /
+    `fs:allow-write|mkdir|remove` capabilities (and the unused shell plugin) are removed.
+
+  **Second pass** (additional verified findings)
+
+  - collab-server: S3 log load now follows `ListObjectsV2` pagination (no dropped frames);
+    awareness frames are size-capped + rate-limited; path-lock verify runs after role/rate-limit;
+    the blob route requires auth and `/metrics` can be token-gated.
+  - server-bin: downloaded binaries are SHA-256 verified against a release sidecar (fail-closed on
+    mismatch, warn-if-absent for older releases).
+  - extensions: inner-ring capability check fails _closed_ for unknown namespaces; signing
+    canonicalization is now injective (length-prefixed).
+  - correctness/leaks: mutations quantity type+unit preserved on replay; `findByProperty` boolean
+    comparisons; Parquet REAL columns kept as Float64; blob GC fail-safe on missing `uploadedAt`;
+    spatial-hierarchy + codegen cycle guards; BVH NaN edge; bSDD/playground caches bounded;
+    point-cloud GPU asset freed on federation error; mcp `parseColor` rejects non-hex; bcf/SVG/STEP
+    output escaping; and more.
+
+- Updated dependencies [[`55fd14e`](https://github.com/LTplus-AG/ifc-lite/commit/55fd14e5017f626567b10622bb41ddac3311e70c), [`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0)]:
+  - @ifc-lite/geometry@2.3.0
+
 ## 1.16.1
 
 ### Patch Changes

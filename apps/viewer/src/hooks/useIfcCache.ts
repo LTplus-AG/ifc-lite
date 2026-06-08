@@ -13,11 +13,12 @@ import { useCallback } from 'react';
 import {
   BinaryCacheWriter,
   BinaryCacheReader,
+  SchemaVersion,
   type CachedEntityIndexColumns,
-  type IfcDataStore as CacheDataStore,
+  type CacheDataStore,
   type GeometryData,
 } from '@ifc-lite/cache';
-import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, attachDataStoreAccessors, type IfcDataStore, type IfcStoreData } from '@ifc-lite/parser';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
@@ -50,6 +51,63 @@ function buildEntityIndexFromCachedColumns(columns: CachedEntityIndexColumns): I
     ids.push(columns.ids[i]);
   }
   return { byId, byType };
+}
+
+/**
+ * Build the viewer's runtime {@link IfcDataStore} from a deserialized
+ * {@link CacheDataStore}. This is the typed cache→runtime adapter (#952): the
+ * data tables (strings/entities/properties/quantities/relationships/
+ * spatialHierarchy) are the same `@ifc-lite/data` types in both stores, so the
+ * mapping is compiler-checked — there is no `as unknown as IfcDataStore` escape
+ * hatch, and a future required store member becomes a compile error here instead
+ * of a silent runtime crash. The only field that differs is `schema` (cache) →
+ * `schemaVersion` (runtime). Lazy entity/property/quantity accessors are wired
+ * via {@link attachDataStoreAccessors}; with a `source` + `entityIndex` they
+ * read live, otherwise they fall back to the pre-built cache tables.
+ */
+/**
+ * Map the cache's numeric {@link SchemaVersion} enum to the runtime store's
+ * string schema union. The cache format predates IFC5 (it stores IFC2X3/IFC4/
+ * IFC4X3 only), so anything else round-trips as IFC2X3 — matching the inverse
+ * mapping the save path uses.
+ */
+function cacheSchemaToVersion(schema: SchemaVersion): IfcDataStore['schemaVersion'] {
+  switch (schema) {
+    case SchemaVersion.IFC4: return 'IFC4';
+    case SchemaVersion.IFC4X3: return 'IFC4X3';
+    default: return 'IFC2X3';
+  }
+}
+
+function hydrateCacheStore(
+  cacheStore: CacheDataStore,
+  extras: {
+    source: Uint8Array;
+    fileSize: number;
+    entityIndex: IfcDataStore['entityIndex'];
+    onDemandPropertyMap?: Map<number, number[]>;
+    onDemandQuantityMap?: Map<number, number[]>;
+    onDemandMaterialMap?: Map<number, number>;
+  },
+): IfcDataStore {
+  const storeData: IfcStoreData = {
+    schemaVersion: cacheSchemaToVersion(cacheStore.schema),
+    entityCount: cacheStore.entityCount,
+    fileSize: extras.fileSize,
+    parseTime: 0,
+    source: extras.source,
+    strings: cacheStore.strings,
+    entities: cacheStore.entities,
+    properties: cacheStore.properties,
+    quantities: cacheStore.quantities,
+    relationships: cacheStore.relationships,
+    entityIndex: extras.entityIndex,
+    spatialHierarchy: cacheStore.spatialHierarchy,
+    onDemandPropertyMap: extras.onDemandPropertyMap,
+    onDemandQuantityMap: extras.onDemandQuantityMap,
+    onDemandMaterialMap: extras.onDemandMaterialMap,
+  };
+  return attachDataStoreAccessors(storeData);
 }
 
 // ============================================================================
@@ -109,7 +167,8 @@ export function useIfcCache() {
   const loadFromCache = useCallback(async (
     cacheResult: CacheResult,
     fileName: string,
-    cacheKey?: string
+    cacheKey?: string,
+    fallbackSourceBuffer?: ArrayBufferLike,
   ): Promise<CacheLoadResult> => {
     try {
       const cacheLoadStart = performance.now();
@@ -122,20 +181,29 @@ export function useIfcCache() {
       const result = await reader.read(cacheResult.buffer);
       const cacheReadTime = performance.now() - cacheLoadStart;
 
-      // Convert cache data store to viewer data store format
-      const dataStore = result.dataStore as any;
+      // Restore the source buffer — required for on-demand property extraction
+      // AND the lazy entity accessors (getEntity/getProperties/...). The web
+      // cache persists `sourceBuffer`; fall back to the freshly read file buffer
+      // when the caller provides it. Without a source the accessors return empty
+      // (and getProperties falls back to the pre-built cache tables).
+      const cacheStore = result.dataStore;
+      const sourceBuffer = cacheResult.sourceBuffer ?? fallbackSourceBuffer;
+      let source: Uint8Array = new Uint8Array(0);
+      let entityIndex: IfcDataStore['entityIndex'] = { byId: new Map(), byType: new Map() };
+      let onDemandPropertyMap: Map<number, number[]> | undefined;
+      let onDemandQuantityMap: Map<number, number[]> | undefined;
+      let onDemandMaterialMap: Map<number, number> | undefined;
 
-      // Restore source buffer for on-demand property extraction
-      if (cacheResult.sourceBuffer) {
-        dataStore.source = new Uint8Array(cacheResult.sourceBuffer);
+      if (sourceBuffer) {
+        source = new Uint8Array(sourceBuffer);
 
         if (result.entityIndex) {
-          dataStore.entityIndex = buildEntityIndexFromCachedColumns(result.entityIndex);
+          entityIndex = buildEntityIndexFromCachedColumns(result.entityIndex);
         } else {
           // Backward compatibility for v3 caches: rebuild byte offsets from the
           // source once, then future v4 writes persist this section.
-          const tokenizer = new StepTokenizer(dataStore.source);
-          const estimatedCount = dataStore.entities?.count ?? 100_000;
+          const tokenizer = new StepTokenizer(source);
+          const estimatedCount = cacheStore.entities?.count ?? 100_000;
           const indexBuilder = new CompactEntityIndexBuilder(estimatedCount);
           const byType = new Map<string, number[]>();
 
@@ -148,24 +216,32 @@ export function useIfcCache() {
             }
             typeList.push(ref.expressId);
           }
-          const compactByIdIndex = indexBuilder.build();
-          dataStore.entityIndex = { byId: compactByIdIndex, byType };
+          entityIndex = { byId: indexBuilder.build(), byType };
         }
 
-        // Rebuild on-demand maps from relationships
+        // Rebuild on-demand maps from relationships.
         // Pass entityIndex which contains ALL entity types including IfcPropertySet/IfcElementQuantity
-        // (the entity table may not include these since they're filtered during fresh parse)
-        const { onDemandPropertyMap, onDemandQuantityMap } = rebuildOnDemandMaps(
-          dataStore.entities,
-          dataStore.relationships,
-          dataStore.entityIndex
-        );
-        dataStore.onDemandPropertyMap = onDemandPropertyMap;
-        dataStore.onDemandQuantityMap = onDemandQuantityMap;
+        // (the entity table may not include these since they're filtered during fresh parse).
+        ({ onDemandPropertyMap, onDemandQuantityMap, onDemandMaterialMap } = rebuildOnDemandMaps(
+          cacheStore.entities,
+          cacheStore.relationships,
+          entityIndex
+        ));
       } else {
         console.warn('[useIfcCache] No source buffer in cache - on-demand property extraction disabled');
-        dataStore.source = new Uint8Array(0);
       }
+
+      // Typed cache→runtime hydration (#952): builds the parser-shaped
+      // IfcDataStore with compiler-checked field mapping (no `as unknown` cast)
+      // and wires the lazy accessors via attachDataStoreAccessors.
+      const dataStore = hydrateCacheStore(cacheStore, {
+        source,
+        fileSize: sourceBuffer?.byteLength ?? 0,
+        entityIndex,
+        onDemandPropertyMap,
+        onDemandQuantityMap,
+        onDemandMaterialMap,
+      });
 
       // Rebuild spatial hierarchy from cache data (cache doesn't serialize it)
       // Use SpatialHierarchyBuilder to extract elevations from source buffer

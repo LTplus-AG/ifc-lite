@@ -999,15 +999,17 @@ mergeable.
   **Effort:** M. `[ux]`
 
 - [x] **P3.T16** — Reset-to-defaults panic button.
-  **Where:** modify `apps/viewer/src/components/viewer/SettingsPage.tsx`.
+  **Where:** the viewer settings surface (the former `SettingsPage.tsx`
+  was removed with the desktop decommission).
   **Depends on:** P3.T4.
   **Acceptance:** restores baseline flavor; archives the previous;
   surfaces in onboarding tour.
   **Effort:** S.
 
 - [x] **P3.T17** — Safe-mode launch (`?safe=1`, shift-launch on desktop).
-  **Where:** modify `apps/viewer/src/main.tsx`,
-  `apps/desktop/src-tauri/src/main.rs`.
+  **Where:** modify `apps/viewer/src/main.tsx`. (The desktop shell —
+  the former `apps/desktop/src-tauri/src/main.rs` — was removed with the
+  desktop decommission.)
   **Depends on:** P3.T4.
   **Acceptance:** boots without active flavor; UI banner indicating
   safe mode; tests for both web and desktop.
@@ -1183,7 +1185,9 @@ Action log + pattern miner + personal memory + SDK-update repair.
 
 - [x] **P4.T19** — ~~Settings → Privacy section~~ → PrivacyPanel tab
   with action-log toggle, export, delete.
-  **Where:** modify `SettingsPage.tsx`.
+  **Where:** `apps/viewer/src/components/extensions/PrivacyPanel.tsx`
+  (the former `SettingsPage.tsx` Settings entry was removed with the
+  desktop decommission).
   **Depends on:** P4.T2.
   **Acceptance:** all three actions work; explanatory copy from
   `06-self-improvement.md §7` verbatim.

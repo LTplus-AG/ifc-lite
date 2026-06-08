@@ -181,7 +181,11 @@ export interface LensRule {
  */
 export interface AutoColorSpec {
   source: 'ifcType' | 'attribute' | 'property' | 'quantity' | 'classification' | 'material' | 'model';
-  /** Property/quantity set name — for source "property" or "quantity" */
+  /**
+   * Property/quantity set name — for source "property" or "quantity".
+   * For source "classification" it acts as a classification-system filter
+   * (case-insensitive substring match), selecting which reference to key off.
+   */
   psetName?: string;
   /** Attribute, property, or quantity name */
   propertyName?: string;

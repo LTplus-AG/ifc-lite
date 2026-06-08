@@ -75,6 +75,11 @@ export interface BsddOptions {
   apiBase?: string;
   /** Cache TTL in milliseconds. Default: 600000 (10 minutes) */
   cacheTtlMs?: number;
+  /**
+   * Maximum number of class entries to retain in the cache. When exceeded,
+   * the least-recently-used entry is evicted. Default: 500.
+   */
+  maxCacheEntries?: number;
 }
 
 // ============================================================================
@@ -88,12 +93,30 @@ const IFC_DICTIONARY_URI =
 
 function getCached(cache: Map<string, { data: BsddClassInfo; ts: number }>, key: string, ttl: number): BsddClassInfo | null {
   const entry = cache.get(key);
-  if (entry && Date.now() - entry.ts < ttl) return entry.data;
+  if (entry && Date.now() - entry.ts < ttl) {
+    // Re-insert to mark as most-recently-used (Map preserves insertion order).
+    cache.delete(key);
+    cache.set(key, entry);
+    return entry.data;
+  }
   if (entry) cache.delete(key);
   return null;
 }
 
-function setCache(cache: Map<string, { data: BsddClassInfo; ts: number }>, key: string, data: BsddClassInfo): void {
+function setCache(
+  cache: Map<string, { data: BsddClassInfo; ts: number }>,
+  key: string,
+  data: BsddClassInfo,
+  maxEntries: number,
+): void {
+  // Re-insert moves an existing key to the most-recently-used position.
+  cache.delete(key);
+  // Evict the oldest (least-recently-used) entries until under the cap.
+  while (cache.size >= maxEntries) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
   cache.set(key, { data, ts: Date.now() });
 }
 
@@ -199,10 +222,15 @@ export class BsddNamespace {
   private apiBase: string;
   private cache = new Map<string, { data: BsddClassInfo; ts: number }>();
   private cacheTtl: number;
+  private maxCacheEntries: number;
 
   constructor(options?: BsddOptions) {
     this.apiBase = options?.apiBase ?? 'https://api.bsdd.buildingsmart.org';
     this.cacheTtl = options?.cacheTtlMs ?? 10 * 60 * 1000;
+    // Clamp to a positive integer: 0/negative/NaN would break the bounded
+    // eviction loop in setCache (and silently disable the LRU cap).
+    const rawMax = options?.maxCacheEntries ?? 500;
+    this.maxCacheEntries = Number.isFinite(rawMax) ? Math.max(1, Math.floor(rawMax)) : 500;
   }
 
   // --------------------------------------------------------------------------
@@ -265,7 +293,7 @@ export class BsddNamespace {
       }
     }
 
-    setCache(this.cache, uri, info);
+    setCache(this.cache, uri, info, this.maxCacheEntries);
     return info;
   }
 
@@ -282,7 +310,7 @@ export class BsddNamespace {
         `${this.apiBase}/api/Class/v1?Uri=${encodeURIComponent(classUri)}&IncludeClassProperties=true`,
       );
       const info = mapClassResponse(raw, false);
-      setCache(this.cache, classUri, info);
+      setCache(this.cache, classUri, info, this.maxCacheEntries);
       return info;
     } catch (err) {
       if (err instanceof BsddHttpError && err.status === 404) return null;

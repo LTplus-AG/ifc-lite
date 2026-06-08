@@ -110,7 +110,7 @@ export class ParquetExporter {
             ValueReal: Array.from(properties.valueReal),
             ValueInt: Array.from(properties.valueInt),
             ValueBool: mapTypedArray(properties.valueBool, v => v === 255 ? null : v === 1),
-        });
+        }, new Set(['ValueReal']));
     }
 
     private async writeQuantities(): Promise<Uint8Array> {
@@ -123,7 +123,7 @@ export class ParquetExporter {
             QuantityType: mapTypedArray(quantities.quantityType, t => QuantityTypeToString(t)),
             Value: Array.from(quantities.value),
             Formula: mapTypedArray(quantities.formula, i => i > 0 ? strings.get(i) : null),
-        });
+        }, new Set(['Value']));
     }
 
     private async writeRelationships(): Promise<Uint8Array> {
@@ -379,7 +379,7 @@ export class ParquetExporter {
     // UTILITIES
     // ═══════════════════════════════════════════════════════════════
 
-    private async toParquet(columns: Record<string, any[]>): Promise<Uint8Array> {
+    private async toParquet(columns: Record<string, any[]>, floatColumns?: Set<string>): Promise<Uint8Array> {
         try {
             // Dynamic imports for better tree-shaking. The package's
             // browser/node exports map keeps `Arrow.dom.mjs` opaque to
@@ -406,7 +406,15 @@ export class ParquetExporter {
                     // All nulls - create string vector with nulls
                     vectors[name] = arrow.vectorFromArray(data);
                 } else if (typeof sample === 'number') {
-                    // Check if it's integer or float
+                    // Columns declared as REAL-typed by the caller (e.g. ValueReal,
+                    // quantity Value) always use Float64 — content inference alone
+                    // would demote whole-number reals like 3.0/1200.0 to Int32,
+                    // losing the float schema and risking wrap for |x| > 2^31.
+                    if (floatColumns?.has(name)) {
+                        vectors[name] = arrow.vectorFromArray(data, new arrow.Float64());
+                        continue;
+                    }
+                    // Otherwise check if it's integer or float by content.
                     const isFloat = data.some((v) => typeof v === 'number' && !Number.isInteger(v));
                     if (isFloat) {
                         vectors[name] = arrow.vectorFromArray(data, new arrow.Float64());

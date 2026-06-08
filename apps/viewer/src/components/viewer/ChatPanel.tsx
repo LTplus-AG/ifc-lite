@@ -52,7 +52,6 @@ import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair 
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { canUsePlainCodeBlockFallback, type ScriptMutationIntent } from '@/lib/llm/script-preservation';
 import { Check, Image as ImageIcon, KeyRound } from 'lucide-react';
-import { hasDesktopFeatureAccess } from '@/lib/desktop-product';
 import { getModelById } from '@/lib/llm/models';
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
 import { getApiKeys, hasAnthropicKey, hasOpenaiKey, subscribeApiKeys } from '@/services/api-keys';
@@ -300,9 +299,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const setChatHasByokKey = useViewerStore((s) => s.setChatHasByokKey);
   const usage = useViewerStore((s) => s.chatUsage);
   const setChatUsage = useViewerStore((s) => s.setChatUsage);
-  const desktopEntitlement = useViewerStore((s) => s.desktopEntitlement);
   const { execute } = useSandbox();
-  const canUseAiAssistant = hasDesktopFeatureAccess(desktopEntitlement, 'ai_assistant');
 
   // Sync BYOK key availability into the store and track per-provider state
   const [keyStateAnthropic, setKeyStateAnthropic] = useState(hasAnthropicKey);
@@ -349,10 +346,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const [lastFinishReason, setLastFinishReason] = useState<string | null>(null);
-  const promptAiUpgrade = useCallback(() => {
-    setChatError('AI assistant is available with Desktop Pro.');
-    toast.info('AI assistant is available with Desktop Pro');
-  }, [setChatError]);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -505,10 +498,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   // ── Core send logic ──
   const doSend = useCallback(async (text: string, options?: ChatSendOptions) => {
     if (!text.trim() || status === 'streaming' || status === 'sending') return;
-    if (!canUseAiAssistant) {
-      setChatError('AI assistant is available with Desktop Pro.');
-      return;
-    }
     // Clear any stale post-authoring CTA — this turn re-establishes it
     // on completion if it's another authoring turn.
     setChatToolReady(null);
@@ -1056,7 +1045,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       }
     }
   }, [
-    canUseAiAssistant, status, activeModel, attachments,
+    status, activeModel, attachments,
     addMessage, setChatStatus, updateStreaming, finalizeAssistant,
     setChatError, setChatAbortController, clearAttachments, setChatUsage, resizeInput,
     buildRepairPromptFromLiveState, triggerAutoRepair, execute, extensionHost,
@@ -1064,12 +1053,8 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   ]);
 
   const handleSend = useCallback(() => {
-    if (!canUseAiAssistant) {
-      promptAiUpgrade();
-      return;
-    }
     doSend(inputText);
-  }, [canUseAiAssistant, doSend, inputText, promptAiUpgrade]);
+  }, [doSend, inputText]);
 
   // Allow other panels (e.g. ScriptPanel errors) to trigger a chat repair turn.
   useEffect(() => {
@@ -1098,10 +1083,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
   }, [pendingRepairRequest, status, consumePendingRepairRequest, buildRepairPromptFromLiveState, doSend]);
 
   const handleContinue = useCallback(() => {
-    if (!canUseAiAssistant) {
-      promptAiUpgrade();
-      return;
-    }
     const state = useViewerStore.getState();
     const partial = state.chatStreamingContent.trim();
     const lastAssistant = [...state.chatMessages].reverse().find((m) => m.role === 'assistant');
@@ -1114,7 +1095,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     }
     setChatError(null);
     doSend(CONTINUE_PROMPT, { continuationBase });
-  }, [canUseAiAssistant, doSend, finalizeAssistant, promptAiUpgrade, setChatError]);
+  }, [doSend, finalizeAssistant, setChatError]);
 
   const handleStop = useCallback(() => {
     const controller = useViewerStore.getState().chatAbortController;
@@ -1139,10 +1120,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
   // ── Error feedback (Fix this) ──
   const handleFixError = useCallback((code: string, errorMsg: string) => {
-    if (!canUseAiAssistant) {
-      promptAiUpgrade();
-      return;
-    }
     const diagnostics = useViewerStore.getState().scriptLastDiagnostics;
     const liveCode = useViewerStore.getState().scriptEditorContent;
     const staleCode = code.trim() !== liveCode.trim() ? code : undefined;
@@ -1157,7 +1134,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       requestedRepairScope: getPrimaryRootCause(diagnostics)?.repairScope,
       rootCauseKey: getPrimaryRootCause(diagnostics)?.rootCauseKey,
     });
-  }, [buildRepairPromptFromLiveState, canUseAiAssistant, doSend, promptAiUpgrade]);
+  }, [buildRepairPromptFromLiveState, doSend]);
 
   // ── Clickable example prompts ──
   const handleExampleClick = useCallback((prompt: string) => {
@@ -1191,10 +1168,6 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
 
   // ── File upload (button + drag-drop + paste) ──
   const processFiles = useCallback(async (files: FileList | File[]) => {
-    if (!canUseAiAssistant) {
-      promptAiUpgrade();
-      return;
-    }
     const model = getModelById(activeModel);
     const supportsImages = model?.supportsImages ?? false;
     const supportsFileAttachments = model?.supportsFileAttachments ?? true;
@@ -1309,7 +1282,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         setChatError(`Could not read ${file.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-  }, [activeModel, addAttachment, attachments.length, canUseAiAssistant, promptAiUpgrade, setChatError]);
+  }, [activeModel, addAttachment, attachments.length, setChatError]);
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1490,15 +1463,9 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         )}
       </div>
 
-      {!canUseAiAssistant && (
-        <div className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          AI assistant requires Desktop Pro. Core viewing and scripting stay available without it.
-        </div>
-      )}
-
       {/* Slim CTA banner — appears when the modal has been dismissed but the
           selected model still needs a key. Re-opens the modal on click. */}
-      {needsByokKey && canUseAiAssistant && !byokModal.open && (
+      {needsByokKey && !byokModal.open && (
         <button
           type="button"
           onClick={() => openByokModal(needsAnthropicKey ? 'anthropic' : 'openai')}
@@ -1734,16 +1701,14 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                 variant="ghost"
                 size="icon-xs"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={!canAttachInput || !canUseAiAssistant}
+                disabled={!canAttachInput}
                 className="shrink-0 mb-0.5"
               >
                 <Paperclip className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {!canUseAiAssistant
-                ? 'AI assistant not available'
-                : canAttachInput
+              {canAttachInput
                 ? 'Attach file or image (paste, drag & drop)'
                 : 'Selected model does not support attachments'}
             </TooltipContent>
@@ -1758,11 +1723,11 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={!canUseAiAssistant ? 'AI assistant not available' : needsByokKey ? `Add your ${needsAnthropicKey ? 'Anthropic' : 'OpenAI'} key to chat with this model` : 'Ask anything...'}
+            placeholder={needsByokKey ? `Add your ${needsAnthropicKey ? 'Anthropic' : 'OpenAI'} key to chat with this model` : 'Ask anything...'}
             rows={1}
             className="flex-1 resize-none rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground px-3 py-1.5 text-sm min-h-[32px] max-h-[120px] focus:outline-none focus:ring-1 focus:ring-ring"
             style={{ height: 'auto', overflow: 'hidden' }}
-            disabled={!canUseAiAssistant || needsByokKey}
+            disabled={needsByokKey}
           />
 
           {isActive ? (
@@ -1786,7 +1751,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
                   variant="default"
                   size="icon-xs"
                   onClick={handleSend}
-                  disabled={!inputText.trim() || !canUseAiAssistant || needsByokKey}
+                  disabled={!inputText.trim() || needsByokKey}
                   className="shrink-0 mb-0.5"
                 >
                   <Send className="h-3.5 w-3.5" />

@@ -369,6 +369,13 @@ const ID_NAMESPACE_SIZE = 100000; // IDs per namespace
 // Track entity IDs added via addGeometry (for removeCreated)
 const createdEntityIds = new Set();
 
+// GPU color-ID picking uses 24 bits (R/G/B). Encoding namespaced expressIds
+// directly overflows once ids exceed 2^24-1, so we allocate a dense, monotonic
+// pick index per entity (kept < 2^24) and map it back to the real expressId.
+const PICK_INDEX_MAX = 0xFFFFFF; // 16,777,215 (2^24 - 1)
+let nextPickIndex = 1;          // 0 is reserved for "no entity" (cleared FBO)
+const pickIndexToEntity = new Map(); // pickIndex -> expressId
+
 function updateBounds(pos) {
   for (let i = 0; i < pos.length; i += 3) {
     const x = pos[i], y = pos[i+1], z = pos[i+2];
@@ -407,14 +414,26 @@ function addMeshBatch(meshes) {
 
     // Track entity
     const existing = entityMap.get(mesh.expressId);
+    let pickIndex;
     if (!existing) {
+      // Allocate a dense pick index (decoupled from the namespaced expressId)
+      // so the 24-bit GPU pick color never overflows.
+      pickIndex = nextPickIndex;
+      if (nextPickIndex < PICK_INDEX_MAX) {
+        nextPickIndex++;
+        pickIndexToEntity.set(pickIndex, mesh.expressId);
+      } else {
+        console.warn('Pick index space exhausted; picking disabled for new entities');
+        pickIndex = 0; // encodes as "no entity"
+      }
       entityMap.set(mesh.expressId, {
         vertexCount: vCount, indexCount: iCount,
-        defaultColor: [...mesh.color], ifcType,
+        defaultColor: [...mesh.color], ifcType, pickIndex,
         segments: [{ vertexStart: vStart, vertexCount: vCount, indexStart: iStart, indexCount: iCount }],
         boundsMin: meshBounds.min, boundsMax: meshBounds.max,
       });
     } else {
+      pickIndex = existing.pickIndex;
       existing.segments.push({ vertexStart: vStart, vertexCount: vCount, indexStart: iStart, indexCount: iCount });
       existing.vertexCount += vCount;
       existing.indexCount += iCount;
@@ -443,11 +462,11 @@ function addMeshBatch(meshes) {
     }
     colors.push(vc);
 
-    // Per-vertex pick color (entity ID encoded as RGB, uploaded once)
+    // Per-vertex pick color (dense pick index encoded as RGB, uploaded once)
     const pc = new Float32Array(vCount * 4);
-    const pr = ((mesh.expressId >> 16) & 255) / 255;
-    const pg = ((mesh.expressId >> 8) & 255) / 255;
-    const pb = (mesh.expressId & 255) / 255;
+    const pr = ((pickIndex >> 16) & 255) / 255;
+    const pg = ((pickIndex >> 8) & 255) / 255;
+    const pb = (pickIndex & 255) / 255;
     for (let i = 0; i < vCount; i++) {
       pc[i*4] = pr; pc[i*4+1] = pg; pc[i*4+2] = pb; pc[i*4+3] = 1;
     }
@@ -505,6 +524,15 @@ function uploadGeometry(prevVerts = 0, prevIndices = 0) {
     gl.enableVertexAttribArray(1);
     gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
 
+    // Bake any active overrides (isolate/hide/colorize/highlight) into the
+    // merged default colors BEFORE uploading. The progressive-load path does
+    // not guarantee a follow-up refreshColors(), so relying on colorDirtyAll
+    // alone would leave overrides visually dropped until the next user command.
+    // Applying into allCol here keeps the over-allocated DYNAMIC_DRAW capacity
+    // intact (a full refreshColors would re-allocate the buffer to the exact
+    // size and break subsequent append-only chunk uploads).
+    // NB: this block is inside the page's HTML template literal — no backticks.
+    applyColorOverrides(allCol);
     gl.bindBuffer(gl.ARRAY_BUFFER, colBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, gpuCapVerts * 4 * 4, gl.DYNAMIC_DRAW);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, allCol);
@@ -531,6 +559,10 @@ function uploadGeometry(prevVerts = 0, prevIndices = 0) {
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuffer);
     gl.bindVertexArray(null);
+
+    // Overrides were already baked into the uploaded buffer above; also mark a
+    // full reapply pending so any later refreshColors() stays consistent.
+    colorDirtyAll = true;
   } else if (prevVerts < totalVertices) {
     // Append-only: just upload the new data at the end of existing buffers
     const newPos = mergeFloat32(positions.slice(getChunkIndex(prevVerts)), (totalVertices - prevVerts) * 3);
@@ -560,7 +592,10 @@ function getChunkIndex(targetCount, isIndices = false) {
   const divisor = isIndices ? 1 : 3;
   for (let i = 0; i < arr.length; i++) {
     count += arr[i].length / divisor;
-    if (count >= targetCount) return i;
+    // Strict comparison: return the first chunk that STARTS after the boundary.
+    // prevVerts/prevIndices are always exact chunk boundaries, so '>=' would
+    // return the last already-uploaded chunk and re-include it in the slice.
+    if (count > targetCount) return i;
   }
   return arr.length;
 }
@@ -791,8 +826,9 @@ canvas.addEventListener('click', (e) => {
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.enable(gl.BLEND);
 
-  const pickedId = (pixel[0] << 16) | (pixel[1] << 8) | pixel[2];
-  if (pickedId > 0 && entityMap.has(pickedId)) {
+  const pickIndex = (pixel[0] << 16) | (pixel[1] << 8) | pixel[2];
+  const pickedId = pickIndexToEntity.get(pickIndex);
+  if (pickIndex > 0 && pickedId !== undefined && entityMap.has(pickedId)) {
     showPickInfo(pickedId);
     const info = entityMap.get(pickedId);
     fetch('/api/command', {

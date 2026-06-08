@@ -263,9 +263,9 @@ export class HiddenLineClassifier {
       }
 
       // Project to 2D + depth
-      const p0 = this.projectVertex(v0, axes, flipped);
-      const p1 = this.projectVertex(v1, axes, flipped);
-      const p2 = this.projectVertex(v2, axes, flipped);
+      const p0 = this.projectVertex(v0, axes, flipped, sectionPosition);
+      const p1 = this.projectVertex(v1, axes, flipped, sectionPosition);
+      const p2 = this.projectVertex(v2, axes, flipped, sectionPosition);
 
       // Rasterize triangle
       this.rasterizeTriangle(p0, p1, p2);
@@ -280,17 +280,22 @@ export class HiddenLineClassifier {
   private projectVertex(
     v: Vec3,
     axes: { u: 'x' | 'y' | 'z'; v: 'x' | 'y' | 'z' },
-    flipped: boolean
+    flipped: boolean,
+    sectionPosition: number
   ): { x: number; y: number; depth: number } {
     const u = v[axes.u];
     const vCoord = v[axes.v];
     // Find depth axis: the one not used for u or v projection
     const allAxes: ('x' | 'y' | 'z')[] = ['x', 'y', 'z'];
     const depthAxis = allAxes.find(a => a !== axes.u && a !== axes.v) ?? 'z';
+    // Signed distance from the section plane along the viewing direction.
+    // Negate when flipped so that smaller depth always means nearer the viewer,
+    // matching the line depths produced by edge-extractor / profile-projector.
+    const signed = v[depthAxis] - sectionPosition;
     return {
       x: flipped ? -u : u,
       y: vCoord,
-      depth: v[depthAxis],
+      depth: flipped ? -signed : signed,
     };
   }
 

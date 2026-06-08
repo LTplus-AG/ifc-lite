@@ -14,11 +14,17 @@ import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 
 /**
  * Escape a string for STEP format (backslash and single-quote escaping).
+ *
+ * Control characters (CR/LF and other C0 codes) are collapsed to a single
+ * space so every generated STEP entity stays on one physical line and
+ * round-trips through the line-oriented merge/convert paths.
  */
 export function escapeStepString(str: string): string {
   return str
     .replace(/\\/g, '\\\\')
-    .replace(/'/g, "''");
+    .replace(/'/g, "''")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F]+/g, ' ');
 }
 
 /**

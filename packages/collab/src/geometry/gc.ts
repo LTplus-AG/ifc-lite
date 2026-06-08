@@ -92,6 +92,13 @@ export interface SweepOptions {
   epochMs?: number;
   /** Override `Date.now` for deterministic tests. */
   now?: () => number;
+  /**
+   * When a blob's `uploadedAt` can't be recovered, default behaviour is
+   * to fail safe and treat it as too young to sweep (age 0), so the
+   * grace window still protects freshly uploaded blobs. Set this to
+   * `true` to opt into sweeping age-unknown blobs anyway.
+   */
+  sweepUnknownAge?: boolean;
 }
 
 export interface SweepDecision {
@@ -125,10 +132,16 @@ export async function planBlobSweep(
       ? await options.metaProvider(hash)
       : await metaFromGet(store, hash);
     if (!meta) continue;
-    const ageMs =
-      meta.uploadedAt != null
-        ? Math.max(0, now - new Date(meta.uploadedAt).getTime())
-        : Number.POSITIVE_INFINITY;
+    if (meta.uploadedAt == null) {
+      // Age unknown (backend couldn't recover uploadedAt). Fail safe:
+      // skip unless the caller explicitly opted into sweeping these,
+      // so the grace window keeps protecting in-flight uploads.
+      if (!options.sweepUnknownAge) continue;
+      drop.push(hash);
+      reclaim += meta.byteLength;
+      continue;
+    }
+    const ageMs = Math.max(0, now - new Date(meta.uploadedAt).getTime());
     if (ageMs >= epochMs) {
       drop.push(hash);
       reclaim += meta.byteLength;
@@ -150,7 +163,8 @@ async function metaFromGet(store: BlobStore, hash: BlobHash): Promise<BlobMeta |
     hash,
     byteLength: bytes.byteLength,
     // No uploadedAt available via raw bytes — without it, the blob is
-    // treated as unbounded-old (always eligible).
+    // treated as too young to sweep (fail safe) unless the caller sets
+    // `sweepUnknownAge`. See planBlobSweep.
   };
 }
 

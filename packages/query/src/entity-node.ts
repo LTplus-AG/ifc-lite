@@ -174,16 +174,23 @@ export class EntityNode {
 
   // Multi-hop traversal
   traverse(relType: RelationshipType, depth: number, direction: 'forward' | 'inverse' = 'forward'): EntityNode[] {
-    const visited = new Set<number>();
+    // Track the minimum depth at which each node was reached so a node first
+    // discovered via a longer path is re-expanded when later found shallower.
+    // Without this, descendants within `depth` along the shorter route are missed.
+    const bestDepth = new Map<number, number>();
     const result: EntityNode[] = [];
-    
+
     const visit = (nodeId: number, currentDepth: number) => {
-      if (currentDepth > depth || visited.has(nodeId)) return;
-      visited.add(nodeId);
-      if (nodeId !== this.expressId) {
+      if (currentDepth > depth) return;
+      const prev = bestDepth.get(nodeId);
+      if (prev !== undefined && prev <= currentDepth) return;
+      const firstVisit = prev === undefined;
+      bestDepth.set(nodeId, currentDepth);
+      // Guard so each node is added to the result only once, even when re-expanded.
+      if (firstVisit && nodeId !== this.expressId) {
         result.push(new EntityNode(this.store, nodeId));
       }
-      
+
       const edges = direction === 'forward'
         ? this.store.relationships.forward.getEdges(nodeId, relType)
         : this.store.relationships.inverse.getEdges(nodeId, relType);
@@ -191,7 +198,7 @@ export class EntityNode {
         visit(edge.target, currentDepth + 1);
       }
     };
-    
+
     visit(this.expressId, 0);
     return result;
   }

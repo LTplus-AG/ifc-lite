@@ -9,12 +9,10 @@
  * at boot, react to popstate, and switch by prefix. The handful of routes:
  *
  *   /                  → main WebGL viewer (default)
- *   /settings          → desktop-shell account / API-key management (Tauri)
  *   /mcp[/...]         → @ifc-lite/mcp marketing surface
  */
 
 import { ViewerLayout } from './components/viewer/ViewerLayout';
-import { SettingsPage } from './components/viewer/SettingsPage';
 import { McpLanding } from './components/mcp/McpLanding';
 import { McpPlayground } from './components/mcp/McpPlayground';
 import { BimProvider } from './sdk/BimProvider';
@@ -66,7 +64,7 @@ export function App() {
   return (
     <BimProvider>
       <ExtensionHostProvider>
-        {pathname === '/settings' ? <SettingsPage /> : <ViewerLayout />}
+        <ViewerLayout />
         <Toaster />
         <Analytics />
       </ExtensionHostProvider>

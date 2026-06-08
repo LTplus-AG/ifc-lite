@@ -33,9 +33,15 @@ function cellToString(v: unknown): string {
 }
 
 /** RFC-4180-style escaping: quote any cell containing comma, quote, or
- *  newline; double-up embedded quotes inside the wrapped cell. */
+ *  newline; double-up embedded quotes inside the wrapped cell. Also
+ *  neutralises spreadsheet formula triggers (CWE-1236) so user/model-
+ *  controlled cell values are treated as text on open. */
 function escapeCsvCell(raw: string): string {
   if (raw.length === 0) return '';
+  // CWE-1236: neutralise spreadsheet formula triggers in the leading
+  // position. Prefixing first ensures the needsQuotes check below still
+  // wraps values that also contain comma/quote/newline.
+  if (/^[=+\-@\t\r]/.test(raw)) raw = `'${raw}`;
   const needsQuotes = raw.includes(',') || raw.includes('"') || raw.includes('\n') || raw.includes('\r');
   if (!needsQuotes) return raw;
   return `"${raw.replace(/"/g, '""')}"`;

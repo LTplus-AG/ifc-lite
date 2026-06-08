@@ -56,7 +56,14 @@ export interface SchemaMigration {
 const REGISTRY: SchemaMigration[] = [];
 
 export function registerSchemaMigration(migration: SchemaMigration): void {
-  REGISTRY.push(migration);
+  // Dedupe by (from, to) so repeated installer calls are truly idempotent
+  // (see installIfc4ToIfc4x3Migration's "Idempotent within a process" doc).
+  const i = REGISTRY.findIndex((m) => m.from === migration.from && m.to === migration.to);
+  if (i >= 0) {
+    REGISTRY[i] = migration;
+  } else {
+    REGISTRY.push(migration);
+  }
 }
 
 export function listSchemaMigrations(): readonly SchemaMigration[] {

@@ -41,7 +41,7 @@ export function shouldPreferOrthometricTerrain(
 
 export interface CesiumPlacementInput {
   coordinateInfo?: CoordinateInfo;
-  projectedCRS?: Pick<ProjectedCRS, 'verticalDatum'> | Pick<ProjectedCRS, 'mapUnitScale'> & Pick<ProjectedCRS, 'verticalDatum'>;
+  projectedCRS?: Pick<ProjectedCRS, 'verticalDatum'> | Pick<ProjectedCRS, 'mapUnitScale' | 'verticalDatum'>;
   ifcOriginHeight: number;
   terrainHeight: number | null;
   storeyElevations?: Map<number, number>;

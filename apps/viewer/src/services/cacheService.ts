@@ -3,15 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Platform-agnostic cache service
- * Dynamically loads the appropriate cache implementation based on platform:
- * - Tauri (desktop): Uses native filesystem via desktop-cache.ts
- * - Web: Uses IndexedDB via ifc-cache.ts
+ * Cache service — IndexedDB-backed cache (ifc-cache.ts) for the web build.
  *
  * Extracted from useIfc.ts for reusability and testability
  */
-
-import { isTauri } from '../utils/ifcConfig.js';
 
 // ============================================================================
 // Types
@@ -65,29 +60,18 @@ export interface ICacheService {
 let cacheService: ICacheService | null = null;
 
 /**
- * Get the cache service for the current platform
- * Lazily loads the appropriate implementation
+ * Get the cache service.
+ * Lazily loads the IndexedDB implementation.
  */
 export async function getCacheService(): Promise<ICacheService> {
   if (cacheService) return cacheService;
 
-  if (isTauri()) {
-    // Desktop: Use Tauri native filesystem
-    const mod = await import('./desktop-cache.js');
-    cacheService = {
-      getCached: mod.getCached,
-      setCached: mod.setCached,
-      deleteCached: mod.deleteCached,
-    };
-  } else {
-    // Web: Use IndexedDB
-    const mod = await import('./ifc-cache.js');
-    cacheService = {
-      getCached: mod.getCached,
-      setCached: mod.setCached,
-      deleteCached: mod.deleteCached,
-    };
-  }
+  const mod = await import('./ifc-cache.js');
+  cacheService = {
+    getCached: mod.getCached,
+    setCached: mod.setCached,
+    deleteCached: mod.deleteCached,
+  };
 
   return cacheService;
 }

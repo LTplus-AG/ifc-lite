@@ -102,16 +102,20 @@ function composeNode(
   composed: Map<string, ComposedNode>,
   visited: Set<string>
 ): ComposedNode {
-  // Cycle detection
-  if (visited.has(path)) {
-    throw new Error(`Circular reference detected: ${path}`);
-  }
-  visited.add(path);
-
   // Already composed?
   if (composed.has(path)) {
     return composed.get(path)!;
   }
+
+  // Cycle detection: break the cycle gracefully instead of aborting the parse.
+  // (Mirrors federated-composition.ts and traversal.ts, which both tolerate cycles.)
+  if (visited.has(path)) {
+    const stub: ComposedNode = { path, attributes: new Map(), children: new Map() };
+    composed.set(path, stub);
+    console.warn(`[ifcx] Circular reference detected, breaking cycle at: ${path}`);
+    return stub;
+  }
+  visited.add(path);
 
   const pre = preComposed.get(path);
   const node: ComposedNode = {

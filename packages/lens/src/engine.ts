@@ -232,8 +232,14 @@ function extractAutoColorValue(
       {
         const cls = provider.getClassifications(globalId);
         if (!cls || cls.length === 0) return undefined;
-        // Use "system: identification" as the grouping key
-        const c = cls[0];
+        // Use "system: identification" as the grouping key. When psetName is set,
+        // treat it as a classification-system filter (mirroring matchesClassification),
+        // selecting the matching reference instead of unconditionally using the first.
+        const c = spec.psetName
+          ? (cls.find((ref) =>
+              (ref.system ?? '').toLowerCase().includes(spec.psetName!.toLowerCase()),
+            ) ?? cls[0])
+          : cls[0];
         const parts: string[] = [];
         if (c.system) parts.push(c.system);
         if (c.identification) parts.push(c.identification);

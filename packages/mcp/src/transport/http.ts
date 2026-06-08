@@ -49,6 +49,13 @@ export interface HttpTransportOptions {
   sessionFactory: SessionFactory;
   /** Maximum request body bytes. */
   maxBodyBytes?: number;
+  /**
+   * Browser Origins allowed to read JSON-RPC responses cross-origin. Empty /
+   * undefined (the default) means NO browser cross-origin access — a page the
+   * user visits cannot read responses or invoke tools. Operators who genuinely
+   * need browser access opt in explicitly (CLI `--allow-origin`).
+   */
+  allowedOrigins?: string[];
 }
 
 interface Session {
@@ -63,9 +70,33 @@ export class HttpTransport {
   private server: Server;
   private sessions = new Map<string, Session>();
   private opts: HttpTransportOptions;
+  /** Browser Origins permitted to read responses (empty = none). */
+  private allowedOrigins: Set<string>;
+  /** Host header values accepted, to defeat DNS rebinding. */
+  private allowedHosts: Set<string>;
+  /**
+   * Whether to enforce the Host allowlist. DNS-rebinding is a loopback-bind
+   * concern; a deliberate public bind (`--host 0.0.0.0`/`::`, gated by
+   * `--token`/`--insecure`) is reached via arbitrary hostnames/IPs we cannot
+   * enumerate, so enforcing the allowlist there would 421 every real client.
+   */
+  private enforceHostCheck: boolean;
 
   constructor(opts: HttpTransportOptions) {
     this.opts = opts;
+    this.allowedOrigins = new Set(opts.allowedOrigins ?? []);
+    // A wildcard bind has no single hostname to allowlist — real clients send
+    // the machine IP / DNS name, never `0.0.0.0`/`::`.
+    const isWildcardBind = opts.host === '0.0.0.0' || opts.host === '::' || opts.host === '';
+    this.enforceHostCheck = !isWildcardBind;
+    // Accept the configured bind host plus the loopback aliases that resolve
+    // to it. A DNS-rebinding attacker controls a name pointing at 127.0.0.1,
+    // so requests arrive with an unexpected Host header and are rejected.
+    this.allowedHosts = new Set(
+      ['127.0.0.1', 'localhost', '::1', isWildcardBind ? undefined : opts.host].filter(
+        (h): h is string => Boolean(h),
+      ),
+    );
     this.server = createServer((req, res) => {
       // Surface unhandled rejections via console.error rather than crashing
       // the process — one bad request must not take down the worker.
@@ -99,7 +130,20 @@ export class HttpTransport {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    setCors(res);
+    // DNS-rebinding defense: a malicious page can point a hostname it controls
+    // at our loopback IP, but the browser still sends that hostname in Host.
+    // Reject any Host that isn't the expected bind host / loopback alias.
+    const host = parseHostHeader(req.headers.host);
+    if (this.enforceHostCheck && host && !this.allowedHosts.has(host)) {
+      res.statusCode = 421; // Misdirected Request
+      res.end('Misdirected Request');
+      return;
+    }
+
+    // Reflect CORS only for an explicitly allowlisted Origin — never `*` — so a
+    // visited web page cannot read JSON-RPC responses or invoke tools by default.
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+    setCors(res, origin, this.allowedOrigins);
     if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
 
     const scope = await this.opts.authenticator.authenticate(req);
@@ -253,11 +297,33 @@ function sameScope(a: AuthScope, b: AuthScope): boolean {
   return true;
 }
 
-function setCors(res: ServerResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+/**
+ * Reflect CORS headers ONLY when the request carries an Origin we explicitly
+ * allow. We never emit a wildcard `Access-Control-Allow-Origin` — that would
+ * let any web page read JSON-RPC responses cross-origin. When `origin` is not
+ * allowlisted we emit no CORS headers, so the browser blocks the response.
+ */
+function setCors(res: ServerResponse, origin: string | undefined, allowed: Set<string>): void {
+  if (!origin || !allowed.has(origin)) return;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id');
   res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
+}
+
+/**
+ * Extract the host name from a `Host` header, stripping the port. Handles the
+ * bracketed IPv6 literal form (`[::1]:8765` -> `::1`).
+ */
+function parseHostHeader(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const value = raw.trim();
+  if (value.startsWith('[')) {
+    const end = value.indexOf(']');
+    return end > 0 ? value.slice(1, end) : value;
+  }
+  return value.split(':')[0];
 }
 
 function writeSse(res: ServerResponse, message: unknown): void {

@@ -1,5 +1,108 @@
 # @ifc-lite/geometry
 
+## 2.4.0
+
+### Minor Changes
+
+- [#998](https://github.com/LTplus-AG/ifc-lite/pull/998) [`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f) Thanks [@louistrue](https://github.com/louistrue)! - Add a 3D **Model / Types** view switch (turns the [#957](https://github.com/LTplus-AG/ifc-lite/issues/957) type geometry into a feature).
+
+  The viewer mesh path (`processGeometryBatch`) now always emits an `IfcTypeProduct`'s `RepresentationMap` geometry, tagging each mesh with a `geometryClass`: `0` = occurrence, `1` = orphan type (no occurrence — buildingSMART annex-E showcase files), `2` = instanced type-library shape (a type linked to an occurrence via `IfcRelDefinesByType`). `MeshDataJs.geometryClass` (wasm) and `MeshData.geometryClass` (`@ifc-lite/geometry`) carry it across the boundary.
+
+  The viewer's Visibility menu gains a Model/Types segmented control. **Model** (default) shows occurrences + orphan types and hides class‑2 type-library shapes — so the AC20/ArchiCAD "duplicate boxes at the wrong position" never appear. **Types** shows the type library (classes 1 + 2 at their map origins) and hides occurrences. The switch re-filters the cached mesh set instantly (no reload) and the choice persists across reloads.
+
+  The native `process_geometry` path is unchanged — it still suppresses instanced-type geometry so server/CLI/SDK exports never duplicate it.
+
+### Patch Changes
+
+- Updated dependencies [[`1effb90`](https://github.com/LTplus-AG/ifc-lite/commit/1effb900edd0a70db75f90839a4cc9f8fecb8d5e), [`b6f352f`](https://github.com/LTplus-AG/ifc-lite/commit/b6f352f75e1431cf926eca0dcb3344aead140c2f), [`35413b9`](https://github.com/LTplus-AG/ifc-lite/commit/35413b9efd0178cff6022f2b1092ac532868d6cd)]:
+  - @ifc-lite/wasm@2.4.0
+
+## 2.3.0
+
+### Minor Changes
+
+- [#987](https://github.com/LTplus-AG/ifc-lite/pull/987) [`55fd14e`](https://github.com/LTplus-AG/ifc-lite/commit/55fd14e5017f626567b10622bb41ddac3311e70c) Thanks [@louistrue](https://github.com/louistrue)! - Model comparison in the viewer ([#924](https://github.com/LTplus-AG/ifc-lite/issues/924)). A new **Compare** panel (Analysis menu)
+  lets you pick two loaded models as version A/B, run a comparison, and review
+  **added / changed / deleted** elements — colour-coded in 3D (green / yellow /
+  red, with unchanged ghosted or hidden) and listed in the panel; clicking a row
+  selects and frames the element. A **data / geometry / both** scope toggle
+  switches what counts as a change.
+
+  `@ifc-lite/geometry` now surfaces the WASM mesh pass's RTC-invariant per-entity
+  geometry fingerprint: `GeometryProcessor.enableGeometryHashes()` turns it on and
+  each `MeshData.geometryHash` carries the hash (threaded through the streaming +
+  parallel worker paths). This feeds the geometry side of the diff: a moved or
+  reshaped element reads as a geometry change, while the global georeferencing
+  offset (RTC) does not — the hash is RTC-invariant.
+
+### Patch Changes
+
+- [#946](https://github.com/LTplus-AG/ifc-lite/pull/946) [`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0) Thanks [@louistrue](https://github.com/louistrue)! - Fix a batch of verified findings from a full-codebase review (security, correctness,
+  data-loss, and resource/memory leaks). Highlights:
+
+  **Security**
+
+  - collab-server: a malformed WebSocket frame no longer crashes the whole process
+    (decode is wrapped; a bad frame is rejected/audited instead of throwing).
+  - mcp: the local HTTP transport now validates `Host`/`Origin` and no longer sends a
+    wildcard `Access-Control-Allow-Origin`, closing a DNS-rebinding/CSRF hole; the
+    `AuthScope.modelIds` allowlist is now enforced at model resolution.
+  - server-bin: `extractZip` uses `execFileSync` (argv, no shell), removing command
+    injection via archive/destination paths.
+  - export / sdk / cli / mcp / lists / viewer CSV exporters now neutralize spreadsheet
+    formula injection (CWE-1236) consistently.
+  - create-ifc-lite: validates the project name (no path traversal) and drops the
+    unused `execSync`-based downloader.
+  - embed-sdk: inbound `postMessage` now validates `event.origin`.
+
+  **Correctness / data-loss**
+
+  - parser: `lengthUnitScale` survives the worker transport; the nested STEP list
+    parser is string-aware (commas/parens inside quoted values no longer mis-split).
+  - mutations: deleting a property from a session-created pset and replaying
+    `UPDATE_ATTRIBUTE` / `CREATE_PROPERTY_SET` mutations now work.
+  - export: merged-export ID remapping no longer rewrites `#N` inside quoted strings.
+  - drawing-2d: GPU section cutter triangle upload/readback use correct WGSL std-layout
+    offsets and strides.
+  - ifcx: cyclic children no longer abort the parse; spatial children round-trip; the
+    mesh transform guards a zero/non-finite homogeneous `w`.
+  - data / cache: a `NULL` string property value stays `null` instead of becoming `""`.
+  - pointcloud, bcf, server-client, query, viewer-core, viewer store/federation: assorted
+    decoding, federation-id, and selection-state fixes.
+
+  **Resource / memory leaks**
+
+  - geometry, query (DuckDB), renderer (GPU buffers), collab (federation presence),
+    sandbox (host log capture + runtime), mcp (clash mesh cache), server-bin (signal
+    listeners), and the viewer renderer on unmount now release resources deterministically.
+
+  **Hardening (apps, not published)**
+
+  - server: a dedicated `server-release` Cargo profile (`panic = "unwind"`) plus a
+    `CatchPanicLayer` contain a malformed-IFC parse panic to the offending request
+    instead of aborting the whole server.
+  - desktop (Tauri): a Content-Security-Policy is set, and unused `shell:*` /
+    `fs:allow-write|mkdir|remove` capabilities (and the unused shell plugin) are removed.
+
+  **Second pass** (additional verified findings)
+
+  - collab-server: S3 log load now follows `ListObjectsV2` pagination (no dropped frames);
+    awareness frames are size-capped + rate-limited; path-lock verify runs after role/rate-limit;
+    the blob route requires auth and `/metrics` can be token-gated.
+  - server-bin: downloaded binaries are SHA-256 verified against a release sidecar (fail-closed on
+    mismatch, warn-if-absent for older releases).
+  - extensions: inner-ring capability check fails _closed_ for unknown namespaces; signing
+    canonicalization is now injective (length-prefixed).
+  - correctness/leaks: mutations quantity type+unit preserved on replay; `findByProperty` boolean
+    comparisons; Parquet REAL columns kept as Float64; blob GC fail-safe on missing `uploadedAt`;
+    spatial-hierarchy + codegen cycle guards; BVH NaN edge; bSDD/playground caches bounded;
+    point-cloud GPU asset freed on federation error; mcp `parseColor` rejects non-hex; bcf/SVG/STEP
+    output escaping; and more.
+
+- Updated dependencies [[`6378998`](https://github.com/LTplus-AG/ifc-lite/commit/6378998ec146f7f9297ef5fcc5953b155fd6b5e0), [`90060b7`](https://github.com/LTplus-AG/ifc-lite/commit/90060b7eaad7a07bdab13907c1b52bb24fbc8597)]:
+  - @ifc-lite/data@2.0.1
+  - @ifc-lite/wasm@2.3.0
+
 ## 2.2.0
 
 ### Minor Changes

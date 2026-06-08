@@ -357,6 +357,25 @@ fn create_side_walls(boundary: &[nalgebra::Point2<f64>], depth: f64, mesh: &mut 
         Vec::new()
     };
 
+    // Orient the flat side-wall normals outward regardless of the profile's
+    // authored winding. An edge's cross-section normal is one of its two
+    // in-plane perpendiculars; which one points *out* of the solid depends on
+    // the loop's winding, so key it off the signed area (CCW > 0). Without
+    // this, a CCW-authored outer profile (e.g. the AC20-FZK-Haus roof slab,
+    // issue #1006 follow-up) got inward-facing side-wall normals and shaded
+    // inside-out under the renderer's normal-based, double-sided lighting.
+    // Holes are passed with the opposite (CW) winding, which flips the sign so
+    // their walls keep facing into the void — byte-identical to the previous
+    // behaviour for negative-area loops.
+    let signed_area2: f64 = (0..n)
+        .map(|i| {
+            let a = &boundary[i];
+            let b = &boundary[(i + 1) % n];
+            a.x * b.y - b.x * a.y
+        })
+        .sum();
+    let winding_sign = if signed_area2 < 0.0 { -1.0 } else { 1.0 };
+
     let base_index = mesh.vertex_count() as u32;
     let mut quad_count = 0u32;
 
@@ -372,8 +391,11 @@ fn create_side_walls(boundary: &[nalgebra::Point2<f64>], depth: f64, mesh: &mut 
             continue;
         }
 
-        let flat_normal = Vector3::new(-edge.y, edge.x, 0.0)
+        // Right-hand perpendicular (edge.y, -edge.x) is outward for a CCW loop;
+        // `winding_sign` corrects it for CW loops (and holes).
+        let flat_normal = Vector3::new(edge.y, -edge.x, 0.0)
             .try_normalize(1e-10)
+            .map(|v| v * winding_sign)
             .unwrap_or(Vector3::new(0.0, 0.0, 1.0));
         let n0 = if use_smooth_radial_normals {
             vertex_normals[i]
@@ -557,6 +579,17 @@ fn create_lofted_side_walls(
     if n < 2 || top.len() != n {
         return;
     }
+    // Orient outward by the bottom loop's winding, matching `create_side_walls`
+    // so tapered faces shade the same direction as uniform extrusions in the
+    // untapered limit (and outward regardless of authored winding).
+    let signed_area2: f64 = (0..n)
+        .map(|i| {
+            let a = &bottom[i];
+            let b = &bottom[(i + 1) % n];
+            a.x * b.y - b.x * a.y
+        })
+        .sum();
+    let winding_sign = if signed_area2 < 0.0 { -1.0 } else { 1.0 };
     let base_index = mesh.vertex_count() as u32;
     let mut quad_count = 0u32;
     for i in 0..n {
@@ -569,14 +602,13 @@ fn create_lofted_side_walls(
         let v1 = Point3::new(p1.x, p1.y, 0.0);
         let v2 = Point3::new(q1.x, q1.y, depth);
         let v3 = Point3::new(q0.x, q0.y, depth);
-        // Outward normal from the actual 3D quad. `edge_b × edge_a` matches
-        // the convention in `create_side_walls` (tangent rotated +90° CCW
-        // around +Z) so tapered faces shade the same direction as uniform
-        // extrusions in the untapered limit.
+        // Outward normal from the actual 3D quad. `edge_a × edge_b` is outward
+        // for a CCW loop; `winding_sign` corrects CW loops. Holes then flip to
+        // face into the void.
         let edge_a = v1 - v0;
         let edge_b = v3 - v0;
-        let mut normal = match edge_b.cross(&edge_a).try_normalize(1e-10) {
-            Some(n) => n,
+        let mut normal = match edge_a.cross(&edge_b).try_normalize(1e-10) {
+            Some(n) => n * winding_sign,
             None => continue,
         };
         if is_hole {
@@ -744,6 +776,58 @@ mod tests {
         assert!((max.y - 202.5).abs() < 0.01); // 2.5 + 200
         assert!((min.z - 300.0).abs() < 0.01); // 0 + 300
         assert!((max.z - 320.0).abs() < 0.01); // 20 + 300
+    }
+
+    /// Assert every flat (non-cap) side-wall normal points away from the mesh's
+    /// XY centroid — i.e. outward, not into the solid.
+    fn assert_side_walls_outward(mesh: &Mesh) {
+        let vc = mesh.vertex_count();
+        let (mut cx, mut cy) = (0.0f32, 0.0f32);
+        for i in 0..vc {
+            cx += mesh.positions[i * 3];
+            cy += mesh.positions[i * 3 + 1];
+        }
+        cx /= vc as f32;
+        cy /= vc as f32;
+
+        let mut checked = 0;
+        for i in 0..vc {
+            let nz = mesh.normals[i * 3 + 2];
+            if nz.abs() >= 0.5 {
+                continue; // cap vertex (normal ~ ±Z), not a side wall
+            }
+            let nx = mesh.normals[i * 3];
+            let ny = mesh.normals[i * 3 + 1];
+            let rx = mesh.positions[i * 3] - cx;
+            let ry = mesh.positions[i * 3 + 1] - cy;
+            let dot = nx * rx + ny * ry;
+            assert!(
+                dot > 0.0,
+                "side-wall normal points inward at vertex {i}: n=({nx},{ny}) r=({rx},{ry}) dot={dot}"
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "expected side-wall vertices to check");
+    }
+
+    #[test]
+    fn test_side_wall_normals_outward_ccw_profile() {
+        // create_rectangle is CCW. Before #1006-follow-up these side-wall normals
+        // pointed inward (the AC20-FZK-Haus roof slab shaded inside-out).
+        let profile = create_rectangle(10.0, 6.0);
+        let mesh = extrude_profile(&profile, 4.0, None).unwrap();
+        assert_side_walls_outward(&mesh);
+    }
+
+    #[test]
+    fn test_side_wall_normals_outward_cw_profile() {
+        // The same rectangle wound clockwise. This was the previously-correct
+        // case; the fix must keep CW outer walls outward (no sign regression).
+        let mut pts = create_rectangle(10.0, 6.0).outer;
+        pts.reverse();
+        let profile = Profile2D::new(pts);
+        let mesh = extrude_profile(&profile, 4.0, None).unwrap();
+        assert_side_walls_outward(&mesh);
     }
 
     #[test]

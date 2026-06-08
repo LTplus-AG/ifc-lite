@@ -44,7 +44,7 @@ export class WebGPUDevice {
 
     // Capture async GPU errors (validation errors from submit() are async)
     this.device.onuncapturederror = (event) => {
-      const msg = (event as any).error?.message ?? String(event);
+      const msg = event.error?.message ?? String(event);
       console.error('[WebGPU] Uncaptured error:', msg);
       this._lastUncapturedError = msg;
       this._uncapturedErrorCount++;

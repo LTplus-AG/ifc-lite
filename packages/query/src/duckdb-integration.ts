@@ -51,6 +51,7 @@ export class DuckDBIntegration {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
+      let worker: Worker | null = null;
       try {
         // Dynamic import using Function constructor to prevent Vite static analysis.
         // DuckDB is optional — this will fail gracefully if not installed.
@@ -62,7 +63,7 @@ export class DuckDBIntegration {
         if (!bundle.mainWorker) {
           throw new Error('DuckDB bundle missing mainWorker');
         }
-        const worker = new Worker(bundle.mainWorker);
+        worker = new Worker(bundle.mainWorker);
         this.db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
         await this.db.instantiate(bundle.mainModule, bundle.pthreadWorker);
         this.conn = await this.db.connect();
@@ -73,6 +74,29 @@ export class DuckDBIntegration {
         this.initialized = true;
         console.log('[DuckDB] Initialization complete');
       } catch (error) {
+        // Clean up the partial init so a transient failure does not poison
+        // every future init() call (the cached initPromise would otherwise
+        // stay rejected forever) and the spawned Worker thread is not leaked.
+        try {
+          await this.conn?.close();
+        } catch {
+          /* cleanup — safe to ignore */
+        }
+        try {
+          if (this.db) {
+            // AsyncDuckDB.terminate() also terminates its worker.
+            await this.db.terminate();
+          } else {
+            // Worker created but never attached to an AsyncDuckDB.
+            worker?.terminate();
+          }
+        } catch {
+          /* cleanup — safe to ignore */
+        }
+        this.conn = null;
+        this.db = null;
+        this.initialized = false;
+        this.initPromise = null;
         throw new Error(`Failed to initialize DuckDB: ${error}`);
       }
     })();
@@ -169,8 +193,11 @@ export class DuckDBIntegration {
         const objectType = escapeSQL(strings.get(entities.objectType[j]));
         const hasGeometry = (entities.flags[j] & 1) !== 0;
         const isType = (entities.flags[j] & 2) !== 0;
-        const containedInStorey = entities.containedInStorey[j] || 'NULL';
-        const definedByType = entities.definedByType[j] || 'NULL';
+        // -1 is the EntityTable 'no value' sentinel; valid express ids are >= 1.
+        // Emit SQL NULL for the sentinel so `IS NULL` matches orphans and FK
+        // joins to entities.express_id don't carry a bogus -1.
+        const containedInStorey = entities.containedInStorey[j] > 0 ? entities.containedInStorey[j] : 'NULL';
+        const definedByType = entities.definedByType[j] > 0 ? entities.definedByType[j] : 'NULL';
 
         values.push(`(${expressId}, '${globalId}', '${name}', '${description}', '${type}', '${objectType}', ${hasGeometry}, ${isType}, ${containedInStorey}, ${definedByType})`);
       }

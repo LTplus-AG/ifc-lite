@@ -47,6 +47,13 @@ import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotati
 import { streamNativeGeometry, type QueuedNativeStreamingEvent } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
 
+/**
+ * Default quantization grid (metres) for per-entity geometry hashing,
+ * mirroring `ifc_lite_geometry::DEFAULT_GEOM_HASH_TOLERANCE` on the Rust
+ * side (1 mm). Used by {@link GeometryProcessor.enableGeometryHashes}.
+ */
+export const DEFAULT_GEOM_HASH_TOLERANCE = 1.0e-3;
+
 interface ByteStreamingPrePassResult {
   jobs: Uint32Array;
   totalJobs: number;
@@ -541,37 +548,46 @@ export class GeometryProcessor {
         },
       });
 
-      while (!completed || queuedEvents.length > 0) {
-        while (queuedEvents.length > 0) {
-          const event = queuedEvents.shift()!;
-          if (event.type === 'colorUpdate') {
-            yield { type: 'colorUpdate', updates: event.updates };
-            continue;
+      try {
+        while (!completed || queuedEvents.length > 0) {
+          while (queuedEvents.length > 0) {
+            const event = queuedEvents.shift()!;
+            if (event.type === 'colorUpdate') {
+              yield { type: 'colorUpdate', updates: event.updates };
+              continue;
+            }
+            this.coordinateHandler.processMeshesIncremental(event.meshes);
+            totalMeshes += event.meshes.length;
+            const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
+            yield {
+              type: 'batch',
+              meshes: event.meshes,
+              totalSoFar: totalMeshes,
+              coordinateInfo: coordinateInfo || undefined,
+              nativeTelemetry: event.nativeTelemetry,
+            };
           }
-          this.coordinateHandler.processMeshesIncremental(event.meshes);
-          totalMeshes += event.meshes.length;
-          const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-          yield {
-            type: 'batch',
-            meshes: event.meshes,
-            totalSoFar: totalMeshes,
-            coordinateInfo: coordinateInfo || undefined,
-            nativeTelemetry: event.nativeTelemetry,
-          };
-        }
 
-        if (streamError) {
-          throw streamError;
-        }
+          if (streamError) {
+            throw streamError;
+          }
 
-        if (!completed) {
-          await new Promise<void>((resolve) => {
-            resolvePending = resolve;
-          });
+          if (!completed) {
+            await new Promise<void>((resolve) => {
+              resolvePending = resolve;
+            });
+          }
+        }
+      } finally {
+        // Ensure the native stream and its Tauri listeners are torn down
+        // deterministically even when this generator is abandoned (.return())
+        // while suspended at a `yield` or the pending-wake promise.
+        try {
+          await streamingPromise;
+        } catch {
+          /* cleanup — safe to ignore */
         }
       }
-
-      await streamingPromise;
 
       const coordinateInfo = this.coordinateHandler.getFinalCoordinateInfo();
       yield { type: 'complete', totalMeshes: completedTotalMeshes ?? totalMeshes, coordinateInfo };
@@ -679,6 +695,9 @@ export class GeometryProcessor {
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
       mergeLayers: this.mergeLayers,
+      // Issue #924: forward the geometry-hash tolerance the host enabled via
+      // `enableGeometryHashes()` so the worker pool fingerprints too.
+      geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,
       wasmUrls,
     });
   }
@@ -797,6 +816,21 @@ export class GeometryProcessor {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
       }
     }
+  }
+
+  /**
+   * Enable per-entity geometry fingerprinting on the WASM mesh pass
+   * (issue #924). Once on, every `processGeometryBatch` populates
+   * `MeshCollection.geometryHashValues`, which `convertMeshCollectionToBatch`
+   * attaches to each `MeshData.geometryHash`. RTC-invariant + tolerance-
+   * quantized; default tolerance is {@link DEFAULT_GEOM_HASH_TOLERANCE} (1 mm).
+   *
+   * Safe to call before `init()` — the bridge caches the value and replays
+   * it on the freshly-built IfcAPI. No-op on the native/desktop path (the
+   * Tauri pipeline does not emit hashes yet). Pass `null` to disable.
+   */
+  enableGeometryHashes(tolerance: number | null = DEFAULT_GEOM_HASH_TOLERANCE): void {
+    this.bridge?.setComputeGeometryHashes(tolerance);
   }
 
   /**

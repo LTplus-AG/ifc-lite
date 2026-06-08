@@ -76,7 +76,6 @@ function getEsbuild(): Promise<EsbuildLike | null> {
 /** Transpile TypeScript to JavaScript by stripping types, then strip imports */
 export async function transpileTypeScript(code: string): Promise<string> {
   let js: string;
-  const isLikelyTypeScript = looksLikeTypeScript(code);
 
   try {
     const esbuild = await getEsbuild();
@@ -91,6 +90,9 @@ export async function transpileTypeScript(code: string): Promise<string> {
       // Fallback mode: only strip types when the input actually looks like TS.
       // Running naive stripping on plain JS can corrupt object literals
       // (e.g. `Position: [0,0,0]` -> `Position`) and cause runtime errors.
+      // The heuristic is computed lazily here so it never runs on the common
+      // esbuild path, limiting its (bounded) cost to the rare fallback case.
+      const isLikelyTypeScript = looksLikeTypeScript(code);
       js = isLikelyTypeScript ? naiveTypeStrip(code) : code;
       lastTranspileMode = isLikelyTypeScript ? 'fallback-ts' : 'fallback-js';
       if (!fallbackWarningShown) {
@@ -99,6 +101,7 @@ export async function transpileTypeScript(code: string): Promise<string> {
       }
     }
   } catch {
+    const isLikelyTypeScript = looksLikeTypeScript(code);
     js = isLikelyTypeScript ? naiveTypeStrip(code) : code;
     lastTranspileMode = isLikelyTypeScript ? 'fallback-ts' : 'fallback-js';
     if (!fallbackWarningShown) {
@@ -116,15 +119,20 @@ export async function transpileTypeScript(code: string): Promise<string> {
  * We intentionally avoid broad `:` heuristics because they collide with JS object literals.
  */
 function looksLikeTypeScript(code: string): boolean {
+  // These are presence heuristics: a leading window is sufficient to detect
+  // TS syntax, and bounding the scanned length defangs the backtracking-prone
+  // patterns below (adjacent unbounded character-class quantifiers) against
+  // attacker-supplied script source on the esbuild-unavailable fallback path.
+  const sample = code.length > 8192 ? code.slice(0, 8192) : code;
   return (
-    /\binterface\s+\w+/.test(code) ||
-    /\btype\s+\w+\s*=/.test(code) ||
-    /\b(?:as)\s+[A-Za-z_]\w*(?:\[\])?/.test(code) ||
-    /\b(?:const|let|var)\s+\w+\s*:\s*[A-Za-z_]/.test(code) ||
-    /\b(?:async\s+)?(?:function\s+\w+\s*)?\([^()]*\b\w+\s*:\s*[A-Za-z_][\w<>,\s[\]|]*\)\s*(?::\s*[A-Za-z_][\w<>,\s[\]|]*)?\s*(?:=>|\{)/.test(code) ||
-    /\([^)]*:\s*(?:string|number|boolean|void|any|unknown|never|Record<|Array<|Map<|Set<)/.test(code) ||
-    /\)\s*:\s*[A-Za-z_][\w<>,\s[\]|]*\s*\{/.test(code) ||
-    /\w<\w+(?:\s*,\s*\w+)*>\s*\(/.test(code)
+    /\binterface\s+\w+/.test(sample) ||
+    /\btype\s+\w+\s*=/.test(sample) ||
+    /\b(?:as)\s+[A-Za-z_]\w*(?:\[\])?/.test(sample) ||
+    /\b(?:const|let|var)\s+\w+\s*:\s*[A-Za-z_]/.test(sample) ||
+    /\b(?:async\s+)?(?:function\s+\w+\s*)?\([^()]*\b\w+\s*:\s*[A-Za-z_][\w<>,\s[\]|]*\)\s*(?::\s*[A-Za-z_][\w<>,\s[\]|]*)?\s*(?:=>|\{)/.test(sample) ||
+    /\([^)]*:\s*(?:string|number|boolean|void|any|unknown|never|Record<|Array<|Map<|Set<)/.test(sample) ||
+    /\)\s*:\s*[A-Za-z_][\w<>,\s[\]|]*\s*\{/.test(sample) ||
+    /\w<\w+(?:\s*,\s*\w+)*>\s*\(/.test(sample)
   );
 }
 

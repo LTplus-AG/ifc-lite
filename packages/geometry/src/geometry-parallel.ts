@@ -58,6 +58,14 @@ export interface ProcessParallelOptions {
    */
   mergeLayers?: boolean;
   /**
+   * Issue #924 — per-entity geometry-hash tolerance in metres. When a
+   * positive value is given, each geometry worker's IfcAPI receives
+   * `setComputeGeometryHashes(tol)` before the first stream-chunk, so the
+   * RTC-invariant `geometryHash` lands on every emitted mesh for the
+   * model-diff / compare feature. `undefined`/`null` ⇒ off (zero overhead).
+   */
+  geometryHashTolerance?: number | null;
+  /**
    * Explicit URL for the wasm-bindgen `.wasm` binary. When provided,
    * forwarded to the geometry workers' init messages so they call
    * `init(wasmUrl)` instead of relying on wasm-bindgen's default
@@ -183,7 +191,19 @@ export async function* processParallel(
           firstBatchByWorker[workerIndex] = elapsed();
           console.log(`[stream] worker[${workerIndex}] first batch @ ${elapsed()}ms (${msg.meshes?.length ?? 0} meshes)`);
         }
-        const meshes: MeshData[] = msg.meshes.map((m: MeshData) => ({
+        const meshes: MeshData[] = msg.meshes.map((m: {
+          expressId: number;
+          ifcType?: string;
+          positions: Float32Array;
+          normals: Float32Array;
+          indices: Uint32Array;
+          color: [number, number, number, number];
+          // #961: optional per-vertex UVs + decoded surface texture.
+          uvs?: MeshData['uvs'];
+          texture?: MeshData['texture'];
+          geometryHash?: bigint;
+          geometryClass?: number;
+        }) => ({
           expressId: m.expressId,
           ifcType: m.ifcType,
           positions: m.positions instanceof Float32Array ? m.positions : new Float32Array(m.positions),
@@ -194,6 +214,13 @@ export async function* processParallel(
           // renderer (transferables; already typed arrays from the worker).
           ...(m.uvs ? { uvs: m.uvs } : {}),
           ...(m.texture ? { texture: m.texture } : {}),
+          // Carry the model-diff fingerprint through the worker boundary
+          // (issue #924); undefined when hashing is off.
+          ...(m.geometryHash !== undefined ? { geometryHash: m.geometryHash } : {}),
+          // #957 follow-up: carry the Model/Types geometry class through the
+          // worker→main re-map (else the viewer's view-mode filter sees only
+          // class 0 and the Types view renders nothing).
+          ...(m.geometryClass !== undefined ? { geometryClass: m.geometryClass } : {}),
         }));
         if (meshes.length > 0) {
           // Update totalMeshes per batch so consumers see a live
@@ -280,6 +307,12 @@ export async function* processParallel(
     worker.postMessage({
       type: 'set-merge-layers',
       enabled: options?.mergeLayers === true,
+    });
+    // Issue #924: forward the geometry-hash tolerance the same way — always
+    // sent so the controller path stays uniform; null is a cheap no-op.
+    worker.postMessage({
+      type: 'set-compute-geometry-hashes',
+      tolerance: options?.geometryHashTolerance ?? null,
     });
   }
 
@@ -396,6 +429,14 @@ export async function* processParallel(
   console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}`);
 
   const prepassWorker = makePrepassWorker();
+  // Wrap the rest of the pipeline so worker teardown runs not only on
+  // normal completion / error / zero-jobs branches, but also when the
+  // consumer abandons the generator via `.return()` / `.throw()` while it
+  // is suspended at a `yield` or the `resolveWaiting` await. The viewer's
+  // `watchedGeometryStream` relies on this `finally` to tear down workers
+  // on break / abort / watchdog (see boundedIteratorReturn). The existing
+  // branch-local `terminate()` calls remain — `terminate()` is idempotent.
+  try {
   // Forward the consumer-supplied wasm URL to the pre-pass worker so it
   // doesn't fall back to wasm-bindgen's `import.meta.url` default. The
   // pre-pass worker uses the same `geometry.worker.ts` bundle and the
@@ -675,4 +716,10 @@ export async function* processParallel(
 
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
   yield { type: 'complete', totalMeshes, coordinateInfo };
+  } finally {
+    for (const w of workers) {
+      try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+    }
+    try { prepassWorker.terminate(); } catch { /* cleanup — safe to ignore */ }
+  }
 }

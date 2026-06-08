@@ -98,6 +98,11 @@ export interface LensSlice {
   lensPanelVisible: boolean;
   /** Computed: globalId → hex color for entities matched by active lens */
   lensColorMap: Map<number, string>;
+  /** The exact RGBA overlay the active lens last pushed to the shared color
+   *  channel, or null when no lens is active. Lets another channel owner
+   *  (e.g. the compare overlay) hand control back to the lens on teardown
+   *  instead of clearing it. */
+  lensAppliedColors: Map<number, [number, number, number, number]> | null;
   /** Computed: globalIds to hide via lens rules */
   lensHiddenIds: Set<number>;
   /** Computed: ruleId → matched entity count for the active lens */
@@ -117,6 +122,7 @@ export interface LensSlice {
   toggleLensPanel: () => void;
   setLensPanelVisible: (visible: boolean) => void;
   setLensColorMap: (map: Map<number, string>) => void;
+  setLensAppliedColors: (map: Map<number, [number, number, number, number]> | null) => void;
   setLensHiddenIds: (ids: Set<number>) => void;
   setLensRuleCounts: (counts: Map<string, number>) => void;
   setLensRuleEntityIds: (ids: Map<string, number[]>) => void;
@@ -147,6 +153,7 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
   activeLensId: null,
   lensPanelVisible: false,
   lensColorMap: new Map(),
+  lensAppliedColors: null,
   lensHiddenIds: new Set(),
   lensRuleCounts: new Map(),
   lensRuleEntityIds: new Map(),
@@ -183,6 +190,7 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
   setLensPanelVisible: (lensPanelVisible) => set({ lensPanelVisible }),
 
   setLensColorMap: (lensColorMap) => set({ lensColorMap }),
+  setLensAppliedColors: (lensAppliedColors) => set({ lensAppliedColors }),
   setLensHiddenIds: (lensHiddenIds) => set({ lensHiddenIds }),
   setLensRuleCounts: (lensRuleCounts) => set({ lensRuleCounts }),
   setLensRuleEntityIds: (lensRuleEntityIds) => set({ lensRuleEntityIds }),

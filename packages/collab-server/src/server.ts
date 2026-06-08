@@ -7,16 +7,18 @@
  */
 
 import * as http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager, type PeerConnection } from './room-manager.js';
 import { FilePersistence, MemoryPersistence, type Persistence } from './persistence.js';
-import { allowAnonymousEditor, type AuthenticateFn, type Principal } from './auth.js';
+import { allowAnonymousEditor, canWrite, type AuthenticateFn, type Principal } from './auth.js';
 import { type AuditSink } from './audit-log.js';
 import { type RateLimitOptions } from './rate-limit.js';
 import { type VerifyMessageFn } from './room-manager.js';
 import {
   handleBlobRequest,
   InMemoryBlobStorage,
+  type BlobAuthorizeFn,
   type ServerBlobStorage,
 } from './blob-route.js';
 import { defaultMetrics, MetricsRegistry } from './metrics.js';
@@ -42,6 +44,22 @@ export interface StartCollabServerOptions {
   blobStorage?: ServerBlobStorage;
   /** Reject blob PUTs above this size (default 100 MB). */
   blobMaxBytes?: number;
+  /**
+   * Authorizer for the `/blobs` route. When omitted it defaults to one
+   * derived from `authenticate` so the blob route shares the websocket
+   * sync token (a missing/invalid token is rejected, and PUT/DELETE
+   * additionally require write capability). With the anonymous default
+   * `authenticate`, blob access stays anonymous — matching the WS path.
+   * Pass `null` to explicitly disable blob authorization.
+   */
+  authorizeBlob?: BlobAuthorizeFn | null;
+  /**
+   * Require a bearer token (compared against this shared secret) for the
+   * `/metrics` diagnostics endpoint, which labels gauges with raw room
+   * IDs. `/healthz` stays open for liveness probes but omits room detail
+   * unless this token is presented. Defaults to `COLLAB_METRICS_TOKEN`.
+   */
+  metricsToken?: string;
   /**
    * Unload rooms that have had zero peers for this many ms (default
    * disabled). Persistence keeps the durable copy; rehydrate on next
@@ -84,6 +102,13 @@ export async function startCollabServer(
   });
 
   const blobStorage = opts.blobStorage ?? new InMemoryBlobStorage();
+  // Default the blob authorizer to one that reuses the WS `authenticate`
+  // hook so blobs share the same token scheme. `null` disables it.
+  const authorizeBlob: BlobAuthorizeFn | undefined =
+    opts.authorizeBlob === null
+      ? undefined
+      : opts.authorizeBlob ?? makeBlobAuthorizer(authenticate);
+  const metricsToken = opts.metricsToken ?? process.env.COLLAB_METRICS_TOKEN;
   const metrics = opts.metrics ?? defaultMetrics;
   const peersGauge = metrics.gauge(
     'collab_room_peers',
@@ -103,12 +128,32 @@ export async function startCollabServer(
     opts.server ??
     http.createServer(async (req, res) => {
       try {
-        if (req.url === '/healthz') {
+        const reqUrl = new URL(req.url ?? '/', 'http://localhost');
+        const pathname = reqUrl.pathname;
+        // Room IDs encode tenant project/model paths, so room-identifying
+        // diagnostics detail is only surfaced to a caller presenting the
+        // metrics token. When no token is configured, behaviour is unchanged
+        // (open) — deployers opt in to gating by setting the token.
+        const diagAuthorized = !metricsToken || isMetricsAuthorized(req, metricsToken);
+        if (pathname === '/healthz') {
+          // Liveness probes must reach /healthz unauthenticated, but the
+          // live room count leaks cross-tenant scale — only include it when
+          // the caller is authorized (or when no token gates diagnostics).
+          const body: Record<string, unknown> = { ok: true };
+          if (diagAuthorized) body.rooms = roomManager.list().length;
           res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, rooms: roomManager.list().length }));
+          res.end(JSON.stringify(body));
           return;
         }
-        if (req.url === '/metrics') {
+        if (pathname === '/metrics') {
+          if (!diagAuthorized) {
+            // /metrics labels gauges with raw roomIds (tenant project/model
+            // paths). Reject rather than leak them; never populate the
+            // registry with room labels on the unauthorized path.
+            res.writeHead(401, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'unauthorized' }));
+            return;
+          }
           // Refresh derived gauges before rendering so the snapshot
           // reflects live state, not state-at-last-event.
           const stats = await roomManager.stats();
@@ -119,10 +164,11 @@ export async function startCollabServer(
           return;
         }
         // Blob route: PUT / GET / HEAD / DELETE on /blobs/<hash>, GET /blobs.
-        if (req.url && req.url.startsWith('/blobs')) {
+        if (pathname.startsWith('/blobs')) {
           const handled = await handleBlobRequest(req, res, {
             storage: blobStorage,
             maxBytes: opts.blobMaxBytes,
+            authorize: authorizeBlob,
           });
           if (handled) return;
         }
@@ -146,7 +192,11 @@ export async function startCollabServer(
     reject: (reason: string) => rejectsCounter.inc(1, { reason }),
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  // Defense-in-depth: cap the raw frame size at the ws layer so an
+  // oversized write/awareness frame is dropped before it reaches the
+  // room-manager decode + per-message size guards. Sized above the 8 MB
+  // sync write-frame ceiling enforced in room-manager.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
 
   httpServer.on('upgrade', (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, (ws) => {
@@ -269,6 +319,70 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: C
     console.error('[collab-server] ws error:', err);
     cleanup();
   });
+}
+
+/**
+ * Pseudo-room scope handed to `authenticate` for blob requests. Blobs are
+ * content-addressed and not room-scoped, but reusing the WS `authenticate`
+ * hook keeps the credential scheme identical. Custom authenticators that
+ * key off roomId see this sentinel and can grant/deny blob access
+ * explicitly.
+ */
+const BLOB_AUTH_ROOM = '__blobs__';
+
+/**
+ * Derive a blob authorizer from the websocket `authenticate` hook so the
+ * blob route shares the same token scheme. A null principal (bad/missing
+ * token) is rejected; PUT/DELETE additionally require write capability,
+ * GET/HEAD/list accept any authenticated principal.
+ */
+function makeBlobAuthorizer(authenticate: AuthenticateFn): BlobAuthorizeFn {
+  return async (token, method, _hash) => {
+    let principal: Principal | null;
+    try {
+      principal = await authenticate(token, BLOB_AUTH_ROOM);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[collab-server] blob auth threw:', err);
+      return false;
+    }
+    if (!principal) return false;
+    if (method === 'PUT' || method === 'DELETE') return canWrite(principal);
+    return true;
+  };
+}
+
+/**
+ * Lift the bearer credential from a diagnostics request — `Authorization`
+ * header only. Plain-HTTP diagnostics endpoints (`/metrics`) deliberately do
+ * NOT accept `?token=`: a query-string secret leaks via access logs, reverse
+ * proxies, traces, and copied URLs. (The WebSocket path keeps its `?token=`
+ * fallback because browsers can't set custom handshake headers.)
+ */
+function extractDiagToken(req: http.IncomingMessage): string | undefined {
+  const header = req.headers['authorization'];
+  if (typeof header === 'string') {
+    const m = /^Bearer\s+(.+)$/i.exec(header.trim());
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
+/**
+ * Constant-time check that the request carries the configured metrics
+ * token. Callers gate this on `metricsToken` being set.
+ */
+function isMetricsAuthorized(
+  req: http.IncomingMessage,
+  metricsToken: string,
+): boolean {
+  const presented = extractDiagToken(req);
+  if (typeof presented !== 'string') return false;
+  const a = Buffer.from(presented);
+  const b = Buffer.from(metricsToken);
+  // timingSafeEqual throws on length mismatch; guard first.
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 export { FilePersistence, MemoryPersistence } from './persistence.js';

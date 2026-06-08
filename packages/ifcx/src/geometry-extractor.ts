@@ -106,6 +106,9 @@ function convertUsdMesh(
   ifcType: string | undefined,
   transform: Float32Array | null
 ): MeshData {
+  // The homogeneous denominator is validated per-vertex inside applyTransform
+  // (a projective matrix can produce a bad w on points other than the first).
+
   // Process points: apply transform in Z-up space, then convert to Y-up
   const positions = new Float32Array(usd.points.length * 3);
   for (let i = 0; i < usd.points.length; i++) {
@@ -213,8 +216,14 @@ function flattenMatrix(m: number[][]): Float32Array {
  * Apply 4x4 transform matrix to a point.
  */
 function applyTransform(x: number, y: number, z: number, m: Float32Array): [number, number, number] {
-  // Row-major matrix multiplication with perspective divide
+  // Row-major matrix multiplication with perspective divide. `w` is computed
+  // per-vertex, so a projective/malformed usd::xformop can yield a zero or
+  // non-finite denominator on *any* point — validate each, not just the first,
+  // or the divide silently produces ±Infinity / NaN positions that poison the mesh.
   const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+  if (!Number.isFinite(w) || Math.abs(w) < 1e-12) {
+    throw new Error('IFCx geometry: usd::xformop produces non-finite homogeneous w; matrix is malformed or singular');
+  }
   return [
     (m[0] * x + m[4] * y + m[8] * z + m[12]) / w,
     (m[1] * x + m[5] * y + m[9] * z + m[13]) / w,

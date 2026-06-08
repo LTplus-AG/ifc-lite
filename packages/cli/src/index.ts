@@ -262,7 +262,7 @@ async function main(): Promise<void> {
 main().catch((err: Error) => {
   process.stderr.write(`Error: ${err.message}\n`);
   if (process.env.DEBUG) {
-    process.stderr.write(err.stack ?? '' + '\n');
+    process.stderr.write((err.stack ?? '') + '\n');
   }
   process.exit(1);
 });

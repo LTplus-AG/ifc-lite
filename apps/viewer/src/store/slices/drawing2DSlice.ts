@@ -98,6 +98,13 @@ export interface Drawing2DState {
      * to the IfcAnnotation text feature).
      */
     showIfcAnnotations: boolean;
+    /**
+     * Construction projection (issue #979): project geometry beyond the cut
+     * as reference lines — thin solid for the visible floor side, dashed for
+     * overhead elements (beams, roofs, eaves). Plan ('down') sections only.
+     * Off by default; the section view stays cut-only until enabled.
+     */
+    showConstructionProjection: boolean;
   };
   /** Available graphic override presets */
   graphicOverridePresets: GraphicOverridePreset[];
@@ -244,6 +251,7 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
   scale: 100, // 1:100 default
   useSymbolicRepresentations: false, // Default to section cut (Body geometry)
   showIfcAnnotations: true, // Mirror the 3D Class Visibility default
+  showConstructionProjection: false, // Optional reference projection (issue #979), off by default
 });
 
 const getDefaultState = (): Drawing2DState => ({

@@ -151,59 +151,68 @@ export async function* streamNativeGeometry(
     },
   });
 
-  while (!completed || queuedEvents.length > 0) {
-    let drainedEventCount = 0;
-    let drainedMeshCount = 0;
-    let drainStartedAt = performance.now();
-    while (queuedEvents.length > 0) {
-      const event = queuedEvents.shift()!;
-      if (event.type === 'colorUpdate') {
-        yield { type: 'colorUpdate', updates: event.updates };
-        continue;
-      }
+  try {
+    while (!completed || queuedEvents.length > 0) {
+      let drainedEventCount = 0;
+      let drainedMeshCount = 0;
+      let drainStartedAt = performance.now();
+      while (queuedEvents.length > 0) {
+        const event = queuedEvents.shift()!;
+        if (event.type === 'colorUpdate') {
+          yield { type: 'colorUpdate', updates: event.updates };
+          continue;
+        }
 
-      queueState.queuedMeshes = Math.max(0, queueState.queuedMeshes - event.meshes.length);
-      // Native desktop streaming already produces site-local geometry, so
-      // avoid the generic JS RTC/outlier scan on every streamed batch.
-      coordinator.processTrustedMeshesIncremental(event.meshes);
-      totalMeshes += event.meshes.length;
-      const coordinateInfo = coordinator.getCurrentCoordinateInfo();
-      yield {
-        type: 'batch',
-        meshes: event.meshes,
-        totalSoFar: totalMeshes,
-        coordinateInfo: coordinateInfo || undefined,
-        nativeTelemetry: event.nativeTelemetry,
-      };
-      drainedEventCount += 1;
-      drainedMeshCount += event.meshes.length;
+        queueState.queuedMeshes = Math.max(0, queueState.queuedMeshes - event.meshes.length);
+        // Native desktop streaming already produces site-local geometry, so
+        // avoid the generic JS RTC/outlier scan on every streamed batch.
+        coordinator.processTrustedMeshesIncremental(event.meshes);
+        totalMeshes += event.meshes.length;
+        const coordinateInfo = coordinator.getCurrentCoordinateInfo();
+        yield {
+          type: 'batch',
+          meshes: event.meshes,
+          totalSoFar: totalMeshes,
+          coordinateInfo: coordinateInfo || undefined,
+          nativeTelemetry: event.nativeTelemetry,
+        };
+        drainedEventCount += 1;
+        drainedMeshCount += event.meshes.length;
 
-      if (queuedEvents.length > 0) {
-        const shouldYield =
-          drainedEventCount >= MAX_NATIVE_STREAM_EVENTS_PER_TURN ||
-          drainedMeshCount >= MAX_NATIVE_STREAM_MESHES_PER_TURN ||
-          performance.now() - drainStartedAt >= MAX_NATIVE_STREAM_DRAIN_MS;
-        if (shouldYield) {
-          await yieldToEventLoop();
-          drainedEventCount = 0;
-          drainedMeshCount = 0;
-          drainStartedAt = performance.now();
+        if (queuedEvents.length > 0) {
+          const shouldYield =
+            drainedEventCount >= MAX_NATIVE_STREAM_EVENTS_PER_TURN ||
+            drainedMeshCount >= MAX_NATIVE_STREAM_MESHES_PER_TURN ||
+            performance.now() - drainStartedAt >= MAX_NATIVE_STREAM_DRAIN_MS;
+          if (shouldYield) {
+            await yieldToEventLoop();
+            drainedEventCount = 0;
+            drainedMeshCount = 0;
+            drainStartedAt = performance.now();
+          }
         }
       }
-    }
 
-    if (streamError) {
-      throw streamError;
-    }
+      if (streamError) {
+        throw streamError;
+      }
 
-    if (!completed) {
-      await new Promise<void>((resolve) => {
-        resolvePending = resolve;
-      });
+      if (!completed) {
+        await new Promise<void>((resolve) => {
+          resolvePending = resolve;
+        });
+      }
+    }
+  } finally {
+    // Ensure the native stream and its Tauri listeners are torn down
+    // deterministically even when this generator is abandoned (.return())
+    // while suspended at a `yield` or the pending-wake promise.
+    try {
+      await streamingPromise;
+    } catch {
+      /* cleanup — safe to ignore */
     }
   }
-
-  await streamingPromise;
 
   if (queueState.coalescedBatchCount > 0) {
     console.info(

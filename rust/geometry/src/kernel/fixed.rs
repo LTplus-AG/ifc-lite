@@ -15,8 +15,7 @@
 //! always either an exact sign identical to BigRational, or a deferral to it.
 
 use super::{assemble_sign, DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
-use num_traits::{FromPrimitive, One, Zero};
-use std::cmp::Ordering;
+use num_traits::{FromPrimitive, One};
 
 type I = bnum::types::I1024; // stack-allocated
 type V3 = [I; 3];
@@ -72,10 +71,16 @@ fn det3(u: &V3, v: &V3, w: &V3) -> Option<I> {
 
 #[inline]
 fn sign_of(x: &I) -> Sign {
-    match x.cmp(&I::zero()) {
-        Ordering::Less => Sign::Negative,
-        Ordering::Greater => Sign::Positive,
-        Ordering::Equal => Sign::Zero,
+    // Avoid `I::cmp` — its lexicographic limb compare is vectorised to a v16i8
+    // setcc that wasm-SIMD128 cannot select. is_negative is the sign bit; is_zero
+    // is the scalar all-limbs fold — both are simd128-safe.
+    use num_traits::Signed;
+    if x.is_negative() {
+        Sign::Negative
+    } else if x.is_zero() {
+        Sign::Zero
+    } else {
+        Sign::Positive
     }
 }
 

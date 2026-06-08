@@ -1370,9 +1370,9 @@ dependencies = [
 
 [[package]]
 name = "i_float"
-version = "2.0.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36c8fc32799c6cde9c7604188e4ece27acf3ddcb2d40b038113e3f0bc525aac7"
+checksum = "519b2780a1187eeed09145e5d168863c87f0d704abe84084206ebd897f99c6dc"
 dependencies = [
  "libm",
 ]
@@ -1385,9 +1385,9 @@ checksum = "d73d122b937fca067feb0ad74f62388920272b27c356d4df2d0cfdd59e044cf0"
 
 [[package]]
 name = "i_overlay"
-version = "6.0.1"
+version = "7.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef7df1a4c1801ec972584acab91071a22ebe745fa4d9594980258ca4497c4d40"
+checksum = "fd4e3fcd31bcb1bfa09ea7863303f0197a0d60061b1f97e5438daa760aab888f"
 dependencies = [
  "i_float",
  "i_key_sort",
@@ -1397,18 +1397,18 @@ dependencies = [
 
 [[package]]
 name = "i_shape"
-version = "2.0.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d12d0501b145b966d1801f90e4fcc20b65b39617055d131efa8699068bb1de1"
+checksum = "90b2ee7bae072887c579a2f2fd2a7fa1c29cceecfae1998ef940061c5570afff"
 dependencies = [
  "i_float",
 ]
 
 [[package]]
 name = "i_tree"
-version = "0.18.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4804bdc1dc124eb7e1aa9e144ecc04096bcf787a10a15fa44af682b51f0f6cce"
+checksum = "1e9d4a992a9fe83130f41ceacceac3bb116a4355dfc9c8d6ecea4f1e4b4c6caf"
 
 [[package]]
 name = "iana-time-zone"
@@ -1442,11 +1442,11 @@ checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
 
 [[package]]
 name = "ifc-lite-clash"
-version = "3.0.0"
+version = "3.1.0"
 
 [[package]]
 name = "ifc-lite-core"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "fast-float2",
  "futures-core",
@@ -1463,7 +1463,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-geometry"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "approx",
  "earcutr",
@@ -1481,7 +1481,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -1494,7 +1494,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-server"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1528,7 +1528,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-wasm"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "console_error_panic_hook",
  "futures-util",

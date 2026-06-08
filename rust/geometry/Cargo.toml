@@ -53,7 +53,7 @@ rustc-hash = "2.1"
 # PNG decode for IfcBlobTexture (issue #961). Already in the dependency tree
 # (transitive), so it adds no new wasm weight. Pure-Rust inflate
 # (miniz_oxide / fdeflate) — wasm-safe.
-png = "0.17"
+png = "0.18"
 
 # JPEG decode for IfcBlobTexture with RasterFormat 'JPG'/'JPEG' (issue #961).
 # `default-features = false` drops the `rayon` parallelism (no threads on

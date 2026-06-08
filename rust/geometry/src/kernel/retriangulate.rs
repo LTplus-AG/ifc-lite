@@ -295,7 +295,20 @@ pub fn earcut(it: &Interner, ring: &[Vid], axis: DropAxis, w0: Sign) -> Vec<SubT
                 Some(j) => j,
             });
         }
-        let i = best.expect("earcut: no ear found — pocket is not a simple polygon");
+        let i = match best {
+            Some(i) => i,
+            None => {
+                // Degenerate pocket (no strictly-convex empty ear — a non-simple or
+                // collinear polygon). Fan-triangulate the remainder rather than
+                // panic: a panic aborts the wasm worker (panic=abort) and stalls
+                // the whole geometry stream. The fan may contain slivers, which
+                // consolidate_coplanar cleans up at the seam.
+                for k in 1..poly.len() - 1 {
+                    out.push([poly[0], poly[k], poly[k + 1]]);
+                }
+                return out;
+            }
+        };
         let n = poly.len();
         out.push([poly[(i + n - 1) % n], poly[i], poly[(i + 1) % n]]);
         poly.remove(i);

@@ -19,7 +19,7 @@
 
 use super::coplanar::coplanar_clip;
 use super::interner::{Interner, Vid};
-use super::predicates::{cmp_lex, orient2d_any};
+use super::predicates::{cmp_lex, orient2d_any, orient3d};
 use super::rational::point_of;
 use super::retriangulate::{projection_axis, triangulate, Constraint, RetriInput};
 use super::tritri::{tri_tri_intersection, TriTri};
@@ -201,9 +201,6 @@ fn retriangulate_each(tris: &[Tri], cons: &[Vec<Constraint>], it: &mut Interner)
 
 // --- M4: winding classification + boolean extraction ---------------------
 
-fn sub3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
 fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
@@ -211,35 +208,34 @@ fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-/// Forward ray (origin `o`, direction `d`) hits triangle `t` at t>0? (Möller–Trumbore.)
-fn ray_hits(o: [f64; 3], d: [f64; 3], t: &Tri) -> bool {
-    let e1 = sub3(t[1], t[0]);
-    let e2 = sub3(t[2], t[0]);
-    let h = cross3(d, e2);
-    let det = dot3(e1, h);
-    if det.abs() < 1e-12 {
-        return false; // ray parallel to the triangle
-    }
-    let f = 1.0 / det;
-    let s = sub3(o, t[0]);
-    let u = f * dot3(s, h);
-    if !(0.0..=1.0).contains(&u) {
-        return false;
-    }
-    let q = cross3(s, e1);
-    let v = f * dot3(d, q);
-    if v < 0.0 || u + v > 1.0 {
-        return false;
-    }
-    f * dot3(e2, q) > 1e-9
+#[inline]
+fn e(p: [f64; 3]) -> ImplicitPoint {
+    ImplicitPoint::Explicit(p)
 }
 
-/// Is point `p` strictly inside the closed mesh `tris`? (Ray-cast parity along a
-/// fixed non-axis-aligned direction — robust for the strictly-inside/outside
-/// centroids the conforming arrangement produces.)
+/// EXACT segment–triangle intersection via `orient3d` (no epsilon): the segment
+/// `q1→q2` crosses triangle `t` iff its endpoints straddle `t`'s plane AND the
+/// line passes the same side of all three edges. A grazing hit (`orient3d == 0`)
+/// is rejected — the fixed generic ray direction makes those vanishingly rare.
+fn exact_seg_hits_tri(q1: [f64; 3], q2: [f64; 3], t: &Tri) -> bool {
+    let s1 = orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(q1));
+    let s2 = orient3d(&e(t[0]), &e(t[1]), &e(t[2]), &e(q2));
+    if s1 == Sign::Zero || s2 == Sign::Zero || s1 == s2 {
+        return false;
+    }
+    let ea = orient3d(&e(q1), &e(q2), &e(t[0]), &e(t[1]));
+    let eb = orient3d(&e(q1), &e(q2), &e(t[1]), &e(t[2]));
+    let ec = orient3d(&e(q1), &e(q2), &e(t[2]), &e(t[0]));
+    ea != Sign::Zero && ea == eb && eb == ec
+}
+
+/// Is point `p` inside the closed mesh `tris`? Exact ray-cast parity: a segment
+/// from `p` to a far point along a fixed generic direction (guaranteed outside
+/// the mesh), each crossing tested by the exact predicate above.
 fn point_inside(p: [f64; 3], tris: &[Tri]) -> bool {
-    let dir = [0.572_581, 0.573_006, 0.586_521]; // generic, dodges grazing
-    tris.iter().filter(|t| ray_hits(p, dir, t)).count() % 2 == 1
+    let dir = [0.572_581, 0.573_006, 0.586_521];
+    let far = [p[0] + dir[0] * 1e7, p[1] + dir[1] * 1e7, p[2] + dir[2] * 1e7];
+    tris.iter().filter(|t| exact_seg_hits_tri(p, far, t)).count() % 2 == 1
 }
 
 fn to_f64_pt(arr: &Arrangement, v: Vid) -> [f64; 3] {
@@ -421,6 +417,13 @@ mod tests {
         let uni = volume(&boolean(&a, &b, BoolOp::Union));
         assert!((uni - 15.0).abs() < 1e-6, "A∪B volume = {uni}, expected 15");
     }
+
+    // NOTE: a coplanar SHARED-FACE boolean (e.g. two abutting boxes' union) is
+    // NOT yet manifold — the shared-face centroid sits exactly on the other
+    // operand's surface, so ray-cast parity can't classify it. That needs the M4
+    // coplanar keep/flip-by-normal-agreement (back-to-back faces ⇒ remove both),
+    // not yet implemented. M3b (coplanar constraints) + the exact ray-cast handle
+    // everything EXCEPT the shared-face keep/flip. Test re-added at that milestone.
 
     #[test]
     fn boolean_manifest_is_pinned() {

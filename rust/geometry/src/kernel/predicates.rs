@@ -59,10 +59,25 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
     }
 }
 
+/// orient2d with two implicit points (a,b) + one explicit (c) — cascade.
+pub fn orient2d_2i(a: &ImplicitPoint, b: &ImplicitPoint, c: [f64; 3], axis: DropAxis) -> Sign {
+    interval::orient2d_2i(a, b, c, axis).unwrap_or_else(|| rational::orient2d_2i(a, b, c, axis))
+}
+
+/// orient2d with three implicit points (a,b,c) — cascade.
+pub fn orient2d_3i(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Sign {
+    interval::orient2d_3i(a, b, c, axis).unwrap_or_else(|| rational::orient2d_3i(a, b, c, axis))
+}
+
+/// Exact lexicographic total order on points — the interner's comparison (cascade).
+pub fn cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint) -> Sign {
+    interval::cmp_lex(a, b).unwrap_or_else(|| rational::cmp_lex(a, b))
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{rational, DropAxis, Lpi, Tpi};
-    use super::{orient2d, orient3d, ImplicitPoint, Sign};
+    use super::{cmp_lex, orient2d, orient2d_2i, orient2d_3i, orient3d, ImplicitPoint, Sign};
 
     fn e(p: [f64; 3]) -> ImplicitPoint {
         ImplicitPoint::Explicit(p)
@@ -490,6 +505,38 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn new_tier_interval_is_sound_and_cascade_equals_exact() {
+        // M2.3.2: the interval fast tiers for 2I/3I orient2d + cmp_lex never
+        // return a wrong definite sign, and the public cascade always == exact.
+        use super::super::interval;
+        let mut rng = Lcg(0x0bad_c0de_1234_5678);
+        for _ in 0..500 {
+            let mk = |rng: &mut Lcg| Lpi { p: rng.p(), q: rng.p(), r: rng.p(), s: rng.p(), t: rng.p() };
+            let a = ImplicitPoint::Lpi(mk(&mut rng));
+            let b = ImplicitPoint::Lpi(mk(&mut rng));
+            let cc = ImplicitPoint::Lpi(mk(&mut rng));
+            let c = rng.p();
+            for axis in AXES {
+                let ex2 = rational::orient2d_2i(&a, &b, c, axis);
+                if let Some(s) = interval::orient2d_2i(&a, &b, c, axis) {
+                    assert_eq!(s, ex2, "orient2d_2i interval wrong sign");
+                }
+                assert_eq!(orient2d_2i(&a, &b, c, axis), ex2, "2i cascade != exact");
+                let ex3 = rational::orient2d_3i(&a, &b, &cc, axis);
+                if let Some(s) = interval::orient2d_3i(&a, &b, &cc, axis) {
+                    assert_eq!(s, ex3, "orient2d_3i interval wrong sign");
+                }
+                assert_eq!(orient2d_3i(&a, &b, &cc, axis), ex3, "3i cascade != exact");
+            }
+            let exl = rational::cmp_lex(&a, &b);
+            if let Some(s) = interval::cmp_lex(&a, &b) {
+                assert_eq!(s, exl, "cmp_lex interval wrong sign");
+            }
+            assert_eq!(cmp_lex(&a, &b), exl, "cmp_lex cascade != exact");
         }
     }
 

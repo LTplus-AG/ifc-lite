@@ -15,7 +15,7 @@
 //! widening is bit-identical across x86_64/aarch64/wasm — the determinism bar.
 //! No `mul_add`/FMA anywhere (contraction would break the directed rounding).
 
-use super::{DropAxis, Lpi, Sign, Tpi};
+use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 
 #[derive(Clone, Copy, Debug)]
 pub struct RnInterval {
@@ -232,4 +232,87 @@ pub fn lpi_orient2d(l: &Lpi, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Option
 pub fn tpi_orient2d(t: &Tpi, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Option<Sign> {
     let (lambda, d) = tpi_lambda(t);
     indirect_orient2d(&lambda, d, b, c, axis)
+}
+
+/// λ/d (interval) of an implicit point. Callers dispatch — never `Explicit`.
+fn ilambda_of(p: &ImplicitPoint) -> (Iv3, RnInterval) {
+    match p {
+        ImplicitPoint::Lpi(l) => lpi_lambda(l),
+        ImplicitPoint::Tpi(t) => tpi_lambda(t),
+        ImplicitPoint::Explicit(_) => unreachable!("ilambda_of: Explicit"),
+    }
+}
+
+/// Interval tier of `rational::orient2d_2i` — `None` on a zero-straddle.
+pub fn orient2d_2i(a: &ImplicitPoint, b: &ImplicitPoint, c: [f64; 3], axis: DropAxis) -> Option<Sign> {
+    let (i, j) = axis_idx(axis);
+    let (lam1, d1) = ilambda_of(a);
+    let (lam2, d2) = ilambda_of(b);
+    let cr = ivec(c);
+    let a_i = lam1[i].sub(d1.mul(cr[i]));
+    let a_j = lam1[j].sub(d1.mul(cr[j]));
+    let b_i = lam2[i].sub(d2.mul(cr[i]));
+    let b_j = lam2[j].sub(d2.mul(cr[j]));
+    let det = a_i.mul(b_j).sub(a_j.mul(b_i));
+    let sd1 = d1.sign()?;
+    let sd2 = d2.sign()?;
+    Some(super::assemble_sign(det.sign()?, &[sd1, sd2]))
+}
+
+/// Interval tier of `rational::orient2d_3i` — `None` on a zero-straddle.
+pub fn orient2d_3i(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Option<Sign> {
+    let (i, j) = axis_idx(axis);
+    let (lam1, d1) = ilambda_of(a);
+    let (lam2, d2) = ilambda_of(b);
+    let (lam3, d3) = ilambda_of(c);
+    let u_i = d1.mul(lam2[i]).sub(d2.mul(lam1[i]));
+    let u_j = d1.mul(lam2[j]).sub(d2.mul(lam1[j]));
+    let v_i = d1.mul(lam3[i]).sub(d3.mul(lam1[i]));
+    let v_j = d1.mul(lam3[j]).sub(d3.mul(lam1[j]));
+    let det = u_i.mul(v_j).sub(u_j.mul(v_i));
+    let sd2 = d2.sign()?;
+    let sd3 = d3.sign()?;
+    Some(super::assemble_sign(det.sign()?, &[sd2, sd3]))
+}
+
+/// Interval tier of one `cmp_lex` axis comparison — `None` on a zero-straddle.
+fn icmp_axis(a: &ImplicitPoint, b: &ImplicitPoint, k: usize) -> Option<Sign> {
+    use ImplicitPoint::Explicit;
+    match (a, b) {
+        (Explicit(ae), Explicit(be)) => Some(if ae[k] < be[k] {
+            Sign::Negative
+        } else if ae[k] > be[k] {
+            Sign::Positive
+        } else {
+            Sign::Zero
+        }),
+        (_, Explicit(be)) => {
+            let (lam, d) = ilambda_of(a);
+            let num = lam[k].sub(d.mul(RnInterval::point(be[k])));
+            Some(super::assemble_sign(num.sign()?, &[d.sign()?]))
+        }
+        (Explicit(ae), _) => {
+            let (lam, d) = ilambda_of(b);
+            let num = RnInterval::point(ae[k]).mul(d).sub(lam[k]);
+            Some(super::assemble_sign(num.sign()?, &[d.sign()?]))
+        }
+        (_, _) => {
+            let (la, da) = ilambda_of(a);
+            let (lb, db) = ilambda_of(b);
+            let num = la[k].mul(db).sub(lb[k].mul(da));
+            Some(super::assemble_sign(num.sign()?, &[da.sign()?, db.sign()?]))
+        }
+    }
+}
+
+/// Interval tier of `rational::cmp_lex`. `None` if the deciding axis straddles
+/// zero (escalate to exact). A definite-Zero axis advances to the next.
+pub fn cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint) -> Option<Sign> {
+    for k in 0..3 {
+        match icmp_axis(a, b, k)? {
+            Sign::Zero => continue,
+            s => return Some(s),
+        }
+    }
+    Some(Sign::Zero)
 }

@@ -13,7 +13,7 @@
 //! documented fatal risk). `Vid` is a STABLE append-only id (D4); the canonical
 //! processing order is the position in the `cmp_lex`-sorted index (`lex_order`).
 
-use super::rational::cmp_lex;
+use super::predicates::cmp_lex;
 use super::{ImplicitPoint, Sign};
 use std::cmp::Ordering;
 

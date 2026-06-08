@@ -13,7 +13,7 @@
 //! regression; running the SAME value on all three targets (the CI matrix +
 //! the local wasm cross-check) proves the topology-determinism bar for L1.
 
-use super::predicates::{orient2d, orient3d};
+use super::predicates::{cmp_lex, orient2d, orient2d_2i, orient2d_3i, orient3d};
 use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 
 /// Deterministic LCG (fixed seed — reproducible across targets).
@@ -59,15 +59,28 @@ pub fn indirect_sign_manifest() -> u64 {
                 [rng.p(), rng.p(), rng.p()],
             ],
         };
+        let l2 = Lpi { p: rng.p(), q: rng.p(), r: rng.p(), s: rng.p(), t: rng.p() };
         let ea = ImplicitPoint::Explicit(rng.p());
         let eb = ImplicitPoint::Explicit(rng.p());
         let ec = ImplicitPoint::Explicit(rng.p());
+        let il = ImplicitPoint::Lpi(l);
+        let it = ImplicitPoint::Tpi(t);
+        let il2 = ImplicitPoint::Lpi(l2);
+        // orient3d (explicit, LPI-1I, TPI-1I)
         mix(&mut h, orient3d(&ea, &eb, &ec, &ImplicitPoint::Explicit(l.p)));
-        mix(&mut h, orient3d(&ImplicitPoint::Lpi(l), &ea, &eb, &ec));
-        mix(&mut h, orient3d(&ImplicitPoint::Tpi(t), &ea, &eb, &ec));
-        mix(&mut h, orient2d(&ImplicitPoint::Lpi(l), &ea, &eb, DropAxis::Z));
-        mix(&mut h, orient2d(&ImplicitPoint::Tpi(t), &ea, &eb, DropAxis::X));
-        mix(&mut h, orient2d(&ImplicitPoint::Lpi(l), &eb, &ec, DropAxis::Y));
+        mix(&mut h, orient3d(&il, &ea, &eb, &ec));
+        mix(&mut h, orient3d(&it, &ea, &eb, &ec));
+        // orient2d 1I
+        mix(&mut h, orient2d(&il, &ea, &eb, DropAxis::Z));
+        mix(&mut h, orient2d(&it, &ea, &eb, DropAxis::X));
+        mix(&mut h, orient2d(&il, &eb, &ec, DropAxis::Y));
+        // M2.3 new configs: orient2d 2I / 3I + cmp_lex (all through the cascade)
+        mix(&mut h, orient2d_2i(&il, &il2, rng.p(), DropAxis::Z));
+        mix(&mut h, orient2d_2i(&it, &il2, rng.p(), DropAxis::X));
+        mix(&mut h, orient2d_3i(&il, &it, &il2, DropAxis::Y));
+        mix(&mut h, cmp_lex(&il, &it));
+        mix(&mut h, cmp_lex(&il, &il2));
+        mix(&mut h, cmp_lex(&it, &ImplicitPoint::Explicit(l.p)));
     }
     h
 }
@@ -79,7 +92,7 @@ mod tests {
     /// Pinned cross-platform determinism fingerprint (G2 L1 slice). If this
     /// changes: either the predicate sign logic changed (intended → re-pin and
     /// re-run the wasm/ARM cross-check) or determinism broke (investigate).
-    const SIGN_MANIFEST: u64 = 0x0940_7b79_f526_b6df;
+    const SIGN_MANIFEST: u64 = 0xdd1d_d6b0_0013_0af5;
 
     #[test]
     fn indirect_sign_manifest_is_pinned() {

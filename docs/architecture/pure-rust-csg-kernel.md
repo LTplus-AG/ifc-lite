@@ -431,3 +431,22 @@ Operand max-triangle distribution:
 - **Corpus is difference+clip-dominated; 0 union/intersection** across these fixtures → the kernel's priority paths are DIFFERENCE and HALF-SPACE CLIP; union/intersection are rare `IfcBooleanResult` cases (need the #960 segmented-roof + steel-union fixtures to exercise).
 
 Implication for the perf gate: the `pre-arrangement O(1) operand-complexity budget` threshold (open decision) is the lever for the 194 heavy ops; the question is the per-op arrangement cost at 128…3636 tris vs Manifold — answered by the timing baseline below.
+
+### Timing baseline — subtract_mesh, box-through-slab (low intersection)
+`examples/csg_timing.rs`, native aarch64, subdivided-box operands at the census buckets:
+
+| host/cutter tris | BSP µs/op | Manifold µs/op | Manifold result tris |
+|---|---|---|---|
+| 12 / 12 | 70 | 76 | 32 |
+| 192 / 48 | 80 | 272 | 224 |
+| 432 / 192 | 122 | 569 | 480 |
+| 768 / 432 | 186 | 1091 | 800 |
+| 1728 / 768 | 323 | 2122 | 1776 |
+| 3888 / 1728 | 708 | **4778** | 4096 |
+
+- **BSP returns a constant 24-tri result at every size** — fast because it's producing collapsed/wrong geometry (the coplanar-merge + cap path). NOT a meaningful correctness baseline.
+- **Manifold is the correctness baseline**: ~linear, **~4.8 ms on the worst 3888-tri op**. The new kernel's per-op budget = ≤ Manifold; with the heavy tail at 5.4% of ops and ~5 ms each, there is real headroom.
+- CAVEAT: these are LOW-intersection (a box punching through a slab). The DENSE-intersection worst case (two interpenetrating faceted Breps, O(n²) tri-tri contact — the refutation's #1 perf risk) is a remaining M0 measurement; capture Manifold's dense-case time before M7 so the new kernel's arrangement has a real budget on that class.
+
+### M0 verdict
+No-regression is now PLAUSIBLE, not proven: the 85% small-operand bulk is cheap in both kernels; the heavy tail is bounded (worst 3636 tris ≈ 5 ms Manifold) and rare (5.4%). The two open perf items: (1) measure the dense-intersection baseline; (2) tune the pre-arrangement operand-complexity budget against these numbers (the server's BSP "0 ms but wrong" on heavy ops is not a baseline to preserve — correctness wins, budget caps the cost). Full no-regression proof lands at M7 when the kernel exists and runs the same harness.

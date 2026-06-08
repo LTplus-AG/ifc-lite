@@ -18,11 +18,13 @@
 //! degeneracies are later increments.
 
 use super::interner::{Interner, Vid};
+use super::predicates::{cmp_lex, orient2d_any};
 use super::rational::point_of;
-use super::retriangulate::{triangulate, Constraint, RetriInput};
+use super::retriangulate::{projection_axis, triangulate, Constraint, RetriInput};
 use super::tritri::{tri_tri_intersection, TriTri};
-use super::ImplicitPoint;
+use super::{ImplicitPoint, Lpi, Sign, Tpi};
 use num_traits::ToPrimitive;
+use std::cmp::Ordering;
 
 pub type Tri = [[f64; 3]; 3];
 
@@ -64,24 +66,92 @@ fn bbox_overlap(a: &Tri, b: &Tri) -> bool {
     (0..3).all(|k| alo[k] <= bhi[k] && blo[k] <= ahi[k])
 }
 
+/// A raw intersection segment on a triangle, tagged with the cutter triangle that
+/// produced it (needed to locate seg×seg crossing points as triple points).
+struct RawSeg {
+    a: Lpi,
+    b: Lpi,
+    cutter: Tri,
+}
+
+#[inline]
+fn tri_plane(t: &Tri) -> [[f64; 3]; 3] {
+    *t
+}
+
+/// Do segments `(a1,b1)` and `(a2,b2)` (in `T`'s plane, projected by `axis`)
+/// properly cross at an interior point? (Shared endpoints don't count.)
+fn segments_cross(a1: &ImplicitPoint, b1: &ImplicitPoint, a2: &ImplicitPoint, b2: &ImplicitPoint, axis: super::DropAxis) -> bool {
+    let s1 = orient2d_any(a1, b1, a2, axis);
+    let s2 = orient2d_any(a1, b1, b2, axis);
+    let s3 = orient2d_any(a2, b2, a1, axis);
+    let s4 = orient2d_any(a2, b2, b1, axis);
+    s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2 && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
+}
+
+/// seg×seg pre-pass for one triangle `t`: split every pair of crossing
+/// constraint segments at their crossing point — `TPI(t.plane, cutter_i.plane,
+/// cutter_j.plane)` (a valid triple point: crossing ⇒ the two cutter lines are
+/// non-parallel in `t`'s plane ⇒ the three planes meet at a point). The result
+/// is a crossing-free constraint set the re-triangulation can handle directly.
+fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
+    let axis = match projection_axis(t) {
+        Some((a, _)) => a,
+        None => return Vec::new(),
+    };
+    let n = raws.len();
+    let pt = |l: &Lpi| ImplicitPoint::Lpi(*l);
+    let mut splits: Vec<Vec<ImplicitPoint>> = vec![Vec::new(); n];
+    for k in 0..n {
+        for l in (k + 1)..n {
+            if segments_cross(&pt(&raws[k].a), &pt(&raws[k].b), &pt(&raws[l].a), &pt(&raws[l].b), axis) {
+                let x = ImplicitPoint::Tpi(Tpi {
+                    planes: [tri_plane(t), tri_plane(&raws[k].cutter), tri_plane(&raws[l].cutter)],
+                });
+                splits[k].push(x.clone());
+                splits[l].push(x);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for k in 0..n {
+        let mut chain = vec![pt(&raws[k].a)];
+        chain.append(&mut splits[k]);
+        chain.push(pt(&raws[k].b));
+        // order along the segment (collinear ⇒ lex order = line order) + dedup coincident
+        chain.sort_by(|p, q| match cmp_lex(p, q) {
+            Sign::Negative => Ordering::Less,
+            Sign::Positive => Ordering::Greater,
+            Sign::Zero => Ordering::Equal,
+        });
+        chain.dedup_by(|p, q| cmp_lex(p, q) == Sign::Zero);
+        for w in chain.windows(2) {
+            out.push(Constraint { a: w[0].clone(), b: w[1].clone() });
+        }
+    }
+    out
+}
+
 /// Compute the conforming arrangement of operand meshes `a` and `b`.
 pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
-    // 1. accumulate each triangle's intersection-segment constraints
-    let mut ca: Vec<Vec<Constraint>> = vec![Vec::new(); a.len()];
-    let mut cb: Vec<Vec<Constraint>> = vec![Vec::new(); b.len()];
+    // 1. accumulate raw intersection segments (with cutter triangles)
+    let mut raw_a: Vec<Vec<RawSeg>> = (0..a.len()).map(|_| Vec::new()).collect();
+    let mut raw_b: Vec<Vec<RawSeg>> = (0..b.len()).map(|_| Vec::new()).collect();
     for (i, ta) in a.iter().enumerate() {
         for (j, tb) in b.iter().enumerate() {
             if !bbox_overlap(ta, tb) {
                 continue;
             }
             if let TriTri::Segment([s, t]) = tri_tri_intersection(ta, tb) {
-                let c = Constraint { a: ImplicitPoint::Lpi(s), b: ImplicitPoint::Lpi(t) };
-                ca[i].push(c.clone());
-                cb[j].push(c);
+                raw_a[i].push(RawSeg { a: s, b: t, cutter: *tb });
+                raw_b[j].push(RawSeg { a: s, b: t, cutter: *ta });
             }
         }
     }
-    // 2. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
+    // 2. seg×seg pre-pass ⇒ crossing-free constraints
+    let ca: Vec<Vec<Constraint>> = a.iter().zip(&raw_a).map(|(t, r)| split_crossings(t, r)).collect();
+    let cb: Vec<Vec<Constraint>> = b.iter().zip(&raw_b).map(|(t, r)| split_crossings(t, r)).collect();
+    // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
     let mut interner = Interner::new();
     let tris_a = retriangulate_each(a, &ca, &mut interner);
     let tris_b = retriangulate_each(b, &cb, &mut interner);
@@ -279,5 +349,19 @@ mod tests {
         assert!((volume(&inter) - 1.0).abs() < 1e-9, "A∩B should be A (vol 1), got {}", volume(&inter));
         let uni = boolean(&a, &b, BoolOp::Union);
         assert!((volume(&uni) - 27.0).abs() < 1e-9, "A∪B should be B (vol 27), got {}", volume(&uni));
+    }
+
+    #[test]
+    fn box_minus_box_real_cut_has_exact_volume() {
+        // Two overlapping cubes — a real surface cut, exercising seg×seg crossings
+        // (each cut face gets a closed constraint loop with corner X-junctions).
+        let a = cube(0., 2.); // vol 8
+        let b = cube(1., 3.); // vol 8, overlap [1,2]³ = vol 1
+        let diff = volume(&boolean(&a, &b, BoolOp::Difference));
+        assert!((diff - 7.0).abs() < 1e-6, "A−B volume = {diff}, expected 7");
+        let inter = volume(&boolean(&a, &b, BoolOp::Intersection));
+        assert!((inter - 1.0).abs() < 1e-6, "A∩B volume = {inter}, expected 1");
+        let uni = volume(&boolean(&a, &b, BoolOp::Union));
+        assert!((uni - 15.0).abs() < 1e-6, "A∪B volume = {uni}, expected 15");
     }
 }

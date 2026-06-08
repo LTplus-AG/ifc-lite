@@ -15,7 +15,7 @@
 //! widening is bit-identical across x86_64/aarch64/wasm — the determinism bar.
 //! No `mul_add`/FMA anywhere (contraction would break the directed rounding).
 
-use super::{Lpi, Sign, Tpi};
+use super::{DropAxis, Lpi, Sign, Tpi};
 
 #[derive(Clone, Copy, Debug)]
 pub struct RnInterval {
@@ -192,4 +192,43 @@ pub fn lpi_orient3d(l: &Lpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Option
 pub fn tpi_orient3d(t: &Tpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Option<Sign> {
     let (lambda, d) = tpi_lambda(t);
     indirect_orient3d(&lambda, d, p2, p3, p4)
+}
+
+#[inline]
+fn axis_idx(axis: DropAxis) -> (usize, usize) {
+    match axis {
+        DropAxis::X => (1, 2),
+        DropAxis::Y => (0, 2),
+        DropAxis::Z => (0, 1),
+    }
+}
+
+/// Interval-tier indirect orient2d for one implicit point `(λ/d)`. `None` ⇒ the
+/// `Λ′₂` or `d` interval straddles zero ⇒ escalate to the exact tier.
+fn indirect_orient2d(
+    lambda: &Iv3,
+    d: RnInterval,
+    b: [f64; 3],
+    c: [f64; 3],
+    axis: DropAxis,
+) -> Option<Sign> {
+    let (i, j) = axis_idx(axis);
+    let br = ivec(b);
+    let cr = ivec(c);
+    let li = lambda[i].sub(d.mul(cr[i]));
+    let lj = lambda[j].sub(d.mul(cr[j]));
+    let lambda_det2 = li.mul(br[j].sub(cr[j])).sub(lj.mul(br[i].sub(cr[i])));
+    let sd = d.sign()?;
+    let sld = lambda_det2.sign()?;
+    Some(super::assemble_sign(sld, &[sd]))
+}
+
+pub fn lpi_orient2d(l: &Lpi, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Option<Sign> {
+    let (lambda, d) = lpi_lambda(l);
+    indirect_orient2d(&lambda, d, b, c, axis)
+}
+
+pub fn tpi_orient2d(t: &Tpi, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Option<Sign> {
+    let (lambda, d) = tpi_lambda(t);
+    indirect_orient2d(&lambda, d, b, c, axis)
 }

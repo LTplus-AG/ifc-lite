@@ -11,7 +11,7 @@
 //! each verified `≡` the exact tier here.
 
 use super::{interval, rational};
-use super::{ImplicitPoint, Sign};
+use super::{DropAxis, ImplicitPoint, Sign};
 
 /// Exact `orient3d` over a mix of explicit + implicit points.
 ///
@@ -35,10 +35,34 @@ pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &Imp
     }
 }
 
+/// Exact `orient2d(a, b, c)` projected on the two axes remaining after dropping
+/// `axis` (the in-plane predicate for re-triangulation). Same cascade as
+/// `orient3d`; the indirect 1-implicit case shares the `sign(d)` flip.
+pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Sign {
+    use ImplicitPoint::{Explicit, Lpi, Tpi};
+    let (i, j) = match axis {
+        DropAxis::X => (1, 2),
+        DropAxis::Y => (0, 2),
+        DropAxis::Z => (0, 1),
+    };
+    match (a, b, c) {
+        (Explicit(a), Explicit(b), Explicit(c)) => {
+            Sign::from_f64(geometry_predicates::orient2d([a[i], a[j]], [b[i], b[j]], [c[i], c[j]]))
+        }
+        (Lpi(l), Explicit(b), Explicit(c)) => interval::lpi_orient2d(l, *b, *c, axis)
+            .unwrap_or_else(|| rational::lpi_orient2d(l, *b, *c, axis)),
+        (Tpi(t), Explicit(b), Explicit(c)) => interval::tpi_orient2d(t, *b, *c, axis)
+            .unwrap_or_else(|| rational::tpi_orient2d(t, *b, *c, axis)),
+        _ => unimplemented!(
+            "kernel::orient2d: this implicit-point configuration lands in a later M1 increment"
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::super::{rational, Lpi, Tpi};
-    use super::{orient3d, ImplicitPoint, Sign};
+    use super::super::{rational, DropAxis, Lpi, Tpi};
+    use super::{orient2d, orient3d, ImplicitPoint, Sign};
 
     fn e(p: [f64; 3]) -> ImplicitPoint {
         ImplicitPoint::Explicit(p)
@@ -275,5 +299,58 @@ mod tests {
             definite + escalated
         );
         eprintln!("TPI interval tier: {definite} definite, {escalated} escalated");
+    }
+
+    const AXES: [DropAxis; 3] = [DropAxis::X, DropAxis::Y, DropAxis::Z];
+
+    #[test]
+    fn explicit_orient2d_matches_oracle() {
+        for axis in AXES {
+            for cfg in battery() {
+                let [a, b, c, _d] = cfg;
+                let fast = orient2d(&e(a), &e(b), &e(c), axis);
+                let oracle = rational::orient2d_exact(a, b, c, axis);
+                assert_eq!(fast, oracle, "explicit orient2d != oracle on {cfg:?} axis {axis:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn indirect_orient2d_matches_materialised_point() {
+        // Homogenised LPI/TPI orient2d == the direct orient2d on the exact
+        // materialised λ/d point, for every projection axis; cascade == exact.
+        for axis in AXES {
+            for (l, p2, p3, _p4) in lpi_cases() {
+                let homog = rational::lpi_orient2d(&l, p2, p3, axis);
+                let direct = rational::orient2d_exact_pt(&rational::lpi_point(&l), p2, p3, axis);
+                assert_eq!(homog, direct, "LPI orient2d homog/flip wrong, axis {axis:?}");
+                let cascade = orient2d(&ImplicitPoint::Lpi(l), &e(p2), &e(p3), axis);
+                assert_eq!(cascade, direct, "LPI orient2d cascade != exact, axis {axis:?}");
+            }
+            for (t, p2, p3, _p4) in tpi_cases() {
+                let homog = rational::tpi_orient2d(&t, p2, p3, axis);
+                let direct = rational::orient2d_exact_pt(&rational::tpi_point(&t), p2, p3, axis);
+                assert_eq!(homog, direct, "TPI orient2d homog/flip wrong, axis {axis:?}");
+                let cascade = orient2d(&ImplicitPoint::Tpi(t), &e(p2), &e(p3), axis);
+                assert_eq!(cascade, direct, "TPI orient2d cascade != exact, axis {axis:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn orient2d_interval_is_sound_vs_oracle() {
+        use super::super::interval;
+        let mut rng = Lcg(0xabcd_1234_5678_9999);
+        for _ in 0..2000 {
+            let l = Lpi { p: rng.p(), q: rng.p(), r: rng.p(), s: rng.p(), t: rng.p() };
+            let (b, c) = (rng.p(), rng.p());
+            let axis = AXES[(rng.u() % 3) as usize];
+            let exact = rational::lpi_orient2d(&l, b, c, axis);
+            if let Some(s) = interval::lpi_orient2d(&l, b, c, axis) {
+                assert_eq!(s, exact, "orient2d interval returned a WRONG definite sign for {l:?}");
+            }
+            // cascade always equals exact
+            assert_eq!(orient2d(&ImplicitPoint::Lpi(l), &e(b), &e(c), axis), exact);
+        }
     }
 }

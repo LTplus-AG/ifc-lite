@@ -178,3 +178,47 @@ pub fn orient3d_exact_pt(a: &V3, b: [f64; 3], c: [f64; 3], d: [f64; 3]) -> Sign 
     let cd = sub3(&c, &d);
     sign_of(&det3(&ad, &bd, &cd))
 }
+
+#[inline]
+fn axis_idx(axis: DropAxis) -> (usize, usize) {
+    match axis {
+        DropAxis::X => (1, 2),
+        DropAxis::Y => (0, 2),
+        DropAxis::Z => (0, 1),
+    }
+}
+
+/// Homogenised indirect orient2d for one implicit point `(λ/d)` against two
+/// explicit points, projected on the two axes remaining after dropping `axis`.
+/// `orient2d = (1/d)·Λ′₂` (the predicate is linear in the single implicit
+/// point), so `sign = assemble_sign(sign(Λ′₂), &[sign(d)])` — the same odd
+/// `sign(d)` flip as the 1-implicit orient3d.
+fn indirect_orient2d(lambda: &V3, d: &BigRational, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Sign {
+    let (i, j) = axis_idx(axis);
+    let br = vec(b);
+    let cr = vec(c);
+    let li = &lambda[i] - d * &cr[i];
+    let lj = &lambda[j] - d * &cr[j];
+    let lambda_det2 = &li * (&br[j] - &cr[j]) - &lj * (&br[i] - &cr[i]);
+    super::assemble_sign(sign_of(&lambda_det2), &[sign_of(d)])
+}
+
+/// Exact `orient2d(p1=LPI, b, c)` (b,c explicit), projected after `axis`.
+pub fn lpi_orient2d(l: &Lpi, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Sign {
+    let (lambda, d) = lpi_lambda(l);
+    indirect_orient2d(&lambda, &d, b, c, axis)
+}
+
+/// Exact `orient2d(p1=TPI, b, c)` (b,c explicit), projected after `axis`.
+pub fn tpi_orient2d(t: &Tpi, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Sign {
+    let (lambda, d) = tpi_lambda(t);
+    indirect_orient2d(&lambda, &d, b, c, axis)
+}
+
+/// Oracle cross-check: orient2d with the first arg already materialised.
+pub fn orient2d_exact_pt(a: &V3, b: [f64; 3], c: [f64; 3], axis: DropAxis) -> Sign {
+    let (i, j) = axis_idx(axis);
+    let (br, cr) = (vec(b), vec(c));
+    let det = (&a[i] - &cr[i]) * (&br[j] - &cr[j]) - (&a[j] - &cr[j]) * (&br[i] - &cr[i]);
+    sign_of(&det)
+}

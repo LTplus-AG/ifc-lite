@@ -1,5 +1,11 @@
 # @ifc-lite/wasm
 
+## 2.4.2
+
+### Patch Changes
+
+- [#1013](https://github.com/LTplus-AG/ifc-lite/pull/1013) [`1ff05f2`](https://github.com/LTplus-AG/ifc-lite/commit/1ff05f2637ce20e8b57ebc21e7d0b05da270a1e1) Thanks [@louistrue](https://github.com/louistrue)! - Fix inside-out shading on extruded solids whose outer profile is authored counter-clockwise (e.g. the AC20-FZK-Haus roof slab). `create_side_walls` stored the inward in-plane normal regardless of the loop winding, so under the renderer's normal-based, double-sided lighting the side faces shaded as if lit from inside. The side-wall normal is now oriented outward via the profile's signed area, so it agrees with the (already-outward) triangle winding. CW outer loops and holes are byte-identical to before; caps were already winding-independent. The tapered (`IfcExtrudedAreaSolidTapered`) path is oriented the same way for consistency.
+
 ## 2.4.1
 
 ### Patch Changes

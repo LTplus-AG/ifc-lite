@@ -20,6 +20,7 @@ pub mod interval;
 pub mod manifest;
 pub mod predicates;
 pub mod rational;
+pub mod retriangulate;
 pub mod tritri;
 
 /// Three-valued exact sign.

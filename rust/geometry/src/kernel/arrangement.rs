@@ -302,11 +302,11 @@ pub fn boolean_topology_hash(a: &[Tri], b: &[Tri], op: BoolOp) -> u64 {
     h
 }
 
-/// Axis-aligned cube `[lo,hi]³` as 12 outward-wound triangles.
-pub fn cube_mesh(lo: f64, hi: f64) -> Vec<Tri> {
+/// Axis-aligned box `[lo,hi]` as 12 outward-wound triangles.
+pub fn box_mesh(lo: [f64; 3], hi: [f64; 3]) -> Vec<Tri> {
     let p = [
-        [lo, lo, lo], [hi, lo, lo], [hi, hi, lo], [lo, hi, lo],
-        [lo, lo, hi], [hi, lo, hi], [hi, hi, hi], [lo, hi, hi],
+        [lo[0], lo[1], lo[2]], [hi[0], lo[1], lo[2]], [hi[0], hi[1], lo[2]], [lo[0], hi[1], lo[2]],
+        [lo[0], lo[1], hi[2]], [hi[0], lo[1], hi[2]], [hi[0], hi[1], hi[2]], [lo[0], hi[1], hi[2]],
     ];
     let idx = [
         [0, 3, 2], [0, 2, 1], [4, 5, 6], [4, 6, 7],
@@ -314,6 +314,11 @@ pub fn cube_mesh(lo: f64, hi: f64) -> Vec<Tri> {
         [0, 1, 5], [0, 5, 4], [3, 7, 6], [3, 6, 2],
     ];
     idx.iter().map(|f| [p[f[0]], p[f[1]], p[f[2]]]).collect()
+}
+
+/// Axis-aligned cube `[lo,hi]³`.
+pub fn cube_mesh(lo: f64, hi: f64) -> Vec<Tri> {
+    box_mesh([lo, lo, lo], [hi, hi, hi])
 }
 
 /// Cross-platform full-boolean determinism manifest: `cube[0,2]³ − cube[1,3]³`.

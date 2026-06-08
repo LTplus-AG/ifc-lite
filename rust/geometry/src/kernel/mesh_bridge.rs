@@ -115,4 +115,28 @@ mod tests {
         // sanity: the round-tripped host mesh has volume 8
         assert!((mesh_volume(&host) - 8.0).abs() < 1e-4, "host round-trip volume wrong");
     }
+
+    #[test]
+    fn kernel_cuts_a_through_wall_opening() {
+        use super::super::arrangement::box_mesh;
+        // a thin wall slab with a box opening poking all the way through (z)
+        let wall = tris_to_mesh(&box_mesh([0., 0., 0.], [4., 3., 0.2])); // vol 2.4
+        let opening = tris_to_mesh(&box_mesh([1., 1., -0.5], [2., 2., 0.7])); // hole vol 0.2
+        let result = subtract(&wall, &opening);
+        let v = mesh_volume(&result);
+        assert!((v - 2.2).abs() < 1e-3, "through-opening wall volume = {v}, expected 2.2");
+    }
+
+    #[test]
+    fn kernel_cuts_two_sequential_openings() {
+        use super::super::arrangement::box_mesh;
+        // The void-router pattern: a host cut by several openings in sequence,
+        // each subtract's OUTPUT fed back in as the next host.
+        let wall = tris_to_mesh(&box_mesh([0., 0., 0.], [6., 3., 0.2])); // vol 3.6
+        let op1 = tris_to_mesh(&box_mesh([1., 1., -0.5], [2., 2., 0.7])); // hole 0.2
+        let op2 = tris_to_mesh(&box_mesh([4., 1., -0.5], [5., 2., 0.7])); // hole 0.2
+        let after2 = subtract(&subtract(&wall, &op1), &op2);
+        let v = mesh_volume(&after2);
+        assert!((v - 3.2).abs() < 1e-3, "two-opening wall volume = {v}, expected 3.2");
+    }
 }

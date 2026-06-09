@@ -32,6 +32,13 @@ import {
 } from './auto-space-detect.js';
 import { addSpaceToStore, type SpaceBuildResult } from './space.js';
 
+/**
+ * IfcSpace.ObjectType marker stamped on every derived space, so a re-run can
+ * recognise its own output and skip it instead of duplicating (idempotency),
+ * and so generated spaces are filterable downstream.
+ */
+export const GENERATED_SPACE_OBJECTTYPE = 'IfcLite:GeneratedSpace';
+
 export interface GenerateSpacesOptions {
   /** Snap tolerance for wall-end vertex merge in METRES. Default 0.1 m. */
   snapTolerance?: number;
@@ -151,6 +158,7 @@ export function generateSpacesFromWalls(
       OuterCurve: region.outline,
       Height: height,
       Name: name,
+      ObjectType: GENERATED_SPACE_OBJECTTYPE,
       LongName: options.longName,
       PredefinedType: options.predefinedType,
       boundaryElementIds: matchBoundaryWalls(

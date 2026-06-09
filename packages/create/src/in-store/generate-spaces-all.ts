@@ -15,10 +15,11 @@
  * Geometry-exact slab/roof undersides are a future refinement.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import {
   generateSpacesFromWalls,
+  GENERATED_SPACE_OBJECTTYPE,
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
 } from './generate-spaces.js';
@@ -48,6 +49,12 @@ export interface GenerateSpacesAllOptions {
   extraDividerTypes?: string[];
   /** Detect + report only; emit no IfcSpace. */
   dryRun?: boolean;
+  /**
+   * Re-derive even when the model already contains spaces from a prior run.
+   * Off by default — the run is skipped so re-processing its own output can't
+   * duplicate spaces. `true` bypasses the guard (may duplicate).
+   */
+  force?: boolean;
   debug?: boolean;
 }
 
@@ -69,6 +76,27 @@ export interface GenerateSpacesAllResult {
   storeys: GenerateSpacesStoreyResult[];
   totalDetected: number;
   totalEmitted: number;
+  /**
+   * Number of pre-existing generated spaces found in the model. When > 0 and
+   * `force` is not set, the run was skipped (idempotency) — nothing emitted.
+   */
+  skippedExisting: number;
+}
+
+/** Count IfcSpace already stamped with the generated-space marker (a prior run). */
+function countGeneratedSpaces(store: IfcDataStore): number {
+  if (!store.source) return 0;
+  const ids = store.entityIndex?.byType?.get('IFCSPACE');
+  if (!ids || ids.length === 0) return 0;
+  const extractor = new EntityExtractor(store.source);
+  let count = 0;
+  for (const id of ids) {
+    const ref = store.entityIndex.byId.get(id);
+    if (!ref) continue;
+    // IfcSpace.ObjectType is positional attribute index 4.
+    if (extractor.extractEntity(ref)?.attributes?.[4] === GENERATED_SPACE_OBJECTTYPE) count++;
+  }
+  return count;
 }
 
 /** Every IfcBuildingStorey with resolved name + elevation, low → high. */
@@ -89,6 +117,13 @@ export function generateSpaces(
   options: GenerateSpacesAllOptions = {},
   overlay?: OverlayWallReader,
 ): GenerateSpacesAllResult {
+  // Idempotency: if the model already carries spaces from a prior run, skip
+  // (unless forced) so re-processing our own output can't duplicate them.
+  const skippedExisting = options.force || options.dryRun ? 0 : countGeneratedSpaces(store);
+  if (skippedExisting > 0) {
+    return { storeys: [], totalDetected: 0, totalEmitted: 0, skippedExisting };
+  }
+
   const all = listStoreys(store);
   const want = options.storeys;
   const selected = want === undefined || want === 'all'
@@ -131,7 +166,7 @@ export function generateSpaces(
     storeys.push({ ...st, height, snapUsed, result });
   }
 
-  return { storeys, totalDetected, totalEmitted };
+  return { storeys, totalDetected, totalEmitted, skippedExisting: 0 };
 }
 
 function resolveHeight(

@@ -33,6 +33,7 @@ Options:
   --predefined-type <t>   IfcSpacePredefinedType (default INTERNAL)
   --divider-type <t>      Extra element type to treat as a wall divider (repeatable)
   --dry-run               Detect + report only; write nothing
+  --force                 Re-derive even if the model already has generated spaces (may duplicate)
   --list-storeys          List storeys (id, name, elevation) and exit
   --json                  Machine-readable output`;
 
@@ -50,6 +51,7 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
   const predefinedType = getFlag(args, '--predefined-type');
   const dividerTypes = getAllFlags(args, '--divider-type');
   const dryRun = hasFlag(args, '--dry-run');
+  const force = hasFlag(args, '--force');
   const json = hasFlag(args, '--json');
   const debug = hasFlag(args, '--debug');
 
@@ -104,6 +106,7 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
     predefinedType,
     extraDividerTypes: dividerTypes.length ? dividerTypes : undefined,
     dryRun,
+    force,
     debug,
   };
   // The detector logs a per-storey `console.info` line (handy in the viewer's
@@ -123,18 +126,27 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
     console.debug = origDebug;
   }
 
-  if (!dryRun && out) {
+  if (!dryRun && out && res.skippedExisting === 0) {
     const schema = (store.schemaVersion ?? 'IFC4') as Schema;
     const exporter = new StepExporter(store, view);
     const exported = exporter.export({ schema, applyMutations: true });
     await writeFile(out, exported.content);
   }
 
+  if (res.skippedExisting > 0 && !json) {
+    process.stderr.write(
+      `Skipped: model already contains ${res.skippedExisting} generated space(s) — ` +
+      `nothing written. Derive from the original file, or pass --force to re-derive (may duplicate).\n`,
+    );
+    return;
+  }
+
   if (json) {
     printJson({
       input: filePath,
-      output: dryRun ? null : out,
+      output: dryRun || res.skippedExisting > 0 ? null : out,
       dryRun,
+      skippedExisting: res.skippedExisting,
       totalDetected: res.totalDetected,
       totalEmitted: res.totalEmitted,
       storeys: res.storeys.map((s) => ({

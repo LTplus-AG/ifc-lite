@@ -171,6 +171,24 @@ export function SpaceSketchOverlay() {
     [derivedStorey, storeys],
   );
   const { lines: underlay } = useConstructionUnderlay(showBuilding && rooms.length > 0, derivedFloorElev);
+
+  // Pre-render the (potentially large) building underlay once per (re)derive,
+  // NOT on every drag frame — re-creating hundreds of SVG lines each frame
+  // froze the editor (and the runaway drag dragged the room off-canvas). It
+  // only changes when the plate is rebuilt, tracked by `hist`.
+  const underlayEls = useMemo(() => {
+    if (!showBuilding || underlay.length === 0) return null;
+    const f = fitRef.current;
+    return underlay.map((l, i) => (
+      <line key={`b${i}`}
+        x1={sX(f, l.a[0])} y1={sY(f, l.a[1])} x2={sX(f, l.b[0])} y2={sY(f, l.b[1])}
+        stroke="currentColor"
+        strokeOpacity={l.hidden ? 0.16 : 0.34}
+        strokeWidth={l.hidden ? 0.8 : 1.1}
+        strokeDasharray={l.hidden ? '3 3' : undefined}
+        pointerEvents="none" />
+    ));
+  }, [underlay, showBuilding, hist]);
   const [storeyId, setStoreyId] = useState<number | null>(null);
   const lastDerivedRef = useRef<number | null>(null);
   useEffect(() => {
@@ -603,15 +621,7 @@ export function SpaceSketchOverlay() {
         {gridLines.map((l, i) => <line key={`g${i}`} {...l} stroke="currentColor" strokeOpacity={0.06} strokeWidth={1} />)}
 
         {/* Building-element underlay (plan cut ~1.2 m above the storey) for orientation. */}
-        {showBuilding && underlay.map((l, i) => (
-          <line key={`b${i}`}
-            x1={sX(f, l.a[0])} y1={sY(f, l.a[1])} x2={sX(f, l.b[0])} y2={sY(f, l.b[1])}
-            stroke="currentColor"
-            strokeOpacity={l.hidden ? 0.16 : 0.34}
-            strokeWidth={l.hidden ? 0.8 : 1.1}
-            strokeDasharray={l.hidden ? '3 3' : undefined}
-            pointerEvents="none" />
-        ))}
+        {underlayEls}
 
         {rooms.map((r, ri) => {
           const color = ROOM_COLORS[ri % ROOM_COLORS.length];

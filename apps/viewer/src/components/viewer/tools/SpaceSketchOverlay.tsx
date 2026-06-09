@@ -23,7 +23,7 @@ import { useViewerStore } from '@/store';
 import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
 import init, { SpacePlateHandle } from '@ifc-lite/wasm';
-import { extractWallSegmentsForStorey } from '@ifc-lite/create';
+import { extractWallSegmentsForStorey, insetRoomFootprint } from '@ifc-lite/create';
 
 let wasmReady: Promise<void> | null = null;
 function ensureWasm(): Promise<void> {
@@ -143,6 +143,12 @@ export function SpaceSketchOverlay() {
   const [usedTol, setUsedTol] = useState(0.1);
   const snapTolRef = useRef<number | null>(null);
   const lastBuildRef = useRef<{ coords: Float64Array; sources: Int32Array; label: string; storey: number | null } | null>(null);
+  // Wall segments + thicknesses from the last derive, kept for net-footprint
+  // inset at bake (so the IfcSpace solid stops at the inner wall face).
+  const extractionRef = useRef<{
+    segments: Parameters<typeof insetRoomFootprint>[1];
+    thicknesses: Parameters<typeof insetRoomFootprint>[2];
+  } | null>(null);
   const [hist, setHist] = useState(0);
   const [status, setStatus] = useState('Load the demo plate or derive from a storey.');
   const [showBuilding, setShowBuilding] = useState(true);
@@ -268,11 +274,12 @@ export function SpaceSketchOverlay() {
   const deriveFromStorey = useCallback(async () => {
     if (!ifcDataStore || storeyId == null) { setStatus('No model / storey to derive from.'); return; }
     try {
-      const { segments, considered, skipped } = extractWallSegmentsForStorey(ifcDataStore, storeyId);
+      const { segments, considered, skipped, wallThicknesses } = extractWallSegmentsForStorey(ifcDataStore, storeyId);
       if (!segments.length) {
         setStatus(`No wall axes on storey ${storeyId} (${considered} walls, ${skipped.length} skipped).`);
         return;
       }
+      extractionRef.current = { segments, thicknesses: wallThicknesses };
       const coords = new Float64Array(segments.length * 4);
       const sources = new Int32Array(segments.length).fill(-1);
       segments.forEach((s, i) => {
@@ -304,10 +311,22 @@ export function SpaceSketchOverlay() {
       return;
     }
     const snap = plate.snapshot() as Room[];
+    const extraction = extractionRef.current;
+    const polyArea = (pts: Pt[]) => {
+      let a = 0;
+      for (let k = 0; k < pts.length; k++) { const p = pts[k], q = pts[(k + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; }
+      return Math.abs(a) / 2;
+    };
     let ok = 0, err = 0;
     snap.forEach((r, i) => {
+      // Inset to the inner (net) wall face so the IfcSpace doesn't run to the
+      // wall centreline; keep the centreline area as GrossFloorArea.
+      const outline = extraction
+        ? insetRoomFootprint(r.outline, extraction.segments, extraction.thicknesses)
+        : r.outline;
       const res = addSpace(activeModelId, derivedStorey, {
-        Profile: 'polygon', OuterCurve: r.outline, Height: BAKE_HEIGHT, Name: `Space ${i + 1}`,
+        Profile: 'polygon', OuterCurve: outline, Height: BAKE_HEIGHT, Name: `Space ${i + 1}`,
+        grossFloorArea: polyArea(r.outline),
       });
       if (res && 'expressId' in res) ok++; else err++;
     });

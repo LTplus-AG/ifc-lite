@@ -152,17 +152,16 @@ export function generateSpacesFromWalls(
   }
 
   const allOutlines = detected.map((r) => r.outline);
-  const thicknessById = new Map<number, number>();
-  extraction.contributingWallIds.forEach((id, k) => {
-    const t = extraction.wallThicknesses[k];
-    if (t !== undefined) thicknessById.set(id, t);
-  });
   detected.forEach((region, i) => {
     const name = namePattern.replace('{n}', String(i + 1));
     const others = allOutlines.filter((_, j) => j !== i);
+    // Bake the solid at the inner (net) face — IfcSpace should stop at the room
+    // side of the walls, not run to their centreline. GrossFloorArea keeps the
+    // centreline measure; NetFloorArea falls out of the inset OuterCurve.
+    const netOutline = insetRoomFootprint(region.outline, extraction.segments, extraction.wallThicknesses);
     const result = addSpaceToStore(editor, anchor, {
       Profile: 'polygon',
-      OuterCurve: region.outline,
+      OuterCurve: netOutline,
       Height: height,
       Name: name,
       ObjectType: GENERATED_SPACE_OBJECTTYPE,
@@ -174,13 +173,7 @@ export function generateSpacesFromWalls(
         extraction.contributingWallIds,
         others,
       ),
-      netFloorArea: computeNetArea(
-        region.outline,
-        extraction.segments,
-        extraction.contributingWallIds,
-        thicknessById,
-        region.area,
-      ),
+      grossFloorArea: region.area,
     });
     emitted.push({ region, result, name });
   });
@@ -216,23 +209,43 @@ function lineIntersect(
   return [p0[0] + d0[0] * t, p0[1] + d0[1] * t];
 }
 
+/** Does outline edge a→b run along wall segment `seg` (parallel, on its
+ *  centreline, overlapping extent)? */
+function edgeRunsAlong(a: Vec2, b: Vec2, seg: Segment): boolean {
+  const PERP_TOL = 0.2, PARALLEL_TOL = 0.03, OVERLAP_MARGIN = 0.3;
+  let ex = b[0] - a[0], ey = b[1] - a[1];
+  const el = Math.hypot(ex, ey);
+  if (el < 1e-6) return false;
+  ex /= el; ey /= el;
+  let sx = seg.b[0] - seg.a[0], sy = seg.b[1] - seg.a[1];
+  const sl = Math.hypot(sx, sy);
+  if (sl < 1e-6) return false;
+  sx /= sl; sy /= sl;
+  if (Math.abs(ex * sy - ey * sx) > PARALLEL_TOL) return false;
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+  const t = (mx - seg.a[0]) * sx + (my - seg.a[1]) * sy;
+  const px = seg.a[0] + sx * t, py = seg.a[1] + sy * t;
+  if (Math.hypot(mx - px, my - py) > PERP_TOL) return false;
+  return t >= -OVERLAP_MARGIN && t <= sl + OVERLAP_MARGIN;
+}
+
 /**
- * Net (inner-face) floor area: inset each outline edge inward by half the
- * thickness of the wall bounding it (0 where unknown), then re-corner by
- * intersecting adjacent offset edges. Falls back to the gross area if the inset
- * degenerates (e.g. a room thinner than its walls). Exact for orthogonal rooms;
- * a close approximation at non-right corners.
+ * Inset a (centreline) room outline to its inner-face / net footprint: shift
+ * each edge inward by half the thickness of the wall it runs along (0 where the
+ * wall thickness is unknown), then re-corner by intersecting adjacent offset
+ * edges. `segments[k]` has thickness `wallThicknesses[k]`. Returns the original
+ * outline unchanged if the inset degenerates (e.g. a room thinner than its
+ * walls). Exact for orthogonal rooms; a close approximation at non-right
+ * corners. Shared by the bake (geometry) and net-area quantity, and by the
+ * viewer's Space Sketch bake.
  */
-function computeNetArea(
+export function insetRoomFootprint(
   outline: Vec2[],
   segments: Segment[],
-  wallIds: number[],
-  thicknessById: Map<number, number>,
-  grossArea: number,
-): number {
+  wallThicknesses: ReadonlyArray<number | undefined>,
+): Vec2[] {
   const n = outline.length;
-  if (n < 3) return grossArea;
-  // Offset line per edge: a point on the inward-shifted edge + the edge dir.
+  if (n < 3) return outline;
   const lines: { p: Vec2; d: Vec2 }[] = [];
   for (let i = 0; i < n; i++) {
     const a = outline[i];
@@ -240,12 +253,12 @@ function computeNetArea(
     let dx = b[0] - a[0];
     let dy = b[1] - a[1];
     const l = Math.hypot(dx, dy);
-    if (l < 1e-6) return grossArea;
+    if (l < 1e-6) return outline;
     dx /= l; dy /= l;
-    let half = 0; // inset = half the thickest wall bounding this edge
-    for (const w of matchEdgeWalls(a, b, segments, wallIds)) {
-      const t = thicknessById.get(w);
-      if (t !== undefined && t / 2 > half) half = t / 2;
+    let half = 0; // inset = half the thickest wall this edge runs along
+    for (let k = 0; k < segments.length; k++) {
+      const t = wallThicknesses[k];
+      if (t !== undefined && t / 2 > half && edgeRunsAlong(a, b, segments[k])) half = t / 2;
     }
     // Inward normal of a CCW outline is to the left of a→b: (-dy, dx).
     lines.push({ p: [a[0] - dy * half, a[1] + dx * half], d: [dx, dy] });
@@ -256,8 +269,9 @@ function computeNetArea(
     const cur = lines[i];
     verts.push(lineIntersect(prev.p, prev.d, cur.p, cur.d) ?? outline[i]);
   }
+  const gross = polygonArea(outline);
   const net = polygonArea(verts);
-  return net > 0 && net <= grossArea + 1e-6 ? net : grossArea;
+  return net > 1e-6 && net <= gross + 1e-6 ? verts : outline;
 }
 
 /** Ray-cast point-in-polygon test. */

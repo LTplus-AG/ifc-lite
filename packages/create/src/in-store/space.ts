@@ -58,8 +58,11 @@ export interface SpaceRectangleParams {
   PredefinedType?: string;
   /** Bounding elements → one IfcRelSpaceBoundary each. */
   boundaries?: SpaceBoundaryInput[];
-  /** Net (inner-face) floor area in m²; defaults to gross when omitted. */
+  /** Net (inner-face) floor area in m²; defaults to the OuterCurve area. */
   netFloorArea?: number;
+  /** Gross (centreline) floor area in m² for the GrossFloorArea quantity +
+   *  GrossVolume; defaults to the OuterCurve area when omitted. */
+  grossFloorArea?: number;
 }
 
 export interface SpacePolygonParams {
@@ -78,6 +81,9 @@ export interface SpacePolygonParams {
   /** Net (inner-face) floor area in m² for Qto_SpaceBaseQuantities; defaults
    *  to the gross/centreline area when omitted. */
   netFloorArea?: number;
+  /** Gross (centreline) floor area in m² for GrossFloorArea + GrossVolume;
+   *  defaults to the OuterCurve area when omitted. */
+  grossFloorArea?: number;
 }
 
 export interface SpaceBuildResult {
@@ -193,12 +199,16 @@ export function addSpaceToStore(
     if (ifc4) qattrs.push(null);
     return editor.addEntity(type, qattrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
   };
+  // OuterCurve is the net (inner-face) footprint when generated from walls, so
+  // its `area` is the net area; GrossFloorArea/GrossVolume take the supplied
+  // centreline measure (falling back to the OuterCurve area).
+  const grossArea = params.grossFloorArea ?? area;
   const quantityIds = [
-    quantity('IfcQuantityArea', 'GrossFloorArea', area),
+    quantity('IfcQuantityArea', 'GrossFloorArea', grossArea),
     quantity('IfcQuantityArea', 'NetFloorArea', params.netFloorArea ?? area),
     quantity('IfcQuantityLength', 'GrossPerimeter', perimeter),
     quantity('IfcQuantityLength', 'Height', params.Height),
-    quantity('IfcQuantityVolume', 'GrossVolume', area * params.Height),
+    quantity('IfcQuantityVolume', 'GrossVolume', grossArea * params.Height),
   ];
   const elementQuantityId = editor.addEntity('IfcElementQuantity', [
     generateIfcGuid(),

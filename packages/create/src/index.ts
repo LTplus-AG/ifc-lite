@@ -59,6 +59,7 @@ export {
 } from './in-store/extract-walls.js';
 export {
   generateSpacesFromWalls,
+  insetRoomFootprint,
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
 } from './in-store/generate-spaces.js';

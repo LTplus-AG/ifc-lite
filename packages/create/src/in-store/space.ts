@@ -68,6 +68,32 @@ export interface SpaceBuildResult {
   shapeRepId: number;
   productShapeId: number;
   relAggregatesId: number;
+  /** IfcElementQuantity (Qto_SpaceBaseQuantities) emitted for the space. */
+  elementQuantityId: number;
+  /** IfcRelDefinesByProperties linking the space to its quantities. */
+  relQuantityId: number;
+}
+
+/** Absolute polygon area (shoelace), m². */
+function polygonArea(pts: ReadonlyArray<readonly [number, number]>): number {
+  let acc = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    acc += p[0] * q[1] - q[0] * p[1];
+  }
+  return Math.abs(acc) / 2;
+}
+
+/** Polygon perimeter, m. */
+function polygonPerimeter(pts: ReadonlyArray<readonly [number, number]>): number {
+  let s = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    s += Math.hypot(q[0] - p[0], q[1] - p[1]);
+  }
+  return s;
 }
 
 function isPolygonParams(p: SpaceInStoreParams): p is SpacePolygonParams {
@@ -130,5 +156,54 @@ export function addSpaceToStore(
     [`#${spaceId}`],
   ]).expressId;
 
-  return { spaceId, placementId, profileId, solidId, shapeRepId, productShapeId, relAggregatesId };
+  // Qto_SpaceBaseQuantities — every derived space carries base quantities for
+  // downstream schedules / energy / FM. Area is the centreline (gross)
+  // footprint; NetFloorArea == gross until we inset by wall thickness.
+  const area = polygon ? polygonArea(params.OuterCurve) : params.Width * params.Depth;
+  const perimeter = polygon
+    ? polygonPerimeter(params.OuterCurve)
+    : 2 * (params.Width + params.Depth);
+  const ifc4 = (anchor.schema ?? 'IFC4') !== 'IFC2X3';
+  const quantity = (type: string, name: string, value: number): number => {
+    // IfcQuantityArea/Length/Volume: (Name, Description, Unit, *Value[, Formula]).
+    // The trailing Formula slot exists only in IFC4+.
+    const qattrs: unknown[] = [name, null, null, value];
+    if (ifc4) qattrs.push(null);
+    return editor.addEntity(type, qattrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
+  };
+  const quantityIds = [
+    quantity('IfcQuantityArea', 'GrossFloorArea', area),
+    quantity('IfcQuantityArea', 'NetFloorArea', area),
+    quantity('IfcQuantityLength', 'GrossPerimeter', perimeter),
+    quantity('IfcQuantityLength', 'Height', params.Height),
+    quantity('IfcQuantityVolume', 'GrossVolume', area * params.Height),
+  ];
+  const elementQuantityId = editor.addEntity('IfcElementQuantity', [
+    generateIfcGuid(),
+    `#${anchor.ownerHistoryId}`,
+    'Qto_SpaceBaseQuantities',
+    null,
+    null,
+    quantityIds.map((id) => `#${id}`),
+  ] as Parameters<StoreEditor['addEntity']>[1]).expressId;
+  const relQuantityId = editor.addEntity('IfcRelDefinesByProperties', [
+    generateIfcGuid(),
+    `#${anchor.ownerHistoryId}`,
+    null,
+    null,
+    [`#${spaceId}`],
+    `#${elementQuantityId}`,
+  ] as Parameters<StoreEditor['addEntity']>[1]).expressId;
+
+  return {
+    spaceId,
+    placementId,
+    profileId,
+    solidId,
+    shapeRepId,
+    productShapeId,
+    relAggregatesId,
+    elementQuantityId,
+    relQuantityId,
+  };
 }

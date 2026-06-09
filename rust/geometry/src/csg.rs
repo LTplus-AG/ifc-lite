@@ -953,10 +953,12 @@ impl ClippingProcessor {
         }
         // Pure-Rust exact mesh-arrangement kernel (the flip), with consolidate_coplanar
         // merging per-face fragments to match Manifold's clean output.
-        let result = Self::consolidate_coplanar(crate::kernel::mesh_bridge::subtract(
-            host_mesh,
-            opening_mesh,
-        ));
+        let raw = crate::kernel::mesh_bridge::subtract(host_mesh, opening_mesh);
+        let result = if std::env::var("CONSOLIDATE_OFF").is_ok() {
+            raw
+        } else {
+            Self::consolidate_coplanar(raw)
+        };
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return Ok(host_mesh.clone());
@@ -1243,11 +1245,34 @@ impl ClippingProcessor {
             return Ok(mesh_a.clone());
         }
 
+        #[cfg(feature = "manifold-csg")]
+        if std::env::var("UNION_MANIFOLD").is_ok() {
+            return Ok(crate::manifold_kernel::union(mesh_a, mesh_b).unwrap_or_else(|_| {
+                let mut m = mesh_a.clone();
+                m.merge(mesh_b);
+                m
+            }));
+        }
         // Pure-Rust exact kernel (the flip). On an empty/invalid kernel result
         // fall back to a plain merge (overlap not removed) + record the failure,
         // preserving the legacy never-Err contract.
-        let result = Self::consolidate_coplanar(crate::kernel::mesh_bridge::union(mesh_a, mesh_b));
+        let raw_u = crate::kernel::mesh_bridge::union(mesh_a, mesh_b);
+        let result = if std::env::var("CONSOLIDATE_OFF").is_ok() {
+            raw_u
+        } else {
+            Self::consolidate_coplanar(raw_u)
+        };
         if result.is_empty() || !self.validate_mesh(&result) {
+            #[cfg(not(target_arch = "wasm32"))]
+            if std::env::var("CLIP_LOG").is_ok() {
+                eprintln!(
+                    "UNION FALLBACK→merge: empty={} valid={} (a={} b={} tris)",
+                    result.is_empty(),
+                    self.validate_mesh(&result),
+                    mesh_a.triangle_count(),
+                    mesh_b.triangle_count()
+                );
+            }
             self.record_failure(BoolOp::Union, BoolFailureReason::KernelOutputInvalid);
             let mut merged = mesh_a.clone();
             merged.merge(mesh_b);

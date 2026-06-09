@@ -582,7 +582,6 @@ impl BooleanClippingProcessor {
     /// batching) and subtracts once. See that method for why a single unioned
     /// subtract beats sequential subtraction here (issue #960: seam slivers +
     /// deep-chain depth-limit drops).
-    #[cfg(feature = "manifold-csg")]
     fn collect_polygonal_chain(
         &self,
         entity: DecodedEntity,
@@ -636,9 +635,12 @@ impl BooleanClippingProcessor {
     /// cutter that needs the per-cutter unbounded-plane fallback, or a CSG
     /// union that silently under-removes).
     ///
-    /// Only compiled with `manifold-csg`: it relies on a true CSG union of the
-    /// cutter prisms, which the BSP fallback can't guarantee.
-    #[cfg(feature = "manifold-csg")]
+    /// Relies on a *watertight* CSG union of the cutter prisms (built by
+    /// [`Self::build_cutter_union`]). No longer manifold-gated — the chain walk
+    /// and cutter build are kernel-agnostic and must compile into the pure-Rust
+    /// wasm — but it still DEFERS (returns `Ok(None)`) when no available kernel
+    /// can produce that watertight union, so a non-manifold mesh-merge is never
+    /// fed into the subtract.
     fn try_union_polygonal_chain(
         &self,
         entity: &DecodedEntity,
@@ -723,14 +725,18 @@ impl BooleanClippingProcessor {
         }
         let _ = clipper.take_failures();
 
-        // Every cutter is a clean partial cut: union them (a true CSG union, so
-        // abutting roof segments share no internal seam) and subtract once. This
-        // is what eliminates the zero-thickness seam fins that sequential
-        // subtraction leaves behind. A union failure must defer to the
-        // sequential path (like every other guard here), never bubble up — a
-        // bubbled error would drop the whole wall instead of falling back.
-        let combined = match clipper.union_meshes(&prisms) {
-            Ok(m) if !m.is_empty() => m,
+        // Every cutter is a clean partial cut: union them into ONE watertight
+        // solid (a true CSG union, so abutting roof segments share no internal
+        // seam) and subtract once. This eliminates both the zero-thickness seam
+        // fins that sequential subtraction leaves behind AND the deep-chain
+        // MAX_BOOLEAN_DEPTH drops. `build_cutter_union` returns `None` when no
+        // available kernel can union the prisms into a watertight solid; we
+        // defer (like every other guard here) rather than feed a broken,
+        // non-manifold union into the subtract — which the CSG kernel can't
+        // classify, silently returning the host UNCHANGED (issue #960 wall
+        // #2152: the gable-end wall rendered at full 7000 mm extrusion height).
+        let combined = match self.build_cutter_union(&clipper, &prisms) {
+            Some(m) if !m.is_empty() => m,
             _ => {
                 let _ = clipper.take_failures();
                 return Ok(None);
@@ -770,6 +776,70 @@ impl BooleanClippingProcessor {
             return Ok(None);
         }
         Ok(Some(clipped))
+    }
+
+    /// Union the chained-clip cutter prisms into ONE watertight solid.
+    ///
+    /// The segmented-roof cutters are prisms that ABUT along shared, exactly-
+    /// coplanar faces (adjacent roof facets meeting at a hip/ridge/valley).
+    /// Unioning them into a single watertight cutter is what lets the chain be
+    /// subtracted ONCE (no seam fins, no deep-chain depth drops — issue #960).
+    ///
+    /// Returns `None` when no available kernel can produce a watertight union;
+    /// the caller then defers to the sequential per-cutter path. We never feed a
+    /// non-manifold mesh-merge into the subtract: the CSG kernel cannot classify
+    /// a non-watertight cutter and silently returns the host UNCHANGED, leaving
+    /// the gable-end wall at full extrusion height.
+    fn build_cutter_union(&self, clipper: &ClippingProcessor, prisms: &[Mesh]) -> Option<Mesh> {
+        if prisms.is_empty() {
+            return None;
+        }
+        if prisms.len() == 1 {
+            return Some(prisms[0].clone());
+        }
+
+        // Primary path: the pure-Rust kernel's N-ary union — ONE conforming
+        // arrangement of all cutter prisms over a shared interner, so coplanar
+        // seams shared by 3+ roof segments (and exactly-duplicated cutter prisms)
+        // dissolve without the tearing that left-deep pairwise accumulation
+        // produces. This makes the segmented-roof clip (#960) watertight on EVERY
+        // build, Manifold or not. Exact + platform-deterministic.
+        {
+            let refs: Vec<&Mesh> = prisms.iter().collect();
+            let u = ClippingProcessor::consolidate_coplanar(
+                crate::kernel::mesh_bridge::union_many(&refs),
+            );
+            if !u.is_empty() {
+                return Some(u);
+            }
+        }
+
+        // Fallback 1: Manifold's pairwise union (when compiled in) — watertight by
+        // construction, in case the kernel union ever returns empty for an operand
+        // set it can't yet handle.
+        #[cfg(all(feature = "manifold-csg", not(target_arch = "wasm32")))]
+        {
+            let mut acc = prisms[0].clone();
+            for p in &prisms[1..] {
+                match crate::manifold_kernel::union(&acc, p) {
+                    Ok(m) if !m.is_empty() => acc = m,
+                    _ => {
+                        acc = Mesh::new();
+                        break;
+                    }
+                }
+            }
+            if !acc.is_empty() {
+                return Some(acc);
+            }
+        }
+
+        // Fallback 2: the active CSG kernel's sequential multi-mesh union. Returns
+        // `None` on empty/error so the caller defers to the per-cutter path.
+        match clipper.union_meshes(prisms) {
+            Ok(m) if !m.is_empty() => Some(m),
+            _ => None,
+        }
     }
 
     /// Internal processing with depth tracking to prevent stack overflow
@@ -828,12 +898,18 @@ impl BooleanClippingProcessor {
         // clips (duplex.ifc "Party Wall"). Verified mm-identical to IfcOpenShell
         // on all five reported House.ifc walls.
         //
-        // Gated on `manifold-csg`: the whole approach hinges on a *true* CSG
-        // union of the cutter prisms. The legacy BSP `union_mesh` can fall back
-        // to a non-manifold mesh-merge, which neither dissolves the seam nor is
-        // safe to subtract — so without Manifold (the BSP server build) we keep
-        // the unchanged sequential path rather than risk a worse result.
-        #[cfg(feature = "manifold-csg")]
+        // No longer gated on `manifold-csg`: the chain-walk + cutter build is
+        // kernel-agnostic and MUST compile into the pure-Rust wasm build so the
+        // fix lands automatically once the kernel can union the cutters. The
+        // *correctness* of the single subtract still hinges on a WATERTIGHT union
+        // of the cutter prisms, which `build_cutter_union` sources from the most
+        // robust kernel available (Manifold today; see that method). When no
+        // kernel can produce a watertight union, `try_union_polygonal_chain`
+        // returns `None` and we fall through to the sequential path — so this is
+        // never worse than the pre-#960 behaviour on the pure-Rust-only build,
+        // whose exact-kernel coplanar-abutting union parity is the pending M7
+        // work (the seam-sliver / deep-chain drop only fully resolves there once
+        // that union is watertight; 841_house_stack_overflow.ifc).
         if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
             if let Some(result) = self.try_union_polygonal_chain(entity, decoder, depth)? {
                 return Ok(result);

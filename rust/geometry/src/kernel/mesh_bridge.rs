@@ -7,7 +7,7 @@
 //! foundation. `subtract`/`union`/`intersection` here are what the
 //! `ClippingProcessor` seam will eventually call.
 
-use super::arrangement::{boolean, BoolOp, Tri};
+use super::arrangement::{boolean, union_all, BoolOp, Tri};
 use crate::mesh::Mesh;
 
 /// f32-near-coplanar reconciliation snap grid (metres). A POWER OF TWO so the
@@ -88,6 +88,16 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
 /// `a ∪ b` as a `Mesh`.
 pub fn union(a: &Mesh, b: &Mesh) -> Mesh {
     tris_to_mesh(&boolean(&mesh_to_tris(a), &mesh_to_tris(b), BoolOp::Union))
+}
+
+/// `∪ meshes` as one watertight `Mesh` — the N-ary union, computed in a single
+/// conforming arrangement so coplanar seams shared by 3+ operands (the #960
+/// segmented-roof cutters) dissolve without the tearing that left-deep pairwise
+/// accumulation produces. Empty input ⇒ empty mesh.
+pub fn union_many(meshes: &[&Mesh]) -> Mesh {
+    let tri_lists: Vec<Vec<Tri>> = meshes.iter().map(|m| mesh_to_tris(m)).collect();
+    let refs: Vec<&[Tri]> = tri_lists.iter().map(|t| t.as_slice()).collect();
+    tris_to_mesh(&union_all(&refs))
 }
 
 /// `a ∩ b` as a `Mesh`.

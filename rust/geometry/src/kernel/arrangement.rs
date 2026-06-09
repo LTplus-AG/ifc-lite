@@ -47,6 +47,15 @@ pub struct Arrangement {
     pub tris_a: Vec<[Vid; 3]>,
     /// Operand B's conforming sub-triangles.
     pub tris_b: Vec<[Vid; 3]>,
+    /// Per-sub-triangle (parallel to `tris_a`) flag: this sub-triangle's PARENT
+    /// face had a COPLANAR overlap with the other operand — so a sub-triangle on
+    /// it may lie on a shared interface plane and needs the [`solid_side`] regime-2
+    /// classification (`boolean_vids`). `false` ⇒ the parent face is transversal to
+    /// the other operand, so the plain centroid ray-cast suffices (the common case;
+    /// keeps box−box etc. on the fast single-cast path).
+    pub coplanar_a: Vec<bool>,
+    /// Per-sub-triangle (parallel to `tris_b`) coplanar-parent flag.
+    pub coplanar_b: Vec<bool>,
 }
 
 /// A raw intersection segment on a triangle, tagged with the cutter triangle that
@@ -159,14 +168,18 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     };
     #[cfg(not(target_arch = "wasm32"))]
     let t_pairs = _ts.elapsed();
+    // Per-ORIGINAL-triangle "had a coplanar overlap with the other operand" flag,
+    // captured BEFORE `build` drains the coplanar-constraint accumulators.
+    let cop_parent_a: Vec<bool> = cop_a.iter().map(|c| !c.is_empty()).collect();
+    let cop_parent_b: Vec<bool> = cop_b.iter().map(|c| !c.is_empty()).collect();
     let ca = build(a, &raw_a, &mut cop_a);
     let cb = build(b, &raw_b, &mut cop_b);
     // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
     #[cfg(not(target_arch = "wasm32"))]
     let t_build = _ts.elapsed();
     let mut interner = Interner::new();
-    let tris_a = retriangulate_each(a, &ca, &mut interner);
-    let tris_b = retriangulate_each(b, &cb, &mut interner);
+    let (tris_a, coplanar_a) = retriangulate_each(a, &ca, &cop_parent_a, &mut interner);
+    let (tris_b, coplanar_b) = retriangulate_each(b, &cb, &cop_parent_b, &mut interner);
     #[cfg(not(target_arch = "wasm32"))]
     if std::env::var("ARRANGE_PROFILE").is_ok() {
         eprintln!(
@@ -180,12 +193,206 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
             tris_b.len(),
         );
     }
-    Arrangement { interner, tris_a, tris_b }
+    Arrangement { interner, tris_a, tris_b, coplanar_a, coplanar_b }
 }
 
-fn retriangulate_each(tris: &[Tri], cons: &[Vec<Constraint>], it: &mut Interner) -> Vec<[Vid; 3]> {
+/// The conforming arrangement of `n` operand meshes over one shared interner.
+/// `subtris[k]` is mesh `k`'s conforming sub-triangles; `owner[k][t]` is the index
+/// in mesh `k`'s sub-tri list (unused externally, kept implicit by position).
+pub struct MultiArrangement {
+    pub interner: Interner,
+    /// `subtris[k]` = mesh `k`'s conforming sub-triangles (interned Vids).
+    pub subtris: Vec<Vec<[Vid; 3]>>,
+}
+
+/// Conforming arrangement of `meshes` (N operands) over ONE interner.
+///
+/// Every ORDERED pair of distinct meshes is intersected (segment + coplanar)
+/// exactly as the binary [`arrange`] does, and the accumulated constraints
+/// re-triangulate each mesh over the shared interner — so a vertex created on a
+/// shared edge/seam interns to the SAME Vid in every mesh that touches it (full
+/// N-way conformity). This is what lets [`union_all`] classify each sub-triangle
+/// against all OTHER solids WITHOUT ever re-meshing an intermediate union (the
+/// pairwise-accumulation step that compounds coplanar T-junctions).
+pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
+    let n = meshes.len();
+    // per-mesh, per-triangle constraint accumulators
+    let mut raw: Vec<Vec<Vec<RawSeg>>> =
+        meshes.iter().map(|m| (0..m.len()).map(|_| Vec::new()).collect()).collect();
+    let mut cop: Vec<Vec<Vec<Constraint>>> =
+        meshes.iter().map(|m| (0..m.len()).map(|_| Vec::new()).collect()).collect();
+    // intersect every unordered mesh pair (i<j); push constraints to BOTH.
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let pairs = super::broadphase::candidate_pairs(meshes[i], meshes[j]);
+            for (ti, tj) in pairs {
+                let (ta, tb) = (&meshes[i][ti], &meshes[j][tj]);
+                match tri_tri_intersection(ta, tb) {
+                    TriTri::Segment([s, t]) => {
+                        raw[i][ti].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
+                        raw[j][tj].push(RawSeg { a: s, b: t, cutter: *ta });
+                    }
+                    TriTri::Coplanar => {
+                        cop[i][ti].extend(
+                            coplanar_clip(ta, tb).into_iter().map(|(a, b)| Constraint { a, b }),
+                        );
+                        cop[j][tj].extend(
+                            coplanar_clip(tb, ta).into_iter().map(|(a, b)| Constraint { a, b }),
+                        );
+                    }
+                    TriTri::None | TriTri::Point(_) => {}
+                }
+            }
+        }
+    }
+    let mut interner = Interner::new();
+    let mut subtris = Vec::with_capacity(n);
+    for k in 0..n {
+        let cop_parent: Vec<bool> = cop[k].iter().map(|c| !c.is_empty()).collect();
+        let cons: Vec<Vec<Constraint>> = (0..meshes[k].len())
+            .map(|t| {
+                let mut c = split_crossings(&meshes[k][t], &raw[k][t]);
+                c.append(&mut cop[k][t]);
+                c
+            })
+            .collect();
+        // `union_all` classifies every sub-triangle against each other mesh via the
+        // off-plane `solid_side` probe, so it needs no per-sub coplanar flag here.
+        let (tris, _coplanar) = retriangulate_each(meshes[k], &cons, &cop_parent, &mut interner);
+        subtris.push(tris);
+    }
+    MultiArrangement { interner, subtris }
+}
+
+/// `∪ meshes` as a watertight triangle list — the N-ary union.
+///
+/// Computed in ONE conforming arrangement ([`arrange_many`]), so it never re-meshes
+/// an intermediate union (which is what makes left-deep pairwise accumulation tear
+/// along coplanar seams shared by 3+ operands — the #960 segmented-roof cutters).
+///
+/// A sub-triangle of mesh `k` is on `∂(∪meshes)` iff its OUTER side (`+n`) lies
+/// outside every other mesh. Identical co-oriented faces shared by several meshes
+/// (e.g. duplicated cutter prisms) are kept once, owned by the LOWEST mesh index.
+pub fn union_all(meshes: &[&[Tri]]) -> Vec<Tri> {
+    if meshes.is_empty() {
+        return Vec::new();
+    }
+    if meshes.len() == 1 {
+        return meshes[0].to_vec();
+    }
+    use std::collections::HashMap;
+    let arr = arrange_many(meshes);
+    let exts: Vec<f64> = meshes.iter().map(|m| operand_extent(m)).collect();
+    // Owner map: oriented (winding-preserving) Vid key → lowest mesh index that
+    // KEEPS that face. A later mesh's identical co-oriented copy is dropped.
+    let mut owner: HashMap<[Vid; 3], usize> = HashMap::new();
+    // First pass: decide keep per sub-triangle (boundary of the union), recording
+    // the canonical owner of each kept oriented face.
+    let mut keep: Vec<Vec<bool>> = Vec::with_capacity(meshes.len());
+    for (k, sub) in arr.subtris.iter().enumerate() {
+        let mut kk = Vec::with_capacity(sub.len());
+        for &tri in sub {
+            let c = centroid_multi(&arr, tri);
+            let n = tri_normal_multi(&arr, tri);
+            // outer side just past the face along +n
+            let outer = offset_point(c, n, exts[k]);
+            // on the union boundary iff the outer side is outside ALL other meshes
+            let on_boundary = (0..meshes.len())
+                .filter(|&m| m != k)
+                .all(|m| !point_inside(outer, meshes[m], exts[m]));
+            let mut keep_this = on_boundary;
+            if keep_this {
+                let key = rotate_min_first(tri);
+                match owner.get(&key) {
+                    Some(&o) if o != k => keep_this = false, // duplicate; earlier mesh owns it
+                    _ => {
+                        owner.entry(key).or_insert(k);
+                    }
+                }
+            }
+            kk.push(keep_this);
+        }
+        keep.push(kk);
+    }
+    // Materialize kept sub-triangles to f64.
     let mut out = Vec::new();
+    for (k, sub) in arr.subtris.iter().enumerate() {
+        for (t, &tri) in sub.iter().enumerate() {
+            if keep[k][t] {
+                out.push([
+                    point_via_interner(&arr.interner, tri[0]),
+                    point_via_interner(&arr.interner, tri[1]),
+                    point_via_interner(&arr.interner, tri[2]),
+                ]);
+            }
+        }
+    }
+    out
+}
+
+/// Step `step·n̂` off `c` along the unit-normalised `dir`. Deterministic FMA-free
+/// f64 (mirrors [`solid_side`]'s probe).
+fn offset_point(c: [f64; 3], dir: [f64; 3], far_l: f64) -> [f64; 3] {
+    let len = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
+    if len == 0.0 {
+        return c;
+    }
+    let step = far_l * (1.0 / 1_048_576.0);
+    [
+        c[0] + dir[0] / len * step,
+        c[1] + dir[1] / len * step,
+        c[2] + dir[2] / len * step,
+    ]
+}
+
+/// Centroid of a multi-arrangement sub-triangle (interner lookup).
+fn centroid_multi(arr: &MultiArrangement, tri: [Vid; 3]) -> [f64; 3] {
+    let c = [
+        point_via_interner(&arr.interner, tri[0]),
+        point_via_interner(&arr.interner, tri[1]),
+        point_via_interner(&arr.interner, tri[2]),
+    ];
+    [
+        (c[0][0] + c[1][0] + c[2][0]) / 3.0,
+        (c[0][1] + c[1][1] + c[2][1]) / 3.0,
+        (c[0][2] + c[1][2] + c[2][2]) / 3.0,
+    ]
+}
+
+fn tri_normal_multi(arr: &MultiArrangement, tri: [Vid; 3]) -> [f64; 3] {
+    let (a, b, c) = (
+        point_via_interner(&arr.interner, tri[0]),
+        point_via_interner(&arr.interner, tri[1]),
+        point_via_interner(&arr.interner, tri[2]),
+    );
+    cross3(sub_f64(b, a), sub_f64(c, a))
+}
+
+#[inline]
+fn point_via_interner(it: &Interner, v: Vid) -> [f64; 3] {
+    let pt = it.get(v);
+    if let Some(f) = super::fixed::point_to_f64(pt) {
+        return f;
+    }
+    let p = point_of(pt);
+    [p[0].to_f64().unwrap(), p[1].to_f64().unwrap(), p[2].to_f64().unwrap()]
+}
+
+/// Re-triangulate each original triangle over the shared interner. Returns the
+/// conforming sub-triangles AND a parallel `coplanar` flag (each sub-triangle
+/// inherits its parent original triangle's `cop_parent[i]` — "had a coplanar
+/// overlap with the other operand"). The flag drives the [`solid_side`] regime-2
+/// classification in `boolean_vids` only where it can matter.
+fn retriangulate_each(
+    tris: &[Tri],
+    cons: &[Vec<Constraint>],
+    cop_parent: &[bool],
+    it: &mut Interner,
+) -> (Vec<[Vid; 3]>, Vec<bool>) {
+    let mut out = Vec::new();
+    let mut coplanar = Vec::new();
     for (i, t) in tris.iter().enumerate() {
+        let parent_cop = cop_parent.get(i).copied().unwrap_or(false);
         let passthrough = |it: &mut Interner| {
             [
                 it.intern(ImplicitPoint::Explicit(t[0])),
@@ -193,6 +400,7 @@ fn retriangulate_each(tris: &[Tri], cons: &[Vec<Constraint>], it: &mut Interner)
                 it.intern(ImplicitPoint::Explicit(t[2])),
             ]
         };
+        let before = out.len();
         if cons[i].is_empty() {
             out.push(passthrough(it));
         } else if let Some(mesh) =
@@ -202,8 +410,10 @@ fn retriangulate_each(tris: &[Tri], cons: &[Vec<Constraint>], it: &mut Interner)
         } else {
             out.push(passthrough(it)); // degenerate triangle — pass through
         }
+        coplanar.resize(out.len(), parent_cop);
+        debug_assert!(coplanar.len() == out.len() && before <= out.len());
     }
-    out
+    (out, coplanar)
 }
 
 // --- M4: winding classification + boolean extraction ---------------------
@@ -337,42 +547,167 @@ fn on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
     None
 }
 
-/// The boolean result as ORIENTED Vid triangles. A sub-triangle whose centroid is
-/// strictly inside/outside the other operand is classified by exact ray-cast;
-/// one whose centroid lies on a coplanar SHARED face of the other operand is
-/// classified by NORMAL AGREEMENT (the ray-cast is undefined there): keep only
-/// the A-copy, and only when the op's winding agrees — back-to-back faces are an
-/// internal interface (union/intersection remove both), the A-copy survives a
-/// difference's outer boundary; the B-copy is always dropped (dedup).
+/// Is the OTHER operand's solid present just off `c` along `±dir`?
+///
+/// `c` is a sub-triangle centroid that may lie EXACTLY on a shared interface plane
+/// where the on-plane ray-cast is undefined. We probe an infinitesimal step to
+/// EACH side along the (unit-ish) face normal `dir` and ray-cast each probe point
+/// — the probe points are strictly off the plane, so the parity test is
+/// well-defined. Returns `(in_plus, in_minus)` = solid present on the `+dir` /
+/// `−dir` side.
+///
+/// DETERMINISM: every operation here is FMA-free f64 over input coordinates, and
+/// the ray-cast uses the all-`Explicit` `geometry_predicates::orient3d` path (no
+/// implicit points, no BigRational escalation, const float error bounds) — so the
+/// keep/drop verdict is byte-identical native==wasm, exactly like the existing
+/// on-plane centroid classification.
+fn solid_side(c: [f64; 3], dir: [f64; 3], other: &[Tri], far_l: f64) -> (bool, bool) {
+    // Unit-normalise `dir` so the step magnitude is plane-independent, then step a
+    // small fraction of the operand extent off the plane — far enough that the
+    // float predicate resolves the probe vs. the plane, near enough that no other
+    // feature is crossed.
+    let len = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
+    if len == 0.0 {
+        return (false, false);
+    }
+    // far_l = 2*extent + 1; a step of far_l * 2^-20 ≈ extent * 2^-19 is ~µm at
+    // building scale — well inside a face yet resolvable by orient3d.
+    let step = far_l * (1.0 / 1_048_576.0);
+    let u = [dir[0] / len * step, dir[1] / len * step, dir[2] / len * step];
+    let p_plus = [c[0] + u[0], c[1] + u[1], c[2] + u[2]];
+    let p_minus = [c[0] - u[0], c[1] - u[1], c[2] - u[2]];
+    (point_inside(p_plus, other, far_l), point_inside(p_minus, other, far_l))
+}
+
+/// Regime-2 classifier (see [`boolean_vids`]): a sub-triangle whose centroid `c`
+/// lies on the OTHER solid's boundary surface — without a COINCIDENT face there
+/// (regime 1 already handled that), so the on-plane centroid ray-cast is undefined.
+///
+/// Applies ONLY when the other solid's boundary actually passes through `c` —
+/// detected by [`solid_side`] reporting DIFFERENT inside/outside verdicts on the
+/// two sides of the face (`op_plus != op_minus`). That is exactly the degenerate
+/// case the plain ray-cast can't resolve (the #960 seam end-region: the other
+/// solid abuts via a NON-coplanar face, so its solid is present on one side of
+/// this coplanar sub-triangle but it has no coincident face there). When the two
+/// sides AGREE, `c` is strictly inside or outside the other solid → the plain
+/// ray-cast is reliable → return `None` so the caller uses it (preserving every
+/// existing in/out classification, incl. the pinned box−box manifests).
+///
+/// `c` is on the boundary, so the other solid occupies exactly one side. With the
+/// outward normal `n` (own-solid on `−n`):
+/// * Union — keep iff the other solid is NOT outside (`!op_plus`): an interface
+///   with the other solid on the `+n` side is interior to `A∪B` → drop.
+/// * Intersection — keep iff the other solid is on the inner side: `op_minus`.
+/// * Difference — keep iff the other solid is NOT on the inner side: `!op_minus`.
+fn on_interface_keep(
+    arr: &Arrangement,
+    tri: [Vid; 3],
+    c: [f64; 3],
+    other: &[Tri],
+    ext_other: f64,
+    op: BoolOp,
+    _a_side: bool,
+) -> Option<bool> {
+    let n = tri_normal(arr, tri);
+    let (op_plus, op_minus) = solid_side(c, n, other, ext_other);
+    if op_plus == op_minus {
+        // `c` is strictly inside/outside the other solid — NOT on its boundary;
+        // the plain centroid ray-cast is well-defined, so defer to it. This is the
+        // common case for every non-coplanar sub-triangle (incl. the pinned
+        // box−box cut faces), so regime 2 perturbs nothing there.
+        return None;
+    }
+    Some(match op {
+        BoolOp::Union => !op_plus,
+        BoolOp::Intersection => op_minus,
+        BoolOp::Difference => !op_minus,
+    })
+}
+
+/// The boolean result as ORIENTED Vid triangles.
+///
+/// A sub-triangle's centroid is classified against the OTHER operand in one of
+/// three regimes:
+/// 1. **On a coincident SHARED face** (`on_surface_normal` finds a covering,
+///    coplanar triangle of the other operand): classify by NORMAL AGREEMENT —
+///    keep the A-copy for a co-oriented face on a union/intersection, or an
+///    opposite face on a difference; drop the B-copy (dedup). This is the
+///    original exact handling and is unchanged.
+/// 2. **On a shared INTERFACE plane WITHOUT a coincident face** (the segmented-
+///    roof seam end-regions, #960 — the other solid abuts via a NON-coplanar
+///    face, so regime 1 misses it and the on-plane ray-cast is undefined):
+///    classify by the other solid's presence on the `−n` (inner) side, probed an
+///    infinitesimal step off the plane ([`solid_side`]). This is the fix: such a
+///    sub-triangle is an interior interface for union (drop) but was previously
+///    mis-routed to the undefined ray-cast and wrongly kept.
+/// 3. **Strictly off any shared plane**: the exact centroid ray-cast, as before.
+///
+/// For union/intersection, a co-oriented DUPLICATE face (same patch, same winding
+/// — e.g. unioning identical/overlapping coplanar solids) survives regime 1's
+/// keep test on BOTH operands; because the arrangement conforms over one interner
+/// it is the SAME oriented Vid triangle on both, so the B-copy is dropped when its
+/// rotation-canonical key already appears among the kept A-copies. (A back-to-back
+/// interface shares the unordered vertex set but has OPPOSITE winding, so it never
+/// collides; both its copies are dissolved by regime 2.)
 fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid; 3]> {
+    use std::collections::HashSet;
     let (ext_a, ext_b) = (operand_extent(a), operand_extent(b));
+    let dedup = matches!(op, BoolOp::Union | BoolOp::Intersection);
+    let mut a_kept: HashSet<[Vid; 3]> = HashSet::new();
     let mut out = Vec::new();
-    for &tri in &arr.tris_a {
+    for (i, &tri) in arr.tris_a.iter().enumerate() {
         let c = centroid(arr, tri);
+        let keep;
         if let Some(n_other) = on_surface_normal(c, b) {
+            // regime 1: coincident shared face → normal agreement
             let co_oriented = dot3(tri_normal(arr, tri), n_other) > 0.0;
-            let keep = match op {
+            keep = match op {
                 BoolOp::Union | BoolOp::Intersection => co_oriented,
                 BoolOp::Difference => !co_oriented,
             };
-            if keep {
-                out.push(tri); // the A-copy, oriented as-is
-            }
+        } else if let Some(k) = arr
+            .coplanar_a
+            .get(i)
+            .copied()
+            .filter(|&cp| cp)
+            .and_then(|_| on_interface_keep(arr, tri, c, b, ext_b, op, true))
+        {
+            // regime 2 (only on coplanar-overlap parents): shared interface plane,
+            // no coincident face → solid-side probe.
+            keep = k;
         } else {
+            // regime 3: strictly off-plane → centroid ray-cast (original)
             let inside_b = point_inside(c, b, ext_b);
-            let keep = match op {
+            keep = match op {
                 BoolOp::Intersection => inside_b,
                 _ => !inside_b,
             };
-            if keep {
-                out.push(tri);
+        }
+        if keep {
+            if dedup {
+                a_kept.insert(rotate_min_first(tri));
             }
+            out.push(tri);
         }
     }
-    for &tri in &arr.tris_b {
+    for (i, &tri) in arr.tris_b.iter().enumerate() {
+        // dedup a true co-oriented duplicate of a kept A face (keep the A-copy)
+        if dedup && a_kept.contains(&rotate_min_first(tri)) {
+            continue;
+        }
         let c = centroid(arr, tri);
         if on_surface_normal(c, a).is_some() {
             continue; // coplanar-shared B-copy: dropped (the A-copy is the kept one)
+        }
+        if arr.coplanar_b.get(i).copied().unwrap_or(false) {
+            if let Some(keep) = on_interface_keep(arr, tri, c, a, ext_a, op, false) {
+                // regime 2 for B (coplanar-overlap parent only).
+                if keep {
+                    let flip = matches!(op, BoolOp::Difference);
+                    out.push(if flip { [tri[0], tri[2], tri[1]] } else { tri });
+                }
+                continue;
+            }
         }
         let inside_a = point_inside(c, a, ext_a);
         let (keep, flip) = match op {
@@ -574,6 +909,111 @@ mod tests {
             .sum::<f64>()
             / 6.0;
         assert!((vol - 2.0).abs() < 1e-6, "abutting-boxes union volume = {vol}, expected 2");
+    }
+
+    /// Edge-use audit on a materialised f64 triangle list: returns
+    /// `(boundary, nonmanifold)` = count of undirected edges used exactly ONCE
+    /// (an open boundary) and MORE THAN twice (a non-manifold fin). Both zero ⇒
+    /// the surface is closed and 2-manifold. Vertices are keyed on the snap grid.
+    fn edge_audit(tris: &[Tri]) -> (usize, usize) {
+        use std::collections::BTreeMap;
+        let key = |p: [f64; 3]| {
+            (
+                (p[0] * 65536.0).round() as i64,
+                (p[1] * 65536.0).round() as i64,
+                (p[2] * 65536.0).round() as i64,
+            )
+        };
+        let mut edges: BTreeMap<((i64, i64, i64), (i64, i64, i64)), u32> = BTreeMap::new();
+        for t in tris {
+            let k = [key(t[0]), key(t[1]), key(t[2])];
+            for (u, v) in [(k[0], k[1]), (k[1], k[2]), (k[2], k[0])] {
+                *edges.entry(if u < v { (u, v) } else { (v, u) }).or_insert(0) += 1;
+            }
+        }
+        (
+            edges.values().filter(|&&c| c == 1).count(),
+            edges.values().filter(|&&c| c > 2).count(),
+        )
+    }
+
+    fn bounds(tris: &[Tri]) -> ([f64; 3], [f64; 3]) {
+        let mut lo = [f64::MAX; 3];
+        let mut hi = [f64::MIN; 3];
+        for t in tris {
+            for v in t {
+                for k in 0..3 {
+                    lo[k] = lo[k].min(v[k]);
+                    hi[k] = hi[k].max(v[k]);
+                }
+            }
+        }
+        (lo, hi)
+    }
+
+    #[test]
+    fn abutting_boxes_union_is_watertight_combined_hull() {
+        // The MINIMAL coplanar-union repro (the #960 root cause, distilled): two
+        // unit boxes sharing the x=1 face union to ONE watertight 1×1×2 hull —
+        // every edge shared by exactly two faces, no open boundary, bounds span
+        // BOTH boxes. Pure geometry ⇒ must pass under --no-default-features AND
+        // the default (Manifold) build.
+        let a = box_mesh([0., 0., 0.], [1., 1., 1.]);
+        let b = box_mesh([1., 0., 0.], [2., 1., 1.]);
+        let u = boolean(&a, &b, BoolOp::Union);
+        let (boundary, nonmanifold) = edge_audit(&u);
+        assert_eq!(boundary, 0, "abutting-boxes union has {boundary} open boundary edges (torn)");
+        assert_eq!(nonmanifold, 0, "abutting-boxes union has {nonmanifold} non-manifold edges (the shared x=1 face was not dissolved)");
+        let (lo, hi) = bounds(&u);
+        assert_eq!(lo, [0., 0., 0.], "union lower bound should span both boxes");
+        assert_eq!(hi, [2., 1., 1.], "union upper bound should span both boxes");
+    }
+
+    #[test]
+    fn partial_coplanar_seam_union_is_watertight() {
+        // Two boxes sharing the x=1 plane but with only PARTIAL face overlap in Y
+        // (A: y∈[0,2], B: y∈[1,3]); each box's x=1 face extends past the shared
+        // band. This is the #960 seam END-REGION case: the seam face of one box
+        // reaches where the other has NO coincident face (its solid abuts via a
+        // perpendicular wall). The end-region must still dissolve, not tear.
+        let a = box_mesh([0., 0., 0.], [1., 2., 1.]);
+        let b = box_mesh([1., 1., 0.], [2., 3., 1.]);
+        let u = boolean(&a, &b, BoolOp::Union);
+        let (boundary, nonmanifold) = edge_audit(&u);
+        assert_eq!(boundary, 0, "partial-seam union has {boundary} open boundary edges");
+        assert_eq!(nonmanifold, 0, "partial-seam union has {nonmanifold} non-manifold edges");
+    }
+
+    #[test]
+    fn identical_solids_union_is_the_single_solid() {
+        // Union of a box with an exact COPY of itself = that box (every face is a
+        // co-oriented coincident duplicate; exactly one copy survives). The
+        // sloped/rotated variant is the case the narrow coincident-face dedup
+        // missed before the Vid-key dedup.
+        let a = box_mesh([0., 0., 0.], [2., 2., 2.]);
+        let u = boolean(&a, &a, BoolOp::Union);
+        let (boundary, nonmanifold) = edge_audit(&u);
+        assert_eq!((boundary, nonmanifold), (0, 0), "self-union is not watertight: b={boundary} nm={nonmanifold}");
+        assert_eq!(u.len(), 12, "self-union should be the single 12-triangle box, got {}", u.len());
+    }
+
+    #[test]
+    fn nary_union_of_abutting_and_duplicate_prisms_is_watertight() {
+        // The #960 cutter-union shape (distilled to axis-aligned): a strip of
+        // three abutting unit boxes PLUS an exact duplicate of the middle one —
+        // unioned in ONE conforming arrangement (`union_all`), never re-meshing an
+        // intermediate. Result = the 3×1×1 strip, watertight, duplicate dissolved.
+        let b0 = box_mesh([0., 0., 0.], [1., 1., 1.]);
+        let b1 = box_mesh([1., 0., 0.], [2., 1., 1.]);
+        let b2 = box_mesh([2., 0., 0.], [3., 1., 1.]);
+        let b1_dup = b1.clone();
+        let meshes: Vec<&[Tri]> = vec![&b0, &b1, &b2, &b1_dup];
+        let u = super::union_all(&meshes);
+        let (boundary, nonmanifold) = edge_audit(&u);
+        assert_eq!(boundary, 0, "N-ary union has {boundary} open boundary edges");
+        assert_eq!(nonmanifold, 0, "N-ary union has {nonmanifold} non-manifold edges");
+        let (lo, hi) = bounds(&u);
+        assert_eq!((lo, hi), ([0., 0., 0.], [3., 1., 1.]), "N-ary union bounds wrong");
     }
 
     #[test]

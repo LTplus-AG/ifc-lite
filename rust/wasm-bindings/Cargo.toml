@@ -39,7 +39,7 @@ ifc-lite-core.workspace = true
 # NOTE: cannot use `workspace = true` here because that forces inheriting
 # the workspace's `default-features = true`. Pin the path directly so we
 # can pick our exact feature set from this single non-native consumer.
-ifc-lite-geometry = { path = "../geometry", default-features = false, features = ["manifold-csg-wasm-uu"] }
+ifc-lite-geometry = { path = "../geometry", default-features = false, features = [] }
 # Canonical 2D-symbol extractor lives here; the wasm bindings just
 # delegate (issue #843 follow-up — full parity, one implementation).
 ifc-lite-processing = { path = "../processing" }

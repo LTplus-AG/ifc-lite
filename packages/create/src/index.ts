@@ -61,6 +61,7 @@ export {
 export {
   generateSpacesFromWalls,
   insetRoomFootprint,
+  GENERATED_SPACE_OBJECTTYPE,
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
 } from './in-store/generate-spaces.js';

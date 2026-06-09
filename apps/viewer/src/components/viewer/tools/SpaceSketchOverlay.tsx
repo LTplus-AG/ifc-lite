@@ -23,7 +23,13 @@ import { useViewerStore } from '@/store';
 import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
 import init, { SpacePlateHandle } from '@ifc-lite/wasm';
-import { extractWallSegmentsForStorey, insetRoomFootprint } from '@ifc-lite/create';
+import {
+  extractWallSegmentsForStorey,
+  insetRoomFootprint,
+  existingSpaceFootprintsByStorey,
+  GENERATED_SPACE_OBJECTTYPE,
+} from '@ifc-lite/create';
+import { X, Undo2, Redo2, Building2, Layers } from 'lucide-react';
 
 let wasmReady: Promise<void> | null = null;
 function ensureWasm(): Promise<void> {
@@ -60,9 +66,25 @@ const MAX_UNDO = 40;
 const BAKE_HEIGHT = 3;
 const EPS = 1e-6;
 
-const DEMO_SEGS = {
-  coords: Float64Array.from([0, 0, 8, 0, 8, 0, 8, 3, 8, 3, 0, 3, 0, 3, 0, 0, 4, 0, 4, 3]),
-  sources: Int32Array.from([1, 2, 3, 4, 99]),
+/** Absolute polygon area (shoelace), m². */
+function polyArea(pts: Pt[]): number {
+  let a = 0;
+  for (let k = 0; k < pts.length; k++) { const p = pts[k], q = pts[(k + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; }
+  return Math.abs(a) / 2;
+}
+/** Ray-cast point-in-polygon. */
+function pointInPoly(x: number, y: number, poly: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+const centroid = (pts: Pt[]): Pt => {
+  let cx = 0, cy = 0;
+  for (const p of pts) { cx += p[0]; cy += p[1]; }
+  return [cx / pts.length, cy / pts.length];
 };
 
 interface Fit { scale: number; minX: number; minY: number }
@@ -114,15 +136,19 @@ const ROOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84
 export function SpaceSketchOverlay() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const addSpace = useViewerStore((s) => s.addSpace);
-  const generateAllSpaces = useViewerStore((s) => s.generateAllSpaces);
+  const removeEntity = useViewerStore((s) => s.removeEntity);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const { ifcDataStore } = useIfc();
 
   const plateRef = useRef<SpacePlateHandle | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const fitRef = useRef<Fit>({ scale: 1, minX: 0, minY: 0 });
   const rafRef = useRef<number | null>(null);
   const rebuildTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // IfcSpace expressIds this session created per storey — so a re-bake (or
+  // "Generate all") replaces the spaces it dropped instead of duplicating.
+  const generatedRef = useRef<Map<number, number[]>>(new Map());
   const moveRef = useRef<{ x: number; y: number; shift: boolean } | null>(null);
 
   const dragRef = useRef<number | null>(null);
@@ -196,6 +222,20 @@ export function SpaceSketchOverlay() {
   useEffect(() => {
     if (storeyId == null && storeys.length) setStoreyId(storeys[0].id);
   }, [storeys, storeyId]);
+
+  // Click anywhere outside the panel closes the tool. Esc closes too.
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) setActiveTool('select');
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setActiveTool('select'); };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [setActiveTool]);
 
   const refreshRooms = useCallback(() => {
     const plate = plateRef.current;
@@ -332,51 +372,90 @@ export function SpaceSketchOverlay() {
     }
   }, [storeyId, ifcDataStore, deriveFromStorey]);
 
-  const bake = useCallback(() => {
-    const plate = plateRef.current;
-    if (!plate) return;
-    if (!activeModelId || derivedStorey == null) {
-      setStatus('Bake needs rooms derived from a storey (the demo has no model to write into).');
-      return;
-    }
-    const snap = plate.snapshot() as Room[];
-    const extraction = extractionRef.current;
-    const polyArea = (pts: Pt[]) => {
-      let a = 0;
-      for (let k = 0; k < pts.length; k++) { const p = pts[k], q = pts[(k + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; }
-      return Math.abs(a) / 2;
-    };
-    // Floor-to-floor height so the space reaches the slab above (not a fixed 3 m).
-    const idx = storeys.findIndex((s) => s.id === derivedStorey);
+  const floorToFloor = useCallback((sid: number): number => {
+    const idx = storeys.findIndex((s) => s.id === sid);
     const next = idx >= 0 ? storeys[idx + 1] : undefined;
     const ff = next ? next.elev - storeys[idx].elev : BAKE_HEIGHT;
-    const height = ff > 0.1 && ff < 50 ? ff : BAKE_HEIGHT;
-    let ok = 0, err = 0;
-    snap.forEach((r, i) => {
-      // Inset to the inner (net) wall face so the IfcSpace doesn't run to the
-      // wall centreline; keep the centreline area as GrossFloorArea.
-      const outline = extraction
-        ? insetRoomFootprint(r.outline, extraction.segments, extraction.thicknesses)
-        : r.outline;
-      const res = addSpace(activeModelId, derivedStorey, {
-        Profile: 'polygon', OuterCurve: outline, Height: height, Name: `Space ${i + 1}`,
-        grossFloorArea: polyArea(r.outline),
-      });
-      if (res && 'expressId' in res) ok++; else err++;
-    });
-    setStatus(`Baked ${ok} IfcSpace${ok === 1 ? '' : 's'} (h=${height.toFixed(1)} m) → storey #${derivedStorey}${err ? ` (${err} failed)` : ''}.`);
-  }, [activeModelId, derivedStorey, addSpace, storeys]);
+    return ff > 0.1 && ff < 50 ? ff : BAKE_HEIGHT;
+  }, [storeys]);
 
-  const bakeWholeBuilding = useCallback(() => {
-    if (!activeModelId) { setStatus('No model loaded to write spaces into.'); return; }
-    const res = generateAllSpaces(activeModelId);
-    if ('error' in res) { setStatus(`Generate failed: ${res.error}`); return; }
-    const floors = res.storeys.filter((s) => s.result.emitted.length > 0).length;
-    setStatus(
-      `Generated ${res.totalEmitted} IfcSpace across ${floors} storey(s)` +
-      (res.skippedExisting ? `; skipped ${res.skippedExisting} overlapping existing spaces` : '') + '.',
-    );
-  }, [activeModelId, generateAllSpaces]);
+  /**
+   * Bake one storey's rooms to IfcSpace — the single path both "Bake" and
+   * "Generate all" use, so they're consistent. (1) Replace: remove the spaces
+   * this session previously dropped on the storey. (2) Skip rooms that overlap
+   * an existing authored space (dedup). (3) Emit each via `addSpace`, which
+   * mirrors a mesh into the 3D scene immediately. Net (inner-face) outline,
+   * floor-to-floor height. Returns counts.
+   */
+  const bakeStorey = useCallback((
+    sid: number,
+    outlines: Pt[][],
+    segments: Parameters<typeof insetRoomFootprint>[1] | undefined,
+    thicknesses: Parameters<typeof insetRoomFootprint>[2] | undefined,
+    authored: Pt[][],
+  ): { emitted: number; skipped: number } => {
+    if (!activeModelId) return { emitted: 0, skipped: 0 };
+    for (const id of generatedRef.current.get(sid) ?? []) removeEntity(activeModelId, id);
+    generatedRef.current.delete(sid);
+    const height = floorToFloor(sid);
+    const newIds: number[] = [];
+    let skipped = 0;
+    for (const outline of outlines) {
+      const [cx, cy] = centroid(outline);
+      if (authored.some((fp) => pointInPoly(cx, cy, fp))) { skipped++; continue; }
+      const inset = segments && thicknesses ? insetRoomFootprint(outline, segments, thicknesses) : outline;
+      const res = addSpace(activeModelId, sid, {
+        Profile: 'polygon', OuterCurve: inset, Height: height,
+        Name: `Space ${newIds.length + 1}`, ObjectType: GENERATED_SPACE_OBJECTTYPE,
+        grossFloorArea: polyArea(outline),
+      });
+      if (res && 'expressId' in res) newIds.push(res.expressId); else skipped++;
+    }
+    generatedRef.current.set(sid, newIds);
+    return { emitted: newIds.length, skipped };
+  }, [activeModelId, removeEntity, addSpace, floorToFloor]);
+
+  const bake = useCallback(() => {
+    const plate = plateRef.current;
+    if (!plate || !activeModelId || derivedStorey == null || !ifcDataStore) {
+      setStatus('Derive a storey first.');
+      return;
+    }
+    const outlines = (plate.snapshot() as Room[]).map((r) => r.outline);
+    const ext = extractionRef.current;
+    const authored = existingSpaceFootprintsByStorey(ifcDataStore).get(derivedStorey) ?? [];
+    const { emitted, skipped } = bakeStorey(derivedStorey, outlines, ext?.segments, ext?.thicknesses, authored);
+    setStatus(`Baked ${emitted} IfcSpace${skipped ? `, skipped ${skipped} (already a space)` : ''}.`);
+  }, [activeModelId, derivedStorey, ifcDataStore, bakeStorey]);
+
+  const bakeWholeBuilding = useCallback(async () => {
+    if (!activeModelId || !ifcDataStore) { setStatus('No model loaded.'); return; }
+    setStatus('Generating spaces for every storey…');
+    await ensureWasm();
+    const authoredMap = existingSpaceFootprintsByStorey(ifcDataStore);
+    let totalEmitted = 0, totalSkipped = 0, floors = 0;
+    for (const st of storeys) {
+      const { segments, wallThicknesses } = extractWallSegmentsForStorey(ifcDataStore, st.id);
+      if (!segments.length) continue;
+      const coords = new Float64Array(segments.length * 4);
+      const sources = new Int32Array(segments.length).fill(-1);
+      segments.forEach((s, i) => { coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1]; coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1]; });
+      let plate: SpacePlateHandle | null = null;
+      for (const tol of [0.1, 0.25, 0.5]) {
+        const p = new SpacePlateHandle(coords, sources, tol, 0.5);
+        plate?.free();
+        plate = p;
+        if (p.roomCount > 0) break;
+      }
+      const outlines = (plate!.snapshot() as Room[]).map((r) => r.outline);
+      plate!.free();
+      if (!outlines.length) continue;
+      const { emitted, skipped } = bakeStorey(st.id, outlines, segments, wallThicknesses, authoredMap.get(st.id) ?? []);
+      totalEmitted += emitted; totalSkipped += skipped;
+      if (emitted) floors++;
+    }
+    setStatus(`Generated ${totalEmitted} IfcSpace across ${floors} storey(s)${totalSkipped ? `; skipped ${totalSkipped} existing` : ''}.`);
+  }, [activeModelId, ifcDataStore, storeys, bakeStorey]);
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -606,51 +685,52 @@ export function SpaceSketchOverlay() {
     for (let y = gy0; y <= gy1; y += gridStep) gridLines.push({ x1: PAD, y1: sY(f, y), x2: SVG_W - PAD, y2: sY(f, y) });
   }
 
-  const btn = 'px-2 py-1 rounded border hover:bg-muted disabled:opacity-40';
+  const iconBtn = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40';
   const previewEnd = splitHover ?? cursorWorld;
 
   return (
-    <div className="absolute left-1/2 top-4 -translate-x-1/2 z-30 rounded-lg border bg-background/95 shadow-xl backdrop-blur p-3 select-none pointer-events-auto"
+    <div ref={panelRef} className="absolute left-1/2 top-4 -translate-x-1/2 z-30 rounded-xl border bg-background/95 shadow-xl backdrop-blur p-3 select-none pointer-events-auto"
          style={{ width: SVG_W + 24 }}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold">Space Sketch <span className="text-muted-foreground font-normal">(DCEL)</span></div>
-        <button className="text-xs px-2 py-0.5 rounded border hover:bg-muted" onClick={() => setActiveTool('select')}>Close</button>
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Layers className="h-4 w-4 text-muted-foreground" /> Space Sketch
+        </div>
+        <button className={iconBtn} onClick={() => setActiveTool('select')} title="Close (Esc)"><X className="h-4 w-4" /></button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 mb-2 text-xs">
-        <button className={btn} onClick={() => buildFrom(DEMO_SEGS.coords, DEMO_SEGS.sources, 'Demo', null)}>Demo plate</button>
-        <select className="px-1 py-1 rounded border bg-background max-w-[150px]" value={storeyId ?? ''} onChange={(e) => setStoreyId(Number(e.target.value))} disabled={!storeys.length}>
+      {/* Storey + whole-building */}
+      <div className="flex items-center gap-2 mb-2">
+        <select className="h-8 flex-1 min-w-0 rounded-md border bg-background px-2 text-xs" value={storeyId ?? ''}
+          onChange={(e) => setStoreyId(Number(e.target.value))} disabled={!storeys.length}>
           {storeys.length ? storeys.map((s) => <option key={s.id} value={s.id}>{s.name}</option>) : <option>no model</option>}
         </select>
-        <button className={btn} onClick={() => { lastDerivedRef.current = null; void deriveFromStorey(); }} disabled={!storeys.length} title="Re-derive this storey">Derive</button>
-        <span className="mx-1 w-px self-stretch bg-border" />
-        {(['drag', 'split', 'merge'] as Mode[]).map((m) => (
-          <button key={m}
-            className={`px-2 py-1 rounded border capitalize ${mode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-            onClick={() => { setMode(m); setSplitPick(null); setSplitHover(null); setHover(null); }}>{m}</button>
-        ))}
-        <span className="mx-1 w-px self-stretch bg-border" />
-        <button className={btn} onClick={undo} disabled={!canUndo} title="Undo">↶</button>
-        <button className={btn} onClick={redo} disabled={!canRedo} title="Redo">↷</button>
-        <button className={`${btn} ${showBuilding ? 'bg-primary/80 text-primary-foreground' : ''}`}
-          onClick={() => setShowBuilding((v) => !v)}
-          title="Show building elements (plan cut ~1.2 m above the floor) for orientation">Building</button>
-        <button className={`${btn} ${derivedStorey != null && rooms.length ? 'bg-emerald-600 text-white hover:bg-emerald-600/90' : ''}`}
-          onClick={bake} disabled={derivedStorey == null || !rooms.length}
-          title={derivedStorey == null ? 'Derive from a storey first' : 'Create IfcSpace for each room'}>Bake → IfcSpace</button>
-        <button className={`${btn} ${activeModelId ? 'bg-indigo-600 text-white hover:bg-indigo-600/90' : ''}`}
-          onClick={bakeWholeBuilding} disabled={!activeModelId}
-          title="Derive + bake IfcSpace for every storey at once (auto floor-to-floor height, skips storeys/rooms that already have spaces)">Whole building</button>
+        <button className="h-8 shrink-0 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+          onClick={() => void bakeWholeBuilding()} disabled={!activeModelId}
+          title="Create IfcSpace for every storey at once — auto floor-to-floor height, skips rooms that already have a space">Generate all</button>
       </div>
 
-      <div className="flex items-center gap-2 mb-2 text-[11px] text-muted-foreground" title="Corner-closing tolerance. Larger closes bigger gaps but can over-merge.">
-        <span>snap</span>
-        <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="flex-1 accent-primary"
-          disabled={!rooms.length} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
-        <span className="tabular-nums w-20 text-right">{usedTol.toFixed(2)} m{snapTol == null ? ' · auto' : ''}</span>
-        {snapTol != null && (
-          <button className="px-1.5 py-0.5 rounded border hover:bg-muted" onClick={() => rebuildWithSnap(null)}>auto</button>
-        )}
+      {/* Edit tools (mode · history · underlay · snap) */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <div className="inline-flex rounded-md border p-0.5">
+          {(['drag', 'split', 'merge'] as Mode[]).map((m) => (
+            <button key={m}
+              className={`rounded px-2 py-0.5 text-xs capitalize transition-colors ${mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => { setMode(m); setSplitPick(null); setSplitHover(null); setHover(null); }}
+              disabled={!rooms.length}>{m}</button>
+          ))}
+        </div>
+        <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo"><Undo2 className="h-4 w-4" /></button>
+        <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo"><Redo2 className="h-4 w-4" /></button>
+        <button className={`${iconBtn} ${showBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
+          onClick={() => setShowBuilding((v) => !v)}
+          title="Show surrounding building elements (plan cut ~1.2 m above the floor)"><Building2 className="h-4 w-4" /></button>
+        <div className="ml-auto flex items-center gap-1.5 text-[11px] text-muted-foreground"
+          title="Corner-closing tolerance — larger closes bigger gaps but can over-merge">
+          <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="w-20 accent-primary"
+            disabled={!rooms.length} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
+          <button className="tabular-nums hover:text-foreground" onClick={() => rebuildWithSnap(null)}
+            title="Reset to automatic snap">{usedTol.toFixed(2)} m{snapTol == null ? ' · auto' : ''}</button>
+        </div>
       </div>
 
       <svg ref={svgRef} width={SVG_W} height={SVG_H} style={{ cursor }}
@@ -710,14 +790,20 @@ export function SpaceSketchOverlay() {
         })}
       </svg>
 
-      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-        <span>{rooms.length} room(s) · {total.toFixed(1)} m² (gross / centreline)</span>
-        <span className="truncate max-w-[55%] text-right">{status}</span>
+      <div className="mt-2.5 flex items-center gap-2">
+        <button className="h-8 shrink-0 rounded-md bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
+          onClick={bake} disabled={derivedStorey == null || !rooms.length}
+          title="Write this storey's rooms as IfcSpace — replaces any this tool already dropped here">Bake storey</button>
+        <div className="min-w-0 flex-1 text-right text-xs text-muted-foreground leading-tight">
+          <div>{rooms.length} room(s) · {total.toFixed(1)} m²</div>
+          {status && <div className="truncate">{status}</div>}
+        </div>
       </div>
-      <div className="mt-1 text-[11px] text-muted-foreground">
-        {mode === 'drag' && 'Drag a vertex — shared vertices move both rooms; snaps to others, Shift = ortho.'}
-        {mode === 'split' && 'Click two points — corners or anywhere on a wall (new nodes added as needed).'}
-        {mode === 'merge' && 'Hover highlights the wall + both rooms; click to merge them.'}
+      <div className="mt-1.5 text-[11px] text-muted-foreground">
+        {!rooms.length && 'Pick a storey to derive its rooms, or “Generate all” for the whole building.'}
+        {!!rooms.length && mode === 'drag' && 'Drag a vertex — shared vertices move both rooms; snaps to others, Shift = ortho.'}
+        {!!rooms.length && mode === 'split' && 'Click two points — corners or anywhere on a wall (new nodes added as needed).'}
+        {!!rooms.length && mode === 'merge' && 'Hover highlights the wall + both rooms; click to merge them.'}
       </div>
     </div>
   );

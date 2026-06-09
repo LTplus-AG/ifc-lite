@@ -15,15 +15,14 @@
  * Geometry-exact slab/roof undersides are a future refinement.
  */
 
-import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import {
   generateSpacesFromWalls,
-  GENERATED_SPACE_OBJECTTYPE,
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
 } from './generate-spaces.js';
-import type { OverlayWallReader } from './extract-walls.js';
+import { spaceCountByStorey, type OverlayWallReader } from './extract-walls.js';
 
 /** Snap tolerances tried, in order, when `snap: 'auto'`. First that encloses
  *  rooms wins (least over-merging); else the largest is used. */
@@ -72,31 +71,23 @@ export interface GenerateSpacesStoreyResult extends StoreyInfo {
   result: GenerateSpacesResult;
 }
 
+export interface GenerateSpacesStoreySkip extends StoreyInfo {
+  /** Existing IfcSpace already on the storey (why it was skipped). */
+  existingSpaces: number;
+}
+
 export interface GenerateSpacesAllResult {
   storeys: GenerateSpacesStoreyResult[];
   totalDetected: number;
   totalEmitted: number;
   /**
-   * Number of pre-existing generated spaces found in the model. When > 0 and
-   * `force` is not set, the run was skipped (idempotency) — nothing emitted.
+   * Storeys skipped because they already contain IfcSpace (authored or from a
+   * prior run) — generation there would duplicate/overlap them. Empty when
+   * `force` is set. Sum of their `existingSpaces` is the total skipped.
    */
+  skippedStoreys: GenerateSpacesStoreySkip[];
+  /** Total existing spaces across skipped storeys. */
   skippedExisting: number;
-}
-
-/** Count IfcSpace already stamped with the generated-space marker (a prior run). */
-function countGeneratedSpaces(store: IfcDataStore): number {
-  if (!store.source) return 0;
-  const ids = store.entityIndex?.byType?.get('IFCSPACE');
-  if (!ids || ids.length === 0) return 0;
-  const extractor = new EntityExtractor(store.source);
-  let count = 0;
-  for (const id of ids) {
-    const ref = store.entityIndex.byId.get(id);
-    if (!ref) continue;
-    // IfcSpace.ObjectType is positional attribute index 4.
-    if (extractor.extractEntity(ref)?.attributes?.[4] === GENERATED_SPACE_OBJECTTYPE) count++;
-  }
-  return count;
 }
 
 /** Every IfcBuildingStorey with resolved name + elevation, low → high. */
@@ -117,18 +108,29 @@ export function generateSpaces(
   options: GenerateSpacesAllOptions = {},
   overlay?: OverlayWallReader,
 ): GenerateSpacesAllResult {
-  // Idempotency: if the model already carries spaces from a prior run, skip
-  // (unless forced) so re-processing our own output can't duplicate them.
-  const skippedExisting = options.force || options.dryRun ? 0 : countGeneratedSpaces(store);
-  if (skippedExisting > 0) {
-    return { storeys: [], totalDetected: 0, totalEmitted: 0, skippedExisting };
-  }
-
   const all = listStoreys(store);
   const want = options.storeys;
-  const selected = want === undefined || want === 'all'
+  let selected = want === undefined || want === 'all'
     ? all
     : all.filter((s) => want.includes(s.id));
+
+  // Skip storeys that already contain IfcSpace (authored or from a prior run)
+  // so we don't create duplicates overlapping them — unless `force` or a
+  // detect-only dry run. Per-storey, so empty floors still generate.
+  const skippedStoreys: GenerateSpacesStoreySkip[] = [];
+  if (!options.force && !options.dryRun) {
+    const existing = spaceCountByStorey(store);
+    if (existing.size > 0) {
+      selected = selected.filter((s) => {
+        const n = existing.get(s.id);
+        if (n) {
+          skippedStoreys.push({ ...s, existingSpaces: n });
+          return false;
+        }
+        return true;
+      });
+    }
+  }
 
   const minArea = options.minArea ?? 0.5;
   const topH = options.topStoreyHeight ?? DEFAULT_TOP_HEIGHT;
@@ -166,7 +168,13 @@ export function generateSpaces(
     storeys.push({ ...st, height, snapUsed, result });
   }
 
-  return { storeys, totalDetected, totalEmitted, skippedExisting: 0 };
+  return {
+    storeys,
+    totalDetected,
+    totalEmitted,
+    skippedStoreys,
+    skippedExisting: skippedStoreys.reduce((s, x) => s + x.existingSpaces, 0),
+  };
 }
 
 function resolveHeight(

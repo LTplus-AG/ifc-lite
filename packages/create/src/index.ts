@@ -54,6 +54,7 @@ export {
 } from './in-store/auto-space-detect.js';
 export {
   extractWallSegmentsForStorey,
+  spaceCountByStorey,
   type OverlayWallReader,
   type WallExtractionResult,
 } from './in-store/extract-walls.js';
@@ -69,6 +70,7 @@ export {
   type GenerateSpacesAllOptions,
   type GenerateSpacesAllResult,
   type GenerateSpacesStoreyResult,
+  type GenerateSpacesStoreySkip,
   type StoreyInfo,
 } from './in-store/generate-spaces-all.js';
 

@@ -314,6 +314,29 @@ function collectDividerIdsOnStorey(
 }
 
 /**
+ * Count existing `IfcSpace` per storey (aggregated or contained). Used to skip
+ * storeys that already have spaces, so generation doesn't create duplicates
+ * overlapping authored (or previously-generated) ones. Keyed by storey
+ * expressId; storeys with no spaces are omitted.
+ */
+export function spaceCountByStorey(store: IfcDataStore): Map<number, number> {
+  const out = new Map<number, number>();
+  if (!store.source) return out;
+  const extractor = new EntityExtractor(store.source);
+  const aggregated = buildRelatingChildrenIndex(store, extractor, 'IFCRELAGGREGATES', 4, 5);
+  const contained = buildRelatingChildrenIndex(store, extractor, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4);
+  for (const st of store.getEntitiesByType('IfcBuildingStorey')) {
+    const kids = [...(aggregated.get(st.expressId) ?? []), ...(contained.get(st.expressId) ?? [])];
+    let n = 0;
+    for (const id of kids) {
+      if ((store.entities.getTypeName(id) ?? '').toUpperCase() === 'IFCSPACE') n++;
+    }
+    if (n > 0) out.set(st.expressId, n);
+  }
+  return out;
+}
+
+/**
  * Index every relationship of `relType` by its "relating" attribute, so a
  * lookup of "what's anchored to id X" becomes O(1) instead of an O(R)
  * scan of every relationship.

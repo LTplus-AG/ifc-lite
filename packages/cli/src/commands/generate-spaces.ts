@@ -126,27 +126,22 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
     console.debug = origDebug;
   }
 
-  if (!dryRun && out && res.skippedExisting === 0) {
+  // Write whenever we emitted at least one space (other storeys may have been
+  // skipped for already having spaces).
+  if (!dryRun && out && res.totalEmitted > 0) {
     const schema = (store.schemaVersion ?? 'IFC4') as Schema;
     const exporter = new StepExporter(store, view);
     const exported = exporter.export({ schema, applyMutations: true });
     await writeFile(out, exported.content);
   }
 
-  if (res.skippedExisting > 0 && !json) {
-    process.stderr.write(
-      `Skipped: model already contains ${res.skippedExisting} generated space(s) — ` +
-      `nothing written. Derive from the original file, or pass --force to re-derive (may duplicate).\n`,
-    );
-    return;
-  }
-
   if (json) {
     printJson({
       input: filePath,
-      output: dryRun || res.skippedExisting > 0 ? null : out,
+      output: !dryRun && out && res.totalEmitted > 0 ? out : null,
       dryRun,
       skippedExisting: res.skippedExisting,
+      skippedStoreys: res.skippedStoreys.map((s) => ({ id: s.id, name: s.name, existingSpaces: s.existingSpaces })),
       totalDetected: res.totalDetected,
       totalEmitted: res.totalEmitted,
       storeys: res.storeys.map((s) => ({
@@ -174,9 +169,13 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
       `  [h=${s.height.toFixed(2)} m, snap=${s.snapUsed} m]  areas ${areas} m²\n`,
     );
   }
+  for (const s of res.skippedStoreys) {
+    process.stderr.write(`${s.name} (#${s.id}): skipped — already has ${s.existingSpaces} IfcSpace (use --force to add anyway).\n`);
+  }
   process.stderr.write(
     `Total: ${res.totalDetected} room(s)` +
-    (dryRun ? ' (dry-run — nothing written)' : `, ${res.totalEmitted} IfcSpace emitted`) + '\n',
+    (dryRun ? ' (dry-run — nothing written)' : `, ${res.totalEmitted} IfcSpace emitted`) +
+    (res.skippedExisting ? `; skipped ${res.skippedStoreys.length} storey(s) with ${res.skippedExisting} existing space(s)` : '') + '\n',
   );
-  if (out && !dryRun) process.stderr.write(`Written to ${out}\n`);
+  if (out && !dryRun && res.totalEmitted > 0) process.stderr.write(`Written to ${out}\n`);
 }

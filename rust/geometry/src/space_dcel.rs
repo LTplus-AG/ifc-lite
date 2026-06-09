@@ -754,6 +754,14 @@ struct Arrangement {
 
 impl Arrangement {
     fn resolve(segments: &[InputSegment], snap: f64) -> Arrangement {
+        // Corner cleanup first: real wall centrelines miss each corner by ~half
+        // a wall thickness (one overshoots, the neighbour undershoots), so a
+        // plain endpoint snap closes them at a skewed position → trapezoids.
+        // Pull each wall-end onto the true intersection of its line with the
+        // nearest crossing wall so orthogonal walls form clean rectangles.
+        let mut owned: Vec<InputSegment> = segments.to_vec();
+        snap_corners(&mut owned, snap);
+        let segments: &[InputSegment] = &owned;
         let cell = snap.max(EPS);
         let mut vertices: Vec<[f64; 2]> = Vec::new();
         let mut grid: FxHashMap<(i64, i64), Vec<usize>> = FxHashMap::default();
@@ -907,6 +915,59 @@ fn push_edge(
     let key = if a < b { (a, b) } else { (b, a) };
     if seen.insert(key) {
         edges.push(ArrEdge { a, b, source });
+    }
+}
+
+/// Intersection of the two infinite lines through `a1→b1` and `a2→b2`.
+/// `None` when (near-)parallel.
+fn line_intersection(a1: [f64; 2], b1: [f64; 2], a2: [f64; 2], b2: [f64; 2]) -> Option<[f64; 2]> {
+    let d1 = [b1[0] - a1[0], b1[1] - a1[1]];
+    let d2 = [b2[0] - a2[0], b2[1] - a2[1]];
+    let denom = d1[0] * d2[1] - d1[1] * d2[0];
+    if denom.abs() < EPS {
+        return None;
+    }
+    let t = ((a2[0] - a1[0]) * d2[1] - (a2[1] - a1[1]) * d2[0]) / denom;
+    Some([a1[0] + t * d1[0], a1[1] + t * d1[1]])
+}
+
+/// Pull each wall-end onto the true line-intersection with the nearest crossing
+/// wall (within `tol`), so offset centrelines — whose ends miss the corner by
+/// ~half a wall thickness — close into clean (e.g. rectangular) rooms instead
+/// of trapezoids. Intersections are computed against the original geometry;
+/// ends with no crossing wall within `tol` are left untouched (leaks stay
+/// leaks). T-junctions fall out for free: an end near where its line crosses
+/// another wall snaps onto that crossing.
+fn snap_corners(segs: &mut [InputSegment], tol: f64) {
+    let lines: Vec<([f64; 2], [f64; 2])> = segs.iter().map(|s| (s.a, s.b)).collect();
+    let n = lines.len();
+    let tol2 = tol * tol;
+    for i in 0..n {
+        for slot in 0..2 {
+            let e = if slot == 0 { segs[i].a } else { segs[i].b };
+            let mut best: Option<[f64; 2]> = None;
+            let mut best_d2 = tol2;
+            for j in 0..n {
+                if i == j {
+                    continue;
+                }
+                let Some(p) = line_intersection(lines[i].0, lines[i].1, lines[j].0, lines[j].1) else {
+                    continue;
+                };
+                let d2 = (p[0] - e[0]).powi(2) + (p[1] - e[1]).powi(2);
+                if d2 < best_d2 {
+                    best_d2 = d2;
+                    best = Some(p);
+                }
+            }
+            if let Some(p) = best {
+                if slot == 0 {
+                    segs[i].a = p;
+                } else {
+                    segs[i].b = p;
+                }
+            }
+        }
     }
 }
 
@@ -1182,6 +1243,28 @@ mod tests {
             })
             .expect("an outer wall");
         assert_eq!(plate.merge_faces(exterior_edge), Err(EditError::BordersExterior));
+    }
+
+    #[test]
+    fn offset_centrelines_close_into_a_clean_rectangle() {
+        // An 8×8 room whose wall centrelines miss each corner by ~0.1 m (one
+        // wall overshoots, the neighbour undershoots) — the real-world case
+        // that produced trapezoids. Corner-snap must recover the exact
+        // rectangle (area 64), not a skewed quad.
+        let segs = vec![
+            InputSegment::new([-0.1, 8.0], [8.1, 8.0], Some(1)), // top, overshoots both ends
+            InputSegment::new([8.0, 7.9], [8.0, -0.1], Some(2)), // right, undershoots top
+            InputSegment::new([8.1, 0.0], [-0.1, 0.0], Some(3)), // bottom
+            InputSegment::new([0.0, 8.1], [0.0, 0.1], Some(4)),  // left, undershoots bottom
+        ];
+        let plate = SpacePlate::build(&segs, BuildOptions { snap_tolerance: 0.25, min_area: 0.5 });
+        assert_eq!(plate.room_count(), 1, "the four offset walls close into one room");
+        let room = plate.rooms().next().unwrap();
+        assert!(
+            (plate.face_area(room) - 64.0).abs() < 1e-6,
+            "corners must snap to the line intersections → exact 8×8; got {}",
+            plate.face_area(room),
+        );
     }
 
     #[test]

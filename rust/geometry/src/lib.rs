@@ -91,6 +91,7 @@ pub mod profile_extractor;
 pub mod profiles;
 pub mod projection_outline;
 pub mod router;
+pub mod space_dcel;
 pub mod transform;
 pub mod triangulation;
 pub mod void_analysis;

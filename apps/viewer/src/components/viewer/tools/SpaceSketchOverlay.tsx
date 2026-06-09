@@ -1,0 +1,625 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Space Sketch (DCEL) — interactive test surface for the persistent
+ * `SpacePlateHandle` topology editor (rust/geometry `space_dcel`).
+ *
+ * Self-contained: owns its own wasm handle + local state (no shared slice).
+ * Seed from the active storey's walls (or a demo plate), drag a shared vertex
+ * (both rooms follow), split a room — between corners OR new nodes added
+ * anywhere on a wall — merge two rooms, then Bake to real `IfcSpace` through
+ * the viewer's existing `addSpace`.
+ *
+ * Fluency (RFC §4.2): hover telegraphs the op; dragging snaps to other
+ * vertices (Shift = ortho). Undo/redo snapshots the plate via `duplicate()`
+ * (each clone owns its heap, freed deterministically — never JS GC). 2D plan
+ * sketch; 3D-on-model registration is the next step.
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useViewerStore } from '@/store';
+import { useIfc } from '@/hooks/useIfc';
+import init, { SpacePlateHandle } from '@ifc-lite/wasm';
+import { extractWallSegmentsForStorey } from '@ifc-lite/create';
+
+let wasmReady: Promise<void> | null = null;
+function ensureWasm(): Promise<void> {
+  if (!wasmReady) wasmReady = init().then(() => undefined);
+  return wasmReady;
+}
+
+interface Room {
+  face: number;
+  area: number;
+  simple: boolean;
+  outline: [number, number][];
+}
+interface Boundary {
+  edge: number;
+  source: number | null;
+}
+type Mode = 'drag' | 'split' | 'merge';
+type Pt = [number, number];
+type Hover =
+  | { kind: 'vertex'; pos: Pt }
+  | { kind: 'edge'; edge: number; rooms: number[]; a: Pt; b: Pt }
+  | null;
+/** A split endpoint the user picked — an existing corner, or a point on a wall
+ *  edge (which becomes a new node when the cut is committed). */
+type SplitTarget = { kind: 'vertex'; vid: number; pos: Pt } | { kind: 'edge'; edge: number; pos: Pt };
+
+const SVG_W = 580;
+const SVG_H = 460;
+const PAD = 36;
+const PICK_PX = 12;
+const SNAP_PX = 10;
+const MAX_UNDO = 40;
+const BAKE_HEIGHT = 3;
+const EPS = 1e-6;
+
+const DEMO_SEGS = {
+  coords: Float64Array.from([0, 0, 8, 0, 8, 0, 8, 3, 8, 3, 0, 3, 0, 3, 0, 0, 4, 0, 4, 3]),
+  sources: Int32Array.from([1, 2, 3, 4, 99]),
+};
+
+interface Fit { scale: number; minX: number; minY: number }
+
+function computeFit(rooms: Room[]): Fit {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const r of rooms) for (const [x, y] of r.outline) {
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  }
+  if (!isFinite(minX)) return { scale: 1, minX: 0, minY: 0 };
+  const scale = Math.min((SVG_W - 2 * PAD) / Math.max(maxX - minX, 1e-6), (SVG_H - 2 * PAD) / Math.max(maxY - minY, 1e-6));
+  return { scale, minX, minY };
+}
+
+const sX = (f: Fit, x: number) => PAD + (x - f.minX) * f.scale;
+const sY = (f: Fit, y: number) => SVG_H - PAD - (y - f.minY) * f.scale;
+const wX = (f: Fit, sx: number) => f.minX + (sx - PAD) / f.scale;
+const wY = (f: Fit, sy: number) => f.minY + (SVG_H - PAD - sy) / f.scale;
+
+function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy || 1e-9;
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function projectOnSeg(p: Pt, a: Pt, b: Pt): Pt {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy || 1e-9;
+  let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return [a[0] + t * dx, a[1] + t * dy];
+}
+
+function uniqueVerts(rooms: Room[]): Pt[] {
+  const seen = new Set<string>();
+  const out: Pt[] = [];
+  for (const r of rooms) for (const p of r.outline) {
+    const k = `${p[0].toFixed(4)},${p[1].toFixed(4)}`;
+    if (!seen.has(k)) { seen.add(k); out.push(p); }
+  }
+  return out;
+}
+
+const ROOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16', '#a855f7', '#ef4444'];
+
+export function SpaceSketchOverlay() {
+  const setActiveTool = useViewerStore((s) => s.setActiveTool);
+  const addSpace = useViewerStore((s) => s.addSpace);
+  const activeModelId = useViewerStore((s) => s.activeModelId);
+  const { ifcDataStore } = useIfc();
+
+  const plateRef = useRef<SpacePlateHandle | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const fitRef = useRef<Fit>({ scale: 1, minX: 0, minY: 0 });
+  const rafRef = useRef<number | null>(null);
+  const moveRef = useRef<{ x: number; y: number; shift: boolean } | null>(null);
+
+  const dragRef = useRef<number | null>(null);
+  const dragStartRef = useRef<Pt | null>(null);
+  const otherVertsRef = useRef<Pt[]>([]);
+  const pendingUndoRef = useRef<SpacePlateHandle | null>(null);
+  const draggedRef = useRef(false);
+
+  const undoRef = useRef<SpacePlateHandle[]>([]);
+  const redoRef = useRef<SpacePlateHandle[]>([]);
+
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [mode, setMode] = useState<Mode>('drag');
+  const [hover, setHover] = useState<Hover>(null);
+  const [splitPick, setSplitPick] = useState<SplitTarget | null>(null);
+  const [splitHover, setSplitHover] = useState<Pt | null>(null);
+  const [snapPos, setSnapPos] = useState<Pt | null>(null);
+  const [derivedStorey, setDerivedStorey] = useState<number | null>(null);
+  const [snapTol, setSnapTol] = useState<number | null>(null); // null = auto-escalate
+  const [usedTol, setUsedTol] = useState(0.1);
+  const snapTolRef = useRef<number | null>(null);
+  const lastBuildRef = useRef<{ coords: Float64Array; sources: Int32Array; label: string; storey: number | null } | null>(null);
+  const [hist, setHist] = useState(0);
+  const [status, setStatus] = useState('Load the demo plate or derive from a storey.');
+
+  // Every IfcBuildingStorey with its resolved name + elevation, low → high.
+  const storeys = useMemo(() => {
+    if (!ifcDataStore) return [] as { id: number; name: string; elev: number }[];
+    const elevs = ifcDataStore.spatialHierarchy?.storeyElevations;
+    const list = ifcDataStore.getEntitiesByType('IfcBuildingStorey').map((s) => ({
+      id: s.expressId,
+      name: ifcDataStore.entities.getName(s.expressId) || `Storey #${s.expressId}`,
+      elev: elevs?.get(s.expressId) ?? 0,
+    }));
+    list.sort((a, b) => a.elev - b.elev);
+    return list;
+  }, [ifcDataStore]);
+  const [storeyId, setStoreyId] = useState<number | null>(null);
+  const lastDerivedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (storeyId == null && storeys.length) setStoreyId(storeys[0].id);
+  }, [storeys, storeyId]);
+
+  const refreshRooms = useCallback(() => {
+    const plate = plateRef.current;
+    if (plate) setRooms(plate.snapshot() as Room[]);
+  }, []);
+
+  const freeHistory = useCallback(() => {
+    undoRef.current.forEach((h) => h.free());
+    redoRef.current.forEach((h) => h.free());
+    undoRef.current = [];
+    redoRef.current = [];
+    pendingUndoRef.current?.free();
+    pendingUndoRef.current = null;
+  }, []);
+
+  const commitUndo = useCallback((snap: SpacePlateHandle) => {
+    undoRef.current.push(snap);
+    if (undoRef.current.length > MAX_UNDO) undoRef.current.shift()!.free();
+    redoRef.current.forEach((h) => h.free());
+    redoRef.current = [];
+    setHist((v) => v + 1);
+  }, []);
+
+  const resetInteraction = useCallback(() => {
+    setHover(null); setSplitPick(null); setSplitHover(null); setSnapPos(null);
+    dragRef.current = null; dragStartRef.current = null;
+    pendingUndoRef.current?.free(); pendingUndoRef.current = null;
+  }, []);
+
+  const undo = useCallback(() => {
+    const plate = plateRef.current;
+    if (!plate || !undoRef.current.length) return;
+    redoRef.current.push(plate);
+    plateRef.current = undoRef.current.pop()!;
+    resetInteraction(); refreshRooms(); setHist((v) => v + 1);
+    setStatus('Undo.');
+  }, [resetInteraction, refreshRooms]);
+
+  const redo = useCallback(() => {
+    const plate = plateRef.current;
+    if (!plate || !redoRef.current.length) return;
+    undoRef.current.push(plate);
+    plateRef.current = redoRef.current.pop()!;
+    resetInteraction(); refreshRooms(); setHist((v) => v + 1);
+    setStatus('Redo.');
+  }, [resetInteraction, refreshRooms]);
+
+  const buildFrom = useCallback(async (coords: Float64Array, sources: Int32Array, label: string, storey: number | null) => {
+    try {
+      await ensureWasm();
+      plateRef.current?.free();
+      freeHistory();
+      // Real wall centrelines don't meet exactly at corners — they're offset
+      // by ~half the wall thickness. A tight snap leaves the loop open (0
+      // rooms). Auto-escalate: take the first tolerance that encloses rooms,
+      // else the largest tried (least surprising than silently finding none).
+      lastBuildRef.current = { coords, sources, label, storey };
+      const manual = snapTolRef.current;
+      let plate: SpacePlateHandle | null = null;
+      let used = 0.1;
+      if (manual != null) {
+        plate = new SpacePlateHandle(coords, sources, manual, 0.5);
+        used = manual;
+      } else {
+        for (const tol of [0.1, 0.25, 0.5]) {
+          const p = new SpacePlateHandle(coords, sources, tol, 0.5);
+          plate?.free();
+          plate = p;
+          used = tol;
+          if (p.roomCount > 0) break;
+        }
+      }
+      plateRef.current = plate!;
+      setUsedTol(used);
+      const snap = plate!.snapshot() as Room[];
+      fitRef.current = computeFit(snap);
+      resetInteraction();
+      setDerivedStorey(storey);
+      setRooms(snap); setHist((v) => v + 1);
+      const total = snap.reduce((s, r) => s + r.area, 0);
+      setStatus(`${label}: ${snap.length} room(s), ${total.toFixed(1)} m² · snap ${used}m${manual == null ? ' (auto)' : ''}.`);
+    } catch (e) {
+      setStatus(`Build failed: ${String(e)}`);
+    }
+  }, [freeHistory, resetInteraction]);
+
+  // Manual snap override (null → back to auto-escalate). Rebuilds the current
+  // plate from its source segments at the chosen tolerance.
+  const rebuildWithSnap = useCallback((tol: number | null) => {
+    snapTolRef.current = tol;
+    setSnapTol(tol);
+    const lb = lastBuildRef.current;
+    if (lb) void buildFrom(lb.coords, lb.sources, lb.label, lb.storey);
+  }, [buildFrom]);
+
+  const deriveFromStorey = useCallback(async () => {
+    if (!ifcDataStore || storeyId == null) { setStatus('No model / storey to derive from.'); return; }
+    try {
+      const { segments, considered, skipped } = extractWallSegmentsForStorey(ifcDataStore, storeyId);
+      if (!segments.length) {
+        setStatus(`No wall axes on storey ${storeyId} (${considered} walls, ${skipped.length} skipped).`);
+        return;
+      }
+      const coords = new Float64Array(segments.length * 4);
+      const sources = new Int32Array(segments.length).fill(-1);
+      segments.forEach((s, i) => {
+        coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1];
+        coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1];
+      });
+      const name = ifcDataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
+      await buildFrom(coords, sources, name, storeyId);
+    } catch (e) {
+      setStatus(`Derive failed: ${String(e)}`);
+    }
+  }, [ifcDataStore, storeyId, buildFrom]);
+
+  // Auto-detect: derive rooms the moment a storey is chosen (and on open, when
+  // the first storey auto-selects) so the user doesn't have to click Derive.
+  // Guarded so it fires once per storey, and never clobbers a loaded demo.
+  useEffect(() => {
+    if (storeyId != null && ifcDataStore && lastDerivedRef.current !== storeyId) {
+      lastDerivedRef.current = storeyId;
+      void deriveFromStorey();
+    }
+  }, [storeyId, ifcDataStore, deriveFromStorey]);
+
+  const bake = useCallback(() => {
+    const plate = plateRef.current;
+    if (!plate) return;
+    if (!activeModelId || derivedStorey == null) {
+      setStatus('Bake needs rooms derived from a storey (the demo has no model to write into).');
+      return;
+    }
+    const snap = plate.snapshot() as Room[];
+    let ok = 0, err = 0;
+    snap.forEach((r, i) => {
+      const res = addSpace(activeModelId, derivedStorey, {
+        Profile: 'polygon', OuterCurve: r.outline, Height: BAKE_HEIGHT, Name: `Space ${i + 1}`,
+      });
+      if (res && 'expressId' in res) ok++; else err++;
+    });
+    setStatus(`Baked ${ok} IfcSpace${ok === 1 ? '' : 's'} → storey #${derivedStorey}${err ? ` (${err} failed)` : ''}.`);
+  }, [activeModelId, derivedStorey, addSpace]);
+
+  useEffect(() => () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    freeHistory();
+    plateRef.current?.free();
+    plateRef.current = null;
+  }, [freeHistory]);
+
+  const svgPoint = (e: React.PointerEvent): Pt => {
+    const rect = svgRef.current!.getBoundingClientRect();
+    return [e.clientX - rect.left, e.clientY - rect.top];
+  };
+
+  const pickVertex = useCallback((wx: number, wy: number): number | null => {
+    const plate = plateRef.current;
+    if (!plate) return null;
+    const v = plate.findVertexNear(wx, wy, PICK_PX / fitRef.current.scale);
+    return v === undefined ? null : v;
+  }, []);
+
+  const nearestVertPos = useCallback((wx: number, wy: number): Pt | null => {
+    let best: Pt | null = null, bestD = PICK_PX / fitRef.current.scale;
+    for (const r of rooms) for (const p of r.outline) {
+      const d = Math.hypot(p[0] - wx, p[1] - wy);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    return best;
+  }, [rooms]);
+
+  const pickEdge = useCallback((wx: number, wy: number): { face: number; edge: number; a: Pt; b: Pt } | null => {
+    const plate = plateRef.current;
+    if (!plate) return null;
+    const tol = PICK_PX / fitRef.current.scale;
+    let best: { face: number; edge: number; a: Pt; b: Pt; d: number } | null = null;
+    for (const r of rooms) {
+      const bounds = plate.boundingElements(r.face) as Boundary[];
+      const n = r.outline.length;
+      for (let i = 0; i < n; i++) {
+        const a = r.outline[i], b = r.outline[(i + 1) % n];
+        const d = distToSeg(wx, wy, a[0], a[1], b[0], b[1]);
+        if (d <= tol && (!best || d < best.d) && bounds[i]) best = { face: r.face, edge: bounds[i].edge, a, b, d };
+      }
+    }
+    return best ? { face: best.face, edge: best.edge, a: best.a, b: best.b } : null;
+  }, [rooms]);
+
+  // Resolve a click to a split endpoint: snap to an existing corner, else a
+  // point projected onto the nearest wall edge (a new node on commit).
+  const resolveSplitTarget = useCallback((wx: number, wy: number): SplitTarget | null => {
+    const v = pickVertex(wx, wy);
+    if (v != null) { const pos = nearestVertPos(wx, wy); return pos ? { kind: 'vertex', vid: v, pos } : null; }
+    const e = pickEdge(wx, wy);
+    if (e) return { kind: 'edge', edge: e.edge, pos: projectOnSeg([wx, wy], e.a, e.b) };
+    return null;
+  }, [pickVertex, nearestVertPos, pickEdge]);
+
+  // Commit a split between two targets, inserting nodes for edge endpoints.
+  // The whole gesture is atomic: on any failure the inserted nodes roll back.
+  const performSplit = useCallback((first: SplitTarget, second: SplitTarget) => {
+    const plate = plateRef.current;
+    if (!plate) return;
+    if (first.kind === 'edge' && second.kind === 'edge' && first.edge === second.edge) {
+      setStatus('Pick points on two different edges (or corners).'); return;
+    }
+    const snapshot = plate.duplicate();
+    try {
+      const va = first.kind === 'vertex' ? first.vid : plate.splitEdge(first.edge, first.pos[0], first.pos[1]);
+      const vb = second.kind === 'vertex' ? second.vid : plate.splitEdge(second.edge, second.pos[0], second.pos[1]);
+      if (va === vb) throw new Error('DegenerateCut: same point');
+      const fresh = plate.snapshot() as Room[];
+      const onBoundary = (r: Room, p: Pt) => r.outline.some((q) => Math.abs(q[0] - p[0]) < EPS && Math.abs(q[1] - p[1]) < EPS);
+      const room = fresh.find((r) => onBoundary(r, first.pos) && onBoundary(r, second.pos));
+      if (!room) throw new Error('points are not on the same room');
+      plate.splitFace(room.face, va, vb, -1);
+    } catch (err) {
+      plate.free();
+      plateRef.current = snapshot; // roll back inserted nodes + partial cut
+      refreshRooms();
+      setStatus(`Split rejected: ${String(err).replace(/^Error:\s*/, '')}`);
+      return;
+    }
+    commitUndo(snapshot);
+    refreshRooms();
+    setStatus(`Split — ${plate.roomCount} room(s).`);
+  }, [commitUndo, refreshRooms]);
+
+  const processMove = useCallback(() => {
+    rafRef.current = null;
+    const m = moveRef.current;
+    const plate = plateRef.current;
+    if (!m || !plate) return;
+    const wx = wX(fitRef.current, m.x), wy = wY(fitRef.current, m.y);
+
+    const vid = dragRef.current;
+    if (vid != null) {
+      draggedRef.current = true;
+      let tx = wx, ty = wy;
+      if (m.shift && dragStartRef.current) {
+        const [ox, oy] = dragStartRef.current;
+        if (Math.abs(wx - ox) >= Math.abs(wy - oy)) ty = oy; else tx = ox;
+      }
+      const tol = SNAP_PX / fitRef.current.scale;
+      let snapped: Pt | null = null, bestD = tol;
+      for (const p of otherVertsRef.current) {
+        const d = Math.hypot(p[0] - tx, p[1] - ty);
+        if (d < bestD) { bestD = d; snapped = p; }
+      }
+      if (snapped) { tx = snapped[0]; ty = snapped[1]; }
+      setSnapPos(snapped);
+      try { plate.dragVertex(vid, tx, ty); refreshRooms(); } catch { /* teardown */ }
+      return;
+    }
+
+    if (mode === 'merge') {
+      const e = pickEdge(wx, wy);
+      if (e) {
+        const nbr = plate.neighborAcross(e.edge);
+        setHover({ kind: 'edge', edge: e.edge, rooms: [e.face, ...(nbr !== undefined ? [nbr] : [])], a: e.a, b: e.b });
+      } else setHover(null);
+    } else if (mode === 'split') {
+      const t = resolveSplitTarget(wx, wy);
+      setSplitHover(t ? t.pos : null);
+      setHover(t && t.kind === 'vertex' ? { kind: 'vertex', pos: t.pos } : null);
+    } else {
+      const v = pickVertex(wx, wy);
+      const pos = v != null ? nearestVertPos(wx, wy) : null;
+      setHover(v != null && pos ? { kind: 'vertex', pos } : null);
+    }
+  }, [mode, pickEdge, pickVertex, nearestVertPos, resolveSplitTarget, refreshRooms]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const [x, y] = svgPoint(e);
+    moveRef.current = { x, y, shift: e.shiftKey };
+    if (rafRef.current == null) rafRef.current = requestAnimationFrame(processMove);
+  }, [processMove]);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    const plate = plateRef.current;
+    if (!plate) return;
+    const [sx, sy] = svgPoint(e);
+    const wx = wX(fitRef.current, sx), wy = wY(fitRef.current, sy);
+
+    if (mode === 'drag') {
+      const v = pickVertex(wx, wy);
+      if (v == null) return;
+      const start = nearestVertPos(wx, wy);
+      dragRef.current = v;
+      dragStartRef.current = start;
+      draggedRef.current = false;
+      pendingUndoRef.current = plate.duplicate();
+      otherVertsRef.current = start
+        ? uniqueVerts(rooms).filter((p) => Math.hypot(p[0] - start[0], p[1] - start[1]) > 1e-6)
+        : uniqueVerts(rooms);
+      svgRef.current?.setPointerCapture(e.pointerId);
+      return;
+    }
+    if (mode === 'merge') {
+      const hit = pickEdge(wx, wy);
+      if (!hit) { setStatus('No edge under cursor.'); return; }
+      const snap = plate.duplicate();
+      try {
+        plate.mergeFaces(hit.edge);
+        commitUndo(snap); refreshRooms(); setHover(null);
+        setStatus(`Merged across wall — ${plate.roomCount} room(s) left.`);
+      } catch (err) {
+        snap.free();
+        setStatus(`Merge rejected: ${String(err).replace(/^Error:\s*/, '')}`);
+      }
+      return;
+    }
+    if (mode === 'split') {
+      const target = resolveSplitTarget(wx, wy);
+      if (!target) { setStatus('Click a corner or anywhere on a wall.'); return; }
+      if (!splitPick) { setSplitPick(target); setStatus('Pick the second point (corner or wall) on the same room.'); return; }
+      const first = splitPick;
+      setSplitPick(null);
+      performSplit(first, target);
+    }
+  }, [mode, pickVertex, nearestVertPos, pickEdge, rooms, splitPick, resolveSplitTarget, performSplit, commitUndo, refreshRooms]);
+
+  const endDrag = useCallback((e: React.PointerEvent) => {
+    if (dragRef.current == null) return;
+    dragRef.current = null; dragStartRef.current = null; setSnapPos(null);
+    svgRef.current?.releasePointerCapture(e.pointerId);
+    if (draggedRef.current && pendingUndoRef.current) commitUndo(pendingUndoRef.current);
+    else pendingUndoRef.current?.free();
+    pendingUndoRef.current = null;
+    const total = rooms.reduce((s, r) => s + r.area, 0);
+    if (draggedRef.current) setStatus(`Drag done — ${rooms.length} room(s), ${total.toFixed(1)} m² (conserved).`);
+  }, [rooms, commitUndo]);
+
+  const f = fitRef.current;
+  const total = rooms.reduce((s, r) => s + r.area, 0);
+  const mergeRooms = hover?.kind === 'edge' ? new Set(hover.rooms) : null;
+  const cursorWorld = moveRef.current ? [wX(f, moveRef.current.x), wY(f, moveRef.current.y)] as Pt : null;
+  const cursor = dragRef.current != null ? 'grabbing' : (mode === 'drag' && hover?.kind === 'vertex') ? 'grab' : 'crosshair';
+  const canUndo = undoRef.current.length > 0;
+  const canRedo = redoRef.current.length > 0;
+  void hist;
+
+  const gridStep = f.scale > 14 ? 1 : f.scale > 5 ? 2 : 5;
+  const gridLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  if (rooms.length) {
+    const gx0 = Math.floor(wX(f, PAD) / gridStep) * gridStep;
+    const gx1 = Math.ceil(wX(f, SVG_W - PAD) / gridStep) * gridStep;
+    const gy0 = Math.floor(wY(f, SVG_H - PAD) / gridStep) * gridStep;
+    const gy1 = Math.ceil(wY(f, PAD) / gridStep) * gridStep;
+    for (let x = gx0; x <= gx1; x += gridStep) gridLines.push({ x1: sX(f, x), y1: PAD, x2: sX(f, x), y2: SVG_H - PAD });
+    for (let y = gy0; y <= gy1; y += gridStep) gridLines.push({ x1: PAD, y1: sY(f, y), x2: SVG_W - PAD, y2: sY(f, y) });
+  }
+
+  const btn = 'px-2 py-1 rounded border hover:bg-muted disabled:opacity-40';
+  const previewEnd = splitHover ?? cursorWorld;
+
+  return (
+    <div className="absolute left-1/2 top-4 -translate-x-1/2 z-30 rounded-lg border bg-background/95 shadow-xl backdrop-blur p-3 select-none pointer-events-auto"
+         style={{ width: SVG_W + 24 }}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold">Space Sketch <span className="text-muted-foreground font-normal">(DCEL)</span></div>
+        <button className="text-xs px-2 py-0.5 rounded border hover:bg-muted" onClick={() => setActiveTool('select')}>Close</button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 mb-2 text-xs">
+        <button className={btn} onClick={() => buildFrom(DEMO_SEGS.coords, DEMO_SEGS.sources, 'Demo', null)}>Demo plate</button>
+        <select className="px-1 py-1 rounded border bg-background max-w-[150px]" value={storeyId ?? ''} onChange={(e) => setStoreyId(Number(e.target.value))} disabled={!storeys.length}>
+          {storeys.length ? storeys.map((s) => <option key={s.id} value={s.id}>{s.name}</option>) : <option>no model</option>}
+        </select>
+        <button className={btn} onClick={() => { lastDerivedRef.current = null; void deriveFromStorey(); }} disabled={!storeys.length} title="Re-derive this storey">Derive</button>
+        <span className="mx-1 w-px self-stretch bg-border" />
+        {(['drag', 'split', 'merge'] as Mode[]).map((m) => (
+          <button key={m}
+            className={`px-2 py-1 rounded border capitalize ${mode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+            onClick={() => { setMode(m); setSplitPick(null); setSplitHover(null); setHover(null); }}>{m}</button>
+        ))}
+        <span className="mx-1 w-px self-stretch bg-border" />
+        <button className={btn} onClick={undo} disabled={!canUndo} title="Undo">↶</button>
+        <button className={btn} onClick={redo} disabled={!canRedo} title="Redo">↷</button>
+        <button className={`${btn} ${derivedStorey != null && rooms.length ? 'bg-emerald-600 text-white hover:bg-emerald-600/90' : ''}`}
+          onClick={bake} disabled={derivedStorey == null || !rooms.length}
+          title={derivedStorey == null ? 'Derive from a storey first' : 'Create IfcSpace for each room'}>Bake → IfcSpace</button>
+      </div>
+
+      <div className="flex items-center gap-2 mb-2 text-[11px] text-muted-foreground" title="Corner-closing tolerance. Larger closes bigger gaps but can over-merge.">
+        <span>snap</span>
+        <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="flex-1 accent-primary"
+          disabled={!rooms.length} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
+        <span className="tabular-nums w-20 text-right">{usedTol.toFixed(2)} m{snapTol == null ? ' · auto' : ''}</span>
+        {snapTol != null && (
+          <button className="px-1.5 py-0.5 rounded border hover:bg-muted" onClick={() => rebuildWithSnap(null)}>auto</button>
+        )}
+      </div>
+
+      <svg ref={svgRef} width={SVG_W} height={SVG_H} style={{ cursor }}
+        className="rounded border bg-muted/20 touch-none"
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag}
+        onPointerLeave={() => { setHover(null); setSplitHover(null); }}>
+        {gridLines.map((l, i) => <line key={`g${i}`} {...l} stroke="currentColor" strokeOpacity={0.06} strokeWidth={1} />)}
+
+        {rooms.map((r, ri) => {
+          const color = ROOM_COLORS[ri % ROOM_COLORS.length];
+          const pts = r.outline.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ');
+          const cx = r.outline.reduce((s, p) => s + sX(f, p[0]), 0) / r.outline.length;
+          const cy = r.outline.reduce((s, p) => s + sY(f, p[1]), 0) / r.outline.length;
+          const lit = mergeRooms?.has(r.face);
+          const bad = !r.simple;
+          return (
+            <g key={r.face}>
+              <polygon points={pts} fill={bad ? '#ef4444' : color} fillOpacity={lit ? 0.42 : bad ? 0.3 : 0.16}
+                stroke={bad ? '#ef4444' : color} strokeWidth={lit ? 3 : 2} />
+              <text x={cx} y={cy - 5} textAnchor="middle" fontSize={12} fontWeight={600} fill="currentColor" className="pointer-events-none">{r.area.toFixed(2)}</text>
+              <text x={cx} y={cy + 9} textAnchor="middle" fontSize={9} fill="currentColor" opacity={0.55} className="pointer-events-none">m²</text>
+            </g>
+          );
+        })}
+
+        {hover?.kind === 'edge' && (
+          <line x1={sX(f, hover.a[0])} y1={sY(f, hover.a[1])} x2={sX(f, hover.b[0])} y2={sY(f, hover.b[1])} stroke="#ef4444" strokeWidth={4} strokeLinecap="round" />
+        )}
+        {splitPick && previewEnd && (
+          <line x1={sX(f, splitPick.pos[0])} y1={sY(f, splitPick.pos[1])} x2={sX(f, previewEnd[0])} y2={sY(f, previewEnd[1])}
+            stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="5 4" />
+        )}
+        {/* split candidate node (corner or new node on a wall) */}
+        {mode === 'split' && splitHover && (
+          <circle cx={sX(f, splitHover[0])} cy={sY(f, splitHover[1])} r={5} fill="#3b82f6" fillOpacity={0.5} stroke="#3b82f6" strokeWidth={1.5} pointerEvents="none" />
+        )}
+        {/* first committed split pick */}
+        {splitPick && (
+          <circle cx={sX(f, splitPick.pos[0])} cy={sY(f, splitPick.pos[1])} r={5} fill="#3b82f6" stroke="#fff" strokeWidth={1.5} pointerEvents="none" />
+        )}
+        {snapPos && (
+          <g pointerEvents="none">
+            <circle cx={sX(f, snapPos[0])} cy={sY(f, snapPos[1])} r={9} fill="none" stroke="#22c55e" strokeWidth={1.5} />
+            <circle cx={sX(f, snapPos[0])} cy={sY(f, snapPos[1])} r={2.5} fill="#22c55e" />
+          </g>
+        )}
+
+        {uniqueVerts(rooms).map((p, i) => {
+          const isHover = hover?.kind === 'vertex' && Math.abs(hover.pos[0] - p[0]) < EPS && Math.abs(hover.pos[1] - p[1]) < EPS;
+          return (
+            <circle key={i} cx={sX(f, p[0])} cy={sY(f, p[1])} r={isHover ? 6 : 4}
+              fill={isHover ? '#fbbf24' : '#fff'} stroke="#334155" strokeWidth={1.5} pointerEvents="none" />
+          );
+        })}
+      </svg>
+
+      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+        <span>{rooms.length} room(s) · {total.toFixed(1)} m² (gross / centreline)</span>
+        <span className="truncate max-w-[55%] text-right">{status}</span>
+      </div>
+      <div className="mt-1 text-[11px] text-muted-foreground">
+        {mode === 'drag' && 'Drag a vertex — shared vertices move both rooms; snaps to others, Shift = ortho.'}
+        {mode === 'split' && 'Click two points — corners or anywhere on a wall (new nodes added as needed).'}
+        {mode === 'merge' && 'Hover highlights the wall + both rooms; click to merge them.'}
+      </div>
+    </div>
+  );
+}

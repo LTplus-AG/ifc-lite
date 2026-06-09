@@ -76,7 +76,7 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { CSVExporter } from '@ifc-lite/export';
-import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil } from 'lucide-react';
+import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, LayoutDashboard } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
@@ -95,7 +95,7 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 
-type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split';
+type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
 type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'addElement' | string;
 
 // #region FIX: Move ToolButton OUTSIDE MainToolbar to prevent recreation on every render
@@ -1271,6 +1271,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         onToolChange={setActiveTool}
         activeAccentClass="bg-amber-500 text-white hover:bg-amber-500/90"
       />
+      <ToolButton tool="spaceSketch" icon={LayoutDashboard} label="Space Sketch (DCEL)" activeTool={activeTool} onToolChange={setActiveTool} />
 
       {/* Floorplan dropdown */}
       {availableStoreys.length > 0 && (

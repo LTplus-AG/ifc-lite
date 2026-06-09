@@ -22,7 +22,7 @@ import {
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
 } from './generate-spaces.js';
-import { spaceCountByStorey, type OverlayWallReader } from './extract-walls.js';
+import { existingSpaceFootprintsByStorey, type OverlayWallReader } from './extract-walls.js';
 
 /** Snap tolerances tried, in order, when `snap: 'auto'`. First that encloses
  *  rooms wins (least over-merging); else the largest is used. */
@@ -71,22 +71,15 @@ export interface GenerateSpacesStoreyResult extends StoreyInfo {
   result: GenerateSpacesResult;
 }
 
-export interface GenerateSpacesStoreySkip extends StoreyInfo {
-  /** Existing IfcSpace already on the storey (why it was skipped). */
-  existingSpaces: number;
-}
-
 export interface GenerateSpacesAllResult {
   storeys: GenerateSpacesStoreyResult[];
   totalDetected: number;
   totalEmitted: number;
   /**
-   * Storeys skipped because they already contain IfcSpace (authored or from a
-   * prior run) — generation there would duplicate/overlap them. Empty when
-   * `force` is set. Sum of their `existingSpaces` is the total skipped.
+   * Detected rooms skipped because they overlap an existing space (authored or
+   * from a prior run) — per-space, so non-overlapping rooms on the same storey
+   * are still emitted. Always 0 when `force` is set.
    */
-  skippedStoreys: GenerateSpacesStoreySkip[];
-  /** Total existing spaces across skipped storeys. */
   skippedExisting: number;
 }
 
@@ -110,27 +103,13 @@ export function generateSpaces(
 ): GenerateSpacesAllResult {
   const all = listStoreys(store);
   const want = options.storeys;
-  let selected = want === undefined || want === 'all'
+  const selected = want === undefined || want === 'all'
     ? all
     : all.filter((s) => want.includes(s.id));
 
-  // Skip storeys that already contain IfcSpace (authored or from a prior run)
-  // so we don't create duplicates overlapping them — unless `force` or a
-  // detect-only dry run. Per-storey, so empty floors still generate.
-  const skippedStoreys: GenerateSpacesStoreySkip[] = [];
-  if (!options.force && !options.dryRun) {
-    const existing = spaceCountByStorey(store);
-    if (existing.size > 0) {
-      selected = selected.filter((s) => {
-        const n = existing.get(s.id);
-        if (n) {
-          skippedStoreys.push({ ...s, existingSpaces: n });
-          return false;
-        }
-        return true;
-      });
-    }
-  }
+  // Per-space dedup: skip detected rooms that overlap an existing space, while
+  // still emitting non-overlapping rooms on the same storey. `force` opts out.
+  const footprintsByStorey = options.force ? new Map() : existingSpaceFootprintsByStorey(store);
 
   const minArea = options.minArea ?? 0.5;
   const topH = options.topStoreyHeight ?? DEFAULT_TOP_HEIGHT;
@@ -140,6 +119,7 @@ export function generateSpaces(
   const storeys: GenerateSpacesStoreyResult[] = [];
   let totalDetected = 0;
   let totalEmitted = 0;
+  let skippedExisting = 0;
 
   for (const st of selected) {
     const height = resolveHeight(heightMode, st, all, topH);
@@ -159,22 +139,18 @@ export function generateSpaces(
         extraDividerTypes: options.extraDividerTypes,
         dryRun: options.dryRun,
         debug: options.debug,
+        skipFootprints: footprintsByStorey.get(st.id),
       } satisfies GenerateSpacesOptions,
       overlay,
     );
 
     totalDetected += result.detected.length;
     totalEmitted += result.emitted.length;
+    skippedExisting += result.skippedExisting;
     storeys.push({ ...st, height, snapUsed, result });
   }
 
-  return {
-    storeys,
-    totalDetected,
-    totalEmitted,
-    skippedStoreys,
-    skippedExisting: skippedStoreys.reduce((s, x) => s + x.existingSpaces, 0),
-  };
+  return { storeys, totalDetected, totalEmitted, skippedExisting };
 }
 
 function resolveHeight(

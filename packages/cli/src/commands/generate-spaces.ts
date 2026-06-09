@@ -141,7 +141,6 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
       output: !dryRun && out && res.totalEmitted > 0 ? out : null,
       dryRun,
       skippedExisting: res.skippedExisting,
-      skippedStoreys: res.skippedStoreys.map((s) => ({ id: s.id, name: s.name, existingSpaces: s.existingSpaces })),
       totalDetected: res.totalDetected,
       totalEmitted: res.totalEmitted,
       storeys: res.storeys.map((s) => ({
@@ -169,13 +168,10 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
       `  [h=${s.height.toFixed(2)} m, snap=${s.snapUsed} m]  areas ${areas} m²\n`,
     );
   }
-  for (const s of res.skippedStoreys) {
-    process.stderr.write(`${s.name} (#${s.id}): skipped — already has ${s.existingSpaces} IfcSpace (use --force to add anyway).\n`);
-  }
   process.stderr.write(
     `Total: ${res.totalDetected} room(s)` +
     (dryRun ? ' (dry-run — nothing written)' : `, ${res.totalEmitted} IfcSpace emitted`) +
-    (res.skippedExisting ? `; skipped ${res.skippedStoreys.length} storey(s) with ${res.skippedExisting} existing space(s)` : '') + '\n',
+    (res.skippedExisting ? `; skipped ${res.skippedExisting} overlapping an existing space` : '') + '\n',
   );
   if (out && !dryRun && res.totalEmitted > 0) process.stderr.write(`Written to ${out}\n`);
 }

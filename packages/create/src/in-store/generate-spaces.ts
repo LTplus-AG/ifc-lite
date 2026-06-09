@@ -72,6 +72,14 @@ export interface GenerateSpacesOptions {
    * members, and railings.
    */
   extraDividerTypes?: string[];
+  /**
+   * Footprint polygons (same metre frame as the detected rooms) of existing
+   * spaces on this storey. A detected room whose centroid falls inside one is
+   * an overlap with an already-present space and is skipped — so re-running
+   * (or filling a partly-spaced floor) doesn't duplicate spaces. Per-space, not
+   * per-storey: non-overlapping rooms are still emitted.
+   */
+  skipFootprints?: Vec2[][];
 }
 
 export interface GenerateSpacesResult {
@@ -87,6 +95,8 @@ export interface GenerateSpacesResult {
   detectionStats: DetectStats;
   /** Per-region builder result. Empty when `dryRun: true`. */
   emitted: Array<{ region: DetectedSpace; result: SpaceBuildResult; name: string }>;
+  /** Detected rooms skipped because they overlap an existing space. */
+  skippedExisting: number;
 }
 
 export function generateSpacesFromWalls(
@@ -134,8 +144,22 @@ export function generateSpacesFromWalls(
     `(dropped ${detection.stats.outerFacesDropped} outer + ${detection.stats.belowMinAreaDropped} small) [${unitNote}].`,
   );
 
+  // Per-space dedup: drop detected rooms whose centroid lands inside an
+  // existing space footprint, so we don't duplicate already-present spaces
+  // (non-overlapping rooms on the same storey are still emitted).
+  const skipFootprints = options.skipFootprints ?? [];
+  const overlapsExisting = (outline: Vec2[]): boolean => {
+    if (skipFootprints.length === 0) return false;
+    let cx = 0, cy = 0;
+    for (const p of outline) { cx += p[0]; cy += p[1]; }
+    cx /= outline.length; cy /= outline.length;
+    return skipFootprints.some((fp) => pointInPolygon(cx, cy, fp));
+  };
+  const rooms = detected.filter((r) => !overlapsExisting(r.outline));
+  const skippedExisting = detected.length - rooms.length;
+
   const emitted: GenerateSpacesResult['emitted'] = [];
-  if (options.dryRun || detected.length === 0) {
+  if (options.dryRun || rooms.length === 0) {
     return {
       wallsConsidered: extraction.considered,
       wallsContributing: extraction.contributingWallIds.length,
@@ -143,6 +167,7 @@ export function generateSpacesFromWalls(
       detected,
       detectionStats: detection.stats,
       emitted,
+      skippedExisting,
     };
   }
 
@@ -151,8 +176,8 @@ export function generateSpacesFromWalls(
     throw new Error(`generateSpacesFromWalls: no resolvable spatial anchor for storey #${storeyExpressId}`);
   }
 
-  const allOutlines = detected.map((r) => r.outline);
-  detected.forEach((region, i) => {
+  const allOutlines = rooms.map((r) => r.outline);
+  rooms.forEach((region, i) => {
     const name = namePattern.replace('{n}', String(i + 1));
     const others = allOutlines.filter((_, j) => j !== i);
     // Bake the solid at the inner (net) face — IfcSpace should stop at the room
@@ -185,6 +210,7 @@ export function generateSpacesFromWalls(
     detected,
     detectionStats: detection.stats,
     emitted,
+    skippedExisting,
   };
 }
 

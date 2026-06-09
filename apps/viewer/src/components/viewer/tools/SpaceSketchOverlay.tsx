@@ -360,7 +360,15 @@ export function SpaceSketchOverlay() {
 
   const svgPoint = (e: React.PointerEvent): Pt => {
     const rect = svgRef.current!.getBoundingClientRect();
-    return [e.clientX - rect.left, e.clientY - rect.top];
+    // Clamp to the canvas: during a drag the pointer is captured, so moving it
+    // past the panel (e.g. dragging a vertex down off the bottom) would report
+    // coordinates far outside the SVG → a huge off-screen world position. That
+    // pushed the room off-canvas ("disappears") and made the SVG rasterise a
+    // polygon spanning to extreme coordinates, freezing the browser.
+    return [
+      Math.max(0, Math.min(SVG_W, e.clientX - rect.left)),
+      Math.max(0, Math.min(SVG_H, e.clientY - rect.top)),
+    ];
   };
 
   const pickVertex = useCallback((wx: number, wy: number): number | null => {

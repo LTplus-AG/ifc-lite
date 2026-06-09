@@ -954,6 +954,13 @@ fn snap_corners(segs: &mut [InputSegment], tol: f64) {
                 let Some(p) = line_intersection(lines[i].0, lines[i].1, lines[j].0, lines[j].1) else {
                     continue;
                 };
+                // The intersection must lie near segment j's FINITE extent, not
+                // just its infinite line — else a distant aligned wall could
+                // pull this end onto a phantom corner and fabricate a room.
+                match closest_point_on_segment(p, lines[j].0, lines[j].1) {
+                    Some((host, _)) if (host[0] - p[0]).powi(2) + (host[1] - p[1]).powi(2) <= tol2 => {}
+                    _ => continue,
+                }
                 let d2 = (p[0] - e[0]).powi(2) + (p[1] - e[1]).powi(2);
                 if d2 < best_d2 {
                     best_d2 = d2;
@@ -1264,6 +1271,23 @@ mod tests {
             (plate.face_area(room) - 64.0).abs() < 1e-6,
             "corners must snap to the line intersections → exact 8×8; got {}",
             plate.face_area(room),
+        );
+    }
+
+    #[test]
+    fn corner_snap_skips_distant_wall_extensions() {
+        // A short wall's end (1.9, 0) sits near where a FAR wall's line (x=2,
+        // y 3..8) would cross, but that wall is nowhere near — the corner-snap
+        // must NOT pull the end onto the phantom (2, 0).
+        let mut segs = vec![
+            InputSegment::new([0.0, 0.0], [1.9, 0.0], None),
+            InputSegment::new([2.0, 3.0], [2.0, 8.0], None),
+        ];
+        super::snap_corners(&mut segs, 0.25);
+        let e = segs[0].b;
+        assert!(
+            (e[0] - 1.9).abs() < 1e-9 && e[1].abs() < 1e-9,
+            "end must stay put (no phantom snap to 2,0): {e:?}",
         );
     }
 

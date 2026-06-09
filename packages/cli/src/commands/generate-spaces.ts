@@ -87,6 +87,7 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
   if (snap !== 'auto' && !Number.isFinite(snap)) fatal('--snap must be a number (metres) or "auto"');
   if (height !== 'auto' && !Number.isFinite(height)) fatal('--height must be a number (metres) or "auto"');
   if (!Number.isFinite(minArea) || minArea < 0) fatal('--min-area must be a non-negative number');
+  if (!Number.isFinite(topHeight) || topHeight <= 0) fatal('--top-height must be a positive number (metres)');
 
   // ── mutation overlay + editor ──
   const view = new MutablePropertyView(null, 'default');

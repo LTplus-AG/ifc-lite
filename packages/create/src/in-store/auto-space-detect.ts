@@ -480,6 +480,11 @@ function snapCornersToIntersections(segments: Segment[], tol: number): Segment[]
       if (j === i) continue;
       const p = lineIntersection(lines[i][0], lines[i][1], lines[j][0], lines[j][1]);
       if (!p) continue;
+      // The intersection must lie near segment j's FINITE extent, not just its
+      // infinite line — else a distant aligned wall could pull this end onto a
+      // phantom corner and fabricate a room that was never there.
+      const host = closestPointOnSegment(p, lines[j][0], lines[j][1]);
+      if (!host || (host.point[0] - p[0]) ** 2 + (host.point[1] - p[1]) ** 2 > tol2) continue;
       const d2 = (p[0] - e[0]) ** 2 + (p[1] - e[1]) ** 2;
       if (d2 < bestD2) { bestD2 = d2; best = p; }
     }

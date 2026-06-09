@@ -18,6 +18,7 @@
  */
 
 import type { MutablePropertyView } from './mutable-property-view.js';
+import { QuantityType } from '@ifc-lite/data';
 import type {
   IfcAttributeValue,
   MutationEntityRef as EntityRef,
@@ -27,6 +28,9 @@ import type {
 
 /** Sentinel byteOffset that flags an `EntityRef` as overlay-only (no source bytes). */
 export const OVERLAY_BYTE_OFFSET = -1;
+
+/** Quantity kinds accepted by {@link StoreEditor.addQuantitySet}. */
+export type QuantityKind = 'LENGTH' | 'AREA' | 'VOLUME' | 'COUNT' | 'WEIGHT' | 'TIME';
 
 /**
  * Schema-aware normaliser injected from outside the package.
@@ -196,6 +200,33 @@ export class StoreEditor {
   /** All overlay-created entities, in insertion order. */
   getNewEntities(): NewEntity[] {
     return this.view.getNewEntities();
+  }
+
+  /**
+   * Attach a quantity set to an entity via the property view, so it surfaces in
+   * the properties panel (`getQuantitiesForEntity`) AND exports to
+   * IfcElementQuantity — the single source the rest of the app reads. Prefer
+   * this over emitting raw quantity / element-quantity entities, which the
+   * panel doesn't resolve.
+   */
+  addQuantitySet(
+    entityId: number,
+    qsetName: string,
+    quantities: Array<{ name: string; value: number; quantityType: QuantityKind; unit?: string }>,
+  ): void {
+    const kind: Record<QuantityKind, QuantityType> = {
+      LENGTH: QuantityType.Length,
+      AREA: QuantityType.Area,
+      VOLUME: QuantityType.Volume,
+      COUNT: QuantityType.Count,
+      WEIGHT: QuantityType.Weight,
+      TIME: QuantityType.Time,
+    };
+    this.view.createQuantitySet(
+      entityId,
+      qsetName,
+      quantities.map((q) => ({ name: q.name, value: q.value, quantityType: kind[q.quantityType], unit: q.unit })),
+    );
   }
 
   private computeMaxExistingId(): number {

@@ -94,10 +94,6 @@ export interface SpaceBuildResult {
   shapeRepId: number;
   productShapeId: number;
   relAggregatesId: number;
-  /** IfcElementQuantity (Qto_SpaceBaseQuantities) emitted for the space. */
-  elementQuantityId: number;
-  /** IfcRelDefinesByProperties linking the space to its quantities. */
-  relQuantityId: number;
   /** One IfcRelSpaceBoundary per bounding element (empty if none supplied). */
   spaceBoundaryIds: number[];
 }
@@ -184,48 +180,23 @@ export function addSpaceToStore(
     [`#${spaceId}`],
   ]).expressId;
 
-  // Qto_SpaceBaseQuantities — every derived space carries base quantities for
-  // downstream schedules / energy / FM. Area is the centreline (gross)
-  // footprint; NetFloorArea == gross until we inset by wall thickness.
+  // Qto_SpaceBaseQuantities — attached via the property view (createQuantitySet)
+  // rather than as raw IfcElementQuantity entities, so they surface in the
+  // properties panel (getQuantitiesForEntity) AND export, from one source.
+  // `area` is the OuterCurve (net when generated from walls) footprint;
+  // GrossFloorArea/GrossVolume take the supplied centreline measure.
   const area = polygon ? polygonArea(params.OuterCurve) : params.Width * params.Depth;
   const perimeter = polygon
     ? polygonPerimeter(params.OuterCurve)
     : 2 * (params.Width + params.Depth);
-  const ifc4 = (anchor.schema ?? 'IFC4') !== 'IFC2X3';
-  const quantity = (type: string, name: string, value: number): number => {
-    // IfcQuantityArea/Length/Volume: (Name, Description, Unit, *Value[, Formula]).
-    // The trailing Formula slot exists only in IFC4+.
-    const qattrs: unknown[] = [name, null, null, value];
-    if (ifc4) qattrs.push(null);
-    return editor.addEntity(type, qattrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  };
-  // OuterCurve is the net (inner-face) footprint when generated from walls, so
-  // its `area` is the net area; GrossFloorArea/GrossVolume take the supplied
-  // centreline measure (falling back to the OuterCurve area).
   const grossArea = params.grossFloorArea ?? area;
-  const quantityIds = [
-    quantity('IfcQuantityArea', 'GrossFloorArea', grossArea),
-    quantity('IfcQuantityArea', 'NetFloorArea', params.netFloorArea ?? area),
-    quantity('IfcQuantityLength', 'GrossPerimeter', perimeter),
-    quantity('IfcQuantityLength', 'Height', params.Height),
-    quantity('IfcQuantityVolume', 'GrossVolume', grossArea * params.Height),
-  ];
-  const elementQuantityId = editor.addEntity('IfcElementQuantity', [
-    generateIfcGuid(),
-    `#${anchor.ownerHistoryId}`,
-    'Qto_SpaceBaseQuantities',
-    null,
-    null,
-    quantityIds.map((id) => `#${id}`),
-  ] as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  const relQuantityId = editor.addEntity('IfcRelDefinesByProperties', [
-    generateIfcGuid(),
-    `#${anchor.ownerHistoryId}`,
-    null,
-    null,
-    [`#${spaceId}`],
-    `#${elementQuantityId}`,
-  ] as Parameters<StoreEditor['addEntity']>[1]).expressId;
+  editor.addQuantitySet(spaceId, 'Qto_SpaceBaseQuantities', [
+    { name: 'GrossFloorArea', value: grossArea, quantityType: 'AREA' },
+    { name: 'NetFloorArea', value: params.netFloorArea ?? area, quantityType: 'AREA' },
+    { name: 'GrossPerimeter', value: perimeter, quantityType: 'LENGTH' },
+    { name: 'Height', value: params.Height, quantityType: 'LENGTH' },
+    { name: 'GrossVolume', value: grossArea * params.Height, quantityType: 'VOLUME' },
+  ]);
 
   // Space boundaries — one IfcRelSpaceBoundary per bounding element. Attribute
   // order is stable across IFC2X3/IFC4: GlobalId, OwnerHistory, Name,
@@ -256,8 +227,6 @@ export function addSpaceToStore(
     shapeRepId,
     productShapeId,
     relAggregatesId,
-    elementQuantityId,
-    relQuantityId,
     spaceBoundaryIds,
   };
 }

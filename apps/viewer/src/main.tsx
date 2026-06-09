@@ -6,6 +6,11 @@
  * Application entry point
  */
 
+// MUST be the first import: disables React 19.2's dev-mode component-render
+// Performance tracking before react-dom caches `supportsUserTiming`, so large-IFC
+// geometry/dataStore props don't blow its recursive prop-diff to a RangeError/OOM
+// (the load "stops halfway" stall). See disable-react-dev-perf-track.ts.
+import './disable-react-dev-perf-track';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';

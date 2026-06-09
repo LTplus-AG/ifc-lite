@@ -764,28 +764,49 @@ export class Scene {
   flushPending(device: GPUDevice, pipeline: RenderPipeline): boolean {
     if (!this.hasQueuedMeshes()) return false;
 
-    // Drain the queue in moderately sized chunks instead of one mesh at a time.
-    // This preserves the per-frame time budget while cutting appendToBatches()
-    // overhead and front-of-array churn during huge desktop streams.
+    // Drain the queue in chunks bounded by BOTH mesh count AND triangle volume,
+    // yielding the frame back at the TOP of the loop. The mesh-count-only chunker
+    // could merge a 512-mesh chunk of high-poly meshes (e.g. 899 Velux roof
+    // windows at 7624 tris each → ~3.9M tris) in ONE indivisible mergeGeometry +
+    // mappedAtCreation buffer copy — hundreds of ms that parked the main thread
+    // past the 16s stream watchdog. Capping each appendToBatches by index volume
+    // keeps every synchronous slice ≈ one bounded fragment merge (~12-15ms).
     const MAX_MESHES_PER_FLUSH = 4096;
     const MESHES_PER_APPEND = 512;
+    const MAX_INDICES_PER_APPEND = Scene.STREAMING_FRAGMENT_MAX_INDICES;
     const FLUSH_BUDGET_MS = 12;
     const start = performance.now();
     let processed = 0;
 
     while (this.meshQueueReadIndex < this.meshQueue.length && processed < MAX_MESHES_PER_FLUSH) {
-      const chunkSize = Math.min(
-        MESHES_PER_APPEND,
-        MAX_MESHES_PER_FLUSH - processed,
-        this.meshQueue.length - this.meshQueueReadIndex,
-      );
-      const chunk = this.meshQueue.slice(this.meshQueueReadIndex, this.meshQueueReadIndex + chunkSize);
-      this.meshQueueReadIndex += chunkSize;
-      this.appendToBatches(chunk, device, pipeline, true);
-      processed += chunk.length;
-      if (processed >= MESHES_PER_APPEND && performance.now() - start >= FLUSH_BUDGET_MS) {
+      // Yield once the budget is spent (after at least one append) so the main
+      // thread returns to the worker-message pump and the watchdog never trips.
+      if (processed > 0 && performance.now() - start >= FLUSH_BUDGET_MS) {
         break;
       }
+
+      const hardEnd = Math.min(
+        this.meshQueue.length,
+        this.meshQueueReadIndex + MESHES_PER_APPEND,
+        this.meshQueueReadIndex + (MAX_MESHES_PER_FLUSH - processed),
+      );
+      let chunkEnd = this.meshQueueReadIndex;
+      let chunkIndices = 0;
+      while (chunkEnd < hardEnd) {
+        const next = this.meshQueue[chunkEnd].indices.length;
+        // Always take at least one mesh (a single oversize mesh is split upstream
+        // by splitMeshForStreaming); otherwise stop before exceeding the cap.
+        if (chunkEnd > this.meshQueueReadIndex && chunkIndices + next > MAX_INDICES_PER_APPEND) {
+          break;
+        }
+        chunkIndices += next;
+        chunkEnd++;
+      }
+
+      const chunk = this.meshQueue.slice(this.meshQueueReadIndex, chunkEnd);
+      this.meshQueueReadIndex = chunkEnd;
+      this.appendToBatches(chunk, device, pipeline, true);
+      processed += chunk.length;
     }
 
     if (this.meshQueueReadIndex >= this.meshQueue.length) {

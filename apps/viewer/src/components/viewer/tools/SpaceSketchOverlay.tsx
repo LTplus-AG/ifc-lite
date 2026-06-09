@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
 import init, { SpacePlateHandle } from '@ifc-lite/wasm';
 import { extractWallSegmentsForStorey } from '@ifc-lite/create';
@@ -144,6 +145,7 @@ export function SpaceSketchOverlay() {
   const lastBuildRef = useRef<{ coords: Float64Array; sources: Int32Array; label: string; storey: number | null } | null>(null);
   const [hist, setHist] = useState(0);
   const [status, setStatus] = useState('Load the demo plate or derive from a storey.');
+  const [showBuilding, setShowBuilding] = useState(true);
 
   // Every IfcBuildingStorey with its resolved name + elevation, low → high.
   const storeys = useMemo(() => {
@@ -157,6 +159,12 @@ export function SpaceSketchOverlay() {
     list.sort((a, b) => a.elev - b.elev);
     return list;
   }, [ifcDataStore]);
+
+  const derivedFloorElev = useMemo(
+    () => (derivedStorey == null ? null : storeys.find((s) => s.id === derivedStorey)?.elev ?? null),
+    [derivedStorey, storeys],
+  );
+  const { lines: underlay } = useConstructionUnderlay(showBuilding && rooms.length > 0, derivedFloorElev);
   const [storeyId, setStoreyId] = useState<number | null>(null);
   const lastDerivedRef = useRef<number | null>(null);
   useEffect(() => {
@@ -551,6 +559,9 @@ export function SpaceSketchOverlay() {
         <span className="mx-1 w-px self-stretch bg-border" />
         <button className={btn} onClick={undo} disabled={!canUndo} title="Undo">↶</button>
         <button className={btn} onClick={redo} disabled={!canRedo} title="Redo">↷</button>
+        <button className={`${btn} ${showBuilding ? 'bg-primary/80 text-primary-foreground' : ''}`}
+          onClick={() => setShowBuilding((v) => !v)}
+          title="Show building elements (plan cut ~1.2 m above the floor) for orientation">Building</button>
         <button className={`${btn} ${derivedStorey != null && rooms.length ? 'bg-emerald-600 text-white hover:bg-emerald-600/90' : ''}`}
           onClick={bake} disabled={derivedStorey == null || !rooms.length}
           title={derivedStorey == null ? 'Derive from a storey first' : 'Create IfcSpace for each room'}>Bake → IfcSpace</button>
@@ -571,6 +582,17 @@ export function SpaceSketchOverlay() {
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag}
         onPointerLeave={() => { setHover(null); setSplitHover(null); }}>
         {gridLines.map((l, i) => <line key={`g${i}`} {...l} stroke="currentColor" strokeOpacity={0.06} strokeWidth={1} />)}
+
+        {/* Building-element underlay (plan cut ~1.2 m above the storey) for orientation. */}
+        {showBuilding && underlay.map((l, i) => (
+          <line key={`b${i}`}
+            x1={sX(f, l.a[0])} y1={sY(f, l.a[1])} x2={sX(f, l.b[0])} y2={sY(f, l.b[1])}
+            stroke="currentColor"
+            strokeOpacity={l.hidden ? 0.16 : 0.34}
+            strokeWidth={l.hidden ? 0.8 : 1.1}
+            strokeDasharray={l.hidden ? '3 3' : undefined}
+            pointerEvents="none" />
+        ))}
 
         {rooms.map((r, ri) => {
           const color = ROOM_COLORS[ri % ROOM_COLORS.length];

@@ -45,6 +45,9 @@ export interface SpaceRectangleParams {
    * IfcInternalOrExternalEnum. Defaults to INTERNAL.
    */
   PredefinedType?: string;
+  /** Express ids of the building elements bounding this space → one
+   *  IfcRelSpaceBoundary each (PHYSICAL/INTERNAL). */
+  boundaryElementIds?: number[];
 }
 
 export interface SpacePolygonParams {
@@ -58,6 +61,9 @@ export interface SpacePolygonParams {
   ObjectType?: string;
   /** See SpaceRectangleParams.PredefinedType. */
   PredefinedType?: string;
+  /** Express ids of the building elements bounding this space → one
+   *  IfcRelSpaceBoundary each (PHYSICAL/INTERNAL). */
+  boundaryElementIds?: number[];
 }
 
 export interface SpaceBuildResult {
@@ -72,6 +78,8 @@ export interface SpaceBuildResult {
   elementQuantityId: number;
   /** IfcRelDefinesByProperties linking the space to its quantities. */
   relQuantityId: number;
+  /** One IfcRelSpaceBoundary per bounding element (empty if none supplied). */
+  spaceBoundaryIds: number[];
 }
 
 /** Absolute polygon area (shoelace), m². */
@@ -195,6 +203,27 @@ export function addSpaceToStore(
     `#${elementQuantityId}`,
   ] as Parameters<StoreEditor['addEntity']>[1]).expressId;
 
+  // Space boundaries — one IfcRelSpaceBoundary per bounding element. Attribute
+  // order is stable across IFC2X3/IFC4: GlobalId, OwnerHistory, Name,
+  // Description, RelatingSpace, RelatedBuildingElement, ConnectionGeometry,
+  // PhysicalOrVirtualBoundary, InternalOrExternalBoundary. Connection geometry
+  // + internal/external classification are future refinements.
+  const spaceBoundaryIds: number[] = [];
+  for (const elementId of params.boundaryElementIds ?? []) {
+    const boundaryId = editor.addEntity('IfcRelSpaceBoundary', [
+      generateIfcGuid(),
+      `#${anchor.ownerHistoryId}`,
+      null,
+      null,
+      `#${spaceId}`,
+      `#${elementId}`,
+      null,
+      '.PHYSICAL.',
+      '.INTERNAL.',
+    ] as Parameters<StoreEditor['addEntity']>[1]).expressId;
+    spaceBoundaryIds.push(boundaryId);
+  }
+
   return {
     spaceId,
     placementId,
@@ -205,5 +234,6 @@ export function addSpaceToStore(
     relAggregatesId,
     elementQuantityId,
     relQuantityId,
+    spaceBoundaryIds,
   };
 }

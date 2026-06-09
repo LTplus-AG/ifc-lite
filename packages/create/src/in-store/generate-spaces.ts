@@ -27,6 +27,8 @@ import {
   detectEnclosedAreasWithStats,
   type DetectedSpace,
   type DetectStats,
+  type Segment,
+  type Vec2,
 } from './auto-space-detect.js';
 import { addSpaceToStore, type SpaceBuildResult } from './space.js';
 
@@ -151,6 +153,11 @@ export function generateSpacesFromWalls(
       Name: name,
       LongName: options.longName,
       PredefinedType: options.predefinedType,
+      boundaryElementIds: matchBoundaryWalls(
+        region.outline,
+        extraction.segments,
+        extraction.contributingWallIds,
+      ),
     });
     emitted.push({ region, result, name });
   });
@@ -163,4 +170,49 @@ export function generateSpacesFromWalls(
     detectionStats: detection.stats,
     emitted,
   };
+}
+
+/**
+ * Map each edge of a detected room outline back to the wall(s) it runs along,
+ * so the bake can emit IfcRelSpaceBoundary linking the space to its real
+ * bounding walls. `segments[k]` was extracted from `wallIds[k]` (1:1), and an
+ * outline edge lies on a wall's centreline, so we match by: parallel direction,
+ * the edge midpoint sitting on the wall's line, and overlapping extent.
+ * (Corner-snap only moves endpoints along a wall's line, so the line — hence
+ * the match — is unaffected.)
+ */
+function matchBoundaryWalls(outline: Vec2[], segments: Segment[], wallIds: number[]): number[] {
+  const PERP_TOL = 0.2;   // m — edge sits on the wall centreline
+  const PARALLEL_TOL = 0.03;
+  const OVERLAP_MARGIN = 0.3; // m
+  const ids = new Set<number>();
+  const n = outline.length;
+  for (let i = 0; i < n; i++) {
+    const a = outline[i];
+    const b = outline[(i + 1) % n];
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    let ex = b[0] - a[0];
+    let ey = b[1] - a[1];
+    const el = Math.hypot(ex, ey);
+    if (el < 1e-6) continue;
+    ex /= el; ey /= el;
+    for (let k = 0; k < segments.length; k++) {
+      const sa = segments[k].a;
+      const sb = segments[k].b;
+      let sx = sb[0] - sa[0];
+      let sy = sb[1] - sa[1];
+      const sl = Math.hypot(sx, sy);
+      if (sl < 1e-6) continue;
+      sx /= sl; sy /= sl;
+      if (Math.abs(ex * sy - ey * sx) > PARALLEL_TOL) continue; // not parallel
+      const t = (mx - sa[0]) * sx + (my - sa[1]) * sy;          // projection onto wall (m)
+      const px = sa[0] + sx * t;
+      const py = sa[1] + sy * t;
+      if (Math.hypot(mx - px, my - py) > PERP_TOL) continue;     // edge off the wall line
+      if (t < -OVERLAP_MARGIN || t > sl + OVERLAP_MARGIN) continue; // no extent overlap
+      ids.add(wallIds[k]);
+    }
+  }
+  return [...ids];
 }

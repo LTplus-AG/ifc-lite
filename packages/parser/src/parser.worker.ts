@@ -104,25 +104,6 @@ function readJsHeapBytes(): number | undefined {
   return perf.memory?.usedJSHeapSize;
 }
 
-interface MeasureUaMemoryPerf {
-  measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }>;
-}
-
-async function readUaMemoryBytes(): Promise<number | undefined> {
-  const perf = performance as unknown as MeasureUaMemoryPerf;
-  if (typeof perf.measureUserAgentSpecificMemory !== 'function') return undefined;
-  try {
-    const sample = await perf.measureUserAgentSpecificMemory();
-    return sample.bytes;
-  } catch {
-    /* cleanup — safe to ignore: best-effort telemetry probe.
-     * Throws on browsers that don't support measureUserAgentSpecificMemory
-     * yet (Firefox until recently, Safari) or when the page lacks
-     * crossOriginIsolated. None are recoverable from here. */
-    return undefined;
-  }
-}
-
 function postOutput(message: ParserWorkerOutputMessage, transfers?: Transferable[]): void {
   const w = self as unknown as Worker;
   if (transfers && transfers.length > 0) {
@@ -292,18 +273,20 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
         }
       },
     });
-
     const { payload, transfers } = toTransport(dataStore);
-    const jsHeapBytes = readJsHeapBytes();
-    const uaMemoryBytes = await readUaMemoryBytes();
+    // CRITICAL: every field here MUST be synchronous. Do NOT await on this path —
+    // it gates the 'complete' message (the full data store) reaching the main thread.
+    // This previously `await`ed performance.measureUserAgentSpecificMemory(); in a
+    // cross-origin-isolated context (always true here — SAB requires COI) Chrome
+    // defers that probe until the next major GC, which right after a large parse
+    // stalled 'complete' by multiple seconds (Holter Tower: ~3.8s of the load). The
+    // value (uaMemoryBytes) was never read by any consumer, so it is simply dropped.
     const memory: ParserMemorySnapshot = {
-      jsHeapBytes,
-      uaMemoryBytes,
+      jsHeapBytes: readJsHeapBytes(),
       transportBytes: transportByteSize(payload),
       sourceBytes: source.byteLength,
       parseTimeMs: performance.now() - startedAt,
     };
-
     postOutput({ type: 'complete', id, payload, memory }, transfers);
   } catch (err) {
     postOutput({

@@ -122,6 +122,7 @@ export function SpaceSketchOverlay() {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const fitRef = useRef<Fit>({ scale: 1, minX: 0, minY: 0 });
   const rafRef = useRef<number | null>(null);
+  const rebuildTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moveRef = useRef<{ x: number; y: number; shift: boolean } | null>(null);
 
   const dragRef = useRef<number | null>(null);
@@ -286,8 +287,17 @@ export function SpaceSketchOverlay() {
   const rebuildWithSnap = useCallback((tol: number | null) => {
     snapTolRef.current = tol;
     setSnapTol(tol);
-    const lb = lastBuildRef.current;
-    if (lb) void buildFrom(lb.coords, lb.sources, lb.label, lb.storey);
+    if (tol != null) setUsedTol(tol); // move the slider thumb/label immediately
+    // Debounce the actual rebuild: the range input fires onChange on every
+    // tick, and buildFrom is async + frees/creates wasm handles — rebuilding
+    // per tick raced the shared heap and froze the editor. Rebuild once the
+    // slider settles.
+    if (rebuildTimerRef.current) clearTimeout(rebuildTimerRef.current);
+    rebuildTimerRef.current = setTimeout(() => {
+      rebuildTimerRef.current = null;
+      const lb = lastBuildRef.current;
+      if (lb) void buildFrom(lb.coords, lb.sources, lb.label, lb.storey);
+    }, 180);
   }, [buildFrom]);
 
   const deriveFromStorey = useCallback(async () => {
@@ -370,6 +380,7 @@ export function SpaceSketchOverlay() {
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (rebuildTimerRef.current) clearTimeout(rebuildTimerRef.current);
     freeHistory();
     plateRef.current?.free();
     plateRef.current = null;

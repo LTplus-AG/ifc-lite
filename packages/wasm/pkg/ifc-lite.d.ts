@@ -1008,9 +1008,6 @@ export interface InitOutput {
   readonly symbolictext_worldY: (a: number) => number;
   readonly symbolictext_x: (a: number) => number;
   readonly symbolictext_y: (a: number) => number;
-  readonly __wasm_bindgen_func_elem_719: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_718: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_758: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number, b: number) => number;
   readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_export3: (a: number) => void;

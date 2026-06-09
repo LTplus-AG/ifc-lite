@@ -30,7 +30,7 @@ import {
   type Segment,
   type Vec2,
 } from './auto-space-detect.js';
-import { addSpaceToStore, type SpaceBuildResult } from './space.js';
+import { addSpaceToStore, type SpaceBuildResult, type SpaceBoundaryInput } from './space.js';
 
 /**
  * IfcSpace.ObjectType marker stamped on every derived space, so a re-run can
@@ -151,8 +151,10 @@ export function generateSpacesFromWalls(
     throw new Error(`generateSpacesFromWalls: no resolvable spatial anchor for storey #${storeyExpressId}`);
   }
 
+  const allOutlines = detected.map((r) => r.outline);
   detected.forEach((region, i) => {
     const name = namePattern.replace('{n}', String(i + 1));
+    const others = allOutlines.filter((_, j) => j !== i);
     const result = addSpaceToStore(editor, anchor, {
       Profile: 'polygon',
       OuterCurve: region.outline,
@@ -161,10 +163,11 @@ export function generateSpacesFromWalls(
       ObjectType: GENERATED_SPACE_OBJECTTYPE,
       LongName: options.longName,
       PredefinedType: options.predefinedType,
-      boundaryElementIds: matchBoundaryWalls(
+      boundaries: buildSpaceBoundaries(
         region.outline,
         extraction.segments,
         extraction.contributingWallIds,
+        others,
       ),
     });
     emitted.push({ region, result, name });
@@ -180,47 +183,88 @@ export function generateSpacesFromWalls(
   };
 }
 
-/**
- * Map each edge of a detected room outline back to the wall(s) it runs along,
- * so the bake can emit IfcRelSpaceBoundary linking the space to its real
- * bounding walls. `segments[k]` was extracted from `wallIds[k]` (1:1), and an
- * outline edge lies on a wall's centreline, so we match by: parallel direction,
- * the edge midpoint sitting on the wall's line, and overlapping extent.
- * (Corner-snap only moves endpoints along a wall's line, so the line — hence
- * the match — is unaffected.)
- */
-function matchBoundaryWalls(outline: Vec2[], segments: Segment[], wallIds: number[]): number[] {
-  const PERP_TOL = 0.2;   // m — edge sits on the wall centreline
+/** Ray-cast point-in-polygon test. */
+function pointInPolygon(x: number, y: number, poly: Vec2[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Wall ids whose centreline an outline edge runs along (parallel, on the
+ *  line, overlapping extent). `segments[k]` was extracted from `wallIds[k]`. */
+function matchEdgeWalls(a: Vec2, b: Vec2, segments: Segment[], wallIds: number[]): number[] {
+  const PERP_TOL = 0.2;       // m — edge sits on the wall centreline
   const PARALLEL_TOL = 0.03;
   const OVERLAP_MARGIN = 0.3; // m
-  const ids = new Set<number>();
+  const out: number[] = [];
+  const mx = (a[0] + b[0]) / 2;
+  const my = (a[1] + b[1]) / 2;
+  let ex = b[0] - a[0];
+  let ey = b[1] - a[1];
+  const el = Math.hypot(ex, ey);
+  if (el < 1e-6) return out;
+  ex /= el; ey /= el;
+  for (let k = 0; k < segments.length; k++) {
+    const sa = segments[k].a;
+    const sb = segments[k].b;
+    let sx = sb[0] - sa[0];
+    let sy = sb[1] - sa[1];
+    const sl = Math.hypot(sx, sy);
+    if (sl < 1e-6) continue;
+    sx /= sl; sy /= sl;
+    if (Math.abs(ex * sy - ey * sx) > PARALLEL_TOL) continue;     // not parallel
+    const t = (mx - sa[0]) * sx + (my - sa[1]) * sy;              // projection onto wall (m)
+    const px = sa[0] + sx * t;
+    const py = sa[1] + sy * t;
+    if (Math.hypot(mx - px, my - py) > PERP_TOL) continue;        // edge off the wall line
+    if (t < -OVERLAP_MARGIN || t > sl + OVERLAP_MARGIN) continue; // no extent overlap
+    out.push(wallIds[k]);
+  }
+  return out;
+}
+
+/**
+ * Build the IfcRelSpaceBoundary inputs for one room: map each outline edge to
+ * the wall it runs along, classifying the boundary INTERNAL when another room
+ * lies on the far side of that edge (a partition) or EXTERNAL when it's the
+ * building perimeter. "Far side" is the edge midpoint nudged along its outward
+ * normal — robust to neighbours that split the shared run differently than this
+ * room does (where exact edge-matching would miss). A wall stays INTERNAL if
+ * any of its edges has a room on the far side. One boundary per distinct wall.
+ */
+function buildSpaceBoundaries(
+  outline: Vec2[],
+  segments: Segment[],
+  wallIds: number[],
+  otherRooms: Vec2[][],
+): SpaceBoundaryInput[] {
+  const NUDGE = 0.1; // m past the shared centreline into the neighbour
+  const byWall = new Map<number, 'INTERNAL' | 'EXTERNAL'>();
   const n = outline.length;
   for (let i = 0; i < n; i++) {
     const a = outline[i];
     const b = outline[(i + 1) % n];
-    const mx = (a[0] + b[0]) / 2;
-    const my = (a[1] + b[1]) / 2;
-    let ex = b[0] - a[0];
-    let ey = b[1] - a[1];
-    const el = Math.hypot(ex, ey);
-    if (el < 1e-6) continue;
-    ex /= el; ey /= el;
-    for (let k = 0; k < segments.length; k++) {
-      const sa = segments[k].a;
-      const sb = segments[k].b;
-      let sx = sb[0] - sa[0];
-      let sy = sb[1] - sa[1];
-      const sl = Math.hypot(sx, sy);
-      if (sl < 1e-6) continue;
-      sx /= sl; sy /= sl;
-      if (Math.abs(ex * sy - ey * sx) > PARALLEL_TOL) continue; // not parallel
-      const t = (mx - sa[0]) * sx + (my - sa[1]) * sy;          // projection onto wall (m)
-      const px = sa[0] + sx * t;
-      const py = sa[1] + sy * t;
-      if (Math.hypot(mx - px, my - py) > PERP_TOL) continue;     // edge off the wall line
-      if (t < -OVERLAP_MARGIN || t > sl + OVERLAP_MARGIN) continue; // no extent overlap
-      ids.add(wallIds[k]);
+    let dx = b[0] - a[0];
+    let dy = b[1] - a[1];
+    const dl = Math.hypot(dx, dy);
+    if (dl < 1e-6) continue;
+    dx /= dl; dy /= dl;
+    // Outward normal of a CCW outline is to the right of a→b.
+    const mx = (a[0] + b[0]) / 2 + dy * NUDGE;
+    const my = (a[1] + b[1]) / 2 - dx * NUDGE;
+    const cls = otherRooms.some((poly) => pointInPolygon(mx, my, poly)) ? 'INTERNAL' : 'EXTERNAL';
+    for (const wallId of matchEdgeWalls(a, b, segments, wallIds)) {
+      if (byWall.get(wallId) === 'INTERNAL') continue; // once internal, stays internal
+      byWall.set(wallId, cls);
     }
   }
-  return [...ids];
+  return [...byWall].map(([elementId, internalOrExternal]) => ({
+    elementId,
+    internalOrExternal,
+    physicalOrVirtual: 'PHYSICAL' as const,
+  }));
 }

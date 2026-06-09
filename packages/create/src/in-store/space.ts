@@ -29,6 +29,17 @@ import {
 
 export type SpaceInStoreParams = SpaceRectangleParams | SpacePolygonParams;
 
+/** A bounding element for a space → one IfcRelSpaceBoundary. */
+export interface SpaceBoundaryInput {
+  /** Express id of the bounding building element (e.g. a wall). */
+  elementId: number;
+  /** INTERNAL (other side is another space) / EXTERNAL (building exterior) /
+   *  NOTDEFINED. Defaults to NOTDEFINED. */
+  internalOrExternal?: 'INTERNAL' | 'EXTERNAL' | 'NOTDEFINED';
+  /** PHYSICAL (a real element) / VIRTUAL. Defaults to PHYSICAL. */
+  physicalOrVirtual?: 'PHYSICAL' | 'VIRTUAL';
+}
+
 export interface SpaceRectangleParams {
   Position: [number, number, number];
   Width: number;
@@ -45,9 +56,8 @@ export interface SpaceRectangleParams {
    * IfcInternalOrExternalEnum. Defaults to INTERNAL.
    */
   PredefinedType?: string;
-  /** Express ids of the building elements bounding this space → one
-   *  IfcRelSpaceBoundary each (PHYSICAL/INTERNAL). */
-  boundaryElementIds?: number[];
+  /** Bounding elements → one IfcRelSpaceBoundary each. */
+  boundaries?: SpaceBoundaryInput[];
 }
 
 export interface SpacePolygonParams {
@@ -61,9 +71,8 @@ export interface SpacePolygonParams {
   ObjectType?: string;
   /** See SpaceRectangleParams.PredefinedType. */
   PredefinedType?: string;
-  /** Express ids of the building elements bounding this space → one
-   *  IfcRelSpaceBoundary each (PHYSICAL/INTERNAL). */
-  boundaryElementIds?: number[];
+  /** Bounding elements → one IfcRelSpaceBoundary each. */
+  boundaries?: SpaceBoundaryInput[];
 }
 
 export interface SpaceBuildResult {
@@ -209,17 +218,17 @@ export function addSpaceToStore(
   // PhysicalOrVirtualBoundary, InternalOrExternalBoundary. Connection geometry
   // + internal/external classification are future refinements.
   const spaceBoundaryIds: number[] = [];
-  for (const elementId of params.boundaryElementIds ?? []) {
+  for (const boundary of params.boundaries ?? []) {
     const boundaryId = editor.addEntity('IfcRelSpaceBoundary', [
       generateIfcGuid(),
       `#${anchor.ownerHistoryId}`,
       null,
       null,
       `#${spaceId}`,
-      `#${elementId}`,
+      `#${boundary.elementId}`,
       null,
-      '.PHYSICAL.',
-      '.INTERNAL.',
+      `.${boundary.physicalOrVirtual ?? 'PHYSICAL'}.`,
+      `.${boundary.internalOrExternal ?? 'NOTDEFINED'}.`,
     ] as Parameters<StoreEditor['addEntity']>[1]).expressId;
     spaceBoundaryIds.push(boundaryId);
   }

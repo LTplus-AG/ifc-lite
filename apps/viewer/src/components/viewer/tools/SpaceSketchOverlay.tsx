@@ -409,10 +409,12 @@ export function SpaceSketchOverlay() {
     const height = floorToFloor(sid);
     const newIds: number[] = [];
     let skipped = 0;
-    for (const outline of outlines) {
+    for (let oi = 0; oi < outlines.length; oi++) {
+      const outline = outlines[oi];
       const [cx, cy] = centroid(outline);
       if (authored.some((fp) => pointInPoly(cx, cy, fp))) { skipped++; continue; }
-      const inset = segments && thicknesses ? offsetRoomFootprint(outline, segments, thicknesses, boundaryMode) : outline;
+      const others = outlines.filter((_, j) => j !== oi);
+      const inset = segments && thicknesses ? offsetRoomFootprint(outline, segments, thicknesses, boundaryMode, others) : outline;
       const res = addSpace(activeModelId, sid, {
         Profile: 'polygon', OuterCurve: inset, Height: height,
         Name: `Space ${newIds.length + 1}`, ObjectType: GENERATED_SPACE_OBJECTTYPE,
@@ -700,8 +702,8 @@ export function SpaceSketchOverlay() {
   // editable vertices stay on the centreline (the topology). `center` shows the
   // raw centreline.
   const ext = extractionRef.current;
-  const displayOutline = (outline: Pt[]): Pt[] =>
-    boundaryMode === 'center' || !ext ? outline : offsetRoomFootprint(outline, ext.segments, ext.thicknesses, boundaryMode);
+  const displayOutline = (outline: Pt[], others: Pt[][]): Pt[] =>
+    boundaryMode === 'center' || !ext ? outline : offsetRoomFootprint(outline, ext.segments, ext.thicknesses, boundaryMode, others);
 
   return (
     <div ref={panelRef} className="absolute left-1/2 top-4 -translate-x-1/2 z-30 rounded-xl border bg-background/95 shadow-xl backdrop-blur p-3 select-none pointer-events-auto"
@@ -773,7 +775,7 @@ export function SpaceSketchOverlay() {
 
         {rooms.map((r, ri) => {
           const color = ROOM_COLORS[ri % ROOM_COLORS.length];
-          const disp = displayOutline(r.outline);
+          const disp = displayOutline(r.outline, rooms.filter((_, j) => j !== ri).map((x) => x.outline));
           const pts = disp.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ');
           const [cwx, cwy] = centroid(disp);
           const cx = sX(f, cwx), cy = sY(f, cwy);

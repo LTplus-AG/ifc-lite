@@ -18,7 +18,7 @@
  */
 
 import type { MutablePropertyView } from './mutable-property-view.js';
-import { QuantityType } from '@ifc-lite/data';
+import { QuantityType, PropertyValueType } from '@ifc-lite/data';
 import type {
   IfcAttributeValue,
   MutationEntityRef as EntityRef,
@@ -31,6 +31,9 @@ export const OVERLAY_BYTE_OFFSET = -1;
 
 /** Quantity kinds accepted by {@link StoreEditor.addQuantitySet}. */
 export type QuantityKind = 'LENGTH' | 'AREA' | 'VOLUME' | 'COUNT' | 'WEIGHT' | 'TIME';
+
+/** Property value kinds accepted by {@link StoreEditor.addPropertySet}. */
+export type PropertyKind = 'TEXT' | 'LABEL' | 'REAL' | 'INTEGER' | 'BOOLEAN';
 
 /**
  * Schema-aware normaliser injected from outside the package.
@@ -226,6 +229,30 @@ export class StoreEditor {
       entityId,
       qsetName,
       quantities.map((q) => ({ name: q.name, value: q.value, quantityType: kind[q.quantityType], unit: q.unit })),
+    );
+  }
+
+  /**
+   * Attach a property set to an entity via the property view, so it surfaces in
+   * the properties panel AND exports to IfcPropertySet — the single source the
+   * rest of the app reads (the panel doesn't resolve raw overlay entities).
+   */
+  addPropertySet(
+    entityId: number,
+    psetName: string,
+    properties: Array<{ name: string; value: string | number | boolean; type: PropertyKind; unit?: string }>,
+  ): void {
+    const kind: Record<PropertyKind, PropertyValueType> = {
+      TEXT: PropertyValueType.Text,
+      LABEL: PropertyValueType.Label,
+      REAL: PropertyValueType.Real,
+      INTEGER: PropertyValueType.Integer,
+      BOOLEAN: PropertyValueType.Boolean,
+    };
+    this.view.createPropertySet(
+      entityId,
+      psetName,
+      properties.map((p) => ({ name: p.name, value: p.value, type: kind[p.type], unit: p.unit })),
     );
   }
 

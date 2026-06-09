@@ -198,6 +198,16 @@ export function addSpaceToStore(
     { name: 'GrossVolume', value: grossArea * params.Height, quantityType: 'VOLUME' },
   ]);
 
+  // Pset_SpaceCommon — the standard IfcSpace pset, so the space carries real
+  // properties (not just an empty schema template). Planned areas mirror the
+  // measured ones; interior space ⇒ not external by default.
+  editor.addPropertySet(spaceId, 'Pset_SpaceCommon', [
+    { name: 'Reference', value: params.Name ?? '', type: 'LABEL' },
+    { name: 'IsExternal', value: false, type: 'BOOLEAN' },
+    { name: 'GrossPlannedArea', value: grossArea, type: 'REAL' },
+    { name: 'NetPlannedArea', value: params.netFloorArea ?? area, type: 'REAL' },
+  ]);
+
   // Space boundaries — one IfcRelSpaceBoundary per bounding element. Attribute
   // order is stable across IFC2X3/IFC4: GlobalId, OwnerHistory, Name,
   // Description, RelatingSpace, RelatedBuildingElement, ConnectionGeometry,

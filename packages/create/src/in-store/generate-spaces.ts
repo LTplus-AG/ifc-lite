@@ -185,7 +185,7 @@ export function generateSpacesFromWalls(
     // Bake the solid at the inner (net) face — IfcSpace should stop at the room
     // side of the walls, not run to their centreline. GrossFloorArea keeps the
     // centreline measure; NetFloorArea falls out of the inset OuterCurve.
-    const netOutline = offsetRoomFootprint(region.outline, extraction.segments, extraction.wallThicknesses, options.boundaryMode ?? 'inner');
+    const netOutline = offsetRoomFootprint(region.outline, extraction.segments, extraction.wallThicknesses, options.boundaryMode ?? 'inner', others);
     const result = addSpaceToStore(editor, anchor, {
       Profile: 'polygon',
       OuterCurve: netOutline,
@@ -260,28 +260,52 @@ function edgeRunsAlong(a: Vec2, b: Vec2, seg: Segment): boolean {
 /** How a space boundary relates to its bounding walls. */
 export type BoundaryMode = 'center' | 'inner' | 'outer';
 
+/** Drop vertices whose two adjacent edges are collinear (e.g. a T-junction
+ *  point left on a straight wall run). Such a vertex makes its two adjacent
+ *  offset lines parallel, so they don't intersect — the offset then falls back
+ *  to the un-offset centreline point and the corner skews. */
+function simplifyCollinear(pts: Vec2[]): Vec2[] {
+  const n = pts.length;
+  if (n < 4) return pts;
+  const out: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = pts[(i - 1 + n) % n], c = pts[i], q = pts[(i + 1) % n];
+    let ax = c[0] - p[0], ay = c[1] - p[1];
+    let bx = q[0] - c[0], by = q[1] - c[1];
+    const al = Math.hypot(ax, ay) || 1, bl = Math.hypot(bx, by) || 1;
+    ax /= al; ay /= al; bx /= bl; by /= bl;
+    if (Math.abs(ax * by - ay * bx) > 1e-4) out.push(c); // keep real corners only
+  }
+  return out.length >= 3 ? out : pts;
+}
+
 /**
  * Offset a (centreline) room outline to the chosen wall boundary: `center` =
  * the centreline as-is; `inner` = each edge shifted toward the room by half the
  * wall thickness (net / inner face); `outer` = shifted away by half (gross /
  * outer face). Re-corners by intersecting adjacent offset edges. `segments[k]`
- * has thickness `wallThicknesses[k]`. Returns the original outline if the
- * offset degenerates (e.g. an inner inset of a room thinner than its walls).
- * Exact for orthogonal rooms; a close approximation at non-right corners.
+ * has thickness `wallThicknesses[k]`. `otherRooms` (other rooms' centreline
+ * outlines) lets `outer` keep shared/internal edges on the centreline so
+ * neighbouring rooms meet there instead of overlapping inside the wall.
+ * Returns the original outline if the offset degenerates (e.g. an inner inset
+ * of a room thinner than its walls). Exact for orthogonal rooms.
  */
 export function offsetRoomFootprint(
   outline: Vec2[],
   segments: Segment[],
   wallThicknesses: ReadonlyArray<number | undefined>,
   mode: BoundaryMode = 'inner',
+  otherRooms: Vec2[][] = [],
 ): Vec2[] {
-  const n = outline.length;
-  if (mode === 'center' || n < 3) return outline;
+  if (mode === 'center') return outline;
+  const simple = simplifyCollinear(outline);
+  const n = simple.length;
+  if (n < 3) return outline;
   const sign = mode === 'inner' ? 1 : -1; // inner → inward, outer → outward
   const lines: { p: Vec2; d: Vec2 }[] = [];
   for (let i = 0; i < n; i++) {
-    const a = outline[i];
-    const b = outline[(i + 1) % n];
+    const a = simple[i];
+    const b = simple[(i + 1) % n];
     let dx = b[0] - a[0];
     let dy = b[1] - a[1];
     const l = Math.hypot(dx, dy);
@@ -292,7 +316,15 @@ export function offsetRoomFootprint(
       const t = wallThicknesses[k];
       if (t !== undefined && t / 2 > half && edgeRunsAlong(a, b, segments[k])) half = t / 2;
     }
-    const off = sign * half;
+    let off = sign * half;
+    // A shared (internal) edge has another room on its OUTWARD side. Pushing it
+    // outward (outer mode) would overlap that room, so pin shared edges to the
+    // centreline; only edges facing outside the building actually push out.
+    if (mode === 'outer' && half > 0 && otherRooms.length) {
+      const mx = (a[0] + b[0]) / 2 + dy * 0.1; // outward = right normal (dy, -dx)
+      const my = (a[1] + b[1]) / 2 - dx * 0.1;
+      if (otherRooms.some((poly) => pointInPolygon(mx, my, poly))) off = 0;
+    }
     // Inward normal of a CCW outline is to the left of a→b: (-dy, dx).
     lines.push({ p: [a[0] - dy * off, a[1] + dx * off], d: [dx, dy] });
   }
@@ -300,14 +332,13 @@ export function offsetRoomFootprint(
   for (let i = 0; i < n; i++) {
     const prev = lines[(i - 1 + n) % n];
     const cur = lines[i];
-    verts.push(lineIntersect(prev.p, prev.d, cur.p, cur.d) ?? outline[i]);
+    verts.push(lineIntersect(prev.p, prev.d, cur.p, cur.d) ?? simple[i]);
   }
   if (!verts.every((v) => Number.isFinite(v[0]) && Number.isFinite(v[1]))) return outline;
-  const gross = polygonArea(outline);
+  const gross = polygonArea(simple);
   const got = polygonArea(verts);
   if (got <= 1e-6) return outline;
   if (mode === 'inner' && got > gross + 1e-6) return outline; // inset inverted
-  if (mode === 'outer' && got < gross - 1e-6) return outline; // shouldn't shrink
   return verts;
 }
 

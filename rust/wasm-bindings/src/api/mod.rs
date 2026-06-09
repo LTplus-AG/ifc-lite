@@ -786,42 +786,6 @@ pub(super) fn drain_and_log_csg_diagnostics(
             );
         }
 
-        // Heavy-result detection: a host whose cut produced a very large mesh is
-        // the prime suspect for a geometry-stream render stall (the GPU upload of
-        // an exploded/high-poly mesh blocks the worker). Surface the worst.
-        let mut heavy: Vec<(u32, &ifc_lite_geometry::HostOpeningDiagnostic)> = host_diags
-            .iter()
-            .filter_map(|(pid, hd)| {
-                if hd.tris_after.unwrap_or(0) > 3000 {
-                    Some((*pid, hd))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        heavy.sort_by(|a, b| b.1.tris_after.cmp(&a.1.tris_after));
-        if !heavy.is_empty() {
-            let lines: Vec<String> = heavy
-                .iter()
-                .take(10)
-                .map(|(pid, hd)| {
-                    format!(
-                        "  #{pid} {} tris {}→{}",
-                        hd.host_type,
-                        hd.tris_before.unwrap_or(0),
-                        hd.tris_after.unwrap_or(0)
-                    )
-                })
-                .collect();
-            web_sys::console::warn_1(
-                &format!(
-                    "[IFC-LITE] HEAVY CSG hosts (>3000 out-tris — render-stall suspect):\n{}",
-                    lines.join("\n")
-                )
-                .into(),
-            );
-        }
-
         if total_failures > 0 {
             web_sys::console::warn_1(
                 &format!(

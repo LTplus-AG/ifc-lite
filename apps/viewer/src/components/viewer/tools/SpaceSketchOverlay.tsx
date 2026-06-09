@@ -114,6 +114,7 @@ const ROOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84
 export function SpaceSketchOverlay() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const addSpace = useViewerStore((s) => s.addSpace);
+  const generateAllSpaces = useViewerStore((s) => s.generateAllSpaces);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const { ifcDataStore } = useIfc();
 
@@ -335,6 +336,11 @@ export function SpaceSketchOverlay() {
       for (let k = 0; k < pts.length; k++) { const p = pts[k], q = pts[(k + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; }
       return Math.abs(a) / 2;
     };
+    // Floor-to-floor height so the space reaches the slab above (not a fixed 3 m).
+    const idx = storeys.findIndex((s) => s.id === derivedStorey);
+    const next = idx >= 0 ? storeys[idx + 1] : undefined;
+    const ff = next ? next.elev - storeys[idx].elev : BAKE_HEIGHT;
+    const height = ff > 0.1 && ff < 50 ? ff : BAKE_HEIGHT;
     let ok = 0, err = 0;
     snap.forEach((r, i) => {
       // Inset to the inner (net) wall face so the IfcSpace doesn't run to the
@@ -343,13 +349,24 @@ export function SpaceSketchOverlay() {
         ? insetRoomFootprint(r.outline, extraction.segments, extraction.thicknesses)
         : r.outline;
       const res = addSpace(activeModelId, derivedStorey, {
-        Profile: 'polygon', OuterCurve: outline, Height: BAKE_HEIGHT, Name: `Space ${i + 1}`,
+        Profile: 'polygon', OuterCurve: outline, Height: height, Name: `Space ${i + 1}`,
         grossFloorArea: polyArea(r.outline),
       });
       if (res && 'expressId' in res) ok++; else err++;
     });
-    setStatus(`Baked ${ok} IfcSpace${ok === 1 ? '' : 's'} → storey #${derivedStorey}${err ? ` (${err} failed)` : ''}.`);
-  }, [activeModelId, derivedStorey, addSpace]);
+    setStatus(`Baked ${ok} IfcSpace${ok === 1 ? '' : 's'} (h=${height.toFixed(1)} m) → storey #${derivedStorey}${err ? ` (${err} failed)` : ''}.`);
+  }, [activeModelId, derivedStorey, addSpace, storeys]);
+
+  const bakeWholeBuilding = useCallback(() => {
+    if (!activeModelId) { setStatus('No model loaded to write spaces into.'); return; }
+    const res = generateAllSpaces(activeModelId);
+    if ('error' in res) { setStatus(`Generate failed: ${res.error}`); return; }
+    const floors = res.storeys.filter((s) => s.result.emitted.length > 0).length;
+    setStatus(
+      `Generated ${res.totalEmitted} IfcSpace across ${floors} storey(s)` +
+      (res.skippedExisting ? `; skipped ${res.skippedExisting} overlapping existing spaces` : '') + '.',
+    );
+  }, [activeModelId, generateAllSpaces]);
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -610,6 +627,9 @@ export function SpaceSketchOverlay() {
         <button className={`${btn} ${derivedStorey != null && rooms.length ? 'bg-emerald-600 text-white hover:bg-emerald-600/90' : ''}`}
           onClick={bake} disabled={derivedStorey == null || !rooms.length}
           title={derivedStorey == null ? 'Derive from a storey first' : 'Create IfcSpace for each room'}>Bake → IfcSpace</button>
+        <button className={`${btn} ${activeModelId ? 'bg-indigo-600 text-white hover:bg-indigo-600/90' : ''}`}
+          onClick={bakeWholeBuilding} disabled={!activeModelId}
+          title="Derive + bake IfcSpace for every storey at once (auto floor-to-floor height, skips storeys/rooms that already have spaces)">Whole building</button>
       </div>
 
       <div className="flex items-center gap-2 mb-2 text-[11px] text-muted-foreground" title="Corner-closing tolerance. Larger closes bigger gaps but can over-merge.">

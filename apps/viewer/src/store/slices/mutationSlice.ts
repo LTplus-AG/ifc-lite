@@ -27,12 +27,15 @@ import {
   duplicateInStore,
   resolveDuplicateSource,
   generateSpacesFromWalls,
+  generateSpaces,
   type BeamInStoreParams,
   type ColumnInStoreParams,
   type DoorInStoreParams,
   type DuplicateInStoreOptions,
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
+  type GenerateSpacesAllOptions,
+  type GenerateSpacesAllResult,
   type MemberInStoreParams,
   type PlateInStoreParams,
   type RoofInStoreParams,
@@ -627,6 +630,15 @@ export interface MutationSlice {
     storeyExpressId: number,
     options?: GenerateSpacesOptions,
   ) => GenerateSpacesResult | { error: string };
+  /**
+   * Derive IfcSpace across every storey at once (whole building): auto
+   * floor-to-floor heights, auto-escalating snap, per-space dedup against
+   * existing spaces. Writes to the model overlay (undoable, marks dirty).
+   */
+  generateAllSpaces: (
+    modelId: string,
+    options?: GenerateSpacesAllOptions,
+  ) => GenerateSpacesAllResult | { error: string };
   /**
    * Duplicate an existing IfcRoot product in a chosen direction.
    * Offset magnitude is one source-bbox dimension along the picked
@@ -2272,6 +2284,60 @@ export const createMutationSlice: StateCreator<
       const newDirty = new Set(s.dirtyModels);
       newDirty.add(modelId);
 
+      return {
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        dirtyModels: newDirty,
+        mutationVersion: s.mutationVersion + 1,
+      };
+    });
+
+    return result;
+  },
+
+  generateAllSpaces: (modelId, options) => {
+    const state = get();
+    const dataStore = state.models.get(modelId)?.ifcDataStore;
+    if (!dataStore) return { error: `No model loaded for id "${modelId}"` };
+    const view = state.mutationViews.get(modelId);
+    if (!view) return { error: 'Model has no editable mutation view yet' };
+    const editor = getOrCreateStoreEditor(get, set, modelId);
+    if (!editor) return { error: 'Failed to create store editor' };
+
+    let result: GenerateSpacesAllResult;
+    try {
+      result = generateSpaces(
+        editor,
+        dataStore,
+        { storeys: 'all', height: 'auto', snap: 'auto', ...options },
+        { getNewEntities: () => view.getNewEntities() },
+      );
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to generate spaces' };
+    }
+
+    const emitted = result.storeys.flatMap((s) => s.result.emitted);
+    if (emitted.length === 0) return result;
+
+    set((s) => {
+      const newUndoStacks = new Map(s.undoStacks);
+      const stack = [...(newUndoStacks.get(modelId) ?? [])];
+      const ts = Date.now();
+      for (const e of emitted) {
+        stack.push({
+          id: `mut_ifcspace_${e.result.spaceId}_${ts}_${Math.random().toString(36).substring(2, 9)}`,
+          type: 'CREATE_ENTITY',
+          timestamp: ts,
+          modelId,
+          entityId: e.result.spaceId,
+          attributeName: 'IFCSPACE',
+        });
+      }
+      newUndoStacks.set(modelId, stack);
+      const newRedoStacks = new Map(s.redoStacks);
+      newRedoStacks.set(modelId, []);
+      const newDirty = new Set(s.dirtyModels);
+      newDirty.add(modelId);
       return {
         undoStacks: newUndoStacks,
         redoStacks: newRedoStacks,

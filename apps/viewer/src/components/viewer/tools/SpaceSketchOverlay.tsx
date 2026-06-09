@@ -25,9 +25,10 @@ import { useIfc } from '@/hooks/useIfc';
 import init, { SpacePlateHandle } from '@ifc-lite/wasm';
 import {
   extractWallSegmentsForStorey,
-  insetRoomFootprint,
+  offsetRoomFootprint,
   existingSpaceFootprintsByStorey,
   GENERATED_SPACE_OBJECTTYPE,
+  type BoundaryMode,
 } from '@ifc-lite/create';
 import { X, Undo2, Redo2, Building2, Layers } from 'lucide-react';
 
@@ -146,6 +147,7 @@ export function SpaceSketchOverlay() {
   const fitRef = useRef<Fit>({ scale: 1, minX: 0, minY: 0 });
   const rafRef = useRef<number | null>(null);
   const rebuildTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buildSeqRef = useRef(0);
   // IfcSpace expressIds this session created per storey — so a re-bake (or
   // "Generate all") replaces the spaces it dropped instead of duplicating.
   const generatedRef = useRef<Map<number, number[]>>(new Map());
@@ -174,12 +176,13 @@ export function SpaceSketchOverlay() {
   // Wall segments + thicknesses from the last derive, kept for net-footprint
   // inset at bake (so the IfcSpace solid stops at the inner wall face).
   const extractionRef = useRef<{
-    segments: Parameters<typeof insetRoomFootprint>[1];
-    thicknesses: Parameters<typeof insetRoomFootprint>[2];
+    segments: Parameters<typeof offsetRoomFootprint>[1];
+    thicknesses: Parameters<typeof offsetRoomFootprint>[2];
   } | null>(null);
   const [hist, setHist] = useState(0);
   const [status, setStatus] = useState('Load the demo plate or derive from a storey.');
   const [showBuilding, setShowBuilding] = useState(true);
+  const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>('inner');
 
   // Every IfcBuildingStorey with its resolved name + elevation, low → high.
   const storeys = useMemo(() => {
@@ -284,8 +287,13 @@ export function SpaceSketchOverlay() {
   }, [resetInteraction, refreshRooms]);
 
   const buildFrom = useCallback(async (coords: Float64Array, sources: Int32Array, label: string, storey: number | null) => {
+    // Re-entrancy guard: a rapid rebuild (snap slider) must not let an older
+    // async build free/replace the plate a newer one is using — that races the
+    // shared wasm heap. Only the latest build applies; superseded ones bail.
+    const seq = ++buildSeqRef.current;
     try {
       await ensureWasm();
+      if (seq !== buildSeqRef.current) return;
       plateRef.current?.free();
       freeHistory();
       // Real wall centrelines don't meet exactly at corners — they're offset
@@ -308,6 +316,7 @@ export function SpaceSketchOverlay() {
           if (p.roomCount > 0) break;
         }
       }
+      if (seq !== buildSeqRef.current) { plate?.free(); return; }
       plateRef.current = plate!;
       setUsedTol(used);
       const snap = plate!.snapshot() as Room[];
@@ -390,8 +399,8 @@ export function SpaceSketchOverlay() {
   const bakeStorey = useCallback((
     sid: number,
     outlines: Pt[][],
-    segments: Parameters<typeof insetRoomFootprint>[1] | undefined,
-    thicknesses: Parameters<typeof insetRoomFootprint>[2] | undefined,
+    segments: Parameters<typeof offsetRoomFootprint>[1] | undefined,
+    thicknesses: Parameters<typeof offsetRoomFootprint>[2] | undefined,
     authored: Pt[][],
   ): { emitted: number; skipped: number } => {
     if (!activeModelId) return { emitted: 0, skipped: 0 };
@@ -403,7 +412,7 @@ export function SpaceSketchOverlay() {
     for (const outline of outlines) {
       const [cx, cy] = centroid(outline);
       if (authored.some((fp) => pointInPoly(cx, cy, fp))) { skipped++; continue; }
-      const inset = segments && thicknesses ? insetRoomFootprint(outline, segments, thicknesses) : outline;
+      const inset = segments && thicknesses ? offsetRoomFootprint(outline, segments, thicknesses, boundaryMode) : outline;
       const res = addSpace(activeModelId, sid, {
         Profile: 'polygon', OuterCurve: inset, Height: height,
         Name: `Space ${newIds.length + 1}`, ObjectType: GENERATED_SPACE_OBJECTTYPE,
@@ -413,7 +422,7 @@ export function SpaceSketchOverlay() {
     }
     generatedRef.current.set(sid, newIds);
     return { emitted: newIds.length, skipped };
-  }, [activeModelId, removeEntity, addSpace, floorToFloor]);
+  }, [activeModelId, removeEntity, addSpace, floorToFloor, boundaryMode]);
 
   const bake = useCallback(() => {
     const plate = plateRef.current;
@@ -687,6 +696,12 @@ export function SpaceSketchOverlay() {
 
   const iconBtn = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40';
   const previewEnd = splitHover ?? cursorWorld;
+  // The 2D preview (and bake) show the room at the chosen wall boundary; the
+  // editable vertices stay on the centreline (the topology). `center` shows the
+  // raw centreline.
+  const ext = extractionRef.current;
+  const displayOutline = (outline: Pt[]): Pt[] =>
+    boundaryMode === 'center' || !ext ? outline : offsetRoomFootprint(outline, ext.segments, ext.thicknesses, boundaryMode);
 
   return (
     <div ref={panelRef} className="absolute left-1/2 top-4 -translate-x-1/2 z-30 rounded-xl border bg-background/95 shadow-xl backdrop-blur p-3 select-none pointer-events-auto"
@@ -709,7 +724,7 @@ export function SpaceSketchOverlay() {
           title="Create IfcSpace for every storey at once — auto floor-to-floor height, skips rooms that already have a space">Generate all</button>
       </div>
 
-      {/* Edit tools (mode · history · underlay · snap) */}
+      {/* Edit: mode + history */}
       <div className="flex items-center gap-1.5 mb-2">
         <div className="inline-flex rounded-md border p-0.5">
           {(['drag', 'split', 'merge'] as Mode[]).map((m) => (
@@ -721,16 +736,30 @@ export function SpaceSketchOverlay() {
         </div>
         <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo"><Undo2 className="h-4 w-4" /></button>
         <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo"><Redo2 className="h-4 w-4" /></button>
-        <button className={`${iconBtn} ${showBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
-          onClick={() => setShowBuilding((v) => !v)}
-          title="Show surrounding building elements (plan cut ~1.2 m above the floor)"><Building2 className="h-4 w-4" /></button>
         <div className="ml-auto flex items-center gap-1.5 text-[11px] text-muted-foreground"
           title="Corner-closing tolerance — larger closes bigger gaps but can over-merge">
+          <span>snap</span>
           <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="w-20 accent-primary"
-            disabled={!rooms.length} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
+            disabled={derivedStorey == null} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
           <button className="tabular-nums hover:text-foreground" onClick={() => rebuildWithSnap(null)}
-            title="Reset to automatic snap">{usedTol.toFixed(2)} m{snapTol == null ? ' · auto' : ''}</button>
+            title="Reset to automatic snap">{usedTol.toFixed(2)}m{snapTol == null ? '·a' : ''}</button>
         </div>
+      </div>
+
+      {/* View: boundary relative to walls + building underlay */}
+      <div className="flex items-center gap-2 mb-2 text-[11px] text-muted-foreground">
+        <span title="Where the space boundary sits relative to its walls — drives the 2D preview and the bake">Boundary</span>
+        <div className="inline-flex rounded-md border p-0.5">
+          {(['center', 'inner', 'outer'] as BoundaryMode[]).map((m) => (
+            <button key={m}
+              className={`rounded px-2 py-0.5 capitalize transition-colors ${boundaryMode === m ? 'bg-primary text-primary-foreground' : 'hover:text-foreground'}`}
+              onClick={() => setBoundaryMode(m)}
+              title={m === 'center' ? 'Wall centreline' : m === 'inner' ? 'Inner (net) face' : 'Outer (gross) face'}>{m}</button>
+          ))}
+        </div>
+        <button className={`${iconBtn} ml-auto ${showBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
+          onClick={() => setShowBuilding((v) => !v)}
+          title="Show surrounding building elements (plan cut ~1.2 m above the floor)"><Building2 className="h-4 w-4" /></button>
       </div>
 
       <svg ref={svgRef} width={SVG_W} height={SVG_H} style={{ cursor }}
@@ -744,16 +773,22 @@ export function SpaceSketchOverlay() {
 
         {rooms.map((r, ri) => {
           const color = ROOM_COLORS[ri % ROOM_COLORS.length];
-          const pts = r.outline.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ');
-          const cx = r.outline.reduce((s, p) => s + sX(f, p[0]), 0) / r.outline.length;
-          const cy = r.outline.reduce((s, p) => s + sY(f, p[1]), 0) / r.outline.length;
+          const disp = displayOutline(r.outline);
+          const pts = disp.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ');
+          const [cwx, cwy] = centroid(disp);
+          const cx = sX(f, cwx), cy = sY(f, cwy);
           const lit = mergeRooms?.has(r.face);
           const bad = !r.simple;
+          const area = boundaryMode === 'center' ? r.area : polyArea(disp);
           return (
             <g key={r.face}>
+              {boundaryMode !== 'center' && (
+                <polygon points={r.outline.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ')}
+                  fill="none" stroke={color} strokeOpacity={0.25} strokeDasharray="3 3" strokeWidth={1} />
+              )}
               <polygon points={pts} fill={bad ? '#ef4444' : color} fillOpacity={lit ? 0.42 : bad ? 0.3 : 0.16}
                 stroke={bad ? '#ef4444' : color} strokeWidth={lit ? 3 : 2} />
-              <text x={cx} y={cy - 5} textAnchor="middle" fontSize={12} fontWeight={600} fill="currentColor" className="pointer-events-none">{r.area.toFixed(2)}</text>
+              <text x={cx} y={cy - 5} textAnchor="middle" fontSize={12} fontWeight={600} fill="currentColor" className="pointer-events-none">{area.toFixed(2)}</text>
               <text x={cx} y={cy + 9} textAnchor="middle" fontSize={9} fill="currentColor" opacity={0.55} className="pointer-events-none">m²</text>
             </g>
           );

@@ -80,6 +80,8 @@ export interface GenerateSpacesOptions {
    * per-storey: non-overlapping rooms are still emitted.
    */
   skipFootprints?: Vec2[][];
+  /** Where the space boundary sits relative to its walls. Default 'inner'. */
+  boundaryMode?: BoundaryMode;
 }
 
 export interface GenerateSpacesResult {
@@ -183,7 +185,7 @@ export function generateSpacesFromWalls(
     // Bake the solid at the inner (net) face — IfcSpace should stop at the room
     // side of the walls, not run to their centreline. GrossFloorArea keeps the
     // centreline measure; NetFloorArea falls out of the inset OuterCurve.
-    const netOutline = insetRoomFootprint(region.outline, extraction.segments, extraction.wallThicknesses);
+    const netOutline = offsetRoomFootprint(region.outline, extraction.segments, extraction.wallThicknesses, options.boundaryMode ?? 'inner');
     const result = addSpaceToStore(editor, anchor, {
       Profile: 'polygon',
       OuterCurve: netOutline,
@@ -255,23 +257,27 @@ function edgeRunsAlong(a: Vec2, b: Vec2, seg: Segment): boolean {
   return t >= -OVERLAP_MARGIN && t <= sl + OVERLAP_MARGIN;
 }
 
+/** How a space boundary relates to its bounding walls. */
+export type BoundaryMode = 'center' | 'inner' | 'outer';
+
 /**
- * Inset a (centreline) room outline to its inner-face / net footprint: shift
- * each edge inward by half the thickness of the wall it runs along (0 where the
- * wall thickness is unknown), then re-corner by intersecting adjacent offset
- * edges. `segments[k]` has thickness `wallThicknesses[k]`. Returns the original
- * outline unchanged if the inset degenerates (e.g. a room thinner than its
- * walls). Exact for orthogonal rooms; a close approximation at non-right
- * corners. Shared by the bake (geometry) and net-area quantity, and by the
- * viewer's Space Sketch bake.
+ * Offset a (centreline) room outline to the chosen wall boundary: `center` =
+ * the centreline as-is; `inner` = each edge shifted toward the room by half the
+ * wall thickness (net / inner face); `outer` = shifted away by half (gross /
+ * outer face). Re-corners by intersecting adjacent offset edges. `segments[k]`
+ * has thickness `wallThicknesses[k]`. Returns the original outline if the
+ * offset degenerates (e.g. an inner inset of a room thinner than its walls).
+ * Exact for orthogonal rooms; a close approximation at non-right corners.
  */
-export function insetRoomFootprint(
+export function offsetRoomFootprint(
   outline: Vec2[],
   segments: Segment[],
   wallThicknesses: ReadonlyArray<number | undefined>,
+  mode: BoundaryMode = 'inner',
 ): Vec2[] {
   const n = outline.length;
-  if (n < 3) return outline;
+  if (mode === 'center' || n < 3) return outline;
+  const sign = mode === 'inner' ? 1 : -1; // inner → inward, outer → outward
   const lines: { p: Vec2; d: Vec2 }[] = [];
   for (let i = 0; i < n; i++) {
     const a = outline[i];
@@ -281,13 +287,14 @@ export function insetRoomFootprint(
     const l = Math.hypot(dx, dy);
     if (l < 1e-6) return outline;
     dx /= l; dy /= l;
-    let half = 0; // inset = half the thickest wall this edge runs along
+    let half = 0; // half the thickest wall this edge runs along
     for (let k = 0; k < segments.length; k++) {
       const t = wallThicknesses[k];
       if (t !== undefined && t / 2 > half && edgeRunsAlong(a, b, segments[k])) half = t / 2;
     }
+    const off = sign * half;
     // Inward normal of a CCW outline is to the left of a→b: (-dy, dx).
-    lines.push({ p: [a[0] - dy * half, a[1] + dx * half], d: [dx, dy] });
+    lines.push({ p: [a[0] - dy * off, a[1] + dx * off], d: [dx, dy] });
   }
   const verts: Vec2[] = [];
   for (let i = 0; i < n; i++) {
@@ -295,9 +302,13 @@ export function insetRoomFootprint(
     const cur = lines[i];
     verts.push(lineIntersect(prev.p, prev.d, cur.p, cur.d) ?? outline[i]);
   }
+  if (!verts.every((v) => Number.isFinite(v[0]) && Number.isFinite(v[1]))) return outline;
   const gross = polygonArea(outline);
-  const net = polygonArea(verts);
-  return net > 1e-6 && net <= gross + 1e-6 ? verts : outline;
+  const got = polygonArea(verts);
+  if (got <= 1e-6) return outline;
+  if (mode === 'inner' && got > gross + 1e-6) return outline; // inset inverted
+  if (mode === 'outer' && got < gross - 1e-6) return outline; // shouldn't shrink
+  return verts;
 }
 
 /** Ray-cast point-in-polygon test. */

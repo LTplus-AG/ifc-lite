@@ -21,6 +21,7 @@ import {
   generateSpacesFromWalls,
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
+  type BoundaryMode,
 } from './generate-spaces.js';
 import { existingSpaceFootprintsByStorey, type OverlayWallReader } from './extract-walls.js';
 
@@ -46,6 +47,8 @@ export interface GenerateSpacesAllOptions {
   predefinedType?: string;
   /** Extra divider element types (case-insensitive) beyond the defaults. */
   extraDividerTypes?: string[];
+  /** Where the space boundary sits relative to its walls. Default 'inner'. */
+  boundaryMode?: BoundaryMode;
   /** Detect + report only; emit no IfcSpace. */
   dryRun?: boolean;
   /**
@@ -138,6 +141,7 @@ export function generateSpaces(
         predefinedType: options.predefinedType,
         extraDividerTypes: options.extraDividerTypes,
         dryRun: options.dryRun,
+        boundaryMode: options.boundaryMode,
         debug: options.debug,
         skipFootprints: footprintsByStorey.get(st.id),
       } satisfies GenerateSpacesOptions,

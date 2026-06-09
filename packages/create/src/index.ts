@@ -60,10 +60,11 @@ export {
 } from './in-store/extract-walls.js';
 export {
   generateSpacesFromWalls,
-  insetRoomFootprint,
+  offsetRoomFootprint,
   GENERATED_SPACE_OBJECTTYPE,
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
+  type BoundaryMode,
 } from './in-store/generate-spaces.js';
 export {
   generateSpaces,

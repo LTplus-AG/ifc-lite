@@ -31,6 +31,7 @@ Options:
   --min-area <m2>         Drop regions below this area (default 0.5)
   --name-pattern <p>      Name template; {n}=index, {storey}=storey name (default "Space {n}")
   --predefined-type <t>   IfcSpacePredefinedType (default INTERNAL)
+  --boundary <mode>       Space boundary vs walls: center | inner | outer (default inner)
   --divider-type <t>      Extra element type to treat as a wall divider (repeatable)
   --dry-run               Detect + report only; write nothing
   --force                 Re-derive even if the model already has generated spaces (may duplicate)
@@ -49,6 +50,8 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
   const topHeight = Number(getFlag(args, '--top-height') ?? '3');
   const namePattern = getFlag(args, '--name-pattern');
   const predefinedType = getFlag(args, '--predefined-type');
+  const boundaryArg = (getFlag(args, '--boundary') ?? 'inner') as 'center' | 'inner' | 'outer';
+  if (!['center', 'inner', 'outer'].includes(boundaryArg)) fatal('--boundary must be center, inner, or outer');
   const dividerTypes = getAllFlags(args, '--divider-type');
   const dryRun = hasFlag(args, '--dry-run');
   const force = hasFlag(args, '--force');
@@ -105,6 +108,7 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
     namePattern,
     predefinedType,
     extraDividerTypes: dividerTypes.length ? dividerTypes : undefined,
+    boundaryMode: boundaryArg,
     dryRun,
     force,
     debug,

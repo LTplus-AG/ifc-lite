@@ -80,14 +80,59 @@ pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
     m
 }
 
+/// Twice-the-signed-volume sum for a triangle list (divergence theorem, ×6):
+/// `Σ v0·(v1×v2)`. A closed outward-wound mesh has this `> 0`; an inward-wound
+/// one `< 0`. Computed in plain FMA-free f64 over the snapped operand coords, so
+/// only its SIGN is consumed — a global topological invariant, byte-identical
+/// native==wasm. (The magnitude is irrelevant; we never compare it to a tolerance.)
+fn signed_volume6(tris: &[Tri]) -> f64 {
+    tris.iter()
+        .map(|t| {
+            let cr = [
+                t[1][1] * t[2][2] - t[1][2] * t[2][1],
+                t[1][2] * t[2][0] - t[1][0] * t[2][2],
+                t[1][0] * t[2][1] - t[1][1] * t[2][0],
+            ];
+            t[0][0] * cr[0] + t[0][1] * cr[1] + t[0][2] * cr[2]
+        })
+        .sum()
+}
+
+/// Orient a closed operand OUTWARD before it enters the arrangement.
+///
+/// The kernel boolean (`boolean_vids` / `union_all`) derives its keep/flip rules
+/// from the OUTWARD-normal convention (own-solid on `−n`; the difference flips the
+/// kept B faces so their caps seam with A). Real IFC winding is NOT reliably
+/// outward — a CW profile extruded along `+Z`, or a faceted brep with inconsistent
+/// face loops, yields an INWARD-wound (negative-signed-volume) closed solid. Fed
+/// in as-is it tears the result: open boundary edges along the cut rim + an
+/// inverted-volume surface (the 1007 gable-wall slivers; #1007 defect A).
+///
+/// We flip winding (`[a,b,c] → [a,c,b]`, an EXACT index swap) iff the signed
+/// volume is negative, so every operand the kernel sees is outward. The flip is a
+/// no-op for already-outward inputs (every pinned box−box manifest: `cube_mesh`
+/// has volume `+8`/`+27`), so determinism manifests are unperturbed.
+fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
+    if signed_volume6(&tris) < 0.0 {
+        for t in &mut tris {
+            t.swap(1, 2);
+        }
+    }
+    tris
+}
+
 /// `host − cutter` as a `Mesh`.
 pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
-    tris_to_mesh(&boolean(&mesh_to_tris(host), &mesh_to_tris(cutter), BoolOp::Difference))
+    let h = orient_outward(mesh_to_tris(host));
+    let c = orient_outward(mesh_to_tris(cutter));
+    tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
 }
 
 /// `a ∪ b` as a `Mesh`.
 pub fn union(a: &Mesh, b: &Mesh) -> Mesh {
-    tris_to_mesh(&boolean(&mesh_to_tris(a), &mesh_to_tris(b), BoolOp::Union))
+    let a = orient_outward(mesh_to_tris(a));
+    let b = orient_outward(mesh_to_tris(b));
+    tris_to_mesh(&boolean(&a, &b, BoolOp::Union))
 }
 
 /// `∪ meshes` as one watertight `Mesh` — the N-ary union, computed in a single
@@ -95,14 +140,17 @@ pub fn union(a: &Mesh, b: &Mesh) -> Mesh {
 /// segmented-roof cutters) dissolve without the tearing that left-deep pairwise
 /// accumulation produces. Empty input ⇒ empty mesh.
 pub fn union_many(meshes: &[&Mesh]) -> Mesh {
-    let tri_lists: Vec<Vec<Tri>> = meshes.iter().map(|m| mesh_to_tris(m)).collect();
+    let tri_lists: Vec<Vec<Tri>> =
+        meshes.iter().map(|m| orient_outward(mesh_to_tris(m))).collect();
     let refs: Vec<&[Tri]> = tri_lists.iter().map(|t| t.as_slice()).collect();
     tris_to_mesh(&union_all(&refs))
 }
 
 /// `a ∩ b` as a `Mesh`.
 pub fn intersection(a: &Mesh, b: &Mesh) -> Mesh {
-    tris_to_mesh(&boolean(&mesh_to_tris(a), &mesh_to_tris(b), BoolOp::Intersection))
+    let a = orient_outward(mesh_to_tris(a));
+    let b = orient_outward(mesh_to_tris(b));
+    tris_to_mesh(&boolean(&a, &b, BoolOp::Intersection))
 }
 
 #[cfg(all(test, feature = "manifold-csg"))]

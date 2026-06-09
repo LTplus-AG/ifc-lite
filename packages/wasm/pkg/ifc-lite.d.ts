@@ -912,9 +912,9 @@ export interface InitOutput {
   readonly symbolictext_worldY: (a: number) => number;
   readonly symbolictext_x: (a: number) => number;
   readonly symbolictext_y: (a: number) => number;
-  readonly __wasm_bindgen_func_elem_678: (a: number, b: number, c: number) => void;
-  readonly __wasm_bindgen_func_elem_677: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_717: (a: number, b: number, c: number, d: number) => void;
+  readonly __wasm_bindgen_func_elem_676: (a: number, b: number, c: number) => void;
+  readonly __wasm_bindgen_func_elem_675: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_715: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number) => void;
   readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
   readonly __wbindgen_export3: (a: number, b: number) => number;

@@ -1318,8 +1318,6 @@ impl GeometryRouter {
         let mut csg_operation_count = 0;
         const MAX_CSG_OPERATIONS: usize = 10;
 
-        self.apply_diagonal_openings(&mut result, &ctx.openings);
-
         let mut rect_boxes: Vec<(Point3<f64>, Point3<f64>)> = Vec::new();
         // Keep extrusion directions alongside boxes for reveal generation.
         let mut rect_dirs: Vec<Option<Vector3<f64>>> = Vec::new();
@@ -1378,14 +1376,40 @@ impl GeometryRouter {
         }
 
         for opening in &non_rect_openings {
-            match *opening {
-                OpeningType::Rectangular(..) | OpeningType::DiagonalRectangular(..) => {}
-                OpeningType::NonRectangular(
-                    ref opening_mesh,
-                    open_min_pt,
-                    open_max_pt,
-                    extrusion_dir,
-                ) => {
+            // Normalize both exact-subtract variants into the same (mesh, min,
+            // max, dir) shape. `DiagonalRectangular` (a clean but tilted box —
+            // e.g. a roof-slope window or a slanted roof opening, #1007 defect B)
+            // is a REAL solid cutter, so it MUST be subtracted exactly, never
+            // approximated by a frame-rotated AABB: that legacy path
+            // (`apply_diagonal_openings`) tore the host (101 boundary edges) and
+            // left the void uncut. Route it through the same exact-mesh subtract
+            // as `NonRectangular`; the kernel cuts the tilted box cleanly
+            // (winding-robust after the defect-A orient-outward fix). The
+            // mesh-bounds AABB + frame-depth direction still seed the #635
+            // fallback, which only fires if the exact subtract no-ops.
+            let normalized: Option<(&Mesh, Point3<f64>, Point3<f64>, Option<Vector3<f64>>)> =
+                match *opening {
+                    OpeningType::Rectangular(..) => None,
+                    OpeningType::DiagonalRectangular(ref opening_mesh, ref frame) => {
+                        let (mn, mx) = opening_mesh.bounds();
+                        Some((
+                            opening_mesh,
+                            Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
+                            Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
+                            Some(frame.depth),
+                        ))
+                    }
+                    OpeningType::NonRectangular(
+                        ref opening_mesh,
+                        ref open_min_pt,
+                        ref open_max_pt,
+                        ref extrusion_dir,
+                    ) => Some((opening_mesh, *open_min_pt, *open_max_pt, *extrusion_dir)),
+                };
+            if let Some((opening_mesh, open_min_pt, open_max_pt, extrusion_dir)) = normalized {
+                let open_min_pt = &open_min_pt;
+                let open_max_pt = &open_max_pt;
+                {
                     if csg_operation_count >= MAX_CSG_OPERATIONS {
                         continue;
                     }
@@ -1969,6 +1993,16 @@ impl GeometryRouter {
         result
     }
 
+    /// Legacy rotated-AABB cut for `DiagonalRectangular` openings.
+    ///
+    /// No longer on the production void path: as of #1007 (defect B), tilted
+    /// clean-box openings are subtracted EXACTLY through the kernel
+    /// (`apply_void_context` → `clipper.subtract_mesh`) instead of by cutting the
+    /// opening's frame-rotated bounding box. The rotated-AABB approach tore the
+    /// host (open boundary edges) and could leave the void uncut, so it is kept
+    /// here only as a reference for the `OpeningFrame`/reveal math (exercised by
+    /// `test_diagonal_reveals_do_not_expand_mesh_bounds`).
+    #[allow(dead_code)]
     fn apply_diagonal_openings(&self, result: &mut Mesh, openings: &[OpeningType]) {
         let diagonal_openings: Vec<(&Mesh, &OpeningFrame)> = openings
             .iter()

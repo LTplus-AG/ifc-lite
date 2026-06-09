@@ -423,9 +423,25 @@ fn create_side_walls(boundary: &[nalgebra::Point2<f64>], depth: f64, mesh: &mut 
         mesh.add_vertex(v1_top, n1);
         mesh.add_vertex(v0_top, n0);
 
-        // Add 2 triangles for the quad
-        mesh.add_triangle(idx, idx + 1, idx + 2);
-        mesh.add_triangle(idx, idx + 2, idx + 3);
+        // Add 2 triangles for the quad, wound CONSISTENTLY with the caps.
+        //
+        // The caps are emitted assuming a CCW (positive-area) outer loop: the
+        // top cap keeps the triangulation winding (+Z outward), the bottom is
+        // reversed (−Z outward). The side-wall quad must close that surface with
+        // the SAME outward orientation, or the cap↔wall shared edges run the same
+        // direction instead of cancelling — a closed but winding-INCONSISTENT
+        // solid whose exact-kernel boolean leaves open rim edges (the #1007
+        // gable-wall residue: a CW-authored wall profile extruded along +Z).
+        // `winding_sign` (CCW>0) selects the matching face order; for a CW loop
+        // we mirror the quad so the closed solid is consistently outward,
+        // byte-identical to before for the common CCW case.
+        if winding_sign > 0.0 {
+            mesh.add_triangle(idx, idx + 1, idx + 2);
+            mesh.add_triangle(idx, idx + 2, idx + 3);
+        } else {
+            mesh.add_triangle(idx, idx + 2, idx + 1);
+            mesh.add_triangle(idx, idx + 3, idx + 2);
+        }
 
         quad_count += 1;
     }

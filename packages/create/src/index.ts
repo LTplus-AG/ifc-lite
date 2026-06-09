@@ -62,6 +62,14 @@ export {
   type GenerateSpacesOptions,
   type GenerateSpacesResult,
 } from './in-store/generate-spaces.js';
+export {
+  generateSpaces,
+  listStoreys,
+  type GenerateSpacesAllOptions,
+  type GenerateSpacesAllResult,
+  type GenerateSpacesStoreyResult,
+  type StoreyInfo,
+} from './in-store/generate-spaces-all.js';
 
 export type {
   // Geometry primitives

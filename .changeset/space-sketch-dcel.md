@@ -2,9 +2,11 @@
 "@ifc-lite/create": minor
 "@ifc-lite/wasm": minor
 "@ifc-lite/viewer": minor
+"@ifc-lite/cli": minor
+"@ifc-lite/sdk": minor
 ---
 
-feat(spaces): interactive Space Sketch (DCEL) editor
+feat(spaces): interactive Space Sketch (DCEL) editor + headless generation
 
 A topology-aware space editor built on a persistent half-edge (DCEL) plate in
 the Rust geometry core, exposed via a stateful `SpacePlateHandle` wasm binding:
@@ -21,3 +23,8 @@ the Rust geometry core, exposed via a stateful `SpacePlateHandle` wasm binding:
 - Viewer "Space Sketch" tool: storey list with resolved names, auto-derive on
   selection, auto-escalating + manual snap tolerance to close centreline corner
   gaps.
+- **Headless generation** — derive IfcSpace across storeys from the CLI
+  (`ifc-lite generate-spaces`), the SDK (`bim.spaces.generate`), or as a library
+  function (`generateSpaces` from `@ifc-lite/create`), with auto-escalating snap,
+  storey-datum ("slab") floor-to-floor heights, and rectangular corner cleanup
+  ported into the TS detector.

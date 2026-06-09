@@ -8,6 +8,21 @@ import { detectEnclosedAreas, type Segment } from './auto-space-detect.js';
 const seg = (a: [number, number], b: [number, number]): Segment => ({ a, b });
 
 describe('detectEnclosedAreas', () => {
+  it('snaps offset wall centrelines into a clean rectangle (corner cleanup)', () => {
+    // 8×8 room whose centrelines miss each corner by ~0.1 m (one overshoots,
+    // the neighbour undershoots) — the real-world case that produced
+    // trapezoids. Corner-snap must recover the exact rectangle (area 64).
+    const segs: Segment[] = [
+      seg([-0.1, 8.0], [8.1, 8.0]), // top, overshoots both ends
+      seg([8.0, 7.9], [8.0, -0.1]), // right, undershoots top
+      seg([8.1, 0.0], [-0.1, 0.0]), // bottom
+      seg([0.0, 8.1], [0.0, 0.1]),  // left, undershoots bottom
+    ];
+    const rooms = detectEnclosedAreas(segs, { snapTolerance: 0.25, minArea: 0.5 });
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0].area).toBeCloseTo(64, 5);
+  });
+
   it('finds a single rectangular room', () => {
     const segs: Segment[] = [
       seg([0, 0], [4, 0]),

@@ -292,7 +292,28 @@ fn bsign(x: &Big) -> Sign {
 
 /// The I512 homogeneous lambda of an implicit point (the value cached per Vid).
 pub fn lambda1024(p: &ImplicitPoint) -> Option<Lam> {
-    w512::lambda_of(p)
+    use num_traits::{One, Signed, Zero};
+    let (mut lam, mut d) = w512::lambda_of(p)?;
+    // Canonicalize the denominator positive (negate λ and d together — same point).
+    if d.is_negative() {
+        d = -d;
+        lam = [-lam[0], -lam[1], -lam[2]];
+    }
+    // On-grid reduction: when d divides every λ EXACTLY, store the true integer
+    // coordinate (λ/d, 1). This is exact integer division — NO float weld / bucket /
+    // tolerance — so the stored value is mathematically identical and bit-identical
+    // native↔wasm. It lets the i128 fast path in the predicates engage for the
+    // on-grid majority (axis-aligned crossings land exactly on the 1/65536 grid).
+    // Off-grid points (oblique crossings, huge georef) keep (λ, d) and are unaffected.
+    if !d.is_one()
+        && (lam[0] % d).is_zero()
+        && (lam[1] % d).is_zero()
+        && (lam[2] % d).is_zero()
+    {
+        lam = [lam[0] / d, lam[1] / d, lam[2] / d];
+        d = One::one();
+    }
+    Some((lam, d))
 }
 
 #[inline]
@@ -306,10 +327,40 @@ fn axis_ij(axis: DropAxis) -> (usize, usize) {
 
 /// 2-D orientation of three interned points from their cached lambdas.
 pub fn orient2d_from_lam(a: &Lam, b: &Lam, c: &Lam, axis: DropAxis) -> Option<Sign> {
+    use num_traits::{One, ToPrimitive};
     let (i, j) = axis_ij(axis);
     let (lam1, d1) = a;
     let (lam2, d2) = b;
     let (lam3, d3) = c;
+    // Fast path: all three points reduced on-grid (d=1, canonically positive) and
+    // their λ fit i64 ⇒ the orientation is sign(det) computed in i128. d=1>0 makes
+    // `assemble_sign` a no-op, so this is provably sign-identical to the I512 body.
+    // Checked i128 ops fall through to the exact path on the rare overflow.
+    if d1.is_one() && d2.is_one() && d3.is_one() {
+        if let (Some(ai), Some(aj), Some(bi), Some(bj), Some(ci), Some(cj)) = (
+            lam1[i].to_i64(),
+            lam1[j].to_i64(),
+            lam2[i].to_i64(),
+            lam2[j].to_i64(),
+            lam3[i].to_i64(),
+            lam3[j].to_i64(),
+        ) {
+            let (ai, aj) = (ai as i128, aj as i128);
+            let u_i = bi as i128 - ai;
+            let u_j = bj as i128 - aj;
+            let v_i = ci as i128 - ai;
+            let v_j = cj as i128 - aj;
+            if let (Some(p1), Some(p2)) = (u_i.checked_mul(v_j), u_j.checked_mul(v_i)) {
+                if let Some(det) = p1.checked_sub(p2) {
+                    return Some(match det.cmp(&0) {
+                        std::cmp::Ordering::Less => Sign::Negative,
+                        std::cmp::Ordering::Greater => Sign::Positive,
+                        std::cmp::Ordering::Equal => Sign::Zero,
+                    });
+                }
+            }
+        }
+    }
     let u_i = bsub(bmul(*d1, lam2[i])?, bmul(*d2, lam1[i])?)?;
     let u_j = bsub(bmul(*d1, lam2[j])?, bmul(*d2, lam1[j])?)?;
     let v_i = bsub(bmul(*d1, lam3[i])?, bmul(*d3, lam1[i])?)?;
@@ -320,8 +371,30 @@ pub fn orient2d_from_lam(a: &Lam, b: &Lam, c: &Lam, axis: DropAxis) -> Option<Si
 
 /// Lexicographic compare of two interned points from their cached lambdas.
 pub fn cmp_lex_from_lam(a: &Lam, b: &Lam) -> Option<Sign> {
+    use num_traits::{One, ToPrimitive};
     let (la, da) = a;
     let (lb, db) = b;
+    // Fast path: both reduced on-grid (d=1) and λ fit i64 ⇒ plain per-axis i64
+    // compare (the true coordinate is λ since d=1). Sign-identical to the I512 body.
+    if da.is_one() && db.is_one() {
+        if let (Some(a0), Some(a1), Some(a2), Some(b0), Some(b1), Some(b2)) = (
+            la[0].to_i64(),
+            la[1].to_i64(),
+            la[2].to_i64(),
+            lb[0].to_i64(),
+            lb[1].to_i64(),
+            lb[2].to_i64(),
+        ) {
+            for (x, y) in [(a0, b0), (a1, b1), (a2, b2)] {
+                match x.cmp(&y) {
+                    std::cmp::Ordering::Less => return Some(Sign::Negative),
+                    std::cmp::Ordering::Greater => return Some(Sign::Positive),
+                    std::cmp::Ordering::Equal => {}
+                }
+            }
+            return Some(Sign::Zero);
+        }
+    }
     for k in 0..3 {
         let s = bsub(bmul(la[k], *db)?, bmul(lb[k], *da)?)?;
         let sg = super::assemble_sign(bsign(&s), &[bsign(da), bsign(db)]);

@@ -277,8 +277,8 @@ fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
 
 fn to_f64_pt(arr: &Arrangement, v: Vid) -> [f64; 3] {
     let pt = arr.interner.get(v);
-    // Fast path: materialize via the fixed-width (I1024) lambda. Falls back to the
-    // exact BigRational `point_of` only for off-grid/overflow points (rare).
+    // Fast path: materialize via the fixed-width lambda. Falls back to the exact
+    // BigRational `point_of` only for off-grid/overflow points (rare).
     if let Some(f) = super::fixed::point_to_f64(pt) {
         return f;
     }

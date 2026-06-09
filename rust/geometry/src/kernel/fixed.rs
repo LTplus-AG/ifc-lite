@@ -264,10 +264,10 @@ cascade!(indirect_orient3d(p: &ImplicitPoint, p2: [f64; 3], p3: [f64; 3], p4: [f
 // The interner computes each point's lambda ONCE (via `lambda1024`) and the
 // Vid-based predicates below evaluate the determinant directly from the cached
 // `Lam`, skipping the interval filter (which can't resolve the degenerate box
-// configs anyway) and all lambda recomputation. Cached at I256 — fits all
-// building-metre-scale LPI/TPI (the common opening cut); `None` ⇒ overflow (mm/
-// large coords or a wide TPI determinant) ⇒ caller falls to the exact cascade.
-type Big = bnum::types::I256;
+// configs anyway) and all lambda recomputation. Cached at I512 — fits LPI/TPI
+// determinants at building MILLIMETRE scale (real IFC CSG, coords ~thousands);
+// `None` ⇒ overflow (georeferenced/huge coords) ⇒ caller falls to the cascade.
+type Big = bnum::types::I512;
 pub type Lam = ([Big; 3], Big);
 
 #[inline]
@@ -290,9 +290,9 @@ fn bsign(x: &Big) -> Sign {
     }
 }
 
-/// The I256 homogeneous lambda of an implicit point (the value cached per Vid).
+/// The I512 homogeneous lambda of an implicit point (the value cached per Vid).
 pub fn lambda1024(p: &ImplicitPoint) -> Option<Lam> {
-    w256::lambda_of(p)
+    w512::lambda_of(p)
 }
 
 #[inline]

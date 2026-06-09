@@ -34,9 +34,10 @@ fn box_mesh(mn: [f32; 3], mx: [f32; 3]) -> Mesh {
 
 fn main() {
     let n: usize = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(2000);
-    // wall 4m x 0.3m x 3m, opening 1m window punched through it
-    let wall = box_mesh([0.0, 0.0, 0.0], [4.0, 0.3, 3.0]);
-    let opening = box_mesh([1.0, -0.1, 1.0], [2.0, 0.4, 2.0]);
+    // scale via 2nd arg: 1.0 = metres, 1000.0 = millimetres (real IFC CSG scale)
+    let s: f32 = std::env::args().nth(2).and_then(|x| x.parse().ok()).unwrap_or(1.0);
+    let wall = box_mesh([0.0, 0.0, 0.0], [4.0 * s, 0.3 * s, 3.0 * s]);
+    let opening = box_mesh([1.0 * s, -0.1 * s, 1.0 * s], [2.0 * s, 0.4 * s, 2.0 * s]);
     let cp = ClippingProcessor::new();
 
     // warmup

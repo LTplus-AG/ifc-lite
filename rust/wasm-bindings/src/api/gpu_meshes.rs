@@ -1171,6 +1171,8 @@ impl IfcAPI {
                 }
 
                 let has_openings = void_index.contains_key(&id);
+                let elem_t0 = js_sys::Date::now();
+                let mut entity_tris = 0usize;
 
                 // One fingerprint accumulator per entity. All of an entity's
                 // submeshes are produced within this single loop iteration, so
@@ -1179,6 +1181,12 @@ impl IfcAPI {
                     hash_tolerance.map(|tol| GeometryHasher::new(tol, hash_world_rtc));
 
                 if has_openings {
+                    // STALL DIAGNOSTIC: log BEFORE the CSG so a stuck element (one
+                    // that never returns → the worker blocks → stream stalls) is
+                    // named by the LAST [CSG-start] line printed before the freeze.
+                    web_sys::console::log_1(
+                        &format!("[CSG-start] #{id} {}", ifc_type.name()).into(),
+                    );
                     if let Ok(mut mesh) =
                         router.process_element_with_voids(&entity, &mut decoder, &void_index)
                     {
@@ -1194,6 +1202,7 @@ impl IfcAPI {
                                 .entry(ifc_type)
                                 .or_insert_with(|| ifc_type.name().to_string())
                                 .clone();
+                            entity_tris += mesh.indices.len() / 3;
                             if let Some(h) = entity_hasher.as_mut() {
                                 h.add_mesh(&mesh.positions, &mesh.indices);
                             }
@@ -1244,6 +1253,7 @@ impl IfcAPI {
                                         .entry(ifc_type)
                                         .or_insert_with(|| ifc_type.name().to_string())
                                         .clone();
+                                    entity_tris += mesh.indices.len() / 3;
                                     if let Some(h) = entity_hasher.as_mut() {
                                         h.add_mesh(&mesh.positions, &mesh.indices);
                                     }
@@ -1295,6 +1305,7 @@ impl IfcAPI {
                                         .entry(ifc_type)
                                         .or_insert_with(|| ifc_type.name().to_string())
                                         .clone();
+                                    entity_tris += mesh.indices.len() / 3;
                                     if let Some(h) = entity_hasher.as_mut() {
                                         h.add_mesh(&mesh.positions, &mesh.indices);
                                     }
@@ -1319,6 +1330,23 @@ impl IfcAPI {
                     if !h.is_empty() {
                         mesh_collection.push_geometry_hash(id, h.finish());
                     }
+                }
+
+                // STALL DIAGNOSTIC: a single element taking many ms is the
+                // render-stream-stall culprit (the worker blocks on it). Surface
+                // any element slower than 150ms with its id/type/path.
+                let elem_dt = js_sys::Date::now() - elem_t0;
+                if elem_dt > 150.0 || entity_tris > 3000 {
+                    web_sys::console::warn_1(
+                        &format!(
+                            "[IFC-LITE] HEAVY element #{id} {} ({}): {:.0}ms, {} tris",
+                            ifc_type.name(),
+                            if has_openings { "CSG-opening" } else { "geometry/brep" },
+                            elem_dt,
+                            entity_tris
+                        )
+                        .into(),
+                    );
                 }
             }
         }

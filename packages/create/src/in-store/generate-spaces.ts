@@ -152,6 +152,11 @@ export function generateSpacesFromWalls(
   }
 
   const allOutlines = detected.map((r) => r.outline);
+  const thicknessById = new Map<number, number>();
+  extraction.contributingWallIds.forEach((id, k) => {
+    const t = extraction.wallThicknesses[k];
+    if (t !== undefined) thicknessById.set(id, t);
+  });
   detected.forEach((region, i) => {
     const name = namePattern.replace('{n}', String(i + 1));
     const others = allOutlines.filter((_, j) => j !== i);
@@ -169,6 +174,13 @@ export function generateSpacesFromWalls(
         extraction.contributingWallIds,
         others,
       ),
+      netFloorArea: computeNetArea(
+        region.outline,
+        extraction.segments,
+        extraction.contributingWallIds,
+        thicknessById,
+        region.area,
+      ),
     });
     emitted.push({ region, result, name });
   });
@@ -181,6 +193,71 @@ export function generateSpacesFromWalls(
     detectionStats: detection.stats,
     emitted,
   };
+}
+
+/** Absolute polygon area (shoelace), m². */
+function polygonArea(pts: Vec2[]): number {
+  let acc = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    acc += p[0] * q[1] - q[0] * p[1];
+  }
+  return Math.abs(acc) / 2;
+}
+
+/** Intersection of two lines given as point + unit direction; null if parallel. */
+function lineIntersect(
+  p0: Vec2, d0: Vec2, p1: Vec2, d1: Vec2,
+): Vec2 | null {
+  const denom = d0[0] * d1[1] - d0[1] * d1[0];
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = ((p1[0] - p0[0]) * d1[1] - (p1[1] - p0[1]) * d1[0]) / denom;
+  return [p0[0] + d0[0] * t, p0[1] + d0[1] * t];
+}
+
+/**
+ * Net (inner-face) floor area: inset each outline edge inward by half the
+ * thickness of the wall bounding it (0 where unknown), then re-corner by
+ * intersecting adjacent offset edges. Falls back to the gross area if the inset
+ * degenerates (e.g. a room thinner than its walls). Exact for orthogonal rooms;
+ * a close approximation at non-right corners.
+ */
+function computeNetArea(
+  outline: Vec2[],
+  segments: Segment[],
+  wallIds: number[],
+  thicknessById: Map<number, number>,
+  grossArea: number,
+): number {
+  const n = outline.length;
+  if (n < 3) return grossArea;
+  // Offset line per edge: a point on the inward-shifted edge + the edge dir.
+  const lines: { p: Vec2; d: Vec2 }[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = outline[i];
+    const b = outline[(i + 1) % n];
+    let dx = b[0] - a[0];
+    let dy = b[1] - a[1];
+    const l = Math.hypot(dx, dy);
+    if (l < 1e-6) return grossArea;
+    dx /= l; dy /= l;
+    let half = 0; // inset = half the thickest wall bounding this edge
+    for (const w of matchEdgeWalls(a, b, segments, wallIds)) {
+      const t = thicknessById.get(w);
+      if (t !== undefined && t / 2 > half) half = t / 2;
+    }
+    // Inward normal of a CCW outline is to the left of a→b: (-dy, dx).
+    lines.push({ p: [a[0] - dy * half, a[1] + dx * half], d: [dx, dy] });
+  }
+  const verts: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const prev = lines[(i - 1 + n) % n];
+    const cur = lines[i];
+    verts.push(lineIntersect(prev.p, prev.d, cur.p, cur.d) ?? outline[i]);
+  }
+  const net = polygonArea(verts);
+  return net > 0 && net <= grossArea + 1e-6 ? net : grossArea;
 }
 
 /** Ray-cast point-in-polygon test. */

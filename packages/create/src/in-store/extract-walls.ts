@@ -33,6 +33,7 @@
 import {
   EntityExtractor,
   extractLengthUnitScale,
+  extractMaterialsOnDemand,
   type IfcDataStore,
   type IfcAttributeValue,
 } from '@ifc-lite/parser';
@@ -69,6 +70,13 @@ export interface WallExtractionResult {
   segments: Segment[];
   /** Wall expressIds that contributed an axis segment. */
   contributingWallIds: number[];
+  /**
+   * Per-segment wall thickness in metres (parallel to `segments` /
+   * `contributingWallIds`), from the wall's material layer set; `undefined`
+   * when the wall carries no resolvable layer thickness. Used to inset the
+   * centreline footprint to a net (inner-face) area.
+   */
+  wallThicknesses: (number | undefined)[];
   /** Walls dropped by the extractor, with the reason. */
   skipped: WallSkip[];
   /** Best-effort total wall count visible on the storey (existing + overlay). */
@@ -125,6 +133,7 @@ export function extractWallSegmentsForStorey(
 ): WallExtractionResult {
   const segments: Segment[] = [];
   const contributing: number[] = [];
+  const wallThicknesses: (number | undefined)[] = [];
   const skipped: WallSkip[] = [];
   const debug = !!options.debug;
   const log = debug ? (...args: unknown[]) => console.debug('[extract-walls]', ...args) : () => {};
@@ -146,7 +155,7 @@ export function extractWallSegmentsForStorey(
 
   if (!store.source) {
     log('no source bytes on data store — extraction cannot run');
-    return { segments, contributingWallIds: contributing, skipped, considered: 0, lengthUnitScale };
+    return { segments, contributingWallIds: contributing, wallThicknesses, skipped, considered: 0, lengthUnitScale };
   }
 
   const dividerTypes = new Set(DEFAULT_DIVIDER_TYPES);
@@ -163,6 +172,7 @@ export function extractWallSegmentsForStorey(
     if (result.segment) {
       segments.push(scaleSegment(result.segment, lengthUnitScale));
       contributing.push(id);
+      wallThicknesses.push(wallThicknessFromMaterial(store, id));
     } else {
       skipped.push({ wallId: id, reason: result.reason ?? 'no-axis-or-rect-profile' });
     }
@@ -179,6 +189,7 @@ export function extractWallSegmentsForStorey(
         // metre coords — don't double-scale.
         segments.push(result.segment);
         contributing.push(ent.expressId);
+        wallThicknesses.push(undefined); // overlay walls carry no material yet
       } else {
         skipped.push({ wallId: ent.expressId, reason: result.reason ?? 'no-axis-or-rect-profile' });
       }
@@ -201,10 +212,25 @@ export function extractWallSegmentsForStorey(
   return {
     segments,
     contributingWallIds: contributing,
+    wallThicknesses,
     skipped,
     considered: dividerIds.length + overlayCount,
     lengthUnitScale,
   };
+}
+
+/**
+ * Total thickness (metres) of a wall's material layer set, or `undefined` when
+ * the wall has no resolvable layers. The material resolver already scales layer
+ * thicknesses to metres, so no further unit conversion is applied.
+ */
+function wallThicknessFromMaterial(store: IfcDataStore, wallId: number): number | undefined {
+  const info = extractMaterialsOnDemand(store, wallId);
+  const layers = info?.layers;
+  if (!layers || layers.length === 0) return undefined;
+  let total = 0;
+  for (const layer of layers) total += layer.thickness ?? 0;
+  return total > 0 ? total : undefined;
 }
 
 function scaleSegment(seg: Segment, scale: number): Segment {

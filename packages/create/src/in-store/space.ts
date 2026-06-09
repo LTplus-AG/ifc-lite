@@ -58,6 +58,8 @@ export interface SpaceRectangleParams {
   PredefinedType?: string;
   /** Bounding elements → one IfcRelSpaceBoundary each. */
   boundaries?: SpaceBoundaryInput[];
+  /** Net (inner-face) floor area in m²; defaults to gross when omitted. */
+  netFloorArea?: number;
 }
 
 export interface SpacePolygonParams {
@@ -73,6 +75,9 @@ export interface SpacePolygonParams {
   PredefinedType?: string;
   /** Bounding elements → one IfcRelSpaceBoundary each. */
   boundaries?: SpaceBoundaryInput[];
+  /** Net (inner-face) floor area in m² for Qto_SpaceBaseQuantities; defaults
+   *  to the gross/centreline area when omitted. */
+  netFloorArea?: number;
 }
 
 export interface SpaceBuildResult {
@@ -190,7 +195,7 @@ export function addSpaceToStore(
   };
   const quantityIds = [
     quantity('IfcQuantityArea', 'GrossFloorArea', area),
-    quantity('IfcQuantityArea', 'NetFloorArea', area),
+    quantity('IfcQuantityArea', 'NetFloorArea', params.netFloorArea ?? area),
     quantity('IfcQuantityLength', 'GrossPerimeter', perimeter),
     quantity('IfcQuantityLength', 'Height', params.Height),
     quantity('IfcQuantityVolume', 'GrossVolume', area * params.Height),

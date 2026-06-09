@@ -88,6 +88,26 @@ describe('addSpaceToStore', () => {
     expect(rel?.attributes[5]).toBe(`#${result.elementQuantityId}`);
   });
 
+  it('uses the netFloorArea override for NetFloorArea (gross unchanged)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    const result = addSpaceToStore(
+      editor,
+      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { Position: [0, 0, 0], Width: 4, Depth: 3, Height: 3, netFloorArea: 10 },
+    );
+    const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+    const eq = byId.get(result.elementQuantityId);
+    const named = Object.fromEntries(
+      (eq?.attributes[5] as string[]).map((ref) => {
+        const q = byId.get(Number(ref.slice(1)));
+        return [q?.attributes[0], q?.attributes[3]];
+      }),
+    );
+    expect(named['GrossFloorArea']).toBeCloseTo(12, 6);
+    expect(named['NetFloorArea']).toBeCloseTo(10, 6);
+  });
+
   it('emits one classified IfcRelSpaceBoundary per bounding element', () => {
     const view = new MutablePropertyView(null, 'm1');
     const editor = new StoreEditor(makeStore(40), view);

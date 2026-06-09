@@ -28,3 +28,9 @@ the Rust geometry core, exposed via a stateful `SpacePlateHandle` wasm binding:
   function (`generateSpaces` from `@ifc-lite/create`), with auto-escalating snap,
   storey-datum ("slab") floor-to-floor heights, and rectangular corner cleanup
   ported into the TS detector.
+- **Production-grade baked spaces** — every derived `IfcSpace` now carries
+  `Qto_SpaceBaseQuantities` (GrossFloorArea / NetFloorArea / GrossPerimeter /
+  Height / GrossVolume, schema-aware) and an `IfcRelSpaceBoundary` per bounding
+  wall. Generated spaces are stamped with `ObjectType 'IfcLite:GeneratedSpace'`,
+  and a re-run skips a model that already contains them (idempotent; `--force`
+  to override).

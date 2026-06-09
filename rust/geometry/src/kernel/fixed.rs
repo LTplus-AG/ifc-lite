@@ -129,7 +129,7 @@ macro_rules! fixed_impl {
             };
             Some(([cramer(0)?, cramer(1)?, cramer(2)?], d))
         }
-        fn lambda_of(p: &ImplicitPoint) -> Option<(V3, I)> {
+        pub fn lambda_of(p: &ImplicitPoint) -> Option<(V3, I)> {
             match p {
                 ImplicitPoint::Lpi(l) => lpi_lambda(l),
                 ImplicitPoint::Tpi(t) => tpi_lambda(t),
@@ -242,6 +242,8 @@ mod w1024 {
 macro_rules! cascade {
     ($name:ident ( $($arg:ident : $ty:ty),* )) => {
         pub fn $name($($arg : $ty),*) -> Option<Sign> {
+            #[cfg(not(target_arch = "wasm32"))]
+            super::FIX_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             w256::$name($($arg),*)
                 .or_else(|| w512::$name($($arg),*))
                 .or_else(|| w1024::$name($($arg),*))
@@ -254,3 +256,101 @@ cascade!(indirect_orient2d(p: &ImplicitPoint, b: [f64; 3], c: [f64; 3], axis: Dr
 cascade!(cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint));
 cascade!(cmp_along(a: &ImplicitPoint, b: &ImplicitPoint, u: [f64; 3]));
 cascade!(indirect_orient3d(p: &ImplicitPoint, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]));
+
+// ── Cached-lambda predicates ───────────────────────────────────────────────
+// The re-triangulation tests the SAME interned points in MANY predicates; the
+// LPI/TPI lambda (degree-4/7 cross products) is the dominant per-call cost and is
+// otherwise recomputed every time (interval pass + fixed pass + interner cmp_lex).
+// The interner computes each point's lambda ONCE (via `lambda1024`) and the
+// Vid-based predicates below evaluate the determinant directly from the cached
+// `Lam`, skipping the interval filter (which can't resolve the degenerate box
+// configs anyway) and all lambda recomputation. Cached at I256 — fits all
+// building-metre-scale LPI/TPI (the common opening cut); `None` ⇒ overflow (mm/
+// large coords or a wide TPI determinant) ⇒ caller falls to the exact cascade.
+type Big = bnum::types::I256;
+pub type Lam = ([Big; 3], Big);
+
+#[inline]
+fn bmul(a: Big, b: Big) -> Option<Big> {
+    num_traits::CheckedMul::checked_mul(&a, &b)
+}
+#[inline]
+fn bsub(a: Big, b: Big) -> Option<Big> {
+    num_traits::CheckedSub::checked_sub(&a, &b)
+}
+#[inline]
+fn bsign(x: &Big) -> Sign {
+    use num_traits::{Signed, Zero};
+    if x.is_negative() {
+        Sign::Negative
+    } else if x.is_zero() {
+        Sign::Zero
+    } else {
+        Sign::Positive
+    }
+}
+
+/// The I256 homogeneous lambda of an implicit point (the value cached per Vid).
+pub fn lambda1024(p: &ImplicitPoint) -> Option<Lam> {
+    w256::lambda_of(p)
+}
+
+#[inline]
+fn axis_ij(axis: DropAxis) -> (usize, usize) {
+    match axis {
+        DropAxis::X => (1, 2),
+        DropAxis::Y => (0, 2),
+        DropAxis::Z => (0, 1),
+    }
+}
+
+/// 2-D orientation of three interned points from their cached lambdas.
+pub fn orient2d_from_lam(a: &Lam, b: &Lam, c: &Lam, axis: DropAxis) -> Option<Sign> {
+    let (i, j) = axis_ij(axis);
+    let (lam1, d1) = a;
+    let (lam2, d2) = b;
+    let (lam3, d3) = c;
+    let u_i = bsub(bmul(*d1, lam2[i])?, bmul(*d2, lam1[i])?)?;
+    let u_j = bsub(bmul(*d1, lam2[j])?, bmul(*d2, lam1[j])?)?;
+    let v_i = bsub(bmul(*d1, lam3[i])?, bmul(*d3, lam1[i])?)?;
+    let v_j = bsub(bmul(*d1, lam3[j])?, bmul(*d3, lam1[j])?)?;
+    let det = bsub(bmul(u_i, v_j)?, bmul(u_j, v_i)?)?;
+    Some(super::assemble_sign(bsign(&det), &[bsign(d2), bsign(d3)]))
+}
+
+/// Lexicographic compare of two interned points from their cached lambdas.
+pub fn cmp_lex_from_lam(a: &Lam, b: &Lam) -> Option<Sign> {
+    let (la, da) = a;
+    let (lb, db) = b;
+    for k in 0..3 {
+        let s = bsub(bmul(la[k], *db)?, bmul(lb[k], *da)?)?;
+        let sg = super::assemble_sign(bsign(&s), &[bsign(da), bsign(db)]);
+        if sg != Sign::Zero {
+            return Some(sg);
+        }
+    }
+    Some(Sign::Zero)
+}
+
+/// Materialize an implicit point to f64 via the FIXED-width (I1024) homogeneous
+/// lambda — the fast path for the BigRational `rational::point_of`. The lambda is
+/// computed in the `gi`-scaled domain (coords × 2^16), so the real coordinate is
+/// `lambda[k] / (d · 2^16)`. Returns `None` on off-grid coords / overflow, where
+/// the caller falls back to the exact BigRational materialization. Used for the
+/// classifier centroids AND the output verts (the dominant per-op cost).
+pub fn point_to_f64(p: &ImplicitPoint) -> Option<[f64; 3]> {
+    use num_traits::ToPrimitive;
+    let (lambda, d) = w1024::lambda_of(p)?;
+    let denom = d.to_f64()? * 65536.0;
+    if denom == 0.0 || !denom.is_finite() {
+        return None;
+    }
+    let x = lambda[0].to_f64()? / denom;
+    let y = lambda[1].to_f64()? / denom;
+    let z = lambda[2].to_f64()? / denom;
+    if x.is_finite() && y.is_finite() && z.is_finite() {
+        Some([x, y, z])
+    } else {
+        None
+    }
+}

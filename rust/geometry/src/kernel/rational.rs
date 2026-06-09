@@ -82,6 +82,8 @@ pub fn orient2d_exact(a: [f64; 3], b: [f64; 3], c: [f64; 3], axis: DropAxis) -> 
 /// plane; verified by `tritri::edge_crossing_lpi_lies_exactly_on_the_plane`).
 /// `qp=Q−P; sr=S−R; tr=T−R; pr=P−R; d=det3(qp,sr,tr); n=det3(pr,sr,tr)`.
 pub fn lpi_lambda(l: &Lpi) -> (V3, BigRational) {
+    #[cfg(not(target_arch = "wasm32"))]
+    super::RAT_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let p = vec(l.p);
     let q = vec(l.q);
     let rr = vec(l.r);
@@ -135,6 +137,8 @@ pub fn lpi_orient3d(l: &Lpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Sign {
 /// polynomials, no sqrt). Cite: Attene 2020 §4. `d=det3(n1,n2,n3)`, `λ` =
 /// the Cramer numerators (column k replaced by `(c1,c2,c3)`).
 pub fn tpi_lambda(t: &Tpi) -> (V3, BigRational) {
+    #[cfg(not(target_arch = "wasm32"))]
+    super::RAT_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let plane = |pl: &[[f64; 3]; 3]| -> (V3, BigRational) {
         let a = vec(pl[0]);
         let ba = sub3(&vec(pl[1]), &a);

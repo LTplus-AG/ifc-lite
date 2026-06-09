@@ -14,7 +14,7 @@
 //! processing order is the position in the `cmp_lex`-sorted index (`lex_order`).
 
 use super::predicates::cmp_lex;
-use super::{ImplicitPoint, Sign};
+use super::{fixed, ImplicitPoint, Sign};
 use std::cmp::Ordering;
 
 /// Stable, append-only vertex identifier.
@@ -24,6 +24,11 @@ pub type Vid = u32;
 pub struct Interner {
     points: Vec<ImplicitPoint>, // indexed by Vid
     sorted: Vec<Vid>,           // Vids in cmp_lex (lexicographic) order
+    // Per-Vid cached I1024 homogeneous lambda (computed once at intern). The hot
+    // re-triangulation predicates evaluate exactly from this instead of
+    // recomputing the LPI/TPI cross products every call. `None` = off-grid /
+    // overflow ⇒ predicates fall back to the exact BigRational cascade.
+    lambdas: Vec<Option<fixed::Lam>>,
 }
 
 impl Interner {
@@ -35,8 +40,17 @@ impl Interner {
     /// or assign and return a new stable `Vid`. O(log n) search + O(n) insert
     /// (n is small per the operand census).
     pub fn intern(&mut self, p: ImplicitPoint) -> Vid {
+        // Compute the new point's cached lambda once; the binary-search compares
+        // use it (fast exact) and fall back to the ImplicitPoint cmp_lex only on
+        // off-grid/overflow.
+        let new_lam = fixed::lambda1024(&p);
         let search = self.sorted.binary_search_by(|&vid| {
-            match cmp_lex(&self.points[vid as usize], &p) {
+            let s = match (&self.lambdas[vid as usize], &new_lam) {
+                (Some(le), Some(ln)) => fixed::cmp_lex_from_lam(le, ln),
+                _ => None,
+            }
+            .unwrap_or_else(|| cmp_lex(&self.points[vid as usize], &p));
+            match s {
                 Sign::Negative => Ordering::Less,
                 Sign::Positive => Ordering::Greater,
                 Sign::Zero => Ordering::Equal,
@@ -47,6 +61,7 @@ impl Interner {
             Err(idx) => {
                 let vid = self.points.len() as Vid;
                 self.points.push(p);
+                self.lambdas.push(new_lam);
                 self.sorted.insert(idx, vid);
                 vid
             }
@@ -55,6 +70,12 @@ impl Interner {
 
     pub fn get(&self, v: Vid) -> &ImplicitPoint {
         &self.points[v as usize]
+    }
+
+    /// The cached I1024 lambda for a Vid (`None` if off-grid/overflow).
+    #[inline]
+    pub fn lam(&self, v: Vid) -> &Option<fixed::Lam> {
+        &self.lambdas[v as usize]
     }
 
     pub fn len(&self) -> usize {

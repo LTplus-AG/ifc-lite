@@ -28,6 +28,36 @@ pub mod rational;
 pub mod retriangulate;
 pub mod tritri;
 
+// Native-only phase profiler (KERNEL_PROFILE): accumulates arrange/classify/
+// materialize seconds + op count across boolean() calls; perf examples read it.
+#[cfg(not(target_arch = "wasm32"))]
+thread_local! {
+    static PROF: std::cell::Cell<(f64, f64, f64, u64)> = const { std::cell::Cell::new((0.0, 0.0, 0.0, 0)) };
+}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn prof_add(arrange: f64, classify: f64, materialize: f64) {
+    PROF.with(|p| {
+        let (a, c, m, n) = p.get();
+        p.set((a + arrange, c + classify, m + materialize, n + 1));
+    });
+}
+/// Returns (arrange, classify, materialize) total seconds and op count, then resets.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn prof_take() -> (f64, f64, f64, u64) {
+    PROF.with(|p| {
+        let v = p.get();
+        p.set((0.0, 0.0, 0.0, 0));
+        v
+    })
+}
+
+// Predicate-tier escalation counters (native diagnostics): FIX = interval filter
+// failed → fixed tier; RAT = fixed tier failed → BigRational.
+#[cfg(not(target_arch = "wasm32"))]
+pub static FIX_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[cfg(not(target_arch = "wasm32"))]
+pub static RAT_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Three-valued exact sign.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Sign {

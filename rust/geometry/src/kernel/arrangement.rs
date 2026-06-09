@@ -168,7 +168,7 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     let tris_a = retriangulate_each(a, &ca, &mut interner);
     let tris_b = retriangulate_each(b, &cb, &mut interner);
     #[cfg(not(target_arch = "wasm32"))]
-    if std::env::var("KERNEL_PROFILE").is_ok() && _ts.elapsed().as_millis() > 100 {
+    if std::env::var("ARRANGE_PROFILE").is_ok() {
         eprintln!(
             "    arrange: pairs {:.0}ms ({} cand, {} hit)  build {:.0}ms  retri {:.0}ms ({} subA {} subB)",
             t_pairs.as_secs_f64() * 1e3,
@@ -256,13 +256,33 @@ fn operand_extent(tris: &[Tri]) -> f64 {
 /// point (`far_l` past the extent) along a fixed generic direction; each crossing
 /// tested by the exact predicate above.
 fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
-    let dir = [0.572_581, 0.573_006, 0.586_521];
+    // Generic direction: no two components near-equal and no pairwise ratio near a
+    // simple architectural slope (1:1 roofs, axis planes). The previous direction
+    // had x≈y and dz/dx≈1 — nearly PARALLEL to 45° roof slopes/ridge edges, so a
+    // roof-clipped wall's ray grazed the roof and edge-crossings (rejected, not
+    // counted) miscounted parity → the sub-ridge gable triangle was wrongly judged
+    // inside the cutter and removed (the "missing wall" over-clip).
+    #[allow(unused_mut)]
+    let mut dir = [0.301_511_3, 0.557_328_1, 0.773_890_1];
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Ok(s) = std::env::var("RAY_DIR") {
+        let v: Vec<f64> = s.split(',').filter_map(|x| x.parse().ok()).collect();
+        if v.len() == 3 {
+            dir = [v[0], v[1], v[2]];
+        }
+    }
     let far = [p[0] + dir[0] * far_l, p[1] + dir[1] * far_l, p[2] + dir[2] * far_l];
     tris.iter().filter(|t| exact_seg_hits_tri(p, far, t)).count() % 2 == 1
 }
 
 fn to_f64_pt(arr: &Arrangement, v: Vid) -> [f64; 3] {
-    let p = point_of(arr.interner.get(v));
+    let pt = arr.interner.get(v);
+    // Fast path: materialize via the fixed-width (I1024) lambda. Falls back to the
+    // exact BigRational `point_of` only for off-grid/overflow points (rare).
+    if let Some(f) = super::fixed::point_to_f64(pt) {
+        return f;
+    }
+    let p = point_of(pt);
     [p[0].to_f64().unwrap(), p[1].to_f64().unwrap(), p[2].to_f64().unwrap()]
 }
 
@@ -377,22 +397,15 @@ pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
     #[cfg(not(target_arch = "wasm32"))]
     let t_arr = t0.elapsed();
     let vids = boolean_vids(&arr, a, b, op);
+    #[cfg(not(target_arch = "wasm32"))]
+    let t_cls = t0.elapsed();
     let out: Vec<Tri> = vids
         .into_iter()
         .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
         .collect();
     #[cfg(not(target_arch = "wasm32"))]
-    if std::env::var("KERNEL_PROFILE").is_ok() && t0.elapsed().as_millis() > 200 {
-        eprintln!(
-            "  SLOW boolean |a|={} |b|={}: arrange {:.0}ms (subA={} subB={}) classify {:.0}ms out={}",
-            a.len(),
-            b.len(),
-            t_arr.as_secs_f64() * 1e3,
-            arr.tris_a.len(),
-            arr.tris_b.len(),
-            (t0.elapsed() - t_arr).as_secs_f64() * 1e3,
-            out.len()
-        );
+    if std::env::var("KERNEL_PROFILE").is_ok() {
+        super::prof_add(t_arr.as_secs_f64(), (t_cls - t_arr).as_secs_f64(), (t0.elapsed() - t_cls).as_secs_f64());
     }
     out
 }

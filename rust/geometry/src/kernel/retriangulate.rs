@@ -17,6 +17,7 @@
 
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d, orient2d_any};
+use super::fixed;
 use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
@@ -24,6 +25,33 @@ use std::collections::{BTreeMap, BTreeSet};
 #[inline]
 fn e(p: [f64; 3]) -> ImplicitPoint {
     ImplicitPoint::Explicit(p)
+}
+
+/// Vid-based exact orient2d via the interner's cached I1024 lambdas — skips the
+/// interval filter (which can't resolve the degenerate box configs) AND the
+/// LPI/TPI lambda recomputation. Falls back to the ImplicitPoint cascade only on
+/// off-grid/overflow. The dominant re-triangulation predicate.
+#[inline]
+fn orient2d_v(it: &Interner, a: Vid, b: Vid, c: Vid, axis: DropAxis) -> Sign {
+    if let (Some(la), Some(lb), Some(lc)) = (it.lam(a), it.lam(b), it.lam(c)) {
+        if let Some(s) = fixed::orient2d_from_lam(la, lb, lc, axis) {
+            return s;
+        }
+    }
+    let (pa, pb, pc) = (it.get(a), it.get(b), it.get(c));
+    orient2d_any(pa, pb, pc, axis)
+}
+
+/// Vid-based exact lexicographic compare via the cached lambdas.
+#[inline]
+fn cmp_lex_v(it: &Interner, a: Vid, b: Vid) -> Sign {
+    if let (Some(la), Some(lb)) = (it.lam(a), it.lam(b)) {
+        if let Some(s) = fixed::cmp_lex_from_lam(la, lb) {
+            return s;
+        }
+    }
+    let (pa, pb) = (it.get(a), it.get(b));
+    cmp_lex(pa, pb)
 }
 
 /// A constraint segment lying in `T`'s plane (endpoints explicit or implicit).
@@ -97,7 +125,7 @@ pub struct Canonical {
 }
 
 fn lex_cmp(it: &Interner, a: Vid, b: Vid) -> Ordering {
-    match cmp_lex(it.get(a), it.get(b)) {
+    match cmp_lex_v(it, a, b) {
         Sign::Negative => Ordering::Less,
         Sign::Positive => Ordering::Greater,
         Sign::Zero => Ordering::Equal, // only when a == b (distinct Vids never coincide)
@@ -160,11 +188,10 @@ fn locate(it: &Interner, tri: SubTri, p: Vid, axis: DropAxis, w0: Sign) -> Locat
     if tri.contains(&p) {
         return Locate::OnVertex;
     }
-    let g = |v: Vid| it.get(v);
     let s = [
-        orient2d_any(g(tri[0]), g(tri[1]), g(p), axis),
-        orient2d_any(g(tri[1]), g(tri[2]), g(p), axis),
-        orient2d_any(g(tri[2]), g(tri[0]), g(p), axis),
+        orient2d_v(it, tri[0], tri[1], p, axis),
+        orient2d_v(it, tri[1], tri[2], p, axis),
+        orient2d_v(it, tri[2], tri[0], p, axis),
     ];
     if s.iter().any(|&x| x == w0.flip()) {
         return Locate::Outside;
@@ -210,7 +237,7 @@ fn insert_point(mesh: &mut Mesh2d, it: &Interner, p: Vid) {
         .iter()
         .copied()
         .filter(|&(u, v)| !edges.contains(&(v, u)))
-        .filter(|&(u, v)| orient2d_any(it.get(u), it.get(v), it.get(p), axis) != Sign::Zero)
+        .filter(|&(u, v)| orient2d_v(it, u, v, p, axis) != Sign::Zero)
         .collect();
     mesh.tris = mesh
         .tris
@@ -255,11 +282,10 @@ pub fn triangulate_points(input: &RetriInput, interner: &mut Interner) -> Option
 /// an ear is valid only when every other vertex is strictly outside (a vertex on
 /// the ear's boundary blocks it, else clipping leaves a degenerate sliver).
 fn strictly_outside(it: &Interner, a: Vid, b: Vid, c: Vid, p: Vid, axis: DropAxis, w0: Sign) -> bool {
-    let g = |v: Vid| it.get(v);
     let opp = w0.flip();
-    orient2d_any(g(a), g(b), g(p), axis) == opp
-        || orient2d_any(g(b), g(c), g(p), axis) == opp
-        || orient2d_any(g(c), g(a), g(p), axis) == opp
+    orient2d_v(it, a, b, p, axis) == opp
+        || orient2d_v(it, b, c, p, axis) == opp
+        || orient2d_v(it, c, a, p, axis) == opp
 }
 
 /// PHASE E — triangulate a simple polygon `ring` (oriented `w0`) by deterministic
@@ -279,7 +305,7 @@ pub fn earcut(it: &Interner, ring: &[Vid], axis: DropAxis, w0: Sign) -> Vec<SubT
             let b = poly[i];
             let c = poly[(i + 1) % n];
             // strictly convex under w0
-            if orient2d_any(it.get(a), it.get(b), it.get(c), axis) != w0 {
+            if orient2d_v(it, a, b, c, axis) != w0 {
                 continue;
             }
             // empty: every other ring vertex is strictly outside the closed ear
@@ -291,13 +317,17 @@ pub fn earcut(it: &Interner, ring: &[Vid], axis: DropAxis, w0: Sign) -> Vec<SubT
             }
             best = Some(match best {
                 None => i,
-                Some(j) if cmp_lex(it.get(b), it.get(poly[j])) == Sign::Negative => i,
+                Some(j) if cmp_lex_v(it, b, poly[j]) == Sign::Negative => i,
                 Some(j) => j,
             });
         }
         let i = match best {
             Some(i) => i,
             None => {
+                #[cfg(not(target_arch = "wasm32"))]
+                if std::env::var("RETRI_LOG").is_ok() {
+                    eprintln!("EARCUT_FAN_BAIL poly_len={}", poly.len());
+                }
                 // Degenerate pocket (no strictly-convex empty ear — a non-simple or
                 // collinear polygon). Fan-triangulate the remainder rather than
                 // panic: a panic aborts the wasm worker (panic=abort) and stalls
@@ -333,12 +363,7 @@ fn edge_exists(mesh: &Mesh2d, s: Vid, t: Vid) -> bool {
 fn orient_ring(it: &Interner, ring: Vec<Vid>, axis: DropAxis, w0: Sign) -> Vec<Vid> {
     let n = ring.len();
     let i = (0..n).min_by(|&x, &y| lex_cmp(it, ring[x], ring[y])).unwrap();
-    let w = orient2d_any(
-        it.get(ring[(i + n - 1) % n]),
-        it.get(ring[i]),
-        it.get(ring[(i + 1) % n]),
-        axis,
-    );
+    let w = orient2d_v(it, ring[(i + n - 1) % n], ring[i], ring[(i + 1) % n], axis);
     if w == w0 {
         ring
     } else {
@@ -359,13 +384,12 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
         return;
     }
     let (axis, w0) = (mesh.axis, mesh.w0);
-    let g = |v: Vid| it.get(v);
     // open segment (a,b) properly crosses open edge (u,v)?
     let crosses = |u: Vid, v: Vid| {
-        let s1 = orient2d_any(g(a), g(b), g(u), axis);
-        let s2 = orient2d_any(g(a), g(b), g(v), axis);
-        let s3 = orient2d_any(g(u), g(v), g(a), axis);
-        let s4 = orient2d_any(g(u), g(v), g(b), axis);
+        let s1 = orient2d_v(it, a, b, u, axis);
+        let s2 = orient2d_v(it, a, b, v, axis);
+        let s3 = orient2d_v(it, u, v, a, axis);
+        let s4 = orient2d_v(it, u, v, b, axis);
         s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2
             && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
     };
@@ -434,8 +458,8 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
 /// `(s,t)`. The lex order equals the line order for collinear points, so `v` is
 /// between iff it compares the same way against both ends.
 fn between(it: &Interner, s: Vid, t: Vid, v: Vid) -> bool {
-    let sv = cmp_lex(it.get(s), it.get(v));
-    sv != Sign::Zero && sv == cmp_lex(it.get(v), it.get(t))
+    let sv = cmp_lex_v(it, s, v);
+    sv != Sign::Zero && sv == cmp_lex_v(it, v, t)
 }
 
 /// PHASE D — force constraint `(s,t)` to be a chain of edges: split it at any
@@ -449,12 +473,12 @@ fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
         .filter(|&v| {
             v != s
                 && v != t
-                && orient2d_any(it.get(s), it.get(t), it.get(v), axis) == Sign::Zero
+                && orient2d_v(it, s, t, v, axis) == Sign::Zero
                 && between(it, s, t, v)
         })
         .collect();
     on_seg.sort_by(|&x, &y| lex_cmp(it, x, y));
-    if cmp_lex(it.get(s), it.get(t)) == Sign::Positive {
+    if cmp_lex_v(it, s, t) == Sign::Positive {
         on_seg.reverse(); // order from s toward t
     }
     let mut chain = vec![s];
@@ -640,7 +664,7 @@ mod tests {
         // every sub-triangle is oriented w0 (none flipped or degenerate)
         for &tri in &mesh.tris {
             assert_eq!(
-                orient2d_any(it.get(tri[0]), it.get(tri[1]), it.get(tri[2]), mesh.axis),
+                orient2d_v(&it, tri[0], tri[1], tri[2], mesh.axis),
                 mesh.w0,
                 "sub-tri not oriented w0: {tri:?}"
             );
@@ -725,7 +749,7 @@ mod tests {
         assert_eq!(tris.len(), ring.len() - 2, "wrong triangle count");
         for &tri in &tris {
             assert_eq!(
-                orient2d_any(it.get(tri[0]), it.get(tri[1]), it.get(tri[2]), axis),
+                orient2d_v(&it, tri[0], tri[1], tri[2], axis),
                 w0,
                 "earcut triangle not oriented w0"
             );
@@ -783,7 +807,7 @@ mod tests {
         );
         for &tri in &mesh.tris {
             assert_eq!(
-                orient2d_any(it.get(tri[0]), it.get(tri[1]), it.get(tri[2]), mesh.axis),
+                orient2d_v(&it, tri[0], tri[1], tri[2], mesh.axis),
                 mesh.w0,
                 "recovered triangle not oriented w0"
             );
@@ -822,7 +846,7 @@ mod tests {
         let pt = |v: Vid| point_of(it.get(v));
         for &tri in &mesh.tris {
             assert_eq!(
-                orient2d_any(it.get(tri[0]), it.get(tri[1]), it.get(tri[2]), mesh.axis),
+                orient2d_v(&it, tri[0], tri[1], tri[2], mesh.axis),
                 mesh.w0,
                 "triangle not oriented w0"
             );

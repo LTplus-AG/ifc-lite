@@ -24,6 +24,7 @@ import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { sourceKey } from './source-key.js';
+import { hasEntityType } from './has-entity-type.js';
 
 const EMPTY_F32 = new Float32Array(0);
 
@@ -42,6 +43,10 @@ function notifyCacheChange(): void {
 async function parseAlignmentLinesFor(store: IfcDataStore): Promise<Float32Array> {
   const source = store.source;
   if (!source || source.byteLength === 0) return EMPTY_F32;
+  // Most models (all buildings) have no alignments. Skip the full-source WASM
+  // scan — it copies the entire IFC source into the WASM heap on the main thread
+  // just to find none (~0.5s on a 170MB file).
+  if (!hasEntityType(store, 'IfcAlignment', 'IfcAlignmentCurve')) return EMPTY_F32;
   const processor = new GeometryProcessor();
   try {
     await processor.init();

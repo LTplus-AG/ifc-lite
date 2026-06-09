@@ -24,6 +24,7 @@ import { useViewerStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { sourceKey } from './source-key.js';
+import { hasEntityType } from './has-entity-type.js';
 
 const EMPTY_F32 = new Float32Array(0);
 
@@ -42,6 +43,9 @@ function notifyCacheChange(): void {
 async function parseGridLinesFor(store: IfcDataStore): Promise<Float32Array> {
   const source = store.source;
   if (!source || source.byteLength === 0) return EMPTY_F32;
+  // Skip the full-source WASM scan when the model has no grid — it copies the
+  // entire IFC source into the WASM heap on the main thread just to find none.
+  if (!hasEntityType(store, 'IfcGridAxis', 'IfcGrid')) return EMPTY_F32;
   const processor = new GeometryProcessor();
   try {
     await processor.init();

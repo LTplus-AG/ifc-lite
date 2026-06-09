@@ -238,7 +238,10 @@ impl SpacePlate {
         }
 
         for (v, fan) in fans.iter_mut().enumerate() {
-            fan.sort_by(|p, q| p.1.partial_cmp(&q.1).unwrap_or(std::cmp::Ordering::Equal));
+            // total_cmp (not partial_cmp/unwrap) so any NaN angle from a
+            // degenerate/coincident segment sorts deterministically rather
+            // than corrupting the next/prev wiring nondeterministically.
+            fan.sort_by(|p, q| p.1.total_cmp(&q.1));
             plate.vertices[v].outgoing = fan.first().map(|(h, _)| *h);
         }
 
@@ -607,7 +610,16 @@ impl SpacePlate {
 
     /// Walk the face cycle starting at its anchor half-edge.
     fn face_half_edges(&self, face: FaceId) -> FaceWalk<'_> {
-        FaceWalk { plate: self, start: self.faces[face.0 as usize].half_edge, cur: None }
+        // Tolerate an out-of-range or tombstoned face id (a stale handle from
+        // JS) — yield an empty walk instead of panicking, so every public
+        // query (`face_outline`/`face_area`/`bounding_elements`) is safe at the
+        // wasm boundary.
+        let start = self
+            .faces
+            .get(face.0 as usize)
+            .filter(|f| f.alive)
+            .and_then(|f| f.half_edge);
+        FaceWalk { plate: self, start, cur: None }
     }
 
     /// Outgoing half-edges around a vertex (via twin/next), live only.
@@ -1189,6 +1201,16 @@ mod tests {
         ];
         let plate = SpacePlate::build(&segs, BuildOptions { snap_tolerance: 0.1, min_area: 0.5 });
         assert_eq!(plate.room_count(), 2, "T-junction snap should still yield two rooms");
+    }
+
+    #[test]
+    fn queries_tolerate_invalid_face_ids() {
+        // A stale/out-of-range face id from JS must not panic the wasm module.
+        let plate = two_room_plate();
+        let bogus = FaceId(99_999);
+        assert_eq!(plate.face_area(bogus), 0.0);
+        assert!(plate.face_outline(bogus).is_empty());
+        assert!(plate.bounding_elements(bogus).is_empty());
     }
 
     #[test]

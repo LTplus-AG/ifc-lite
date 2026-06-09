@@ -414,7 +414,12 @@ export function SpaceSketchOverlay() {
       }
       if (snapped) { tx = snapped[0]; ty = snapped[1]; }
       setSnapPos(snapped);
-      try { plate.dragVertex(vid, tx, ty); refreshRooms(); } catch { /* teardown */ }
+      try {
+        plate.dragVertex(vid, tx, ty);
+        refreshRooms();
+      } catch (e) {
+        console.debug('[space-sketch] dragVertex failed (plate torn down mid-drag?)', e);
+      }
       return;
     }
 
@@ -470,7 +475,11 @@ export function SpaceSketchOverlay() {
         commitUndo(snap); refreshRooms(); setHover(null);
         setStatus(`Merged across wall — ${plate.roomCount} room(s) left.`);
       } catch (err) {
-        snap.free();
+        // Roll back to the pre-merge snapshot (mirror performSplit) in case
+        // mergeFaces mutated before throwing.
+        plate.free();
+        plateRef.current = snap;
+        refreshRooms();
         setStatus(`Merge rejected: ${String(err).replace(/^Error:\s*/, '')}`);
       }
       return;

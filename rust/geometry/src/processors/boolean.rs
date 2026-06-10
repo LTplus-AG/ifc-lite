@@ -544,10 +544,51 @@ impl BooleanClippingProcessor {
             mesh.indices.extend_from_slice(&[base_idx, base_idx + 1, base_idx + 2]);
         };
 
+        // Earcut NORMALISES its output winding (its linked list re-orients the
+        // ring to a fixed orientation), while the side walls below — and the
+        // caller's world-normal correction — follow the RAW `contour_2d`
+        // order. For a CLOCKWISE contour the caps therefore come out wound
+        // against the side walls: BOTH end caps of the prism face INWARD and
+        // the boolean sees an open, self-inconsistent cutter (advanced_model
+        // PBHS #553001: the 300 mm slot clip leaked +0.018 m³ and left an
+        // unpaired quad). Detect the mismatch by comparing the contour's
+        // shoelace sign with the orientation of the first non-degenerate
+        // output triangle, and flip cap emission so caps and side walls
+        // always agree.
+        let n = contour_2d.len();
+        let shoelace2: f64 = (0..n)
+            .map(|i| {
+                let p = &contour_2d[i];
+                let q = &contour_2d[(i + 1) % n];
+                p.x * q.y - q.x * p.y
+            })
+            .sum();
+        let mut flip_caps = false;
         for indices in triangulation.indices.chunks_exact(3) {
-            let i0 = tri_to_contour[indices[0]];
-            let i1 = tri_to_contour[indices[1]];
-            let i2 = tri_to_contour[indices[2]];
+            let p0 = &triangulation.points[indices[0]];
+            let p1 = &triangulation.points[indices[1]];
+            let p2 = &triangulation.points[indices[2]];
+            let cross = (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
+            if cross != 0.0 {
+                flip_caps = (cross > 0.0) != (shoelace2 > 0.0);
+                break;
+            }
+        }
+
+        for indices in triangulation.indices.chunks_exact(3) {
+            let (i0, i1, i2) = if flip_caps {
+                (
+                    tri_to_contour[indices[2]],
+                    tri_to_contour[indices[1]],
+                    tri_to_contour[indices[0]],
+                )
+            } else {
+                (
+                    tri_to_contour[indices[0]],
+                    tri_to_contour[indices[1]],
+                    tri_to_contour[indices[2]],
+                )
+            };
 
             // Base cap faces away from the extruded volume.
             push_triangle(&mut mesh, base_world[i2], base_world[i1], base_world[i0]);

@@ -961,10 +961,10 @@ impl GeometryRouter {
     ///
     /// This is the cheap per-mesh half of void subtraction: it re-reads the
     /// mesh bounds (which differ per sub-mesh), extends rectangular openings
-    /// along their extrusion axis so they fully penetrate the mesh, runs the
-    /// batched rectangular clip, then applies the CSG and clipping-plane
-    /// passes. All the classification work has already been done in
-    /// [`GeometryRouter::build_void_context`].
+    /// along their extrusion axis so they fully penetrate the mesh, then
+    /// subtracts every opening through the unified exact-kernel path (with the
+    /// per-opening #635 AABB fallback). All the classification work has
+    /// already been done in [`GeometryRouter::build_void_context`].
     ///
     /// `element_id` is the IFC product express ID of the host element. Any
     /// `BoolFailure` recorded by the inner CSG kernel is attributed to that
@@ -1030,8 +1030,13 @@ impl GeometryRouter {
             return result;
         }
 
-        let mut csg_operation_count = 0;
-        const MAX_CSG_OPERATIONS: usize = 10;
+        // NOTE: there is deliberately NO per-element CSG operation budget here.
+        // The BSP-era `MAX_CSG_OPERATIONS = 10` cap silently skipped the 11th+
+        // opening (it `continue`d past BOTH the exact subtract AND the #635 AABB
+        // fallback), which is exactly the regression `csg_void_test::
+        // many_tessellated_box_openings_are_all_cut` pins (history: #413/#439).
+        // On the unified exact path every opening is a cheap box-vs-host cut, so
+        // a budget-skipped opening is a correctness bug, not a perf guard.
 
         // UNIFIED EXACT PATH (PART B): every opening — axis-aligned RECTANGULAR
         // included — is now subtracted by the exact mesh kernel, NOT the legacy
@@ -1106,10 +1111,6 @@ impl GeometryRouter {
                 let open_min_pt = &open_min_pt;
                 let open_max_pt = &open_max_pt;
                 {
-                    if csg_operation_count >= MAX_CSG_OPERATIONS {
-                        continue;
-                    }
-
                     let opening_valid = !opening_mesh.is_empty()
                         && opening_mesh.positions.iter().all(|&v| v.is_finite())
                         && opening_mesh.positions.len() >= 9;
@@ -1184,7 +1185,6 @@ impl GeometryRouter {
                         }
                         Err(_) => {}
                     }
-                    csg_operation_count += 1;
 
                     // AABB fallback (issue #635): when CSG can't subtract the
                     // opening (most commonly because its triangulated profile

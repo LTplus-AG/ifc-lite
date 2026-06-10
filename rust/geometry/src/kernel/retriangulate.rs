@@ -436,6 +436,26 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
         Some(i) => i,
         None => return,
     };
+    // Vertices STRICTLY INTERIOR to the channel (every incident triangle is in
+    // the channel, so none of their edges reach the boundary loop). This happens
+    // when the segment passes so close to a vertex that it properly crosses ALL
+    // of the vertex's fan spokes (552611: the tiny middle-quad diagonal
+    // (5.027,3.800)→(5.142,3.5) swallows the corner (5.142,3.800) of the
+    // adjacent through-slot rectangle). The pocket-ring rebuild below would
+    // silently DESTROY such vertices — and with them every previously-enforced
+    // constraint edge through them — leaving host sub-triangles that overlap
+    // the cutter footprint (the 552611 4× over-cut). Re-insert them after the
+    // rebuild; the enforcement fixed-point loop in [`triangulate`] then
+    // re-forces any constraint edge the rebuild broke.
+    let loop_set: BTreeSet<Vid> = loop_v.iter().copied().collect();
+    let mut lost: Vec<Vid> = channel
+        .iter()
+        .flat_map(|&ti| mesh.tris[ti])
+        .filter(|v| !loop_set.contains(v))
+        .collect::<BTreeSet<Vid>>()
+        .into_iter()
+        .collect();
+    lost.sort_by(|&x, &y| lex_cmp(it, x, y)); // deterministic re-insert order
     let arc1: Vec<Vid> = loop_v[0..=ib].to_vec(); // a .. b
     let mut arc2: Vec<Vid> = loop_v[ib..].to_vec(); // b .. end
     arc2.push(a); // .. a
@@ -451,6 +471,9 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
             let oriented = orient_ring(it, ring, axis, w0);
             mesh.tris.extend(earcut(it, &oriented, axis, w0));
         }
+    }
+    for v in lost {
+        insert_point(mesh, it, v);
     }
 }
 
@@ -509,8 +532,25 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
     for p in ordered {
         insert_point(&mut mesh, interner, p);
     }
-    for &(s, t) in &canon.segments {
-        enforce_constraint(&mut mesh, interner, s, t);
+    // Enforce to a FIXED POINT: recovering one constraint deletes the channel
+    // triangles it crosses, which can remove an edge a PREVIOUS constraint had
+    // already been forced into (the pocket earcut is not constraint-aware). One
+    // extra pass re-forces those; iteration is bounded — each pass is a no-op
+    // (`recover_subsegment` early-returns on `edge_exists`) once every
+    // constraint chain is present. The cap keeps a pathological ping-pong from
+    // looping forever (the constraint set is crossing-free by construction —
+    // seg×seg pre-pass for transversal constraints, a planar mesh complex for
+    // coplanar ones — so non-convergence would leave at most an unrecovered
+    // constraint, the pre-existing graceful-bail behavior). Purely a function
+    // of exact predicates ⇒ deterministic, byte-identical native==wasm.
+    for _pass in 0..4 {
+        let before = mesh.tris.clone();
+        for &(s, t) in &canon.segments {
+            enforce_constraint(&mut mesh, interner, s, t);
+        }
+        if mesh.tris == before {
+            break;
+        }
     }
     Some(mesh)
 }

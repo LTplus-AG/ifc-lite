@@ -121,10 +121,120 @@ fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
     tris
 }
 
+/// Cross-operand near-coincidence promotion: weld every CUTTER vertex that
+/// sits within the snap-scatter band of a HOST face plane — and projects
+/// STRICTLY inside that face — onto the plane, then back onto the snap grid.
+///
+/// WHY (M7 BUG-1; TUN32 wall #97211 / opening #97266): when
+/// `extend_opening_mesh_through_host` pushes a flush opening cap along the
+/// host depth axis `d`, a cap corner that was bit-exactly a HOST corner can
+/// slide ALONG a host face plane that contains `d` (here: the wall END face).
+/// In exact arithmetic the slid corner stays on that plane, but the f32 round
+/// of `p + d·shift` lands it a few µm OFF — a TILTED gap below the per-axis
+/// `SNAP_GRID` reconcile (per-axis snapping cannot flatten a tilt). The host
+/// EDGE then GRAZES the cutter jamb FACE at ~5e-5 rad; the conforming
+/// arrangement splits the grazed face into degenerate sub-triangles whose
+/// keep/drop classification is undefined → open edges + inverted volume
+/// (the M7 sweep's negative-volume family: 27 tris / vol −4.268 / 13 bad
+/// edges from two CLEAN watertight 12-tri boxes).
+///
+/// The gate is PLANE-level, deliberately NOT footprint-level: in the repro the
+/// cutter jamb face is PARALLEL to the host end face but 4× longer, so its
+/// verts perpendicular-project 0.18–0.4 m OUTSIDE the end face's footprint —
+/// a point-in-face containment test can never associate them, yet their plane
+/// IS the host plane up to f32 noise. A sub-band parallel-plane separation is
+/// never representable design intent (the band is three orders below the
+/// smallest real feature edge, ~0.2 m — same argument as
+/// `near_on_surface_normal`), so welding the vertex onto the plane only
+/// removes noise. The CUTTER-ONLY direction suffices and never perturbs the
+/// host. The band and far-from-origin widening mirror
+/// `near_on_surface_normal` (8·SNAP_GRID ≈ 122 µm; the `extent·2⁻²²` term
+/// only dominates >32 km out). DETERMINISM: plain FMA-free f64 over
+/// already-snapped coords, fixed iteration order, nearest-plane ties broken
+/// by face index ⇒ byte-identical native==wasm. Every pinned box−box
+/// manifest is transversal (no cutter vertex within the band of a
+/// non-incident host plane), so the promotion never fires there.
+fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) {
+    if cutter.is_empty() || host.is_empty() {
+        return;
+    }
+    let mut extent = 1.0f64;
+    for t in cutter.iter().chain(host.iter()) {
+        for v in t {
+            for &x in v {
+                extent = extent.max(x.abs());
+            }
+        }
+    }
+    let band = (8.0 * SNAP_GRID).max(extent * (1.0 / 4_194_304.0));
+    let band2 = band * band;
+
+    struct Face {
+        t0: [f64; 3],
+        n: [f64; 3], // raw (unnormalised) plane normal
+        nn: f64,     // |n|²
+    }
+    let faces: Vec<Face> = host
+        .iter()
+        .filter_map(|t| {
+            let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+            let e2 = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+            let n = [
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+            let nn = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
+            if nn <= 0.0 || !nn.is_finite() {
+                return None; // degenerate host triangle
+            }
+            Some(Face { t0: t[0], n, nn })
+        })
+        .collect();
+
+    for t in cutter.iter_mut() {
+        for v in t.iter_mut() {
+            // Nearest host plane the vertex is within the band of but NOT
+            // exactly on (d == 0 planes are already reconciled — and must not
+            // shadow a second, still-noisy plane: in the repro the jamb verts
+            // sit EXACTLY on the host bottom plane while 18–25 µm off the end
+            // plane; the end plane is the one that needs the weld, and the
+            // perpendicular projection onto it slides ALONG the bottom plane).
+            // Ties → first in face order (deterministic).
+            let mut best: Option<(f64, [f64; 3])> = None; // (perp-dist², foot)
+            for f in &faces {
+                let d = (v[0] - f.t0[0]) * f.n[0]
+                    + (v[1] - f.t0[1]) * f.n[1]
+                    + (v[2] - f.t0[2]) * f.n[2];
+                if d == 0.0 {
+                    continue; // already exactly on this plane
+                }
+                let d2 = (d * d) / f.nn;
+                if d2 > band2 {
+                    continue; // outside the snap-scatter band
+                }
+                if let Some((bd2, _)) = best {
+                    if d2 >= bd2 {
+                        continue;
+                    }
+                }
+                // foot of the perpendicular from v onto the face plane
+                let s = d / f.nn;
+                best = Some((d2, [v[0] - s * f.n[0], v[1] - s * f.n[1], v[2] - s * f.n[2]]));
+            }
+            if let Some((_, p)) = best {
+                *v = [snap(p[0]), snap(p[1]), snap(p[2])];
+            }
+        }
+    }
+}
+
 /// `host − cutter` as a `Mesh`.
 pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
     let h = orient_outward(mesh_to_tris(host));
-    let c = orient_outward(mesh_to_tris(cutter));
+    let mut c = mesh_to_tris(cutter);
+    promote_cutter_verts_onto_host_faces(&mut c, &h);
+    let c = orient_outward(c);
     tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
 }
 
@@ -277,6 +387,90 @@ mod tests {
         let result = subtract(&wall, &opening);
         let v = mesh_volume(&result);
         assert!((v - 2.2).abs() < 1e-3, "through-opening wall volume = {v}, expected 2.2");
+    }
+
+    /// M7 BUG-1 regression (TUN32 wall #97211 / opening #97266): a rotated
+    /// 12-tri host box minus the cutter box that
+    /// `extend_opening_mesh_through_host` pushed through it. The push slid a
+    /// bit-exactly-shared corner ALONG the host end-face plane; the f32 round
+    /// left it ~8 µm off (a tilt the per-axis snap can't flatten), so a host
+    /// edge GRAZED the cutter jamb face and the subtract emitted 27 tris /
+    /// 13 open edges / signed volume −4.268 (vs Manifold's +3.182871 on the
+    /// SAME operands). The cross-operand promotion welds the slid corner back
+    /// onto the host plane; the cut must be watertight with the oracle volume.
+    #[test]
+    fn extended_cutter_graze_subtracts_exactly() {
+        fn mesh_of(vs: &[[f32; 3]], fs: &[[u32; 3]]) -> Mesh {
+            let mut m = Mesh::new();
+            for v in vs {
+                m.positions.extend_from_slice(v);
+                m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+            }
+            for f in fs {
+                m.indices.extend_from_slice(f);
+            }
+            m
+        }
+        // exact f32 coords as dumped from the M7 probe (tun97211_real_host /
+        // tun97211_extended_cutter); 8 unique verts each, both watertight.
+        let host = mesh_of(
+            &[
+                [274.05923, 400.96225, 34.600006],
+                [276.68744, 404.85873, 34.600006],
+                [276.52164, 404.97058, 34.600006],
+                [274.00525, 401.2399, 34.600006],
+                [274.05923, 400.96225, 38.600006],
+                [276.68744, 404.85873, 38.600006],
+                [276.52164, 404.97058, 38.600006],
+                [274.00525, 401.2399, 38.600006],
+            ],
+            &[
+                [3, 1, 0], [1, 3, 2], [7, 4, 5], [5, 6, 7], [0, 1, 5], [0, 5, 4],
+                [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7],
+            ],
+        );
+        let cutter = mesh_of(
+            &[
+                [277.01904, 404.63507, 34.6],
+                [276.39276, 403.70654, 34.6],
+                [276.39276, 403.70654, 36.82],
+                [277.01904, 404.63507, 36.82],
+                [276.3724, 405.07123, 34.6],
+                [275.7461, 404.1427, 34.6],
+                [275.7461, 404.1427, 36.82],
+                [276.3724, 405.07123, 36.82],
+            ],
+            &[
+                [2, 0, 3], [0, 2, 1], [6, 7, 4], [4, 5, 6], [0, 1, 5], [0, 5, 4],
+                [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7],
+            ],
+        );
+        assert!((mesh_volume(&host) - 3.680154).abs() < 1e-4, "host operand changed");
+        assert!((mesh_volume(&cutter) - 1.939390).abs() < 1e-4, "cutter operand changed");
+        let result = subtract(&host, &cutter);
+        let v = mesh_volume(&result);
+        // Manifold oracle on the same operands: +3.182871 (pure on the
+        // UNextended cutter: +3.18291). f32 round-trip noise stays ≪ 1e-3.
+        assert!((v - 3.182871).abs() < 1e-3, "subtract volume = {v}, expected ≈3.182871");
+        // watertight: every directed edge must be paired (the broken cut had 13 bad)
+        let s = 1e5_f32;
+        let key = |i: u32| {
+            let b = i as usize * 3;
+            (
+                (result.positions[b] * s).round() as i64,
+                (result.positions[b + 1] * s).round() as i64,
+                (result.positions[b + 2] * s).round() as i64,
+            )
+        };
+        let mut edges = std::collections::HashMap::new();
+        for t in result.indices.chunks_exact(3) {
+            for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+                *edges.entry((key(a), key(b))).or_insert(0i32) += 1;
+                *edges.entry((key(b), key(a))).or_insert(0i32) -= 1;
+            }
+        }
+        let bad = edges.values().filter(|&&c| c != 0).count();
+        assert_eq!(bad, 0, "result has {bad} unpaired directed edges");
     }
 
     #[test]

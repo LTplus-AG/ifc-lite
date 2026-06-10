@@ -891,6 +891,48 @@ mod tests {
         m.iter().map(|t| dot3(t[0], cross3(t[1], t[2]))).sum::<f64>() / 6.0
     }
 
+    /// 552611 regression — coplanar host face × cutter face complex where one
+    /// cutter corner's entire triangulation fan is swallowed by a constraint
+    /// channel: the tiny middle-quad diagonal (5.027,3.800)→(5.142,3.5) crosses
+    /// every fan spoke of the adjacent through-rectangle corner (5.142,3.800),
+    /// and `recover_subsegment`'s pocket rebuild used to DESTROY that vertex
+    /// (and every constraint edge through it). The host sub-triangulation then
+    /// overlapped the cutter footprint and the difference over-cut the wall 4×
+    /// (advanced_model wall #552611 / opening #552651). The conforming
+    /// arrangement must keep every cutter corner as a host vertex.
+    #[test]
+    fn coplanar_channel_swallowed_corner_survives_552611() {
+        let x = 7.7642822265625;
+        let host: Vec<Tri> = vec![
+            [[x, 7.7840423583984375, 0.09417724609375], [x, -0.6199951171875, 0.09417724609375], [x, -0.6199951171875, 10.600006103515625]],
+            [[x, 7.7840423583984375, 0.09417724609375], [x, -0.6199951171875, 10.600006103515625], [x, 7.7840423583984375, 10.600006103515625]],
+        ];
+        let cutter: Vec<Tri> = vec![
+            [[x, -0.160003662109375, 3.8000030517578125], [x, 5.02655029296875, 3.8000030517578125], [x, 5.02655029296875, 3.5]],
+            [[x, -0.160003662109375, 3.8000030517578125], [x, 5.02655029296875, 3.5], [x, -0.160003662109375, 3.5]],
+            [[x, 5.02655029296875, 3.8000030517578125], [x, 5.14154052734375, 3.8000030517578125], [x, 5.14154052734375, 3.5]],
+            [[x, 5.02655029296875, 3.8000030517578125], [x, 5.14154052734375, 3.5], [x, 5.02655029296875, 3.5]],
+            [[x, 5.14154052734375, 3.8000030517578125], [x, 7.7840423583984375, 3.8000030517578125], [x, 7.7840423583984375, 3.5]],
+            [[x, 5.14154052734375, 3.8000030517578125], [x, 7.7840423583984375, 3.5], [x, 5.14154052734375, 3.5]],
+        ];
+        let arr = arrange(&host, &cutter);
+        // Every cutter corner must be a vertex of the host's conforming
+        // sub-triangulation (they all lie strictly inside / on the host face).
+        for ct in &cutter {
+            for corner in ct {
+                let found = arr.tris_a.iter().flatten().any(|&v| {
+                    let p = to_f64_pt(&arr, v);
+                    p[1] == corner[1] && p[2] == corner[2]
+                });
+                assert!(
+                    found,
+                    "cutter corner ({}, {}) lost from the host conforming triangulation",
+                    corner[1], corner[2]
+                );
+            }
+        }
+    }
+
     #[test]
     fn arrange_two_crossing_triangles_conform_along_the_intersection() {
         // Two triangles that skewer each other (from the tri-tri tests).

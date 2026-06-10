@@ -299,6 +299,16 @@ pub fn lambda1024(p: &ImplicitPoint) -> Option<Lam> {
         d = -d;
         lam = [-lam[0], -lam[1], -lam[2]];
     }
+    // Degenerate construction (LPI line exactly parallel to its plane / TPI
+    // planes without a unique common point): d == 0, the point is undefined.
+    // bnum's `%`/`/` panic on a zero divisor and the workspace ships with
+    // panic='abort' (= shipped wasm worker abort — ISSUE_098 walls
+    // 1246801/1247369/1247971). Return None: callers fall through to the
+    // uncached cascade, whose `assemble_sign` yields the documented
+    // `Sign::Zero` for zero denominators.
+    if d.is_zero() {
+        return None;
+    }
     // On-grid reduction: when d divides every λ EXACTLY, store the true integer
     // coordinate (λ/d, 1). This is exact integer division — NO float weld / bucket /
     // tolerance — so the stored value is mathematically identical and bit-identical
@@ -425,5 +435,57 @@ pub fn point_to_f64(p: &ImplicitPoint) -> Option<[f64; 3]> {
         Some([x, y, z])
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{interner::Interner, ImplicitPoint, Lpi, Tpi};
+    use super::lambda1024;
+
+    /// Degenerate LPI: line exactly parallel to its plane ⇒ d = 0. Must return
+    /// `None` (fall through to the BigRational cascade), never panic — bnum's
+    /// `%` aborts on a zero divisor under the shipped panic='abort' profile.
+    #[test]
+    fn degenerate_parallel_lpi_lambda_is_none_not_panic() {
+        // Line through (0,0,1)-(1,0,1) is exactly parallel to plane z=0 → d = 0.
+        // All coords on the 1/65536 grid → reaches the on-grid reduction.
+        let p = ImplicitPoint::Lpi(Lpi {
+            p: [0.0, 0.0, 1.0],
+            q: [1.0, 0.0, 1.0],
+            r: [0.0, 0.0, 0.0],
+            s: [1.0, 0.0, 0.0],
+            t: [0.0, 1.0, 0.0],
+        });
+        assert!(lambda1024(&p).is_none());
+    }
+
+    /// Degenerate TPI: two parallel planes ⇒ det(n1,n2,n3) = 0 ⇒ d = 0.
+    #[test]
+    fn degenerate_parallel_tpi_lambda_is_none_not_panic() {
+        let p = ImplicitPoint::Tpi(Tpi {
+            planes: [
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], // z=0
+                [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], // z=1
+                [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], // x=0
+            ],
+        });
+        assert!(lambda1024(&p).is_none());
+    }
+
+    /// Interning a degenerate point must not panic: the cached-lambda fast path
+    /// gets `None` and the binary search falls back to the exact `cmp_lex`
+    /// cascade (zero denominator ⇒ `Sign::Zero` per the assemble_sign contract).
+    #[test]
+    fn interner_survives_degenerate_point() {
+        let mut it = Interner::new();
+        it.intern(ImplicitPoint::Explicit([0.0, 0.0, 0.0]));
+        let _ = it.intern(ImplicitPoint::Lpi(Lpi {
+            p: [0.0, 0.0, 1.0],
+            q: [1.0, 0.0, 1.0],
+            r: [0.0, 0.0, 0.0],
+            s: [1.0, 0.0, 0.0],
+            t: [0.0, 1.0, 0.0],
+        }));
     }
 }

@@ -6,9 +6,9 @@
  * In-memory draft / layer / review workspace backing the agent draft-layer
  * tool family (docs/architecture/layer-prs/06-agents.md).
  *
- * Workspaces are keyed by transport session id (#1030): each Streamable
- * HTTP session gets its own isolated workspace, disposed with the session;
- * stdio/in-process callers share the single local workspace. Tests call
+ * Drafts are keyed by transport session id (#1030) and disposed with the
+ * session; published layers, refs, and reviews are process-shared so
+ * other principals' sessions can build on and review them. Tests call
  * `resetLayerWorkspace()` for isolation. A draft is a CRDT session (Y.Doc
  * seeded with the resolved base stack) plus the baseline snapshot
  * `publishLayer` diffs against.
@@ -88,43 +88,63 @@ export function createLayerWorkspace(): LayerWorkspace {
   };
 }
 
-// Workspaces are keyed by transport session id (#1030): Streamable HTTP
-// runs one MCPServer per session and each gets an isolated workspace,
-// disposed on session end. stdio/in-process transports carry no session id
-// and share the single local workspace — registry-less local mode
-// (10-registry.md); durable, registry-backed persistence stays future work.
-const workspaces = new Map<string, LayerWorkspace>();
+// Storage model (#1030). Drafts are private CRDT sessions, so they are
+// the per-transport-session state: keyed by session id, disposed with the
+// session. Published layers, refs, and reviews are the collaboration
+// surface — content-addressed immutable layers, shared branch heads, and
+// reviews that *other* principals must be able to act on from their own
+// HTTP sessions (each principal necessarily holds a different session,
+// since the transport rejects scope mismatches) — so they live in one
+// process-wide store, gated by the visibility checks below. stdio /
+// in-process transports carry no session id and use the local draft
+// space — registry-less local mode (10-registry.md); durable,
+// registry-backed persistence stays future work.
+const shared = {
+  layers: new Map<string, IfcxFile>(),
+  refs: new Map<string, string[]>([['main', []]]),
+  reviews: new Map<string, LayerReview>(),
+};
 
-/** Map key for transports without a session id (stdio, in-process, tests). */
+const draftSpaces = new Map<string, Map<string, DraftLayer>>();
+
+/** Draft-space key for transports without a session id (stdio, in-process, tests). */
 const LOCAL_WORKSPACE_KEY = 'local';
 
 export function getLayerWorkspace(sessionId?: string): LayerWorkspace {
   const key = sessionId ?? LOCAL_WORKSPACE_KEY;
-  let ws = workspaces.get(key);
-  if (!ws) {
-    ws = createLayerWorkspace();
-    workspaces.set(key, ws);
+  let drafts = draftSpaces.get(key);
+  if (!drafts) {
+    drafts = new Map();
+    draftSpaces.set(key, drafts);
   }
-  return ws;
+  return { drafts, layers: shared.layers, refs: shared.refs, reviews: shared.reviews };
 }
 
 /** Drafts hold live Y.Docs — destroy them or the CRDT state lingers. */
-function destroyDrafts(ws: LayerWorkspace): void {
-  for (const draft of ws.drafts.values()) draft.doc.destroy();
+function destroyDrafts(drafts: Map<string, DraftLayer>): void {
+  for (const draft of drafts.values()) draft.doc.destroy();
 }
 
-/** Drop a session's workspace when the transport session ends. */
+/**
+ * Drop a session's draft space when the transport session ends. Layers,
+ * refs, and reviews deliberately survive — they are the published shared
+ * record other sessions keep building on.
+ */
 export function disposeLayerWorkspace(sessionId: string): void {
-  const ws = workspaces.get(sessionId);
-  if (!ws) return;
-  destroyDrafts(ws);
-  workspaces.delete(sessionId);
+  const drafts = draftSpaces.get(sessionId);
+  if (!drafts) return;
+  destroyDrafts(drafts);
+  draftSpaces.delete(sessionId);
 }
 
-/** Test hook: drop every workspace and return a fresh local one. */
+/** Test hook: drop all draft spaces and shared state; return a fresh local workspace. */
 export function resetLayerWorkspace(): LayerWorkspace {
-  for (const ws of workspaces.values()) destroyDrafts(ws);
-  workspaces.clear();
+  for (const drafts of draftSpaces.values()) destroyDrafts(drafts);
+  draftSpaces.clear();
+  shared.layers.clear();
+  shared.reviews.clear();
+  shared.refs.clear();
+  shared.refs.set('main', []);
   return getLayerWorkspace();
 }
 
@@ -334,22 +354,29 @@ export function createDraft(ws: LayerWorkspace, init: CreateDraftInit): DraftLay
 // ── Ownership / visibility ───────────────────────────────────────────────
 //
 // Access matrix (#1030). A record's `owner` is the creating principal;
-// undefined (unauthenticated/local) means anyone in the workspace:
+// undefined (unauthenticated/local) means anyone:
 //
-//   - read tools (diff_layer, dry_run_merge, list_conflicts,
-//     get_review_feedback): any caller in the workspace — the workspace is
-//     already session-scoped, so this only widens within one session.
-//   - mutating draft tools (draft_apply_ops, publish_layer): owner only.
-//   - respond_to_review: review owner only.
-//   - add_review_feedback: review owner OR a principal listed in
-//     `review.reviewers`.
+//   - drafts: session-private storage; mutations (draft_apply_ops,
+//     publish_layer) are owner-only on top of that.
+//   - published layers / refs: process-shared, readable by every session
+//     (immutable, content-addressed; ref policies are registry work).
+//   - reviews: process-shared so reviewers can act on them from their own
+//     sessions. Visible to the owner and listed reviewers only —
+//     including reads (get_review_feedback), since the store spans
+//     principals. respond_to_review is owner-only; add_review_feedback
+//     admits owner or listed reviewers.
 //
 // Denials are byte-identical to the unknown-id error, and error `details`
-// only enumerate ids the caller may see (no owner, or owned by the
-// caller) — a foreign id must be indistinguishable from a nonexistent one.
+// only enumerate ids the caller may see — a foreign id must be
+// indistinguishable from a nonexistent one.
 
 function visibleTo(owner: string | undefined, caller: string | undefined): boolean {
   return owner === undefined || owner === caller;
+}
+
+function reviewVisibleTo(review: LayerReview, caller: string | undefined): boolean {
+  if (visibleTo(review.owner, caller)) return true;
+  return caller !== undefined && review.reviewers.includes(caller);
 }
 
 export function visibleDraftIds(ws: LayerWorkspace, caller?: string): string[] {
@@ -360,7 +387,7 @@ export function visibleDraftIds(ws: LayerWorkspace, caller?: string): string[] {
 
 export function visibleReviewIds(ws: LayerWorkspace, caller?: string): string[] {
   return Array.from(ws.reviews.values())
-    .filter((r) => visibleTo(r.owner, caller))
+    .filter((r) => reviewVisibleTo(r, caller))
     .map((r) => r.id);
 }
 
@@ -394,10 +421,14 @@ export function requireOwnedDraft(ws: LayerWorkspace, id: string, caller?: strin
   return draft;
 }
 
-/** Existence check only — read paths; `caller` just filters error details. */
+/**
+ * Visibility-gated lookup for review reads: reviews span principals
+ * (process-shared), so even reads admit only the owner and listed
+ * reviewers. Denial is identical to the unknown-id error.
+ */
 export function requireReview(ws: LayerWorkspace, id: string, caller?: string): LayerReview {
   const review = ws.reviews.get(id);
-  if (!review) throw unknownReviewError(ws, id, caller);
+  if (!review || !reviewVisibleTo(review, caller)) throw unknownReviewError(ws, id, caller);
   return review;
 }
 

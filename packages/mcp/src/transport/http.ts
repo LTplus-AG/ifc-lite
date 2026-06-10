@@ -38,7 +38,15 @@ export interface HttpAuthenticator {
 }
 
 export interface SessionFactory {
-  /** Build a fresh MCPServer for this session. Called on `initialize`. */
+  /**
+   * Build a fresh MCPServer for this session. Called on `initialize`.
+   *
+   * The server MUST be constructed with `sessionId` (i.e.
+   * `createMCPServer({ ..., sessionId })`): it keys per-session state —
+   * the layer workspace in particular (#1030) — and its disposal on
+   * session end. The transport rejects servers built without it rather
+   * than letting every HTTP session silently share the local workspace.
+   */
   build(scope: AuthScope, sessionId: string): Promise<MCPServer> | MCPServer;
 }
 
@@ -215,6 +223,17 @@ export class HttpTransport {
       }
       const newId = randomUUID();
       const server = await this.opts.sessionFactory.build(scope, newId);
+      // A factory that drops the session id would put every HTTP session
+      // on the shared local layer workspace (cross-session reads/writes,
+      // no disposal) — refuse the deployment bug instead of running unsafe.
+      if (server.sessionId !== newId) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          error: 'sessionFactory must construct the MCPServer with the provided sessionId (createMCPServer({ sessionId }))',
+        }));
+        return;
+      }
       session = { id: newId, server, scope, sseClients: new Set(), createdAt: Date.now() };
       session.server.attach(this.makeSinkFor(session));
       this.sessions.set(newId, session);

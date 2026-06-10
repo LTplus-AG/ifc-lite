@@ -88,7 +88,7 @@ describe('session-scoped workspaces', () => {
     expect(getLayerWorkspace('session-a').drafts.size).toBe(0);
   });
 
-  it('disposeLayerWorkspace drops the workspace; the same id then gets a fresh one', async () => {
+  it('disposeLayerWorkspace drops the draft space; the same id then gets a fresh one', async () => {
     const ctxA = makeCtx({ id: 'session-a' });
     await call('create_draft_layer', { intent: 'doomed' }, ctxA);
     const before = getLayerWorkspace('session-a');
@@ -96,8 +96,24 @@ describe('session-scoped workspaces', () => {
 
     disposeLayerWorkspace('session-a');
     const after = getLayerWorkspace('session-a');
-    expect(after).not.toBe(before);
+    expect(after.drafts).not.toBe(before.drafts);
     expect(after.drafts.size).toBe(0);
+  });
+
+  it('published layers and refs survive session disposal (shared record)', async () => {
+    const ctxA = makeCtx({ id: 'session-a' });
+    const created = await call('create_draft_layer', { intent: 'publish then leave' }, ctxA);
+    await call('draft_apply_ops', { draft_id: created.draft_id, ops: CREATE_WALL_OPS }, ctxA);
+    const published = await call('publish_layer', { draft_id: created.draft_id }, ctxA);
+    getLayerWorkspace('session-a').refs.set('main', [published.layer_id as string]);
+
+    disposeLayerWorkspace('session-a');
+
+    // A different session keeps building on the published record.
+    const ctxB = makeCtx({ id: 'session-b' });
+    const onMain = await call('create_draft_layer', { intent: 'stacked work', base: 'main' }, ctxB);
+    expect(onMain.draft_id).toBeTypeOf('string');
+    expect(getLayerWorkspace('session-b').layers.has(published.layer_id as string)).toBe(true);
   });
 });
 
@@ -200,9 +216,81 @@ describe('review ownership', () => {
     expect(byOwner.decision_count).toBe(2);
   });
 
-  it('keeps reviews readable within the workspace regardless of owner', async () => {
+  it('review reads admit owner and listed reviewers, deny strangers like an unknown id', async () => {
     const reviewId = await seedReview();
-    const feedback = await call('get_review_feedback', { review_id: reviewId }, mallory());
+
+    const byOwner = await call('get_review_feedback', { review_id: reviewId }, alice());
+    expect(byOwner.status).toBe('open');
+    const byReviewer = await call('get_review_feedback', { review_id: reviewId }, bob());
+    expect(byReviewer.status).toBe('open');
+
+    // Reviews are process-shared across sessions, so reads are gated too:
+    // a stranger probing a foreign review id must see a nonexistent one.
+    const denied = await callErr('get_review_feedback', { review_id: reviewId }, mallory());
+    const unknown = await callErr('get_review_feedback', { review_id: 'no-such-review' }, mallory());
+    expect(denied.code).toBe('ENTITY_NOT_FOUND');
+    expect(denied.message).toBe(unknown.message.replace('no-such-review', reviewId));
+    expect(denied.details).toEqual(unknown.details);
+  });
+});
+
+describe('cross-session review collaboration', () => {
+  // Each principal necessarily holds its own HTTP session (the transport
+  // rejects scope mismatches on session reuse), so the review loop must
+  // work across sessions: shared reviews + reviewer visibility.
+  const alice = (): ToolContext => makeCtx({ id: 'session-alice', principal: 'alice' });
+  const bob = (): ToolContext => makeCtx({ id: 'session-bob', principal: 'bob' });
+  const stranger = (): ToolContext => makeCtx({ id: 'session-eve', principal: 'eve' });
+
+  async function publishAndRequestReview(): Promise<string> {
+    const created = await call('create_draft_layer', { intent: 'cross-session work' }, alice());
+    await call('draft_apply_ops', { draft_id: created.draft_id, ops: CREATE_WALL_OPS }, alice());
+    const published = await call('publish_layer', { draft_id: created.draft_id }, alice());
+    getLayerWorkspace('session-alice').refs.set('main', [published.layer_id as string]);
+    const review = await call(
+      'request_review',
+      { layer_id: published.layer_id, into: 'main', reviewers: ['bob'] },
+      alice(),
+    );
+    return review.review_id as string;
+  }
+
+  it("a listed reviewer reaches the review from their own session; strangers don't", async () => {
+    const reviewId = await publishAndRequestReview();
+
+    // Bob acts from session-bob — a workspace that never saw the draft.
+    const feedback = await call('get_review_feedback', { review_id: reviewId }, bob());
     expect(feedback.status).toBe('open');
+    const added = await call(
+      'add_review_feedback',
+      { review_id: reviewId, decisions: [{ entity: WALL, decision: 'accept' }] },
+      bob(),
+    );
+    expect(added.decision_count).toBe(1);
+
+    // Eve probes from her own session: indistinguishable from nonexistent.
+    const denied = await callErr('get_review_feedback', { review_id: reviewId }, stranger());
+    expect(denied.code).toBe('ENTITY_NOT_FOUND');
+    expect(denied.details?.reviews).toEqual([]);
+  });
+
+  it("the owner responds to reviewer feedback from a later session; drafts stay session-private", async () => {
+    const reviewId = await publishAndRequestReview();
+    await call(
+      'add_review_feedback',
+      { review_id: reviewId, decisions: [{ entity: WALL, decision: 'reject', comment: 'thinner' }] },
+      bob(),
+    );
+
+    // Alice reconnects under a fresh session id — reviews are keyed to the
+    // principal, not the transport session, so she can still respond.
+    const aliceLater = makeCtx({ id: 'session-alice-2', principal: 'alice' });
+    const response = await call('respond_to_review', { review_id: reviewId }, aliceLater);
+    const followUp = response.draft_id as string;
+
+    // The follow-up draft was created in *her* session's draft space …
+    expect(getLayerWorkspace('session-alice-2').drafts.has(followUp)).toBe(true);
+    // … and is invisible from Bob's.
+    expect(getLayerWorkspace('session-bob').drafts.has(followUp)).toBe(false);
   });
 });

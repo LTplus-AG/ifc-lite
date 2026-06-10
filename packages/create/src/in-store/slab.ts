@@ -25,6 +25,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { SpatialAnchor } from './anchor.js';
+import { ownerHistoryRef } from './_emit-helpers.js';
 
 export type SlabInStoreParams = SlabRectangleParams | SlabPolygonParams;
 
@@ -174,7 +175,7 @@ export function addSlabToStore(
   // `IfcSlab.PredefinedType` only exists from IFC4 onward.
   const slabAttrs: Array<unknown> = [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Slab',
     params.Description ?? null,
     params.ObjectType ?? null,
@@ -189,7 +190,7 @@ export function addSlabToStore(
 
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     null,
     null,
     [`#${slabId}`],

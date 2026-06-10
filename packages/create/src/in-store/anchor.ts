@@ -15,8 +15,12 @@
 export type SpatialAnchorSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
 export interface SpatialAnchor {
-  /** IfcOwnerHistory expressId — referenced by every IfcRoot. */
-  ownerHistoryId: number;
+  /**
+   * IfcOwnerHistory expressId, or null when the model has none.
+   * IfcRoot.OwnerHistory is OPTIONAL from IFC4 onward — minimal files
+   * legitimately omit the entity, and builders emit `$` for it.
+   */
+  ownerHistoryId: number | null;
   /** IfcGeometricRepresentationSubContext for 'Body' (or its IfcGeometricRepresentationContext fallback). */
   bodyContextId: number;
   /** IfcGeometricRepresentationSubContext for 'Axis' (or its IfcGeometricRepresentationContext fallback). */

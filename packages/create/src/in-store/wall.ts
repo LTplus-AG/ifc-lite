@@ -22,6 +22,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import type { SpatialAnchor } from './anchor.js';
+import { ownerHistoryRef } from './_emit-helpers.js';
 
 export interface WallInStoreParams {
   /** Start of the wall axis, in storey-local coordinates (metres). */
@@ -126,7 +127,7 @@ export function addWallToStore(
   // `IfcWall.PredefinedType` only exists from IFC4 onward.
   const wallAttrs: Array<unknown> = [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Wall',
     params.Description ?? null,
     params.ObjectType ?? null,
@@ -144,7 +145,7 @@ export function addWallToStore(
 
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     null,
     null,
     [`#${wallId}`],

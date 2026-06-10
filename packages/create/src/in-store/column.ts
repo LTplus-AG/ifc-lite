@@ -19,6 +19,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { SpatialAnchor } from './anchor.js';
+import { ownerHistoryRef } from './_emit-helpers.js';
 
 export interface ColumnInStoreParams {
   /** Base centre of the column, in storey-local coordinates (metres). */
@@ -118,7 +119,7 @@ export function addColumnToStore(
   // would produce an invalid 9-arg entity record.
   const columnAttrs: Array<unknown> = [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Column',
     params.Description ?? null,
     params.ObjectType ?? null,
@@ -136,7 +137,7 @@ export function addColumnToStore(
   // existing one and produces an equivalent result on import.
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     null,
     null,
     [`#${columnId}`],

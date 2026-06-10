@@ -15,10 +15,9 @@ import { EntityExtractor, getAttributeNames, type IfcDataStore } from '@ifc-lite
 import type { SpatialAnchor, SpatialAnchorSchema } from './anchor.js';
 
 export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: number): SpatialAnchor {
+  // OwnerHistory is OPTIONAL from IFC4 onward — minimal files (including
+  // ifc-lite's own exports) legitimately omit it. Builders emit `$` then.
   const ownerHistoryId = findOwnerHistoryId(store);
-  if (ownerHistoryId === null) {
-    throw new Error('resolveSpatialAnchor: no IfcOwnerHistory found in store');
-  }
 
   const bodyContextId = findBodyContextId(store);
   if (bodyContextId === null) {

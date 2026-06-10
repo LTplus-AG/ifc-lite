@@ -23,6 +23,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecCross, vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import type { SpatialAnchor } from './anchor.js';
+import { ownerHistoryRef } from './_emit-helpers.js';
 
 export interface BeamInStoreParams {
   Start: [number, number, number];
@@ -126,7 +127,7 @@ export function addBeamToStore(
   // `IfcBeam.PredefinedType` only exists from IFC4 onward.
   const beamAttrs: Array<unknown> = [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Beam',
     params.Description ?? null,
     params.ObjectType ?? null,
@@ -141,7 +142,7 @@ export function addBeamToStore(
 
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     null,
     null,
     [`#${beamId}`],

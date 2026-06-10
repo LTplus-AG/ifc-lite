@@ -121,6 +121,23 @@ describe('addSpaceToStore', () => {
     expect(byId.get(result.spaceBoundaryIds[1])?.attributes[8]).toBe('.INTERNAL.');
   });
 
+  // OwnerHistory is OPTIONAL from IFC4 onward — minimal files (including
+  // ifc-lite's own exports) omit it entirely. The bake must still work,
+  // emitting `$` instead of failing anchor resolution (the Space Sketch
+  // tool silently lost every baked space on such files).
+  it('emits $ OwnerHistory when the model has none', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    const result = addSpaceToStore(
+      editor,
+      { ownerHistoryId: null, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { Position: [0, 0, 0], Width: 4, Depth: 3, Height: 3 },
+    );
+    const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+    expect(byId.get(result.spaceId)?.attributes[1]).toBeNull();          // OwnerHistory = $
+    expect(byId.get(result.relAggregatesId)?.attributes[1]).toBeNull();
+  });
+
   it('rejects non-positive Height', () => {
     const view = new MutablePropertyView(null, 'm1');
     const editor = new StoreEditor(makeStore(10), view);

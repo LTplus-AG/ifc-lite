@@ -25,6 +25,7 @@ import {
   emitLocalPlacement,
   emitPolygonProfile,
   emitRectangleProfile,
+  ownerHistoryRef,
 } from './_emit-helpers.js';
 
 export type SpaceInStoreParams = SpaceRectangleParams | SpacePolygonParams;
@@ -156,7 +157,7 @@ export function addSpaceToStore(
   // INTERNAL is a valid value in both enums, so it makes a safe default.
   const attrs: Array<unknown> = [
     generateIfcGuid(),
-    `#${anchor.ownerHistoryId}`,
+    ownerHistoryRef(anchor.ownerHistoryId),
     params.Name ?? 'Space',
     params.Description ?? null,
     params.ObjectType ?? null,
@@ -173,7 +174,7 @@ export function addSpaceToStore(
   // ContainedInSpatialStructure rel that IfcElement subtypes use.
   const relAggregatesId = editor.addEntity('IfcRelAggregates', [
     generateIfcGuid(),
-    `#${anchor.ownerHistoryId}`,
+    ownerHistoryRef(anchor.ownerHistoryId),
     null,
     null,
     `#${anchor.storeyId}`,
@@ -217,7 +218,7 @@ export function addSpaceToStore(
   for (const boundary of params.boundaries ?? []) {
     const boundaryId = editor.addEntity('IfcRelSpaceBoundary', [
       generateIfcGuid(),
-      `#${anchor.ownerHistoryId}`,
+      ownerHistoryRef(anchor.ownerHistoryId),
       null,
       null,
       `#${spaceId}`,

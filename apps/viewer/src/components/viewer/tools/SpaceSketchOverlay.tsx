@@ -389,6 +389,17 @@ export function SpaceSketchOverlay() {
   }, [storeys]);
 
   /**
+   * IfcSpace is class-hidden by default (TYPE_VISIBILITY_SEMANTIC_DEFAULTS).
+   * Flip the toggle on after a successful bake so the user sees what they
+   * just created — and, since the toggle persists, so the spaces are still
+   * visible when the exported file is reopened.
+   */
+  const revealSpaces = useCallback(() => {
+    const s = useViewerStore.getState();
+    if (!s.typeVisibility.spaces) s.toggleTypeVisibility('spaces');
+  }, []);
+
+  /**
    * Bake one storey's rooms to IfcSpace — the single path both "Bake" and
    * "Generate all" use, so they're consistent. (1) Replace: remove the spaces
    * this session previously dropped on the storey. (2) Skip rooms that overlap
@@ -402,13 +413,18 @@ export function SpaceSketchOverlay() {
     segments: Parameters<typeof offsetRoomFootprint>[1] | undefined,
     thicknesses: Parameters<typeof offsetRoomFootprint>[2] | undefined,
     authored: Pt[][],
-  ): { emitted: number; skipped: number } => {
-    if (!activeModelId) return { emitted: 0, skipped: 0 };
+  ): { emitted: number; skipped: number; error: string | null } => {
+    if (!activeModelId) return { emitted: 0, skipped: 0, error: null };
     for (const id of generatedRef.current.get(sid) ?? []) removeEntity(activeModelId, id);
     generatedRef.current.delete(sid);
     const height = floorToFloor(sid);
     const newIds: number[] = [];
     let skipped = 0;
+    // An addSpace failure (anchor resolution, missing mutation view, …) is
+    // NOT an "already a space" skip — keep the first error so the status
+    // line tells the user the truth instead of silently dropping spaces
+    // that would then be missing from the export.
+    let error: string | null = null;
     for (let oi = 0; oi < outlines.length; oi++) {
       const outline = outlines[oi];
       const [cx, cy] = centroid(outline);
@@ -420,10 +436,11 @@ export function SpaceSketchOverlay() {
         Name: `Space ${newIds.length + 1}`, ObjectType: GENERATED_SPACE_OBJECTTYPE,
         grossFloorArea: polyArea(outline),
       });
-      if (res && 'expressId' in res) newIds.push(res.expressId); else skipped++;
+      if (res && 'expressId' in res) newIds.push(res.expressId);
+      else error ??= (res && 'error' in res ? res.error : 'unknown error');
     }
     generatedRef.current.set(sid, newIds);
-    return { emitted: newIds.length, skipped };
+    return { emitted: newIds.length, skipped, error };
   }, [activeModelId, removeEntity, addSpace, floorToFloor, boundaryMode]);
 
   const bake = useCallback(() => {
@@ -435,9 +452,12 @@ export function SpaceSketchOverlay() {
     const outlines = (plate.snapshot() as Room[]).map((r) => r.outline);
     const ext = extractionRef.current;
     const authored = existingSpaceFootprintsByStorey(ifcDataStore).get(derivedStorey) ?? [];
-    const { emitted, skipped } = bakeStorey(derivedStorey, outlines, ext?.segments, ext?.thicknesses, authored);
-    setStatus(`Baked ${emitted} IfcSpace${skipped ? `, skipped ${skipped} (already a space)` : ''}.`);
-  }, [activeModelId, derivedStorey, ifcDataStore, bakeStorey]);
+    const { emitted, skipped, error } = bakeStorey(derivedStorey, outlines, ext?.segments, ext?.thicknesses, authored);
+    if (emitted > 0) revealSpaces();
+    setStatus(error
+      ? `Baked ${emitted} IfcSpace — others failed: ${error}`
+      : `Baked ${emitted} IfcSpace${skipped ? `, skipped ${skipped} (already a space)` : ''}.`);
+  }, [activeModelId, derivedStorey, ifcDataStore, bakeStorey, revealSpaces]);
 
   const bakeWholeBuilding = useCallback(async () => {
     if (!activeModelId || !ifcDataStore) { setStatus('No model loaded.'); return; }
@@ -445,6 +465,7 @@ export function SpaceSketchOverlay() {
     await ensureWasm();
     const authoredMap = existingSpaceFootprintsByStorey(ifcDataStore);
     let totalEmitted = 0, totalSkipped = 0, floors = 0;
+    let firstError: string | null = null;
     for (const st of storeys) {
       const { segments, wallThicknesses } = extractWallSegmentsForStorey(ifcDataStore, st.id);
       if (!segments.length) continue;
@@ -461,12 +482,16 @@ export function SpaceSketchOverlay() {
       const outlines = (plate!.snapshot() as Room[]).map((r) => r.outline);
       plate!.free();
       if (!outlines.length) continue;
-      const { emitted, skipped } = bakeStorey(st.id, outlines, segments, wallThicknesses, authoredMap.get(st.id) ?? []);
+      const { emitted, skipped, error } = bakeStorey(st.id, outlines, segments, wallThicknesses, authoredMap.get(st.id) ?? []);
       totalEmitted += emitted; totalSkipped += skipped;
+      firstError ??= error;
       if (emitted) floors++;
     }
-    setStatus(`Generated ${totalEmitted} IfcSpace across ${floors} storey(s)${totalSkipped ? `; skipped ${totalSkipped} existing` : ''}.`);
-  }, [activeModelId, ifcDataStore, storeys, bakeStorey]);
+    if (totalEmitted > 0) revealSpaces();
+    setStatus(firstError
+      ? `Generated ${totalEmitted} IfcSpace — others failed: ${firstError}`
+      : `Generated ${totalEmitted} IfcSpace across ${floors} storey(s)${totalSkipped ? `; skipped ${totalSkipped} existing` : ''}.`);
+  }, [activeModelId, ifcDataStore, storeys, bakeStorey, revealSpaces]);
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);

@@ -152,7 +152,10 @@ export class Picker {
       },
       primitive: {
         topology: 'triangle-list',
-        cullMode: 'back',
+        // Must match the visual pipelines' cullMode: 'none' — IFC winding
+        // order varies, so back-face culling can cull an object's entire
+        // camera-facing surface and let whatever is behind it win the pick.
+        cullMode: 'none',
       },
       depthStencil: {
         format: 'depth32float',

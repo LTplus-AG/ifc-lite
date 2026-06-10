@@ -1,5 +1,29 @@
 # @ifc-lite/mcp
 
+## 0.3.2
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+- Updated dependencies [[`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc), [`8d5bd67`](https://github.com/LTplus-AG/ifc-lite/commit/8d5bd6701dc9962c2de5e42a7462008b2b8c2885)]:
+  - @ifc-lite/bcf@1.15.6
+  - @ifc-lite/clash@1.1.2
+  - @ifc-lite/create@1.16.1
+  - @ifc-lite/data@2.0.2
+  - @ifc-lite/encoding@1.14.7
+  - @ifc-lite/export@1.19.5
+  - @ifc-lite/geometry@2.4.1
+  - @ifc-lite/ids@1.15.6
+  - @ifc-lite/mutations@1.15.3
+  - @ifc-lite/parser@3.1.1
+  - @ifc-lite/query@1.14.10
+  - @ifc-lite/sdk@1.18.1
+  - @ifc-lite/viewer-core@0.2.6
+
 ## 0.3.1
 
 ### Patch Changes

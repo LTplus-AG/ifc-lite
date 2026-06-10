@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/collab-server",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Reference websocket sync server for @ifc-lite/collab",
   "type": "module",
   "main": "./dist/index.js",

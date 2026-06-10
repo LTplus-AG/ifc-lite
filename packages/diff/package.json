@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/diff",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Headless model-diff engine for IFC-Lite — classifies entities as added/modified/deleted/unchanged across two revisions, with separable data vs geometry scope.",
   "type": "module",
   "main": "./dist/index.js",

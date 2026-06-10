@@ -1,5 +1,31 @@
 # @ifc-lite/create
 
+## 1.16.1
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+
+- [#1032](https://github.com/LTplus-AG/ifc-lite/pull/1032) [`8d5bd67`](https://github.com/LTplus-AG/ifc-lite/commit/8d5bd6701dc9962c2de5e42a7462008b2b8c2885) Thanks [@louistrue](https://github.com/louistrue)! - fix(create): every in-store builder now emits geometry in the model's
+  native length unit. Wall, slab, beam, column, door, window, roof, plate,
+  and member wrote metre coordinates regardless of the file's length unit —
+  an element added to a millimetre model (typical Revit export) serialized
+  1000× too small, while its in-session mesh (built separately in renderer
+  metres) looked correct until the export round-trip. The duplicate flow
+  had the inverse bug: its metre offset was added to the source's
+  native-unit location, so a duplicate in a mm file landed ~1000× too
+  close (visually on top of the source). Door/window OverallHeight /
+  OverallWidth attributes are converted too. Completes the conversion the
+  space builder received in [#1029](https://github.com/LTplus-AG/ifc-lite/issues/1029) via `SpatialAnchor.lengthUnitScale`.
+- Updated dependencies [[`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc)]:
+  - @ifc-lite/encoding@1.14.7
+  - @ifc-lite/mutations@1.15.3
+  - @ifc-lite/parser@3.1.1
+
 ## 1.16.0
 
 ### Minor Changes

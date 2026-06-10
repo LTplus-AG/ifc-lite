@@ -47,7 +47,11 @@ export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: numbe
       const s = extractLengthUnitScale(store.source, store.entityIndex);
       if (Number.isFinite(s) && s > 0) lengthUnitScale = s;
     }
-  } catch { /* default to metres */ }
+  } catch (error) {
+    // Keep the metre fallback, but don't hide the failure — a wrong scale
+    // emits silently mis-sized geometry.
+    console.warn('resolveSpatialAnchor: failed to extract length unit scale; defaulting to metres', error);
+  }
 
   return { ownerHistoryId, bodyContextId, axisContextId, storeyId: storeyExpressId, storeyPlacementId, schema, lengthUnitScale };
 }

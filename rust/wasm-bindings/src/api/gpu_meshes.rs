@@ -968,8 +968,12 @@ impl IfcAPI {
         };
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc);
 
-        // Create geometry router with unit scale
-        let mut router = GeometryRouter::with_scale(unit_scale);
+        // Create geometry router with unit scale and the consumer-selected
+        // tessellation quality (issue #976) — Medium unless JS called
+        // `setTessellationQuality`, so default output is byte-for-byte
+        // identical to the pre-quality pipeline.
+        let mut router =
+            GeometryRouter::with_scale_and_quality(unit_scale, self.tessellation_quality());
 
         // Set RTC offset if needed
         if needs_shift {

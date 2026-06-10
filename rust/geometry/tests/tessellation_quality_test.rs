@@ -125,3 +125,36 @@ fn swept_pipe_medium_matches_default_router() {
     };
     assert_eq!(default_count, swept_disk_vertices(TessellationQuality::Medium));
 }
+
+#[test]
+fn unset_quality_is_byte_identical_to_medium() {
+    // The epic's regression guarantee (#976 step 5): a consumer that never
+    // selects a level must get output BYTE-FOR-BYTE identical to explicit
+    // Medium — positions, normals and indices compared bitwise, not by
+    // float-epsilon.
+    let route = |router: GeometryRouter| {
+        let mut decoder = EntityDecoder::new(SWEPT_DISK);
+        let item = decoder.decode_by_id(4).expect("decode swept disk");
+        router
+            .process_representation_item(&item, &mut decoder)
+            .expect("route swept disk")
+    };
+    let unset = route(GeometryRouter::new());
+    let medium = route(GeometryRouter::with_quality(TessellationQuality::Medium));
+
+    let bits = |v: &[f32]| v.iter().map(|f| f.to_bits()).collect::<Vec<u32>>();
+    assert_eq!(
+        bits(&unset.positions),
+        bits(&medium.positions),
+        "positions must be bitwise identical when quality is unset"
+    );
+    assert_eq!(
+        bits(&unset.normals),
+        bits(&medium.normals),
+        "normals must be bitwise identical when quality is unset"
+    );
+    assert_eq!(
+        unset.indices, medium.indices,
+        "indices must be identical when quality is unset"
+    );
+}

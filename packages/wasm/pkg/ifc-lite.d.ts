@@ -229,6 +229,22 @@ export class IfcAPI {
    */
   clearPrePassCache(): void;
   /**
+   * Select the tessellation detail level applied by every subsequent
+   * `processGeometryBatch` call (issue #976, step 4).
+   *
+   * `level` is one of `"lowest" | "low" | "medium" | "high" | "highest"`
+   * (case-insensitive). `"medium"` is the default and reproduces the
+   * engine's historical hardcoded densities byte-for-byte; lower levels
+   * trade curved-surface smoothness for throughput, higher levels reduce
+   * faceting on pipes / cylinders / NURBS at a triangle-count cost.
+   * Pass `null`/`undefined` to reset to the default.
+   *
+   * Set BEFORE processing — meshes already emitted are not regenerated.
+   * Throws on an unrecognized level so typos fail loudly instead of
+   * silently rendering at the wrong density.
+   */
+  setTessellationQuality(level?: string | null): void;
+  /**
    * Enable or disable per-entity geometry fingerprinting in
    * `processGeometryBatch`, used by the viewer's revision-diff feature.
    *
@@ -882,6 +898,7 @@ export interface InitOutput {
   readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
   readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_setMergeLayers: (a: number, b: number) => void;
+  readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
   readonly meshcollection_buildingRotation: (a: number, b: number) => void;

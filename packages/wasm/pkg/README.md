@@ -54,18 +54,12 @@ import { IfcParser } from '@ifc-lite/parser';
 const parser = new IfcParser();
 const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
 const t0 = performance.now();
-const result = await parser.parse(buffer, {
+const store = await parser.parseColumnar(buffer, {
   onProgress: ({ phase, percent }) => console.log(`${phase}: ${percent}%`),
 });
 
-console.log(`Parsed ${result.entityCount} entities in ${(performance.now() - t0).toFixed(0)}ms`);
-```
-
-For columnar storage (recommended for large models — TypedArray-backed, query-friendly):
-
-```typescript
-const store = await parser.parseColumnar(buffer);
 console.log(`${store.entityCount} entities, schema ${store.schemaVersion}`);
+console.log(`Parsed in ${(performance.now() - t0).toFixed(0)}ms`);
 ```
 
 ## View in 3D
@@ -81,9 +75,12 @@ const renderer = new Renderer(canvas);
 
 await Promise.all([geometry.init(), renderer.init()]);
 
-const buffer = new Uint8Array(await file.arrayBuffer());
-const parseResult = await parser.parse(buffer);
-const meshes = await geometry.process(buffer);
+const arrayBuffer = await file.arrayBuffer();
+const store = await parser.parseColumnar(arrayBuffer);
+const meshes = [];
+for await (const event of geometry.processAdaptive(new Uint8Array(arrayBuffer))) {
+  if (event.type === 'batch') meshes.push(...event.meshes);
+}
 
 renderer.loadGeometry(meshes);
 renderer.requestRender();
@@ -183,7 +180,7 @@ const ifcx = new Ifc5Exporter(store, meshes).export({ includeGeometry: true });
 | [**Browser (WebGPU)**](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/) | Viewing and inspecting models | Full-featured 3D viewer, runs entirely client-side |
 | [**Three.js / Babylon.js**](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
 | [**Server**](https://ltplus-ag.github.io/ifc-lite/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
-| [**Desktop (Tauri)**](https://ltplus-ag.github.io/ifc-lite/guide/desktop/) | Offline use, very large files (500 MB+) | Native app with multi-threading and direct filesystem access |
+| [**Build for Desktop**](https://ltplus-ag.github.io/ifc-lite/guide/desktop/) | Your own offline native app, very large files (500 MB+) | Extension points to wrap the packages in Tauri, with an optional native-Rust geometry fast path |
 
 Not sure? Start with the browser setup. You can add a server or switch engines later.
 
@@ -248,7 +245,7 @@ cargo install wasm-pack   # or: curl https://rustwasm.github.io/wasm-pack/instal
 # 2. Clone and build
 git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
-pnpm install && pnpm build && pnpm dev   # opens viewer at localhost:5173
+pnpm install && pnpm build && pnpm dev   # opens viewer at localhost:3000
 ```
 
 If you need IFC fixtures for tests, benchmarks, or stress tests, fetch them with:

@@ -22,6 +22,10 @@ pub use clash::{ClashRunResult, ClashSession};
 use ifc_lite_core::EntityIndex;
 use wasm_bindgen::prelude::*;
 
+/// `TessellationQuality::Medium` as the atomic discriminant stored on
+/// [`IfcAPI::tessellation_quality`] (0 = Lowest … 4 = Highest).
+const TESSELLATION_QUALITY_MEDIUM: u8 = 2;
+
 /// Main IFC-Lite API
 #[wasm_bindgen]
 pub struct IfcAPI {
@@ -118,6 +122,13 @@ pub struct IfcAPI {
     /// Stored as `f64::to_bits` in a `u64` atomic so the `(enabled, tolerance)`
     /// pair stays lock-free. Only read when `compute_geometry_hashes` is true.
     geometry_hash_tolerance_bits: std::sync::atomic::AtomicU64,
+
+    /// Tessellation detail level applied by `processGeometryBatch` (issue #976,
+    /// step 4). Stored as the `TessellationQuality` discriminant (0 = Lowest …
+    /// 4 = Highest) in an atomic so JS can toggle it between parse calls
+    /// without locking — same contract as `merge_layers`. Default is Medium,
+    /// which reproduces the historical hardcoded densities byte-for-byte.
+    tessellation_quality: std::sync::atomic::AtomicU8,
 }
 
 #[wasm_bindgen]
@@ -140,6 +151,9 @@ impl IfcAPI {
             compute_geometry_hashes: std::sync::atomic::AtomicBool::new(false),
             geometry_hash_tolerance_bits: std::sync::atomic::AtomicU64::new(
                 ifc_lite_geometry::DEFAULT_GEOM_HASH_TOLERANCE.to_bits(),
+            ),
+            tessellation_quality: std::sync::atomic::AtomicU8::new(
+                TESSELLATION_QUALITY_MEDIUM,
             ),
         }
     }
@@ -323,6 +337,42 @@ impl IfcAPI {
             _ => self.compute_geometry_hashes.store(false, Relaxed),
         }
     }
+
+    /// Select the tessellation detail level applied by every subsequent
+    /// `processGeometryBatch` call (issue #976, step 4).
+    ///
+    /// `level` is one of `"lowest" | "low" | "medium" | "high" | "highest"`
+    /// (case-insensitive). `"medium"` is the default and reproduces the
+    /// engine's historical hardcoded densities byte-for-byte; lower levels
+    /// trade curved-surface smoothness for throughput, higher levels reduce
+    /// faceting on pipes / cylinders / NURBS at a triangle-count cost.
+    /// Pass `null`/`undefined` to reset to the default.
+    ///
+    /// Set BEFORE processing — meshes already emitted are not regenerated.
+    /// Throws on an unrecognized level so typos fail loudly instead of
+    /// silently rendering at the wrong density.
+    #[wasm_bindgen(js_name = setTessellationQuality)]
+    pub fn set_tessellation_quality(&self, level: Option<String>) -> Result<(), JsValue> {
+        let discriminant = match level.as_deref() {
+            None => TESSELLATION_QUALITY_MEDIUM,
+            Some(s) => match s.to_ascii_lowercase().as_str() {
+                "lowest" => 0,
+                "low" => 1,
+                "medium" => TESSELLATION_QUALITY_MEDIUM,
+                "high" => 3,
+                "highest" => 4,
+                other => {
+                    return Err(JsValue::from_str(&format!(
+                        "Unknown tessellation quality '{other}' — expected \
+                         lowest | low | medium | high | highest"
+                    )))
+                }
+            },
+        };
+        self.tessellation_quality
+            .store(discriminant, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
 }
 
 impl IfcAPI {
@@ -332,6 +382,23 @@ impl IfcAPI {
     pub(crate) fn merge_layers(&self) -> bool {
         self.merge_layers
             .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Active tessellation quality, read once at the top of
+    /// `processGeometryBatch`. JS controls it via
+    /// [`Self::set_tessellation_quality`].
+    pub(crate) fn tessellation_quality(&self) -> ifc_lite_geometry::TessellationQuality {
+        use ifc_lite_geometry::TessellationQuality;
+        match self
+            .tessellation_quality
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            0 => TessellationQuality::Lowest,
+            1 => TessellationQuality::Low,
+            3 => TessellationQuality::High,
+            4 => TessellationQuality::Highest,
+            _ => TessellationQuality::Medium,
+        }
     }
 
     /// Active geometry-hash tolerance (metres), or `None` when fingerprinting

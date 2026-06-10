@@ -40,7 +40,7 @@ import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GeometryQuality } from './progressive-loader.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
-import type { GeometryResult, MeshData, CoordinateInfo, GridAxis } from './types.js';
+import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality } from './types.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -78,6 +78,16 @@ export interface GeometryProcessorOptions {
    * existing per-layer rendering behaviour. See issue #540.
    */
   mergeLayers?: boolean;
+  /**
+   * Tessellation detail level for curved geometry (issue #976):
+   * `'lowest' | 'low' | 'medium' | 'high' | 'highest'`. Unset/`'medium'`
+   * reproduces the engine's historical densities byte-for-byte. Lower
+   * levels trade curved-surface smoothness for throughput; higher levels
+   * reduce faceting on pipes / cylinders / NURBS at a proportional
+   * triangle-count cost. Applies to the WASM paths (main-thread, streaming
+   * and worker-pool); the native desktop path does not consume it yet.
+   */
+  tessellationQuality?: TessellationQuality;
 }
 
 let activeWasmStreamingOperation: string | null = null;
@@ -157,12 +167,14 @@ export class GeometryProcessor {
   private isNative: boolean = false;
   private lastNativeStats: PlatformGeometryStats | null = null;
   private mergeLayers: boolean;
+  private tessellationQuality: TessellationQuality | null;
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
     this.coordinateHandler = new CoordinateHandler();
     this.isNative = options.preferNative !== false && isTauri();
     this.mergeLayers = options.mergeLayers === true;
+    this.tessellationQuality = options.tessellationQuality ?? null;
     // Note: options accepted for API compatibility
     void options.quality;
 
@@ -173,6 +185,8 @@ export class GeometryProcessor {
       // the freshly-built IfcAPI. Existing call sites can opt in
       // simply by passing { mergeLayers: true } into the constructor.
       this.bridge.setMergeLayers(this.mergeLayers);
+      // Same eager cache-and-replay for the tessellation level (#976).
+      this.bridge.setTessellationQuality(this.tessellationQuality);
     }
   }
 
@@ -698,6 +712,9 @@ export class GeometryProcessor {
       // Issue #924: forward the geometry-hash tolerance the host enabled via
       // `enableGeometryHashes()` so the worker pool fingerprints too.
       geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,
+      // Issue #976: forward the tessellation level so every pool worker's
+      // IfcAPI tessellates at the same density as the main-thread paths.
+      tessellationQuality: this.tessellationQuality,
       wasmUrls,
     });
   }
@@ -831,6 +848,27 @@ export class GeometryProcessor {
    */
   enableGeometryHashes(tolerance: number | null = DEFAULT_GEOM_HASH_TOLERANCE): void {
     this.bridge?.setComputeGeometryHashes(tolerance);
+  }
+
+  /**
+   * Select the tessellation detail level for curved geometry (issue #976).
+   * Equivalent to the `tessellationQuality` constructor option; `null`
+   * restores the engine default (`'medium'` — output identical to the
+   * pre-quality pipeline). Applies to geometry processed AFTER the call
+   * (set before `process*` — already-emitted meshes are not regenerated).
+   *
+   * Safe to call before `init()` — the bridge caches the value and replays
+   * it on the freshly-built IfcAPI. No-op on the native/desktop path (the
+   * Tauri pipeline does not consume the level yet).
+   */
+  setTessellationQuality(level: TessellationQuality | null): void {
+    this.tessellationQuality = level;
+    this.bridge?.setTessellationQuality(level);
+  }
+
+  /** Read back the active tessellation quality (null = engine default). */
+  getTessellationQuality(): TessellationQuality | null {
+    return this.tessellationQuality;
   }
 
   /**

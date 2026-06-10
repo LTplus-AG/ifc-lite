@@ -25,7 +25,7 @@
  */
 
 import type { CoordinateHandler } from './coordinate-handler.js';
-import type { MeshData } from './types.js';
+import type { MeshData, TessellationQuality } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { pickWorkerCount } from './worker-count.js';
 
@@ -65,6 +65,13 @@ export interface ProcessParallelOptions {
    * model-diff / compare feature. `undefined`/`null` ⇒ off (zero overhead).
    */
   geometryHashTolerance?: number | null;
+  /**
+   * Issue #976 — tessellation detail level for curved geometry. When set,
+   * each geometry worker's IfcAPI receives `setTessellationQuality(level)`
+   * before the first stream-chunk. `undefined`/`null` ⇒ engine default
+   * (`'medium'`, output identical to the pre-quality pipeline).
+   */
+  tessellationQuality?: TessellationQuality | null;
   /**
    * Explicit URL for the wasm-bindgen `.wasm` binary. When provided,
    * forwarded to the geometry workers' init messages so they call
@@ -313,6 +320,12 @@ export async function* processParallel(
     worker.postMessage({
       type: 'set-compute-geometry-hashes',
       tolerance: options?.geometryHashTolerance ?? null,
+    });
+    // Issue #976: forward the tessellation-quality level the same way —
+    // null keeps the Rust default (Medium / historical densities).
+    worker.postMessage({
+      type: 'set-tessellation-quality',
+      level: options?.tessellationQuality ?? null,
     });
   }
 

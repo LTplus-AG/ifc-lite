@@ -49,11 +49,24 @@ export class IDSParseError extends Error {
 // hidden behind a runtime-computed specifier so browser bundlers don't pull
 // xmldom into the client bundle.
 type DOMParserCtor = new () => { parseFromString(input: string, mime: string): Document };
+
+// Only Node needs the xmldom fallback. A browser WORKER has no DOMParser
+// either, but it also never parses IDS (the main thread does, where
+// DOMParser exists) — and attempting `import('@xmldom/xmldom')` there
+// throws "bare specifier was not remapped" because the Node-only package
+// isn't in the browser bundle. Gate the fallback to the Node runtime so
+// merely importing this module (e.g. for `validateIDS` inside a worker)
+// never triggers it. Workers have no `process.versions.node`.
+const nodeProcess = (globalThis as {
+  process?: { versions?: { node?: string } };
+}).process;
+const isNodeRuntime = !!nodeProcess?.versions?.node;
+
 let DOMParserImpl: DOMParserCtor | null =
   typeof globalThis !== 'undefined' && typeof (globalThis as { DOMParser?: DOMParserCtor }).DOMParser === 'function'
     ? ((globalThis as { DOMParser?: DOMParserCtor }).DOMParser as DOMParserCtor)
     : null;
-if (!DOMParserImpl) {
+if (!DOMParserImpl && isNodeRuntime) {
   const moduleName = '@xmldom/xmldom';
   const xmldom = (await import(/* @vite-ignore */ moduleName)) as { DOMParser: DOMParserCtor };
   DOMParserImpl = xmldom.DOMParser;

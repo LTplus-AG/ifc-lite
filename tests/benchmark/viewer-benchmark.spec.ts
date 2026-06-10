@@ -120,7 +120,7 @@ test.describe('Viewer Performance Benchmarks', () => {
   // Expected mesh counts for geometry correctness validation
   // These help detect if optimizations break geometry (e.g., CSG skipping too much)
   const expectedMeshCounts: Record<string, number> = {
-    'AC20-FZK-Haus.ifc': 230,  // Expected meshes with cutouts (windows/doors)
+    'AC20-FZK-Haus.ifc': 317,  // Verified vs raw WASM pipeline 2026-06-10: incl. 32 type meshes (#957) + 7 IfcSpace (#1022). Was 230 pre-type-geometry/spaces.
     '01_Snowdon_Towers_Sample_Structural(1).ifc': 1500,  // Structural elements
     'O-S1-BWK-BIM architectural - BIM bouwkundig.ifc': 16400,  // Large architectural model
     'ISSUE_053_20181220Holter_Tower_10.ifc': 60000,  // Complex model (some walls may skip CSG due to MAX_OPENINGS)

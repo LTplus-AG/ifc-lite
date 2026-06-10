@@ -24,6 +24,8 @@
     "fixtures:upload": "node scripts/fixtures/upload-fixtures.mjs",
     "test": "turbo test",
     "test:collab": "pnpm --filter @ifc-lite/collab --filter @ifc-lite/collab-server test",
+    "test:e2e": "playwright test --project=viewer-e2e",
+    "test:e2e:ci": "playwright test --project=viewer-e2e-ci",
     "test:api": "tsx --tsconfig tests/tsconfig.json --test \"tests/api/**/*.test.ts\"",
     "test:integration": "tsx --tsconfig tests/tsconfig.json tests/integration.test.ts",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",

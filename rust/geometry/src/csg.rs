@@ -378,12 +378,42 @@ fn simplify_collinear(
     }
 }
 
+/// Is `v` a degenerate NEEDLE — its shortest edge a hairline relative to its
+/// longest? Such a triangle is a zero-area-intended sliver: the exact kernel
+/// faithfully spans two near-coincident-but-distinct rim Vids (an f32-import /
+/// shallow-dihedral near-duplicate the interner correctly does NOT weld) out to a
+/// far vertex (issue #1007 / schependomlaan: the diagonal flap over an opening).
+///
+/// The test is `min_edge < floor_pow2(max_edge) · 2⁻¹³` — POWER-OF-TWO and
+/// scale-relative, so it is bit-deterministic AND catches the needle (min 6.6 µm
+/// vs max ~5 m ⇒ threshold ~5·10⁻⁴) while never touching a real thin sliver
+/// (e.g. a 0.2 m × 2 m face, min 0.2 m ≫ 2·10⁻⁴). Dropping a needle cannot open a
+/// real gap — the hole/seam is already framed by the neighbouring non-degenerate
+/// triangles, exactly as Manifold (which welds the near-duplicate) produces.
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+fn tri_is_needle(v: &[Point3<f64>; 3]) -> bool {
+    let d = |a: &Point3<f64>, b: &Point3<f64>| (a - b).norm();
+    let (e0, e1, e2) = (d(&v[0], &v[1]), d(&v[1], &v[2]), d(&v[2], &v[0]));
+    let mn = e0.min(e1).min(e2);
+    let mx = e0.max(e1).max(e2);
+    if !mx.is_finite() || mx <= 0.0 {
+        return true; // fully degenerate
+    }
+    mn < floor_pow2(mx) * 2.0_f64.powi(-13)
+}
+
 /// Push a single triangle (with the supplied face normal applied to all
-/// three vertices) onto `mesh`. Used by `consolidate_coplanar` for plane
-/// buckets that have only one input triangle and don't need the 2D-union
-/// round-trip.
+/// three vertices) onto `mesh`, UNLESS it is a degenerate needle ([`tri_is_needle`]).
+/// Used by `consolidate_coplanar` for plane buckets that don't go through the
+/// 2D-union round-trip (single-triangle buckets and the union-collapse fallback);
+/// the needle drop here is what removes the #1007 diagonal sliver, since each
+/// tilted opening face lands in its own single-triangle plane bucket and would
+/// otherwise pass the raw kernel needle through verbatim.
 #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
 fn emit_triangle(mesh: &mut Mesh, v: &[Point3<f64>; 3], normal: &Vector3<f64>) {
+    if tri_is_needle(v) {
+        return;
+    }
     let base = mesh.vertex_count() as u32;
     mesh.add_vertex(v[0], *normal);
     mesh.add_vertex(v[1], *normal);
@@ -440,6 +470,91 @@ fn simplify_2d_collinear(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Point2
         .zip(keep.iter())
         .filter_map(|(p, k)| if *k { Some(*p) } else { None })
         .collect()
+}
+
+/// Largest power of two ≤ `x` (x finite, > 0). The exponent is read straight
+/// off the IEEE-754 bits, so the result is an EXACT f64 with a single set bit —
+/// bit-identical across x86_64/aarch64/wasm (no rounding, no transcendental).
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+#[inline]
+fn floor_pow2(x: f64) -> f64 {
+    if !x.is_finite() || x <= 0.0 {
+        return 0.0;
+    }
+    // 2^floor(log2(x)) via the unbiased exponent of the f64 representation.
+    let exp = x.to_bits() >> 52 & 0x7ff; // biased exponent
+    let unbiased = exp as i64 - 1023;
+    // f64::powi keeps a power-of-two base exact; 2.0_f64.powi is exact for the
+    // representable exponent range we hit (|coords| ≲ 1e7 ⇒ exponent ≲ 24).
+    2.0_f64.powi(unbiased as i32)
+}
+
+/// Merge consecutive near-coincident 2D contour vertices BEFORE the union/earcut.
+///
+/// The exact mesh-arrangement kernel correctly preserves two distinct rim points
+/// that the modeller intended as one but f32 import / a shallow-dihedral LPI
+/// crossing split a few µm apart (issue #1007 / schependomlaan: the diagonal
+/// sliver "flap" over an opening). They reach `consolidate_coplanar` as a hairline
+/// notch on the hole/outer ring; `simplify_2d_collinear` (a TURN-ANGLE test) does
+/// not remove them, so earcut frames the notch out to a far vertex → a degenerate
+/// needle (aspect ≫ 10⁵) that renders as a flap across the opening.
+///
+/// This collapses any vertex within `eps` of its kept predecessor onto that
+/// predecessor. `eps` is a POWER OF TWO scaled to the ring's bounding-box extent
+/// (`floor_pow2(extent) · 2⁻¹³` ≈ extent/8192) — bit-deterministic and
+/// scale-relative. On the #1007 fixture the rim duplicates span 6–72 µm on
+/// ~2 m faces (~3·10⁻⁶ … 4·10⁻⁵ of the extent) while the smallest REAL feature
+/// edge is 0.2 m (~0.1 of the extent), so eps (~10⁻⁴ of the extent) sits three
+/// orders of magnitude above the duplicate spread and three below any real edge —
+/// no over-weld. This runs in the already-non-exact consolidation post-pass; it
+/// does NOT touch the exact kernel's interner/predicates (no float weld in the
+/// determinism path).
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+fn weld_near_coincident_2d(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Point2<f64>> {
+    let n = ring.len();
+    if n < 4 {
+        return ring.to_vec();
+    }
+    let (mut minx, mut miny, mut maxx, mut maxy) =
+        (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for p in ring {
+        minx = minx.min(p.x);
+        miny = miny.min(p.y);
+        maxx = maxx.max(p.x);
+        maxy = maxy.max(p.y);
+    }
+    let extent = (maxx - minx).max(maxy - miny);
+    if !extent.is_finite() || extent <= 0.0 {
+        return ring.to_vec();
+    }
+    // extent · 2⁻¹³ rounded DOWN to a power of two ⇒ exact, deterministic.
+    let eps = floor_pow2(extent) * 2.0_f64.powi(-13);
+    let eps2 = eps * eps;
+    let mut kept: Vec<nalgebra::Point2<f64>> = Vec::with_capacity(n);
+    for &p in ring {
+        let dup = kept.last().is_some_and(|q| {
+            let dx = p.x - q.x;
+            let dy = p.y - q.y;
+            dx * dx + dy * dy < eps2
+        });
+        if !dup {
+            kept.push(p);
+        }
+    }
+    // close-the-loop check: last vs first.
+    if kept.len() >= 2 {
+        let (first, last) = (kept[0], *kept.last().unwrap());
+        let dx = last.x - first.x;
+        let dy = last.y - first.y;
+        if dx * dx + dy * dy < eps2 {
+            kept.pop();
+        }
+    }
+    if kept.len() >= 3 {
+        kept
+    } else {
+        ring.to_vec()
+    }
 }
 
 /// Convexity test for a coplanar ring of vertices. All `(edge_i × edge_{i+1})`
@@ -1155,7 +1270,10 @@ impl ClippingProcessor {
                     .iter()
                     .map(|p| nalgebra::Point2::new(p[0], p[1]))
                     .collect();
-                let outer_simplified = simplify_2d_collinear(&outer_2d);
+                // Weld µm-scale near-coincident rim duplicates FIRST (the #1007
+                // diagonal-sliver source), THEN drop collinear phantoms.
+                let outer_welded = weld_near_coincident_2d(&outer_2d);
+                let outer_simplified = simplify_2d_collinear(&outer_welded);
                 if outer_simplified.len() < 3 {
                     continue;
                 }
@@ -1171,7 +1289,8 @@ impl ClippingProcessor {
                             .iter()
                             .map(|p| nalgebra::Point2::new(p[0], p[1]))
                             .collect();
-                        let simplified = simplify_2d_collinear(&pts);
+                        let welded = weld_near_coincident_2d(&pts);
+                        let simplified = simplify_2d_collinear(&welded);
                         if simplified.len() < 3 {
                             return None;
                         }
@@ -1213,6 +1332,18 @@ impl ClippingProcessor {
                     output.add_vertex(*vp, normal);
                 }
                 for tri in indices.chunks_exact(3) {
+                    // Needle backstop: drop any residual sub-weld degenerate sliver
+                    // ([`tri_is_needle`], the same scale-relative power-of-two rule
+                    // as the single-triangle path). Cannot open a real gap — the
+                    // hole/seam is framed by its non-degenerate neighbours.
+                    let v = [
+                        verts_3d[tri[0]],
+                        verts_3d[tri[1]],
+                        verts_3d[tri[2]],
+                    ];
+                    if tri_is_needle(&v) {
+                        continue;
+                    }
                     output.add_triangle(
                         base + tri[0] as u32,
                         base + tri[1] as u32,
@@ -1954,6 +2085,77 @@ pub fn smooth_normals_with_creases(mesh: &mut Mesh, crease_cos: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn floor_pow2_is_exact_and_deterministic() {
+        // Exact powers map to themselves; in-between rounds DOWN to the prev power.
+        assert_eq!(floor_pow2(1.0), 1.0);
+        assert_eq!(floor_pow2(2.0), 2.0);
+        assert_eq!(floor_pow2(8.0), 8.0);
+        assert_eq!(floor_pow2(1.9), 1.0);
+        assert_eq!(floor_pow2(5.657), 4.0);
+        assert_eq!(floor_pow2(0.2), 0.125);
+        assert_eq!(floor_pow2(0.0), 0.0);
+        assert_eq!(floor_pow2(-3.0), 0.0);
+        // every result has exactly one set mantissa bit ⇒ bit-deterministic
+        for x in [0.3_f64, 1.7, 3.0, 17.9, 1024.0, 1e-3, 1e6] {
+            let p = floor_pow2(x);
+            assert!(p > 0.0 && p <= x);
+            assert_eq!(p.to_bits() & 0x000f_ffff_ffff_ffff, 0, "floor_pow2({x}) not a clean power of two");
+        }
+    }
+
+    #[test]
+    fn tri_is_needle_flags_hairline_slivers_not_real_thin_faces() {
+        // The #1007 needle: 6.6 µm base, ~5 m apex span → drop.
+        let needle = [
+            Point3::new(4.672253608703613, -1.0, 12.385885238647461),
+            Point3::new(1.047027587890625, -5.0, 14.07635498046875),
+            Point3::new(4.672259330749512, -1.0, 12.385882377624512),
+        ];
+        assert!(tri_is_needle(&needle), "the #1007 diagonal sliver was not flagged");
+        // A REAL thin sliver (0.2 m × 2 m face) must be KEPT.
+        let real_thin = [
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(2.0, 0.0, 0.0),
+            Point3::new(2.0, 0.2, 0.0),
+        ];
+        assert!(!tri_is_needle(&real_thin), "a real 0.2×2 m sliver was wrongly flagged");
+        // A healthy near-equilateral triangle is kept.
+        let healthy = [
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.5, 0.9, 0.0),
+        ];
+        assert!(!tri_is_needle(&healthy));
+        // A fully-collapsed triangle (zero longest edge) is degenerate → drop.
+        let collapsed = [Point3::new(1.0, 1.0, 1.0); 3];
+        assert!(tri_is_needle(&collapsed));
+    }
+
+    #[test]
+    fn weld_near_coincident_2d_collapses_um_rim_duplicates() {
+        use nalgebra::Point2;
+        // A unit-ish quad whose 4th corner is split into a 6.6 µm near-duplicate
+        // (the rim-notch shape that earcut would otherwise frame as a needle).
+        let ring = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(1.9, 0.0),
+            Point2::new(1.9, 1.0),
+            Point2::new(0.000_006_6, 1.0),
+            Point2::new(0.0, 1.0),
+        ];
+        let welded = weld_near_coincident_2d(&ring);
+        assert_eq!(welded.len(), 4, "near-coincident rim duplicate not welded: {welded:?}");
+        // A ring with only genuine (≥0.2 m) edges is untouched.
+        let clean = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(2.0, 0.0),
+            Point2::new(2.0, 0.2),
+            Point2::new(0.0, 0.2),
+        ];
+        assert_eq!(weld_near_coincident_2d(&clean).len(), 4, "a clean ring was over-welded");
+    }
 
     #[test]
     fn bsp_difference_preserves_rounded_rect_cap() {

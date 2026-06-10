@@ -102,6 +102,31 @@ fn process(content: &str, index: &EntityIndex, id: u32, voids: &FxHashMap<u32, V
         .unwrap_or_default()
 }
 
+/// Worst edge-length aspect ratio over the mesh (skipping fully-collapsed tris).
+/// The #1007 diagonal sliver "flap" over the opening shows up as an extreme ratio
+/// (raw kernel 66 205:1 / 259 997:1 on this fixture's two faceted-roof openings;
+/// consolidate used to leave it). A cleanly-framed hole stays well under 10³:1.
+fn worst_aspect(m: &Mesh) -> f64 {
+    let v = |i: u32| {
+        let b = i as usize * 3;
+        [m.positions[b] as f64, m.positions[b + 1] as f64, m.positions[b + 2] as f64]
+    };
+    let d = |p: [f64; 3], q: [f64; 3]| {
+        ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt()
+    };
+    let mut worst = 0.0_f64;
+    for t in m.indices.chunks_exact(3) {
+        let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
+        let (e0, e1, e2) = (d(a, b), d(b, c), d(c, a));
+        let mn = e0.min(e1).min(e2);
+        let mx = e0.max(e1).max(e2);
+        if mn > 1e-9 {
+            worst = worst.max(mx / mn);
+        }
+    }
+    worst
+}
+
 /// Defect B — the faceted-brep roof host has BOTH tilted-box openings actually
 /// subtracted: its volume drops from the uncut solid (~185.5) to the
 /// solid-minus-two-voids value (Manifold-oracle: 179.976). A solid (uncut) roof
@@ -145,6 +170,34 @@ fn faceted_brep_roof_openings_are_cut() {
     assert!(
         vol < uncut_vol - 5.0,
         "roof #{host_id} void cut removed too little: cut {vol:.4} vs uncut {uncut_vol:.4}",
+    );
+}
+
+/// Defect B (M3c/M3d) — the cut roof opening is FRAMED, not BRIDGED. The two
+/// tilted faceted-brep openings used to leave a diagonal needle "flap" over the
+/// hole: the exact kernel spanned a µm-scale near-duplicate rim vertex out to a
+/// far roof corner (raw aspect 66 205:1 / 259 997:1; consolidate left 884 237:1
+/// on the synthetic repro). The fix (a deterministic power-of-two near-coincident
+/// weld + needle drop in `consolidate_coplanar`) frames the hole cleanly — the
+/// worst aspect ratio collapses to the genuine-geometry floor (well under 10³:1).
+#[test]
+fn faceted_brep_roof_opening_has_no_spanning_sliver() {
+    let Some(content) = read_fixture() else {
+        return;
+    };
+    let index = build_entity_index(&content);
+    let voids = build_void_index(&content);
+    let host_id = 1112u32;
+
+    let mesh = process(&content, &index, host_id, &voids);
+    assert!(!mesh.is_empty(), "roof #{host_id} produced no mesh");
+
+    let wa = worst_aspect(&mesh);
+    assert!(
+        wa < 1.0e3,
+        "roof #{host_id} cut carries an opening-spanning sliver: worst aspect {wa:.0}:1 \
+         (expected a cleanly-framed hole < 1000:1). The diagonal flap over the opening \
+         is back (M3c/M3d regression).",
     );
 }
 

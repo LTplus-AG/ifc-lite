@@ -232,8 +232,11 @@ jobs:
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
     # Free runner — vitest consumes the prebuilt artifact; not compile-bound.
+    # 25 min: the job also runs the previously dark ifcx/renderer suites and
+    # the integration harness now; 18 min left no headroom (timed out at the
+    # integration step on a cold-ish run).
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:

@@ -238,11 +238,17 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
         }
       }
 
-      // Merge attributes
+      // Merge attributes (null removes — same semantics as children/inherits
+      // and the local composer; minimal layers express deletions this way).
       if (node.attributes) {
         for (const [key, value] of Object.entries(node.attributes)) {
-          result.attributes[key] = value;
-          result.attributeSources.set(key, layer.id);
+          if (value === null) {
+            delete result.attributes[key];
+            result.attributeSources.delete(key);
+          } else {
+            result.attributes[key] = value;
+            result.attributeSources.set(key, layer.id);
+          }
         }
       }
     }

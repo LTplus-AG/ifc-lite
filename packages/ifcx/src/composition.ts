@@ -90,7 +90,16 @@ function flattenNodes(path: string, nodes: IfcxNode[]): PreComposedNode {
       }
     }
     if (node.attributes) {
-      Object.assign(result.attributes, node.attributes);
+      for (const [key, value] of Object.entries(node.attributes)) {
+        if (value === null) {
+          // null means remove this attribute — same removal semantics as
+          // children/inherits; minimal layers express attribute and
+          // structured-branch deletions this way (#1027/#1031).
+          delete result.attributes[key];
+        } else {
+          result.attributes[key] = value;
+        }
+      }
     }
   }
 

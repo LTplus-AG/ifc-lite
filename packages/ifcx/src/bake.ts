@@ -15,7 +15,17 @@
  */
 
 import type { ComposedNode, IfcxFile, IfcxNode, ImportNode, IfcxSchema } from './types.js';
+import { IFCLITE_ATTR } from './types.js';
 import { composeIfcx } from './composition.js';
+
+/**
+ * `ifclite::` keys that are layer bookkeeping (resolved or meaningless
+ * once baked) as opposed to data carriers: classifications, materials,
+ * and geometry refs (#1031) are persistent content and must survive a
+ * bake or the round-trip back through `seedFromIfcx` silently loses
+ * those structured branches.
+ */
+const BAKE_STRIPPED_PREFIXES = [IFCLITE_ATTR.DELETED, IFCLITE_ATTR.DERIVED];
 
 export interface BakeOptions {
   /** Header id for the baked document (default: generated). */
@@ -33,9 +43,10 @@ export interface BakeOptions {
  * order `composeIfcx` resolves "later wins") and materialize the result as
  * a flat, tombstone-free IFCX document.
  *
- * The output carries no `ifclite::` attributes: deletion overlays are
- * resolved (deleted subtrees are gone), and derived-cache markers are
- * dropped. Inherits are resolved into plain attributes.
+ * The output carries no `ifclite::` *bookkeeping*: deletion overlays are
+ * resolved (deleted subtrees are gone) and derived-cache markers are
+ * dropped, while persistent data carriers (classifications, materials,
+ * geometry refs) survive. Inherits are resolved into plain attributes.
  */
 export function bakeLayers(layers: IfcxFile[], options: BakeOptions = {}): IfcxFile {
   if (layers.length === 0) {
@@ -85,7 +96,7 @@ function materializeNode(node: ComposedNode): IfcxNode {
 
   const attributes: Record<string, unknown> = {};
   for (const [key, value] of node.attributes) {
-    if (key.startsWith('ifclite::')) continue;
+    if (BAKE_STRIPPED_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;
     attributes[key] = value;
   }
   if (Object.keys(attributes).length > 0) {

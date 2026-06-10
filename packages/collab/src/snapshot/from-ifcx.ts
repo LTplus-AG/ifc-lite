@@ -69,10 +69,17 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
     for (const node of file.data ?? []) {
       const path = node.path;
       if (!path) continue;
+      // Null attribute values are removal opinions (minimal layers); with
+      // nothing beneath them to remove, they mean "absent" — never store
+      // them as values.
+      const rawAttributes: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(node.attributes ?? {})) {
+        if (value !== null) rawAttributes[key] = value;
+      }
       // Re-inflate structured branches the snapshot writer folded into
       // namespaced attributes (#1031); the shape-gated remainder stays
       // in the flat attributes branch.
-      const inflated = inflateStructuredAttributes(node.attributes ? { ...node.attributes } : {});
+      const inflated = inflateStructuredAttributes(rawAttributes);
       const children: Record<string, string> = {};
       if (node.children) {
         for (const [role, target] of Object.entries(node.children)) {

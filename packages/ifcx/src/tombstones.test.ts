@@ -129,6 +129,48 @@ describe('tombstone composition (federated layer stack, strength wins)', () => {
   });
 });
 
+describe('null attribute opinions compose as removals (#1031)', () => {
+  const removalStack = [
+    makeFile(baseNodes, 'base'),
+    makeFile(
+      [
+        {
+          path: 'wall-1',
+          attributes: {
+            'bsi::ifc::prop::Name': null,
+            'bsi::ifc::v5a::Pset_FireSafety::FireRating': null,
+          },
+        },
+      ],
+      'remove'
+    ),
+  ];
+
+  it('composeIfcx deletes null-valued attributes', () => {
+    const merged: IfcxFile = {
+      ...removalStack[0],
+      data: removalStack.flatMap((file) => file.data),
+    };
+    const composed = composeIfcx(merged);
+    const wall = composed.get('wall-1');
+    assert.ok(wall);
+    assert.strictEqual(wall.attributes.has('bsi::ifc::prop::Name'), false);
+    assert.strictEqual(wall.attributes.has('bsi::ifc::v5a::Pset_FireSafety::FireRating'), false);
+  });
+
+  it('composeFederated deletes null-valued attributes', () => {
+    const stack = createLayerStack();
+    removalStack.forEach((file, i) => {
+      // addLayerAt position 0 makes later files stronger (parseFederatedIfcx pattern).
+      stack.addLayerAt(file, new ArrayBuffer(0), `layer-${i}`, 0, { type: 'buffer', name: `layer-${i}` });
+    });
+    const { composed } = composeFederated(stack);
+    const wall = composed.get('wall-1');
+    assert.ok(wall);
+    assert.strictEqual(wall.attributes.has('bsi::ifc::prop::Name'), false);
+  });
+});
+
 describe('bakeLayers (tombstone-free materialization)', () => {
   it('emits a flat document with deletions resolved and no ifclite:: attributes', () => {
     const baked = bakeLayers([
@@ -145,6 +187,38 @@ describe('bakeLayers (tombstone-free materialization)', () => {
     }
     const storey = baked.data.find((node) => node.path === 'storey-eg');
     assert.deepStrictEqual(storey?.children, { Door: 'door-1' });
+  });
+
+  it('strips bookkeeping but preserves persistent ifclite:: data carriers (#1031)', () => {
+    const baked = bakeLayers([
+      makeFile(
+        [
+          {
+            path: 'wall-1',
+            attributes: {
+              'bsi::ifc::prop::Name': 'W1',
+              'ifclite::classifications': [{ system: 'eBKP-H', code: 'C2.1' }],
+              'ifclite::materials': [{ materialId: 'mat-1' }],
+              'ifclite::geometryRef': 'geom-1',
+              [IFCLITE_ATTR.DERIVED]: true,
+            },
+          },
+        ],
+        'base'
+      ),
+    ]);
+
+    // Derived nodes are dropped wholesale by canonicalization, not bake;
+    // bake strips the marker attribute but keeps the node + carriers.
+    const wall = baked.data.find((node) => node.path === 'wall-1');
+    assert.ok(wall, 'wall survived bake');
+    assert.deepStrictEqual(wall.attributes?.['ifclite::classifications'], [
+      { system: 'eBKP-H', code: 'C2.1' },
+    ]);
+    assert.deepStrictEqual(wall.attributes?.['ifclite::materials'], [{ materialId: 'mat-1' }]);
+    assert.strictEqual(wall.attributes?.['ifclite::geometryRef'], 'geom-1');
+    assert.ok(!(IFCLITE_ATTR.DERIVED in (wall.attributes ?? {})), 'derived marker stripped');
+    assert.ok(!(IFCLITE_ATTR.DELETED in (wall.attributes ?? {})), 'no tombstone in baked output');
   });
 
   it('round-trips: bake output composes identically to the source stack', () => {

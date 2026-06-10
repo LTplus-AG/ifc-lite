@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import { composeIfcx, type IfcxFile } from '@ifc-lite/ifcx';
 import { createCollabDoc } from '../src/doc/schema.js';
 import {
   addClassification,
@@ -21,6 +22,7 @@ import {
   setQuantityValue,
 } from '../src/doc/entity.js';
 import { extractMinimalLayer } from '../src/snapshot/minimal-layer.js';
+import { snapshotToIfcx } from '../src/snapshot/to-ifcx.js';
 
 describe('extractMinimalLayer', () => {
   it('emits only entities created or updated since baseline', () => {
@@ -210,6 +212,32 @@ describe('extractMinimalLayer', () => {
       expect(wall.attributes?.['ifclite::classifications']).toBeNull();
       expect(wall.attributes).not.toHaveProperty('ifclite::geometryRef');
       expect(wall.attributes).not.toHaveProperty('bsi::ifc::v5a::Pset_FireSafety::FireRating');
+    });
+
+    it('baseline + minimal layer COMPOSE to the live state for structured deletions', () => {
+      const doc = createCollabDoc();
+      createEntity(doc, 'wall');
+      setPropertyValue(doc, 'wall', 'Pset_FireSafety', 'FireRating', {
+        type: 'IfcLabel',
+        value: 'F30',
+      });
+      const baselineSnapshot = snapshotToIfcx(doc);
+      const baseline = Y.encodeStateAsUpdate(doc);
+
+      deletePropertyValue(doc, 'wall', 'Pset_FireSafety', 'FireRating');
+      const layer = extractMinimalLayer(doc, baseline);
+
+      // Concatenating data arrays weakest-first matches composeIfcx's
+      // later-wins layer semantics (same shape bakeLayers uses).
+      const merged: IfcxFile = {
+        ...baselineSnapshot,
+        data: [...baselineSnapshot.data, ...layer.data],
+      };
+      const composed = composeIfcx(merged);
+      const wall = composed.get('wall');
+      expect(wall).toBeDefined();
+      // The null removal opinion must resolve — not survive as a null value.
+      expect(wall!.attributes.has('bsi::ifc::v5a::Pset_FireSafety::FireRating')).toBe(false);
     });
 
     it('new entity carries its structured branches whole', () => {

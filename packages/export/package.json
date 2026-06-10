@@ -27,6 +27,7 @@
     "jszip": "^3.10.0"
   },
   "devDependencies": {
+    "@ifc-lite/ifcx": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^4.1.0"
   },

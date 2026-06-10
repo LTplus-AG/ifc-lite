@@ -872,6 +872,9 @@ importers:
         specifier: ^0.7.1
         version: 0.7.1
     devDependencies:
+      '@ifc-lite/ifcx':
+        specifier: workspace:^
+        version: link:../ifcx
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

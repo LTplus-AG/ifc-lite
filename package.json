@@ -26,6 +26,7 @@
     "test:collab": "pnpm --filter @ifc-lite/collab --filter @ifc-lite/collab-server test",
     "test:api": "tsx --tsconfig tests/tsconfig.json --test \"tests/api/**/*.test.ts\"",
     "test:integration": "tsx --tsconfig tests/tsconfig.json tests/integration.test.ts",
+    "test:wasm-contract": "node scripts/test-wasm-contract.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "test:regression": "node scripts/test-geometry-regression.mjs",
     "test:esm": "node scripts/verify-esm-entrypoints.mjs",

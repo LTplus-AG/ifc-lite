@@ -149,6 +149,82 @@ END-ISO-10303-21;`;
   collection.free();
 });
 
+// ===== Pre-pass contract (viewer boundary) =====
+// The TS GeometryProcessor (packages/geometry) destructures these exact
+// fields off buildPrePassOnce() and forwards them to processGeometryBatch.
+// If a wasm-bindings change renames or drops one, the viewer breaks at
+// runtime while every mocked TS test stays green — this pins the contract.
+console.log('\n📋 buildPrePassOnce contract');
+
+test('pre-pass exposes every field the viewer consumes', () => {
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.equal(typeof pre.totalJobs, 'number');
+    assert.ok(pre.jobs, 'jobs must exist');
+    assert.equal(typeof pre.unitScale, 'number');
+    assert.ok(pre.rtcOffset, 'rtcOffset must exist');
+    assert.equal(pre.rtcOffset.length, 3, 'rtcOffset must be [x, y, z]');
+    for (const v of pre.rtcOffset) {
+      assert.ok(Number.isFinite(v), 'rtcOffset components must be finite');
+    }
+    assert.equal(typeof pre.needsShift, 'boolean');
+    assert.equal(typeof pre.buildingRotation, 'number');
+    // Void + style transport arrays (may be empty, must be present)
+    for (const key of ['voidKeys', 'voidCounts', 'voidValues', 'styleIds', 'styleColors']) {
+      assert.ok(pre[key] !== undefined && pre[key] !== null, `${key} must exist`);
+    }
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('unit scale resolves conversion-based units (inch fixture → 0.0254)', () => {
+  // column-straight-rectangle-tessellation.ifc declares METRE as the SI
+  // unit but overrides length with IFCCONVERSIONBASEDUNIT 'inch'. The
+  // recurring unit-bug class is exactly this chain resolving wrong.
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.ok(Math.abs(pre.unitScale - 0.0254) < 1e-9,
+      `inch model must yield unitScale 0.0254, got ${pre.unitScale}`);
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('unit scale resolves plain SI metres (georef fixture → 1.0)', () => {
+  const georefContent = readFileSync(GEOREF_IFC, 'utf-8');
+  const bytes = new TextEncoder().encode(georefContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.equal(pre.unitScale, 1, `metre model must yield unitScale 1, got ${pre.unitScale}`);
+    assert.equal(pre.needsShift, false, 'local-coordinate model must not trigger RTC shift');
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('mesh output is metre-normalized (column fits a sane bbox)', () => {
+  // The inch fixture's column is ~3 m tall. If unit scaling silently
+  // stopped being applied, positions come out in inches (×39) — assert
+  // the overall bbox stays in building-scale metres.
+  const collection = parseMeshesViaPrePass(api, columnContent);
+  assert.ok(collection.length > 0, 'fixture must mesh');
+  let maxAbs = 0;
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    for (let j = 0; j < mesh.positions.length; j++) {
+      const a = Math.abs(mesh.positions[j]);
+      if (a > maxAbs) maxAbs = a;
+    }
+    mesh.free();
+  }
+  assert.ok(maxAbs > 0.1, `column extent ${maxAbs} suspiciously small — unit scale over-applied?`);
+  assert.ok(maxAbs < 50, `column extent ${maxAbs} m — unit scale not applied?`);
+  collection.free();
+});
+
 // ===== scanEntitiesFast =====
 console.log('\n📋 scanEntitiesFast');
 

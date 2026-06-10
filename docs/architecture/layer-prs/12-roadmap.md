@@ -67,7 +67,7 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 
 ## Cross-cutting
 
-- ☐ One diff/MergePlan JSON schema consumed identically by CLI, MCP, UI (contract tests)
+- ◐ One diff/MergePlan JSON schema consumed identically by CLI, MCP, UI (contract tests) — the diff JSON is now ONE implementation (`@ifc-lite/merge` `state-diff.ts`, deterministic ordering) consumed by `ifc layer diff --json` and the MCP `diff_layer` tool, with a byte-exact contract test; MergePlan is emitted from the shared type (CLI full, MCP trimmed conflicts). UI consumption lands with L4
 - ☐ Perf budgets in CI (02 §2.5, 05 §5.7)
 - ☐ Spec-set versioning: manifest SemVer; composition behavior behind `layers.enabled`
 - ⚠ Open problems parked deliberately: heuristic identity (04 §4.5), cross-schema identity, deletion-overlay upstream standardization (tracked with panel)

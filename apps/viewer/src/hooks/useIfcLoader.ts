@@ -50,6 +50,7 @@ import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIng
 import { getGlobalRenderer } from './useBCF.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { toast } from '../components/ui/toast.js';
+import { posthog } from '../lib/analytics.js';
 
 /**
  * Where a {@link useIfcLoader.loadFile} call should land the model.
@@ -486,6 +487,7 @@ export function useIfcLoader() {
           pointCloudHandleId: ingest.rendererHandle.id,
         });
         setProgress({ phase: 'Complete', percent: 100 });
+        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind });
         setLoading(false);
         return;
       }
@@ -504,6 +506,7 @@ export function useIfcLoader() {
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
 
           setProgress({ phase: 'Complete', percent: 100 });
+          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -545,7 +548,7 @@ export function useIfcLoader() {
           );
 
           setProgress({ phase: 'Complete', percent: 100 });
-
+          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -1173,6 +1176,13 @@ export function useIfcLoader() {
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
+      posthog.capture('ifc_model_loaded', {
+        format,
+        file_size_mb: Math.round(fileSizeMB * 100) / 100,
+        load_target: target.kind,
+        mesh_count: allMeshes.length,
+        total_elapsed_ms: Math.round(totalElapsedMs),
+      });
       setLoading(false);
       setGeometryStreamingActive(false);
     } catch (err) {
@@ -1182,6 +1192,7 @@ export function useIfcLoader() {
         loadError: err instanceof Error ? err.message : String(err),
       });
       setError(err instanceof Error ? err.message : 'Unknown error');
+      posthog.captureException(err, { additional_properties: { context: 'ifc_model_load' } });
       setLoading(false);
       setGeometryStreamingActive(false);
     }

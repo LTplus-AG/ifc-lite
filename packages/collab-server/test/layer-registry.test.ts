@@ -205,7 +205,7 @@ describe('layer registry route', () => {
     const layerId = baseLayer.header.id;
     const opened = await fetch(`${api}/reviews`, {
       method: 'POST',
-      body: JSON.stringify({ layer_id: layerId, into: 'main', reviewers: ['bob'] }),
+      body: JSON.stringify({ layer_id: layerId, into: 'main' }),
     });
     expect(opened.status).toBe(201);
     const { id } = (await opened.json()) as { id: string };
@@ -227,6 +227,77 @@ describe('layer registry route', () => {
     expect(review.status).toBe('changes-requested');
     expect(review.feedback).toHaveLength(1);
     expect(review.openedBy).toBe('anonymous');
+  });
+
+  it('enforces named reviewers and blocks self-approval', async () => {
+    const server = await startCollabServer({
+      port: 0,
+      layerRegistry: true,
+      authenticate: () => ({ userId: 'bot-7', role: 'editor' }),
+    });
+    try {
+      const port = (server.httpServer.address() as { port: number }).port;
+      const url = `http://127.0.0.1:${port}/api/v1`;
+      const post = (path: string, body: unknown) =>
+        fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(body) });
+
+      // Agent-authored layer (manifest author.principal = 'bot-7').
+      const layer = publishable(
+        [{ path: 'wall-1', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' } } }],
+        'Agent work',
+        null,
+        'agent'
+      );
+      expect((await post('/layers', layer)).status).toBe(201);
+      await fetch(`${url}/refs/main`, {
+        method: 'PUT',
+        body: JSON.stringify({ layers: [layer.header.id] }),
+      });
+
+      // Named reviewers exclude the caller: feedback is rejected.
+      const restricted = await post('/reviews', {
+        layer_id: layer.header.id,
+        into: 'main',
+        reviewers: ['bob'],
+      });
+      const restrictedId = ((await restricted.json()) as { id: string }).id;
+      const rejected = await post(`/reviews/${restrictedId}/feedback`, {
+        decisions: [{ entity: 'wall-1', decision: 'accept' }],
+        status: 'approved',
+      });
+      expect(rejected.status).toBe(403);
+
+      // Unrestricted review: the layer's own author still cannot approve it.
+      const open = await post('/reviews', { layer_id: layer.header.id, into: 'main' });
+      const openId = ((await open.json()) as { id: string }).id;
+      const selfApproval = await post(`/reviews/${openId}/feedback`, {
+        decisions: [{ entity: 'wall-1', decision: 'accept' }],
+        status: 'approved',
+      });
+      expect(selfApproval.status).toBe(403);
+      expect(((await selfApproval.json()) as { error: string }).error).toContain('own review');
+
+      // Non-approving feedback from the author is still allowed.
+      const comment = await post(`/reviews/${openId}/feedback`, {
+        decisions: [{ entity: 'wall-1', decision: 'accept', comment: 'self-note' }],
+      });
+      expect(comment.status).toBe(200);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('rejects malformed ref bodies: non-string layers and invalid policy shapes', async () => {
+    const badLayers = await fetch(`${api}/refs/bad`, {
+      method: 'PUT',
+      body: JSON.stringify({ layers: [42, null] }),
+    });
+    expect(badLayers.status).toBe(400);
+    const badPolicy = await fetch(`${api}/refs/bad`, {
+      method: 'PUT',
+      body: JSON.stringify({ layers: [], policy: { requiredChecks: 'not-an-array' } }),
+    });
+    expect(badPolicy.status).toBe(400);
   });
 
   it('derives requireHumanApproval from approved reviews, never from caller input', async () => {

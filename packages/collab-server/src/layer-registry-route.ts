@@ -22,10 +22,18 @@
  * Authentication mirrors the blob route: the websocket `authenticate`
  * hook is adapted into an authorizer, so one token scheme covers sync,
  * blobs, and the registry.
+ *
+ * v1 visibility: any authenticated principal reads ALL layers and refs
+ * (team-scoped registry); per-ref/per-layer visibility is the
+ * public/internal/private roadmap work (10 §10.5). Approval is a
+ * point-in-time check — the lookup and the merge run synchronously in
+ * one request, but an approval withdrawn after a merge completed does
+ * not un-merge it.
  */
 
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
+import { getProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import { mergeIntoRef } from '@ifc-lite/merge';
 import type { MergeInit, RefEntry, RefPolicy, Waiver } from '@ifc-lite/merge';
@@ -55,13 +63,20 @@ export interface LayerRegistryRouteOptions {
 const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
 const BASE = '/api/v1/';
 
-function extractToken(req: http.IncomingMessage, url: URL): string | undefined {
+/**
+ * Registry credentials are `Authorization: Bearer` ONLY — no `?token=`
+ * fallback. A query-string secret leaks via access logs, reverse proxies,
+ * traces, and copied URLs (same reasoning as the /metrics endpoint; the
+ * websocket path keeps `?token=` only because browsers cannot set
+ * handshake headers, which does not apply to registry API clients).
+ */
+function extractToken(req: http.IncomingMessage): string | undefined {
   const header = req.headers['authorization'];
   if (typeof header === 'string') {
     const m = /^Bearer\s+(.+)$/i.exec(header.trim());
     if (m) return m[1];
   }
-  return url.searchParams.get('token') ?? undefined;
+  return undefined;
 }
 
 function json(res: http.ServerResponse, status: number, body: unknown): true {
@@ -90,6 +105,24 @@ function parseJson(text: string): unknown | undefined {
   }
 }
 
+/** Runtime shape validation for ref policies; undefined = invalid. */
+function parseRefPolicy(value: unknown): RefPolicy | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const policy: RefPolicy = {};
+  if (raw.requireHumanApproval !== undefined) {
+    if (typeof raw.requireHumanApproval !== 'boolean') return undefined;
+    policy.requireHumanApproval = raw.requireHumanApproval;
+  }
+  if (raw.requiredChecks !== undefined) {
+    if (!Array.isArray(raw.requiredChecks) || !raw.requiredChecks.every((c) => typeof c === 'string')) {
+      return undefined;
+    }
+    policy.requiredChecks = raw.requiredChecks;
+  }
+  return policy;
+}
+
 /**
  * Handle a registry request. Returns false (untouched response) when the
  * path is not a registry path, true when a response was written.
@@ -108,7 +141,7 @@ export async function handleLayerRegistryRequest(
   const method = req.method ?? 'GET';
   let principal: Principal | null = null;
   if (opts.authorize) {
-    principal = await opts.authorize(extractToken(req, url), method);
+    principal = await opts.authorize(extractToken(req), method);
     if (!principal) return json(res, 401, { error: 'unauthorized' });
   }
   const registry = opts.registry;
@@ -135,6 +168,11 @@ export async function handleLayerRegistryRequest(
         return json(res, 201, { id: registry.push(file) });
       } catch (err) {
         if (err instanceof LayerPushError) return json(res, 409, { error: err.message, code: err.code });
+        // Content that cannot be canonicalized (non-finite numbers, exotic
+        // value types) is a client error, not a server fault.
+        if (err instanceof Error && err.message.includes('canonicalizable')) {
+          return json(res, 400, { error: err.message });
+        }
         throw err;
       }
     }
@@ -149,9 +187,19 @@ export async function handleLayerRegistryRequest(
     if (method === 'PUT' && segments.length === 2) {
       const text = await readBody(req, maxBytes);
       if (text === null) return json(res, 413, { error: `body exceeds ${maxBytes} bytes` });
-      const body = parseJson(text ?? '') as { layers?: unknown; policy?: RefPolicy } | undefined;
-      if (!body || (body.layers !== undefined && !Array.isArray(body.layers))) {
+      const body = parseJson(text ?? '') as { layers?: unknown; policy?: unknown } | undefined;
+      if (
+        !body ||
+        (body.layers !== undefined &&
+          !(Array.isArray(body.layers) && body.layers.every((id) => typeof id === 'string')))
+      ) {
         return json(res, 400, { error: 'body must be { layers?: string[], policy?: RefPolicy }' });
+      }
+      const policy = body.policy === undefined ? undefined : parseRefPolicy(body.policy);
+      if (body.policy !== undefined && policy === undefined) {
+        return json(res, 400, {
+          error: 'policy must be { requireHumanApproval?: boolean, requiredChecks?: string[] }',
+        });
       }
       const name = segments[1];
       const existing = registry.getRef(name);
@@ -167,7 +215,10 @@ export async function handleLayerRegistryRequest(
           error: `ref ${name} is policy-protected; move it via POST ${BASE}refs/${name}/merge`,
         });
       }
-      const entry: RefEntry = { layers, ...(body.policy ? { policy: body.policy } : existing?.policy ? { policy: existing.policy } : {}) };
+      const entry: RefEntry = {
+        layers,
+        ...(policy ? { policy } : existing?.policy ? { policy: existing.policy } : {}),
+      };
       registry.setRef(name, entry);
       return json(res, existing ? 200 : 201, { ref: name, ...entry });
     }
@@ -269,6 +320,11 @@ export async function handleLayerRegistryRequest(
   if (method === 'POST' && segments.length === 3 && segments[2] === 'feedback') {
     const review = registry.getReview(segments[1]);
     if (!review) return json(res, 404, { error: `no review ${segments[1]}` });
+    // When the review names reviewers, only they may act on it.
+    const actor = principal?.userId ?? 'anonymous';
+    if (review.reviewers.length > 0 && !review.reviewers.includes(actor)) {
+      return json(res, 403, { error: `only the named reviewers may act on review ${review.id}` });
+    }
     const text = await readBody(req, maxBytes);
     if (text === null) return json(res, 413, { error: `body exceeds ${maxBytes} bytes` });
     const body = parseJson(text ?? '') as
@@ -277,12 +333,23 @@ export async function handleLayerRegistryRequest(
     if (!body || !Array.isArray(body.decisions)) {
       return json(res, 400, { error: 'body must include { decisions: [...] }' });
     }
+    if (body.status === 'approved') {
+      // No self-approval: the layer's manifest author cannot satisfy the
+      // approval its own merge needs. (Human-vs-agent identity of the
+      // approver is the auth provider's responsibility — the registry
+      // enforces attributability and separation, not species.)
+      const layer = registry.hasLayer(review.layerId) ? registry.loadLayer(review.layerId) : undefined;
+      const author = layer ? getProvenance(layer)?.author.principal : undefined;
+      if (author !== undefined && author === actor) {
+        return json(res, 403, { error: `layer author ${author} cannot approve their own review` });
+      }
+    }
     review.feedback.push(...body.decisions);
     if (body.status === 'approved' || body.status === 'changes-requested') {
       review.status = body.status;
       // Approval identity is server-recorded, never caller-asserted: the
       // merge endpoint reads it back for requireHumanApproval policies.
-      if (body.status === 'approved') review.approvedBy = principal?.userId ?? 'anonymous';
+      if (body.status === 'approved') review.approvedBy = actor;
       else delete review.approvedBy;
     }
     registry.putReview(review);

@@ -7,7 +7,7 @@
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, Plane, Triangle, TriangleVec};
 use crate::mesh::{SubMesh, SubMeshCollection};
-use crate::{Error, Mesh, Point3, Result, Vector3};
+use crate::{Error, Mesh, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -1413,7 +1413,16 @@ impl GeometryRouter {
                     let open_vol = (open_max_f32.x - open_min_f32.x)
                         * (open_max_f32.y - open_min_f32.y)
                         * (open_max_f32.z - open_min_f32.z);
-                    if open_vol < MIN_OPENING_VOLUME as f32 {
+                    // The 0.1 L volume floor filters BSP CSG artefacts but also
+                    // drops genuine small openings — bolt holes / sleeves in thin
+                    // plates. At the two highest quality levels keep those holes
+                    // (Manifold, the default kernel, is stable on small cutters);
+                    // only reject numerically degenerate cutters there. (issue #976)
+                    let min_open_vol = match self.tessellation_quality() {
+                        TessellationQuality::High | TessellationQuality::Highest => 1e-9_f32,
+                        _ => MIN_OPENING_VOLUME as f32,
+                    };
+                    if open_vol < min_open_vol {
                         continue;
                     }
 

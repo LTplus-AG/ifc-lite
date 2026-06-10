@@ -4,7 +4,7 @@
 
 //! MappedItem processor - geometry instancing.
 
-use crate::{Error, Mesh, Result};
+use crate::{Error, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use super::boolean::BooleanClippingProcessor;
@@ -31,6 +31,7 @@ impl GeometryProcessor for MappedItemProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcMappedItem attributes:
         // 0: MappingSource (IfcRepresentationMap)
@@ -70,23 +71,23 @@ impl GeometryProcessor for MappedItemProcessor {
             let item_mesh = match item.ifc_type {
                 IfcType::IfcExtrudedAreaSolid => {
                     let processor = ExtrudedAreaSolidProcessor::new(schema.clone());
-                    processor.process(&item, decoder, schema)?
+                    processor.process(&item, decoder, schema, quality)?
                 }
                 IfcType::IfcExtrudedAreaSolidTapered => {
                     let processor = ExtrudedAreaSolidTaperedProcessor::new(schema.clone());
-                    processor.process(&item, decoder, schema)?
+                    processor.process(&item, decoder, schema, quality)?
                 }
                 IfcType::IfcTriangulatedFaceSet => {
                     let processor = TriangulatedFaceSetProcessor::new();
-                    processor.process(&item, decoder, schema)?
+                    processor.process(&item, decoder, schema, quality)?
                 }
                 IfcType::IfcFacetedBrep => {
                     let processor = FacetedBrepProcessor::new();
-                    processor.process(&item, decoder, schema)?
+                    processor.process(&item, decoder, schema, quality)?
                 }
                 IfcType::IfcSweptDiskSolid => {
                     let processor = SweptDiskSolidProcessor::new(schema.clone());
-                    processor.process(&item, decoder, schema)?
+                    processor.process(&item, decoder, schema, quality)?
                 }
                 IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
                     // Drain the transient processor's `BoolFailure` log into
@@ -95,7 +96,7 @@ impl GeometryProcessor for MappedItemProcessor {
                     // chains in `take_csg_failures`. Without this drain the
                     // processor's failures vanish when it goes out of scope.
                     let processor = BooleanClippingProcessor::new();
-                    let mesh = processor.process(&item, decoder, schema)?;
+                    let mesh = processor.process(&item, decoder, schema, quality)?;
                     crate::diagnostics::push_pending_mapped_bool_failures(
                         processor.take_failures(),
                     );
@@ -103,7 +104,7 @@ impl GeometryProcessor for MappedItemProcessor {
                 }
                 IfcType::IfcRevolvedAreaSolid => {
                     let processor = RevolvedAreaSolidProcessor::new(schema.clone());
-                    processor.process(&item, decoder, schema)?
+                    processor.process(&item, decoder, schema, quality)?
                 }
                 _ => continue, // Skip unsupported types
             };

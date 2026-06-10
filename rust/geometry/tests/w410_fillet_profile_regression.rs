@@ -25,7 +25,7 @@
 //! profiles are left untouched.
 
 use ifc_lite_core::{EntityDecoder, IfcSchema};
-use ifc_lite_geometry::ProfileProcessor;
+use ifc_lite_geometry::{ProfileProcessor, TessellationQuality};
 use nalgebra::Point2;
 
 fn shoelace_area(points: &[Point2<f64>]) -> f64 {
@@ -148,7 +148,7 @@ fn w410x60_arbitrary_closed_profile_with_fillet_arcs_matches_analytical_area() {
 
     let profile_entity = decoder.decode_by_id(36884).expect("decode profile");
     let profile = processor
-        .process(&profile_entity, &mut decoder)
+        .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
         .expect("process profile");
 
     let area = shoelace_area(&profile.outer);

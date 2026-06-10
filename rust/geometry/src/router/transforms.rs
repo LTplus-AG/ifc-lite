@@ -6,7 +6,7 @@
 
 use super::GeometryRouter;
 use crate::profiles::ProfileProcessor;
-use crate::{Error, Mesh, Point2, Point3, Result, Vector2, Vector3};
+use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality, Vector2, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
@@ -242,7 +242,7 @@ impl GeometryRouter {
         // curve type the alignment authors in #859's fixture eventually reduce to.
         let processor = ProfileProcessor::new(IfcSchema::new());
         let samples = processor
-            .get_curve_points(&basis_curve, decoder)
+            .get_curve_points(&basis_curve, decoder, TessellationQuality::Medium)
             .ok()
             .filter(|pts| pts.len() >= 2)?;
 
@@ -438,7 +438,9 @@ impl GeometryRouter {
         }
         let curve = decoder.resolve_ref(curve_attr).ok().flatten()?;
         let processor = ProfileProcessor::new(IfcSchema::new());
-        let pts = processor.get_curve_points(&curve, decoder).ok()?;
+        let pts = processor
+            .get_curve_points(&curve, decoder, TessellationQuality::Medium)
+            .ok()?;
         if pts.len() < 2 {
             return None;
         }

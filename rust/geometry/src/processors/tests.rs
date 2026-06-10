@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::router::GeometryProcessor;
+use crate::TessellationQuality;
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
 
 /// Read a fixture under `tests/models/`, returning `None` and printing a
@@ -74,7 +75,7 @@ fn test_extruded_area_solid() {
     let processor = ExtrudedAreaSolidProcessor::new(schema.clone());
 
     let entity = decoder.decode_by_id(3).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert!(!mesh.is_empty());
     assert!(!mesh.positions.is_empty());
@@ -93,7 +94,7 @@ fn test_triangulated_face_set() {
     let processor = TriangulatedFaceSetProcessor::new();
 
     let entity = decoder.decode_by_id(2).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert_eq!(mesh.positions.len(), 9); // 3 vertices * 3 coordinates
     assert_eq!(mesh.indices.len(), 3); // 1 triangle
@@ -129,7 +130,7 @@ fn test_boolean_result_with_half_space() {
 
     // Now process the boolean result
     let mesh = processor
-        .process(&bool_result, &mut decoder, &schema)
+        .process(&bool_result, &mut decoder, &schema, TessellationQuality::Medium)
         .unwrap();
     println!("Mesh vertices: {}", mesh.positions.len() / 3);
     println!("Mesh triangles: {}", mesh.indices.len() / 3);
@@ -164,7 +165,7 @@ fn solid_solid_difference_actually_cuts() {
 
     let bool_result = decoder.decode_by_id(20).unwrap();
     let cut_mesh = processor
-        .process(&bool_result, &mut decoder, &schema)
+        .process(&bool_result, &mut decoder, &schema, TessellationQuality::Medium)
         .expect("solid-solid difference must succeed under manifold-csg");
 
     assert!(!cut_mesh.is_empty(), "result must have geometry");
@@ -175,7 +176,7 @@ fn solid_solid_difference_actually_cuts() {
     use crate::processors::extrusion::ExtrudedAreaSolidProcessor;
     let base = decoder.decode_by_id(3).unwrap();
     let base_mesh = ExtrudedAreaSolidProcessor::new(schema.clone())
-        .process(&base, &mut decoder, &schema)
+        .process(&base, &mut decoder, &schema, TessellationQuality::Medium)
         .unwrap();
     assert!(
         cut_mesh.triangle_count() > base_mesh.triangle_count(),
@@ -213,7 +214,7 @@ fn solid_solid_union_removes_overlap() {
 
     let bool_result = decoder.decode_by_id(20).unwrap();
     let union_mesh = processor
-        .process(&bool_result, &mut decoder, &schema)
+        .process(&bool_result, &mut decoder, &schema, TessellationQuality::Medium)
         .expect("solid-solid union must succeed under manifold-csg");
 
     assert!(!union_mesh.is_empty());
@@ -262,7 +263,7 @@ fn solid_solid_intersection_returns_overlap() {
 
     let bool_result = decoder.decode_by_id(20).unwrap();
     let inter_mesh = processor
-        .process(&bool_result, &mut decoder, &schema)
+        .process(&bool_result, &mut decoder, &schema, TessellationQuality::Medium)
         .expect("solid-solid intersection must succeed under manifold-csg");
 
     // Pre-T1.4 this returned an empty mesh.
@@ -299,7 +300,7 @@ fn test_polygonal_bounded_half_space_respects_boundary() {
     let processor = BooleanClippingProcessor::new();
 
     let entity = decoder.decode_by_id(16).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert!(
         !mesh.is_empty(),
@@ -489,7 +490,7 @@ fn test_shell_based_surface_model_with_advanced_faces() {
     assert_eq!(entity.ifc_type, IfcType::IfcShellBasedSurfaceModel);
 
     let mesh = processor
-        .process(&entity, &mut decoder, &schema)
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
         .expect("Failed to process ShellBasedSurfaceModel with AdvancedFace");
 
     // Should produce geometry from the planar AdvancedFace
@@ -531,7 +532,7 @@ fn test_shell_based_surface_model_with_polyloop() {
 
     let entity = decoder.decode_by_id(14).unwrap();
     let mesh = processor
-        .process(&entity, &mut decoder, &schema)
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
         .expect("Failed to process ShellBasedSurfaceModel with PolyLoop");
 
     assert!(
@@ -606,7 +607,7 @@ fn test_triangulated_face_set_out_of_bounds_indices() {
     let processor = TriangulatedFaceSetProcessor::new();
 
     let entity = decoder.decode_by_id(2).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     // Should produce valid mesh — the out-of-bounds triangle (1,2,99) is stripped
     assert!(!mesh.is_empty());
@@ -628,7 +629,7 @@ fn test_triangulated_face_set_all_invalid_indices() {
     let processor = TriangulatedFaceSetProcessor::new();
 
     let entity = decoder.decode_by_id(2).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     // All indices invalid — mesh should have positions but no valid triangles
     assert!(mesh.indices.is_empty(), "All invalid indices should be stripped");
@@ -656,7 +657,7 @@ fn test_extruded_area_solid_tapered() {
 
     let entity = decoder.decode_by_id(9).unwrap();
     assert_eq!(entity.ifc_type, IfcType::IfcExtrudedAreaSolidTapered);
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert!(!mesh.is_empty());
     let (min, max) = mesh.bounds();
@@ -694,7 +695,7 @@ fn test_swept_disk_indexed_polycurve_3d() {
 
     let entity = decoder.decode_by_id(3).unwrap();
     assert_eq!(entity.ifc_type, IfcType::IfcSweptDiskSolid);
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
 
     assert!(!mesh.is_empty(), "3D indexed polycurve directrix should produce geometry");
 
@@ -762,7 +763,7 @@ fn test_trimmed_circle_3d_placement_reads_ref_direction() {
     let processor = SweptDiskSolidProcessor::new(schema.clone());
 
     let entity = decoder.decode_by_id(9).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
     assert!(!mesh.is_empty());
 
     let (min, max) = mesh.bounds();
@@ -798,7 +799,7 @@ fn test_extruded_area_solid_tapered_falls_back_when_end_missing() {
     let processor = ExtrudedAreaSolidTaperedProcessor::new(schema.clone());
 
     let entity = decoder.decode_by_id(8).unwrap();
-    let mesh = processor.process(&entity, &mut decoder, &schema).unwrap();
+    let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
     assert!(!mesh.is_empty());
     let (_min, max) = mesh.bounds();
     assert!((max.z - 500.0).abs() < 0.01);

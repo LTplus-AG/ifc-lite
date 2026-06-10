@@ -833,8 +833,9 @@ mod tests {
     #[test]
     fn test_extrude_circle() {
         use crate::profile::create_circle;
+        use crate::tessellation::TessellationQuality;
 
-        let profile = create_circle(5.0, None);
+        let profile = create_circle(5.0, None, TessellationQuality::Medium);
         let mesh = extrude_profile(&profile, 10.0, None).unwrap();
 
         assert!(mesh.vertex_count() > 0);
@@ -851,8 +852,9 @@ mod tests {
     #[test]
     fn test_extrude_hollow_circle() {
         use crate::profile::create_circle;
+        use crate::tessellation::TessellationQuality;
 
-        let profile = create_circle(10.0, Some(5.0));
+        let profile = create_circle(10.0, Some(5.0), TessellationQuality::Medium);
         let mesh = extrude_profile(&profile, 15.0, None).unwrap();
 
         // Hollow circle should have more triangles than solid
@@ -869,11 +871,12 @@ mod tests {
     #[test]
     fn test_circular_profile_detection() {
         use crate::profile::create_circle;
+        use crate::tessellation::TessellationQuality;
 
         // Radius is chosen so `calculate_circle_segments` produces ≥20 points
         // (the threshold raised in #424 to stop 12-point I-beam profiles from
         // being smooth-shaded as circles). At r=10, segments = ceil(√10 * 8) = 26.
-        let circle = create_circle(10.0, None);
+        let circle = create_circle(10.0, None, TessellationQuality::Medium);
         assert!(
             circle.outer.len() >= 20,
             "test setup expects ≥20 segments to pass the heuristic threshold; got {}",

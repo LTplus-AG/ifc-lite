@@ -7,7 +7,7 @@
 //! Handles IfcAdvancedBrep and IfcAdvancedBrepWithVoids.
 //! Delegates per-face processing to shared advanced_face module.
 
-use crate::{Error, Mesh, Result};
+use crate::{Error, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
@@ -30,6 +30,7 @@ impl GeometryProcessor for AdvancedBrepProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcAdvancedBrep attributes:
         // 0: Outer (IfcClosedShell)
@@ -63,7 +64,7 @@ impl GeometryProcessor for AdvancedBrepProcessor {
                 let face = decoder.decode_by_id(face_id)?;
 
                 // Delegate to shared advanced face processing
-                let (positions, indices) = process_advanced_face(&face, decoder)?;
+                let (positions, indices) = process_advanced_face(&face, decoder, quality)?;
 
                 if !positions.is_empty() {
                     // Merge into combined mesh
@@ -140,6 +141,7 @@ impl GeometryProcessor for BSplineSurfaceProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         let weights = if entity.ifc_type == IfcType::IfcRationalBSplineSurfaceWithKnots {
             parse_rational_weights(entity)
@@ -148,7 +150,7 @@ impl GeometryProcessor for BSplineSurfaceProcessor {
         };
 
         let (positions, indices) =
-            process_bspline_face(entity, decoder, weights.as_deref())?;
+            process_bspline_face(entity, decoder, weights.as_deref(), quality)?;
 
         Ok(Mesh {
             positions,

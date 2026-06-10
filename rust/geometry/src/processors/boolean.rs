@@ -9,7 +9,8 @@
 
 use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use crate::{
-    calculate_normals, ClippingProcessor, Error, Mesh, Point2, Point3, Profile2D, Result, Vector3,
+    calculate_normals, ClippingProcessor, Error, Mesh, Point2, Point3, Profile2D, Result,
+    TessellationQuality, Vector3,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use std::cell::RefCell;
@@ -111,35 +112,38 @@ impl BooleanClippingProcessor {
         operand: &DecodedEntity,
         decoder: &mut EntityDecoder,
         depth: u32,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         match operand.ifc_type {
             IfcType::IfcExtrudedAreaSolid => {
                 let processor = ExtrudedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema)
+                processor.process(operand, decoder, &self.schema, quality)
             }
             IfcType::IfcFacetedBrep => {
                 let processor = FacetedBrepProcessor::new();
-                processor.process(operand, decoder, &self.schema)
+                processor.process(operand, decoder, &self.schema, quality)
             }
             IfcType::IfcTriangulatedFaceSet => {
                 let processor = TriangulatedFaceSetProcessor::new();
-                processor.process(operand, decoder, &self.schema)
+                processor.process(operand, decoder, &self.schema, quality)
             }
             IfcType::IfcSweptDiskSolid => {
                 let processor = SweptDiskSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema)
+                processor.process(operand, decoder, &self.schema, quality)
             }
             IfcType::IfcRevolvedAreaSolid => {
                 let processor = RevolvedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema)
+                processor.process(operand, decoder, &self.schema, quality)
             }
-            IfcType::IfcBlock => BlockProcessor::new().process(operand, decoder, &self.schema),
+            IfcType::IfcBlock => {
+                BlockProcessor::new().process(operand, decoder, &self.schema, quality)
+            }
             IfcType::IfcCsgSolid => {
-                CsgSolidProcessor::new().process(operand, decoder, &self.schema)
+                CsgSolidProcessor::new().process(operand, decoder, &self.schema, quality)
             }
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 // Recursive case with depth tracking
-                self.process_with_depth(operand, decoder, &self.schema, depth + 1)
+                self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality)
             }
             _ => Ok(Mesh::new()),
         }
@@ -644,6 +648,7 @@ impl BooleanClippingProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         depth: u32,
+        quality: TessellationQuality,
     ) -> Result<Option<Mesh>> {
         let (base_entity, cutters) = self.collect_polygonal_chain(entity.clone(), decoder)?;
         if cutters.len() < 2 {
@@ -654,7 +659,7 @@ impl BooleanClippingProcessor {
         // walked iteratively above, so a 12-cutter chain reaches here at the
         // SAME `depth` as a 2-cutter one — the recursion-depth limit can't drop
         // it.
-        let base_mesh = self.process_operand_with_depth(&base_entity, decoder, depth)?;
+        let base_mesh = self.process_operand_with_depth(&base_entity, decoder, depth, quality)?;
         if base_mesh.is_empty() {
             return Ok(Some(base_mesh));
         }
@@ -779,6 +784,7 @@ impl BooleanClippingProcessor {
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
         depth: u32,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // Depth limit to prevent stack overflow from deeply nested boolean chains
         if depth > MAX_BOOLEAN_DEPTH {
@@ -835,7 +841,7 @@ impl BooleanClippingProcessor {
         // the unchanged sequential path rather than risk a worse result.
         #[cfg(feature = "manifold-csg")]
         if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
-            if let Some(result) = self.try_union_polygonal_chain(entity, decoder, depth)? {
+            if let Some(result) = self.try_union_polygonal_chain(entity, decoder, depth, quality)? {
                 return Ok(result);
             }
         }
@@ -882,7 +888,7 @@ impl BooleanClippingProcessor {
             .ok_or_else(|| Error::geometry("Failed to resolve FirstOperand".to_string()))?;
 
         // Process first operand to get base mesh
-        let mesh = self.process_operand_with_depth(&first_operand, decoder, depth)?;
+        let mesh = self.process_operand_with_depth(&first_operand, decoder, depth, quality)?;
 
         if mesh.is_empty() {
             return Ok(mesh);
@@ -982,7 +988,7 @@ impl BooleanClippingProcessor {
             // `IfcCsgSolid` with a solid cutter) silently rendered as the
             // uncut host even when the operands were trivially small.
             let second_mesh =
-                self.process_operand_with_depth(&second_operand, decoder, depth)?;
+                self.process_operand_with_depth(&second_operand, decoder, depth, quality)?;
             if second_mesh.is_empty() {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
                 return Ok(mesh);
@@ -998,7 +1004,7 @@ impl BooleanClippingProcessor {
         // mesh-merges (overlap retained) and records the failure so callers
         // can flag the loss.
         if operator == ".UNION." || operator == "UNION" {
-            let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth)?;
+            let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth, quality)?;
             if second_mesh.is_empty() {
                 self.record_failure(BoolOp::Union, BoolFailureReason::EmptyOperand);
                 return Ok(mesh);
@@ -1031,7 +1037,7 @@ impl BooleanClippingProcessor {
             #[cfg(feature = "manifold-csg")]
             {
                 let second_mesh =
-                    self.process_operand_with_depth(&second_operand, decoder, depth)?;
+                    self.process_operand_with_depth(&second_operand, decoder, depth, quality)?;
                 if second_mesh.is_empty() {
                     self.record_failure(BoolOp::Intersection, BoolFailureReason::EmptyOperand);
                     return Ok(Mesh::new());
@@ -1118,8 +1124,9 @@ impl GeometryProcessor for BooleanClippingProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
-        self.process_with_depth(entity, decoder, schema, 0)
+        self.process_with_depth(entity, decoder, schema, 0, quality)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

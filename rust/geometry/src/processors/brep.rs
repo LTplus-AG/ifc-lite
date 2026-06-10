@@ -7,7 +7,7 @@
 //! Handles IfcFacetedBrep, IfcFaceBasedSurfaceModel, and IfcShellBasedSurfaceModel.
 //! All deal with boundary representations composed of face loops.
 
-use crate::{Error, Mesh, Point3, Result};
+use crate::{Error, Mesh, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use super::advanced_face::process_advanced_face;
@@ -503,6 +503,7 @@ impl GeometryProcessor for FacetedBrepProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        _quality: TessellationQuality,
     ) -> Result<Mesh> {
         use rayon::prelude::*;
 
@@ -646,6 +647,7 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcFaceBasedSurfaceModel attributes:
         // 0: FbsmFaces (SET of IfcConnectedFaceSet)
@@ -685,7 +687,7 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
 
                 if face.ifc_type == IfcType::IfcAdvancedFace {
                     // Advanced face: delegate to shared NURBS/planar/cylindrical handler
-                    let (positions, indices) = match process_advanced_face(&face, decoder) {
+                    let (positions, indices) = match process_advanced_face(&face, decoder, quality) {
                         Ok(result) => result,
                         Err(_) => continue,
                     };
@@ -801,6 +803,7 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcShellBasedSurfaceModel attributes:
         // 0: SbsmBoundary (SET of IfcShell - either IfcOpenShell or IfcClosedShell)
@@ -842,7 +845,7 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
 
                 if face.ifc_type == IfcType::IfcAdvancedFace {
                     // Advanced face: delegate to shared NURBS/planar/cylindrical handler
-                    let (positions, indices) = match process_advanced_face(&face, decoder) {
+                    let (positions, indices) = match process_advanced_face(&face, decoder, quality) {
                         Ok(result) => result,
                         Err(_) => continue,
                     };

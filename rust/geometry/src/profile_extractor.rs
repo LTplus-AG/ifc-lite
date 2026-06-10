@@ -18,7 +18,7 @@
 //! Lengths are in metres (unit scale applied).
 
 use crate::profiles::ProfileProcessor;
-use crate::{Error, Point3, Result, Vector3};
+use crate::{Error, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{
     build_entity_index, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcSchema,
     IfcType,
@@ -385,7 +385,10 @@ fn extract_extruded_solid(
     let profile_entity = decoder
         .resolve_ref(profile_attr)?
         .ok_or_else(|| Error::geometry("Failed to resolve SweptArea"))?;
-    let profile = profile_processor.process(&profile_entity, decoder)?;
+    // Profile extraction feeds 2D drawing projection, not the tessellation-quality
+    // render path; sample at the historical default.
+    let profile =
+        profile_processor.process(&profile_entity, decoder, TessellationQuality::Medium)?;
 
     if profile.outer.is_empty() {
         return Err(Error::geometry("empty profile"));

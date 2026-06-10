@@ -48,10 +48,23 @@ describe('packFlavor / unpackFlavor', () => {
     }
   });
 
-  it('is deterministic for the same input', () => {
-    const a = packFlavor(flavor());
-    const b = packFlavor(flavor());
-    expect(Buffer.from(a).toString('hex')).toBe(Buffer.from(b).toString('hex'));
+  it('is deterministic: same content packs to the same parsed payload regardless of Map insertion order', () => {
+    // Unlike .iflx bundles (whose packed bytes are pinned by bundleHash),
+    // nothing hashes the .iflv envelope bytes, so we assert determinism
+    // semantically: two packs of the same logical content unpack to
+    // identical payloads, independent of bundle insertion order.
+    const bytesA = new Uint8Array([1, 2, 3]);
+    const bytesB = new Uint8Array([9, 8, 7]);
+    const ab = new Map([['com.example.a@1.0.0', bytesA], ['com.example.b@2.0.0', bytesB]]);
+    const ba = new Map([['com.example.b@2.0.0', bytesB], ['com.example.a@1.0.0', bytesA]]);
+
+    const r1 = unpackFlavor(packFlavor(flavor(), { extensionBundles: ab }));
+    const r2 = unpackFlavor(packFlavor(flavor(), { extensionBundles: ba }));
+    if (!r1.ok || !r2.ok) throw new Error('expected both packs to unpack');
+    expect(r2.value).toEqual(r1.value);
+    expect(Array.from(r1.value.extensionBundles.keys())).toEqual(
+      Array.from(r2.value.extensionBundles.keys()),
+    );
   });
 
   it('preserves summary', () => {

@@ -13,83 +13,17 @@ import {
 import { PropertyValueType } from '@ifc-lite/data';
 
 describe('parseWhereFilter', () => {
-  it('parses equals filter', () => {
-    const result = parseWhereFilter('Pset_WallCommon.IsExternal=true');
-    expect(result).toEqual({
-      psetName: 'Pset_WallCommon',
-      propName: 'IsExternal',
-      operator: '=',
-      value: 'true',
-    });
-  });
-
-  it('parses not-equals filter', () => {
-    const result = parseWhereFilter('Pset_WallCommon.IsExternal!=true');
-    expect(result).toEqual({
-      psetName: 'Pset_WallCommon',
-      propName: 'IsExternal',
-      operator: '!=',
-      value: 'true',
-    });
-  });
-
-  it('parses greater-than filter', () => {
-    const result = parseWhereFilter('Qto_WallBaseQuantities.Height>2.5');
-    expect(result).toEqual({
-      psetName: 'Qto_WallBaseQuantities',
-      propName: 'Height',
-      operator: '>',
-      value: '2.5',
-    });
-  });
-
-  it('parses less-than filter', () => {
-    const result = parseWhereFilter('Qto_SlabBaseQuantities.Width<1');
-    expect(result).toEqual({
-      psetName: 'Qto_SlabBaseQuantities',
-      propName: 'Width',
-      operator: '<',
-      value: '1',
-    });
-  });
-
-  it('parses greater-or-equal filter', () => {
-    const result = parseWhereFilter('CustomPset.Value>=100');
-    expect(result).toEqual({
-      psetName: 'CustomPset',
-      propName: 'Value',
-      operator: '>=',
-      value: '100',
-    });
-  });
-
-  it('parses less-or-equal filter', () => {
-    const result = parseWhereFilter('CustomPset.Value<=50');
-    expect(result).toEqual({
-      psetName: 'CustomPset',
-      propName: 'Value',
-      operator: '<=',
-      value: '50',
-    });
-  });
-
-  it('parses contains filter (tilde)', () => {
-    const result = parseWhereFilter('Pset_WallCommon.Reference~concrete');
-    expect(result).toEqual({
-      psetName: 'Pset_WallCommon',
-      propName: 'Reference',
-      operator: 'contains',
-      value: 'concrete',
-    });
-  });
-
-  it('parses exists filter (no operator)', () => {
-    const result = parseWhereFilter('Pset_WallCommon.IsExternal');
-    expect(result).toEqual({
-      psetName: 'Pset_WallCommon',
-      propName: 'IsExternal',
-      operator: 'exists',
-    });
+  it.each([
+    ['equals', 'Pset_WallCommon.IsExternal=true', { psetName: 'Pset_WallCommon', propName: 'IsExternal', operator: '=', value: 'true' }],
+    ['not-equals', 'Pset_WallCommon.IsExternal!=true', { psetName: 'Pset_WallCommon', propName: 'IsExternal', operator: '!=', value: 'true' }],
+    ['greater-than', 'Qto_WallBaseQuantities.Height>2.5', { psetName: 'Qto_WallBaseQuantities', propName: 'Height', operator: '>', value: '2.5' }],
+    ['less-than', 'Qto_SlabBaseQuantities.Width<1', { psetName: 'Qto_SlabBaseQuantities', propName: 'Width', operator: '<', value: '1' }],
+    ['greater-or-equal', 'CustomPset.Value>=100', { psetName: 'CustomPset', propName: 'Value', operator: '>=', value: '100' }],
+    ['less-or-equal', 'CustomPset.Value<=50', { psetName: 'CustomPset', propName: 'Value', operator: '<=', value: '50' }],
+    ['contains (tilde)', 'Pset_WallCommon.Reference~concrete', { psetName: 'Pset_WallCommon', propName: 'Reference', operator: 'contains', value: 'concrete' }],
+    ['exists (no operator)', 'Pset_WallCommon.IsExternal', { psetName: 'Pset_WallCommon', propName: 'IsExternal', operator: 'exists' }],
+  ])('parses %s filter: %s', (_label, input, expected) => {
+    expect(parseWhereFilter(input)).toEqual(expected);
   });
 
   it('throws for missing dot separator', () => {

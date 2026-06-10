@@ -726,6 +726,12 @@ importers:
       '@ifc-lite/collab':
         specifier: workspace:^
         version: link:../collab
+      '@ifc-lite/ifcx':
+        specifier: workspace:^
+        version: link:../ifcx
+      '@ifc-lite/merge':
+        specifier: workspace:^
+        version: link:../merge
       lib0:
         specifier: ^0.2.99
         version: 0.2.117

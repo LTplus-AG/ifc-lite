@@ -37,7 +37,11 @@ export class EntityExtractor {
       );
 
       // Parse: #ID = TYPE(attr1, attr2, ...)
-      const match = entityText.match(/^#(\d+)\s*=\s*(\w+)\((.*)\)/);
+      // [\s\S] (not `.`) so records whose attribute list spans multiple
+      // source lines still match — `.` stops at the first newline and made
+      // extractEntity return null for ANY multi-line STEP record (lost
+      // storey/covering names + the on-demand attribute fallback).
+      const match = entityText.match(/^#(\d+)\s*=\s*(\w+)\(([\s\S]*)\)/);
       if (!match) return null;
 
       const expressId = parseInt(match[1], 10);

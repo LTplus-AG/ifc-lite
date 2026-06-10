@@ -110,15 +110,44 @@ fn covers(p: [f64; 3], t: &[[f64; 3]; 3], band: f64) -> bool {
     (s0 > eps && s1 > eps && s2 > eps) || (s0 < -eps && s1 < -eps && s2 < -eps)
 }
 
-fn worst_aspect(tris: &[[[f64; 3]; 3]]) -> f64 {
+fn tri_aspect(t: &[[f64; 3]; 3]) -> f64 {
     let d = |p: [f64; 3], q: [f64; 3]| norm(sub(p, q));
+    let (e0, e1, e2) = (d(t[0], t[1]), d(t[1], t[2]), d(t[2], t[0]));
+    let mn = e0.min(e1).min(e2);
+    let mx = e0.max(e1).max(e2);
+    if mn > 1e-9 {
+        mx / mn
+    } else {
+        f64::INFINITY
+    }
+}
+
+fn worst_aspect(tris: &[[[f64; 3]; 3]]) -> f64 {
     let mut worst = 0.0_f64;
     for t in tris {
-        let (e0, e1, e2) = (d(t[0], t[1]), d(t[1], t[2]), d(t[2], t[0]));
-        let mn = e0.min(e1).min(e2);
-        let mx = e0.max(e1).max(e2);
-        if mn > 1e-9 {
-            worst = worst.max(mx / mn);
+        let a = tri_aspect(t);
+        if a.is_finite() {
+            worst = worst.max(a);
+        }
+    }
+    worst
+}
+
+/// Worst aspect among output triangles INCIDENT to an opening-rim vertex. This
+/// targets the #1007 rim-corner CHAMFER directly: a thin roof-slope flap fanned
+/// from a far corner to two rim points a few cm apart. It sits on the host roof
+/// plane OUTSIDE the cap footprint, so the footprint-bridge sampling structurally
+/// cannot see it — but it touches a rim vertex. `rim` is the set of opening cut
+/// vertices; a triangle is rim-incident if any of its vertices coincides with one.
+fn worst_rim_incident_aspect(tris: &[[[f64; 3]; 3]], rim: &[[f64; 3]]) -> f64 {
+    let near = |p: [f64; 3]| rim.iter().any(|r| norm(sub(p, *r)) < 5e-3);
+    let mut worst = 0.0_f64;
+    for t in tris {
+        if t.iter().any(|p| near(*p)) {
+            let a = tri_aspect(t);
+            if a.is_finite() {
+                worst = worst.max(a);
+            }
         }
     }
     worst
@@ -183,6 +212,37 @@ fn worst_bridged_samples(path: &str, host_id: u32) -> Option<usize> {
     assert!(
         ob <= 80,
         "host #{host_id}: cut left {ob} open boundary edges — the opening rim is torn open",
+    );
+
+    // Collect every opening-cut vertex (the rim) so we can bound the worst aspect
+    // of the host triangles that touch it — the rim-corner CHAMFER guard (below).
+    let mut rim: Vec<[f64; 3]> = Vec::new();
+    for &oid in &opening_ids {
+        if let Ok(oe) = decoder.decode_by_id(oid) {
+            if let Ok(om) = router.process_element(&oe, &mut decoder) {
+                if !om.is_empty() {
+                    for t in mesh_tris(&om) {
+                        rim.extend_from_slice(&t);
+                    }
+                }
+            }
+        }
+    }
+    // RIM-CORNER CHAMFER guard (#1007): a thin roof-slope flap fanned from a far
+    // corner to two rim points a few cm apart. It lies on the host roof plane
+    // OUTSIDE the cap footprint, so the footprint-bridge sampling can never catch
+    // it — but it touches a rim vertex and renders as a visible chamfer. The pad
+    // under-tune (5 % of opening depth) left it at 74:1; clearing the flush cap by
+    // 30 % of the opening depth drops it to ~25:1 (genuine-geometry floor). This is
+    // the fail-before / pass-after assertion for that fix. 30:1 sits in the gap
+    // between the post-fix floor (~25:1) and the pre-fix flap (74:1) and still well
+    // below any genuine host facet sliver on this model.
+    let wri = worst_rim_incident_aspect(&out_tris, &rim);
+    assert!(
+        wri < 30.0,
+        "host #{host_id}: a rim-corner chamfer/flap survived on the roof slope \
+         (worst rim-incident aspect {wri:.1}:1) — the opening cut leaves a thin tab \
+         at the opening corner",
     );
 
     let mut worst = 0usize;

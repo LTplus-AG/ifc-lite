@@ -53,8 +53,30 @@ fn seg_seg_cross(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], axis: D
 
 /// Auxiliary-plane LPI for the coplanar crossing of `q0q1` with ta-edge `(e0,e1)`:
 /// `line(q0,q1) ∩ plane(e0, e1, e0+n)`, `n` = shared-plane normal.
+///
+/// PERF (off-grid aux fix): the raw `n` is the UN-normalised cross product of two
+/// on-grid (`k/2^16`) edge vectors, so its components land on the `1/2^32` grid —
+/// OFF the `1/2^16` snap grid. `aux = e0 + n` is then off-grid, every predicate on
+/// the resulting LPI fails the fixed-width tier's on-grid `gi` and falls to the
+/// ~3 ms BigRational path (the dominant flush-cap/near-coplanar cut cost: 841 had
+/// ~2000 BigRational λ-rebuilds per slow opening). The aux point only needs to make
+/// the plane `(e0,e1,aux)` read as the LINE `e0e1` in-plane and stay perpendicular
+/// to the shared plane — its exact offset along `n` is irrelevant. So we ROUND `n`
+/// to a grid-aligned integer direction (scale the max component to ~2^20, round),
+/// exactly as `tritri::line_direction` does: `aux` then lands on-grid and the fixed
+/// tier resolves the LPI. The SIGN of every predicate is unchanged — `n` still
+/// points off the shared plane along the same perpendicular, and the in-plane
+/// reading of the plane is still the exact line `e0e1` (which only uses `e0,e1`).
+/// Deterministic (FMA-free f64 round) ⇒ byte-identical native==wasm.
 fn crossing_lpi(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], n: [f64; 3]) -> ImplicitPoint {
-    let aux = [e0[0] + n[0], e0[1] + n[1], e0[2] + n[2]];
+    let m = n[0].abs().max(n[1].abs()).max(n[2].abs());
+    let ng = if m > 0.0 && m.is_finite() {
+        let s = 1_048_576.0 / m; // normalise the max component to ~2^20, then round
+        [(n[0] * s).round(), (n[1] * s).round(), (n[2] * s).round()]
+    } else {
+        n
+    };
+    let aux = [e0[0] + ng[0], e0[1] + ng[1], e0[2] + ng[2]];
     ImplicitPoint::Lpi(Lpi { p: q0, q: q1, r: e0, s: e1, t: aux })
 }
 

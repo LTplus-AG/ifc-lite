@@ -2052,15 +2052,25 @@ impl GeometryRouter {
         // the interface becomes a transversal crossing. The margin is NOT a hairline
         // pad: a near-grazing exit (cap a few µm past a TILTED faceted surface)
         // re-creates a coarse T-junction at the facet seam — two rim vertices a few
-        // mm apart spanned to a far roof corner, i.e. a high-aspect sliver that
-        // survives the consolidate needle-drop (it MISSED `issue_1007_roof_brep_
-        // opening_winding`'s < 1000:1 gate at a 1 mm pad). Clearing the cap by 5% of
-        // the opening's own depth (floored at 1 cm) pushes the exit a clean few cm
-        // past the surface, so the seam crossing lands well clear of any facet vertex
-        // and the worst aspect collapses to the genuine-geometry floor (≈40:1). It is
-        // still tiny in absolute terms (a few cm on a ~1 m-deep opening) — far from
-        // any neighbouring element and well short of the engulf guard.
-        let pad = (open_span * 0.05).max(0.01);
+        // mm apart spanned to a far roof corner, i.e. a high-aspect sliver (the
+        // issue #1007 rim-corner CHAMFER on the roof slope, a thin visible flap).
+        //
+        // The exit must clear the host's FACET VERTICES, not just the surface: on a
+        // faceted-BREP roof slope the seam crossing's aspect is set by how close the
+        // pushed exit lands to the next facet vertex along the cut. Empirically (host
+        // #1112, openings #2150/#2154) the worst rim-incident aspect vs the pad as a
+        // fraction of the opening depth is non-monotonic and only settles into the
+        // genuine-geometry floor (≈25:1, no >30:1 rim sliver) once the cap clears the
+        // surface by ≳ 30 % of the opening's own depth: 5 % → 74:1 (the residual
+        // chamfer), 15 % → a near-grazing 1250:1 resonance, 30–40 % → ~25:1 clean.
+        // 30 % is the conservative floor of that clean band; it is still small in
+        // absolute terms (a few cm on a ~1 m-deep opening, ~9 cm on a 0.3 m window),
+        // fires ONLY on a detected flush cap (a floating wall-slot cap is untouched),
+        // pushes INTO the host away from neighbouring elements, and stays well short
+        // of the engulf guard. Verified: the whole rect-opening + #1007 + #960 suite
+        // stays green and `issue_1007_real_opening_no_bridge`'s footprint coverage
+        // stays 0 (no bridge).
+        let pad = (open_span * 0.30).max(0.01);
         let push_back = if cap_min_flush { (omn - host_at_min).max(0.0) + pad } else { 0.0 };
         let push_fwd = if cap_max_flush { (host_at_max - omx).max(0.0) + pad } else { 0.0 };
         // Only the flush cap ring(s) move; interior loops are untouched (band = a

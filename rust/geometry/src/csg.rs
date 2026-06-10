@@ -1113,6 +1113,14 @@ impl ClippingProcessor {
         // positions because cross-product noise on near-coplanar tris can
         // wobble in the 6th decimal; offsets get the same coarsening so
         // bucket keys stay aligned with normal direction.
+        //
+        // NB (issue #1007): the offset key is deliberately FINE (1 µm) and must
+        // NOT be coarsened. The exact-kernel opening cut on a faceted-BREP roof
+        // emits the hole-boundary triangles on planes that jitter ~25–150 µm;
+        // that jitter is what keeps each on its own bucket. Coalescing them (a
+        // coarser offset grid, or projecting the whole roof slope to ONE canonical
+        // plane) lets the i_overlay UNION close the opening hole — a bridging facet
+        // over the footprint, caught by `issue_1007_real_opening_no_bridge`.
         const POS_QUANT: f64 = 1.0e6;
         const NORMAL_QUANT: f64 = 1.0e3;
         let qpos = |p: f64| (p * POS_QUANT).round() as i64;

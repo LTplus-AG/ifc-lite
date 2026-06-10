@@ -98,15 +98,21 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
     expect(meshes).toBeGreaterThanOrEqual(EXPECTED_MESHES * (1 - MESH_TOLERANCE));
     expect(meshes).toBeLessThanOrEqual(EXPECTED_MESHES * (1 + MESH_TOLERANCE));
 
-    // Rendered-content check: a blank/uniform canvas screenshot
-    // compresses to a few KB; a rendered building doesn't. (WebGPU
-    // canvases can't be pixel-sampled via a 2D context.)
+    // Rendered-content check via PNG compression density. WebGPU
+    // canvases can't be pixel-sampled through a 2D context, so use the
+    // screenshot's bytes-per-pixel: a near-uniform (blank) canvas
+    // compresses to ~0.004 B/px, a rendered building to ≥0.02 B/px.
+    // Pixel count comes from the PNG's own IHDR header, so the check is
+    // resolution- and devicePixelRatio-independent.
     await page.waitForTimeout(1500); // let the camera fit + first frames land
     const canvasShot = await page.locator('canvas').first().screenshot();
+    const pngWidth = canvasShot.readUInt32BE(16);
+    const pngHeight = canvasShot.readUInt32BE(20);
+    const bytesPerPixel = canvasShot.byteLength / (pngWidth * pngHeight);
     expect(
-      canvasShot.byteLength,
-      'canvas screenshot should not be a near-uniform (blank) image',
-    ).toBeGreaterThan(20_000);
+      bytesPerPixel,
+      `screenshot density ${bytesPerPixel.toFixed(4)} B/px (${canvasShot.byteLength}B @ ${pngWidth}x${pngHeight}) — a blank canvas sits near 0.004`,
+    ).toBeGreaterThan(0.01);
 
     // Data model landed in the store (parse path, not just geometry).
     // The metadata parse finishes after the geometry stream — poll.

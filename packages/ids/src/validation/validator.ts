@@ -133,14 +133,17 @@ const nowMs = (): number =>
     ? globalThis.performance.now()
     : Date.now();
 
-/** Yield control back to the event loop (browser + Node). */
+/**
+ * Yield control back to the event loop (browser + Node).
+ *
+ * Deliberately NOT `scheduler.yield()`: its continuation runs at
+ * elevated priority, ahead of the host's already-queued normal tasks —
+ * including React's render work — so a CPU-bound loop yielding through
+ * it still starves the UI (canvas rAF kept painting while the progress
+ * panel never committed). A MessageChannel hop is a normal-priority
+ * task: everything queued before it, renders included, runs first.
+ */
 function yieldToEventLoop(): Promise<void> {
-  const maybeScheduler = (globalThis as typeof globalThis & {
-    scheduler?: { yield?: () => Promise<void> };
-  }).scheduler;
-  if (typeof maybeScheduler?.yield === 'function') {
-    return maybeScheduler.yield();
-  }
   return new Promise<void>((resolve) => {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => {

@@ -19,6 +19,44 @@ import { ifcMeasureToXsdTypes, literalCastsUnderAnyType } from '../constraints/x
 const DATATYPE_OPTS: MatchOptions = { caseInsensitive: true };
 
 /**
+ * Failure-detail string caches. During applicability filtering every
+ * non-matching entity takes a failure path, and these name lists were
+ * re-joined per specification — millions of identical joins per run.
+ * The validator's cached accessor returns stable array instances per
+ * entity, so a WeakMap keyed on them holds exactly one string each.
+ */
+const PSET_NAMES_CACHE = new WeakMap<PropertySetInfo[], string>();
+const PROP_NAMES_CACHE = new WeakMap<PropertySetInfo, string>();
+const QUALIFIED_PROP_NAMES_CACHE = new WeakMap<PropertySetInfo, string>();
+
+function availablePsetNames(propertySets: PropertySetInfo[]): string {
+  let names = PSET_NAMES_CACHE.get(propertySets);
+  if (names === undefined) {
+    names = propertySets.map((p) => p.name).join(', ');
+    PSET_NAMES_CACHE.set(propertySets, names);
+  }
+  return names;
+}
+
+function availablePropertyNames(pset: PropertySetInfo): string {
+  let names = PROP_NAMES_CACHE.get(pset);
+  if (names === undefined) {
+    names = pset.properties.map((p) => p.name).join(', ');
+    PROP_NAMES_CACHE.set(pset, names);
+  }
+  return names;
+}
+
+function qualifiedPropertyNames(pset: PropertySetInfo): string {
+  let names = QUALIFIED_PROP_NAMES_CACHE.get(pset);
+  if (names === undefined) {
+    names = pset.properties.map((p) => `${pset.name}.${p.name}`).join(', ');
+    QUALIFIED_PROP_NAMES_CACHE.set(pset, names);
+  }
+  return names;
+}
+
+/**
  * Check if an entity matches a property facet
  */
 export function checkPropertyFacet(
@@ -47,7 +85,7 @@ export function checkPropertyFacet(
   );
 
   if (matchingPsets.length === 0) {
-    const availablePsets = propertySets.map((p) => p.name).join(', ');
+    const availablePsets = availablePsetNames(propertySets);
     return {
       passed: false,
       actualValue: availablePsets || '(none)',
@@ -107,7 +145,7 @@ export function checkPropertyFacet(
   // Property not found in any matching pset
   const psetNames = matchingPsets.map((p) => p.name).join(', ');
   const availableProps = matchingPsets
-    .flatMap((pset) => pset.properties.map((p) => `${pset.name}.${p.name}`))
+    .map((pset) => qualifiedPropertyNames(pset))
     .join(', ');
 
   return {
@@ -149,7 +187,7 @@ function checkPropertyInPset(
         expected: formatConstraint(facet.baseName),
         context: {
           propertySet: pset.name,
-          availableProperties: pset.properties.map((p) => p.name).join(', '),
+          availableProperties: availablePropertyNames(pset),
         },
       },
     };

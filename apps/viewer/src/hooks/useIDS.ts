@@ -397,10 +397,21 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         entityCount: dataStore.entityCount || accessor.getAllEntityIds().length,
       };
 
-      // Run validation
+      // Run validation. Progress events arrive far faster than React
+      // should re-render (per 100 entities / per spec) — each store
+      // update re-renders every IDS subscriber, which both slowed the
+      // run and dropped the frame rate. Throttle to ~8 updates/s and
+      // always pass the terminal event.
+      let lastProgressUpdate = 0;
       const validationReport = await validateIDS(document, accessor, modelInfo, {
         translator,
-        onProgress: setIdsProgress,
+        onProgress: (p) => {
+          const now = performance.now();
+          if (p.phase === 'complete' || now - lastProgressUpdate >= 120) {
+            lastProgressUpdate = now;
+            setIdsProgress(p);
+          }
+        },
         includePassingEntities: true,
       });
 

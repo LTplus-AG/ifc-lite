@@ -313,8 +313,9 @@ jobs:
       # runtime, so this is just the vite build of the app.
       - name: Build viewer app
         run: pnpm turbo build --filter=@ifc-lite/viewer
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      # No browser download: the CI project uses channel:'chrome' (the
+      # runner's preinstalled Chrome) because Playwright's headless
+      # shell has a broken WebGPU device under software rendering.
       - name: Run E2E smoke
         run: pnpm test:e2e:ci
 

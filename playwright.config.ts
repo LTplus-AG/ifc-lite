@@ -51,13 +51,20 @@ export default defineConfig({
         baseURL: 'http://localhost:3000',
         actionTimeout: 60000,
         headless: true,
+        // Real Chrome, not Playwright's headless shell — the shell's
+        // WebGPU device is broken under software rendering (createBuffer
+        // fails for KB-sized buffers, popErrorScope instance drops).
+        // GitHub-hosted runners have Chrome preinstalled. WebGPU over
+        // SwiftShader needs the Vulkan flag set below.
+        channel: 'chrome',
         launchOptions: {
           args: [
-            '--enable-gpu',
-            '--enable-webgpu',
             '--enable-unsafe-webgpu',
-            '--use-angle=swiftshader', // Software rendering for CI
+            '--enable-features=Vulkan',
+            '--use-vulkan=swiftshader',
+            '--disable-vulkan-surface',
             '--ignore-gpu-blocklist',
+            '--enable-gpu',
           ],
         },
       },

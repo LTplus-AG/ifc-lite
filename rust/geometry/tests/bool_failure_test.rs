@@ -48,15 +48,12 @@ fn unit_box_at(origin: Point3<f64>) -> Mesh {
     m
 }
 
-/// Build a 36-triangle mesh by merging three unit boxes that all overlap
-/// `unit_box_at(origin)` on every axis. Used to bust the
-/// `MAX_CSG_POLYGONS_PER_MESH = 24` cap without losing bounds-overlap.
-/// 30 axis-offset boxes — distinct positions so the coplanar pre-merge in
-/// `ClippingProcessor::mesh_to_polygons` keeps each face as its own
-/// polygon (180 polygons total, comfortably above the BSP
-/// MAX_CSG_POLYGONS_PER_MESH = 128 cap). The first box sits at the origin
-/// so a unit-box cutter at (0,0,0) overlaps it and bounds_overlap passes,
-/// letting can_run_csg_operation fire OperandTooLarge.
+/// 30 axis-offset unit boxes — 180 face quads, comfortably above the legacy
+/// BSP `MAX_CSG_POLYGONS_PER_MESH = 128` cap that the pre-flip kernel used
+/// to reject with `OperandTooLarge`. The first box sits at the origin so a
+/// unit-box operand at (0,0,0) overlaps it and `bounds_overlap` passes.
+/// Kept as the regression fixture proving the no-cap kernels handle
+/// operands the BSP port refused (see the M8 re-baseline note below).
 fn many_boxes_above_cap() -> Mesh {
     let mut m = Mesh::new();
     for i in 0..30 {
@@ -104,101 +101,64 @@ fn subtract_records_empty_operand() {
     assert_eq!(failures[0].reason, BoolFailureReason::EmptyOperand);
 }
 
+// M8 re-baseline (PR #1024): the `*_records_operand_too_large` tests below
+// used to assert the legacy BSP `MAX_CSG_POLYGONS_PER_MESH = 128` cap under
+// `--no-default-features`. That configuration now routes the public boolean
+// ops through the pure-Rust exact kernel (`kernel::mesh_bridge`), which —
+// like Manifold — has NO operand cap, so `OperandTooLarge` is unreachable
+// from `subtract_mesh` / `union_mesh` / `intersection_mesh` in EVERY feature
+// configuration (the only surviving cap call site is the manifold-only
+// `try_bsp_difference` degeneracy net, which returns `None` instead of
+// recording). The tests are therefore re-baselined: BOTH kernels must
+// succeed past the legacy cap with zero failures. M9 deletes the BSP port
+// (and this comment's history) entirely; `BoolFailureReason::OperandTooLarge`
+// stays only for the void-router plumbing until then.
+
 #[test]
-#[cfg(not(feature = "manifold-csg"))]
-fn subtract_records_operand_too_large() {
-    // 30 distinct-position boxes (180 face quads after the coplanar merge)
-    // trip the BSP MAX_CSG_POLYGONS_PER_MESH = 128 cap. Cap path returns
-    // host un-cut and logs OperandTooLarge.
+fn subtract_past_legacy_cap_succeeds() {
+    // 180 polygons of host vs a unit-box cutter — past the legacy BSP cap.
+    // Neither the pure-Rust exact kernel nor Manifold has a cap, so the
+    // operation must succeed and record no failure.
     let host = many_boxes_above_cap();
     let void = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();
 
     let result = p.subtract_mesh(&host, &void).expect("subtract_mesh ok");
-    assert_eq!(result.triangle_count(), host.triangle_count());
-
-    let failures = p.take_failures();
-    assert_eq!(failures.len(), 1);
-    assert_eq!(failures[0].op, BoolOp::Difference);
-    match &failures[0].reason {
-        BoolFailureReason::OperandTooLarge { polys_a, polys_b } => {
-            assert!(
-                *polys_a > 128,
-                "host polys must exceed cap (got {polys_a})"
-            );
-            assert!(
-                *polys_b <= 128,
-                "void polys should fit (got {polys_b})"
-            );
-        }
-        other => panic!("expected OperandTooLarge, got {other:?}"),
-    }
+    assert!(
+        !result.is_empty(),
+        "kernel must produce non-empty result past legacy cap"
+    );
+    assert!(
+        result.triangle_count() < host.triangle_count(),
+        "cutter coincides with the first box — it must actually be removed \
+         (host {} tris, result {} tris)",
+        host.triangle_count(),
+        result.triangle_count()
+    );
+    assert_eq!(
+        p.failure_count(),
+        0,
+        "no-cap kernel must not record OperandTooLarge"
+    );
 }
 
 #[test]
-#[cfg(feature = "manifold-csg")]
-fn subtract_past_legacy_cap_succeeds_under_manifold() {
-    // Same operands as the legacy cap test — 180 polygons of host vs a
-    // unit-box cutter. With Manifold there is no cap, so the operation
-    // must succeed and record no failure.
-    let host = many_boxes_above_cap();
-    let void = unit_box_at(Point3::new(0.0, 0.0, 0.0));
-    let p = ClippingProcessor::new();
-
-    let result = p.subtract_mesh(&host, &void).expect("subtract_mesh ok");
-    assert!(!result.is_empty(), "Manifold must produce non-empty result past legacy cap");
-    assert_eq!(p.failure_count(), 0, "Manifold path must not record OperandTooLarge");
-}
-
-#[test]
-#[cfg(not(feature = "manifold-csg"))]
-fn union_records_operand_too_large() {
-    let a = many_boxes_above_cap();
-    let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
-    let p = ClippingProcessor::new();
-
-    let _ = p.union_mesh(&a, &b).expect("union_mesh ok");
-    let failures = p.take_failures();
-    assert_eq!(failures.len(), 1);
-    assert_eq!(failures[0].op, BoolOp::Union);
-    assert!(matches!(
-        failures[0].reason,
-        BoolFailureReason::OperandTooLarge { .. }
-    ));
-}
-
-#[test]
-#[cfg(feature = "manifold-csg")]
-fn union_past_legacy_cap_succeeds_under_manifold() {
+fn union_past_legacy_cap_succeeds() {
     let a = many_boxes_above_cap();
     let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();
 
     let result = p.union_mesh(&a, &b).expect("union_mesh ok");
     assert!(!result.is_empty());
-    assert_eq!(p.failure_count(), 0, "Manifold union must not record cap failure");
+    assert_eq!(
+        p.failure_count(),
+        0,
+        "no-cap kernel union must not record cap failure"
+    );
 }
 
 #[test]
-#[cfg(not(feature = "manifold-csg"))]
-fn intersection_records_operand_too_large() {
-    let a = many_boxes_above_cap();
-    let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
-    let p = ClippingProcessor::new();
-
-    let _ = p.intersection_mesh(&a, &b).expect("intersection_mesh ok");
-    let failures = p.take_failures();
-    assert_eq!(failures.len(), 1);
-    assert_eq!(failures[0].op, BoolOp::Intersection);
-    assert!(matches!(
-        failures[0].reason,
-        BoolFailureReason::OperandTooLarge { .. }
-    ));
-}
-
-#[test]
-#[cfg(feature = "manifold-csg")]
-fn intersection_past_legacy_cap_succeeds_under_manifold() {
+fn intersection_past_legacy_cap_succeeds() {
     let a = many_boxes_above_cap();
     let b = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();
@@ -210,7 +170,11 @@ fn intersection_past_legacy_cap_succeeds_under_manifold() {
         !result.is_empty(),
         "intersection of overlapping boxes must be non-empty"
     );
-    assert_eq!(p.failure_count(), 0, "Manifold intersection must not record cap failure");
+    assert_eq!(
+        p.failure_count(),
+        0,
+        "no-cap kernel intersection must not record cap failure"
+    );
 }
 
 #[test]

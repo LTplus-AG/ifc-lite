@@ -1975,7 +1975,14 @@ impl GeometryRouter {
             Point3::new(min.x, max.y, max.z),
         ];
         let faces: [(Vector3<f64>, [usize; 4]); 6] = [
-            (Vector3::new(0.0, 0.0, -1.0), [0, 2, 1, 3]),
+            // M7 parity-sweep fix: the -Z cap was [0, 2, 1, 3] — a CROSSED
+            // (bowtie) quad whose two triangles overlap with opposite
+            // orientation, making every synthesized rectangular cutter a
+            // self-intersecting solid. The exact kernel then emits
+            // orientation-corrupted results (volume > un-cut host) and
+            // Manifold silently under-cuts. [0, 3, 2, 1] is the proper
+            // outward (-Z) winding, mirroring the +Z face reversed.
+            (Vector3::new(0.0, 0.0, -1.0), [0, 3, 2, 1]),
             (Vector3::new(0.0, 0.0, 1.0), [4, 5, 6, 7]),
             (Vector3::new(0.0, -1.0, 0.0), [0, 1, 5, 4]),
             (Vector3::new(0.0, 1.0, 0.0), [2, 3, 7, 6]),
@@ -2725,7 +2732,9 @@ mod reveal_tests {
 
         // 6 faces × 4 vertices each with face normals
         let faces: [(Vector3<f64>, [usize; 4]); 6] = [
-            (Vector3::new(0.0, 0.0, -1.0), [0, 2, 1, 3]), // -Z
+            // M7 parity-sweep fix: [0, 2, 1, 3] was a crossed (bowtie) quad —
+            // see the sibling `make_box_mesh` above for the full rationale.
+            (Vector3::new(0.0, 0.0, -1.0), [0, 3, 2, 1]), // -Z
             (Vector3::new(0.0, 0.0, 1.0), [4, 5, 6, 7]),  // +Z
             (Vector3::new(0.0, -1.0, 0.0), [0, 1, 5, 4]), // -Y
             (Vector3::new(0.0, 1.0, 0.0), [2, 3, 7, 6]),  // +Y
@@ -2769,7 +2778,9 @@ mod reveal_tests {
 
         let mut m = Mesh::with_capacity(24, 36);
         let faces: [[usize; 4]; 6] = [
-            [0, 2, 1, 3],
+            // M7 parity-sweep fix: [0, 2, 1, 3] was a crossed (bowtie) quad —
+            // see `make_box_mesh` above for the full rationale.
+            [0, 3, 2, 1],
             [4, 5, 6, 7],
             [0, 1, 5, 4],
             [2, 3, 7, 6],

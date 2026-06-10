@@ -13,6 +13,8 @@ import {
   removeChild,
   setAttribute,
   setChild,
+  setPropertyValue,
+  setQuantityValue,
 } from '../src/doc/entity.js';
 import { extractMinimalLayer } from '../src/snapshot/minimal-layer.js';
 import { publishLayer } from '../src/snapshot/publish-layer.js';
@@ -88,6 +90,41 @@ describe('publishLayer', () => {
     expect(manifest?.base).toEqual({ kind: 'layer', id: 'blake3:basebasebase' });
     expect(manifest?.parents).toEqual(['blake3:basebasebase']);
     expect(manifest?.scope_claim).toEqual(['model.mutate:Pset_FireSafety*@IfcWall']);
+  });
+
+  it('structured-branch edits publish into the layer and the content address (#1031)', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, 'wall', { ifcClass: 'IfcWall' });
+    const baseline = Y.encodeStateAsUpdate(doc);
+    setPropertyValue(doc, 'wall', 'Pset_FireSafety', 'FireRating', {
+      type: 'IfcLabel',
+      value: 'F30',
+    });
+    setQuantityValue(doc, 'wall', 'Qto_WallBaseQuantities', 'NetVolume', 12.5);
+
+    const fixed = {
+      intent: 'structured edits',
+      author: { kind: 'human' as const, principal: 'louis@lt.plus' },
+      baseline,
+      created: '2026-06-10T00:00:00Z',
+    };
+    const published = publishLayer(doc, fixed);
+    const wallNode = published.file.data.find((n) => n.path === 'wall')!;
+    expect(wallNode.attributes?.['bsi::ifc::v5a::Pset_FireSafety::FireRating']).toEqual({
+      type: 'IfcLabel',
+      value: 'F30',
+    });
+    expect(wallNode.attributes?.['bsi::ifc::v5a::Qto_WallBaseQuantities::NetVolume']).toBe(12.5);
+
+    // Canonicalization covers the typed-record representation: the id is
+    // stable for identical structured content and moves when it changes.
+    expect(published.layerId).toBe(publishLayer(doc, fixed).layerId);
+    expect(computeLayerId(published.file)).toBe(published.layerId);
+    setPropertyValue(doc, 'wall', 'Pset_FireSafety', 'FireRating', {
+      type: 'IfcLabel',
+      value: 'F60',
+    });
+    expect(publishLayer(doc, fixed).layerId).not.toBe(published.layerId);
   });
 
   it('is deterministic for identical drafts and changes id when content changes', () => {

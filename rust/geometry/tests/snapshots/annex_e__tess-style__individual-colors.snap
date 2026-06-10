@@ -1,0 +1,16 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-individual-colors.ifc
+---
+parse_ok: true
+products_attempted: 3
+products_non_empty: 1
+process_errors: 2
+total_triangles: 12
+total_vertices: 36
+spike_triangles: 0
+total_surface_area: 10.000
+bbox_min: [0.000, 0.000, 0.000]
+bbox_max: [1.000, 1.000, 2.000]
+types_seen:
+  IFCBUILDINGELEMENTPROXY: 1

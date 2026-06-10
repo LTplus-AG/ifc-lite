@@ -5,9 +5,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { resolve, dirname } from 'node:path';
 import { parseIfcx } from './index.js';
 
-const HELLO_WALL_PATH = 'tests/models/ifc5/Hello_Wall_hello-wall.ifcx';
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const HELLO_WALL_PATH = resolve(REPO_ROOT, 'tests/models/ifc5/Hello_Wall_hello-wall.ifcx');
 // Per AGENTS.md §9 fixtures are fetched on demand; skip the suite cleanly
 // when the bytes aren't on disk so a fresh checkout doesn't crash here.
 const FIXTURES_AVAILABLE = existsSync(HELLO_WALL_PATH);

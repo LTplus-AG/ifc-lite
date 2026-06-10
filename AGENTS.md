@@ -36,6 +36,11 @@ Project-specific gotchas and guardrails — the things that bite you *here* and 
 ## Test fixtures
 - Not committed (no LFS): catalogued in `tests/models/manifest.json`, fetched via `pnpm fixtures`. Tests must **skip** (never throw/panic) when a fixture is absent — point to `pnpm fixtures` in the skip message. Add one: drop under `tests/models/<group>/` → `pnpm fixtures:manifest` → `pnpm fixtures:upload`; commit only the manifest. CI runs `pnpm fixtures` before tests.
 
+## Writing tests
+- A new test must assert behavior through a real fixture or a stated invariant. Don't write: set-state-then-read-it-back store tests, tests that assert a mock's return value (they test the mock), constructor/setter tautologies, or byte-for-byte output pinning unless the byte layout IS the compatibility contract (e.g. signed bundles). Regression tests cite the issue/PR number in the test name or a comment.
+- Every package with test files needs a `test` script in its package.json or `turbo test` silently skips it — `scripts/check-test-wiring.mjs` (CI) enforces this. Packages use vitest OR node:test via `tsx --test`; match the package's existing convention, never mix within a package.
+- Geometry/WASM changes: mocked `@ifc-lite/wasm` tests prove nothing about the boundary — `pnpm test:wasm-contract` runs the real `buildPrePassOnce`/`processGeometryBatch` path and pins the field surface + unit-scale contract. Extend it when adding wasm API surface.
+
 ## CLI
 - Discover the full SDK API with `ifc-lite schema` (JSON). `eval` runs SDK expressions (`ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"`); always pass `--json` for machine output. `HeadlessBackend` (`packages/cli/src/headless-backend.ts`) runs query/export/create/IDS/BCF without a renderer.
 

@@ -538,6 +538,86 @@ export class ProfileEntryJs {
   readonly transform: Float32Array;
 }
 
+export class SpacePlateHandle {
+  free(): void;
+  [Symbol.dispose](): void;
+  /**
+   * Insert a new vertex at `(x, y)` on edge `edge`, subdividing it (no new
+   * face). Returns the new vertex id — use it as a `splitFace` endpoint to
+   * cut between points that weren't existing corners. Project `(x, y)` onto
+   * the edge to keep areas unchanged.
+   */
+  splitEdge(edge: number, x: number, y: number): number;
+  /**
+   * Subdivide a face with a partition between two of its vertices. `source`
+   * `-1` marks a brand-new partition (materialised as a fresh wall at bake).
+   * Returns the kept face and the new face.
+   */
+  splitFace(face: number, va: number, vb: number, source: number): any;
+  /**
+   * Move a vertex; returns the rooms it changed. A shared wall is one edge
+   * whose endpoints are shared vertices, so one drag updates both rooms.
+   */
+  dragVertex(v: number, x: number, y: number): any;
+  /**
+   * Remove a shared wall, unioning the two rooms it separated. Returns the
+   * surviving room.
+   */
+  mergeFaces(edge: number): any;
+  /**
+   * Flat outline `[x0, y0, x1, y1, …]` of a face (no repeated closing vertex).
+   */
+  faceOutline(face: number): Float64Array;
+  /**
+   * The room on the far side of a half-edge (its twin's face), or
+   * `undefined`. O(1) — the "who's across this wall" query.
+   */
+  neighborAcross(edge: number): number | undefined;
+  /**
+   * Set a face's floor / ceiling planes (the vertical dimension that turns a
+   * 2D face into a prismatic space at bake).
+   */
+  setFaceHeight(face: number, floor_z: number, ceiling_z: number, non_planar: boolean): void;
+  /**
+   * Nearest live vertex id to `(x, y)` within `tol`, or `undefined`.
+   */
+  findVertexNear(x: number, y: number, tol: number): number | undefined;
+  /**
+   * Bounding half-edges of a face paired with their source element —
+   * `[{ edge, source }, …]` — for `IfcRelSpaceBoundary` at bake.
+   */
+  boundingElements(face: number): any;
+  /**
+   * Build a plate from flat wall-axis segments.
+   *
+   * `segCoords`: `[ax, ay, bx, by, …]` (length a multiple of 4).
+   * `segSources`: one `i32` per segment, `-1` for none.
+   * `snapTolerance` / `minArea`: pass `<= 0` to take the defaults.
+   */
+  constructor(seg_coords: Float64Array, seg_sources: Int32Array, snap_tolerance: number, min_area: number);
+  /**
+   * Face ids of every live room.
+   */
+  roomIds(): Uint32Array;
+  /**
+   * All live rooms as `{ face, area, simple, outline }` patches.
+   */
+  snapshot(): any;
+  /**
+   * Deep-copy the plate for an undo/redo snapshot. The clone owns its own
+   * heap; the caller must `.free()` it like any handle.
+   */
+  duplicate(): SpacePlateHandle;
+  /**
+   * Absolute area (m²) of a face.
+   */
+  faceArea(face: number): number;
+  /**
+   * Number of live rooms.
+   */
+  readonly roomCount: number;
+}
+
 export class SymbolicCircle {
   private constructor();
   free(): void;
@@ -757,6 +837,7 @@ export interface InitOutput {
   readonly __wbg_meshoutlinejs_free: (a: number, b: number) => void;
   readonly __wbg_profilecollection_free: (a: number, b: number) => void;
   readonly __wbg_profileentryjs_free: (a: number, b: number) => void;
+  readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
   readonly __wbg_symboliccircle_free: (a: number, b: number) => void;
   readonly __wbg_symbolicfillarea_free: (a: number, b: number) => void;
   readonly __wbg_symbolicpolyline_free: (a: number, b: number) => void;
@@ -848,6 +929,21 @@ export interface InitOutput {
   readonly profileentryjs_modelIndex: (a: number) => number;
   readonly profileentryjs_outerPoints: (a: number) => number;
   readonly profileentryjs_transform: (a: number) => number;
+  readonly spaceplatehandle_boundingElements: (a: number, b: number, c: number) => void;
+  readonly spaceplatehandle_dragVertex: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly spaceplatehandle_duplicate: (a: number) => number;
+  readonly spaceplatehandle_faceArea: (a: number, b: number) => number;
+  readonly spaceplatehandle_faceOutline: (a: number, b: number, c: number) => void;
+  readonly spaceplatehandle_findVertexNear: (a: number, b: number, c: number, d: number) => number;
+  readonly spaceplatehandle_mergeFaces: (a: number, b: number, c: number) => void;
+  readonly spaceplatehandle_neighborAcross: (a: number, b: number) => number;
+  readonly spaceplatehandle_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly spaceplatehandle_roomCount: (a: number) => number;
+  readonly spaceplatehandle_roomIds: (a: number, b: number) => void;
+  readonly spaceplatehandle_setFaceHeight: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly spaceplatehandle_snapshot: (a: number, b: number) => void;
+  readonly spaceplatehandle_splitEdge: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly spaceplatehandle_splitFace: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly symboliccircle_centerX: (a: number) => number;
   readonly symboliccircle_centerY: (a: number) => number;
   readonly symboliccircle_endAngle: (a: number) => number;
@@ -912,10 +1008,10 @@ export interface InitOutput {
   readonly symbolictext_worldY: (a: number) => number;
   readonly symbolictext_x: (a: number) => number;
   readonly symbolictext_y: (a: number) => number;
-  readonly __wbindgen_export: (a: number) => void;
-  readonly __wbindgen_export2: (a: number, b: number, c: number) => void;
-  readonly __wbindgen_export3: (a: number, b: number) => number;
-  readonly __wbindgen_export4: (a: number, b: number, c: number, d: number) => number;
+  readonly __wbindgen_export: (a: number, b: number) => number;
+  readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
+  readonly __wbindgen_export3: (a: number) => void;
+  readonly __wbindgen_export4: (a: number, b: number, c: number) => void;
   readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
   readonly __wbindgen_start: () => void;
 }

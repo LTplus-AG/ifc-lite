@@ -245,7 +245,7 @@ cargo install wasm-pack   # or: curl https://rustwasm.github.io/wasm-pack/instal
 # 2. Clone and build
 git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
-pnpm install && pnpm build && pnpm dev   # opens viewer at localhost:5173
+pnpm install && pnpm build && pnpm dev   # opens viewer at localhost:3000
 ```
 
 If you need IFC fixtures for tests, benchmarks, or stress tests, fetch them with:

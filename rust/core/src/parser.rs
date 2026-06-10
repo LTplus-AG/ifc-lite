@@ -688,41 +688,37 @@ fn data_section_start(bytes: &[u8]) -> usize {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_entity_ref() {
-        assert_eq!(entity_ref("#123"), Ok(("", Token::EntityRef(123))));
-        assert_eq!(entity_ref("#0"), Ok(("", Token::EntityRef(0))));
-    }
-
-    #[test]
-    fn test_string_literal() {
-        assert_eq!(string_literal("'hello'"), Ok(("", Token::String("hello"))));
-        assert_eq!(
-            string_literal("'with spaces'"),
-            Ok(("", Token::String("with spaces")))
-        );
-    }
-
-    #[test]
-    fn test_integer() {
-        assert_eq!(integer("42"), Ok(("", Token::Integer(42))));
-        assert_eq!(integer("-42"), Ok(("", Token::Integer(-42))));
-        assert_eq!(integer("0"), Ok(("", Token::Integer(0))));
-    }
-
+    /// Table-driven basic token parsing: (parser, input, expected token).
     #[test]
     #[allow(clippy::approx_constant)]
-    fn test_float() {
-        assert_eq!(float("3.14"), Ok(("", Token::Float(3.14))));
-        assert_eq!(float("-3.14"), Ok(("", Token::Float(-3.14))));
-        assert_eq!(float("1.5E-10"), Ok(("", Token::Float(1.5e-10))));
-    }
-
-    #[test]
-    fn test_enum() {
-        assert_eq!(enum_value(".TRUE."), Ok(("", Token::Enum("TRUE"))));
-        assert_eq!(enum_value(".FALSE."), Ok(("", Token::Enum("FALSE"))));
-        assert_eq!(enum_value(".ELEMENT."), Ok(("", Token::Enum("ELEMENT"))));
+    fn test_basic_tokens() {
+        type Parser = for<'a> fn(&'a str) -> IResult<&'a str, Token<'a>>;
+        let cases: &[(Parser, &str, Token)] = &[
+            (entity_ref, "#123", Token::EntityRef(123)),
+            (entity_ref, "#0", Token::EntityRef(0)),
+            (string_literal, "'hello'", Token::String("hello")),
+            (
+                string_literal,
+                "'with spaces'",
+                Token::String("with spaces"),
+            ),
+            (integer, "42", Token::Integer(42)),
+            (integer, "-42", Token::Integer(-42)),
+            (integer, "0", Token::Integer(0)),
+            (float, "3.14", Token::Float(3.14)),
+            (float, "-3.14", Token::Float(-3.14)),
+            (float, "1.5E-10", Token::Float(1.5e-10)),
+            (enum_value, ".TRUE.", Token::Enum("TRUE")),
+            (enum_value, ".FALSE.", Token::Enum("FALSE")),
+            (enum_value, ".ELEMENT.", Token::Enum("ELEMENT")),
+        ];
+        for (parse, input, expected) in cases {
+            assert_eq!(
+                parse(input),
+                Ok(("", expected.clone())),
+                "tokenizing {input:?}"
+            );
+        }
     }
 
     #[test]

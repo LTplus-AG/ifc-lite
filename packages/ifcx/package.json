@@ -7,13 +7,15 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "pnpm exec tsc && node ./scripts/verify-dist-hello-wall.mjs",
-    "dev": "pnpm exec tsc --watch"
+    "dev": "pnpm exec tsc --watch",
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
@@ -21,6 +23,7 @@
     "@ifc-lite/pointcloud": "workspace:^"
   },
   "devDependencies": {
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",

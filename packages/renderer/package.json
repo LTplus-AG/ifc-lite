@@ -1,19 +1,21 @@
 {
   "name": "@ifc-lite/renderer",
-  "version": "1.25.2",
+  "version": "1.25.3",
   "description": "WebGPU renderer for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch"
+    "dev": "pnpm exec tsc --watch",
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@ifc-lite/geometry": "workspace:^",
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.70",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",

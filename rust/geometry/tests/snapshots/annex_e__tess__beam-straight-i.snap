@@ -1,0 +1,16 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/tessellated-shape/beam-straight-i-shape-tessellated.ifc
+---
+parse_ok: true
+products_attempted: 2
+products_non_empty: 1
+process_errors: 1
+total_triangles: 92
+total_vertices: 276
+spike_triangles: 16
+total_surface_area: 0.767
+bbox_min: [0.000, -0.050, -0.100]
+bbox_max: [1.000, 0.050, 0.100]
+types_seen:
+  IFCBEAM: 1

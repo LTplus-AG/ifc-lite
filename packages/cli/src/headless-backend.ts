@@ -20,6 +20,7 @@ import type {
   ViewerBackendMethods,
   MutateBackendMethods,
   StoreBackendMethods,
+  SpacesBackendMethods,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,
@@ -62,6 +63,9 @@ import {
   type SpaceInStoreParams,
   type WallInStoreParams,
   type WindowInStoreParams,
+  generateSpaces,
+  listStoreys,
+  type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
 import { EntityNode } from '@ifc-lite/query';
 import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
@@ -162,6 +166,7 @@ export class HeadlessBackend implements BimBackend {
   readonly lens: LensBackendMethods;
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
+  readonly spaces: SpacesBackendMethods;
 
   private dataStore: IfcDataStore;
   private modelName: string;
@@ -183,6 +188,17 @@ export class HeadlessBackend implements BimBackend {
     this.lens = this.createLensAdapter();
     this.files = this.createFilesAdapter();
     this.schedule = this.createScheduleAdapter();
+    this.spaces = this.createSpacesAdapter();
+  }
+
+  private createSpacesAdapter(): SpacesBackendMethods {
+    return {
+      listStoreys: () => listStoreys(this.dataStore),
+      // Spaces are written via the shared StoreEditor/MutablePropertyView, so
+      // they're picked up by this backend's export adapter (StepExporter).
+      generate: (options?: GenerateSpacesAllOptions) =>
+        generateSpaces(this.getOrCreateStoreEditor(), this.dataStore, options),
+    };
   }
 
   subscribe(_event: BimEventType, _handler: (data: unknown) => void): () => void {

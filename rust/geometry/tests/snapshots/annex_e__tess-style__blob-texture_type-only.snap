@@ -1,0 +1,14 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc
+---
+parse_ok: true
+products_attempted: 28
+products_non_empty: 0
+process_errors: 28
+total_triangles: 0
+total_vertices: 0
+spike_triangles: 0
+total_surface_area: 0.000
+bbox: none
+types_seen: {}

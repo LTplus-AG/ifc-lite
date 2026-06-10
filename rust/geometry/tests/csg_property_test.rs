@@ -113,27 +113,91 @@ fn all_finite(mesh: &Mesh) -> bool {
     mesh.positions.iter().all(|v| v.is_finite())
 }
 
-/// Watertightness: after welding by position, every directed edge must be
-/// matched by exactly one opposite directed edge (each undirected edge is
-/// shared by exactly two triangles with consistent winding). Empty meshes
-/// count as watertight (the empty shell is closed).
-fn is_watertight(mesh: &Mesh) -> bool {
+/// Watertightness: after welding by position, every undirected edge must be
+/// used by exactly two triangles, once in each direction (manifold edge with
+/// consistent winding). Counting *totals* per direction — not just the signed
+/// difference — also rejects non-manifold edges with 2+2 opposite incidences
+/// and duplicated closed shells, which a pure cancellation check would pass.
+/// Empty meshes count as watertight (the empty shell is closed).
+///
+/// Returns `None` when watertight, otherwise a description of the first
+/// violating edge (endpoint indices/positions and the directed-use split).
+fn watertight_violation(mesh: &Mesh) -> Option<String> {
     if mesh.is_empty() {
-        return true;
+        return None;
     }
     let welded = mesh.welded_by_position(1e-6);
-    let mut edges: HashMap<(u32, u32), i64> = HashMap::new();
+    // (min,max) vertex pair -> (uses as (min..max), uses as (max..min)).
+    let mut edges: HashMap<(u32, u32), (u32, u32)> = HashMap::new();
     for tri in welded.indices.chunks_exact(3) {
         for k in 0..3 {
             let a = tri[k];
             let b = tri[(k + 1) % 3];
-            // +1 for the edge in (min,max) orientation, -1 for the reverse:
-            // a closed, consistently wound surface nets to 0 on every edge.
-            let key = (a.min(b), a.max(b));
-            *edges.entry(key).or_insert(0) += if a < b { 1 } else { -1 };
+            if a == b {
+                return Some(format!(
+                    "degenerate edge ({a}, {b}): triangle repeats a welded vertex"
+                ));
+            }
+            let entry = edges.entry((a.min(b), a.max(b))).or_insert((0, 0));
+            if a < b {
+                entry.0 += 1;
+            } else {
+                entry.1 += 1;
+            }
         }
     }
-    edges.values().all(|&count| count == 0)
+    edges
+        .iter()
+        .find(|(_, &(fwd, rev))| (fwd, rev) != (1, 1))
+        .map(|(&(a, b), &(fwd, rev))| {
+            let p = |i: u32| {
+                let base = i as usize * 3;
+                &welded.positions[base..base + 3]
+            };
+            format!(
+                "edge ({a}, {b}) [{:?} -> {:?}] has {} directed uses \
+                 ({fwd} forward, {rev} reverse); expected exactly one in each direction",
+                p(a),
+                p(b),
+                fwd + rev
+            )
+        })
+}
+
+/// Guard the checker itself: a signed-cancellation-only check would pass a
+/// duplicated closed shell (every edge gets 2 forward + 2 reverse uses, net
+/// 0) and an open mesh with a flipped patch. The total-incidence check must
+/// reject both while accepting a plain closed box.
+#[test]
+fn watertight_checker_rejects_non_manifold_and_open_meshes() {
+    let unit = [0.0, 0.0, 0.0];
+    let size = [1.0, 1.0, 1.0];
+
+    // Closed box: watertight.
+    let mesh = box_mesh(unit, size);
+    assert_eq!(watertight_violation(&mesh), None);
+
+    // Duplicated shell: signed counts still cancel, but every edge has
+    // 4 total uses (2 forward, 2 reverse) — must be rejected.
+    let mut doubled = box_mesh(unit, size);
+    let tris = doubled.indices.clone();
+    for tri in tris.chunks_exact(3) {
+        doubled.add_triangle(tri[0], tri[1], tri[2]);
+    }
+    let violation = watertight_violation(&doubled).expect("duplicated shell must be rejected");
+    assert!(
+        violation.contains("4 directed uses (2 forward, 2 reverse)"),
+        "unexpected message: {violation}"
+    );
+
+    // Open mesh (one triangle removed): boundary edges have one use.
+    let mut open = box_mesh(unit, size);
+    open.indices.truncate(open.indices.len() - 3);
+    let violation = watertight_violation(&open).expect("open mesh must be rejected");
+    assert!(
+        violation.contains("expected exactly one in each direction"),
+        "unexpected message: {violation}"
+    );
 }
 
 /// Shoelace area of a simple polygon (positive for CCW input).
@@ -395,10 +459,12 @@ proptest! {
         // keep it asserted on both kernels. If this ever fails under
         // --no-default-features it is the known server-vs-viewer kernel
         // drift surfacing; commit the recorded counterexample.
+        let violation = watertight_violation(&result);
         prop_assert!(
-            is_watertight(&result),
-            "difference result is not watertight (config {})",
-            pair.config
+            violation.is_none(),
+            "difference result is not watertight (config {}): {}",
+            pair.config,
+            violation.as_deref().unwrap_or("")
         );
     }
 }
@@ -459,7 +525,12 @@ proptest! {
 
         prop_assert!(!mesh.is_empty(), "extrusion produced an empty mesh");
         prop_assert!(all_finite(&mesh), "extrusion has NaN/Inf positions");
-        prop_assert!(is_watertight(&mesh), "extrusion is not watertight");
+        let violation = watertight_violation(&mesh);
+        prop_assert!(
+            violation.is_none(),
+            "extrusion is not watertight: {}",
+            violation.as_deref().unwrap_or("")
+        );
 
         // Caps + side walls are authored in f32; coordinates stay < 4, so
         // a relative 1e-3 tolerance dwarfs the f32 quantization error.

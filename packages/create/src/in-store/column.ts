@@ -68,6 +68,13 @@ export function addColumnToStore(
 ): ColumnBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
+  if (
+    !Number.isFinite(params.Width) || !Number.isFinite(params.Depth) || !Number.isFinite(params.Height)
+    || params.Width <= 0 || params.Depth <= 0 || params.Height <= 0
+  ) {
+    throw new Error('addColumnToStore: Width, Depth, and Height must be finite positive numbers');
+  }
+
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale).
   params = {

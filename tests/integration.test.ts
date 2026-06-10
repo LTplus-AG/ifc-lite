@@ -386,6 +386,10 @@ async function runTests() {
     process.exit(1);
   } else {
     console.log('\n✅ All tests passed!');
+    // Exit explicitly: the parquet-wasm / DuckDB availability probes can
+    // leave handles (workers/wasm threads) on the event loop in CI, which
+    // kept this script alive until the job timeout killed it.
+    process.exit(0);
   }
 }
 

@@ -266,6 +266,9 @@ jobs:
         run: node scripts/check-test-wiring.mjs
       - run: pnpm test
       - name: Integration tests (parse → quantities → export)
+        # Step-scoped timeout: a hung harness must fail fast here, not
+        # silently consume the whole job budget.
+        timeout-minutes: 5
         run: pnpm test:integration
 
   rust-tests:

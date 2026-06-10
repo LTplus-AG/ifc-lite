@@ -9,7 +9,10 @@
  * contains *only* what changed since `baseline`:
  *   - Entities created since baseline.
  *   - Entities whose attributes / children / inherits changed since
- *     baseline (only the changed fields appear).
+ *     baseline (only the changed fields appear). Structured branches
+ *     (psets / quantities / classifications / materials / geometryRef)
+ *     participate via the same flattened-attribute view the full
+ *     snapshot writer emits (`structured-attrs.ts`, #1031).
  *
  * Composed with the baseline, the layer reproduces `doc`'s current
  * state — that's the IFCX layer composition contract from §2 (each
@@ -36,6 +39,7 @@ import * as Y from 'yjs';
 import { createCollabDoc, entitiesMap } from '../doc/schema.js';
 import { entityToJSON } from '../doc/entity.js';
 import { snapshotToIfcx, type SnapshotOptions } from './to-ifcx.js';
+import { flattenStructuredBranches } from './structured-attrs.js';
 
 export interface ExtractMinimalLayerOptions {
   /** Forwarded to `snapshotToIfcx` for header / timestamp / id. */
@@ -83,11 +87,16 @@ export function extractMinimalLayer(
 
     liveEnts.forEach((entUntyped, path) => {
       const liveJson = entityToJSON(entUntyped as Y.Map<unknown>);
+      // Diff over the flattened attribute view so structured-branch
+      // edits (psets / quantities / classifications / materials /
+      // geometryRef) surface exactly like the full writer emits them —
+      // the two writers stay in lockstep by construction (#1031).
+      const liveAttrs = flattenStructuredBranches(liveJson);
       const beforeUntyped = beforeEnts.get(path);
       if (!beforeUntyped) {
         // Entity is new — emit it whole (sans empty branches).
         const node: IfcxNode = { path };
-        if (Object.keys(liveJson.attributes).length > 0) node.attributes = { ...liveJson.attributes };
+        if (Object.keys(liveAttrs).length > 0) node.attributes = liveAttrs;
         if (Object.keys(liveJson.children).length > 0) node.children = { ...liveJson.children };
         if (Object.keys(liveJson.inherits).length > 0) node.inherits = { ...liveJson.inherits };
         diffNodes.push(node);
@@ -95,25 +104,26 @@ export function extractMinimalLayer(
       }
 
       const beforeJson = entityToJSON(beforeUntyped as Y.Map<unknown>);
+      const beforeAttrs = flattenStructuredBranches(beforeJson);
       const node: IfcxNode = { path };
       let dirty = false;
 
       // Attributes: include keys that are new OR (when configured)
       // whose value changed; removed keys emit null.
       const addedAttrs: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(liveJson.attributes)) {
-        const wasInBaseline = key in beforeJson.attributes;
+      for (const [key, value] of Object.entries(liveAttrs)) {
+        const wasInBaseline = key in beforeAttrs;
         if (!wasInBaseline) {
           addedAttrs[key] = value;
           continue;
         }
-        if (includeUpdatedValues && !deepEqual(value, beforeJson.attributes[key])) {
+        if (includeUpdatedValues && !deepEqual(value, beforeAttrs[key])) {
           addedAttrs[key] = value;
         }
       }
       if (includeDeletions) {
-        for (const key of Object.keys(beforeJson.attributes)) {
-          if (!(key in liveJson.attributes)) addedAttrs[key] = null;
+        for (const key of Object.keys(beforeAttrs)) {
+          if (!(key in liveAttrs)) addedAttrs[key] = null;
         }
       }
       if (Object.keys(addedAttrs).length > 0) {

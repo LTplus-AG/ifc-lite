@@ -142,6 +142,16 @@ export const IFCLITE_ATTR = {
   DELETED: 'ifclite::deleted',
   /** Marks derived (cache) content excluded from canonical hashing. */
   DERIVED: 'ifclite::derived',
+  /**
+   * Collab structured-branch carriers (#1031): the collab runtime keeps
+   * classifications / materials / geometry refs as dedicated CRDT
+   * branches; on the IFCX wire they travel as ordinary attributes under
+   * these keys (psets/quantities use the `bsi::ifc::v5a::<Set>::<Name>`
+   * convention instead, so merge component keys stay `pset:`/`qset:`).
+   */
+  CLASSIFICATIONS: 'ifclite::classifications',
+  MATERIALS: 'ifclite::materials',
+  GEOMETRY_REF: 'ifclite::geometryRef',
 } as const;
 
 /** Header key carrying the provenance manifest (see provenance.ts). */

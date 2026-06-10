@@ -87,7 +87,7 @@ export default defineConfig({
       testMatch: /viewer-benchmark\.spec\.ts/,
       timeout: 600000, // 10 min for very large files (327MB)
       webServer: {
-        command: 'pnpm --filter viewer exec vite preview --port 3000',
+        command: 'pnpm --filter @ifc-lite/viewer exec vite preview --port 3000',
         port: 3000,
         reuseExistingServer: true,
         timeout: 60000,
@@ -120,7 +120,7 @@ export default defineConfig({
       testMatch: /viewer-benchmark\.spec\.ts/,
       timeout: 600000,
       webServer: {
-        command: 'pnpm --filter viewer exec vite preview --port 3000',
+        command: 'pnpm --filter @ifc-lite/viewer exec vite preview --port 3000',
         port: 3000,
         reuseExistingServer: true,
         timeout: 60000,
@@ -149,7 +149,7 @@ export default defineConfig({
       testMatch: /holter-tower-debug\.spec\.ts/,
       timeout: 600000, // 10 min for large file
       webServer: {
-        command: 'pnpm --filter viewer dev --port 3000',
+        command: 'pnpm --filter @ifc-lite/viewer dev --port 3000',
         port: 3000,
         reuseExistingServer: true,
         timeout: 60000,

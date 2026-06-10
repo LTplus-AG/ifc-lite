@@ -60,6 +60,8 @@ jobs:
               - 'apps/viewer/**'
               - 'apps/viewer-embed/**'
               - 'packages/**'
+              - 'tests/e2e/**'
+              - 'playwright.config.ts'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'

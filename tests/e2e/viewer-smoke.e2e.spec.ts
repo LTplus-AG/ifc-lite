@@ -100,6 +100,11 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
   // One page/load shared by the steps below: the load is the expensive
   // part; the functional checks build on each other deliberately.
   test('load → geometry → pick → section plane survive end to end', async ({ page }) => {
+    // Collect uncaught errors across the WHOLE interaction flow (pick,
+    // Escape, section plane) — asserted at the end of the test.
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
     const viewer = new ViewerBenchmarkPage(page);
     await viewer.setup();
     await viewer.loadFile(join(process.cwd(), FIXTURE));
@@ -209,10 +214,33 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
     const stillAlive = await page.evaluate(() => document.querySelector('canvas') !== null);
     expect(stillAlive, 'canvas survives section-plane toggle').toBe(true);
 
+    if (GPU_STRICT) {
+      // The canvas surviving in the DOM isn't enough — verify the clipped
+      // scene still PAINTS (a frame-loop stall or blanked output after
+      // enabling the clip would pass the DOM check).
+      const clippedShot = await canvas.screenshot();
+      const w = clippedShot.readUInt32BE(16);
+      const h = clippedShot.readUInt32BE(20);
+      const clippedDensity = clippedShot.byteLength / (w * h);
+      expect(
+        clippedDensity,
+        `post-clip screenshot density ${clippedDensity.toFixed(4)} B/px — renderer blanked after section enable?`,
+      ).toBeGreaterThan(0.01);
+    }
+
     await storeAction(page, 'state.setSectionPlaneEnabled(false)');
 
     // ── 4. No uncaught page errors during the whole flow ─────────────
-    // (Collected throughout; checked last so earlier asserts report first.)
+    const relevantErrors = GPU_STRICT
+      ? pageErrors
+      : pageErrors.filter(
+          (e) =>
+            !/popErrorScope|GPUDevice|GPUAdapter|device.*lost|createBuffer/i.test(e),
+        );
+    expect(
+      relevantErrors,
+      `uncaught page errors during the flow:\n${relevantErrors.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('page reports no uncaught errors on a clean load', async ({ page }) => {

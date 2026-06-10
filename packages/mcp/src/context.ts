@@ -100,6 +100,18 @@ export const SILENT_LOGGER: Logger = {
   log(): void { /* default — server attaches a real logger */ },
 };
 
+/**
+ * Who is calling, transport-wise. Multi-client transports (Streamable HTTP)
+ * run one `MCPServer` per session, and per-session state — the layer
+ * workspace in particular (#1030) — keys off `id`.
+ */
+export interface SessionIdentity {
+  /** Transport session id; undefined for stdio/in-process (local mode). */
+  id?: string;
+  /** Authenticated user identity from `AuthScope.user`; undefined when unauthenticated. */
+  principal?: string;
+}
+
 export interface ToolContext {
   registry: ModelRegistry;
   scope: AuthScope;
@@ -109,6 +121,8 @@ export interface ToolContext {
   signal: AbortSignal;
   /** Server-wide config (read-only flag, bSDD endpoint, allowed paths, …). */
   config: ServerConfig;
+  /** Transport session + principal; absent only in hand-rolled test contexts. */
+  session?: SessionIdentity;
   /** Optional: present when the server has a managed in-process viewer. */
   viewer?: ViewerManager;
 }

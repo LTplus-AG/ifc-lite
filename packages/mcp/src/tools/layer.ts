@@ -33,7 +33,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import {
   createDraft,
   getLayerWorkspace,
-  requireDraft,
+  requireOwnedDraft,
   resolveBase,
 } from './layer-store.js';
 import type { DraftLayer } from './layer-store.js';
@@ -102,8 +102,8 @@ const createDraftLayer: Tool = {
     required: ['intent'],
     additionalProperties: false,
   },
-  handler(input) {
-    const ws = getLayerWorkspace();
+  handler(input, ctx) {
+    const ws = getLayerWorkspace(ctx.session?.id);
     const rawClaims = (input.scope as string[] | undefined) ?? [];
     const parsed = parseScopeClaims(rawClaims);
     if (!parsed.ok) {
@@ -121,6 +121,7 @@ const createDraftLayer: Tool = {
       intent: input.intent as string,
       claims: parsed.value,
       rawClaims,
+      owner: ctx.session?.principal,
     });
     return okResult(
       `Draft ${draft.id} created${base ? ` on ${base.kind} ${base.id}` : ' (no base)'}; ${fmtCount(rawClaims.length, 'scope claim')}.`,
@@ -161,9 +162,9 @@ const draftApplyOps: Tool = {
     required: ['draft_id', 'ops'],
     additionalProperties: false,
   },
-  handler(input) {
-    const ws = getLayerWorkspace();
-    const draft = requireDraft(ws, input.draft_id as string);
+  handler(input, ctx) {
+    const ws = getLayerWorkspace(ctx.session?.id);
+    const draft = requireOwnedDraft(ws, input.draft_id as string, ctx.session?.principal);
     const ops = input.ops as DraftOpInput[];
 
     // WRITE-TIME ENFORCEMENT — derive and check every capability before a
@@ -253,8 +254,8 @@ const publishLayerTool: Tool = {
     additionalProperties: false,
   },
   handler(input, ctx) {
-    const ws = getLayerWorkspace();
-    const draft = requireDraft(ws, input.draft_id as string);
+    const ws = getLayerWorkspace(ctx.session?.id);
+    const draft = requireOwnedDraft(ws, input.draft_id as string, ctx.session?.principal);
 
     const published = publishDraftFile(draft, ctx);
     // PUBLISH-TIME verification: claims vs the ops actually frozen into

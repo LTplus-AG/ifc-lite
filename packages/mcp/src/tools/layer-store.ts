@@ -6,9 +6,12 @@
  * In-memory draft / layer / review workspace backing the agent draft-layer
  * tool family (docs/architecture/layer-prs/06-agents.md).
  *
- * One workspace per process by default; tests call `resetLayerWorkspace()`
- * for isolation. A draft is a CRDT session (Y.Doc seeded with the resolved
- * base stack) plus the baseline snapshot `publishLayer` diffs against.
+ * Workspaces are keyed by transport session id (#1030): each Streamable
+ * HTTP session gets its own isolated workspace, disposed with the session;
+ * stdio/in-process callers share the single local workspace. Tests call
+ * `resetLayerWorkspace()` for isolation. A draft is a CRDT session (Y.Doc
+ * seeded with the resolved base stack) plus the baseline snapshot
+ * `publishLayer` diffs against.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -42,6 +45,8 @@ export interface DraftLayer {
   claims: ScopeClaim[];
   rawClaims: string[];
   session: string;
+  /** Creating principal; undefined = unauthenticated/local → accessible to anyone in the workspace. */
+  owner?: string;
   createdAt: string;
 }
 
@@ -63,6 +68,8 @@ export interface LayerReview {
   feedback: ReviewDecision[];
   /** Follow-up draft ids opened via `respond_to_review`. */
   responses: string[];
+  /** Requesting principal; undefined = unauthenticated/local → accessible to anyone in the workspace. */
+  owner?: string;
 }
 
 export interface LayerWorkspace {
@@ -81,22 +88,44 @@ export function createLayerWorkspace(): LayerWorkspace {
   };
 }
 
-// TODO(remove-by: registry phase L5 / first multi-client transport, louistrue): #1030
-// Single workspace per server process: this is the registry-less local
-// mode (10-registry.md). The stdio transport is one client per process;
-// multi-client deployments (Streamable HTTP) need the registry's
-// session-scoped storage and per-principal ownership checks before
-// exposing these tools — tracked in issue #1030, not patched in here.
-let active = createLayerWorkspace();
+// Workspaces are keyed by transport session id (#1030): Streamable HTTP
+// runs one MCPServer per session and each gets an isolated workspace,
+// disposed on session end. stdio/in-process transports carry no session id
+// and share the single local workspace — registry-less local mode
+// (10-registry.md); durable, registry-backed persistence stays future work.
+const workspaces = new Map<string, LayerWorkspace>();
 
-export function getLayerWorkspace(): LayerWorkspace {
-  return active;
+/** Map key for transports without a session id (stdio, in-process, tests). */
+const LOCAL_WORKSPACE_KEY = 'local';
+
+export function getLayerWorkspace(sessionId?: string): LayerWorkspace {
+  const key = sessionId ?? LOCAL_WORKSPACE_KEY;
+  let ws = workspaces.get(key);
+  if (!ws) {
+    ws = createLayerWorkspace();
+    workspaces.set(key, ws);
+  }
+  return ws;
 }
 
-/** Test hook: swap in a fresh workspace and return it. */
+/** Drafts hold live Y.Docs — destroy them or the CRDT state lingers. */
+function destroyDrafts(ws: LayerWorkspace): void {
+  for (const draft of ws.drafts.values()) draft.doc.destroy();
+}
+
+/** Drop a session's workspace when the transport session ends. */
+export function disposeLayerWorkspace(sessionId: string): void {
+  const ws = workspaces.get(sessionId);
+  if (!ws) return;
+  destroyDrafts(ws);
+  workspaces.delete(sessionId);
+}
+
+/** Test hook: drop every workspace and return a fresh local one. */
 export function resetLayerWorkspace(): LayerWorkspace {
-  active = createLayerWorkspace();
-  return active;
+  for (const ws of workspaces.values()) destroyDrafts(ws);
+  workspaces.clear();
+  return getLayerWorkspace();
 }
 
 /** Files for a ref, erroring on dangling layer ids (corrupt workspace). */
@@ -278,6 +307,7 @@ export interface CreateDraftInit {
   claims: ScopeClaim[];
   rawClaims: string[];
   session?: string;
+  owner?: string;
 }
 
 /** Build, seed, baseline, and register a new draft. */
@@ -294,32 +324,95 @@ export function createDraft(ws: LayerWorkspace, init: CreateDraftInit): DraftLay
     claims: init.claims,
     rawClaims: init.rawClaims,
     session: init.session ?? randomUUID(),
+    owner: init.owner,
     createdAt: new Date().toISOString(),
   };
   ws.drafts.set(draft.id, draft);
   return draft;
 }
 
-export function requireDraft(ws: LayerWorkspace, id: string): DraftLayer {
+// ── Ownership / visibility ───────────────────────────────────────────────
+//
+// Access matrix (#1030). A record's `owner` is the creating principal;
+// undefined (unauthenticated/local) means anyone in the workspace:
+//
+//   - read tools (diff_layer, dry_run_merge, list_conflicts,
+//     get_review_feedback): any caller in the workspace — the workspace is
+//     already session-scoped, so this only widens within one session.
+//   - mutating draft tools (draft_apply_ops, publish_layer): owner only.
+//   - respond_to_review: review owner only.
+//   - add_review_feedback: review owner OR a principal listed in
+//     `review.reviewers`.
+//
+// Denials are byte-identical to the unknown-id error, and error `details`
+// only enumerate ids the caller may see (no owner, or owned by the
+// caller) — a foreign id must be indistinguishable from a nonexistent one.
+
+function visibleTo(owner: string | undefined, caller: string | undefined): boolean {
+  return owner === undefined || owner === caller;
+}
+
+export function visibleDraftIds(ws: LayerWorkspace, caller?: string): string[] {
+  return Array.from(ws.drafts.values())
+    .filter((d) => visibleTo(d.owner, caller))
+    .map((d) => d.id);
+}
+
+export function visibleReviewIds(ws: LayerWorkspace, caller?: string): string[] {
+  return Array.from(ws.reviews.values())
+    .filter((r) => visibleTo(r.owner, caller))
+    .map((r) => r.id);
+}
+
+function unknownDraftError(ws: LayerWorkspace, id: string, caller?: string): ToolExecutionError {
+  return new ToolExecutionError({
+    code: ToolErrorCode.ENTITY_NOT_FOUND,
+    message: `Unknown draft '${id}'. Call create_draft_layer first.`,
+    details: { drafts: visibleDraftIds(ws, caller) },
+  });
+}
+
+function unknownReviewError(ws: LayerWorkspace, id: string, caller?: string): ToolExecutionError {
+  return new ToolExecutionError({
+    code: ToolErrorCode.ENTITY_NOT_FOUND,
+    message: `Unknown review '${id}'.`,
+    details: { reviews: visibleReviewIds(ws, caller) },
+  });
+}
+
+/** Existence check only — read paths; `caller` just filters error details. */
+export function requireDraft(ws: LayerWorkspace, id: string, caller?: string): DraftLayer {
   const draft = ws.drafts.get(id);
-  if (!draft) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.ENTITY_NOT_FOUND,
-      message: `Unknown draft '${id}'. Call create_draft_layer first.`,
-      details: { drafts: Array.from(ws.drafts.keys()) },
-    });
-  }
+  if (!draft) throw unknownDraftError(ws, id, caller);
   return draft;
 }
 
-export function requireReview(ws: LayerWorkspace, id: string): LayerReview {
+/** Ownership-gated lookup for mutating draft tools. */
+export function requireOwnedDraft(ws: LayerWorkspace, id: string, caller?: string): DraftLayer {
+  const draft = requireDraft(ws, id, caller);
+  if (!visibleTo(draft.owner, caller)) throw unknownDraftError(ws, id, caller);
+  return draft;
+}
+
+/** Existence check only — read paths; `caller` just filters error details. */
+export function requireReview(ws: LayerWorkspace, id: string, caller?: string): LayerReview {
   const review = ws.reviews.get(id);
-  if (!review) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.ENTITY_NOT_FOUND,
-      message: `Unknown review '${id}'.`,
-      details: { reviews: Array.from(ws.reviews.keys()) },
-    });
+  if (!review) throw unknownReviewError(ws, id, caller);
+  return review;
+}
+
+/** Ownership-gated lookup for mutating review tools. */
+export function requireOwnedReview(
+  ws: LayerWorkspace,
+  id: string,
+  caller?: string,
+  opts: { allowReviewers?: boolean } = {},
+): LayerReview {
+  const review = requireReview(ws, id, caller);
+  const reviewerAllowed =
+    opts.allowReviewers === true && caller !== undefined && review.reviewers.includes(caller);
+  if (!visibleTo(review.owner, caller) && !reviewerAllowed) {
+    throw unknownReviewError(ws, id, caller);
   }
   return review;
 }

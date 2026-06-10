@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { CallToolResult } from '../protocol/index.js';
-import type { ToolContext } from '../context.js';
+import type { SessionIdentity, ToolContext } from '../context.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
 import { fullScope } from '../auth/scope.js';
 import { ToolExecutionError } from '../errors.js';
@@ -22,7 +22,7 @@ import type { Tool } from './types.js';
 
 const WALL = 'site/wall-1';
 
-function makeCtx(): ToolContext {
+function makeCtx(session?: SessionIdentity): ToolContext {
   return {
     registry: new InMemoryModelRegistry(),
     scope: fullScope(),
@@ -30,6 +30,7 @@ function makeCtx(): ToolContext {
     log: SILENT_LOGGER,
     signal: new AbortController().signal,
     config: { ...DEFAULT_CONFIG },
+    ...(session !== undefined ? { session } : {}),
   };
 }
 

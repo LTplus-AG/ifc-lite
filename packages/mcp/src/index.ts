@@ -14,7 +14,7 @@
 export { MCPServer, SERVER_NAME } from './server.js';
 export type { MCPServerOptions, OutgoingMessageSink } from './server.js';
 
-export type { LoadedModel, ModelRegistry, ServerConfig, ToolContext, Logger, ProgressReporter } from './context.js';
+export type { LoadedModel, ModelRegistry, ServerConfig, SessionIdentity, ToolContext, Logger, ProgressReporter } from './context.js';
 export { InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER, DEFAULT_CONFIG } from './context.js';
 
 export { ToolErrorCode, ToolExecutionError, toolError } from './errors.js';
@@ -63,6 +63,7 @@ export function createMCPServer(opts: Partial<MCPServerOptions> = {}): MCPServer
     config: opts.config,
     logger: opts.logger,
     capabilities: opts.capabilities,
+    sessionId: opts.sessionId,
     tools: opts.tools ?? buildDefaultToolRegistry(),
     resources: opts.resources ?? buildDefaultResourceRegistry(),
     prompts: opts.prompts ?? buildDefaultPromptRegistry(),

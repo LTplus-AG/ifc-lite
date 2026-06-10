@@ -36,7 +36,7 @@ export {
   exportTools,
   viewerTools,
 };
-export { resetLayerWorkspace, getLayerWorkspace } from './layer-store.js';
+export { resetLayerWorkspace, getLayerWorkspace, disposeLayerWorkspace } from './layer-store.js';
 
 /**
  * Build a ToolRegistry pre-loaded with every tool ifc-lite-mcp ships in v0.1.

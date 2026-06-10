@@ -29,9 +29,11 @@ import {
   createDraft,
   getLayerWorkspace,
   refLayerFiles,
+  requireOwnedReview,
   requireReview,
   resolveAncestorFiles,
   resolveAncestorFilesAnyRef,
+  visibleDraftIds,
 } from './layer-store.js';
 import type { LayerReview, LayerWorkspace, ReviewDecision, ReviewStatus } from './layer-store.js';
 import { publishDraftFile } from './layer.js';
@@ -65,10 +67,12 @@ function resolveCandidate(ws: LayerWorkspace, id: string, ctx: ToolContext, into
         : resolveAncestorFilesAnyRef(ws, base);
     return { stateFiles: [...baseFiles, layer], baseFiles, candidateFile: layer };
   }
+  // Published layers carry no owner (immutable, workspace-shared); drafts
+  // do, so only the caller's own / unowned draft ids may be enumerated.
   throw new ToolExecutionError({
     code: ToolErrorCode.ENTITY_NOT_FOUND,
     message: `'${id}' is neither an open draft nor a published layer.`,
-    details: { drafts: Array.from(ws.drafts.keys()), layers: Array.from(ws.layers.keys()) },
+    details: { drafts: visibleDraftIds(ws, ctx.session?.principal), layers: Array.from(ws.layers.keys()) },
   });
 }
 
@@ -163,7 +167,7 @@ const diffLayer: Tool = {
     additionalProperties: false,
   },
   handler(input, ctx) {
-    const ws = getLayerWorkspace();
+    const ws = getLayerWorkspace(ctx.session?.id);
     const candidate = resolveCandidate(ws, input.layer_or_draft as string, ctx);
     const leftFiles = input.against !== undefined
       ? resolveStateFiles(ws, input.against as string, ctx)
@@ -191,7 +195,7 @@ const dryRunMerge: Tool = {
     additionalProperties: false,
   },
   handler(input, ctx) {
-    const plan = planMerge(getLayerWorkspace(), input, ctx);
+    const plan = planMerge(getLayerWorkspace(ctx.session?.id), input, ctx);
     return okResult(
       `Merge preview into '${input.into as string}': ${fmtCount(plan.conflicts.length, 'conflict')}, ${plan.autoOps.length} auto op(s).`,
       { conflicts: conflictsJson(plan), auto_op_count: plan.autoOps.length, would_fail_checks: [] },
@@ -213,7 +217,7 @@ const listConflicts: Tool = {
     additionalProperties: false,
   },
   handler(input, ctx) {
-    const plan = planMerge(getLayerWorkspace(), input, ctx);
+    const plan = planMerge(getLayerWorkspace(ctx.session?.id), input, ctx);
     return okResult(`${fmtCount(plan.conflicts.length, 'conflict')}.`, { conflicts: conflictsJson(plan) });
   },
 };
@@ -232,8 +236,8 @@ const requestReview: Tool = {
     required: ['layer_id', 'into'],
     additionalProperties: false,
   },
-  handler(input) {
-    const ws = getLayerWorkspace();
+  handler(input, ctx) {
+    const ws = getLayerWorkspace(ctx.session?.id);
     const layerId = input.layer_id as string;
     if (!ws.layers.has(layerId)) {
       throw new ToolExecutionError({
@@ -257,6 +261,7 @@ const requestReview: Tool = {
       status: 'open',
       feedback: [],
       responses: [],
+      owner: ctx.session?.principal,
     };
     ws.reviews.set(review.id, review);
     return okResult(`Review ${review.id} opened: ${layerId} → '${review.into}'.`, { review_id: review.id });
@@ -298,9 +303,11 @@ const addReviewFeedback: Tool = {
     required: ['review_id', 'decisions'],
     additionalProperties: false,
   },
-  handler(input) {
-    const ws = getLayerWorkspace();
-    const review = requireReview(ws, input.review_id as string);
+  handler(input, ctx) {
+    const ws = getLayerWorkspace(ctx.session?.id);
+    const review = requireOwnedReview(ws, input.review_id as string, ctx.session?.principal, {
+      allowReviewers: true,
+    });
     const decisions = input.decisions as DecisionInput[];
     for (const d of decisions) {
       const entry: ReviewDecision = { entity: d.entity, decision: d.decision };
@@ -328,8 +335,8 @@ const getReviewFeedback: Tool = {
     required: ['review_id'],
     additionalProperties: false,
   },
-  handler(input) {
-    const review = requireReview(getLayerWorkspace(), input.review_id as string);
+  handler(input, ctx) {
+    const review = requireReview(getLayerWorkspace(ctx.session?.id), input.review_id as string, ctx.session?.principal);
     return okResult(
       `Review ${review.id}: status=${review.status}, ${fmtCount(review.feedback.length, 'decision')}.`,
       {
@@ -364,9 +371,9 @@ const respondToReview: Tool = {
     required: ['review_id'],
     additionalProperties: false,
   },
-  handler(input) {
-    const ws = getLayerWorkspace();
-    const review = requireReview(ws, input.review_id as string);
+  handler(input, ctx) {
+    const ws = getLayerWorkspace(ctx.session?.id);
+    const review = requireOwnedReview(ws, input.review_id as string, ctx.session?.principal);
     const layer = ws.layers.get(review.layerId);
     if (!layer) {
       throw new ToolExecutionError({
@@ -393,6 +400,7 @@ const respondToReview: Tool = {
       claims: parsed.value,
       rawClaims: [...rawClaims],
       session: manifest?.author.session,
+      owner: ctx.session?.principal,
     });
     review.responses.push(draft.id);
     return okResult(

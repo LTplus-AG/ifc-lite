@@ -4,7 +4,12 @@
 
 //! Polygon triangulation utilities
 //!
-//! Wrapper around earcutr for 2D polygon triangulation.
+//! Primary path: a deterministic Constrained Delaunay Triangulation
+//! (`crate::cdt`) that avoids the high-aspect sliver fans greedy ear-clipping
+//! produces. `earcutr` is retained as a robustness fallback for any degenerate
+//! input the CDT declines (self-touching rings, fully-collinear loops). See
+//! `crate::cdt` for the determinism / watertightness / bounded-refinement
+//! contract.
 
 use crate::{Error, Point2, Point3, Result, Vector3};
 
@@ -78,14 +83,16 @@ pub fn triangulate_polygon(points: &[Point2<f64>]) -> Result<Vec<usize>> {
         return Ok(fan_triangulate(n));
     }
 
-    // Flatten points for earcutr
+    // earcutr. (A no-Steiner CDT was tried here and reverted: this function is
+    // on the hot path for EVERY profile/face in the pipeline, and Bowyer-Watson
+    // costs ~2x total CSG time on opening-heavy models. The quality CDT runs
+    // only on the consolidate path via triangulate_polygon_with_holes_refined,
+    // which is where the sliver-prone cut faces are re-triangulated.)
     let mut vertices = Vec::with_capacity(n * 2);
     for p in points {
         vertices.push(p.x);
         vertices.push(p.y);
     }
-
-    // Triangulate using earcutr
     let indices = earcutr::earcut(&vertices, &[], 2)
         .map_err(|e| Error::TriangulationError(format!("{:?}", e)))?;
 
@@ -113,17 +120,15 @@ pub fn triangulate_polygon_with_holes(
         return triangulate_polygon(outer);
     }
 
-    // Flatten vertices for earcutr
+    // earcutr. (See triangulate_polygon: the no-Steiner CDT here was reverted
+    // for hot-path cost; the consolidate path uses the quality CDT via
+    // triangulate_polygon_with_holes_refined.)
     let total_points: usize = outer.len() + valid_holes.iter().map(|h| h.len()).sum::<usize>();
     let mut vertices = Vec::with_capacity(total_points * 2);
-
-    // Add outer boundary
     for p in outer {
         vertices.push(p.x);
         vertices.push(p.y);
     }
-
-    // Add holes and track their start indices
     let mut hole_indices = Vec::with_capacity(valid_holes.len());
     for hole in valid_holes {
         hole_indices.push(vertices.len() / 2);
@@ -132,12 +137,60 @@ pub fn triangulate_polygon_with_holes(
             vertices.push(p.y);
         }
     }
-
-    // Triangulate using earcutr
     let indices = earcutr::earcut(&vertices, &hole_indices, 2)
         .map_err(|e| Error::TriangulationError(format!("{:?}", e)))?;
 
     Ok(indices)
+}
+
+/// Quality-triangulate a polygon-with-holes WITH bounded Ruppert min-angle
+/// refinement (Steiner points allowed). Returns the augmented 2D vertex list
+/// (input vertices in `outer ++ holes` order, followed by Steiner points) and
+/// triangle indices into it.
+///
+/// Use this ONLY from callers that lift a generic vertex list to 3D (the
+/// coplanar-consolidation path), NOT from callers that map indices onto a fixed
+/// input ring — those must use [`triangulate_polygon_with_holes`]. Returns the
+/// outer+holes vertex list and an earcut index list (no Steiner) if the CDT
+/// declines, so the caller always gets a usable result.
+///
+/// `allow_boundary_split = false` keeps refinement OFF the outer/hole rings so a
+/// region whose boundary is SHARED with neighbouring plane buckets stays
+/// watertight at the seam (no boundary Steiner T-junction). The consolidate path
+/// passes `false`; a standalone single-region caller can pass `true` for full
+/// Ruppert.
+#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
+pub fn triangulate_polygon_with_holes_refined(
+    outer: &[Point2<f64>],
+    holes: &[Vec<Point2<f64>>],
+    allow_boundary_split: bool,
+) -> Result<(Vec<Point2<f64>>, Vec<usize>)> {
+    if outer.len() < 3 {
+        return Err(Error::TriangulationError(
+            "Need at least 3 points in outer boundary".to_string(),
+        ));
+    }
+    let valid_holes: Vec<Vec<Point2<f64>>> =
+        holes.iter().filter(|h| h.len() >= 3).cloned().collect();
+
+    // Quality CDT + bounded refinement.
+    if let Some((pts, idx)) =
+        crate::cdt::triangulate_refined(outer, &valid_holes, allow_boundary_split)
+    {
+        return Ok((pts, idx));
+    }
+
+    // FALLBACK: earcut over the un-refined vertex set (outer ++ holes).
+    let mut all: Vec<Point2<f64>> = outer.to_vec();
+    for h in &valid_holes {
+        all.extend_from_slice(h);
+    }
+    let idx = if valid_holes.is_empty() {
+        triangulate_polygon(outer)?
+    } else {
+        triangulate_polygon_with_holes(outer, &valid_holes)?
+    };
+    Ok((all, idx))
 }
 
 /// Project 3D points onto a 2D plane defined by a normal

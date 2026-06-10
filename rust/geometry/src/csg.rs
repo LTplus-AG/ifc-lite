@@ -1099,7 +1099,7 @@ impl ClippingProcessor {
     #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
     pub(crate) fn consolidate_coplanar(mesh: Mesh) -> Mesh {
         use crate::triangulation::{
-            project_to_2d_with_basis, triangulate_polygon_with_holes,
+            project_to_2d_with_basis, triangulate_polygon_with_holes_refined,
         };
         use i_overlay::core::fill_rule::FillRule;
         use i_overlay::core::overlay_rule::OverlayRule;
@@ -1310,21 +1310,24 @@ impl ClippingProcessor {
                     })
                     .collect();
 
-                let indices = match triangulate_polygon_with_holes(
+                // Quality CDT + bounded Ruppert refinement. Returns the
+                // (possibly Steiner-augmented) 2D vertex list `all_2d` plus
+                // indices into it; the lift below maps EVERY returned vertex
+                // (input + Steiner) back to 3D, so a Steiner point on a shared
+                // edge is split on both sides → watertight, no T-junction.
+                // allow_boundary_split = false: this region's outer/hole rings
+                // are shared with neighbouring plane buckets triangulated
+                // independently; a boundary Steiner point would tear that seam
+                // (open edges / T-junctions). Interior-only refinement keeps the
+                // seam watertight while still removing the rim-corner slivers.
+                let (all_2d, indices) = match triangulate_polygon_with_holes_refined(
                     &outer_simplified,
                     &holes_simplified,
+                    false,
                 ) {
-                    Ok(idx) => idx,
+                    Ok((pts, idx)) => (pts, idx),
                     Err(_) => continue,
                 };
-
-                // Lift 2D points back to 3D.
-                let mut all_2d: Vec<nalgebra::Point2<f64>> =
-                    Vec::with_capacity(outer_simplified.len() + holes_simplified.iter().map(|h| h.len()).sum::<usize>());
-                all_2d.extend(outer_simplified.iter().copied());
-                for h in &holes_simplified {
-                    all_2d.extend(h.iter().copied());
-                }
 
                 let lift = |p: nalgebra::Point2<f64>| -> Point3<f64> {
                     let off = u_axis * p.x + v_axis * p.y;

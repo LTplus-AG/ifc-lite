@@ -992,7 +992,23 @@ impl GeometryRouter {
         }
 
         let clipper = ClippingProcessor::new();
-        let mut result = mesh;
+        // ROOT-CAUSE FIX (issue #1007, host #1112): correct f32 facet jitter on
+        // the host triangle soup BEFORE the exact-kernel cut. A faceted-BREP
+        // roof slope authored as ONE flat plane comes back from the f32 import
+        // with adjacent facets ~0.09° non-coplanar. That jitter (a) splits the
+        // slope into many one-triangle plane buckets in `consolidate_coplanar`
+        // — a single-triangle bucket bypasses the CDT and is emitted as a 25:1
+        // far-corner sliver fan — and (b) blocks clean coalescing of the cut
+        // hole. Welding near-coplanar adjacent facets (≤0.15°, well below any
+        // real roof pitch) to a single least-squares plane makes the slope
+        // EXACTLY coplanar, so the cut emits one CDT-refined region (rim sliver
+        // gone) with a clean opening hole. Deterministic + watertight + grid-
+        // snapped; a no-op for already-planar extrusion hosts.
+        let mut result = if std::env::var("WELD_OFF").is_ok() {
+            mesh
+        } else {
+            crate::facet_weld::weld_near_coplanar_facets(&mesh)
+        };
 
         let (wall_min_f32, wall_max_f32) = result.bounds();
         let wall_min = Point3::new(
@@ -1286,6 +1302,18 @@ impl GeometryRouter {
             self.record_host_failure_summary(element_id, &kernel_failures);
             self.record_csg_failures(element_id, kernel_failures);
         }
+
+        // WATERTIGHT SLIVER REFINEMENT (issue #1007): the exact-kernel cut of a
+        // long, tilted faceted-BREP host facet can emit a high-aspect corner
+        // sliver (a far-corner triangle fanned to two new rim vertices a few cm
+        // apart) that lands ALONE in its plane bucket and so bypasses the
+        // coplanar CDT. Bisect any >8:1 triangle's longest edge at its midpoint,
+        // splitting BOTH incident triangles in lockstep so the mesh stays
+        // watertight (no T-junction) and the midpoint lies ON the original edge
+        // ⇒ cut volume is preserved exactly. A no-op on clean cuts (no triangle
+        // exceeds 8:1), so it does not perturb the frozen corpus. Only runs when
+        // a cut was actually attempted (`!ctx.is_noop()` guarantees this path).
+        let result = crate::facet_weld::refine_high_aspect_slivers(&result);
 
         // Per-host cut-effect snapshot: tris_before / tris_after lets the
         // diagnostic surface the silent-no-op case (rectangular boxes

@@ -231,15 +231,20 @@ fn worst_bridged_samples(path: &str, host_id: u32) -> Option<usize> {
     // RIM-CORNER CHAMFER guard (#1007): a thin roof-slope flap fanned from a far
     // corner to two rim points a few cm apart. It lies on the host roof plane
     // OUTSIDE the cap footprint, so the footprint-bridge sampling can never catch
-    // it — but it touches a rim vertex and renders as a visible chamfer. The pad
-    // under-tune (5 % of opening depth) left it at 74:1; clearing the flush cap by
-    // 30 % of the opening depth drops it to ~25:1 (genuine-geometry floor). This is
-    // the fail-before / pass-after assertion for that fix. 30:1 sits in the gap
-    // between the post-fix floor (~25:1) and the pre-fix flap (74:1) and still well
-    // below any genuine host facet sliver on this model.
+    // it — but it touches a rim vertex and renders as a visible chamfer. History:
+    // 74:1 (flush-pad under-tune) → 25:1 (pad 0.30, still visible) → 7.74:1 after
+    // the root fix (facet_weld pre-cut jitter weld + CDT-refined consolidate +
+    // post-cut >8:1 bisection, which targets aspect ≤8 by construction). The
+    // 10:1 bound sits just above the construction target and far below the 25:1
+    // defect, so any regression of the far-corner fan fails clearly.
     let wri = worst_rim_incident_aspect(&out_tris, &rim);
+    eprintln!(
+        "[1007-metrics] host #{host_id}: worst_rim_incident_aspect={wri:.2} \
+         worst_aspect={wa:.2} open_boundary_edges={ob} out_tris={}",
+        out_tris.len()
+    );
     assert!(
-        wri < 30.0,
+        wri < 10.0,
         "host #{host_id}: a rim-corner chamfer/flap survived on the roof slope \
          (worst rim-incident aspect {wri:.1}:1) — the opening cut leaves a thin tab \
          at the opening corner",

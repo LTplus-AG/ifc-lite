@@ -138,6 +138,42 @@ describe('extractGeometry', () => {
     assert.deepStrictEqual(meshes.map((mesh) => mesh.ifcType).sort(), ['IfcWindow', 'IfcWindow']);
   });
 
+  it('emits a multi-parent entity mesh once (aliased containment edges, PR #1041 round-trip ×4)', () => {
+    // Hello Wall shape: the wall hangs under BOTH the storey (containment)
+    // and the space (boundary) — same entity, same placement. The exporter
+    // legitimately materialises both edges; extraction must not duplicate
+    // the wall's triangles per incoming edge.
+    const storey = createNode('storey');
+    storey.attributes.set(ATTR.CLASS, ifcClass('IfcBuildingStorey'));
+
+    const space = createNode('space');
+    space.attributes.set(ATTR.CLASS, ifcClass('IfcSpace'));
+
+    const wall = createNode('wall');
+    wall.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));
+    wall.attributes.set(ATTR.MESH, createMesh());
+
+    attachChild(storey, space, 'Space');
+    attachChild(storey, wall, 'Wall');
+    attachChild(space, wall, 'Wall');
+
+    const composed = new Map<string, ComposedNode>([
+      [storey.path, storey],
+      [space.path, space],
+      [wall.path, wall],
+    ]);
+    const pathToId = new Map([
+      [storey.path, 1],
+      [space.path, 2],
+      [wall.path, 3],
+    ]);
+
+    const meshes = extractGeometry(composed, pathToId);
+
+    assert.strictEqual(meshes.length, 1, 'wall mesh must emit once, not once per incoming edge');
+    assert.strictEqual(meshes[0].expressId, 3);
+  });
+
   it('preserves inherited type-definition state through classed helper descendants', () => {
     const root = createNode('root');
     root.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));

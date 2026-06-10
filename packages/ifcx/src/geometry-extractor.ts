@@ -47,6 +47,16 @@ export function extractGeometry(
   const meshes: MeshData[] = [];
   const contextByFrame = new WeakMap<TraversalFrame, GeometryContext | null>();
   const transformByFrame = new WeakMap<TraversalFrame, Float32Array | null>();
+  // A node reachable through multiple parents (e.g. storey→wall AND
+  // space→wall containment edges, as our own exporter emits) is visited
+  // once per traversal path, which used to duplicate its mesh — the
+  // export round-trip multiplied triangle counts by the number of
+  // incoming edges. Emit once per (node path, entity context, accumulated
+  // transform): an aliased containment edge resolves to the SAME entity
+  // and placement → skip; a shared type body reached from two instances
+  // resolves to different expressIds (and instancing to different
+  // transforms) → still emits.
+  const emitted = new Set<string>();
 
   walkComposedFrames(composed, (frame) => {
     const inheritedContext = frame.parent ? contextByFrame.get(frame.parent) ?? null : null;
@@ -60,9 +70,13 @@ export function extractGeometry(
 
     const mesh = frame.node.attributes.get(ATTR.MESH) as UsdMesh | undefined;
     if (mesh && context && !context.isTypeDefinition && !isInvisible(lineage)) {
-      const meshData = convertUsdMesh(mesh, context.expressId, context.ifcType, transform);
-      applyPresentation(meshData, lineage);
-      meshes.push(meshData);
+      const emitKey = `${frame.node.path}|${context.expressId}|${transform ? transform.join(',') : 'identity'}`;
+      if (!emitted.has(emitKey)) {
+        emitted.add(emitKey);
+        const meshData = convertUsdMesh(mesh, context.expressId, context.ifcType, transform);
+        applyPresentation(meshData, lineage);
+        meshes.push(meshData);
+      }
     }
   });
 

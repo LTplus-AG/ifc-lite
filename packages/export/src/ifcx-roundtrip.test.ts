@@ -254,17 +254,15 @@ describe.skipIf(!FIXTURE_AVAILABLE)('IFCX export round-trip fidelity (Hello Wall
     expect(meshPathSet(reparsed)).toEqual(before);
   });
 
-  // BUG: per-entity triangle totals are NOT preserved across the round-trip
-  // (Hello Wall: wall 54 → 216 triangles, windows 44 → 176 each, i.e. ×4).
-  // The exported FILE is correct — each entity node carries its merged mesh
-  // exactly once — but the exporter materialises the flattened containment
-  // maps as children (storey→wall AND space→wall, etc.), giving mesh-bearing
-  // nodes multiple incoming edges, and parseIfcx's geometry extractor then
-  // emits one mesh fragment per incoming traversal path. Either the exporter
-  // must emit each entity under a single spatial parent, or the extractor
-  // must deduplicate visited nodes. Strict assertion kept so the fix
-  // un-fails this test.
-  it.fails('preserves per-entity triangle counts (geometry not duplicated)', async () => {
+  // Regression: per-entity triangle totals used to multiply across the
+  // round-trip (Hello Wall: wall 54 → 216 triangles, ×4 = one copy per
+  // incoming containment edge). The exporter materialises flattened
+  // containment maps as children (storey→wall AND space→wall), giving
+  // mesh-bearing nodes multiple incoming edges; parseIfcx's geometry
+  // extractor now deduplicates emission per (node path, accumulated
+  // transform), so aliased traversal paths emit once while genuine
+  // instancing (different world transform) still emits.
+  it('preserves per-entity triangle counts (geometry not duplicated)', async () => {
     const original = await parseFixture();
     const reparsed = await roundTrip(original, FULL_FIDELITY);
 

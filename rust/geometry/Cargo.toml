@@ -74,6 +74,11 @@ manifold-csg = { version = "0.3", default-features = false, optional = true }
 
 [dev-dependencies]
 approx = "0.5"
+# Property-based testing for the CSG kernel invariants
+# (tests/csg_property_test.rs): volume bounds, NaN-freedom, watertightness
+# over bounded randomized inputs. Case counts are set explicitly per
+# property to keep the suite fast.
+proptest = "1.6"
 # Snapshot testing for the geometry correctness harness
 # (tests/geometry_correctness_harness.rs). Plain string snapshots only, so
 # no serde-format features are needed. Accept intentional geometry changes

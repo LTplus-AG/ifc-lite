@@ -33,9 +33,9 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import {
   createDraft,
   getLayerWorkspace,
-  requireOwnedDraft,
   resolveBase,
 } from './layer-store.js';
+import { requireOwnedDraft } from './layer-access.js';
 import type { DraftLayer } from './layer-store.js';
 import {
   assertOpWithinClaims,

@@ -29,12 +29,10 @@ import {
   createDraft,
   getLayerWorkspace,
   refLayerFiles,
-  requireOwnedReview,
-  requireReview,
   resolveAncestorFiles,
   resolveAncestorFilesAnyRef,
-  visibleDraftIds,
 } from './layer-store.js';
+import { requireOwnedReview, requireReview, visibleDraftIds } from './layer-access.js';
 import type { LayerReview, LayerWorkspace, ReviewDecision, ReviewStatus } from './layer-store.js';
 import { publishDraftFile } from './layer.js';
 

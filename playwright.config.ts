@@ -7,20 +7,25 @@ export default defineConfig({
   timeout: 180000, // 3 min for large files
   workers: 1, // Single worker for accurate benchmarks (no resource contention)
   fullyParallel: false, // Sequential execution for consistent timing
+  // NOTE: webServer is only honored at the TOP level — the per-project
+  // webServer blocks on the benchmark projects below are silently
+  // ignored by Playwright (latent: those projects are run manually
+  // against an already-running server). The e2e projects rely on this
+  // one; reuseExistingServer keeps local dev-server workflows working.
+  webServer: {
+    command: 'pnpm --filter @ifc-lite/viewer exec vite preview --port 3000',
+    port: 3000,
+    reuseExistingServer: true,
+    timeout: 90000,
+    env: {
+      BROWSER: 'none',
+    },
+  },
   projects: [
     {
       name: 'viewer-e2e',
       testMatch: /viewer-smoke\.e2e\.spec\.ts/,
       timeout: 240000,
-      webServer: {
-        command: 'pnpm --filter @ifc-lite/viewer exec vite preview --port 3000',
-        port: 3000,
-        reuseExistingServer: true,
-        timeout: 60000,
-        env: {
-          BROWSER: 'none',
-        },
-      },
       use: {
         ...devices['Desktop Chrome'],
         baseURL: 'http://localhost:3000',
@@ -42,15 +47,6 @@ export default defineConfig({
       name: 'viewer-e2e-ci',
       testMatch: /viewer-smoke\.e2e\.spec\.ts/,
       timeout: 240000,
-      webServer: {
-        command: 'pnpm --filter @ifc-lite/viewer exec vite preview --port 3000',
-        port: 3000,
-        reuseExistingServer: true,
-        timeout: 60000,
-        env: {
-          BROWSER: 'none',
-        },
-      },
       use: {
         baseURL: 'http://localhost:3000',
         actionTimeout: 60000,

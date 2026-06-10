@@ -6,7 +6,7 @@
  * Focus on structural invariants, not exact values.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import assert from 'node:assert/strict';
@@ -23,9 +23,25 @@ const GEOREF_IFC = join(FIXTURES_DIR, 'ifc5/Georeferencing_georeferenced-bridge-
 
 console.log('🧪 WASM API Contract Tests\n');
 
+// Per AGENTS.md §Test fixtures: skip cleanly (exit 0) when fixtures or
+// the wasm runtime aren't on disk, pointing at the command that fixes it.
+const WASM_BIN = join(ROOT_DIR, 'packages/wasm/pkg/ifc-lite_bg.wasm');
+if (!existsSync(WASM_BIN)) {
+  console.log('⚠️  wasm runtime missing — run `bash scripts/build-wasm.sh`. Skipping.');
+  process.exit(0);
+}
+if (!existsSync(COLUMN_IFC)) {
+  console.log('⚠️  column fixture missing — run `pnpm fixtures`. Skipping.');
+  process.exit(0);
+}
+const GEOREF_AVAILABLE = existsSync(GEOREF_IFC);
+if (!GEOREF_AVAILABLE) {
+  console.log('⚠️  georef fixture missing — run `pnpm fixtures`. Georef tests will be skipped.');
+}
+
 // Initialize WASM
 console.log('📦 Loading WASM...');
-const wasmBuffer = readFileSync(join(ROOT_DIR, 'packages/wasm/pkg/ifc-lite_bg.wasm'));
+const wasmBuffer = readFileSync(WASM_BIN);
 initSync(wasmBuffer);
 console.log('✅ WASM initialized\n');
 
@@ -194,6 +210,10 @@ test('unit scale resolves conversion-based units (inch fixture → 0.0254)', () 
 });
 
 test('unit scale resolves plain SI metres (georef fixture → 1.0)', () => {
+  if (!GEOREF_AVAILABLE) {
+    console.log('     (skipped — georef fixture missing, run `pnpm fixtures`)');
+    return;
+  }
   const georefContent = readFileSync(GEOREF_IFC, 'utf-8');
   const bytes = new TextEncoder().encode(georefContent);
   const pre = api.buildPrePassOnce(bytes);

@@ -13,6 +13,7 @@ mod gpu_meshes;
 mod grid_lines;
 mod mesh_outline;
 mod parsing;
+mod space_plate;
 pub(crate) mod styling;
 mod symbolic;
 

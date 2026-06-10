@@ -21,7 +21,8 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
+import { ownerHistoryRef } from './_emit-helpers.js';
 
 export interface WallInStoreParams {
   /** Start of the wall axis, in storey-local coordinates (metres). */
@@ -58,6 +59,17 @@ export function addWallToStore(
   if (params.Thickness <= 0 || params.Height <= 0) {
     throw new Error('addWallToStore: Thickness and Height must be positive');
   }
+  // Params are metres; convert dimensioned fields to the file's native
+  // length unit so the emitted STEP coordinates are correctly scaled
+  // (see SpatialAnchor.lengthUnitScale). Directions normalise the scale
+  // away and the validation checks are scale-invariant.
+  params = {
+    ...params,
+    Start: toNativePoint3(anchor, params.Start),
+    End: toNativePoint3(anchor, params.End),
+    Thickness: toNativeLength(anchor, params.Thickness),
+    Height: toNativeLength(anchor, params.Height),
+  };
   const dx = params.End[0] - params.Start[0];
   const dy = params.End[1] - params.Start[1];
   const dz = params.End[2] - params.Start[2];
@@ -126,7 +138,7 @@ export function addWallToStore(
   // `IfcWall.PredefinedType` only exists from IFC4 onward.
   const wallAttrs: Array<unknown> = [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Wall',
     params.Description ?? null,
     params.ObjectType ?? null,
@@ -144,7 +156,7 @@ export function addWallToStore(
 
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     null,
     null,
     [`#${wallId}`],

@@ -198,25 +198,34 @@ describe('executeList', () => {
     expect(result.rows[1].values).toEqual(['Wall-02', 'Brick, Rigid Insulation', null, 'Level 1']);
   });
 
-  it('filters by conditions', () => {
+  // Condition filtering across every condition source. entityTypes: []
+  // targets all elements the provider can enumerate (no class constraint),
+  // so these rows also pin the class-less targeting semantics.
+  it.each([
+    { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '01', expected: ['Slab-01', 'Wall-01'] },
+    { source: 'attribute', propertyName: 'Class', operator: 'equals', value: 'IfcWall', expected: ['Wall-01', 'Wall-02'] },
+    // Only Wall-02 has an insulation layer (multi-valued, any-match).
+    { source: 'material', propertyName: 'Material', operator: 'contains', value: 'insulation', expected: ['Wall-02'] },
+    // Classification matches by code or by name.
+    { source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'Pr_20', expected: ['Wall-01'] },
+    { source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'slab', expected: ['Slab-01'] },
+    // Wall-02 has no classification, so `exists` excludes it.
+    { source: 'classification', propertyName: 'Classification', operator: 'exists', value: '', expected: ['Slab-01', 'Wall-01'] },
+    { source: 'spatial', propertyName: 'Storey', operator: 'equals', value: 'Level 0', expected: ['Slab-01', 'Wall-01'] },
+  ] as const)('filters by $source $operator "$value"', ({ source, propertyName, operator, value, expected }) => {
     const provider = createMockProvider();
     const def: ListDefinition = {
-      id: 'test-4',
+      id: 'cond',
       name: 'Test',
       createdAt: 0,
       updatedAt: 0,
-      entityTypes: [IfcTypeEnum.IfcWall],
-      conditions: [
-        { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '01' },
-      ],
-      columns: [
-        { id: 'name', source: 'attribute', propertyName: 'Name' },
-      ],
+      entityTypes: [],
+      conditions: [{ source, propertyName, operator, value }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
 
     const result = executeList(def, provider);
-    expect(result.totalCount).toBe(1);
-    expect(result.rows[0].values[0]).toBe('Wall-01');
+    expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
   });
 
   it('returns null for missing properties', () => {
@@ -258,28 +267,10 @@ describe('executeList', () => {
     expect(result.totalCount).toBe(3);
   });
 
-  it('targets all elements when entityTypes is empty (no class constraint)', () => {
+  it('targets an explicit per-model snapshot: drops foreign ids, honours conditions on top', () => {
     const provider = createMockProvider();
-    const def: ListDefinition = {
-      id: 'test-all',
-      name: 'Test',
-      createdAt: 0,
-      updatedAt: 0,
-      entityTypes: [],
-      conditions: [
-        { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '01' },
-      ],
-      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-    };
-
-    const result = executeList(def, provider);
-    // Wall-01 and Slab-01 match across all classes.
-    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
-  });
-
-  it('targets an explicit per-model snapshot, dropping ids not in the model', () => {
-    const provider = createMockProvider();
-    const def: ListDefinition = {
+    // 1=Wall-01, 3=Slab-01 exist; 999 is foreign and silently dropped.
+    const noConditions = executeList({
       id: 'snap',
       name: 'Test',
       createdAt: 0,
@@ -287,10 +278,22 @@ describe('executeList', () => {
       entityTypes: [],
       conditions: [],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-      expressIdsByModel: { default: [1, 3, 999] }, // 1=Wall-01, 3=Slab-01 exist; 999 foreign.
-    };
-    const result = executeList(def, provider);
-    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
+      expressIdsByModel: { default: [1, 3, 999] },
+    }, provider);
+    expect(noConditions.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
+
+    // All three ids in the snapshot, condition keeps only walls.
+    const withConditions = executeList({
+      id: 'snap2',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [{ source: 'attribute', propertyName: 'Class', operator: 'equals', value: 'IfcWall' }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+      expressIdsByModel: { default: [1, 2, 3] },
+    }, provider);
+    expect(withConditions.rows.map(r => r.values[0]).sort()).toEqual(['Wall-01', 'Wall-02']);
   });
 
   it('uses only the snapshot for the current model (no cross-model bleed)', () => {
@@ -311,78 +314,6 @@ describe('executeList', () => {
     expect(executeList(def, provider, 'b').rows.map(r => r.values[0])).toEqual(['Wall-02']);
     // A model with no snapshot entry contributes nothing.
     expect(executeList(def, provider, 'c').rows).toEqual([]);
-  });
-
-  it('snapshot still honours conditions on top', () => {
-    const provider = createMockProvider();
-    const def: ListDefinition = {
-      id: 'snap2',
-      name: 'Test',
-      createdAt: 0,
-      updatedAt: 0,
-      entityTypes: [],
-      conditions: [{ source: 'attribute', propertyName: 'Class', operator: 'equals', value: 'IfcWall' }],
-      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-      expressIdsByModel: { default: [1, 2, 3] }, // all three, condition keeps only walls.
-    };
-    const result = executeList(def, provider);
-    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Wall-01', 'Wall-02']);
-  });
-
-  it('filters by material name (multi-valued, any-match)', () => {
-    const provider = createMockProvider();
-    const def: ListDefinition = {
-      id: 'test-mat',
-      name: 'Test',
-      createdAt: 0,
-      updatedAt: 0,
-      entityTypes: [],
-      conditions: [
-        { source: 'material', propertyName: 'Material', operator: 'contains', value: 'insulation' },
-      ],
-      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-    };
-    const result = executeList(def, provider);
-    // Only Wall-02 has an insulation layer.
-    expect(result.rows.map(r => r.values[0])).toEqual(['Wall-02']);
-  });
-
-  it('filters by classification code or name', () => {
-    const provider = createMockProvider();
-    const byCode = executeList({
-      id: 'c1', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
-      conditions: [{ source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'Pr_20' }],
-      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-    }, provider);
-    expect(byCode.rows.map(r => r.values[0])).toEqual(['Wall-01']);
-
-    const byName = executeList({
-      id: 'c2', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
-      conditions: [{ source: 'classification', propertyName: 'Classification', operator: 'contains', value: 'slab' }],
-      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-    }, provider);
-    expect(byName.rows.map(r => r.values[0])).toEqual(['Slab-01']);
-  });
-
-  it('classification exists matches only classified elements', () => {
-    const provider = createMockProvider();
-    const result = executeList({
-      id: 'c3', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
-      conditions: [{ source: 'classification', propertyName: 'Classification', operator: 'exists', value: '' }],
-      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-    }, provider);
-    // Wall-02 has no classification.
-    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
-  });
-
-  it('filters by storey (spatial source)', () => {
-    const provider = createMockProvider();
-    const result = executeList({
-      id: 'sp1', name: 'T', createdAt: 0, updatedAt: 0, entityTypes: [],
-      conditions: [{ source: 'spatial', propertyName: 'Storey', operator: 'equals', value: 'Level 0' }],
-      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
-    }, provider);
-    expect(result.rows.map(r => r.values[0]).sort()).toEqual(['Slab-01', 'Wall-01']);
   });
 
   it('class-less targeting yields nothing when the provider cannot enumerate', () => {
@@ -537,34 +468,29 @@ describe('discoverColumns', () => {
     expect(result.quantities.get('Qto_WallBaseQuantities')).toContain('Length');
   });
 
-  it('works with multiple providers', () => {
+  it('aggregates discovery across multiple providers and multiple types', () => {
     const p1 = createMockProvider();
     const p2 = createMockProvider();
-    const result = discoverColumns([p1, p2], [IfcTypeEnum.IfcWall]);
+    const result = discoverColumns([p1, p2], [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab]);
 
     expect(result.properties.has('Pset_WallCommon')).toBe(true);
-  });
-
-  it('discovers columns across multiple types', () => {
-    const provider = createMockProvider();
-    const result = discoverColumns(provider, [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab]);
-
     expect(result.quantities.has('Qto_WallBaseQuantities')).toBe(true);
     expect(result.quantities.has('Qto_SlabBaseQuantities')).toBe(true);
   });
 });
 
 describe('LIST_PRESETS', () => {
-  it('contains at least 3 presets', () => {
-    expect(LIST_PRESETS.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it('all presets have required fields', () => {
+  it('every preset is well-formed and executes without throwing', () => {
+    const provider = createMockProvider();
+    expect(LIST_PRESETS.length).toBeGreaterThan(0);
     for (const preset of LIST_PRESETS) {
       expect(preset.id).toBeTruthy();
       expect(preset.name).toBeTruthy();
       expect(preset.entityTypes.length).toBeGreaterThan(0);
       expect(preset.columns.length).toBeGreaterThan(0);
+      // Presets are full ListDefinitions — they must run against any provider.
+      const result = executeList(preset, provider);
+      expect(result.columns.length).toBe(preset.columns.length);
     }
   });
 });

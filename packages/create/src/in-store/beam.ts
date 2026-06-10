@@ -22,7 +22,8 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecCross, vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
+import { ownerHistoryRef } from './_emit-helpers.js';
 
 export interface BeamInStoreParams {
   Start: [number, number, number];
@@ -62,6 +63,15 @@ export function addBeamToStore(
 ): BeamBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
+  // Params are metres; convert dimensioned fields to the file's native
+  // length unit before emit (see SpatialAnchor.lengthUnitScale).
+  params = {
+    ...params,
+    Start: toNativePoint3(anchor, params.Start),
+    End: toNativePoint3(anchor, params.End),
+    Width: toNativeLength(anchor, params.Width),
+    Height: toNativeLength(anchor, params.Height),
+  };
   const dx = params.End[0] - params.Start[0];
   const dy = params.End[1] - params.Start[1];
   const dz = params.End[2] - params.Start[2];
@@ -126,7 +136,7 @@ export function addBeamToStore(
   // `IfcBeam.PredefinedType` only exists from IFC4 onward.
   const beamAttrs: Array<unknown> = [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Beam',
     params.Description ?? null,
     params.ObjectType ?? null,
@@ -141,7 +151,7 @@ export function addBeamToStore(
 
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     null,
     null,
     [`#${beamId}`],

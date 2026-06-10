@@ -1,0 +1,16 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-tessellation.ifc
+---
+parse_ok: true
+products_attempted: 3
+products_non_empty: 1
+process_errors: 2
+total_triangles: 234
+total_vertices: 702
+spike_triangles: 0
+total_surface_area: 0.490
+bbox_min: [-0.301, -0.153, -0.094]
+bbox_max: [0.301, 0.269, 0.000]
+types_seen:
+  IFCSANITARYTERMINAL: 1

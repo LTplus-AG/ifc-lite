@@ -32,6 +32,24 @@
 //! does not fail the harness. Strict baselines for individual fixtures
 //! belong in dedicated regression test files once their behaviour has
 //! been visually verified.
+//!
+//! **Snapshot baseline (insta):** every *present* fixture additionally
+//! pins its stable stats (mesh count, vertex/triangle totals, rounded
+//! bbox + surface area, per-type counts) as a named `insta` snapshot in
+//! `tests/snapshots/`. A silent geometry change fails CI with a diff
+//! that pinpoints exactly which fixture moved; intentional improvements
+//! are accepted with `cargo insta review` (or `INSTA_UPDATE=auto`).
+//! Missing fixtures are skipped — no snapshot is asserted for them.
+//! Only run-to-run-stable values are snapshotted; floats are rounded to
+//! 3 decimals and `worst_aspect` is deliberately excluded (a max over
+//! float ratios is too boundary-sensitive across platforms).
+//!
+//! Snapshots are pinned to the **default kernel** (`manifold-csg`).
+//! Under `--no-default-features` the legacy BSP kernel produces
+//! legitimately different mesh stats for CSG fixtures, so in that
+//! configuration the harness still enforces the universal invariants
+//! above but skips snapshot assertion entirely (see the
+//! `cfg!(feature = "manifold-csg")` gate in the test body).
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
@@ -218,6 +236,10 @@ struct FixtureReport {
     spike_triangles: usize,
     /// Worst aspect ratio seen across all triangles.
     worst_aspect: f32,
+    /// Sum of all triangle areas (f64 accumulation in deterministic
+    /// serial order). Cheap proxy for "the shape actually changed" that
+    /// vertex/triangle counts alone can miss.
+    total_surface_area: f64,
     /// True if any vertex position contains NaN or Inf.
     has_non_finite: bool,
     /// Per-IfcType processing counts (`IFCWALL=3` etc.) — quick diff
@@ -419,6 +441,7 @@ fn run_fixture(fx: &Fixture) -> FixtureReport {
             &mut report.spike_triangles,
             &mut report.worst_aspect,
             &mut report.has_non_finite,
+            &mut report.total_surface_area,
         );
         any_geometry = true;
     }
@@ -429,6 +452,7 @@ fn run_fixture(fx: &Fixture) -> FixtureReport {
     report
 }
 
+#[allow(clippy::too_many_arguments)]
 fn accumulate_stats(
     mesh: &Mesh,
     mn: &mut (f32, f32, f32),
@@ -436,6 +460,7 @@ fn accumulate_stats(
     spikes: &mut usize,
     worst: &mut f32,
     non_finite: &mut bool,
+    surface_area: &mut f64,
 ) {
     for c in mesh.positions.chunks_exact(3) {
         if !c[0].is_finite() || !c[1].is_finite() || !c[2].is_finite() {
@@ -467,6 +492,25 @@ fn accumulate_stats(
                 mesh.positions[tri[2] as usize * 3 + 2],
             ],
         ];
+        // Triangle area via the cross product, accumulated in f64 in
+        // deterministic serial order (snapshot input — keep stable).
+        let u = [
+            (p[1][0] - p[0][0]) as f64,
+            (p[1][1] - p[0][1]) as f64,
+            (p[1][2] - p[0][2]) as f64,
+        ];
+        let v = [
+            (p[2][0] - p[0][0]) as f64,
+            (p[2][1] - p[0][1]) as f64,
+            (p[2][2] - p[0][2]) as f64,
+        ];
+        let cx = u[1] * v[2] - u[2] * v[1];
+        let cy = u[2] * v[0] - u[0] * v[2];
+        let cz = u[0] * v[1] - u[1] * v[0];
+        let area = 0.5 * (cx * cx + cy * cy + cz * cz).sqrt();
+        if area.is_finite() {
+            *surface_area += area;
+        }
         let d = |a: [f32; 3], b: [f32; 3]| {
             ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
         };
@@ -567,6 +611,122 @@ fn geometry_correctness_harness() {
         "{} fixture(s) marked expect_geometry produced no geometry",
         empty_when_expected
     );
+
+    // ── Snapshot baseline ────────────────────────────────────────────
+    // One named insta snapshot per *present* fixture so a regression
+    // diff pinpoints exactly which fixture changed. Missing fixtures are
+    // skipped (soft-pass contract above); in CI the full manifest set is
+    // vendored, so every snapshot is asserted there. Accept intentional
+    // changes with `cargo insta review` (or `INSTA_UPDATE=auto`).
+    //
+    // Kernel gate: snapshots are pinned to the default Manifold kernel.
+    // The legacy BSP kernel (`--no-default-features`) yields different
+    // (but valid) mesh stats for CSG fixtures, so asserting the same
+    // snapshots there would false-fail. The loose invariants above
+    // still cover that configuration.
+    if !cfg!(feature = "manifold-csg") {
+        eprintln!(
+            "[harness] manifold-csg feature disabled (legacy BSP kernel): \
+             skipping insta snapshot assertions — snapshots are pinned to \
+             the default Manifold kernel and mesh stats are kernel-dependent"
+        );
+        return;
+    }
+    for r in &reports {
+        if !r.fixture_found {
+            continue;
+        }
+        insta::with_settings!({
+            prepend_module_to_snapshot => false,
+            omit_expression => true,
+            description => r.path.clone(),
+        }, {
+            insta::assert_snapshot!(snapshot_name(&r.label), render_snapshot(r));
+        });
+    }
+}
+
+/// Turn a fixture label into a filesystem-safe, collision-free snapshot
+/// name (`annex_e/advanced/basin-advanced-brep` →
+/// `annex_e__advanced__basin-advanced-brep`).
+fn snapshot_name(label: &str) -> String {
+    let mut out = String::with_capacity(label.len());
+    let mut prev_underscore = false;
+    for c in label.chars() {
+        if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+            out.push(c);
+            prev_underscore = false;
+        } else if c == '/' {
+            // Keep path separators visually distinct so sibling
+            // fixtures sort together.
+            out.push_str("__");
+            prev_underscore = false;
+        } else if !prev_underscore {
+            out.push('_');
+            prev_underscore = true;
+        }
+    }
+    out.trim_matches('_').to_string()
+}
+
+/// Round to 3 decimals and normalize `-0.0` so the snapshot never
+/// flips sign on a value that rounds to zero.
+fn round3(v: f64) -> f64 {
+    let r = (v * 1000.0).round() / 1000.0;
+    if r == 0.0 {
+        0.0
+    } else {
+        r
+    }
+}
+
+/// Render the run-to-run-stable subset of a [`FixtureReport`].
+///
+/// Determinism contract: integer counts, a BTreeMap type rollup
+/// (sorted), and floats that are serial-order f64 aggregates rounded to
+/// 3 decimals. `worst_aspect` is intentionally NOT snapshotted — a max
+/// over f32 edge-length ratios sits too close to rounding boundaries to
+/// be a reliable cross-platform baseline (it stays covered by the
+/// spike-triangle invariant instead).
+fn render_snapshot(r: &FixtureReport) -> String {
+    let mut s = String::with_capacity(512);
+    s.push_str(&format!("parse_ok: {}\n", r.parse_ok));
+    s.push_str(&format!("products_attempted: {}\n", r.products_attempted));
+    s.push_str(&format!("products_non_empty: {}\n", r.products_non_empty));
+    s.push_str(&format!("process_errors: {}\n", r.process_errors));
+    s.push_str(&format!("total_triangles: {}\n", r.total_triangles));
+    s.push_str(&format!("total_vertices: {}\n", r.total_vertices));
+    s.push_str(&format!("spike_triangles: {}\n", r.spike_triangles));
+    s.push_str(&format!(
+        "total_surface_area: {:.3}\n",
+        round3(r.total_surface_area)
+    ));
+    match r.world_bbox {
+        Some((mn, mx)) => {
+            s.push_str(&format!(
+                "bbox_min: [{:.3}, {:.3}, {:.3}]\n",
+                round3(mn.0 as f64),
+                round3(mn.1 as f64),
+                round3(mn.2 as f64)
+            ));
+            s.push_str(&format!(
+                "bbox_max: [{:.3}, {:.3}, {:.3}]\n",
+                round3(mx.0 as f64),
+                round3(mx.1 as f64),
+                round3(mx.2 as f64)
+            ));
+        }
+        None => s.push_str("bbox: none\n"),
+    }
+    if r.types_seen.is_empty() {
+        s.push_str("types_seen: {}\n");
+    } else {
+        s.push_str("types_seen:\n");
+        for (t, n) in &r.types_seen {
+            s.push_str(&format!("  {t}: {n}\n"));
+        }
+    }
+    s
 }
 
 fn write_json_report(reports: &[FixtureReport], path: &str) {
@@ -602,6 +762,10 @@ fn write_json_report(reports: &[FixtureReport], path: &str) {
         s.push_str(&format!(
             "      \"spike_triangles\": {},\n",
             r.spike_triangles
+        ));
+        s.push_str(&format!(
+            "      \"total_surface_area\": {:.3},\n",
+            round3(r.total_surface_area)
         ));
         s.push_str(&format!(
             "      \"worst_aspect\": {:.3},\n",

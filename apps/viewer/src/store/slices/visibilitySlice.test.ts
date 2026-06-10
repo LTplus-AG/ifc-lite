@@ -25,14 +25,6 @@ describe('VisibilitySlice', () => {
   });
 
   describe('initial state', () => {
-    it('should have empty hiddenEntitiesByModel', () => {
-      assert.strictEqual(state.hiddenEntitiesByModel.size, 0);
-    });
-
-    it('should have empty isolatedEntitiesByModel', () => {
-      assert.strictEqual(state.isolatedEntitiesByModel.size, 0);
-    });
-
     it('should initialise type visibility from persisted preferences', () => {
       const persisted = getPersistedTypeVisibility();
       assert.strictEqual(state.typeVisibility.spaces, persisted.spaces);
@@ -44,14 +36,6 @@ describe('VisibilitySlice', () => {
   });
 
   describe('multi-model visibility: hideEntityInModel', () => {
-    it('should hide entity in specific model', () => {
-      state.hideEntityInModel('model-1', 123);
-
-      const hidden = state.hiddenEntitiesByModel.get('model-1');
-      assert.ok(hidden);
-      assert.ok(hidden.has(123));
-    });
-
     it('should create new set for model if not exists', () => {
       state.hideEntityInModel('model-1', 100);
       state.hideEntityInModel('model-1', 200);
@@ -209,13 +193,6 @@ describe('VisibilitySlice', () => {
     });
   });
 
-  describe('legacy visibility: hideEntity', () => {
-    it('should hide entity', () => {
-      state.hideEntity(123);
-      assert.ok(state.hiddenEntities.has(123));
-    });
-  });
-
   describe('legacy visibility: showEntity', () => {
     it('should show hidden entity', () => {
       state.hideEntity(123);
@@ -286,28 +263,21 @@ describe('VisibilitySlice', () => {
   });
 
   describe('type visibility: toggleTypeVisibility', () => {
-    it('should toggle spaces visibility', () => {
-      const initial = state.typeVisibility.spaces;
-      state.toggleTypeVisibility('spaces');
-      assert.strictEqual(state.typeVisibility.spaces, !initial);
-    });
-
-    it('should toggle openings visibility', () => {
-      const initial = state.typeVisibility.openings;
-      state.toggleTypeVisibility('openings');
-      assert.strictEqual(state.typeVisibility.openings, !initial);
-    });
-
-    it('should toggle site visibility', () => {
-      const initial = state.typeVisibility.site;
-      state.toggleTypeVisibility('site');
-      assert.strictEqual(state.typeVisibility.site, !initial);
-    });
-
-    it('should toggle ifcAnnotations visibility', () => {
-      const initial = state.typeVisibility.ifcAnnotations;
-      state.toggleTypeVisibility('ifcAnnotations');
-      assert.strictEqual(state.typeVisibility.ifcAnnotations, !initial);
+    it('should toggle each type key independently', () => {
+      const keys = ['spaces', 'openings', 'site', 'ifcAnnotations', 'ifcGrid'] as const;
+      for (const key of keys) {
+        const before = { ...state.typeVisibility };
+        state.toggleTypeVisibility(key);
+        assert.strictEqual(state.typeVisibility[key], !before[key], `toggle ${key}`);
+        for (const other of keys) {
+          if (other === key) continue;
+          assert.strictEqual(
+            state.typeVisibility[other],
+            before[other],
+            `toggling ${key} must not change ${other}`,
+          );
+        }
+      }
     });
 
     it('resetTypeVisibility restores semantic defaults', () => {

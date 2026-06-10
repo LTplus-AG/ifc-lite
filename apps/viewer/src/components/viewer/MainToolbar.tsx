@@ -76,7 +76,7 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { CSVExporter } from '@ifc-lite/export';
-import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil } from 'lucide-react';
+import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
@@ -95,7 +95,7 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 
-type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split';
+type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
 type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'addElement' | string;
 
 // #region FIX: Move ToolButton OUTSIDE MainToolbar to prevent recreation on every render
@@ -1246,6 +1246,23 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           model's undo stack is empty). Pinned next to Edit so the
           user has a one-click recovery for any change. */}
       <UndoRedoButtons />
+
+      {/* Space Sketch is authoring chrome (it bakes IfcSpace
+          entities), so like every other authoring affordance it only
+          surfaces in edit mode — keeping the default toolbar lean.
+          It lives next to the Edit pill that reveals it, with the
+          same purple accent, and a drafting icon distinct from the
+          square/grid icons (Panels, Basket, View options). */}
+      {editEnabled && (
+        <ToolButton
+          tool="spaceSketch"
+          icon={DraftingCompass}
+          label="Space Sketch"
+          activeTool={activeTool}
+          onToolChange={setActiveTool}
+          activeAccentClass="bg-purple-600 text-white hover:bg-purple-700"
+        />
+      )}
 
       {/* Draw / modify gestures live in the existing Add Element
           panel (right-side `AddElementPanel`, opened via the Add

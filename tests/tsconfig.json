@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // The root tsconfig maps @ifc-lite/* to dist/index.d.ts for the
+    // wasm-free typecheck lane. tsx applies those paths at RUNTIME and
+    // ends up importing .d.ts files as modules (hollow exports). The
+    // harnesses under tests/ must resolve packages through node_modules
+    // like production consumers, so clear the paths here.
+    "paths": {}
+  }
+}

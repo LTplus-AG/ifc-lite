@@ -1,0 +1,16 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/tessellated-shape/column-straight-rectangle-tessellation.ifc
+---
+parse_ok: true
+products_attempted: 5
+products_non_empty: 1
+process_errors: 4
+total_triangles: 12
+total_vertices: 36
+spike_triangles: 0
+total_surface_area: 2.560
+bbox_min: [10.871, 7.214, 1.219]
+bbox_max: [11.074, 7.417, 4.267]
+types_seen:
+  IFCCOLUMN: 1

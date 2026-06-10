@@ -1418,7 +1418,7 @@ impl GeometryRouter {
                     // plates. At the two highest quality levels keep those holes
                     // (Manifold, the default kernel, is stable on small cutters);
                     // only reject numerically degenerate cutters there. (issue #976)
-                    let min_open_vol = match self.tessellation_quality() {
+                    let min_open_vol = match self.tessellation_quality {
                         TessellationQuality::High | TessellationQuality::Highest => 1e-9_f32,
                         _ => MIN_OPENING_VOLUME as f32,
                     };

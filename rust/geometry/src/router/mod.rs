@@ -333,9 +333,19 @@ impl GeometryRouter {
         router
     }
 
-    /// Set the tessellation quality level
+    /// Set the tessellation quality level.
+    ///
+    /// Reusing one router across a quality change invalidates `mapped_item_cache`
+    /// (keyed by RepresentationMap id, not by quality), so it is cleared here to
+    /// avoid serving meshes tessellated at the previous level. The other caches
+    /// are content-hash keyed (`geometry_hash_cache`) or hold non-curved breps
+    /// (`faceted_brep_cache`), so they stay correct.
     pub fn set_tessellation_quality(&mut self, quality: TessellationQuality) {
+        if self.tessellation_quality == quality {
+            return;
+        }
         self.tessellation_quality = quality;
+        self.mapped_item_cache.get_mut().clear();
     }
 
     /// Get the current tessellation quality level

@@ -265,15 +265,21 @@ pub enum ProfileType {
 }
 
 impl ProfileType {
-    /// Convert to Profile2D
+    /// Convert to Profile2D at the historical default tessellation density.
     pub fn to_profile(&self) -> Profile2D {
+        self.to_profile_with_quality(TessellationQuality::Medium)
+    }
+
+    /// Convert to Profile2D, tessellating circular profiles at the given
+    /// `quality` (rectangle and polygon profiles are unaffected).
+    pub fn to_profile_with_quality(&self, quality: TessellationQuality) -> Profile2D {
         match self {
             Self::Rectangle { width, height } => create_rectangle(*width, *height),
-            Self::Circle { radius } => create_circle(*radius, None, TessellationQuality::Medium),
+            Self::Circle { radius } => create_circle(*radius, None, quality),
             Self::HollowCircle {
                 outer_radius,
                 inner_radius,
-            } => create_circle(*outer_radius, Some(*inner_radius), TessellationQuality::Medium),
+            } => create_circle(*outer_radius, Some(*inner_radius), quality),
             Self::Polygon { points } => Profile2D::new(points.clone()),
         }
     }

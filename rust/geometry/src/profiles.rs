@@ -869,10 +869,12 @@ impl ProfileProcessor {
     /// Profile-plane tessellation (the 2D outline that becomes an extruded cap
     /// or an opening cutter) never gets *finer* above `Medium` — denser opening
     /// circles only multiply the earcut cap-bridge slivers that show up as scar
-    /// lines on plates with bolt holes (issue #976). Circular profiles do get
-    /// *coarser* below `Medium` (see [`TessellationQuality::circle_profile_segments`]);
-    /// profile arcs/fillets stay at their historical density. The quality knob
-    /// drives the *curved 3D surfaces* instead — swept paths (via
+    /// lines on plates with bolt holes (issue #976). Below `Medium` they do get
+    /// *coarser*: circular profiles via
+    /// [`TessellationQuality::circle_profile_segments`], and profile arcs/fillets
+    /// (rounded rectangles, steel-section root fillets, trimmed conics,
+    /// indexed-polycurve arcs) via [`TessellationQuality::profile_arc_segments`].
+    /// The quality knob drives the *curved 3D surfaces* instead — swept paths (via
     /// [`get_curve_points`](Self::get_curve_points)), cylinders, surfaces of
     /// revolution, NURBS, and brep edges — where faceting is actually visible.
     #[inline]
@@ -1267,33 +1269,18 @@ impl ProfileProcessor {
             return self.process_rectangle(profile);
         }
 
-        // 6 segments × 4 corners = 24 outline vertices on a fillet; the
-        // earcutr cap then runs ~22 triangles per face, side walls another
-        // 48, so the whole prism stays under the 128-poly per-mesh cap the
-        // legacy BSP CSG kernel imposes when `manifold-csg` is off (the
-        // WASM build path — see `ClippingProcessor::subtract_mesh`).
-        // 6 segments per corner at Medium+; coarser below Medium.
-        let segments_per_corner = self.quality().profile_arc_segments(6, 2);
-        let half_pi = PI / 2.0;
-        let corners = [
-            // (cx, cy, start_angle, end_angle) — CCW outline starting at the
-            // bottom-right arc and walking counter-clockwise around the profile.
-            (half_x - r, -half_y + r, -half_pi, 0.0),
-            (half_x - r, half_y - r, 0.0, half_pi),
-            (-half_x + r, half_y - r, half_pi, PI),
-            (-half_x + r, -half_y + r, PI, PI + half_pi),
-        ];
-
-        let mut points = Vec::with_capacity((segments_per_corner + 1) * 4);
-        for (cx, cy, a0, a1) in corners {
-            for i in 0..=segments_per_corner {
-                let t = i as f64 / segments_per_corner as f64;
-                let a = a0 + (a1 - a0) * t;
-                points.push(Point2::new(cx + r * a.cos(), cy + r * a.sin()));
-            }
-        }
-
-        Ok(Profile2D::new(points))
+        // Reuse the shared rounded-rectangle builder (6 segments/corner at
+        // Medium+, coarser below). It also dedupes seam vertices in the
+        // degenerate "rounding radius == half-dim" case where the rounded
+        // rectangle collapses to a circle and adjacent corner arcs share their
+        // tangent point — the inline loop here used to emit duplicate points.
+        Ok(Profile2D::new(rounded_rectangle_outline(
+            half_x,
+            half_y,
+            r,
+            /*ccw=*/ true,
+            self.quality(),
+        )))
     }
 
     /// Process circle profile

@@ -391,7 +391,7 @@ fn simplify_collinear(
 /// real gap — the hole/seam is already framed by the neighbouring non-degenerate
 /// triangles, exactly as Manifold (which welds the near-duplicate) produces.
 #[cfg_attr(feature = "manifold-csg", allow(dead_code))]
-fn tri_is_needle(v: &[Point3<f64>; 3]) -> bool {
+pub(crate) fn tri_is_needle(v: &[Point3<f64>; 3]) -> bool {
     let d = |a: &Point3<f64>, b: &Point3<f64>| (a - b).norm();
     let (e0, e1, e2) = (d(&v[0], &v[1]), d(&v[1], &v[2]), d(&v[2], &v[0]));
     let mn = e0.min(e1).min(e2);

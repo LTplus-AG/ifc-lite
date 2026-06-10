@@ -192,12 +192,103 @@ fn plane_interval(tri: &[[f64; 3]; 3], plane: &[[f64; 3]; 3]) -> PlaneInterval {
     }
 }
 
+/// Snap grid used by `mesh_bridge::mesh_to_tris` (metres, power of two). Mirrored
+/// here because the near-coplanar band below is sized to the snap-scatter envelope
+/// it produces (kept in sync by the `snap_grid_in_sync` test in `mesh_bridge`).
+const SNAP_GRID: f64 = 1.0 / 65536.0;
+
+#[inline]
+fn ti_sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+#[inline]
+fn ti_cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+}
+#[inline]
+fn ti_dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+#[inline]
+fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
+    ti_cross(ti_sub(t[1], t[0]), ti_sub(t[2], t[0]))
+}
+#[inline]
+fn ti_centroid(t: &[[f64; 3]; 3]) -> [f64; 3] {
+    [
+        (t[0][0] + t[1][0] + t[2][0]) / 3.0,
+        (t[0][1] + t[1][1] + t[2][1]) / 3.0,
+        (t[0][2] + t[1][2] + t[2][2]) / 3.0,
+    ]
+}
+
+/// Are `t1` and `t2` an INTENDED-FLUSH coplanar pair that per-axis snapping
+/// pushed just off exact coplanarity? — the flush-cap detector.
+///
+/// `mesh_bridge` snaps every operand coordinate to [`SNAP_GRID`] INDEPENDENTLY
+/// per axis. That keeps an AXIS-ALIGNED flush face exactly coplanar but pushes a
+/// *tilted* flush face up to `SNAP_GRID·√3` off its plane PER OPERAND — so a roof-
+/// slope opening cap authored EXACTLY flush with the slanted roof surface lands a
+/// few µm off after import (#1007 host #1112 openings #2150/#2154). The exact
+/// `orient3d`-only test then sees it as a razor-thin CROSSING (or Disjoint), never
+/// `Coplanar`, so the footprint is never carved and a sliver bridges the hole.
+///
+/// The test is two deterministic FMA-free f64 conditions (byte-identical
+/// native==wasm — NO coordinate is moved, this is purely a CLASSIFICATION):
+///  1. **Near-parallel planes** — `(n1·n2)² ≥ (1 − 2^-20)²·(n1·n1)(n2·n2)`, i.e.
+///     the unit normals agree to ~2^-20. A genuine transversal cut (box−box, every
+///     real crossing) has a large dihedral ⇒ fails here.
+///  2. **Near-zero plane gap** — each triangle's CENTROID is within `band` of the
+///     other's plane (centroid, not the far vertices, so a large host triangle's
+///     reach does not amplify a µm tilt into a false reject). Combined with (1),
+///     "centroid on plane + parallel" ⇒ the whole small triangle is on the plane.
+///
+/// `band` is an absolute power-of-two multiple of `SNAP_GRID` (≈ the 2-operand
+/// scatter envelope, ~0.12 mm) widened only for far-from-origin operands where
+/// f32 import is coarser — always THREE orders below the smallest real feature
+/// edge (~0.2 m). A poke-through cap fails BOTH (its centroid sits midway through
+/// the host, far from the surface) so it can never qualify.
+fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
+    let (n1, n2) = (ti_normal(t1), ti_normal(t2));
+    let (nn1, nn2) = (ti_dot(n1, n1), ti_dot(n2, n2));
+    if nn1 <= 0.0 || nn2 <= 0.0 || !nn1.is_finite() || !nn2.is_finite() {
+        return false; // a degenerate triangle is never a flush coplanar partner
+    }
+    // (1) near-parallel: cos²θ ≥ (1 − 2^-20)².
+    let nd = ti_dot(n1, n2);
+    const PARALLEL: f64 = 1.0 - 1.0 / 1_048_576.0; // 1 − 2^-20
+    if nd * nd < PARALLEL * PARALLEL * nn1 * nn2 {
+        return false;
+    }
+    // (2) centroid plane-gap within band, both directions.
+    let mut extent = 1.0f64;
+    for p in t1.iter().chain(t2.iter()) {
+        for &c in p {
+            extent = extent.max(c.abs());
+        }
+    }
+    let band = (8.0 * SNAP_GRID).max(extent * (1.0 / 4_194_304.0)); // 2^-22
+    let band2 = band * band;
+    let gap2 = |c: [f64; 3], plane: &[[f64; 3]; 3], n: [f64; 3], nn: f64| {
+        let d = ti_dot(ti_sub(c, plane[0]), n); // perp_dist · |n|
+        (d * d) / nn // squared perpendicular distance
+    };
+    gap2(ti_centroid(t2), t1, n1, nn1) <= band2 && gap2(ti_centroid(t1), t2, n2, nn2) <= band2
+}
+
 /// Exact triangle–triangle intersection: the overlap of each triangle's
 /// plane-interval along line L = `[max(lo1,lo2), min(hi1,hi2)]`. Handles clean
 /// crossings AND Touches (on-plane vertices/edges). Coplanar is deferred to
 /// `coplanar.rs`; a single shared point returns `Point` (no cut).
 pub fn tri_tri_intersection(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> TriTri {
     use PlaneInterval as PI;
+    // Near-coplanar guard (the flush-cap fix): an intended-flush coplanar
+    // interface that per-axis snapping pushed just off exact coplanarity is
+    // routed to the exact coplanar handler so the footprint is carved (otherwise
+    // a sliver bridges the opening). See `near_coplanar`.
+    if near_coplanar(t1, t2) {
+        return TriTri::Coplanar;
+    }
     let (i1, i2) = (plane_interval(t1, t2), plane_interval(t2, t1));
     let ends = |pi: &PI| -> Option<[ImplicitPoint; 2]> {
         match pi {

@@ -547,6 +547,78 @@ fn on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
     None
 }
 
+/// Power-of-two grid `mesh_bridge` snaps both operands to (metres). Mirrored from
+/// `mesh_bridge::SNAP_GRID`; the `near_on_surface_normal` band below is sized to
+/// the scatter this snap leaves on a TILTED flush face (kept in sync by the
+/// `snap_grid_in_sync` test in `mesh_bridge`).
+const SNAP_GRID: f64 = 1.0 / 65536.0;
+
+/// The NEAR-coplanar analogue of [`on_surface_normal`], used ONLY for a
+/// sub-triangle whose parent face had a near-coplanar overlap with the other
+/// operand (`coplanar_a/b[i]` set). Returns the covering `other` face's f64 normal
+/// when `c` sits within the snap-scatter band of that face's plane AND projects
+/// strictly inside it.
+///
+/// WHY this exists — the flush-cap defect (#1007 host #1112 openings #2150/#2154):
+/// real IFC is f32, so an opening cap authored EXACTLY flush with a TILTED roof
+/// surface is NOT exactly coplanar after `mesh_bridge`'s per-axis snap — each
+/// operand scatters up to `SNAP_GRID·√3` off the shared tilted plane. The exact
+/// [`on_surface_normal`] needs `orient3d == 0` (centroid bit-exactly on the other
+/// face's plane), so it MISSES the flush cap; the sub-triangle then falls to the
+/// fragile `solid_side` probe (regime 2) or the on-boundary centroid ray-cast
+/// (regime 3), both undefined at a µm-flush interface ⇒ the inside-footprint host
+/// sub-triangle is wrongly KEPT and bridges the opening.
+///
+/// DETERMINISM: the only inexactness vs. [`on_surface_normal`] is the perpendicular
+/// plane-gap admitted (the `band` test); the in-plane containment still uses the
+/// EXACT `orient2d_any`. `band` is an absolute power-of-two multiple of `SNAP_GRID`
+/// (≈ the 2-operand scatter envelope) widened only for far-from-origin operands
+/// (coarser f32 import) — always THREE orders below the smallest real feature edge
+/// (~0.2 m), so a genuinely-distinct parallel face (a thin slab's two surfaces)
+/// can never be within it. All FMA-free f64 over input coords ⇒ byte-identical
+/// native==wasm. GATED on the near-coplanar-parent flag, so a transversal cut
+/// (every pinned box−box manifest face) never reaches it.
+fn near_on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
+    let mut extent = 1.0f64;
+    for &x in &c {
+        extent = extent.max(x.abs());
+    }
+    for t in others {
+        for v in t {
+            for &x in v {
+                extent = extent.max(x.abs());
+            }
+        }
+    }
+    // band: max perpendicular plane-gap a flush f32 face leaves after the 2-operand
+    // snap, widened for far-from-origin coords (8·SNAP_GRID ≈ 0.12 mm; the
+    // extent·2^-22 term only dominates past ~32 km from origin).
+    let band = (8.0 * SNAP_GRID).max(extent * (1.0 / 4_194_304.0));
+    let band2 = band * band;
+    for t in others {
+        let n = cross3(sub_f64(t[1], t[0]), sub_f64(t[2], t[0]));
+        let nn = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
+        if nn <= 0.0 || !nn.is_finite() {
+            continue; // degenerate t
+        }
+        // squared perpendicular distance of `c` to t's plane = (d·n)² / |n|²
+        let d = dot3(sub_f64(c, t[0]), n);
+        if (d * d) / nn > band2 {
+            continue; // c not within the snap band of t's plane
+        }
+        let axis = drop_axis_of(n);
+        let w0 = orient2d_any(&e(t[0]), &e(t[1]), &e(t[2]), axis);
+        if w0 == Sign::Zero {
+            continue; // degenerate t in projection
+        }
+        let inside = |u: [f64; 3], v: [f64; 3]| orient2d_any(&e(u), &e(v), &e(c), axis) != w0.flip();
+        if inside(t[0], t[1]) && inside(t[1], t[2]) && inside(t[2], t[0]) {
+            return Some(n);
+        }
+    }
+    None
+}
+
 /// Is the OTHER operand's solid present just off `c` along `±dir`?
 ///
 /// `c` is a sub-triangle centroid that may lie EXACTLY on a shared interface plane
@@ -657,20 +729,24 @@ fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid
     let mut out = Vec::new();
     for (i, &tri) in arr.tris_a.iter().enumerate() {
         let c = centroid(arr, tri);
+        let cop_parent = arr.coplanar_a.get(i).copied().unwrap_or(false);
         let keep;
-        if let Some(n_other) = on_surface_normal(c, b) {
-            // regime 1: coincident shared face → normal agreement
+        // regime 1: coincident shared face → classify by normal agreement. Tried
+        // EXACT first, then the snap-band-flush analogue (`near_on_surface_normal`)
+        // which catches a face left a few µm off a TILTED shared plane by per-axis
+        // import snapping (the #1007 flush roof-opening cap). The near test is
+        // ungated (like the exact one) because a coincident-shared-face DROP/keep is
+        // unconditionally correct, and its centroid-inside + µm-perp requirements
+        // never match a transversal cut face (every pinned box−box manifest face).
+        if let Some(n_other) = on_surface_normal(c, b).or_else(|| near_on_surface_normal(c, b)) {
             let co_oriented = dot3(tri_normal(arr, tri), n_other) > 0.0;
             keep = match op {
                 BoolOp::Union | BoolOp::Intersection => co_oriented,
                 BoolOp::Difference => !co_oriented,
             };
-        } else if let Some(k) = arr
-            .coplanar_a
-            .get(i)
-            .copied()
-            .filter(|&cp| cp)
-            .and_then(|_| on_interface_keep(arr, tri, c, b, ext_b, op, true))
+        } else if let Some(k) = cop_parent
+            .then(|| on_interface_keep(arr, tri, c, b, ext_b, op, true))
+            .flatten()
         {
             // regime 2 (only on coplanar-overlap parents): shared interface plane,
             // no coincident face → solid-side probe.
@@ -696,10 +772,17 @@ fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid
             continue;
         }
         let c = centroid(arr, tri);
-        if on_surface_normal(c, a).is_some() {
+        let cop_parent = arr.coplanar_b.get(i).copied().unwrap_or(false);
+        // A coincident-shared B face is dropped (the A-copy is the kept one). Tried
+        // EXACT first, then the snap-band-flush analogue — ungated, because a B cap
+        // fully CONTAINED in a larger host face has NO coplanar constraint of its
+        // own (the host imposes none on it) so `coplanar_b` is unset for it, yet it
+        // is still a coincident shared face that must drop (the #1007 flush roof cap
+        // — without the near drop here it survives and bridges the opening).
+        if on_surface_normal(c, a).is_some() || near_on_surface_normal(c, a).is_some() {
             continue; // coplanar-shared B-copy: dropped (the A-copy is the kept one)
         }
-        if arr.coplanar_b.get(i).copied().unwrap_or(false) {
+        if cop_parent {
             if let Some(keep) = on_interface_keep(arr, tri, c, a, ext_a, op, false) {
                 // regime 2 for B (coplanar-overlap parent only).
                 if keep {

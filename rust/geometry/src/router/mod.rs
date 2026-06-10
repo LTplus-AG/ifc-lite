@@ -141,9 +141,10 @@ pub struct HostOpeningDiagnostic {
     /// classic silent-no-op signature when an opening box doesn't
     /// actually intersect the host mesh.
     pub tris_after: Option<usize>,
-    /// Number of rectangular opening boxes `cut_multiple_rectangular_openings`
-    /// processed for this host. Compare against `tris_before == tris_after`
-    /// to detect the "ran cuts, geometry unchanged" silent-no-op.
+    /// Number of axis-aligned rectangular openings synthesised into penetrating
+    /// box cutters and subtracted (exactly) for this host. Compare against
+    /// `tris_before == tris_after` to detect the "ran cuts, geometry unchanged"
+    /// silent-no-op.
     pub rect_boxes_processed: usize,
     /// Bounding box of the host mesh (min, max) in world coords. Useful
     /// for confirming that an opening box should overlap.

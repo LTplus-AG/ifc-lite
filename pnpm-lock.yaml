@@ -955,6 +955,9 @@ importers:
         specifier: workspace:^
         version: link:../pointcloud
     devDependencies:
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1124,6 +1127,9 @@ importers:
       '@webgpu/types':
         specifier: ^0.1.70
         version: 0.1.70
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

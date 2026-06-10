@@ -206,6 +206,48 @@ describe('enumeration constraints — bounded rendering, unchanged matching', ()
   });
 });
 
+describe('validateIDS — yields to the event loop during validation', () => {
+  it('lets queued macrotasks (UI paints) run before validation completes', async () => {
+    // Validation is pure CPU work; all its awaits resolve through
+    // microtasks. Without explicit yields, a timer queued before the
+    // run would only fire AFTER the whole validation finished — which
+    // is exactly why the viewer's progress UI stayed frozen.
+    const specs = Array.from({ length: 5 }, (_, i) => makePropertySpec(i, 'Code'));
+    const accessor = createMockAccessor(makeEntities(200));
+
+    let macrotaskRan = false;
+    const timer = setTimeout(() => {
+      macrotaskRan = true;
+    }, 0);
+
+    try {
+      await validateIDS(makeDoc(specs), accessor, modelInfo, { yieldEveryMs: 0 });
+      expect(macrotaskRan).toBe(true);
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  it('reports filtering progress for large candidate scans', async () => {
+    const entityCount = 20000; // > 8192 triggers incremental filtering progress
+    const accessor = createMockAccessor(makeEntities(entityCount));
+    const spec = makePropertySpec(0, 'Code');
+
+    const filteringEvents: number[] = [];
+    await validateIDS(makeDoc([spec]), accessor, modelInfo, {
+      onProgress: (p) => {
+        if (p.phase === 'filtering' && p.totalEntities > 0) {
+          filteringEvents.push(p.entitiesProcessed);
+        }
+      },
+    });
+
+    // 20k candidates at 8192 granularity → events at 0, 8192, 16384.
+    expect(filteringEvents.length).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...filteringEvents)).toBeGreaterThan(8000);
+  });
+});
+
 describe('createCachedAccessor', () => {
   it('memoizes undefined results and keyed lookups', () => {
     const base = createMockAccessor(makeEntities(1));

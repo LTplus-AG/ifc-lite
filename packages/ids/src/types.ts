@@ -596,6 +596,14 @@ export interface ValidatorOptions {
   onProgress?: (progress: ValidationProgress) => void;
   /** Whether to include passing entities in results (default: true) */
   includePassingEntities?: boolean;
+  /**
+   * How often (ms of CPU work) the validator yields to the event loop
+   * so a host UI can repaint and progress callbacks become visible
+   * (default: 40). Validation is otherwise pure CPU work whose awaits
+   * resolve through microtasks only — without these yields a browser
+   * cannot paint a single frame for the whole run.
+   */
+  yieldEveryMs?: number;
 }
 
 /** Validation progress information */

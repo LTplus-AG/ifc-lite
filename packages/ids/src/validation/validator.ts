@@ -128,6 +128,50 @@ export function createCachedAccessor(accessor: IFCDataAccessor): IFCDataAccessor
  */
 type DescriptionCache = Map<IDSRequirement, string>;
 
+const nowMs = (): number =>
+  typeof globalThis.performance?.now === 'function'
+    ? globalThis.performance.now()
+    : Date.now();
+
+/** Yield control back to the event loop (browser + Node). */
+function yieldToEventLoop(): Promise<void> {
+  const maybeScheduler = (globalThis as typeof globalThis & {
+    scheduler?: { yield?: () => Promise<void> };
+  }).scheduler;
+  if (typeof maybeScheduler?.yield === 'function') {
+    return maybeScheduler.yield();
+  }
+  return new Promise<void>((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      // Close both ports — an open MessagePort holds a libuv handle in
+      // Node and would keep the process alive after completion.
+      channel.port1.close();
+      channel.port2.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
+}
+
+/**
+ * Time-budgeted yielder. Validation is pure CPU work whose awaits all
+ * resolve through microtasks, so without real event-loop yields a
+ * browser host cannot paint a single frame for the whole run — the
+ * progress UI stays frozen no matter how often onProgress fires.
+ */
+function createYielder(budgetMs: number): () => Promise<void> | undefined {
+  let lastYield = nowMs();
+  return () => {
+    if (nowMs() - lastYield < budgetMs) return undefined;
+    return yieldToEventLoop().then(() => {
+      lastYield = nowMs();
+    });
+  };
+}
+
+type MaybeYield = ReturnType<typeof createYielder>;
+
 /**
  * Validate an IFC model against an IDS document
  */
@@ -141,6 +185,7 @@ export async function validateIDS(
 
   const cachedAccessor = createCachedAccessor(accessor);
   const descriptionCache: DescriptionCache = new Map();
+  const maybeYield = createYielder(options.yieldEveryMs ?? 40);
 
   const specificationResults: IDSSpecificationResult[] = [];
   const totalSpecs = document.specifications.length;
@@ -160,12 +205,17 @@ export async function validateIDS(
       });
     }
 
+    // Let the host paint between specifications even when individual
+    // specs are fast.
+    await maybeYield();
+
     const result = await validateSpecification(
       spec,
       cachedAccessor,
       modelInfo,
       options,
       descriptionCache,
+      maybeYield,
       (progress) => {
         if (onProgress) {
           onProgress({
@@ -217,13 +267,14 @@ async function validateSpecification(
   modelInfo: IDSModelInfo,
   options: ValidatorOptions,
   descriptionCache: DescriptionCache,
+  maybeYield: MaybeYield,
   onProgress?: (progress: Omit<ValidationProgress, 'specificationIndex' | 'totalSpecifications' | 'percentage'>) => void
 ): Promise<IDSSpecificationResult> {
   const { translator, maxEntities, includePassingEntities = true } = options;
   const modelId = modelInfo.modelId;
 
   // Phase 1: Find applicable entities
-  const applicableIds = findApplicableEntities(spec, accessor);
+  const applicableIds = await findApplicableEntities(spec, accessor, maybeYield, onProgress);
 
   // Apply max entities limit if specified
   const idsToCheck = maxEntities
@@ -245,6 +296,7 @@ async function validateSpecification(
         totalEntities,
       });
     }
+    if ((i & 31) === 0) await maybeYield();
 
     const entityResult = validateEntityRequirements(
       spec,
@@ -315,10 +367,12 @@ async function validateSpecification(
 /**
  * Find entities that match the applicability criteria
  */
-function findApplicableEntities(
+async function findApplicableEntities(
   spec: IDSSpecification,
-  accessor: IFCDataAccessor
-): number[] {
+  accessor: IFCDataAccessor,
+  maybeYield: MaybeYield,
+  onProgress?: (progress: Omit<ValidationProgress, 'specificationIndex' | 'totalSpecifications' | 'percentage'>) => void
+): Promise<number[]> {
   const applicabilityFacets = spec.applicability.facets;
 
   if (applicabilityFacets.length === 0) {
@@ -341,10 +395,25 @@ function findApplicableEntities(
     candidateIds = accessor.getAllEntityIds();
   }
 
-  // Filter candidates by all applicability facets
+  // Filter candidates by all applicability facets. With property-only
+  // applicability the candidate set is the whole model, so this scan is
+  // where large runs spend most of their time — report progress and
+  // yield so the host UI stays responsive.
   const applicableIds: number[] = [];
+  const totalCandidates = candidateIds.length;
 
-  for (const expressId of candidateIds) {
+  for (let i = 0; i < totalCandidates; i++) {
+    const expressId = candidateIds[i];
+
+    if (onProgress && totalCandidates > 8192 && (i & 8191) === 0) {
+      onProgress({
+        phase: 'filtering',
+        entitiesProcessed: i,
+        totalEntities: totalCandidates,
+      });
+    }
+    if ((i & 255) === 0) await maybeYield();
+
     let matches = true;
 
     for (const facet of applicabilityFacets) {

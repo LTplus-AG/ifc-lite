@@ -148,11 +148,14 @@ export async function mcpCommand(args: string[]): Promise<void> {
       fatal(`Refusing to bind ${resolvedHost} without --token. Pass --token <bearer> or --insecure to override.`);
     }
     const sessionFactory: SessionFactory = {
-      build(scopeForSession) {
+      build(scopeForSession, sessionId) {
         return createMCPServer({
           version: VERSION,
           registry: new InMemoryModelRegistry(),
           scope: scopeForSession,
+          // Keys per-session state (layer workspaces) and its disposal
+          // (#1030); the transport rejects servers built without it.
+          sessionId,
           config: { readOnly, bsddEndpoint: bsdd, samplingEnabled: false },
         });
       },

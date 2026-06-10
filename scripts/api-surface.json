@@ -1580,6 +1580,7 @@
     "SymbolicPolyline: class (type-only)",
     "SymbolicRepIdentifier: type",
     "SymbolicRepresentationCollection: class (type-only)",
+    "TessellationQuality: type",
     "Vec3: interface",
     "WatchdogInputs: interface",
     "WorkerCountInputs: interface",

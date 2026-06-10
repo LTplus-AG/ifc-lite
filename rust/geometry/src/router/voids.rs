@@ -351,9 +351,16 @@ fn opening_aabb_overcuts(mesh: &Mesh, min_pt: Point3<f64>, max_pt: Point3<f64>) 
         return false;
     }
 
-    // Signed-tetrahedron volume of the (closed) cutter solid.
+    // Signed-tetrahedron volume of the (closed) cutter solid. Indices are
+    // bounds-checked: this runs during classification, before any
+    // validate_indices() pass, so a malformed opening mesh must degrade to
+    // "not over-cutting" instead of panicking the whole void stage.
+    let vertex_count = mesh.positions.len() / 3;
     let mut vol6 = 0.0_f64;
     for tri in mesh.indices.chunks_exact(3) {
+        if tri.iter().any(|&i| i as usize >= vertex_count) {
+            continue; // skip malformed triangle
+        }
         let p = |i: u32| {
             let o = i as usize * 3;
             (

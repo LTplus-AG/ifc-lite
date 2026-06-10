@@ -317,6 +317,15 @@ jobs:
       # runner's preinstalled Chrome) because Playwright's headless
       # shell has a broken WebGPU device under software rendering.
       - name: Run E2E smoke
+        # E2E_GPU_STRICT=0: the runner's SwiftShader WebGPU device is
+        # unstable under load (drops mid-upload), so GPU-dependent
+        # assertions (pick pass, screenshot density, GPU-error
+        # strictness) skip here and run in the local headed project
+        # (pnpm test:e2e). The CPU-side pipeline assertions — mesh
+        # count through real WASM, data-store population, model
+        # registration, section-plane store contract — still gate.
+        env:
+          E2E_GPU_STRICT: '0'
         run: pnpm test:e2e:ci
 
   rust-tests:

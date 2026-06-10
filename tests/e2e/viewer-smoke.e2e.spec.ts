@@ -31,6 +31,17 @@ const MESH_TOLERANCE = 0.05;
 
 const STORE_KEY = '__ifc_lite_viewer_store__';
 
+// GitHub-hosted runners only offer WebGPU over SwiftShader, and that
+// device is unstable under load (partial createBuffer failures +
+// "Instance dropped in popErrorScope" device loss) on both the
+// headless shell and real Chrome. E2E_GPU_STRICT=0 (set by the CI job)
+// keeps the CPU-side pipeline assertions gating while skipping the
+// checks that need a healthy GPU device: the pick pass, screenshot
+// density, and zero-GPU-error strictness. Locally (real GPU) everything
+// runs. Flip the env in .github/workflows/test.yml if runner WebGPU
+// ever stabilizes.
+const GPU_STRICT = process.env.E2E_GPU_STRICT !== '0';
+
 /** Read a snapshot of viewer state through the app's store singleton. */
 async function storeState<T>(page: Page, pick: string): Promise<T> {
   return page.evaluate(
@@ -105,14 +116,20 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
     // Pixel count comes from the PNG's own IHDR header, so the check is
     // resolution- and devicePixelRatio-independent.
     await page.waitForTimeout(1500); // let the camera fit + first frames land
-    const canvasShot = await page.locator('canvas').first().screenshot();
-    const pngWidth = canvasShot.readUInt32BE(16);
-    const pngHeight = canvasShot.readUInt32BE(20);
-    const bytesPerPixel = canvasShot.byteLength / (pngWidth * pngHeight);
-    expect(
-      bytesPerPixel,
-      `screenshot density ${bytesPerPixel.toFixed(4)} B/px (${canvasShot.byteLength}B @ ${pngWidth}x${pngHeight}) — a blank canvas sits near 0.004`,
-    ).toBeGreaterThan(0.01);
+    const canvas = page.locator('canvas').first();
+    await expect(canvas, 'render canvas mounted').toBeVisible();
+    if (GPU_STRICT) {
+      const canvasShot = await canvas.screenshot();
+      const pngWidth = canvasShot.readUInt32BE(16);
+      const pngHeight = canvasShot.readUInt32BE(20);
+      const bytesPerPixel = canvasShot.byteLength / (pngWidth * pngHeight);
+      expect(
+        bytesPerPixel,
+        `screenshot density ${bytesPerPixel.toFixed(4)} B/px (${canvasShot.byteLength}B @ ${pngWidth}x${pngHeight}) — a blank canvas sits near 0.004`,
+      ).toBeGreaterThan(0.01);
+    } else {
+      console.log('[e2e] E2E_GPU_STRICT=0 — skipping screenshot-density check (software WebGPU)');
+    }
 
     // Data model landed in the store (parse path, not just geometry).
     // The metadata parse finishes after the geometry stream — poll.
@@ -132,44 +149,48 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
     expect(modelCount, 'exactly one model registered').toBe(1);
 
     // ── 2. Click-to-select drives the real pick pass ─────────────────
-    const canvas = page.locator('canvas').first();
-    const box = await canvas.boundingBox();
-    expect(box, 'canvas bounding box').not.toBeNull();
+    // GPU-dependent: the pick pass renders ID buffers on the device.
+    if (GPU_STRICT) {
+      const box = await canvas.boundingBox();
+      expect(box, 'canvas bounding box').not.toBeNull();
 
-    // After auto-fit the model covers the viewport centre; probe a few
-    // spots so a background pixel at dead-centre doesn't flake the test.
-    const probes: Array<[number, number]> = [
-      [0.5, 0.55],
-      [0.5, 0.4],
-      [0.45, 0.6],
-      [0.6, 0.5],
-      [0.4, 0.45],
-    ];
-    let selected: unknown = null;
-    for (const [fx, fy] of probes) {
-      await canvas.click({
-        position: { x: box!.width * fx, y: box!.height * fy },
-      });
-      await page.waitForTimeout(300);
-      selected = await storeState(page, 'state.selectedEntity');
-      if (selected) break;
+      // After auto-fit the model covers the viewport centre; probe a few
+      // spots so a background pixel at dead-centre doesn't flake the test.
+      const probes: Array<[number, number]> = [
+        [0.5, 0.55],
+        [0.5, 0.4],
+        [0.45, 0.6],
+        [0.6, 0.5],
+        [0.4, 0.45],
+      ];
+      let selected: unknown = null;
+      for (const [fx, fy] of probes) {
+        await canvas.click({
+          position: { x: box!.width * fx, y: box!.height * fy },
+        });
+        await page.waitForTimeout(300);
+        selected = await storeState(page, 'state.selectedEntity');
+        if (selected) break;
+      }
+      expect(selected, 'clicking the model selects an entity').not.toBeNull();
+
+      // Single-pick drives the renderer-highlight channel via the global-id
+      // scalar (selectedEntityId); the plural set is multi-select only
+      // (Viewport.tsx pick handler).
+      const highlightId = await storeState<number | null>(page, 'state.selectedEntityId');
+      expect(
+        highlightId,
+        'renderer-highlight channel (selectedEntityId) follows the pick',
+      ).not.toBeNull();
+
+      // Escape clears the selection.
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+      const cleared = await storeState(page, 'state.selectedEntity');
+      expect(cleared, 'Escape clears selection').toBeNull();
+    } else {
+      console.log('[e2e] E2E_GPU_STRICT=0 — skipping pick-pass checks (software WebGPU)');
     }
-    expect(selected, 'clicking the model selects an entity').not.toBeNull();
-
-    // Single-pick drives the renderer-highlight channel via the global-id
-    // scalar (selectedEntityId); the plural set is multi-select only
-    // (Viewport.tsx pick handler).
-    const highlightId = await storeState<number | null>(page, 'state.selectedEntityId');
-    expect(
-      highlightId,
-      'renderer-highlight channel (selectedEntityId) follows the pick',
-    ).not.toBeNull();
-
-    // Escape clears the selection.
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(200);
-    const cleared = await storeState(page, 'state.selectedEntity');
-    expect(cleared, 'Escape clears selection').toBeNull();
 
     // ── 3. Section plane: slider move auto-enables and keeps rendering ─
     // Regression #243 at the integration level: moving the position must
@@ -204,6 +225,15 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
     await waitForMeshCount(viewer, page, 120000);
     await page.waitForTimeout(2000); // let post-load work (metadata, spatial) settle
 
-    expect(errors, `uncaught page errors:\n${errors.join('\n')}`).toEqual([]);
+    // Under software WebGPU (CI) the device itself is unstable — losing
+    // it mid-upload throws device-class errors that say nothing about
+    // our code. Filter those when not strict; everything else still fails.
+    const relevant = GPU_STRICT
+      ? errors
+      : errors.filter(
+          (e) =>
+            !/popErrorScope|GPUDevice|GPUAdapter|device.*lost|createBuffer/i.test(e),
+        );
+    expect(relevant, `uncaught page errors:\n${relevant.join('\n')}`).toEqual([]);
   });
 });

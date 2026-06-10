@@ -53,7 +53,9 @@ export function runValidationInWorker(
         new URL('../../workers/idsValidation.worker.ts', import.meta.url),
         { type: 'module' }
       );
+      console.info('[IDS-client] worker spawned');
     } catch (err) {
+      console.error('[IDS-client] worker spawn FAILED:', err);
       reject(
         new Error(
           `Failed to spawn IDS worker: ${err instanceof Error ? err.message : String(err)}`
@@ -63,8 +65,12 @@ export function runValidationInWorker(
     }
 
     const id = Date.now();
+    let clientProgressCount = 0;
 
     const { buffer, transfer } = prepareSource(args.source);
+    console.info(
+      `[IDS-client] posting ${buffer.byteLength} bytes (${buffer instanceof SharedArrayBuffer ? 'shared' : 'transferred copy'}), ${args.document.specifications.length} specs`
+    );
 
     const settle = (fn: () => void) => {
       worker.onmessage = null;
@@ -79,21 +85,27 @@ export function runValidationInWorker(
       if (!msg || msg.id !== id) return;
       switch (msg.type) {
         case 'progress':
+          clientProgressCount++;
+          if (clientProgressCount === 1) console.info('[IDS-client] first progress message received');
           args.onProgress?.(msg.progress);
           return;
         case 'complete':
+          console.info(`[IDS-client] complete message received (${clientProgressCount} progress messages total)`);
           settle(() => resolve(msg.report));
           return;
         case 'error':
+          console.error('[IDS-client] error message received:', msg.message);
           settle(() => reject(new Error(msg.message)));
           return;
       }
     };
 
     worker.onerror = (event) => {
+      console.error('[IDS-client] worker.onerror:', event.message, event);
       settle(() => reject(new Error(event.message || 'IDS worker crashed')));
     };
-    worker.onmessageerror = () => {
+    worker.onmessageerror = (event) => {
+      console.error('[IDS-client] worker.onmessageerror (structured-clone failed):', event);
       settle(() => reject(new Error('IDS worker message deserialization failed')));
     };
 

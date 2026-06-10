@@ -62,6 +62,9 @@ export const V5A_ATTR_PREFIX = 'bsi::ifc::v5a::';
  */
 const PSET_SET_RE = /^Pset_/;
 
+/** `Qto_*` members route to quantities even when wrapped in a typed record. */
+const QTO_SET_RE = /^Qto_/;
+
 /**
  * Shape test for the typed PropertyValue record — the canonical wire
  * shape every writer and reader shares (`isTypedPropertyValue` in
@@ -222,6 +225,19 @@ export function inflateStructuredAttributes(
       if (sep > 0 && sep < rest.length - 2) {
         const setName = rest.slice(0, sep);
         const name = rest.slice(sep + 2);
+        // Qto_* members are quantities before anything else: a typed
+        // record under a quantity set (e.g. written by a draft
+        // set_property op) unwraps to its number — otherwise the value
+        // would land in psets and compete with later quantity edits on
+        // the same wire key. The quantities branch stores plain numbers,
+        // so the raw number is the canonical re-flattened shape.
+        if (QTO_SET_RE.test(setName)) {
+          const candidate = isPropertyValueShaped(value) ? value.value : value;
+          if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+            (quantities[setName] ??= {})[name] = candidate;
+            continue;
+          }
+        }
         if (isPropertyValueShaped(value)) {
           (psets[setName] ??= {})[name] = { ...value };
           continue;

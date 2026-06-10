@@ -67,6 +67,20 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.strictEqual(fireRating.value, 'F30');
   });
 
+  it('quantity-named Pset_* members stay properties (namespace wins over name heuristic)', () => {
+    const node = createNode('wall');
+    node.attributes.set('bsi::ifc::v5a::Pset_Dimensions::Length', { type: 'IfcReal', value: 2 });
+    node.attributes.set('bsi::ifc::v5a::Pset_Dimensions::Area', 4.5);
+
+    const props = extract(node);
+    const length = props.find((p) => p.name === 'Length');
+    assert.ok(length, 'Length stays in the property table');
+    assert.strictEqual(length.value, 2);
+    const area = props.find((p) => p.name === 'Area');
+    assert.ok(area, 'raw-number Area stays in the property table too');
+    assert.strictEqual(area.value, 4.5);
+  });
+
   it('typed quantity-like properties land in the quantity table, not dropped', async () => {
     const file: IfcxFile = {
       header: {

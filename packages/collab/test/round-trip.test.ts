@@ -196,6 +196,31 @@ describe('structured branches across snapshot → seed (#1031)', () => {
     expect(snapshotToIfcx(docB).data).toEqual(ifcx.data);
   });
 
+  it('typed records under Qto_* sets inflate into quantities, not psets', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, 'wall');
+    // Wire shape a draft set_property op produces when an agent targets
+    // a quantity set: typed record under a Qto_* key.
+    setAttribute(doc, 'wall', 'bsi::ifc::v5a::Qto_WallBaseQuantities::NetArea', {
+      type: 'IfcReal',
+      value: 12.5,
+    });
+
+    const docB = createCollabDoc();
+    seedFromIfcx(docB, snapshotToIfcx(doc));
+    const wall = entityToJSON(getEntity(docB, 'wall')!);
+    expect(wall.quantities).toEqual({ Qto_WallBaseQuantities: { NetArea: 12.5 } });
+    expect(wall.psets).toEqual({});
+    // Re-flattened canonical shape is the raw number (quantities branch
+    // stores plain numbers) — second round-trip is a fixed point.
+    const second = snapshotToIfcx(docB);
+    expect(
+      second.data.find((n) => n.path === 'wall')!.attributes?.[
+        'bsi::ifc::v5a::Qto_WallBaseQuantities::NetArea'
+      ],
+    ).toBe(12.5);
+  });
+
   it('custom (non-Qto_) quantity-set names round-trip into the quantities branch', () => {
     const doc = createCollabDoc();
     createEntity(doc, 'wall');

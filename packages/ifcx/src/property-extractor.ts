@@ -98,10 +98,8 @@ function groupAttributesByNamespace(
     const namespace = key.slice(0, lastColon);
     const propName = key.slice(lastColon + 2);
 
-    // Skip quantity-like properties - they go to QuantityTable
-    // (typed records unwrap to their scalar for this routing too).
-    const effective = isTypedPropertyValue(value) ? value.value : value;
-    if (typeof effective === 'number' && isQuantityProperty(propName)) {
+    // Skip quantity-routed attributes — they go to QuantityTable.
+    if (routesToQuantityTable(key, value)) {
       continue;
     }
 
@@ -212,6 +210,25 @@ function convertPropertyValue(value: unknown): {
  * Extract quantity-like properties (Volume, Area, Length, etc.)
  * These are identified by their names matching quantity patterns.
  */
+/**
+ * Single routing rule shared by property extraction (skip) and quantity
+ * building (accept): explicit set namespaces win over the name
+ * heuristic. `Pset_*` members are properties no matter what they're
+ * called (IFC psets legitimately hold `Length`/`Area`/… properties);
+ * `Qto_*` members are quantities; only set-less keys fall back to the
+ * quantity-like-name heuristic. Typed records (#1031) unwrap to their
+ * scalar before the numeric check.
+ */
+export function routesToQuantityTable(key: string, value: unknown): boolean {
+  const effective = isTypedPropertyValue(value) ? value.value : value;
+  if (typeof effective !== 'number') return false;
+  const segments = key.split('::');
+  const setName = segments.length >= 2 ? segments[segments.length - 2] : '';
+  if (setName.startsWith('Pset_')) return false;
+  if (setName.startsWith('Qto_')) return true;
+  return isQuantityProperty(segments[segments.length - 1] ?? '');
+}
+
 export function isQuantityProperty(propName: string): boolean {
   // Exact matches for common quantity names
   const exactQuantityNames = new Set([

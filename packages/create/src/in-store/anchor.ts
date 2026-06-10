@@ -56,3 +56,13 @@ export function toNativeLength(anchor: SpatialAnchor, metres: number): number {
   if (!scale || !Number.isFinite(scale) || scale <= 0 || scale === 1) return metres;
   return Math.round((metres / scale) * 1e9) / 1e9;
 }
+
+/** 2D point variant of {@link toNativeLength}. */
+export function toNativePoint2(anchor: SpatialAnchor, p: readonly [number, number]): [number, number] {
+  return [toNativeLength(anchor, p[0]), toNativeLength(anchor, p[1])];
+}
+
+/** 3D point variant of {@link toNativeLength}. */
+export function toNativePoint3(anchor: SpatialAnchor, p: readonly [number, number, number]): [number, number, number] {
+  return [toNativeLength(anchor, p[0]), toNativeLength(anchor, p[1]), toNativeLength(anchor, p[2])];
+}

@@ -24,7 +24,7 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint2, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { ownerHistoryRef } from './_emit-helpers.js';
 
 export type SlabInStoreParams = SlabRectangleParams | SlabPolygonParams;
@@ -121,17 +121,34 @@ export function addSlabToStore(
   params: SlabInStoreParams,
 ): SlabBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
-  const polygon = isPolygonParams(params);
-  const placementOrigin: [number, number, number] = polygon
-    ? params.Position ?? [0, 0, 0]
-    : params.Position;
 
   if (params.Thickness <= 0) {
     throw new Error('addSlabToStore: Thickness must be positive');
   }
-  if (!polygon && (params.Width <= 0 || params.Depth <= 0)) {
+  if (!isPolygonParams(params) && (params.Width <= 0 || params.Depth <= 0)) {
     throw new Error('addSlabToStore: Width and Depth must be positive');
   }
+  // Params are metres; convert dimensioned fields to the file's native
+  // length unit before emit (see SpatialAnchor.lengthUnitScale). A new
+  // `const` binding (not a `params` reassignment) keeps TS's aliased
+  // discriminator narrowing intact for the union type.
+  const p: SlabInStoreParams = isPolygonParams(params)
+    ? {
+        ...params,
+        OuterCurve: params.OuterCurve.map((pt) => toNativePoint2(anchor, pt)),
+        Position: params.Position ? toNativePoint3(anchor, params.Position) : params.Position,
+        Thickness: toNativeLength(anchor, params.Thickness),
+      }
+    : {
+        ...params,
+        Position: toNativePoint3(anchor, params.Position),
+        Width: toNativeLength(anchor, params.Width),
+        Depth: toNativeLength(anchor, params.Depth),
+        Thickness: toNativeLength(anchor, params.Thickness),
+      };
+  const placementOrigin: [number, number, number] = isPolygonParams(p)
+    ? p.Position ?? [0, 0, 0]
+    : p.Position;
 
   // Placement at the chosen origin (no rotation).
   const slabOriginPt = editor.addEntity('IfcCartesianPoint', [placementOrigin]).expressId;
@@ -145,9 +162,9 @@ export function addSlabToStore(
     `#${slabAxis}`,
   ]).expressId;
 
-  const profileId = polygon
-    ? emitPolygonProfile(editor, params.OuterCurve)
-    : emitRectangleProfile(editor, params.Width, params.Depth);
+  const profileId = isPolygonParams(p)
+    ? emitPolygonProfile(editor, p.OuterCurve)
+    : emitRectangleProfile(editor, p.Width, p.Depth);
 
   // Extruded along +Z by Thickness.
   const solidOriginPt = editor.addEntity('IfcCartesianPoint', [[0, 0, 0]]).expressId;
@@ -157,7 +174,7 @@ export function addSlabToStore(
     `#${profileId}`,
     `#${solidAxis}`,
     `#${extrudeDirection}`,
-    params.Thickness,
+    p.Thickness,
   ]).expressId;
 
   const shapeRepId = editor.addEntity('IfcShapeRepresentation', [

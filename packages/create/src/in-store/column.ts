@@ -18,7 +18,7 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { ownerHistoryRef } from './_emit-helpers.js';
 
 export interface ColumnInStoreParams {
@@ -67,6 +67,16 @@ export function addColumnToStore(
   params: ColumnInStoreParams,
 ): ColumnBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
+
+  // Params are metres; convert dimensioned fields to the file's native
+  // length unit before emit (see SpatialAnchor.lengthUnitScale).
+  params = {
+    ...params,
+    Position: toNativePoint3(anchor, params.Position),
+    Width: toNativeLength(anchor, params.Width),
+    Depth: toNativeLength(anchor, params.Depth),
+    Height: toNativeLength(anchor, params.Height),
+  };
 
   // Local placement chain: IfcCartesianPoint → IfcAxis2Placement3D →
   // IfcLocalPlacement (parent = storey placement).

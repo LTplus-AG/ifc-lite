@@ -95,8 +95,10 @@ export function createEntity(
   const psets = new Y.Map<Y.Map<PropertyValue>>();
   if (options.psets) {
     for (const [psetName, props] of Object.entries(options.psets)) {
+      assertStructuredName('pset name', psetName);
       const pset = new Y.Map<PropertyValue>();
       for (const [propName, value] of Object.entries(props)) {
+        assertStructuredName('property name', propName);
         pset.set(propName, value);
       }
       psets.set(psetName, pset);
@@ -107,8 +109,10 @@ export function createEntity(
   const quantities = new Y.Map<Y.Map<number>>();
   if (options.quantities) {
     for (const [qsetName, qtys] of Object.entries(options.quantities)) {
+      assertStructuredName('quantity set name', qsetName);
       const qset = new Y.Map<number>();
       for (const [qtyName, value] of Object.entries(qtys)) {
+        assertStructuredName('quantity name', qtyName);
         qset.set(qtyName, value);
       }
       quantities.set(qsetName, qset);
@@ -301,6 +305,19 @@ export function moveEntity(
 /* Property sets                                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Pset/quantity set and member names ride in `::`-delimited IFCX wire
+ * keys (#1031); a name containing the delimiter would flatten to an
+ * irreversible key and corrupt the structured branch on re-seed.
+ */
+function assertStructuredName(label: string, name: string): void {
+  if (name.includes('::')) {
+    throw new Error(
+      `@ifc-lite/collab: ${label} "${name}" must not contain "::" (IFCX namespace delimiter)`,
+    );
+  }
+}
+
 /** Set a property within a Pset; creates the Pset map if missing. */
 export function setPropertyValue(
   doc: Y.Doc,
@@ -309,6 +326,8 @@ export function setPropertyValue(
   propName: string,
   value: PropertyValue,
 ): void {
+  assertStructuredName('pset name', psetName);
+  assertStructuredName('property name', propName);
   const entity = getEntity(doc, path);
   if (!entity) throw new Error(`@ifc-lite/collab: entity "${path}" not found`);
   const psets = entity.get(ENTITY_KEY.PSETS) as Y.Map<Y.Map<PropertyValue>> | undefined;
@@ -362,6 +381,8 @@ export function setQuantityValue(
   qtyName: string,
   value: number,
 ): void {
+  assertStructuredName('quantity set name', qsetName);
+  assertStructuredName('quantity name', qtyName);
   const entity = getEntity(doc, path);
   if (!entity) throw new Error(`@ifc-lite/collab: entity "${path}" not found`);
   const qsets = entity.get(ENTITY_KEY.QUANTITIES) as Y.Map<Y.Map<number>> | undefined;

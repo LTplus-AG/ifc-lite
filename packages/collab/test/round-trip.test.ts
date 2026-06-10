@@ -234,6 +234,23 @@ describe('structured branches across snapshot → seed (#1031)', () => {
     expect(wall.attributes).not.toHaveProperty('bsi::ifc::v5a::CarbonMetrics::EmbodiedCO2');
   });
 
+  it('rejects set/member names containing the :: wire delimiter', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, 'wall');
+    expect(() =>
+      setPropertyValue(doc, 'wall', 'Pset_A::B', 'Prop', { type: 'IfcLabel', value: 'x' }),
+    ).toThrow(/must not contain "::"/);
+    expect(() =>
+      setPropertyValue(doc, 'wall', 'Pset_A', 'Prop::Sub', { type: 'IfcLabel', value: 'x' }),
+    ).toThrow(/must not contain "::"/);
+    expect(() => setQuantityValue(doc, 'wall', 'Qto_A::B', 'NetArea', 1)).toThrow(
+      /must not contain "::"/,
+    );
+    expect(() =>
+      createEntity(doc, 'slab', { psets: { 'Pset_A::B': { P: { type: 'IfcLabel', value: 'x' } } } }),
+    ).toThrow(/must not contain "::"/);
+  });
+
   it('structured pset wins over a colliding flat attribute deterministically', () => {
     const doc = createCollabDoc();
     createEntity(doc, 'wall');

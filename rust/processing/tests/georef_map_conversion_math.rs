@@ -73,9 +73,14 @@ fn map_conversion_transforms_local_point_to_expected_world_coordinate() {
         "X-axis direction not unit length: {norm}"
     );
 
-    // Local→map per IFC: E = S·(cosθ·x − sinθ·y) + Eastings
+    // Local→map per IFC4x3 IfcMapConversion ("a scaling of the three axes
+    // (x,y,z), by the same Scale, followed by an anti-clockwise rotation
+    // about the z-axis [...] then a translation in (x,y,z) of Eastings,
+    // Northings, OrthogonalHeight" — and explicitly: "one scale is applied
+    // equally to x, y and z, to convert units"):
+    //                    E = S·(cosθ·x − sinθ·y) + Eastings
     //                    N = S·(sinθ·x + cosθ·y) + Northings
-    //                    H = z + OrthogonalHeight
+    //                    H = S·z + OrthogonalHeight
     //
     // Hand arithmetic for local point (100, 50, 5):
     //   cosθ·x = −0.0977396728779572 · 100 = −9.77396728779572
@@ -90,11 +95,11 @@ fn map_conversion_transforms_local_point_to_expected_world_coordinate() {
     //   S·rotY = 0.9996 · 94.63421793374133            = 94.59636424656783
     //   N      = 4184941.96970872 + 94.59636424656783  = 4185036.566072967
     //
-    //   H      = 5 + 0 = 5
+    //   H      = 0.9996 · 5 + 0 = 4.998
     const LOCAL: (f64, f64, f64) = (100.0, 50.0, 5.0);
     const EXPECTED_E: f64 = 545932.168909724;
     const EXPECTED_N: f64 = 4185036.566072967;
-    const EXPECTED_H: f64 = 5.0;
+    const EXPECTED_H: f64 = 4.998;
 
     // 1) Through the production transform function.
     let core_geo = GeoReference {

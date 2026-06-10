@@ -76,6 +76,12 @@ impl GeoReference {
     }
 
     /// Transform local coordinates to map coordinates
+    ///
+    /// Per IFC4x3 `IfcMapConversion`: "a scaling of the three axes (x,y,z),
+    /// by the same Scale, followed by an anti-clockwise rotation about the
+    /// z-axis [...] and then a translation in (x,y,z) of Eastings,
+    /// Northings, OrthogonalHeight" — note the Scale applies to z as well
+    /// ("one scale is applied equally to x, y and z, to convert units").
     #[inline]
     pub fn local_to_map(&self, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
         let cos_r = self.x_axis_abscissa;
@@ -84,7 +90,7 @@ impl GeoReference {
 
         let e = s * (cos_r * x - sin_r * y) + self.eastings;
         let n = s * (sin_r * x + cos_r * y) + self.northings;
-        let h = z + self.orthogonal_height;
+        let h = s * z + self.orthogonal_height;
 
         (e, n, h)
     }
@@ -107,7 +113,8 @@ impl GeoReference {
         // Inverse rotation: transpose of rotation matrix
         let x = inv_scale * (cos_r * dx + sin_r * dy);
         let y = inv_scale * (-sin_r * dx + cos_r * dy);
-        let z = h - self.orthogonal_height;
+        // Scale applies to z too (IfcMapConversion scales all three axes).
+        let z = inv_scale * (h - self.orthogonal_height);
 
         (x, y, z)
     }
@@ -130,7 +137,8 @@ impl GeoReference {
             0.0,
             0.0,
             0.0,
-            1.0,
+            // Scale applies uniformly to x, y AND z (IfcMapConversion).
+            s,
             0.0,
             self.eastings,
             self.northings,

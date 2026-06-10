@@ -8,7 +8,7 @@
  */
 
 import type { ComposedNode } from './types.js';
-import { ATTR, isTypedPropertyValue } from './types.js';
+import { ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';
 import {
   StringTable,
   PropertyTableBuilder,
@@ -212,21 +212,25 @@ function convertPropertyValue(value: unknown): {
  */
 /**
  * Single routing rule shared by property extraction (skip) and quantity
- * building (accept): explicit set namespaces win over the name
- * heuristic. `Pset_*` members are properties no matter what they're
- * called (IFC psets legitimately hold `Length`/`Area`/… properties);
- * `Qto_*` members are quantities; only set-less keys fall back to the
- * quantity-like-name heuristic. Typed records (#1031) unwrap to their
- * scalar before the numeric check.
+ * building (accept). Inside the `bsi::ifc::v5a::` namespace this mirrors
+ * the collab structured-branch inflation exactly, so a serialized
+ * snapshot parses into the same property/quantity split it was authored
+ * with (#1031): `Pset_*` members are properties no matter what they're
+ * called (IFC psets legitimately hold `Length`/`Area`/… properties),
+ * `Qto_*` members are quantities, and custom sets route typed records to
+ * properties and raw numbers to quantities. Keys outside v5a keep the
+ * legacy quantity-like-name heuristic.
  */
 export function routesToQuantityTable(key: string, value: unknown): boolean {
   const effective = isTypedPropertyValue(value) ? value.value : value;
   if (typeof effective !== 'number') return false;
-  const segments = key.split('::');
-  const setName = segments.length >= 2 ? segments[segments.length - 2] : '';
-  if (setName.startsWith('Pset_')) return false;
-  if (setName.startsWith('Qto_')) return true;
-  return isQuantityProperty(segments[segments.length - 1] ?? '');
+  const v5a = parseV5aKey(key);
+  if (v5a) {
+    if (v5a.setName.startsWith('Pset_')) return false;
+    if (v5a.setName.startsWith('Qto_')) return true;
+    return !isTypedPropertyValue(value);
+  }
+  return isQuantityProperty(key.split('::').pop() ?? '');
 }
 
 export function isQuantityProperty(propName: string): boolean {

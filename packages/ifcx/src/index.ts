@@ -10,7 +10,7 @@
  */
 
 import type { IfcxFile, ComposedNode } from './types.js';
-import { isTypedPropertyValue } from './types.js';
+import { isTypedPropertyValue, parseV5aKey } from './types.js';
 import { composeIfcx, findRoots } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, routesToQuantityTable } from './property-extractor.js';
@@ -331,21 +331,21 @@ function buildQuantities(
     const qsetName = ifcClass ? `Qto_${ifcClass.replace('Ifc', '')}BaseQuantities` : 'BaseQuantities';
 
     for (const [key, value] of node.attributes) {
-      // Same routing rule the property extractor uses to skip — explicit
-      // Pset_/Qto_ namespaces win over the name heuristic, and typed
-      // records (#1031) unwrap to their scalar — so neither table drops
-      // or double-claims an attribute.
+      // Same routing rule the property extractor uses to skip — the v5a
+      // namespace mirrors the collab inflation dialect, typed records
+      // (#1031) unwrap to their scalar — so neither table drops or
+      // double-claims an attribute.
       if (!routesToQuantityTable(key, value)) continue;
 
-      const segments = key.split('::');
-      const propName = segments[segments.length - 1] ?? '';
-      const wireSet = segments.length >= 2 ? segments[segments.length - 2] : '';
+      const v5a = parseV5aKey(key);
+      const propName = v5a?.name ?? key.split('::').pop() ?? '';
       const effective = isTypedPropertyValue(value) ? value.value : value;
 
       builder.add({
         entityId: expressId,
-        // Keep the authored Qto set name when the key carries one.
-        qsetName: wireSet.startsWith('Qto_') ? wireSet : qsetName,
+        // Keep the authored set name (Qto_* or custom) when the key
+        // carries one; only heuristic-routed keys get the synthesized set.
+        qsetName: v5a ? v5a.setName : qsetName,
         quantityName: propName,
         quantityType: getQuantityType(propName),
         value: effective as number,

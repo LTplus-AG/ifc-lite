@@ -81,6 +81,53 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.strictEqual(area.value, 4.5);
   });
 
+  it('custom v5a sets mirror the collab dialect: typed → property, raw number → quantity', async () => {
+    const file: IfcxFile = {
+      header: {
+        id: 'custom-sets',
+        ifcxVersion: 'ifcx-alpha',
+        dataVersion: '1',
+        author: 'test',
+        timestamp: '2026-06-10T00:00:00Z',
+      },
+      imports: [],
+      schemas: {},
+      data: [
+        {
+          path: 'wall',
+          attributes: {
+            'bsi::ifc::class': { code: 'IfcWall', uri: 'u' },
+            // Custom pset with a quantity-LIKE name: typed record → stays
+            // a property (collab inflation puts it in psets).
+            'bsi::ifc::v5a::Dimensions::Length': { type: 'IfcReal', value: 2 },
+            // Custom quantity set with a non-heuristic name: raw number →
+            // quantity (collab inflation puts it in quantities).
+            'bsi::ifc::v5a::CarbonMetrics::EmbodiedCO2': 412.5,
+          },
+        },
+      ],
+    };
+    const buffer = new TextEncoder().encode(JSON.stringify(file)).buffer as ArrayBuffer;
+    const result = await parseIfcx(buffer);
+
+    const props = result.properties.getForEntity(1).flatMap((pset) => pset.properties);
+    const length = props.find((p) => p.name === 'Length');
+    assert.ok(length, 'typed Length stays a property');
+    assert.strictEqual(length.value, 2);
+    assert.ok(!props.some((p) => p.name === 'EmbodiedCO2'), 'raw custom quantity not a property');
+
+    const qsets = result.quantities.getForEntity(1);
+    const co2Set = qsets.find((qset) => qset.name === 'CarbonMetrics');
+    assert.ok(co2Set, `authored custom set name kept (got ${JSON.stringify(qsets.map((q) => q.name))})`);
+    const co2 = co2Set.quantities.find((q) => q.name === 'EmbodiedCO2');
+    assert.ok(co2, 'raw custom quantity reaches the quantity table');
+    assert.strictEqual(co2.value, 412.5);
+    assert.ok(
+      !qsets.some((qset) => qset.quantities.some((q) => q.name === 'Length')),
+      'typed Length not double-claimed as quantity'
+    );
+  });
+
   it('typed quantity-like properties land in the quantity table, not dropped', async () => {
     const file: IfcxFile = {
       header: {

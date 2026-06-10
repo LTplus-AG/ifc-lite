@@ -37,7 +37,7 @@
  * wins).
  */
 
-import { IFCLITE_ATTR, isTypedPropertyValue } from '@ifc-lite/ifcx';
+import { IFCLITE_ATTR, V5A_ATTR_PREFIX, isTypedPropertyValue, parseV5aKey } from '@ifc-lite/ifcx';
 import * as Y from 'yjs';
 import {
   GEOMETRY_KEY,
@@ -48,11 +48,9 @@ import {
   type PropertyValue,
 } from '../doc/schema.js';
 
-/**
- * IFC5-alpha namespaced property prefix — same literal the
- * IFC4→IFC4x3/5 attribute migration emits.
- */
-export const V5A_ATTR_PREFIX = 'bsi::ifc::v5a::';
+// Re-exported for existing consumers; the canonical definition lives in
+// @ifc-lite/ifcx next to the routing rule that shares the dialect.
+export { V5A_ATTR_PREFIX };
 
 /**
  * Numbers under `Pset_*` sets never inflate into quantities: the
@@ -219,12 +217,10 @@ export function inflateStructuredAttributes(
       continue;
     }
 
-    if (key.startsWith(V5A_ATTR_PREFIX)) {
-      const rest = key.slice(V5A_ATTR_PREFIX.length);
-      const sep = rest.indexOf('::');
-      if (sep > 0 && sep < rest.length - 2) {
-        const setName = rest.slice(0, sep);
-        const name = rest.slice(sep + 2);
+    {
+      const v5a = parseV5aKey(key);
+      if (v5a) {
+        const { setName, name } = v5a;
         // Qto_* members are quantities before anything else: a typed
         // record under a quantity set (e.g. written by a draft
         // set_property op) unwraps to its number — otherwise the value

@@ -158,6 +158,25 @@ export const IFCLITE_ATTR = {
 export const PROVENANCE_KEY = 'ifclite::provenance';
 
 /**
+ * IFC5-alpha namespaced property/quantity prefix (#1031): keys are
+ * `bsi::ifc::v5a::<Set>::<Name>`. Within this namespace the routing
+ * dialect is fixed (see `routesToQuantityTable` and the collab
+ * structured-branch inflation): `Pset_*` members are properties, `Qto_*`
+ * members are quantities, custom sets route typed records to properties
+ * and raw numbers to quantities.
+ */
+export const V5A_ATTR_PREFIX = 'bsi::ifc::v5a::';
+
+/** Split a v5a key into set + member name; null when not a v5a set key. */
+export function parseV5aKey(key: string): { setName: string; name: string } | null {
+  if (!key.startsWith(V5A_ATTR_PREFIX)) return null;
+  const rest = key.slice(V5A_ATTR_PREFIX.length);
+  const sep = rest.indexOf('::');
+  if (sep <= 0 || sep >= rest.length - 2) return null;
+  return { setName: rest.slice(0, sep), name: rest.slice(sep + 2) };
+}
+
+/**
  * Canonical wire shape for typed property values (#1031): pset
  * properties under `bsi::ifc::v5a::<Set>::<Prop>` carry this record so
  * the IFC type, unit, and provenance survive round-trips. Every writer

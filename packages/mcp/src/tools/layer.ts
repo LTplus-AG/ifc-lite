@@ -24,7 +24,7 @@ import {
   setAttribute,
 } from '@ifc-lite/collab';
 import { parseScopeClaims } from '@ifc-lite/extensions';
-import { ATTR } from '@ifc-lite/ifcx';
+import { ATTR, isTypedPropertyValue, type TypedPropertyValue } from '@ifc-lite/ifcx';
 import type * as Y from 'yjs';
 import type { Tool } from './types.js';
 import type { ToolContext } from '../context.js';
@@ -51,6 +51,23 @@ import type { DraftOpInput } from './layer-ops.js';
  */
 function psetAttributeKey(pset: string, prop: string): string {
   return `bsi::ifc::v5a::${pset}::${prop}`;
+}
+
+/**
+ * Canonical wire shape for property values (#1031): scalars are wrapped
+ * in the typed record the collab snapshot pipeline emits, so equivalent
+ * edits hash identically in the merge engine regardless of which writer
+ * produced them. Already-typed records pass through; anything else
+ * (arrays, foreign objects, null) is written verbatim.
+ */
+function typedPropertyRecord(value: unknown): unknown {
+  if (isTypedPropertyValue(value)) return value;
+  if (typeof value === 'boolean') return { type: 'IfcBoolean', value } satisfies TypedPropertyValue;
+  if (typeof value === 'number') {
+    return { type: Number.isInteger(value) ? 'IfcInteger' : 'IfcReal', value } satisfies TypedPropertyValue;
+  }
+  if (typeof value === 'string') return { type: 'IfcLabel', value } satisfies TypedPropertyValue;
+  return value;
 }
 
 function ifcClassOfEntity(doc: Y.Doc, path: string): string | undefined {
@@ -205,7 +222,12 @@ const draftApplyOps: Tool = {
             break;
           case 'set_property':
             requireEntity(draft, op, index);
-            setAttribute(draft.doc, op.path, psetAttributeKey(op.pset as string, op.prop as string), op.value);
+            setAttribute(
+              draft.doc,
+              op.path,
+              psetAttributeKey(op.pset as string, op.prop as string),
+              typedPropertyRecord(op.value),
+            );
             break;
           case 'delete_entity':
             requireEntity(draft, op, index);

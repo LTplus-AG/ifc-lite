@@ -29,8 +29,11 @@ export {
   flattenStructuredBranches,
   inflateStructuredAttributes,
   isPropertyValueShaped,
+  geometryRecordLookup,
   type StructuredBranchesJSON,
   type InflatedAttributes,
+  type GeometryRefCarrier,
+  type FlattenOptions,
 } from './structured-attrs.js';
 export {
   runSnapshotWorker,

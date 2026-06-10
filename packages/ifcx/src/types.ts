@@ -157,6 +157,45 @@ export const IFCLITE_ATTR = {
 /** Header key carrying the provenance manifest (see provenance.ts). */
 export const PROVENANCE_KEY = 'ifclite::provenance';
 
+/**
+ * Canonical wire shape for typed property values (#1031): pset
+ * properties under `bsi::ifc::v5a::<Set>::<Prop>` carry this record so
+ * the IFC type, unit, and provenance survive round-trips. Every writer
+ * (collab snapshots, MCP draft ops) and reader (property extraction,
+ * seed inflation) shares this one definition.
+ */
+export interface TypedPropertyValue {
+  type: string;
+  value: string | number | boolean | null;
+  unit?: string;
+  source?: string;
+}
+
+const TYPED_PROPERTY_KEYS = new Set(['type', 'value', 'unit', 'source']);
+
+/**
+ * Strict shape test for TypedPropertyValue. Deliberately rejects any
+ * extra keys: legacy/migrated attributes carry raw scalars or foreign
+ * objects, never this exact record, so the test is what disambiguates
+ * "typed property" from "leave it alone".
+ */
+export function isTypedPropertyValue(value: unknown): value is TypedPropertyValue {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (typeof record.type !== 'string') return false;
+  if (!('value' in record)) return false;
+  const v = record.value;
+  if (v !== null && typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
+    return false;
+  }
+  for (const key of Object.keys(record)) {
+    if (!TYPED_PROPERTY_KEYS.has(key)) return false;
+  }
+  if ('unit' in record && record.unit !== undefined && typeof record.unit !== 'string') return false;
+  if ('source' in record && record.source !== undefined && typeof record.source !== 'string') return false;
+  return true;
+}
+
 // ============================================================================
 // USD Geometry Types
 // ============================================================================

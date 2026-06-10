@@ -39,7 +39,7 @@ import * as Y from 'yjs';
 import { createCollabDoc, entitiesMap } from '../doc/schema.js';
 import { entityToJSON } from '../doc/entity.js';
 import { snapshotToIfcx, type SnapshotOptions } from './to-ifcx.js';
-import { flattenStructuredBranches } from './structured-attrs.js';
+import { flattenStructuredBranches, geometryRecordLookup } from './structured-attrs.js';
 
 export interface ExtractMinimalLayerOptions {
   /** Forwarded to `snapshotToIfcx` for header / timestamp / id. */
@@ -82,6 +82,8 @@ export function extractMinimalLayer(
     const live = snapshotToIfcx(doc, options.snapshot);
     const beforeEnts = entitiesMap(before);
     const liveEnts = entitiesMap(doc);
+    const liveGeometryFor = geometryRecordLookup(doc);
+    const beforeGeometryFor = geometryRecordLookup(before);
 
     const diffNodes: IfcxNode[] = [];
 
@@ -91,7 +93,7 @@ export function extractMinimalLayer(
       // edits (psets / quantities / classifications / materials /
       // geometryRef) surface exactly like the full writer emits them —
       // the two writers stay in lockstep by construction (#1031).
-      const liveAttrs = flattenStructuredBranches(liveJson);
+      const liveAttrs = flattenStructuredBranches(liveJson, { geometryRecordFor: liveGeometryFor });
       const beforeUntyped = beforeEnts.get(path);
       if (!beforeUntyped) {
         // Entity is new — emit it whole (sans empty branches).
@@ -104,7 +106,7 @@ export function extractMinimalLayer(
       }
 
       const beforeJson = entityToJSON(beforeUntyped as Y.Map<unknown>);
-      const beforeAttrs = flattenStructuredBranches(beforeJson);
+      const beforeAttrs = flattenStructuredBranches(beforeJson, { geometryRecordFor: beforeGeometryFor });
       const node: IfcxNode = { path };
       let dirty = false;
 

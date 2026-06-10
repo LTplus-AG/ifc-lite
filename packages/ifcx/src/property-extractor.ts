@@ -8,7 +8,7 @@
  */
 
 import type { ComposedNode } from './types.js';
-import { ATTR } from './types.js';
+import { ATTR, isTypedPropertyValue } from './types.js';
 import {
   StringTable,
   PropertyTableBuilder,
@@ -84,6 +84,13 @@ function groupAttributesByNamespace(
       continue;
     }
 
+    // `ifclite::*` keys are internal carriers (deletion/derived markers,
+    // collab classifications/materials/geometryRef) — never user
+    // properties (#1031).
+    if (key.startsWith('ifclite::')) {
+      continue;
+    }
+
     // Parse namespace::name pattern
     const lastColon = key.lastIndexOf('::');
     if (lastColon === -1) continue;
@@ -92,7 +99,9 @@ function groupAttributesByNamespace(
     const propName = key.slice(lastColon + 2);
 
     // Skip quantity-like properties - they go to QuantityTable
-    if (typeof value === 'number' && isQuantityProperty(propName)) {
+    // (typed records unwrap to their scalar for this routing too).
+    const effective = isTypedPropertyValue(value) ? value.value : value;
+    if (typeof effective === 'number' && isQuantityProperty(propName)) {
       continue;
     }
 
@@ -152,6 +161,11 @@ function convertPropertyValue(value: unknown): {
   propType: PropertyValueType;
   propValue: string | number | boolean;
 } {
+  // Typed records (#1031) expose their actual scalar, not a JSON blob.
+  if (isTypedPropertyValue(value)) {
+    return convertPropertyValue(value.value);
+  }
+
   if (typeof value === 'string') {
     return {
       propType: PropertyValueType.String,

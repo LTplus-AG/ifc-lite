@@ -37,12 +37,15 @@
  * wins).
  */
 
-import { IFCLITE_ATTR } from '@ifc-lite/ifcx';
-import type {
-  ClassificationRef,
-  GeometryRefRecord,
-  MaterialAssignment,
-  PropertyValue,
+import { IFCLITE_ATTR, isTypedPropertyValue } from '@ifc-lite/ifcx';
+import * as Y from 'yjs';
+import {
+  GEOMETRY_KEY,
+  geometryMap,
+  type ClassificationRef,
+  type GeometryRefRecord,
+  type MaterialAssignment,
+  type PropertyValue,
 } from '../doc/schema.js';
 
 /**
@@ -59,29 +62,15 @@ export const V5A_ATTR_PREFIX = 'bsi::ifc::v5a::';
  */
 const PSET_SET_RE = /^Pset_/;
 
-const PROPERTY_VALUE_KEYS = new Set(['type', 'value', 'unit', 'source']);
-
 /**
- * Shape test for the typed PropertyValue record. Strict on purpose:
- * legacy migrated attributes carry raw scalars, never `{type, value}`
- * objects, so this is what disambiguates pset inflation from "leave it
- * as a flat attribute".
+ * Shape test for the typed PropertyValue record — the canonical wire
+ * shape every writer and reader shares (`isTypedPropertyValue` in
+ * `@ifc-lite/ifcx`). Strict on purpose: legacy migrated attributes
+ * carry raw scalars, never `{type, value}` objects, so this is what
+ * disambiguates pset inflation from "leave it as a flat attribute".
  */
 export function isPropertyValueShaped(value: unknown): value is PropertyValue {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  if (typeof record.type !== 'string') return false;
-  if (!('value' in record)) return false;
-  const v = record.value;
-  if (v !== null && typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
-    return false;
-  }
-  for (const key of Object.keys(record)) {
-    if (!PROPERTY_VALUE_KEYS.has(key)) return false;
-  }
-  if ('unit' in record && record.unit !== undefined && typeof record.unit !== 'string') return false;
-  if ('source' in record && record.source !== undefined && typeof record.source !== 'string') return false;
-  return true;
+  return isTypedPropertyValue(value);
 }
 
 function isClassificationRefShaped(value: unknown): value is ClassificationRef {
@@ -104,6 +93,31 @@ export interface StructuredBranchesJSON {
   geometryRef?: string;
 }
 
+/**
+ * Wire form of a geometry reference whose target record is known at
+ * snapshot time: carrying the record (sans CRDT version vector) keeps
+ * the round-trip self-contained — a seed can recreate the geometry map
+ * entry instead of restoring a dangling ref. A bare `geomId` string is
+ * still valid for refs whose geometry hydrates out-of-band (blob sync).
+ */
+export interface GeometryRefCarrier {
+  geomId: string;
+  type?: string;
+  source?: string;
+  blobHash?: string;
+  params?: Record<string, unknown>;
+  bbox?: number[];
+}
+
+export interface FlattenOptions {
+  /**
+   * Resolve a geometry record for a geomId (typically from the doc's
+   * top-level geometry map). When it returns one, the carrier embeds it;
+   * otherwise only the id travels.
+   */
+  geometryRecordFor?: (geomId: string) => Omit<GeometryRefCarrier, 'geomId'> | undefined;
+}
+
 /** Attribute key for one pset property / quantity. */
 export function structuredAttributeKey(setName: string, name: string): string {
   return `${V5A_ATTR_PREFIX}${setName}::${name}`;
@@ -116,6 +130,7 @@ export function structuredAttributeKey(setName: string, name: string): string {
  */
 export function flattenStructuredBranches(
   json: { attributes: Record<string, unknown> } & StructuredBranchesJSON,
+  options: FlattenOptions = {},
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...json.attributes };
 
@@ -136,7 +151,10 @@ export function flattenStructuredBranches(
     out[IFCLITE_ATTR.MATERIALS] = json.materials.map((mat) => ({ ...mat }));
   }
   if (typeof json.geometryRef === 'string') {
-    out[IFCLITE_ATTR.GEOMETRY_REF] = json.geometryRef;
+    const record = options.geometryRecordFor?.(json.geometryRef);
+    out[IFCLITE_ATTR.GEOMETRY_REF] = record
+      ? ({ geomId: json.geometryRef, ...record } satisfies GeometryRefCarrier)
+      : json.geometryRef;
   }
 
   return out;
@@ -146,6 +164,8 @@ export interface InflatedAttributes extends StructuredBranchesJSON {
   /** Whatever didn't inflate — stays in the flat attributes branch. */
   attributes: Record<string, unknown>;
   geometryRefRecord?: GeometryRefRecord;
+  /** Embedded geometry record to recreate in the doc's geometry map, if carried. */
+  geometryCarrier?: GeometryRefCarrier;
 }
 
 /**
@@ -163,6 +183,7 @@ export function inflateStructuredAttributes(
   let classifications: ClassificationRef[] = [];
   let materials: MaterialAssignment[] = [];
   let geometryRef: string | undefined;
+  let geometryCarrier: GeometryRefCarrier | undefined;
 
   for (const [key, value] of Object.entries(attributes)) {
     if (key === IFCLITE_ATTR.CLASSIFICATIONS) {
@@ -184,6 +205,11 @@ export function inflateStructuredAttributes(
     if (key === IFCLITE_ATTR.GEOMETRY_REF) {
       if (typeof value === 'string') {
         geometryRef = value;
+        continue;
+      }
+      if (isGeometryRefCarrierShaped(value)) {
+        geometryRef = value.geomId;
+        geometryCarrier = { ...value };
         continue;
       }
       flat[key] = value;
@@ -218,5 +244,40 @@ export function inflateStructuredAttributes(
     materials,
     geometryRef,
     geometryRefRecord: geometryRef !== undefined ? { geomId: geometryRef } : undefined,
+    geometryCarrier,
+  };
+}
+
+function isGeometryRefCarrierShaped(value: unknown): value is GeometryRefCarrier {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  return typeof (value as Record<string, unknown>).geomId === 'string';
+}
+
+/**
+ * `FlattenOptions.geometryRecordFor` backed by `doc`'s geometry map.
+ * The CRDT version vector is replica bookkeeping and never travels.
+ */
+export function geometryRecordLookup(
+  doc: Y.Doc,
+): (geomId: string) => Omit<GeometryRefCarrier, 'geomId'> | undefined {
+  return (geomId) => {
+    const entry = geometryMap(doc).get(geomId) as Y.Map<unknown> | undefined;
+    if (!entry) return undefined;
+    const record: Omit<GeometryRefCarrier, 'geomId'> = {};
+    const type = entry.get(GEOMETRY_KEY.TYPE);
+    if (typeof type === 'string') record.type = type;
+    const source = entry.get(GEOMETRY_KEY.SOURCE);
+    if (typeof source === 'string') record.source = source;
+    const blobHash = entry.get(GEOMETRY_KEY.BLOB_HASH);
+    if (typeof blobHash === 'string') record.blobHash = blobHash;
+    const params = entry.get(GEOMETRY_KEY.PARAMS);
+    if (params instanceof Y.Map && params.size > 0) {
+      const plain: Record<string, unknown> = {};
+      for (const [k, v] of params.entries()) plain[k] = v;
+      record.params = plain;
+    }
+    const bbox = entry.get(GEOMETRY_KEY.BBOX);
+    if (Array.isArray(bbox)) record.bbox = bbox as number[];
+    return record;
   };
 }

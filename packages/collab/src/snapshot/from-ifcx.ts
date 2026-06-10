@@ -13,6 +13,7 @@
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import * as Y from 'yjs';
 import { createEntity } from '../doc/entity.js';
+import { createGeometry, type GeometryType } from '../doc/geometry.js';
 import { SEED_ORIGIN, assertSchemaInvariants, metaMap } from '../doc/schema.js';
 import { inflateStructuredAttributes } from './structured-attrs.js';
 
@@ -86,6 +87,20 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
       }
 
       const ifcClass = readIfcClass(node.attributes);
+
+      // A carrier with the embedded geometry record recreates the
+      // geometry map entry, so the restored ref is never dangling.
+      // Bare-id carriers keep pointing at out-of-band hydrated geometry.
+      const carrier = inflated.geometryCarrier;
+      if (carrier && typeof carrier.type === 'string' && typeof carrier.source === 'string') {
+        createGeometry(doc, carrier.geomId, {
+          type: carrier.type as GeometryType,
+          source: carrier.source,
+          blobHash: carrier.blobHash,
+          params: carrier.params,
+          bbox: carrier.bbox as [number, number, number, number, number, number] | undefined,
+        });
+      }
 
       createEntity(doc, path, {
         ifcClass,

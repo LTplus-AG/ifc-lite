@@ -19,11 +19,13 @@ import {
   createEntity,
   entityToJSON,
   getEntity,
+  getGeometryRef,
   setAttribute,
   setGeometryRef,
   setPropertyValue,
   setQuantityValue,
 } from '../src/doc/entity.js';
+import { createGeometry, getGeometry } from '../src/doc/geometry.js';
 import { seedFromIfcx } from '../src/snapshot/from-ifcx.js';
 import { snapshotToIfcx } from '../src/snapshot/to-ifcx.js';
 
@@ -158,6 +160,40 @@ describe('structured branches across snapshot → seed (#1031)', () => {
     expect(wall.attributes['bsi::ifc::v5a::Pset_WallCommon::Width']).toBe(0.3);
     expect(wall.psets).toEqual({});
     expect(wall.quantities).toEqual({});
+  });
+
+  it('geometry refs carry their record so seeds never restore a dangling pointer', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, 'wall');
+    createGeometry(doc, 'geom-7', {
+      type: 'parametric',
+      source: 'extruded-area-solid',
+      blobHash: 'blake3:abc',
+      params: { depth: 0.3 },
+      bbox: [0, 0, 0, 1, 1, 1],
+    });
+    setGeometryRef(doc, 'wall', { geomId: 'geom-7' });
+
+    const ifcx = snapshotToIfcx(doc);
+    const node = ifcx.data.find((n) => n.path === 'wall')!;
+    expect(node.attributes?.['ifclite::geometryRef']).toEqual({
+      geomId: 'geom-7',
+      type: 'parametric',
+      source: 'extruded-area-solid',
+      blobHash: 'blake3:abc',
+      params: { depth: 0.3 },
+      bbox: [0, 0, 0, 1, 1, 1],
+    });
+
+    const docB = createCollabDoc();
+    seedFromIfcx(docB, ifcx);
+    expect(getGeometryRef(docB, 'wall')).toEqual({ geomId: 'geom-7' });
+    const restored = getGeometry(docB, 'geom-7');
+    expect(restored).toBeDefined();
+    expect(restored!.get('blobHash')).toBe('blake3:abc');
+
+    // Fixed point: the re-seeded doc snapshots to the same wire form.
+    expect(snapshotToIfcx(docB).data).toEqual(ifcx.data);
   });
 
   it('custom (non-Qto_) quantity-set names round-trip into the quantities branch', () => {

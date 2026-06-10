@@ -149,6 +149,21 @@ struct Cdt {
     constraints: BTreeSet<(usize, usize)>,
     n_input: usize,
     super_base: usize,
+    /// Per-triangle inside-domain flag, parallel to `tris`. Maintained
+    /// incrementally during NO-SPLIT refinement (after [`Cdt::start_refinement`]):
+    /// a flip reuses its two slots within one region (a flipped edge is never a
+    /// constraint, so both sides share a region), and a cavity re-fan inherits
+    /// the seed's region (the cavity BFS never crosses a constraint). Garbage
+    /// before `start_refinement`; [`Cdt::emit`] always recomputes from scratch.
+    inside: Vec<bool>,
+    /// Ordered worklist of skinny-candidate triangle indices for incremental
+    /// refinement. Entries are validated lazily on pop; slot rewrites re-evaluate
+    /// via [`Cdt::track_tri`]. Empty / unused outside refinement.
+    skinny: BTreeSet<usize>,
+    /// Incremental-refinement tracking hooks enabled.
+    track: bool,
+    /// Quality target used by the tracking hooks.
+    cos_min_angle: f64,
 }
 
 /// The next refinement step chosen for a triangulation (see `Cdt::next_action`).
@@ -209,12 +224,17 @@ impl Cdt {
             constraints,
             n_input,
             super_base,
+            inside: Vec::new(),
+            skinny: BTreeSet::new(),
+            track: false,
+            cos_min_angle: COS_MIN_ANGLE,
         };
         cdt.tris.push(Tri {
             v: [super_base, super_base + 1, super_base + 2],
             n: [NONE; 3],
             alive: true,
         });
+        cdt.inside.push(false);
 
         // Incremental Delaunay insertion in canonical index order.
         for vi in 0..n_input {
@@ -234,6 +254,17 @@ impl Cdt {
         let Some(start) = self.locate(p) else {
             return;
         };
+        self.insert_point_at(vi, start);
+    }
+
+    /// [`Cdt::insert_point`] with the containing triangle already located —
+    /// the incremental-refinement entry skips the O(T) `locate` scan (the
+    /// caller walked to it via [`Cdt::locate_from`]).
+    fn insert_point_at(&mut self, vi: usize, start: usize) {
+        let p = self.points[vi];
+        // Region of the seed = region of every cavity triangle (the cavity BFS
+        // never crosses a constraint), inherited by the re-fan below.
+        let region = self.inside.get(start).copied().unwrap_or(false);
 
         // CONSTRAINED Bowyer-Watson cavity: alive triangles whose circumcircle
         // (strictly) contains p, found by BFS over adjacency from `start` — but
@@ -308,6 +339,7 @@ impl Cdt {
                 n: [NONE; 3],
                 alive: true,
             });
+            self.inside.push(region);
             new_tris.push(ti);
             // edge 0 is a->b (outer); neighbour = outside triangle.
             self.tris[ti].n[0] = outside;
@@ -324,6 +356,9 @@ impl Cdt {
         // Legalize the outer edges (edge 0 of each new triangle).
         let mut stack: Vec<(usize, usize)> = new_tris.iter().map(|&t| (t, 0usize)).collect();
         self.legalize(&mut stack);
+        for t in new_tris {
+            self.track_tri(t);
+        }
     }
 
     /// Wire adjacency for an internal cavity edge once both owners are known.
@@ -348,6 +383,7 @@ impl Cdt {
         if !self.tris[t].alive {
             return;
         }
+        let region = self.inside.get(t).copied().unwrap_or(false);
         let v = self.tris[t].v;
         let n = self.tris[t].n;
         self.tris[t].alive = false;
@@ -365,6 +401,7 @@ impl Cdt {
                 n: [NONE; 3],
                 alive: true,
             });
+            self.inside.push(region);
             children.push(ti);
             self.tris[ti].n[0] = n[e];
             if n[e] != NONE {
@@ -377,6 +414,9 @@ impl Cdt {
         }
         let mut stack: Vec<(usize, usize)> = children.iter().map(|&c| (c, 0usize)).collect();
         self.legalize(&mut stack);
+        for c in children {
+            self.track_tri(c);
+        }
     }
 
     /// Lawson legalization. Each `(ti, e)` names an edge of a just-built
@@ -524,6 +564,43 @@ impl Cdt {
                 stack.push((t, e));
             }
         }
+        // A flip reuses its two slots; their region is unchanged (the flipped
+        // edge is never a constraint, so both sides share one region) but
+        // their shape is new — re-evaluate for the skinny worklist.
+        self.track_tri(ti);
+        self.track_tri(opp);
+    }
+
+    /// Incremental-refinement hook: (re-)evaluate triangle slot `ti` for the
+    /// skinny worklist. No-op unless [`Cdt::start_refinement`] enabled tracking.
+    #[inline]
+    fn track_tri(&mut self, ti: usize) {
+        if !self.track {
+            return;
+        }
+        let cand = self.tris[ti].alive
+            && self.inside.get(ti).copied().unwrap_or(false)
+            && !self.tris[ti].v.iter().any(|&x| x >= self.super_base)
+            && self.tri_is_skinny(ti, self.cos_min_angle);
+        if cand {
+            self.skinny.insert(ti);
+        } else {
+            self.skinny.remove(&ti);
+        }
+    }
+
+    /// Enable incremental refinement: materialise the per-triangle inside
+    /// flags once, then seed the skinny worklist. From here on the tracking
+    /// hooks ([`Cdt::track_tri`], the region inheritance in the insertion
+    /// paths) keep both maintained under [`Cdt::insert_steiner`] mutations.
+    fn start_refinement(&mut self, cos_min_angle: f64) {
+        self.inside = self.inside_flags();
+        self.cos_min_angle = cos_min_angle;
+        self.track = true;
+        self.skinny.clear();
+        for ti in 0..self.tris.len() {
+            self.track_tri(ti);
+        }
     }
 
     /// Locate an alive triangle whose closed region contains `p`. Canonical
@@ -547,6 +624,43 @@ impl Cdt {
             }
         }
         on_edge
+    }
+
+    /// [`Cdt::locate`] by deterministic straight-line walk from alive triangle
+    /// `start` (the refinement caller knows a triangle near `p` — its skinny
+    /// source — so the walk is a few steps instead of an O(T) scan). At each
+    /// triangle, step across the FIRST edge (canonical edge order) that `p` is
+    /// strictly outside of; when no edge rejects, the closed triangle contains
+    /// `p`. Exact orients ⇒ deterministic path. Falls back to the linear scan
+    /// on a dead/missing start, a hull exit, or a step-cap hit (degenerate
+    /// cycling), so the result is always the same kind of answer `locate` gives.
+    fn locate_from(&self, start: usize, p: P2) -> Option<usize> {
+        if !self.tris.get(start).is_some_and(|t| t.alive) {
+            return self.locate(p);
+        }
+        let mut cur = start;
+        let cap = self.tris.len() * 2 + 16;
+        for _ in 0..cap {
+            let v = self.tris[cur].v;
+            let mut moved = false;
+            for e in 0..3 {
+                let a = self.points[v[e]];
+                let b = self.points[v[(e + 1) % 3]];
+                if orient(a, b, p) < 0 {
+                    let nb = self.tris[cur].n[e];
+                    if nb == NONE || !self.tris[nb].alive {
+                        return self.locate(p); // walked off the hull — fall back
+                    }
+                    cur = nb;
+                    moved = true;
+                    break;
+                }
+            }
+            if !moved {
+                return Some(cur);
+            }
+        }
+        self.locate(p)
     }
 
     // ─────────────────────── constraint recovery ──────────────────────────
@@ -809,6 +923,75 @@ impl Cdt {
         Action::Done
     }
 
+    /// Incremental analogue of [`Cdt::next_action`] for NO-SPLIT refinement:
+    /// pull the lowest-index skinny candidate from the maintained worklist.
+    ///
+    /// A candidate whose circumcenter encroaches a constraint, or falls outside
+    /// the domain, is removed PERMANENTLY: with segment splits disabled the
+    /// constraint set and the domain partition are immutable, and a triangle's
+    /// circumcenter is a function of its own (immutable) vertices — the verdict
+    /// can never change while the triangle slot is unchanged. (A slot rewrite
+    /// re-evaluates via [`Cdt::track_tri`].) This matches the rescan-and-skip
+    /// semantics of [`Cdt::next_action`] without re-paying the skip each round.
+    ///
+    /// Returns the Steiner point and the alive triangle containing it (the
+    /// walk-located insertion seed), or `None` when the quality bound is met.
+    fn next_steiner(&mut self) -> Option<(P2, usize)> {
+        loop {
+            let &ti = self.skinny.iter().next()?;
+            if !self.tris[ti].alive
+                || !self.inside.get(ti).copied().unwrap_or(false)
+                || self.tris[ti].v.iter().any(|&x| x >= self.super_base)
+                || !self.tri_is_skinny(ti, self.cos_min_angle)
+            {
+                self.skinny.remove(&ti); // stale slot (killed / rewritten)
+                continue;
+            }
+            let Some(cc) = self.circumcenter(ti) else {
+                self.skinny.remove(&ti);
+                continue;
+            };
+            if self.encroached_by_point(cc).is_some() {
+                self.skinny.remove(&ti); // no-split mode: leave it (permanent)
+                continue;
+            }
+            match self.locate_from(ti, cc) {
+                Some(loc) if self.inside.get(loc).copied().unwrap_or(false) => {
+                    // ti is NOT removed: cc lies strictly inside ti's
+                    // circumcircle, so the insertion cavity kills ti and the
+                    // stale entry drops out on its next pop.
+                    return Some((cc, loc));
+                }
+                _ => {
+                    self.skinny.remove(&ti);
+                    continue;
+                }
+            }
+        }
+    }
+
+    /// Incrementally insert Steiner point `p` (known to lie in alive triangle
+    /// `loc`, per [`Cdt::next_steiner`]) into the LIVE CDT — the no-rebuild
+    /// refinement step. The point is spliced in just below the super-triangle
+    /// vertices so every index invariant holds unchanged (`< n_input` = input /
+    /// constraint vertex, `>= super_base` = super vertex, emit keeps
+    /// `< super_base`); triangle vertex ids at or above the splice point shift
+    /// up by one (an O(T) integer pass, no predicates).
+    fn insert_steiner(&mut self, p: P2, loc: usize) {
+        let vi = self.super_base;
+        self.points.insert(vi, p);
+        self.super_base += 1;
+        for t in &mut self.tris {
+            for v in &mut t.v {
+                if *v >= vi {
+                    *v += 1;
+                }
+            }
+        }
+        // Constraints reference input vertices only (< n_input <= vi): unchanged.
+        self.insert_point_at(vi, loc);
+    }
+
     /// A constraint segment is encroached if some OTHER vertex lies inside its
     /// diametral circle. Returns the lowest-key such segment.
     fn find_encroached_segment(&self) -> Option<(usize, usize)> {
@@ -1010,6 +1193,27 @@ fn refine_to_fixpoint(
     let max_steiner = (n_input * 3).max(32);
     let mut steiner = 0usize;
     let mut cdt = Cdt::build_from(points.clone(), &segments)?;
+
+    if !allow_segment_split {
+        // NO-SPLIT MODE (the consolidate_coplanar production path): the
+        // constraint set never changes, so every action is an interior
+        // circumcenter insertion — apply it INCREMENTALLY to the live CDT.
+        // The rebuild-per-point driver below is O(P²) per rebuild (each
+        // rebuild re-inserts every point with an O(T) `locate` scan), i.e.
+        // O(P³) per refinement: 13.8 s for ONE 582-vertex/16-hole slab face,
+        // ×2 faces ×16 re-consolidates = the 155 s advanced_model #798926
+        // many-void cliff (BLOCKER-B). Incremental insertion + walk-locate +
+        // the maintained skinny worklist refines the same face in ~10 ms.
+        cdt.start_refinement(COS_MIN_ANGLE);
+        while steiner < max_steiner.min(MAX_REFINE_ITERS) {
+            let Some((p, loc)) = cdt.next_steiner() else {
+                break;
+            };
+            cdt.insert_steiner(p, loc);
+            steiner += 1;
+        }
+        return Some(cdt);
+    }
 
     for _ in 0..MAX_REFINE_ITERS {
         if steiner >= max_steiner {
@@ -1298,6 +1502,98 @@ mod tests {
             assert_eq!(pa.x.to_bits(), pb.x.to_bits(), "x bits must be identical");
             assert_eq!(pa.y.to_bits(), pb.y.to_bits(), "y bits must be identical");
         }
+    }
+
+    /// BLOCKER-B regression (advanced_model.ifc IFCSLAB #798926): the no-split
+    /// (consolidate_coplanar) refinement of a many-hole slab face. The old
+    /// rebuild-per-Steiner-point driver was O(P³) — 13.8 s in RELEASE for ONE
+    /// 582-vertex/16-hole face, ×2 faces ×16 re-consolidates = a 155 s element.
+    /// The incremental driver does the same face in ~10 ms. The shape below
+    /// reproduces that face: a 134-vertex outer ring + 16 28-gon holes.
+    ///
+    /// Guards three things: (1) wall-time in release — bound 2 s, ~200× above
+    /// the fixed cost, ~7× below the regressed cost, so scheduler jitter can't
+    /// trip it but the O(P³) driver always does; (2) refinement actually ran
+    /// (Steiner points were added); (3) the result is still area-exact and
+    /// run-to-run deterministic (the incremental path must stay bit-stable).
+    #[test]
+    fn no_split_many_hole_refinement_is_fast_and_valid() {
+        // Outer ring: 12 m × 10 m rectangle subdivided to 132 boundary verts.
+        let (w, h, step) = (12.0_f64, 10.0_f64, 1.0 / 3.0);
+        let mut outer: Vec<Point2<f64>> = Vec::new();
+        let n_x = (w / step).round() as usize;
+        let n_y = (h / step).round() as usize;
+        for i in 0..n_x {
+            outer.push(pt(i as f64 * step, 0.0));
+        }
+        for j in 0..n_y {
+            outer.push(pt(w, j as f64 * step));
+        }
+        for i in (1..=n_x).rev() {
+            outer.push(pt(i as f64 * step, h));
+        }
+        for j in (1..=n_y).rev() {
+            outer.push(pt(0.0, j as f64 * step));
+        }
+        // 16 small 28-gon holes on a 4×4 grid (the slab's round penetrations).
+        let mut holes: Vec<Vec<Point2<f64>>> = Vec::new();
+        let r = 0.1_f64;
+        for gx in 0..4 {
+            for gy in 0..4 {
+                let (cx, cy) = (1.5 + 3.0 * gx as f64, 2.0 + 2.0 * gy as f64);
+                let ring: Vec<Point2<f64>> = (0..28)
+                    .map(|k| {
+                        let a = k as f64 / 28.0 * std::f64::consts::TAU;
+                        pt(cx + r * a.cos(), cy + r * a.sin())
+                    })
+                    .collect();
+                holes.push(ring);
+            }
+        }
+        let n_input = outer.len() + holes.iter().map(|h| h.len()).sum::<usize>();
+
+        let t0 = std::time::Instant::now();
+        let (pts, idx) =
+            triangulate_refined(&outer, &holes, false).expect("no-split refinement");
+        let dt = t0.elapsed();
+
+        // Refinement ran (Steiner points beyond the input rings) and the domain
+        // is exact: outer area minus the 16 polygonal holes.
+        assert!(
+            pts.len() > n_input,
+            "expected Steiner points (got {} verts for {n_input} inputs)",
+            pts.len()
+        );
+        let hole_area: f64 = holes.iter().map(|h| {
+            let mut s = 0.0;
+            for i in 0..h.len() {
+                let j = (i + 1) % h.len();
+                s += h[i].x * h[j].y - h[j].x * h[i].y;
+            }
+            (s * 0.5).abs()
+        }).sum();
+        let area = area_of(&pts, &idx);
+        let expected = 12.0 * 10.0 - hole_area;
+        assert!(
+            (area - expected).abs() < 1e-6,
+            "area {area} != {expected} (outer minus 16 holes)"
+        );
+        // Bit-stable run-to-run (the incremental driver is deterministic).
+        let (pts2, idx2) = triangulate_refined(&outer, &holes, false).unwrap();
+        assert_eq!(idx, idx2, "index lists must be identical run-to-run");
+        assert_eq!(pts.len(), pts2.len());
+        for (a, b) in pts.iter().zip(pts2.iter()) {
+            assert_eq!(a.x.to_bits(), b.x.to_bits());
+            assert_eq!(a.y.to_bits(), b.y.to_bits());
+        }
+        // Perf bound — release only (debug predicate cost is ~10× and CI debug
+        // boxes jitter; the regressed driver fails this by ~7× even on slow HW).
+        #[cfg(not(debug_assertions))]
+        assert!(
+            dt < std::time::Duration::from_secs(2),
+            "no-split many-hole refinement took {dt:?} — the O(P³) rebuild-per-point driver is back (BLOCKER-B)"
+        );
+        let _ = dt;
     }
 
     #[test]

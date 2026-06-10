@@ -56,6 +56,48 @@ fn volume(m: &Mesh) -> f64 {
         / 6.0
 }
 
+/// Signed volume about the mesh's own AABB center. For a CLOSED mesh this equals
+/// `volume()` (translation invariance). For an OPEN mesh (boundary cracks) the
+/// origin-referenced sum is biased by boundary-loop flux ∝ distance-to-origin —
+/// catastrophic on far-from-origin models (TUN32 at 250–410 m read −59.8 m³ from
+/// a +0.30 m³ wall with a 2.65 m sliver crack). `vol_c` bounds that bias by the
+/// operand's own extent, so it measures the SOLID, not the model's placement.
+fn volume_c(m: &Mesh) -> f64 {
+    if m.positions.is_empty() {
+        return 0.0;
+    }
+    let mut lo = [f64::MAX; 3];
+    let mut hi = [f64::MIN; 3];
+    for v in m.positions.chunks_exact(3) {
+        for k in 0..3 {
+            lo[k] = lo[k].min(v[k] as f64);
+            hi[k] = hi[k].max(v[k] as f64);
+        }
+    }
+    let o = [
+        (lo[0] + hi[0]) * 0.5,
+        (lo[1] + hi[1]) * 0.5,
+        (lo[2] + hi[2]) * 0.5,
+    ];
+    m.indices
+        .chunks_exact(3)
+        .map(|t| {
+            let s = |i: u32| {
+                let v = vtx(m, i);
+                [v[0] - o[0], v[1] - o[1], v[2] - o[2]]
+            };
+            let (a, b, c) = (s(t[0]), s(t[1]), s(t[2]));
+            let cr = [
+                b[1] * c[2] - b[2] * c[1],
+                b[2] * c[0] - b[0] * c[2],
+                b[0] * c[1] - b[1] * c[0],
+            ];
+            a[0] * cr[0] + a[1] * cr[1] + a[2] * cr[2]
+        })
+        .sum::<f64>()
+        / 6.0
+}
+
 fn bbox(m: &Mesh) -> [f64; 6] {
     let mut bb = [f64::MAX, f64::MAX, f64::MAX, f64::MIN, f64::MIN, f64::MIN];
     for v in m.positions.chunks_exact(3) {
@@ -407,9 +449,9 @@ fn main() {
                 let (open_e, bad_e) = edge_stats(&m);
                 writeln!(
                     out,
-                    "{{\"id\":{},\"type\":\"{}\",\"voids\":{},\"ops\":\"{}\",\"tris\":{},\"vol\":{:.9},\"nocut_vol\":{},\"open_vol\":{:.9},\"bbox\":[{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}],\"open_edges\":{},\"bad_edges\":{},\"fails\":\"{}\",\"ms\":{:.3}}}",
+                    "{{\"id\":{},\"type\":\"{}\",\"voids\":{},\"ops\":\"{}\",\"tris\":{},\"vol\":{:.9},\"vol_c\":{:.9},\"nocut_vol\":{},\"open_vol\":{:.9},\"bbox\":[{:.6},{:.6},{:.6},{:.6},{:.6},{:.6}],\"open_edges\":{},\"bad_edges\":{},\"fails\":\"{}\",\"ms\":{:.3}}}",
                     id, type_of(id), n_voids, ops,
-                    m.triangle_count(), volume(&m),
+                    m.triangle_count(), volume(&m), volume_c(&m),
                     if nocut_vol.is_nan() { "null".to_string() } else { format!("{nocut_vol:.9}") },
                     open_vol,
                     bb[0], bb[1], bb[2], bb[3], bb[4], bb[5],

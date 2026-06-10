@@ -213,14 +213,6 @@ fn ti_dot(a: [f64; 3], b: [f64; 3]) -> f64 {
 fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
     ti_cross(ti_sub(t[1], t[0]), ti_sub(t[2], t[0]))
 }
-#[inline]
-fn ti_centroid(t: &[[f64; 3]; 3]) -> [f64; 3] {
-    [
-        (t[0][0] + t[1][0] + t[2][0]) / 3.0,
-        (t[0][1] + t[1][1] + t[2][1]) / 3.0,
-        (t[0][2] + t[1][2] + t[2][2]) / 3.0,
-    ]
-}
 
 /// Are `t1` and `t2` an INTENDED-FLUSH coplanar pair that per-axis snapping
 /// pushed just off exact coplanarity? — the flush-cap detector.
@@ -233,34 +225,44 @@ fn ti_centroid(t: &[[f64; 3]; 3]) -> [f64; 3] {
 /// `orient3d`-only test then sees it as a razor-thin CROSSING (or Disjoint), never
 /// `Coplanar`, so the footprint is never carved and a sliver bridges the hole.
 ///
-/// The test is two deterministic FMA-free f64 conditions (byte-identical
+/// The test is ONE deterministic FMA-free f64 condition (byte-identical
 /// native==wasm — NO coordinate is moved, this is purely a CLASSIFICATION):
-///  1. **Near-parallel planes** — `(n1·n2)² ≥ (1 − 2^-20)²·(n1·n1)(n2·n2)`, i.e.
-///     the unit normals agree to ~2^-20. A genuine transversal cut (box−box, every
-///     real crossing) has a large dihedral ⇒ fails here.
-///  2. **Near-zero plane gap** — each triangle's CENTROID is within `band` of the
-///     other's plane (centroid, not the far vertices, so a large host triangle's
-///     reach does not amplify a µm tilt into a false reject). Combined with (1),
-///     "centroid on plane + parallel" ⇒ the whole small triangle is on the plane.
+/// **the noise-slab test** — ALL THREE vertices of one triangle sit within
+/// `band` of the other triangle's plane (either direction qualifies). A facet
+/// entirely inside the other face's snap-scatter slab is geometrically
+/// indistinguishable from lying ON that face, so it must be routed to the exact
+/// coplanar handler. A genuine transversal cut (box−box, every real crossing)
+/// has vertices FAR off the other plane ⇒ fails the slab test.
+///
+/// WHY vertex-slab and not the earlier fixed angle gate (TUN32 forensics,
+/// BLOCKER-A): the old formulation ALSO required the two plane normals to agree
+/// to ~2^-20 (≈1.4 mrad) — but the tilt that f32 import noise induces on an
+/// intended-flush facet scales as `scatter / edge_length`. At 300–400 m from
+/// origin (f32 ULP 30.5 µm — TUN32's tunnel-alignment walls) a SMALL flush facet
+/// (0.03–0.05 m edges, the 3-segment recess cutters of wall #198779) tilts
+/// 1.4–1.9 mrad: past the fixed gate while sitting 3–24 µm INSIDE the slab. The
+/// missed pair then enters the razor-thin-crossing path whose degenerate
+/// sub-triangle keep/drop is a noise lottery → open edges + volumes off by
+/// −85%…+19 763% (the 749-element TUN32 divergence family, ~84% adjudicated
+/// PURE-WRONG against IfcOpenShell 0.8.2 ground truth). The slab test is
+/// scale-correct: small facets get exactly the angular allowance their size
+/// implies, large facets proportionally less (a large tilted partner's far
+/// vertices leave the slab, so it still fails).
 ///
 /// `band` is an absolute power-of-two multiple of `SNAP_GRID` (≈ the 2-operand
 /// scatter envelope, ~0.12 mm) widened only for far-from-origin operands where
 /// f32 import is coarser — always THREE orders below the smallest real feature
-/// edge (~0.2 m). A poke-through cap fails BOTH (its centroid sits midway through
-/// the host, far from the surface) so it can never qualify.
+/// edge (~0.2 m). A poke-through cap fails the slab test (its far vertices sit
+/// midway through the host, far from the surface) so it can never qualify; a
+/// sub-band-sized transversal micro-sliver CAN now qualify, but its entire
+/// geometric effect is below the import-noise floor by construction, and the
+/// coplanar overlay's degenerate-projection guards (`w0 == Zero`) handle it.
 fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
     let (n1, n2) = (ti_normal(t1), ti_normal(t2));
     let (nn1, nn2) = (ti_dot(n1, n1), ti_dot(n2, n2));
     if nn1 <= 0.0 || nn2 <= 0.0 || !nn1.is_finite() || !nn2.is_finite() {
         return false; // a degenerate triangle is never a flush coplanar partner
     }
-    // (1) near-parallel: cos²θ ≥ (1 − 2^-20)².
-    let nd = ti_dot(n1, n2);
-    const PARALLEL: f64 = 1.0 - 1.0 / 1_048_576.0; // 1 − 2^-20
-    if nd * nd < PARALLEL * PARALLEL * nn1 * nn2 {
-        return false;
-    }
-    // (2) centroid plane-gap within band, both directions.
     let mut extent = 1.0f64;
     for p in t1.iter().chain(t2.iter()) {
         for &c in p {
@@ -269,11 +271,14 @@ fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
     }
     let band = (8.0 * SNAP_GRID).max(extent * (1.0 / 4_194_304.0)); // 2^-22
     let band2 = band * band;
-    let gap2 = |c: [f64; 3], plane: &[[f64; 3]; 3], n: [f64; 3], nn: f64| {
-        let d = ti_dot(ti_sub(c, plane[0]), n); // perp_dist · |n|
-        (d * d) / nn // squared perpendicular distance
+    // All three vertices of `t` within `band` of `plane`'s supporting plane?
+    let in_slab = |t: &[[f64; 3]; 3], plane: &[[f64; 3]; 3], n: [f64; 3], nn: f64| {
+        t.iter().all(|&v| {
+            let d = ti_dot(ti_sub(v, plane[0]), n); // perp_dist · |n|
+            (d * d) / nn <= band2
+        })
     };
-    gap2(ti_centroid(t2), t1, n1, nn1) <= band2 && gap2(ti_centroid(t1), t2, n2, nn2) <= band2
+    in_slab(t2, t1, n1, nn1) || in_slab(t1, t2, n2, nn2)
 }
 
 /// Exact triangle–triangle intersection: the overlap of each triangle's

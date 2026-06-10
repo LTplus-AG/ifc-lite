@@ -266,9 +266,17 @@ describe('VisibilitySlice', () => {
     it('should toggle each type key independently', () => {
       const keys = ['spaces', 'openings', 'site', 'ifcAnnotations', 'ifcGrid'] as const;
       for (const key of keys) {
-        const initial = state.typeVisibility[key];
+        const before = { ...state.typeVisibility };
         state.toggleTypeVisibility(key);
-        assert.strictEqual(state.typeVisibility[key], !initial, `toggle ${key}`);
+        assert.strictEqual(state.typeVisibility[key], !before[key], `toggle ${key}`);
+        for (const other of keys) {
+          if (other === key) continue;
+          assert.strictEqual(
+            state.typeVisibility[other],
+            before[other],
+            `toggling ${key} must not change ${other}`,
+          );
+        }
       }
     });
 

@@ -48,11 +48,27 @@ describe('packFlavor / unpackFlavor', () => {
     }
   });
 
-  it('is deterministic: same content packs to the same parsed payload regardless of Map insertion order', () => {
-    // Unlike .iflx bundles (whose packed bytes are pinned by bundleHash),
-    // nothing hashes the .iflv envelope bytes, so we assert determinism
-    // semantically: two packs of the same logical content unpack to
-    // identical payloads, independent of bundle insertion order.
+  it('is byte-deterministic: same content packs to identical bytes', () => {
+    // packFlavor deliberately sorts bundle keys and pins the gzip mtime
+    // to 0 (see packer.ts) so packed bytes are a pure function of the
+    // logical content. Assert at the byte level so a regression in
+    // either mechanism (key sorting, mtime pinning) is caught.
+    const bytesA = new Uint8Array([1, 2, 3]);
+    const bytesB = new Uint8Array([9, 8, 7]);
+    const ab = new Map([['com.example.a@1.0.0', bytesA], ['com.example.b@2.0.0', bytesB]]);
+    const ba = new Map([['com.example.b@2.0.0', bytesB], ['com.example.a@1.0.0', bytesA]]);
+
+    const first = packFlavor(flavor(), { extensionBundles: ab });
+    const repeat = packFlavor(flavor(), { extensionBundles: ab });
+    const reordered = packFlavor(flavor(), { extensionBundles: ba });
+    expect(Array.from(repeat)).toEqual(Array.from(first));
+    expect(Array.from(reordered)).toEqual(Array.from(first));
+  });
+
+  it('is deterministic: same content unpacks to the same payload regardless of Map insertion order', () => {
+    // Semantic complement to the byte-level check above: two packs of
+    // the same logical content unpack to identical payloads,
+    // independent of bundle insertion order.
     const bytesA = new Uint8Array([1, 2, 3]);
     const bytesB = new Uint8Array([9, 8, 7]);
     const ab = new Map([['com.example.a@1.0.0', bytesA], ['com.example.b@2.0.0', bytesB]]);

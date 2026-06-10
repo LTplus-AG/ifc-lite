@@ -143,6 +143,29 @@
     "parseTriageResponse: function",
     "rulesFromPresets: function"
   ],
+  "@ifc-lite/clash/bcf": [
+    "ClashBcfOptions: interface",
+    "createBCFFromClashResult: function",
+    "mapBcfToClashes: function"
+  ],
+  "@ifc-lite/clash/ifcx": [
+    "IfcxAdapterOptions: interface",
+    "IfcxAdapterResult: interface",
+    "buildIfcxExclusions: function",
+    "elementsFromIfcx: function"
+  ],
+  "@ifc-lite/clash/step": [
+    "FederationLike: interface",
+    "StepAdapterOptions: interface",
+    "StepAdapterResult: interface",
+    "buildStepExclusions: function",
+    "elementsFromStep: function"
+  ],
+  "@ifc-lite/clash/wasm": [
+    "WasmClashEngine: class",
+    "WasmKernel: class",
+    "initClashWasm: function"
+  ],
   "@ifc-lite/cli": [],
   "@ifc-lite/codegen": [
     "AttributeDefinition: interface",
@@ -501,6 +524,84 @@
     "startSecureCollabServer: function",
     "verifyAgainstPathLocks: function",
     "verifyWithReplayProtector: function"
+  ],
+  "@ifc-lite/collab-server/room-manager": [
+    "PeerConnection: interface",
+    "Room: class",
+    "RoomCounters: interface",
+    "RoomManager: class",
+    "RoomManagerOptions: interface",
+    "RoomOptions: interface",
+    "VerifyDecision: interface",
+    "VerifyMessageFn: type"
+  ],
+  "@ifc-lite/collab/awareness": [
+    "AGENT_PALETTE: const",
+    "AgentIdentity: interface",
+    "Awareness: class",
+    "CameraState: interface",
+    "DEFAULT_USER_PALETTE: const",
+    "PeerVisual: interface",
+    "PeerVisualOptions: interface",
+    "Presence: interface",
+    "PresenceMap: interface",
+    "PresenceOptions: interface",
+    "PresenceOverlay: interface",
+    "PresenceOverlayOptions: interface",
+    "PresenceState: interface",
+    "PresenceUpdateListener: type",
+    "UserIdentity: interface",
+    "Vec2: interface",
+    "Vec3: interface",
+    "Vec4: interface",
+    "agentIdentityFromMcp: function",
+    "applyAwarenessUpdate: function",
+    "colorForUser: function",
+    "createPresence: function",
+    "createPresenceOverlay: function",
+    "cursorScreenPosition: function",
+    "encodeAwarenessUpdate: function",
+    "fnv1a: function",
+    "markAsAgent: function",
+    "peerVisuals: function"
+  ],
+  "@ifc-lite/collab/providers/indexeddb": [
+    "IndexedDbOptions: interface",
+    "IndexedDbProvider: interface",
+    "createIndexedDbProvider: function",
+    "createMemoryProvider: function"
+  ],
+  "@ifc-lite/collab/providers/websocket": [
+    "WebSocketProvider: interface",
+    "WebSocketProviderOptions: interface",
+    "WebSocketStatus: type",
+    "createWebSocketProvider: function"
+  ],
+  "@ifc-lite/collab/snapshot": [
+    "ExtractMinimalLayerOptions: interface",
+    "IfcxInput: type",
+    "SeedOptions: interface",
+    "SnapshotOptions: interface",
+    "WorkerRequest: type",
+    "WorkerResponse: type",
+    "WorkerScopeLike: interface",
+    "captureBaseline: function",
+    "extractMinimalLayer: function",
+    "extractUserLayer: function",
+    "filterUpdateByClient: function",
+    "parseIfcxInput: function",
+    "runSnapshotWorker: function",
+    "seedFromIfcx: function",
+    "serializeIfcx: function",
+    "snapshotToIfcx: function"
+  ],
+  "@ifc-lite/collab/snapshot/worker": [
+    "WorkerRequest: type",
+    "WorkerResponse: type",
+    "WorkerScopeLike: interface",
+    "runSnapshotWorker: function",
+    "seedFromIfcx: function",
+    "snapshotToIfcx: function"
   ],
   "@ifc-lite/create": [
     "ArbitraryProfile: interface",
@@ -1412,6 +1513,40 @@
     "verifyBundle: function",
     "wrapEntrySource: function"
   ],
+  "@ifc-lite/extensions/bundle": [
+    "UnpackResult: interface",
+    "buildBundleFromFiles: function",
+    "packBundle: function",
+    "unpackBundle: function",
+    "unpackBundleWithSignature: function"
+  ],
+  "@ifc-lite/extensions/capability": [
+    "CapabilityCatalogueEntry: interface",
+    "computeRisk: function",
+    "computeRisks: function",
+    "diffCapabilities: function",
+    "findCatalogueEntry: function",
+    "findGrant: function",
+    "hasCapability: function",
+    "isCapabilityScope: function",
+    "isKnownCapability: function",
+    "listCapabilityCatalogue: function",
+    "matchCapability: function",
+    "overallTier: function",
+    "parseCapabilities: function",
+    "parseCapability: function",
+    "requiresReconsent: function"
+  ],
+  "@ifc-lite/extensions/node": [
+    "loadBundleFromDirectory: function"
+  ],
+  "@ifc-lite/extensions/when": [
+    "EMPTY_WHEN_CONTEXT: const",
+    "WHEN_CONTEXT_KEYS: const",
+    "WhenContextKey: type",
+    "evaluateWhen: function",
+    "parseWhen: function"
+  ],
   "@ifc-lite/geometry": [
     "AABB: interface",
     "BufferBuilder: class",
@@ -1435,16 +1570,16 @@
     "MetadataBootstrapSpatialNode: interface",
     "PlatformGeometryStats: interface",
     "PointCloudAsset: interface",
-    "ProfileCollection: class",
-    "ProfileEntryJs: class",
+    "ProfileCollection: class (type-only)",
+    "ProfileEntryJs: class (type-only)",
     "StreamingGeometryEvent: type",
     "StreamingOptions: interface",
     "StreamingProgress: interface",
-    "SymbolicCircle: class",
+    "SymbolicCircle: class (type-only)",
     "SymbolicDataByEntity: interface",
-    "SymbolicPolyline: class",
+    "SymbolicPolyline: class (type-only)",
     "SymbolicRepIdentifier: type",
-    "SymbolicRepresentationCollection: class",
+    "SymbolicRepresentationCollection: class (type-only)",
     "Vec3: interface",
     "WatchdogInputs: interface",
     "WorkerCountInputs: interface",
@@ -1523,6 +1658,10 @@
     "matchConstraint: function",
     "parseIDS: function",
     "validateIDS: function"
+  ],
+  "@ifc-lite/ids/bridge": [
+    "createDataAccessor: function",
+    "narrowSchemaVersion: function"
   ],
   "@ifc-lite/ifcx": [
     "ATTR: const",
@@ -1745,6 +1884,84 @@
     "scopeAllows: function",
     "successResponse: function",
     "toolError: function"
+  ],
+  "@ifc-lite/mcp/browser": [
+    "CallToolResult: interface",
+    "HeadlessLikeBackend: class",
+    "InMemoryModelRegistry: class",
+    "JSONRPC_VERSION: const",
+    "JsonRpcMessage: type",
+    "JsonRpcNotification: interface",
+    "JsonRpcRequest: interface",
+    "JsonRpcResponse: type",
+    "LoadedModel: interface",
+    "ModelRegistry: interface",
+    "PROTOCOL_VERSION: const",
+    "SUPPORTED_PROTOCOL_VERSIONS: const",
+    "ToolErrorCode: const",
+    "ToolErrorCodeValue: type",
+    "ToolErrorOptions: interface",
+    "ToolExecutionError: class",
+    "expandTypes: function",
+    "isProductType: function",
+    "toolError: function"
+  ],
+  "@ifc-lite/mcp/protocol": [
+    "CallToolParams: interface",
+    "CallToolResult: interface",
+    "ClientCapabilities: interface",
+    "ContentBlock: type",
+    "EmbeddedResource: interface",
+    "GetPromptParams: interface",
+    "GetPromptResult: interface",
+    "ImageContent: interface",
+    "InitializeParams: interface",
+    "InitializeResult: interface",
+    "JSONRPC_VERSION: const",
+    "JsonRpcErrorCode: const",
+    "JsonRpcErrorObject: interface",
+    "JsonRpcErrorResponse: interface",
+    "JsonRpcId: type",
+    "JsonRpcMessage: type",
+    "JsonRpcNotification: interface",
+    "JsonRpcRequest: interface",
+    "JsonRpcResponse: type",
+    "JsonRpcSuccessResponse: interface",
+    "JsonSchema: interface",
+    "ListPromptsResult: interface",
+    "ListResourcesResult: interface",
+    "ListToolsResult: interface",
+    "LogNotification: interface",
+    "PROTOCOL_VERSION: const",
+    "ProgressNotification: interface",
+    "PromptArgument: interface",
+    "PromptDefinition: interface",
+    "PromptMessage: interface",
+    "ReadResourceParams: interface",
+    "ReadResourceResult: interface",
+    "ResourceContents: interface",
+    "ResourceDefinition: interface",
+    "ResourceLink: interface",
+    "ResourceUpdatedNotification: interface",
+    "SUPPORTED_PROTOCOL_VERSIONS: const",
+    "ServerCapabilities: interface",
+    "SubscribeParams: interface",
+    "TextContent: interface",
+    "ToolDefinition: interface",
+    "ToolScope: type",
+    "errorResponse: function",
+    "isJsonRpcNotification: function",
+    "isJsonRpcRequest: function",
+    "isJsonRpcResponse: function",
+    "notification: function",
+    "parseMessage: function",
+    "successResponse: function"
+  ],
+  "@ifc-lite/mcp/server": [
+    "MCPServer: class",
+    "MCPServerOptions: interface",
+    "OutgoingMessageSink: interface",
+    "SERVER_NAME: const"
   ],
   "@ifc-lite/mutations": [
     "AttributeMutation: interface",
@@ -2809,7 +3026,7 @@
     "IfcxMeshData: interface",
     "IfcxNode: interface",
     "IfcxParseResult: interface",
-    "LayerStack: class",
+    "LayerStack: class (type-only)",
     "MapConversion: interface",
     "Material: interface",
     "MaterialConstituentInfo: interface",
@@ -2824,7 +3041,7 @@
     "MaterialsData: interface",
     "ParseOptions: interface",
     "ParseResult: interface",
-    "PathIndex: class",
+    "PathIndex: class (type-only)",
     "PointCloudExtraction: interface",
     "PreScannedEntityIndex: interface",
     "ProjectedCRS: interface",
@@ -2920,6 +3137,10 @@
     "toStepLine: function",
     "transformToLocal: function",
     "transformToWorld: function"
+  ],
+  "@ifc-lite/parser/browser": [
+    "WorkerParser: class",
+    "WorkerParserOptions: interface"
   ],
   "@ifc-lite/pointcloud": [
     "AsciiPointsFormat: type",
@@ -3082,6 +3303,18 @@
     "createSandbox: function",
     "marshalValue: function",
     "transpileTypeScript: function"
+  ],
+  "@ifc-lite/sandbox/schema": [
+    "BridgeCallContext: interface",
+    "LlmTaskIntent: type",
+    "MethodPlacementKind: type",
+    "MethodSchema: interface",
+    "MethodSemanticContract: interface",
+    "NAMESPACE_SCHEMAS: const",
+    "NamespaceSchema: interface",
+    "buildSchemaNamespaces: function",
+    "disposeSchemaNamespaceSession: function",
+    "marshalValue: function"
   ],
   "@ifc-lite/sdk": [
     "AABB: interface",

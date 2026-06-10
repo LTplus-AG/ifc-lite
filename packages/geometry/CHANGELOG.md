@@ -1,5 +1,16 @@
 # @ifc-lite/geometry
 
+## 2.5.0
+
+### Minor Changes
+
+- [#1025](https://github.com/LTplus-AG/ifc-lite/pull/1025) [`c003017`](https://github.com/LTplus-AG/ifc-lite/commit/c0030175e82f194183b60492c1de34eca6b5d691) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Expose the consumer-configurable tessellation quality ([#976](https://github.com/LTplus-AG/ifc-lite/issues/976)) on the SDK/WASM surface. `IfcAPI.setTessellationQuality('lowest' | 'low' | 'medium' | 'high' | 'highest')` selects the detail level applied by every subsequent `processGeometryBatch` call, and `@ifc-lite/geometry`'s `GeometryProcessor` accepts a `tessellationQuality` constructor option plus a `setTessellationQuality()` runtime setter that forward the level to the main-thread, streaming and worker-pool WASM paths. Unset / `'medium'` reproduces the engine's historical densities byte-for-byte, so existing consumers see no change; lower levels coarsen curved geometry for throughput, higher levels reduce faceting on pipes / cylinders / NURBS at a proportional triangle-count cost.
+
+### Patch Changes
+
+- Updated dependencies [[`c003017`](https://github.com/LTplus-AG/ifc-lite/commit/c0030175e82f194183b60492c1de34eca6b5d691)]:
+  - @ifc-lite/wasm@2.6.0
+
 ## 2.4.1
 
 ### Patch Changes

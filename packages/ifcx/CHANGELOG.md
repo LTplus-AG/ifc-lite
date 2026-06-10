@@ -1,5 +1,19 @@
 # @ifc-lite/ifcx
 
+## 2.1.5
+
+### Patch Changes
+
+- [#1047](https://github.com/LTplus-AG/ifc-lite/pull/1047) [`71c3e92`](https://github.com/LTplus-AG/ifc-lite/commit/71c3e92bae778fe7e5c34d9fcce5abfbd4f3ede5) Thanks [@louistrue](https://github.com/louistrue)! - fix(ifcx): stop duplicating geometry for entities with multiple incoming
+  containment edges. A node reachable through more than one parent (e.g. a
+  wall hanging under both its storey and a space boundary, as the IFC5
+  exporter legitimately emits) was traversed once per incoming edge and its
+  mesh emitted each time — an export round-trip multiplied per-entity
+  triangle counts by the number of edges (Hello Wall: ×4). Extraction now
+  deduplicates per (node path, entity context, accumulated transform), so
+  aliased containment edges emit once while shared type bodies referenced
+  from multiple instances and genuine instancing still emit per context.
+
 ## 2.1.4
 
 ### Patch Changes

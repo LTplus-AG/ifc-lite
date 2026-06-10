@@ -1,5 +1,19 @@
 # @ifc-lite/parser
 
+## 3.1.2
+
+### Patch Changes
+
+- [#1048](https://github.com/LTplus-AG/ifc-lite/pull/1048) [`f4ad10f`](https://github.com/LTplus-AG/ifc-lite/commit/f4ad10f2fef12e720b0966060a928d0a4e2b32b1) Thanks [@louistrue](https://github.com/louistrue)! - fix(georef): apply IfcMapConversion.Scale to the height axis. Per IFC4x3,
+  the map conversion scale applies equally to x, y and z, but
+  computeTransformMatrix and transformToLocal left z unscaled — models whose
+  source and map coordinate systems use different units placed geometry at
+  the wrong elevation. (Same fix applied to the Rust GeoReference
+  local_to_map/map_to_local/to_matrix, released with the crates.)
+- Updated dependencies [[`71c3e92`](https://github.com/LTplus-AG/ifc-lite/commit/71c3e92bae778fe7e5c34d9fcce5abfbd4f3ede5), [`c003017`](https://github.com/LTplus-AG/ifc-lite/commit/c0030175e82f194183b60492c1de34eca6b5d691)]:
+  - @ifc-lite/ifcx@2.1.5
+  - @ifc-lite/wasm@2.6.0
+
 ## 3.1.1
 
 ### Patch Changes

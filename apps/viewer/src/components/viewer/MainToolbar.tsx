@@ -76,7 +76,7 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { CSVExporter } from '@ifc-lite/export';
-import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, LayoutDashboard } from 'lucide-react';
+import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
@@ -1247,6 +1247,23 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           user has a one-click recovery for any change. */}
       <UndoRedoButtons />
 
+      {/* Space Sketch is authoring chrome (it bakes IfcSpace
+          entities), so like every other authoring affordance it only
+          surfaces in edit mode — keeping the default toolbar lean.
+          It lives next to the Edit pill that reveals it, with the
+          same purple accent, and a drafting icon distinct from the
+          square/grid icons (Panels, Basket, View options). */}
+      {editEnabled && (
+        <ToolButton
+          tool="spaceSketch"
+          icon={DraftingCompass}
+          label="Space Sketch"
+          activeTool={activeTool}
+          onToolChange={setActiveTool}
+          activeAccentClass="bg-purple-600 text-white hover:bg-purple-700"
+        />
+      )}
+
       {/* Draw / modify gestures live in the existing Add Element
           panel (right-side `AddElementPanel`, opened via the Add
           Element button) and in the contextual Geometry edit card
@@ -1271,7 +1288,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         onToolChange={setActiveTool}
         activeAccentClass="bg-amber-500 text-white hover:bg-amber-500/90"
       />
-      <ToolButton tool="spaceSketch" icon={LayoutDashboard} label="Space Sketch (DCEL)" activeTool={activeTool} onToolChange={setActiveTool} />
 
       {/* Floorplan dropdown */}
       {availableStoreys.length > 0 && (

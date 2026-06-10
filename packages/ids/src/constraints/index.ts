@@ -134,6 +134,33 @@ function xsdToJsRegex(xsdPattern: string): string {
 }
 
 /**
+ * Compiled exact-match sets per enumeration constraint. Real-world IDS
+ * code lists carry hundreds of values and are matched against every
+ * candidate entity, so the linear comparator walk dominated validation
+ * time. Constraint objects are stable per parsed document, making a
+ * WeakMap cache safe.
+ */
+const ENUM_VALUE_SETS = new WeakMap<
+  IDSEnumerationConstraint,
+  { exact: Set<string>; upper: Set<string> }
+>();
+
+function getEnumValueSets(constraint: IDSEnumerationConstraint): {
+  exact: Set<string>;
+  upper: Set<string>;
+} {
+  let sets = ENUM_VALUE_SETS.get(constraint);
+  if (!sets) {
+    const exact = new Set(constraint.values);
+    const upper = new Set<string>();
+    for (const v of constraint.values) upper.add(v.toUpperCase());
+    sets = { exact, upper };
+    ENUM_VALUE_SETS.set(constraint, sets);
+  }
+  return sets;
+}
+
+/**
  * Match against an enumeration. The actual value matches if ANY of the
  * declared options matches under string / numeric / boolean comparison
  * — same strategy table as `matchSimpleValue`, just iterated.
@@ -143,6 +170,15 @@ function matchEnumeration(
   actualValue: string | number | boolean,
   caseInsensitive: boolean
 ): boolean {
+  // O(1) fast path: a set hit is exactly the condition under which
+  // `compareString` would have returned true for some value, so this
+  // never changes the outcome — misses fall through to the full
+  // comparator walk for numeric / boolean semantics.
+  const sets = getEnumValueSets(constraint);
+  const actualStr = String(actualValue);
+  if (sets.exact.has(actualStr)) return true;
+  if (caseInsensitive && sets.upper.has(actualStr.toUpperCase())) return true;
+
   return constraint.values.some((v) => {
     const stringResult = compareString(v, actualValue, caseInsensitive);
     if (stringResult !== undefined) return stringResult;
@@ -225,6 +261,24 @@ function matchBounds(
 }
 
 /**
+ * Cap enumeration rendering. These strings are embedded in per-entity
+ * validation results — an uncapped 800-value code list produced ~20KB
+ * per result and ballooned reports into the gigabytes (OOM crash on
+ * large models). The full value list stays available on the constraint
+ * object itself.
+ */
+const MAX_ENUM_DISPLAY_VALUES = 10;
+
+function formatEnumValues(values: string[]): string {
+  const shown = values
+    .slice(0, MAX_ENUM_DISPLAY_VALUES)
+    .map((v) => `"${v}"`)
+    .join(', ');
+  const more = values.length - MAX_ENUM_DISPLAY_VALUES;
+  return more > 0 ? `[${shown}, … +${more} more]` : `[${shown}]`;
+}
+
+/**
  * Get a human-readable description of why a constraint match failed
  */
 export function getConstraintMismatchReason(
@@ -241,7 +295,7 @@ export function getConstraintMismatchReason(
     case 'pattern':
       return `"${actualValue}" does not match pattern "${constraint.pattern}"`;
     case 'enumeration':
-      return `"${actualValue}" is not one of [${constraint.values.map((v) => `"${v}"`).join(', ')}]`;
+      return `"${actualValue}" is not one of ${formatEnumValues(constraint.values)}`;
     case 'bounds':
       return getBoundsMismatchReason(constraint, actualValue);
     default:
@@ -302,7 +356,7 @@ export function formatConstraint(constraint: IDSConstraint): string {
       if (constraint.values.length === 1) {
         return `"${constraint.values[0]}"`;
       }
-      return `one of [${constraint.values.map((v) => `"${v}"`).join(', ')}]`;
+      return `one of ${formatEnumValues(constraint.values)}`;
     case 'bounds':
       return formatBounds(constraint);
     default:

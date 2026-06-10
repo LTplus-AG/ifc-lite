@@ -16,6 +16,7 @@ import { extractLengthUnitScale } from './unit-extractor.js';
 import { getAttributeNames, getInheritanceChain } from './ifc-schema.js';
 import { parsePropertyValue } from './on-demand-extractors.js';
 import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
+import { yieldToEventLoop } from './yield-to-event-loop.js';
 import {
     StringTable,
     EntityTableBuilder,
@@ -116,20 +117,6 @@ function detectSchemaVersion(buffer: Uint8Array): IfcDataStore['schemaVersion'] 
     if (headerText.includes('IFC2X3')) return 'IFC2X3';
 
     return 'IFC4'; // Default fallback
-}
-
-function yieldToEventLoop(): Promise<void> {
-    const maybeScheduler = (globalThis as typeof globalThis & {
-        scheduler?: { yield?: () => Promise<void> };
-    }).scheduler;
-    if (typeof maybeScheduler?.yield === 'function') {
-        return maybeScheduler.yield();
-    }
-    return new Promise<void>((resolve) => {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = () => resolve();
-        channel.port2.postMessage(null);
-    });
 }
 
 export class ColumnarParser {

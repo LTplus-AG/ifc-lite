@@ -22,9 +22,111 @@ import type {
   ValidatorOptions,
   ValidationProgress,
   TranslationService,
+  PartOfRelation,
 } from '../types.js';
 import { checkFacet, filterByFacet, type FacetCheckResult } from '../facets/index.js';
 import { formatConstraint } from '../constraints/index.js';
+
+/** Memoize a single-argument accessor lookup keyed by express ID. */
+function memoById<T>(fn: (expressId: number) => T): (expressId: number) => T {
+  const cache = new Map<number, T>();
+  return (expressId: number): T => {
+    if (cache.has(expressId)) return cache.get(expressId) as T;
+    const value = fn(expressId);
+    cache.set(expressId, value);
+    return value;
+  };
+}
+
+/** Memoize a two-argument accessor lookup keyed by express ID + name. */
+function memoByIdAndKey<T>(
+  fn: (expressId: number, key: string) => T
+): (expressId: number, key: string) => T {
+  const cache = new Map<string, T>();
+  return (expressId: number, key: string): T => {
+    const cacheKey = `${expressId}\u0000${key}`;
+    if (cache.has(cacheKey)) return cache.get(cacheKey) as T;
+    const value = fn(expressId, key);
+    cache.set(cacheKey, value);
+    return value;
+  };
+}
+
+/**
+ * Wrap an accessor so every per-entity lookup is computed at most once
+ * for the lifetime of one validation run.
+ *
+ * The validator re-checks the same entities once per specification, and
+ * real-world IDS documents carry hundreds of specifications over the
+ * same entity population. Most accessor implementations re-extract
+ * property sets from the raw source buffer on every call, which made
+ * validation O(specifications × entities × source-parses) — tens of
+ * minutes of CPU for documents that validate in seconds once cached.
+ */
+export function createCachedAccessor(accessor: IFCDataAccessor): IFCDataAccessor {
+  let allEntityIds: number[] | undefined;
+  const entitiesByType = new Map<string, number[]>();
+
+  const cached: IFCDataAccessor = {
+    getEntityType: memoById((id) => accessor.getEntityType(id)),
+    getEntityName: memoById((id) => accessor.getEntityName(id)),
+    getGlobalId: memoById((id) => accessor.getGlobalId(id)),
+    getDescription: memoById((id) => accessor.getDescription(id)),
+    getObjectType: memoById((id) => accessor.getObjectType(id)),
+    getPropertySets: memoById((id) => accessor.getPropertySets(id)),
+    getClassifications: memoById((id) => accessor.getClassifications(id)),
+    getMaterials: memoById((id) => accessor.getMaterials(id)),
+    getAttribute: memoByIdAndKey((id, name) => accessor.getAttribute(id, name)),
+    getParent: memoByIdAndKey((id, rel) =>
+      accessor.getParent(id, rel as PartOfRelation)
+    ) as IFCDataAccessor['getParent'],
+    getPropertyValue: (id, psetName, propName) =>
+      accessor.getPropertyValue(id, psetName, propName),
+    getEntitiesByType(typeName: string): number[] {
+      let ids = entitiesByType.get(typeName);
+      if (!ids) {
+        ids = accessor.getEntitiesByType(typeName);
+        entitiesByType.set(typeName, ids);
+      }
+      return ids;
+    },
+    getAllEntityIds(): number[] {
+      if (!allEntityIds) allEntityIds = accessor.getAllEntityIds();
+      return allEntityIds;
+    },
+  };
+
+  // Optional methods: only surface them when the underlying accessor
+  // does — facet checkers feature-detect these.
+  if (accessor.getPredefinedTypeRaw) {
+    cached.getPredefinedTypeRaw = memoById((id) =>
+      accessor.getPredefinedTypeRaw!(id)
+    );
+  }
+  if (accessor.getAttributeNames) {
+    cached.getAttributeNames = memoById((id) => accessor.getAttributeNames!(id));
+  }
+  if (accessor.getAttributeXsdTypes) {
+    cached.getAttributeXsdTypes = memoByIdAndKey((id, attr) =>
+      accessor.getAttributeXsdTypes!(id, attr)
+    ) as IFCDataAccessor['getAttributeXsdTypes'];
+  }
+  if (accessor.getAncestors) {
+    cached.getAncestors = memoByIdAndKey((id, rel) =>
+      accessor.getAncestors!(id, rel as PartOfRelation)
+    ) as IFCDataAccessor['getAncestors'];
+  }
+
+  return cached;
+}
+
+/**
+ * Per-run cache for requirement descriptions. A requirement's checked
+ * description is entity-independent, yet it used to be re-formatted for
+ * every entity result — for enumeration constraints that meant building
+ * the same multi-KB string thousands of times.
+ */
+type DescriptionCache = Map<IDSRequirement, string>;
 
 /**
  * Validate an IFC model against an IDS document
@@ -36,6 +138,9 @@ export async function validateIDS(
   options: ValidatorOptions = {}
 ): Promise<IDSValidationReport> {
   const { translator, onProgress, includePassingEntities = true } = options;
+
+  const cachedAccessor = createCachedAccessor(accessor);
+  const descriptionCache: DescriptionCache = new Map();
 
   const specificationResults: IDSSpecificationResult[] = [];
   const totalSpecs = document.specifications.length;
@@ -57,9 +162,10 @@ export async function validateIDS(
 
     const result = await validateSpecification(
       spec,
-      accessor,
+      cachedAccessor,
       modelInfo,
       options,
+      descriptionCache,
       (progress) => {
         if (onProgress) {
           onProgress({
@@ -110,6 +216,7 @@ async function validateSpecification(
   accessor: IFCDataAccessor,
   modelInfo: IDSModelInfo,
   options: ValidatorOptions,
+  descriptionCache: DescriptionCache,
   onProgress?: (progress: Omit<ValidationProgress, 'specificationIndex' | 'totalSpecifications' | 'percentage'>) => void
 ): Promise<IDSSpecificationResult> {
   const { translator, maxEntities, includePassingEntities = true } = options;
@@ -144,6 +251,7 @@ async function validateSpecification(
       expressId,
       modelId,
       accessor,
+      descriptionCache,
       translator
     );
 
@@ -263,13 +371,14 @@ function validateEntityRequirements(
   expressId: number,
   modelId: string,
   accessor: IFCDataAccessor,
+  descriptionCache: DescriptionCache,
   translator?: TranslationService
 ): IDSEntityResult {
   const requirementResults: IDSRequirementResult[] = [];
   let allPassed = true;
 
   for (const requirement of spec.requirements) {
-    const result = checkRequirement(requirement, expressId, accessor, translator);
+    const result = checkRequirement(requirement, expressId, accessor, descriptionCache, translator);
     requirementResults.push(result);
 
     if (result.status === 'fail') {
@@ -295,6 +404,7 @@ function checkRequirement(
   requirement: IDSRequirement,
   expressId: number,
   accessor: IFCDataAccessor,
+  descriptionCache: DescriptionCache,
   translator?: TranslationService
 ): IDSRequirementResult {
   const facetResult = checkFacet(requirement.facet, expressId, accessor);
@@ -376,10 +486,15 @@ function checkRequirement(
       status = facetResult.passed ? 'pass' : 'fail';
   }
 
-  // Generate checked description
-  const checkedDescription = translator
-    ? translator.describeRequirement(requirement)
-    : formatRequirementDescription(requirement);
+  // Generate checked description. It is entity-independent, so format
+  // it once per requirement per run — not once per entity result.
+  let checkedDescription = descriptionCache.get(requirement);
+  if (checkedDescription === undefined) {
+    checkedDescription = translator
+      ? translator.describeRequirement(requirement)
+      : formatRequirementDescription(requirement);
+    descriptionCache.set(requirement, checkedDescription);
+  }
 
   return {
     requirement,

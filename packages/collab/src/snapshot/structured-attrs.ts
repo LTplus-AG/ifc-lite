@@ -27,11 +27,14 @@
  *
  * Inflation is shape-gated so legacy flat attributes written by the
  * IFC4→IFC5 migration (raw values under the same v5a keys) stay flat:
- * only PropertyValue-shaped objects inflate into psets, and only
- * numbers under a `Qto_*` set inflate into quantities. Both directions
- * are inverse to each other, so flatten(inflate(x)) == x and a doc
- * holding the same key in both the flat and structured branch
- * serializes deterministically (structured wins).
+ * only PropertyValue-shaped objects inflate into psets, and numbers
+ * inflate into quantities unless the set is `Pset_`-named — the
+ * migration only ever emits `Pset_*` set names, so that exclusion is
+ * exactly the legacy population, and custom quantity-set names still
+ * round-trip. Both directions are inverse to each other, so
+ * flatten(inflate(x)) == x and a doc holding the same key in both the
+ * flat and structured branch serializes deterministically (structured
+ * wins).
  */
 
 import { IFCLITE_ATTR } from '@ifc-lite/ifcx';
@@ -48,8 +51,13 @@ import type {
  */
 export const V5A_ATTR_PREFIX = 'bsi::ifc::v5a::';
 
-/** Quantity sets must follow the IFC `Qto_*` naming to round-trip. */
-const QTO_SET_RE = /^Qto_/;
+/**
+ * Numbers under `Pset_*` sets never inflate into quantities: the
+ * IFC4→IFC5 migration writes raw scalars under `Pset_*` keys only, so
+ * this exclusion keeps exactly that legacy population flat while any
+ * other set name (Qto_* or custom) round-trips as a quantity.
+ */
+const PSET_SET_RE = /^Pset_/;
 
 const PROPERTY_VALUE_KEYS = new Set(['type', 'value', 'unit', 'source']);
 
@@ -192,7 +200,7 @@ export function inflateStructuredAttributes(
           (psets[setName] ??= {})[name] = { ...value };
           continue;
         }
-        if (typeof value === 'number' && Number.isFinite(value) && QTO_SET_RE.test(setName)) {
+        if (typeof value === 'number' && Number.isFinite(value) && !PSET_SET_RE.test(setName)) {
           (quantities[setName] ??= {})[name] = value;
           continue;
         }

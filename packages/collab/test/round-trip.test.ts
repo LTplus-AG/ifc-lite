@@ -145,15 +145,32 @@ describe('structured branches across snapshot → seed (#1031)', () => {
   it('legacy migrated raw values under v5a keys stay flat attributes', () => {
     const doc = createCollabDoc();
     createEntity(doc, 'wall');
-    // The IFC4→5 migration writes raw scalars, not PropertyValue shapes.
+    // The IFC4→5 migration writes raw scalars (only ever under Pset_*
+    // set names), not PropertyValue shapes.
     setAttribute(doc, 'wall', 'bsi::ifc::v5a::Pset_WallCommon::FireRating', 'F30');
+    setAttribute(doc, 'wall', 'bsi::ifc::v5a::Pset_WallCommon::Width', 0.3);
 
     const ifcx = snapshotToIfcx(doc);
     const docB = createCollabDoc();
     seedFromIfcx(docB, ifcx);
     const wall = entityToJSON(getEntity(docB, 'wall')!);
     expect(wall.attributes['bsi::ifc::v5a::Pset_WallCommon::FireRating']).toBe('F30');
+    expect(wall.attributes['bsi::ifc::v5a::Pset_WallCommon::Width']).toBe(0.3);
     expect(wall.psets).toEqual({});
+    expect(wall.quantities).toEqual({});
+  });
+
+  it('custom (non-Qto_) quantity-set names round-trip into the quantities branch', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, 'wall');
+    setQuantityValue(doc, 'wall', 'CarbonMetrics', 'EmbodiedCO2', 412.5);
+
+    const ifcx = snapshotToIfcx(doc);
+    const docB = createCollabDoc();
+    seedFromIfcx(docB, ifcx);
+    const wall = entityToJSON(getEntity(docB, 'wall')!);
+    expect(wall.quantities).toEqual({ CarbonMetrics: { EmbodiedCO2: 412.5 } });
+    expect(wall.attributes).not.toHaveProperty('bsi::ifc::v5a::CarbonMetrics::EmbodiedCO2');
   });
 
   it('structured pset wins over a colliding flat attribute deterministically', () => {

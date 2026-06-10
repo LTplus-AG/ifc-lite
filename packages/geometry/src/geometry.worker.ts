@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
-import type { MeshData } from './types.js';
+import type { MeshData, TessellationQuality } from './types.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -131,6 +131,18 @@ export interface GeometryWorkerSetComputeGeometryHashesMessage {
   tolerance: number | null;
 }
 
+/**
+ * Forward the consumer-selected tessellation detail level (issue #976) down
+ * to this worker's IfcAPI. Send AFTER `init` and BEFORE the first
+ * `stream-start`, mirroring `set-merge-layers`. `null` keeps the engine
+ * default (`'medium'` — output identical to the pre-quality pipeline), so
+ * never sending the message changes nothing.
+ */
+export interface GeometryWorkerSetTessellationQualityMessage {
+  type: 'set-tessellation-quality';
+  level: TessellationQuality | null;
+}
+
 export type GeometryWorkerRequest =
   | GeometryWorkerInitMessage
   | GeometryWorkerProcessMessage
@@ -141,6 +153,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetEntityIndexMessage
   | GeometryWorkerSetMergeLayersMessage
   | GeometryWorkerSetComputeGeometryHashesMessage
+  | GeometryWorkerSetTessellationQualityMessage
   | GeometryWorkerPrePassMessage;
 
 export interface GeometryWorkerBatchMessage {
@@ -214,6 +227,8 @@ async function ensureInit(): Promise<IfcAPI> {
   applyMergeLayersToApi();
   geometryHashApplied = false;
   applyComputeGeometryHashesToApi();
+  tessellationQualityApplied = false;
+  applyTessellationQualityToApi();
   return api;
 }
 
@@ -231,6 +246,7 @@ let mergeLayersApplied: boolean = false;
 type IfcAPIWithMerge = IfcAPI & {
   setMergeLayers?: (enabled: boolean) => void;
   setComputeGeometryHashes?: (tolerance?: number | null) => void;
+  setTessellationQuality?: (level?: string | null) => void;
 };
 
 /**
@@ -263,6 +279,25 @@ function applyComputeGeometryHashesToApi(): void {
     hashing.setComputeGeometryHashes(geometryHashTolerance);
   }
   geometryHashApplied = true;
+}
+
+/**
+ * Cached tessellation-quality level for this worker (issue #976), mirroring
+ * the merge-layers replay contract: the host may post the toggle before
+ * `init`, so we remember it and re-apply once the IfcAPI exists. `null`
+ * keeps the Rust default (Medium — historical densities).
+ */
+let tessellationQuality: TessellationQuality | null = null;
+let tessellationQualityApplied: boolean = false;
+
+/** Push the cached tessellation quality onto the IfcAPI (once per API). */
+function applyTessellationQualityToApi(): void {
+  if (!api || tessellationQualityApplied) return;
+  const quality = api as IfcAPIWithMerge;
+  if (typeof quality.setTessellationQuality === 'function') {
+    quality.setTessellationQuality(tessellationQuality);
+  }
+  tessellationQualityApplied = true;
 }
 
 /**
@@ -615,6 +650,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         applyMergeLayersToApi();
         geometryHashApplied = false;
         applyComputeGeometryHashesToApi();
+        tessellationQualityApplied = false;
+        applyTessellationQualityToApi();
       } else {
         await ensureInit();
       }
@@ -705,6 +742,14 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       geometryHashTolerance = tol != null && tol > 0 ? tol : null;
       geometryHashApplied = false;
       applyComputeGeometryHashesToApi();
+      return;
+    }
+
+    if (e.data.type === 'set-tessellation-quality') {
+      // Same cache-and-replay contract as set-merge-layers (issue #976).
+      tessellationQuality = e.data.level ?? null;
+      tessellationQualityApplied = false;
+      applyTessellationQualityToApi();
       return;
     }
 

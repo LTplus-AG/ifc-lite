@@ -60,6 +60,21 @@ export interface MeshTexture {
   repeatT: boolean;
 }
 
+/**
+ * Tessellation detail level for curved geometry (issue #976), mirroring the
+ * Rust `ifc_lite_geometry::TessellationQuality` enum.
+ *
+ * `'medium'` is the engine default and reproduces the historical hardcoded
+ * densities byte-for-byte — leaving the option unset never changes output.
+ * Lower levels coarsen curved surfaces (swept pipes, cylinders, NURBS) and
+ * profile circles for throughput / preview; higher levels refine curved
+ * surfaces (×2 / ×4 segment density) to reduce visible faceting, at a
+ * proportional triangle-count and processing cost. Profile-plane outlines
+ * (extruded caps / opening cutters) never get finer than `'medium'` — denser
+ * opening circles only multiply earcut cap-bridge slivers.
+ */
+export type TessellationQuality = 'lowest' | 'low' | 'medium' | 'high' | 'highest';
+
 export interface Vec3 {
   x: number;
   y: number;

@@ -10,6 +10,7 @@
  */
 
 import type { IfcxFile, ComposedNode } from './types.js';
+import { isTypedPropertyValue } from './types.js';
 import { composeIfcx, findRoots } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, isQuantityProperty } from './property-extractor.js';
@@ -330,16 +331,19 @@ function buildQuantities(
     const qsetName = ifcClass ? `Qto_${ifcClass.replace('Ifc', '')}BaseQuantities` : 'BaseQuantities';
 
     for (const [key, value] of node.attributes) {
-      // Check if this looks like a quantity
+      // Check if this looks like a quantity. Typed records (#1031)
+      // unwrap to their scalar — the property extractor routes them
+      // here with the same rule, so neither table drops them.
       const propName = key.split('::').pop() ?? '';
+      const effective = isTypedPropertyValue(value) ? value.value : value;
 
-      if (typeof value === 'number' && isQuantityProperty(propName)) {
+      if (typeof effective === 'number' && isQuantityProperty(propName)) {
         builder.add({
           entityId: expressId,
           qsetName,
           quantityName: propName,
           quantityType: getQuantityType(propName),
-          value,
+          value: effective,
         });
       }
     }

@@ -238,17 +238,15 @@ function mergeNodesForPath(path: string, layers: IfcxLayer[]): PreComposedNode {
         }
       }
 
-      // Merge attributes (null removes — same semantics as children/inherits
-      // and the local composer; minimal layers express deletions this way).
+      // Merge attributes. Null opinions are removal masks that must stay
+      // in pre.attributes: resolveInheritance only copies inherited
+      // values for ABSENT keys, so the mask shadows them; composeNode
+      // drops masks from the final output (#1031). A later non-null
+      // opinion overwrites the mask (resurrect).
       if (node.attributes) {
         for (const [key, value] of Object.entries(node.attributes)) {
-          if (value === null) {
-            delete result.attributes[key];
-            result.attributeSources.delete(key);
-          } else {
-            result.attributes[key] = value;
-            result.attributeSources.set(key, layer.id);
-          }
+          result.attributes[key] = value;
+          result.attributeSources.set(key, layer.id);
         }
       }
     }
@@ -392,8 +390,9 @@ function composeNode(
   };
 
   if (pre) {
-    // Copy attributes
+    // Copy attributes (null removal masks resolved here — never emitted)
     for (const [key, value] of Object.entries(pre.attributes)) {
+      if (value === null) continue;
       node.attributes.set(key, value);
 
       // Track source

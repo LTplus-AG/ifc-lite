@@ -169,6 +169,46 @@ describe('null attribute opinions compose as removals (#1031)', () => {
     assert.ok(wall);
     assert.strictEqual(wall.attributes.has('bsi::ifc::prop::Name'), false);
   });
+
+  it('a later non-null opinion resurrects a removed attribute', () => {
+    const merged: IfcxFile = {
+      ...removalStack[0],
+      data: [
+        ...removalStack.flatMap((file) => file.data),
+        { path: 'wall-1', attributes: { 'bsi::ifc::prop::Name': 'W1-renamed' } },
+      ],
+    };
+    const composed = composeIfcx(merged);
+    assert.strictEqual(composed.get('wall-1')?.attributes.get('bsi::ifc::prop::Name'), 'W1-renamed');
+  });
+
+  it('null removals mask INHERITED attributes too (both composers)', () => {
+    const inheritedRemoval: IfcxNode[] = [
+      { path: 'wall-type', attributes: { 'bsi::ifc::prop::FireRating': 'REI30' } },
+      { path: 'wall-9', inherits: { Type: 'wall-type' }, attributes: { 'bsi::ifc::prop::Name': 'W9' } },
+      // Stronger opinion removes the inherited value on the instance.
+      { path: 'wall-9', attributes: { 'bsi::ifc::prop::FireRating': null } },
+    ];
+
+    const composed = composeIfcx(makeFile(inheritedRemoval, 'inherit-removal'));
+    const wall = composed.get('wall-9');
+    assert.ok(wall);
+    assert.strictEqual(wall.attributes.has('bsi::ifc::prop::FireRating'), false, 'composeIfcx');
+    assert.strictEqual(wall.attributes.get('bsi::ifc::prop::Name'), 'W9');
+
+    const stack = createLayerStack();
+    stack.addLayerAt(
+      makeFile(inheritedRemoval, 'inherit-removal'),
+      new ArrayBuffer(0),
+      'layer-0',
+      0,
+      { type: 'buffer', name: 'layer-0' }
+    );
+    const federated = composeFederated(stack);
+    const fedWall = federated.composed.get('wall-9');
+    assert.ok(fedWall);
+    assert.strictEqual(fedWall.attributes.has('bsi::ifc::prop::FireRating'), false, 'composeFederated');
+  });
 });
 
 describe('bakeLayers (tombstone-free materialization)', () => {

@@ -5,8 +5,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { StringTable } from '@ifc-lite/data';
+import { parseIfcx } from './index.js';
 import { extractProperties } from './property-extractor.js';
-import type { ComposedNode } from './types.js';
+import type { ComposedNode, IfcxFile } from './types.js';
 
 function createNode(path: string): ComposedNode {
   return {
@@ -64,5 +65,39 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     const fireRating = props.find((p) => p.name === 'FireRating');
     assert.ok(fireRating);
     assert.strictEqual(fireRating.value, 'F30');
+  });
+
+  it('typed quantity-like properties land in the quantity table, not dropped', async () => {
+    const file: IfcxFile = {
+      header: {
+        id: 'typed-qty',
+        ifcxVersion: 'ifcx-alpha',
+        dataVersion: '1',
+        author: 'test',
+        timestamp: '2026-06-10T00:00:00Z',
+      },
+      imports: [],
+      schemas: {},
+      data: [
+        {
+          path: 'wall',
+          attributes: {
+            'bsi::ifc::class': { code: 'IfcWall', uri: 'u' },
+            // Quantity-like name with a typed record (#1031): must be
+            // routed to the QuantityTable, not vanish from both tables.
+            'bsi::ifc::v5a::Qto_WallBaseQuantities::NetArea': { type: 'IfcReal', value: 12.5 },
+          },
+        },
+      ],
+    };
+    const buffer = new TextEncoder().encode(JSON.stringify(file)).buffer as ArrayBuffer;
+    const result = await parseIfcx(buffer);
+
+    const entityId = 1; // single entity
+    const qsets = result.quantities.getForEntity(entityId);
+    const all = qsets.flatMap((qset) => qset.quantities);
+    const netArea = all.find((q) => q.name === 'NetArea');
+    assert.ok(netArea, `NetArea present in quantity table (got ${JSON.stringify(qsets)})`);
+    assert.strictEqual(netArea.value, 12.5);
   });
 });

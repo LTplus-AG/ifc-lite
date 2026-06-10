@@ -24,8 +24,9 @@ import type {
   TranslationService,
   PartOfRelation,
 } from '../types.js';
-import { checkFacet, filterByFacet, type FacetCheckResult } from '../facets/index.js';
+import { checkFacet, facetPasses, filterByFacet, type FacetCheckResult } from '../facets/index.js';
 import { formatConstraint } from '../constraints/index.js';
+import { ApplicabilityPropertyIndex } from './property-index.js';
 
 /** Memoize a single-argument accessor lookup keyed by express ID. */
 function memoById<T>(fn: (expressId: number) => T): (expressId: number) => T {
@@ -189,6 +190,7 @@ export async function validateIDS(
   const cachedAccessor = createCachedAccessor(accessor);
   const descriptionCache: DescriptionCache = new Map();
   const maybeYield = createYielder(options.yieldEveryMs ?? 40);
+  const propertyIndex = new ApplicabilityPropertyIndex(cachedAccessor, document);
 
   const specificationResults: IDSSpecificationResult[] = [];
   const totalSpecs = document.specifications.length;
@@ -219,6 +221,7 @@ export async function validateIDS(
       options,
       descriptionCache,
       maybeYield,
+      propertyIndex,
       (progress) => {
         if (onProgress) {
           onProgress({
@@ -271,13 +274,14 @@ async function validateSpecification(
   options: ValidatorOptions,
   descriptionCache: DescriptionCache,
   maybeYield: MaybeYield,
+  propertyIndex: ApplicabilityPropertyIndex,
   onProgress?: (progress: Omit<ValidationProgress, 'specificationIndex' | 'totalSpecifications' | 'percentage'>) => void
 ): Promise<IDSSpecificationResult> {
   const { translator, maxEntities, includePassingEntities = true } = options;
   const modelId = modelInfo.modelId;
 
   // Phase 1: Find applicable entities
-  const applicableIds = await findApplicableEntities(spec, accessor, maybeYield, onProgress);
+  const applicableIds = await findApplicableEntities(spec, accessor, maybeYield, propertyIndex, onProgress);
 
   // Apply max entities limit if specified
   const idsToCheck = maxEntities
@@ -374,6 +378,7 @@ async function findApplicableEntities(
   spec: IDSSpecification,
   accessor: IFCDataAccessor,
   maybeYield: MaybeYield,
+  propertyIndex: ApplicabilityPropertyIndex,
   onProgress?: (progress: Omit<ValidationProgress, 'specificationIndex' | 'totalSpecifications' | 'percentage'>) => void
 ): Promise<number[]> {
   const applicabilityFacets = spec.applicability.facets;
@@ -398,6 +403,16 @@ async function findApplicableEntities(
     candidateIds = accessor.getAllEntityIds();
   }
 
+  // Index-assisted narrowing: property facets with literal pset/name
+  // collapse to inverted-index lookups (built once per run). The result
+  // is a candidate SUPERSET — the confirmation loop below remains the
+  // source of truth, so index conservatism can never change verdicts.
+  for (const facet of applicabilityFacets) {
+    if (facet.type !== 'property') continue;
+    const narrowed = await propertyIndex.narrow(facet, candidateIds, maybeYield);
+    if (narrowed !== undefined) candidateIds = narrowed;
+  }
+
   // Filter candidates by all applicability facets. With property-only
   // applicability the candidate set is the whole model, so this scan is
   // where large runs spend most of their time — report progress and
@@ -420,8 +435,11 @@ async function findApplicableEntities(
     let matches = true;
 
     for (const facet of applicabilityFacets) {
-      const result = checkFacet(facet, expressId, accessor);
-      if (!result.passed) {
+      // Boolean-only check: this loop runs per candidate entity per
+      // specification and only ever needs the verdict — the failure
+      // diagnostics the full checker builds for every miss used to
+      // dominate whole-run CPU.
+      if (!facetPasses(facet, expressId, accessor)) {
         matches = false;
         break;
       }

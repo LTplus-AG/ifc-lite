@@ -22,6 +22,7 @@
 
 import { validateIDS, createCachedAccessor } from './validator.js';
 import { createMockAccessor } from '../facets/test-helpers.js';
+import { checkFacet, facetPasses } from '../facets/index.js';
 import { formatConstraint, matchConstraint, getConstraintMismatchReason } from '../constraints/index.js';
 import type {
   IDSDocument,
@@ -29,6 +30,7 @@ import type {
   IDSModelInfo,
   IDSSimpleValue,
   IDSEnumerationConstraint,
+  IDSFacet,
   IFCDataAccessor,
   TranslationService,
 } from '../types.js';
@@ -245,6 +247,134 @@ describe('validateIDS — yields to the event loop during validation', () => {
     // 20k candidates at 8192 granularity → events at 0, 8192, 16384.
     expect(filteringEvents.length).toBeGreaterThanOrEqual(2);
     expect(Math.max(...filteringEvents)).toBeGreaterThan(8000);
+  });
+});
+
+describe('facetPasses — differential parity with checkFacet().passed', () => {
+  // Entities covering the decision points of the entity and property
+  // facet checkers: missing psets, missing props, empty values, value
+  // mismatches, dataType gates, multi-valued props, predefined types.
+  const entities = [
+    { expressId: 1, type: 'IfcPump', name: 'P1', properties: [
+      { psetName: 'Pset_CodeList', propName: 'CommonName', value: 'Pump' },
+      { psetName: 'Pset_CodeList', propName: 'Code', value: 'K-1' },
+    ] },
+    { expressId: 2, type: 'IfcPump', name: 'P2', properties: [
+      { psetName: 'Pset_CodeList', propName: 'CommonName', value: 'Valve' },
+    ] },
+    { expressId: 3, type: 'IfcPump', name: 'P3', properties: [
+      { psetName: 'Pset_CodeList', propName: 'CommonName', value: '' },
+    ] },
+    { expressId: 4, type: 'IfcValve', name: 'V1', properties: [
+      { psetName: 'Pset_Other', propName: 'CommonName', value: 'Pump' },
+    ] },
+    { expressId: 5, type: 'IfcValve', name: 'V2' },
+    { expressId: 6, type: 'IfcPump', name: 'P4', objectType: 'SpecialPump', properties: [
+      { psetName: 'Pset_CodeList', propName: 'CommonName', value: 42, dataType: 'IFCINTEGER' },
+    ] },
+    // Duplicate pset name where one copy lacks the property entirely.
+    { expressId: 7, type: 'IfcPump', name: 'P5', properties: [
+      { psetName: 'Pset_CodeList', propName: 'CommonName', value: 'Pump' },
+      { psetName: 'Pset_CodeList2', propName: 'Other', value: 'x' },
+    ] },
+  ];
+
+  const sv2 = sv;
+  const facets: IDSFacet[] = [
+    { type: 'entity', name: sv2('IFCPUMP') },
+    { type: 'entity', name: sv2('IfcPump') }, // malformed mixed-case literal
+    { type: 'entity', name: { type: 'enumeration', values: ['IFCPUMP', 'IFCVALVE'] } },
+    { type: 'entity', name: sv2('IFCPUMP'), predefinedType: sv2('SpecialPump') },
+    { type: 'property', propertySet: sv2('Pset_CodeList'), baseName: sv2('CommonName') },
+    { type: 'property', propertySet: sv2('Pset_CodeList'), baseName: sv2('CommonName'), value: sv2('Pump') },
+    { type: 'property', propertySet: sv2('Pset_CodeList'), baseName: sv2('CommonName'), value: sv2('42') },
+    { type: 'property', propertySet: sv2('Pset_CodeList'), baseName: sv2('CommonName'), value: sv2('42.5') },
+    { type: 'property', propertySet: sv2('Pset_CodeList'), baseName: sv2('CommonName'), dataType: sv2('IFCINTEGER') },
+    { type: 'property', propertySet: sv2('Pset_CodeList'), baseName: sv2('MissingProp') },
+    { type: 'property', propertySet: { type: 'pattern', pattern: 'FI_.*' }, baseName: sv2('CommonName') },
+    { type: 'property', propertySet: sv2('Pset_CodeList'), baseName: sv2('CommonName'), value: { type: 'enumeration', values: ['Pump', 'Valve'] } },
+    { type: 'property', propertySet: sv2('Pset_DoesNotExist'), baseName: sv2('CommonName') },
+  ];
+
+  it('agrees with the diagnostics-producing checker for every facet × entity', () => {
+    const accessor = createMockAccessor(entities);
+    for (const facet of facets) {
+      for (const e of entities) {
+        const full = checkFacet(facet, e.expressId, accessor).passed;
+        const fast = facetPasses(facet, e.expressId, accessor);
+        expect(fast, `facet ${JSON.stringify(facet)} entity #${e.expressId}`).toBe(full);
+      }
+    }
+  });
+});
+
+describe('validateIDS — index-assisted applicability stays verdict-identical', () => {
+  it('matches numerically-coercible literals the exact-string bucket cannot see', async () => {
+    // Stored numeric 42 must match the IDS literal '42.0' through the
+    // numeric comparator. An exact-string index bucket would miss it —
+    // the index must route coercible literals to the conservative path.
+    const accessor = createMockAccessor([
+      { expressId: 1, type: 'IfcPump', name: 'P1', properties: [
+        { psetName: 'Pset_CodeList', propName: 'Size', value: 42, dataType: 'IFCREAL' },
+      ] },
+      { expressId: 2, type: 'IfcPump', name: 'P2', properties: [
+        { psetName: 'Pset_CodeList', propName: 'Size', value: 7, dataType: 'IFCREAL' },
+      ] },
+    ]);
+
+    const spec: IDSSpecification = {
+      id: 'spec-0',
+      name: 'Coercible literal',
+      ifcVersions: ['IFC4'],
+      applicability: {
+        facets: [
+          {
+            type: 'property',
+            propertySet: sv('Pset_CodeList'),
+            baseName: sv('Size'),
+            value: sv('42.0'),
+          },
+        ],
+      },
+      requirements: [],
+      minOccurs: 0,
+    };
+
+    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    expect(report.specificationResults[0].applicableCount).toBe(1);
+  });
+
+  it('narrows enumeration values without changing the applicable set', async () => {
+    const entities = Array.from({ length: 50 }, (_, i) => ({
+      expressId: i + 1,
+      type: 'IfcPump',
+      name: `P${i + 1}`,
+      properties: [
+        { psetName: 'Pset_CodeList', propName: 'CommonName', value: i % 5 === 0 ? 'Pump' : `Other_${i}` },
+      ],
+    }));
+    const accessor = createMockAccessor(entities);
+
+    const spec: IDSSpecification = {
+      id: 'spec-0',
+      name: 'Enum narrow',
+      ifcVersions: ['IFC4'],
+      applicability: {
+        facets: [
+          {
+            type: 'property',
+            propertySet: sv('Pset_CodeList'),
+            baseName: sv('CommonName'),
+            value: { type: 'enumeration', values: ['Pump', 'Missing_Value'] },
+          },
+        ],
+      },
+      requirements: [],
+      minOccurs: 0,
+    };
+
+    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    expect(report.specificationResults[0].applicableCount).toBe(10);
   });
 });
 

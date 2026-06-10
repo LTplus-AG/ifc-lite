@@ -22,7 +22,12 @@ import { startCollabServer, type CollabServerHandle } from '../src/index.js';
 const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
 const CLASS = 'bsi::ifc::class';
 
-function publishable(nodes: IfcxNode[], intent: string, base: ProvenanceBase | null): IfcxFile {
+function publishable(
+  nodes: IfcxNode[],
+  intent: string,
+  base: ProvenanceBase | null,
+  kind: 'human' | 'agent' = 'human'
+): IfcxFile {
   const bare: IfcxFile = {
     header: {
       id: '',
@@ -36,7 +41,7 @@ function publishable(nodes: IfcxNode[], intent: string, base: ProvenanceBase | n
     data: nodes,
   };
   const manifest = createProvenanceManifest({
-    author: { kind: 'human', principal: 'alice' },
+    author: { kind, principal: kind === 'agent' ? 'bot-7' : 'alice' },
     intent,
     base,
     created: '2026-06-10T00:00:00.000Z',
@@ -222,6 +227,55 @@ describe('layer registry route', () => {
     expect(review.status).toBe('changes-requested');
     expect(review.feedback).toHaveLength(1);
     expect(review.openedBy).toBe('anonymous');
+  });
+
+  it('derives requireHumanApproval from approved reviews, never from caller input', async () => {
+    const server = await startCollabServer({ port: 0, layerRegistry: true });
+    try {
+      const port = (server.httpServer.address() as { port: number }).port;
+      const url = `http://127.0.0.1:${port}/api/v1`;
+      const post = (path: string, body: unknown) =>
+        fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(body) });
+
+      const root = publishable(
+        [{ path: 'wall-1', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI60' } }],
+        'Import',
+        null
+      );
+      expect((await post('/layers', root)).status).toBe(201);
+      const put = await fetch(`${url}/refs/agents`, {
+        method: 'PUT',
+        body: JSON.stringify({ layers: [root.header.id], policy: { requireHumanApproval: true } }),
+      });
+      expect(put.status).toBe(201);
+
+      const agentLayer = publishable(
+        [{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }],
+        'Agent edit',
+        { kind: 'stack', id: computeStackHash([root.header.id]) },
+        'agent'
+      );
+      expect((await post('/layers', agentLayer)).status).toBe(201);
+
+      // A caller-asserted approved_by must NOT satisfy the policy.
+      const asserted = await post('/refs/agents/merge', {
+        candidate: agentLayer.header.id,
+        approved_by: 'mallory',
+      });
+      expect(asserted.status).toBe(403);
+
+      // An approved review object — server-recorded approval — does.
+      const opened = await post('/reviews', { layer_id: agentLayer.header.id, into: 'agents' });
+      const { id } = (await opened.json()) as { id: string };
+      await post(`/reviews/${id}/feedback`, {
+        decisions: [{ entity: 'wall-1', decision: 'accept' }],
+        status: 'approved',
+      });
+      const merged = await post('/refs/agents/merge', { candidate: agentLayer.header.id });
+      expect(merged.status).toBe(200);
+    } finally {
+      await server.stop();
+    }
   });
 
   it('rejects all access when authentication denies', async () => {

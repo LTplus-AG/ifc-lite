@@ -140,6 +140,38 @@ describe('divergent merge', () => {
       { spec: 'fire-safety.ids', reason: 'spec not applicable', waivedBy: 'carol' },
     ]);
   });
+
+  it('records consumed waivers durably even on the fast-forward path', () => {
+    const store = tmpStore();
+    setupMain(store);
+    protectRef(store, 'main', { requiredChecks: ['fire-safety.ids'] });
+
+    // Candidate authored against the ref head — normally a plain
+    // fast-forward, but the waiver must end up on a merge layer.
+    const candidate = publishLayer(store, {
+      delta: makeDelta([{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }]),
+      baseRef: 'main',
+      intent: 'Bump rating, checks waived',
+      principal: 'bob',
+    });
+    const outcome = mergeIntoRef(store, {
+      candidateId: candidate.layerId,
+      into: 'main',
+      waivers: [{ spec: 'fire-safety.ids', reason: 'not applicable' }],
+      principal: 'carol',
+    });
+    expect(outcome.status).toBe('merged');
+    if (outcome.status !== 'merged') throw new Error('expected merged');
+    const manifest = getProvenance(loadLayer(store, outcome.mergeLayerId));
+    expect(manifest?.merge?.waived_checks).toEqual([
+      { spec: 'fire-safety.ids', reason: 'not applicable', waivedBy: 'carol' },
+    ]);
+    // The merged state still carries the candidate's edit.
+    const state = extractStackState(loadRefLayers(store, 'main'));
+    expect(state.get('wall-1')?.components.get('pset:Pset_FireSafety')).toEqual({
+      [FIRE]: 'REI90',
+    });
+  });
 });
 
 describe('scope verification', () => {

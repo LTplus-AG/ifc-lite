@@ -30,9 +30,9 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 - ☑ Per-componentKey sub-hash mode in `packages/diff/src/fingerprint.ts` (opt-in; existing whole-blob tests untouched)
 - ☑ `packages/merge`: three-way engine on `EntityFingerprint`, decision matrix 05 §5.3, relation triples, MergePlan + conflict records (taxonomy from `collab/conflicts`)
 - ☑ Merge-layer emission (resolution ops + `manifest.merge`); rebase = re-run plan
-- ◐ Golden-file suite: the conflict table as fixtures via `pnpm fixtures` infra; fuzz: random op partitions over a real model must never lose ops
+- ☑ Golden-file suite: the conflict table as fixtures; synthetic partition fuzz + real-model partition fuzz (hello-wall + WekaHills via `pnpm fixtures`, disjoint and overlapping partitions, op-loss accounting) + fast-path differential fuzz
 - ☑ CLI: `ifc layer create|status|publish|diff|merge --preview|log|revert|rebase` with stable exit codes
-- ☐ Benchmarks: three-way plan < 1s on 1M-entity fixture; publish to perf docs
+- ☑ Benchmarks: three-way plan 635 ms on the 1M-entity / 2×50k-op fixture (< 1s budget met via prefix projection; numbers in 05 §5.7; `pnpm --filter @ifc-lite/merge bench`)
 
 **Exit:** two divergent layers over a real model merge with correct auto/conflict split in CI; demo recording of CLI flow.
 

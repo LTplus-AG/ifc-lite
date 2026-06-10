@@ -33,7 +33,12 @@ import type {
   MergePlan,
 } from './types.js';
 import type { EntityState, StackState } from './component-state.js';
-import { componentEntries, extractStackState, snapshotOf } from './component-state.js';
+import {
+  componentEntries,
+  extractStackState,
+  projectStackStates,
+  snapshotOf,
+} from './component-state.js';
 
 export interface ThreeWayInputs {
   /** The candidate layer's base, ordered weakest first. */
@@ -45,6 +50,20 @@ export interface ThreeWayInputs {
 }
 
 export function planThreeWayMerge(inputs: ThreeWayInputs): MergePlan {
+  // Fast path (05 §5.7): when both sides extend the ancestor stack, only
+  // suffix-touched paths can differ — project those instead of folding
+  // and hashing the full model three times. Falls back to the reference
+  // extraction for tombstone-bearing stacks (subtree shadowing is global)
+  // and for unrelated stacks. Equivalence is enforced by the differential
+  // fuzz in fast-path-differential.test.ts.
+  if (sharesAncestorPrefix(inputs.ours, inputs.ancestor) && sharesAncestorPrefix(inputs.theirs, inputs.ancestor)) {
+    const projected = projectStackStates(
+      inputs.ancestor,
+      inputs.ours.slice(inputs.ancestor.length),
+      inputs.theirs.slice(inputs.ancestor.length)
+    );
+    if (projected) return planFromStates(projected.a, projected.o, projected.t);
+  }
   return planFromStates(
     extractStackState(inputs.ancestor),
     extractStackState(inputs.ours),
@@ -52,14 +71,44 @@ export function planThreeWayMerge(inputs: ThreeWayInputs): MergePlan {
   );
 }
 
+/**
+ * True when `stack` starts with the ancestor's layers: same documents by
+ * reference, or by content address (equal blake3 ids imply identical
+ * canonical bytes; non-blake3 test ids only count when reference-equal).
+ */
+function sharesAncestorPrefix(stack: readonly IfcxFile[], ancestor: readonly IfcxFile[]): boolean {
+  if (stack.length < ancestor.length) return false;
+  for (let i = 0; i < ancestor.length; i++) {
+    if (stack[i] === ancestor[i]) continue;
+    const id = ancestor[i].header.id;
+    if (id.startsWith('blake3:') && stack[i].header.id === id) continue;
+    return false;
+  }
+  return true;
+}
+
 export function planFromStates(a: StackState, o: StackState, t: StackState): MergePlan {
   const autoOps: MergeOp[] = [];
   const conflicts: MergeConflict[] = [];
   let touched = 0;
 
+  // Memoized per plan: with the projection sharing untouched component
+  // objects across sides, reference equality + this cache keep hashing
+  // proportional to the number of actually-edited components.
+  const hashes = new WeakMap<ComponentAttributes, string>();
+  const hashOf = (attrs: ComponentAttributes | undefined): string | undefined => {
+    if (attrs === undefined) return undefined;
+    let hash = hashes.get(attrs);
+    if (hash === undefined) {
+      hash = snapshotOf(attrs).hash;
+      hashes.set(attrs, hash);
+    }
+    return hash;
+  };
+
   const paths = new Set<string>([...a.keys(), ...o.keys(), ...t.keys()]);
   for (const path of paths) {
-    const result = mergeEntity(path, a.get(path), o.get(path), t.get(path));
+    const result = mergeEntity(path, a.get(path), o.get(path), t.get(path), hashOf);
     autoOps.push(...result.ops);
     conflicts.push(...result.conflicts);
     touched += result.touched;
@@ -71,6 +120,8 @@ export function planFromStates(a: StackState, o: StackState, t: StackState): Mer
     stats: { touched, autoMerged: autoOps.length, conflicting: conflicts.length },
   };
 }
+
+type HashOf = (attrs: ComponentAttributes | undefined) => string | undefined;
 
 interface EntityMergeResult {
   ops: MergeOp[];
@@ -88,12 +139,15 @@ function componentsOf(entity: EntityState | undefined): Map<ComponentKey, Compon
 
 function componentsEqual(
   x: Map<ComponentKey, ComponentAttributes>,
-  y: Map<ComponentKey, ComponentAttributes>
+  y: Map<ComponentKey, ComponentAttributes>,
+  hashOf: HashOf
 ): boolean {
   if (x.size !== y.size) return false;
   for (const [key, attrs] of x) {
     const other = y.get(key);
-    if (!other || snapshotOf(other).hash !== snapshotOf(attrs).hash) return false;
+    if (!other) return false;
+    if (other === attrs) continue;
+    if (hashOf(other) !== hashOf(attrs)) return false;
   }
   return true;
 }
@@ -102,7 +156,8 @@ function mergeEntity(
   path: string,
   aEntity: EntityState | undefined,
   oEntity: EntityState | undefined,
-  tEntity: EntityState | undefined
+  tEntity: EntityState | undefined,
+  hashOf: HashOf
 ): EntityMergeResult {
   const aAlive = alive(aEntity);
   const oAlive = alive(oEntity);
@@ -116,7 +171,7 @@ function mergeEntity(
 
   // Ours deleted (or never had it), theirs alive.
   if (!oAlive && tAlive) {
-    const tChanged = !componentsEqual(aComponents, tComponents);
+    const tChanged = !componentsEqual(aComponents, tComponents, hashOf);
     const oDeletedExplicitly = aAlive || oEntity?.deleted === true;
     if (oDeletedExplicitly && tChanged) {
       // delete-vs-modify: ours tombstoned what theirs kept editing.
@@ -153,7 +208,7 @@ function mergeEntity(
       // Theirs simply never saw this entity (added on ours): keep ours.
       return { ops: [], conflicts: [], touched: 0 };
     }
-    const oChanged = !componentsEqual(aComponents, oComponents);
+    const oChanged = !componentsEqual(aComponents, oComponents, hashOf);
     if (oChanged) {
       return {
         ops: [],
@@ -185,17 +240,16 @@ function mergeEntity(
     const aAttrs = aComponents.get(key);
     const oAttrs = oComponents.get(key);
     const tAttrs = tComponents.get(key);
-    const aHash = aAttrs ? snapshotOf(aAttrs).hash : undefined;
-    const oHash = oAttrs ? snapshotOf(oAttrs).hash : undefined;
-    const tHash = tAttrs ? snapshotOf(tAttrs).hash : undefined;
-
-    const oChanged = aHash !== oHash;
-    const tChanged = aHash !== tHash;
+    // Reference equality first (shared objects from the projection fast
+    // path); only genuinely diverging references pay for hashing.
+    if (aAttrs === oAttrs && aAttrs === tAttrs) continue;
+    const oChanged = aAttrs === oAttrs ? false : hashOf(aAttrs) !== hashOf(oAttrs);
+    const tChanged = aAttrs === tAttrs ? false : hashOf(aAttrs) !== hashOf(tAttrs);
     if (!oChanged && !tChanged) continue;
     touched += 1;
 
     if (oChanged && !tChanged) continue; // keep ours
-    if (oChanged && tChanged && oHash === tHash) continue; // fold
+    if (oChanged && tChanged && (oAttrs === tAttrs || hashOf(oAttrs) === hashOf(tAttrs))) continue; // fold
 
     if (!oChanged && tChanged) {
       ops.push(...opsForComponentChange(path, key, aAttrs, tAttrs));

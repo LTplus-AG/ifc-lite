@@ -47,3 +47,13 @@ Merge reasons over data scope (P-tier) only. `DiffScope: 'geometry'` differences
 - Three-way plan for two 50k-op layers over a 1M-entity model: < 1s (set algebra over hash maps; columnar store)
 - Merge preview render in viewer: < 2s including sidecar-cached geometry
 - These become public benchmarks alongside the parser numbers ("model merge in under a second, in the browser")
+
+Measured (2026-06-10, M-series laptop, `pnpm --filter @ifc-lite/merge bench`, median of 3):
+
+| entities | ops/side | plan time |
+|---:|---:|---:|
+| 10k | 1k | 17 ms |
+| 100k | 10k | 84 ms |
+| 1M | 50k | **635 ms** ✓ |
+
+The budget is met by the prefix projection fast path: when ours/theirs extend the ancestor stack (the universal calling convention), only suffix-touched paths are folded and hashed — untouched entities share object references across all three states and short-circuit on reference equality. Tombstone-bearing stacks fall back to the reference full extraction (subtree shadowing is a global property); equivalence between the two paths is enforced by a differential fuzz suite. Extending the projection to tombstone-bearing stacks is a known follow-up.

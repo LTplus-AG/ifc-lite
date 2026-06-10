@@ -159,6 +159,158 @@ function applyNode(entity: EntityState, node: IfcxNode): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Prefix projection (the 05 §5.7 fast path)
+// ---------------------------------------------------------------------------
+
+export interface ProjectedStates {
+  a: StackState;
+  o: StackState;
+  t: StackState;
+}
+
+/**
+ * Project the three stack states onto the paths actually touched by the
+ * ours/theirs suffixes — when `ours` and `theirs` share `ancestor` as a
+ * prefix, every other path is byte-identical across all three states and
+ * contributes nothing to the merge matrix. Untouched entities/components
+ * keep the SAME object references on every side, so the matrix can skip
+ * hashing them entirely.
+ *
+ * Returns null — caller must use full extraction — whenever any layer
+ * carries an `ifclite::deleted` opinion: tombstones shadow whole subtrees
+ * through the children graph, and that propagation is global, not
+ * per-path. Restricting the fast path to tombstone-free stacks keeps it
+ * provably equivalent to `extractStackState` (see the differential fuzz).
+ */
+export function projectStackStates(
+  ancestor: readonly IfcxFile[],
+  oursSuffix: readonly IfcxFile[],
+  theirsSuffix: readonly IfcxFile[]
+): ProjectedStates | null {
+  const touched = new Set<string>();
+  for (const suffix of [oursSuffix, theirsSuffix]) {
+    for (const layer of suffix) {
+      for (const node of layer.data) {
+        if (node.attributes?.[IFCLITE_ATTR.DELETED] !== undefined) return null;
+        touched.add(node.path);
+      }
+    }
+  }
+
+  // Restricted ancestor fold: only touched paths get materialized. The
+  // tombstone scan rides the same pass so a delete-bearing history aborts
+  // before any per-side work.
+  const a: StackState = new Map();
+  for (const layer of ancestor) {
+    for (const node of layer.data) {
+      if (node.attributes?.[IFCLITE_ATTR.DELETED] !== undefined) return null;
+      if (!touched.has(node.path)) continue;
+      applyNode(entityFor(a, node.path), node);
+    }
+  }
+  dropEmptyShells(a);
+
+  return {
+    a,
+    o: projectSide(a, oursSuffix),
+    t: projectSide(a, theirsSuffix),
+  };
+}
+
+/** Clone-on-write side state: ancestor refs shared until a suffix node hits the path. */
+function projectSide(a: StackState, suffix: readonly IfcxFile[]): StackState {
+  const state: StackState = new Map(a);
+  const cloned = new Set<string>();
+  for (const layer of suffix) {
+    for (const node of layer.data) {
+      let entity = state.get(node.path);
+      if (entity && !cloned.has(node.path)) {
+        entity = {
+          path: entity.path,
+          components: new Map(entity.components),
+          children: new Map(entity.children),
+          inherits: new Map(entity.inherits),
+          deleted: entity.deleted,
+        };
+        state.set(node.path, entity);
+      } else if (!entity) {
+        entity = entityFor(state, node.path);
+      }
+      cloned.add(node.path);
+      applyNodeCow(entity, node);
+    }
+  }
+  // Shell equivalence: a suffix that nulls every attribute away leaves an
+  // entity the reference extraction would drop — drop it here too. Only
+  // cloned entities can have changed, so only they need the check.
+  for (const path of cloned) {
+    const entity = state.get(path);
+    if (entity && isEmptyShell(entity)) state.delete(path);
+  }
+  return state;
+}
+
+function entityFor(state: StackState, path: string): EntityState {
+  let entity = state.get(path);
+  if (!entity) {
+    entity = { path, components: new Map(), children: new Map(), inherits: new Map(), deleted: false };
+    state.set(path, entity);
+  }
+  return entity;
+}
+
+function isEmptyShell(entity: EntityState): boolean {
+  return (
+    entity.components.size === 0 &&
+    entity.children.size === 0 &&
+    entity.inherits.size === 0 &&
+    !entity.deleted
+  );
+}
+
+function dropEmptyShells(state: StackState): void {
+  for (const [path, entity] of state) {
+    if (isEmptyShell(entity)) state.delete(path);
+  }
+}
+
+/**
+ * `applyNode` for cloned side entities: component objects are copied
+ * before mutation so ancestor-shared references are never written through
+ * — reference equality stays a valid "unchanged" signal in the matrix.
+ */
+function applyNodeCow(entity: EntityState, node: IfcxNode): void {
+  if (node.children) {
+    for (const [name, child] of Object.entries(node.children)) {
+      if (child === null) entity.children.delete(name);
+      else entity.children.set(name, child);
+    }
+  }
+  if (node.inherits) {
+    for (const [role, target] of Object.entries(node.inherits)) {
+      if (target === null) entity.inherits.delete(role);
+      else entity.inherits.set(role, target);
+    }
+  }
+  if (!node.attributes) return;
+  for (const [key, value] of Object.entries(node.attributes)) {
+    if (key.startsWith(IFCLITE_ATTR.DERIVED)) continue;
+    const componentKey = componentKeyForAttribute(key);
+    const component: ComponentAttributes = { ...(entity.components.get(componentKey) ?? {}) };
+    if (value === null) {
+      delete component[key];
+      if (Object.keys(component).length === 0) {
+        entity.components.delete(componentKey);
+        continue;
+      }
+    } else {
+      component[key] = value;
+    }
+    entity.components.set(componentKey, component);
+  }
+}
+
 /** Hash + value snapshot for conflict records and fold detection. */
 export function snapshotOf(attributes: ComponentAttributes): ComponentSnapshot {
   return { hash: stableHash(canonicalStringify(attributes)), attributes };

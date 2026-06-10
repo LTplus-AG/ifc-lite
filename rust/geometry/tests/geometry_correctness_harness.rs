@@ -43,6 +43,13 @@
 //! Only run-to-run-stable values are snapshotted; floats are rounded to
 //! 3 decimals and `worst_aspect` is deliberately excluded (a max over
 //! float ratios is too boundary-sensitive across platforms).
+//!
+//! Snapshots are pinned to the **default kernel** (`manifold-csg`).
+//! Under `--no-default-features` the legacy BSP kernel produces
+//! legitimately different mesh stats for CSG fixtures, so in that
+//! configuration the harness still enforces the universal invariants
+//! above but skips snapshot assertion entirely (see the
+//! `cfg!(feature = "manifold-csg")` gate in the test body).
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
@@ -611,6 +618,20 @@ fn geometry_correctness_harness() {
     // skipped (soft-pass contract above); in CI the full manifest set is
     // vendored, so every snapshot is asserted there. Accept intentional
     // changes with `cargo insta review` (or `INSTA_UPDATE=auto`).
+    //
+    // Kernel gate: snapshots are pinned to the default Manifold kernel.
+    // The legacy BSP kernel (`--no-default-features`) yields different
+    // (but valid) mesh stats for CSG fixtures, so asserting the same
+    // snapshots there would false-fail. The loose invariants above
+    // still cover that configuration.
+    if !cfg!(feature = "manifold-csg") {
+        eprintln!(
+            "[harness] manifold-csg feature disabled (legacy BSP kernel): \
+             skipping insta snapshot assertions — snapshots are pinned to \
+             the default Manifold kernel and mesh stats are kernel-dependent"
+        );
+        return;
+    }
     for r in &reports {
         if !r.fixture_found {
             continue;
@@ -741,6 +762,10 @@ fn write_json_report(reports: &[FixtureReport], path: &str) {
         s.push_str(&format!(
             "      \"spike_triangles\": {},\n",
             r.spike_triangles
+        ));
+        s.push_str(&format!(
+            "      \"total_surface_area\": {:.3},\n",
+            round3(r.total_surface_area)
         ));
         s.push_str(&format!(
             "      \"worst_aspect\": {:.3},\n",

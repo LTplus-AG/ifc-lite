@@ -404,10 +404,19 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // (per 100 entities / per spec); throttle store updates to ~8/s
       // and always pass the terminal event.
       let lastProgressUpdate = 0;
+      let progressEventCount = 0;
+      let firstProgressAt = 0;
+      const runStart = performance.now();
       const onProgress = (p: ValidationProgress) => {
+        progressEventCount++;
+        if (firstProgressAt === 0) {
+          firstProgressAt = performance.now();
+          console.info(`[IDS-trace] first progress event @ +${(firstProgressAt - runStart).toFixed(0)}ms phase=${p.phase}`);
+        }
         const now = performance.now();
         if (p.phase === 'complete' || now - lastProgressUpdate >= 120) {
           lastProgressUpdate = now;
+          console.info(`[IDS-trace] setIdsProgress #${progressEventCount} @ +${(now - runStart).toFixed(0)}ms phase=${p.phase} pct=${p.percentage} spec=${p.specificationIndex}/${p.totalSpecifications}`);
           setIdsProgress(p);
         }
       };
@@ -420,10 +429,13 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // already runs in a worker; this brings validation in line. Falls
       // back to in-process validation if the worker is unavailable or
       // fails (e.g. no source bytes for non-STEP models).
-      if (idsWorkerSupported() && dataStore.source && dataStore.source.byteLength > 0) {
+      const canUseWorker = idsWorkerSupported() && !!dataStore.source && dataStore.source.byteLength > 0;
+      console.info(`[IDS-trace] runValidation start: canUseWorker=${canUseWorker} (workerSupported=${idsWorkerSupported()}, hasSource=${!!dataStore.source}, sourceBytes=${dataStore.source?.byteLength ?? 0})`);
+      if (canUseWorker) {
         try {
+          console.info('[IDS-trace] spawning worker…');
           validationReport = await runValidationInWorker({
-            source: dataStore.source,
+            source: dataStore.source!,
             document,
             schemaVersion,
             modelId,
@@ -431,12 +443,14 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
             includePassingEntities: true,
             onProgress,
           });
+          console.info(`[IDS-trace] worker resolved @ +${(performance.now() - runStart).toFixed(0)}ms, ${progressEventCount} progress events received`);
         } catch (workerErr) {
-          console.warn('[IDS] Worker validation failed, falling back to main thread:', workerErr);
+          console.error('[IDS-trace] WORKER FAILED → falling back to main thread:', workerErr);
         }
       }
 
       if (!validationReport) {
+        console.warn(`[IDS-trace] running MAIN-THREAD validation (this saturates the UI) — worker did not produce a report`);
         const accessor = createDataAccessor(dataStore, modelId);
         const modelInfo: IDSModelInfo = {
           modelId,

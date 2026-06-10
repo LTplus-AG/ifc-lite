@@ -35,4 +35,24 @@ export interface SpatialAnchor {
    * Defaults to `'IFC4'` when unset for backward compatibility.
    */
   schema?: SpatialAnchorSchema;
+  /**
+   * Model length-unit scale: metres per native unit (1 for a metre file,
+   * 0.001 for millimetres). Builder params are always metres (renderer
+   * frame); geometry coordinates are divided by this on emit so they land
+   * in the file's native unit. Defaults to 1 when unset. Without this, a
+   * space baked into a millimetre model exported 1000× too small (its
+   * mesh looked right in-session because that one is built in metres).
+   */
+  lengthUnitScale?: number;
+}
+
+/**
+ * Convert a metre value to the anchor's native length unit for STEP emit.
+ * Rounded to 9 decimals to absorb the float noise the division introduces
+ * (2.8 / 0.001 = 2799.9999999999995 → 2800).
+ */
+export function toNativeLength(anchor: SpatialAnchor, metres: number): number {
+  const scale = anchor.lengthUnitScale;
+  if (!scale || !Number.isFinite(scale) || scale <= 0 || scale === 1) return metres;
+  return Math.round((metres / scale) * 1e9) / 1e9;
 }

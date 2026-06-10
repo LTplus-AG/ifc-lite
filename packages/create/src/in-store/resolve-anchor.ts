@@ -11,7 +11,7 @@
  * IfcLocalPlacement.
  */
 
-import { EntityExtractor, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, extractLengthUnitScale, getAttributeNames, type IfcDataStore } from '@ifc-lite/parser';
 import type { SpatialAnchor, SpatialAnchorSchema } from './anchor.js';
 
 export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: number): SpatialAnchor {
@@ -36,7 +36,20 @@ export function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: numbe
   }
 
   const schema = (store.schemaVersion ?? 'IFC4') as SpatialAnchorSchema;
-  return { ownerHistoryId, bodyContextId, axisContextId, storeyId: storeyExpressId, storeyPlacementId, schema };
+
+  // Builder params are metres; the file may not be (e.g. millimetre Revit
+  // exports). Resolve the length-unit scale here so builders can emit
+  // coordinates in the file's native unit — mirrors the read-side
+  // conversion in extract-walls.ts.
+  let lengthUnitScale = 1.0;
+  try {
+    if (store.source) {
+      const s = extractLengthUnitScale(store.source, store.entityIndex);
+      if (Number.isFinite(s) && s > 0) lengthUnitScale = s;
+    }
+  } catch { /* default to metres */ }
+
+  return { ownerHistoryId, bodyContextId, axisContextId, storeyId: storeyExpressId, storeyPlacementId, schema, lengthUnitScale };
 }
 
 function findOwnerHistoryId(store: IfcDataStore): number | null {

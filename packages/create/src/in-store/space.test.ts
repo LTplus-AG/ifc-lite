@@ -138,6 +138,33 @@ describe('addSpaceToStore', () => {
     expect(byId.get(result.relAggregatesId)?.attributes[1]).toBeNull();
   });
 
+  // Params are metres; a millimetre model (lengthUnitScale 0.001) must get
+  // native-unit coordinates or the space reopens 1000× too small while its
+  // in-session mesh (built in metres) looks correct.
+  it('emits native-unit geometry for non-metre models', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    const result = addSpaceToStore(
+      editor,
+      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54, lengthUnitScale: 0.001 },
+      { Profile: 'polygon', OuterCurve: [[0, 0], [4, 0], [4, 3], [0, 3]], Height: 3, grossFloorArea: 12 },
+    );
+    const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+    expect(byId.get(result.profileId)?.type).toBe('IfcArbitraryClosedProfileDef');
+    // Solid extrusion depth in millimetres
+    expect(byId.get(result.solidId)?.attributes[3]).toBeCloseTo(3000, 6);
+    // Polyline points in millimetres — find one of the corner points
+    const points = view.getNewEntities().filter((e) => e.type === 'IfcCartesianPoint');
+    const corner = points.find((p) => Array.isArray(p.attributes[0])
+      && (p.attributes[0] as number[])[0] === 4000 && (p.attributes[0] as number[])[1] === 3000);
+    expect(corner, 'expected a (4000, 3000) mm corner point').toBeTruthy();
+    // Areas/volumes stay in m²/m³ (their own units); LENGTH quantities scale.
+    const named = namedQ(view, result.spaceId);
+    expect(named['GrossFloorArea']).toBeCloseTo(12, 6);
+    expect(named['Height']).toBeCloseTo(3000, 6);
+    expect(named['GrossVolume']).toBeCloseTo(36, 6);
+  });
+
   it('rejects non-positive Height', () => {
     const view = new MutablePropertyView(null, 'm1');
     const editor = new StoreEditor(makeStore(10), view);

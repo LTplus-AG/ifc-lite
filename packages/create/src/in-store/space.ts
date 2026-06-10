@@ -18,7 +18,7 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, type SpatialAnchor } from './anchor.js';
 import {
   emitBodyRepresentation,
   emitExtrudedSolid,
@@ -142,11 +142,20 @@ export function addSpaceToStore(
     throw new Error('addSpaceToStore: Width and Depth must be positive');
   }
 
-  const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, placementOrigin);
+  // Geometry coordinates must land in the file's native length unit —
+  // params are metres, the file may be millimetres (a space baked into a
+  // mm model used to export 1000× too small). Quantities keep their own
+  // units below (AREAUNIT/VOLUMEUNIT are typically SI m²/m³ regardless).
+  const n = (metres: number) => toNativeLength(anchor, metres);
+  const placementId = emitLocalPlacement(
+    editor,
+    anchor.storeyPlacementId,
+    [n(placementOrigin[0]), n(placementOrigin[1]), n(placementOrigin[2])],
+  );
   const profileId = polygon
-    ? emitPolygonProfile(editor, params.OuterCurve)
-    : emitRectangleProfile(editor, params.Width, params.Depth, params.Width / 2, params.Depth / 2);
-  const solidId = emitExtrudedSolid(editor, profileId, params.Height);
+    ? emitPolygonProfile(editor, params.OuterCurve.map(([x, y]): [number, number] => [n(x), n(y)]))
+    : emitRectangleProfile(editor, n(params.Width), n(params.Depth), n(params.Width / 2), n(params.Depth / 2));
+  const solidId = emitExtrudedSolid(editor, profileId, n(params.Height));
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
   // IfcSpace attribute order:
@@ -191,11 +200,13 @@ export function addSpaceToStore(
     ? polygonPerimeter(params.OuterCurve)
     : 2 * (params.Width + params.Depth);
   const grossArea = params.grossFloorArea ?? area;
+  // LENGTH quantities follow the project length unit (mm in a mm file);
+  // AREA/VOLUME have their own units which are SI m²/m³ in practice.
   editor.addQuantitySet(spaceId, 'Qto_SpaceBaseQuantities', [
     { name: 'GrossFloorArea', value: grossArea, quantityType: 'AREA' },
     { name: 'NetFloorArea', value: params.netFloorArea ?? area, quantityType: 'AREA' },
-    { name: 'GrossPerimeter', value: perimeter, quantityType: 'LENGTH' },
-    { name: 'Height', value: params.Height, quantityType: 'LENGTH' },
+    { name: 'GrossPerimeter', value: n(perimeter), quantityType: 'LENGTH' },
+    { name: 'Height', value: n(params.Height), quantityType: 'LENGTH' },
     { name: 'GrossVolume', value: grossArea * params.Height, quantityType: 'VOLUME' },
   ]);
 

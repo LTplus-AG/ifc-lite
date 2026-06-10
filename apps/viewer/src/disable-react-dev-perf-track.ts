@@ -25,7 +25,14 @@
 if (import.meta.env.DEV && typeof performance !== 'undefined') {
   try {
     (performance as unknown as { measure?: unknown }).measure = undefined;
-  } catch {
-    /* read-only in some engines — best effort */
+  } catch (err) {
+    // `performance.measure` is read-only in some engines — surface it so a
+    // failed patch (which leaves large models OOM-prone) isn't silently hidden.
+    if (typeof console !== 'undefined') {
+      console.warn(
+        '[perf-track] could not disable React DEV perf tracking; large models may OOM',
+        err,
+      );
+    }
   }
 }

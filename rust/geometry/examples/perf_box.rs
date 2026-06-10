@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Common-case CSG perf micro-bench: a rectangular opening through a wall
 //! (box − box), the dominant operation. Times per-op + reports tris.
 //!   cargo run -p ifc-lite-geometry --example perf_box   (build with the dev opt

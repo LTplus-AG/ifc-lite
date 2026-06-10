@@ -241,11 +241,13 @@ async function parseAnnotations(
     if (debugEnabled()) console.log('[annotations] skip: missing/empty source');
     return result;
   }
-  // Skip the full-source WASM scan when the model has no IfcAnnotation — it
-  // copies the entire IFC source into the WASM heap on the main thread just to
-  // find none.
-  if (!hasEntityType(store, 'IfcAnnotation')) {
-    if (debugEnabled()) console.log('[annotations] skip: no IfcAnnotation entities');
+  // Skip the full-source WASM scan only when the model has neither IfcAnnotation
+  // nor IfcGridAxis — this parse path ALSO feeds the grid buckets (gridByStorey /
+  // gridLoose*), so gating on IfcAnnotation alone would drop grid-only models.
+  // The scan copies the entire IFC source into the WASM heap on the main thread,
+  // so skipping it when there is nothing to find still matters.
+  if (!hasEntityType(store, 'IfcAnnotation', 'IfcGridAxis')) {
+    if (debugEnabled()) console.log('[annotations] skip: no IfcAnnotation/IfcGridAxis entities');
     return result;
   }
 

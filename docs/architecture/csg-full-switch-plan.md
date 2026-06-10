@@ -2,8 +2,6 @@
 
 > 11-agent code-grounded + adversarial planning pass. Sequence M0→M9; BSP+Manifold stay buildable until M9 (one atomic flip).
 
-See committed file: /Users/louistrue/Development/ifc-lite/.claude/worktrees/csg-kernel/docs/architecture/csg-full-switch-plan.md
-
 # Full-Switch Plan — Pure-Rust Exact CSG Kernel (the FLIP)
 
 Branch feat/pure-rust-csg-kernel. Verdict order: M0 baseline freeze → M2 cmp_along → M1 Touches → M3 coplanar+f32-snap+multi-tri-fan+dup-face-dedup → M4 EXACT classifier+pocket dedup → M5 BVH+3 quadratics → M6 seam prep (panic-free/half-space/operands/boundary/per-consumer budget) → M7 corpus parity → M8 re-baseline+perf+geom_hash compat → M9 one atomic FLIP. BSP+Manifold stay buildable until M9. Kernel made panic-free-by-construction on wasm and catch_unwind-wrapped on the server BEFORE it is the only path.

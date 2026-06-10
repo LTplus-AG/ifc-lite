@@ -259,7 +259,11 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+      - name: Check test wiring
+        run: node scripts/check-test-wiring.mjs
       - run: pnpm test
+      - name: Integration tests (parse → quantities → export)
+        run: pnpm test:integration
 
   rust-tests:
     name: Rust tests

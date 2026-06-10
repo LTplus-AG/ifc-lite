@@ -25,8 +25,9 @@
   "types": "./pkg/ifc-lite.d.ts",
   "exports": {
     ".": {
+      "types": "./pkg/ifc-lite.d.ts",
       "import": "./pkg/ifc-lite.js",
-      "types": "./pkg/ifc-lite.d.ts"
+      "default": "./pkg/ifc-lite.js"
     },
     "./ifc-lite_bg.wasm": "./pkg/ifc-lite_bg.wasm"
   },

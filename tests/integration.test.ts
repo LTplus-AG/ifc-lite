@@ -73,8 +73,8 @@ async function runTests() {
 
   // Find an IFC file with quantities
   const ifcFiles = [
-    path.join(__dirname, 'models', '01_BIMcollab_Example_ARC.ifc'),
-    path.join(__dirname, 'models', 'test.ifc'),
+    path.join(__dirname, 'models', 'various', '01_BIMcollab_Example_ARC.ifc'),
+    path.join(__dirname, 'models', 'various', 'test.ifc'),
   ];
 
   let testFile: string | null = null;

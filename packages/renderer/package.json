@@ -7,13 +7,15 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch"
+    "dev": "pnpm exec tsc --watch",
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@ifc-lite/geometry": "workspace:^",

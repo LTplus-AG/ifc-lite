@@ -2,13 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
 import { pickFitPolicy, type Bounds3 } from './camera-fit-policy.js';
 
 const FOV_45 = (45 * Math.PI) / 180;
 
 function bounds(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): Bounds3 {
   return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
+}
+
+function assertCloseTo(actual: number, expected: number, digits: number, message?: string): void {
+  const tolerance = 0.5 * 10 ** -digits;
+  assert.ok(
+    Math.abs(actual - expected) < tolerance,
+    message ?? `expected ${actual} to be within ${tolerance} of ${expected}`,
+  );
 }
 
 describe('pickFitPolicy', () => {
@@ -18,17 +27,17 @@ describe('pickFitPolicy', () => {
       // to match the historical `fitToBounds()` formula 1:1 so building
       // models do not regress.
       const policy = pickFitPolicy(bounds(0, 0, 0, 10, 10, 10), { fovY: FOV_45 });
-      expect(policy.kind).toBe('compact');
-      expect(policy.aspect).toBe(1);
+      assert.strictEqual(policy.kind, 'compact');
+      assert.strictEqual(policy.aspect, 1);
       // distance = maxSize * 2 = 20
-      expect(policy.distance).toBeCloseTo(20, 5);
+      assertCloseTo(policy.distance, 20, 5);
       // position = center + distance * (0.6, 0.5, 0.6)
-      expect(policy.position.x).toBeCloseTo(5 + 20 * 0.6, 5);
-      expect(policy.position.y).toBeCloseTo(5 + 20 * 0.5, 5);
-      expect(policy.position.z).toBeCloseTo(5 + 20 * 0.6, 5);
+      assertCloseTo(policy.position.x, 5 + 20 * 0.6, 5);
+      assertCloseTo(policy.position.y, 5 + 20 * 0.5, 5);
+      assertCloseTo(policy.position.z, 5 + 20 * 0.6, 5);
       // target = bbox center
-      expect(policy.target).toEqual({ x: 5, y: 5, z: 5 });
-      expect(policy.up).toEqual({ x: 0, y: 1, z: 0 });
+      assert.deepStrictEqual(policy.target, { x: 5, y: 5, z: 5 });
+      assert.deepStrictEqual(policy.up, { x: 0, y: 1, z: 0 });
     });
 
     it('treats a moderately tall building (50x100x30) as compact', () => {
@@ -36,16 +45,16 @@ describe('pickFitPolicy', () => {
       // typically fall in the 1:1 .. 10:1 range and must keep their
       // pose unchanged.
       const policy = pickFitPolicy(bounds(0, 0, 0, 50, 100, 30), { fovY: FOV_45 });
-      expect(policy.kind).toBe('compact');
-      expect(policy.distance).toBe(200); // maxSize=100, * 2
+      assert.strictEqual(policy.kind, 'compact');
+      assert.strictEqual(policy.distance, 200); // maxSize=100, * 2
     });
 
     it('still picks compact for a flat slab (50x50x5) — aspect 10:1', () => {
       // Single-storey flat models are common; should NOT trigger the
       // linear branch.
       const policy = pickFitPolicy(bounds(0, 0, 0, 50, 5, 50), { fovY: FOV_45 });
-      expect(policy.kind).toBe('compact');
-      expect(policy.aspect).toBe(10);
+      assert.strictEqual(policy.kind, 'compact');
+      assert.strictEqual(policy.aspect, 10);
     });
   });
 
@@ -59,22 +68,22 @@ describe('pickFitPolicy', () => {
         bounds(-0.25, 0, -428, 932.59, 0.75, 0.25),
         { fovY: FOV_45, viewportShortPx: 664 },
       );
-      expect(policy.kind).toBe('linear');
+      assert.strictEqual(policy.kind, 'linear');
       // aspect = longest / shortest = 932.84 / 0.75 ≈ 1244
-      expect(policy.aspect).toBeGreaterThan(1000);
+      assert.ok(policy.aspect > 1000, `aspect ${policy.aspect} should exceed 1000`);
       // distance must be a small fraction of the longest dim — the whole
       // point of the policy is to NOT recede to 2 * longest.
-      expect(policy.distance).toBeLessThan(932.84 * 0.31);
+      assert.ok(policy.distance < 932.84 * 0.31, `distance ${policy.distance} should stay under 30% of longest`);
       // and far enough that we're outside the bbox (cap is 30% of longest)
-      expect(policy.distance).toBeGreaterThan(50);
+      assert.ok(policy.distance > 50, `distance ${policy.distance} should exceed 50`);
     });
 
     it('targets the bbox centre (so user can pan along the alignment)', () => {
       const b = bounds(-0.25, 0, -428, 932.59, 0.75, 0.25);
       const policy = pickFitPolicy(b, { fovY: FOV_45 });
-      expect(policy.target.x).toBeCloseTo(466.17, 1);
-      expect(policy.target.y).toBeCloseTo(0.375, 2);
-      expect(policy.target.z).toBeCloseTo(-213.875, 1);
+      assertCloseTo(policy.target.x, 466.17, 1);
+      assertCloseTo(policy.target.y, 0.375, 2);
+      assertCloseTo(policy.target.z, -213.875, 1);
     });
 
     it('looks down-and-along the longest axis', () => {
@@ -99,8 +108,8 @@ describe('pickFitPolicy', () => {
       // opposite: camera is BEHIND target along that vector. From the camera
       // we look forward along that same vector — so target - position points
       // in +X (along) and -Y (down). Verify both.
-      expect(dx).toBeCloseTo(Math.cos((20 * Math.PI) / 180), 3);
-      expect(dy).toBeCloseTo(-Math.sin((20 * Math.PI) / 180), 3);
+      assertCloseTo(dx, Math.cos((20 * Math.PI) / 180), 3);
+      assertCloseTo(dy, -Math.sin((20 * Math.PI) / 180), 3);
     });
 
     it('respects whichever axis is longest (Z-major)', () => {
@@ -115,8 +124,8 @@ describe('pickFitPolicy', () => {
         z: policy.target.z - policy.position.z,
       };
       const len = Math.sqrt(dir.x * dir.x + dir.z * dir.z);
-      expect(Math.abs(dir.x / len)).toBeLessThan(0.01); // negligible X
-      expect(dir.z).toBeGreaterThan(0); // looking +Z
+      assert.ok(Math.abs(dir.x / len) < 0.01, 'X component should be negligible');
+      assert.ok(dir.z > 0, 'should be looking +Z');
     });
 
     it('floors the feature size against pathological zero-thin bboxes', () => {
@@ -126,10 +135,10 @@ describe('pickFitPolicy', () => {
         bounds(0, 0, 0, 1000, 0.0001, 1),
         { fovY: FOV_45 },
       );
-      expect(policy.kind).toBe('linear');
+      assert.strictEqual(policy.kind, 'linear');
       // distance ought to land somewhere usable — not zero, not 2000.
-      expect(policy.distance).toBeGreaterThan(1);
-      expect(policy.distance).toBeLessThan(1000 * 0.31);
+      assert.ok(policy.distance > 1, `distance ${policy.distance} should exceed 1`);
+      assert.ok(policy.distance < 1000 * 0.31, `distance ${policy.distance} should stay under 310`);
     });
 
     it('caps the linear distance at 30% of the longest axis', () => {
@@ -139,17 +148,18 @@ describe('pickFitPolicy', () => {
         bounds(0, 0, 0, 10_000, 100, 100),
         { fovY: FOV_45 },
       );
-      expect(policy.kind).toBe('linear');
-      expect(policy.distance).toBeLessThanOrEqual(10_000 * 0.3);
+      assert.strictEqual(policy.kind, 'linear');
+      assert.ok(policy.distance <= 10_000 * 0.3, `distance ${policy.distance} should be capped at 3000`);
     });
   });
 
   it('honours an override threshold (so tests can pin the boundary)', () => {
     // Aspect 5:1 — normally compact. Force linear by lowering threshold.
     const b = bounds(0, 0, 0, 100, 20, 20);
-    expect(pickFitPolicy(b, { fovY: FOV_45 }).kind).toBe('compact');
-    expect(
+    assert.strictEqual(pickFitPolicy(b, { fovY: FOV_45 }).kind, 'compact');
+    assert.strictEqual(
       pickFitPolicy(b, { fovY: FOV_45, linearAspectThreshold: 4 }).kind,
-    ).toBe('linear');
+      'linear',
+    );
   });
 });

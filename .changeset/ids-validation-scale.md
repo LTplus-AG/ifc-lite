@@ -30,5 +30,12 @@ after printing its results. Four root fixes:
   `undefined (undefined/undefined)`), and skips retaining passing entity
   results for human-readable output (`--json` is unchanged).
 
+Behavior change (intentional): the CLI's PASS/FAIL verdict and exit code
+now come from the validator's per-spec status, which counts
+cardinality-only failures — a `minOccurs="1"` specification that matches
+zero entities now correctly FAILs (exit 1) where it previously passed
+silently. `bim.ids.summarize` likewise prefers the per-spec status when
+the report carries one, so `--json` and text mode agree on the verdict.
+
 Measured on the same model + IDS pack: 848 specs 19min→2min, 117 specs
 3.4min→12s, both with a clean exit instead of a hang.

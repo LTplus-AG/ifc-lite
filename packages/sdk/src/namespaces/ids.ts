@@ -203,20 +203,31 @@ export class IDSNamespace {
   // --------------------------------------------------------------------------
 
   /** Summarize a validation report into pass/fail counts. */
-  summarize(report: { specificationResults: Array<{ entityResults: Array<{ passed: boolean }> }> }): IDSValidationSummary {
+  summarize(report: {
+    specificationResults: Array<{
+      entityResults: Array<{ passed: boolean }>;
+      status?: 'pass' | 'fail' | 'not_applicable';
+    }>;
+  }): IDSValidationSummary {
     let totalSpecs = 0, passedSpecs = 0, failedSpecs = 0;
     let totalEntities = 0, passedEntities = 0, failedEntities = 0;
 
     for (const spec of report.specificationResults) {
       totalSpecs++;
-      let specPassed = true;
+      let anyEntityFailed = false;
       for (const entity of spec.entityResults) {
         totalEntities++;
         if (entity.passed) passedEntities++;
-        else { failedEntities++; specPassed = false; }
+        else { failedEntities++; anyEntityFailed = true; }
       }
-      if (specPassed) passedSpecs++;
-      else failedSpecs++;
+      // Prefer the validator's own verdict when present: it also covers
+      // cardinality-only failures (e.g. a required spec matching zero
+      // entities), which entity results alone cannot express. Deriving
+      // from entities here used to make this summary disagree with the
+      // validator's report.summary for exactly those specs.
+      const specFailed = spec.status !== undefined ? spec.status === 'fail' : anyEntityFailed;
+      if (specFailed) failedSpecs++;
+      else passedSpecs++;
     }
 
     return { totalSpecifications: totalSpecs, passedSpecifications: passedSpecs, failedSpecifications: failedSpecs, totalEntities, passedEntities, failedEntities };

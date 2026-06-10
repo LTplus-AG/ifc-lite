@@ -54,3 +54,21 @@ export {
   type RevertLayerResult,
 } from './inverse.js';
 export { planRebase, type RebaseInputs, type RebaseResult } from './rebase.js';
+export {
+  diffLayerStacks,
+  diffStackStates,
+  type ModifiedEntity,
+  type StackDiff,
+} from './state-diff.js';
+export {
+  checkRefPolicy,
+  mergeIntoRef,
+  resolveAncestor,
+  type AncestorResolution,
+  type LayerRefStore,
+  type MergeInit,
+  type MergeOutcome,
+  type RefEntry,
+  type RefPolicy,
+  type Waiver,
+} from './ref-flow.js';

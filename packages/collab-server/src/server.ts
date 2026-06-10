@@ -21,6 +21,11 @@ import {
   type BlobAuthorizeFn,
   type ServerBlobStorage,
 } from './blob-route.js';
+import { MemoryLayerRegistry, type LayerRegistryStore } from './layer-registry.js';
+import {
+  handleLayerRegistryRequest,
+  type RegistryAuthorizeFn,
+} from './layer-registry-route.js';
 import { defaultMetrics, MetricsRegistry } from './metrics.js';
 
 export interface StartCollabServerOptions {
@@ -74,6 +79,17 @@ export interface StartCollabServerOptions {
    * `reject` with the reason and drops the message.
    */
   verifyMessage?: VerifyMessageFn;
+  /**
+   * Mount the layer-registry routes (`/api/v1/layers|refs|reviews`,
+   * 10-registry.md): push/pull content-addressed layers, refs with
+   * server-side merge-policy enforcement, and review objects. Off by
+   * default. Pass `true` for an in-memory registry, or supply a store.
+   * Authorization derives from `authenticate` exactly like the blob
+   * route: any authenticated principal may read, writes require write
+   * capability, and the principal's userId becomes the acting resolver
+   * for merges and waivers.
+   */
+  layerRegistry?: boolean | { store?: LayerRegistryStore; maxBytes?: number };
 }
 
 export interface CollabServerHandle {
@@ -108,6 +124,16 @@ export async function startCollabServer(
     opts.authorizeBlob === null
       ? undefined
       : opts.authorizeBlob ?? makeBlobAuthorizer(authenticate);
+  // Registry: opt-in; authorization derives from `authenticate` like the
+  // blob route (anonymous default stays anonymous, real auth gates writes).
+  const layerRegistry: LayerRegistryStore | undefined = opts.layerRegistry
+    ? typeof opts.layerRegistry === 'object' && opts.layerRegistry.store
+      ? opts.layerRegistry.store
+      : new MemoryLayerRegistry()
+    : undefined;
+  const authorizeRegistry: RegistryAuthorizeFn | undefined = layerRegistry
+    ? makeRegistryAuthorizer(authenticate)
+    : undefined;
   const metricsToken = opts.metricsToken ?? process.env.COLLAB_METRICS_TOKEN;
   const metrics = opts.metrics ?? defaultMetrics;
   const peersGauge = metrics.gauge(
@@ -169,6 +195,17 @@ export async function startCollabServer(
             storage: blobStorage,
             maxBytes: opts.blobMaxBytes,
             authorize: authorizeBlob,
+          });
+          if (handled) return;
+        }
+        // Layer registry (10-registry.md): /api/v1/layers|refs|reviews.
+        if (layerRegistry && pathname.startsWith('/api/v1/')) {
+          const handled = await handleLayerRegistryRequest(req, res, {
+            registry: layerRegistry,
+            authorize: authorizeRegistry,
+            ...(typeof opts.layerRegistry === 'object' && opts.layerRegistry.maxBytes !== undefined
+              ? { maxBytes: opts.layerRegistry.maxBytes }
+              : {}),
           });
           if (handled) return;
         }
@@ -336,6 +373,33 @@ const BLOB_AUTH_ROOM = '__blobs__';
  * token) is rejected; PUT/DELETE additionally require write capability,
  * GET/HEAD/list accept any authenticated principal.
  */
+/** Room key the registry authorizer authenticates against. */
+const REGISTRY_AUTH_ROOM = '__layer_registry__';
+
+/**
+ * Derive a registry authorizer from the websocket `authenticate` hook —
+ * same scheme as blobs: reads accept any authenticated principal, writes
+ * (POST/PUT) require write capability. The principal flows through so the
+ * merge endpoint records it as the acting resolver.
+ */
+function makeRegistryAuthorizer(authenticate: AuthenticateFn): RegistryAuthorizeFn {
+  return async (token, method) => {
+    let principal: Principal | null;
+    try {
+      principal = await authenticate(token, REGISTRY_AUTH_ROOM);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[collab-server] registry auth threw:', err);
+      return null;
+    }
+    if (!principal) return null;
+    if ((method === 'POST' || method === 'PUT' || method === 'DELETE') && !canWrite(principal)) {
+      return null;
+    }
+    return principal;
+  };
+}
+
 function makeBlobAuthorizer(authenticate: AuthenticateFn): BlobAuthorizeFn {
   return async (token, method, _hash) => {
     let principal: Principal | null;

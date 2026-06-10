@@ -5,84 +5,21 @@
 /**
  * `ifc-lite layer diff` — compare two composed states. Each side resolves
  * to an ordered layer list (a ref's stack, a stored layer, or an .ifcx
- * file) and the two `extractStackState` results are diffed per entity and
- * per component (component identity via `snapshotOf` hashes).
+ * file). The diff itself is the shared contract in `@ifc-lite/merge`
+ * (state-diff.ts): CLI, MCP, and the review UI emit the identical JSON.
  */
 
-import type { IfcxFile } from '@ifc-lite/ifcx';
-import {
-  componentEntries,
-  extractStackState,
-  snapshotOf,
-  type StackState,
-} from '@ifc-lite/merge';
+import { diffLayerStacks } from '@ifc-lite/merge';
 import { getFlag, hasFlag, printJson } from '../output.js';
 import { resolveSide, storeFromArgs } from './layer-store.js';
 
-export interface ModifiedEntity {
-  path: string;
-  /** Component keys whose value changed, was added, or was removed. */
-  components: string[];
-}
-
-export interface LayerDiffResult {
-  added: string[];
-  deleted: string[];
-  modified: ModifiedEntity[];
-}
-
-function alive(state: StackState, path: string): boolean {
-  const entity = state.get(path);
-  return entity !== undefined && !entity.deleted;
-}
-
-/** Diff two composed states: `from` (base) → `to` (target). */
-export function diffStates(from: StackState, to: StackState): LayerDiffResult {
-  const added: string[] = [];
-  const deleted: string[] = [];
-  const modified: ModifiedEntity[] = [];
-
-  const paths = [...new Set<string>([...from.keys(), ...to.keys()])].sort();
-  for (const path of paths) {
-    const inFrom = alive(from, path);
-    const inTo = alive(to, path);
-    if (!inFrom && inTo) {
-      added.push(path);
-      continue;
-    }
-    if (inFrom && !inTo) {
-      deleted.push(path);
-      continue;
-    }
-    if (!inFrom && !inTo) continue;
-
-    const fromEntity = from.get(path);
-    const toEntity = to.get(path);
-    if (!fromEntity || !toEntity) continue;
-    const fromComponents = componentEntries(fromEntity);
-    const toComponents = componentEntries(toEntity);
-    const keys = [...new Set<string>([...fromComponents.keys(), ...toComponents.keys()])].sort();
-    const changed: string[] = [];
-    for (const key of keys) {
-      const a = fromComponents.get(key);
-      const b = toComponents.get(key);
-      const aHash = a === undefined ? undefined : snapshotOf(a).hash;
-      const bHash = b === undefined ? undefined : snapshotOf(b).hash;
-      if (aHash !== bHash) changed.push(key);
-    }
-    if (changed.length > 0) modified.push({ path, components: changed });
-  }
-
-  return { added, deleted, modified };
-}
-
-/** Diff two ordered layer lists (`from` is the base side). */
-export function diffLayerStacks(
-  from: readonly IfcxFile[],
-  to: readonly IfcxFile[]
-): LayerDiffResult {
-  return diffStates(extractStackState(from), extractStackState(to));
-}
+// Re-exported under the historical CLI names for existing imports.
+export {
+  diffLayerStacks,
+  diffStackStates as diffStates,
+  type ModifiedEntity,
+  type StackDiff as LayerDiffResult,
+} from '@ifc-lite/merge';
 
 export async function layerDiffCommand(args: string[]): Promise<void> {
   const store = storeFromArgs(args);

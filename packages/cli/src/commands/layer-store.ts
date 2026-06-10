@@ -26,6 +26,7 @@ import {
 import { join, resolve } from 'node:path';
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import { computeLayerId, computeStackHash } from '@ifc-lite/ifcx';
+import type { RefEntry } from '@ifc-lite/merge';
 import { getFlag } from '../output.js';
 
 let atomicWriteSeq = 0;
@@ -40,16 +41,9 @@ function writeFileAtomic(path: string, text: string): void {
   renameSync(tmp, path);
 }
 
-export interface RefPolicy {
-  requireHumanApproval?: boolean;
-  requiredChecks?: string[];
-}
-
-export interface RefEntry {
-  /** Ordered layer ids, weakest first. */
-  layers: string[];
-  policy?: RefPolicy;
-}
+// Ref shapes are owned by the shared merge flow (`@ifc-lite/merge`
+// ref-flow.ts) so the CLI store and the registry store cannot drift.
+export type { RefEntry, RefPolicy } from '@ifc-lite/merge';
 
 export interface RefsFile {
   refs: Record<string, RefEntry>;

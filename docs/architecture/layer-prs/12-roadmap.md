@@ -57,8 +57,8 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 
 ## Phase L5: Registry (ongoing)
 
-- ☐ Push/pull by id + ref DB + PR objects on `collab-server`/`apps/server`; webhooks
-- ☐ Ref policies (required checks, reviewers, author-kind, risk-tier, auto-merge) enforced server-side
+- ◐ Push/pull by id + ref DB + PR objects on `collab-server`/`apps/server`; webhooks — DONE on `collab-server` (`/api/v1/layers|refs|reviews`, server-side blake3 integrity gate on push, in-memory store behind a pluggable `LayerRegistryStore`); webhooks, durable backends, and the `apps/server` surface pending. The merge flow itself moved to `@ifc-lite/merge` (`ref-flow.ts`) so CLI and registry run one decision procedure
+- ◐ Ref policies (required checks, reviewers, author-kind, risk-tier, auto-merge) enforced server-side — required checks + human-approval + protected-move-only-via-merge enforced on the registry route; reviewers/risk-tier/auto-merge pending
 - ☐ Registry attestation; optional ed25519 signing; provenance/audit search
 - ☐ Team tier pricing alongside Tauri track; public reference registry for teaching
 - ☐ Nightly model-gardener agent on auto-merge policy (first fully autonomous loop)
@@ -67,7 +67,7 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 
 ## Cross-cutting
 
-- ☐ One diff/MergePlan JSON schema consumed identically by CLI, MCP, UI (contract tests)
+- ◐ One diff/MergePlan JSON schema consumed identically by CLI, MCP, UI (contract tests) — the diff JSON is now ONE implementation (`@ifc-lite/merge` `state-diff.ts`, deterministic ordering) consumed by `ifc layer diff --json` and the MCP `diff_layer` tool, with a byte-exact contract test; MergePlan is emitted from the shared type (CLI full, MCP trimmed conflicts). UI consumption lands with L4
 - ☐ Perf budgets in CI (02 §2.5, 05 §5.7)
 - ☐ Spec-set versioning: manifest SemVer; composition behavior behind `layers.enabled`
 - ⚠ Open problems parked deliberately: heuristic identity (04 §4.5), cross-schema identity, deletion-overlay upstream standardization (tracked with panel)

@@ -14,13 +14,8 @@ import { randomUUID } from 'node:crypto';
 import { computeStackHash, getProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import { parseScopeClaims } from '@ifc-lite/extensions';
-import {
-  componentEntries,
-  extractStackState,
-  planThreeWayMerge,
-  snapshotOf,
-} from '@ifc-lite/merge';
-import type { MergePlan, StackState } from '@ifc-lite/merge';
+import { diffStackStates, extractStackState, planThreeWayMerge } from '@ifc-lite/merge';
+import type { MergePlan } from '@ifc-lite/merge';
 import type { Tool } from './types.js';
 import type { ToolContext } from '../context.js';
 import { okResult, fmtCount } from './util.js';
@@ -96,49 +91,6 @@ function resolveStateFiles(ws: LayerWorkspace, id: string, ctx: ToolContext): If
   return resolveCandidate(ws, id, ctx).stateFiles;
 }
 
-interface DiffEntry { path: string; components: string[] }
-
-/** Structured stack-state diff — same JSON shape the review UI consumes. */
-function diffStates(left: StackState, right: StackState): {
-  added: string[];
-  deleted: string[];
-  modified: DiffEntry[];
-} {
-  const added: string[] = [];
-  const deleted: string[] = [];
-  const modified: DiffEntry[] = [];
-  const paths = new Set<string>([...left.keys(), ...right.keys()]);
-
-  for (const path of paths) {
-    const l = left.get(path);
-    const r = right.get(path);
-    const lAlive = l !== undefined && !l.deleted;
-    const rAlive = r !== undefined && !r.deleted;
-    if (!lAlive && rAlive) {
-      added.push(path);
-      continue;
-    }
-    if (lAlive && !rAlive) {
-      deleted.push(path);
-      continue;
-    }
-    if (!lAlive || !rAlive) continue;
-
-    const lComponents = componentEntries(l);
-    const rComponents = componentEntries(r);
-    const changed: string[] = [];
-    for (const key of new Set([...lComponents.keys(), ...rComponents.keys()])) {
-      const lAttrs = lComponents.get(key);
-      const rAttrs = rComponents.get(key);
-      const lHash = lAttrs ? snapshotOf(lAttrs).hash : undefined;
-      const rHash = rAttrs ? snapshotOf(rAttrs).hash : undefined;
-      if (lHash !== rHash) changed.push(key);
-    }
-    if (changed.length > 0) modified.push({ path, components: changed.sort() });
-  }
-  return { added: added.sort(), deleted: deleted.sort(), modified };
-}
-
 function planMerge(
   ws: LayerWorkspace,
   input: Record<string, unknown>,
@@ -191,7 +143,9 @@ const diffLayer: Tool = {
     const leftFiles = input.against !== undefined
       ? resolveStateFiles(ws, input.against as string, ctx)
       : candidate.baseFiles;
-    const diff = diffStates(extractStackState(leftFiles), extractStackState(candidate.stateFiles));
+    // The shared contract from `@ifc-lite/merge` — CLI and review UI emit
+    // the identical JSON (deterministically ordered).
+    const diff = diffStackStates(extractStackState(leftFiles), extractStackState(candidate.stateFiles));
     return okResult(
       `Diff: +${diff.added.length} / -${diff.deleted.length} / ~${diff.modified.length} entities.`,
       {

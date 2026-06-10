@@ -126,6 +126,12 @@ export class HttpTransport {
     });
   }
 
+  /** Actual bound port — differs from `opts.port` when listening on 0. */
+  port(): number | undefined {
+    const addr = this.server.address();
+    return typeof addr === 'object' && addr !== null ? addr.port : undefined;
+  }
+
   close(): Promise<void> {
     return new Promise((resolve) => {
       for (const session of this.sessions.values()) {
@@ -165,18 +171,38 @@ export class HttpTransport {
     const sessionId = (req.headers['mcp-session-id'] as string | undefined)?.trim();
 
     if (req.method === 'GET') {
-      // Open an SSE channel for an existing session.
+      // Open an SSE channel for an existing session. Same identity rule as
+      // POST: a leaked Mcp-Session-Id must not let a differently-scoped
+      // token attach to the victim's event stream.
       if (!sessionId || !this.sessions.has(sessionId)) {
         res.statusCode = 404;
         res.end('Unknown session');
         return;
       }
-      this.openSse(this.sessions.get(sessionId) as Session, res);
+      const session = this.sessions.get(sessionId) as Session;
+      if (!sameScope(session.scope, scope)) {
+        res.statusCode = 403;
+        res.end('session scope mismatch');
+        return;
+      }
+      this.openSse(session, res);
       return;
     }
 
     if (req.method === 'DELETE') {
-      if (sessionId) this.endSession(sessionId);
+      // Ending a session disposes its layer drafts — destructive, so the
+      // caller must present the same scope identity the session was bound
+      // to; a leaked session id alone must not destroy another principal's
+      // unpublished work.
+      if (sessionId) {
+        const session = this.sessions.get(sessionId);
+        if (session && !sameScope(session.scope, scope)) {
+          res.statusCode = 403;
+          res.end('session scope mismatch');
+          return;
+        }
+        this.endSession(sessionId);
+      }
       res.statusCode = 204;
       res.end();
       return;

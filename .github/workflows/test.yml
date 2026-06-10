@@ -264,6 +264,13 @@ jobs:
         run: pnpm fixtures
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      # Guard the published API surface: the exported names of every
+      # non-private packages/* package (read from the dist d.ts in the
+      # build artifact downloaded above) must match the committed
+      # scripts/api-surface.json, so an accidental export removal/rename
+      # can't ship silently.
+      - name: Check API surface
+        run: node scripts/check-api-surface.mjs
       - run: pnpm test
       - name: Integration tests (parse → quantities → export)
         # Step-scoped timeout: a hung harness must fail fast here, not

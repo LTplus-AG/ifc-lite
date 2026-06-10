@@ -27,6 +27,7 @@ Project-specific gotchas and guardrails — the things that bite you *here* and 
 ## Changesets & published API
 - Changes to published `packages/*` need `pnpm changeset` (never hand-edit versions/`CHANGELOG.md`). Bump level = biggest API change: removing/renaming an export is `major` (≥1.0 pkg) / `minor` (0.x), never `patch` when the surface shrank.
 - Only re-export from a package's `index.ts` what has a real consumer — an unused public export is permanent semver liability.
+- The exported surface of every published package is snapshotted in `scripts/api-surface.json` and CI-enforced (`scripts/check-api-surface.mjs`): when you intentionally add/remove/rename an export, run `pnpm api-surface:update` and commit the snapshot alongside the changeset.
 
 ## Removing & replacing code (anti-cruft)
 - Supersede means delete: replace a path → remove the old one in the *same* PR. No "legacy"/"fallback"/"just-in-case" path; if one must stay, gate it behind `// TODO(remove-by: <cond>, <owner>)` + a tracking issue.

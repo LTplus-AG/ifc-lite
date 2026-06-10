@@ -38,6 +38,7 @@ import { getEntityBounds } from '@/utils/viewportUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
 import { createDataAccessor } from './ids/idsDataAccessor';
+import { runValidationInWorker, idsWorkerSupported } from './ids/idsWorkerClient';
 import {
   DEFAULT_FAILED_COLOR,
   DEFAULT_PASSED_COLOR,
@@ -386,34 +387,68 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     try {
       setIdsLoading(true);
       setIdsError(null);
+      // Paint a "starting" state immediately so the button shows work is
+      // underway before the first real progress event arrives.
+      setIdsProgress({
+        phase: 'filtering',
+        specificationIndex: 0,
+        totalSpecifications: document.specifications.length,
+        entitiesProcessed: 0,
+        totalEntities: 0,
+        percentage: 0,
+      });
 
-      // Create data accessor
-      const accessor = createDataAccessor(dataStore, modelId);
+      const schemaVersion = dataStore.schemaVersion || 'IFC4';
 
-      // Create model info
-      const modelInfo: IDSModelInfo = {
-        modelId,
-        schemaVersion: dataStore.schemaVersion || 'IFC4',
-        entityCount: dataStore.entityCount || accessor.getAllEntityIds().length,
+      // Progress events arrive far faster than React should re-render
+      // (per 100 entities / per spec); throttle store updates to ~8/s
+      // and always pass the terminal event.
+      let lastProgressUpdate = 0;
+      const onProgress = (p: ValidationProgress) => {
+        const now = performance.now();
+        if (p.phase === 'complete' || now - lastProgressUpdate >= 120) {
+          lastProgressUpdate = now;
+          setIdsProgress(p);
+        }
       };
 
-      // Run validation. Progress events arrive far faster than React
-      // should re-render (per 100 entities / per spec) — each store
-      // update re-renders every IDS subscriber, which both slowed the
-      // run and dropped the frame rate. Throttle to ~8 updates/s and
-      // always pass the terminal event.
-      let lastProgressUpdate = 0;
-      const validationReport = await validateIDS(document, accessor, modelInfo, {
-        translator,
-        onProgress: (p) => {
-          const now = performance.now();
-          if (p.phase === 'complete' || now - lastProgressUpdate >= 120) {
-            lastProgressUpdate = now;
-            setIdsProgress(p);
-          }
-        },
-        includePassingEntities: true,
-      });
+      let validationReport: IDSValidationReport | null = null;
+
+      // Preferred path: validate in a Web Worker so the whole run is off
+      // the main thread — the UI stays at full frame rate and progress
+      // actually paints. Every other heavy stage (parse, geometry)
+      // already runs in a worker; this brings validation in line. Falls
+      // back to in-process validation if the worker is unavailable or
+      // fails (e.g. no source bytes for non-STEP models).
+      if (idsWorkerSupported() && dataStore.source && dataStore.source.byteLength > 0) {
+        try {
+          validationReport = await runValidationInWorker({
+            source: dataStore.source,
+            document,
+            schemaVersion,
+            modelId,
+            locale,
+            includePassingEntities: true,
+            onProgress,
+          });
+        } catch (workerErr) {
+          console.warn('[IDS] Worker validation failed, falling back to main thread:', workerErr);
+        }
+      }
+
+      if (!validationReport) {
+        const accessor = createDataAccessor(dataStore, modelId);
+        const modelInfo: IDSModelInfo = {
+          modelId,
+          schemaVersion,
+          entityCount: dataStore.entityCount || accessor.getAllEntityIds().length,
+        };
+        validationReport = await validateIDS(document, accessor, modelInfo, {
+          translator,
+          onProgress,
+          includePassingEntities: true,
+        });
+      }
 
       setIdsValidationReport(validationReport);
 
@@ -437,6 +472,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     models,
     activeModelId,
     translator,
+    locale,
     setIdsLoading,
     setIdsError,
     setIdsProgress,

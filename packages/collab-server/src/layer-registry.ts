@@ -36,6 +36,12 @@ export interface RegistryReview {
   feedback: RegistryReviewDecision[];
   openedBy?: string;
   openedAt: string;
+  /**
+   * Authenticated principal that set status to `approved` — recorded by
+   * the feedback endpoint, never caller-asserted. The merge endpoint
+   * derives `requireHumanApproval` satisfaction from this field.
+   */
+  approvedBy?: string;
 }
 
 /** Thrown by `push` when content fails the integrity or provenance gate. */

@@ -138,6 +138,28 @@ export type MergeOutcome =
       ancestorMatched: boolean;
     };
 
+/**
+ * True when completing this merge would rely on a waiver — a required
+ * check that has no passing evidence on the manifest and is only
+ * satisfied because it was waived. Such merges must leave a durable
+ * record (`manifest.merge.waived_checks`), so they cannot take the plain
+ * fast-forward path that appends no merge layer.
+ */
+function waiversConsumed(
+  entry: RefEntry,
+  manifest: ProvenanceManifest | undefined,
+  waivers: readonly Waiver[]
+): boolean {
+  const required = entry.policy?.requiredChecks ?? [];
+  if (required.length === 0 || waivers.length === 0) return false;
+  const waived = new Set(waivers.map((w) => w.spec));
+  return required.some(
+    (spec) =>
+      waived.has(spec) &&
+      !(manifest?.checks ?? []).some((c) => c.spec === spec && c.result === 'pass')
+  );
+}
+
 /** Core merge flow; returns an outcome instead of exiting (transport-neutral). */
 export function mergeIntoRef(store: LayerRefStore, init: MergeInit): MergeOutcome {
   const candidateId = store.resolveLayerId ? store.resolveLayerId(init.candidateId) : init.candidateId;
@@ -149,21 +171,25 @@ export function mergeIntoRef(store: LayerRefStore, init: MergeInit): MergeOutcom
   const waivers = init.waivers ?? [];
   const resolver = init.principal ?? 'unknown';
 
-  // Fast path: candidate authored against the ref's current stack.
+  // Fast path: candidate authored against the ref's current stack. A
+  // merge that consumes a waiver falls through to the three-way path so
+  // the waiver is durably recorded on a merge layer.
   if (manifest?.base?.kind === 'stack' && manifest.base.id === computeStackHash(oursIds)) {
-    if (!init.preview) {
-      const failure = checkRefPolicy(entry, manifest, waivers, init.approvedBy);
-      if (failure) return { status: 'policy-failure', reason: failure };
+    if (init.preview) {
+      // Preview of a fast-forward is an empty plan.
+      return {
+        status: 'preview',
+        plan: { autoOps: [], conflicts: [], stats: { touched: 0, autoMerged: 0, conflicting: 0 } },
+        ancestorMatched: true,
+      };
+    }
+    const failure = checkRefPolicy(entry, manifest, waivers, init.approvedBy);
+    if (failure) return { status: 'policy-failure', reason: failure };
+    if (!waiversConsumed(entry, manifest, waivers)) {
       const refLayers = [...oursIds, candidateId];
       store.setRef(init.into, { ...entry, layers: refLayers });
       return { status: 'fast-forward', refLayers, ancestorMatched: true };
     }
-    // Preview of a fast-forward is an empty plan.
-    return {
-      status: 'preview',
-      plan: { autoOps: [], conflicts: [], stats: { touched: 0, autoMerged: 0, conflicting: 0 } },
-      ancestorMatched: true,
-    };
   }
 
   const ancestor = resolveAncestor(store, oursIds, manifest?.base ?? null);

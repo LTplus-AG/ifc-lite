@@ -185,7 +185,6 @@ export async function handleLayerRegistryRequest(
             preview?: boolean;
             resolve?: 'ours' | 'theirs';
             waivers?: Waiver[];
-            approved_by?: string;
             allow_unrelated?: boolean;
           }
         | undefined;
@@ -197,9 +196,18 @@ export async function handleLayerRegistryRequest(
       if (body.preview) init.preview = true;
       if (body.resolve === 'ours' || body.resolve === 'theirs') init.resolve = body.resolve;
       if (Array.isArray(body.waivers)) init.waivers = body.waivers;
-      if (typeof body.approved_by === 'string') init.approvedBy = body.approved_by;
       if (body.allow_unrelated) init.allowUnrelated = true;
       if (principal) init.principal = principal.userId;
+      // `requireHumanApproval` derives from server-verified state — an
+      // approved review object for this (candidate, ref), recorded by the
+      // feedback endpoint with the approver's authenticated identity. A
+      // caller-asserted approved_by body field would let any write-capable
+      // agent bypass the branch protection (unlike the CLI, where the
+      // local store's operator IS the approver).
+      const approval = registry
+        .listReviews()
+        .find((r) => r.layerId === body.candidate && r.into === segments[1] && r.status === 'approved');
+      if (approval?.approvedBy !== undefined) init.approvedBy = approval.approvedBy;
 
       const outcome = mergeIntoRef(registry, init);
       switch (outcome.status) {
@@ -270,7 +278,13 @@ export async function handleLayerRegistryRequest(
       return json(res, 400, { error: 'body must include { decisions: [...] }' });
     }
     review.feedback.push(...body.decisions);
-    if (body.status === 'approved' || body.status === 'changes-requested') review.status = body.status;
+    if (body.status === 'approved' || body.status === 'changes-requested') {
+      review.status = body.status;
+      // Approval identity is server-recorded, never caller-asserted: the
+      // merge endpoint reads it back for requireHumanApproval policies.
+      if (body.status === 'approved') review.approvedBy = principal?.userId ?? 'anonymous';
+      else delete review.approvedBy;
+    }
     registry.putReview(review);
     return json(res, 200, { id: review.id, status: review.status, decision_count: review.feedback.length });
   }

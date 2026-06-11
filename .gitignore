@@ -65,10 +65,15 @@ nul
 .claude/settings.local.json
 
 # Local test models (private, never committed)
-tests/models/local/*
+tests/models/local
 
 # IFC test fixtures are fetched on demand via `pnpm fixtures` and listed in
-# tests/models/manifest.json. They must NOT be committed to the repo.
+# tests/models/manifest.json. They must NOT be committed to the repo. The
+# fixture directories themselves are ignored too: in a worktree they may be
+# machine-local symlinks into the primary checkout.
+tests/models/ara3d
+tests/models/issues
+tests/models/various
 tests/models/**/*.ifc
 tests/models/**/*.IFC
 tests/models/**/*.ifcx

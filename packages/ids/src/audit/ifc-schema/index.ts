@@ -476,23 +476,32 @@ function checkDataTypeMatch(
   // `IfcLabel`) or the canonical IDS template form (`IFCPROPERTYSINGLEVALUE`
   // for kind=`single`, `IFCPROPERTYENUMERATEDVALUE` for kind=`enumeration`,
   // etc.), we don't warn.
+  //
+  // Enumerated properties (PEnum_*) carry no `dataType` in the pset
+  // definitions — their values serialize as IfcLabel, so IFCLABEL is the
+  // canonical IDS dataType for them. Mirrors upstream IdsLib's
+  // `HasDataTypes` (EnumerationPropertyType → ["IFCLABEL"]).
   const declaredUpper = declared.toUpperCase();
-  if (prop.dataType && prop.dataType.toUpperCase() === declaredUpper) return;
+  const expected =
+    prop.dataType ?? (prop.kind === 'enumeration' ? 'IfcLabel' : undefined);
+  if (expected && expected.toUpperCase() === declaredUpper) return;
   const idsTemplate = idsTemplateForKind(prop.kind);
   if (idsTemplate && declaredUpper === idsTemplate) return;
+  // No backing datatype known for this property shape (e.g. table
+  // values, which carry two datatypes we don't model) — skip rather
+  // than guess, like upstream when `HasDataTypes` returns false.
+  if (!expected) return;
   // Upstream IDS-Audit-tool treats this as an error (Report 303 family)
   // — declaring a different dataType than the standard pset specifies is
   // an authoring mistake, not a stylistic warning.
   issues.push({
     severity: 'error',
     code: 'W_IFC_DATATYPE_MISMATCH',
-    message: `${psetName}.${propName} is typed ${
-      prop.dataType ?? prop.kind
-    } in the standard, not ${declared}`,
+    message: `${psetName}.${propName} is typed ${expected} in the standard, not ${declared}`,
     path: `${path}.dataType`,
     facetType: 'property',
     detail: {
-      expected: prop.dataType ?? prop.kind,
+      expected,
       actual: declared,
       property: propName,
     },

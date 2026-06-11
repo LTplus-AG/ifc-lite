@@ -19,7 +19,7 @@ import type { MapConversion } from '@ifc-lite/parser';
 
 import { clearTerrainElevationCache } from '@/lib/geo/terrain-elevation';
 
-export type CesiumDataSource = 'google-photorealistic';
+export type CesiumDataSource = 'google-photorealistic' | 'osm-buildings';
 
 export interface CesiumPlacementDraft {
   eastings: number;
@@ -133,8 +133,8 @@ function saveToStorage(key: string, value: string): void {
 }
 
 function loadDataSource(): CesiumDataSource {
-  // Only Google Photorealistic is supported; upgrade any stale stored value.
-  return 'google-photorealistic';
+  const stored = loadFromStorage(STORAGE_KEY_DATA_SOURCE, 'google-photorealistic');
+  return stored === 'osm-buildings' ? 'osm-buildings' : 'google-photorealistic';
 }
 
 /** Resolve the Cesium ion token: user override > build-time default */

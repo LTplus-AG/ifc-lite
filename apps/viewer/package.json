@@ -48,6 +48,7 @@
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/server-client": "workspace:^",
+    "@ifc-lite/solar": "workspace:^",
     "@ifc-lite/spatial": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
     "@radix-ui/react-alert-dialog": "^1.1.16",

@@ -14,6 +14,7 @@ import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
 import { CesiumPlacementEditor } from './CesiumPlacementEditor';
+import { SolarPanel } from './SolarPanel';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
@@ -1104,6 +1105,8 @@ export function ViewportContainer() {
           storeyElevations={georef.storeyElevations}
         />
       )}
+      {/* Solar sun-path + shadow study panel (self-gates on georeference) */}
+      {georef && <SolarPanel />}
       {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
         <CesiumPlacementEditor
           modelId={georef.sourceModelId}

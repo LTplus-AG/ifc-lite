@@ -47,6 +47,13 @@ pub struct Arrangement {
     pub tris_a: Vec<[Vid; 3]>,
     /// Operand B's conforming sub-triangles.
     pub tris_b: Vec<[Vid; 3]>,
+    /// Total constraint sub-segments the per-triangle re-triangulations could
+    /// not force as edges (`Mesh2d::unrecovered`). Non-zero ⇒ the operands do
+    /// not fully conform along their intersection; centroid classification of
+    /// straddling sub-triangles is unreliable. The N-ary batched difference
+    /// treats this as a hard reject; the binary boolean keeps its historical
+    /// graceful-degrade behavior.
+    pub unrecovered: usize,
     /// Per-sub-triangle (parallel to `tris_a`) flag: this sub-triangle's PARENT
     /// face had a COPLANAR overlap with the other operand — so a sub-triangle on
     /// it may lie on a shared interface plane and needs the [`solid_side`] regime-2
@@ -132,6 +139,8 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     let mut raw_b: Vec<Vec<RawSeg>> = (0..b.len()).map(|_| Vec::new()).collect();
     let mut cop_a: Vec<Vec<Constraint>> = (0..a.len()).map(|_| Vec::new()).collect();
     let mut cop_b: Vec<Vec<Constraint>> = (0..b.len()).map(|_| Vec::new()).collect();
+    let mut pt_a: Vec<Vec<ImplicitPoint>> = (0..a.len()).map(|_| Vec::new()).collect();
+    let mut pt_b: Vec<Vec<ImplicitPoint>> = (0..b.len()).map(|_| Vec::new()).collect();
     let pairs = super::broadphase::candidate_pairs(a, b);
     #[cfg(not(target_arch = "wasm32"))]
     let n_pairs = pairs.len();
@@ -153,7 +162,17 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
                 cop_a[i].extend(coplanar_clip(ta, tb).into_iter().map(|(a, b)| Constraint { a, b }));
                 cop_b[j].extend(coplanar_clip(tb, ta).into_iter().map(|(a, b)| Constraint { a, b }));
             }
-            TriTri::None | TriTri::Point(_) => {}
+            TriTri::Point(p) => {
+                // Tangential touch: BOTH triangles must intern the touch point
+                // as a conformity vertex. The triangle on whose EDGE the point
+                // lies otherwise never splits that edge, while its neighbor
+                // (which sees a full crossing segment ending there) does — a
+                // T-junction that opens the surface (the flush-corner-on-
+                // diagonal family; see `RetriInput::points`).
+                pt_a[i].push(p.clone());
+                pt_b[j].push(p);
+            }
+            TriTri::None => {}
         }
     }
     // 2. seg×seg pre-pass on the segment constraints, then append the coplanar ones
@@ -178,8 +197,11 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     #[cfg(not(target_arch = "wasm32"))]
     let t_build = _ts.elapsed();
     let mut interner = Interner::new();
-    let (tris_a, coplanar_a) = retriangulate_each(a, &ca, &cop_parent_a, &mut interner);
-    let (tris_b, coplanar_b) = retriangulate_each(b, &cb, &cop_parent_b, &mut interner);
+    let mut unrecovered = 0usize;
+    let (tris_a, coplanar_a) =
+        retriangulate_each(a, &ca, &pt_a, &cop_parent_a, &mut interner, &mut unrecovered);
+    let (tris_b, coplanar_b) =
+        retriangulate_each(b, &cb, &pt_b, &cop_parent_b, &mut interner, &mut unrecovered);
     #[cfg(not(target_arch = "wasm32"))]
     if std::env::var("ARRANGE_PROFILE").is_ok() {
         eprintln!(
@@ -193,7 +215,7 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
             tris_b.len(),
         );
     }
-    Arrangement { interner, tris_a, tris_b, coplanar_a, coplanar_b }
+    Arrangement { interner, tris_a, tris_b, coplanar_a, coplanar_b, unrecovered }
 }
 
 /// The conforming arrangement of `n` operand meshes over one shared interner.
@@ -221,6 +243,8 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
         meshes.iter().map(|m| (0..m.len()).map(|_| Vec::new()).collect()).collect();
     let mut cop: Vec<Vec<Vec<Constraint>>> =
         meshes.iter().map(|m| (0..m.len()).map(|_| Vec::new()).collect()).collect();
+    let mut pts: Vec<Vec<Vec<ImplicitPoint>>> =
+        meshes.iter().map(|m| (0..m.len()).map(|_| Vec::new()).collect()).collect();
     // intersect every unordered mesh pair (i<j); push constraints to BOTH.
     for i in 0..n {
         for j in (i + 1)..n {
@@ -240,7 +264,12 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
                             coplanar_clip(tb, ta).into_iter().map(|(a, b)| Constraint { a, b }),
                         );
                     }
-                    TriTri::None | TriTri::Point(_) => {}
+                    TriTri::Point(p) => {
+                        // tangential touch — conformity vertex on both sides
+                        pts[i][ti].push(p.clone());
+                        pts[j][tj].push(p);
+                    }
+                    TriTri::None => {}
                 }
             }
         }
@@ -258,7 +287,9 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
             .collect();
         // `union_all` classifies every sub-triangle against each other mesh via the
         // off-plane `solid_side` probe, so it needs no per-sub coplanar flag here.
-        let (tris, _coplanar) = retriangulate_each(meshes[k], &cons, &cop_parent, &mut interner);
+        let mut _unrecovered = 0usize;
+        let (tris, _coplanar) =
+            retriangulate_each(meshes[k], &cons, &pts[k], &cop_parent, &mut interner, &mut _unrecovered);
         subtris.push(tris);
     }
     MultiArrangement { interner, subtris }
@@ -386,8 +417,10 @@ fn point_via_interner(it: &Interner, v: Vid) -> [f64; 3] {
 fn retriangulate_each(
     tris: &[Tri],
     cons: &[Vec<Constraint>],
+    pts: &[Vec<ImplicitPoint>],
     cop_parent: &[bool],
     it: &mut Interner,
+    unrecovered: &mut usize,
 ) -> (Vec<[Vid; 3]>, Vec<bool>) {
     let mut out = Vec::new();
     let mut coplanar = Vec::new();
@@ -401,11 +434,14 @@ fn retriangulate_each(
             ]
         };
         let before = out.len();
-        if cons[i].is_empty() {
+        let tri_pts = pts.get(i).cloned().unwrap_or_default();
+        if cons[i].is_empty() && tri_pts.is_empty() {
             out.push(passthrough(it));
-        } else if let Some(mesh) =
-            triangulate(&RetriInput { tri: *t, constraints: cons[i].clone() }, it)
-        {
+        } else if let Some(mesh) = triangulate(
+            &RetriInput { tri: *t, constraints: cons[i].clone(), points: tri_pts },
+            it,
+        ) {
+            *unrecovered += mesh.unrecovered;
             out.extend(mesh.tris);
         } else {
             out.push(passthrough(it)); // degenerate triangle — pass through
@@ -462,16 +498,15 @@ fn operand_extent(tris: &[Tri]) -> f64 {
     2.0 * hi + 1.0
 }
 
-/// Is point `p` inside the closed mesh `tris`? Exact ray-cast parity to a far
-/// point (`far_l` past the extent) along a fixed generic direction; each crossing
-/// tested by the exact predicate above.
-fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
-    // Generic direction: no two components near-equal and no pairwise ratio near a
-    // simple architectural slope (1:1 roofs, axis planes). The previous direction
-    // had x≈y and dz/dx≈1 — nearly PARALLEL to 45° roof slopes/ridge edges, so a
-    // roof-clipped wall's ray grazed the roof and edge-crossings (rejected, not
-    // counted) miscounted parity → the sub-ridge gable triangle was wrongly judged
-    // inside the cutter and removed (the "missing wall" over-clip).
+/// The fixed generic ray direction for parity casts. No two components
+/// near-equal and no pairwise ratio near a simple architectural slope (1:1
+/// roofs, axis planes). The previous direction had x≈y and dz/dx≈1 — nearly
+/// PARALLEL to 45° roof slopes/ridge edges, so a roof-clipped wall's ray grazed
+/// the roof and edge-crossings (rejected, not counted) miscounted parity → the
+/// sub-ridge gable triangle was wrongly judged inside the cutter and removed
+/// (the "missing wall" over-clip). Shared by [`point_inside`] and the
+/// per-component AABB ray prefilter so they can never disagree.
+fn ray_dir() -> [f64; 3] {
     #[allow(unused_mut)]
     let mut dir = [0.301_511_3, 0.557_328_1, 0.773_890_1];
     #[cfg(not(target_arch = "wasm32"))]
@@ -481,6 +516,14 @@ fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
             dir = [v[0], v[1], v[2]];
         }
     }
+    dir
+}
+
+/// Is point `p` inside the closed mesh `tris`? Exact ray-cast parity to a far
+/// point (`far_l` past the extent) along a fixed generic direction; each crossing
+/// tested by the exact predicate above.
+fn point_inside(p: [f64; 3], tris: &[Tri], far_l: f64) -> bool {
+    let dir = ray_dir();
     let far = [p[0] + dir[0] * far_l, p[1] + dir[1] * far_l, p[2] + dir[2] * far_l];
     tris.iter().filter(|t| exact_seg_hits_tri(p, far, t)).count() % 2 == 1
 }
@@ -651,6 +694,142 @@ fn solid_side(c: [f64; 3], dir: [f64; 3], other: &[Tri], far_l: f64) -> (bool, b
     (point_inside(p_plus, other, far_l), point_inside(p_minus, other, far_l))
 }
 
+/// The B operand as PAIRWISE-DISJOINT closed components (ITEM-2 disjoint-cutter
+/// batching). The binary boolean is the 1-component special case. Classification
+/// against the union of disjoint closed solids decomposes per component —
+/// "inside the union" ⇔ "inside exactly one component" — which (a) caps the ray
+/// parity scan at the component the ray can actually reach (the per-component
+/// AABB prefilter removes the O(|subA|·Σ|B_k|) blowup of a soup-wide cast), and
+/// (b) structurally eliminates cross-component graze-parity fragility (a graze
+/// on a FAR component can no longer flip the verdict for a near one).
+struct BComponents<'a> {
+    comps: &'a [&'a [Tri]],
+    /// Per-component AABB, inflated by `pad` (conservative for both the ray
+    /// prefilter and the coincident-face band test).
+    aabbs: Vec<([f64; 3], [f64; 3])>,
+    /// Per-component ray-cast far length (`operand_extent`), exactly as the
+    /// binary path computes it for its single operand.
+    exts: Vec<f64>,
+}
+
+impl<'a> BComponents<'a> {
+    fn new(comps: &'a [&'a [Tri]]) -> Self {
+        let exts: Vec<f64> = comps.iter().map(|c| operand_extent(c)).collect();
+        // Inflation: ≥ 2× the near-coplanar band envelope (`8·SNAP_GRID`,
+        // widened far from origin), so a centroid within the coincident-face
+        // band of a component face is always inside that component's inflated
+        // AABB; also dwarfs any f64 rounding in the slab test. Deterministic
+        // FMA-free f64.
+        let max_ext = exts.iter().cloned().fold(1.0f64, f64::max);
+        let pad = 4.0 * (8.0 * SNAP_GRID).max(max_ext * (1.0 / 4_194_304.0));
+        let aabbs = comps
+            .iter()
+            .map(|c| {
+                let mut lo = [f64::MAX; 3];
+                let mut hi = [f64::MIN; 3];
+                for t in c.iter() {
+                    for v in t {
+                        for k in 0..3 {
+                            lo[k] = lo[k].min(v[k]);
+                            hi[k] = hi[k].max(v[k]);
+                        }
+                    }
+                }
+                for k in 0..3 {
+                    lo[k] -= pad;
+                    hi[k] += pad;
+                }
+                (lo, hi)
+            })
+            .collect();
+        Self { comps, aabbs, exts }
+    }
+
+    /// Conservative "could the parity segment from `p` hit component `k`?" —
+    /// a slab test of `[p, p + dir·ext_k]` against the inflated AABB. Sound:
+    /// the component's triangles lie inside the (un-inflated) AABB, so a
+    /// segment that misses the inflated AABB has parity 0 there.
+    fn ray_may_hit(&self, k: usize, p: [f64; 3]) -> bool {
+        let dir = ray_dir();
+        let far_l = self.exts[k];
+        let q = [p[0] + dir[0] * far_l, p[1] + dir[1] * far_l, p[2] + dir[2] * far_l];
+        let (lo, hi) = (&self.aabbs[k].0, &self.aabbs[k].1);
+        let (mut t0, mut t1) = (0.0f64, 1.0f64);
+        for i in 0..3 {
+            let d = q[i] - p[i];
+            if d == 0.0 {
+                if p[i] < lo[i] || p[i] > hi[i] {
+                    return false;
+                }
+                continue;
+            }
+            let (a, b) = ((lo[i] - p[i]) / d, (hi[i] - p[i]) / d);
+            let (a, b) = if a <= b { (a, b) } else { (b, a) };
+            t0 = t0.max(a);
+            t1 = t1.min(b);
+            if t0 > t1 {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[inline]
+    fn point_in_aabb(&self, k: usize, p: [f64; 3]) -> bool {
+        let (lo, hi) = (&self.aabbs[k].0, &self.aabbs[k].1);
+        (0..3).all(|i| p[i] >= lo[i] && p[i] <= hi[i])
+    }
+
+    /// Is `p` inside the union of the components? (Pairwise-disjoint closed
+    /// solids ⇒ inside exactly one ⇒ a per-component exact ray parity, each
+    /// prefiltered by its AABB.)
+    fn inside(&self, p: [f64; 3]) -> bool {
+        self.comps
+            .iter()
+            .enumerate()
+            .any(|(k, comp)| self.ray_may_hit(k, p) && point_inside(p, comp, self.exts[k]))
+    }
+
+    /// Regime-1 coincident-face probe across the components: the EXACT
+    /// [`on_surface_normal`] on every AABB-near component first, then the
+    /// snap-band [`near_on_surface_normal`] analogue (same priority order as
+    /// the binary path). Disjointness makes at most one component eligible.
+    fn surface_normal(&self, c: [f64; 3]) -> Option<[f64; 3]> {
+        for (k, comp) in self.comps.iter().enumerate() {
+            if self.point_in_aabb(k, c) {
+                if let Some(n) = on_surface_normal(c, comp) {
+                    return Some(n);
+                }
+            }
+        }
+        for (k, comp) in self.comps.iter().enumerate() {
+            if self.point_in_aabb(k, c) {
+                if let Some(n) = near_on_surface_normal(c, comp) {
+                    return Some(n);
+                }
+            }
+        }
+        None
+    }
+
+    /// Multi-component [`solid_side`]: probe an infinitesimal step to each side
+    /// of the face along `dir` and test the union-inside on each probe. The
+    /// step is sized to the LARGEST component extent (== the binary behavior
+    /// for one component).
+    fn solid_side(&self, c: [f64; 3], dir: [f64; 3]) -> (bool, bool) {
+        let len = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
+        if len == 0.0 {
+            return (false, false);
+        }
+        let max_ext = self.exts.iter().cloned().fold(1.0f64, f64::max);
+        let step = max_ext * (1.0 / 1_048_576.0);
+        let u = [dir[0] / len * step, dir[1] / len * step, dir[2] / len * step];
+        let p_plus = [c[0] + u[0], c[1] + u[1], c[2] + u[2]];
+        let p_minus = [c[0] - u[0], c[1] - u[1], c[2] - u[2]];
+        (self.inside(p_plus), self.inside(p_minus))
+    }
+}
+
 /// Regime-2 classifier (see [`boolean_vids`]): a sub-triangle whose centroid `c`
 /// lies on the OTHER solid's boundary surface — without a COINCIDENT face there
 /// (regime 1 already handled that), so the on-plane centroid ray-cast is undefined.
@@ -722,8 +901,21 @@ fn on_interface_keep(
 /// interface shares the unordered vertex set but has OPPOSITE winding, so it never
 /// collides; both its copies are dissolved by regime 2.)
 fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid; 3]> {
+    boolean_vids_components(arr, a, &BComponents::new(&[b]), op)
+}
+
+/// [`boolean_vids`] with the B operand as pairwise-disjoint closed components
+/// (see [`BComponents`]). For a single component this is verdict-identical to
+/// the historical binary classifier — the AABB gates are pure prefilters — so
+/// the pinned boolean manifest is unperturbed.
+fn boolean_vids_components(
+    arr: &Arrangement,
+    a: &[Tri],
+    bc: &BComponents,
+    op: BoolOp,
+) -> Vec<[Vid; 3]> {
     use std::collections::HashSet;
-    let (ext_a, ext_b) = (operand_extent(a), operand_extent(b));
+    let ext_a = operand_extent(a);
     let dedup = matches!(op, BoolOp::Union | BoolOp::Intersection);
     let mut a_kept: HashSet<[Vid; 3]> = HashSet::new();
     let mut out = Vec::new();
@@ -738,22 +930,34 @@ fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid
         // ungated (like the exact one) because a coincident-shared-face DROP/keep is
         // unconditionally correct, and its centroid-inside + µm-perp requirements
         // never match a transversal cut face (every pinned box−box manifest face).
-        if let Some(n_other) = on_surface_normal(c, b).or_else(|| near_on_surface_normal(c, b)) {
+        if let Some(n_other) = bc.surface_normal(c) {
             let co_oriented = dot3(tri_normal(arr, tri), n_other) > 0.0;
             keep = match op {
                 BoolOp::Union | BoolOp::Intersection => co_oriented,
                 BoolOp::Difference => !co_oriented,
             };
         } else if let Some(k) = cop_parent
-            .then(|| on_interface_keep(arr, tri, c, b, ext_b, op, true))
+            .then(|| {
+                // regime 2 (only on coplanar-overlap parents): shared interface
+                // plane, no coincident face → solid-side probe (see
+                // `on_interface_keep` for the keep table rationale).
+                let n = tri_normal(arr, tri);
+                let (op_plus, op_minus) = bc.solid_side(c, n);
+                if op_plus == op_minus {
+                    return None; // strictly in/out — the plain ray-cast decides
+                }
+                Some(match op {
+                    BoolOp::Union => !op_plus,
+                    BoolOp::Intersection => op_minus,
+                    BoolOp::Difference => !op_minus,
+                })
+            })
             .flatten()
         {
-            // regime 2 (only on coplanar-overlap parents): shared interface plane,
-            // no coincident face → solid-side probe.
             keep = k;
         } else {
             // regime 3: strictly off-plane → centroid ray-cast (original)
-            let inside_b = point_inside(c, b, ext_b);
+            let inside_b = bc.inside(c);
             keep = match op {
                 BoolOp::Intersection => inside_b,
                 _ => !inside_b,
@@ -826,6 +1030,47 @@ pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
         super::prof_add(t_arr.as_secs_f64(), (t_cls - t_arr).as_secs_f64(), (t0.elapsed() - t_cls).as_secs_f64());
     }
     out
+}
+
+/// `a − (∪ comps)` for PAIRWISE-DISJOINT, per-component-closed, OUTWARD-wound
+/// cutter components, computed in ONE conforming arrangement (ITEM-2
+/// disjoint-cutter batching).
+///
+/// Soundness: `arrange` only intersects A×B pairs, and disjoint B components
+/// have no B×B intersections to miss; classification decomposes per component
+/// (`BComponents`). The #2176 lesson is a PRECONDITION here: every component
+/// must be closed and outward-wound on its own — the caller (`mesh_bridge::
+/// subtract_many`) orients each component before concatenation, and the router
+/// only admits per-component-watertight cutters to a batch.
+///
+/// vs. sequential per-cutter subtraction this avoids re-arranging the (growing)
+/// host once per cutter — each intermediate round-trip through f32 + the snap
+/// grid re-jitters carve vertices off shared planes, so cut N+1 re-cracks what
+/// cut N reconciled (the 24-void TUN32 walls' compounding open edges) — and is
+/// ~N× cheaper on N box cutters.
+pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
+    if comps.is_empty() {
+        return Some(a.to_vec());
+    }
+    let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
+    let arr = arrange(a, &b_all);
+    // Hard conformity gate (unlike the binary `boolean`'s graceful degrade):
+    // an unrecovered constraint means some sub-triangle STRADDLES a cutter
+    // boundary and its centroid classification can silently over/under-cut
+    // (the #559171 batched-door family: the jamb never carved into the back
+    // face ⇒ −0.43 m³ and an open rim). The caller falls back to sequential
+    // per-cutter subtraction, which carves few constraints per arrangement and
+    // avoids the degenerate channel.
+    if arr.unrecovered > 0 {
+        return None;
+    }
+    let bc = BComponents::new(comps);
+    let vids = boolean_vids_components(&arr, a, &bc, BoolOp::Difference);
+    Some(
+        vids.into_iter()
+            .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
+            .collect(),
+    )
 }
 
 #[inline]

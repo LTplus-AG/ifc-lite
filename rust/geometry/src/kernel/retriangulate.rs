@@ -65,6 +65,14 @@ pub struct Constraint {
 pub struct RetriInput {
     pub tri: [[f64; 3]; 3],
     pub constraints: Vec<Constraint>,
+    /// Isolated CONFORMITY VERTICES (no segment): a `TriTri::Point` tangential
+    /// touch of the other operand. When such a point lies exactly ON one of
+    /// `T`'s edges, the NEIGHBOR triangle sees a full crossing SEGMENT ending
+    /// at that point and splits the shared edge there — `T` must split it too
+    /// or the surfaces stop conforming (a T-junction ⇒ exact-coordinate open
+    /// edges: the flush-corner-on-diagonal family, e.g. a window box whose
+    /// corner lands on the host face triangle's diagonal).
+    pub points: Vec<ImplicitPoint>,
 }
 
 #[inline]
@@ -122,6 +130,8 @@ pub struct Canonical {
     /// Constraint segments, each ordered `lo ≤ hi` by lex-rank; the list itself
     /// is lex-sorted and deduplicated.
     pub segments: Vec<(Vid, Vid)>,
+    /// Isolated conformity vertices (tangential touches), lex-sorted, deduped.
+    pub points: Vec<Vid>,
 }
 
 fn lex_cmp(it: &Interner, a: Vid, b: Vid) -> Ordering {
@@ -161,7 +171,10 @@ pub fn canonicalize(input: &RetriInput, interner: &mut Interner) -> Canonical {
         lex_cmp(interner, a0, b0).then_with(|| lex_cmp(interner, a1, b1))
     });
     segments.dedup();
-    Canonical { corners, segments }
+    let mut points: Vec<Vid> = input.points.iter().map(|p| interner.intern(p.clone())).collect();
+    points.sort_by(|&a, &b| lex_cmp(interner, a, b));
+    points.dedup();
+    Canonical { corners, segments, points }
 }
 
 /// A sub-triangle of `T` (interned Vids), oriented to match `w0`.
@@ -172,6 +185,18 @@ pub struct Mesh2d {
     pub tris: Vec<SubTri>,
     pub axis: DropAxis,
     pub w0: Sign,
+    /// Constraint sub-segments the enforcement fixed point could NOT force as
+    /// edges (degenerate channels the pocket rebuild bails on). Non-zero ⇒ the
+    /// triangulation does not fully CONFORM to the other operand: sub-triangles
+    /// may straddle an intersection line and their centroid classification is
+    /// then unreliable. The batched void path treats this as a hard reject
+    /// (fall back to sequential cuts); the binary path keeps its historical
+    /// graceful-degrade behavior.
+    pub unrecovered: usize,
+    /// Set by [`recover_subsegment`] whenever a recovery attempt could not
+    /// force its edge (any bail path). Gates the final conformity audit in
+    /// [`triangulate`] so the clean common path pays nothing for it.
+    pub audit_needed: bool,
 }
 
 enum Locate {
@@ -259,12 +284,14 @@ pub fn triangulate_points(input: &RetriInput, interner: &mut Interner) -> Option
     let canon = canonicalize(input, interner);
     // The initial triangle is T's corners in input order; by Phase A its
     // orientation is exactly w0.
-    let mut mesh = Mesh2d { tris: vec![canon.corners], axis, w0 };
+    let mut mesh =
+        Mesh2d { tris: vec![canon.corners], axis, w0, unrecovered: 0, audit_needed: false };
     let mut pts: BTreeSet<Vid> = BTreeSet::new();
     for &(lo, hi) in &canon.segments {
         pts.insert(lo);
         pts.insert(hi);
     }
+    pts.extend(canon.points.iter().copied());
     for &c in &canon.corners {
         pts.remove(&c);
     }
@@ -383,6 +410,13 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
     if edge_exists(mesh, a, b) {
         return;
     }
+    // Pessimistically request the final conformity audit; restored below only
+    // when this recovery demonstrably forced the edge (a PREVIOUS attempt's
+    // request must survive). Every bail path (empty or degenerate channel,
+    // non-star swallowed endpoint, earcut failure) leaves it set.
+    let audit_before = mesh.audit_needed;
+    mesh.audit_needed = true;
+
     let (axis, w0) = (mesh.axis, mesh.w0);
     // open segment (a,b) properly crosses open edge (u,v)?
     let crosses = |u: Vid, v: Vid| {
@@ -413,29 +447,42 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
             next.insert(u, v);
         }
     }
-    // Walk the boundary loop from `a`. A degenerate channel (the segment crosses a
+    // Walk the boundary loop. A degenerate channel (the segment crosses a
     // non-simply-connected region, or the boundary branches) yields a non-traversable
     // loop — bail gracefully (leave the constraint unrecovered) rather than panic.
     // The triangulation stays valid; only this one sub-segment isn't forced as an edge.
-    let mut loop_v = vec![a];
-    let mut cur = match next.get(&a) {
+    //
+    // The walk starts at `a` when `a` is on the boundary; otherwise at the
+    // lexicographically-least boundary vertex (deterministic — Vids and the
+    // BTreeMap order are platform-stable). `a`/`b` can legitimately be channel-
+    // INTERIOR vertices: a long skinny fan triangle incident to the endpoint can
+    // re-cross the open segment far from the endpoint, putting the endpoint's
+    // whole fan in the channel (the 559171 back-face door jamb — the endpoint
+    // is then "swallowed" exactly like 552611's corner, but the a–b pocket
+    // split can't run). See the (ia, ib) match below for that case.
+    let start = if next.contains_key(&a) {
+        a
+    } else {
+        match next.keys().next() {
+            Some(&v) => v,
+            None => return,
+        }
+    };
+    let mut loop_v = vec![start];
+    let mut cur = match next.get(&start) {
         Some(&v) => v,
         None => return,
     };
-    while cur != a {
+    while cur != start {
         loop_v.push(cur);
         cur = match next.get(&cur) {
             Some(&v) => v,
             None => return,
         };
         if loop_v.len() > next.len() + 1 {
-            return; // cycle that never returns to `a` — degenerate
+            return; // cycle that never returns to the start — degenerate
         }
     }
-    let ib = match loop_v.iter().position(|&x| x == b) {
-        Some(i) => i,
-        None => return,
-    };
     // Vertices STRICTLY INTERIOR to the channel (every incident triangle is in
     // the channel, so none of their edges reach the boundary loop). This happens
     // when the segment passes so close to a vertex that it properly crosses ALL
@@ -456,9 +503,64 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
         .into_iter()
         .collect();
     lost.sort_by(|&x, &y| lex_cmp(it, x, y)); // deterministic re-insert order
-    let arc1: Vec<Vid> = loop_v[0..=ib].to_vec(); // a .. b
-    let mut arc2: Vec<Vid> = loop_v[ib..].to_vec(); // b .. end
-    arc2.push(a); // .. a
+    let ia = loop_v.iter().position(|&x| x == a);
+    let ib = loop_v.iter().position(|&x| x == b);
+    // The replacement triangles for the channel region: either two earcut
+    // pocket rings split along a–b (the normal case), or — when a constraint
+    // ENDPOINT is itself channel-interior — a star fan from that endpoint.
+    let mut new_tris: Vec<[Vid; 3]> = Vec::new();
+    let mut fan_hub: Option<Vid> = None;
+    match (ia, ib) {
+        (Some(ia), Some(ib)) => {
+            // Both endpoints on the boundary: rotate the loop to start at `a`,
+            // split at `b` into the two pocket rings — after the earcut `a–b`
+            // is a shared edge of both pockets.
+            let n = loop_v.len();
+            let rot: Vec<Vid> = (0..n).map(|k| loop_v[(ia + k) % n]).collect();
+            let jb = (ib + n - ia) % n;
+            let arc1: Vec<Vid> = rot[0..=jb].to_vec(); // a .. b
+            let mut arc2: Vec<Vid> = rot[jb..].to_vec(); // b .. end
+            arc2.push(a); // .. a
+            for ring in [arc1, arc2] {
+                if ring.len() >= 3 {
+                    let oriented = orient_ring(it, ring, axis, w0);
+                    new_tris.extend(earcut(it, &oriented, axis, w0));
+                }
+            }
+        }
+        _ => {
+            // A constraint endpoint is channel-INTERIOR (swallowed): a long
+            // skinny fan triangle incident to the endpoint re-crosses the open
+            // segment far away, so the endpoint's entire fan is in the channel
+            // and the a–b pocket split can't run. Bailing here (the pre-fix
+            // behavior) left sub-triangles STRADDLING the unrecovered
+            // constraint, whose centroids misclassify — the disjoint-cutter
+            // over-cut family (#559171: the door jamb never carved into the
+            // back face ⇒ −0.43 m³ + 14 open edges). When the channel region
+            // is STAR-SHAPED from the swallowed endpoint (every boundary edge
+            // subtends a strictly-w0 triangle — the typical skinny-fan case),
+            // re-triangulate it as the fan from that endpoint: the fan
+            // contains the edge from the endpoint to EVERY boundary vertex,
+            // including the other constraint endpoint ⇒ (a,b) is recovered in
+            // THIS pass. Otherwise rebuild the region as one earcut ring and
+            // let the fixed-point loop retry.
+            let inner = if ia.is_none() { a } else { b };
+            let oriented = orient_ring(it, loop_v.clone(), axis, w0);
+            let n = oriented.len();
+            let star = !loop_set.contains(&inner)
+                && (0..n).all(|k| {
+                    orient2d_v(it, inner, oriented[k], oriented[(k + 1) % n], axis) == w0
+                });
+            if star {
+                for k in 0..n {
+                    new_tris.push([inner, oriented[k], oriented[(k + 1) % n]]);
+                }
+                fan_hub = Some(inner);
+            } else {
+                new_tris.extend(earcut(it, &oriented, axis, w0));
+            }
+        }
+    }
     mesh.tris = mesh
         .tris
         .iter()
@@ -466,14 +568,15 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
         .filter(|(i, _)| !channel_set.contains(i))
         .map(|(_, t)| *t)
         .collect();
-    for ring in [arc1, arc2] {
-        if ring.len() >= 3 {
-            let oriented = orient_ring(it, ring, axis, w0);
-            mesh.tris.extend(earcut(it, &oriented, axis, w0));
-        }
-    }
+    mesh.tris.extend(new_tris);
     for v in lost {
+        if Some(v) == fan_hub {
+            continue; // already a vertex of every fan triangle
+        }
         insert_point(mesh, it, v);
+    }
+    if edge_exists(mesh, a, b) {
+        mesh.audit_needed = audit_before; // forced — THIS attempt needs no audit
     }
 }
 
@@ -518,12 +621,14 @@ fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
 pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d> {
     let (axis, w0) = projection_axis(&input.tri)?;
     let canon = canonicalize(input, interner);
-    let mut mesh = Mesh2d { tris: vec![canon.corners], axis, w0 };
+    let mut mesh =
+        Mesh2d { tris: vec![canon.corners], axis, w0, unrecovered: 0, audit_needed: false };
     let mut pts: BTreeSet<Vid> = BTreeSet::new();
     for &(lo, hi) in &canon.segments {
         pts.insert(lo);
         pts.insert(hi);
     }
+    pts.extend(canon.points.iter().copied());
     for &c in &canon.corners {
         pts.remove(&c);
     }
@@ -543,13 +648,52 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
     // coplanar ones — so non-convergence would leave at most an unrecovered
     // constraint, the pre-existing graceful-bail behavior). Purely a function
     // of exact predicates ⇒ deterministic, byte-identical native==wasm.
+    let mut converged = false;
     for _pass in 0..4 {
         let before = mesh.tris.clone();
         for &(s, t) in &canon.segments {
             enforce_constraint(&mut mesh, interner, s, t);
         }
         if mesh.tris == before {
+            converged = true;
             break;
+        }
+    }
+    if !converged {
+        // Pass-cap exit: the LAST pass's rebuilds may have broken an edge that
+        // was forced earlier without any later recover attempt re-flagging it,
+        // so the audit-skip soundness argument doesn't hold — audit always.
+        mesh.audit_needed = true;
+    }
+    // Count the constraint sub-segments that stayed unrecovered (see
+    // `Mesh2d::unrecovered`). Same chain decomposition as `enforce_constraint`.
+    // Gated on `audit_needed`: only triangulations where some recovery attempt
+    // bailed pay for the audit — the clean common path skips it entirely.
+    if !mesh.audit_needed {
+        return Some(mesh);
+    }
+    for &(cs, ct) in &canon.segments {
+        let verts: BTreeSet<Vid> = mesh.tris.iter().flatten().copied().collect();
+        let mut on_seg: Vec<Vid> = verts
+            .into_iter()
+            .filter(|&v| {
+                v != cs
+                    && v != ct
+                    && orient2d_v(interner, cs, ct, v, axis) == Sign::Zero
+                    && between(interner, cs, ct, v)
+            })
+            .collect();
+        on_seg.sort_by(|&x, &y| lex_cmp(interner, x, y));
+        if cmp_lex_v(interner, cs, ct) == Sign::Positive {
+            on_seg.reverse();
+        }
+        let mut chain = vec![cs];
+        chain.extend(on_seg);
+        chain.push(ct);
+        for w in chain.windows(2) {
+            if !edge_exists(&mesh, w[0], w[1]) {
+                mesh.unrecovered += 1;
+            }
         }
     }
     // Deliberate trade-off: return Some even if a constraint stayed unrecovered —
@@ -621,7 +765,7 @@ pub fn retriangulation_manifest() -> u64 {
         Constraint { a: tpi, b: x([2.0, 6.0, 0.0]) },
         Constraint { a: x([5.0, 1.0, 0.0]), b: lpi },
     ];
-    triangulation_topology_hash(&RetriInput { tri: t, constraints: cons })
+    triangulation_topology_hash(&RetriInput { tri: t, constraints: cons, points: Vec::new() })
 }
 
 #[cfg(test)]
@@ -671,7 +815,7 @@ mod tests {
         let c2 = Constraint { a: lpi, b: e([3., 0., 0.]) };
         let materialise = |cons: Vec<Constraint>| {
             let mut it = Interner::new();
-            let canon = canonicalize(&RetriInput { tri: t, constraints: cons }, &mut it);
+            let canon = canonicalize(&RetriInput { tri: t, constraints: cons, points: Vec::new() }, &mut it);
             canon
                 .segments
                 .iter()
@@ -704,7 +848,7 @@ mod tests {
             Constraint { a: e([1., 1., 0.]), b: e([4., 1., 0.]) },
         ];
         let mut it = Interner::new();
-        let mesh = triangulate_points(&RetriInput { tri: t, constraints: cons }, &mut it).unwrap();
+        let mesh = triangulate_points(&RetriInput { tri: t, constraints: cons, points: Vec::new() }, &mut it).unwrap();
         // every sub-triangle is oriented w0 (none flipped or degenerate)
         for &tri in &mesh.tris {
             assert_eq!(
@@ -746,7 +890,7 @@ mod tests {
         let c2 = Constraint { a: e([3., 1., 0.]), b: e([1., 3., 0.]) };
         let topo = |cons: Vec<Constraint>| {
             let mut it = Interner::new();
-            let mesh = triangulate_points(&RetriInput { tri: t, constraints: cons }, &mut it).unwrap();
+            let mesh = triangulate_points(&RetriInput { tri: t, constraints: cons, points: Vec::new() }, &mut it).unwrap();
             let mut tris: Vec<_> = mesh
                 .tris
                 .iter()
@@ -832,7 +976,13 @@ mod tests {
         let c = it.intern(e([2., 2., 0.]));
         let d = it.intern(e([0., 2., 0.]));
         // a quad split by the diagonal a–c
-        let mut mesh = Mesh2d { tris: vec![[a, b, c], [a, c, d]], axis: DropAxis::Z, w0: Sign::Positive };
+        let mut mesh = Mesh2d {
+            tris: vec![[a, b, c], [a, c, d]],
+            axis: DropAxis::Z,
+            w0: Sign::Positive,
+            unrecovered: 0,
+            audit_needed: false,
+        };
         let pt = |v: Vid| point_of(it.get(v));
         let origin = point_of(&e([0., 0., 0.]));
         let ring = [a, b, c, d];
@@ -877,7 +1027,7 @@ mod tests {
             Constraint { a: e([3., 3., 0.]), b: e([1., 3., 0.]) },
         ];
         let mut it = Interner::new();
-        let mesh = triangulate(&RetriInput { tri: t, constraints: cons.clone() }, &mut it).unwrap();
+        let mesh = triangulate(&RetriInput { tri: t, constraints: cons.clone(), points: Vec::new() }, &mut it).unwrap();
         // intern everything we need (mutable) BEFORE the read-only checks
         let cverts: Vec<(Vid, Vid)> =
             cons.iter().map(|c| (it.intern(c.a.clone()), it.intern(c.b.clone()))).collect();

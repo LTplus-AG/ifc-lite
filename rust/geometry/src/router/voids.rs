@@ -98,6 +98,35 @@ fn opening_mesh_thinnest_axis_dir(opening_mesh: &Mesh) -> Vector3<f64> {
     )
 }
 
+/// Closed-surface check on exact f32 bit coords: every directed edge paired,
+/// no degenerate edges. The #2176 lesson — only per-component-watertight solid
+/// cutters may join a batched group; an open component poisons the whole
+/// group's ray parity (ITEM-2 batch admission).
+fn mesh_is_closed_exact(m: &Mesh) -> bool {
+    use std::collections::HashMap;
+    let key = |i: u32| {
+        let b = i as usize * 3;
+        (
+            m.positions[b].to_bits(),
+            m.positions[b + 1].to_bits(),
+            m.positions[b + 2].to_bits(),
+        )
+    };
+    let mut edges: HashMap<_, i64> = HashMap::new();
+    for t in m.indices.chunks_exact(3) {
+        let k = [key(t[0]), key(t[1]), key(t[2])];
+        for (u, v) in [(0usize, 1usize), (1, 2), (2, 0)] {
+            if k[u] == k[v] {
+                return false; // degenerate edge
+            }
+            *edges.entry((k[u], k[v])).or_insert(0) += 1;
+            *edges.entry((k[v], k[u])).or_insert(0) -= 1;
+        }
+    }
+    !m.indices.is_empty() && edges.values().all(|&c| c == 0)
+}
+
+
 /// Classification of an opening for void subtraction.
 #[derive(Clone)]
 enum OpeningType {
@@ -1076,7 +1105,240 @@ impl GeometryRouter {
         let all_openings: Vec<&OpeningType> =
             synth_rect.iter().chain(non_rect_openings.iter().copied()).collect();
 
-        for opening in &all_openings {
+        // DISJOINT-CUTTER BATCHING (ITEM-2): group cutters whose pad-inflated
+        // AABBs are pairwise disjoint and subtract each group in ONE conforming
+        // arrangement (`ClippingProcessor::subtract_mesh_many`). Sequential
+        // per-opening subtraction re-arranges the whole (growing) host once per
+        // cutter, and each intermediate f64→f32→snap round-trip re-jitters
+        // carve vertices off shared planes so cut N+1 re-cracks what cut N
+        // reconciled — the 24-void TUN32 walls' compounding open edges and the
+        // 16-void slab's ~3.5 s cost. Batching admits only openings that pass
+        // the SAME guards as the sequential loop plus per-component
+        // watertightness (#2176: an open component poisons the group's ray
+        // parity); per-component outward orientation happens inside
+        // `mesh_bridge::subtract_many`. Singletons and any group whose batched
+        // cut fails its guards — or the kernel's conformity gate:
+        // `subtract_mesh_many` rejects a group whose N-ary arrangement left an
+        // unrecovered constraint — stay unconsumed and fall through to the
+        // per-opening sequential loop below with its full #635 fallback /
+        // engulf / redundant-void machinery.
+        let mut batch_consumed: Vec<bool> = vec![false; all_openings.len()];
+        // Disjoint groups of opening indices (len ≥ 2 only); each is cut
+        // INLINE at its first member's position in the sequential loop below,
+        // so the relative order of batched vs sequential cutters matches the
+        // pure sequential pass — only the order WITHIN a group (mutually
+        // disjoint cutters, the provably order-free case) is collapsed.
+        let mut batch_groups: Vec<Vec<(usize, Mesh)>> = Vec::new();
+        let mut batch_group_of: FxHashMap<usize, usize> = FxHashMap::default();
+        // Set on every successful cut; while false, a group's admission-time
+        // extended cutters are still valid and reused verbatim.
+        let mut host_mutated = false;
+        // `VOID_BATCH_OFF` is the ops/debug escape hatch (same pattern as
+        // `CONSOLIDATE_OFF` / `WELD_OFF`): it forces the pure per-opening
+        // sequential path.
+        if all_openings.len() >= 2 && std::env::var("VOID_BATCH_OFF").is_err() {
+            // Inflation pad: ≥ 2×(promote band 8·2⁻¹⁶ ≈ 122 µm + snap radius);
+            // 1 mm is conservative and far below any real opening separation.
+            // Touching/overlapping cutters land in DIFFERENT groups, cut in
+            // sequence — overlap degrades gracefully to sequential behavior.
+            const BATCH_PAD: f64 = 1.0e-3;
+            struct Cand {
+                idx: usize,
+                /// The admission-time extended cutter (host PRE-cut). Reused at
+                /// cut time while the host is still unmutated — the common case
+                /// (groups are cut at their FIRST member, usually before any
+                /// sequential cut) — so extension isn't paid twice.
+                mesh: Mesh,
+                lo: [f64; 3],
+                hi: [f64; 3],
+            }
+            let mut cands: Vec<Cand> = Vec::new();
+            for (idx, opening) in all_openings.iter().enumerate() {
+                let norm: Option<(&Mesh, Option<Vector3<f64>>)> = match **opening {
+                    OpeningType::Rectangular(..) => None,
+                    OpeningType::DiagonalRectangular(ref m, ref f) => Some((m, Some(f.depth))),
+                    OpeningType::NonRectangular(ref m, _, _, ref d) => Some((m, *d)),
+                };
+                let Some((opening_mesh, extrusion_dir)) = norm else { continue };
+                // Same admission guards as the sequential loop.
+                let opening_valid = !opening_mesh.is_empty()
+                    && opening_mesh.positions.iter().all(|&v| v.is_finite())
+                    && opening_mesh.positions.len() >= 9;
+                if !opening_valid {
+                    continue;
+                }
+                let (result_min, result_max) = result.bounds();
+                let (omn, omx) = opening_mesh.bounds();
+                let no_overlap = omx.x < result_min.x
+                    || omn.x > result_max.x
+                    || omx.y < result_min.y
+                    || omn.y > result_max.y
+                    || omx.z < result_min.z
+                    || omn.z > result_max.z;
+                if no_overlap {
+                    continue;
+                }
+                let open_vol = (omx.x - omn.x) as f64
+                    * (omx.y - omn.y) as f64
+                    * (omx.z - omn.z) as f64;
+                if open_vol < MIN_OPENING_VOLUME {
+                    continue;
+                }
+                let depth_dir = extrusion_dir
+                    .filter(|d| d.norm() > NORMALIZE_EPSILON)
+                    .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
+                let ext =
+                    Self::extend_opening_mesh_through_host(opening_mesh, &result, depth_dir);
+                // #2176: only per-component-watertight solids may join a group.
+                if !mesh_is_closed_exact(&ext) {
+                    continue;
+                }
+                let (lo, hi) = ext.bounds();
+                // Engulf-class exclusion: a cutter whose extended AABB covers
+                // the whole host on EVERY axis (3% slack, the sequential
+                // engulf test) stays on the sequential path, where the
+                // near-engulf and redundant-void guards live — batched it can
+                // shave the host's outer shell (the #559171-family residual).
+                let engulfs = {
+                    let tol = 0.03_f64;
+                    let covers = |omin: f64, omax: f64, wmin: f64, wmax: f64| {
+                        let slack = (wmax - wmin).abs().max(1.0e-9) * tol;
+                        omin <= wmin + slack && omax >= wmax - slack
+                    };
+                    covers(lo.x as f64, hi.x as f64, wall_min.x, wall_max.x)
+                        && covers(lo.y as f64, hi.y as f64, wall_min.y, wall_max.y)
+                        && covers(lo.z as f64, hi.z as f64, wall_min.z, wall_max.z)
+                };
+                if engulfs {
+                    continue;
+                }
+                cands.push(Cand {
+                    idx,
+                    mesh: ext,
+                    lo: [
+                        lo.x as f64 - BATCH_PAD,
+                        lo.y as f64 - BATCH_PAD,
+                        lo.z as f64 - BATCH_PAD,
+                    ],
+                    hi: [
+                        hi.x as f64 + BATCH_PAD,
+                        hi.y as f64 + BATCH_PAD,
+                        hi.z as f64 + BATCH_PAD,
+                    ],
+                });
+            }
+            // Greedy disjoint grouping, deterministic in opening order: a
+            // candidate joins the first group whose EVERY member's inflated
+            // AABB is disjoint from its own.
+            let mut groups: Vec<Vec<usize>> = Vec::new();
+            'cand: for ci in 0..cands.len() {
+                for g in groups.iter_mut() {
+                    let disjoint_from_all = g.iter().all(|&cj| {
+                        let (a, b) = (&cands[ci], &cands[cj]);
+                        a.hi[0] < b.lo[0]
+                            || a.lo[0] > b.hi[0]
+                            || a.hi[1] < b.lo[1]
+                            || a.lo[1] > b.hi[1]
+                            || a.hi[2] < b.lo[2]
+                            || a.lo[2] > b.hi[2]
+                    });
+                    if disjoint_from_all {
+                        g.push(ci);
+                        continue 'cand;
+                    }
+                }
+                groups.push(vec![ci]);
+            }
+            for g in &groups {
+                if g.len() < 2 {
+                    continue; // singleton: sequential loop handles it (full guards)
+                }
+                let gid = batch_groups.len();
+                for &ci in g {
+                    batch_group_of.insert(cands[ci].idx, gid);
+                }
+                batch_groups
+                    .push(g.iter().map(|&ci| (cands[ci].idx, cands[ci].mesh.clone())).collect());
+            }
+        }
+
+        for (opening_idx, opening) in all_openings.iter().enumerate() {
+            if batch_consumed[opening_idx] {
+                continue; // already cut as part of a batched disjoint group
+            }
+            // Batched group cut, attempted ONCE, inline at the group's first
+            // member — so the relative order of batched vs sequential cutters
+            // matches the pure sequential pass. On any failure (admission,
+            // guards, or the kernel's conformity gate) the members fall back
+            // to the per-opening sequential path below.
+            if let Some(&gid) = batch_group_of.get(&opening_idx) {
+                let members = std::mem::take(&mut batch_groups[gid]);
+                if members.len() >= 2 {
+                    // While the host is unmutated, the admission-time extended
+                    // cutters (built against this exact host) are reused as-is;
+                    // after any cut, members are re-extended against the
+                    // CURRENT host — matching the sequential loop's reference,
+                    // which extends each cutter against the (k−1)-cut host.
+                    let mut extended: Vec<(usize, Mesh)> = Vec::with_capacity(members.len());
+                    let mut admissible = true;
+                    if !host_mutated {
+                        extended = members;
+                    } else {
+                        for &(m_idx, _) in &members {
+                            let norm: Option<(&Mesh, Option<Vector3<f64>>)> =
+                                match *all_openings[m_idx] {
+                                    OpeningType::Rectangular(..) => None,
+                                    OpeningType::DiagonalRectangular(ref m, ref f) => {
+                                        Some((m, Some(f.depth)))
+                                    }
+                                    OpeningType::NonRectangular(ref m, _, _, ref d) => {
+                                        Some((m, *d))
+                                    }
+                                };
+                            let Some((opening_mesh, extrusion_dir)) = norm else {
+                                admissible = false;
+                                break;
+                            };
+                            let depth_dir = extrusion_dir
+                                .filter(|d| d.norm() > NORMALIZE_EPSILON)
+                                .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
+                            let ext = Self::extend_opening_mesh_through_host(
+                                opening_mesh,
+                                &result,
+                                depth_dir,
+                            );
+                            // the re-extended cutter must stay watertight (#2176)
+                            if !mesh_is_closed_exact(&ext) {
+                                admissible = false;
+                                break;
+                            }
+                            extended.push((m_idx, ext));
+                        }
+                    }
+                    if admissible {
+                        let cutters: Vec<&Mesh> = extended.iter().map(|(_, m)| m).collect();
+                        let tri_before = result.triangle_count();
+                        if let Ok(csg_result) = clipper.subtract_mesh_many(&result, &cutters) {
+                            let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
+                                .max(MIN_VALID_TRIANGLES);
+                            let changed = csg_result.triangle_count() != tri_before;
+                            if !csg_result.is_empty()
+                                && csg_result.triangle_count() >= min_tris
+                                && changed
+                            {
+                                result = csg_result;
+                                host_mutated = true;
+                                for &(m_idx, _) in &extended {
+                                    batch_consumed[m_idx] = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if batch_consumed[opening_idx] {
+                    continue; // this opening was cut with its group
+                }
+            }
             // Normalize both exact-subtract variants into the same (mesh, min,
             // max, dir) shape. `DiagonalRectangular` (a clean but tilted box —
             // e.g. a roof-slope window or a slanted roof opening, #1007 defect B)
@@ -1180,6 +1442,7 @@ impl GeometryRouter {
                                 && changed
                             {
                                 result = csg_result;
+                                host_mutated = true;
                                 csg_succeeded = true;
                             }
                         }
@@ -1285,6 +1548,7 @@ impl GeometryRouter {
                                 self.cut_rectangular_opening(&result, final_min, final_max);
                             if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {
                                 result = aabb_cut;
+                                host_mutated = true;
                             }
                         }
                     }

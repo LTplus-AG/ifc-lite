@@ -589,7 +589,61 @@ impl ClippingProcessor {
 
         // Pure-Rust exact mesh-arrangement kernel, with consolidate_coplanar
         // merging per-face fragments to match Manifold's clean output.
+        //
+        // NB (ITEM-1): the kernel output itself is the watertightness bar — the
+        // crack-family fix lives upstream (`promote_cutter_verts_onto_host_faces`'s
+        // exact-plane lift). `consolidate_coplanar` can still re-open a closed
+        // cut along a µm-offset plane pair (each bucket earcuts independently,
+        // breaking the shared boundary chain); a closure-preserving guard here
+        // was tried and REJECTED — on FZK-Haus gable walls the raw kernel
+        // output carries >50:1 needle fragments that consolidation legitimately
+        // merges (the pinned `csg_quality_regression` spike bar). A
+        // seam-preserving consolidation is the remaining follow-up.
         let raw = crate::kernel::mesh_bridge::subtract(host_mesh, opening_mesh);
+        let result = if std::env::var("CONSOLIDATE_OFF").is_ok() {
+            raw
+        } else {
+            Self::consolidate_coplanar(raw)
+        };
+        if !result.is_empty() && !self.validate_mesh(&result) {
+            self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
+            return Ok(host_mesh.clone());
+        }
+        Ok(result)
+    }
+
+    /// Subtract a GROUP of pairwise-disjoint opening cutters from the host in
+    /// ONE conforming arrangement (ITEM-2 disjoint-cutter batching).
+    ///
+    /// A REJECTED group (the N-ary arrangement could not fully conform, or no
+    /// cutter overlaps the host) returns the host UN-CUT and records NO
+    /// failure: rejection is the expected, handled outcome — the router's
+    /// per-opening sequential loop (with the full #635 fallback machinery and
+    /// its own diagnostics) immediately takes over for the group's members, so
+    /// a failure record here would be pure noise on elements whose voids end
+    /// up perfectly cut (the issue-582/583 zero-CSG-failure bar). Only a
+    /// genuinely invalid kernel OUTPUT records, exactly like
+    /// [`Self::subtract_mesh`].
+    pub fn subtract_mesh_many(&self, host_mesh: &Mesh, cutters: &[&Mesh]) -> Result<Mesh> {
+        let total: usize = cutters.iter().map(|c| c.triangle_count()).sum();
+        record_csg_op(0, host_mesh.triangle_count(), total);
+        if host_mesh.is_empty() {
+            return Ok(Mesh::new());
+        }
+        let live: Vec<&Mesh> = cutters
+            .iter()
+            .copied()
+            .filter(|c| !c.is_empty() && Self::bounds_overlap(host_mesh, c))
+            .collect();
+        if live.is_empty() {
+            return Ok(host_mesh.clone()); // silent: sequential path takes over
+        }
+        let Some(raw) = crate::kernel::mesh_bridge::subtract_many(host_mesh, &live) else {
+            // Unrecovered constraint in the N-ary arrangement — reject the
+            // group (silently, see above) so the sequential per-opening path
+            // (few constraints per arrangement) takes over.
+            return Ok(host_mesh.clone());
+        };
         let result = if std::env::var("CONSOLIDATE_OFF").is_ok() {
             raw
         } else {

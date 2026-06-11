@@ -62,16 +62,25 @@ fn seg_seg_cross(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], axis: D
 /// ~2000 BigRational λ-rebuilds per slow opening). The aux point only needs to make
 /// the plane `(e0,e1,aux)` read as the LINE `e0e1` in-plane and stay perpendicular
 /// to the shared plane — its exact offset along `n` is irrelevant. So we ROUND `n`
-/// to a grid-aligned integer direction (scale the max component to ~2^20, round),
-/// exactly as `tritri::line_direction` does: `aux` then lands on-grid and the fixed
+/// to a grid-aligned integer direction (scale the max component to ~2^10, round),
+/// like `tritri::line_direction` does: `aux` then lands on-grid and the fixed
 /// tier resolves the LPI. The SIGN of every predicate is unchanged — `n` still
 /// points off the shared plane along the same perpendicular, and the in-plane
 /// reading of the plane is still the exact line `e0e1` (which only uses `e0,e1`).
 /// Deterministic (FMA-free f64 round) ⇒ byte-identical native==wasm.
+///
+/// SCALE 2^10, not the original 2^20 (ITEM-1 crack fix): when `e0` is a WELDED
+/// seam vertex on the fine `k/2^36` grid (|coord| < 2^13 ⇒ ≤49 bits), adding an
+/// integer component up to 2^20 needs up to 56 bits — `e0 + ng` then ROUNDS and
+/// the aux point lands off every grid, kicking every predicate on the LPI to the
+/// BigRational tier (~200k residual exact-rational calls on the TUN32 corpus).
+/// At 2^10 the sum stays ≤50 bits ⇒ exact f64 ⇒ on-grid. The LPI's VALUE is
+/// aux-invariant (any off-plane aux reads as the line `e0e1` in-plane), so
+/// signs, topology and the pinned manifests are unchanged.
 fn crossing_lpi(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], n: [f64; 3]) -> ImplicitPoint {
     let m = n[0].abs().max(n[1].abs()).max(n[2].abs());
     let ng = if m > 0.0 && m.is_finite() {
-        let s = 1_048_576.0 / m; // normalise the max component to ~2^20, then round
+        let s = 1024.0 / m; // normalise the max component to ~2^10, then round
         [(n[0] * s).round(), (n[1] * s).round(), (n[2] * s).round()]
     } else {
         n

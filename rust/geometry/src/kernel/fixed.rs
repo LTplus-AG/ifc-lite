@@ -17,21 +17,34 @@
 //! predicates on building-scale coords fit I256 (4× faster than I1024) — and
 //! escalates on overflow. So the result is always a sign identical to
 //! BigRational, or a deferral up the cascade and finally to BigRational.
+//!
+//! DUAL SCALE (ITEM-1 crack fix): the exact-plane lift in `mesh_bridge` welds
+//! near-coplanar cutter vertices onto host planes at the FINER `k/2^36` grid
+//! (`2^16` snap grid × the `2^20` α,β quantization). Those coordinates fail the
+//! coarse `gi` fract check and previously fell to the ~3 ms BigRational tier on
+//! EVERY predicate. The cascade therefore carries a second, fine-scale family
+//! (`f256`/`f512`/`f1024`/`f2048`, gi scale `2^36`) tried only after the coarse
+//! family declines — orientation predicates are sign-invariant under uniform
+//! positive scaling, so a per-call uniform scale is exactly equivalent. The
+//! extra `f2048` rung exists because second-order TPI×TPI products at the fine
+//! scale reach ≈1340 bits (overflow I1024). Coarse-grid inputs keep resolving
+//! in the unchanged coarse family ⇒ zero cost on the common path.
 
 use super::{DropAxis, ImplicitPoint, Sign};
 
-/// Generate the full predicate set over a fixed-width signed integer type.
+/// Generate the full predicate set over a fixed-width signed integer type at a
+/// fixed coordinate scale (the grid the inputs must lie on, e.g. 2^16 or 2^36).
 macro_rules! fixed_impl {
-    ($T:ty) => {
+    ($T:ty, $scale:expr) => {
         use super::super::{assemble_sign, DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
-        use num_traits::{CheckedAdd, CheckedMul, CheckedSub, FromPrimitive, One, Signed, Zero};
+        use num_traits::{CheckedAdd, CheckedMul, CheckedSub, FromPrimitive, One, Signed};
 
         type I = $T;
         type V3 = [I; 3];
 
         #[inline]
         fn gi(x: f64) -> Option<I> {
-            let scaled = x * 65536.0;
+            let scaled = x * $scale;
             if !scaled.is_finite() || scaled.fract() != 0.0 || scaled.abs() >= 9.0e18 {
                 return None;
             }
@@ -227,18 +240,41 @@ macro_rules! fixed_impl {
     };
 }
 
+/// The operand snap-grid scale (2^16) — the common case.
+const COARSE: f64 = 65_536.0;
+/// The welded-seam grid scale (2^36 = 2^16 · 2^20) — see the DUAL SCALE note.
+const FINE: f64 = 68_719_476_736.0;
+/// The fine/coarse scale ratio (2^20) — what a fine-scale homogeneous lambda's
+/// denominator absorbs to stay in the global coarse (λ, d·2^16) convention.
+const FINE_OVER_COARSE: i64 = 1 << 20;
+
 mod w256 {
-    fixed_impl!(bnum::types::I256);
+    fixed_impl!(bnum::types::I256, super::COARSE);
 }
 mod w512 {
-    fixed_impl!(bnum::types::I512);
+    fixed_impl!(bnum::types::I512, super::COARSE);
 }
 mod w1024 {
-    fixed_impl!(bnum::types::I1024);
+    fixed_impl!(bnum::types::I1024, super::COARSE);
+}
+mod f256 {
+    fixed_impl!(bnum::types::I256, super::FINE);
+}
+mod f512 {
+    fixed_impl!(bnum::types::I512, super::FINE);
+}
+mod f1024 {
+    fixed_impl!(bnum::types::I1024, super::FINE);
+}
+mod f2048 {
+    fixed_impl!(bnum::types::I2048, super::FINE);
 }
 
-// Tiered dispatch: narrowest width first, escalate on overflow. `None` from ALL
-// three ⇒ off-grid (not overflow) ⇒ caller falls to BigRational.
+// Tiered dispatch: narrowest width first, escalate on overflow; the coarse-scale
+// family first, then the fine-scale family (welded-seam coords — a coarse-grid
+// coordinate is also on the fine grid, so escalation stays sound; an input off
+// BOTH grids fails every `gi` fract check cheaply). `None` from ALL tiers ⇒
+// off-grid (not overflow) ⇒ caller falls to BigRational.
 macro_rules! cascade {
     ($name:ident ( $($arg:ident : $ty:ty),* )) => {
         pub fn $name($($arg : $ty),*) -> Option<Sign> {
@@ -247,6 +283,10 @@ macro_rules! cascade {
             w256::$name($($arg),*)
                 .or_else(|| w512::$name($($arg),*))
                 .or_else(|| w1024::$name($($arg),*))
+                .or_else(|| f256::$name($($arg),*))
+                .or_else(|| f512::$name($($arg),*))
+                .or_else(|| f1024::$name($($arg),*))
+                .or_else(|| f2048::$name($($arg),*))
         }
     };
 }
@@ -267,6 +307,12 @@ cascade!(indirect_orient3d(p: &ImplicitPoint, p2: [f64; 3], p3: [f64; 3], p4: [f
 // configs anyway) and all lambda recomputation. Cached at I512 — fits LPI/TPI
 // determinants at building MILLIMETRE scale (real IFC CSG, coords ~thousands);
 // `None` ⇒ overflow (georeferenced/huge coords) ⇒ caller falls to the cascade.
+// FINE-scale (welded-seam k/2^36) points cache their f512 lambda with the 2^20
+// scale ratio absorbed into `d`, so every cached lambda shares one homogeneous
+// convention; their SECOND-ORDER products (e.g. `orient2d_from_lam`'s u·v at
+// ~2^742 for fine LPI pairs) overflow I512 and fall to the dual-scale cascade —
+// a deliberate trade that keeps the cache at I512 width for the coarse-grid
+// majority (an I1024 cache measured +35% on the 841 corpus).
 type Big = bnum::types::I512;
 pub type Lam = ([Big; 3], Big);
 
@@ -291,9 +337,19 @@ fn bsign(x: &Big) -> Sign {
 }
 
 /// The I512 homogeneous lambda of an implicit point (the value cached per Vid).
+///
+/// Computed at the coarse (2^16) scale; a point whose defining coords are on the
+/// FINE welded-seam grid (k/2^36) is recomputed at the fine scale and its
+/// denominator absorbs the 2^20 scale ratio — `real·2^16 = λ_fine/(d_fine·2^20)`
+/// — so every cached lambda lives in ONE homogeneous convention and any two are
+/// directly comparable in the Vid predicates below.
 pub fn lambda1024(p: &ImplicitPoint) -> Option<Lam> {
-    use num_traits::{One, Signed, Zero};
-    let (mut lam, mut d) = w512::lambda_of(p)?;
+    use num_traits::{CheckedMul, FromPrimitive, One};
+    let (mut lam, mut d) = w512::lambda_of(p).or_else(|| {
+        let (lam, d) = f512::lambda_of(p)?;
+        let ratio = Big::from_i64(FINE_OVER_COARSE)?;
+        Some((lam, CheckedMul::checked_mul(&d, &ratio)?))
+    })?;
     // Canonicalize the denominator positive (negate λ and d together — same point).
     if d.is_negative() {
         d = -d;
@@ -423,8 +479,12 @@ pub fn cmp_lex_from_lam(a: &Lam, b: &Lam) -> Option<Sign> {
 /// classifier centroids AND the output verts (the dominant per-op cost).
 pub fn point_to_f64(p: &ImplicitPoint) -> Option<[f64; 3]> {
     use num_traits::ToPrimitive;
-    let (lambda, d) = w1024::lambda_of(p)?;
-    let denom = d.to_f64()? * 65536.0;
+    // Coarse scale first (the common case), then the fine welded-seam scale —
+    // the real coordinate is λ/(d·scale) for whichever scale resolved.
+    let (lambda, d, scale) = w1024::lambda_of(p)
+        .map(|(l, d)| (l, d, COARSE))
+        .or_else(|| f1024::lambda_of(p).map(|(l, d)| (l, d, FINE)))?;
+    let denom = d.to_f64()? * scale;
     if denom == 0.0 || !denom.is_finite() {
         return None;
     }

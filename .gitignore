@@ -13,6 +13,8 @@ build/
 target/
 **/*.rs.bk
 *.pdb
+# rustc internal-compiler-error dumps (written into the CWD on an ICE)
+rustc-ice-*.txt
 .vercel
 
 # MkDocs build output

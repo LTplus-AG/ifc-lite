@@ -12,7 +12,7 @@
 //! and the pure-Rust exact kernel handles the residual genuine-CSG cases.
 //!
 //! The strict `total_failures == 0` assertions are unconditional — there
-//! is only one kernel configuration since M9.
+//! is only one kernel configuration.
 //!
 //! Fixtures must be downloaded via `pnpm fixtures` from the repo root.
 //! Tests skip cleanly when absent.

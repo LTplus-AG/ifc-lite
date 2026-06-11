@@ -239,7 +239,7 @@ fn bath_csg_solid_triangle_budget() {
         .expect("router dispatch succeeds");
 
     let tris = mesh.indices.len() / 3;
-    // Ceiling raised 150 → 180 with the M7 retriangulation fix: preserving
+    // Ceiling raised 150 → 180 with the constraint-channel retriangulation fix: preserving
     // constraint-channel interior vertices (`recover_subsegment`, the 552611
     // over-cut fix) keeps a handful more conforming sub-triangles (150 at the
     // re-pin). Still well below the un-consolidated 189-triangle BSP

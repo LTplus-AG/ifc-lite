@@ -2,18 +2,17 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Pure-Rust exact mesh-arrangement CSG kernel — predicate foundation (M1).
+//! Pure-Rust exact mesh-arrangement CSG kernel — predicate foundation.
 //!
-//! See `docs/architecture/pure-rust-csg-kernel.md`. This layer provides exact,
-//! platform-deterministic geometric predicates over a mix of EXPLICIT input
-//! points and IMPLICIT intersection points (LPI = line∩plane, TPI = three
-//! planes) carried symbolically and never materialised to a float decision.
+//! This layer provides exact, platform-deterministic geometric predicates over
+//! a mix of EXPLICIT input points and IMPLICIT intersection points (LPI =
+//! line∩plane, TPI = three planes) carried symbolically and never materialised
+//! to a float decision.
 //!
 //! Determinism: signs are integer parity over deterministic arithmetic. The
 //! explicit path goes through `geometry-predicates` (FMA-free, const error
-//! bounds). M1 increment 1 builds the EXACT (BigRational) tier — correct by
-//! construction and the oracle for the faster interval/expansion tiers that
-//! land next, each verified `≡` exact.
+//! bounds). The EXACT (BigRational) tier is correct by construction and is the
+//! oracle for the faster interval/fixed-width tiers, each verified `≡` exact.
 
 pub mod arrangement;
 pub mod broadphase;
@@ -27,36 +26,6 @@ pub mod predicates;
 pub mod rational;
 pub mod retriangulate;
 pub mod tritri;
-
-// Native-only phase profiler (KERNEL_PROFILE): accumulates arrange/classify/
-// materialize seconds + op count across boolean() calls; perf examples read it.
-#[cfg(not(target_arch = "wasm32"))]
-thread_local! {
-    static PROF: std::cell::Cell<(f64, f64, f64, u64)> = const { std::cell::Cell::new((0.0, 0.0, 0.0, 0)) };
-}
-#[cfg(not(target_arch = "wasm32"))]
-pub fn prof_add(arrange: f64, classify: f64, materialize: f64) {
-    PROF.with(|p| {
-        let (a, c, m, n) = p.get();
-        p.set((a + arrange, c + classify, m + materialize, n + 1));
-    });
-}
-/// Returns (arrange, classify, materialize) total seconds and op count, then resets.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn prof_take() -> (f64, f64, f64, u64) {
-    PROF.with(|p| {
-        let v = p.get();
-        p.set((0.0, 0.0, 0.0, 0));
-        v
-    })
-}
-
-// Predicate-tier escalation counters (native diagnostics): FIX = interval filter
-// failed → fixed tier; RAT = fixed tier failed → BigRational.
-#[cfg(not(target_arch = "wasm32"))]
-pub static FIX_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-#[cfg(not(target_arch = "wasm32"))]
-pub static RAT_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Three-valued exact sign.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

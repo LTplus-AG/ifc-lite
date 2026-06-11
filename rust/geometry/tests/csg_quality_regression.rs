@@ -167,7 +167,7 @@ fn fzk_haus_gable_wall_67828_no_spike_triangles() {
 // (`cut_multiple_rectangular_openings` in `router/voids.rs`), which has
 // its own clipping that bypasses `ClippingProcessor::consolidate_coplanar`.
 //
-// Identical spike counts appeared under both pre-M9 kernels (BSP and
+// Identical spike counts appeared under both deleted legacy kernels (BSP and
 // Manifold), confirming the kernel is not at fault. Left `#[ignore]`d with the
 // current spike-count baseline so the suite documents the issue and
 // becomes a tightening gate when the upstream paths are cleaned up

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Coplanar triangle overlap (M3b) — the constraints two coplanar overlapping
+//! Coplanar triangle overlap — the constraints two coplanar overlapping
 //! faces impose on each other.
 //!
 //! When triangle `tb` is coplanar with `ta`, each of `tb`'s edges is clipped to
@@ -69,11 +69,11 @@ fn seg_seg_cross(q0: [f64; 3], q1: [f64; 3], e0: [f64; 3], e1: [f64; 3], axis: D
 /// reading of the plane is still the exact line `e0e1` (which only uses `e0,e1`).
 /// Deterministic (FMA-free f64 round) ⇒ byte-identical native==wasm.
 ///
-/// SCALE 2^10, not the original 2^20 (ITEM-1 crack fix): when `e0` is a WELDED
+/// SCALE 2^10, not the original 2^20 (crack-family fix): when `e0` is a WELDED
 /// seam vertex on the fine `k/2^36` grid (|coord| < 2^13 ⇒ ≤49 bits), adding an
 /// integer component up to 2^20 needs up to 56 bits — `e0 + ng` then ROUNDS and
 /// the aux point lands off every grid, kicking every predicate on the LPI to the
-/// BigRational tier (~200k residual exact-rational calls on the TUN32 corpus).
+/// BigRational tier (~200k residual exact-rational calls on a tunnel corpus).
 /// At 2^10 the sum stays ≤50 bits ⇒ exact f64 ⇒ on-grid. The LPI's VALUE is
 /// aux-invariant (any off-plane aux reads as the line `e0e1` in-plane), so
 /// signs, topology and the pinned manifests are unchanged.

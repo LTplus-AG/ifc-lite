@@ -73,7 +73,7 @@ impl fmt::Display for BoolOp {
 /// Why a boolean operation failed or was skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BoolFailureReason {
-    /// HISTORICAL (pre-M9): at least one operand exceeded the legacy BSP CSG
+    /// HISTORICAL: at least one operand exceeded the deleted legacy BSP CSG
     /// polygon cap. The pure-Rust exact kernel has no operand cap, so this is
     /// no longer emitted by the boolean ops; the variant (and its JSON label)
     /// is kept for the frozen diagnostics surface and void-router plumbing.
@@ -89,8 +89,8 @@ pub enum BoolFailureReason {
     NoBoundsOverlap,
     /// The CSG kernel returned malformed polygons (NaN / non-finite).
     KernelOutputInvalid,
-    /// HISTORICAL (pre-M9): solid-vs-solid `IfcBooleanResult.DIFFERENCE`
-    /// was not attempted because the legacy BSP could stack-overflow on
+    /// HISTORICAL: solid-vs-solid `IfcBooleanResult.DIFFERENCE` was not
+    /// attempted because the deleted legacy BSP could stack-overflow on
     /// arbitrary solid combinations. No longer emitted — the exact kernel
     /// always attempts the cut. Variant kept for the frozen label surface.
     SolidSolidDifferenceSkipped,
@@ -107,10 +107,10 @@ pub enum BoolFailureReason {
     CutterUnionUnavailable,
     /// `IfcBooleanResult` operator string didn't match any known op.
     UnknownBooleanOperator(String),
-    /// HISTORICAL (pre-M9): the Manifold kernel's `difference` returned
+    /// HISTORICAL: the deleted Manifold C++ kernel's `difference` returned
     /// output implausibly small relative to the host (a Linux-x86_64-only
     /// pathology). No longer emitted — the deterministic exact kernel
-    /// replaced Manifold at M9. Variant kept for the frozen label surface.
+    /// replaced Manifold. Variant kept for the frozen label surface.
     ManifoldOutputDegenerate {
         host_tris: usize,
         result_tris: usize,

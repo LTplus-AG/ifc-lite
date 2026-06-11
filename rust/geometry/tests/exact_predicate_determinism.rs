@@ -4,11 +4,10 @@
 
 //! Cross-platform determinism floor for the pure-Rust CSG kernel.
 //!
-//! The pre-M9 server (BSP) and viewer (Manifold C++) kernels diverged, and
+//! The deleted legacy server (BSP) and viewer (Manifold C++) kernels diverged, and
 //! Manifold itself was non-deterministic across platforms — Linux x86_64
 //! collapsed some coincident-/near-coplanar-face boolean clips where macOS
-//! aarch64 produced the correct result. The pure-Rust kernel (the only one
-//! since M9) dissolves that by routing every in/out and on-plane decision
+//! aarch64 produced the correct result. The pure-Rust kernel (now the only one) dissolves that by routing every in/out and on-plane decision
 //! through Shewchuk *exact* predicates, whose SIGN is mathematically
 //! determined and therefore identical on every IEEE-754 radix-2 target.
 //!

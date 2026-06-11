@@ -173,7 +173,7 @@ fn faceted_brep_roof_openings_are_cut() {
     );
 }
 
-/// Defect B (M3c/M3d) — the cut roof opening is FRAMED, not BRIDGED. The two
+/// Defect B — the cut roof opening is FRAMED, not BRIDGED. The two
 /// tilted faceted-brep openings used to leave a diagonal needle "flap" over the
 /// hole: the exact kernel spanned a µm-scale near-duplicate rim vertex out to a
 /// far roof corner (raw aspect 66 205:1 / 259 997:1; consolidate left 884 237:1
@@ -197,7 +197,7 @@ fn faceted_brep_roof_opening_has_no_spanning_sliver() {
         wa < 1.0e3,
         "roof #{host_id} cut carries an opening-spanning sliver: worst aspect {wa:.0}:1 \
          (expected a cleanly-framed hole < 1000:1). The diagonal flap over the opening \
-         is back (M3c/M3d regression).",
+         is back (coplanar-overlap regression).",
     );
 }
 

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Broadphase (M5) — a hand-rolled f64 median-split AABB BVH over one operand's
+//! Broadphase — a hand-rolled f64 median-split AABB BVH over one operand's
 //! triangles, queried by the other operand's triangle AABBs to replace the
 //! O(|A|·|B|) all-pairs scan.
 //!

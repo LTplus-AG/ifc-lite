@@ -4,11 +4,10 @@
 
 //! Public predicate dispatch over `ImplicitPoint` configurations.
 //!
-//! M1 increment 1 implements the all-explicit and the LPI-first-argument
-//! `orient3d` configurations against the exact (BigRational) tier. The faster
-//! interval/expansion/semi-static tiers, the remaining implicit-argument
-//! positions, the TPI cases, and indirect `orient2d` land in later increments —
-//! each verified `≡` the exact tier here.
+//! Implements every explicit/implicit `orient3d`/`orient2d` configuration the
+//! arrangement pipeline produces, each first through the fast interval and
+//! fixed-width tiers and escalating to the exact (BigRational) tier on a
+//! straddling filter — every fast tier verified `≡` the exact tier here.
 
 use super::{fixed, interval, rational};
 use super::{DropAxis, ImplicitPoint, Sign};
@@ -33,7 +32,7 @@ pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &Imp
             .unwrap_or_else(|| rational::tpi_orient3d(t, *b, *c, *d)),
         // By-construction unreachable: kernel callers only ever build the configurations above.
         _ => unimplemented!(
-            "kernel::orient3d: this implicit-point configuration lands in a later M1 increment"
+            "kernel::orient3d: implicit-point configuration never produced by the arrangement pipeline"
         ),
     }
 }
@@ -60,7 +59,7 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
             .unwrap_or_else(|| rational::tpi_orient2d(t, *b, *c, axis)),
         // By-construction unreachable: kernel callers only ever build the configurations above.
         _ => unimplemented!(
-            "kernel::orient2d: this implicit-point configuration lands in a later M1 increment"
+            "kernel::orient2d: implicit-point configuration never produced by the arrangement pipeline"
         ),
     }
 }
@@ -467,7 +466,7 @@ mod tests {
 
     #[test]
     fn multi_implicit_orient2d_matches_materialised_oracle() {
-        // M2.3.0: orient2d_2i / orient2d_3i over all {Lpi,Tpi} mixtures must equal
+        // orient2d_2i / orient2d_3i over all {Lpi,Tpi} mixtures must equal
         // the direct orient2d on the materialised λ/d points, for every drop axis.
         let mut pts: Vec<ImplicitPoint> =
             lpi_cases().into_iter().map(|(l, ..)| ImplicitPoint::Lpi(l)).collect();
@@ -585,7 +584,7 @@ mod tests {
 
     #[test]
     fn new_tier_interval_is_sound_and_cascade_equals_exact() {
-        // M2.3.2: the interval fast tiers for 2I/3I orient2d + cmp_lex never
+        // The interval fast tiers for 2I/3I orient2d + cmp_lex never
         // return a wrong definite sign, and the public cascade always == exact.
         use super::super::interval;
         let mut rng = Lcg(0x0bad_c0de_1234_5678);

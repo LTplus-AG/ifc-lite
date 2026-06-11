@@ -110,8 +110,8 @@ impl Triangle {
     }
 }
 
-/// One recorded invocation of a CSG kernel op (M0 perf-census instrumentation
-/// for the pure-Rust kernel migration). `op`: 0=subtract 1=union 2=intersection
+/// One recorded invocation of a CSG kernel op (perf-census diagnostics).
+/// `op`: 0=subtract 1=union 2=intersection
 /// 3=clip. `a_tris`/`b_tris` are the operand triangle counts — the arrangement
 /// cost driver — so the census measures the *real* heavy-path workload reaching
 /// the kernel (analytic AABB box clips never get here).
@@ -406,7 +406,7 @@ impl ClippingProcessor {
 
     /// Whether any failure recorded since index `since` (a prior
     /// [`failure_count`](Self::failure_count)) was an `OperandTooLarge`
-    /// rejection. HISTORICAL (pre-M9): only the deleted BSP polygon cap ever
+    /// rejection. HISTORICAL: only the deleted BSP polygon cap ever
     /// emitted this from the boolean ops — the exact kernel has no operand
     /// cap, so this is now always `false` on the boolean path. Kept because
     /// the void router still keys its AABB-fallback decision on it
@@ -611,7 +611,7 @@ impl ClippingProcessor {
         // Pure-Rust exact mesh-arrangement kernel, with consolidate_coplanar
         // merging per-face fragments to match Manifold's clean output.
         //
-        // NB (ITEM-1): the kernel output itself is the watertightness bar — the
+        // NB: the kernel output itself is the watertightness bar — the
         // crack-family fix lives upstream (`promote_cutter_verts_onto_host_faces`'s
         // exact-plane lift). `consolidate_coplanar` can still re-open a closed
         // cut along a µm-offset plane pair (each bucket earcuts independently,
@@ -621,11 +621,7 @@ impl ClippingProcessor {
         // merges (the pinned `csg_quality_regression` spike bar). A
         // seam-preserving consolidation is the remaining follow-up.
         let raw = crate::kernel::mesh_bridge::subtract(host_mesh, opening_mesh);
-        let result = if std::env::var("CONSOLIDATE_OFF").is_ok() {
-            raw
-        } else {
-            Self::consolidate_coplanar(raw)
-        };
+        let result = Self::consolidate_coplanar(raw);
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return Ok(host_mesh.clone());
@@ -634,7 +630,7 @@ impl ClippingProcessor {
     }
 
     /// Subtract a GROUP of pairwise-disjoint opening cutters from the host in
-    /// ONE conforming arrangement (ITEM-2 disjoint-cutter batching).
+    /// ONE conforming arrangement (disjoint-cutter batching).
     ///
     /// A REJECTED group (the N-ary arrangement could not fully conform, or no
     /// cutter overlaps the host) returns the host UN-CUT and records NO
@@ -665,11 +661,7 @@ impl ClippingProcessor {
             // (few constraints per arrangement) takes over.
             return Ok(host_mesh.clone());
         };
-        let result = if std::env::var("CONSOLIDATE_OFF").is_ok() {
-            raw
-        } else {
-            Self::consolidate_coplanar(raw)
-        };
+        let result = Self::consolidate_coplanar(raw);
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return Ok(host_mesh.clone());
@@ -979,22 +971,8 @@ impl ClippingProcessor {
         // fall back to a plain merge (overlap not removed) + record the failure,
         // preserving the legacy never-Err contract.
         let raw_u = crate::kernel::mesh_bridge::union(mesh_a, mesh_b);
-        let result = if std::env::var("CONSOLIDATE_OFF").is_ok() {
-            raw_u
-        } else {
-            Self::consolidate_coplanar(raw_u)
-        };
+        let result = Self::consolidate_coplanar(raw_u);
         if result.is_empty() || !self.validate_mesh(&result) {
-            #[cfg(not(target_arch = "wasm32"))]
-            if std::env::var("CLIP_LOG").is_ok() {
-                eprintln!(
-                    "UNION FALLBACK→merge: empty={} valid={} (a={} b={} tris)",
-                    result.is_empty(),
-                    self.validate_mesh(&result),
-                    mesh_a.triangle_count(),
-                    mesh_b.triangle_count()
-                );
-            }
             self.record_failure(BoolOp::Union, BoolFailureReason::KernelOutputInvalid);
             let mut merged = mesh_a.clone();
             merged.merge(mesh_b);

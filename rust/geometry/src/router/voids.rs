@@ -101,7 +101,7 @@ fn opening_mesh_thinnest_axis_dir(opening_mesh: &Mesh) -> Vector3<f64> {
 /// Closed-surface check on exact f32 bit coords: every directed edge paired,
 /// no degenerate edges. The #2176 lesson — only per-component-watertight solid
 /// cutters may join a batched group; an open component poisons the whole
-/// group's ray parity (ITEM-2 batch admission).
+/// group's ray parity (batch admission).
 fn mesh_is_closed_exact(m: &Mesh) -> bool {
     use std::collections::HashMap;
     let key = |i: u32| {
@@ -1028,11 +1028,7 @@ impl GeometryRouter {
         // EXACTLY coplanar, so the cut emits one CDT-refined region (rim sliver
         // gone) with a clean opening hole. Deterministic + watertight + grid-
         // snapped; a no-op for already-planar extrusion hosts.
-        let mut result = if std::env::var("WELD_OFF").is_ok() {
-            mesh
-        } else {
-            crate::facet_weld::weld_near_coplanar_facets(&mesh)
-        };
+        let mut result = crate::facet_weld::weld_near_coplanar_facets(&mesh);
 
         let (wall_min_f32, wall_max_f32) = result.bounds();
         let wall_min = Point3::new(
@@ -1100,13 +1096,13 @@ impl GeometryRouter {
         let all_openings: Vec<&OpeningType> =
             synth_rect.iter().chain(non_rect_openings.iter().copied()).collect();
 
-        // DISJOINT-CUTTER BATCHING (ITEM-2): group cutters whose pad-inflated
+        // DISJOINT-CUTTER BATCHING: group cutters whose pad-inflated
         // AABBs are pairwise disjoint and subtract each group in ONE conforming
         // arrangement (`ClippingProcessor::subtract_mesh_many`). Sequential
         // per-opening subtraction re-arranges the whole (growing) host once per
         // cutter, and each intermediate f64→f32→snap round-trip re-jitters
         // carve vertices off shared planes so cut N+1 re-cracks what cut N
-        // reconciled — the 24-void TUN32 walls' compounding open edges and the
+        // reconciled — many-void walls' compounding open edges and the
         // 16-void slab's ~3.5 s cost. Batching admits only openings that pass
         // the SAME guards as the sequential loop plus per-component
         // watertightness (#2176: an open component poisons the group's ray
@@ -1128,10 +1124,7 @@ impl GeometryRouter {
         // Set on every successful cut; while false, a group's admission-time
         // extended cutters are still valid and reused verbatim.
         let mut host_mutated = false;
-        // `VOID_BATCH_OFF` is the ops/debug escape hatch (same pattern as
-        // `CONSOLIDATE_OFF` / `WELD_OFF`): it forces the pure per-opening
-        // sequential path.
-        if all_openings.len() >= 2 && std::env::var("VOID_BATCH_OFF").is_err() {
+        if all_openings.len() >= 2 {
             // Inflation pad: ≥ 2×(promote band 8·2⁻¹⁶ ≈ 122 µm + snap radius);
             // 1 mm is conservative and far below any real opening separation.
             // Touching/overlapping cutters land in DIFFERENT groups, cut in
@@ -1506,7 +1499,7 @@ impl GeometryRouter {
                         // a grazing engulfing cutter). `capped` keys on the
                         // historical `OperandTooLarge` rejection (issue #635 /
                         // #947): the exact kernel has no operand cap so it is
-                        // always false post-M9, but keeping the term costs
+                        // now always false, but keeping the term costs
                         // nothing and stays correct if a complexity budget ever
                         // records it again.
                         let capped = clipper.has_operand_too_large_since(failures_before);
@@ -1536,18 +1529,17 @@ impl GeometryRouter {
                             #[cfg(any(debug_assertions, test))]
                             {
                                 eprintln!(
-                                    "[issue-635] AABB fallback used: opening={} tris (over MAX_CSG_POLYGONS_PER_MESH or no change)",
+                                    "[issue-635] AABB fallback used: opening={} tris (CSG produced no change)",
                                     opening_mesh.triangle_count()
                                 );
                             }
                             // Deliberate degraded mode: this fallback removes
                             // the wall material inside the opening AABB but no
                             // longer emits reveal/recess quads (deleted with
-                            // the legacy clip path at M9 PART B), so its
-                            // output has an open rim. Acceptable for a safety
-                            // net that fired 0x across the M7 corpus — the
-                            // exact-kernel path ahead of it emits the reveals
-                            // itself.
+                            // the legacy clip path), so its output has an open
+                            // rim. Acceptable for a safety net that fired 0x
+                            // across the regression corpus — the exact-kernel
+                            // path ahead of it emits the reveals itself.
                             let aabb_cut =
                                 self.cut_rectangular_opening(&result, final_min, final_max);
                             if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {
@@ -2251,7 +2243,7 @@ impl GeometryRouter {
             Point3::new(min.x, max.y, max.z),
         ];
         let faces: [(Vector3<f64>, [usize; 4]); 6] = [
-            // M7 parity-sweep fix: the -Z cap was [0, 2, 1, 3] — a CROSSED
+            // Parity-sweep fix: the -Z cap was [0, 2, 1, 3] — a CROSSED
             // (bowtie) quad whose two triangles overlap with opposite
             // orientation, making every synthesized rectangular cutter a
             // self-intersecting solid. The exact kernel then emits
@@ -3008,7 +3000,7 @@ mod reveal_tests {
 
         // 6 faces × 4 vertices each with face normals
         let faces: [(Vector3<f64>, [usize; 4]); 6] = [
-            // M7 parity-sweep fix: [0, 2, 1, 3] was a crossed (bowtie) quad —
+            // Parity-sweep fix: [0, 2, 1, 3] was a crossed (bowtie) quad —
             // see the sibling `make_box_mesh` above for the full rationale.
             (Vector3::new(0.0, 0.0, -1.0), [0, 3, 2, 1]), // -Z
             (Vector3::new(0.0, 0.0, 1.0), [4, 5, 6, 7]),  // +Z
@@ -3054,7 +3046,7 @@ mod reveal_tests {
 
         let mut m = Mesh::with_capacity(24, 36);
         let faces: [[usize; 4]; 6] = [
-            // M7 parity-sweep fix: [0, 2, 1, 3] was a crossed (bowtie) quad —
+            // Parity-sweep fix: [0, 2, 1, 3] was a crossed (bowtie) quad —
             // see `make_box_mesh` above for the full rationale.
             [0, 3, 2, 1],
             [4, 5, 6, 7],

@@ -482,10 +482,10 @@ async function processGeometryBatches(
 
 ONE kernel: the in-tree **pure-Rust exact mesh-arrangement kernel**
 (`rust/geometry/src/kernel/`), on every target — native (server, CLI, SDK)
-and `wasm32-unknown-unknown` (viewer) alike. See
-[pure-rust-csg-kernel.md](./pure-rust-csg-kernel.md) for the kernel
-architecture (exact predicate cascade, conforming arrangement, winding
-classification, deterministic output ordering).
+and `wasm32-unknown-unknown` (viewer) alike. The kernel architecture
+(exact predicate cascade, conforming arrangement, winding classification,
+deterministic output ordering) is documented in the module docs under
+`rust/geometry/src/kernel/`.
 
 Key properties:
 
@@ -507,11 +507,11 @@ Key properties:
   `total_failures == 0` on `AC20-FZK-Haus.ifc`,
   `C20-Institute-Var-2.ifc` and `AC-20-Smiley-West-10-Bldg.ifc`.
 
-History (M9, June 2026): two earlier kernels — the legacy BSP port of
+History (June 2026): two earlier kernels — the legacy BSP port of
 csg.js (`bsp_csg.rs`, 128-polygon operand cap, server/wasm default) and
 the Manifold C++ kernel (`manifold_kernel.rs` + `manifold-csg-sys`,
-viewer/native feature) — were deleted at M9 of the kernel consolidation
-plan once the pure-Rust kernel reached parity. With them went the whole
+viewer/native feature) — were deleted in the kernel consolidation
+once the pure-Rust kernel reached parity. With them went the whole
 C++ cross-toolchain (cmake, LLVM-20/libc++, emsdk on Vercel) and the
 `manifold-csg`/`manifold-csg-wasm-uu` Cargo features; the geometry crate
 builds with `default = []` everywhere. There is no kernel selection —

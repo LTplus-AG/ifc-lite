@@ -101,7 +101,7 @@ fn subtract_records_empty_operand() {
     assert_eq!(failures[0].reason, BoolFailureReason::EmptyOperand);
 }
 
-// M8 re-baseline (PR #1024) / M9 flip: the `*_records_operand_too_large`
+// Kernel consolidation: the `*_records_operand_too_large`
 // tests below used to assert the legacy BSP `MAX_CSG_POLYGONS_PER_MESH = 128`
 // cap. The pure-Rust exact kernel (`kernel::mesh_bridge`) — now the ONLY
 // kernel — has NO operand cap, so `OperandTooLarge` is unreachable from

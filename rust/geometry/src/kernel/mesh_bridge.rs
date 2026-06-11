@@ -3,9 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Bridge between the pure-Rust kernel (which works on `Tri = [[f64;3];3]`) and
-//! ifc-lite's `Mesh` (f32 positions/normals/indices) — the M6 integration
-//! foundation. `subtract`/`union`/`intersection` here are what the
-//! `ClippingProcessor` seam will eventually call.
+//! ifc-lite's `Mesh` (f32 positions/normals/indices). `subtract`/`union`/
+//! `intersection` here are what the `ClippingProcessor` seam calls.
 
 use super::arrangement::{boolean, difference_all, union_all, BoolOp, Tri};
 use crate::mesh::Mesh;
@@ -15,8 +14,8 @@ use crate::mesh::Mesh;
 /// x86_64/aarch64/wasm. Real IFC is authored in f32, so an intended-flush face is
 /// NOT exactly coplanar after import; snapping both operands to a shared grid
 /// makes such faces EXACTLY coplanar so the exact coplanar path fires instead of
-/// emitting a noise sliver. Resolution is tunable against the corpus (flip plan
-/// M7 / the open decision); 2^-16 m ≈ 15 µm.
+/// emitting a noise sliver. Resolution is tunable against the test corpus;
+/// 2^-16 m ≈ 15 µm.
 ///
 /// Canonical definition — `tritri` and `arrangement` size their near-coplanar
 /// bands to the scatter envelope this snap produces, so they import this
@@ -32,7 +31,7 @@ fn snap(c: f64) -> f64 {
 /// grid). Panic-free: an out-of-range index OR a non-finite (NaN/Inf) coord drops
 /// that triangle rather than indexing past the end or crashing
 /// `BigRational::from_float` deep in the predicates (the two empirically-found
-/// reachable panic sites — see examples/csg_robustness.rs).
+/// reachable panic sites).
 pub fn mesh_to_tris(m: &Mesh) -> Vec<Tri> {
     let vertex = |i: u32| -> Option<[f64; 3]> {
         let b = (i as usize) * 3;
@@ -91,7 +90,7 @@ pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
 /// consumed — byte-identical native==wasm. (The magnitude is irrelevant; we
 /// never compare it to a tolerance.)
 ///
-/// WHY the local reference point (TUN32 forensics, BLOCKER-A): for a CLOSED mesh
+/// WHY the local reference point: for a CLOSED mesh
 /// the sign is translation-invariant, so the reference is free. But an operand
 /// that re-enters a SEQUENTIAL void-cut loop can carry sliver cracks from the
 /// previous subtract (flush-interface seams, the open-edge family) — and for an
@@ -163,7 +162,7 @@ fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
 /// sits within the snap-scatter band of a HOST face plane — and projects
 /// STRICTLY inside that face — onto the plane, then back onto the snap grid.
 ///
-/// WHY (M7 BUG-1; TUN32 wall #97211 / opening #97266): when
+/// WHY (found by the kernel-parity sweep on a long tunnel-wall fixture): when
 /// `extend_opening_mesh_through_host` pushes a flush opening cap along the
 /// host depth axis `d`, a cap corner that was bit-exactly a HOST corner can
 /// slide ALONG a host face plane that contains `d` (here: the wall END face).
@@ -173,7 +172,7 @@ fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
 /// EDGE then GRAZES the cutter jamb FACE at ~5e-5 rad; the conforming
 /// arrangement splits the grazed face into degenerate sub-triangles whose
 /// keep/drop classification is undefined → open edges + inverted volume
-/// (the M7 sweep's negative-volume family: 27 tris / vol −4.268 / 13 bad
+/// (the parity sweep's negative-volume family: 27 tris / vol −4.268 / 13 bad
 /// edges from two CLEAN watertight 12-tri boxes).
 ///
 /// The gate is PLANE-level, deliberately NOT footprint-level: in the repro the
@@ -260,7 +259,7 @@ fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) {
                 }
                 best = Some((d2, f));
             }
-            // EXACT-PLANE LIFT (ITEM-1, crack family d): re-express the foot of
+            // EXACT-PLANE LIFT (the crack-family fix): re-express the foot of
             // the perpendicular in the host triangle's EDGE BASIS and recombine
             // it with EXACT f64 arithmetic, so the welded vertex lies EXACTLY on
             // the host face's plane (orient3d == Zero) and the exact coplanar
@@ -269,7 +268,7 @@ fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) {
             // OFF a tilted plane (per-axis snapping cannot hold a tilt), so the
             // tri-pair classified Segment/near-coplanar and the carve chords of
             // the two operands diverged by mm in-plane ⇒ exact-coordinate
-            // boundary cracks (TUN32 #198779 / #387738). On a weld failure
+            // boundary cracks on far-from-origin walls. On a weld failure
             // (degenerate basis / out-of-range / inexact recombination) the
             // vertex is left UNTOUCHED — never an inexact foot, which would be
             // off every grid and force the BigRational tier on every predicate
@@ -352,7 +351,7 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
     tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
 }
 
-/// `host − (∪ cutters)` as a `Mesh` — the batched void-group subtract (ITEM-2).
+/// `host − (∪ cutters)` as a `Mesh` — the batched void-group subtract.
 ///
 /// The cutters MUST be pairwise disjoint (the router groups by snap-band-
 /// inflated AABBs) and each per-component watertight. Every component is
@@ -471,8 +470,8 @@ mod tests {
         assert!((v - 2.2).abs() < 1e-3, "through-opening wall volume = {v}, expected 2.2");
     }
 
-    /// M7 BUG-1 regression (TUN32 wall #97211 / opening #97266): a rotated
-    /// 12-tri host box minus the cutter box that
+    /// Extended-cutter-graze regression (a rotated tunnel-wall fixture): a
+    /// rotated 12-tri host box minus the cutter box that
     /// `extend_opening_mesh_through_host` pushed through it. The push slid a
     /// bit-exactly-shared corner ALONG the host end-face plane; the f32 round
     /// left it ~8 µm off (a tilt the per-axis snap can't flatten), so a host
@@ -493,8 +492,8 @@ mod tests {
             }
             m
         }
-        // exact f32 coords as dumped from the M7 probe (tun97211_real_host /
-        // tun97211_extended_cutter); 8 unique verts each, both watertight.
+        // exact f32 coords as dumped from the failing host/cutter pair;
+        // 8 unique verts each, both watertight.
         let host = mesh_of(
             &[
                 [274.05923, 400.96225, 34.600006],
@@ -558,7 +557,7 @@ mod tests {
     /// Directed-edge pairing audit at EXACT f32-bit coordinates — the crack
     /// detector. A watertight oriented surface has every directed edge matched
     /// by its reverse; any imbalance is an exact-coordinate boundary crack
-    /// (the ITEM-1 family d). No rounding: two seam vertices that differ by
+    /// (the crack family). No rounding: two seam vertices that differ by
     /// even one ULP count as a crack, which is precisely the defect.
     fn exact_open_edges(m: &Mesh) -> usize {
         use std::collections::HashMap;
@@ -602,7 +601,7 @@ mod tests {
         [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7],
     ];
 
-    /// ITEM-1 crack-family regression (TUN32 wall #198779, step 0 of the
+    /// Crack-family regression (a far-from-origin tunnel wall, step 0 of the
     /// minimal repro): a clean 12-tri plan-rotated wall prism minus ONE small
     /// recess box whose jamb face is intended-flush with the TILTED host end
     /// plane (they share the host corner (300.84857, 362.50748) bit-exactly;
@@ -650,8 +649,8 @@ mod tests {
         );
     }
 
-    /// ITEM-1 crack-family regression (#387738, the +10.3% max-error row of the
-    /// TUN32-class sweep): an 8×8-tri body `IfcBooleanClippingResult` DIFF in
+    /// Crack-family regression (the +10.3% max-error row of the far-from-origin
+    /// sweep): an 8×8-tri body `IfcBooleanClippingResult` DIFF in
     /// native units (|y|≈6699 ⇒ one f32 ULP = 4.88e-4 ≈ 32 snap cells, so the
     /// per-axis 2^-16 snap is structurally unable to reconcile the flush slant
     /// plane). The cutter's bottom face is intended-flush with the host's slant
@@ -741,7 +740,7 @@ mod tests {
         assert!((v - 3.3).abs() < 1e-3, "window cut volume = {v}, expected 3.3");
     }
 
-    /// ITEM-2: a two-pocket batched group (flush-bottom door + a window whose
+    /// Batching: a two-pocket batched group (flush-bottom door + a window whose
     /// corner touches the face diagonal) must equal the sequential chain and
     /// stay watertight — the configuration that exposed both the tangential-
     /// touch defect and the swallowed-endpoint constraint-recovery bail.
@@ -762,7 +761,7 @@ mod tests {
         );
     }
 
-    /// ITEM-2 disjoint-cutter batching: `subtract_many` of three pairwise-
+    /// Disjoint-cutter batching: `subtract_many` of three pairwise-
     /// disjoint through-openings in ONE arrangement equals the sequential
     /// per-cutter chain (analytic volume), is watertight, and is robust to a
     /// component arriving INWARD-wound — the per-component orientation inside

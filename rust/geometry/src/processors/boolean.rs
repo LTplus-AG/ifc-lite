@@ -935,10 +935,9 @@ impl BooleanClippingProcessor {
         // of the cutter prisms, which `build_cutter_union` computes with the
         // exact kernel's N-ary `union_many`. When it can't produce a watertight
         // union, `try_union_polygonal_chain` returns `None` and we fall through
-        // to the sequential path — so this is never worse than pre-#960,
-        // whose exact-kernel coplanar-abutting union parity is the pending M7
-        // work (the seam-sliver / deep-chain drop only fully resolves there once
-        // that union is watertight; 841_house_stack_overflow.ifc).
+        // to the sequential path — so this is never worse than pre-#960 (the
+        // seam-sliver / deep-chain drop only fully resolves once that union is
+        // watertight; 841_house_stack_overflow.ifc).
         if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
             if let Some(result) = self.try_union_polygonal_chain(entity, decoder, depth, quality)? {
                 return Ok(result);

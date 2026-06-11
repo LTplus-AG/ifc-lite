@@ -14,8 +14,8 @@ readme = "../../README.md"
 # CSG runs on the in-tree pure-Rust exact mesh-arrangement kernel
 # (`src/kernel/`) on every target — native and wasm32 alike. The former
 # Manifold C++ kernel (`manifold-csg` / `manifold-csg-wasm-uu`) and the
-# legacy BSP port were removed at M9 of the kernel consolidation
-# (docs/architecture/pure-rust-csg-kernel.md).
+# legacy BSP port were removed in the kernel consolidation
+# (docs/architecture/geometry-pipeline.md).
 default = []
 debug_geometry = []
 

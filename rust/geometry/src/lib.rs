@@ -82,9 +82,8 @@ pub mod diagnostics;
 pub mod error;
 pub mod geom_hash;
 pub mod extrusion;
-/// Pure-Rust exact mesh-arrangement CSG kernel — THE one CSG kernel since M9
-/// (Manifold C++ and the legacy BSP port were deleted; see
-/// docs/architecture/pure-rust-csg-kernel.md).
+/// Pure-Rust exact mesh-arrangement CSG kernel — the only CSG kernel, on
+/// every target (see docs/architecture/geometry-pipeline.md).
 pub mod kernel;
 pub mod material_layer_index;
 pub mod mesh;

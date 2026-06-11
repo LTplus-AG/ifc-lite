@@ -2,18 +2,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! In-plane constrained re-triangulation (M2.3) — phases A–F.
+//! In-plane constrained re-triangulation — phases A–F.
 //!
 //! Each input triangle `T` crossed by other triangles accumulates intersection
 //! sub-segments lying in its plane; this module re-triangulates `T` into a
 //! conforming, intersection-free fan of sub-triangles whose vertices are
 //! referenced SYMBOLICALLY (via the interner, never a float coordinate), with a
 //! topology that is invariant to insertion order and byte-identical across
-//! platforms. See `docs/architecture/pure-rust-csg-kernel.md` (M2.3 section).
+//! platforms.
 //!
-//! This increment delivers PHASE A (exact projection axis + reference winding)
-//! and PHASE B (canonical lex-rank work list). Phases C–F (point insertion,
-//! segment insertion, earcut, emit) build on the canonical list produced here.
+//! PHASE A is the exact projection axis + reference winding; PHASE B the
+//! canonical lex-rank work list; phases C–F (point insertion, segment
+//! insertion, earcut, emit) build on the canonical list produced here.
 
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d, orient2d_any};
@@ -351,10 +351,6 @@ pub fn earcut(it: &Interner, ring: &[Vid], axis: DropAxis, w0: Sign) -> Vec<SubT
         let i = match best {
             Some(i) => i,
             None => {
-                #[cfg(not(target_arch = "wasm32"))]
-                if std::env::var("RETRI_LOG").is_ok() {
-                    eprintln!("EARCUT_FAN_BAIL poly_len={}", poly.len());
-                }
                 // Degenerate pocket (no strictly-convex empty ear — a non-simple or
                 // collinear polygon). Fan-triangulate the remainder rather than
                 // panic: a panic aborts the wasm worker (panic=abort) and stalls

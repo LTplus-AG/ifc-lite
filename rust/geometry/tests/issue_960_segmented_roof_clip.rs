@@ -29,7 +29,7 @@
 //! union (`kernel::mesh_bridge::union_many` → `arrangement::union_all`): all
 //! cutter prisms are conformed in ONE arrangement, so coplanar seams shared by
 //! 3+ roof segments — and exactly-duplicated cutter prisms — dissolve into a
-//! watertight solid. The pure-Rust exact kernel is the only kernel (M9), so
+//! watertight solid. The pure-Rust exact kernel is the only kernel, so
 //! this test runs unconditionally.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};

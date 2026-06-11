@@ -14,8 +14,8 @@ description = "Shared IFC processing pipeline and types used by server and FFI"
 [dependencies]
 ifc-lite-core = { path = "../core" }
 # CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry on every
-# target (the Manifold C++ kernel was removed at M9 — see
-# docs/architecture/pure-rust-csg-kernel.md).
+# target (the Manifold C++ kernel was removed in the kernel consolidation —
+# see docs/architecture/geometry-pipeline.md).
 ifc-lite-geometry = { path = "../geometry", default-features = false }
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive"] }

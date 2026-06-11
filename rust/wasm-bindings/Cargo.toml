@@ -27,8 +27,8 @@ futures-util = "0.3"
 ifc-lite-core.workspace = true
 # CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry — the
 # same kernel on wasm32 and native. The Manifold C++ kernel and its
-# LLVM/emsdk build prerequisites were removed at M9 of the kernel
-# consolidation (docs/architecture/pure-rust-csg-kernel.md).
+# LLVM/emsdk build prerequisites were removed in the kernel
+# consolidation (docs/architecture/geometry-pipeline.md).
 ifc-lite-geometry = { path = "../geometry", default-features = false, features = [] }
 # Canonical 2D-symbol extractor lives here; the wasm bindings just
 # delegate (issue #843 follow-up — full parity, one implementation).

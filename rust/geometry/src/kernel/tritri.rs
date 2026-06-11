@@ -2,12 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Triangle–triangle intersection machinery (L2, M2) — exact, predicate-driven.
+//! Triangle–triangle intersection machinery — exact, predicate-driven.
 //!
-//! M2 increment 1: classify a triangle against another's plane (via exact
-//! `orient3d`), and construct the edge∩plane intersection points as LPI implicit
-//! points. The full intersection segment (interval overlap along the planes'
-//! crossing line) and the in-plane re-triangulation build on this.
+//! Classifies a triangle against another's plane (via exact `orient3d`) and
+//! constructs the edge∩plane intersection points as LPI implicit points. The
+//! full intersection segment (interval overlap along the planes' crossing
+//! line) and the in-plane re-triangulation build on this.
 //!
 //! Every intersection point is an LPI carried symbolically over the original
 //! input coordinates — never materialised — so downstream predicates stay exact
@@ -233,17 +233,16 @@ fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
 /// coplanar handler. A genuine transversal cut (box−box, every real crossing)
 /// has vertices FAR off the other plane ⇒ fails the slab test.
 ///
-/// WHY vertex-slab and not the earlier fixed angle gate (TUN32 forensics,
-/// BLOCKER-A): the old formulation ALSO required the two plane normals to agree
-/// to ~2^-20 (≈1.4 mrad) — but the tilt that f32 import noise induces on an
-/// intended-flush facet scales as `scatter / edge_length`. At 300–400 m from
-/// origin (f32 ULP 30.5 µm — TUN32's tunnel-alignment walls) a SMALL flush facet
-/// (0.03–0.05 m edges, the 3-segment recess cutters of wall #198779) tilts
-/// 1.4–1.9 mrad: past the fixed gate while sitting 3–24 µm INSIDE the slab. The
-/// missed pair then enters the razor-thin-crossing path whose degenerate
-/// sub-triangle keep/drop is a noise lottery → open edges + volumes off by
-/// −85%…+19 763% (the 749-element TUN32 divergence family, ~84% adjudicated
-/// PURE-WRONG against IfcOpenShell 0.8.2 ground truth). The slab test is
+/// WHY vertex-slab and not the earlier fixed angle gate: the old formulation
+/// ALSO required the two plane normals to agree to ~2^-20 (≈1.4 mrad) — but
+/// the tilt that f32 import noise induces on an intended-flush facet scales as
+/// `scatter / edge_length`. At 300–400 m from origin (f32 ULP 30.5 µm —
+/// tunnel-alignment walls) a SMALL flush facet (0.03–0.05 m edges, 3-segment
+/// recess cutters) tilts 1.4–1.9 mrad: past the fixed gate while sitting
+/// 3–24 µm INSIDE the slab. The missed pair then enters the razor-thin-
+/// crossing path whose degenerate sub-triangle keep/drop is a noise lottery →
+/// open edges + volumes off by −85%…+19 763% (a 749-element divergence family,
+/// ~84% adjudicated PURE-WRONG against IfcOpenShell 0.8.2). The slab test is
 /// scale-correct: small facets get exactly the angular allowance their size
 /// implies, large facets proportionally less (a large tilted partner's far
 /// vertices leave the slab, so it still fails).
@@ -358,8 +357,8 @@ mod tests {
     #[test]
     fn edge_crossing_lpi_lies_exactly_on_the_plane() {
         // The defining property: orient3d(LPI, plane[0], plane[1], plane[2]) == 0
-        // (the edge∩plane point is coplanar with the plane). This ties the M2
-        // construction to the M1 exact LPI-orient3d.
+        // (the edge∩plane point is coplanar with the plane). This ties the LPI
+        // construction to the exact LPI-orient3d predicate.
         let lpi = edge_plane_lpi([0.5, 0.5, -1.], [0.5, 0.5, 3.], &ZPLANE);
         assert_eq!(
             orient3d(&ImplicitPoint::Lpi(lpi), &e(ZPLANE[0]), &e(ZPLANE[1]), &e(ZPLANE[2])),
@@ -429,7 +428,7 @@ mod tests {
 
     #[test]
     fn touches_vertex_on_plane_yields_segment_with_explicit_endpoint() {
-        // M1: t2 crosses t1's plane (y=0) but with ONE vertex EXACTLY on it.
+        // t2 crosses t1's plane (y=0) but with ONE vertex EXACTLY on it.
         let t1 = [[-2., 0., -1.], [2., 0., -1.], [0., 0., 2.]]; // plane y=0
         let t2 = [[0., 0., 0.5], [0.5, -1., 0.5], [0.5, 1., 0.5]]; // v0 at y=0, in plane z=0.5
         match tri_tri_intersection(&t1, &t2) {

@@ -297,8 +297,7 @@ impl<'a> EntityDecoder<'a> {
 
     /// Inject a pre-warmed Arc-shared cache into this decoder's local cache.
     ///
-    /// Used by the de-normalized parallel path (Option 1 of the
-    /// single-controller-rayon-design): a serial pre-pass builds a
+    /// Used by the de-normalized parallel path: a serial pre-pass builds a
     /// shared `Arc<FxHashMap<u32, Arc<DecodedEntity>>>` containing all
     /// entities reachable from the jobs. Each rayon task then injects
     /// that shared cache into its own decoder via this method, so the

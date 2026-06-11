@@ -1350,7 +1350,7 @@ fn refine_to_fixpoint(
         // rebuild re-inserts every point with an O(T) `locate` scan), i.e.
         // O(P³) per refinement: 13.8 s for ONE 582-vertex/16-hole slab face,
         // ×2 faces ×16 re-consolidates = the 155 s advanced_model #798926
-        // many-void cliff (BLOCKER-B). Incremental insertion + walk-locate +
+        // many-void cliff (the many-void CDT cliff). Incremental insertion + walk-locate +
         // the maintained skinny worklist refines the same face in ~10 ms.
         cdt.start_refinement(COS_MIN_ANGLE);
         while steiner < max_steiner.min(MAX_REFINE_ITERS) {
@@ -1652,7 +1652,7 @@ mod tests {
         }
     }
 
-    /// BLOCKER-B regression (advanced_model.ifc IFCSLAB #798926): the no-split
+    /// Many-void CDT-cliff regression (advanced_model.ifc IFCSLAB #798926): the no-split
     /// (consolidate_coplanar) refinement of a many-hole slab face. The old
     /// rebuild-per-Steiner-point driver was O(P³) — 13.8 s in RELEASE for ONE
     /// 582-vertex/16-hole face, ×2 faces ×16 re-consolidates = a 155 s element.
@@ -1739,7 +1739,7 @@ mod tests {
         #[cfg(not(debug_assertions))]
         assert!(
             dt < std::time::Duration::from_secs(2),
-            "no-split many-hole refinement took {dt:?} — the O(P³) rebuild-per-point driver is back (BLOCKER-B)"
+            "no-split many-hole refinement took {dt:?} — the O(P³) rebuild-per-point driver is back"
         );
         let _ = dt;
     }

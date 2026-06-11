@@ -74,7 +74,7 @@ pub fn indirect_sign_manifest() -> u64 {
         mix(&mut h, orient2d(&il, &ea, &eb, DropAxis::Z));
         mix(&mut h, orient2d(&it, &ea, &eb, DropAxis::X));
         mix(&mut h, orient2d(&il, &eb, &ec, DropAxis::Y));
-        // M2.3 new configs: orient2d 2I / 3I + cmp_lex (all through the cascade)
+        // mixed-implicit configs: orient2d 2I / 3I + cmp_lex (all through the cascade)
         mix(&mut h, orient2d_2i(&il, &il2, rng.p(), DropAxis::Z));
         mix(&mut h, orient2d_2i(&it, &il2, rng.p(), DropAxis::X));
         mix(&mut h, orient2d_3i(&il, &it, &il2, DropAxis::Y));

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Issue #1007 (M3c/M3d) — the diagonal sliver "flap" over an opening.
+//! Issue #1007 — the diagonal sliver "flap" over an opening.
 //!
 //! When an `IfcOpeningElement` void is subtracted from a host, the cut hole is
 //! present but a thin DIAGONAL needle triangle used to bridge across part of the

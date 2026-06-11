@@ -3,7 +3,7 @@
 Status: **shipped** (`@ifc-lite/clash`). This is the *what/why* of the design as built;
 the source, tests, and changeset are the source of truth for the *how*.
 Owner: clash core
-Related: `docs/architecture/collab-plan.md`, `docs/architecture/streaming-load-design.md`.
+Related: `docs/architecture/collab-plan.md`.
 
 ---
 

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Mesh arrangement (L3, M3) — the conforming intersection of two operand meshes.
+//! Mesh arrangement — the conforming intersection of two operand meshes.
 //!
 //! For every pair of triangles (one per operand) that cross, the intersection
 //! segment becomes a constraint for BOTH triangles (it lies on both planes), and
@@ -132,8 +132,6 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
 
 /// Compute the conforming arrangement of operand meshes `a` and `b`.
 pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
-    #[cfg(not(target_arch = "wasm32"))]
-    let _ts = std::time::Instant::now();
     // 1. accumulate raw intersection segments (Segment pairs) + coplanar overlaps
     let mut raw_a: Vec<Vec<RawSeg>> = (0..a.len()).map(|_| Vec::new()).collect();
     let mut raw_b: Vec<Vec<RawSeg>> = (0..b.len()).map(|_| Vec::new()).collect();
@@ -142,18 +140,9 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     let mut pt_a: Vec<Vec<ImplicitPoint>> = (0..a.len()).map(|_| Vec::new()).collect();
     let mut pt_b: Vec<Vec<ImplicitPoint>> = (0..b.len()).map(|_| Vec::new()).collect();
     let pairs = super::broadphase::candidate_pairs(a, b);
-    #[cfg(not(target_arch = "wasm32"))]
-    let n_pairs = pairs.len();
-    #[cfg(not(target_arch = "wasm32"))]
-    let mut n_hit = 0usize;
     for (i, j) in pairs {
         let (ta, tb) = (&a[i], &b[j]);
-        let _r = tri_tri_intersection(ta, tb);
-        #[cfg(not(target_arch = "wasm32"))]
-        if !matches!(_r, TriTri::None | TriTri::Point(_)) {
-            n_hit += 1;
-        }
-        match _r {
+        match tri_tri_intersection(ta, tb) {
             TriTri::Segment([s, t]) => {
                 raw_a[i].push(RawSeg { a: s.clone(), b: t.clone(), cutter: *tb });
                 raw_b[j].push(RawSeg { a: s, b: t, cutter: *ta });
@@ -185,8 +174,6 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
             })
             .collect()
     };
-    #[cfg(not(target_arch = "wasm32"))]
-    let t_pairs = _ts.elapsed();
     // Per-ORIGINAL-triangle "had a coplanar overlap with the other operand" flag,
     // captured BEFORE `build` drains the coplanar-constraint accumulators.
     let cop_parent_a: Vec<bool> = cop_a.iter().map(|c| !c.is_empty()).collect();
@@ -194,27 +181,12 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     let ca = build(a, &raw_a, &mut cop_a);
     let cb = build(b, &raw_b, &mut cop_b);
     // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
-    #[cfg(not(target_arch = "wasm32"))]
-    let t_build = _ts.elapsed();
     let mut interner = Interner::new();
     let mut unrecovered = 0usize;
     let (tris_a, coplanar_a) =
         retriangulate_each(a, &ca, &pt_a, &cop_parent_a, &mut interner, &mut unrecovered);
     let (tris_b, coplanar_b) =
         retriangulate_each(b, &cb, &pt_b, &cop_parent_b, &mut interner, &mut unrecovered);
-    #[cfg(not(target_arch = "wasm32"))]
-    if std::env::var("ARRANGE_PROFILE").is_ok() {
-        eprintln!(
-            "    arrange: pairs {:.0}ms ({} cand, {} hit)  build {:.0}ms  retri {:.0}ms ({} subA {} subB)",
-            t_pairs.as_secs_f64() * 1e3,
-            n_pairs,
-            n_hit,
-            (t_build - t_pairs).as_secs_f64() * 1e3,
-            (_ts.elapsed() - t_build).as_secs_f64() * 1e3,
-            tris_a.len(),
-            tris_b.len(),
-        );
-    }
     Arrangement { interner, tris_a, tris_b, coplanar_a, coplanar_b, unrecovered }
 }
 
@@ -452,7 +424,7 @@ fn retriangulate_each(
     (out, coplanar)
 }
 
-// --- M4: winding classification + boolean extraction ---------------------
+// --- winding classification + boolean extraction --------------------------
 
 fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
@@ -507,16 +479,7 @@ fn operand_extent(tris: &[Tri]) -> f64 {
 /// (the "missing wall" over-clip). Shared by [`point_inside`] and the
 /// per-component AABB ray prefilter so they can never disagree.
 fn ray_dir() -> [f64; 3] {
-    #[allow(unused_mut)]
-    let mut dir = [0.301_511_3, 0.557_328_1, 0.773_890_1];
-    #[cfg(not(target_arch = "wasm32"))]
-    if let Ok(s) = std::env::var("RAY_DIR") {
-        let v: Vec<f64> = s.split(',').filter_map(|x| x.parse().ok()).collect();
-        if v.len() == 3 {
-            dir = [v[0], v[1], v[2]];
-        }
-    }
-    dir
+    [0.301_511_3, 0.557_328_1, 0.773_890_1]
 }
 
 /// Is point `p` inside the closed mesh `tris`? Exact ray-cast parity to a far
@@ -693,7 +656,7 @@ fn solid_side(c: [f64; 3], dir: [f64; 3], other: &[Tri], far_l: f64) -> (bool, b
     (point_inside(p_plus, other, far_l), point_inside(p_minus, other, far_l))
 }
 
-/// The B operand as PAIRWISE-DISJOINT closed components (ITEM-2 disjoint-cutter
+/// The B operand as PAIRWISE-DISJOINT closed components (disjoint-cutter
 /// batching). The binary boolean is the 1-component special case. Classification
 /// against the union of disjoint closed solids decomposes per component —
 /// "inside the union" ⇔ "inside exactly one component" — which (a) caps the ray
@@ -1012,28 +975,16 @@ fn boolean_vids_components(
 /// triangles. `A−B = (A outside B) ∪ flip(B inside A)`;
 /// `A∪B = (A outside B) ∪ (B outside A)`; `A∩B = (A inside B) ∪ (B inside A)`.
 pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
-    #[cfg(not(target_arch = "wasm32"))]
-    let t0 = std::time::Instant::now();
     let arr = arrange(a, b);
-    #[cfg(not(target_arch = "wasm32"))]
-    let t_arr = t0.elapsed();
     let vids = boolean_vids(&arr, a, b, op);
-    #[cfg(not(target_arch = "wasm32"))]
-    let t_cls = t0.elapsed();
-    let out: Vec<Tri> = vids
-        .into_iter()
+    vids.into_iter()
         .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
-        .collect();
-    #[cfg(not(target_arch = "wasm32"))]
-    if std::env::var("KERNEL_PROFILE").is_ok() {
-        super::prof_add(t_arr.as_secs_f64(), (t_cls - t_arr).as_secs_f64(), (t0.elapsed() - t_cls).as_secs_f64());
-    }
-    out
+        .collect()
 }
 
 /// `a − (∪ comps)` for PAIRWISE-DISJOINT, per-component-closed, OUTWARD-wound
-/// cutter components, computed in ONE conforming arrangement (ITEM-2
-/// disjoint-cutter batching).
+/// cutter components, computed in ONE conforming arrangement (disjoint-cutter
+/// batching).
 ///
 /// Soundness: `arrange` only intersects A×B pairs, and disjoint B components
 /// have no B×B intersections to miss; classification decomposes per component
@@ -1045,7 +996,7 @@ pub fn boolean(a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<Tri> {
 /// vs. sequential per-cutter subtraction this avoids re-arranging the (growing)
 /// host once per cutter — each intermediate round-trip through f32 + the snap
 /// grid re-jitters carve vertices off shared planes, so cut N+1 re-cracks what
-/// cut N reconciled (the 24-void TUN32 walls' compounding open edges) — and is
+/// cut N reconciled (many-void walls' compounding open edges) — and is
 /// ~N× cheaper on N box cutters.
 pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
     if comps.is_empty() {
@@ -1215,7 +1166,7 @@ mod tests {
 
     #[test]
     fn boolean_containment_cases_have_exact_volumes() {
-        // A entirely inside B — no surface intersection, so this exercises the M4
+        // A entirely inside B — no surface intersection, so this exercises the
         // classification + extraction WITHOUT the arrangement / seg×seg crossings.
         let a = cube(1., 2.); // vol 1, strictly inside B
         let b = cube(0., 3.); // vol 27

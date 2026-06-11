@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Symbolic vertex interner (M2.3.1) — the arrangement's single source of vertex
+//! Symbolic vertex interner — the arrangement's single source of vertex
 //! identity.
 //!
 //! Two points that are EXACTLY coincident (`cmp_lex == Zero`) get the SAME `Vid`,

@@ -18,7 +18,7 @@
 //! escalates on overflow. So the result is always a sign identical to
 //! BigRational, or a deferral up the cascade and finally to BigRational.
 //!
-//! DUAL SCALE (ITEM-1 crack fix): the exact-plane lift in `mesh_bridge` welds
+//! DUAL SCALE (crack-family fix): the exact-plane lift in `mesh_bridge` welds
 //! near-coplanar cutter vertices onto host planes at the FINER `k/2^36` grid
 //! (`2^16` snap grid × the `2^20` α,β quantization). Those coordinates fail the
 //! coarse `gi` fract check and previously fell to the ~3 ms BigRational tier on
@@ -278,8 +278,6 @@ mod f2048 {
 macro_rules! cascade {
     ($name:ident ( $($arg:ident : $ty:ty),* )) => {
         pub fn $name($($arg : $ty),*) -> Option<Sign> {
-            #[cfg(not(target_arch = "wasm32"))]
-            super::FIX_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             w256::$name($($arg),*)
                 .or_else(|| w512::$name($($arg),*))
                 .or_else(|| w1024::$name($($arg),*))

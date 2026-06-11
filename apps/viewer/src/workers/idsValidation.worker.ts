@@ -56,21 +56,17 @@ self.onmessage = async (event: MessageEvent<IdsWorkerRequest>) => {
   const req = event.data;
   if (!req || req.type !== 'validate') return;
 
-  const t0 = performance.now();
   try {
-    console.info('[IDS-worker] validate start');
     const parser = new IfcParser();
     // The worker owns this buffer; a SAB is shared by reference, a plain
     // ArrayBuffer was copied by the caller, so parsing it here is safe.
     const store = await parser.parseColumnar(req.source);
     store.schemaVersion =
       (req.schemaVersion as typeof store.schemaVersion) || store.schemaVersion;
-    console.info(`[IDS-worker] parsed store @ +${(performance.now() - t0).toFixed(0)}ms (${store.entityCount ?? '?'} entities)`);
 
     const accessor = createDataAccessor(store);
     const translator = createTranslationService(req.locale);
 
-    let progressCount = 0;
     const report = await validateIDS(
       req.document,
       accessor,
@@ -87,20 +83,12 @@ self.onmessage = async (event: MessageEvent<IdsWorkerRequest>) => {
         // end. The worker has no UI, but cross-thread message delivery
         // still benefits from real event-loop turns.
         yieldEveryMs: 30,
-        onProgress: (progress) => {
-          progressCount++;
-          if (progressCount === 1 || progressCount % 100 === 0) {
-            console.info(`[IDS-worker] progress #${progressCount} @ +${(performance.now() - t0).toFixed(0)}ms phase=${progress.phase} pct=${progress.percentage}`);
-          }
-          post({ type: 'progress', id: req.id, progress });
-        },
+        onProgress: (progress) => post({ type: 'progress', id: req.id, progress }),
       }
     );
-    console.info(`[IDS-worker] validate complete @ +${(performance.now() - t0).toFixed(0)}ms, ${progressCount} progress events posted`);
 
     post({ type: 'complete', id: req.id, report });
   } catch (err) {
-    console.error('[IDS-worker] validate FAILED:', err);
     post({
       type: 'error',
       id: req.id,

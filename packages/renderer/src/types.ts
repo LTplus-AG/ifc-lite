@@ -194,9 +194,12 @@ export interface RenderOptions {
   visualEnhancement?: VisualEnhancementOptions;
   // Streaming state
   isStreaming?: boolean;          // If true, skip expensive operations like picker
-  // When true, skips the post-processing pass (contact shading / separation lines)
-  // for faster frame times during rapid camera movement (zoom, orbit, pan).
-  // The post-processing is restored automatically on the next non-interacting frame.
+  // True during rapid camera movement (zoom, orbit, pan, animations).
+  // Post effects (contact shading / separation lines) KEEP RUNNING during
+  // interaction as long as the measured frame cadence holds; on GPUs that
+  // miss frames the renderer adaptively degrades to skipping the post pass
+  // for the rest of the gesture (see InteractionEffectsGovernor). Full
+  // quality is always restored on the next non-interacting frame.
   isInteracting?: boolean;
 }
 

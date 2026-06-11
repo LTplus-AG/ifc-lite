@@ -279,14 +279,19 @@ fn floor_pow2(x: f64) -> f64 {
 ///
 /// This collapses any vertex within `eps` of its kept predecessor onto that
 /// predecessor. `eps` is a POWER OF TWO scaled to the ring's bounding-box extent
-/// (`floor_pow2(extent) · 2⁻¹³` ≈ extent/8192) — bit-deterministic and
-/// scale-relative. On the #1007 fixture the rim duplicates span 6–72 µm on
-/// ~2 m faces (~3·10⁻⁶ … 4·10⁻⁵ of the extent) while the smallest REAL feature
-/// edge is 0.2 m (~0.1 of the extent), so eps (~10⁻⁴ of the extent) sits three
-/// orders of magnitude above the duplicate spread and three below any real edge —
-/// no over-weld. This runs in the already-non-exact consolidation post-pass; it
-/// does NOT touch the exact kernel's interner/predicates (no float weld in the
-/// determinism path).
+/// (`floor_pow2(extent) · 2⁻¹³` ≈ extent/8192) and CAPPED at an absolute
+/// 2⁻¹² m (244 µm) — bit-deterministic. On the #1007 fixture the rim
+/// duplicates span 6–72 µm on ~2 m faces (~3·10⁻⁶ … 4·10⁻⁵ of the extent)
+/// while the smallest REAL feature edge is 0.2 m (~0.1 of the extent), so eps
+/// (~10⁻⁴ of the extent) sits three orders of magnitude above the duplicate
+/// spread and three below any real edge — no over-weld. The absolute cap is
+/// what protects mm-scale features on LARGE rings: the duplicate spread comes
+/// from f32 import noise / shallow-dihedral LPI crossings whose magnitude does
+/// NOT grow with ring extent (operands are snapped about their AABB centre),
+/// but an uncapped extent-relative eps reaches 1 mm at 8 m and would swallow a
+/// genuine 1 mm chamfer on a long steel member. This runs in the already-
+/// non-exact consolidation post-pass; it does NOT touch the exact kernel's
+/// interner/predicates (no float weld in the determinism path).
 fn weld_near_coincident_2d(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Point2<f64>> {
     let n = ring.len();
     if n < 4 {
@@ -304,8 +309,9 @@ fn weld_near_coincident_2d(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Poin
     if !extent.is_finite() || extent <= 0.0 {
         return ring.to_vec();
     }
-    // extent · 2⁻¹³ rounded DOWN to a power of two ⇒ exact, deterministic.
-    let eps = floor_pow2(extent) * 2.0_f64.powi(-13);
+    // extent · 2⁻¹³ rounded DOWN to a power of two, capped at an absolute
+    // 2⁻¹² m so big rings can't swallow mm-scale features ⇒ exact, deterministic.
+    let eps = (floor_pow2(extent) * 2.0_f64.powi(-13)).min(2.0_f64.powi(-12));
     let eps2 = eps * eps;
     let mut kept: Vec<nalgebra::Point2<f64>> = Vec::with_capacity(n);
     for &p in ring {
@@ -1697,6 +1703,40 @@ mod tests {
             Point2::new(0.0, 0.2),
         ];
         assert_eq!(weld_near_coincident_2d(&clean).len(), 4, "a clean ring was over-welded");
+    }
+
+    #[test]
+    fn weld_near_coincident_2d_keeps_mm_features_on_large_rings() {
+        use nalgebra::Point2;
+        // A 12 m × 1 m member face with a 1 mm corner chamfer (two vertices
+        // 1 mm apart). Uncapped extent-relative eps (12/8192 ≈ 1.46 mm) would
+        // weld the chamfer away; the absolute 2⁻¹² m cap must keep it.
+        let chamfered = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(12.0, 0.0),
+            Point2::new(12.0, 0.999),
+            Point2::new(11.999, 1.0), // 1 mm chamfer edge
+            Point2::new(0.0, 1.0),
+        ];
+        let welded = weld_near_coincident_2d(&chamfered);
+        assert_eq!(
+            welded.len(),
+            5,
+            "1 mm chamfer on a 12 m ring was over-welded: {welded:?}"
+        );
+        // µm-scale rim duplicates must still weld on the SAME large ring.
+        let ring = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(12.0, 0.0),
+            Point2::new(12.0, 1.0),
+            Point2::new(0.000_02, 1.0), // 20 µm duplicate of the corner
+            Point2::new(0.0, 1.0),
+        ];
+        assert_eq!(
+            weld_near_coincident_2d(&ring).len(),
+            4,
+            "µm rim duplicate on a large ring not welded"
+        );
     }
 
     #[test]

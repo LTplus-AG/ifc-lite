@@ -99,6 +99,12 @@ pub enum BoolFailureReason {
     /// boundary. The clip *is* applied but is a strict superset of the
     /// requested cut.
     PolygonalBoundedHalfSpaceFallback,
+    /// The chained-clip cutter prisms couldn't be unioned into one watertight
+    /// solid, so the single batched subtract (issue #960) was skipped and the
+    /// chain fell back to sequential per-cutter subtraction. The cuts *are*
+    /// applied, but abutting cutters may leave zero-thickness seam fins that
+    /// the batched path would have eliminated.
+    CutterUnionUnavailable,
     /// `IfcBooleanResult` operator string didn't match any known op.
     UnknownBooleanOperator(String),
     /// HISTORICAL (pre-M9): the Manifold kernel's `difference` returned
@@ -140,6 +146,9 @@ impl fmt::Display for BoolFailureReason {
             }
             BoolFailureReason::PolygonalBoundedHalfSpaceFallback => f.write_str(
                 "IfcPolygonalBoundedHalfSpace degraded to unbounded plane clip",
+            ),
+            BoolFailureReason::CutterUnionUnavailable => f.write_str(
+                "cutter union not watertight; deferred to sequential per-cutter subtraction",
             ),
             BoolFailureReason::UnknownBooleanOperator(op) => {
                 write!(f, "unknown IfcBooleanResult operator '{op}'")

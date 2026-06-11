@@ -17,7 +17,11 @@ use crate::mesh::Mesh;
 /// makes such faces EXACTLY coplanar so the exact coplanar path fires instead of
 /// emitting a noise sliver. Resolution is tunable against the corpus (flip plan
 /// M7 / the open decision); 2^-16 m ≈ 15 µm.
-const SNAP_GRID: f64 = 1.0 / 65536.0;
+///
+/// Canonical definition — `tritri` and `arrangement` size their near-coplanar
+/// bands to the scatter envelope this snap produces, so they import this
+/// constant rather than mirroring it.
+pub(crate) const SNAP_GRID: f64 = 1.0 / 65536.0;
 
 #[inline]
 fn snap(c: f64) -> f64 {

@@ -590,11 +590,10 @@ fn on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
     None
 }
 
-/// Power-of-two grid `mesh_bridge` snaps both operands to (metres). Mirrored from
-/// `mesh_bridge::SNAP_GRID`; the `near_on_surface_normal` band below is sized to
-/// the scatter this snap leaves on a TILTED flush face (kept in sync by the
-/// `snap_grid_in_sync` test in `mesh_bridge`).
-const SNAP_GRID: f64 = 1.0 / 65536.0;
+/// Power-of-two grid `mesh_bridge` snaps both operands to (metres); the
+/// `near_on_surface_normal` band below is sized to the scatter this snap
+/// leaves on a TILTED flush face.
+use super::mesh_bridge::SNAP_GRID;
 
 /// The NEAR-coplanar analogue of [`on_surface_normal`], used ONLY for a
 /// sub-triangle whose parent face had a near-coplanar overlap with the other

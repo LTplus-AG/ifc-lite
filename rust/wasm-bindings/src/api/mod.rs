@@ -725,6 +725,9 @@ pub(super) fn drain_and_log_csg_diagnostics(
                     ifc_lite_geometry::BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
                         "PolygonalBoundedHalfSpaceFallback"
                     }
+                    ifc_lite_geometry::BoolFailureReason::CutterUnionUnavailable => {
+                        "CutterUnionUnavailable"
+                    }
                     ifc_lite_geometry::BoolFailureReason::UnknownBooleanOperator(_) => {
                         "UnknownBooleanOperator"
                     }

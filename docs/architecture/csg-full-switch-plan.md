@@ -35,30 +35,30 @@ Branch feat/pure-rust-csg-kernel. Verdict order: M0 baseline freeze → M2 cmp_a
 Manifests to re-pin each step: predicate 0xdd1dd6b000130af5, retriangulation 0xef5b32fdd8384776, boolean 0x0465b83a5fdb8b2b.
 
 ## Refutation fixes folded inline
-- [R1-1] coplanar edge×edge LPI: corrected to sign(d)=sign(det3(qp_edge1,sr_aux,tr_aux))≠Zero (line-not-parallel-to-plane), iterating 6 fixed bbox-corner refs in lex order; existence + order-freeness proven. NOT the draft's "first orient3d≠Zero vertex" (wrong predicate, can still yield d=0).
-- [R1-2] f32-near-coplanar = the DOMINANT degeneracy and exactness is HARMFUL: M3a adds exact snap-rounding in mesh_to_tris (shared power-of-two-mm grid, bit-deterministic) so intended-flush faces become EXACTLY coplanar. Reject float merge-epsilon.
-- [R1-3] cmp_along Explicit endpoints have no λ/d: special-case Explicit as (λ=coord,d=1), do NOT route through lambda_of (unreachable! rational.rs:251); zero-length-chord filter before RawSeg.
-- [R1-4] single-operand dup-face dedup (M3d) for double-encoded voids → avoids non-manifold operand → watertightness-gate rejection.
-- [R1-5] multi-tri coplanar FAN promoted IN-SCOPE all-exact (i_overlay only as over-reporting hint validated by exact segments_cross).
-- [R1-6] vertex-touch host classification fixed by the M4 exact ray-cast applied to EVERY sub-triangle.
-- [R1-7] collinear-OVERFLOW chord clipped to host edge before insert_point (else dangling Vid panics on wasm).
-- [R1-8][R2-1][R2-2] M4 classifier made FULLY EXACT (rational-direction orient3d ray-cast), NOT an f64-normal nudge; reorient_outward deletion CONTINGENT on the M4 flipped-box proof, default to KEEPING an outward pass.
-- [R1-9] common drop axis from the exact shared plane in fixed lex order, not per-triangle f64 magnitude.
-- [R2-3] panic-free-by-construction is a HARD M6 gate with the enumerated 6-site list; catch_unwind is server-only.
-- [R2-5] per-fixture #635/#947/#964 suppress-term oracles in M7.
-- [R2-6] watertightness gate PRE-seam in BOTH boolean.rs and mapped.rs; PENDING_MAPPED_BOOL_FAILURES drain traced.
-- [R2-4] csg_op_census.rs + csg_parity.rs are NEW examples (corrected from "extend/mirror existing").
-- [R3-1] per-consumer budget (server-low / viewer-Manifold-sized) with a decision-rule test.
-- [R3-2] intra-triangle localized-walk fix + an explicit single-heavy-triangle bench (the draft benched the wrong quadratic).
-- [R3-3] bbox-discarding pinned tests (552761/555082) NOT demoted to bare soft snapshots — re-pinned or cut-shape-oracle'd; #6426 gets an interior hole-shape check.
-- [R3-5] at-budget worst-case perf bench replaces the deleted O(1) OperandTooLarge cost firewall.
-- [R3-6] class-D fix asserts the untouched face's outer boundary stays the 4 pristine corners (not just area).
-- [R4-1] geom_hash/compare-models compat (schema bump + same-version gating) added to M8.
-- [R4-2] wider deletion set (processors/tests.rs, profiles.rs, measure-bundle-size.sh, README-vercel-cost.md, csg_timing.rs:40) + grep-clean over .rs/.toml/.yml/.sh/.md.
-- [R4-3][R4-4] rollback = runtime-flag canary + permanent catch_unwind, documented honestly (not "revert one commit").
-- [R4-5] BoolFailureReason at diagnostics.rs:75 (path corrected); 24-vs-128 cap mismatch swept.
-- [R4-6] M0 corpus-precondition gate (pnpm fixtures present) + corpus-completeness assertion.
-- [R4-7] smooth_normals_with_creases cfg-gated like calculate_normals (native no-op vs wasm).
+- `R1-1` coplanar edge×edge LPI: corrected to sign(d)=sign(det3(qp_edge1,sr_aux,tr_aux))≠Zero (line-not-parallel-to-plane), iterating 6 fixed bbox-corner refs in lex order; existence + order-freeness proven. NOT the draft's "first orient3d≠Zero vertex" (wrong predicate, can still yield d=0).
+- `R1-2` f32-near-coplanar = the DOMINANT degeneracy and exactness is HARMFUL: M3a adds exact snap-rounding in mesh_to_tris (shared power-of-two-mm grid, bit-deterministic) so intended-flush faces become EXACTLY coplanar. Reject float merge-epsilon.
+- `R1-3` cmp_along Explicit endpoints have no λ/d: special-case Explicit as (λ=coord,d=1), do NOT route through lambda_of (unreachable! rational.rs:251); zero-length-chord filter before RawSeg.
+- `R1-4` single-operand dup-face dedup (M3d) for double-encoded voids → avoids non-manifold operand → watertightness-gate rejection.
+- `R1-5` multi-tri coplanar FAN promoted IN-SCOPE all-exact (i_overlay only as over-reporting hint validated by exact segments_cross).
+- `R1-6` vertex-touch host classification fixed by the M4 exact ray-cast applied to EVERY sub-triangle.
+- `R1-7` collinear-OVERFLOW chord clipped to host edge before insert_point (else dangling Vid panics on wasm).
+- `R1-8``R2-1``R2-2` M4 classifier made FULLY EXACT (rational-direction orient3d ray-cast), NOT an f64-normal nudge; reorient_outward deletion CONTINGENT on the M4 flipped-box proof, default to KEEPING an outward pass.
+- `R1-9` common drop axis from the exact shared plane in fixed lex order, not per-triangle f64 magnitude.
+- `R2-3` panic-free-by-construction is a HARD M6 gate with the enumerated 6-site list; catch_unwind is server-only.
+- `R2-5` per-fixture #635/#947/#964 suppress-term oracles in M7.
+- `R2-6` watertightness gate PRE-seam in BOTH boolean.rs and mapped.rs; PENDING_MAPPED_BOOL_FAILURES drain traced.
+- `R2-4` csg_op_census.rs + csg_parity.rs are NEW examples (corrected from "extend/mirror existing").
+- `R3-1` per-consumer budget (server-low / viewer-Manifold-sized) with a decision-rule test.
+- `R3-2` intra-triangle localized-walk fix + an explicit single-heavy-triangle bench (the draft benched the wrong quadratic).
+- `R3-3` bbox-discarding pinned tests (552761/555082) NOT demoted to bare soft snapshots — re-pinned or cut-shape-oracle'd; #6426 gets an interior hole-shape check.
+- `R3-5` at-budget worst-case perf bench replaces the deleted O(1) OperandTooLarge cost firewall.
+- `R3-6` class-D fix asserts the untouched face's outer boundary stays the 4 pristine corners (not just area).
+- `R4-1` geom_hash/compare-models compat (schema bump + same-version gating) added to M8.
+- `R4-2` wider deletion set (processors/tests.rs, profiles.rs, measure-bundle-size.sh, README-vercel-cost.md, csg_timing.rs:40) + grep-clean over .rs/.toml/.yml/.sh/.md.
+- `R4-3``R4-4` rollback = runtime-flag canary + permanent catch_unwind, documented honestly (not "revert one commit").
+- `R4-5` BoolFailureReason at diagnostics.rs:75 (path corrected); 24-vs-128 cap mismatch swept.
+- `R4-6` M0 corpus-precondition gate (pnpm fixtures present) + corpus-completeness assertion.
+- `R4-7` smooth_normals_with_creases cfg-gated like calculate_normals (native no-op vs wasm).
 
 
 ## Milestones

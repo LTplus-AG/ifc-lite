@@ -192,10 +192,9 @@ fn plane_interval(tri: &[[f64; 3]; 3], plane: &[[f64; 3]; 3]) -> PlaneInterval {
     }
 }
 
-/// Snap grid used by `mesh_bridge::mesh_to_tris` (metres, power of two). Mirrored
-/// here because the near-coplanar band below is sized to the snap-scatter envelope
-/// it produces (kept in sync by the `snap_grid_in_sync` test in `mesh_bridge`).
-const SNAP_GRID: f64 = 1.0 / 65536.0;
+/// Snap grid used by `mesh_bridge::mesh_to_tris` (metres, power of two). The
+/// near-coplanar band below is sized to the snap-scatter envelope it produces.
+use super::mesh_bridge::SNAP_GRID;
 
 #[inline]
 fn ti_sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {

@@ -784,7 +784,13 @@ impl BooleanClippingProcessor {
         let combined = match self.build_cutter_union(&clipper, &prisms) {
             Some(m) if !m.is_empty() => m,
             _ => {
-                let _ = clipper.take_failures();
+                // Unlike the trial-subtract probes above (whose failures the
+                // sequential path re-encounters and re-logs), the union
+                // attempt is unique to this path — preserve its kernel
+                // failures and record the deferral, since the sequential
+                // fallback can leave seam fins the batched subtract avoids.
+                self.drain_clipper_failures(&clipper);
+                self.record_failure(BoolOp::Union, BoolFailureReason::CutterUnionUnavailable);
                 return Ok(None);
             }
         };

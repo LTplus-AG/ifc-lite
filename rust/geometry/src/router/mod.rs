@@ -641,6 +641,9 @@ impl GeometryRouter {
                 crate::diagnostics::BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
                     "PolygonalBoundedHalfSpaceFallback"
                 }
+                crate::diagnostics::BoolFailureReason::CutterUnionUnavailable => {
+                    "CutterUnionUnavailable"
+                }
                 crate::diagnostics::BoolFailureReason::UnknownBooleanOperator(_) => {
                     "UnknownBooleanOperator"
                 }

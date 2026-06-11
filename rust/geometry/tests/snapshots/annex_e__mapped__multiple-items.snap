@@ -1,0 +1,16 @@
+---
+source: rust/geometry/tests/geometry_correctness_harness.rs
+description: tests/models/buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-with-multiple-items.ifc
+---
+parse_ok: true
+products_attempted: 5
+products_non_empty: 1
+process_errors: 4
+total_triangles: 48
+total_vertices: 96
+spike_triangles: 0
+total_surface_area: 18.000
+bbox_min: [0.646, -0.354, 0.000]
+bbox_max: [2.354, 1.354, 2.000]
+types_seen:
+  IFCBUILDINGELEMENTPROXY: 1

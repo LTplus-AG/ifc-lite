@@ -7,7 +7,7 @@
 use super::GeometryRouter;
 use crate::csg::{tri_is_needle, ClippingProcessor, Plane, Triangle, TriangleVec};
 use crate::mesh::{SubMesh, SubMeshCollection};
-use crate::{Error, Mesh, Point3, Result, Vector3};
+use crate::{Error, Mesh, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -1001,12 +1001,7 @@ impl GeometryRouter {
     /// [`GeometryRouter::take_csg_failures`]). The router's failure log is
     /// the only path failures reach the caller; `apply_void_context` itself
     /// always returns the (possibly un-cut) mesh.
-    pub(super) fn apply_void_context(
-        &self,
-        mesh: Mesh,
-        ctx: &VoidContext,
-        element_id: u32,
-    ) -> Mesh {
+    pub(super) fn apply_void_context(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // Capture the input triangle count + bounds so the per-host
         // diagnostic can flag the "cuts attempted but produced no
         // change" case — the silent-no-op signature when an opening
@@ -1396,7 +1391,16 @@ impl GeometryRouter {
                     let open_vol = (open_max_f32.x - open_min_f32.x)
                         * (open_max_f32.y - open_min_f32.y)
                         * (open_max_f32.z - open_min_f32.z);
-                    if open_vol < MIN_OPENING_VOLUME as f32 {
+                    // The 0.1 L volume floor filtered legacy-BSP CSG artefacts but
+                    // also drops genuine small openings — bolt holes / sleeves in
+                    // thin plates. At the two highest quality levels keep those
+                    // holes (the exact kernel is stable on small cutters); only
+                    // reject numerically degenerate cutters there. (issue #976)
+                    let min_open_vol = match self.tessellation_quality {
+                        TessellationQuality::High | TessellationQuality::Highest => 1e-9_f32,
+                        _ => MIN_OPENING_VOLUME as f32,
+                    };
+                    if open_vol < min_open_vol {
                         continue;
                     }
 

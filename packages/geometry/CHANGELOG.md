@@ -1,5 +1,58 @@
 # @ifc-lite/geometry
 
+## 2.5.1
+
+### Patch Changes
+
+- [#1005](https://github.com/LTplus-AG/ifc-lite/pull/1005) [`9c3042a`](https://github.com/LTplus-AG/ifc-lite/commit/9c3042ad1004877cb6f03349b803a207c3b14ae1) Thanks [@Blogbotana](https://github.com/Blogbotana)! - fix(geometry): cut tilted/profile-section openings with the real mesh ([#977](https://github.com/LTplus-AG/ifc-lite/issues/977))
+
+  Openings on tilted steel members (Tekla channels, tubes, I-beams, gusset plates)
+  were cut by the analytic axis-aligned-box clip. The AABB of a tilted thin cutter
+  is far larger than the authored cutter, so it over-cut — removing real section
+  material and leaving a thin residual wall — and the analytic path also fabricates
+  reveal/cap walls in the open profile. This was a project-wide error on every
+  tilted member.
+
+  Openings are now routed by a **type-independent geometric test**: when an
+  opening's world AABB volume significantly exceeds its actual cutter-solid volume
+  (i.e. the cutter is tilted or non-box), it is cut with its **real mesh** via the
+  Manifold boolean — exact authored shape, no bounding-box inflation, and the
+  kernel's perturbation clears coplanarity with the profile's inner faces/fillets.
+  Axis-aligned box openings (AABB ≈ cutter) keep the cheap, deterministic analytic
+  clip, so flat slab/wall openings stay stable on CI. Because the test is geometry-
+  not type-based, it works regardless of how an exporter labels elements (incl.
+  projects that model everything as IfcBuildingElementProxy).
+
+  Also retunes the Manifold cutter perturbation to clear the kernel's host-relative
+  coplanarity tolerance.
+
+- Updated dependencies [[`9c3042a`](https://github.com/LTplus-AG/ifc-lite/commit/9c3042ad1004877cb6f03349b803a207c3b14ae1)]:
+  - @ifc-lite/wasm@2.6.1
+
+## 2.5.0
+
+### Minor Changes
+
+- [#1025](https://github.com/LTplus-AG/ifc-lite/pull/1025) [`c003017`](https://github.com/LTplus-AG/ifc-lite/commit/c0030175e82f194183b60492c1de34eca6b5d691) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Expose the consumer-configurable tessellation quality ([#976](https://github.com/LTplus-AG/ifc-lite/issues/976)) on the SDK/WASM surface. `IfcAPI.setTessellationQuality('lowest' | 'low' | 'medium' | 'high' | 'highest')` selects the detail level applied by every subsequent `processGeometryBatch` call, and `@ifc-lite/geometry`'s `GeometryProcessor` accepts a `tessellationQuality` constructor option plus a `setTessellationQuality()` runtime setter that forward the level to the main-thread, streaming and worker-pool WASM paths. Unset / `'medium'` reproduces the engine's historical densities byte-for-byte, so existing consumers see no change; lower levels coarsen curved geometry for throughput, higher levels reduce faceting on pipes / cylinders / NURBS at a proportional triangle-count cost.
+
+### Patch Changes
+
+- Updated dependencies [[`c003017`](https://github.com/LTplus-AG/ifc-lite/commit/c0030175e82f194183b60492c1de34eca6b5d691)]:
+  - @ifc-lite/wasm@2.6.0
+
+## 2.4.1
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+- Updated dependencies [[`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc)]:
+  - @ifc-lite/data@2.0.2
+  - @ifc-lite/wasm@2.5.1
+
 ## 2.4.0
 
 ### Minor Changes

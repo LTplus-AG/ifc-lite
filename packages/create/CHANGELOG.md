@@ -1,5 +1,81 @@
 # @ifc-lite/create
 
+## 1.16.1
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+
+- [#1032](https://github.com/LTplus-AG/ifc-lite/pull/1032) [`8d5bd67`](https://github.com/LTplus-AG/ifc-lite/commit/8d5bd6701dc9962c2de5e42a7462008b2b8c2885) Thanks [@louistrue](https://github.com/louistrue)! - fix(create): every in-store builder now emits geometry in the model's
+  native length unit. Wall, slab, beam, column, door, window, roof, plate,
+  and member wrote metre coordinates regardless of the file's length unit —
+  an element added to a millimetre model (typical Revit export) serialized
+  1000× too small, while its in-session mesh (built separately in renderer
+  metres) looked correct until the export round-trip. The duplicate flow
+  had the inverse bug: its metre offset was added to the source's
+  native-unit location, so a duplicate in a mm file landed ~1000× too
+  close (visually on top of the source). Door/window OverallHeight /
+  OverallWidth attributes are converted too. Completes the conversion the
+  space builder received in [#1029](https://github.com/LTplus-AG/ifc-lite/issues/1029) via `SpatialAnchor.lengthUnitScale`.
+- Updated dependencies [[`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc)]:
+  - @ifc-lite/encoding@1.14.7
+  - @ifc-lite/mutations@1.15.3
+  - @ifc-lite/parser@3.1.1
+
+## 1.16.0
+
+### Minor Changes
+
+- [#1022](https://github.com/LTplus-AG/ifc-lite/pull/1022) [`7bd0459`](https://github.com/LTplus-AG/ifc-lite/commit/7bd045963b1339a35bd73d1aad18ff29de7db692) Thanks [@louistrue](https://github.com/louistrue)! - feat(spaces): interactive Space Sketch (DCEL) editor + headless generation
+
+  A topology-aware space editor built on a persistent half-edge (DCEL) plate in
+  the Rust geometry core, exposed via a stateful `SpacePlateHandle` wasm binding:
+
+  - **Derive** rooms from a storey's walls, **drag** a shared vertex (both rooms
+    follow), **split** a room between corners _or_ new nodes added anywhere on a
+    wall, **merge** rooms across a shared wall, with undo/redo, and **bake** to
+    real `IfcSpace` (via the existing `addSpace` path).
+  - **Wall-axis recognition fixes** in `@ifc-lite/create`: read the extractor's
+    reliable entity type instead of the columnar table's `'Unknown'` sentinel
+    (every `Curve2D` Axis polyline — e.g. all of AC20-FZK-Haus — was skipped), and
+    a body-footprint fallback (face sets, `IfcFacetedBrep`, vertically-extruded
+    rect / arbitrary / IndexedPolyCurve profiles) for walls without an Axis.
+  - Viewer "Space Sketch" tool: storey list with resolved names, auto-derive on
+    selection, auto-escalating + manual snap tolerance to close centreline corner
+    gaps.
+  - **Headless generation** — derive IfcSpace across storeys from the CLI
+    (`ifc-lite generate-spaces`), the SDK (`bim.spaces.generate`), or as a library
+    function (`generateSpaces` from `@ifc-lite/create`), with auto-escalating snap,
+    storey-datum ("slab") floor-to-floor heights, and rectangular corner cleanup
+    ported into the TS detector.
+  - **Production-grade baked spaces** — every derived `IfcSpace` now carries
+    `Qto_SpaceBaseQuantities` (GrossFloorArea / NetFloorArea / GrossPerimeter /
+    Height / GrossVolume, schema-aware) and an `IfcRelSpaceBoundary` per bounding
+    wall. Generated spaces are stamped with `ObjectType 'IfcLite:GeneratedSpace'`,
+    and a re-run skips a model that already contains them (idempotent; `--force`
+    to override).
+
+### Patch Changes
+
+- [#1029](https://github.com/LTplus-AG/ifc-lite/pull/1029) [`cef9989`](https://github.com/LTplus-AG/ifc-lite/commit/cef99897ee287029c6db6bbaafcd2a35508af1be) Thanks [@louistrue](https://github.com/louistrue)! - fix(renderer): double-sided GPU pick pass — back-face culling could cull an
+  element's entire camera-facing surface (IFC winding order varies), so clicks
+  selected whatever was behind it (e.g. an IfcSpace behind a wall).
+
+  fix(create): space bakes now survive the IFC round-trip —
+  `addSpaceToStore` emits geometry in the model's native length unit
+  (a space baked into a millimetre model used to export 1000× too small),
+  and `resolveSpatialAnchor` no longer fails on models without
+  `IfcOwnerHistory` (OPTIONAL from IFC4 onward); builders emit `$` instead.
+
+  fix(viewer): Space Sketch surfaces real bake errors instead of counting
+  them as "already a space" skips, reveals the (persisted) Spaces class
+  visibility after a successful bake, and the toolbar button is edit-mode
+  gated with a distinct icon.
+
 ## 1.15.1
 
 ### Patch Changes

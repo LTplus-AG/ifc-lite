@@ -22,9 +22,159 @@ import type {
   ValidatorOptions,
   ValidationProgress,
   TranslationService,
+  PartOfRelation,
 } from '../types.js';
-import { checkFacet, filterByFacet, type FacetCheckResult } from '../facets/index.js';
+import { checkFacet, facetPasses, filterByFacet, type FacetCheckResult } from '../facets/index.js';
 import { formatConstraint } from '../constraints/index.js';
+import { ApplicabilityPropertyIndex } from './property-index.js';
+
+/** Memoize a single-argument accessor lookup keyed by express ID. */
+function memoById<T>(fn: (expressId: number) => T): (expressId: number) => T {
+  const cache = new Map<number, T>();
+  return (expressId: number): T => {
+    if (cache.has(expressId)) return cache.get(expressId) as T;
+    const value = fn(expressId);
+    cache.set(expressId, value);
+    return value;
+  };
+}
+
+/** Memoize a two-argument accessor lookup keyed by express ID + name. */
+function memoByIdAndKey<T>(
+  fn: (expressId: number, key: string) => T
+): (expressId: number, key: string) => T {
+  const cache = new Map<string, T>();
+  return (expressId: number, key: string): T => {
+    const cacheKey = `${expressId}\u0000${key}`;
+    if (cache.has(cacheKey)) return cache.get(cacheKey) as T;
+    const value = fn(expressId, key);
+    cache.set(cacheKey, value);
+    return value;
+  };
+}
+
+/**
+ * Wrap an accessor so every per-entity lookup is computed at most once
+ * for the lifetime of one validation run.
+ *
+ * The validator re-checks the same entities once per specification, and
+ * real-world IDS documents carry hundreds of specifications over the
+ * same entity population. Most accessor implementations re-extract
+ * property sets from the raw source buffer on every call, which made
+ * validation O(specifications × entities × source-parses) — tens of
+ * minutes of CPU for documents that validate in seconds once cached.
+ */
+export function createCachedAccessor(accessor: IFCDataAccessor): IFCDataAccessor {
+  let allEntityIds: number[] | undefined;
+  const entitiesByType = new Map<string, number[]>();
+
+  const cached: IFCDataAccessor = {
+    getEntityType: memoById((id) => accessor.getEntityType(id)),
+    getEntityName: memoById((id) => accessor.getEntityName(id)),
+    getGlobalId: memoById((id) => accessor.getGlobalId(id)),
+    getDescription: memoById((id) => accessor.getDescription(id)),
+    getObjectType: memoById((id) => accessor.getObjectType(id)),
+    getPropertySets: memoById((id) => accessor.getPropertySets(id)),
+    getClassifications: memoById((id) => accessor.getClassifications(id)),
+    getMaterials: memoById((id) => accessor.getMaterials(id)),
+    getAttribute: memoByIdAndKey((id, name) => accessor.getAttribute(id, name)),
+    getParent: memoByIdAndKey((id, rel) =>
+      accessor.getParent(id, rel as PartOfRelation)
+    ) as IFCDataAccessor['getParent'],
+    getPropertyValue: (id, psetName, propName) =>
+      accessor.getPropertyValue(id, psetName, propName),
+    getEntitiesByType(typeName: string): number[] {
+      let ids = entitiesByType.get(typeName);
+      if (!ids) {
+        ids = accessor.getEntitiesByType(typeName);
+        entitiesByType.set(typeName, ids);
+      }
+      return ids;
+    },
+    getAllEntityIds(): number[] {
+      if (!allEntityIds) allEntityIds = accessor.getAllEntityIds();
+      return allEntityIds;
+    },
+  };
+
+  // Optional methods: only surface them when the underlying accessor
+  // does — facet checkers feature-detect these.
+  if (accessor.getPredefinedTypeRaw) {
+    cached.getPredefinedTypeRaw = memoById((id) =>
+      accessor.getPredefinedTypeRaw!(id)
+    );
+  }
+  if (accessor.getAttributeNames) {
+    cached.getAttributeNames = memoById((id) => accessor.getAttributeNames!(id));
+  }
+  if (accessor.getAttributeXsdTypes) {
+    cached.getAttributeXsdTypes = memoByIdAndKey((id, attr) =>
+      accessor.getAttributeXsdTypes!(id, attr)
+    ) as IFCDataAccessor['getAttributeXsdTypes'];
+  }
+  if (accessor.getAncestors) {
+    cached.getAncestors = memoByIdAndKey((id, rel) =>
+      accessor.getAncestors!(id, rel as PartOfRelation)
+    ) as IFCDataAccessor['getAncestors'];
+  }
+
+  return cached;
+}
+
+/**
+ * Per-run cache for requirement descriptions. A requirement's checked
+ * description is entity-independent, yet it used to be re-formatted for
+ * every entity result — for enumeration constraints that meant building
+ * the same multi-KB string thousands of times.
+ */
+type DescriptionCache = Map<IDSRequirement, string>;
+
+const nowMs = (): number =>
+  typeof globalThis.performance?.now === 'function'
+    ? globalThis.performance.now()
+    : Date.now();
+
+/**
+ * Yield control back to the event loop (browser + Node).
+ *
+ * Deliberately NOT `scheduler.yield()`: its continuation runs at
+ * elevated priority, ahead of the host's already-queued normal tasks —
+ * including React's render work — so a CPU-bound loop yielding through
+ * it still starves the UI (canvas rAF kept painting while the progress
+ * panel never committed). A MessageChannel hop is a normal-priority
+ * task: everything queued before it, renders included, runs first.
+ */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      // Close both ports — an open MessagePort holds a libuv handle in
+      // Node and would keep the process alive after completion.
+      channel.port1.close();
+      channel.port2.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
+}
+
+/**
+ * Time-budgeted yielder. Validation is pure CPU work whose awaits all
+ * resolve through microtasks, so without real event-loop yields a
+ * browser host cannot paint a single frame for the whole run — the
+ * progress UI stays frozen no matter how often onProgress fires.
+ */
+function createYielder(budgetMs: number): () => Promise<void> | undefined {
+  let lastYield = nowMs();
+  return () => {
+    if (nowMs() - lastYield < budgetMs) return undefined;
+    return yieldToEventLoop().then(() => {
+      lastYield = nowMs();
+    });
+  };
+}
+
+type MaybeYield = ReturnType<typeof createYielder>;
 
 /**
  * Validate an IFC model against an IDS document
@@ -36,6 +186,11 @@ export async function validateIDS(
   options: ValidatorOptions = {}
 ): Promise<IDSValidationReport> {
   const { translator, onProgress, includePassingEntities = true } = options;
+
+  const cachedAccessor = createCachedAccessor(accessor);
+  const descriptionCache: DescriptionCache = new Map();
+  const maybeYield = createYielder(options.yieldEveryMs ?? 40);
+  const propertyIndex = new ApplicabilityPropertyIndex(cachedAccessor, document);
 
   const specificationResults: IDSSpecificationResult[] = [];
   const totalSpecs = document.specifications.length;
@@ -55,11 +210,18 @@ export async function validateIDS(
       });
     }
 
+    // Let the host paint between specifications even when individual
+    // specs are fast.
+    await maybeYield();
+
     const result = await validateSpecification(
       spec,
-      accessor,
+      cachedAccessor,
       modelInfo,
       options,
+      descriptionCache,
+      maybeYield,
+      propertyIndex,
       (progress) => {
         if (onProgress) {
           onProgress({
@@ -110,13 +272,16 @@ async function validateSpecification(
   accessor: IFCDataAccessor,
   modelInfo: IDSModelInfo,
   options: ValidatorOptions,
+  descriptionCache: DescriptionCache,
+  maybeYield: MaybeYield,
+  propertyIndex: ApplicabilityPropertyIndex,
   onProgress?: (progress: Omit<ValidationProgress, 'specificationIndex' | 'totalSpecifications' | 'percentage'>) => void
 ): Promise<IDSSpecificationResult> {
   const { translator, maxEntities, includePassingEntities = true } = options;
   const modelId = modelInfo.modelId;
 
   // Phase 1: Find applicable entities
-  const applicableIds = findApplicableEntities(spec, accessor);
+  const applicableIds = await findApplicableEntities(spec, accessor, maybeYield, propertyIndex, onProgress);
 
   // Apply max entities limit if specified
   const idsToCheck = maxEntities
@@ -138,12 +303,14 @@ async function validateSpecification(
         totalEntities,
       });
     }
+    if ((i & 31) === 0) await maybeYield();
 
     const entityResult = validateEntityRequirements(
       spec,
       expressId,
       modelId,
       accessor,
+      descriptionCache,
       translator
     );
 
@@ -207,10 +374,13 @@ async function validateSpecification(
 /**
  * Find entities that match the applicability criteria
  */
-function findApplicableEntities(
+async function findApplicableEntities(
   spec: IDSSpecification,
-  accessor: IFCDataAccessor
-): number[] {
+  accessor: IFCDataAccessor,
+  maybeYield: MaybeYield,
+  propertyIndex: ApplicabilityPropertyIndex,
+  onProgress?: (progress: Omit<ValidationProgress, 'specificationIndex' | 'totalSpecifications' | 'percentage'>) => void
+): Promise<number[]> {
   const applicabilityFacets = spec.applicability.facets;
 
   if (applicabilityFacets.length === 0) {
@@ -233,15 +403,54 @@ function findApplicableEntities(
     candidateIds = accessor.getAllEntityIds();
   }
 
-  // Filter candidates by all applicability facets
-  const applicableIds: number[] = [];
+  // Index-assisted narrowing: property facets with literal pset/name
+  // collapse to inverted-index lookups (built once per run). The result
+  // is a candidate SUPERSET — the confirmation loop below remains the
+  // source of truth, so index conservatism can never change verdicts.
+  for (const facet of applicabilityFacets) {
+    if (facet.type !== 'property') continue;
+    // Building the index over a spec's candidates is the slowest phase of
+    // a large run (cold property extraction) — surface its progress so
+    // the host UI advances during it instead of sitting frozen.
+    const narrowed = await propertyIndex.narrow(
+      facet,
+      candidateIds,
+      maybeYield,
+      onProgress
+        ? (processed, total) =>
+            onProgress({ phase: 'filtering', entitiesProcessed: processed, totalEntities: total })
+        : undefined
+    );
+    if (narrowed !== undefined) candidateIds = narrowed;
+  }
 
-  for (const expressId of candidateIds) {
+  // Filter candidates by all applicability facets. With property-only
+  // applicability the candidate set is the whole model, so this scan is
+  // where large runs spend most of their time — report progress and
+  // yield so the host UI stays responsive.
+  const applicableIds: number[] = [];
+  const totalCandidates = candidateIds.length;
+
+  for (let i = 0; i < totalCandidates; i++) {
+    const expressId = candidateIds[i];
+
+    if (onProgress && totalCandidates > 8192 && (i & 8191) === 0) {
+      onProgress({
+        phase: 'filtering',
+        entitiesProcessed: i,
+        totalEntities: totalCandidates,
+      });
+    }
+    if ((i & 255) === 0) await maybeYield();
+
     let matches = true;
 
     for (const facet of applicabilityFacets) {
-      const result = checkFacet(facet, expressId, accessor);
-      if (!result.passed) {
+      // Boolean-only check: this loop runs per candidate entity per
+      // specification and only ever needs the verdict — the failure
+      // diagnostics the full checker builds for every miss used to
+      // dominate whole-run CPU.
+      if (!facetPasses(facet, expressId, accessor)) {
         matches = false;
         break;
       }
@@ -263,13 +472,14 @@ function validateEntityRequirements(
   expressId: number,
   modelId: string,
   accessor: IFCDataAccessor,
+  descriptionCache: DescriptionCache,
   translator?: TranslationService
 ): IDSEntityResult {
   const requirementResults: IDSRequirementResult[] = [];
   let allPassed = true;
 
   for (const requirement of spec.requirements) {
-    const result = checkRequirement(requirement, expressId, accessor, translator);
+    const result = checkRequirement(requirement, expressId, accessor, descriptionCache, translator);
     requirementResults.push(result);
 
     if (result.status === 'fail') {
@@ -295,6 +505,7 @@ function checkRequirement(
   requirement: IDSRequirement,
   expressId: number,
   accessor: IFCDataAccessor,
+  descriptionCache: DescriptionCache,
   translator?: TranslationService
 ): IDSRequirementResult {
   const facetResult = checkFacet(requirement.facet, expressId, accessor);
@@ -376,10 +587,15 @@ function checkRequirement(
       status = facetResult.passed ? 'pass' : 'fail';
   }
 
-  // Generate checked description
-  const checkedDescription = translator
-    ? translator.describeRequirement(requirement)
-    : formatRequirementDescription(requirement);
+  // Generate checked description. It is entity-independent, so format
+  // it once per requirement per run — not once per entity result.
+  let checkedDescription = descriptionCache.get(requirement);
+  if (checkedDescription === undefined) {
+    checkedDescription = translator
+      ? translator.describeRequirement(requirement)
+      : formatRequirementDescription(requirement);
+    descriptionCache.set(requirement, checkedDescription);
+  }
 
   return {
     requirement,

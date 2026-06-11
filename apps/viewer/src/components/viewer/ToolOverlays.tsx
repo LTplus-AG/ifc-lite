@@ -14,9 +14,14 @@ import { GizmoOverlay } from './tools/GizmoOverlay';
 import { WallEndpointOverlay } from './tools/WallEndpointOverlay';
 import { SplitOverlay } from './tools/SplitOverlay';
 import { SplitNumericInput } from './tools/SplitNumericInput';
+import { SpaceSketchOverlay } from './tools/SpaceSketchOverlay';
 
 export function ToolOverlays() {
   const activeTool = useViewerStore((s) => s.activeTool);
+
+  if (activeTool === 'spaceSketch') {
+    return <SpaceSketchOverlay />;
+  }
 
   if (activeTool === 'measure') {
     return <MeasureOverlay />;

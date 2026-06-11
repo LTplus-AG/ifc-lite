@@ -73,8 +73,8 @@ async function runTests() {
 
   // Find an IFC file with quantities
   const ifcFiles = [
-    path.join(__dirname, 'models', '01_BIMcollab_Example_ARC.ifc'),
-    path.join(__dirname, 'models', 'test.ifc'),
+    path.join(__dirname, 'models', 'various', '01_BIMcollab_Example_ARC.ifc'),
+    path.join(__dirname, 'models', 'various', 'test.ifc'),
   ];
 
   let testFile: string | null = null;
@@ -386,6 +386,10 @@ async function runTests() {
     process.exit(1);
   } else {
     console.log('\n✅ All tests passed!');
+    // Exit explicitly: the parquet-wasm / DuckDB availability probes can
+    // leave handles (workers/wasm threads) on the event loop in CI, which
+    // kept this script alive until the job timeout killed it.
+    process.exit(0);
   }
 }
 

@@ -38,6 +38,19 @@ for await (const event of processor.processStreaming(buffer)) {
 
 The streaming path emits batches every ~100 meshes so the renderer can paint progressively — first triangles typically arrive 300–500ms after `processStreaming()` returns.
 
+## Tessellation quality
+
+Curved geometry (swept pipes, cylinders, fillets, NURBS) is approximated with straight segments; the detail level is selectable per processor:
+
+```typescript
+// 'lowest' | 'low' | 'medium' (default) | 'high' | 'highest'
+const processor = new GeometryProcessor({ tessellationQuality: 'high' });
+// or at runtime, before processing:
+processor.setTessellationQuality('low');
+```
+
+Unset / `'medium'` reproduces the engine's historical densities byte-for-byte. Lower levels coarsen curved surfaces (×0.5 / ×0.25 segment density) for throughput; higher levels refine them (×2 / ×4) to reduce visible faceting, with a proportional triangle-count and processing-time cost on curved-heavy models. Profile circles (opening cutters / extruded caps) never get finer than `'medium'`. Applies to the WASM paths (main-thread, streaming, worker pool); the native Tauri path does not consume it yet. See the [Geometry Guide](https://ltplus-ag.github.io/ifc-lite/guide/geometry/) for the full level table.
+
 ## Coordinate handling
 
 ```typescript

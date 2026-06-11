@@ -12,7 +12,7 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint2, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
   emitBodyRepresentation,
   emitExtrudedSolid,
@@ -67,23 +67,39 @@ export function addRoofToStore(
   anchor: SpatialAnchor,
   params: RoofInStoreParams,
 ): RoofBuildResult {
-  const polygon = isPolygonParams(params);
-  const placementOrigin: [number, number, number] = polygon
-    ? params.Position ?? [0, 0, 0]
-    : params.Position;
-
   if (params.Thickness <= 0) {
     throw new Error('addRoofToStore: Thickness must be positive');
   }
-  if (!polygon && (params.Width <= 0 || params.Depth <= 0)) {
+  if (!isPolygonParams(params) && (params.Width <= 0 || params.Depth <= 0)) {
     throw new Error('addRoofToStore: Width and Depth must be positive');
   }
+  // Params are metres; convert dimensioned fields to the file's native
+  // length unit before emit (see SpatialAnchor.lengthUnitScale). A new
+  // `const` binding (not a `params` reassignment) keeps TS's aliased
+  // discriminator narrowing intact for the union type.
+  const p: RoofInStoreParams = isPolygonParams(params)
+    ? {
+        ...params,
+        OuterCurve: params.OuterCurve.map((pt) => toNativePoint2(anchor, pt)),
+        Position: params.Position ? toNativePoint3(anchor, params.Position) : params.Position,
+        Thickness: toNativeLength(anchor, params.Thickness),
+      }
+    : {
+        ...params,
+        Position: toNativePoint3(anchor, params.Position),
+        Width: toNativeLength(anchor, params.Width),
+        Depth: toNativeLength(anchor, params.Depth),
+        Thickness: toNativeLength(anchor, params.Thickness),
+      };
+  const placementOrigin: [number, number, number] = isPolygonParams(p)
+    ? p.Position ?? [0, 0, 0]
+    : p.Position;
 
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, placementOrigin);
-  const profileId = polygon
-    ? emitPolygonProfile(editor, params.OuterCurve)
-    : emitRectangleProfile(editor, params.Width, params.Depth, params.Width / 2, params.Depth / 2);
-  const solidId = emitExtrudedSolid(editor, profileId, params.Thickness);
+  const profileId = isPolygonParams(p)
+    ? emitPolygonProfile(editor, p.OuterCurve)
+    : emitRectangleProfile(editor, p.Width, p.Depth, p.Width / 2, p.Depth / 2);
+  const solidId = emitExtrudedSolid(editor, profileId, p.Thickness);
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
   const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Roof');

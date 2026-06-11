@@ -94,6 +94,8 @@ pub mod profile_extractor;
 pub mod profiles;
 pub mod projection_outline;
 pub mod router;
+pub mod tessellation;
+pub mod space_dcel;
 pub mod transform;
 pub mod triangulation;
 pub mod void_analysis;
@@ -128,6 +130,7 @@ pub use router::{
     ClassificationStats, GeometryProcessor, GeometryRouter, HostOpeningDiagnostic,
     OpeningDiagnostic, OpeningKindDiag,
 };
+pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{
     apply_rtc_offset, parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,
     parse_cartesian_point, parse_cartesian_point_from_id, parse_direction, parse_direction_from_id,

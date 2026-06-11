@@ -7,7 +7,7 @@
 //! Handles IfcTriangulatedFaceSet (explicit triangle meshes) and
 //! IfcPolygonalFaceSet (polygon meshes requiring triangulation).
 
-use crate::{Error, Mesh, Result};
+use crate::{Error, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
@@ -157,6 +157,7 @@ impl GeometryProcessor for TriangulatedFaceSetProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        _quality: TessellationQuality,
     ) -> Result<Mesh> {
         let (positions, indices, _flipped) = Self::parse_positions_and_orient(entity, decoder)?;
 
@@ -713,6 +714,7 @@ impl GeometryProcessor for PolygonalFaceSetProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        _quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcPolygonalFaceSet attributes:
         // 0: Coordinates (IfcCartesianPointList3D)

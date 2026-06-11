@@ -1,5 +1,86 @@
 # @ifc-lite/wasm
 
+## 2.6.1
+
+### Patch Changes
+
+- [#1005](https://github.com/LTplus-AG/ifc-lite/pull/1005) [`9c3042a`](https://github.com/LTplus-AG/ifc-lite/commit/9c3042ad1004877cb6f03349b803a207c3b14ae1) Thanks [@Blogbotana](https://github.com/Blogbotana)! - fix(geometry): cut tilted/profile-section openings with the real mesh ([#977](https://github.com/LTplus-AG/ifc-lite/issues/977))
+
+  Openings on tilted steel members (Tekla channels, tubes, I-beams, gusset plates)
+  were cut by the analytic axis-aligned-box clip. The AABB of a tilted thin cutter
+  is far larger than the authored cutter, so it over-cut — removing real section
+  material and leaving a thin residual wall — and the analytic path also fabricates
+  reveal/cap walls in the open profile. This was a project-wide error on every
+  tilted member.
+
+  Openings are now routed by a **type-independent geometric test**: when an
+  opening's world AABB volume significantly exceeds its actual cutter-solid volume
+  (i.e. the cutter is tilted or non-box), it is cut with its **real mesh** via the
+  Manifold boolean — exact authored shape, no bounding-box inflation, and the
+  kernel's perturbation clears coplanarity with the profile's inner faces/fillets.
+  Axis-aligned box openings (AABB ≈ cutter) keep the cheap, deterministic analytic
+  clip, so flat slab/wall openings stay stable on CI. Because the test is geometry-
+  not type-based, it works regardless of how an exporter labels elements (incl.
+  projects that model everything as IfcBuildingElementProxy).
+
+  Also retunes the Manifold cutter perturbation to clear the kernel's host-relative
+  coplanarity tolerance.
+
+## 2.6.0
+
+### Minor Changes
+
+- [#1025](https://github.com/LTplus-AG/ifc-lite/pull/1025) [`c003017`](https://github.com/LTplus-AG/ifc-lite/commit/c0030175e82f194183b60492c1de34eca6b5d691) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Expose the consumer-configurable tessellation quality ([#976](https://github.com/LTplus-AG/ifc-lite/issues/976)) on the SDK/WASM surface. `IfcAPI.setTessellationQuality('lowest' | 'low' | 'medium' | 'high' | 'highest')` selects the detail level applied by every subsequent `processGeometryBatch` call, and `@ifc-lite/geometry`'s `GeometryProcessor` accepts a `tessellationQuality` constructor option plus a `setTessellationQuality()` runtime setter that forward the level to the main-thread, streaming and worker-pool WASM paths. Unset / `'medium'` reproduces the engine's historical densities byte-for-byte, so existing consumers see no change; lower levels coarsen curved geometry for throughput, higher levels reduce faceting on pipes / cylinders / NURBS at a proportional triangle-count cost.
+
+## 2.5.1
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+
+## 2.5.0
+
+### Minor Changes
+
+- [#1022](https://github.com/LTplus-AG/ifc-lite/pull/1022) [`7bd0459`](https://github.com/LTplus-AG/ifc-lite/commit/7bd045963b1339a35bd73d1aad18ff29de7db692) Thanks [@louistrue](https://github.com/louistrue)! - feat(spaces): interactive Space Sketch (DCEL) editor + headless generation
+
+  A topology-aware space editor built on a persistent half-edge (DCEL) plate in
+  the Rust geometry core, exposed via a stateful `SpacePlateHandle` wasm binding:
+
+  - **Derive** rooms from a storey's walls, **drag** a shared vertex (both rooms
+    follow), **split** a room between corners _or_ new nodes added anywhere on a
+    wall, **merge** rooms across a shared wall, with undo/redo, and **bake** to
+    real `IfcSpace` (via the existing `addSpace` path).
+  - **Wall-axis recognition fixes** in `@ifc-lite/create`: read the extractor's
+    reliable entity type instead of the columnar table's `'Unknown'` sentinel
+    (every `Curve2D` Axis polyline — e.g. all of AC20-FZK-Haus — was skipped), and
+    a body-footprint fallback (face sets, `IfcFacetedBrep`, vertically-extruded
+    rect / arbitrary / IndexedPolyCurve profiles) for walls without an Axis.
+  - Viewer "Space Sketch" tool: storey list with resolved names, auto-derive on
+    selection, auto-escalating + manual snap tolerance to close centreline corner
+    gaps.
+  - **Headless generation** — derive IfcSpace across storeys from the CLI
+    (`ifc-lite generate-spaces`), the SDK (`bim.spaces.generate`), or as a library
+    function (`generateSpaces` from `@ifc-lite/create`), with auto-escalating snap,
+    storey-datum ("slab") floor-to-floor heights, and rectangular corner cleanup
+    ported into the TS detector.
+  - **Production-grade baked spaces** — every derived `IfcSpace` now carries
+    `Qto_SpaceBaseQuantities` (GrossFloorArea / NetFloorArea / GrossPerimeter /
+    Height / GrossVolume, schema-aware) and an `IfcRelSpaceBoundary` per bounding
+    wall. Generated spaces are stamped with `ObjectType 'IfcLite:GeneratedSpace'`,
+    and a re-run skips a model that already contains them (idempotent; `--force`
+    to override).
+
+## 2.4.2
+
+### Patch Changes
+
+- [#1013](https://github.com/LTplus-AG/ifc-lite/pull/1013) [`1ff05f2`](https://github.com/LTplus-AG/ifc-lite/commit/1ff05f2637ce20e8b57ebc21e7d0b05da270a1e1) Thanks [@louistrue](https://github.com/louistrue)! - Fix inside-out shading on extruded solids whose outer profile is authored counter-clockwise (e.g. the AC20-FZK-Haus roof slab). `create_side_walls` stored the inward in-plane normal regardless of the loop winding, so under the renderer's normal-based, double-sided lighting the side faces shaded as if lit from inside. The side-wall normal is now oriented outward via the profile's signed area, so it agrees with the (already-outward) triangle winding. CW outer loops and holes are byte-identical to before; caps were already winding-independent. The tapered (`IfcExtrudedAreaSolidTapered`) path is oriented the same way for consistency.
+
 ## 2.4.1
 
 ### Patch Changes

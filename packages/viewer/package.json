@@ -1,14 +1,15 @@
 {
   "name": "@ifc-lite/viewer-core",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Interactive 3D viewer for IFC models — WebGL 2 browser viewer with REST API",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {

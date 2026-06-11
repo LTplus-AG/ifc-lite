@@ -1,5 +1,73 @@
 # @ifc-lite/parser
 
+## 3.1.3
+
+### Patch Changes
+
+- [#1055](https://github.com/LTplus-AG/ifc-lite/pull/1055) [`594b90c`](https://github.com/LTplus-AG/ifc-lite/commit/594b90c99cf5e2bc40735232e0b02691be7b2ed1) Thanks [@louistrue](https://github.com/louistrue)! - fix(ids): make IDS validation usable on large models with code-list IDS packs.
+
+  Validating a 550k-entity model against an 848-spec IDS document took ~19
+  minutes of CPU, produced multi-GB reports, and the CLI then hung forever
+  after printing its results. Four root fixes:
+
+  - parser: `yieldToEventLoop` leaked one open `MessageChannel` per yield;
+    in Node an open `MessagePort` holds a libuv handle, so every CLI command
+    on a large file kept the process alive after completion. Ports now close
+    (helper consolidated into one shared module).
+  - ids: `validateIDS` wraps the accessor in a per-run memoizing cache so
+    property sets / types / attributes are extracted once per entity instead
+    of once per entity _per specification_ (O(specs×entities) source
+    re-parses → O(entities)). Enumeration constraints additionally compile
+    into exact-match sets (real-world code lists carry 800+ values).
+  - ids: per-entity result strings are now bounded — enumeration constraints
+    render at most 10 values in failure messages, and the entity-independent
+    requirement description is formatted once per requirement instead of per
+    entity result (reports for failing models dropped from GBs to MBs).
+  - cli: `ifc-lite ids` now uses the canonical `@ifc-lite/ids/bridge`
+    accessor (the drifted local copy missed type-inherited property sets),
+    reports real progress (`spec 312/848 (37%)` instead of
+    `undefined (undefined/undefined)`), and skips retaining passing entity
+    results for human-readable output (`--json` is unchanged).
+
+  Behavior change (intentional): the CLI's PASS/FAIL verdict and exit code
+  now come from the validator's per-spec status, which counts
+  cardinality-only failures — a `minOccurs="1"` specification that matches
+  zero entities now correctly FAILs (exit 1) where it previously passed
+  silently. `bim.ids.summarize` likewise prefers the per-spec status when
+  the report carries one, so `--json` and text mode agree on the verdict.
+
+  Measured on the same model + IDS pack: 848 specs 19min→2min, 117 specs
+  3.4min→12s, both with a clean exit instead of a hang.
+
+## 3.1.2
+
+### Patch Changes
+
+- [#1048](https://github.com/LTplus-AG/ifc-lite/pull/1048) [`f4ad10f`](https://github.com/LTplus-AG/ifc-lite/commit/f4ad10f2fef12e720b0966060a928d0a4e2b32b1) Thanks [@louistrue](https://github.com/louistrue)! - fix(georef): apply IfcMapConversion.Scale to the height axis. Per IFC4x3,
+  the map conversion scale applies equally to x, y and z, but
+  computeTransformMatrix and transformToLocal left z unscaled — models whose
+  source and map coordinate systems use different units placed geometry at
+  the wrong elevation. (Same fix applied to the Rust GeoReference
+  local_to_map/map_to_local/to_matrix, released with the crates.)
+- Updated dependencies [[`71c3e92`](https://github.com/LTplus-AG/ifc-lite/commit/71c3e92bae778fe7e5c34d9fcce5abfbd4f3ede5), [`c003017`](https://github.com/LTplus-AG/ifc-lite/commit/c0030175e82f194183b60492c1de34eca6b5d691)]:
+  - @ifc-lite/ifcx@2.1.5
+  - @ifc-lite/wasm@2.6.0
+
+## 3.1.1
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+- Updated dependencies [[`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc)]:
+  - @ifc-lite/data@2.0.2
+  - @ifc-lite/encoding@1.14.7
+  - @ifc-lite/ifcx@2.1.4
+  - @ifc-lite/wasm@2.5.1
+
 ## 3.1.0
 
 ### Minor Changes

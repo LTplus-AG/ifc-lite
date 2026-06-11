@@ -25,15 +25,31 @@ export interface IDSValidationSummary {
 
 export type IDSSupportedLocale = 'en' | 'de' | 'fr';
 
+/** Progress shape emitted by the @ifc-lite/ids validator. */
+export interface IDSValidationProgress {
+  phase: 'filtering' | 'validating' | 'complete';
+  specificationIndex: number;
+  totalSpecifications: number;
+  entitiesProcessed: number;
+  totalEntities: number;
+  percentage: number;
+}
+
 export interface IDSValidateOptions {
   /** IFC data accessor — maps IFC model data for validation */
   accessor: unknown;
   /** Model info (schema version, name, etc.) for spec applicability checks */
   modelInfo?: { schemaVersion?: string; name?: string; [key: string]: unknown };
   /** Progress callback */
-  onProgress?: (progress: { current: number; total: number; specName: string }) => void;
+  onProgress?: (progress: IDSValidationProgress) => void;
   /** Locale for human-readable messages */
   locale?: IDSSupportedLocale;
+  /**
+   * Whether per-entity results for PASSING entities are retained in the
+   * report (default true). Disable for summary/failure-focused flows on
+   * large models — pass/fail counts stay correct either way.
+   */
+  includePassingEntities?: boolean;
 }
 
 // ============================================================================
@@ -82,6 +98,7 @@ export class IDSNamespace {
     return (mod.validateIDS as AnyFn)(idsDocument, options.accessor, options.modelInfo ?? {}, {
       onProgress: options.onProgress,
       locale: options.locale,
+      includePassingEntities: options.includePassingEntities,
     });
   }
 
@@ -186,20 +203,31 @@ export class IDSNamespace {
   // --------------------------------------------------------------------------
 
   /** Summarize a validation report into pass/fail counts. */
-  summarize(report: { specificationResults: Array<{ entityResults: Array<{ passed: boolean }> }> }): IDSValidationSummary {
+  summarize(report: {
+    specificationResults: Array<{
+      entityResults: Array<{ passed: boolean }>;
+      status?: 'pass' | 'fail' | 'not_applicable';
+    }>;
+  }): IDSValidationSummary {
     let totalSpecs = 0, passedSpecs = 0, failedSpecs = 0;
     let totalEntities = 0, passedEntities = 0, failedEntities = 0;
 
     for (const spec of report.specificationResults) {
       totalSpecs++;
-      let specPassed = true;
+      let anyEntityFailed = false;
       for (const entity of spec.entityResults) {
         totalEntities++;
         if (entity.passed) passedEntities++;
-        else { failedEntities++; specPassed = false; }
+        else { failedEntities++; anyEntityFailed = true; }
       }
-      if (specPassed) passedSpecs++;
-      else failedSpecs++;
+      // Prefer the validator's own verdict when present: it also covers
+      // cardinality-only failures (e.g. a required spec matching zero
+      // entities), which entity results alone cannot express. Deriving
+      // from entities here used to make this summary disagree with the
+      // validator's report.summary for exactly those specs.
+      const specFailed = spec.status !== undefined ? spec.status === 'fail' : anyEntityFailed;
+      if (specFailed) failedSpecs++;
+      else passedSpecs++;
     }
 
     return { totalSpecifications: totalSpecs, passedSpecifications: passedSpecs, failedSpecifications: failedSpecs, totalEntities, passedEntities, failedEntities };

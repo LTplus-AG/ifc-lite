@@ -36,6 +36,11 @@ describe('packBundle / unpackBundle', () => {
   });
 
   it('produces deterministic output for the same input', async () => {
+    // Byte-for-byte determinism IS a contract for .iflx: the packed bytes
+    // are content-addressed — InstalledExtensionRecord.bundleHash (and the
+    // flavor schema's per-extension bundleHash) is SHA-256 over the packed
+    // envelope and is verified fail-closed on every load (host/loader.ts).
+    // Re-packing the same bundle must reproduce the recorded hash.
     const original = await loadGood();
     const a = packBundle(original);
     const b = packBundle(original);

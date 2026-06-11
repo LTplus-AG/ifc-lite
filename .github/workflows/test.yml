@@ -60,6 +60,8 @@ jobs:
               - 'apps/viewer/**'
               - 'apps/viewer-embed/**'
               - 'packages/**'
+              - 'tests/e2e/**'
+              - 'playwright.config.ts'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -233,8 +235,11 @@ jobs:
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
     # Free runner — vitest consumes the prebuilt artifact; not compile-bound.
+    # 25 min: the job also runs the previously dark ifcx/renderer suites and
+    # the integration harness now; 18 min left no headroom (timed out at the
+    # integration step on a cold-ish run).
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -260,7 +265,80 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+      - name: Check test wiring
+        run: node scripts/check-test-wiring.mjs
+      # Guard the published API surface: the exported names of every
+      # non-private packages/* package (read from the dist d.ts in the
+      # build artifact downloaded above) must match the committed
+      # scripts/api-surface.json, so an accidental export removal/rename
+      # can't ship silently.
+      - name: Check API surface
+        run: node scripts/check-api-surface.mjs
       - run: pnpm test
+      - name: Integration tests (parse → quantities → export)
+        # Step-scoped timeout: a hung harness must fail fast here, not
+        # silently consume the whole job budget.
+        timeout-minutes: 5
+        run: pnpm test:integration
+      - name: WASM contract tests (real processGeometryBatch boundary)
+        run: pnpm test:wasm-contract
+
+  # Functional smoke of the real viewer: real WASM pipeline + WebGPU
+  # renderer (swiftshader) + pick pass + section plane, asserted through
+  # the app's own store. The only job that catches "renders wrong"
+  # regressions — unit suites mock the WASM boundary and the Rust tests
+  # exercise a different mesh pipeline (#858/#957).
+  viewer-e2e:
+    name: Viewer E2E smoke
+    needs: [changes, build]
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    # Free runner — vite build + a ~2.4MB model; not compute-bound.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        id: fixtures-cache
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+      # Package dists come from the build artifact; the wasm build
+      # soft-skips (no wasm-pack on this runner) and reuses the artifact
+      # runtime, so this is just the vite build of the app.
+      - name: Build viewer app
+        run: pnpm turbo build --filter=@ifc-lite/viewer
+      # No browser download: the CI project uses channel:'chrome' (the
+      # runner's preinstalled Chrome) because Playwright's headless
+      # shell has a broken WebGPU device under software rendering.
+      - name: Run E2E smoke
+        # E2E_GPU_STRICT=0: the runner's SwiftShader WebGPU device is
+        # unstable under load (drops mid-upload), so GPU-dependent
+        # assertions (pick pass, screenshot density, GPU-error
+        # strictness) skip here and run in the local headed project
+        # (pnpm test:e2e). The CPU-side pipeline assertions — mesh
+        # count through real WASM, data-store population, model
+        # registration, section-plane store contract — still gate.
+        env:
+          E2E_GPU_STRICT: '0'
+        run: pnpm test:e2e:ci
 
   rust-tests:
     name: Rust tests
@@ -306,7 +384,7 @@ jobs:
   # out); fails the moment any dependency fails or is cancelled.
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, rust-tests]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -318,6 +396,7 @@ jobs:
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"
+            [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
           )
           fail=0

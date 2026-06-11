@@ -7,10 +7,12 @@
 //! Dynamic profile processing for parametric, arbitrary, and composite profiles.
 
 use crate::profile::Profile2D;
+use crate::tessellation::{scale_segments, TessellationQuality};
 use crate::{Error, Point2, Point3, Result, Vector3};
 use ifc_lite_core::{
     AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType, ProfileCategory,
 };
+use std::cell::Cell;
 use std::f64::consts::PI;
 
 /// Maximum recursion depth for nested curve processing.
@@ -638,6 +640,7 @@ fn rounded_rectangle_outline(
     half_y: f64,
     radius: f64,
     ccw: bool,
+    quality: TessellationQuality,
 ) -> Vec<Point2<f64>> {
     if radius <= 1.0e-9 {
         let pts = vec![
@@ -653,10 +656,10 @@ fn rounded_rectangle_outline(
         };
     }
 
-    // 6 segments per corner matches `process_rounded_rectangle` — keeps
-    // the outline (and the surface-of-revolution-style extrusions these
+    // 6 segments per corner at Medium+ matches `process_rounded_rectangle`;
+    // coarser below Medium. Keeps the outline (and the extrusions these
     // profiles drive: HVAC diffuser shells, hollow tubular sections) cheap.
-    const SEGMENTS_PER_CORNER: usize = 6;
+    let segments_per_corner = quality.profile_arc_segments(6, 2);
     let half_pi = PI / 2.0;
     let corners = [
         (half_x - radius, -half_y + radius, -half_pi, 0.0),
@@ -674,11 +677,11 @@ fn rounded_rectangle_outline(
     // analytics / 2D drawing pipelines may not (PR #863 review). 1 µm
     // tolerance in profile units matches the welding precision used
     // elsewhere in the geometry pipeline.
-    let mut points: Vec<Point2<f64>> = Vec::with_capacity((SEGMENTS_PER_CORNER + 1) * 4);
+    let mut points: Vec<Point2<f64>> = Vec::with_capacity((segments_per_corner + 1) * 4);
     const SEAM_TOL: f64 = 1.0e-6;
     for (cx, cy, a0, a1) in corners {
-        for i in 0..=SEGMENTS_PER_CORNER {
-            let t = i as f64 / SEGMENTS_PER_CORNER as f64;
+        for i in 0..=segments_per_corner {
+            let t = i as f64 / segments_per_corner as f64;
             let a = a0 + (a1 - a0) * t;
             let pt = Point2::new(cx + radius * a.cos(), cy + radius * a.sin());
             if let Some(prev) = points.last() {
@@ -831,21 +834,61 @@ fn fillet_outline(
 /// Profile processor - processes IFC profiles into 2D contours
 pub struct ProfileProcessor {
     schema: IfcSchema,
+    /// Tessellation detail for the in-flight `process`/`get_curve_points` call.
+    /// Set at those entry points and read by the curve/arc tessellators below,
+    /// avoiding a `quality` parameter on every internal curve method. Single
+    /// router instance is single-threaded (the router holds `RefCell` caches),
+    /// so a `Cell` is sufficient. Defaults to [`TessellationQuality::Medium`].
+    active_quality: Cell<TessellationQuality>,
 }
 
 impl ProfileProcessor {
     /// Create new profile processor
     pub fn new(schema: IfcSchema) -> Self {
-        Self { schema }
+        Self {
+            schema,
+            active_quality: Cell::new(TessellationQuality::Medium),
+        }
     }
 
-    /// Process any IFC profile definition
+    /// Tessellation detail selected for the current call.
+    #[inline]
+    fn quality(&self) -> TessellationQuality {
+        self.active_quality.get()
+    }
+
+    /// Set the tessellation detail for subsequent curve sampling.
+    ///
+    /// [`process`](Self::process) and [`get_curve_points`](Self::get_curve_points)
+    /// set this themselves; call it explicitly before the lower-level samplers
+    /// (`get_composite_curve_points_trimmed`, `get_polyline_points_trimmed`)
+    /// that don't take a `quality` argument.
+    #[inline]
+    pub fn set_tessellation_quality(&self, quality: TessellationQuality) {
+        self.active_quality.set(quality);
+    }
+
+    /// Process any IFC profile definition at the given tessellation `quality`.
+    ///
+    /// Profile-plane tessellation (the 2D outline that becomes an extruded cap
+    /// or an opening cutter) never gets *finer* above `Medium` — denser opening
+    /// circles only multiply the earcut cap-bridge slivers that show up as scar
+    /// lines on plates with bolt holes (issue #976). Below `Medium` they do get
+    /// *coarser*: circular profiles via
+    /// [`TessellationQuality::circle_profile_segments`], and profile arcs/fillets
+    /// (rounded rectangles, steel-section root fillets, trimmed conics,
+    /// indexed-polycurve arcs) via [`TessellationQuality::profile_arc_segments`].
+    /// The quality knob drives the *curved 3D surfaces* instead — swept paths (via
+    /// [`get_curve_points`](Self::get_curve_points)), cylinders, surfaces of
+    /// revolution, NURBS, and brep edges — where faceting is actually visible.
     #[inline]
     pub fn process(
         &self,
         profile: &DecodedEntity,
         decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
     ) -> Result<Profile2D> {
+        self.active_quality.set(quality);
         self.process_with_depth(profile, decoder, 0)
     }
 
@@ -1230,30 +1273,18 @@ impl ProfileProcessor {
             return self.process_rectangle(profile);
         }
 
-        // 6 segments × 4 corners = 24 outline vertices on a fillet; the
-        // earcutr cap then runs ~22 triangles per face, side walls another
-        // 48 — a modest operand for the exact CSG kernel.
-        const SEGMENTS_PER_CORNER: usize = 6;
-        let half_pi = PI / 2.0;
-        let corners = [
-            // (cx, cy, start_angle, end_angle) — CCW outline starting at the
-            // bottom-right arc and walking counter-clockwise around the profile.
-            (half_x - r, -half_y + r, -half_pi, 0.0),
-            (half_x - r, half_y - r, 0.0, half_pi),
-            (-half_x + r, half_y - r, half_pi, PI),
-            (-half_x + r, -half_y + r, PI, PI + half_pi),
-        ];
-
-        let mut points = Vec::with_capacity((SEGMENTS_PER_CORNER + 1) * 4);
-        for (cx, cy, a0, a1) in corners {
-            for i in 0..=SEGMENTS_PER_CORNER {
-                let t = i as f64 / SEGMENTS_PER_CORNER as f64;
-                let a = a0 + (a1 - a0) * t;
-                points.push(Point2::new(cx + r * a.cos(), cy + r * a.sin()));
-            }
-        }
-
-        Ok(Profile2D::new(points))
+        // Reuse the shared rounded-rectangle builder (6 segments/corner at
+        // Medium+, coarser below). It also dedupes seam vertices in the
+        // degenerate "rounding radius == half-dim" case where the rounded
+        // rectangle collapses to a circle and adjacent corner arcs share their
+        // tangent point — the inline loop here used to emit duplicate points.
+        Ok(Profile2D::new(rounded_rectangle_outline(
+            half_x,
+            half_y,
+            r,
+            /*ccw=*/ true,
+            self.quality(),
+        )))
     }
 
     /// Process circle profile
@@ -1265,8 +1296,8 @@ impl ProfileProcessor {
             .get_float(3)
             .ok_or_else(|| Error::geometry("Circle missing Radius".to_string()))?;
 
-        // Generate circle with 36 segments for smooth appearance
-        let segments = 36;
+        // 36 segments at Medium for a smooth appearance; scaled by quality.
+        let segments = self.quality().circle_profile_segments(36);
         let mut points = Vec::with_capacity(segments);
 
         for i in 0..segments {
@@ -1328,10 +1359,11 @@ impl ProfileProcessor {
             Point2::new(-half_web, ftf_bot),       // 10 junction
             Point2::new(-half_width, ftf_bot),     // 11
         ];
-        const SEG: usize = 6;
+        // Root-fillet segments per corner: 6 at Medium+, coarser below.
+        let seg = self.quality().profile_arc_segments(6, 2);
         // Indices 3, 4, 9, 10 are the four web↔flange junctions.
         let radii = [(3, fillet), (4, fillet), (9, fillet), (10, fillet)];
-        Ok(Profile2D::new(fillet_outline(&sharp, &radii, SEG)))
+        Ok(Profile2D::new(fillet_outline(&sharp, &radii, seg)))
     }
 
     /// Process asymmetric I-shape profile.
@@ -1435,7 +1467,7 @@ impl ProfileProcessor {
             .ok_or_else(|| Error::geometry("CircleHollow missing WallThickness".to_string()))?;
 
         let inner_radius = radius - wall_thickness;
-        let segments = 36;
+        let segments = self.quality().circle_profile_segments(36);
 
         // Outer circle
         let mut outer_points = Vec::with_capacity(segments);
@@ -1516,10 +1548,11 @@ impl ProfileProcessor {
             .min(half_x)
             .min(half_y);
 
+        let q = self.quality();
         let outer_points =
-            rounded_rectangle_outline(half_x, half_y, outer_fillet, /*ccw=*/ true);
+            rounded_rectangle_outline(half_x, half_y, outer_fillet, /*ccw=*/ true, q);
         let inner_points =
-            rounded_rectangle_outline(inner_half_x, inner_half_y, inner_fillet, /*ccw=*/ false);
+            rounded_rectangle_outline(inner_half_x, inner_half_y, inner_fillet, /*ccw=*/ false, q);
 
         let mut result = Profile2D::new(outer_points);
         result.add_hole(inner_points);
@@ -1551,7 +1584,8 @@ impl ProfileProcessor {
             .unwrap_or(0.0)
             .clamp(0.0, (width - t).min(depth - t).max(0.0));
         let re = profile.get_float(7).unwrap_or(0.0).clamp(0.0, t * 0.999);
-        const SEG: usize = 6;
+        // Root-fillet segments per corner: 6 at Medium+, coarser below.
+        let seg = self.quality().profile_arc_segments(6, 2);
         let half_pi = std::f64::consts::FRAC_PI_2;
         let pi = std::f64::consts::PI;
 
@@ -1561,19 +1595,19 @@ impl ProfileProcessor {
         p.push(Point2::new(width, 0.0)); // horizontal leg outer end — sharp
         // horizontal leg toe (width, t): convex EdgeRadius
         if re > 1.0e-9 {
-            push_arc(&mut p, width - re, t - re, re, 0.0, half_pi, SEG);
+            push_arc(&mut p, width - re, t - re, re, 0.0, half_pi, seg);
         } else {
             p.push(Point2::new(width, t));
         }
         // inner re-entrant corner (t, t): concave FilletRadius
         if rf > 1.0e-9 {
-            push_arc(&mut p, t + rf, t + rf, rf, 1.5 * pi, pi, SEG);
+            push_arc(&mut p, t + rf, t + rf, rf, 1.5 * pi, pi, seg);
         } else {
             p.push(Point2::new(t, t));
         }
         // vertical leg toe (t, depth): convex EdgeRadius
         if re > 1.0e-9 {
-            push_arc(&mut p, t - re, depth - re, re, 0.0, half_pi, SEG);
+            push_arc(&mut p, t - re, depth - re, re, 0.0, half_pi, seg);
         } else {
             p.push(Point2::new(t, depth));
         }
@@ -1620,9 +1654,10 @@ impl ProfileProcessor {
             Point2::new(flange_width, half_depth),        // 6 top toe outer
             Point2::new(0.0, half_depth),                 // 7 back-top outer
         ];
-        const SEG: usize = 6;
+        // Root-fillet segments per corner: 6 at Medium+, coarser below.
+        let seg = self.quality().profile_arc_segments(6, 2);
         let radii = [(2, re), (3, rf), (4, rf), (5, re)];
-        Ok(Profile2D::new(fillet_outline(&sharp, &radii, SEG)))
+        Ok(Profile2D::new(fillet_outline(&sharp, &radii, seg)))
     }
 
     /// Process T-shape profile
@@ -1667,7 +1702,8 @@ impl ProfileProcessor {
             Point2::new(half_web, ftf),        // 6 right junction (fillet)
             Point2::new(half_web, 0.0),        // 7 web bottom-right (web edge)
         ];
-        const SEG: usize = 6;
+        // Root-fillet segments per corner: 6 at Medium+, coarser below.
+        let seg = self.quality().profile_arc_segments(6, 2);
         let radii = [
             (0, r_web),
             (1, rf),
@@ -1676,7 +1712,7 @@ impl ProfileProcessor {
             (6, rf),
             (7, r_web),
         ];
-        Ok(Profile2D::new(fillet_outline(&sharp, &radii, SEG)))
+        Ok(Profile2D::new(fillet_outline(&sharp, &radii, seg)))
     }
 
     /// Process C-shape profile (channel with lips)
@@ -1843,13 +1879,16 @@ impl ProfileProcessor {
         }
     }
 
-    /// Get 3D points from a curve (for swept disk solid, etc.)
+    /// Get 3D points from a curve (for swept disk solid, etc.) at the given
+    /// tessellation `quality`.
     #[inline]
     pub fn get_curve_points(
         &self,
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
     ) -> Result<Vec<Point3<f64>>> {
+        self.active_quality.set(quality);
         self.get_curve_points_with_depth(curve, decoder, 0)
     }
 
@@ -2044,8 +2083,8 @@ impl ProfileProcessor {
             )
         };
 
-        // Generate circle points in 3D
-        let segments = 24usize;
+        // Generate circle points in 3D (24 at Medium, scaled by quality)
+        let segments = scale_segments(24, 8, 96, self.quality());
         let mut points = Vec::with_capacity(segments + 1);
 
         for i in 0..=segments {
@@ -2566,7 +2605,13 @@ impl ProfileProcessor {
                 0
             }
         };
-        let num_segments = by_angle.max(by_chord).clamp(2, 128);
+        // Profile arc: historical chord-adaptive density at Medium+ (never finer
+        // — denser caps only add earcut bridge slivers), coarser below Medium so
+        // large channel/angle fillets don't dominate on preview levels.
+        let num_segments = self
+            .quality()
+            .profile_arc_segments(by_angle.max(by_chord), 2)
+            .min(128);
         let mut points = Vec::with_capacity(num_segments + 1);
 
         let angle_range = if sense {
@@ -2671,7 +2716,7 @@ impl ProfileProcessor {
         let radius = curve.get_float(1).unwrap_or(1.0);
         let (center, rotation) = self.get_placement_2d(curve, decoder)?;
 
-        let segments = 36;
+        let segments = self.quality().circle_profile_segments(36);
         let mut points = Vec::with_capacity(segments);
 
         for i in 0..segments {
@@ -2698,7 +2743,7 @@ impl ProfileProcessor {
         let semi_axis2 = curve.get_float(2).unwrap_or(1.0);
         let (center, rotation) = self.get_placement_2d(curve, decoder)?;
 
-        let segments = 36;
+        let segments = self.quality().circle_profile_segments(36);
         let mut points = Vec::with_capacity(segments);
 
         for i in 0..segments {
@@ -2870,9 +2915,12 @@ impl ProfileProcessor {
                         } else {
                             0.5
                         };
-                        let num_segments = ((arc_estimate / std::f64::consts::FRAC_PI_2 * 8.0)
-                            .ceil() as usize)
-                            .clamp(4, 16);
+                        // 2D profile arc → extruded cap. Medium+ keeps historical
+                        // density; below Medium it coarsens.
+                        let arc_base =
+                            (arc_estimate / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize;
+                        let num_segments =
+                            self.quality().profile_arc_segments(arc_base, 4).min(16);
                         let arc_points = self.approximate_arc_3pt(start, mid, end, num_segments);
                         for pt in arc_points {
                             if result_points.last() != Some(&pt) {
@@ -3103,9 +3151,9 @@ impl ProfileProcessor {
                     } else {
                         0.5
                     };
-                    let num_segments = ((arc_estimate / std::f64::consts::FRAC_PI_2 * 8.0)
-                        .ceil() as usize)
-                        .clamp(4, 16);
+                    let arc_base =
+                        (arc_estimate / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize;
+                    let num_segments = scale_segments(arc_base, 4, 16, self.quality());
                     let arc_points = approximate_arc_3pt_3d(start, mid, end, num_segments);
                     for pt in arc_points {
                         if !same_point_3d(result.last(), &pt) {
@@ -3544,7 +3592,9 @@ mod tests {
         let processor = ProfileProcessor::new(schema);
 
         let profile_entity = decoder.decode_by_id(1).unwrap();
-        let profile = processor.process(&profile_entity, &mut decoder).unwrap();
+        let profile = processor
+            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap();
 
         assert_eq!(profile.outer.len(), 4);
         assert!(!profile.outer.is_empty());
@@ -3561,7 +3611,9 @@ mod tests {
         let processor = ProfileProcessor::new(schema);
 
         let profile_entity = decoder.decode_by_id(1).unwrap();
-        let profile = processor.process(&profile_entity, &mut decoder).unwrap();
+        let profile = processor
+            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap();
 
         assert_eq!(profile.outer.len(), 36); // Circle with 36 segments
         assert!(!profile.outer.is_empty());
@@ -3578,7 +3630,9 @@ mod tests {
         let processor = ProfileProcessor::new(schema);
 
         let profile_entity = decoder.decode_by_id(1).unwrap();
-        let profile = processor.process(&profile_entity, &mut decoder).unwrap();
+        let profile = processor
+            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap();
 
         assert_eq!(profile.outer.len(), 12); // I-shape has 12 vertices
         assert!(!profile.outer.is_empty());
@@ -3708,7 +3762,9 @@ mod tests {
         let mut decoder = EntityDecoder::new(content);
         let processor = ProfileProcessor::new(IfcSchema::new());
         let entity = decoder.decode_by_id(id).unwrap();
-        processor.process(&entity, &mut decoder).unwrap()
+        processor
+            .process(&entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap()
     }
 
     // A U-shape (channel) is centred on its bounding box: X spans
@@ -3836,7 +3892,9 @@ mod tests {
         let processor = ProfileProcessor::new(schema);
 
         let profile_entity = decoder.decode_by_id(6).unwrap();
-        let profile = processor.process(&profile_entity, &mut decoder).unwrap();
+        let profile = processor
+            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap();
 
         assert_eq!(profile.outer.len(), 5); // 4 corners + closing point
         assert!(!profile.outer.is_empty());
@@ -3857,7 +3915,9 @@ mod tests {
         let processor = ProfileProcessor::new(schema);
 
         let profile_entity = decoder.decode_by_id(5).unwrap();
-        let profile = processor.process(&profile_entity, &mut decoder).unwrap();
+        let profile = processor
+            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap();
 
         assert_eq!(profile.outer.len(), 4);
         assert!(profile.outer.contains(&Point2::new(14.0, 18.0)));
@@ -3882,7 +3942,9 @@ mod tests {
         let processor = ProfileProcessor::new(schema);
 
         let profile_entity = decoder.decode_by_id(6).unwrap();
-        let profile = processor.process(&profile_entity, &mut decoder).unwrap();
+        let profile = processor
+            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap();
 
         assert_eq!(profile.outer.len(), 4);
         assert!(profile.outer.contains(&Point2::new(1.0, -2.0)));

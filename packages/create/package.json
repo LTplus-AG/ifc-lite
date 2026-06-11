@@ -1,14 +1,15 @@
 {
   "name": "@ifc-lite/create",
-  "version": "1.15.1",
+  "version": "1.16.1",
   "description": "IFC creation from scratch — walls, slabs, beams, columns, stairs, roofs with geometry, properties and quantities",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {

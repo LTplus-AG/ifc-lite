@@ -1,14 +1,15 @@
 {
   "name": "@ifc-lite/export",
-  "version": "1.19.4",
+  "version": "1.19.5",
   "description": "Export formats for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
@@ -27,6 +28,7 @@
     "jszip": "^3.10.0"
   },
   "devDependencies": {
+    "@ifc-lite/ifcx": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^4.1.0"
   },

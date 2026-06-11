@@ -289,7 +289,7 @@ npm install
 npm run dev
 \`\`\`
 
-Open http://localhost:5173 and drop an IFC file.
+Open http://localhost:3000 and drop an IFC file.
 
 ## Learn More
 

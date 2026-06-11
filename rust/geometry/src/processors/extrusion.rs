@@ -7,7 +7,7 @@
 use crate::{
     extrusion::{apply_transform, extrude_profile},
     profiles::ProfileProcessor,
-    Error, Mesh, Result, Vector3,
+    Error, Mesh, Result, TessellationQuality, Vector3,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
@@ -36,6 +36,7 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcExtrudedAreaSolid attributes:
         // 0: SweptArea (IfcProfileDef)
@@ -52,7 +53,9 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
             .resolve_ref(profile_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
 
-        let profile = self.profile_processor.process(&profile_entity, decoder)?;
+        let profile = self
+            .profile_processor
+            .process(&profile_entity, decoder, quality)?;
 
         if profile.outer.is_empty() {
             return Ok(Mesh::new());

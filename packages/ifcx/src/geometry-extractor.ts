@@ -47,12 +47,27 @@ export function extractGeometry(
   const meshes: MeshData[] = [];
   const contextByFrame = new WeakMap<TraversalFrame, GeometryContext | null>();
   const transformByFrame = new WeakMap<TraversalFrame, Float32Array | null>();
+  // A node reachable through multiple parents (e.g. storey→wall AND
+  // space→wall containment edges, as our own exporter emits) is visited
+  // once per traversal path, which used to duplicate its mesh — the
+  // export round-trip multiplied triangle counts by the number of
+  // incoming edges. Emit once per (node path, entity context, accumulated
+  // transform, resolved presentation): two frames collapse only when
+  // every lineage-derived output is identical, i.e. a true alias. A
+  // shared type body reached from two instances (different expressIds),
+  // genuine instancing (different transforms), or differently styled
+  // ancestors (different resolved color) all still emit.
+  const emitted = new Set<string>();
 
   walkComposedFrames(composed, (frame) => {
     const inheritedContext = frame.parent ? contextByFrame.get(frame.parent) ?? null : null;
     const parentTransform = frame.parent ? transformByFrame.get(frame.parent) ?? null : null;
     const context = resolveContext(frame.node, inheritedContext, pathToId);
-    const transform = combineTransforms(getNodeTransform(frame.node), parentTransform);
+    // Canonicalize: an explicit identity usd::xformop and "no transform"
+    // produce identical geometry and must dedupe against each other.
+    const transform = canonicalizeTransform(
+      combineTransforms(getNodeTransform(frame.node), parentTransform)
+    );
     const lineage = getNodeLineage(frame);
 
     contextByFrame.set(frame, context);
@@ -60,13 +75,36 @@ export function extractGeometry(
 
     const mesh = frame.node.attributes.get(ATTR.MESH) as UsdMesh | undefined;
     if (mesh && context && !context.isTypeDefinition && !isInvisible(lineage)) {
-      const meshData = convertUsdMesh(mesh, context.expressId, context.ifcType, transform);
-      applyPresentation(meshData, lineage);
-      meshes.push(meshData);
+      const color = resolvePresentation(lineage);
+      const emitKey = [
+        frame.node.path,
+        context.expressId,
+        transform ? transform.join(',') : 'identity',
+        color ? color.join(',') : 'default',
+      ].join('|');
+      if (!emitted.has(emitKey)) {
+        emitted.add(emitKey);
+        const meshData = convertUsdMesh(mesh, context.expressId, context.ifcType, transform);
+        if (color) {
+          meshData.color = color;
+        }
+        meshes.push(meshData);
+      }
     }
   });
 
   return meshes;
+}
+
+const IDENTITY_MATRIX = Object.freeze([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+/** Map an explicit identity matrix to null so it keys/behaves like "no transform". */
+function canonicalizeTransform(transform: Float32Array | null): Float32Array | null {
+  if (!transform) return null;
+  for (let i = 0; i < 16; i++) {
+    if (transform[i] !== IDENTITY_MATRIX[i]) return transform;
+  }
+  return null;
 }
 
 /**
@@ -251,9 +289,12 @@ function isInvisible(lineage: ComposedNode[]): boolean {
 }
 
 /**
- * Apply presentation attributes (color, opacity) to mesh.
+ * Resolve presentation attributes (color, opacity) from the lineage.
+ * Returns null when no ancestor carries a diffuse color (caller keeps
+ * the default). Resolved BEFORE mesh conversion so the dedupe key can
+ * distinguish differently-styled traversal paths.
  */
-function applyPresentation(mesh: MeshData, lineage: ComposedNode[]): void {
+function resolvePresentation(lineage: ComposedNode[]): [number, number, number, number] | null {
   // Check this node and its ancestors for presentation attributes
   for (let i = lineage.length - 1; i >= 0; i--) {
     const current = lineage[i];
@@ -263,10 +304,10 @@ function applyPresentation(mesh: MeshData, lineage: ComposedNode[]): void {
     if (diffuse) {
       const [r, g, b] = diffuse;
       const a = opacity ?? 1.0;
-      mesh.color = [r, g, b, a];
-      return;
+      return [r, g, b, a];
     }
   }
+  return null;
 }
 
 /**

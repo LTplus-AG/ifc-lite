@@ -8,6 +8,7 @@
  */
 
 import { createLogger } from '@ifc-lite/data';
+import type { TessellationQuality } from './types.js';
 import init, {
   IfcAPI,
   SymbolicRepresentationCollection,
@@ -43,6 +44,7 @@ let fatalWasmRuntimeError: Error | null = null;
 type IfcAPIWithMerge = IfcAPI & {
   setMergeLayers?: (enabled: boolean) => void;
   setComputeGeometryHashes?: (tolerance?: number | null) => void;
+  setTessellationQuality?: (level?: string | null) => void;
 };
 
 export class IfcLiteBridge {
@@ -66,6 +68,14 @@ export class IfcLiteBridge {
    * call, mirroring the `mergeLayers` replay pattern.
    */
   private geometryHashTolerance: number | null = null;
+  /**
+   * Tessellation detail level (issue #976), or `null` for the engine
+   * default (`'medium'`, byte-for-byte identical to the pre-quality
+   * pipeline). Cached here and forwarded to the IfcAPI on `init` + every
+   * `setTessellationQuality` call, mirroring the `mergeLayers` replay
+   * pattern.
+   */
+  private tessellationQuality: TessellationQuality | null = null;
 
   private isWasmRuntimeError(error: unknown): boolean {
     return error instanceof WebAssembly.RuntimeError;
@@ -104,6 +114,8 @@ export class IfcLiteBridge {
       this.applyMergeLayers();
       // Same replay contract for the geometry-hash toggle.
       this.applyComputeGeometryHashes();
+      // …and for the tessellation-quality level (issue #976).
+      this.applyTessellationQuality();
       this.initialized = true;
       log.info('WASM geometry engine initialized');
     } catch (error) {
@@ -360,6 +372,48 @@ export class IfcLiteBridge {
     api.setComputeGeometryHashes(this.geometryHashTolerance);
     log.debug(`computeGeometryHashes=${this.geometryHashTolerance ?? 'off'}`, {
       operation: 'setComputeGeometryHashes',
+    });
+  }
+
+  /**
+   * Select the tessellation detail level for curved geometry (issue #976).
+   * `null` restores the engine default (`'medium'` — output identical to the
+   * pre-quality pipeline). Safe to call before `init()` — the value is cached
+   * and re-applied on the freshly-constructed IfcAPI. Applies to meshes
+   * produced AFTER the call; already-emitted geometry is not regenerated.
+   */
+  setTessellationQuality(level: TessellationQuality | null): void {
+    this.tessellationQuality = level;
+    if (!this.ifcApi) return; // init() will apply on the new IfcAPI
+    this.applyTessellationQuality();
+  }
+
+  /** Read back the active tessellation quality (null = engine default). */
+  getTessellationQuality(): TessellationQuality | null {
+    return this.tessellationQuality;
+  }
+
+  /**
+   * Forward the cached tessellation quality to the underlying IfcAPI.
+   * Guards against an older WASM build that predates the binding so the
+   * level degrades to a no-op (default density) rather than throwing —
+   * same defensive shape as `applyMergeLayers`.
+   */
+  private applyTessellationQuality(): void {
+    if (!this.ifcApi) return;
+    const api = this.ifcApi as IfcAPIWithMerge;
+    if (typeof api.setTessellationQuality !== 'function') {
+      if (this.tessellationQuality != null) {
+        log.warn('setTessellationQuality not present on WASM API — level ignored until WASM is rebuilt', {
+          operation: 'setTessellationQuality',
+          data: { requested: this.tessellationQuality },
+        });
+      }
+      return;
+    }
+    api.setTessellationQuality(this.tessellationQuality);
+    log.debug(`tessellationQuality=${this.tessellationQuality ?? 'default'}`, {
+      operation: 'setTessellationQuality',
     });
   }
 }

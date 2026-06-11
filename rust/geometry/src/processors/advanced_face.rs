@@ -9,7 +9,7 @@
 //! when shells contain IfcAdvancedFace entities (common in CATIA exports).
 
 use crate::triangulation::{calculate_polygon_normal, project_to_2d};
-use crate::{Error, Point3, Result};
+use crate::{scale_segments, Error, Point3, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
@@ -22,6 +22,7 @@ use super::helpers::get_axis2_placement_transform_by_id;
 pub(super) fn process_advanced_face(
     face: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     // IfcAdvancedFace has:
     // 0: Bounds (list of FaceBound)
@@ -46,16 +47,16 @@ pub(super) fn process_advanced_face(
         .unwrap_or(true);
 
     let result = if surface_type == "IFCPLANE" {
-        process_planar_face(face, decoder)
+        process_planar_face(face, decoder, quality)
     } else if surface_type == "IFCBSPLINESURFACEWITHKNOTS" {
-        process_bspline_face(&surface, decoder, None)
+        process_bspline_face(&surface, decoder, None, quality)
     } else if surface_type == "IFCRATIONALBSPLINESURFACEWITHKNOTS" {
         let weights = parse_rational_weights(&surface);
-        process_bspline_face(&surface, decoder, weights.as_deref())
+        process_bspline_face(&surface, decoder, weights.as_deref(), quality)
     } else if surface_type == "IFCCYLINDRICALSURFACE" {
-        process_cylindrical_face(face, &surface, decoder)
+        process_cylindrical_face(face, &surface, decoder, quality)
     } else if surface_type == "IFCSURFACEOFREVOLUTION" {
-        process_surface_of_revolution_face(face, &surface, decoder)
+        process_surface_of_revolution_face(face, &surface, decoder, quality)
     } else if surface_type == "IFCSURFACEOFLINEAREXTRUSION"
         || surface_type == "IFCCONICALSURFACE"
         || surface_type == "IFCSPHERICALSURFACE"
@@ -65,7 +66,7 @@ pub(super) fn process_advanced_face(
         // on the surface. Extracting and triangulating them gives a reasonable
         // polygonal approximation. This covers IfcSurfaceOfLinearExtrusion
         // (common in CATIA exports) and other analytic surface types.
-        process_planar_face(face, decoder)
+        process_planar_face(face, decoder, quality)
     } else {
         // Unsupported surface type - return empty geometry
         #[cfg(feature = "debug_geometry")]
@@ -445,6 +446,7 @@ fn sample_bspline_edge_curve(
     start: &Point3<f64>,
     curve_forward: bool,
     decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
 ) -> Vec<Point3<f64>> {
     // Parse B-spline curve: degree(0), control_points(1), ..., knot_mults(6), knots(7)
     let degree = curve.get_float(0).unwrap_or(3.0) as usize;
@@ -491,8 +493,8 @@ fn sample_bspline_edge_curve(
     let t_min = knots[degree];
     let t_max = knots[knots.len() - degree - 1];
 
-    // Adaptive segment count based on control point density
-    let n_segments = (control_points.len() * 2).clamp(4, 16);
+    // Adaptive segment count based on control point density; scaled by quality.
+    let n_segments = scale_segments(control_points.len() * 2, 4, 16, quality);
 
     let mut points = Vec::with_capacity(n_segments + 1);
     // Add the start vertex first
@@ -609,6 +611,7 @@ fn sample_circle_edge_curve(
     end: &Point3<f64>,
     curve_forward: bool,
     decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
 ) -> Vec<Point3<f64>> {
     use std::f64::consts::TAU;
 
@@ -652,8 +655,10 @@ fn sample_circle_edge_curve(
         (cw_delta, -1.0_f64)
     };
 
-    // ~12° per segment, clamped to keep simple half-turns affordable.
-    let n_segments = ((delta / (TAU / 30.0)).ceil() as usize).clamp(2, 32);
+    // ~12° per segment at Medium, clamped to keep simple half-turns affordable;
+    // scaled by quality.
+    let n_base = (delta / (TAU / 30.0)).ceil() as usize;
+    let n_segments = scale_segments(n_base, 2, 32, quality);
 
     let mut points = Vec::with_capacity(n_segments);
     points.push(*start);
@@ -671,6 +676,7 @@ fn sample_circle_edge_curve(
 fn extract_edge_loop_points(
     loop_entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
 ) -> Vec<Point3<f64>> {
     let edges = match loop_entity.get(0).and_then(|a| a.as_list()) {
         Some(e) => e,
@@ -759,7 +765,8 @@ fn extract_edge_loop_points(
             if geom_type == "IFCBSPLINECURVEWITHKNOTS" {
                 // Sample B-spline curve for intermediate points
                 let s = walk_start.unwrap_or(Point3::new(0.0, 0.0, 0.0));
-                let sampled = sample_bspline_edge_curve(&geom, &s, curve_forward, decoder);
+                let sampled =
+                    sample_bspline_edge_curve(&geom, &s, curve_forward, decoder, quality);
                 polygon_points.extend(sampled);
                 continue;
             }
@@ -769,7 +776,8 @@ fn extract_edge_loop_points(
                 // Without this, every circular boundary collapses to a single
                 // vertex per edge — disc caps and curved fillets become slivers.
                 if let (Some(s), Some(e)) = (walk_start, _walk_end) {
-                    let sampled = sample_circle_edge_curve(&geom, &s, &e, curve_forward, decoder);
+                    let sampled =
+                        sample_circle_edge_curve(&geom, &s, &e, curve_forward, decoder, quality);
                     polygon_points.extend(sampled);
                     continue;
                 }
@@ -806,6 +814,7 @@ fn extract_edge_loop_points(
 fn process_planar_face(
     face: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     use crate::triangulation::{project_to_2d_with_basis, triangulate_polygon_with_holes};
     use ifc_lite_core::IfcType;
@@ -838,7 +847,7 @@ fn process_planar_face(
             continue;
         }
 
-        let mut points = extract_edge_loop_points(&loop_entity, decoder);
+        let mut points = extract_edge_loop_points(&loop_entity, decoder, quality);
         if points.len() < 3 {
             continue;
         }
@@ -907,6 +916,7 @@ pub(super) fn process_bspline_face(
     bspline: &DecodedEntity,
     decoder: &mut EntityDecoder,
     weights: Option<&[Vec<f64>]>,
+    quality: TessellationQuality,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     // Get degrees
     let u_degree = bspline.get_float(0).unwrap_or(3.0) as usize;
@@ -918,12 +928,12 @@ pub(super) fn process_bspline_face(
     // Parse knot vectors
     let (u_knots, v_knots) = parse_knot_vectors(bspline)?;
 
-    // Determine tessellation resolution based on surface complexity
-    let u_segments = (control_points.len() * 3).clamp(8, 24);
+    // Determine tessellation resolution based on surface complexity; scaled by quality.
+    let u_segments = scale_segments(control_points.len() * 3, 8, 24, quality);
     let v_segments = if !control_points.is_empty() {
-        (control_points[0].len() * 3).clamp(4, 24)
+        scale_segments(control_points[0].len() * 3, 4, 24, quality)
     } else {
-        4
+        scale_segments(4, 4, 24, quality)
     };
 
     // Tessellate the surface (returns None if knot data is inconsistent)
@@ -947,6 +957,7 @@ fn process_cylindrical_face(
     face: &DecodedEntity,
     surface: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     // Get the radius from IfcCylindricalSurface (attribute 1)
     let radius = surface
@@ -971,7 +982,8 @@ fn process_cylindrical_face(
     // collapsing the boundary to vertex corners). This is critical for the
     // glazing-mullion fillet faces in IFC4 door exports, where each
     // cylindrical face has B-spline edge curves running along the surface.
-    let boundary_points: Vec<Point3<f64>> = extract_edge_loop_points_for_bounds(face, decoder);
+    let boundary_points: Vec<Point3<f64>> =
+        extract_edge_loop_points_for_bounds(face, decoder, quality);
 
     if boundary_points.is_empty() {
         return Ok((Vec::new(), Vec::new()));
@@ -1049,11 +1061,12 @@ fn process_cylindrical_face(
     let height = max_z - min_z;
 
     // Balance between accuracy and matching web-ifc's output
-    // Use ~10 degrees per segment for smooth handle/glazing curvature
-    let angle_segments =
-        ((angle_span / (std::f64::consts::PI / 18.0)).ceil() as usize).clamp(6, 32);
-    // Height segments based on aspect ratio - at least 1, more for tall cylinders
-    let height_segments = ((height / (radius * 2.0)).ceil() as usize).clamp(1, 8);
+    // Use ~10 degrees per segment for smooth handle/glazing curvature; scaled by quality.
+    let angle_base = (angle_span / (std::f64::consts::PI / 18.0)).ceil() as usize;
+    let angle_segments = scale_segments(angle_base, 6, 32, quality);
+    // Height segments based on aspect ratio - at least 1, more for tall cylinders.
+    let height_base = (height / (radius * 2.0)).ceil() as usize;
+    let height_segments = scale_segments(height_base, 1, 8, quality);
 
     let mut positions = Vec::new();
     let mut indices = Vec::new();
@@ -1106,6 +1119,7 @@ fn process_cylindrical_face(
 fn sample_curve_polyline(
     curve: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
 ) -> Vec<Point3<f64>> {
     use std::f64::consts::TAU;
     let kind = curve.ifc_type.as_str().to_uppercase();
@@ -1116,6 +1130,7 @@ fn sample_curve_polyline(
             &Point3::new(0.0, 0.0, 0.0),
             true,
             decoder,
+            quality,
         );
         if !pts.is_empty() {
             // Replace the synthetic start with an explicit evaluation at t_min.
@@ -1217,7 +1232,7 @@ fn sample_curve_polyline(
         };
         let (center, axis_z, axis_x) = read_axis2_placement_3d(&placement, decoder);
         let axis_y = axis_z.cross(&axis_x);
-        let n = 24usize;
+        let n = scale_segments(24, 8, 96, quality);
         return (0..=n)
             .map(|i| {
                 let a = TAU * (i as f64) / (n as f64);
@@ -1267,19 +1282,20 @@ fn sample_curve_polyline(
                 // profile) we have to append the terminal point ourselves so
                 // the polyline isn't truncated by one segment.
                 // Per CodeRabbit feedback on PR #605.
-                let mut pts = sample_circle_edge_curve(&basis, &p_start, &p_end, sense, decoder);
+                let mut pts =
+                    sample_circle_edge_curve(&basis, &p_start, &p_end, sense, decoder, quality);
                 pts.push(p_end);
                 return pts;
             }
         }
         if basis_kind == "IFCBSPLINECURVEWITHKNOTS" {
             if let (Some(p_start), Some(p_end)) = (p1, p2) {
-                let mut pts = sample_bspline_edge_curve(&basis, &p_start, sense, decoder);
+                let mut pts = sample_bspline_edge_curve(&basis, &p_start, sense, decoder, quality);
                 pts.push(p_end);
                 return pts;
             }
             if let Some(p_start) = p1 {
-                return sample_bspline_edge_curve(&basis, &p_start, sense, decoder);
+                return sample_bspline_edge_curve(&basis, &p_start, sense, decoder, quality);
             }
         }
         if basis_kind == "IFCLINE" {
@@ -1299,7 +1315,7 @@ fn sample_curve_polyline(
                 };
             }
         }
-        return sample_curve_polyline(&basis, decoder);
+        return sample_curve_polyline(&basis, decoder, quality);
     }
     Vec::new()
 }
@@ -1312,6 +1328,7 @@ fn process_surface_of_revolution_face(
     face: &DecodedEntity,
     surface: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
 ) -> Result<(Vec<f32>, Vec<u32>)> {
     use nalgebra::Vector3;
     use std::f64::consts::TAU;
@@ -1365,17 +1382,17 @@ fn process_surface_of_revolution_face(
         Some(s) if s.ifc_type.as_str().eq_ignore_ascii_case("IFCARBITRARYOPENPROFILEDEF") => {
             // Attribute 2 is the curve.
             if let Some(curve) = s.get(2).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
-                sample_curve_polyline(&curve, decoder)
+                sample_curve_polyline(&curve, decoder, quality)
             } else {
                 Vec::new()
             }
         }
-        Some(s) => sample_curve_polyline(&s, decoder),
+        Some(s) => sample_curve_polyline(&s, decoder, quality),
         None => Vec::new(),
     };
 
     if profile_pts.len() < 2 {
-        return process_planar_face(face, decoder);
+        return process_planar_face(face, decoder, quality);
     }
 
     // Build an orthonormal basis (axis_x, axis_y, axis_dir).
@@ -1394,7 +1411,7 @@ fn process_surface_of_revolution_face(
     // *largest gap* between sorted angles — the face occupies the complement.
     // This robustly handles faces that straddle the θ=π discontinuity (e.g.
     // a fillet at θ=−π/2..π) where naive min/max gives 3π/2 instead of π/2.
-    let boundary = extract_edge_loop_points_for_bounds(face, decoder);
+    let boundary = extract_edge_loop_points_for_bounds(face, decoder, quality);
     let (a_min, span) = if boundary.is_empty() {
         (0.0, TAU)
     } else {
@@ -1441,7 +1458,7 @@ fn process_surface_of_revolution_face(
             }
         }
     };
-    let n_angle = ((span / (TAU / 36.0)).ceil() as usize).clamp(4, 48);
+    let n_angle = scale_segments((span / (TAU / 36.0)).ceil() as usize, 4, 48, quality);
     let n_v = profile_pts.len();
 
     // Preserve the profile's (rx, ry) — issue #674: collapsing to radius
@@ -1518,7 +1535,7 @@ fn process_surface_of_revolution_face(
     }
 
     if positions.is_empty() || indices.is_empty() {
-        return process_planar_face(face, decoder);
+        return process_planar_face(face, decoder, quality);
     }
     Ok((positions, indices))
 }
@@ -1529,6 +1546,7 @@ fn process_surface_of_revolution_face(
 fn extract_edge_loop_points_for_bounds(
     face: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
 ) -> Vec<Point3<f64>> {
     let mut all = Vec::new();
     let bounds = match face.get(0).and_then(|a| a.as_list()) {
@@ -1545,7 +1563,7 @@ fn extract_edge_loop_points_for_bounds(
                             .as_str()
                             .eq_ignore_ascii_case("IFCEDGELOOP")
                         {
-                            all.extend(extract_edge_loop_points(&loop_entity, decoder));
+                            all.extend(extract_edge_loop_points(&loop_entity, decoder, quality));
                         }
                     }
                 }

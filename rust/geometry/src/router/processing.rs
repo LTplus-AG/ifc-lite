@@ -819,7 +819,7 @@ impl GeometryRouter {
 
         // Check if we have a processor for this type
         if let Some(processor) = self.processors.get(&item.ifc_type) {
-            let mut mesh = processor.process(item, decoder, &self.schema)?;
+            let mut mesh = processor.process(item, decoder, &self.schema, self.tessellation_quality)?;
             // Safety net: strip any out-of-bounds indices before downstream use
             mesh.validate_indices();
 
@@ -961,7 +961,9 @@ impl GeometryRouter {
                 continue;
             }
             if let Some(processor) = self.processors.get(&sub_item.ifc_type) {
-                if let Ok(mut sub_mesh) = processor.process(&sub_item, decoder, &self.schema) {
+                if let Ok(mut sub_mesh) =
+                    processor.process(&sub_item, decoder, &self.schema, self.tessellation_quality)
+                {
                     sub_mesh.validate_indices();
                     self.scale_mesh(&mut sub_mesh);
                     mesh.merge(&sub_mesh);
@@ -1068,7 +1070,9 @@ impl GeometryRouter {
             }
 
             if let Some(processor) = self.processors.get(&item.ifc_type) {
-                if let Ok(mut sub_mesh) = processor.process(&item, decoder, &self.schema) {
+                if let Ok(mut sub_mesh) =
+                    processor.process(&item, decoder, &self.schema, self.tessellation_quality)
+                {
                     sub_mesh.validate_indices();
                     self.scale_mesh(&mut sub_mesh);
                     untextured.merge(&sub_mesh);
@@ -1120,7 +1124,7 @@ impl GeometryRouter {
             Some(p) => Arc::clone(p),
             None => return Ok(None),
         };
-        let mut mesh = match processor.process(element, decoder, &self.schema) {
+        let mut mesh = match processor.process(element, decoder, &self.schema, self.tessellation_quality) {
             Ok(m) => m,
             // Missing Axis or unparseable curve isn't fatal — fall back so
             // the caller can still walk a normal representation if present.

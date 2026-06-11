@@ -142,19 +142,28 @@ export function emitBodyRepresentation(
 }
 
 /**
+ * OwnerHistory STEP reference, or `$` when the model has none —
+ * IfcRoot.OwnerHistory is OPTIONAL from IFC4 onward, and minimal files
+ * (including ifc-lite's own exports) legitimately omit the entity.
+ */
+export function ownerHistoryRef(ownerHistoryId: number | null): string | null {
+  return ownerHistoryId == null ? null : `#${ownerHistoryId}`;
+}
+
+/**
  * Emit a fresh IfcRelContainedInSpatialStructure that anchors a single
  * element to its storey. Easier than mutating an existing rel — STEP
  * importers fold parallel rels back into one container at parse time.
  */
 export function emitRelContainedInSpatialStructure(
   editor: StoreEditor,
-  ownerHistoryId: number,
+  ownerHistoryId: number | null,
   elementId: number,
   storeyId: number,
 ): number {
   return editor.addEntity('IfcRelContainedInSpatialStructure', [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     null,
     null,
     [`#${elementId}`],
@@ -169,7 +178,7 @@ export function emitRelContainedInSpatialStructure(
  * type-specific tail (PredefinedType, OperationType, etc.).
  */
 export function ifcElementHeader(
-  ownerHistoryId: number,
+  ownerHistoryId: number | null,
   placementId: number,
   productShapeId: number,
   params: { Name?: string; Description?: string; ObjectType?: string; Tag?: string },
@@ -177,7 +186,7 @@ export function ifcElementHeader(
 ): Array<unknown> {
   return [
     generateIfcGuid(),
-    `#${ownerHistoryId}`,
+    ownerHistoryRef(ownerHistoryId),
     params.Name ?? defaultName,
     params.Description ?? null,
     params.ObjectType ?? null,

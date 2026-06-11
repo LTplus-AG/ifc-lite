@@ -1,5 +1,117 @@
 # @ifc-lite/cli
 
+## 0.11.2
+
+### Patch Changes
+
+- [#1055](https://github.com/LTplus-AG/ifc-lite/pull/1055) [`594b90c`](https://github.com/LTplus-AG/ifc-lite/commit/594b90c99cf5e2bc40735232e0b02691be7b2ed1) Thanks [@louistrue](https://github.com/louistrue)! - fix(ids): make IDS validation usable on large models with code-list IDS packs.
+
+  Validating a 550k-entity model against an 848-spec IDS document took ~19
+  minutes of CPU, produced multi-GB reports, and the CLI then hung forever
+  after printing its results. Four root fixes:
+
+  - parser: `yieldToEventLoop` leaked one open `MessageChannel` per yield;
+    in Node an open `MessagePort` holds a libuv handle, so every CLI command
+    on a large file kept the process alive after completion. Ports now close
+    (helper consolidated into one shared module).
+  - ids: `validateIDS` wraps the accessor in a per-run memoizing cache so
+    property sets / types / attributes are extracted once per entity instead
+    of once per entity _per specification_ (O(specs×entities) source
+    re-parses → O(entities)). Enumeration constraints additionally compile
+    into exact-match sets (real-world code lists carry 800+ values).
+  - ids: per-entity result strings are now bounded — enumeration constraints
+    render at most 10 values in failure messages, and the entity-independent
+    requirement description is formatted once per requirement instead of per
+    entity result (reports for failing models dropped from GBs to MBs).
+  - cli: `ifc-lite ids` now uses the canonical `@ifc-lite/ids/bridge`
+    accessor (the drifted local copy missed type-inherited property sets),
+    reports real progress (`spec 312/848 (37%)` instead of
+    `undefined (undefined/undefined)`), and skips retaining passing entity
+    results for human-readable output (`--json` is unchanged).
+
+  Behavior change (intentional): the CLI's PASS/FAIL verdict and exit code
+  now come from the validator's per-spec status, which counts
+  cardinality-only failures — a `minOccurs="1"` specification that matches
+  zero entities now correctly FAILs (exit 1) where it previously passed
+  silently. `bim.ids.summarize` likewise prefers the per-spec status when
+  the report carries one, so `--json` and text mode agree on the verdict.
+
+  Measured on the same model + IDS pack: 848 specs 19min→2min, 117 specs
+  3.4min→12s, both with a clean exit instead of a hang.
+
+- Updated dependencies [[`594b90c`](https://github.com/LTplus-AG/ifc-lite/commit/594b90c99cf5e2bc40735232e0b02691be7b2ed1)]:
+  - @ifc-lite/parser@3.1.3
+  - @ifc-lite/ids@1.15.8
+  - @ifc-lite/sdk@1.18.2
+
+## 0.11.1
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+- Updated dependencies [[`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc), [`8d5bd67`](https://github.com/LTplus-AG/ifc-lite/commit/8d5bd6701dc9962c2de5e42a7462008b2b8c2885)]:
+  - @ifc-lite/bcf@1.15.6
+  - @ifc-lite/clash@1.1.2
+  - @ifc-lite/create@1.16.1
+  - @ifc-lite/data@2.0.2
+  - @ifc-lite/encoding@1.14.7
+  - @ifc-lite/export@1.19.5
+  - @ifc-lite/extensions@0.3.2
+  - @ifc-lite/geometry@2.4.1
+  - @ifc-lite/ids@1.15.6
+  - @ifc-lite/mcp@0.3.2
+  - @ifc-lite/mutations@1.15.3
+  - @ifc-lite/parser@3.1.1
+  - @ifc-lite/query@1.14.10
+  - @ifc-lite/sandbox@1.15.2
+  - @ifc-lite/sdk@1.18.1
+  - @ifc-lite/viewer-core@0.2.6
+  - @ifc-lite/wasm@2.5.1
+
+## 0.11.0
+
+### Minor Changes
+
+- [#1022](https://github.com/LTplus-AG/ifc-lite/pull/1022) [`7bd0459`](https://github.com/LTplus-AG/ifc-lite/commit/7bd045963b1339a35bd73d1aad18ff29de7db692) Thanks [@louistrue](https://github.com/louistrue)! - feat(spaces): interactive Space Sketch (DCEL) editor + headless generation
+
+  A topology-aware space editor built on a persistent half-edge (DCEL) plate in
+  the Rust geometry core, exposed via a stateful `SpacePlateHandle` wasm binding:
+
+  - **Derive** rooms from a storey's walls, **drag** a shared vertex (both rooms
+    follow), **split** a room between corners _or_ new nodes added anywhere on a
+    wall, **merge** rooms across a shared wall, with undo/redo, and **bake** to
+    real `IfcSpace` (via the existing `addSpace` path).
+  - **Wall-axis recognition fixes** in `@ifc-lite/create`: read the extractor's
+    reliable entity type instead of the columnar table's `'Unknown'` sentinel
+    (every `Curve2D` Axis polyline — e.g. all of AC20-FZK-Haus — was skipped), and
+    a body-footprint fallback (face sets, `IfcFacetedBrep`, vertically-extruded
+    rect / arbitrary / IndexedPolyCurve profiles) for walls without an Axis.
+  - Viewer "Space Sketch" tool: storey list with resolved names, auto-derive on
+    selection, auto-escalating + manual snap tolerance to close centreline corner
+    gaps.
+  - **Headless generation** — derive IfcSpace across storeys from the CLI
+    (`ifc-lite generate-spaces`), the SDK (`bim.spaces.generate`), or as a library
+    function (`generateSpaces` from `@ifc-lite/create`), with auto-escalating snap,
+    storey-datum ("slab") floor-to-floor heights, and rectangular corner cleanup
+    ported into the TS detector.
+  - **Production-grade baked spaces** — every derived `IfcSpace` now carries
+    `Qto_SpaceBaseQuantities` (GrossFloorArea / NetFloorArea / GrossPerimeter /
+    Height / GrossVolume, schema-aware) and an `IfcRelSpaceBoundary` per bounding
+    wall. Generated spaces are stamped with `ObjectType 'IfcLite:GeneratedSpace'`,
+    and a re-run skips a model that already contains them (idempotent; `--force`
+    to override).
+
+### Patch Changes
+
+- Updated dependencies [[`cef9989`](https://github.com/LTplus-AG/ifc-lite/commit/cef99897ee287029c6db6bbaafcd2a35508af1be), [`7bd0459`](https://github.com/LTplus-AG/ifc-lite/commit/7bd045963b1339a35bd73d1aad18ff29de7db692)]:
+  - @ifc-lite/create@1.16.0
+  - @ifc-lite/wasm@2.5.0
+  - @ifc-lite/sdk@1.18.0
+
 ## 0.10.1
 
 ### Patch Changes

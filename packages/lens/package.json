@@ -1,14 +1,15 @@
 {
   "name": "@ifc-lite/lens",
-  "version": "1.15.1",
+  "version": "1.15.2",
   "description": "Rule-based 3D filtering and colorization for IFC models",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
   },
   "scripts": {

@@ -18,6 +18,7 @@ mod voids_2d;
 mod tests;
 
 use crate::material_layer_index::MaterialLayerIndex;
+use crate::tessellation::TessellationQuality;
 use crate::processors::{
     AdvancedBrepProcessor, BSplineSurfaceProcessor, BlockProcessor, BooleanClippingProcessor,
     CsgSolidProcessor, ExtrudedAreaSolidProcessor, ExtrudedAreaSolidTaperedProcessor,
@@ -37,12 +38,19 @@ use std::sync::Arc;
 /// Geometry processor trait
 /// Each processor handles one type of IFC representation
 pub trait GeometryProcessor {
-    /// Process entity into mesh
+    /// Process entity into mesh.
+    ///
+    /// `quality` selects tessellation detail; processors that approximate
+    /// curves derive their segment counts from it via
+    /// [`crate::tessellation::scale_segments`]. Processors with no curved
+    /// geometry ignore it. [`TessellationQuality::Medium`] reproduces the
+    /// engine's historical hardcoded behavior.
     fn process(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh>;
 
     /// Get supported IFC types
@@ -91,6 +99,10 @@ pub struct GeometryRouter {
     /// get cut?" from a console log alone. Drainable via
     /// [`Self::take_host_opening_diagnostics`].
     host_opening_diagnostics: RefCell<FxHashMap<u32, HostOpeningDiagnostic>>,
+    /// Tessellation detail level. Immutable per router instance and passed to
+    /// every processor's `process`. Defaults to [`TessellationQuality::Medium`]
+    /// (historical hardcoded behavior).
+    tessellation_quality: TessellationQuality,
 }
 
 /// Counts of opening classification outcomes during the most recent
@@ -203,6 +215,7 @@ impl GeometryRouter {
             csg_failures: RefCell::new(FxHashMap::default()),
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
+            tessellation_quality: TessellationQuality::Medium,
         };
 
         // Register default P0 processors
@@ -304,6 +317,42 @@ impl GeometryRouter {
         router.unit_scale = unit_scale;
         router.rtc_offset = rtc_offset;
         router
+    }
+
+    /// Create router with a specific tessellation quality level
+    pub fn with_quality(quality: TessellationQuality) -> Self {
+        let mut router = Self::new();
+        router.tessellation_quality = quality;
+        router
+    }
+
+    /// Create router with both unit scale and tessellation quality
+    pub fn with_scale_and_quality(unit_scale: f64, quality: TessellationQuality) -> Self {
+        let mut router = Self::new();
+        router.unit_scale = unit_scale;
+        router.tessellation_quality = quality;
+        router
+    }
+
+    /// Set the tessellation quality level.
+    ///
+    /// Reusing one router across a quality change invalidates `mapped_item_cache`
+    /// (keyed by RepresentationMap id, not by quality), so it is cleared here to
+    /// avoid serving meshes tessellated at the previous level. The other caches
+    /// are content-hash keyed (`geometry_hash_cache`) or hold non-curved breps
+    /// (`faceted_brep_cache`), so they stay correct.
+    pub fn set_tessellation_quality(&mut self, quality: TessellationQuality) {
+        if self.tessellation_quality == quality {
+            return;
+        }
+        self.tessellation_quality = quality;
+        self.mapped_item_cache.get_mut().clear();
+    }
+
+    /// Get the current tessellation quality level
+    #[inline]
+    pub fn tessellation_quality(&self) -> TessellationQuality {
+        self.tessellation_quality
     }
 
     /// Set the RTC offset for large coordinate handling

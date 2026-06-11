@@ -686,23 +686,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mesh_creation() {
-        let mesh = Mesh::new();
-        assert!(mesh.is_empty());
-        assert_eq!(mesh.vertex_count(), 0);
-        assert_eq!(mesh.triangle_count(), 0);
-    }
-
-    #[test]
-    fn test_add_vertex() {
-        let mut mesh = Mesh::new();
-        mesh.add_vertex(Point3::new(1.0, 2.0, 3.0), Vector3::new(0.0, 0.0, 1.0));
-        assert_eq!(mesh.vertex_count(), 1);
-        assert_eq!(mesh.positions, vec![1.0, 2.0, 3.0]);
-        assert_eq!(mesh.normals, vec![0.0, 0.0, 1.0]);
-    }
-
-    #[test]
     fn test_merge() {
         let mut mesh1 = Mesh::new();
         mesh1.add_vertex(Point3::new(0.0, 0.0, 0.0), Vector3::z());

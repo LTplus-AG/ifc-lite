@@ -69,6 +69,16 @@ bnum = { version = "0.14.4", features = ["numtraits"] }
 
 [dev-dependencies]
 approx = "0.5"
+# Property-based testing for the CSG kernel invariants
+# (tests/csg_property_test.rs): volume bounds, NaN-freedom, watertightness
+# over bounded randomized inputs. Case counts are set explicitly per
+# property to keep the suite fast.
+proptest = "1.6"
+# Snapshot testing for the geometry correctness harness
+# (tests/geometry_correctness_harness.rs). Plain string snapshots only, so
+# no serde-format features are needed. Accept intentional geometry changes
+# with `cargo insta review`.
+insta = { version = "1.43", default-features = false }
 # Shewchuk adaptive exact geometric predicates (sign-exact, no_std, no C deps).
 # Used by the cross-platform determinism floor test that underpins the
 # pure-Rust CSG kernel. Dev-only: not linked into the shipping crate.

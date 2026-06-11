@@ -154,6 +154,68 @@ export function checkEntityFacet(
 }
 
 /**
+ * Diagnostics-free verdict for an entity facet — the exact `passed`
+ * boolean `checkEntityFacet` would compute, without allocating failure
+ * objects or display strings. Applicability filtering runs this against
+ * every candidate entity for every specification and reads ONLY the
+ * boolean, so the diagnostic work was pure waste (~86% of validation
+ * time on code-list IDS packs).
+ *
+ * Any semantic change to `checkEntityFacet` MUST be mirrored here; the
+ * differential test in validation-scale.test.ts pins the equivalence.
+ */
+export function entityFacetPasses(
+  facet: IDSEntityFacet,
+  expressId: number,
+  accessor: IFCDataAccessor
+): boolean {
+  const entityType = accessor.getEntityType(expressId);
+  if (!entityType) return false;
+
+  // Mixed-case simpleValue literals are malformed authoring — rejected
+  // outright (mirrors checkEntityFacet).
+  if (
+    facet.name.type === 'simpleValue' &&
+    facet.name.value !== facet.name.value.toUpperCase()
+  ) {
+    return false;
+  }
+
+  if (!matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE)) {
+    return false;
+  }
+
+  if (facet.predefinedType) {
+    const rawType = accessor.getPredefinedTypeRaw?.(expressId);
+    const userDefinedType = accessor.getObjectType(expressId);
+
+    if (!rawType && !userDefinedType) return false;
+
+    if (rawType && matchConstraint(facet.predefinedType, rawType)) {
+      return true;
+    }
+    if (
+      rawType === 'USERDEFINED' &&
+      userDefinedType &&
+      userDefinedType !== rawType &&
+      matchConstraint(facet.predefinedType, userDefinedType)
+    ) {
+      return true;
+    }
+    if (
+      !rawType &&
+      userDefinedType &&
+      matchConstraint(facet.predefinedType, userDefinedType)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Get candidate entity IDs that might match an entity facet (broadphase filter)
  */
 export function filterByEntityFacet(

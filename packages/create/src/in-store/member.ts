@@ -14,7 +14,7 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecCross, vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
-import type { SpatialAnchor } from './anchor.js';
+import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
   emitBodyRepresentation,
   emitExtrudedSolid,
@@ -59,6 +59,15 @@ export function addMemberToStore(
   anchor: SpatialAnchor,
   params: MemberInStoreParams,
 ): MemberBuildResult {
+  // Params are metres; convert dimensioned fields to the file's native
+  // length unit before emit (see SpatialAnchor.lengthUnitScale).
+  params = {
+    ...params,
+    Start: toNativePoint3(anchor, params.Start),
+    End: toNativePoint3(anchor, params.End),
+    Width: toNativeLength(anchor, params.Width),
+    Height: toNativeLength(anchor, params.Height),
+  };
   const dx = params.End[0] - params.Start[0];
   const dy = params.End[1] - params.Start[1];
   const dz = params.End[2] - params.Start[2];

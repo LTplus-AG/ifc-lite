@@ -5,7 +5,8 @@
 //! Swept geometry processors - SweptDiskSolid and RevolvedAreaSolid.
 
 use crate::{
-    extrusion::apply_transform, profiles::ProfileProcessor, Error, Mesh, Point3, Result, Vector3,
+    extrusion::apply_transform, profiles::ProfileProcessor, scale_segments, Error, Mesh, Point3,
+    Result, TessellationQuality, Vector3,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
@@ -106,6 +107,7 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcSweptDiskSolid attributes:
         // 0: Directrix (IfcCurve) - the path to sweep along
@@ -148,6 +150,10 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         // have length-, angle-, or knot-based parameterisations and fall back to the
         // full sampler. Files using those with explicit StartParam/EndParam will still
         // render the full curve — flagged as a known limitation.
+        // The lower-level trimmed samplers below don't take a `quality`
+        // argument; set it on the profile processor so any arcs they sample
+        // honour the requested detail level.
+        self.profile_processor.set_tessellation_quality(quality);
         let has_trim = start_param.is_some() || end_param.is_some();
         let curve_points = if has_trim
             && directrix.ifc_type.is_subtype_of(IfcType::IfcCompositeCurve)
@@ -163,7 +169,8 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
             self.profile_processor
                 .get_polyline_points_trimmed(&directrix, decoder, start_param, end_param)?
         } else {
-            self.profile_processor.get_curve_points(&directrix, decoder)?
+            self.profile_processor
+                .get_curve_points(&directrix, decoder, quality)?
         };
 
         if curve_points.len() < 2 {
@@ -171,7 +178,8 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         }
 
         // Generate tube mesh by sweeping circle along curve
-        let segments = 24; // Number of segments around the circle
+        // 24 segments around the circle at Medium; scaled by quality.
+        let segments = scale_segments(24, 8, 96, quality);
         let mut positions = Vec::new();
         let mut indices = Vec::new();
 
@@ -285,6 +293,7 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh> {
         // IfcRevolvedAreaSolid attributes (inherits IfcSweptAreaSolid):
         // 0: SweptArea (IfcProfileDef) - 2D profile in xy plane of Position
@@ -326,7 +335,7 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
             .get_float(3)
             .ok_or_else(|| Error::geometry("RevolvedAreaSolid missing Angle".to_string()))?;
 
-        let profile_2d = self.profile_processor.process(&profile, decoder)?;
+        let profile_2d = self.profile_processor.process(&profile, decoder, quality)?;
         if profile_2d.outer.is_empty() {
             return Ok(Mesh::new());
         }
@@ -378,10 +387,14 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
         };
 
         let full_circle = angle.abs() >= std::f64::consts::PI * 1.99;
+        // 24 segments for a full revolve at Medium; ~12 per 180° (min 8) for a
+        // partial arc. Both scaled by quality; the high upper bound preserves
+        // the original uncapped partial-arc count at Medium.
         let segments = if full_circle {
-            24
+            scale_segments(24, 8, 96, quality)
         } else {
-            ((angle.abs() / std::f64::consts::PI * 12.0).ceil() as usize).max(8)
+            let base = (angle.abs() / std::f64::consts::PI * 12.0).ceil() as usize;
+            scale_segments(base, 8, 4096, quality)
         };
 
         let profile_points = &profile_2d.outer;

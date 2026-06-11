@@ -28,6 +28,7 @@ import { validateCommand } from './commands/validate.js';
 import { bsddCommand } from './commands/bsdd.js';
 import { statsCommand } from './commands/stats.js';
 import { mutateCommand } from './commands/mutate.js';
+import { generateSpacesCommand } from './commands/generate-spaces.js';
 import { askCommand } from './commands/ask.js';
 import { viewCommand } from './commands/view.js';
 import { analyzeCommand } from './commands/analyze.js';
@@ -78,6 +79,7 @@ const HELP = `
     bsdd      <class|search|psets|qsets> <arg>     buildingSMART Data Dictionary lookup
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
     mutate    <file.ifc> --id N --set P=V --out F  Modify properties/attributes and save
+    generate-spaces <file.ifc> --out F           Derive IfcSpace from walls (slab/roof-aware height)
     ask       <file.ifc> "<question>"            Natural language BIM queries
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
@@ -233,6 +235,9 @@ async function main(): Promise<void> {
       break;
     case 'mutate':
       await mutateCommand(commandArgs);
+      break;
+    case 'generate-spaces':
+      await generateSpacesCommand(commandArgs);
       break;
     case 'ask':
       await askCommand(commandArgs);

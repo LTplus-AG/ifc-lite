@@ -374,7 +374,8 @@ impl GeometryRouter {
 
         // FirstOperand is the base solid (IfcExtrudedAreaSolid, etc.)
         if let Some(processor) = self.processors.get(&first_operand.ifc_type) {
-            let mut mesh = processor.process(&first_operand, decoder, &self.schema)?;
+            let mut mesh =
+                processor.process(&first_operand, decoder, &self.schema, self.tessellation_quality)?;
             self.scale_mesh(&mut mesh);
             // Note: placement is applied in the main function
             return Ok((mesh, clipping_planes));

@@ -6,7 +6,7 @@
  * Focus on structural invariants, not exact values.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import assert from 'node:assert/strict';
@@ -23,9 +23,25 @@ const GEOREF_IFC = join(FIXTURES_DIR, 'ifc5/Georeferencing_georeferenced-bridge-
 
 console.log('🧪 WASM API Contract Tests\n');
 
+// Per AGENTS.md §Test fixtures: skip cleanly (exit 0) when fixtures or
+// the wasm runtime aren't on disk, pointing at the command that fixes it.
+const WASM_BIN = join(ROOT_DIR, 'packages/wasm/pkg/ifc-lite_bg.wasm');
+if (!existsSync(WASM_BIN)) {
+  console.log('⚠️  wasm runtime missing — run `bash scripts/build-wasm.sh`. Skipping.');
+  process.exit(0);
+}
+if (!existsSync(COLUMN_IFC)) {
+  console.log('⚠️  column fixture missing — run `pnpm fixtures`. Skipping.');
+  process.exit(0);
+}
+const GEOREF_AVAILABLE = existsSync(GEOREF_IFC);
+if (!GEOREF_AVAILABLE) {
+  console.log('⚠️  georef fixture missing — run `pnpm fixtures`. Georef tests will be skipped.');
+}
+
 // Initialize WASM
 console.log('📦 Loading WASM...');
-const wasmBuffer = readFileSync(join(ROOT_DIR, 'packages/wasm/pkg/ifc-lite_bg.wasm'));
+const wasmBuffer = readFileSync(WASM_BIN);
 initSync(wasmBuffer);
 console.log('✅ WASM initialized\n');
 
@@ -146,6 +162,208 @@ END-ISO-10303-21;`;
 
   const collection = parseMeshesViaPrePass(api, minimalIfc);
   assert.equal(collection.length, 0, 'Empty IFC should produce no meshes');
+  collection.free();
+});
+
+// ===== Pre-pass contract (viewer boundary) =====
+// The TS GeometryProcessor (packages/geometry) destructures these exact
+// fields off buildPrePassOnce() and forwards them to processGeometryBatch.
+// If a wasm-bindings change renames or drops one, the viewer breaks at
+// runtime while every mocked TS test stays green — this pins the contract.
+console.log('\n📋 buildPrePassOnce contract');
+
+test('pre-pass exposes every field the viewer consumes', () => {
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.equal(typeof pre.totalJobs, 'number');
+    assert.ok(pre.jobs, 'jobs must exist');
+    assert.equal(typeof pre.unitScale, 'number');
+    assert.ok(pre.rtcOffset, 'rtcOffset must exist');
+    assert.equal(pre.rtcOffset.length, 3, 'rtcOffset must be [x, y, z]');
+    for (const v of pre.rtcOffset) {
+      assert.ok(Number.isFinite(v), 'rtcOffset components must be finite');
+    }
+    assert.equal(typeof pre.needsShift, 'boolean');
+    assert.equal(typeof pre.buildingRotation, 'number');
+    // Void + style transport arrays (may be empty, must be present)
+    for (const key of ['voidKeys', 'voidCounts', 'voidValues', 'styleIds', 'styleColors']) {
+      assert.ok(pre[key] !== undefined && pre[key] !== null, `${key} must exist`);
+    }
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('unit scale resolves conversion-based units (inch fixture → 0.0254)', () => {
+  // column-straight-rectangle-tessellation.ifc declares METRE as the SI
+  // unit but overrides length with IFCCONVERSIONBASEDUNIT 'inch'. The
+  // recurring unit-bug class is exactly this chain resolving wrong.
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.ok(Math.abs(pre.unitScale - 0.0254) < 1e-9,
+      `inch model must yield unitScale 0.0254, got ${pre.unitScale}`);
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('unit scale resolves plain SI metres (georef fixture → 1.0)', () => {
+  if (!GEOREF_AVAILABLE) {
+    console.log('     (skipped — georef fixture missing, run `pnpm fixtures`)');
+    return;
+  }
+  const georefContent = readFileSync(GEOREF_IFC, 'utf-8');
+  const bytes = new TextEncoder().encode(georefContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.equal(pre.unitScale, 1, `metre model must yield unitScale 1, got ${pre.unitScale}`);
+    assert.equal(pre.needsShift, false, 'local-coordinate model must not trigger RTC shift');
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('mesh output is metre-normalized (column fits a sane bbox)', () => {
+  // The inch fixture's column is ~3 m tall. If unit scaling silently
+  // stopped being applied, positions come out in inches (×39) — assert
+  // the overall bbox stays in building-scale metres.
+  const collection = parseMeshesViaPrePass(api, columnContent);
+  assert.ok(collection.length > 0, 'fixture must mesh');
+  let maxAbs = 0;
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    for (let j = 0; j < mesh.positions.length; j++) {
+      const a = Math.abs(mesh.positions[j]);
+      if (a > maxAbs) maxAbs = a;
+    }
+    mesh.free();
+  }
+  assert.ok(maxAbs > 0.1, `column extent ${maxAbs} suspiciously small — unit scale over-applied?`);
+  assert.ok(maxAbs < 50, `column extent ${maxAbs} m — unit scale not applied?`);
+  collection.free();
+});
+
+// ===== RTC rebase (>10km national-grid coordinates) =====
+console.log('\n📋 RTC rebase (>10km)');
+
+// The wasm pre-pass flags `needsShift` when the detected RTC offset exceeds
+// 10 km on any axis. The threshold constant is `10000.0` (metres, after
+// unit-scaling) in:
+//   - rust/wasm-bindings/src/api/gpu_meshes.rs (`needs_shift = rtc_offset.N.abs() > 10000.0`)
+//   - rust/geometry/src/router/processing.rs (`rtc_offset_from_translations`,
+//     `const THRESHOLD: f64 = 10000.0` — median element translation gate)
+//   - rust/core/src/model_bounds.rs (`has_large_coordinates`, `THRESHOLD = 10000.0`)
+const RTC_THRESHOLD_M = 10000.0;
+
+// The column fixture is authored in INCHES (IFCCONVERSIONBASEDUNIT 0.0254 m);
+// the RTC offset is detected in unit-scaled METRES, so planted coordinates
+// must be written in inches and asserted in metres.
+const INCH_TO_M = 0.0254;
+// Column local placement inside the fixture: #125 = (432, 288, 48) inches,
+// i.e. ~ (10.97, 7.32, 1.22) m on top of whatever the site placement adds.
+const COLUMN_LOCAL_X_M = 432 * INCH_TO_M;
+const COLUMN_LOCAL_Y_M = 288 * INCH_TO_M;
+
+/**
+ * Transplant the site placement origin (#68, parent of the column's
+ * IfcLocalPlacement chain) to the given coordinates in metres.
+ */
+function withSiteOriginMetres(xMetres, yMetres) {
+  const xIn = (xMetres / INCH_TO_M).toFixed(1);
+  const yIn = (yMetres / INCH_TO_M).toFixed(1);
+  const pattern = /#68\s*=\s*IFCCARTESIANPOINT\(\([^)]*\)\);/;
+  assert.ok(pattern.test(columnContent), 'Fixture should contain site placement point #68');
+  return columnContent.replace(pattern, `#68= IFCCARTESIANPOINT((${xIn},${yIn},0.));`);
+}
+
+test('national-grid coordinates (Swiss LV95) should trigger the RTC rebase', () => {
+  // Swiss LV95 origin-ish coordinates: X=2_600_000 m, Y=1_200_000 m.
+  const SWISS_X_M = 2_600_000;
+  const SWISS_Y_M = 1_200_000;
+  const moved = withSiteOriginMetres(SWISS_X_M, SWISS_Y_M);
+  assert.notEqual(moved, columnContent, 'Placement transplant must change the content');
+
+  const collection = parseMeshesViaPrePass(api, moved);
+
+  // (a) pre-pass must flag the shift.
+  assert.equal(collection.hasRtcOffset(), true, 'needsShift should be true for >10km coords');
+
+  // (b) rtcOffset (metres) within ~1km of the planted coordinates.
+  // Expected exact value = planted site origin + column local placement.
+  assert.ok(
+    Math.abs(collection.rtcOffsetX - (SWISS_X_M + COLUMN_LOCAL_X_M)) < 1000,
+    `rtcOffsetX ${collection.rtcOffsetX} should be within 1km of ${SWISS_X_M}`,
+  );
+  assert.ok(
+    Math.abs(collection.rtcOffsetY - (SWISS_Y_M + COLUMN_LOCAL_Y_M)) < 1000,
+    `rtcOffsetY ${collection.rtcOffsetY} should be within 1km of ${SWISS_Y_M}`,
+  );
+  assert.ok(
+    Math.abs(collection.rtcOffsetZ) < 1000,
+    `rtcOffsetZ ${collection.rtcOffsetZ} should stay near 0`,
+  );
+
+  // (c) the rebase must actually move geometry into the render frame:
+  // every output vertex must be near the origin, not at national-grid scale.
+  assert.ok(collection.length > 0, 'Moved column should still mesh');
+  let maxAbs = 0;
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    for (let j = 0; j < mesh.positions.length; j++) {
+      maxAbs = Math.max(maxAbs, Math.abs(mesh.positions[j]));
+    }
+    mesh.free();
+  }
+  assert.ok(
+    maxAbs < RTC_THRESHOLD_M,
+    `Rebased positions must be near origin (<${RTC_THRESHOLD_M}), got max |p| = ${maxAbs}`,
+  );
+
+  collection.free();
+});
+
+test('coordinates just under the 10km threshold should NOT trigger the shift', () => {
+  // needs_shift uses a strict `> 10000.0` comparison on the unit-scaled
+  // median element translation. Plant the site so the COMPOSED column
+  // translation (site + ~10.97m local) lands just under 10_000 m.
+  const NEAR_X_M = 9_950; // composed ≈ 9_960.97 m < 10_000 m
+  const NEAR_Y_M = 9_950; // composed ≈ 9_957.32 m < 10_000 m
+  const moved = withSiteOriginMetres(NEAR_X_M, NEAR_Y_M);
+  assert.notEqual(moved, columnContent, 'Placement transplant must change the content');
+
+  const collection = parseMeshesViaPrePass(api, moved);
+
+  assert.equal(collection.hasRtcOffset(), false, 'needsShift must stay false under 10km');
+  assert.equal(collection.rtcOffsetX, 0, 'rtcOffset must stay [0,0,0] under threshold');
+  assert.equal(collection.rtcOffsetY, 0, 'rtcOffset must stay [0,0,0] under threshold');
+  assert.equal(collection.rtcOffsetZ, 0, 'rtcOffset must stay [0,0,0] under threshold');
+
+  // No rebase ⇒ geometry stays at its (large-ish) world position.
+  assert.ok(collection.length > 0, 'Moved column should still mesh');
+  let maxAbs = 0;
+  for (let i = 0; i < collection.length; i++) {
+    const mesh = collection.get(i);
+    for (let j = 0; j < mesh.positions.length; j++) {
+      maxAbs = Math.max(maxAbs, Math.abs(mesh.positions[j]));
+    }
+    mesh.free();
+  }
+  assert.ok(
+    maxAbs > 9000,
+    `Unshifted geometry should stay near its 9.95km placement, got max |p| = ${maxAbs}`,
+  );
+
+  collection.free();
+});
+
+test('unmodified small-coordinate model keeps needsShift=false', () => {
+  const collection = parseMeshesViaPrePass(api, columnContent);
+  assert.equal(collection.hasRtcOffset(), false, 'Origin-scale model must not be rebased');
+  assert.equal(collection.rtcOffsetX, 0);
+  assert.equal(collection.rtcOffsetY, 0);
+  assert.equal(collection.rtcOffsetZ, 0);
   collection.free();
 });
 

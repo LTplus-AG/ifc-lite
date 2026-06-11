@@ -91,6 +91,13 @@ export interface SourceAttributes {
   /** Express id of the IfcBuildingStorey containing the source — emit a fresh IfcRelContainedInSpatialStructure pointing at it. Null skips the rel. */
   storeyId: number | null;
   /**
+   * Model length-unit scale (metres per native unit; 0.001 for mm).
+   * `sourceLocation` is in the file's native units while
+   * `options.offset` is metres, so the offset is converted before
+   * being applied. Defaults to 1 (metre file) when unset.
+   */
+  lengthUnitScale?: number;
+  /**
    * Association rels containing the source. Each one is replayed
    * against the duplicate so the export carries the same psets,
    * qsets, material, classifications, documents, and type binding
@@ -139,11 +146,18 @@ export function duplicateInStore(
     );
   }
 
+  // Offset is metres; the source location is in the file's native
+  // length unit — convert before adding (a mm file would otherwise get
+  // a duplicate sitting ~1000× too close, visually on top of the source).
+  const scale = source.lengthUnitScale;
+  const toNative = scale && Number.isFinite(scale) && scale > 0 && scale !== 1
+    ? (m: number) => Math.round((m / scale) * 1e9) / 1e9
+    : (m: number) => m;
   const offset: Vec3 = options.offset ?? [1, 0, 0];
   const newLocation: Vec3 = [
-    source.sourceLocation[0] + offset[0],
-    source.sourceLocation[1] + offset[1],
-    source.sourceLocation[2] + offset[2],
+    source.sourceLocation[0] + toNative(offset[0]),
+    source.sourceLocation[1] + toNative(offset[1]),
+    source.sourceLocation[2] + toNative(offset[2]),
   ];
 
   // 1. New IfcCartesianPoint at the offset position.

@@ -19,6 +19,8 @@ import {
   compareNumeric,
   compareString,
   numericEpsilon,
+  isStrictNumericLiteral,
+  isBooleanLiteral,
 } from './comparators.js';
 
 /** Tolerance for the bounds matcher's exclusive comparators. */
@@ -64,6 +66,27 @@ export function matchConstraint(
 }
 
 /**
+ * Per-constraint comparator applicability. `compareNumeric` runs two
+ * regex tests and `compareBoolean` two equality checks per call — and
+ * simple-value matching sits inside per-entity × per-specification hot
+ * loops (name matching against every pset/property). Whether the IDS
+ * literal could EVER match numerically or boolean-ly depends only on
+ * the constraint, so decide it once.
+ */
+const SIMPLE_VALUE_COERCIBLE = new WeakMap<IDSSimpleValue, boolean>();
+
+function isCoercibleSimpleValue(constraint: IDSSimpleValue): boolean {
+  let coercible = SIMPLE_VALUE_COERCIBLE.get(constraint);
+  if (coercible === undefined) {
+    coercible =
+      isStrictNumericLiteral(constraint.value) ||
+      isBooleanLiteral(constraint.value);
+    SIMPLE_VALUE_COERCIBLE.set(constraint, coercible);
+  }
+  return coercible;
+}
+
+/**
  * Match against a simple value. Tries each comparator in order:
  * string → numeric → boolean. The first decisive result wins;
  * `undefined` lets the next strategy run.
@@ -76,6 +99,9 @@ function matchSimpleValue(
   const expected = constraint.value;
   const stringResult = compareString(expected, actualValue, caseInsensitive);
   if (stringResult !== undefined) return stringResult;
+  // A non-numeric, non-boolean literal can only match through string
+  // equality — skip the comparators that would return undefined anyway.
+  if (!isCoercibleSimpleValue(constraint)) return false;
   const numericResult = compareNumeric(expected, actualValue);
   if (numericResult !== undefined) return numericResult;
   const booleanResult = compareBoolean(expected, actualValue);
@@ -134,6 +160,38 @@ function xsdToJsRegex(xsdPattern: string): string {
 }
 
 /**
+ * Compiled exact-match sets per enumeration constraint. Real-world IDS
+ * code lists carry hundreds of values and are matched against every
+ * candidate entity, so the linear comparator walk dominated validation
+ * time. Constraint objects are stable per parsed document, making a
+ * WeakMap cache safe.
+ */
+const ENUM_VALUE_SETS = new WeakMap<
+  IDSEnumerationConstraint,
+  { exact: Set<string>; upper: Set<string>; anyCoercible: boolean }
+>();
+
+function getEnumValueSets(constraint: IDSEnumerationConstraint): {
+  exact: Set<string>;
+  upper: Set<string>;
+  anyCoercible: boolean;
+} {
+  let sets = ENUM_VALUE_SETS.get(constraint);
+  if (!sets) {
+    const exact = new Set(constraint.values);
+    const upper = new Set<string>();
+    let anyCoercible = false;
+    for (const v of constraint.values) {
+      upper.add(v.toUpperCase());
+      if (isStrictNumericLiteral(v) || isBooleanLiteral(v)) anyCoercible = true;
+    }
+    sets = { exact, upper, anyCoercible };
+    ENUM_VALUE_SETS.set(constraint, sets);
+  }
+  return sets;
+}
+
+/**
  * Match against an enumeration. The actual value matches if ANY of the
  * declared options matches under string / numeric / boolean comparison
  * — same strategy table as `matchSimpleValue`, just iterated.
@@ -143,6 +201,18 @@ function matchEnumeration(
   actualValue: string | number | boolean,
   caseInsensitive: boolean
 ): boolean {
+  // O(1) fast path: a set hit is exactly the condition under which
+  // `compareString` would have returned true for some value, so this
+  // never changes the outcome — misses fall through to the full
+  // comparator walk for numeric / boolean semantics.
+  const sets = getEnumValueSets(constraint);
+  const actualStr = String(actualValue);
+  if (sets.exact.has(actualStr)) return true;
+  if (caseInsensitive && sets.upper.has(actualStr.toUpperCase())) return true;
+  // Pure-string enumerations are fully decided by the set lookups —
+  // only numeric/boolean literals can still match in the slow walk.
+  if (!sets.anyCoercible) return false;
+
   return constraint.values.some((v) => {
     const stringResult = compareString(v, actualValue, caseInsensitive);
     if (stringResult !== undefined) return stringResult;
@@ -225,6 +295,24 @@ function matchBounds(
 }
 
 /**
+ * Cap enumeration rendering. These strings are embedded in per-entity
+ * validation results — an uncapped 800-value code list produced ~20KB
+ * per result and ballooned reports into the gigabytes (OOM crash on
+ * large models). The full value list stays available on the constraint
+ * object itself.
+ */
+const MAX_ENUM_DISPLAY_VALUES = 10;
+
+function formatEnumValues(values: string[]): string {
+  const shown = values
+    .slice(0, MAX_ENUM_DISPLAY_VALUES)
+    .map((v) => `"${v}"`)
+    .join(', ');
+  const more = values.length - MAX_ENUM_DISPLAY_VALUES;
+  return more > 0 ? `[${shown}, … +${more} more]` : `[${shown}]`;
+}
+
+/**
  * Get a human-readable description of why a constraint match failed
  */
 export function getConstraintMismatchReason(
@@ -241,7 +329,7 @@ export function getConstraintMismatchReason(
     case 'pattern':
       return `"${actualValue}" does not match pattern "${constraint.pattern}"`;
     case 'enumeration':
-      return `"${actualValue}" is not one of [${constraint.values.map((v) => `"${v}"`).join(', ')}]`;
+      return `"${actualValue}" is not one of ${formatEnumValues(constraint.values)}`;
     case 'bounds':
       return getBoundsMismatchReason(constraint, actualValue);
     default:
@@ -290,9 +378,26 @@ function getBoundsMismatchReason(
 }
 
 /**
+ * Per-constraint display-string cache. Failure paths format the same
+ * constraint for every non-matching entity — millions of times during
+ * applicability filtering — and the output depends only on the
+ * constraint object.
+ */
+const FORMAT_CACHE = new WeakMap<IDSConstraint, string>();
+
+/**
  * Format a constraint for display
  */
 export function formatConstraint(constraint: IDSConstraint): string {
+  let formatted = FORMAT_CACHE.get(constraint);
+  if (formatted === undefined) {
+    formatted = formatConstraintUncached(constraint);
+    FORMAT_CACHE.set(constraint, formatted);
+  }
+  return formatted;
+}
+
+function formatConstraintUncached(constraint: IDSConstraint): string {
   switch (constraint.type) {
     case 'simpleValue':
       return `"${constraint.value}"`;
@@ -302,7 +407,7 @@ export function formatConstraint(constraint: IDSConstraint): string {
       if (constraint.values.length === 1) {
         return `"${constraint.values[0]}"`;
       }
-      return `one of [${constraint.values.map((v) => `"${v}"`).join(', ')}]`;
+      return `one of ${formatEnumValues(constraint.values)}`;
     case 'bounds':
       return formatBounds(constraint);
     default:

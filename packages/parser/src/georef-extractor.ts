@@ -292,16 +292,17 @@ function computeTransformMatrix(mapConversion: MapConversion): number[] {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
 
-  // Build 4x4 transformation matrix:
-  // [scale*cos  -scale*sin  0  eastings  ]
-  // [scale*sin   scale*cos  0  northings ]
-  // [0           0          1  height    ]
-  // [0           0          0  1         ]
+  // Build 4x4 transformation matrix (IfcMapConversion applies the one
+  // Scale equally to x, y AND z, then rotates about z, then translates):
+  // [scale*cos  -scale*sin  0      eastings  ]
+  // [scale*sin   scale*cos  0      northings ]
+  // [0           0          scale  height    ]
+  // [0           0          0      1         ]
 
   return [
     s * cos,  s * sin,  0,  0,
     -s * sin, s * cos,  0,  0,
-    0,        0,        1,  0,
+    0,        0,        s,  0,
     eastings, northings, orthogonalHeight, 1,
   ];
 }
@@ -358,7 +359,8 @@ export function transformToLocal(
   // Apply inverse rotation and scale
   const x = invScale * (cos * xTrans - sin * yTrans);
   const y = invScale * (sin * xTrans + cos * yTrans);
-  const z = zTrans;
+  // Scale applies to z too (IfcMapConversion scales all three axes).
+  const z = invScale * zTrans;
 
   return [x, y, z];
 }

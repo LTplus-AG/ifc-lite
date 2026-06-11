@@ -190,8 +190,14 @@ END-ISO-10303-21;
     let boolean = ifc_lite_geometry::BooleanClippingProcessor::new();
 
     let item = decoder.decode_by_id(10).expect("decode boolean clipping result");
-    let mesh = ifc_lite_geometry::GeometryProcessor::process(&boolean, &item, &mut decoder, &schema)
-        .expect("process boolean clipping result");
+    let mesh = ifc_lite_geometry::GeometryProcessor::process(
+        &boolean,
+        &item,
+        &mut decoder,
+        &schema,
+        ifc_lite_geometry::TessellationQuality::Medium,
+    )
+    .expect("process boolean clipping result");
 
     // The guard must revert to the un-cut box, not emit an empty mesh.
     assert!(

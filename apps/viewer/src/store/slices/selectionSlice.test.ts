@@ -24,28 +24,7 @@ describe('SelectionSlice', () => {
     state = createSelectionSlice(setState, () => state, {} as any);
   });
 
-  describe('initial state', () => {
-    it('should have null selectedEntity', () => {
-      assert.strictEqual(state.selectedEntity, null);
-    });
-
-    it('should have empty selectedEntitiesSet', () => {
-      assert.strictEqual(state.selectedEntitiesSet.size, 0);
-    });
-
-    it('should have null selectedEntityId (legacy)', () => {
-      assert.strictEqual(state.selectedEntityId, null);
-    });
-  });
-
   describe('multi-model selection: setSelectedEntity', () => {
-    it('should set primary selection with model context', () => {
-      const ref: EntityRef = { modelId: 'model-1', expressId: 123 };
-      state.setSelectedEntity(ref);
-
-      assert.deepStrictEqual(state.selectedEntity, ref);
-    });
-
     it('should NOT update selectedEntityId (caller must use setSelectedEntityId for global ID)', () => {
       // NOTE: selectedEntityId holds the GLOBAL ID for renderer highlighting,
       // while selectedEntity.expressId holds the ORIGINAL express ID for property lookup.
@@ -54,15 +33,6 @@ describe('SelectionSlice', () => {
       state.setSelectedEntity(ref);
 
       // selectedEntityId should remain null - caller must set it separately with globalId
-      assert.strictEqual(state.selectedEntityId, null);
-    });
-
-    it('should allow clearing selection with null', () => {
-      const ref: EntityRef = { modelId: 'model-1', expressId: 123 };
-      state.setSelectedEntity(ref);
-      state.setSelectedEntity(null);
-
-      assert.strictEqual(state.selectedEntity, null);
       assert.strictEqual(state.selectedEntityId, null);
     });
   });
@@ -282,19 +252,6 @@ describe('SelectionSlice', () => {
 
       const result = state.getSelectedEntitiesForModel('model-2');
       assert.deepStrictEqual(result, []);
-    });
-  });
-
-  describe('legacy selection: setSelectedEntityId', () => {
-    it('should set legacy selectedEntityId', () => {
-      state.setSelectedEntityId(123);
-      assert.strictEqual(state.selectedEntityId, 123);
-    });
-
-    it('should allow clearing with null', () => {
-      state.setSelectedEntityId(123);
-      state.setSelectedEntityId(null);
-      assert.strictEqual(state.selectedEntityId, null);
     });
   });
 

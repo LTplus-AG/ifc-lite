@@ -1,5 +1,33 @@
 # @ifc-lite/ifcx
 
+## 2.1.5
+
+### Patch Changes
+
+- [#1047](https://github.com/LTplus-AG/ifc-lite/pull/1047) [`71c3e92`](https://github.com/LTplus-AG/ifc-lite/commit/71c3e92bae778fe7e5c34d9fcce5abfbd4f3ede5) Thanks [@louistrue](https://github.com/louistrue)! - fix(ifcx): stop duplicating geometry for entities with multiple incoming
+  containment edges. A node reachable through more than one parent (e.g. a
+  wall hanging under both its storey and a space boundary, as the IFC5
+  exporter legitimately emits) was traversed once per incoming edge and its
+  mesh emitted each time — an export round-trip multiplied per-entity
+  triangle counts by the number of edges (Hello Wall: ×4). Extraction now
+  deduplicates per (node path, entity context, accumulated transform), so
+  aliased containment edges emit once while shared type bodies referenced
+  from multiple instances and genuine instancing still emit per context.
+
+## 2.1.4
+
+### Patch Changes
+
+- [#1036](https://github.com/LTplus-AG/ifc-lite/pull/1036) [`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc) Thanks [@louistrue](https://github.com/louistrue)! - Add a `default` condition to every package's exports map. The maps only
+  declared `import` + `types`, so any resolver hitting the CJS/default
+  condition path (tsx, jest, plain `require`, some bundlers) failed with
+  ERR_PACKAGE_PATH_NOT_EXPORTED. The `default` entry points at the same
+  ESM dist file; pure ESM consumers are unaffected.
+- Updated dependencies [[`0205c4d`](https://github.com/LTplus-AG/ifc-lite/commit/0205c4d50995572ef796ce66877aa389f19c6fbc)]:
+  - @ifc-lite/data@2.0.2
+  - @ifc-lite/mutations@1.15.3
+  - @ifc-lite/pointcloud@0.3.3
+
 ## 2.1.3
 
 ### Patch Changes

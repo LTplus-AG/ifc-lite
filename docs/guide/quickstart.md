@@ -47,7 +47,7 @@ Process IFC files entirely in the browser using WebAssembly.
     npm run dev
     ```
 
-Open `http://localhost:5173` and drag an IFC file onto the viewer.
+Open `http://localhost:3000` and drag an IFC file onto the viewer.
 
 !!! tip "No WebGPU? Use Three.js or Babylon.js"
     The `threejs` and `babylonjs` templates use WebGL, which works in all modern browsers. See the [Three.js](../tutorials/threejs-integration.md) and [Babylon.js](../tutorials/babylonjs-integration.md) integration guides for details.

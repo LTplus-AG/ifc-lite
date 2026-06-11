@@ -183,6 +183,59 @@ describe('auditIDSDocument — IFC schema cross-checks', () => {
     expect(codes(r.issues)).toContain('E_IFC_PROP_NOT_IN_PSET');
   });
 
+  // #1062 — standard enumerated properties (PEnum_*) serialize as
+  // IfcLabel, so IFCLABEL is the canonical IDS dataType for them and
+  // must not be flagged (mirrors upstream IdsLib's HasDataTypes).
+  it('accepts IFCLABEL for a standard enumerated pset property', async () => {
+    const xml = wrap(`<specification name="Project info" ifcVersion="IFC4X3_ADD2">
+      <applicability>
+        <entity><name><simpleValue>IFCPROJECT</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_ProjectCommon</simpleValue></propertySet>
+          <baseName><simpleValue>ProjectType</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).not.toContain('W_IFC_DATATYPE_MISMATCH');
+  });
+
+  it('accepts IFCLABEL for Pset_Address.Purpose (enumerated)', async () => {
+    const xml = wrap(`<specification name="Site address" ifcVersion="IFC4X3_ADD2">
+      <applicability>
+        <entity><name><simpleValue>IFCSITE</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_Address</simpleValue></propertySet>
+          <baseName><simpleValue>Purpose</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).not.toContain('W_IFC_DATATYPE_MISMATCH');
+  });
+
+  it('still flags a non-label dataType on an enumerated pset property', async () => {
+    const xml = wrap(`<specification name="Wrong enum type" ifcVersion="IFC4X3_ADD2">
+      <applicability>
+        <entity><name><simpleValue>IFCPROJECT</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCINTEGER">
+          <propertySet><simpleValue>Pset_ProjectCommon</simpleValue></propertySet>
+          <baseName><simpleValue>ProjectType</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    const issue = r.issues.find((i) => i.code === 'W_IFC_DATATYPE_MISMATCH');
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain('IfcLabel');
+  });
+
   it('warns on an unknown Pset_*-prefixed pset (reserved prefix)', async () => {
     const xml = wrap(`<specification name="Reserved prefix" ifcVersion="IFC4">
       <applicability>

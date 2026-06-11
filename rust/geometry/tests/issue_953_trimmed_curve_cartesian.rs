@@ -33,7 +33,7 @@
 //! Fixture: `tests/models/issues/953_trimmed_curve_cartesian_arc.ifc`.
 
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
-use ifc_lite_geometry::{GeometryRouter, ProfileProcessor};
+use ifc_lite_geometry::{GeometryRouter, ProfileProcessor, TessellationQuality};
 
 const FIXTURE: &str = "../../tests/models/issues/953_trimmed_curve_cartesian_arc.ifc";
 
@@ -98,7 +98,7 @@ fn cartesian_trimmed_arc_is_reconstructed() {
         .decode_by_id(PROFILE_ID)
         .expect("decode IfcArbitraryClosedProfileDef #206");
     let profile = processor
-        .process(&profile_entity, &mut decoder)
+        .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
         .expect("profile processing must not error");
 
     // Pre-fix the arc collapsed to a single point, leaving a 3-vertex

@@ -487,7 +487,7 @@ export function useIfcLoader() {
           pointCloudHandleId: ingest.rendererHandle.id,
         });
         setProgress({ phase: 'Complete', percent: 100 });
-        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind });
+        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud' });
         setLoading(false);
         return;
       }
@@ -506,7 +506,7 @@ export function useIfcLoader() {
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind });
+          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm' });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -548,7 +548,7 @@ export function useIfcLoader() {
           );
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind });
+          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm' });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -585,6 +585,7 @@ export function useIfcLoader() {
               cacheState: 'hit',
             });
             console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
+            posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache' });
             setLoading(false);
             return;
           }
@@ -602,6 +603,7 @@ export function useIfcLoader() {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
+          posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server' });
           setLoading(false);
           return;
         }
@@ -1180,6 +1182,7 @@ export function useIfcLoader() {
         format,
         file_size_mb: Math.round(fileSizeMB * 100) / 100,
         load_target: target.kind,
+        load_path: 'wasm',
         mesh_count: allMeshes.length,
         total_elapsed_ms: Math.round(totalElapsedMs),
       });

@@ -400,10 +400,19 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
 
       // Force the loading state to actually paint before spawning the
       // worker and doing any heavy synchronous work, so the spinner +
-      // initial progress bar are guaranteed on screen immediately.
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      );
+      // initial progress bar are guaranteed on screen immediately. Race
+      // the frame wait against a timer so a backgrounded tab (where
+      // requestAnimationFrame is paused) can't stall the run.
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        requestAnimationFrame(() => requestAnimationFrame(done));
+        setTimeout(done, 200);
+      });
 
       const schemaVersion = dataStore.schemaVersion || 'IFC4';
 

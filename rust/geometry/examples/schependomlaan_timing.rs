@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Diagnostic: time the kernel CSG over every wall-with-openings in
 //! schependomlaan (the model that freezes the viewer). Reveals whether it's
 //! cumulative slowness or a hang on one wall (the last "processing host" print).

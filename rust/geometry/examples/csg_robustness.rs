@@ -1,7 +1,15 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Kernel robustness probe (flip plan M6 panic-free). Feeds adversarial /
 //! malformed operands through kernel::mesh_bridge::subtract under catch_unwind to
 //! find the REAL panic sites the never-Err seam must survive:
 //!   cargo run -p ifc-lite-geometry --example csg_robustness
+//!
+//! For optimized runs use `--profile server-release` (NOT `--release`): this
+//! probe relies on `catch_unwind`, which needs panic=unwind — the workspace
+//! `release` profile is panic=abort, so the first panic would abort the probe.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 

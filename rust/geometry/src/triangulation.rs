@@ -408,6 +408,81 @@ mod tests {
         assert_eq!(indices.len() % 3, 0);
     }
 
+    /// `triangulate_polygon_with_holes_refined`, normal path: the returned
+    /// vertex list starts with exactly the input vertices (`outer ++ holes`;
+    /// Steiner points only after them), every index is in range, and — with
+    /// boundary splits off — every hole-ring constraint edge survives as an
+    /// edge of the output triangulation (the hole stays a hole).
+    #[test]
+    fn test_refined_vertex_layout_and_hole_constraints() {
+        let outer = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(10.0, 0.0),
+            Point2::new(10.0, 10.0),
+            Point2::new(0.0, 10.0),
+        ];
+        let hole = vec![
+            Point2::new(3.0, 3.0),
+            Point2::new(7.0, 3.0),
+            Point2::new(7.0, 7.0),
+            Point2::new(3.0, 7.0),
+        ];
+        let (pts, idx) =
+            triangulate_polygon_with_holes_refined(&outer, &[hole.clone()], false).unwrap();
+
+        let n_input = outer.len() + hole.len();
+        assert!(pts.len() >= n_input, "input vertices must all be present");
+        for (i, p) in outer.iter().chain(hole.iter()).enumerate() {
+            assert_eq!(
+                (pts[i].x, pts[i].y),
+                (p.x, p.y),
+                "vertex {i} must be the input vertex (outer ++ holes order)"
+            );
+        }
+        assert!(!idx.is_empty());
+        assert_eq!(idx.len() % 3, 0);
+        assert!(idx.iter().all(|&i| i < pts.len()), "index out of range");
+
+        let mut edges = std::collections::BTreeSet::new();
+        for t in idx.chunks_exact(3) {
+            for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+                edges.insert(if a < b { (a, b) } else { (b, a) });
+            }
+        }
+        for k in 0..hole.len() {
+            let a = outer.len() + k;
+            let b = outer.len() + (k + 1) % hole.len();
+            let key = if a < b { (a, b) } else { (b, a) };
+            assert!(
+                edges.contains(&key),
+                "hole-ring constraint edge {key:?} missing from the triangulation"
+            );
+        }
+    }
+
+    /// `triangulate_polygon_with_holes_refined`, degenerate path: a fully
+    /// collinear outer ring is declined by the CDT (its closing constraint
+    /// passes through the intermediate vertices and cannot be recovered); the
+    /// earcut/fan fallback must still return `Ok` with the `outer ++ holes`
+    /// vertex set and in-range indices.
+    #[test]
+    fn test_refined_collinear_outer_falls_back() {
+        let outer = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(1.0, 0.0),
+            Point2::new(2.0, 0.0),
+            Point2::new(3.0, 0.0),
+        ];
+        let (pts, idx) = triangulate_polygon_with_holes_refined(&outer, &[], true)
+            .expect("degenerate input must fall back, not error");
+        assert_eq!(pts.len(), outer.len(), "fallback must return the input vertex set");
+        for (i, p) in outer.iter().enumerate() {
+            assert_eq!((pts[i].x, pts[i].y), (p.x, p.y));
+        }
+        assert_eq!(idx.len() % 3, 0);
+        assert!(idx.iter().all(|&i| i < pts.len()));
+    }
+
     #[test]
     fn test_calculate_polygon_normal() {
         // XY plane polygon - normal should be Z

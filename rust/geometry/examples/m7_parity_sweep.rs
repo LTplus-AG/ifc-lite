@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! M7 dual-kernel parity sweep (flip plan M7, real-model corpus).
 //!
 //! Processes EVERY element-with-voids (IfcRelVoidsElement hosts, propagated to
@@ -14,7 +18,12 @@
 //! external oracle such as IfcOpenShell. Setting CSG_MANIFOLD/UNION_MANIFOLD
 //! is now an error to prevent silently mislabelled oracle runs.
 //!
-//!   cargo run --release -p ifc-lite-geometry --example m7_parity_sweep -- <model.ifc> [out.jsonl]
+//!   cargo run --profile server-release -p ifc-lite-geometry --example m7_parity_sweep -- <model.ifc> [out.jsonl]
+//!
+//! Use `--profile server-release` (NOT `--release`) for optimized runs: the
+//! sweep isolates per-element panics via `catch_unwind`, which needs
+//! panic=unwind — the workspace `release` profile is panic=abort, so one
+//! panicking element would kill the whole sweep.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, ClippingProcessor, GeometryRouter, Mesh};

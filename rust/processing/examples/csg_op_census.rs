@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 // M0 instrumentation: measure the REAL CSG-kernel op stream over a corpus —
 // how many boolean ops reach subtract/union/intersection/clip, and their
 // operand-triangle-count distribution (the arrangement-cost driver). The

@@ -302,8 +302,13 @@ impl Cdt {
         }
         if bad.is_empty() {
             // No strictly-containing circumcircle (point on existing edge or
-            // collinear). Split the containing triangle directly.
-            self.split_in_triangle(start, vi);
+            // collinear). Edge-aware split: a point landing EXACTLY on an edge
+            // of `start` must split BOTH incident triangles in lockstep —
+            // `split_in_triangle` alone skips the degenerate child on the
+            // collinear edge, re-filling only one side and leaving a
+            // T-junction with the far triangle still linked to the dead
+            // parent. Genuinely interior points take the 3-way split.
+            self.split_at(start, vi);
             return;
         }
 
@@ -416,6 +421,140 @@ impl Cdt {
         self.legalize(&mut stack);
         for c in children {
             self.track_tri(c);
+        }
+    }
+
+    /// Insertion fallback for an empty Bowyer–Watson cavity: route a point
+    /// lying EXACTLY on an edge of `start` (exact `orient == 0` AND strictly
+    /// between the endpoints) to the lockstep both-sides split
+    /// ([`Cdt::split_on_edge`]); everything else (genuinely interior) to
+    /// [`Cdt::split_in_triangle`].
+    fn split_at(&mut self, start: usize, vi: usize) {
+        if !self.tris[start].alive {
+            return;
+        }
+        let v = self.tris[start].v;
+        let p = self.points[vi];
+        for e in 0..3 {
+            let a = self.points[v[e]];
+            let b = self.points[v[(e + 1) % 3]];
+            if orient(a, b, p) == 0 && strictly_between(a, b, p) {
+                self.split_on_edge(start, e, vi);
+                return;
+            }
+        }
+        self.split_in_triangle(start, vi);
+    }
+
+    /// Split triangle `t` around `vi`, which lies EXACTLY on `t`'s local edge
+    /// `e` (strictly between its endpoints), together with the neighbour
+    /// across that edge when one exists. [`Cdt::split_in_triangle`] cannot be
+    /// used here: it skips the degenerate child on the collinear edge, so only
+    /// ONE side of the edge would be re-filled around `vi` — a T-junction,
+    /// with the far triangle still pointing at the dead parent. This splits
+    /// BOTH incident triangles in lockstep (4 children; 2 on a boundary
+    /// edge), wires every adjacency, and legalizes the children's outer
+    /// (parent-perimeter) edges; the spoke edges are incident to the freshly
+    /// inserted `vi` and need no Delaunay test.
+    fn split_on_edge(&mut self, t: usize, e: usize, vi: usize) {
+        let v = self.tris[t].v;
+        let n = self.tris[t].n;
+        let a = v[e];
+        let b = v[(e + 1) % 3];
+        let c = v[(e + 2) % 3];
+        let nb = n[e];
+        let n_bc = n[(e + 1) % 3];
+        let n_ca = n[(e + 2) % 3];
+        let region_t = self.inside.get(t).copied().unwrap_or(false);
+
+        // A point landing exactly on a CONSTRAINT edge is a segment split:
+        // replace `a-b` with its two halves so every invariant that consults
+        // `constraints` (cavity blocking, legalization pinning, the inside
+        // depth-parity flood) sees the sub-segments. The production NO-SPLIT
+        // refinement driver skips encroaching candidates, so this should be
+        // unreachable there — it is required for the split-mode path (which
+        // shares this insertion code) and kept as a defensive guarantee.
+        if self.constraints.remove(&ekey(a, b)) {
+            self.constraints.insert(ekey(a, vi));
+            self.constraints.insert(ekey(vi, b));
+        }
+
+        self.tris[t].alive = false;
+
+        if nb == NONE {
+            // Boundary edge: only `t` exists — split it into 2 children.
+            let t1 = self.tris.len(); // (vi, b, c)
+            let t2 = t1 + 1; //          (a, vi, c)
+            self.tris.push(Tri { v: [vi, b, c], n: [NONE, n_bc, t2], alive: true });
+            self.tris.push(Tri { v: [a, vi, c], n: [NONE, t1, n_ca], alive: true });
+            self.inside.push(region_t);
+            self.inside.push(region_t);
+            for (ext, x, y, child) in [(n_bc, b, c, t1), (n_ca, c, a, t2)] {
+                if ext != NONE {
+                    if let Some(oe) = self.tris[ext].edge_of(x, y) {
+                        self.tris[ext].n[oe] = child;
+                    }
+                }
+            }
+            let mut stack: Vec<(usize, usize)> = vec![(t1, 1), (t2, 2)];
+            self.legalize(&mut stack);
+            self.track_tri(t1);
+            self.track_tri(t2);
+            return;
+        }
+
+        // Interior (shared) edge: capture the neighbour's data, then split
+        // both parents in lockstep. Each child inherits its OWN parent's
+        // region flag — the two regions can differ across a constraint edge.
+        let region_nb = self.inside.get(nb).copied().unwrap_or(false);
+        let d = self.tris[nb]
+            .v
+            .iter()
+            .copied()
+            .find(|&x| x != a && x != b)
+            .expect("cdt: neighbour across a shared edge must have an apex vertex");
+        let outer_of = |s: &Self, t: usize, x: usize, y: usize| -> usize {
+            s.tris[t].edge_of(x, y).map(|oe| s.tris[t].n[oe]).unwrap_or(NONE)
+        };
+        let n_ad = outer_of(self, nb, a, d);
+        let n_db = outer_of(self, nb, d, b);
+        self.tris[nb].alive = false;
+
+        // Parent `t` is (a, b, c) CCW with vi strictly inside a-b, so all four
+        // children below are CCW and non-degenerate by construction.
+        let t1 = self.tris.len(); // (vi, b, c) — t's side
+        let t2 = t1 + 1; //          (a, vi, c) — t's side
+        let t3 = t1 + 2; //          (b, vi, d) — neighbour's side
+        let t4 = t1 + 3; //          (vi, a, d) — neighbour's side
+        self.tris.push(Tri { v: [vi, b, c], n: [t3, n_bc, t2], alive: true });
+        self.tris.push(Tri { v: [a, vi, c], n: [t4, t1, n_ca], alive: true });
+        self.tris.push(Tri { v: [b, vi, d], n: [t1, t4, n_db], alive: true });
+        self.tris.push(Tri { v: [vi, a, d], n: [t2, n_ad, t3], alive: true });
+        self.inside.push(region_t);
+        self.inside.push(region_t);
+        self.inside.push(region_nb);
+        self.inside.push(region_nb);
+
+        // Re-point the four EXTERNAL neighbours at the child replacing their
+        // side of each parent (the cross-pairs over the old edge and the
+        // internal vi-c / vi-d links were wired in the constructors above).
+        for (ext, x, y, child) in [
+            (n_bc, b, c, t1),
+            (n_ca, c, a, t2),
+            (n_db, d, b, t3),
+            (n_ad, a, d, t4),
+        ] {
+            if ext != NONE {
+                if let Some(oe) = self.tris[ext].edge_of(x, y) {
+                    self.tris[ext].n[oe] = child;
+                }
+            }
+        }
+
+        let mut stack: Vec<(usize, usize)> = vec![(t1, 1), (t2, 2), (t3, 2), (t4, 1)];
+        self.legalize(&mut stack);
+        for ti in [t1, t2, t3, t4] {
+            self.track_tri(ti);
         }
     }
 
@@ -1144,6 +1283,15 @@ fn dist2(a: P2, b: P2) -> f64 {
     dx * dx + dy * dy
 }
 
+/// For `p` known EXACTLY collinear with `a`-`b` (exact `orient == 0`): does it
+/// lie strictly between them? Pure lexicographic comparison — no arithmetic,
+/// no rounding, and `false` when `p` coincides with an endpoint.
+#[inline]
+fn strictly_between(a: P2, b: P2, p: P2) -> bool {
+    let lt = |u: P2, w: P2| u[0] < w[0] || (u[0] == w[0] && u[1] < w[1]);
+    (lt(a, p) && lt(p, b)) || (lt(b, p) && lt(p, a))
+}
+
 /// Do open segments `p1-p2` and `p3-p4` strictly cross (proper intersection,
 /// not merely touching at an endpoint)? Exact via `orient`.
 fn segments_properly_cross(p1: P2, p2: P2, p3: P2, p4: P2) -> bool {
@@ -1594,6 +1742,97 @@ mod tests {
             "no-split many-hole refinement took {dt:?} — the O(P³) rebuild-per-point driver is back (BLOCKER-B)"
         );
         let _ = dt;
+    }
+
+    /// Structural validity over ALIVE triangles: (1) every undirected edge is
+    /// shared by at most 2 alive triangles; (2) neighbour links are mutually
+    /// consistent (`t.n[e] = u` across edge `{a,b}` ⇒ `u` is alive, has edge
+    /// `{a,b}`, and links back to `t` across it); (3) no alive triangle has
+    /// zero area.
+    fn assert_structurally_valid(cdt: &Cdt) {
+        let mut edge_count: BTreeMap<(usize, usize), u32> = BTreeMap::new();
+        for ti in 0..cdt.tris.len() {
+            let t = &cdt.tris[ti];
+            if !t.alive {
+                continue;
+            }
+            assert_ne!(
+                orient(cdt.points[t.v[0]], cdt.points[t.v[1]], cdt.points[t.v[2]]),
+                0,
+                "alive triangle {ti} {:?} has zero area",
+                t.v
+            );
+            for e in 0..3 {
+                let a = t.v[e];
+                let b = t.v[(e + 1) % 3];
+                *edge_count.entry(ekey(a, b)).or_insert(0) += 1;
+                let nb = t.n[e];
+                if nb != NONE {
+                    assert!(
+                        cdt.tris[nb].alive,
+                        "triangle {ti} edge {a}-{b} points at dead triangle {nb}"
+                    );
+                    let back = cdt.tris[nb].edge_of(a, b).unwrap_or_else(|| {
+                        panic!("neighbour {nb} of triangle {ti} lacks edge {a}-{b}")
+                    });
+                    assert_eq!(
+                        cdt.tris[nb].n[back], ti,
+                        "adjacency {ti} <-> {nb} over edge {a}-{b} is not mutual"
+                    );
+                }
+            }
+        }
+        for (&(a, b), &c) in &edge_count {
+            assert!(c <= 2, "edge {a}-{b} is used by {c} alive triangles");
+        }
+    }
+
+    /// A1 regression (T-junction on a shared NON-constraint edge): a point
+    /// inserted EXACTLY on the diagonal of a unit square (the diagonal is a
+    /// shared interior edge, NOT a constraint) must split BOTH incident
+    /// triangles. The old empty-cavity fallback (`split_in_triangle`) skipped
+    /// the degenerate child on the collinear edge and re-filled only one side:
+    /// the far triangle kept its neighbour link to the dead parent and the new
+    /// vertex was left hanging mid-edge — a T-junction with broken adjacency.
+    #[test]
+    fn on_shared_edge_insertion_splits_both_sides() {
+        // Unit square, all 4 boundary edges constrained, diagonal free.
+        let points: Vec<P2> = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let segments = vec![(0usize, 1usize), (1, 2), (2, 3), (3, 0)];
+        let mut cdt = Cdt::build_from(points, &segments).expect("square CDT");
+        assert_structurally_valid(&cdt);
+
+        // The square interior is triangulated by ONE of its diagonals.
+        let (d0, d1) = if cdt.edge_exists(0, 2) { (0, 2) } else { (1, 3) };
+        assert!(cdt.edge_exists(d0, d1), "expected a diagonal edge");
+
+        // Splice the EXACT diagonal midpoint in as a Steiner-style vertex
+        // (same index discipline as `insert_steiner`: below the super verts).
+        let vi = cdt.super_base;
+        cdt.points.insert(vi, [0.5, 0.5]);
+        cdt.super_base += 1;
+        for t in &mut cdt.tris {
+            for v in &mut t.v {
+                if *v >= vi {
+                    *v += 1;
+                }
+            }
+        }
+        // Internal insertion via the empty-cavity fallback at a triangle
+        // incident to the diagonal — must split BOTH sides in lockstep.
+        let start = (0..cdt.tris.len())
+            .find(|&ti| cdt.tris[ti].alive && cdt.tris[ti].edge_of(d0, d1).is_some())
+            .expect("a triangle incident to the diagonal");
+        cdt.split_at(start, vi);
+
+        // The midpoint must be a REAL shared vertex fanned on both sides of
+        // the old diagonal: exactly 4 alive triangles reference it (all four
+        // square edges are constraints, so legalization cannot flip further).
+        let refs = (0..cdt.tris.len())
+            .filter(|&ti| cdt.tris[ti].alive && cdt.tris[ti].v.contains(&vi))
+            .count();
+        assert_eq!(refs, 4, "midpoint must be fanned by 4 triangles (both sides), got {refs}");
+        assert_structurally_valid(&cdt);
     }
 
     #[test]

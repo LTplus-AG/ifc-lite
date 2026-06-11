@@ -1273,6 +1273,14 @@ impl GeometryRouter {
                                     opening_mesh.triangle_count()
                                 );
                             }
+                            // Deliberate degraded mode: this fallback removes
+                            // the wall material inside the opening AABB but no
+                            // longer emits reveal/recess quads (deleted with
+                            // the legacy clip path at M9 PART B), so its
+                            // output has an open rim. Acceptable for a safety
+                            // net that fired 0x across the M7 corpus — the
+                            // exact-kernel path ahead of it emits the reveals
+                            // itself.
                             let aabb_cut =
                                 self.cut_rectangular_opening(&result, final_min, final_max);
                             if !aabb_cut.is_empty() && aabb_cut.triangle_count() != tri_before {

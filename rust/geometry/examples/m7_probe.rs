@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! M7 single-element probe: process ONE element through the voids pipeline and
 //! dump OBJ artifacts (uncut host, each opening, cut result) for mismatch
 //! forensics. Routing is the pure-Rust exact kernel — the only kernel since
@@ -51,6 +55,10 @@ fn main() {
         std::process::exit(2);
     }
     let args: Vec<String> = std::env::args().collect();
+    if args.len() < 4 {
+        eprintln!("usage: m7_probe <model.ifc> <element_id> <out_prefix> [keep_opening_ids]");
+        std::process::exit(2);
+    }
     let (path, id, prefix) = (&args[1], args[2].parse::<u32>().unwrap(), &args[3]);
     let content = std::fs::read_to_string(path).unwrap();
     let entity_index = build_entity_index(&content);

@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 // subtract_mesh timing at the operand sizes the M0 census found. Originally the
 // M0 dual-baseline harness (BSP vs Manifold); since M9 there is ONE kernel:
 //   cargo run --release -p ifc-lite-geometry --example csg_timing

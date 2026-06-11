@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! M7 forensics: sequentially subtract cutter OBJ meshes from a host OBJ via
 //! the routed ClippingProcessor (the pure-Rust exact kernel — the only one
 //! since M9), printing volume/triangles/edge-health after every step. Used to
@@ -76,6 +80,10 @@ fn bad_edges(m: &Mesh) -> usize {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() < 3 {
+        eprintln!("usage: m7_objcut <host.obj> <cutter1.obj> [cutter2.obj ...]");
+        std::process::exit(2);
+    }
     let cp = ClippingProcessor::new();
     let mut result = load_obj(&args[1]);
     println!(

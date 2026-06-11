@@ -266,7 +266,11 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
                 (off, fi)
             })
             .collect();
-        keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap().then(a.1.cmp(&b.1)));
+        debug_assert!(
+            keyed.iter().all(|k| k.0.is_finite()),
+            "facet offsets must be finite before the deterministic offset sort"
+        );
+        keyed.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
 
         // Single-linkage sweep: start a new cluster whenever the offset gap to
         // the previous facet exceeds MAX_OFFSET_JITTER.

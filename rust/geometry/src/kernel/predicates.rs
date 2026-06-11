@@ -31,6 +31,7 @@ pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &Imp
         (Tpi(t), Explicit(b), Explicit(c), Explicit(d)) => interval::tpi_orient3d(t, *b, *c, *d)
             .or_else(|| fixed::indirect_orient3d(a, *b, *c, *d))
             .unwrap_or_else(|| rational::tpi_orient3d(t, *b, *c, *d)),
+        // By-construction unreachable: kernel callers only ever build the configurations above.
         _ => unimplemented!(
             "kernel::orient3d: this implicit-point configuration lands in a later M1 increment"
         ),
@@ -57,6 +58,7 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
         (Tpi(t), Explicit(b), Explicit(c)) => interval::tpi_orient2d(t, *b, *c, axis)
             .or_else(|| fixed::indirect_orient2d(a, *b, *c, axis))
             .unwrap_or_else(|| rational::tpi_orient2d(t, *b, *c, axis)),
+        // By-construction unreachable: kernel callers only ever build the configurations above.
         _ => unimplemented!(
             "kernel::orient2d: this implicit-point configuration lands in a later M1 increment"
         ),

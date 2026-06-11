@@ -126,7 +126,9 @@ fn build_node(nodes: &mut Vec<Node>, items: &mut [(u32, Aabb, [f64; 3])]) -> u32
     } else {
         2
     };
-    items.sort_by(|a, b| a.2[axis].partial_cmp(&b.2[axis]).unwrap_or(std::cmp::Ordering::Equal));
+    // total_cmp: identical to partial_cmp for the finite centroids built here,
+    // but a total order by construction (no Equal-on-NaN escape hatch).
+    items.sort_by(|a, b| a.2[axis].total_cmp(&b.2[axis]));
     let mid = items.len() / 2;
     let (l, r) = items.split_at_mut(mid);
     let left = build_node(nodes, l);

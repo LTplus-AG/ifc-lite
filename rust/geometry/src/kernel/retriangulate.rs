@@ -552,6 +552,10 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
             break;
         }
     }
+    // Deliberate trade-off: return Some even if a constraint stayed unrecovered —
+    // the caller (arrangement.rs) maps None to a FULL passthrough of the input
+    // triangle, dropping ALL constraints, which is strictly worse than a mesh
+    // missing one.
     Some(mesh)
 }
 

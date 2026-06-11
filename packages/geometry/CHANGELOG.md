@@ -1,5 +1,30 @@
 # @ifc-lite/geometry
 
+## 2.6.0
+
+### Minor Changes
+
+- [#1024](https://github.com/LTplus-AG/ifc-lite/pull/1024) [`cdc5a78`](https://github.com/LTplus-AG/ifc-lite/commit/cdc5a78af4e6019981f0189ae14b6201d1bdf8a4) Thanks [@louistrue](https://github.com/louistrue)! - One CSG kernel: pure-Rust exact mesh arrangement. The Manifold C++ kernel
+  (viewer/WASM) and the legacy in-tree BSP port (server/native) are replaced by a
+  single clean-room exact-arithmetic kernel (Cherchi-style indirect predicates)
+  that runs identically on native and wasm32 — bit-deterministic across x86_64,
+  aarch64 and the browser, with no C++ toolchain in the build.
+
+  No API changes — `processGeometryBatch` and the SDK surface are unchanged.
+  Consumers see different (better) triangulations wherever booleans fire:
+  openings, clippings and flush recesses now cut watertight through exactly
+  coincident/coplanar faces instead of relying on perturbation epsilons, tilted
+  flush cuts no longer leave boundary cracks or seam slivers, and deep
+  clipping-chain cutters are unioned and subtracted in one arrangement. Geometry
+  fingerprints (`geomHash`) for boolean-cut elements change accordingly; the
+  compare-models flow is unaffected because both revisions hash in-session with
+  the same kernel.
+
+### Patch Changes
+
+- Updated dependencies [[`cdc5a78`](https://github.com/LTplus-AG/ifc-lite/commit/cdc5a78af4e6019981f0189ae14b6201d1bdf8a4)]:
+  - @ifc-lite/wasm@2.7.0
+
 ## 2.5.1
 
 ### Patch Changes

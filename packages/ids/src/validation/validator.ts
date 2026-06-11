@@ -409,7 +409,18 @@ async function findApplicableEntities(
   // source of truth, so index conservatism can never change verdicts.
   for (const facet of applicabilityFacets) {
     if (facet.type !== 'property') continue;
-    const narrowed = await propertyIndex.narrow(facet, candidateIds, maybeYield);
+    // Building the index over a spec's candidates is the slowest phase of
+    // a large run (cold property extraction) — surface its progress so
+    // the host UI advances during it instead of sitting frozen.
+    const narrowed = await propertyIndex.narrow(
+      facet,
+      candidateIds,
+      maybeYield,
+      onProgress
+        ? (processed, total) =>
+            onProgress({ phase: 'filtering', entitiesProcessed: processed, totalEntities: total })
+        : undefined
+    );
     if (narrowed !== undefined) candidateIds = narrowed;
   }
 

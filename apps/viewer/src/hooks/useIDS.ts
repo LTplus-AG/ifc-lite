@@ -404,19 +404,22 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // (per 100 entities / per spec); throttle store updates to ~8/s
       // and always pass the terminal event.
       let lastProgressUpdate = 0;
-      let progressEventCount = 0;
       let firstProgressAt = 0;
+      let lastLoggedPhase = '';
       const runStart = performance.now();
       const onProgress = (p: ValidationProgress) => {
-        progressEventCount++;
         if (firstProgressAt === 0) {
           firstProgressAt = performance.now();
-          console.info(`[IDS-trace] first progress event @ +${(firstProgressAt - runStart).toFixed(0)}ms phase=${p.phase}`);
+          console.info(`[IDS-trace] first progress @ +${(firstProgressAt - runStart).toFixed(0)}ms phase=${p.phase}`);
+        }
+        // Log only phase transitions to keep the console readable.
+        if (p.phase !== lastLoggedPhase) {
+          lastLoggedPhase = p.phase;
+          console.info(`[IDS-trace] phase → ${p.phase} @ +${(performance.now() - runStart).toFixed(0)}ms (spec ${p.specificationIndex}/${p.totalSpecifications}, ${p.percentage}%)`);
         }
         const now = performance.now();
         if (p.phase === 'complete' || now - lastProgressUpdate >= 120) {
           lastProgressUpdate = now;
-          console.info(`[IDS-trace] setIdsProgress #${progressEventCount} @ +${(now - runStart).toFixed(0)}ms phase=${p.phase} pct=${p.percentage} spec=${p.specificationIndex}/${p.totalSpecifications}`);
           setIdsProgress(p);
         }
       };
@@ -443,7 +446,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
             includePassingEntities: true,
             onProgress,
           });
-          console.info(`[IDS-trace] worker resolved @ +${(performance.now() - runStart).toFixed(0)}ms, ${progressEventCount} progress events received`);
+          console.info(`[IDS-trace] worker resolved @ +${(performance.now() - runStart).toFixed(0)}ms`);
         } catch (workerErr) {
           console.error('[IDS-trace] WORKER FAILED → falling back to main thread:', workerErr);
         }

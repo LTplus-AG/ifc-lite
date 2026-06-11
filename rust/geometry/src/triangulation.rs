@@ -159,7 +159,6 @@ pub fn triangulate_polygon_with_holes(
 /// watertight at the seam (no boundary Steiner T-junction). The consolidate path
 /// passes `false`; a standalone single-region caller can pass `true` for full
 /// Ruppert.
-#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
 pub fn triangulate_polygon_with_holes_refined(
     outer: &[Point2<f64>],
     holes: &[Vec<Point2<f64>>],

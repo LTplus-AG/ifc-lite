@@ -1081,8 +1081,7 @@ mod tests {
         // The MINIMAL coplanar-union repro (the #960 root cause, distilled): two
         // unit boxes sharing the x=1 face union to ONE watertight 1×1×2 hull —
         // every edge shared by exactly two faces, no open boundary, bounds span
-        // BOTH boxes. Pure geometry ⇒ must pass under --no-default-features AND
-        // the default (Manifold) build.
+        // BOTH boxes. Pure geometry ⇒ must always pass.
         let a = box_mesh([0., 0., 0.], [1., 1., 1.]);
         let b = box_mesh([1., 0., 0.], [2., 1., 1.]);
         let u = boolean(&a, &b, BoolOp::Union);

@@ -104,7 +104,7 @@ pub struct ClassificationStats {
     /// Openings classified as `DiagonalRectangular` — rotated AABB.
     pub diagonal: usize,
     /// Openings classified as `NonRectangular` — full CSG path
-    /// (cap-limited under the legacy BSP, unlimited under Manifold).
+    /// (no operand cap on the exact kernel).
     pub non_rectangular: usize,
     /// Openings the OLD heuristic would have flagged as floor-opening
     /// (vertical extrusion, dir.z.abs() > 0.95) but the host is a

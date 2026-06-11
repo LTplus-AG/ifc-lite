@@ -40,10 +40,10 @@ jobs:
     name: Build & Push Docker Image
     runs-on: depot-ubuntu-24.04-4
     # Cap a stuck "Build and push" so it can't run to GitHub's 6h default.
-    # A *cold* build — cargo-chef cooking the whole workspace incl. the
-    # manifold-csg-sys C++ kernel after a deps-cache miss — runs >60 min, and a
-    # cold build that gets cancelled never warms the gha cache, so the cap must
-    # let one complete. 120 covers a cold build; warm builds finish in minutes.
+    # A *cold* build — cargo-chef cooking the whole workspace after a
+    # deps-cache miss — is the long pole, and a cold build that gets cancelled
+    # never warms the gha cache, so the cap must let one complete. 120 covers
+    # a cold build; warm builds finish in minutes.
     timeout-minutes: 120
     permissions:
       contents: read
@@ -100,8 +100,8 @@ jobs:
           cache-from: type=gha
           # mode=max keeps the cargo-chef "cooked deps" stage in the cache —
           # that layer is what makes warm builds finish in minutes instead of
-          # recompiling the whole workspace (incl. the manifold-csg-sys C++
-          # kernel), so dropping to mode=min would *raise* compute minutes.
+          # recompiling the whole workspace, so dropping to mode=min would
+          # *raise* compute minutes.
           cache-to: type=gha,mode=max
           # Build arm64 only for actual releases (distribution images). On the
           # frequent push-to-main builds (~1/3 of commits touch rust/** and

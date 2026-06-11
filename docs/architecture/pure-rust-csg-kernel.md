@@ -1,7 +1,15 @@
 # IFC-lite Canonical CSG Kernel — Hardened Design (pure-Rust exact mesh arrangement)
 
 > Living design doc. To be committed as `docs/architecture/pure-rust-csg-kernel.md`.
-> Status: implementation-ready. Every critical/high refutation is folded in and the fix is stated inline (search "REFUTATION-FIX").
+> Status: **M9 EXECUTED (June 2026)** — the flip is DONE. The pure-Rust exact
+> kernel (`rust/geometry/src/kernel/`) is the ONLY CSG kernel on every target.
+> `bsp_csg.rs`, `manifold_kernel.rs`, the `manifold-csg`/`manifold-csg-sys`
+> deps, every `manifold-csg` feature flag/cfg, the BSP-typed helpers in
+> `csg.rs`, the CI manifold job, and the LLVM-20/emsdk/cmake wasm C++
+> cross-toolchain were all deleted in the M9 commit. References below to
+> Manifold/BSP code paths, line numbers and "deleted in the FINAL commit" are
+> the historical design record, not the current tree.
+> Pre-M9 status: implementation-ready. Every critical/high refutation is folded in and the fix is stated inline (search "REFUTATION-FIX").
 
 ## 0. North star and the single seam
 

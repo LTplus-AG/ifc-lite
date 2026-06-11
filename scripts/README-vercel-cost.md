@@ -43,10 +43,10 @@ Snapshot that triggered this work (June 2026):
 |---|---|---|
 | `changes`, `lint`, `typecheck`, `node-tests`, `test` gate | `ubuntu-latest` (free) | Not compile-bound; free + unlimited on a public repo |
 | `desktop-override-audit` | `ubuntu-latest` (free) | Only `[ -f ]` file checks |
-| `build` (WASM) | `depot-ubuntu-24.04-4` | Compiles the WASM bundle (emsdk/LLVM); needs cores + cache |
+| `build` (WASM) | `depot-ubuntu-24.04-4` | Compiles the WASM bundle; needs cores + cache |
 | `desktop-frontend-build` | `depot-ubuntu-24.04-4` | Compiles WASM from source |
 | `rust-tests` | `depot-ubuntu-24.04-4` (was `-8`) | Kept on Depot for the cargo cache; right-sized for cost |
-| `manifold-tests` | `depot-ubuntu-24.04-4` (was `-8`) | cmake + Manifold/Clipper2 C++; cache-bound |
+| ~~`manifold-tests`~~ | — | DELETED at M9 (Manifold C++ kernel removed; pure-Rust kernel runs in `rust-tests`) |
 
 `release.yml`, `docs.yml`, `sdk-canary.yml` already use free `ubuntu-latest`.
 
@@ -129,8 +129,11 @@ toolchain — *despite* "Restored build cache from previous deployment". The
 `/vercel/cache/emsdk` dir does not reliably survive between builds. That was
 ~40–60 s of wasted bootstrap on every viewer/embed build, on every commit.
 
-`rust/wasm-bindings/Cargo.toml` enables `manifold-csg-wasm-uu`, so emsdk **is**
-genuinely required to compile from source — it is not dead weight.
+*(Historical: `rust/wasm-bindings/Cargo.toml` enabled `manifold-csg-wasm-uu`
+at the time, so emsdk was genuinely required to compile from source. Since M9
+the kernel is pure Rust and the emsdk/cmake provisioning has been deleted from
+`vercel-install.sh`/`vercel-build.sh` entirely — the fast path below now skips
+only the Rust toolchain bootstrap.)*
 
 **What was implemented:** `scripts/vercel-install.sh` now has an early fast path.
 It computes `@ifc-lite/wasm@<version>` from `packages/wasm/package.json`, makes

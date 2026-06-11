@@ -139,15 +139,12 @@ fn bath_csg_solid_subtracted_a_cavity() {
     let tris = mesh.indices.len() / 3;
 
     // The void is 1.8 × 0.6 × 0.7 m ≈ 0.73 m³ once the rounded corners are
-    // accounted for, so a full cut leaves ~0.55 m³. Manifold (native build)
-    // lands within 1 % of that. The legacy BSP path (the WASM build's only
-    // option until Manifold gets a wasm32 target) cuts less aggressively
-    // around the rounded corner walls and lands around 0.75 m³ — still a
-    // real cut, just with a coarser cavity. Assert "cavity exists" rather
-    // than pinning a volume so both kernels pass without the test becoming
-    // a flake; the kernel-specific numbers are confirmed by the
-    // [bath_csg_solid_produces_non_empty_mesh] bbox checks and by visual
-    // inspection in the viewer.
+    // accounted for, so a full cut leaves ~0.55 m³ (the historical Manifold
+    // oracle landed within 1 % of that; the deleted BSP path cut less
+    // aggressively, ~0.75 m³). Assert "cavity exists" rather than pinning a
+    // volume so the test never flakes on kernel-shaped differences; the
+    // numbers are confirmed by the [bath_csg_solid_produces_non_empty_mesh]
+    // bbox checks and by visual inspection in the viewer.
     assert!(
         tris > 12,
         "expected cut to add geometry; got just {} tris (≤ uncut box)",
@@ -227,10 +224,10 @@ fn bath_csg_solid_has_no_spike_triangles() {
 
 #[test]
 fn bath_csg_solid_triangle_budget() {
-    // Manifold lands at ~124 tris on this fixture; the BSP path with the
-    // post-merge consolidation lands around 50–90. Pin a ceiling well above
-    // both so the test is stable across kernel choice, but low enough to
-    // catch the un-consolidated 189-triangle BSP regression.
+    // The historical Manifold oracle landed at ~124 tris on this fixture;
+    // the deleted BSP path with post-merge consolidation around 50–90. Pin a
+    // ceiling well above both, low enough to catch the un-consolidated
+    // 189-triangle regression.
     let content = std::fs::read_to_string(FIXTURE).expect("bath fixture present");
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);

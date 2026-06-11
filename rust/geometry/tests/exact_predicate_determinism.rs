@@ -2,14 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Cross-platform determinism floor for the planned pure-Rust CSG kernel.
+//! Cross-platform determinism floor for the pure-Rust CSG kernel.
 //!
-//! The server (BSP) and viewer (Manifold C++) currently diverge, and Manifold
-//! itself is non-deterministic across platforms — Linux x86_64 collapses some
-//! coincident-/near-coplanar-face boolean clips where macOS aarch64 produces
-//! the correct result (see `manifold_kernel.rs` and `csg.rs` `try_bsp_difference`).
-//! The pure-Rust kernel dissolves that by routing every in/out and on-plane
-//! decision through Shewchuk *exact* predicates, whose SIGN is mathematically
+//! The pre-M9 server (BSP) and viewer (Manifold C++) kernels diverged, and
+//! Manifold itself was non-deterministic across platforms — Linux x86_64
+//! collapsed some coincident-/near-coplanar-face boolean clips where macOS
+//! aarch64 produced the correct result. The pure-Rust kernel (the only one
+//! since M9) dissolves that by routing every in/out and on-plane decision
+//! through Shewchuk *exact* predicates, whose SIGN is mathematically
 //! determined and therefore identical on every IEEE-754 radix-2 target.
 //!
 //! This test pins that invariant. It evaluates `robust::orient3d` over a set of

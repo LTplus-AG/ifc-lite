@@ -484,11 +484,11 @@ fn issue_635_gable_wall_60012_has_trapezoidal_silhouette() {
     let bins = max_z_silhouette(&mesh, 9);
     let valid: Vec<f32> = bins.iter().copied().filter(|z| z.is_finite()).collect();
     // A clean gable pentagon has only 3 unique X-positions on the
-    // top silhouette: left eaves, apex, right eaves. CSG kernels that
-    // emit minimal-vertex output (Manifold on Linux x86_64 in
-    // particular) populate only 3 of the 9 bins. macOS / BSP paths
-    // happen to leave T-junction or merge artifacts that fill more
-    // bins, but >= 3 is the correct geometric floor.
+    // top silhouette: left eaves, apex, right eaves. A kernel that
+    // emits minimal-vertex output (historically Manifold on Linux
+    // x86_64) populates only 3 of the 9 bins; kernels that leave
+    // T-junction or merge artifacts fill more bins, but >= 3 is the
+    // correct geometric floor.
     assert!(valid.len() >= 3, "silhouette has too few populated bins: {:?}", bins);
 
     let hi = *valid.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();

@@ -16,8 +16,8 @@
 //! fixture.
 //!
 //! The runtime behaviour is unchanged: failures are recorded *in addition*
-//! to (not instead of) the existing fallback. Sprint 2's Manifold migration
-//! and Sprint 1's regression tests both rely on these records.
+//! to (not instead of) the existing fallback. The kernel regression tests
+//! rely on these records.
 
 use std::cell::RefCell;
 use std::fmt;
@@ -73,8 +73,10 @@ impl fmt::Display for BoolOp {
 /// Why a boolean operation failed or was skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BoolFailureReason {
-    /// At least one operand exceeded the BSP CSG polygon cap.
-    /// Caller fell back to the un-cut host (DIFFERENCE/UNION) or empty (INTERSECTION).
+    /// HISTORICAL (pre-M9): at least one operand exceeded the legacy BSP CSG
+    /// polygon cap. The pure-Rust exact kernel has no operand cap, so this is
+    /// no longer emitted by the boolean ops; the variant (and its JSON label)
+    /// is kept for the frozen diagnostics surface and void-router plumbing.
     OperandTooLarge {
         polys_a: usize,
         polys_b: usize,
@@ -87,9 +89,10 @@ pub enum BoolFailureReason {
     NoBoundsOverlap,
     /// The CSG kernel returned malformed polygons (NaN / non-finite).
     KernelOutputInvalid,
-    /// Solid-vs-solid `IfcBooleanResult.DIFFERENCE` was not attempted.
-    /// The legacy BSP can stack-overflow on arbitrary solid combinations,
-    /// so until Manifold lands we return the first operand un-cut.
+    /// HISTORICAL (pre-M9): solid-vs-solid `IfcBooleanResult.DIFFERENCE`
+    /// was not attempted because the legacy BSP could stack-overflow on
+    /// arbitrary solid combinations. No longer emitted — the exact kernel
+    /// always attempts the cut. Variant kept for the frozen label surface.
     SolidSolidDifferenceSkipped,
     /// `IfcPolygonalBoundedHalfSpace` prism-subtraction failed; the kernel
     /// fell back to an unbounded plane clip, silently dropping the polygonal
@@ -98,20 +101,15 @@ pub enum BoolFailureReason {
     PolygonalBoundedHalfSpaceFallback,
     /// `IfcBooleanResult` operator string didn't match any known op.
     UnknownBooleanOperator(String),
-    /// Manifold's `difference` returned output that is implausibly small
-    /// relative to the host (e.g. 1 triangle from a 12-triangle box host
-    /// when the cutter does not fully contain the host). Observed on
-    /// Linux x86_64 for the AC20-FZK-Haus gable walls; macOS aarch64 on
-    /// the same input produces the expected pentagon. The caller logged
-    /// this and re-ran the same op through the legacy BSP path; the
-    /// retained output (Manifold or BSP) depends on which one looked
-    /// sane.
+    /// HISTORICAL (pre-M9): the Manifold kernel's `difference` returned
+    /// output implausibly small relative to the host (a Linux-x86_64-only
+    /// pathology). No longer emitted — the deterministic exact kernel
+    /// replaced Manifold at M9. Variant kept for the frozen label surface.
     ManifoldOutputDegenerate {
         host_tris: usize,
         result_tris: usize,
     },
-    /// Catch-all for kernel-specific errors. Free-form because the legacy BSP
-    /// returns `String` errors and Manifold (Sprint 2) will return its own.
+    /// Catch-all for kernel-specific errors (free-form string).
     KernelError(String),
     /// `IfcBooleanResult.DIFFERENCE` produced an empty mesh from a non-empty
     /// host. Almost always a buggy export — a clip plane authored AT the

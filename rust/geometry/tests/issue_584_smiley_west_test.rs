@@ -134,7 +134,6 @@ fn issue_584_smiley_west_doors_and_walls_present() {
 }
 
 #[test]
-#[cfg(feature = "manifold-csg")]
 fn issue_584_smiley_west_no_csg_failures() {
     let Some(content) = read_fixture("ara3d/AC-20-Smiley-West-10-Bldg.ifc") else {
         return;
@@ -142,7 +141,7 @@ fn issue_584_smiley_west_no_csg_failures() {
     let stats = run_geometry_pipeline(&content);
     assert_eq!(
         stats.csg_failures_total, 0,
-        "issue #584: Smiley-West must have zero CSG fallbacks under default features"
+        "issue #584: Smiley-West must have zero CSG fallbacks"
     );
 }
 

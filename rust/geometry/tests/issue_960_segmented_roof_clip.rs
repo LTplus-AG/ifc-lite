@@ -29,9 +29,8 @@
 //! union (`kernel::mesh_bridge::union_many` → `arrangement::union_all`): all
 //! cutter prisms are conformed in ONE arrangement, so coplanar seams shared by
 //! 3+ roof segments — and exactly-duplicated cutter prisms — dissolve into a
-//! watertight solid. This test is therefore NOT gated on `manifold-csg`; it
-//! passes under `--no-default-features` (pure-Rust) as well as the default
-//! Manifold build.
+//! watertight solid. The pure-Rust exact kernel is the only kernel (M9), so
+//! this test runs unconditionally.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter};

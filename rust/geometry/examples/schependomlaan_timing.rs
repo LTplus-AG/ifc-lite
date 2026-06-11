@@ -57,7 +57,7 @@ fn main() {
         }
     }
     let total_ms = total.elapsed().as_secs_f64() * 1e3;
-    let kernel = if std::env::var("CSG_MANIFOLD").is_ok() { "MANIFOLD" } else { "KERNEL" };
+    let kernel = "KERNEL"; // pure-Rust exact kernel — the only one since M9
     let empties = times.iter().filter(|(_, _, _, t)| *t == 0).count();
     eprintln!("\n=== [{kernel}] total CSG {total_ms:.0}ms over {} walls ({empties} produced 0 tris) ===", times.len());
     // per-wall table (sorted by host) for diffing kernel vs manifold

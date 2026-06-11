@@ -1,7 +1,7 @@
 //! M7 single-element probe: process ONE element through the voids pipeline and
 //! dump OBJ artifacts (uncut host, each opening, cut result) for mismatch
-//! forensics. Kernel routing follows the build features + CSG_MANIFOLD /
-//! UNION_MANIFOLD env, exactly like m7_parity_sweep.
+//! forensics. Routing is the pure-Rust exact kernel — the only kernel since
+//! M9 (the legacy CSG_MANIFOLD/UNION_MANIFOLD oracle env vars now error).
 //!
 //!   cargo run --release -p ifc-lite-geometry --example m7_probe -- <model.ifc> <element_id> <out_prefix>
 
@@ -41,6 +41,15 @@ fn write_obj(path: &str, m: &Mesh) {
 }
 
 fn main() {
+    if std::env::var("CSG_MANIFOLD").is_ok() || std::env::var("UNION_MANIFOLD").is_ok() {
+        eprintln!(
+            "error: CSG_MANIFOLD/UNION_MANIFOLD have no effect — the Manifold C++ oracle \
+             was removed in M9. Every build runs the pure-Rust exact kernel; use the \
+             vol_c self-consistency invariants or an external oracle (IfcOpenShell) \
+             for ground truth."
+        );
+        std::process::exit(2);
+    }
     let args: Vec<String> = std::env::args().collect();
     let (path, id, prefix) = (&args[1], args[2].parse::<u32>().unwrap(), &args[3]);
     let content = std::fs::read_to_string(path).unwrap();
@@ -116,8 +125,8 @@ fn main() {
         "cut: tris={} vol={:.6} kernel={} env={}",
         cut.triangle_count(),
         volume(&cut),
-        if cfg!(feature = "manifold-csg") { "manifold-compiled" } else { "pure" },
-        std::env::var("CSG_MANIFOLD").is_ok(),
+        "pure",
+        false,
     );
     for (pid, fails) in router.take_csg_failures() {
         for f in fails {

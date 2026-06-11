@@ -1,8 +1,6 @@
-// M0 timing baseline: how long the CURRENT kernel takes on subtract_mesh at the
-// operand sizes the census found, so we know the budget the pure-Rust
-// arrangement kernel must meet. Run twice:
-//   cargo run --release -p ifc-lite-geometry --example csg_timing --no-default-features   # BSP (server)
-//   cargo run --release -p ifc-lite-geometry --example csg_timing                          # Manifold (viewer)
+// subtract_mesh timing at the operand sizes the M0 census found. Originally the
+// M0 dual-baseline harness (BSP vs Manifold); since M9 there is ONE kernel:
+//   cargo run --release -p ifc-lite-geometry --example csg_timing
 use ifc_lite_geometry::{ClippingProcessor, Mesh};
 use std::time::Instant;
 
@@ -37,7 +35,7 @@ fn box_mesh(hx: f64, hy: f64, hz: f64, n: usize) -> Mesh {
 }
 
 fn main() {
-    let kernel = if cfg!(feature = "manifold-csg") { "Manifold" } else { "BSP" };
+    let kernel = "pure-rust-exact";
     let cp = ClippingProcessor::new();
     // (host_subdiv, cutter_subdiv) targeting the census buckets.
     let cases = [(1, 1), (4, 2), (6, 4), (8, 6), (12, 8), (18, 12)];

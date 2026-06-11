@@ -1,6 +1,6 @@
 //! M7 forensics: sequentially subtract cutter OBJ meshes from a host OBJ via
-//! the routed ClippingProcessor (build features + CSG_MANIFOLD env decide the
-//! kernel), printing volume/triangles/edge-health after every step. Used to
+//! the routed ClippingProcessor (the pure-Rust exact kernel — the only one
+//! since M9), printing volume/triangles/edge-health after every step. Used to
 //! replay a real model's void-cut loop outside the router orchestration.
 //!
 //!   m7_objcut <host.obj> <cutter1.obj> [cutter2.obj ...]
@@ -83,8 +83,8 @@ fn main() {
         result.triangle_count(),
         volume(&result),
         bad_edges(&result),
-        if cfg!(feature = "manifold-csg") { "manifold-compiled" } else { "pure" },
-        std::env::var("CSG_MANIFOLD").is_ok()
+        "pure",
+        false
     );
     for c in &args[2..] {
         let cutter = load_obj(c);

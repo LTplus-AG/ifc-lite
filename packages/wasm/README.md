@@ -1,6 +1,6 @@
 # @ifc-lite/wasm
 
-Pre-built WebAssembly bindings for the IFClite Rust core, covering STEP parsing and geometry tessellation (including the Manifold CSG kernel).
+Pre-built WebAssembly bindings for the IFClite Rust core, covering STEP parsing and geometry tessellation (including the pure-Rust exact CSG kernel).
 
 > **You probably don't need to use this package directly.** It's the WASM binary plus generated JS/TypeScript bindings that `@ifc-lite/parser`, `@ifc-lite/geometry`, and `@ifc-lite/renderer` consume internally. Reach for it when you want raw access to the Rust core without the higher-level wrappers.
 

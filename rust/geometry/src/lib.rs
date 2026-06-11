@@ -73,12 +73,6 @@ pub mod bool2d;
 /// Deterministic Constrained Delaunay Triangulation + bounded Ruppert
 /// min-angle refinement. Backs the quality triangulators in `triangulation`.
 mod cdt;
-// Legacy BSP CSG kernel. Unused when `manifold-csg` is enabled; the
-// `#[allow(dead_code)]` keeps the build warning-clean while the migration
-// is in flight. Once the legacy path is removed, drop both the module and
-// the attribute.
-#[cfg_attr(feature = "manifold-csg", allow(dead_code))]
-mod bsp_csg;
 pub mod csg;
 /// Deterministic near-coplanar facet weld for faceted-BREP host meshes.
 /// Corrects f32 import jitter (~0.09°) so authored-coplanar roof slope facets
@@ -87,11 +81,10 @@ pub mod facet_weld;
 pub mod diagnostics;
 pub mod error;
 pub mod geom_hash;
-#[cfg(feature = "manifold-csg")]
-mod manifold_kernel;
 pub mod extrusion;
-/// Pure-Rust exact mesh-arrangement CSG kernel (work in progress; see
-/// docs/architecture/pure-rust-csg-kernel.md). M1 = the exact predicate layer.
+/// Pure-Rust exact mesh-arrangement CSG kernel — THE one CSG kernel since M9
+/// (Manifold C++ and the legacy BSP port were deleted; see
+/// docs/architecture/pure-rust-csg-kernel.md).
 pub mod kernel;
 pub mod material_layer_index;
 pub mod mesh;

@@ -14,12 +14,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Epsilon for normalizing direction vectors (guards against zero-length).
 const NORMALIZE_EPSILON: f64 = 1e-12;
-/// Minimum opening volume (m³) below which CSG is skipped to avoid BSP instability.
+/// Minimum opening volume (m³) below which CSG is skipped (degenerate-void filter).
 /// 0.0001 m³ ≈ 0.1 litre — filters artefacts while allowing small real openings (e.g. sleeves).
 const MIN_OPENING_VOLUME: f64 = 0.0001;
 /// Fraction of pre-CSG triangles the result must retain. CSG outputs with fewer
 /// triangles than `pre_count / CSG_TRIANGLE_RETENTION_DIVISOR` are rejected as
-/// BSP blowups.
+/// kernel blowups.
 const CSG_TRIANGLE_RETENTION_DIVISOR: usize = 4;
 /// Minimum triangle count for a valid CSG result.
 const MIN_VALID_TRIANGLES: usize = 4;
@@ -1236,12 +1236,12 @@ impl GeometryRouter {
                         };
                         // Only suppress the fallback when "unchanged" means the
                         // kernel found no real cut (a kernel error / no-overlap on
-                        // a grazing engulfing cutter). If instead it was the BSP
-                        // polygon cap rejecting a genuinely complex cutter
-                        // (`OperandTooLarge`, issue #635 — the production server
-                        // runs the BSP kernel), the void is real and MUST get the
-                        // AABB box: skipping it on the 3% engulf heuristic would
-                        // leave the wall entirely uncut (Codex review, #947).
+                        // a grazing engulfing cutter). `capped` keys on the
+                        // historical `OperandTooLarge` rejection (issue #635 /
+                        // #947): the exact kernel has no operand cap so it is
+                        // always false post-M9, but keeping the term costs
+                        // nothing and stays correct if a complexity budget ever
+                        // records it again.
                         let capped = clipper.has_operand_too_large_since(failures_before);
                         // Issue #964: suppress the destructive AABB box when the
                         // host already has this void cut into it (a void

@@ -106,9 +106,10 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # Rust + wasm-pack + LLVM-20 for the manifold-csg-sys wasm build.
-      # Single-sourced in .github/actions/setup-wasm-build so the four
-      # wasm-building workflows stay in lock-step.
+      # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
+      # C++ toolchain needed since M9). Single-sourced in
+      # .github/actions/setup-wasm-build so the four wasm-building
+      # workflows stay in lock-step.
       - name: Setup WASM build toolchain
         uses: ./.github/actions/setup-wasm-build
         with:
@@ -299,64 +300,13 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace --exclude ifc-lite-wasm
 
-  # Validates the Manifold CSG kernel path (T1.1 +). Only runs when files
-  # that affect the kernel actually changed — first run on a runner
-  # compiles `manifold-csg-sys` (Manifold + Clipper2 via cmake) which adds
-  # ~60 s; subsequent runs hit the rust-cache.
-  #
-  # Sprint 2 acceptance gates
-  # (`issue_582_fzk_haus_no_csg_failures_after_manifold` and
-  # `issue_583_institute_var2_no_csg_failures_after_manifold`) only exist
-  # under this feature and assert `total_failures == 0` on the
-  # ara3d AC20-FZK-Haus.ifc and C20-Institute-Var-2.ifc fixtures.
-  #
-  # `wasm32-unknown-unknown` builds intentionally don't enable
-  # `manifold-csg`: the upstream `manifold-csg-sys` wasm-cxx-shim is
-  # currently incompatible with libc++-{18,20} (see
-  # docs/architecture/geometry-pipeline.md "WASM status"). Until that
-  # is resolved upstream, the WASM bundle continues to use the
-  # legacy BSP CSG path.
-  manifold-tests:
-    name: Rust tests (Manifold CSG kernel)
-    needs: changes
-    if: needs.changes.outputs.geometry == 'true'
-    # Stays on Depot (cmake + Manifold/Clipper2 C++ compile + cargo cache).
-    # Right-sized 8→4 cores (Depot bills × vCPU/2). Timeout bumped for the
-    # slower wall-clock on 4 cores.
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          lfs: false
-          persist-credentials: false
-      - name: Setup Rust (pinned by rust-toolchain.toml)
-        run: rustup show
-      - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          prefix-key: ci-manifold
-      - name: Cache test fixtures
-        id: fixtures-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: tests/models
-          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
-      - name: Fetch fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: |
-          npm i -g pnpm@10.8.1
-          pnpm fixtures
-      - name: Manifold CSG tests
-        run: cargo test -p ifc-lite-geometry --features manifold-csg
-
   # Aggregate gate. Keeps the existing required status check name green
   # for the branch protection rule so we don't have to retouch settings.
   # Succeeds if every dependency succeeded or was skipped (path-filtered
   # out); fails the moment any dependency fails or is cancelled.
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, rust-tests, manifold-tests]
+    needs: [changes, build, typecheck, lint, node-tests, rust-tests]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -369,7 +319,6 @@ jobs:
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
-            [manifold-tests]="${{ needs.manifold-tests.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

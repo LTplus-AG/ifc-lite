@@ -7,14 +7,12 @@
 //! record per element with kernel-sensitive invariants:
 //!   signed volume, AABB, non-manifold edge counts, triangle count, CSG ms.
 //!
-//! Run the SAME model through two differently-routed builds and diff the JSONL:
-//!   ORACLE  (Manifold C++): default features  + CSG_MANIFOLD=1 UNION_MANIFOLD=1
-//!   PURE    (exact kernel): --no-default-features (manifold not even compiled)
-//!
-//! Routing proof: the header line records cfg!(feature = "manifold-csg") + the
-//! env vars + a canonical box−box probe THROUGH the routed ClippingProcessor —
-//! Manifold and the pure kernel produce characteristically different
-//! triangulations for the same (identical-volume) result.
+//! NOTE (M9): the Manifold C++ oracle was removed with the kernel flip —
+//! every build now routes through the pure-Rust exact kernel, so this sweep
+//! emits the PURE-side JSONL only. For ground truth, use the kernel's
+//! vol_c self-consistency invariants in each record, or compare against an
+//! external oracle such as IfcOpenShell. Setting CSG_MANIFOLD/UNION_MANIFOLD
+//! is now an error to prevent silently mislabelled oracle runs.
 //!
 //!   cargo run --release -p ifc-lite-geometry --example m7_parity_sweep -- <model.ifc> [out.jsonl]
 
@@ -204,6 +202,15 @@ struct EntityMeta {
 }
 
 fn main() {
+    if std::env::var("CSG_MANIFOLD").is_ok() || std::env::var("UNION_MANIFOLD").is_ok() {
+        eprintln!(
+            "error: CSG_MANIFOLD/UNION_MANIFOLD have no effect — the Manifold C++ oracle \
+             was removed in M9. Every build runs the pure-Rust exact kernel; use the \
+             vol_c self-consistency invariants or an external oracle (IfcOpenShell) \
+             for ground truth."
+        );
+        std::process::exit(2);
+    }
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!("usage: m7_parity_sweep <model.ifc> [out.jsonl]");
@@ -349,7 +356,7 @@ fn main() {
         out,
         "{{\"header\":1,\"file\":\"{}\",\"manifold_feature\":{},\"env_csg_manifold\":{},\"env_union_manifold\":{},\"probe_diff_tris\":{},\"probe_diff_vol\":{:.9},\"probe_union_tris\":{},\"probe_union_vol\":{:.9},\"targets\":{},\"voids_hosts\":{},\"bool_products\":{},\"bool_roots\":{},\"skipped_openings\":{},\"scan_ms\":{:.1}}}",
         path,
-        cfg!(feature = "manifold-csg"),
+        false,
         std::env::var("CSG_MANIFOLD").is_ok(),
         std::env::var("UNION_MANIFOLD").is_ok(),
         probe.0, probe.1, probe.2, probe.3,
@@ -432,9 +439,9 @@ fn main() {
         let ms = t0.elapsed().as_secs_f64() * 1e3;
         csg_ms_total += ms;
 
-        // Drain per-element kernel fallback records (pure path records
-        // KernelOutputInvalid etc.; the manifold env path returns the host
-        // silently, which the nocut_vol comparison catches instead).
+        // Drain per-element kernel fallback records (the kernel records
+        // KernelOutputInvalid etc.; the nocut_vol comparison catches silent
+        // host returns).
         let failures: Vec<String> = router
             .take_csg_failures()
             .into_values()
@@ -500,15 +507,7 @@ fn main() {
     .unwrap();
     eprintln!(
         "[{}] {} targets, {} ok, {} err, csg {:.0}ms, total {:.0}ms",
-        if cfg!(feature = "manifold-csg") {
-            if std::env::var("CSG_MANIFOLD").is_ok() {
-                "MANIFOLD-ORACLE"
-            } else {
-                "PURE-KERNEL(+manifold compiled)"
-            }
-        } else {
-            "PURE-KERNEL(no-default-features)"
-        },
+        "PURE-KERNEL",
         targets.len(),
         n_processed,
         n_errors,

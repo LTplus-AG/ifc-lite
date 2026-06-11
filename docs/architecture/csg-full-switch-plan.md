@@ -1,5 +1,12 @@
 # CSG Full-Switch (FLIP) — implementation plan
 
+> **M9 EXECUTED (June 2026).** The atomic flip landed on
+> `feat/pure-rust-csg-kernel` (PR #1024): Manifold C++ + the BSP port are
+> deleted, the pure-Rust exact kernel is the only CSG kernel on native and
+> wasm32, the CI manifold job / LLVM-20 / emsdk toolchain are gone, and the
+> previously manifold-gated regression tests run unconditionally. This doc is
+> retained as the historical plan/ground-truth record.
+
 > 11-agent code-grounded + adversarial planning pass. Sequence M0→M9; BSP+Manifold stay buildable until M9 (one atomic flip).
 
 # Full-Switch Plan — Pure-Rust Exact CSG Kernel (the FLIP)

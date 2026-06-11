@@ -142,9 +142,8 @@ fn test_boolean_result_with_half_space() {
 /// Regression test for T1.2: solid-solid `IfcBooleanResult.DIFFERENCE`.
 ///
 /// Pre-T1.2 this was a hard-coded no-op (returned the first operand).
-/// With `manifold-csg` enabled it should now actually subtract.
+/// On the exact kernel it actually subtracts.
 #[test]
-#[cfg(feature = "manifold-csg")]
 fn solid_solid_difference_actually_cuts() {
     // 100×200×300 box with a 50×50×400 cutter punched through it.
     let content = r#"
@@ -165,7 +164,7 @@ fn solid_solid_difference_actually_cuts() {
     let bool_result = decoder.decode_by_id(20).unwrap();
     let cut_mesh = processor
         .process(&bool_result, &mut decoder, &schema)
-        .expect("solid-solid difference must succeed under manifold-csg");
+        .expect("solid-solid difference must succeed");
 
     assert!(!cut_mesh.is_empty(), "result must have geometry");
 
@@ -192,10 +191,9 @@ fn solid_solid_difference_actually_cuts() {
 
 /// Regression test for T1.4: solid-solid `IfcBooleanResult.UNION`.
 ///
-/// Pre-T1.4 this just merged meshes, retaining overlap. With `manifold-csg`
-/// the overlap is removed by a real CSG union.
+/// Pre-T1.4 this just merged meshes, retaining overlap. On the exact
+/// kernel the overlap is removed by a real CSG union.
 #[test]
-#[cfg(feature = "manifold-csg")]
 fn solid_solid_union_removes_overlap() {
     // Two overlapping 100×100×100 boxes shifted along X by 50.
     let content = r#"
@@ -214,7 +212,7 @@ fn solid_solid_union_removes_overlap() {
     let bool_result = decoder.decode_by_id(20).unwrap();
     let union_mesh = processor
         .process(&bool_result, &mut decoder, &schema)
-        .expect("solid-solid union must succeed under manifold-csg");
+        .expect("solid-solid union must succeed");
 
     assert!(!union_mesh.is_empty());
     // Naive mesh-merge of two cubes produces exactly 24 triangles
@@ -244,7 +242,6 @@ fn solid_solid_union_removes_overlap() {
 
 /// Regression test for T1.4: solid-solid `IfcBooleanResult.INTERSECTION`.
 #[test]
-#[cfg(feature = "manifold-csg")]
 fn solid_solid_intersection_returns_overlap() {
     // Same setup as union but operator INTERSECTION.
     let content = r#"
@@ -263,7 +260,7 @@ fn solid_solid_intersection_returns_overlap() {
     let bool_result = decoder.decode_by_id(20).unwrap();
     let inter_mesh = processor
         .process(&bool_result, &mut decoder, &schema)
-        .expect("solid-solid intersection must succeed under manifold-csg");
+        .expect("solid-solid intersection must succeed");
 
     // Pre-T1.4 this returned an empty mesh.
     assert!(

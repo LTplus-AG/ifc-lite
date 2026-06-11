@@ -28,9 +28,11 @@ enum TrimSelect {
 
 /// Issue #635 — when an `IfcArbitraryClosedProfileDef` is actually a smooth
 /// curve approximated by a many-vertex polyline (e.g. a 127-vertex circle
-/// stand-in for a round window), the resulting prism has too many side
-/// triangles to fit in the BSP CSG polygon budget and the void cut falls
-/// back to an axis-aligned box, turning round windows into squares.
+/// stand-in for a round window), the resulting prism had too many side
+/// triangles for the (since-deleted) BSP CSG polygon budget and the void cut
+/// fell back to an axis-aligned box, turning round windows into squares.
+/// The downsample is kept: it still makes curved void cuts dramatically
+/// cheaper on the exact kernel.
 ///
 /// Detect over-tessellated curves by comparing average vertex spacing to
 /// the polygon's bounding-box diagonal — anything denser than this ratio
@@ -403,9 +405,9 @@ pub(crate) fn simplify_smooth_curve_polyline(points: &[Point2<f64>]) -> Vec<Poin
     //    over the diagonal is tiny both for a thin-walled ring (≈0.0015 for the
     //    100 mm × 24 m #820 wall) AND for an elongated *filled* ellipse — an
     //    8:1 opening sits at ≈0.048, below any thinness cutoff — yet the convex
-    //    ellipse simplifies perfectly and *must* keep simplifying so its void
-    //    cut fits the BSP polygon budget (else round openings → AABB boxes,
-    //    issue #635).
+    //    ellipse simplifies perfectly and *must* keep simplifying to keep its
+    //    void cut cheap (issue #635 history: overflowing the deleted BSP
+    //    polygon budget turned round openings into AABB boxes).
     //  * What actually breaks RDP is the boundary *doubling back* on itself.
     //    A convex loop has no reflex boundary at any aspect ratio; an annular
     //    sector's inner arc is entirely reflex, so ~half its perimeter is.
@@ -652,9 +654,8 @@ fn rounded_rectangle_outline(
     }
 
     // 6 segments per corner matches `process_rounded_rectangle` — keeps
-    // the outline cheap and the surface-of-revolution-style extrusions
-    // these profiles drive (HVAC diffuser shells, hollow tubular sections)
-    // under the legacy BSP 128-poly cap.
+    // the outline (and the surface-of-revolution-style extrusions these
+    // profiles drive: HVAC diffuser shells, hollow tubular sections) cheap.
     const SEGMENTS_PER_CORNER: usize = 6;
     let half_pi = PI / 2.0;
     let corners = [
@@ -672,7 +673,7 @@ fn rounded_rectangle_outline(
     // contains zero-length edges that earcutr handles but downstream
     // analytics / 2D drawing pipelines may not (PR #863 review). 1 µm
     // tolerance in profile units matches the welding precision used
-    // throughout `manifold_kernel.rs`.
+    // elsewhere in the geometry pipeline.
     let mut points: Vec<Point2<f64>> = Vec::with_capacity((SEGMENTS_PER_CORNER + 1) * 4);
     const SEAM_TOL: f64 = 1.0e-6;
     for (cx, cy, a0, a1) in corners {
@@ -1231,9 +1232,7 @@ impl ProfileProcessor {
 
         // 6 segments × 4 corners = 24 outline vertices on a fillet; the
         // earcutr cap then runs ~22 triangles per face, side walls another
-        // 48, so the whole prism stays under the 128-poly per-mesh cap the
-        // legacy BSP CSG kernel imposes when `manifold-csg` is off (the
-        // WASM build path — see `ClippingProcessor::subtract_mesh`).
+        // 48 — a modest operand for the exact CSG kernel.
         const SEGMENTS_PER_CORNER: usize = 6;
         let half_pi = PI / 2.0;
         let corners = [
@@ -1781,9 +1780,9 @@ impl ProfileProcessor {
         // Process outer curve
         let raw_outer = self.process_curve(&curve, decoder)?;
         // Issue #635 — downsample over-tessellated smooth curves so that
-        // round/curved openings produce extrusions small enough to fit in
-        // the BSP CSG polygon budget and hence get a real polygon-shaped
-        // cut instead of the AABB rectangular fallback.
+        // round/curved openings produce compact extrusions (historically:
+        // to fit the deleted BSP polygon budget and avoid the AABB
+        // rectangular fallback; still a big perf win on the exact kernel).
         let outer_points = simplify_smooth_curve_polyline(&raw_outer);
         let mut result = Profile2D::new(outer_points);
 

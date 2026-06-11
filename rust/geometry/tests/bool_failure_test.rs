@@ -52,8 +52,8 @@ fn unit_box_at(origin: Point3<f64>) -> Mesh {
 /// BSP `MAX_CSG_POLYGONS_PER_MESH = 128` cap that the pre-flip kernel used
 /// to reject with `OperandTooLarge`. The first box sits at the origin so a
 /// unit-box operand at (0,0,0) overlaps it and `bounds_overlap` passes.
-/// Kept as the regression fixture proving the no-cap kernels handle
-/// operands the BSP port refused (see the M8 re-baseline note below).
+/// Kept as the regression fixture proving the no-cap exact kernel handles
+/// operands the deleted BSP port refused (see the re-baseline note below).
 fn many_boxes_above_cap() -> Mesh {
     let mut m = Mesh::new();
     for i in 0..30 {
@@ -101,24 +101,19 @@ fn subtract_records_empty_operand() {
     assert_eq!(failures[0].reason, BoolFailureReason::EmptyOperand);
 }
 
-// M8 re-baseline (PR #1024): the `*_records_operand_too_large` tests below
-// used to assert the legacy BSP `MAX_CSG_POLYGONS_PER_MESH = 128` cap under
-// `--no-default-features`. That configuration now routes the public boolean
-// ops through the pure-Rust exact kernel (`kernel::mesh_bridge`), which —
-// like Manifold — has NO operand cap, so `OperandTooLarge` is unreachable
-// from `subtract_mesh` / `union_mesh` / `intersection_mesh` in EVERY feature
-// configuration (the only surviving cap call site is the manifold-only
-// `try_bsp_difference` degeneracy net, which returns `None` instead of
-// recording). The tests are therefore re-baselined: BOTH kernels must
-// succeed past the legacy cap with zero failures. M9 deletes the BSP port
-// (and this comment's history) entirely; `BoolFailureReason::OperandTooLarge`
-// stays only for the void-router plumbing until then.
+// M8 re-baseline (PR #1024) / M9 flip: the `*_records_operand_too_large`
+// tests below used to assert the legacy BSP `MAX_CSG_POLYGONS_PER_MESH = 128`
+// cap. The pure-Rust exact kernel (`kernel::mesh_bridge`) — now the ONLY
+// kernel — has NO operand cap, so `OperandTooLarge` is unreachable from
+// `subtract_mesh` / `union_mesh` / `intersection_mesh`. The tests pin that:
+// the kernel must succeed past the legacy cap with zero failures.
+// `BoolFailureReason::OperandTooLarge` survives only as void-router plumbing.
 
 #[test]
 fn subtract_past_legacy_cap_succeeds() {
     // 180 polygons of host vs a unit-box cutter — past the legacy BSP cap.
-    // Neither the pure-Rust exact kernel nor Manifold has a cap, so the
-    // operation must succeed and record no failure.
+    // The pure-Rust exact kernel has no cap, so the operation must
+    // succeed and record no failure.
     let host = many_boxes_above_cap();
     let void = unit_box_at(Point3::new(0.0, 0.0, 0.0));
     let p = ClippingProcessor::new();

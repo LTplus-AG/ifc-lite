@@ -97,9 +97,9 @@ jobs:
       # to what CI tested. Plain @stable would leave the nightly missing and
       # `wasm-pack build` would fail with "toolchain not installed" — exactly
       # the regression observed on Release #403 after #657 untracked the wasm.
-      # Rust + wasm-pack + LLVM-20 for the manifold-csg-sys wasm build.
-      # Single-sourced in .github/actions/setup-wasm-build (shared with
-      # test.yml / sdk-canary.yml).
+      # Rust + wasm-pack for the wasm32 build (pure-Rust kernel — no C++
+      # toolchain since M9). Single-sourced in
+      # .github/actions/setup-wasm-build (shared with test.yml / sdk-canary.yml).
       - name: Setup WASM build toolchain
         uses: ./.github/actions/setup-wasm-build
         with:

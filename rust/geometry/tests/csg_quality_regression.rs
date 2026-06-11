@@ -162,13 +162,13 @@ fn fzk_haus_gable_wall_67828_no_spike_triangles() {
 //
 // The next three elements all currently emit sliver triangles that the
 // CSG output-quality guard would flag, but the slivers come from BEFORE
-// the BSP/Manifold kernel — either the input profile tessellation
+// the CSG kernel — either the input profile tessellation
 // (multi-extrusion windows) or the rectangular-box cut helper
 // (`cut_multiple_rectangular_openings` in `router/voids.rs`), which has
 // its own clipping that bypasses `ClippingProcessor::consolidate_coplanar`.
 //
-// Identical spike counts appear under both BSP and Manifold kernels,
-// confirming the kernel is not at fault. Left `#[ignore]`d with the
+// Identical spike counts appeared under both pre-M9 kernels (BSP and
+// Manifold), confirming the kernel is not at fault. Left `#[ignore]`d with the
 // current spike-count baseline so the suite documents the issue and
 // becomes a tightening gate when the upstream paths are cleaned up
 // (mirrors the same convention as the `#[ignore]`d cases in

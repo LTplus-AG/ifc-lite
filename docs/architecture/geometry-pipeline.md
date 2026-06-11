@@ -480,91 +480,42 @@ async function processGeometryBatches(
 
 ## CSG Kernel
 
-Two boolean / CSG kernels coexist behind a Cargo feature flag.
+ONE kernel: the in-tree **pure-Rust exact mesh-arrangement kernel**
+(`rust/geometry/src/kernel/`), on every target — native (server, CLI, SDK)
+and `wasm32-unknown-unknown` (viewer) alike. See
+[pure-rust-csg-kernel.md](./pure-rust-csg-kernel.md) for the kernel
+architecture (exact predicate cascade, conforming arrangement, winding
+classification, deterministic output ordering).
 
-### Default (legacy BSP)
+Key properties:
 
-`rust/geometry/src/bsp_csg.rs` — a Rust port of csg.js (Evan Wallace,
-MIT). Triangle-mesh BSP. Hard-caps at 24 polygons per operand
-(`csg.rs:117`). On cap exceeded or kernel error, falls back to the
-un-cut host mesh and emits a structured `BoolFailure` record (drainable
-via `GeometryRouter::take_csg_failures`). This is the default for the
-`wasm32-unknown-unknown` build target since the alternative (Manifold)
-has unresolved upstream toolchain dependencies on that target.
+- **Exact**: every in/out and on-plane decision routes through exact
+  geometric predicates (Shewchuk adaptive floats escalating to exact
+  rational arithmetic), so coplanar faces, shared seams and
+  flush-cap cuts are decided correctly, not by epsilon.
+- **Platform-deterministic**: identical output bytes on x86_64, aarch64
+  and wasm32 (pinned by the determinism manifests in
+  `rust/geometry/tests/`).
+- **No operand cap**: arbitrary operand sizes; cost is bounded by the
+  pre-arrangement complexity budget in the void router rather than a
+  hard polygon cap.
+- **N-ary union**: `kernel::mesh_bridge::union_many` unions all cutter
+  prisms in ONE arrangement (issue #960 segmented-roof seams).
+- **Failure surface**: on any kernel failure the host mesh is returned
+  un-cut and a structured `BoolFailure` record is emitted (drainable via
+  `GeometryRouter::take_csg_failures`). The regression gates assert
+  `total_failures == 0` on `AC20-FZK-Haus.ifc`,
+  `C20-Institute-Var-2.ifc` and `AC-20-Smiley-West-10-Bldg.ifc`.
 
-### Optional (Manifold)
-
-Behind `--features manifold-csg`. Uses [Manifold](https://github.com/elalish/manifold)
-via the `manifold-csg` crate (Apache-2/MIT, native C++ kernel built
-through cmake). No operand cap, manifold-by-construction output, real
-solid-solid `IfcBooleanResult.{DIFFERENCE, UNION, INTERSECTION}`. A
-vertex-weld pre-pass in `rust/geometry/src/manifold_kernel.rs`
-collapses the polygon-soup mesh layout ifc-lite's extruded-solid
-builder produces (24 verts per cube → 8) so Manifold accepts the
-input.
-
-`BoolFailure` records and `GeometryRouter::take_csg_failures` work
-identically under both kernels. Sprint 2 acceptance gates assert
-`total_failures == 0` on `AC20-FZK-Haus.ifc` and
-`C20-Institute-Var-2.ifc` under `--features manifold-csg`; both pass.
-
-### WASM status
-
-`--features manifold-csg-wasm-uu` is **enabled** as of `wasm-cxx-shim`
-v0.5.0 / `manifold-csg-sys` 3.5.100 (May 2026); the libc++ / musl-locale
-issues that previously blocked the wasm build have been resolved
-upstream. `rust/wasm-bindings/Cargo.toml` opts into the feature and
-`scripts/vercel-install.sh` provisions the host toolchain.
-
-Build prerequisites — the shim accepts any of:
-
-- **`EMSDK` env var pointing at an emsdk install** (cleanest;
-  works hermetically with no system packages). The Emscripten
-  bundle includes a complete LLVM 23 with libc++ headers, `wasm-ld`,
-  and `llvm-ar` under `$EMSDK/upstream/bin/`. The shim's CMake
-  toolchain probe (`cmake/toolchain-wasm32.cmake`) discovers it
-  automatically when `EMSDK` is set.
-- **Host LLVM 18+** with `clang++`, `wasm-ld`, `llvm-ar`, and libc++
-  headers at `<llvm-prefix>/include/c++/v1/`. Override the probe
-  with `WASM_CXX_SHIM_LLVM_BIN_DIR` and
-  `WASM_CXX_SHIM_LIBCXX_HEADERS` when the layout doesn't match the
-  standard ladder.
-- CMake 3.18+ for the `wasm-cxx-shim` FetchContent build of Manifold +
-  Clipper2 (pre-installed in Vercel's image).
-
-Vercel:
-
-`scripts/vercel-install.sh` clones `emsdk` into `/vercel/cache/emsdk`
-on first deploy and runs `./emsdk install latest` (~340 MB download).
-The cache survives across deploys per Vercel's build-cache policy.
-We chose emsdk over `dnf install clang20` because Vercel's pinned
-AL2023 image (`2023.2.20231011.0`) only ships `clang15`.
-
-Local dev:
-
-- macOS: `brew install llvm lld`. The shim's toolchain file
-  auto-detects `/opt/homebrew/opt/llvm@N/bin`; no env vars required.
-- Debian/Ubuntu: `apt install clang-20 lld-20 libc++-20-dev libc++abi-20-dev`.
-- Cross-platform: `git clone https://github.com/emscripten-core/emsdk && cd emsdk && ./emsdk install latest && export EMSDK=$PWD`.
-
-Runtime properties of the wasm-side Manifold:
-
-- Single-threaded execution (TBB is gated off — wasm has no threading
-  in the unknown-unknown target). Same correctness as native, lower
-  throughput on multi-core inputs.
-- No exception runtime; the shim aborts on throw rather than unwinds.
-  Malformed input that would have thrown native becomes a wasm
-  `unreachable` trap. In practice this is the same surface area the
-  pre-Manifold BSP path used to panic on, just with a cleaner
-  diagnostic.
-- Wasm bundle size impact: +250–400 KB (Manifold + Clipper2 + shim
-  glue, after `wasm-opt`).
-
-The legacy in-tree BSP port (`bsp_csg.rs`) is kept as a compile-time
-fallback under `default-features = false` for downstream consumers who
-need to build the geometry crate without LLVM available. There is no
-runtime selection — the active kernel is decided at build time by the
-feature set.
+History (M9, June 2026): two earlier kernels — the legacy BSP port of
+csg.js (`bsp_csg.rs`, 128-polygon operand cap, server/wasm default) and
+the Manifold C++ kernel (`manifold_kernel.rs` + `manifold-csg-sys`,
+viewer/native feature) — were deleted at M9 of the kernel consolidation
+plan once the pure-Rust kernel reached parity. With them went the whole
+C++ cross-toolchain (cmake, LLVM-20/libc++, emsdk on Vercel) and the
+`manifold-csg`/`manifold-csg-wasm-uu` Cargo features; the geometry crate
+builds with `default = []` everywhere. There is no kernel selection —
+build-time or runtime.
 
 ## Performance Metrics
 

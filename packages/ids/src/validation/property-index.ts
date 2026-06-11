@@ -77,16 +77,28 @@ export class ApplicabilityPropertyIndex {
    */
   private async ensureIndexed(
     entityIds: number[],
-    maybeYield: () => Promise<void> | undefined
+    maybeYield: () => Promise<void> | undefined,
+    onScanProgress?: (processed: number, total: number) => void
   ): Promise<void> {
     if (this.keys.size === 0) return;
+    // Only the first fold-in over a large candidate set does real work
+    // (cold property extraction); count how many are actually new so the
+    // progress reporter reflects the entities being scanned, not cache
+    // hits.
+    let newCount = 0;
     for (let i = 0; i < entityIds.length; i++) {
       const id = entityIds[i];
       if (this.indexed.has(id)) continue;
       this.indexed.add(id);
+      newCount++;
       // The first fold-in over a large candidate set is real CPU work
-      // (pset extraction per entity) — keep the host UI painting.
-      if ((i & 255) === 0) await maybeYield();
+      // (pset extraction per entity) — keep the host UI painting and
+      // report granular progress, since this is the slowest phase of a
+      // large validation run.
+      if ((newCount & 511) === 0) {
+        onScanProgress?.(i + 1, entityIds.length);
+        await maybeYield();
+      }
 
       const psets = this.accessor.getPropertySets(id);
       for (const pset of psets) {
@@ -131,12 +143,13 @@ export class ApplicabilityPropertyIndex {
   async narrow(
     facet: IDSPropertyFacet,
     candidates: number[],
-    maybeYield: () => Promise<void> | undefined
+    maybeYield: () => Promise<void> | undefined,
+    onScanProgress?: (processed: number, total: number) => void
   ): Promise<number[] | undefined> {
     const key = indexKeyFor(facet);
     if (key === undefined || !this.keys.has(key)) return undefined;
 
-    await this.ensureIndexed(candidates, maybeYield);
+    await this.ensureIndexed(candidates, maybeYield, onScanProgress);
 
     const value = facet.value;
     let superset: Set<number> | undefined;

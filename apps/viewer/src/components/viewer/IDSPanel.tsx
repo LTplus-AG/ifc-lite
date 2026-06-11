@@ -521,16 +521,32 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   const renderProgress = () => {
     if (!progress) return null;
 
+    // Validation of large code-list IDS packs runs for many seconds, and
+    // a few broad specs dominate the time — so a percentage keyed on spec
+    // index sits near 0 for a while. Surface the always-advancing spec
+    // counter (and the per-spec entity count) so the panel visibly moves
+    // throughout, not just in the back half.
+    const specNumber = Math.min(progress.specificationIndex + 1, progress.totalSpecifications);
+    const isComplete = progress.phase === 'complete';
+    const headline = isComplete
+      ? 'Validation complete'
+      : `Validating specification ${specNumber} of ${progress.totalSpecifications}`;
+    const detail =
+      progress.phase === 'validating' && progress.totalEntities > 0
+        ? `Checking ${progress.entitiesProcessed.toLocaleString()} / ${progress.totalEntities.toLocaleString()} entities`
+        : progress.phase === 'filtering' && progress.totalEntities > 0
+          ? `Scanning ${progress.entitiesProcessed.toLocaleString()} / ${progress.totalEntities.toLocaleString()} candidates`
+          : progress.phase === 'filtering'
+            ? 'Finding applicable entities…'
+            : null;
+
     return (
       <div className="p-3 border-b">
-        <div className="flex items-center gap-2 mb-2">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-sm">
-            {progress.phase === 'filtering' && 'Finding applicable entities...'}
-            {progress.phase === 'validating' && `Validating... (${progress.entitiesProcessed}/${progress.totalEntities})`}
-            {progress.phase === 'complete' && 'Complete'}
-          </span>
+        <div className="flex items-center gap-2 mb-1">
+          {!isComplete && <Loader2 className="h-4 w-4 animate-spin shrink-0" />}
+          <span className="text-sm font-medium tabular-nums">{headline}</span>
         </div>
+        {detail && <div className="text-xs text-muted-foreground mb-2 tabular-nums">{detail}</div>}
         <Progress value={progress.percentage} className="h-2" />
       </div>
     );

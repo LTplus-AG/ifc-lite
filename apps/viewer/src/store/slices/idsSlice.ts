@@ -257,7 +257,12 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
 
   setIdsLoading: (idsLoading) => set({ idsLoading }),
 
-  setIdsError: (idsError) => set({ idsError, idsLoading: false }),
+  // Setting an error ends the run; but CLEARING the error (idsError =
+  // null, e.g. at the start of a validation run) must NOT flip loading
+  // off — doing so kept the progress UI, which is gated on `loading`,
+  // hidden for the entire run even though progress was streaming in.
+  setIdsError: (idsError) =>
+    set(idsError !== null ? { idsError, idsLoading: false } : { idsError }),
 
   setIdsLocale: (idsLocale) => set({ idsLocale }),
 

@@ -385,19 +385,6 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     const modelId = activeModelId || (models.size > 0 ? Array.from(models.keys())[0] : '__legacy__');
 
     const runStart = performance.now();
-    // Heartbeat: a 250ms timer that can only fire when the main thread is
-    // free. Gaps >> 250ms mean the thread was blocked (and React could not
-    // paint the progress UI). This pinpoints whether the missing progress
-    // bar is a render-starvation problem vs a data problem.
-    let lastHeartbeat = runStart;
-    const heartbeat = window.setInterval(() => {
-      const now = performance.now();
-      const gap = now - lastHeartbeat;
-      lastHeartbeat = now;
-      if (gap > 400) {
-        console.warn(`[IDS-hb] main thread STALLED ${gap.toFixed(0)}ms @ +${(now - runStart).toFixed(0)}ms — UI could not paint`);
-      }
-    }, 250);
 
     try {
       setIdsLoading(true);
@@ -502,7 +489,6 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       console.error('[IDS] Validation error:', err);
       return null;
     } finally {
-      window.clearInterval(heartbeat);
       setIdsLoading(false);
     }
   }, [

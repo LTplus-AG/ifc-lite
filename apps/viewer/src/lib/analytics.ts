@@ -17,22 +17,33 @@ const host = import.meta.env?.VITE_POSTHOG_HOST;
 // without a PostHog key.
 const enabled = Boolean(key && host) && typeof posthogClient?.init === 'function';
 
+// Only the PostHog surface the viewer actually calls. Extend this type AND
+// the noop fallback together before using a new method at a call site — the
+// narrow type is what keeps keyless/Node environments crash-free.
+type AnalyticsClient = Pick<typeof posthogClient, 'capture' | 'captureException'>;
+
+let client: AnalyticsClient | null = null;
 if (enabled) {
-  posthogClient.init(key as string, {
-    api_host: host,
-    // No consent UI exists, so never build person profiles for anonymous
-    // visitors — events stay anonymous unless an explicit identify() opts
-    // a user in.
-    person_profiles: 'identified_only',
-    capture_pageview: false,
-    capture_pageleave: true,
-    autocapture: false,
-  });
+  try {
+    posthogClient.init(key as string, {
+      api_host: host,
+      // No consent UI exists, so never build person profiles for anonymous
+      // visitors — events stay anonymous unless an explicit identify() opts
+      // a user in.
+      person_profiles: 'identified_only',
+      capture_pageview: false,
+      capture_pageleave: true,
+      autocapture: false,
+    });
+    client = posthogClient;
+  } catch (err) {
+    console.warn('[analytics] PostHog init failed; analytics disabled', err);
+  }
 }
 
-const noopAnalytics = {
+const noopAnalytics: AnalyticsClient = {
   capture: () => undefined,
   captureException: () => undefined,
-} as unknown as typeof posthogClient;
+};
 
-export const posthog = enabled ? posthogClient : noopAnalytics;
+export const posthog: AnalyticsClient = client ?? noopAnalytics;

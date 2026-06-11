@@ -733,23 +733,29 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
                         }
                     }
 
-                    // Triangulate the face
+                    // Triangulate the face through the shared FacetedBrep face
+                    // triangulator (tri/quad fast paths, convexity test, and
+                    // ear-clipping with hole support). The previous naive fan
+                    // here mis-triangulated CONCAVE faces — fan triangles from
+                    // vertex 0 sweep ACROSS the concavity, rendering folded
+                    // sheet-metal profiles (schependomlaan "zinkwerk" covering
+                    // flashings, serpentine 30-vertex end-cap loops) as
+                    // stretched diagonal flaps with up to 2.4x the authored
+                    // surface area — and silently dropped hole bounds.
                     if let Some(outer) = outer_points {
                         if outer.len() >= 3 {
+                            let face_data = FaceData {
+                                outer_points: outer,
+                                hole_points,
+                            };
+                            let result = FacetedBrepProcessor::triangulate_face(
+                                &face_data,
+                                (0.0, 0.0, 0.0),
+                            );
                             let base_idx = (all_positions.len() / 3) as u32;
-
-                            // Add positions
-                            for p in &outer {
-                                all_positions.push(p.x as f32);
-                                all_positions.push(p.y as f32);
-                                all_positions.push(p.z as f32);
-                            }
-
-                            // Simple fan triangulation (works for convex faces)
-                            for i in 1..outer.len() - 1 {
-                                all_indices.push(base_idx);
-                                all_indices.push(base_idx + i as u32);
-                                all_indices.push(base_idx + i as u32 + 1);
+                            all_positions.extend(result.positions);
+                            for idx in result.indices {
+                                all_indices.push(base_idx + idx);
                             }
                         }
                     }
@@ -889,23 +895,29 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
                         }
                     }
 
-                    // Triangulate the face
+                    // Triangulate the face through the shared FacetedBrep face
+                    // triangulator (tri/quad fast paths, convexity test, and
+                    // ear-clipping with hole support). The previous naive fan
+                    // here mis-triangulated CONCAVE faces — fan triangles from
+                    // vertex 0 sweep ACROSS the concavity, rendering folded
+                    // sheet-metal profiles (schependomlaan "zinkwerk" covering
+                    // flashings, serpentine 30-vertex end-cap loops) as
+                    // stretched diagonal flaps with up to 2.4x the authored
+                    // surface area — and silently dropped hole bounds.
                     if let Some(outer) = outer_points {
                         if outer.len() >= 3 {
+                            let face_data = FaceData {
+                                outer_points: outer,
+                                hole_points,
+                            };
+                            let result = FacetedBrepProcessor::triangulate_face(
+                                &face_data,
+                                (0.0, 0.0, 0.0),
+                            );
                             let base_idx = (all_positions.len() / 3) as u32;
-
-                            // Add positions
-                            for p in &outer {
-                                all_positions.push(p.x as f32);
-                                all_positions.push(p.y as f32);
-                                all_positions.push(p.z as f32);
-                            }
-
-                            // Simple fan triangulation (works for convex faces)
-                            for i in 1..outer.len() - 1 {
-                                all_indices.push(base_idx);
-                                all_indices.push(base_idx + i as u32);
-                                all_indices.push(base_idx + i as u32 + 1);
+                            all_positions.extend(result.positions);
+                            for idx in result.indices {
+                                all_indices.push(base_idx + idx);
                             }
                         }
                     }

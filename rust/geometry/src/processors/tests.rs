@@ -801,3 +801,143 @@ fn test_extruded_area_solid_tapered_falls_back_when_end_missing() {
     assert!((max.z - 500.0).abs() < 0.01);
     assert!((max.x - 50.0).abs() < 0.01);
 }
+
+// ---------------------------------------------------------------------------
+// Regression: schependomlaan "zinkwerk" misformed coverings
+// ---------------------------------------------------------------------------
+//
+// IfcShellBasedSurfaceModel / IfcFaceBasedSurfaceModel used a naive fan
+// triangulation ("works for convex faces") and silently dropped hole bounds.
+// Zinc-flashing coverings in schependomlaan author CONCAVE folded sheet-metal
+// faces; fanning from vertex 0 sweeps triangles ACROSS the concavity, emitting
+// flipped "flap" triangles outside the polygon (mesh area up to 2.44x the
+// authored area, e.g. covering #974441 / 2U4A8Ms4v0auESKMfvz85Y: 17.42 m²
+// rendered vs 7.15 m² authored). The fix routes both surface-model processors
+// through the shared `FacetedBrepProcessor::triangulate_face` (convexity test
+// + ear clipping + hole support).
+//
+// These tests use a U-shaped (channel) face that is NOT star-shaped from
+// vertex 0: authored area 9.0; the old fan emitted 17.0 of triangle area
+// (including an inverted flap across the notch), so they fail before the fix
+// and pass after.
+
+/// Sum of unsigned triangle areas of a mesh (f64 accumulation).
+fn mesh_surface_area(mesh: &crate::mesh::Mesh) -> f64 {
+    let p = &mesh.positions;
+    let mut area = 0.0f64;
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (tri[0] as usize * 3, tri[1] as usize * 3, tri[2] as usize * 3);
+        let v0 = [p[a] as f64, p[a + 1] as f64, p[a + 2] as f64];
+        let v1 = [p[b] as f64, p[b + 1] as f64, p[b + 2] as f64];
+        let v2 = [p[c] as f64, p[c + 1] as f64, p[c + 2] as f64];
+        let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        let cx = e1[1] * e2[2] - e1[2] * e2[1];
+        let cy = e1[2] * e2[0] - e1[0] * e2[2];
+        let cz = e1[0] * e2[1] - e1[1] * e2[0];
+        area += 0.5 * (cx * cx + cy * cy + cz * cz).sqrt();
+    }
+    area
+}
+
+/// U-shaped (channel) concave face, area = 5x3 outer - 3x2 notch = 9.0.
+/// Not star-shaped from vertex 0: the old fan triangulation emitted a
+/// flipped triangle across the notch (total unsigned area 17.0).
+const CONCAVE_U_FACE_POINTS: &str = r#"
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((5.,0.,0.));
+#3=IFCCARTESIANPOINT((5.,3.,0.));
+#4=IFCCARTESIANPOINT((4.,3.,0.));
+#5=IFCCARTESIANPOINT((4.,1.,0.));
+#6=IFCCARTESIANPOINT((1.,1.,0.));
+#7=IFCCARTESIANPOINT((1.,3.,0.));
+#8=IFCCARTESIANPOINT((0.,3.,0.));
+#10=IFCPOLYLOOP((#1,#2,#3,#4,#5,#6,#7,#8));
+#11=IFCFACEOUTERBOUND(#10,.T.);
+#12=IFCFACE((#11));
+"#;
+
+#[test]
+fn test_shell_based_surface_model_concave_face_no_fan_flap() {
+    let content = format!(
+        "{CONCAVE_U_FACE_POINTS}#13=IFCOPENSHELL((#12));\n#14=IFCSHELLBASEDSURFACEMODEL((#13));\n"
+    );
+
+    let mut decoder = EntityDecoder::new(&content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(14).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema)
+        .expect("concave shell-based surface model must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    assert!(
+        (area - 9.0).abs() < 1e-3,
+        "mesh area must equal the authored face area 9.0 (naive fan emits 17.0 \
+         with a flipped flap across the concavity), got {area}"
+    );
+}
+
+#[test]
+fn test_face_based_surface_model_concave_face_no_fan_flap() {
+    let content = format!(
+        "{CONCAVE_U_FACE_POINTS}#13=IFCCONNECTEDFACESET((#12));\n#14=IFCFACEBASEDSURFACEMODEL((#13));\n"
+    );
+
+    let mut decoder = EntityDecoder::new(&content);
+    let schema = IfcSchema::new();
+    let processor = FaceBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(14).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema)
+        .expect("concave face-based surface model must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    assert!(
+        (area - 9.0).abs() < 1e-3,
+        "mesh area must equal the authored face area 9.0 (naive fan emits 17.0 \
+         with a flipped flap across the concavity), got {area}"
+    );
+}
+
+#[test]
+fn test_shell_based_surface_model_hole_bound_not_dropped() {
+    // 10x10 outer with a 2x2 hole: area = 96. The old path ignored the
+    // IFCFACEBOUND entirely and emitted the full 100.0 outer quad.
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((10.,0.,0.));
+#3=IFCCARTESIANPOINT((10.,10.,0.));
+#4=IFCCARTESIANPOINT((0.,10.,0.));
+#5=IFCCARTESIANPOINT((4.,4.,0.));
+#6=IFCCARTESIANPOINT((6.,4.,0.));
+#7=IFCCARTESIANPOINT((6.,6.,0.));
+#8=IFCCARTESIANPOINT((4.,6.,0.));
+#10=IFCPOLYLOOP((#1,#2,#3,#4));
+#11=IFCFACEOUTERBOUND(#10,.T.);
+#12=IFCPOLYLOOP((#5,#6,#7,#8));
+#13=IFCFACEBOUND(#12,.T.);
+#14=IFCFACE((#11,#13));
+#15=IFCOPENSHELL((#14));
+#16=IFCSHELLBASEDSURFACEMODEL((#15));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(16).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema)
+        .expect("shell-based surface model with hole must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    assert!(
+        (area - 96.0).abs() < 1e-3,
+        "mesh area must be outer minus hole = 96.0 (the old path dropped the \
+         hole bound and emitted 100.0), got {area}"
+    );
+}

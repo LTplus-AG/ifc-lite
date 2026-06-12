@@ -20,6 +20,7 @@
 
 import { Layers3, ChevronsUpDown, SquareStack, Building2 } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { useFloorplanView } from '@/hooks/useFloorplanView';
 import { cn } from '@/lib/utils';
 import type { LevelDisplayMode } from '@/store/slices/levelDisplaySlice';
@@ -33,12 +34,9 @@ const MODES: Array<{ key: LevelDisplayMode; label: string; Icon: typeof Layers3;
 export function StoreyDisplayControls() {
   const { availableStoreys, activateFloorplan } = useFloorplanView();
   const levelDisplayMode = useViewerStore((s) => s.levelDisplayMode);
-  const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
   const explodedGap = useViewerStore((s) => s.explodedGap);
   const setExplodedGap = useViewerStore((s) => s.setExplodedGap);
   const activeStorey = useViewerStore((s) => s.activeStorey);
-  const setActiveStorey = useViewerStore((s) => s.setActiveStorey);
-  const setStoreysSelection = useViewerStore((s) => s.setStoreysSelection);
 
   // Level display only makes sense with multiple storeys to stack/explode/solo.
   if (availableStoreys.length < 2) return null;
@@ -47,19 +45,10 @@ export function StoreyDisplayControls() {
     ? availableStoreys.find((s) => s.modelId === activeStorey.modelId && s.expressId === activeStorey.expressId) ?? null
     : null;
 
-  const handleMode = (mode: LevelDisplayMode) => {
-    if (mode === 'solo' && !activeStorey) {
-      // No focused storey yet → default to the top storey instead of
-      // cold-starting on the (often near-empty) lowest storey.
-      // availableStoreys is sorted by elevation descending, so [0] is highest.
-      const top = availableStoreys[0];
-      setActiveStorey({ modelId: top.modelId, expressId: top.expressId });
-      // Mirror into the renderer storey filter so the row highlights and the
-      // two isolation channels agree on the same storey.
-      setStoreysSelection([top.expressId]);
-    }
-    setLevelDisplayMode(mode);
-  };
+  // One unified transition: Solo isolates the active/top storey via the storey
+  // filter; Stacked / Exploded clear that isolation. No second channel to
+  // strand. (Solo's default storey is the top one, not the empty basement.)
+  const handleMode = (mode: LevelDisplayMode) => applyLevelDisplayMode(mode);
 
   return (
     <div className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 px-2 py-1.5">

@@ -17,13 +17,13 @@
 
 import { ChevronsUpDown, SquareStack, X } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { useFloorplanView } from '@/hooks/useFloorplanView';
 
 export function LevelDisplayIndicator() {
   const mode = useViewerStore((s) => s.levelDisplayMode);
   const explodedGap = useViewerStore((s) => s.explodedGap);
   const activeStorey = useViewerStore((s) => s.activeStorey);
-  const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
   const { availableStoreys } = useFloorplanView();
 
   if (mode === 'stacked') return null;
@@ -43,7 +43,7 @@ export function LevelDisplayIndicator() {
       <span className="tabular-nums">{label}</span>
       <button
         type="button"
-        onClick={() => setLevelDisplayMode('stacked')}
+        onClick={() => applyLevelDisplayMode('stacked')}
         title="Back to stacked"
         aria-label="Back to stacked view"
         className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"

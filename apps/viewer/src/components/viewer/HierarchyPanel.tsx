@@ -49,6 +49,7 @@ export function HierarchyPanel() {
   const setStoreysSelection = useViewerStore((s) => s.setStoreysSelection);
   const clearStoreySelection = useViewerStore((s) => s.clearStoreySelection);
   const setActiveStorey = useViewerStore((s) => s.setActiveStorey);
+  const setLevelDisplayMode = useViewerStore((s) => s.setLevelDisplayMode);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
@@ -409,11 +410,16 @@ export function HierarchyPanel() {
           selectedStoreys.size === storeyIds.length;
 
         if (allAlreadySelected) {
-          // Toggle off - clear selection to show all
+          // Toggle off - clear selection to show all. The level-display guard
+          // (useLevelDisplayEffect) drops Solo → Stacked when no storey is
+          // isolated, so the mode flag follows.
           clearStoreySelection();
         } else {
-          // Select this storey (replaces any existing selection)
+          // Select this storey (replaces any existing selection). Isolating a
+          // single storey IS Solo, so reflect that in the level-display mode —
+          // keeps the storey-tab control + in-viewport chip in sync.
           setStoreysSelection(storeyIds);
+          setLevelDisplayMode('solo');
         }
       }
     } else if (node.type === 'IfcSpace') {
@@ -454,7 +460,7 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter]);
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter]);
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {

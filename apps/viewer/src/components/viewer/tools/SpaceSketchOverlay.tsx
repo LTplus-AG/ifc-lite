@@ -30,7 +30,7 @@ import {
   GENERATED_SPACE_OBJECTTYPE,
   type BoundaryMode,
 } from '@ifc-lite/create';
-import { X, Undo2, Redo2, Building2, Layers } from 'lucide-react';
+import { X, Undo2, Redo2, Building2, Layers, Maximize, AlertTriangle } from 'lucide-react';
 
 let wasmReady: Promise<void> | null = null;
 function ensureWasm(): Promise<void> {
@@ -48,7 +48,7 @@ interface Boundary {
   edge: number;
   source: number | null;
 }
-type Mode = 'drag' | 'split' | 'merge';
+type Mode = 'drag' | 'split' | 'merge' | 'draw';
 type Pt = [number, number];
 type Hover =
   | { kind: 'vertex'; pos: Pt }
@@ -58,8 +58,10 @@ type Hover =
  *  edge (which becomes a new node when the cut is committed). */
 type SplitTarget = { kind: 'vertex'; vid: number; pos: Pt } | { kind: 'edge'; edge: number; pos: Pt };
 
-const SVG_W = 580;
-const SVG_H = 460;
+const DEFAULT_W = 580;
+const DEFAULT_H = 460;
+const MIN_W = 360;
+const MIN_H = 280;
 const PAD = 36;
 const PICK_PX = 12;
 const SNAP_PX = 10;
@@ -88,23 +90,33 @@ const centroid = (pts: Pt[]): Pt => {
   return [cx / pts.length, cy / pts.length];
 };
 
-interface Fit { scale: number; minX: number; minY: number }
+/** Screen transform as a pure affine: `screen = off + world * scale` (Y
+ *  flipped). Decoupling from the canvas size + a fixed origin is what lets the
+ *  same struct carry fit-to-bounds, wheel-zoom, and drag-pan (Issue 4). */
+interface Fit { scale: number; offX: number; offY: number }
 
-function computeFit(rooms: Room[]): Fit {
+/** Frame the rooms centred within a `w`×`h` canvas (PAD margin) as an affine. */
+function computeFit(rooms: Room[], w: number, h: number): Fit {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const r of rooms) for (const [x, y] of r.outline) {
     minX = Math.min(minX, x); minY = Math.min(minY, y);
     maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
   }
-  if (!isFinite(minX)) return { scale: 1, minX: 0, minY: 0 };
-  const scale = Math.min((SVG_W - 2 * PAD) / Math.max(maxX - minX, 1e-6), (SVG_H - 2 * PAD) / Math.max(maxY - minY, 1e-6));
-  return { scale, minX, minY };
+  if (!isFinite(minX)) return { scale: 1, offX: PAD, offY: h - PAD };
+  const scale = Math.min((w - 2 * PAD) / Math.max(maxX - minX, 1e-6), (h - 2 * PAD) / Math.max(maxY - minY, 1e-6));
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  return { scale, offX: w / 2 - cx * scale, offY: h / 2 + cy * scale };
 }
 
-const sX = (f: Fit, x: number) => PAD + (x - f.minX) * f.scale;
-const sY = (f: Fit, y: number) => SVG_H - PAD - (y - f.minY) * f.scale;
-const wX = (f: Fit, sx: number) => f.minX + (sx - PAD) / f.scale;
-const wY = (f: Fit, sy: number) => f.minY + (SVG_H - PAD - sy) / f.scale;
+/** Zoom by `factor` about screen point `(ax, ay)` (keeps it fixed). */
+function zoomFit(f: Fit, factor: number, ax: number, ay: number): Fit {
+  return { scale: f.scale * factor, offX: ax - (ax - f.offX) * factor, offY: ay + (f.offY - ay) * factor };
+}
+
+const sX = (f: Fit, x: number) => f.offX + x * f.scale;
+const sY = (f: Fit, y: number) => f.offY - y * f.scale;
+const wX = (f: Fit, sx: number) => (sx - f.offX) / f.scale;
+const wY = (f: Fit, sy: number) => (f.offY - sy) / f.scale;
 
 function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
   const dx = bx - ax, dy = by - ay;
@@ -144,20 +156,22 @@ export function SpaceSketchOverlay() {
   const plateRef = useRef<SpacePlateHandle | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const fitRef = useRef<Fit>({ scale: 1, minX: 0, minY: 0 });
+  const fitRef = useRef<Fit>({ scale: 1, offX: PAD, offY: DEFAULT_H - PAD });
   const rafRef = useRef<number | null>(null);
   const rebuildTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buildSeqRef = useRef(0);
   // IfcSpace expressIds this session created per storey — so a re-bake (or
   // "Generate all") replaces the spaces it dropped instead of duplicating.
   const generatedRef = useRef<Map<number, number[]>>(new Map());
-  const moveRef = useRef<{ x: number; y: number; shift: boolean } | null>(null);
+  const moveRef = useRef<{ x: number; y: number; shift: boolean; del: boolean } | null>(null);
 
   const dragRef = useRef<number | null>(null);
   const dragStartRef = useRef<Pt | null>(null);
   const otherVertsRef = useRef<Pt[]>([]);
   const pendingUndoRef = useRef<SpacePlateHandle | null>(null);
   const draggedRef = useRef(false);
+  const panningRef = useRef(false); // Issue 4: middle-mouse / empty-drag panning
+  const resizeRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
 
   const undoRef = useRef<SpacePlateHandle[]>([]);
   const redoRef = useRef<SpacePlateHandle[]>([]);
@@ -168,6 +182,19 @@ export function SpaceSketchOverlay() {
   const [splitPick, setSplitPick] = useState<SplitTarget | null>(null);
   const [splitHover, setSplitHover] = useState<Pt | null>(null);
   const [snapPos, setSnapPos] = useState<Pt | null>(null);
+  // Issue 3: the vertex that an ⌥/Ctrl-click would dissolve — telegraphed live.
+  const [deleteHover, setDeleteHover] = useState<Pt | null>(null);
+  // Issue 2: the in-progress drawn room (world coords) + the live cursor point.
+  const [drawPts, setDrawPts] = useState<Pt[]>([]);
+  const [drawCursor, setDrawCursor] = useState<Pt | null>(null);
+  // Issue 4: canvas size (resizable) + a tick that forces a re-render whenever
+  // the view transform in fitRef changes (zoom/pan/fit) without making the
+  // per-frame pointer math go through React state.
+  const [size, setSize] = useState({ w: DEFAULT_W, h: DEFAULT_H });
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const [fitTick, setFitTick] = useState(0);
+  const applyFit = useCallback((next: Fit) => { fitRef.current = next; setFitTick((t) => t + 1); }, []);
   const [derivedStorey, setDerivedStorey] = useState<number | null>(null);
   const [snapTol, setSnapTol] = useState<number | null>(null); // null = auto-escalate
   const [usedTol, setUsedTol] = useState(0.1);
@@ -182,7 +209,13 @@ export function SpaceSketchOverlay() {
   const [hist, setHist] = useState(0);
   const [status, setStatus] = useState('Load the demo plate or derive from a storey.');
   const [showBuilding, setShowBuilding] = useState(true);
+  const [showDiagnostics, setShowDiagnostics] = useState(false); // Issue 7 — leak diagnostics
   const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>('inner');
+  // Transient "12 → 9 rooms" badge after a corner-tolerance rebuild — the
+  // effect on the plan is otherwise invisible (Issue 5).
+  const [snapDelta, setSnapDelta] = useState<{ from: number; to: number } | null>(null);
+  const pendingSnapPrevRef = useRef<number | null>(null);
+  const snapDeltaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Every IfcBuildingStorey with its resolved name + elevation, low → high.
   const storeys = useMemo(() => {
@@ -219,7 +252,7 @@ export function SpaceSketchOverlay() {
         strokeDasharray={l.hidden ? '3 3' : undefined}
         pointerEvents="none" />
     ));
-  }, [underlay, showBuilding, hist]);
+  }, [underlay, showBuilding, fitTick]);
   const [storeyId, setStoreyId] = useState<number | null>(null);
   const lastDerivedRef = useRef<string | null>(null);
   // Connect to the shared active storey instead of always defaulting to the
@@ -308,6 +341,43 @@ export function SpaceSketchOverlay() {
     setStatus('Redo.');
   }, [resetInteraction, refreshRooms]);
 
+  // Ctrl/Cmd+Z (Shift = redo) must drive THIS overlay's history, not the 3D
+  // model behind the panel. The global handler in useKeyboardShortcuts routes
+  // Ctrl+Z to the active model's mutation stack; a capture-phase listener here
+  // runs before it and stopPropagation()s, so the sketch and the in-panel
+  // Undo/Redo buttons share one history. Skip when a text input is focused so
+  // native field undo (and the global handler, which also skips inputs) is
+  // untouched. The overlay only mounts while the tool is active, so this
+  // listener's lifetime is exactly the tool's.
+  useEffect(() => {
+    const onUndoRedo = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey)) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey) redo(); else undo();
+    };
+    window.addEventListener('keydown', onUndoRedo, true);
+    return () => window.removeEventListener('keydown', onUndoRedo, true);
+  }, [undo, redo]);
+
+  // Wheel = zoom about the cursor (Issue 4). A native non-passive listener so
+  // preventDefault() actually stops the page from scrolling under the panel.
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const factor = Math.exp(-e.deltaY * 0.0015); // scroll up → zoom in
+      const next = zoomFit(fitRef.current, factor, e.clientX - rect.left, e.clientY - rect.top);
+      if (next.scale >= 0.5 && next.scale <= 5000) { fitRef.current = next; setFitTick((t) => t + 1); }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   const buildFrom = useCallback(async (coords: Float64Array, sources: Int32Array, label: string, storey: number | null) => {
     // Re-entrancy guard: a rapid rebuild (snap slider) must not let an older
     // async build free/replace the plate a newer one is using — that races the
@@ -342,16 +412,25 @@ export function SpaceSketchOverlay() {
       plateRef.current = plate!;
       setUsedTol(used);
       const snap = plate!.snapshot() as Room[];
-      fitRef.current = computeFit(snap);
+      applyFit(computeFit(snap, sizeRef.current.w, sizeRef.current.h));
       resetInteraction();
       setDerivedStorey(storey);
       setRooms(snap); setHist((v) => v + 1);
+      // Surface the room-count consequence of a corner-tolerance change (only a
+      // snap rebuild sets pendingSnapPrevRef; an initial derive leaves it null).
+      const prevCount = pendingSnapPrevRef.current;
+      pendingSnapPrevRef.current = null;
+      if (prevCount != null && prevCount !== snap.length) {
+        setSnapDelta({ from: prevCount, to: snap.length });
+        if (snapDeltaTimerRef.current) clearTimeout(snapDeltaTimerRef.current);
+        snapDeltaTimerRef.current = setTimeout(() => setSnapDelta(null), 1800);
+      }
       const total = snap.reduce((s, r) => s + r.area, 0);
-      setStatus(`${label}: ${snap.length} room(s), ${total.toFixed(1)} m² · snap ${used}m${manual == null ? ' (auto)' : ''}.`);
+      setStatus(`${label}: ${snap.length} room(s), ${total.toFixed(1)} m² · corner tol ${used}m${manual == null ? ' (auto)' : ''}.`);
     } catch (e) {
       setStatus(`Build failed: ${String(e)}`);
     }
-  }, [freeHistory, resetInteraction]);
+  }, [freeHistory, resetInteraction, applyFit]);
 
   // Manual snap override (null → back to auto-escalate). Rebuilds the current
   // plate from its source segments at the chosen tolerance.
@@ -359,6 +438,8 @@ export function SpaceSketchOverlay() {
     snapTolRef.current = tol;
     setSnapTol(tol);
     if (tol != null) setUsedTol(tol); // move the slider thumb/label immediately
+    // Remember the room count before this rebuild so buildFrom can flash the delta.
+    pendingSnapPrevRef.current = plateRef.current?.roomCount ?? null;
     // Debounce the actual rebuild: the range input fires onChange on every
     // tick, and buildFrom is async + frees/creates wasm handles — rebuilding
     // per tick raced the shared heap and froze the editor. Rebuild once the
@@ -522,6 +603,7 @@ export function SpaceSketchOverlay() {
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (rebuildTimerRef.current) clearTimeout(rebuildTimerRef.current);
+    if (snapDeltaTimerRef.current) clearTimeout(snapDeltaTimerRef.current);
     freeHistory();
     plateRef.current?.free();
     plateRef.current = null;
@@ -535,8 +617,8 @@ export function SpaceSketchOverlay() {
     // pushed the room off-canvas ("disappears") and made the SVG rasterise a
     // polygon spanning to extreme coordinates, freezing the browser.
     return [
-      Math.max(0, Math.min(SVG_W, e.clientX - rect.left)),
-      Math.max(0, Math.min(SVG_H, e.clientY - rect.top)),
+      Math.max(0, Math.min(sizeRef.current.w, e.clientX - rect.left)),
+      Math.max(0, Math.min(sizeRef.current.h, e.clientY - rect.top)),
     ];
   };
 
@@ -613,6 +695,28 @@ export function SpaceSketchOverlay() {
     setStatus(`Split — ${plate.roomCount} room(s).`);
   }, [commitUndo, refreshRooms]);
 
+  // Commit the in-progress drawn polygon as a new room face (Issue 2). The new
+  // room is its own connected component — it doesn't merge into existing walls.
+  const commitDraw = useCallback(() => {
+    const plate = plateRef.current;
+    if (!plate) return;
+    if (drawPts.length < 3) { setStatus('A room needs at least 3 points.'); return; }
+    const snap = plate.duplicate();
+    try {
+      plate.addFace(new Float64Array(drawPts.flat()), -1);
+      commitUndo(snap);
+      setDrawPts([]); setDrawCursor(null);
+      refreshRooms();
+      setStatus(`Drew a room — ${plate.roomCount} room(s).`);
+    } catch (err) {
+      // Roll back to the pre-draw snapshot (mirror performSplit/merge).
+      plate.free();
+      plateRef.current = snap;
+      refreshRooms();
+      setStatus(`Draw rejected: ${String(err).replace(/^\w+:\s*/, '')}`);
+    }
+  }, [drawPts, commitUndo, refreshRooms]);
+
   const processMove = useCallback(() => {
     rafRef.current = null;
     const m = moveRef.current;
@@ -655,28 +759,67 @@ export function SpaceSketchOverlay() {
       const t = resolveSplitTarget(wx, wy);
       setSplitHover(t ? t.pos : null);
       setHover(t && t.kind === 'vertex' ? { kind: 'vertex', pos: t.pos } : null);
+    } else if (mode === 'draw') {
+      // Snap the preview point to an existing corner so drawn rooms align.
+      const snapV = nearestVertPos(wx, wy);
+      setDrawCursor(snapV ?? [wx, wy]);
     } else {
       const v = pickVertex(wx, wy);
       const pos = v != null ? nearestVertPos(wx, wy) : null;
       setHover(v != null && pos ? { kind: 'vertex', pos } : null);
+      // Telegraph the ⌥/Ctrl-click delete on whatever vertex is under the cursor.
+      setDeleteHover(m.del && pos ? pos : null);
     }
   }, [mode, pickEdge, pickVertex, nearestVertPos, resolveSplitTarget, refreshRooms]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (panningRef.current) {
+      // Pan by the raw pointer delta (movement*), so it doesn't fight the
+      // canvas-edge clamp in svgPoint.
+      fitRef.current = { scale: fitRef.current.scale, offX: fitRef.current.offX + e.movementX, offY: fitRef.current.offY + e.movementY };
+      setFitTick((t) => t + 1);
+      return;
+    }
     const [x, y] = svgPoint(e);
-    moveRef.current = { x, y, shift: e.shiftKey };
+    moveRef.current = { x, y, shift: e.shiftKey, del: e.ctrlKey || e.altKey || e.metaKey };
     if (rafRef.current == null) rafRef.current = requestAnimationFrame(processMove);
   }, [processMove]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     const plate = plateRef.current;
     if (!plate) return;
+    // Middle-mouse drag pans the view in any mode (Issue 4).
+    if (e.button === 1) {
+      panningRef.current = true;
+      svgRef.current?.setPointerCapture(e.pointerId);
+      return;
+    }
     const [sx, sy] = svgPoint(e);
     const wx = wX(fitRef.current, sx), wy = wY(fitRef.current, sy);
 
     if (mode === 'drag') {
       const v = pickVertex(wx, wy);
-      if (v == null) return;
+      if (v == null) {
+        // Empty space in drag mode → pan the view (Issue 4).
+        panningRef.current = true;
+        svgRef.current?.setPointerCapture(e.pointerId);
+        return;
+      }
+      // ⌥/Ctrl-click dissolves a degree-2 node — the inverse of split (Issue 3).
+      if (e.altKey || e.ctrlKey || e.metaKey) {
+        const snap = plate.duplicate();
+        try {
+          plate.dissolveVertex(v);
+          commitUndo(snap); refreshRooms(); setHover(null); setDeleteHover(null);
+          setStatus(`Removed vertex — ${plate.roomCount} room(s).`);
+        } catch (err) {
+          plate.free();
+          plateRef.current = snap;
+          refreshRooms();
+          setStatus(`Can't remove vertex: ${String(err).replace(/^\w+:\s*/, '')}`);
+        }
+        return;
+      }
       const start = nearestVertPos(wx, wy);
       dragRef.current = v;
       dragStartRef.current = start;
@@ -713,10 +856,30 @@ export function SpaceSketchOverlay() {
       const first = splitPick;
       setSplitPick(null);
       performSplit(first, target);
+      return;
     }
-  }, [mode, pickVertex, nearestVertPos, pickEdge, rooms, splitPick, resolveSplitTarget, performSplit, commitUndo, refreshRooms]);
+    if (mode === 'draw') {
+      const snapV = nearestVertPos(wx, wy);
+      const p: Pt = snapV ?? [wx, wy];
+      // With ≥3 points placed, clicking the first dot closes the loop.
+      if (drawPts.length >= 3) {
+        const first = drawPts[0];
+        if (Math.hypot(p[0] - first[0], p[1] - first[1]) <= PICK_PX / fitRef.current.scale) {
+          commitDraw();
+          return;
+        }
+      }
+      setDrawPts((pts) => [...pts, p]);
+      setStatus(`Drawing — ${drawPts.length + 1} point(s). Click the first dot (or “Finish”) to close.`);
+    }
+  }, [mode, pickVertex, nearestVertPos, pickEdge, rooms, splitPick, resolveSplitTarget, performSplit, commitUndo, refreshRooms, drawPts, commitDraw]);
 
   const endDrag = useCallback((e: React.PointerEvent) => {
+    if (panningRef.current) {
+      panningRef.current = false;
+      svgRef.current?.releasePointerCapture(e.pointerId);
+      return;
+    }
     if (dragRef.current == null) return;
     dragRef.current = null; dragStartRef.current = null; setSnapPos(null);
     svgRef.current?.releasePointerCapture(e.pointerId);
@@ -731,20 +894,20 @@ export function SpaceSketchOverlay() {
   const total = rooms.reduce((s, r) => s + r.area, 0);
   const mergeRooms = hover?.kind === 'edge' ? new Set(hover.rooms) : null;
   const cursorWorld = moveRef.current ? [wX(f, moveRef.current.x), wY(f, moveRef.current.y)] as Pt : null;
-  const cursor = dragRef.current != null ? 'grabbing' : (mode === 'drag' && hover?.kind === 'vertex') ? 'grab' : 'crosshair';
+  const cursor = panningRef.current || dragRef.current != null ? 'grabbing' : (mode === 'drag' && hover?.kind === 'vertex') ? 'grab' : 'crosshair';
   const canUndo = undoRef.current.length > 0;
   const canRedo = redoRef.current.length > 0;
-  void hist;
+  void hist; void fitTick;
 
   const gridStep = f.scale > 14 ? 1 : f.scale > 5 ? 2 : 5;
   const gridLines: { x1: number; y1: number; x2: number; y2: number }[] = [];
   if (rooms.length) {
     const gx0 = Math.floor(wX(f, PAD) / gridStep) * gridStep;
-    const gx1 = Math.ceil(wX(f, SVG_W - PAD) / gridStep) * gridStep;
-    const gy0 = Math.floor(wY(f, SVG_H - PAD) / gridStep) * gridStep;
+    const gx1 = Math.ceil(wX(f, size.w - PAD) / gridStep) * gridStep;
+    const gy0 = Math.floor(wY(f, size.h - PAD) / gridStep) * gridStep;
     const gy1 = Math.ceil(wY(f, PAD) / gridStep) * gridStep;
-    for (let x = gx0; x <= gx1; x += gridStep) gridLines.push({ x1: sX(f, x), y1: PAD, x2: sX(f, x), y2: SVG_H - PAD });
-    for (let y = gy0; y <= gy1; y += gridStep) gridLines.push({ x1: PAD, y1: sY(f, y), x2: SVG_W - PAD, y2: sY(f, y) });
+    for (let x = gx0; x <= gx1; x += gridStep) gridLines.push({ x1: sX(f, x), y1: PAD, x2: sX(f, x), y2: size.h - PAD });
+    for (let y = gy0; y <= gy1; y += gridStep) gridLines.push({ x1: PAD, y1: sY(f, y), x2: size.w - PAD, y2: sY(f, y) });
   }
 
   const iconBtn = 'inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40';
@@ -753,12 +916,50 @@ export function SpaceSketchOverlay() {
   // editable vertices stay on the centreline (the topology). `center` shows the
   // raw centreline.
   const ext = extractionRef.current;
-  const displayOutline = (outline: Pt[], others: Pt[][]): Pt[] =>
-    boundaryMode === 'center' || !ext ? outline : offsetRoomFootprint(outline, ext.segments, ext.thicknesses, boundaryMode, others);
+  // Per-room display outline at the chosen boundary, plus whether the inset
+  // actually changed the room. Inner/Outer silently fall back to the centreline
+  // when no wall offset applies (no wall ran along the room's edges, or a
+  // fully-internal room in Outer mode) — flag those so the toggle doesn't look
+  // broken (Issue 6).
+  const boundaryInfo = useMemo(
+    () =>
+      rooms.map((r, ri) => {
+        if (boundaryMode === 'center') return { disp: r.outline, unbounded: false };
+        if (!ext) return { disp: r.outline, unbounded: true };
+        const others = rooms.filter((_, j) => j !== ri).map((x) => x.outline);
+        const disp = offsetRoomFootprint(r.outline, ext.segments, ext.thicknesses, boundaryMode, others);
+        return { disp, unbounded: Math.abs(polyArea(disp) - r.area) < 1e-3 };
+      }),
+    [rooms, boundaryMode, ext],
+  );
+  const unboundedCount = boundaryMode === 'center' ? 0 : boundaryInfo.filter((b) => b.unbounded).length;
+
+  // Issue 7 — leak diagnostics: classify each derive wall segment as bounding
+  // (its centreline lies along a room edge) vs non-bounding (a stray/leaked wall
+  // that enclosed nothing). Purely geometric, so it needs no source provenance.
+  const diagnostics = useMemo(() => {
+    if (!showDiagnostics || !ext) return null;
+    const tol = 0.35; // m — segment midpoint within this of a room edge ⇒ bounding
+    return ext.segments.map((s) => {
+      const mx = (s.a[0] + s.b[0]) / 2, my = (s.a[1] + s.b[1]) / 2;
+      let bounding = false;
+      for (const r of rooms) {
+        const n = r.outline.length;
+        for (let i = 0; i < n && !bounding; i++) {
+          const a = r.outline[i], b = r.outline[(i + 1) % n];
+          if (distToSeg(mx, my, a[0], a[1], b[0], b[1]) <= tol) bounding = true;
+        }
+        if (bounding) break;
+      }
+      return { a: s.a as Pt, b: s.b as Pt, bounding };
+    });
+  }, [showDiagnostics, ext, rooms]);
+  const leakCount = diagnostics ? diagnostics.filter((s) => !s.bounding).length : 0;
+  const badCount = rooms.filter((r) => !r.simple).length;
 
   return (
     <div ref={panelRef} className="absolute left-1/2 top-4 -translate-x-1/2 z-30 rounded-xl border bg-background/95 shadow-xl backdrop-blur p-3 select-none pointer-events-auto"
-         style={{ width: SVG_W + 24 }}>
+         style={{ width: size.w + 24 }}>
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <Layers className="h-4 w-4 text-muted-foreground" /> Space Sketch
@@ -780,45 +981,83 @@ export function SpaceSketchOverlay() {
       {/* Edit: mode + history */}
       <div className="flex items-center gap-1.5 mb-2">
         <div className="inline-flex rounded-md border p-0.5">
-          {(['drag', 'split', 'merge'] as Mode[]).map((m) => (
+          {(['drag', 'split', 'merge', 'draw'] as Mode[]).map((m) => (
             <button key={m}
               className={`rounded px-2 py-0.5 text-xs capitalize transition-colors ${mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              onClick={() => { setMode(m); setSplitPick(null); setSplitHover(null); setHover(null); }}
-              disabled={!rooms.length}>{m}</button>
+              onClick={() => { setMode(m); setSplitPick(null); setSplitHover(null); setHover(null); setDeleteHover(null); setDrawPts([]); setDrawCursor(null); }}
+              title={m === 'draw' ? 'Author a new room by clicking its corners' : `Edit derived rooms (${m})`}
+              disabled={m === 'draw' ? derivedStorey == null : !rooms.length}>{m}</button>
           ))}
         </div>
-        <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo"><Undo2 className="h-4 w-4" /></button>
-        <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo"><Redo2 className="h-4 w-4" /></button>
-        <div className="ml-auto flex items-center gap-1.5 text-[11px] text-muted-foreground"
-          title="Corner-closing tolerance — larger closes bigger gaps but can over-merge">
-          <span>snap</span>
-          <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="w-20 accent-primary"
-            disabled={derivedStorey == null} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
-          <button className="tabular-nums hover:text-foreground" onClick={() => rebuildWithSnap(null)}
-            title="Reset to automatic snap">{usedTol.toFixed(2)}m{snapTol == null ? '·a' : ''}</button>
+        <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
+        <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"><Redo2 className="h-4 w-4" /></button>
+      </div>
+
+      {/* Draw-room controls (Issue 2) — only while authoring a new room. */}
+      {mode === 'draw' && (
+        <div className="flex items-center gap-1.5 mb-2 text-[11px]">
+          <span className="text-muted-foreground">Draw room · {drawPts.length} pt(s)</span>
+          <button onClick={commitDraw} disabled={drawPts.length < 3}
+            className="rounded bg-emerald-600 px-2 py-0.5 font-medium text-white hover:bg-emerald-700 disabled:opacity-40">Finish</button>
+          <button onClick={() => setDrawPts((p) => p.slice(0, -1))} disabled={!drawPts.length}
+            className="rounded border px-2 py-0.5 hover:bg-muted disabled:opacity-40" title="Remove the last point">Undo point</button>
+          <button onClick={() => { setDrawPts([]); setDrawCursor(null); setStatus('Draw cancelled.'); }} disabled={!drawPts.length}
+            className="rounded border px-2 py-0.5 hover:bg-muted disabled:opacity-40">Cancel</button>
         </div>
+      )}
+
+      {/* Corner-closing tolerance — the gap two wall centrelines may have and
+          still close a room corner. NOT vertex snapping (that's the drag
+          behaviour); the name "snap" was conflated with it. Numeric field for
+          precise values; the badge flashes the room-count change so the effect
+          is visible on the plan (Issue 5). */}
+      <div className="flex items-center gap-1.5 mb-2 text-[11px] text-muted-foreground">
+        <span title="How far apart two wall centrelines can be and still close a room corner. Larger closes bigger gaps but can over-merge. This is NOT vertex snapping.">Corner tol</span>
+        <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="w-20 accent-primary"
+          disabled={derivedStorey == null} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
+        <input type="number" min={0.05} max={1} step={0.05} value={usedTol} aria-label="Corner tolerance (metres)"
+          className="w-14 rounded border bg-background px-1 py-0.5 tabular-nums disabled:opacity-40"
+          disabled={derivedStorey == null}
+          onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) rebuildWithSnap(Math.min(1, Math.max(0.05, v))); }} />
+        <span>m</span>
+        <button className="rounded px-1 hover:text-foreground disabled:opacity-40" onClick={() => rebuildWithSnap(null)}
+          disabled={derivedStorey == null}
+          title={snapTol == null ? 'Automatic — escalates the tolerance until rooms close' : 'Reset to automatic'}>{snapTol == null ? 'auto' : 'reset'}</button>
+        {snapDelta && (
+          <span className={`ml-auto rounded px-1 tabular-nums animate-pulse ${snapDelta.to === 0 ? 'text-red-500' : snapDelta.to < snapDelta.from ? 'text-amber-500' : 'text-emerald-500'}`}
+            title="Rooms before → after this tolerance change">{snapDelta.from} → {snapDelta.to} rooms</span>
+        )}
       </div>
 
       {/* View: boundary relative to walls + building underlay */}
       <div className="flex items-center gap-2 mb-2 text-[11px] text-muted-foreground">
         <span title="Where the space boundary sits relative to its walls — drives the 2D preview and the bake">Boundary</span>
         <div className="inline-flex rounded-md border p-0.5">
-          {(['center', 'inner', 'outer'] as BoundaryMode[]).map((m) => (
-            <button key={m}
-              className={`rounded px-2 py-0.5 capitalize transition-colors ${boundaryMode === m ? 'bg-primary text-primary-foreground' : 'hover:text-foreground'}`}
-              onClick={() => setBoundaryMode(m)}
-              title={m === 'center' ? 'Wall centreline' : m === 'inner' ? 'Inner (net) face' : 'Outer (gross) face'}>{m}</button>
-          ))}
+          {(['center', 'inner', 'outer'] as BoundaryMode[]).map((m) => {
+            const noWallData = !ext && m !== 'center';
+            return (
+              <button key={m}
+                className={`rounded px-2 py-0.5 capitalize transition-colors disabled:opacity-40 ${boundaryMode === m ? 'bg-primary text-primary-foreground' : 'hover:text-foreground'}`}
+                onClick={() => setBoundaryMode(m)} disabled={noWallData}
+                title={noWallData ? 'No wall data on this derive — only the centreline is available' : m === 'center' ? 'Wall centreline' : m === 'inner' ? 'Inner (net) face' : 'Outer (gross) face'}>{m}</button>
+            );
+          })}
         </div>
-        <button className={`${iconBtn} ml-auto ${showBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
+        <button className={`${iconBtn} ml-auto`} onClick={() => applyFit(computeFit(rooms, sizeRef.current.w, sizeRef.current.h))}
+          disabled={!rooms.length} title="Fit the plan to the canvas (reset zoom & pan)"><Maximize className="h-4 w-4" /></button>
+        <button className={`${iconBtn} ${showBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
           onClick={() => setShowBuilding((v) => !v)}
           title="Show surrounding building elements (plan cut ~1.2 m above the floor)"><Building2 className="h-4 w-4" /></button>
+        <button className={`${iconBtn} ${showDiagnostics ? 'bg-red-500/10 text-red-500 hover:bg-red-500/15' : ''}`}
+          onClick={() => setShowDiagnostics((v) => !v)} disabled={!ext}
+          title="Diagnostics — highlight walls that bound no room (possible leaks) and rooms that failed to close"><AlertTriangle className="h-4 w-4" /></button>
       </div>
 
-      <svg ref={svgRef} width={SVG_W} height={SVG_H} style={{ cursor }}
+      <svg ref={svgRef} width={size.w} height={size.h} style={{ cursor }}
         className="rounded border bg-muted/20 touch-none"
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag}
-        onPointerLeave={() => { setHover(null); setSplitHover(null); }}>
+        onContextMenu={(e) => e.preventDefault()}
+        onPointerLeave={() => { setHover(null); setSplitHover(null); setDeleteHover(null); setDrawCursor(null); }}>
         {gridLines.map((l, i) => <line key={`g${i}`} {...l} stroke="currentColor" strokeOpacity={0.06} strokeWidth={1} />)}
 
         {/* Building-element underlay (plan cut ~1.2 m above the storey) for orientation. */}
@@ -826,7 +1065,7 @@ export function SpaceSketchOverlay() {
 
         {rooms.map((r, ri) => {
           const color = ROOM_COLORS[ri % ROOM_COLORS.length];
-          const disp = displayOutline(r.outline, rooms.filter((_, j) => j !== ri).map((x) => x.outline));
+          const { disp, unbounded } = boundaryInfo[ri];
           const pts = disp.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ');
           const [cwx, cwy] = centroid(disp);
           const cx = sX(f, cwx), cy = sY(f, cwy);
@@ -840,12 +1079,23 @@ export function SpaceSketchOverlay() {
                   fill="none" stroke={color} strokeOpacity={0.25} strokeDasharray="3 3" strokeWidth={1} />
               )}
               <polygon points={pts} fill={bad ? '#ef4444' : color} fillOpacity={lit ? 0.42 : bad ? 0.3 : 0.16}
-                stroke={bad ? '#ef4444' : color} strokeWidth={lit ? 3 : 2} />
+                stroke={bad ? '#ef4444' : color} strokeWidth={lit ? 3 : 2}
+                strokeDasharray={unbounded && !bad ? '5 4' : undefined}>
+                {unbounded && <title>Boundary “{boundaryMode}” made no change to this room — no wall offset applies (no wall runs along its edges, or it's fully internal in Outer mode).</title>}
+              </polygon>
               <text x={cx} y={cy - 5} textAnchor="middle" fontSize={12} fontWeight={600} fill="currentColor" className="pointer-events-none">{area.toFixed(2)}</text>
               <text x={cx} y={cy + 9} textAnchor="middle" fontSize={9} fill="currentColor" opacity={0.55} className="pointer-events-none">m²</text>
             </g>
           );
         })}
+
+        {/* Issue 7 — leak diagnostics: walls that bound a room (green) vs walls
+            that bound nothing (red dashed = a stray segment / leak suspect). */}
+        {diagnostics && diagnostics.map((s, i) => (
+          <line key={`dg${i}`} x1={sX(f, s.a[0])} y1={sY(f, s.a[1])} x2={sX(f, s.b[0])} y2={sY(f, s.b[1])}
+            stroke={s.bounding ? '#22c55e' : '#ef4444'} strokeOpacity={s.bounding ? 0.45 : 0.95}
+            strokeWidth={s.bounding ? 1.2 : 2.2} strokeDasharray={s.bounding ? undefined : '4 3'} pointerEvents="none" />
+        ))}
 
         {hover?.kind === 'edge' && (
           <line x1={sX(f, hover.a[0])} y1={sY(f, hover.a[1])} x2={sX(f, hover.b[0])} y2={sY(f, hover.b[1])} stroke="#ef4444" strokeWidth={4} strokeLinecap="round" />
@@ -869,6 +1119,24 @@ export function SpaceSketchOverlay() {
           </g>
         )}
 
+        {/* Draw-room in progress (Issue 2): placed points, rubber band, close hint. */}
+        {mode === 'draw' && drawPts.length > 0 && (
+          <g pointerEvents="none">
+            {drawPts.length >= 3 && (
+              <polygon points={drawPts.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ')} fill="#22c55e" fillOpacity={0.1} stroke="none" />
+            )}
+            <polyline points={drawPts.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ')} fill="none" stroke="#22c55e" strokeWidth={1.5} />
+            {drawCursor && (
+              <line x1={sX(f, drawPts[drawPts.length - 1][0])} y1={sY(f, drawPts[drawPts.length - 1][1])}
+                x2={sX(f, drawCursor[0])} y2={sY(f, drawCursor[1])} stroke="#22c55e" strokeOpacity={0.5} strokeDasharray="4 3" strokeWidth={1.2} />
+            )}
+            {drawPts.map((p, i) => (
+              <circle key={`d${i}`} cx={sX(f, p[0])} cy={sY(f, p[1])} r={i === 0 && drawPts.length >= 3 ? 6 : 3.5}
+                fill={i === 0 && drawPts.length >= 3 ? '#22c55e' : '#fff'} stroke="#16a34a" strokeWidth={1.5} />
+            ))}
+          </g>
+        )}
+
         {uniqueVerts(rooms).map((p, i) => {
           const isHover = hover?.kind === 'vertex' && Math.abs(hover.pos[0] - p[0]) < EPS && Math.abs(hover.pos[1] - p[1]) < EPS;
           return (
@@ -876,6 +1144,14 @@ export function SpaceSketchOverlay() {
               fill={isHover ? '#fbbf24' : '#fff'} stroke="#334155" strokeWidth={1.5} pointerEvents="none" />
           );
         })}
+
+        {/* ⌥/Ctrl-click delete telegraph (Issue 3): a red ring + minus over the node. */}
+        {deleteHover && (
+          <g pointerEvents="none">
+            <circle cx={sX(f, deleteHover[0])} cy={sY(f, deleteHover[1])} r={8} fill="#ef4444" fillOpacity={0.15} stroke="#ef4444" strokeWidth={1.5} />
+            <line x1={sX(f, deleteHover[0]) - 4} y1={sY(f, deleteHover[1])} x2={sX(f, deleteHover[0]) + 4} y2={sY(f, deleteHover[1])} stroke="#ef4444" strokeWidth={2} />
+          </g>
+        )}
       </svg>
 
       <div className="mt-2.5 flex items-center gap-2">
@@ -888,10 +1164,34 @@ export function SpaceSketchOverlay() {
         </div>
       </div>
       <div className="mt-1.5 text-[11px] text-muted-foreground">
-        {!rooms.length && 'Pick a storey to derive its rooms, or “Generate all” for the whole building.'}
-        {!!rooms.length && mode === 'drag' && 'Drag a vertex — shared vertices move both rooms; snaps to others, Shift = ortho.'}
+        {!rooms.length && mode !== 'draw' && 'Pick a storey to derive its rooms, “Generate all” for the building, or “draw” a room by hand.'}
+        {!!rooms.length && mode === 'drag' && 'Drag a vertex — shared vertices move both rooms; snaps to others, Shift = ortho. ⌥/Ctrl-click a node to remove it.'}
         {!!rooms.length && mode === 'split' && 'Click two points — corners or anywhere on a wall (new nodes added as needed).'}
         {!!rooms.length && mode === 'merge' && 'Hover highlights the wall + both rooms; click to merge them.'}
+        {mode === 'draw' && 'Click to drop corners; click the first dot (or “Finish”) to close the room. It’s a standalone room — it won’t merge into existing walls.'}
+        {unboundedCount > 0 && (
+          <span className="text-amber-600 dark:text-amber-500"> · {unboundedCount} room(s) unchanged by {boundaryMode} (dashed) — no wall offset.</span>
+        )}
+        {!!rooms.length && <span className="opacity-60"> · Scroll = zoom · middle- or empty-drag = pan · ⤢ = fit.</span>}
+        {showDiagnostics && (
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+            <span className="text-emerald-600 dark:text-emerald-500">▬ wall bounds a room</span>
+            <span className="text-red-500">╌ wall bounds nothing ({leakCount} — leak suspect)</span>
+            <span className="text-red-500">▦ room failed to close ({badCount})</span>
+          </div>
+        )}
+      </div>
+
+      {/* Resize grip (Issue 4) — drag to grow/shrink the canvas; the plan stays
+          put (hit ⤢ to reframe). */}
+      <div
+        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); resizeRef.current = { x: e.clientX, y: e.clientY, w: size.w, h: size.h }; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); }}
+        onPointerMove={(e) => { const r = resizeRef.current; if (!r) return; setSize({ w: Math.max(MIN_W, Math.round(r.w + (e.clientX - r.x))), h: Math.max(MIN_H, Math.round(r.h + (e.clientY - r.y))) }); }}
+        onPointerUp={(e) => { resizeRef.current = null; (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); }}
+        title="Drag to resize the panel"
+        className="absolute bottom-1 right-1 h-3.5 w-3.5 cursor-nwse-resize text-muted-foreground/50 hover:text-foreground"
+        style={{ touchAction: 'none' }}>
+        <svg viewBox="0 0 10 10" className="h-full w-full" pointerEvents="none"><path d="M9 2 L2 9 M9 6 L6 9" stroke="currentColor" strokeWidth={1.2} fill="none" /></svg>
       </div>
     </div>
   );

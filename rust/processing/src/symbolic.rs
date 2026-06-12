@@ -241,7 +241,11 @@ impl SymbolicData {
 /// Annotation / FootPrint / Axis representation, and return the full
 /// symbolic primitive collection. Pure-Rust (no `wasm_bindgen`), so it
 /// works inside the HTTP server.
-pub fn extract_symbolic_data(content: &str) -> SymbolicData {
+pub fn extract_symbolic_data<T>(content: &T) -> SymbolicData
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
@@ -1511,7 +1515,7 @@ fn sample_grid_axis_endpoints(
 // IfcStyledItem reverse index + colour resolution.
 // ────────────────────────────────────────────────────────────────────────────
 
-fn build_styled_item_index(content: &str, decoder: &mut EntityDecoder) -> HashMap<u32, Vec<u32>> {
+fn build_styled_item_index(content: &[u8], decoder: &mut EntityDecoder) -> HashMap<u32, Vec<u32>> {
     let collect_refs = |attr: &AttributeValue| -> Vec<u32> {
         if let Some(list) = attr.as_list() {
             list.iter().filter_map(|v| v.as_entity_ref()).collect()

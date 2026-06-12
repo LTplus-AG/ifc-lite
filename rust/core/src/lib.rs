@@ -22,7 +22,7 @@
 //! use ifc_lite_core::{EntityScanner, parse_entity, IfcType};
 //!
 //! // Scan for entities
-//! let content = r#"#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);"#;
+//! let content = br#"#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);"#;
 //! let mut scanner = EntityScanner::new(content);
 //!
 //! while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -30,7 +30,7 @@
 //! }
 //!
 //! // Parse individual entity
-//! let input = "#123=IFCWALL('guid',$,$,$,$,$,$,$);";
+//! let input = b"#123=IFCWALL('guid',$,$,$,$,$,$,$);";
 //! let (id, ifc_type, attrs) = parse_entity(input).unwrap();
 //! assert_eq!(ifc_type, IfcType::IfcWall);
 //! ```

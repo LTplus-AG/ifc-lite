@@ -7,7 +7,7 @@ use ifc_lite_geometry::GeometryRouter;
 use std::fs;
 
 fn main() {
-    let content = fs::read_to_string("../../../01_Snowdon_Towers_Sample_Structural(1).ifc")
+    let content = fs::read("../../../01_Snowdon_Towers_Sample_Structural(1).ifc")
         .expect("Failed to read IFC file");
 
     println!("File size: {} bytes", content.len());

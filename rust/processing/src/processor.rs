@@ -552,22 +552,22 @@ fn is_quick_spatial_type_ci(type_name: &str) -> bool {
         || type_name.eq_ignore_ascii_case("IFCRAILWAYPART")
 }
 
-fn parse_step_arguments<'a>(entity_text: &'a str) -> Vec<&'a str> {
-    let Some(open_idx) = entity_text.find('(') else {
+fn parse_step_arguments(entity_bytes: &[u8]) -> Vec<&[u8]> {
+    let Some(open_idx) = entity_bytes.iter().position(|byte| *byte == b'(') else {
         return Vec::new();
     };
-    let Some(close_idx) = entity_text.rfind(')') else {
+    let Some(close_idx) = entity_bytes.iter().rposition(|byte| *byte == b')') else {
         return Vec::new();
     };
     if close_idx <= open_idx {
         return Vec::new();
     }
-    let args = &entity_text[open_idx + 1..close_idx];
+    let args = &entity_bytes[open_idx + 1..close_idx];
     let mut parts = Vec::new();
     let mut in_string = false;
     let mut depth = 0i32;
     let mut start = 0usize;
-    let bytes = args.as_bytes();
+    let bytes = args;
     let mut index = 0usize;
     while index < bytes.len() {
         match bytes[index] {
@@ -581,7 +581,7 @@ fn parse_step_arguments<'a>(entity_text: &'a str) -> Vec<&'a str> {
             b'(' if !in_string => depth += 1,
             b')' if !in_string => depth -= 1,
             b',' if !in_string && depth == 0 => {
-                parts.push(args[start..index].trim());
+                parts.push(args[start..index].trim_ascii());
                 start = index + 1;
             }
             _ => {}
@@ -589,47 +589,55 @@ fn parse_step_arguments<'a>(entity_text: &'a str) -> Vec<&'a str> {
         index += 1;
     }
     if start <= args.len() {
-        parts.push(args[start..].trim());
+        parts.push(args[start..].trim_ascii());
     }
     parts
 }
 
-fn parse_step_string(token: &str) -> Option<String> {
-    let trimmed = token.trim();
-    if trimmed.len() < 2 || !trimmed.starts_with('\'') || !trimmed.ends_with('\'') {
+fn parse_step_string(token: &[u8]) -> Option<String> {
+    let trimmed = token.trim_ascii();
+    if trimmed.len() < 2 || trimmed[0] != b'\'' || trimmed[trimmed.len() - 1] != b'\'' {
         return None;
     }
-    Some(trimmed[1..trimmed.len() - 1].replace("''", "'"))
+    Some(String::from_utf8_lossy(&trimmed[1..trimmed.len() - 1]).replace("''", "'"))
 }
 
-fn parse_step_ref(token: &str) -> Option<u32> {
-    token.trim().strip_prefix('#')?.parse::<u32>().ok()
+fn parse_step_ref(token: &[u8]) -> Option<u32> {
+    std::str::from_utf8(token.trim_ascii().strip_prefix(b"#")?)
+        .ok()?
+        .parse()
+        .ok()
 }
 
-fn parse_step_ref_list(token: &str) -> Vec<u32> {
-    let trimmed = token.trim();
+fn parse_step_ref_list(token: &[u8]) -> Vec<u32> {
+    let trimmed = token.trim_ascii();
     let inner = trimmed
-        .strip_prefix('(')
-        .and_then(|value| value.strip_suffix(')'))
+        .strip_prefix(b"(")
+        .and_then(|value| value.strip_suffix(b")"))
         .unwrap_or(trimmed);
-    inner.split(',').filter_map(parse_step_ref).collect()
+    inner.split(|byte| *byte == b',').filter_map(parse_step_ref).collect()
 }
 
-fn extract_name_from_args(args: &[&str], fallback: &str) -> String {
+fn extract_name_from_args(args: &[&[u8]], fallback: &str) -> String {
     args.get(2)
         .and_then(|token| parse_step_string(token))
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| fallback.to_string())
 }
 
-fn extract_storey_elevation_from_args(args: &[&str]) -> Option<f64> {
+fn extract_storey_elevation_from_args(args: &[&[u8]]) -> Option<f64> {
     for index in [9usize, 8usize] {
-        if let Some(value) = args.get(index).and_then(|token| token.trim().parse::<f64>().ok()) {
+        if let Some(value) = args
+            .get(index)
+            .and_then(|token| std::str::from_utf8(token.trim_ascii()).ok())
+            .and_then(|token| token.parse::<f64>().ok())
+        {
             return Some(value);
         }
     }
     args.iter()
-        .filter_map(|token| token.trim().parse::<f64>().ok())
+        .filter_map(|token| std::str::from_utf8(token.trim_ascii()).ok())
+        .filter_map(|token| token.parse::<f64>().ok())
         .find(|value| value.abs() < 10_000.0)
 }
 
@@ -643,13 +651,20 @@ fn build_quick_spatial_tree_node(
         .ok_or_else(|| format!("Quick spatial node #{express_id} not found"))?;
     let mut children = Vec::with_capacity(node.children.len());
     for child_id in &node.children {
-        children.push(build_quick_spatial_tree_node(*child_id, nodes, element_summaries)?);
+        children.push(build_quick_spatial_tree_node(
+            *child_id,
+            nodes,
+            element_summaries,
+        )?);
     }
     let elements = node
         .elements
         .iter()
         .map(|element_id| {
-            element_summaries.get(element_id).cloned().unwrap_or(QuickMetadataEntitySummary {
+            element_summaries
+                .get(element_id)
+                .cloned()
+                .unwrap_or(QuickMetadataEntitySummary {
                 express_id: *element_id,
                 type_name: "IfcProduct".to_string(),
                 name: format!("IfcProduct #{}", element_id),
@@ -694,13 +709,16 @@ fn geometry_priority_score(ifc_type: &IfcType) -> u8 {
 }
 
 /// Process IFC content with parallel geometry extraction (default opening filter).
-pub fn process_geometry(content: &str) -> ProcessingResult {
-    process_geometry_filtered(content, OpeningFilterMode::Default)
+pub fn process_geometry<T>(content: &T) -> ProcessingResult
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    process_geometry_filtered(content.as_ref(), OpeningFilterMode::Default)
 }
 
 /// Process IFC content with parallel geometry extraction and emit batches as they complete.
 pub fn process_geometry_streaming(
-    content: &str,
+    content: &[u8],
     batch_size: usize,
     on_batch: impl FnMut(&[MeshData], usize, usize),
 ) -> ProcessingResult {
@@ -718,7 +736,7 @@ pub fn process_geometry_streaming(
 
 /// Process IFC content with parallel geometry extraction and configurable streaming behavior.
 pub fn process_geometry_streaming_with_options(
-    content: &str,
+    content: &[u8],
     options: StreamingOptions,
     on_batch: impl FnMut(&[MeshData], usize, usize),
     on_color_update: impl FnMut(&[(u32, [f32; 4])]),
@@ -735,7 +753,7 @@ pub fn process_geometry_streaming_with_options(
 /// Process IFC content with parallel geometry extraction and emit a quick metadata bootstrap
 /// once the scan phase completes.
 pub fn process_geometry_streaming_with_options_and_bootstrap(
-    content: &str,
+    content: &[u8],
     options: StreamingOptions,
     on_batch: impl FnMut(&[MeshData], usize, usize),
     on_color_update: impl FnMut(&[(u32, [f32; 4])]),
@@ -752,18 +770,28 @@ pub fn process_geometry_streaming_with_options_and_bootstrap(
 }
 
 /// Process IFC content with parallel geometry extraction and a configurable opening filter.
-pub fn process_geometry_filtered(content: &str, opening_filter: OpeningFilterMode) -> ProcessingResult {
+pub fn process_geometry_filtered<T>(
+    content: &T,
+    opening_filter: OpeningFilterMode,
+) -> ProcessingResult
+where
+    T: AsRef<[u8]> + ?Sized,
+{
     process_geometry_filtered_with_quality(content, opening_filter, TessellationQuality::default())
 }
 
 /// Like [`process_geometry_filtered`] with a consumer-selected tessellation
 /// detail level (#976) — the server half of the quality knob the wasm path
 /// exposes via `setTessellationQuality`.
-pub fn process_geometry_filtered_with_quality(
-    content: &str,
+pub fn process_geometry_filtered_with_quality<T>(
+    content: &T,
     opening_filter: OpeningFilterMode,
     tessellation_quality: TessellationQuality,
-) -> ProcessingResult {
+) -> ProcessingResult
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     process_geometry_streaming_filtered_with_options(
         content,
         opening_filter,
@@ -781,7 +809,7 @@ pub fn process_geometry_filtered_with_quality(
 
 /// Process IFC content with parallel geometry extraction and a configurable streaming batch size.
 pub fn process_geometry_streaming_filtered(
-    content: &str,
+    content: &[u8],
     opening_filter: OpeningFilterMode,
     batch_size: usize,
     on_batch: impl FnMut(&[MeshData], usize, usize),
@@ -803,7 +831,7 @@ pub fn process_geometry_streaming_filtered(
 
 /// Process IFC content with parallel geometry extraction and configurable streaming behavior.
 pub fn process_geometry_streaming_filtered_with_options(
-    content: &str,
+    content: &[u8],
     opening_filter: OpeningFilterMode,
     options: StreamingOptions,
     mut on_batch: impl FnMut(&[MeshData], usize, usize),
@@ -869,7 +897,8 @@ pub fn process_geometry_streaming_filtered_with_options(
     // MappingOrigin (duplicate boxes at the wrong position).
     let mut instantiated_type_ids: FxHashSet<u32> = FxHashSet::default();
     let quick_metadata_enabled = options.emit_quick_metadata_bootstrap;
-    let mut quick_spatial_nodes = quick_metadata_enabled.then(HashMap::<u32, QuickSpatialNodeEntry>::new);
+    let mut quick_spatial_nodes =
+        quick_metadata_enabled.then(HashMap::<u32, QuickSpatialNodeEntry>::new);
     let mut quick_aggregate_links = if quick_metadata_enabled {
         Vec::<(u32, Vec<u32>)>::new()
     } else {
@@ -890,10 +919,9 @@ pub fn process_geometry_streaming_filtered_with_options(
     let mut site_entity_pos: Option<(usize, usize)> = None;
     let mut building_entity_pos: Option<(usize, usize)> = None;
 
-    let defer_style_updates =
-        options.fast_first_batch &&
-        opening_filter == OpeningFilterMode::Default &&
-        !options.include_presentation_layers;
+    let defer_style_updates = options.fast_first_batch
+        && opening_filter == OpeningFilterMode::Default
+        && !options.include_presentation_layers;
     let mut deferred_styled_item_positions: Vec<(usize, usize)> = Vec::new();
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -1135,7 +1163,6 @@ pub fn process_geometry_streaming_filtered_with_options(
                 representation_map_id: None,
             });
         }
-
         // #957: collect type-product geometry (IfcXxxType carrying its own
         // RepresentationMaps) and every IfcMappedItem's MappingSource, so after
         // the scan we can render the RepresentationMaps that NO occurrence
@@ -1164,7 +1191,13 @@ pub fn process_geometry_streaming_filtered_with_options(
                 .map(|token| parse_step_ref_list(token))
                 .unwrap_or_default();
             if !rep_map_ids.is_empty() {
-                type_product_geometry.push((id, start, end, IfcType::from_str(type_name), rep_map_ids));
+                type_product_geometry.push((
+                    id,
+                    start,
+                    end,
+                    IfcType::from_str(type_name),
+                    rep_map_ids,
+                ));
             }
         }
     }
@@ -1238,9 +1271,15 @@ pub fn process_geometry_streaming_filtered_with_options(
     );
 
     // Detect schema version
-    if content.contains("IFC4X3") {
+    if content
+        .windows(b"IFC4X3".len())
+        .any(|window| window == b"IFC4X3")
+    {
         schema_version = "IFC4X3".into();
-    } else if content.contains("IFC4") {
+    } else if content
+        .windows(b"IFC4".len())
+        .any(|window| window == b"IFC4")
+    {
         schema_version = "IFC4".into();
     }
 
@@ -1286,7 +1325,9 @@ pub fn process_geometry_streaming_filtered_with_options(
                 .map(|node| node.express_id);
         }
         let spatial_tree = root_id
-            .map(|root| build_quick_spatial_tree_node(root, &spatial_nodes, &quick_element_summaries))
+            .map(|root| {
+                build_quick_spatial_tree_node(root, &spatial_nodes, &quick_element_summaries)
+            })
             .transpose()
             .unwrap_or(None);
         on_quick_metadata_bootstrap(&QuickMetadataBootstrap {
@@ -1373,7 +1414,10 @@ pub fn process_geometry_streaming_filtered_with_options(
     // their per-triangle UV maps once, keyed by face-set id. `build_texture_index`
     // bails out on a cheap substring check for the (vast majority) untextured
     // files. Consumed by the type-only render path below.
-    let texture_index = Arc::new(ifc_lite_geometry::build_texture_index(content, &mut decoder));
+    let texture_index = Arc::new(ifc_lite_geometry::build_texture_index(
+        content,
+        &mut decoder,
+    ));
     // Join the material chain into colours per element (#407). The single
     // opaque-first colour is the general-path element fallback; the full list
     // feeds the opening sub-mesh transparent/opaque split (#913 §2.3).
@@ -1391,9 +1435,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     let total_jobs = entity_jobs.len();
     let initial_chunk_size = options.initial_batch_size.max(1);
-    let throughput_chunk_size = options
-        .throughput_batch_size
-        .max(initial_chunk_size);
+    let throughput_chunk_size = options.throughput_batch_size.max(initial_chunk_size);
     let mut color_cache_by_product_definition_shape: FxHashMap<u32, Option<[f32; 4]>> =
         FxHashMap::default();
     let mut layer_cache_by_product_definition_shape: FxHashMap<u32, Option<String>> =
@@ -1426,7 +1468,8 @@ pub fn process_geometry_streaming_filtered_with_options(
             // Phase 1: parallel decode with thread-local EntityDecoder
             let entity_index_for_meta = entity_index_arc.clone();
             jobs_chunk.par_iter_mut().for_each(|job| {
-                if job.global_id.is_some() || job.name.is_some()
+                if job.global_id.is_some()
+                    || job.name.is_some()
                     || job.product_definition_shape_id.is_some()
                 {
                     return;
@@ -1523,7 +1566,10 @@ pub fn process_geometry_streaming_filtered_with_options(
 
         processed_jobs += jobs_chunk.len();
         total_vertices += chunk_meshes.iter().map(|m| m.vertex_count()).sum::<usize>();
-        total_triangles += chunk_meshes.iter().map(|m| m.triangle_count()).sum::<usize>();
+        total_triangles += chunk_meshes
+            .iter()
+            .map(|m| m.triangle_count())
+            .sum::<usize>();
 
         if !chunk_meshes.is_empty() {
             total_meshes += chunk_meshes.len();
@@ -1540,10 +1586,15 @@ pub fn process_geometry_streaming_filtered_with_options(
                 // the entire file.  This eliminates ~0.5-1 s for 1 GB files.
                 let mut rebuilt_styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
                 {
-                    let mut style_decoder = EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+                    let mut style_decoder =
+                        EntityDecoder::with_arc_index(content, entity_index_arc.clone());
                     for &(start, end) in &deferred_styled_item_positions {
                         if let Ok(styled_item) = style_decoder.decode_at(start, end) {
-                            collect_geometry_style_info(&mut rebuilt_styles, &styled_item, &mut style_decoder);
+                            collect_geometry_style_info(
+                                &mut rebuilt_styles,
+                                &styled_item,
+                                &mut style_decoder,
+                            );
                         }
                     }
                 }
@@ -1641,7 +1692,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 
 fn process_entity_job(
     job: &EntityJob,
-    content: &str,
+    content: &[u8],
     entity_index_arc: &Arc<EntityIndex>,
     unit_scale: f64,
     rtc_offset: (f64, f64, f64),
@@ -1829,7 +1880,9 @@ fn process_entity_job(
         None => true,
     };
     if needs_fallback {
-        mesh_candidate = local_router.process_element(&entity, &mut local_decoder).ok();
+        mesh_candidate = local_router
+            .process_element(&entity, &mut local_decoder)
+            .ok();
     }
 
     if let Some(mut mesh) = mesh_candidate {
@@ -1839,9 +1892,11 @@ fn process_entity_job(
             // matches the face set's CoordIndex (no CSG/void retopology);
             // otherwise we keep the single dominant-coloured mesh below.
             if !indexed_colour_full.is_empty() {
-                if let Some(full) =
-                    find_indexed_colour_for_element(&entity, indexed_colour_full, &mut local_decoder)
-                {
+                if let Some(full) = find_indexed_colour_for_element(
+                    &entity,
+                    indexed_colour_full,
+                    &mut local_decoder,
+                ) {
                     let geometry_id = full.geometry_id;
                     if let Some(groups) = crate::style::split_mesh_by_indexed_colour(&mesh, full) {
                         let mut out: Vec<MeshData> = Vec::with_capacity(groups.len());
@@ -2083,7 +2138,7 @@ fn collect_geometry_style_info(
 fn build_color_updates_for_jobs(
     jobs: &[EntityJob],
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
-    content: &str,
+    content: &[u8],
     entity_index: &Arc<EntityIndex>,
 ) -> Vec<(u32, [f32; 4])> {
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
@@ -2633,10 +2688,7 @@ mod tests {
     use super::*;
 
     fn map(pairs: &[(u32, &[u32])]) -> FxHashMap<u32, Vec<u32>> {
-        pairs
-            .iter()
-            .map(|(k, v)| (*k, v.to_vec()))
-            .collect()
+        pairs.iter().map(|(k, v)| (*k, v.to_vec())).collect()
     }
 
     #[test]
@@ -2666,15 +2718,25 @@ END-ISO-10303-21;
         let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
         styles.insert(
             110,
-            GeometryStyleInfo { color: blue, shading_color: None, material_name: None },
+            GeometryStyleInfo {
+                color: blue,
+                shading_color: None,
+                material_name: None,
+            },
         );
 
         let mut decoder = EntityDecoder::new(IFC);
 
         // Mapped item, no direct style → inherits the underlying item's colour.
-        assert_eq!(find_geometry_item_color(100, &styles, &mut decoder), Some(blue));
+        assert_eq!(
+            find_geometry_item_color(100, &styles, &mut decoder),
+            Some(blue)
+        );
         // A direct style still wins.
-        assert_eq!(find_geometry_item_color(110, &styles, &mut decoder), Some(blue));
+        assert_eq!(
+            find_geometry_item_color(110, &styles, &mut decoder),
+            Some(blue)
+        );
         // A non-mapped, unstyled item (the representation map itself) → None.
         assert_eq!(find_geometry_item_color(101, &styles, &mut decoder), None);
     }

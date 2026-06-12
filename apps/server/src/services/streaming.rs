@@ -31,8 +31,12 @@ use std::pin::Pin;
 use tokio::sync::mpsc;
 
 /// Generate streaming geometry events backed by the canonical pipeline.
+///
+/// Takes the raw IFC bytes (issue #1023): localized non-UTF-8 byte sequences
+/// in the HEADER must not block otherwise valid models, so no `String`
+/// conversion happens anywhere on this path.
 pub fn process_streaming(
-    content: String,
+    content: Vec<u8>,
     initial_batch_size: usize,
     max_batch_size: usize,
     opening_filter: OpeningFilterMode,
@@ -41,7 +45,7 @@ pub fn process_streaming(
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
 
     let handle = tokio::task::spawn_blocking(move || {
-        let cache_key = DiskCache::generate_key(content.as_bytes());
+        let cache_key = DiskCache::generate_key(&content);
 
         let mut started = false;
         let mut batch_number = 0usize;

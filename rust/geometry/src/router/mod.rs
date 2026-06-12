@@ -18,7 +18,6 @@ mod voids_2d;
 mod tests;
 
 use crate::material_layer_index::MaterialLayerIndex;
-use crate::tessellation::TessellationQuality;
 use crate::processors::{
     AdvancedBrepProcessor, BSplineSurfaceProcessor, BlockProcessor, BooleanClippingProcessor,
     CsgSolidProcessor, ExtrudedAreaSolidProcessor, ExtrudedAreaSolidTaperedProcessor,
@@ -27,6 +26,7 @@ use crate::processors::{
     SectionedSolidHorizontalProcessor, ShellBasedSurfaceModelProcessor, SphereProcessor,
     SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
+use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
@@ -246,7 +246,11 @@ impl GeometryRouter {
 
     /// Create router and extract unit scale from IFC file
     /// Automatically finds IFCPROJECT and extracts length unit conversion
-    pub fn with_units(content: &str, decoder: &mut EntityDecoder) -> Self {
+    pub fn with_units<T>(content: &T, decoder: &mut EntityDecoder) -> Self
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let content = content.as_ref();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         let mut scale = 1.0;
 
@@ -270,11 +274,15 @@ impl GeometryRouter {
     /// * `content` - IFC file content
     /// * `decoder` - Entity decoder
     /// * `rtc_offset` - RTC offset to subtract from world coordinates (typically model centroid)
-    pub fn with_units_and_rtc(
-        content: &str,
+    pub fn with_units_and_rtc<T>(
+        content: &T,
         decoder: &mut ifc_lite_core::EntityDecoder,
         rtc_offset: (f64, f64, f64),
-    ) -> Self {
+    ) -> Self
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let content = content.as_ref();
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
         let mut scale = 1.0;
 
@@ -468,11 +476,7 @@ impl GeometryRouter {
 
     /// Total number of CSG failures across all products.
     pub fn csg_failure_total(&self) -> usize {
-        self.csg_failures
-            .borrow()
-            .values()
-            .map(|v| v.len())
-            .sum()
+        self.csg_failures.borrow().values().map(|v| v.len()).sum()
     }
 
     /// Internal: record a batch of failures against a product. Existing
@@ -564,11 +568,7 @@ impl GeometryRouter {
     /// Internal: tag the per-host diagnostic with the failure summary for
     /// this host. Drained from `ClippingProcessor::take_failures` after
     /// `apply_void_context` finishes.
-    pub(crate) fn record_host_failure_summary(
-        &self,
-        host_id: u32,
-        failures: &[BoolFailure],
-    ) {
+    pub(crate) fn record_host_failure_summary(&self, host_id: u32, failures: &[BoolFailure]) {
         if failures.is_empty() {
             return;
         }
@@ -579,15 +579,11 @@ impl GeometryRouter {
             // Short label for at-a-glance grouping. Full BoolFailure list
             // remains in `csg_failures` for callers that want detail.
             let label = match &failures[0].reason {
-                crate::diagnostics::BoolFailureReason::OperandTooLarge { .. } => {
-                    "OperandTooLarge"
-                }
+                crate::diagnostics::BoolFailureReason::OperandTooLarge { .. } => "OperandTooLarge",
                 crate::diagnostics::BoolFailureReason::EmptyOperand => "EmptyOperand",
                 crate::diagnostics::BoolFailureReason::DegenerateOperand => "DegenerateOperand",
                 crate::diagnostics::BoolFailureReason::NoBoundsOverlap => "NoBoundsOverlap",
-                crate::diagnostics::BoolFailureReason::KernelOutputInvalid => {
-                    "KernelOutputInvalid"
-                }
+                crate::diagnostics::BoolFailureReason::KernelOutputInvalid => "KernelOutputInvalid",
                 crate::diagnostics::BoolFailureReason::SolidSolidDifferenceSkipped => {
                     "SolidSolidDifferenceSkipped"
                 }

@@ -24,9 +24,6 @@ pub enum ApiError {
     #[error("File too large: maximum size is {max_mb} MB")]
     FileTooLarge { max_mb: usize },
 
-    #[error("Invalid UTF-8 content")]
-    InvalidUtf8(#[from] std::string::FromUtf8Error),
-
     #[error("Multipart error: {0}")]
     Multipart(#[from] axum::extract::multipart::MultipartError),
 
@@ -62,7 +59,6 @@ impl IntoResponse for ApiError {
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST"),
             ApiError::MissingFile => (StatusCode::BAD_REQUEST, "MISSING_FILE"),
             ApiError::FileTooLarge { .. } => (StatusCode::PAYLOAD_TOO_LARGE, "FILE_TOO_LARGE"),
-            ApiError::InvalidUtf8(_) => (StatusCode::BAD_REQUEST, "INVALID_UTF8"),
             ApiError::Multipart(_) => (StatusCode::BAD_REQUEST, "MULTIPART_ERROR"),
             ApiError::Processing(_) => (StatusCode::INTERNAL_SERVER_ERROR, "PROCESSING_ERROR"),
             ApiError::Cache(_) => (StatusCode::INTERNAL_SERVER_ERROR, "CACHE_ERROR"),

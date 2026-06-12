@@ -19,23 +19,27 @@ use nom::{
 use crate::error::{Error, Result};
 use crate::generated::IfcType;
 
-/// STEP/IFC Token
+/// STEP/IFC token.
+///
+/// String-like tokens borrow their original bytes. Decode them only at a
+/// user-facing boundary so malformed real-world encodings cannot invalidate
+/// the structural parser.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'a> {
     /// Entity reference: #123
     EntityRef(u32),
     /// String literal: 'text'
-    String(&'a str),
+    String(&'a [u8]),
     /// Integer: 42
     Integer(i64),
     /// Float: 3.14
     Float(f64),
     /// Enum: .TRUE., .FALSE., .UNKNOWN.
-    Enum(&'a str),
+    Enum(&'a [u8]),
     /// List: (1, 2, 3)
     List(Vec<Token<'a>>),
     /// Typed value: IFCPARAMETERVALUE(0.), IFCBOOLEAN(.T.)
-    TypedValue(&'a str, Vec<Token<'a>>),
+    TypedValue(&'a [u8], Vec<Token<'a>>),
     /// Null value: $
     Null,
     /// Asterisk (derived value): *
@@ -43,9 +47,9 @@ pub enum Token<'a> {
 }
 
 /// Parse entity reference: #123
-fn entity_ref(input: &str) -> IResult<&str, Token<'_>> {
+fn entity_ref(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     map(
-        preceded(char('#'), map_res(digit1, |s: &str| s.parse::<u32>())),
+        preceded(char('#'), map_res(digit1, lexical_core::parse::<u32>)),
         Token::EntityRef,
     )(input)
 }
@@ -53,11 +57,11 @@ fn entity_ref(input: &str) -> IResult<&str, Token<'_>> {
 /// Parse string literal: 'text' or "text"
 /// IFC uses '' to escape a single quote within a string
 /// Uses memchr for SIMD-accelerated quote searching
-fn string_literal(input: &str) -> IResult<&str, Token<'_>> {
+fn string_literal(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     // Helper to parse string content with escaped quotes - SIMD optimized
     #[inline]
-    fn parse_string_content(input: &str, quote_byte: u8) -> IResult<&str, &str> {
-        let bytes = input.as_bytes();
+    fn parse_string_content(input: &[u8], quote_byte: u8) -> IResult<&[u8], &[u8]> {
+        let bytes = input;
         let mut pos = 0;
 
         // Use memchr for SIMD-accelerated searching
@@ -94,9 +98,9 @@ fn string_literal(input: &str) -> IResult<&str, Token<'_>> {
 /// Parse integer: 42, -42
 /// Uses lexical-core for 10x faster parsing
 #[inline]
-fn integer(input: &str) -> IResult<&str, Token<'_>> {
-    map_res(recognize(tuple((opt(char('-')), digit1))), |s: &str| {
-        lexical_core::parse::<i64>(s.as_bytes())
+fn integer(input: &[u8]) -> IResult<&[u8], Token<'_>> {
+    map_res(recognize(tuple((opt(char('-')), digit1))), |s: &[u8]| {
+        lexical_core::parse::<i64>(s)
             .map(Token::Integer)
             .map_err(|_| "parse error")
     })(input)
@@ -106,7 +110,7 @@ fn integer(input: &str) -> IResult<&str, Token<'_>> {
 /// IFC allows floats like "0." without decimal digits
 /// Uses lexical-core for 10x faster parsing
 #[inline]
-fn float(input: &str) -> IResult<&str, Token<'_>> {
+fn float(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     map_res(
         recognize(tuple((
             opt(char('-')),
@@ -115,8 +119,8 @@ fn float(input: &str) -> IResult<&str, Token<'_>> {
             opt(digit1), // Made optional to support "0." format
             opt(tuple((one_of("eE"), opt(one_of("+-")), digit1))),
         ))),
-        |s: &str| {
-            lexical_core::parse::<f64>(s.as_bytes())
+        |s: &[u8]| {
+            lexical_core::parse::<f64>(s)
                 .map(Token::Float)
                 .map_err(|_| "parse error")
         },
@@ -124,11 +128,11 @@ fn float(input: &str) -> IResult<&str, Token<'_>> {
 }
 
 /// Parse enum: .TRUE., .FALSE., .UNKNOWN., .ELEMENT.
-fn enum_value(input: &str) -> IResult<&str, Token<'_>> {
+fn enum_value(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     map(
         delimited(
             char('.'),
-            take_while1(|c: char| c.is_alphanumeric() || c == '_'),
+            take_while1(|c: u8| c.is_ascii_alphanumeric() || c == b'_'),
             char('.'),
         ),
         Token::Enum,
@@ -136,12 +140,12 @@ fn enum_value(input: &str) -> IResult<&str, Token<'_>> {
 }
 
 /// Parse null: $
-fn null(input: &str) -> IResult<&str, Token<'_>> {
+fn null(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     map(char('$'), |_| Token::Null)(input)
 }
 
 /// Parse derived: *
-fn derived(input: &str) -> IResult<&str, Token<'_>> {
+fn derived(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     map(char('*'), |_| Token::Derived)(input)
 }
 
@@ -153,11 +157,11 @@ fn derived(input: &str) -> IResult<&str, Token<'_>> {
 const MAX_NESTING_DEPTH: u32 = 256;
 
 /// Parse typed value: IFCPARAMETERVALUE(0.), IFCBOOLEAN(.T.)
-fn typed_value_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
+fn typed_value_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
     map(
         pair(
             // Type name (all caps with optional numbers/underscores)
-            take_while1(|c: char| c.is_alphanumeric() || c == '_'),
+            take_while1(|c: u8| c.is_ascii_alphanumeric() || c == b'_'),
             // Arguments
             delimited(
                 char('('),
@@ -172,17 +176,17 @@ fn typed_value_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
 }
 
 /// Skip whitespace
-fn ws(input: &str) -> IResult<&str, ()> {
-    map(take_while(|c: char| c.is_whitespace()), |_| ())(input)
+fn ws(input: &[u8]) -> IResult<&[u8], ()> {
+    map(take_while(|c: u8| c.is_ascii_whitespace()), |_| ())(input)
 }
 
 /// Parse a token with optional surrounding whitespace
 /// Optimized ordering: test cheapest patterns first (single-char markers)
-fn token(input: &str) -> IResult<&str, Token<'_>> {
+fn token(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     token_at_depth(input, 0)
 }
 
-fn token_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
+fn token_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
     if depth > MAX_NESTING_DEPTH {
         return Err(nom::Err::Failure(nom::error::Error::new(
             input,
@@ -213,11 +217,11 @@ fn token_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
 /// Parse list: (1, 2, 3) or nested lists
 /// Test-only wrapper for the depth-0 entry into list.
 #[cfg(test)]
-fn list(input: &str) -> IResult<&str, Token<'_>> {
+fn list(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     list_at_depth(input, 0)
 }
 
-fn list_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
+fn list_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
     map(
         delimited(
             char('('),
@@ -230,14 +234,18 @@ fn list_at_depth(input: &str, depth: u32) -> IResult<&str, Token<'_>> {
     )(input)
 }
 
-/// Parse a complete entity line
+/// Parse a complete entity line from raw IFC bytes.
 /// Example: #123=IFCWALL('guid','owner',$,$,'name',$,$,$);
-pub fn parse_entity(input: &str) -> Result<(u32, IfcType, Vec<Token<'_>>)> {
-    let result: IResult<&str, (u32, &str, Vec<Token>)> = tuple((
+pub fn parse_entity<'a, T>(input: &'a T) -> Result<(u32, IfcType, Vec<Token<'a>>)>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let input = input.as_ref();
+    let result: IResult<&[u8], (u32, &[u8], Vec<Token>)> = tuple((
         // Entity ID: #123
         delimited(
             ws,
-            preceded(char('#'), map_res(digit1, |s: &str| s.parse::<u32>())),
+            preceded(char('#'), map_res(digit1, lexical_core::parse::<u32>)),
             ws,
         ),
         // Equals sign
@@ -246,7 +254,7 @@ pub fn parse_entity(input: &str) -> Result<(u32, IfcType, Vec<Token<'_>>)> {
             // Entity type: IFCWALL
             delimited(
                 ws,
-                take_while1(|c: char| c.is_alphanumeric() || c == '_'),
+                take_while1(|c: u8| c.is_ascii_alphanumeric() || c == b'_'),
                 ws,
             ),
         ),
@@ -260,6 +268,8 @@ pub fn parse_entity(input: &str) -> Result<(u32, IfcType, Vec<Token<'_>>)> {
 
     match result {
         Ok((_, (id, type_str, args))) => {
+            let type_str = std::str::from_utf8(type_str)
+                .map_err(|_| Error::parse(0, "Entity type is not ASCII/UTF-8"))?;
             let ifc_type = IfcType::from_str(type_str);
             Ok((id, ifc_type, args))
         }
@@ -267,12 +277,10 @@ pub fn parse_entity(input: &str) -> Result<(u32, IfcType, Vec<Token<'_>>)> {
     }
 }
 
-/// Fast entity scanner - scans file without full parsing
+/// Fast entity scanner over raw IFC bytes without full parsing.
 /// O(n) performance for finding entities by type
 /// Uses memchr for SIMD-accelerated byte searching
 pub struct EntityScanner<'a> {
-    #[allow(dead_code)]
-    content: &'a str,
     bytes: &'a [u8],
     position: usize,
 }
@@ -284,10 +292,12 @@ impl<'a> EntityScanner<'a> {
     /// stray `#` inside a header string (e.g. a CATIA `FILE_NAME` like
     /// `'…\X0\2#.ifc'`) can't be mistaken for an entity start and corrupt
     /// quote-parity for the rest of the file (issue #654).
-    pub fn new(content: &'a str) -> Self {
-        let bytes = content.as_bytes();
+    pub fn new<T>(content: &'a T) -> Self
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let bytes = content.as_ref();
         Self {
-            content,
             bytes,
             position: data_section_start(bytes),
         }
@@ -303,10 +313,16 @@ impl<'a> EntityScanner<'a> {
     ///
     /// Does NOT auto-skip the HEADER section — that's the caller's
     /// responsibility, since shards expect the exact offset they were given.
-    pub fn new_at(content: &'a str, position: usize) -> Self {
-        let bytes = content.as_bytes();
+    pub fn new_at<T>(content: &'a T, position: usize) -> Self
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let bytes = content.as_ref();
         let clamped = position.min(bytes.len());
-        Self { content, bytes, position: clamped }
+        Self {
+            bytes,
+            position: clamped,
+        }
     }
 
     /// Current byte offset of the scanner (start of the next entity to scan).
@@ -673,10 +689,7 @@ fn data_section_start(bytes: &[u8]) -> usize {
             pos += 1;
             continue;
         }
-        if b == b'D'
-            && pos + MARKER.len() <= len
-            && &bytes[pos..pos + MARKER.len()] == MARKER
-        {
+        if b == b'D' && pos + MARKER.len() <= len && &bytes[pos..pos + MARKER.len()] == MARKER {
             return pos + MARKER.len();
         }
         pos += 1;
@@ -692,30 +705,30 @@ mod tests {
     #[test]
     #[allow(clippy::approx_constant)]
     fn test_basic_tokens() {
-        type Parser = for<'a> fn(&'a str) -> IResult<&'a str, Token<'a>>;
-        let cases: &[(Parser, &str, Token)] = &[
-            (entity_ref, "#123", Token::EntityRef(123)),
-            (entity_ref, "#0", Token::EntityRef(0)),
-            (string_literal, "'hello'", Token::String("hello")),
+        type Parser = for<'a> fn(&'a [u8]) -> IResult<&'a [u8], Token<'a>>;
+        let cases: &[(Parser, &[u8], Token)] = &[
+            (entity_ref, b"#123", Token::EntityRef(123)),
+            (entity_ref, b"#0", Token::EntityRef(0)),
+            (string_literal, b"'hello'", Token::String(b"hello")),
             (
                 string_literal,
-                "'with spaces'",
-                Token::String("with spaces"),
+                b"'with spaces'",
+                Token::String(b"with spaces"),
             ),
-            (integer, "42", Token::Integer(42)),
-            (integer, "-42", Token::Integer(-42)),
-            (integer, "0", Token::Integer(0)),
-            (float, "3.14", Token::Float(3.14)),
-            (float, "-3.14", Token::Float(-3.14)),
-            (float, "1.5E-10", Token::Float(1.5e-10)),
-            (enum_value, ".TRUE.", Token::Enum("TRUE")),
-            (enum_value, ".FALSE.", Token::Enum("FALSE")),
-            (enum_value, ".ELEMENT.", Token::Enum("ELEMENT")),
+            (integer, b"42", Token::Integer(42)),
+            (integer, b"-42", Token::Integer(-42)),
+            (integer, b"0", Token::Integer(0)),
+            (float, b"3.14", Token::Float(3.14)),
+            (float, b"-3.14", Token::Float(-3.14)),
+            (float, b"1.5E-10", Token::Float(1.5e-10)),
+            (enum_value, b".TRUE.", Token::Enum(b"TRUE")),
+            (enum_value, b".FALSE.", Token::Enum(b"FALSE")),
+            (enum_value, b".ELEMENT.", Token::Enum(b"ELEMENT")),
         ];
         for (parse, input, expected) in cases {
             assert_eq!(
                 parse(input),
-                Ok(("", expected.clone())),
+                Ok((&b""[..], expected.clone())),
                 "tokenizing {input:?}"
             );
         }
@@ -723,7 +736,7 @@ mod tests {
 
     #[test]
     fn test_list() {
-        let result = list("(1,2,3)");
+        let result = list(b"(1,2,3)");
         assert!(result.is_ok());
         let (_, token) = result.unwrap();
         match token {
@@ -739,7 +752,7 @@ mod tests {
 
     #[test]
     fn test_nested_list() {
-        let result = list("(1,(2,3),4)");
+        let result = list(b"(1,(2,3),4)");
         assert!(result.is_ok());
         let (_, token) = result.unwrap();
         match token {
@@ -776,7 +789,7 @@ mod tests {
         // First test: simple list (should work)
         let simple = "(0.,0.,1.)";
         println!("Testing simple list: {}", simple);
-        let simple_result = list(simple);
+        let simple_result = list(simple.as_bytes());
         println!("Simple list result: {:?}", simple_result);
 
         // Second test: nested in entity (what's failing)
@@ -790,7 +803,7 @@ mod tests {
             // Try parsing just the arguments part
             println!("\nTrying to parse just arguments: ((0.,0.,1.))");
             let args_input = "((0.,0.,1.))";
-            let args_result = list(args_input);
+            let args_result = list(args_input.as_bytes());
             println!("Args list result: {:?}", args_result);
         }
 

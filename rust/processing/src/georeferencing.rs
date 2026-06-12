@@ -103,7 +103,11 @@ impl Georeferencing {
 /// `IfcProjectedCRS`, and `IfcPropertySet` for the IFC2x3 `ePSet_MapConversion`
 /// fallback) are collected from the scan — their `IfcType` is known from the
 /// entity name, so no decoding happens while building the candidate list.
-pub fn extract_georeferencing(content: &str) -> Option<Georeferencing> {
+pub fn extract_georeferencing<T>(content: &T) -> Option<Georeferencing>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 

@@ -81,11 +81,14 @@ pub fn propagate_voids_via_aggregates(
 
 /// Scan `content` for `IfcRelAggregates` and build the full (unfiltered)
 /// parent → children map used by [`propagate_voids_via_aggregates`].
-pub fn build_aggregate_children_index(
-    content: &str,
+pub fn build_aggregate_children_index<T>(
+    content: &T,
     decoder: &mut EntityDecoder,
-) -> FxHashMap<u32, Vec<u32>> {
-    let mut scanner = EntityScanner::new(content);
+) -> FxHashMap<u32, Vec<u32>>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let mut scanner = EntityScanner::new(content.as_ref());
     let mut aggregate_children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         if type_name != "IFCRELAGGREGATES" {
@@ -142,11 +145,15 @@ pub fn build_aggregate_children_index(
 /// left out of the returned map so the caller can never "skip" the only
 /// geometry available for the assembly.
 #[must_use = "the returned part → parent map is needed to honour the merge-layers toggle"]
-pub fn propagate_voids_to_parts(
+pub fn propagate_voids_to_parts<T>(
     void_index: &mut FxHashMap<u32, Vec<u32>>,
-    content: &str,
+    content: &T,
     decoder: &mut EntityDecoder,
-) -> FxHashMap<u32, u32> {
+) -> FxHashMap<u32, u32>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let aggregate_children = build_aggregate_children_index(content, decoder);
 
     // Void propagation: recursive + type-agnostic over the FULL aggregate
@@ -194,10 +201,14 @@ pub fn propagate_voids_to_parts(
 /// is filled and discarded (callers that also need the propagated voids should
 /// call [`propagate_voids_to_parts`] directly with their own `void_index`).
 #[must_use]
-pub fn compute_parts_to_skip(
-    content: &str,
+pub fn compute_parts_to_skip<T>(
+    content: &T,
     decoder: &mut EntityDecoder,
-) -> rustc_hash::FxHashSet<u32> {
+) -> rustc_hash::FxHashSet<u32>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let material_layer_index = crate::MaterialLayerIndex::from_content(content, decoder);
     let mut void_index_scratch: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let part_to_parent = propagate_voids_to_parts(&mut void_index_scratch, content, decoder);
@@ -243,7 +254,11 @@ impl VoidIndex {
     ///
     /// # Returns
     /// A populated VoidIndex
-    pub fn from_content(content: &str, decoder: &mut EntityDecoder) -> Self {
+    pub fn from_content<T>(content: &T, decoder: &mut EntityDecoder) -> Self
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let content = content.as_ref();
         let mut index = Self::new();
         let mut scanner = EntityScanner::new(content);
 

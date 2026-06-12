@@ -82,7 +82,7 @@ fn proxy_inherits_material_appearance_in_fast_first_batch_streaming() {
     // Pre-fix the deferred path collected no orphan styled items and this proxy
     // rendered the default gray; now it must be the material blue.
     let result = process_geometry_streaming_with_options(
-        MATERIAL_IFC,
+        MATERIAL_IFC.as_bytes(),
         // `defer_style_updates` = fast_first_batch && Default opening filter &&
         // !include_presentation_layers — all three required to hit the deferred
         // branch this test guards.

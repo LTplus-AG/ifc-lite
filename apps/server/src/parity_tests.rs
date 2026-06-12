@@ -91,10 +91,7 @@ fn multipart_body(content: &[u8]) -> (String, Vec<u8>) {
     );
     body.extend_from_slice(content);
     body.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
-    (
-        format!("multipart/form-data; boundary={BOUNDARY}"),
-        body,
-    )
+    (format!("multipart/form-data; boundary={BOUNDARY}"), body)
 }
 
 /// Construct an `AppState` backed by a fresh temp cache directory unique to
@@ -116,17 +113,35 @@ async fn test_state(label: &str) -> AppState {
 
 /// POST the fixture as multipart to `uri`, returning the response.
 async fn post_fixture(state: &AppState, uri: &str) -> axum::response::Response {
-    let (content_type, body) = multipart_body(FIXTURE.as_bytes());
+    post_content(state, uri, FIXTURE.as_bytes()).await
+}
+
+async fn post_content(state: &AppState, uri: &str, content: &[u8]) -> axum::response::Response {
+    let (content_type, body) = multipart_body(content);
     let request = Request::builder()
         .method("POST")
         .uri(uri)
         .header(header::CONTENT_TYPE, content_type)
         .body(Body::from(body))
         .unwrap();
-    build_router(state.clone())
-        .oneshot(request)
-        .await
-        .unwrap()
+    build_router(state.clone()).oneshot(request).await.unwrap()
+}
+
+#[tokio::test]
+async fn issue_1023_parse_endpoints_accept_non_utf8_string_bytes() {
+    let state = test_state("issue-1023").await;
+    let mut bytes = FIXTURE.as_bytes().to_vec();
+    let name = bytes
+        .windows(b"MainGrid".len())
+        .position(|window| window == b"MainGrid")
+        .unwrap();
+    bytes[name] = 0xe9;
+
+    let metadata = post_content(&state, "/api/v1/parse/metadata", &bytes).await;
+    assert_eq!(metadata.status(), StatusCode::OK);
+
+    let full = post_content(&state, "/api/v1/parse", &bytes).await;
+    assert_eq!(full.status(), StatusCode::OK);
 }
 
 /// GET `uri` and return the response.
@@ -136,10 +151,7 @@ async fn get(state: &AppState, uri: &str) -> axum::response::Response {
         .uri(uri)
         .body(Body::empty())
         .unwrap();
-    build_router(state.clone())
-        .oneshot(request)
-        .await
-        .unwrap()
+    build_router(state.clone()).oneshot(request).await.unwrap()
 }
 
 async fn body_json(response: axum::response::Response) -> Value {
@@ -241,7 +253,7 @@ async fn symbolic_endpoint_pending_for_unknown_key() {
 #[tokio::test]
 async fn streaming_complete_event_carries_symbolic_data() {
     let events: Vec<StreamEvent> = process_streaming(
-        FIXTURE.to_string(),
+        FIXTURE.as_bytes().to_vec(),
         100,
         1000,
         ifc_lite_processing::OpeningFilterMode::Default,

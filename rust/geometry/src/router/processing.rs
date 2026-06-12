@@ -306,11 +306,15 @@ impl GeometryRouter {
 
     /// Detect RTC offset by scanning the file for building elements.
     /// Used by synchronous parse paths.
-    pub fn detect_rtc_offset_from_first_element(
+    pub fn detect_rtc_offset_from_first_element<T>(
         &self,
-        content: &str,
+        content: &T,
         decoder: &mut EntityDecoder,
-    ) -> (f64, f64, f64) {
+    ) -> (f64, f64, f64)
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let content = content.as_ref();
         use ifc_lite_core::EntityScanner;
 
         let mut scanner = EntityScanner::new(content);
@@ -374,7 +378,7 @@ impl GeometryRouter {
         &self,
         jobs: &[(u32, usize, usize, IfcType)],
         decoder: &mut EntityDecoder,
-        content: &str,
+        content: &[u8],
     ) -> (f64, f64, f64) {
         match self.detect_rtc_offset_from_jobs(jobs, decoder) {
             Some(offset) => offset,
@@ -831,7 +835,8 @@ impl GeometryRouter {
 
         // Check if we have a processor for this type
         if let Some(processor) = self.processors.get(&item.ifc_type) {
-            let mut mesh = processor.process(item, decoder, &self.schema, self.tessellation_quality)?;
+            let mut mesh =
+                processor.process(item, decoder, &self.schema, self.tessellation_quality)?;
             // Safety net: strip any out-of-bounds indices before downstream use
             mesh.validate_indices();
 
@@ -1095,14 +1100,16 @@ impl GeometryRouter {
         // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;
         // UVs are 2D and unaffected. Parse once, bake into every part.
         let origin_transform: Option<nalgebra::Matrix4<f64>> = match rep_map.get(0) {
-            Some(origin_attr) if !origin_attr.is_null() => match decoder.resolve_ref(origin_attr)? {
+            Some(origin_attr) if !origin_attr.is_null() => {
+                match decoder.resolve_ref(origin_attr)? {
                 Some(origin) if origin.ifc_type == IfcType::IfcAxis2Placement3D => {
                     let mut t = self.parse_axis2_placement_3d(&origin, decoder)?;
                     self.scale_transform(&mut t);
                     Some(t)
                 }
                 _ => None,
-            },
+                }
+            }
             _ => None,
         };
 
@@ -1136,7 +1143,8 @@ impl GeometryRouter {
             Some(p) => Arc::clone(p),
             None => return Ok(None),
         };
-        let mut mesh = match processor.process(element, decoder, &self.schema, self.tessellation_quality) {
+        let mut mesh =
+            match processor.process(element, decoder, &self.schema, self.tessellation_quality) {
             Ok(m) => m,
             // Missing Axis or unparseable curve isn't fatal — fall back so
             // the caller can still walk a normal representation if present.

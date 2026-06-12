@@ -78,8 +78,7 @@ pub struct IfcAPI {
     /// of a type's RepresentationMaps are orphan and should be rendered directly
     /// (the rest are drawn through their occurrence). Built once per worker on
     /// the first type-product job and cleared by `clearPrePassCache`.
-    cached_referenced_repmaps:
-        std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
+    cached_referenced_repmaps: std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
 
     /// Lazily-built set of type ids that an `IfcRelDefinesByType` instantiates
     /// (the type has an occurrence). `processGeometryBatch` uses it to suppress
@@ -105,7 +104,11 @@ pub struct IfcAPI {
     /// dominant colour per geometry. Built once per worker on first batch call
     /// (a single extra entity scan, cached) and cleared by `clearPrePassCache`.
     cached_indexed_colour_maps: std::sync::Mutex<
-        Option<std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>>,
+        Option<
+            std::sync::Arc<
+                rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>,
+            >,
+        >,
     >,
 
     /// When `true`, `processGeometryBatch` computes a per-entity geometry
@@ -152,9 +155,7 @@ impl IfcAPI {
             geometry_hash_tolerance_bits: std::sync::atomic::AtomicU64::new(
                 ifc_lite_geometry::DEFAULT_GEOM_HASH_TOLERANCE.to_bits(),
             ),
-            tessellation_quality: std::sync::atomic::AtomicU8::new(
-                TESSELLATION_QUALITY_MEDIUM,
-            ),
+            tessellation_quality: std::sync::atomic::AtomicU8::new(TESSELLATION_QUALITY_MEDIUM),
         }
     }
 
@@ -241,8 +242,7 @@ impl IfcAPI {
         if n == 0 || starts.len() != n || lengths.len() != n {
             return;
         }
-        let mut index =
-            ifc_lite_core::EntityIndex::with_capacity_and_hasher(n, Default::default());
+        let mut index = ifc_lite_core::EntityIndex::with_capacity_and_hasher(n, Default::default());
         for i in 0..n {
             let start = starts[i] as usize;
             let length = lengths[i] as usize;
@@ -331,7 +331,8 @@ impl IfcAPI {
         use std::sync::atomic::Ordering::Relaxed;
         match tolerance {
             Some(t) if t > 0.0 => {
-                self.geometry_hash_tolerance_bits.store(t.to_bits(), Relaxed);
+                self.geometry_hash_tolerance_bits
+                    .store(t.to_bits(), Relaxed);
                 self.compute_geometry_hashes.store(true, Relaxed);
             }
             _ => self.compute_geometry_hashes.store(false, Relaxed),
@@ -376,8 +377,7 @@ impl IfcAPI {
     /// skip `IfcBuildingElementPart` emission. Not exposed to JS — JS
     /// callers control the flag via [`Self::set_merge_layers`].
     pub(crate) fn merge_layers(&self) -> bool {
-        self.merge_layers
-            .load(std::sync::atomic::Ordering::Relaxed)
+        self.merge_layers.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Active tessellation quality, read once at the top of
@@ -399,7 +399,9 @@ impl IfcAPI {
     pub(crate) fn geometry_hash_tolerance(&self) -> Option<f64> {
         use std::sync::atomic::Ordering::Relaxed;
         if self.compute_geometry_hashes.load(Relaxed) {
-            Some(f64::from_bits(self.geometry_hash_tolerance_bits.load(Relaxed)))
+            Some(f64::from_bits(
+                self.geometry_hash_tolerance_bits.load(Relaxed),
+            ))
         } else {
             None
         }
@@ -416,7 +418,7 @@ impl IfcAPI {
     /// still cheaply test `parts.contains(&id)` without a branch.
     pub(crate) fn get_or_build_parts_to_skip(
         &self,
-        content: &str,
+        content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
     ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
         {
@@ -449,7 +451,7 @@ impl IfcAPI {
     /// through their occurrence). Cached per worker so the scan is paid once.
     pub(crate) fn get_or_build_referenced_repmaps(
         &self,
-        content: &str,
+        content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
     ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
         {
@@ -479,7 +481,7 @@ impl IfcAPI {
     /// their occurrences). Cached per worker so the scan is paid once.
     pub(crate) fn get_or_build_instantiated_type_ids(
         &self,
-        content: &str,
+        content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
     ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
         {
@@ -508,7 +510,7 @@ impl IfcAPI {
     /// worker; `build_texture_index` bails out cheaply on untextured files.
     pub(crate) fn get_or_build_texture_index(
         &self,
-        content: &str,
+        content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
     ) -> std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>> {
         {
@@ -543,7 +545,7 @@ impl IfcAPI {
     /// (the common case), so callers can cheaply `.get(&geometry_id)`.
     pub(crate) fn get_or_build_indexed_colour_maps(
         &self,
-        content: &str,
+        content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
     ) -> std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>
     {
@@ -563,7 +565,10 @@ impl IfcAPI {
         // IfcIndexedColourMap pay only a single substring search (SIMD memmem),
         // not a full entity scan + decode, on the first batch of every worker.
         // The empty result is still cached so later batches skip even that.
-        if !content.contains("IFCINDEXEDCOLOURMAP") {
+        if !content
+            .windows(b"IFCINDEXEDCOLOURMAP".len())
+            .any(|window| window == b"IFCINDEXEDCOLOURMAP")
+        {
             let arc = std::sync::Arc::new(map);
             let mut slot = self
                 .cached_indexed_colour_maps
@@ -625,9 +630,7 @@ fn set_js_prop_jv(obj: &JsValue, key: &JsValue, value: &JsValue) -> bool {
 /// failure summary at `console.warn` only when there's at least one
 /// failure to report. Per-host detail is included for the worst-failing
 /// products (capped to keep the log readable on large files).
-pub(super) fn drain_and_log_csg_diagnostics(
-    router: &ifc_lite_geometry::GeometryRouter,
-) -> JsValue {
+pub(super) fn drain_and_log_csg_diagnostics(router: &ifc_lite_geometry::GeometryRouter) -> JsValue {
     let cls = router.take_classification_stats();
     let csg_failures = router.take_csg_failures();
     let host_diags = router.take_host_opening_diagnostics();
@@ -653,7 +656,11 @@ pub(super) fn drain_and_log_csg_diagnostics(
     let cls_obj = js_sys::Object::new();
     set_js_prop(&cls_obj, "rectangular", &(cls.rectangular as f64).into());
     set_js_prop(&cls_obj, "diagonal", &(cls.diagonal as f64).into());
-    set_js_prop(&cls_obj, "nonRectangular", &(cls.non_rectangular as f64).into());
+    set_js_prop(
+        &cls_obj,
+        "nonRectangular",
+        &(cls.non_rectangular as f64).into(),
+    );
     set_js_prop(
         &cls_obj,
         "floorOpeningGuardSaved",
@@ -709,8 +716,10 @@ pub(super) fn drain_and_log_csg_diagnostics(
 
         // Per-host-type aggregate: how many of each host type had openings,
         // how many had failures, and which kinds dominated.
-        let mut by_host_type: std::collections::HashMap<String, (usize, usize, usize, usize, usize)> =
-            std::collections::HashMap::new();
+        let mut by_host_type: std::collections::HashMap<
+            String,
+            (usize, usize, usize, usize, usize),
+        > = std::collections::HashMap::new();
         for hd in host_diags.values() {
             let entry = by_host_type
                 .entry(hd.host_type.clone())

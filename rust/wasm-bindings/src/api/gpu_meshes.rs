@@ -12,13 +12,6 @@ use crate::zero_copy::{MeshCollection, MeshDataJs};
 use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
-fn decode_ifc_bytes<'a>(data: &'a [u8]) -> &'a str {
-    match std::str::from_utf8(data) {
-        Ok(content) => content,
-        Err(error) => wasm_bindgen::throw_str(&format!("Invalid UTF-8 IFC data: {error}")),
-    }
-}
-
 /// Emit a sub-mesh, splitting it into one mesh per `IfcIndexedColourMap` palette
 /// group when the face set carries a per-triangle colour map whose triangle
 /// count still matches the produced mesh (issue #858). This restores the split
@@ -43,7 +36,8 @@ fn emit_submesh_with_palette_split(
     >,
 ) {
     if let Some(full) = indexed_colour_full.get(&geometry_id) {
-        if let Some(groups) = ifc_lite_processing::style::split_mesh_by_indexed_colour(&mesh, full) {
+        if let Some(groups) = ifc_lite_processing::style::split_mesh_by_indexed_colour(&mesh, full)
+        {
             for (rgba, mut part) in groups {
                 if part.normals.len() != part.positions.len() {
                     ifc_lite_geometry::calculate_normals(&mut part);
@@ -76,7 +70,7 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
 
-        let content = decode_ifc_bytes(data);
+        let content = data;
 
         // Build entity index — wrap in Arc so processGeometryBatch can
         // share it across many calls without cloning the HashMap.
@@ -240,7 +234,7 @@ impl IfcAPI {
         use ifc_lite_geometry::GeometryRouter;
 
         let chunk_size = chunk_size.max(1024) as usize;
-        let content = decode_ifc_bytes(data);
+        let content = data;
 
         // Single-pass scan: gather (id, start, end, type) for everything,
         // tag geometry-bearing rows so we can emit jobs incrementally.
@@ -340,7 +334,12 @@ impl IfcAPI {
                     indexed_colour_map_spans.push((id, start, end));
                 }
                 "IFCMATERIALDEFINITIONREPRESENTATION" => {
-                    material_entity_spans.push((id, "IFCMATERIALDEFINITIONREPRESENTATION", start, end));
+                    material_entity_spans.push((
+                        id,
+                        "IFCMATERIALDEFINITIONREPRESENTATION",
+                        start,
+                        end,
+                    ));
                 }
                 "IFCRELASSOCIATESMATERIAL" => {
                     material_entity_spans.push((id, "IFCRELASSOCIATESMATERIAL", start, end));
@@ -368,9 +367,7 @@ impl IfcAPI {
             // Once we have project + enough sample jobs, resolve the meta
             // (unit scale + RTC offset + building rotation) and emit it
             // along with the buffered first chunk so workers can start.
-            if !meta_emitted
-                && project_id.is_some()
-                && buffered_jobs.len() >= RTC_SAMPLE_THRESHOLD
+            if !meta_emitted && project_id.is_some() && buffered_jobs.len() >= RTC_SAMPLE_THRESHOLD
             {
                 // Build a decoder over the partial entity index built so far.
                 let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
@@ -386,15 +383,12 @@ impl IfcAPI {
                 // oversized (and dwarfs any correctly-scaled federated peer).
                 // When the chain isn't fully decodable here, resolve against a
                 // complete index instead of trusting the metres default.
-                let unit_scale = match ifc_lite_core::try_extract_length_unit_scale(
-                    &mut decoder,
-                    pid,
-                ) {
+                let unit_scale =
+                    match ifc_lite_core::try_extract_length_unit_scale(&mut decoder, pid) {
                     Some(scale) => scale,
                     None => {
                         let full_index = ifc_lite_core::build_entity_index(content);
-                        let mut full_decoder =
-                            EntityDecoder::with_index(content, full_index);
+                            let mut full_decoder = EntityDecoder::with_index(content, full_index);
                         ifc_lite_core::extract_length_unit_scale(&mut full_decoder, pid)
                             .unwrap_or(1.0)
                     }
@@ -442,8 +436,9 @@ impl IfcAPI {
                 }
                 let needs_shift = is_large(rtc_offset);
 
-                let building_rotation = site_position
-                    .and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
+                let building_rotation = site_position.and_then(|pos| {
+                    extract_building_rotation_from_site(pos, &router, &mut decoder)
+                });
 
                 // Emit meta event.
                 let meta = js_sys::Object::new();
@@ -581,7 +576,12 @@ impl IfcAPI {
         // so `entry().or_insert` preserves the authored-intent path.
         for &(id, start, end) in &indexed_colour_map_spans {
             if let Some((geometry_id, color)) =
-                super::styling::extract_color_from_indexed_colour_map_span(id, start, end, &mut decoder)
+                super::styling::extract_color_from_indexed_colour_map_span(
+                    id,
+                    start,
+                    end,
+                    &mut decoder,
+                )
             {
                 geometry_styles.entry(geometry_id).or_insert(color);
             }
@@ -602,9 +602,7 @@ impl IfcAPI {
 
         for &(id, start, end) in &void_rel_spans {
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                if let (Some(host_id), Some(opening_id)) =
-                    (entity.get_ref(4), entity.get_ref(5))
-                {
+                if let (Some(host_id), Some(opening_id)) = (entity.get_ref(4), entity.get_ref(5)) {
                     void_index.entry(host_id).or_default().push(opening_id);
                 }
             }
@@ -786,10 +784,10 @@ impl IfcAPI {
     ) -> MeshCollection {
         use super::styling::{resolve_element_color, resolve_submesh_color};
         use ifc_lite_core::EntityDecoder;
-        use ifc_lite_processing::default_color_for_type;
         use ifc_lite_geometry::{calculate_normals, GeometryHasher, GeometryRouter};
+        use ifc_lite_processing::default_color_for_type;
 
-        let content = decode_ifc_bytes(data);
+        let content = data;
 
         // Geometry fingerprinting for the viewer's revision-diff feature.
         // When enabled we hash each entity's meshes *before* MeshDataJs::new

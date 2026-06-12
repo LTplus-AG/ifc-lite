@@ -149,9 +149,9 @@ fn extract_color_from_style_assignment(
             if let Some(list) = styles_attr.as_list() {
                 for item in list {
                     if let Some(inner_id) = item.as_entity_ref() {
-                        if let Some(pair) =
-                            ifc_lite_processing::style::extract_surface_style_colors(inner_id, decoder)
-                        {
+                        if let Some(pair) = ifc_lite_processing::style::extract_surface_style_colors(
+                            inner_id, decoder,
+                        ) {
                             return Some(pair);
                         }
                     }
@@ -168,9 +168,9 @@ fn extract_color_from_style_assignment(
             if let Some(list) = styles_attr.as_list() {
                 for item in list {
                     if let Some(inner_id) = item.as_entity_ref() {
-                        if let Some(pair) =
-                            ifc_lite_processing::style::extract_surface_style_colors(inner_id, decoder)
-                        {
+                        if let Some(pair) = ifc_lite_processing::style::extract_surface_style_colors(
+                            inner_id, decoder,
+                        ) {
                             return Some(pair);
                         }
                     }
@@ -212,7 +212,7 @@ pub(crate) struct PrePassData {
 ///   pre-pass for void + brep    (full scan)
 ///   processing scan              (full scan)
 pub(crate) fn combined_pre_pass(
-    content: &str,
+    content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> PrePassData {
     use ifc_lite_core::EntityScanner;
@@ -248,8 +248,7 @@ pub(crate) fn combined_pre_pass(
                         // Normal IfcStyledItem with Item reference → geometry_styles
                         if !geometry_styles.contains_key(&geometry_id) {
                             if let Some(styles_attr) = styled_item.get(1) {
-                                if let Some(color) =
-                                    extract_color_from_styles(styles_attr, decoder)
+                                if let Some(color) = extract_color_from_styles(styles_attr, decoder)
                                 {
                                     geometry_styles.insert(geometry_id, color);
                                 }
@@ -397,7 +396,7 @@ pub(crate) fn combined_pre_pass(
 /// every instanced type while the occurrence carries its own body (class 2,
 /// hidden in Model mode so it does not double-render at the MappingOrigin).
 pub(crate) fn collect_type_geometry_jobs(
-    content: &str,
+    content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
     use ifc_lite_core::{EntityScanner, IfcType};
@@ -405,7 +404,10 @@ pub(crate) fn collect_type_geometry_jobs(
     // Fast bail-out: type geometry can only exist when the file authors at least
     // one IfcRepresentationMap. The overwhelming majority of files pay only a
     // single substring search instead of a full entity scan + decode.
-    if !content.contains("IFCREPRESENTATIONMAP") {
+    if !content
+        .windows(b"IFCREPRESENTATIONMAP".len())
+        .any(|window| window == b"IFCREPRESENTATIONMAP")
+    {
         return Vec::new();
     }
 
@@ -457,7 +459,7 @@ pub(crate) fn collect_type_geometry_jobs(
 /// `processGeometryBatch` can tell which of a type's RepresentationMaps are
 /// orphan (rendered directly) vs already drawn through an occurrence.
 pub(crate) fn build_referenced_representation_maps(
-    content: &str,
+    content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> rustc_hash::FxHashSet<u32> {
     use ifc_lite_core::EntityScanner;
@@ -482,7 +484,7 @@ pub(crate) fn build_referenced_representation_maps(
 /// through their occurrences, so rendering the type's RepresentationMap as well
 /// would double-render it at the MappingOrigin (duplicate at the wrong position).
 pub(crate) fn build_instantiated_type_ids(
-    content: &str,
+    content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> rustc_hash::FxHashSet<u32> {
     use ifc_lite_core::EntityScanner;
@@ -773,7 +775,9 @@ pub(crate) fn extract_building_rotation_from_site(
 ) -> Option<f64> {
     let (site_id, start, end) = site_pos;
     let site_entity = decoder.decode_at_with_id(site_id, start, end).ok()?;
-    let matrix = router.resolve_scaled_placement(&site_entity, decoder).ok()?;
+    let matrix = router
+        .resolve_scaled_placement(&site_entity, decoder)
+        .ok()?;
     ifc_lite_geometry::rotation_angle_about_z(&matrix)
 }
 

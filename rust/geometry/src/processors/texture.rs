@@ -347,11 +347,14 @@ fn resolve_triangle_texture_map(
 /// keyed by the face set id each one maps to (issue #961). Cheap substring
 /// bail-out keeps untextured files (the overwhelming majority) off the scan.
 pub fn build_texture_index(
-    content: &str,
+    content: &[u8],
     decoder: &mut EntityDecoder,
 ) -> FxHashMap<u32, ResolvedTextureMap> {
     let mut index = FxHashMap::default();
-    if !content.contains("IFCINDEXEDTRIANGLETEXTUREMAP") {
+    if !content
+        .windows(b"IFCINDEXEDTRIANGLETEXTUREMAP".len())
+        .any(|window| window == b"IFCINDEXEDTRIANGLETEXTUREMAP")
+    {
         return index;
     }
     let mut scanner = EntityScanner::new(content);

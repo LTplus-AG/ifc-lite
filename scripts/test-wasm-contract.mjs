@@ -165,6 +165,35 @@ END-ISO-10303-21;`;
   collection.free();
 });
 
+test('issue #1023: raw byte geometry and scans accept non-UTF-8 string bytes', () => {
+  const bytes = new TextEncoder().encode(columnContent);
+  const marker = new TextEncoder().encode('Column #1');
+  const markerStart = bytes.findIndex((_, index) =>
+    marker.every((byte, offset) => bytes[index + offset] === byte));
+  assert.ok(markerStart >= 0, 'fixture marker must exist');
+  bytes[markerStart] = 0xe9;
+
+  const refs = api.scanEntitiesFastBytes(bytes);
+  assert.ok(refs.length > 0, 'byte scan must still find entities');
+
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.ok(pre.totalJobs > 0, 'pre-pass must still produce geometry jobs');
+    const collection = api.processGeometryBatch(
+      bytes, pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    try {
+      assert.ok(collection.length > 0, 'geometry batch must still produce meshes');
+    } finally {
+      collection.free();
+    }
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
 // ===== Pre-pass contract (viewer boundary) =====
 // The TS GeometryProcessor (packages/geometry) destructures these exact
 // fields off buildPrePassOnce() and forwards them to processGeometryBatch.

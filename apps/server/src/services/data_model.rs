@@ -212,7 +212,11 @@ struct EntityJob {
 }
 
 /// Extract complete data model from IFC content.
-pub fn extract_data_model(content: &str) -> DataModel {
+pub fn extract_data_model<T>(content: &T) -> DataModel
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let extract_start = std::time::Instant::now();
     tracing::info!(
         content_size = content.len(),
@@ -305,7 +309,7 @@ pub fn extract_data_model(content: &str) -> DataModel {
     }
 
     // Parallel extraction using rayon::join
-    let content_arc = Arc::new(content.to_string());
+    let content_arc = Arc::new(content.to_vec());
     let (entities, ((property_sets, quantity_sets), relationships)) = rayon::join(
         || extract_entity_metadata(&all_entities, &content_arc, &entity_index),
         || {
@@ -347,7 +351,14 @@ pub fn extract_data_model(content: &str) -> DataModel {
         || {
             rayon::join(
                 || extract_classifications(&all_entities, &content_arc, &entity_index),
-                || extract_materials(&all_entities, &content_arc, &entity_index, length_unit_scale),
+                || {
+                    extract_materials(
+                        &all_entities,
+                        &content_arc,
+                        &entity_index,
+                        length_unit_scale,
+                    )
+                },
             )
         },
         || extract_documents(&all_entities, &content_arc, &entity_index),
@@ -391,12 +402,13 @@ pub fn extract_data_model(content: &str) -> DataModel {
 /// Extract entity metadata for all entities.
 fn extract_entity_metadata(
     jobs: &[EntityJob],
-    content: &Arc<String>,
+    content: &Arc<Vec<u8>>,
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<EntityMetadata> {
     jobs.par_iter()
         .filter_map(|job| {
-            let mut local_decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let mut local_decoder =
+                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
             let global_id = entity.get_string(0).map(|s| s.to_string());
@@ -417,7 +429,7 @@ fn extract_entity_metadata(
 /// Extract all property sets and their properties.
 fn extract_properties(
     jobs: &[EntityJob],
-    content: &Arc<String>,
+    content: &Arc<Vec<u8>>,
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<PropertySet> {
     // First, collect all PropertySet entities
@@ -432,7 +444,8 @@ fn extract_properties(
     pset_jobs
         .par_iter()
         .filter_map(|job| {
-            let mut local_decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let mut local_decoder =
+                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
             // IfcPropertySet: [0]=GlobalId, [1]=OwnerHistory, [2]=Name, [3]=Description, [4]=HasProperties
@@ -500,7 +513,7 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
 /// Extract all quantity sets (IfcElementQuantity) and their quantities.
 fn extract_quantities(
     jobs: &[EntityJob],
-    content: &Arc<String>,
+    content: &Arc<Vec<u8>>,
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<QuantitySet> {
     // First, collect all IfcElementQuantity entities
@@ -515,7 +528,8 @@ fn extract_quantities(
     qset_jobs
         .par_iter()
         .filter_map(|job| {
-            let mut local_decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let mut local_decoder =
+                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
             // IfcElementQuantity: [0]=GlobalId, [1]=OwnerHistory, [2]=Name, [3]=Description, [4]=MethodOfMeasurement, [5]=Quantities
@@ -591,7 +605,7 @@ fn extract_quantity_value(entity: &DecodedEntity) -> Option<Quantity> {
 /// Extract all relationships.
 fn extract_relationships(
     jobs: &[EntityJob],
-    content: &Arc<String>,
+    content: &Arc<Vec<u8>>,
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<Relationship> {
     // Filter for relationship entities
@@ -620,7 +634,8 @@ fn extract_relationships(
     rel_jobs
         .par_iter()
         .filter_map(|job| {
-            let mut local_decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let mut local_decoder =
+                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
             extract_relationship(&entity, &job.type_name)
@@ -692,14 +707,28 @@ fn related_object_ids(rel: &DecodedEntity) -> Vec<u32> {
 fn resolve_classification(
     decoder: &mut EntityDecoder,
     id: u32,
-) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     let Ok(entity) = decoder.decode_by_id(id) else {
         return (None, None, None, None);
     };
 
-    if entity.ifc_type.as_str().eq_ignore_ascii_case("IFCCLASSIFICATION") {
+    if entity
+        .ifc_type
+        .as_str()
+        .eq_ignore_ascii_case("IFCCLASSIFICATION")
+    {
         // Directly an IfcClassification: Name is attribute 3.
-        return (None, None, None, entity.get_string(3).map(|s| s.to_string()));
+        return (
+            None,
+            None,
+            None,
+            entity.get_string(3).map(|s| s.to_string()),
+        );
     }
 
     // IfcClassificationReference: Location(0), Identification(1), Name(2),
@@ -717,8 +746,14 @@ fn resolve_classification(
             break;
         }
         depth += 1;
-        let Ok(src) = decoder.decode_by_id(src_id) else { break };
-        if src.ifc_type.as_str().eq_ignore_ascii_case("IFCCLASSIFICATION") {
+        let Ok(src) = decoder.decode_by_id(src_id) else {
+            break;
+        };
+        if src
+            .ifc_type
+            .as_str()
+            .eq_ignore_ascii_case("IFCCLASSIFICATION")
+        {
             system_name = src.get_string(3).map(|s| s.to_string());
             break;
         }
@@ -732,12 +767,15 @@ fn resolve_classification(
 /// Extract classification associations (`IfcRelAssociatesClassification`).
 fn extract_classifications(
     jobs: &[EntityJob],
-    content: &Arc<String>,
+    content: &Arc<Vec<u8>>,
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<ClassificationAssociation> {
     let rel_jobs: Vec<_> = jobs
         .iter()
-        .filter(|job| job.type_name.eq_ignore_ascii_case("IFCRELASSOCIATESCLASSIFICATION"))
+        .filter(|job| {
+            job.type_name
+                .eq_ignore_ascii_case("IFCRELASSOCIATESCLASSIFICATION")
+        })
         .collect();
 
     tracing::debug!(count = rel_jobs.len(), "Extracting classifications");
@@ -745,7 +783,8 @@ fn extract_classifications(
     rel_jobs
         .par_iter()
         .flat_map(|job| {
-            let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let mut decoder =
+                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
             let Ok(rel) = decoder.decode_at(job.start, job.end) else {
                 return Vec::new();
             };
@@ -944,13 +983,16 @@ fn resolve_material(decoder: &mut EntityDecoder, id: u32, unit_scale: f64) -> Ve
 /// Extract material associations (`IfcRelAssociatesMaterial`).
 fn extract_materials(
     jobs: &[EntityJob],
-    content: &Arc<String>,
+    content: &Arc<Vec<u8>>,
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
     unit_scale: f64,
 ) -> Vec<MaterialAssociation> {
     let rel_jobs: Vec<_> = jobs
         .iter()
-        .filter(|job| job.type_name.eq_ignore_ascii_case("IFCRELASSOCIATESMATERIAL"))
+        .filter(|job| {
+            job.type_name
+                .eq_ignore_ascii_case("IFCRELASSOCIATESMATERIAL")
+        })
         .collect();
 
     tracing::debug!(count = rel_jobs.len(), "Extracting materials");
@@ -958,7 +1000,8 @@ fn extract_materials(
     rel_jobs
         .par_iter()
         .flat_map(|job| {
-            let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let mut decoder =
+                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
             let Ok(rel) = decoder.decode_at(job.start, job.end) else {
                 return Vec::new();
             };
@@ -995,7 +1038,12 @@ fn extract_materials(
 fn resolve_document(
     decoder: &mut EntityDecoder,
     id: u32,
-) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     let Ok(entity) = decoder.decode_by_id(id) else {
         return (None, None, None, None);
     };
@@ -1021,8 +1069,13 @@ fn resolve_document(
     // Backfill missing fields from the referenced IfcDocumentInformation.
     if let Some(info_id) = entity.get_ref(4) {
         if let Ok(info) = decoder.decode_by_id(info_id) {
-            if info.ifc_type.as_str().eq_ignore_ascii_case("IFCDOCUMENTINFORMATION") {
-                identification = identification.or_else(|| info.get_string(0).map(|s| s.to_string()));
+            if info
+                .ifc_type
+                .as_str()
+                .eq_ignore_ascii_case("IFCDOCUMENTINFORMATION")
+            {
+                identification =
+                    identification.or_else(|| info.get_string(0).map(|s| s.to_string()));
                 name = name.or_else(|| info.get_string(1).map(|s| s.to_string()));
                 description = description.or_else(|| info.get_string(2).map(|s| s.to_string()));
                 location = location.or_else(|| info.get_string(3).map(|s| s.to_string()));
@@ -1036,12 +1089,15 @@ fn resolve_document(
 /// Extract document associations (`IfcRelAssociatesDocument`).
 fn extract_documents(
     jobs: &[EntityJob],
-    content: &Arc<String>,
+    content: &Arc<Vec<u8>>,
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
 ) -> Vec<DocumentAssociation> {
     let rel_jobs: Vec<_> = jobs
         .iter()
-        .filter(|job| job.type_name.eq_ignore_ascii_case("IFCRELASSOCIATESDOCUMENT"))
+        .filter(|job| {
+            job.type_name
+                .eq_ignore_ascii_case("IFCRELASSOCIATESDOCUMENT")
+        })
         .collect();
 
     tracing::debug!(count = rel_jobs.len(), "Extracting documents");
@@ -1049,7 +1105,8 @@ fn extract_documents(
     rel_jobs
         .par_iter()
         .flat_map(|job| {
-            let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+            let mut decoder =
+                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
             let Ok(rel) = decoder.decode_at(job.start, job.end) else {
                 return Vec::new();
             };
@@ -1079,7 +1136,7 @@ fn extract_documents(
 fn build_spatial_hierarchy(
     relationships: &[Relationship],
     entities: &[EntityMetadata],
-    content: &str,
+    content: &[u8],
     entity_index: &Arc<ifc_lite_core::EntityIndex>,
     length_unit_scale: f64,
 ) -> SpatialHierarchyData {
@@ -1431,10 +1488,16 @@ END-ISO-10303-21;
         assert_eq!(layers[0].element_id, 28);
         assert_eq!(layers[0].set_name.as_deref(), Some("WallSet"));
         assert_eq!(layers[0].material_name, "Concrete");
-        assert!((layers[0].thickness.unwrap() - 0.2).abs() < 1e-9, "200mm -> 0.2m");
+        assert!(
+            (layers[0].thickness.unwrap() - 0.2).abs() < 1e-9,
+            "200mm -> 0.2m"
+        );
         assert_eq!(layers[0].is_ventilated, Some(false));
         assert_eq!(layers[1].material_name, "Insulation");
-        assert!((layers[1].thickness.unwrap() - 0.05).abs() < 1e-9, "50mm -> 0.05m");
+        assert!(
+            (layers[1].thickness.unwrap() - 0.05).abs() < 1e-9,
+            "50mm -> 0.05m"
+        );
         assert_eq!(layers[1].is_ventilated, Some(true));
 
         // Document.
@@ -1448,7 +1511,11 @@ END-ISO-10303-21;
         // Material constituent set on the column (#60) — constituents read from
         // attribute 2, set name preserved from attribute 0.
         let column_mats: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 60).collect();
-        assert_eq!(column_mats.len(), 1, "expected one constituent for the column");
+        assert_eq!(
+            column_mats.len(),
+            1,
+            "expected one constituent for the column"
+        );
         assert_eq!(column_mats[0].material_name, "Steel");
         assert_eq!(column_mats[0].set_name.as_deref(), Some("ColSet"));
 

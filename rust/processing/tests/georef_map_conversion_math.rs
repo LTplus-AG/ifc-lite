@@ -54,7 +54,7 @@ fn map_conversion_transforms_local_point_to_expected_world_coordinate() {
         return;
     };
 
-    let geo = extract_georeferencing(&content)
+    let geo = extract_georeferencing(content.as_bytes())
         .expect("bridge-deck fixture must yield georeferencing (IfcMapConversion #38)");
 
     // Extraction sanity (already covered elsewhere, kept tight here so the

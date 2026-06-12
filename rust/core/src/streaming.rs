@@ -101,10 +101,14 @@ impl Default for StreamConfig {
 }
 
 /// Stream IFC file parsing with events
-pub fn parse_stream(
-    content: &str,
+pub fn parse_stream<T>(
+    content: &T,
     config: StreamConfig,
-) -> Pin<Box<dyn Stream<Item = ParseEvent> + '_>> {
+) -> Pin<Box<dyn Stream<Item = ParseEvent> + '_>>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     Box::pin(stream::unfold(
         ParserState::new(content, config),
         |mut state| async move { state.next_event().map(|event| (event, state)) },
@@ -113,7 +117,7 @@ pub fn parse_stream(
 
 /// Internal parser state for streaming
 struct ParserState<'a> {
-    content: &'a str,
+    content: &'a [u8],
     scanner: EntityScanner<'a>,
     config: StreamConfig,
     started: bool,
@@ -125,7 +129,7 @@ struct ParserState<'a> {
 }
 
 impl<'a> ParserState<'a> {
-    fn new(content: &'a str, config: StreamConfig) -> Self {
+    fn new(content: &'a [u8], config: StreamConfig) -> Self {
         Self {
             content,
             scanner: EntityScanner::new(content),

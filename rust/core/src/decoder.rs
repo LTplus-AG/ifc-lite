@@ -21,7 +21,11 @@ pub type EntityIndex = FxHashMap<u32, (usize, usize)>;
 /// semantics so scan iteration and decoder lookup cannot disagree on malformed
 /// headers or semicolons embedded inside STEP strings.
 #[inline]
-pub fn build_entity_index(content: &str) -> EntityIndex {
+pub fn build_entity_index<T>(content: &T) -> EntityIndex
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let estimated_entities = content.len() / 50;
     let mut index = FxHashMap::with_capacity_and_hasher(estimated_entities, Default::default());
     let mut scanner = EntityScanner::new(content);
@@ -32,9 +36,12 @@ pub fn build_entity_index(content: &str) -> EntityIndex {
     index
 }
 
-/// Entity decoder for lazy parsing - uses Arc for efficient cache sharing
+/// Entity decoder for lazy parsing from raw IFC bytes.
+///
+/// String attributes are decoded lossily when tokens become `AttributeValue`s;
+/// structural scanning and byte offsets always use the original source bytes.
 pub struct EntityDecoder<'a> {
-    content: &'a str,
+    content: &'a [u8],
     /// Cache of decoded entities (entity_id -> `Arc<DecodedEntity>`)
     /// Using Arc avoids expensive clones on cache hits
     cache: FxHashMap<u32, Arc<DecodedEntity>>,
@@ -59,7 +66,11 @@ pub struct EntityDecoder<'a> {
 
 impl<'a> EntityDecoder<'a> {
     /// Create new decoder
-    pub fn new(content: &'a str) -> Self {
+    pub fn new<T>(content: &'a T) -> Self
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let content = content.as_ref();
         Self {
             content,
             cache: FxHashMap::default(),
@@ -71,7 +82,11 @@ impl<'a> EntityDecoder<'a> {
     }
 
     /// Create decoder with pre-built index (faster for repeated lookups)
-    pub fn with_index(content: &'a str, index: EntityIndex) -> Self {
+    pub fn with_index<T>(content: &'a T, index: EntityIndex) -> Self
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let content = content.as_ref();
         Self {
             content,
             cache: FxHashMap::default(),
@@ -83,7 +98,11 @@ impl<'a> EntityDecoder<'a> {
     }
 
     /// Create decoder with shared Arc index (for parallel processing)
-    pub fn with_arc_index(content: &'a str, index: Arc<EntityIndex>) -> Self {
+    pub fn with_arc_index<T>(content: &'a T, index: Arc<EntityIndex>) -> Self
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let content = content.as_ref();
         Self {
             content,
             cache: FxHashMap::default(),
@@ -126,16 +145,15 @@ impl<'a> EntityDecoder<'a> {
         }
         let line = &self.content[start..end];
         let (id, ifc_type, tokens) = parse_entity(line).map_err(|e| {
-            // Add debug info about what failed to parse. Truncate on a UTF-8
-            // char boundary so multi-byte UTF-8 in the entity body cannot
-            // panic the worker (decode_at must be panic-safe).
-            let mut cut = line.len().min(100);
-            while cut > 0 && !line.is_char_boundary(cut) {
-                cut -= 1;
-            }
+            // Add bounded, lossy debug info without requiring the source to be UTF-8.
+            let cut = line.len().min(100);
             Error::parse(
                 0,
-                format!("Failed to parse entity: {:?}, input: {:?}", e, &line[..cut]),
+                format!(
+                    "Failed to parse entity: {:?}, input: {:?}",
+                    e,
+                    String::from_utf8_lossy(&line[..cut])
+                ),
             )
         })?;
 
@@ -361,14 +379,6 @@ impl<'a> EntityDecoder<'a> {
     /// Returns the full entity line including type and attributes
     #[inline]
     pub fn get_raw_bytes(&mut self, entity_id: u32) -> Option<&'a [u8]> {
-        self.build_index();
-        let (start, end) = self.entity_index.as_ref()?.get(&entity_id).copied()?;
-        Some(&self.content.as_bytes()[start..end])
-    }
-
-    /// Get raw content string for an entity
-    #[inline]
-    pub fn get_raw_content(&mut self, entity_id: u32) -> Option<&'a str> {
         self.build_index();
         let (start, end) = self.entity_index.as_ref()?.get(&entity_id).copied()?;
         Some(&self.content[start..end])
@@ -706,7 +716,7 @@ impl<'a> EntityDecoder<'a> {
         // Ensure index is built once
         self.build_index();
         let index = self.entity_index.as_ref()?;
-        let bytes_full = self.content.as_bytes();
+        let bytes_full = self.content;
 
         // Get polyloop raw bytes
         let (start, end) = index.get(&entity_id).copied()?;
@@ -793,7 +803,7 @@ impl<'a> EntityDecoder<'a> {
         // Ensure index is built once
         self.build_index();
         let index = self.entity_index.as_ref()?;
-        let bytes_full = self.content.as_bytes();
+        let bytes_full = self.content;
 
         // Get polyloop raw bytes
         let (start, end) = index.get(&entity_id).copied()?;

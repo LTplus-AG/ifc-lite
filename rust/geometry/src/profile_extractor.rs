@@ -82,7 +82,11 @@ pub struct ExtractedProfile {
 /// Extracts `IfcExtrudedAreaSolid` representations, including those nested
 /// inside `IfcMappedItem` chains (up to 3 levels deep).
 /// Returns an empty `Vec` for models with no such elements.
-pub fn extract_profiles(content: &str, model_index: u32) -> Vec<ExtractedProfile> {
+pub fn extract_profiles<T>(content: &T, model_index: u32) -> Vec<ExtractedProfile>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let content = content.as_ref();
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
@@ -715,7 +719,7 @@ fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f32; 16] {
 }
 
 /// Detect the IFC length unit scale factor from IFCPROJECT.
-fn detect_unit_scale(content: &str, decoder: &mut EntityDecoder) -> f64 {
+fn detect_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, _, _)) = scanner.next_entity() {
         if type_name == "IFCPROJECT" {

@@ -1,5 +1,37 @@
 # @ifc-lite/renderer
 
+## 1.27.0
+
+### Minor Changes
+
+- [#1069](https://github.com/LTplus-AG/ifc-lite/pull/1069) [`49d146a`](https://github.com/LTplus-AG/ifc-lite/commit/49d146a653f65eb5e265347ed6a9e9e7a21589a4) Thanks [@louistrue](https://github.com/louistrue)! - Sky and lighting options for both rendering paths.
+
+  Renderer: the hardcoded shader lights move into a global lighting-environment
+  uniform (group(1)) — sun direction/colour/intensity, hemisphere ambient,
+  exposure — with defaults that render pixel-identical to the previous look,
+  plus a procedural sky pass (analytic gradient + sun disc, drawn at the
+  reverse-Z far plane, tonemapped with the same ACES curve as geometry).
+
+  Viewer: one collapsible, mode-aware Sun & Sky panel. Standalone it offers
+  lighting presets (Default, Day, Overcast, Evening, Night), a Sky toggle and
+  an exposure trim; in the Cesium world context the model is lit by the sun
+  and atmosphere, so the panel swaps presets for the Sky/atmosphere toggle and
+  the sun-path study. The study now also lights the model directly: the NOAA
+  sun position at the site is mapped into viewer space (inverse of the Cesium
+  bridge's ENU frame) with golden-hour/twilight/night photometric fades, so
+  daylight studies read identically with and without the 3D world context.
+
+  Cesium: OSM Buildings mode keeps the globe with the satellite base map —
+  buildings sit on top of the imagery instead of replacing it, and the globe
+  receives the buildings' and model's cast shadows during a sun study.
+
+### Patch Changes
+
+- [#1071](https://github.com/LTplus-AG/ifc-lite/pull/1071) [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe) Thanks [@louistrue](https://github.com/louistrue)! - Dead-code and dependency hygiene: remove unused internal barrels/shims (clash engine-ts re-exports, collab doc barrel, sdk transport/types) and drop unused dependencies (renderer/cli: @ifc-lite/wasm; cli/mcp: @ifc-lite/encoding; mcp: @types/node out of runtime dependencies; collab: ws devDeps; data: @types/proj4). No public API changes.
+
+- Updated dependencies [[`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe)]:
+  - @ifc-lite/geometry@2.6.1
+
 ## 1.26.0
 
 ### Minor Changes

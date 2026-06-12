@@ -1,5 +1,63 @@
 # @ifc-lite/viewer
 
+## 1.30.0
+
+### Minor Changes
+
+- [#1069](https://github.com/LTplus-AG/ifc-lite/pull/1069) [`49d146a`](https://github.com/LTplus-AG/ifc-lite/commit/49d146a653f65eb5e265347ed6a9e9e7a21589a4) Thanks [@louistrue](https://github.com/louistrue)! - Sky and lighting options for both rendering paths.
+
+  Renderer: the hardcoded shader lights move into a global lighting-environment
+  uniform (group(1)) — sun direction/colour/intensity, hemisphere ambient,
+  exposure — with defaults that render pixel-identical to the previous look,
+  plus a procedural sky pass (analytic gradient + sun disc, drawn at the
+  reverse-Z far plane, tonemapped with the same ACES curve as geometry).
+
+  Viewer: one collapsible, mode-aware Sun & Sky panel. Standalone it offers
+  lighting presets (Default, Day, Overcast, Evening, Night), a Sky toggle and
+  an exposure trim; in the Cesium world context the model is lit by the sun
+  and atmosphere, so the panel swaps presets for the Sky/atmosphere toggle and
+  the sun-path study. The study now also lights the model directly: the NOAA
+  sun position at the site is mapped into viewer space (inverse of the Cesium
+  bridge's ENU frame) with golden-hour/twilight/night photometric fades, so
+  daylight studies read identically with and without the 3D world context.
+
+  Cesium: OSM Buildings mode keeps the globe with the satellite base map —
+  buildings sit on top of the imagery instead of replacing it, and the globe
+  receives the buildings' and model's cast shadows during a sun study.
+
+### Patch Changes
+
+- [#1076](https://github.com/LTplus-AG/ifc-lite/pull/1076) [`da1999f`](https://github.com/LTplus-AG/ifc-lite/commit/da1999fc6e482fa3d668b9aa98a840d2bb838112) Thanks [@louistrue](https://github.com/louistrue)! - Add `createSyntheticDataStore()` — a typed factory for building a fully-typed
+  `IfcDataStore` for synthetic / non-STEP models (GLB meshes, point-cloud scans).
+  It assembles real `@ifc-lite/data` tables (empty, or a single synthetic entity
+  row) and wires the lazy `getEntity` / `getEntitiesByType` / `getProperties` /
+  `getQuantities` accessors through `attachDataStoreAccessors`, the same single
+  source of truth the columnar parse / worker transport / cache restore use.
+
+  The viewer's GLB (`createMinimalGlbDataStore`) and LAS/LAZ point-cloud
+  (`emptyDataStore`) ingest paths now build their synthetic stores through this
+  factory instead of whole-object `as unknown as IfcDataStore` casts. Those casts
+  silently dropped the `IfcStoreBase` accessors, so a future required
+  `IfcDataStore` member stayed green at the cast site and threw
+  `TypeError: store.getProperties is not a function` at runtime on the
+  GLB / point-cloud ingest flow (same crash class as [#950](https://github.com/LTplus-AG/ifc-lite/issues/950)). The contract is now
+  compiler-enforced for these synthetic stores.
+
+- Updated dependencies [[`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`891efef`](https://github.com/LTplus-AG/ifc-lite/commit/891efef5fa9fca04bf2e01be9a1de04bbb84aafe), [`49d146a`](https://github.com/LTplus-AG/ifc-lite/commit/49d146a653f65eb5e265347ed6a9e9e7a21589a4), [`49d146a`](https://github.com/LTplus-AG/ifc-lite/commit/49d146a653f65eb5e265347ed6a9e9e7a21589a4), [`da1999f`](https://github.com/LTplus-AG/ifc-lite/commit/da1999fc6e482fa3d668b9aa98a840d2bb838112)]:
+  - @ifc-lite/create@1.16.2
+  - @ifc-lite/export@1.19.6
+  - @ifc-lite/parser@3.2.0
+  - @ifc-lite/geometry@2.6.1
+  - @ifc-lite/server-client@1.17.0
+  - @ifc-lite/clash@1.1.3
+  - @ifc-lite/sdk@1.18.3
+  - @ifc-lite/renderer@1.27.0
+  - @ifc-lite/mcp@0.3.3
+  - @ifc-lite/data@2.0.3
+  - @ifc-lite/solar@1.15.0
+  - @ifc-lite/ids@1.15.10
+  - @ifc-lite/lists@1.15.3
+
 ## 1.29.0
 
 ### Minor Changes

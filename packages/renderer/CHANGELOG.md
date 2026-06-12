@@ -1,5 +1,59 @@
 # @ifc-lite/renderer
 
+## 1.26.0
+
+### Minor Changes
+
+- [#1068](https://github.com/LTplus-AG/ifc-lite/pull/1068) [`2113143`](https://github.com/LTplus-AG/ifc-lite/commit/21131434f01807b79a80027863078172d681fb52) Thanks [@louistrue](https://github.com/louistrue)! - Keep contact shading and separation lines visible during camera interaction
+  (orbit/zoom/pan and camera animations) instead of unconditionally disabling
+  them and popping them back on a settle frame. Adds the optional
+  `RenderOptions.interactionFrameIntervalMs` so apps that intentionally cap
+  continuous render cadence (large-model throttles) are judged against their
+  own schedule rather than display refresh.
+
+  An adaptive governor (`InteractionEffectsGovernor`) measures the cadence of
+  interactive frames: effects stay on while the renderer keeps up with the
+  display refresh (the post pass costs well under a millisecond on
+  discrete/Apple GPUs at CSS resolution — Autodesk's viewer likewise keeps
+  effects on during desktop navigation). On GPUs that measurably miss frames
+  (integrated GPUs at large canvases), effects degrade for the rest of the
+  gesture — the previous behaviour — with up to three re-probes before
+  settling on degraded mode for the session.
+
+  Edge contrast is no longer interaction-gated at all: its gated tail is a
+  handful of ALU ops (the expensive derivative work always ran), so disabling
+  it bought nothing and only made crease darkening pop around gestures in
+  orthographic mode.
+
+  The viewer app now also requests a settle frame when a camera tween
+  (Home / view cube / zoom-extent) completes, so the last animation frame can
+  no longer remain on screen at degraded quality.
+
+### Patch Changes
+
+- [#1067](https://github.com/LTplus-AG/ifc-lite/pull/1067) [`13f54fe`](https://github.com/LTplus-AG/ifc-lite/commit/13f54fe54238051b10a343ede62231044f3741f4) Thanks [@louistrue](https://github.com/louistrue)! - Fix grazing-angle shading artifacts: diagonal lighter/darker bands on flat
+  walls and slabs, and dashed/broken separation lines along wall corners.
+
+  Root cause: the derivative-based flat-shading normal
+  (`cross(dpdx(worldPos), dpdy(worldPos))`) is numerically sign-unstable at
+  grazing view angles — the hemisphere-ambient and rim-light terms then
+  band-flip across large regions of a single flat surface (and on the 1–2 px
+  z-hash slivers along entity corners, which rendered as dark dashes). The
+  normal's direction is now kept from the screen-space derivatives (preserving
+  the coplanar-strip scar-line immunity) while its sign is stabilized by the
+  interpolated vertex normal, guarded against missing/near-perpendicular
+  vertex normals. The textured shader inherits the fix through its anchored
+  derivation.
+
+  The separation-lines pass additionally gained a per-axis second-difference
+  "crease" gate (3e-4 relative) alongside the existing 5e-4 first-difference
+  gate, so depth-continuous wall/wall and floor/wall seams draw consistently
+  instead of flickering around the threshold (dashed lines). Coplanar
+  continuations stay suppressed: their second difference is bounded by the
+  anti-z-fight hash offset (≤2.55e-4). No new texture loads; both changes are
+  a few ALU ops — verified flat 60 fps (0 frames >20 ms over 300 forced
+  full-effect renders) and zero load-time impact.
+
 ## 1.25.4
 
 ### Patch Changes

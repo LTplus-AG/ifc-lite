@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "3.2.0",
+  "version": "4.0.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -47,7 +47,7 @@
     "version": "changeset version && node scripts/sync-versions.js",
     "release": "pnpm build && pnpm test:esm && pnpm release:npm && pnpm release:crates",
     "release:npm": "changeset publish",
-    "release:crates": "cargo publish -p ifc-lite-core --allow-dirty || true && sleep 30 && cargo publish -p ifc-lite-geometry --allow-dirty || true && sleep 30 && cargo publish -p ifc-lite-wasm --allow-dirty || true",
+    "release:crates": "node scripts/release-crates.mjs",
     "publish:npm": "pnpm -r publish --access public",
     "publish:dry": "pnpm -r publish --access public --dry-run",
     "test:benchmark": "playwright test tests/benchmark/benchmark.spec.ts",

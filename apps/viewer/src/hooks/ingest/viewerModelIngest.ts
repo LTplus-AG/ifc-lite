@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { parseIfcx, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
+import { parseIfcx, createSyntheticDataStore, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
@@ -44,20 +44,15 @@ export function convertIfcxMeshes(rawMeshes: RawIfcxMesh[]): MeshData[] {
 }
 
 export function createMinimalGlbDataStore(buffer: ArrayBuffer, meshCount: number): IfcDataStore {
-  return {
+  // A GLB carries renderable meshes but no IFC entities. Build a typed,
+  // entity-less store via the shared factory so the full `IfcDataStore`
+  // contract (including the lazy `getEntity` / `getProperties` accessors the
+  // query path calls) is compiler-enforced instead of cast away (#1004).
+  return createSyntheticDataStore({
+    schemaVersion: 'IFC4',
     fileSize: buffer.byteLength,
-    schemaVersion: 'IFC4' as const,
     entityCount: meshCount,
-    parseTime: 0,
-    source: new Uint8Array(0),
-    entityIndex: { byId: new Map(), byType: new Map() },
-    strings: { getString: () => undefined, getStringId: () => undefined, count: 0 } as unknown as IfcDataStore['strings'],
-    entities: { count: 0, getId: () => 0, getType: () => 0, getName: () => undefined, getGlobalId: () => undefined } as unknown as IfcDataStore['entities'],
-    properties: { count: 0, getPropertiesForEntity: () => [], getPropertySetForEntity: () => [] } as unknown as IfcDataStore['properties'],
-    quantities: { count: 0, getQuantitiesForEntity: () => [] } as unknown as IfcDataStore['quantities'],
-    relationships: { count: 0, getRelationships: () => [], getRelated: () => [] } as unknown as IfcDataStore['relationships'],
-    spatialHierarchy: null as unknown as IfcDataStore['spatialHierarchy'],
-  } as unknown as IfcDataStore;
+  });
 }
 
 export function getMaxExpressId(dataStore: IfcDataStore, meshes: MeshData[]): number {

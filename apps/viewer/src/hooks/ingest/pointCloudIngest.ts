@@ -19,118 +19,42 @@ import {
   type StreamHandle,
 } from '@ifc-lite/pointcloud';
 import type { CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
 /**
- * IfcTypeEnum.IfcGeographicElement — the closest IFC4 entity for a scan
- * is `IfcGeographicElement`. We hard-code the enum value (58) here so
- * we don't pull `@ifc-lite/data` into the viewer ingest path.
- */
-const IFC_GEOGRAPHIC_ELEMENT_ENUM = 58;
-
-/**
- * Synthetic IfcDataStore for a point-cloud-only model. Picking a point
- * sets the synthetic expressId as the selected entity, which then runs
- * through the regular property/hover/properties-panel pipeline. That
- * pipeline calls `entities.getTypeName / getName / getGlobalId` and
- * `properties.getForEntity` — without those methods, picking crashes
- * with "getTypeName is not a function". We give it just enough shape
- * to round-trip the single synthetic entity.
+ * Synthetic IfcDataStore for a point-cloud-only model. Picking a point sets
+ * the synthetic expressId as the selected entity, which then runs through the
+ * regular property/hover/properties-panel pipeline. That pipeline calls
+ * `entities.getTypeName / getName / getGlobalId` and `properties.getForEntity`
+ * — `createSyntheticDataStore` builds a real single-row entity table (plus the
+ * lazy `getEntity` / `getProperties` accessors) so every member of the
+ * `IfcDataStore` contract is present and compiler-enforced — no `as unknown as`
+ * shims that silently drop an accessor and crash picking at runtime (#1004).
+ *
+ * `IfcGeographicElement` is the closest IFC4 entity for a real-world scan; the
+ * entity table derives its enum (58) from the type name itself.
  */
 function emptyDataStore(
   buffer: ArrayBuffer,
   expressId: number,
   fileName: string,
 ): IfcDataStore {
-  const expressIds = new Uint32Array([expressId]);
-  const empty32 = new Uint32Array(0);
-  const empty8 = new Uint8Array(0);
-  const emptyI32 = new Int32Array(0);
-  const indexOf = (id: number) => (id === expressId ? 0 : -1);
-  const entities = {
-    count: 1,
-    expressId: expressIds,
-    typeEnum: new Uint16Array([IFC_GEOGRAPHIC_ELEMENT_ENUM]),
-    globalId: empty32,
-    name: empty32,
-    description: empty32,
-    objectType: empty32,
-    flags: new Uint8Array([0]),
-    containedInStorey: new Int32Array([-1]),
-    definedByType: new Int32Array([-1]),
-    geometryIndex: new Int32Array([-1]),
-    typeRanges: new Map(),
-    getGlobalId: (id: number) => (indexOf(id) >= 0 ? `pointcloud-${expressId}` : ''),
-    getName: (id: number) => (indexOf(id) >= 0 ? fileName : ''),
-    getDescription: () => '',
-    getObjectType: () => '',
-    getTypeName: (id: number) => (indexOf(id) >= 0 ? 'IfcGeographicElement' : 'Unknown'),
-    hasGeometry: (id: number) => indexOf(id) >= 0,
-    getByType: () => [expressId],
-    getTypeEnum: (id: number) =>
-      indexOf(id) >= 0 ? IFC_GEOGRAPHIC_ELEMENT_ENUM : 9999, // 9999 = Unknown
-    getExpressIdByGlobalId: (gid: string) =>
-      gid === `pointcloud-${expressId}` ? expressId : -1,
-    getGlobalIdMap: () => new Map([[`pointcloud-${expressId}`, expressId]]),
-  };
-  const properties = {
-    count: 0,
-    entityId: empty32, psetName: empty32, psetGlobalId: empty32,
-    propName: empty32, propType: empty8,
-    valueString: empty32, valueReal: new Float64Array(0),
-    valueInt: emptyI32, valueBool: empty8, unitId: emptyI32,
-    entityIndex: new Map<number, number[]>(),
-    psetIndex: new Map<number, number[]>(),
-    propIndex: new Map<number, number[]>(),
-    getForEntity: () => [],
-    getPropertyValue: () => null,
-    findByProperty: () => [],
-  };
-  const quantities = {
-    count: 0,
-    entityId: empty32, qsetName: empty32, qsetGlobalId: empty32,
-    quantityName: empty32, quantityType: empty8,
-    valueReal: new Float64Array(0), unitId: emptyI32,
-    entityIndex: new Map<number, number[]>(),
-    qsetIndex: new Map<number, number[]>(),
-    getForEntity: () => [],
-  };
-  const relationships = {
-    count: 0,
-    relType: empty8, relatingId: empty32, relatedId: empty32,
-    byRelating: new Map<number, number[]>(),
-    byRelated: new Map<number, number[]>(),
-    getOutgoing: () => [],
-    getIncoming: () => [],
-    getRelated: () => [],
-    getRelating: () => [],
-  };
-  const byId = new Map<number, unknown>([[expressId, { expressId }]]);
-  return {
+  return createSyntheticDataStore({
+    schemaVersion: 'IFC4',
     fileSize: buffer.byteLength,
-    schemaVersion: 'IFC4' as const,
     entityCount: 1,
-    parseTime: 0,
-    source: new Uint8Array(0),
-    entityIndex: {
-      byId: byId as unknown as IfcDataStore['entityIndex']['byId'],
-      byType: new Map([['IFCGEOGRAPHICELEMENT', [expressId]]]),
-    },
-    strings: {
-      get: () => '',
-      getId: () => 0,
-      count: 0,
-    } as unknown as IfcDataStore['strings'],
-    entities: entities as unknown as IfcDataStore['entities'],
-    properties: properties as unknown as IfcDataStore['properties'],
-    quantities: quantities as unknown as IfcDataStore['quantities'],
-    relationships: relationships as unknown as IfcDataStore['relationships'],
-    spatialHierarchy: undefined,
-  } as unknown as IfcDataStore;
+    entities: [{
+      expressId,
+      type: 'IfcGeographicElement',
+      globalId: `pointcloud-${expressId}`,
+      name: fileName,
+      hasGeometry: true,
+    }],
+  });
 }
 
 export interface PointCloudIngestResult {

@@ -1,5 +1,11 @@
 # @ifc-lite/embed-sdk
 
+## 1.14.7
+
+### Patch Changes
+
+- [#1087](https://github.com/LTplus-AG/ifc-lite/pull/1087) [`0d1703b`](https://github.com/LTplus-AG/ifc-lite/commit/0d1703bdd4eaf5584cef177652e5ae9e8656e459) Thanks [@louistrue](https://github.com/louistrue)! - Fix the default embed viewer origin: `embed.ifc-lite.com` does not exist (NXDOMAIN), the hosted viewer lives at `embed.ifclite.com`. Without an explicit `origin` option, `IFCLiteEmbed.create()` pointed the iframe at a dead domain and rejected with a handshake timeout after 15s. Existing SDK versions can work around this by passing `origin: 'https://embed.ifclite.com'`.
+
 ## 1.14.6
 
 ### Patch Changes

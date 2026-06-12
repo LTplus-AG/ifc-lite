@@ -1,5 +1,11 @@
 # @ifc-lite/cache
 
+## 2.0.2
+
+### Patch Changes
+
+- [#1091](https://github.com/LTplus-AG/ifc-lite/pull/1091) [`7c7025a`](https://github.com/LTplus-AG/ifc-lite/commit/7c7025aa969c0606f6480ed4d2eeb9ec7c1b5e14) Thanks [@louistrue](https://github.com/louistrue)! - Persist `geometryClass` in the binary geometry section so the viewer's Model/Types view switch survives a cache hit. The format previously serialized everything except the per-mesh provenance tag, so restored meshes all came back as class 0 — instanced type-library geometry reappeared in Model mode and the Model/Types switch disappeared. Bumps `FORMAT_VERSION` 4 → 5 (older caches read back as class 0; consumers should key their cache entries on `FORMAT_VERSION` so a bump invalidates stale entries and re-meshes fresh).
+
 ## 2.0.1
 
 ### Patch Changes

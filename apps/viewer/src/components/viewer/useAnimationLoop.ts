@@ -105,6 +105,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     let lastRotationUpdate = 0;
     let lastScaleUpdate = 0;
     let lastRenderTime = 0;
+    let wasAnimating = false;
 
     // Adaptive render throttle: large models get fewer FPS during continuous
     // rendering (interaction + inertia) to prevent the main thread from being
@@ -153,6 +154,16 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
       // 2. Camera update (animation / inertia)
       const isAnimating = camera.update(deltaTime);
 
+      // Camera tweens (Home / view cube / zoom-extent) render their frames
+      // with isInteracting=true; without a settle render the last tween frame
+      // could stay on screen at degraded quality until the next incidental
+      // render. Mouse/wheel/touch paths already request their own settle
+      // frame on release — this covers the animation path.
+      if (wasAnimating && !isAnimating && !isInteractingRef.current) {
+        renderer.requestRender();
+      }
+      wasAnimating = isAnimating;
+
       // 3. Render if anything changed
       // Peek first — only consume the flag when we actually commit to rendering.
       // This prevents a throttled frame from eating the dirty flag.
@@ -179,6 +190,9 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           visualEnhancement: visualEnhancementRef.current,
           environment: environmentRef.current,
           isInteracting: isInteractingRef.current || isAnimating,
+          // Let the effects governor judge missed frames against the
+          // intentional large-model throttle instead of display refresh.
+          interactionFrameIntervalMs: continuousThrottleMs || undefined,
           buildingRotation: coordinateInfoRef.current?.buildingRotation,
           sectionPlane: activeToolRef.current === 'section' ? {
             axis: sectionPlaneRef.current.axis,

@@ -179,6 +179,21 @@ export const mainShaderSource = `
             }
           }
 
+          // Stabilize the SIGN of the derivative face normal with the vertex
+          // normal. The screen-space cross product gives the exact face
+          // normal DIRECTION for coplanar strips (the scar-line fix), but at
+          // grazing angles its SIGN becomes numerically unstable per quad —
+          // hemisphere/rim lighting then band-flips across large regions of
+          // flat walls/slabs (diagonal lighter/darker bands). The interpolated
+          // vertex normal is quad-noise-free, so use it only to orient N.
+          // Guard: skip when the vertex normal is missing or nearly
+          // perpendicular to the face normal (unreliable witness).
+          let vN = input.normal;
+          let alignDot = dot(N, vN);
+          if (alignDot * alignDot > 0.03 * dot(vN, vN)) {
+            N = N * sign(alignDot);
+          }
+
           // Lighting environment — sun/hemisphere/exposure come from the
           // global env uniform (defaults reproduce the historic hardcoded
           // values); fill + rim directions stay fixed in view-agnostic

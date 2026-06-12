@@ -108,6 +108,7 @@ import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, ty
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
+import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
@@ -177,6 +178,7 @@ export class Renderer {
     private symbolicFillPipeline: SymbolicFillPipeline | null = null;
     private symbolicTextPipeline: SymbolicTextPipeline | null = null;
     private postProcessor: PostProcessor | null = null;
+    private readonly interactionEffects = new InteractionEffectsGovernor();
     private edlPass: EdlPass | null = null;
     // Procedural sky background — created lazily on the first frame that
     // enables it (most sessions never do).
@@ -1002,15 +1004,33 @@ export class Renderer {
         const device = this.device.getDevice();
         const viewProj = this.camera.getViewProjMatrix().m;
         const visualEnhancement = this.resolveVisualEnhancement(options.visualEnhancement);
-        // Skip expensive visual effects during interaction (orbit/pan/zoom)
-        // to keep frame times low on integrated GPUs (MacBook Air etc.)
+        // Post effects during interaction (orbit/pan/zoom) are governed
+        // adaptively: they stay on while the interactive frame cadence holds
+        // (the pass costs well under a ms on discrete/Apple GPUs at CSS
+        // resolution) and degrade to the legacy effects-off behaviour only
+        // on machines that measurably miss frames — integrated GPUs at large
+        // canvases. See InteractionEffectsGovernor.
         const interacting = options.isInteracting === true;
-        const edgeEnabled = !interacting && visualEnhancement.enabled && visualEnhancement.edgeContrast.enabled;
+        // Frames rendered while geometry is still streaming in carry upload
+        // jank unrelated to steady-state cost — exclude them from the
+        // governor's verdict so early navigation can't degrade a session.
+        const timingUnstable = options.isStreaming === true || this.scene.hasQueuedMeshes();
+        const effectsLive = this.interactionEffects.frame(
+            interacting,
+            performance.now(),
+            timingUnstable,
+            options.interactionFrameIntervalMs ?? 0,
+        );
+        // Edge contrast is NOT interaction-gated: its per-fragment work runs
+        // unconditionally in the shader and the gated tail is a handful of
+        // ALU ops, so disabling it bought nothing and only made the crease
+        // darkening pop off/on around gestures (visible in ortho).
+        const edgeEnabled = visualEnhancement.enabled && visualEnhancement.edgeContrast.enabled;
         const edgeIntensity = Math.min(3.0, Math.max(0.0, visualEnhancement.edgeContrast.intensity));
         const edgeEnabledU32 = edgeEnabled ? 1 : 0;
         const edgeIntensityMilliU32 = Math.round(edgeIntensity * 1000);
-        const contactEnabled = !interacting && visualEnhancement.enabled && visualEnhancement.contactShading.quality !== 'off';
-        const separationEnabled = !interacting && visualEnhancement.enabled
+        const contactEnabled = effectsLive && visualEnhancement.enabled && visualEnhancement.contactShading.quality !== 'off';
+        const separationEnabled = effectsLive && visualEnhancement.enabled
             && visualEnhancement.separationLines.enabled
             && visualEnhancement.separationLines.quality !== 'off';
         const needsObjectIdPass = contactEnabled || separationEnabled;

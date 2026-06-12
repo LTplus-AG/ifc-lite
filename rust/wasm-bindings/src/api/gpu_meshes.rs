@@ -385,18 +385,19 @@ impl IfcAPI {
                 // complete index instead of trusting the metres default.
                 let unit_scale =
                     match ifc_lite_core::try_extract_length_unit_scale(&mut decoder, pid) {
-                    Some(scale) => scale,
-                    None => {
-                        let full_index = ifc_lite_core::build_entity_index(content);
+                        Some(scale) => scale,
+                        None => {
+                            let full_index = ifc_lite_core::build_entity_index(content);
                             let mut full_decoder = EntityDecoder::with_index(content, full_index);
-                        ifc_lite_core::extract_length_unit_scale(&mut full_decoder, pid)
-                            .unwrap_or(1.0)
-                    }
-                };
+                            ifc_lite_core::extract_length_unit_scale(&mut full_decoder, pid)
+                                .unwrap_or(1.0)
+                        }
+                    };
 
                 let router = GeometryRouter::with_scale(unit_scale);
-                let is_large =
-                    |t: (f64, f64, f64)| t.0.abs() > 10000.0 || t.1.abs() > 10000.0 || t.2.abs() > 10000.0;
+                let is_large = |t: (f64, f64, f64)| {
+                    t.0.abs() > 10000.0 || t.1.abs() > 10000.0 || t.2.abs() > 10000.0
+                };
                 let detected_rtc = router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut decoder);
                 let mut rtc_offset = detected_rtc.unwrap_or((0.0, 0.0, 0.0));
 

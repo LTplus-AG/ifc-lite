@@ -1036,6 +1036,7 @@ export {
     extractTypeEntityOwnProperties,
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
+    extractGroupMembersOnDemand,
     extractGeoreferencingOnDemand,
     parsePropertyValue,
     extractPsetsFromIds,
@@ -1053,5 +1054,6 @@ export type {
     TypePropertyInfo,
     DocumentInfo,
     EntityRelationships,
+    GroupMember,
     GeorefInfo,
 } from './on-demand-extractors.js';

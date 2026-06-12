@@ -15,6 +15,7 @@ export const SPATIAL_STRUCTURE_TYPE_ENUMS = [
   IfcTypeEnum.IfcBuilding,
   IfcTypeEnum.IfcBuildingStorey,
   IfcTypeEnum.IfcSpace,
+  IfcTypeEnum.IfcSpatialZone,
   IfcTypeEnum.IfcFacility,
   IfcTypeEnum.IfcFacilityPart,
   IfcTypeEnum.IfcBridge,
@@ -41,6 +42,7 @@ export const STOREY_LIKE_SPATIAL_TYPE_ENUMS = [
 
 export const SPACE_LIKE_SPATIAL_TYPE_ENUMS = [
   IfcTypeEnum.IfcSpace,
+  IfcTypeEnum.IfcSpatialZone,
 ] as const;
 
 const SPATIAL_STRUCTURE_TYPE_SET = new Set<IfcTypeEnum>(SPATIAL_STRUCTURE_TYPE_ENUMS);

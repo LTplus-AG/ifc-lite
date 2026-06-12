@@ -74,7 +74,9 @@ export interface DocumentInfo {
 export interface EntityRelationships {
     voids: Array<{ id: number; name?: string; type: string }>;
     fills: Array<{ id: number; name?: string; type: string }>;
-    groups: Array<{ id: number; name?: string }>;
+    /** Groups this entity is assigned to (IfcZone, IfcGroup, IfcSystem, …) via
+     *  IfcRelAssignsToGroup. `type` distinguishes IfcZone from a plain IfcGroup. */
+    groups: Array<{ id: number; name?: string; type: string }>;
     connections: Array<{ id: number; name?: string; type: string }>;
 }
 
@@ -641,11 +643,11 @@ export function extractRelationshipsOnDemand(
         result.fills.push({ id, ...info });
     }
 
-    // AssignsToGroup: groups this element belongs to
+    // AssignsToGroup: groups (IfcZone / IfcGroup / IfcSystem) this element belongs to
     const groupIds = store.relationships.getRelated(entityId, RelationshipType.AssignsToGroup, 'inverse');
     for (const id of groupIds) {
-        const name = store.entities?.getName(id);
-        result.groups.push({ id, name: name || undefined });
+        const info = getEntityInfo(id);
+        result.groups.push({ id, ...info });
     }
 
     // ConnectsPathElements: connected walls
@@ -659,6 +661,38 @@ export function extractRelationshipsOnDemand(
     }
 
     return result;
+}
+
+/** A member object of an IfcZone / IfcGroup (the RelatedObjects of its
+ *  IfcRelAssignsToGroup). */
+export interface GroupMember {
+    id: number;
+    name?: string;
+    type: string;
+}
+
+/**
+ * Enumerate the member objects of a group/zone ON-DEMAND — the inverse of the
+ * `groups` field in {@link extractRelationshipsOnDemand}. Resolves the
+ * RelatedObjects of the group's IfcRelAssignsToGroup (forward direction:
+ * group → members). For an IfcZone this returns the IfcSpace / IfcSpatialZone
+ * members so the UI can select/isolate everything in a dwelling, house number,
+ * fire compartment, etc. (#1075).
+ */
+export function extractGroupMembersOnDemand(
+    store: IfcDataStore,
+    groupId: number
+): GroupMember[] {
+    if (!store.relationships) return [];
+    const memberIds = store.relationships.getRelated(groupId, RelationshipType.AssignsToGroup, 'forward');
+    const members: GroupMember[] = [];
+    for (const id of memberIds) {
+        const ref = store.entityIndex.byId.get(id);
+        if (!ref) continue;
+        const name = store.entities?.getName(id);
+        members.push({ id, name: name || undefined, type: ref.type });
+    }
+    return members;
 }
 
 // ============================================================================

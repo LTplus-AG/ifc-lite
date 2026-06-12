@@ -158,6 +158,7 @@ export const UI_DEFAULTS = {
  */
 export const TYPE_VISIBILITY_STORAGE_KEYS = {
   spaces:         'ifc-lite-ifc-spaces-visible',
+  spatialZones:   'ifc-lite-ifc-spatial-zones-visible',
   openings:       'ifc-lite-ifc-openings-visible',
   site:           'ifc-lite-ifc-site-visible',
   ifcAnnotations: 'ifc-lite-ifc-annotations-visible',
@@ -188,6 +189,7 @@ function readPersistedBool(key: string, fallback: boolean): boolean {
 // menu can restore these without re-deriving them.
 export const TYPE_VISIBILITY_SEMANTIC_DEFAULTS: TypeVisibility = {
   spaces: false,
+  spatialZones: false,
   openings: false,
   site: true,
   ifcAnnotations: true,
@@ -208,6 +210,7 @@ export const TYPE_VISIBILITY_SEMANTIC_DEFAULTS: TypeVisibility = {
 export function getPersistedTypeVisibility(): TypeVisibility {
   return {
     spaces:         readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spaces, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.spaces),
+    spatialZones:   readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spatialZones, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.spatialZones),
     openings:       readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.openings, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.openings),
     site:           readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.site),
     ifcAnnotations: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.ifcAnnotations),

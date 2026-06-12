@@ -12,6 +12,7 @@ import {
   IfcTypeEnum,
   RelationshipType,
   isBuildingLikeSpatialType,
+  isSpaceLikeSpatialType,
   isSpatialStructureType,
   isStoreyLikeSpatialType,
   type SpatialHierarchy,
@@ -65,13 +66,26 @@ export function rebuildSpatialHierarchy(
       'forward'
     );
 
-    // Filter out spatial structure elements — keep unknown types (custom/newer IFC classes).
-    // getTypeEnum() returns IfcTypeEnum.Unknown for both missing and unrecognized entities;
-    // isSpatialStructureType(Unknown) is false, so unknown types pass through correctly.
-    const containedElements = rawContainedElements.filter((id) => {
+    // Split contained refs into real (non-spatial) elements vs spatial-structure
+    // elements. Keep unknown types as elements (custom/newer IFC classes):
+    // getTypeEnum() returns IfcTypeEnum.Unknown for both missing and unrecognized
+    // entities, and isSpatialStructureType(Unknown) is false.
+    //
+    // A contained spatial element — an IfcSpace / IfcSpatialZone attached to a
+    // storey via IfcRelContainedInSpatialStructure, which is what Revit Family +
+    // Dynamo emit instead of IfcRelAggregates — is a tree NODE, not a contained
+    // product. Promote it to a spatial child so it shows in the hierarchy; without
+    // this it was filtered out here and vanished from the tree (#1075).
+    const containedElements: number[] = [];
+    const containedSpatialChildren: number[] = [];
+    for (const id of rawContainedElements) {
       const elemType = entities.getTypeEnum(id);
-      return !isSpatialStructureType(elemType);
-    });
+      if (isSpatialStructureType(elemType) && elemType !== IfcTypeEnum.IfcProject) {
+        containedSpatialChildren.push(id);
+      } else {
+        containedElements.push(id);
+      }
+    }
 
     // Get aggregated children via IfcRelAggregates
     const aggregatedChildren = relationships.getRelated(
@@ -80,14 +94,20 @@ export function rebuildSpatialHierarchy(
       'forward'
     );
 
-    // Filter to spatial structure types and recurse - O(1) per child now!
+    // Spatial child nodes come from BOTH aggregation and containment. Dedupe so a
+    // space referenced by both relationships isn't built twice. O(1) per child.
     const childNodes: SpatialNode[] = [];
-    for (const childId of aggregatedChildren) {
+    const spatialChildIds = new Set<number>();
+    const addSpatialChild = (childId: number) => {
+      if (spatialChildIds.has(childId)) return;
       const childType = entities.getTypeEnum(childId);
       if (childType && isSpatialStructureType(childType) && childType !== IfcTypeEnum.IfcProject) {
+        spatialChildIds.add(childId);
         childNodes.push(buildNode(childId));
       }
-    }
+    };
+    for (const childId of aggregatedChildren) addSpatialChild(childId);
+    for (const childId of containedSpatialChildren) addSpatialChild(childId);
 
     // Add elements to appropriate maps
     if (isStoreyLikeSpatialType(typeEnum)) {
@@ -96,7 +116,8 @@ export function rebuildSpatialHierarchy(
       byBuilding.set(expressId, containedElements);
     } else if (typeEnum === IfcTypeEnum.IfcSite) {
       bySite.set(expressId, containedElements);
-    } else if (typeEnum === IfcTypeEnum.IfcSpace) {
+    } else if (isSpaceLikeSpatialType(typeEnum)) {
+      // IfcSpace and IfcSpatialZone both roll up their contained elements here.
       bySpace.set(expressId, containedElements);
     }
 
@@ -125,6 +146,14 @@ export function rebuildSpatialHierarchy(
             }
             stack.push(kid);
           }
+        }
+      }
+      // Map the storey's spatial children (IfcSpace / IfcSpatialZone) to it too,
+      // so a selected space resolves "which storey it's on" in properties — the
+      // space itself is a child node, not in containedElements (#1075).
+      for (const childId of spatialChildIds) {
+        if (!elementToStorey.has(childId)) {
+          elementToStorey.set(childId, expressId);
         }
       }
     }

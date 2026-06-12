@@ -254,6 +254,16 @@ function extractAutoColorValue(
       if (!provider.getModelId) return undefined;
       return provider.getModelId(globalId);
 
+    case 'group': {
+      if (!provider.getEntityGroups) return undefined;
+      const groups = provider.getEntityGroups(globalId);
+      if (!groups || groups.length === 0) return undefined;
+      // Group by the first assigned zone/group. Use its name when present,
+      // else fall back to "Type #id" so unnamed groups still bucket distinctly.
+      const g = groups[0];
+      return g.name && g.name.trim() !== '' ? g.name : `${g.type} #${g.id}`;
+    }
+
     default:
       return undefined;
   }

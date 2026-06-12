@@ -59,7 +59,7 @@ export interface VisibilitySlice {
   clearAllFilters: () => void;
   showAll: () => void;
   isEntityVisible: (id: number) => boolean;
-  toggleTypeVisibility: (type: 'spaces' | 'openings' | 'site' | 'ifcAnnotations' | 'ifcGrid') => void;
+  toggleTypeVisibility: (type: 'spaces' | 'spatialZones' | 'openings' | 'site' | 'ifcAnnotations' | 'ifcGrid') => void;
   /** Restore every type-visibility toggle to its semantic default (and persist). */
   resetTypeVisibility: () => void;
   /** Set the Model/Types 3D view mode (and persist). */

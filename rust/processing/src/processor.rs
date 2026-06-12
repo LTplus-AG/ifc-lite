@@ -530,6 +530,7 @@ fn is_quick_spatial_type_ci(type_name: &str) -> bool {
         || type_name.eq_ignore_ascii_case("IFCBUILDING")
         || type_name.eq_ignore_ascii_case("IFCBUILDINGSTOREY")
         || type_name.eq_ignore_ascii_case("IFCSPACE")
+        || type_name.eq_ignore_ascii_case("IFCSPATIALZONE")
         || type_name.eq_ignore_ascii_case("IFCFACILITY")
         || type_name.eq_ignore_ascii_case("IFCFACILITYPART")
         || type_name.eq_ignore_ascii_case("IFCBRIDGE")
@@ -1299,8 +1300,33 @@ pub fn process_geometry_streaming_filtered_with_options(
             }
         }
         for (parent_id, element_ids) in quick_containment_links {
-            if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
-                parent.elements.extend(element_ids);
+            if !spatial_nodes.contains_key(&parent_id) {
+                continue;
+            }
+            for child_id in element_ids {
+                // A spatial element (IfcSpace / IfcSpatialZone) attached to a
+                // storey via IfcRelContainedInSpatialStructure — what Revit
+                // Family + Dynamo emits instead of IfcRelAggregates — is a real
+                // node of the spatial tree, not a contained product. Promote it
+                // to a child node so it shows in the hierarchy (#1075); anything
+                // that isn't itself a spatial node stays a contained element.
+                if spatial_nodes.contains_key(&child_id) {
+                    // Skip if already placed via IfcRelAggregates (wired just
+                    // above) to avoid a duplicate child / parent overwrite.
+                    let already_placed = spatial_nodes
+                        .get(&child_id)
+                        .is_some_and(|child| child.parent.is_some());
+                    if !already_placed {
+                        if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
+                            parent.children.push(child_id);
+                        }
+                        if let Some(child) = spatial_nodes.get_mut(&child_id) {
+                            child.parent = Some(parent_id);
+                        }
+                    }
+                } else if let Some(parent) = spatial_nodes.get_mut(&parent_id) {
+                    parent.elements.push(child_id);
+                }
             }
         }
         let mut root_id = spatial_nodes

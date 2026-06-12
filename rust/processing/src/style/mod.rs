@@ -203,6 +203,11 @@ pub fn default_color_for_type(ifc_type: IfcType) -> Rgba {
         // Spaces — cyan, transparent
         IfcType::IfcSpace => Rgba::new(0.2, 0.85, 1.0, 0.3),
 
+        // Spatial zones (modelled GFA volumes) — violet, transparent. A
+        // distinct hue from IfcSpace's cyan so net (room) vs gross (zone)
+        // areas read apart when both are shown (#1075).
+        IfcType::IfcSpatialZone => Rgba::new(0.72, 0.35, 0.95, 0.28),
+
         // Opening elements — red-orange, transparent
         IfcType::IfcOpeningElement => Rgba::new(1.0, 0.42, 0.29, 0.4),
 

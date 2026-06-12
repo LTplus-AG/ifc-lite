@@ -107,6 +107,7 @@ function dedupeRefs(refs: EntityRef[]): EntityRef[] {
 
 function matchesTypeVisibility(ifcType: string | undefined, typeVisibility: ViewerStateSnapshot['typeVisibility']): boolean {
   if (ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
+  if (ifcType === 'IfcSpatialZone' && !typeVisibility.spatialZones) return false;
   if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
   if (ifcType === 'IfcSite' && !typeVisibility.site) return false;
   return true;

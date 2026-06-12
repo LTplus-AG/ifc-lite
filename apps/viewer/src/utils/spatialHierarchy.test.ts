@@ -115,6 +115,51 @@ describe('rebuildSpatialHierarchy', () => {
     assert.equal(hierarchy.elementToStorey.get(5), 4);
   });
 
+  it('promotes spaces/zones contained via IfcRelContainedInSpatialStructure to tree nodes (#1075)', () => {
+    // Revit Family geometry authored via Dynamo attaches IfcSpace / IfcSpatialZone
+    // to the storey with IfcRelContainedInSpatialStructure instead of
+    // IfcRelAggregates. Pre-fix these were filtered out of containedElements (they
+    // are spatial-structure types) and, lacking an aggregate link, vanished from
+    // the tree. They must be promoted to spatial child nodes, get a space→storey
+    // mapping, and stay out of the storey's flat element list.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(7, strings);
+    entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    entities.add(2, 'IFCSITE', 's0', 'Site', '', '');
+    entities.add(3, 'IFCBUILDING', 'b0', 'Building', '', '');
+    entities.add(4, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    entities.add(5, 'IFCSPACE', 'sp-agg', 'Room 101', '', '', true);    // normal aggregated room
+    entities.add(6, 'IFCSPACE', 'sp-con', 'Family Space', '', '', true); // contained (Dynamo)
+    entities.add(7, 'IFCSPATIALZONE', 'sz-con', 'GFA Apt', '', '', true); // contained GFA zone
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    relationships.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    relationships.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    relationships.addEdge(4, 5, RelationshipType.Aggregates, 103);        // room aggregated
+    relationships.addEdge(4, 6, RelationshipType.ContainsElements, 104);  // family space contained
+    relationships.addEdge(4, 7, RelationshipType.ContainsElements, 105);  // GFA zone contained
+
+    const hierarchy = rebuildSpatialHierarchy(entities.build(), relationships.build());
+    assert.ok(hierarchy);
+
+    const storey = hierarchy.project.children[0].children[0].children[0];
+    assert.equal(storey.type, IfcTypeEnum.IfcBuildingStorey);
+
+    // All three spatial elements are child nodes of the storey (aggregated + contained).
+    const childIds = storey.children.map((n) => n.expressId).sort((a, b) => a - b);
+    assert.deepEqual(childIds, [5, 6, 7]);
+    assert.equal(storey.children.find((n) => n.expressId === 7)?.type, IfcTypeEnum.IfcSpatialZone);
+
+    // Contained spaces/zones are NOT also listed as flat storey elements.
+    assert.deepEqual(hierarchy.getStoreyElements(4), []);
+
+    // Every space/zone resolves "which storey it's on" (properties panel lookup).
+    assert.equal(hierarchy.elementToStorey.get(5), 4);
+    assert.equal(hierarchy.elementToStorey.get(6), 4);
+    assert.equal(hierarchy.elementToStorey.get(7), 4);
+  });
+
   it('terminates in bounded time on malformed aggregate cycles', () => {
     // Cycle guard: part references back to wall via IfcRelAggregates. Without
     // the `seen` set, the descendant walk would infinite-loop.

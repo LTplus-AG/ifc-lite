@@ -261,7 +261,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
         const localIds = (model.ifcDataStore.spatialHierarchy.byStorey.get(storeyId) as number[]) || [];
         return toGlobalIdsForModel(modelId, localIds);
       }
-    } else if (node.type === 'IfcSpace') {
+    } else if (node.type === 'IfcSpace' || node.type === 'IfcSpatialZone') {
       const spaceId = node.expressIds[0];
       const modelId = node.modelIds[0];
 

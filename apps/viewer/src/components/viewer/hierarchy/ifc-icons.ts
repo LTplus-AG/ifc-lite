@@ -17,6 +17,10 @@ export const IFC_ICON_CODEPOINTS: Record<string, string> = {
   IfcBuilding: '\uea40',
   IfcBuildingStorey: '\ue8fe',
   IfcSpace: '\ueff4',
+  // IfcSpatialZone (modelled GFA volume) shares the space-family icon \u2014 it is a
+  // space-like spatial element, distinguished from IfcSpace by name/colour (#1075).
+  IfcSpatialZone: '\ueff4',
+  IfcZone: '\ueb97', // "workspaces" \u2014 a grouping of spaces/zones
   // IFC4.3 facility containers \u2014 same family as IfcBuilding (multi-storey
   // spatial root) but `domain` carries the "campus / infrastructure
   // facility" reading; IfcFacilityPart follows the storey-line icon for

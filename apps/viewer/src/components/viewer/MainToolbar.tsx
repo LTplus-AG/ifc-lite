@@ -467,10 +467,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // anything in "Types" mode, so the switch is hidden for the common
   // occurrence-only model. Derived in ViewportContainer from the merged meshes.
   const hasTypeGeometry = useViewerStore((state) => state.hasTypeGeometry);
-  // How many of the five class toggles are on — surfaced in the menu
+  // How many of the class toggles are on — surfaced in the menu
   // header so the user sees scene state at a glance.
   const visibleClassCount = [
     typeVisibility.spaces,
+    typeVisibility.spatialZones,
     typeVisibility.openings,
     typeVisibility.site,
     typeVisibility.ifcAnnotations,
@@ -1511,9 +1512,16 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <ClassVisibilityRow
             icon={<Box className="h-4 w-4 shrink-0" style={{ color: '#33d9ff' }} />}
             label="Spaces"
-            description="Room & zone volumes"
+            description="Room volumes (IfcSpace)"
             checked={typeVisibility.spaces}
             onChange={() => toggleTypeVisibility('spaces')}
+          />
+          <ClassVisibilityRow
+            icon={<Box className="h-4 w-4 shrink-0" style={{ color: '#b85af2' }} />}
+            label="Spatial Zones"
+            description="Gross-area volumes (IfcSpatialZone)"
+            checked={typeVisibility.spatialZones}
+            onChange={() => toggleTypeVisibility('spatialZones')}
           />
           <ClassVisibilityRow
             icon={<SquareX className="h-4 w-4 shrink-0" style={{ color: '#ff6b4a' }} />}

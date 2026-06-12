@@ -288,6 +288,7 @@ describe('VisibilitySlice', () => {
       state.resetTypeVisibility();
       assert.deepStrictEqual(state.typeVisibility, {
         spaces: false,
+        spatialZones: false,
         openings: false,
         site: true,
         ifcAnnotations: true,

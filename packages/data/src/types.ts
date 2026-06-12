@@ -22,6 +22,12 @@ export enum IfcTypeEnum {
   IfcRailway = 65,
   IfcRailwayPart = 66,
   IfcMarineFacility = 67,
+  // IfcSpatialZone is a spatial structure element (modelled GFA volumes);
+  // IfcZone is a grouping (IfcSystem) of spaces/zones. Ids are above the
+  // current max to avoid colliding with platform-variant func_elem indices
+  // stripped by the wasm-free typecheck lane (#1002) — added for #1075.
+  IfcSpatialZone = 317,
+  IfcZone = 318,
 
   // Building elements
   IfcWall = 10,
@@ -242,6 +248,8 @@ const TYPE_STRING_TO_ENUM = new Map<string, IfcTypeEnum>([
   ['IFCBUILDING', IfcTypeEnum.IfcBuilding],
   ['IFCBUILDINGSTOREY', IfcTypeEnum.IfcBuildingStorey],
   ['IFCSPACE', IfcTypeEnum.IfcSpace],
+  ['IFCSPATIALZONE', IfcTypeEnum.IfcSpatialZone],
+  ['IFCZONE', IfcTypeEnum.IfcZone],
   ['IFCFACILITY', IfcTypeEnum.IfcFacility],
   ['IFCFACILITYPART', IfcTypeEnum.IfcFacilityPart],
   ['IFCBRIDGE', IfcTypeEnum.IfcBridge],
@@ -390,6 +398,8 @@ const TYPE_ENUM_TO_STRING = new Map<IfcTypeEnum, string>([
   [IfcTypeEnum.IfcBuilding, 'IfcBuilding'],
   [IfcTypeEnum.IfcBuildingStorey, 'IfcBuildingStorey'],
   [IfcTypeEnum.IfcSpace, 'IfcSpace'],
+  [IfcTypeEnum.IfcSpatialZone, 'IfcSpatialZone'],
+  [IfcTypeEnum.IfcZone, 'IfcZone'],
   [IfcTypeEnum.IfcFacility, 'IfcFacility'],
   [IfcTypeEnum.IfcFacilityPart, 'IfcFacilityPart'],
   [IfcTypeEnum.IfcBridge, 'IfcBridge'],

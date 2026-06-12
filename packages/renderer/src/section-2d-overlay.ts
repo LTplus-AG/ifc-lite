@@ -91,6 +91,7 @@ const IFC_TYPE_FILL_COLORS: Record<string, [number, number, number, number]> = {
   IfcDuctSegment: [0.75, 1.0, 0.75, 0.95],
   IfcFurnishingElement: [1.0, 0.88, 0.75, 0.95],
   IfcSpace: [0.94, 0.94, 0.94, 0.5],
+  IfcSpatialZone: [0.88, 0.80, 0.96, 0.5],
   default: [0.82, 0.82, 0.82, 0.95],
 };
 

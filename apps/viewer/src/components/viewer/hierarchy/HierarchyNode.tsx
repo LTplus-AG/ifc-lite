@@ -275,7 +275,7 @@ export function HierarchyNode({
         {/* Name */}
         <span className={cn(
           'flex-1 text-sm truncate ml-1.5',
-          isSpatialContainer(node.type) || node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'unified-storey' || node.type === 'type-group' || node.type === 'material-group'
+          isSpatialContainer(node.type) || node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'IfcSpatialZone' || node.type === 'unified-storey' || node.type === 'type-group' || node.type === 'material-group'
             ? 'font-medium text-zinc-900 dark:text-zinc-100'
             : 'text-zinc-700 dark:text-zinc-300',
           nodeHidden && 'line-through decoration-zinc-400 dark:decoration-zinc-600'

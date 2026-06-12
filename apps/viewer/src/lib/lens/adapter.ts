@@ -12,6 +12,7 @@
 
 import type { LensDataProvider, PropertySetInfo, ClassificationInfo } from '@ifc-lite/lens';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { RelationshipType } from '@ifc-lite/data';
 import {
   extractEntityAttributesOnDemand,
   extractPropertiesOnDemand,
@@ -298,6 +299,23 @@ export function createLensDataProvider(
     getModelName(modelId: string): string | undefined {
       const entry = entries.find(e => e.id === modelId);
       return entry?.name ?? modelId;
+    },
+
+    getEntityGroups(globalId: number): ReadonlyArray<{ id: number; name?: string; type: string }> {
+      const resolved = resolveGlobalId(globalId, entries);
+      if (!resolved) return [];
+      const store = resolved.entry.ifcDataStore;
+      if (!store.relationships) return [];
+      // Inverse IfcRelAssignsToGroup: entity → the groups/zones it belongs to.
+      const groupIds = store.relationships.getRelated(resolved.expressId, RelationshipType.AssignsToGroup, 'inverse');
+      if (!groupIds || groupIds.length === 0) return [];
+      const out: Array<{ id: number; name?: string; type: string }> = [];
+      for (const gid of groupIds) {
+        const ref = store.entityIndex?.byId.get(gid);
+        const name = store.entities?.getName(gid);
+        out.push({ id: gid, name: name || undefined, type: ref?.type ?? 'Unknown' });
+      }
+      return out;
     },
   };
 }

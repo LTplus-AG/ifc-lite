@@ -39,6 +39,7 @@ export function getNodeType(ifcType: IfcTypeEnum): NodeType {
     case IfcTypeEnum.IfcRoadPart: return 'IfcRoadPart';
     case IfcTypeEnum.IfcRailwayPart: return 'IfcRailwayPart';
     case IfcTypeEnum.IfcSpace: return 'IfcSpace';
+    case IfcTypeEnum.IfcSpatialZone: return 'IfcSpatialZone';
     default: return 'element';
   }
 }
@@ -66,7 +67,9 @@ function collectDescendantSpaceElements(
   const elementIds = new Set<number>();
 
   for (const child of spatialNode.children || []) {
-    if (getNodeType(child.type) === 'IfcSpace') {
+    // IfcSpace and IfcSpatialZone both roll up their bySpace elements so the
+    // storey doesn't also list them as direct contained elements (#1075).
+    if (isSpaceLikeSpatialType(child.type)) {
       for (const elementId of hierarchy?.bySpace.get(child.expressId) ?? []) {
         elementIds.add(elementId);
       }

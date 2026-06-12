@@ -52,10 +52,11 @@ type ColorSource = 'rendering' | 'shading';
  * matches what the user sees in the viewport.
  */
 function buildHiddenIfcTypes(
-  typeVisibility: { spaces: boolean; openings: boolean; site: boolean },
+  typeVisibility: { spaces: boolean; spatialZones: boolean; openings: boolean; site: boolean },
 ): Set<string> {
   const out = new Set<string>();
   if (!typeVisibility.spaces) out.add('IfcSpace');
+  if (!typeVisibility.spatialZones) out.add('IfcSpatialZone');
   if (!typeVisibility.openings) out.add('IfcOpeningElement');
   if (!typeVisibility.site) out.add('IfcSite');
   return out;

@@ -45,6 +45,7 @@ const TYPE_LABELS: Record<string, string> = {
   classification: 'Classification',
   material: 'Material',
   model: 'Model',
+  group: 'Zone / Group',
 };
 
 interface LensPanelProps {
@@ -371,6 +372,9 @@ function RuleEditor({
       case 'model':
         base.modelId = modelOptions.length === 1 ? modelOptions[0].id : '';
         break;
+      case 'group':
+        base.groupName = '';
+        break;
     }
     onChange({ criteria: base, name: rule.name === 'New Rule' ? TYPE_LABELS[newType] : rule.name });
   };
@@ -388,6 +392,7 @@ function RuleEditor({
         const selected = modelOptions.find(m => m.id === criteria.modelId);
         return selected?.name || 'Model';
       }
+      case 'group': return criteria.groupName || 'Zone';
       default: return 'Rule';
     }
   };
@@ -565,6 +570,20 @@ function RuleEditor({
           )
         )}
 
+        {/* Zone / Group: substring match on the zone name (blank = any zone) */}
+        {criteriaType === 'group' && (
+          <input
+            type="text"
+            value={rule.criteria.groupName ?? ''}
+            onChange={(e) => {
+              const updated = { ...rule.criteria, groupName: e.target.value };
+              onChange({ criteria: updated, name: deriveRuleName(updated) });
+            }}
+            placeholder="Zone / group name (blank = any)"
+            className={cn(inputClass, 'flex-1 min-w-0')}
+          />
+        )}
+
         <button
           onClick={onRemove}
           className="text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 p-0.5 flex-shrink-0"
@@ -694,6 +713,8 @@ function LensEditor({
       case 'classification': return !!c.classificationSystem || !!c.classificationCode;
       case 'material': return !!c.materialName;
       case 'model': return !!c.modelId;
+      // A blank group name is valid — it matches any entity assigned to a zone.
+      case 'group': return true;
       default: return false;
     }
   };

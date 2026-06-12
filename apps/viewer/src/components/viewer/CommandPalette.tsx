@@ -406,6 +406,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => executeBasketClear() },
       { id: 'vis:spaces', label: 'Spaces', keywords: 'IfcSpace rooms show hide', category: 'Visibility', icon: Box,
         action: () => { useViewerStore.getState().toggleTypeVisibility('spaces'); } },
+      { id: 'vis:spatialZones', label: 'Spatial Zones', keywords: 'IfcSpatialZone gross area GFA show hide', category: 'Visibility', icon: Box,
+        action: () => { useViewerStore.getState().toggleTypeVisibility('spatialZones'); } },
       { id: 'vis:openings', label: 'Openings', keywords: 'IfcOpeningElement show hide', category: 'Visibility', icon: SquareX,
         action: () => { useViewerStore.getState().toggleTypeVisibility('openings'); } },
       { id: 'vis:site', label: 'Site', keywords: 'IfcSite terrain show hide', category: 'Visibility', icon: Building2,

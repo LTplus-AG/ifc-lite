@@ -35,7 +35,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import type { NewEntity } from '@ifc-lite/mutations';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
@@ -148,6 +148,13 @@ export function PropertiesPanel() {
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
   const isEntityVisible = useViewerStore((s) => s.isEntityVisible);
+  // Relationship navigation: select a related entity (e.g. an IfcZone) to show
+  // its attributes, or isolate a group's members in 3D (#1075).
+  const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
+  const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
+  const isolateEntities = useViewerStore((s) => s.isolateEntities);
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const toggleTypeVisibility = useViewerStore((s) => s.toggleTypeVisibility);
   // Issue #540: surface a small "Layers merged" badge on walls when
   // the user has the merge-layers load setting active so they
   // understand the displayed solid is the aggregated representation.
@@ -648,6 +655,38 @@ export function PropertiesPanel() {
     const totalCount = rels.voids.length + rels.fills.length + rels.groups.length + rels.connections.length;
     return totalCount > 0 ? rels : null;
   }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
+
+  // Select a related entity by express id (e.g. click an IfcZone in the
+  // Relationships card to inspect its Name/attributes). Resolves in the same
+  // model as the currently-selected entity. Frames geometric targets; a no-op
+  // frame for non-geometric ones like IfcZone (#1075).
+  const handleSelectRelatedEntity = useCallback((expressId: number) => {
+    if (!selectedEntity) return;
+    setSelectedEntityIds([]);
+    setSelectedEntity({ modelId: selectedEntity.modelId, expressId });
+    if (cameraCallbacks.frameSelection) {
+      window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+    }
+  }, [selectedEntity, setSelectedEntity, setSelectedEntityIds, cameraCallbacks]);
+
+  // Isolate + select all member objects of a group/zone (the IfcSpace /
+  // IfcSpatialZone in an IfcZone — e.g. one dwelling, house number or fire
+  // compartment). Members are hidden-by-default spatial elements, so flip their
+  // visibility toggles on first or the isolated set would render nothing (#1075).
+  const handleIsolateGroupMembers = useCallback((groupId: number) => {
+    const dataStore = (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null;
+    if (!dataStore || !selectedEntity) return;
+    const members = extractGroupMembersOnDemand(dataStore, groupId);
+    if (members.length === 0) return;
+    const globalIds = members.map((m) => toGlobalIdFromModels(models, selectedEntity.modelId, m.id));
+    if (!typeVisibility.spaces) toggleTypeVisibility('spaces');
+    if (!typeVisibility.spatialZones) toggleTypeVisibility('spatialZones');
+    isolateEntities(globalIds);
+    setSelectedEntityIds(globalIds);
+    if (cameraCallbacks.frameSelection) {
+      window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+    }
+  }, [model, ifcDataStore, selectedEntity, models, typeVisibility, toggleTypeVisibility, isolateEntities, setSelectedEntityIds, cameraCallbacks]);
 
   // 4D schedule — both parsed-from-IFC and locally-generated schedules live in
   // the schedule slice. ScheduleCard renders nothing when no task in the
@@ -1549,7 +1588,11 @@ export function PropertiesPanel() {
                 {renderedEntityRelationships && (
                   <>
                     <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
-                    <RelationshipsCard relationships={renderedEntityRelationships} />
+                    <RelationshipsCard
+                      relationships={renderedEntityRelationships}
+                      onSelectEntity={handleSelectRelatedEntity}
+                      onIsolateGroupMembers={handleIsolateGroupMembers}
+                    />
                   </>
                 )}
 

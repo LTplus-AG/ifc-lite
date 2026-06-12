@@ -7,15 +7,17 @@
  */
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Link2 } from 'lucide-react';
+import { Link2, Focus } from 'lucide-react';
 import type { EntityRelationships } from '@ifc-lite/parser';
 
 interface RelationshipsCardProps {
   relationships: EntityRelationships;
   onSelectEntity?: (entityId: number) => void;
+  /** Isolate + select all member objects of a group/zone in 3D (#1075). */
+  onIsolateGroupMembers?: (groupId: number) => void;
 }
 
-export function RelationshipsCard({ relationships, onSelectEntity }: RelationshipsCardProps) {
+export function RelationshipsCard({ relationships, onSelectEntity, onIsolateGroupMembers }: RelationshipsCardProps) {
   const { voids, fills, groups, connections } = relationships;
   const totalCount = voids.length + fills.length + groups.length + connections.length;
 
@@ -57,12 +59,15 @@ export function RelationshipsCard({ relationships, onSelectEntity }: Relationshi
           {groups.length > 0 && (
             <div className="px-3 py-2">
               <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                Groups ({groups.length})
+                Groups &amp; Zones ({groups.length})
               </div>
               {groups.map((item) => (
-                <div key={item.id} className="text-xs font-mono text-zinc-600 dark:text-zinc-400 py-0.5">
-                  {item.name || `Group #${item.id}`}
-                </div>
+                <GroupItem
+                  key={item.id}
+                  item={item}
+                  onSelect={onSelectEntity}
+                  onIsolateMembers={onIsolateGroupMembers}
+                />
               ))}
             </div>
           )}
@@ -96,5 +101,39 @@ function RelItem({ item, onSelect }: {
       <span className="text-zinc-600 dark:text-zinc-400 truncate">{item.name || item.type}</span>
       <span className="text-[10px] text-zinc-400 ml-auto shrink-0">{item.type}</span>
     </button>
+  );
+}
+
+/** A group/zone row (IfcZone / IfcGroup / IfcSystem): click the name to inspect
+ *  the group's own attributes; click the focus button to isolate + select all of
+ *  its member objects (e.g. every space in a dwelling) in the 3D view (#1075). */
+function GroupItem({ item, onSelect, onIsolateMembers }: {
+  item: { id: number; name?: string; type: string };
+  onSelect?: (id: number) => void;
+  onIsolateMembers?: (id: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 py-0.5 group/rel">
+      <button
+        className="flex items-center gap-2 text-xs flex-1 min-w-0 text-left hover:text-primary transition-colors"
+        onClick={() => onSelect?.(item.id)}
+        type="button"
+        title="Show this group's attributes"
+      >
+        <span className="font-mono text-zinc-500 dark:text-zinc-500 text-[10px]">#{item.id}</span>
+        <span className="text-zinc-600 dark:text-zinc-400 truncate">{item.name || `Group #${item.id}`}</span>
+        <span className="text-[10px] text-zinc-400 ml-auto shrink-0">{item.type}</span>
+      </button>
+      {onIsolateMembers && (
+        <button
+          className="shrink-0 p-0.5 text-zinc-400 hover:text-primary transition-colors"
+          onClick={() => onIsolateMembers(item.id)}
+          type="button"
+          title="Isolate this group's members in 3D"
+        >
+          <Focus className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
   );
 }

@@ -589,6 +589,7 @@ export function ViewportContainer() {
     const prevVis = filteredTypeVisRef.current;
     const typeVisChanged =
       prevVis.spaces !== typeVisibility.spaces ||
+      prevVis.spatialZones !== typeVisibility.spatialZones ||
       prevVis.openings !== typeVisibility.openings ||
       prevVis.site !== typeVisibility.site ||
       filteredTypeModeRef.current !== effectiveViewMode;
@@ -601,7 +602,7 @@ export function ViewportContainer() {
       filteredTypeModeRef.current = effectiveViewMode;
     }
 
-    const needsFilter = !typeVisibility.spaces || !typeVisibility.openings || !typeVisibility.site;
+    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.site;
     const prevCacheLen = cache.length;
 
     // Only process NEW meshes since last run — O(batch_size) not O(total)
@@ -623,6 +624,7 @@ export function ViewportContainer() {
 
       if (needsFilter) {
         if (ifcType === 'IfcSpace' && !typeVisibility.spaces) continue;
+        if (ifcType === 'IfcSpatialZone' && !typeVisibility.spatialZones) continue;
         if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) continue;
         if (ifcType === 'IfcSite' && !typeVisibility.site) continue;
       }

@@ -193,6 +193,12 @@ export interface SnapVisualization {
 export interface TypeVisibility {
   /** IfcSpace - off by default */
   spaces: boolean;
+  /**
+   * IfcSpatialZone (modelled GFA volumes) - off by default, its own toggle
+   * separate from `spaces` so net (room) and gross (zone) areas can be shown
+   * independently (issue #1075).
+   */
+  spatialZones: boolean;
   /** IfcOpeningElement - off by default */
   openings: boolean;
   /** IfcSite - on by default (when has geometry) */

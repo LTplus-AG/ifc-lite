@@ -30,6 +30,8 @@ export function matchesCriteria(
       return matchesClassification(criteria, globalId, provider);
     case 'model':
       return matchesModel(criteria, globalId, provider);
+    case 'group':
+      return matchesGroup(criteria, globalId, provider);
     default:
       return false;
   }
@@ -214,4 +216,22 @@ function matchesModel(
   if (!provider.getModelId) return false;
 
   return provider.getModelId(globalId) === criteria.modelId;
+}
+
+/** Match by group/zone membership (IfcRelAssignsToGroup). Matches when the
+ *  entity belongs to a group whose name contains `groupName` (case-insensitive);
+ *  with no `groupName` set, matches any entity that belongs to at least one
+ *  group/zone. */
+function matchesGroup(
+  criteria: LensCriteria,
+  globalId: number,
+  provider: LensDataProvider,
+): boolean {
+  if (!provider.getEntityGroups) return false;
+  const groups = provider.getEntityGroups(globalId);
+  if (!groups || groups.length === 0) return false;
+
+  if (!criteria.groupName) return true;
+  const needle = criteria.groupName.toLowerCase();
+  return groups.some((g) => (g.name ?? '').toLowerCase().includes(needle));
 }

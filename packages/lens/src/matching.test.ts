@@ -62,6 +62,43 @@ describe('matchesCriteria — ifcType', () => {
   });
 });
 
+describe('matchesCriteria — group (#1075)', () => {
+  // Spaces 1 & 2 belong to zone "Apt-01"; space 3 belongs to "Apt-02"; entity 4
+  // belongs to no group.
+  const groupsById = new Map<number, Array<{ id: number; name?: string; type: string }>>([
+    [1, [{ id: 90, name: 'Apt-01', type: 'IfcZone' }]],
+    [2, [{ id: 90, name: 'Apt-01', type: 'IfcZone' }]],
+    [3, [{ id: 91, name: 'Apt-02', type: 'IfcZone' }]],
+  ]);
+  const provider: LensDataProvider = {
+    getEntityCount: () => 4,
+    forEachEntity: (cb) => { for (const id of [1, 2, 3, 4]) cb(id, 'model-1'); },
+    getEntityType: () => 'IfcSpace',
+    getPropertyValue: () => undefined,
+    getPropertySets: () => [],
+    getEntityGroups: (id) => groupsById.get(id) ?? [],
+  };
+
+  it('matches entities in a named zone (case-insensitive substring)', () => {
+    const c: LensCriteria = { type: 'group', groupName: 'apt-01' };
+    expect(matchesCriteria(c, 1, provider)).toBe(true);
+    expect(matchesCriteria(c, 2, provider)).toBe(true);
+    expect(matchesCriteria(c, 3, provider)).toBe(false);
+  });
+
+  it('matches any grouped entity when groupName is blank', () => {
+    const c: LensCriteria = { type: 'group' };
+    expect(matchesCriteria(c, 3, provider)).toBe(true);
+    expect(matchesCriteria(c, 4, provider)).toBe(false); // no group
+  });
+
+  it('returns false when the provider cannot resolve groups', () => {
+    const noGroups: LensDataProvider = { ...provider, getEntityGroups: undefined };
+    const c: LensCriteria = { type: 'group', groupName: 'Apt-01' };
+    expect(matchesCriteria(c, 1, noGroups)).toBe(false);
+  });
+});
+
 describe('matchesCriteria — property', () => {
   const provider = createMockProvider([
     {

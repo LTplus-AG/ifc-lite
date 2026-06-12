@@ -27,7 +27,7 @@ import {
 } from '@ifc-lite/geometry';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
-import { type GeometryData } from '@ifc-lite/cache';
+import { type GeometryData, FORMAT_VERSION } from '@ifc-lite/cache';
 
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
@@ -563,7 +563,10 @@ export function useIfcLoader() {
       const fingerprint = computeFastFingerprint(buffer);
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so keep the
       // persisted key filename-safe and independent of the original filename.
-      const cacheKey = `ifc-${buffer.byteLength}-${fingerprint}-v4`;
+      // Pin to the cache FORMAT_VERSION so a format bump invalidates stale
+      // entries (e.g. v5 added the geometryClass tag the Model/Types switch
+      // needs); a manual literal here silently kept serving incompatible data.
+      const cacheKey = `ifc-${buffer.byteLength}-${fingerprint}-v${FORMAT_VERSION}`;
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).

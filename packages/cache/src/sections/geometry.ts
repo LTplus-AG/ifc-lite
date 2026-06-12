@@ -21,6 +21,9 @@ import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
  *     - vertexCount: uint32
  *     - indexCount: uint32
  *     - color: float32[4]
+ *     - ifcType: string            (version >= 2)
+ *     - geometryClass: uint8       (version >= 5) — 0 occurrence, 1 orphan
+ *                                   type, 2 instanced type (Model/Types switch)
  *     - positions: Float32Array[vertexCount * 3]
  *     - normals: Float32Array[vertexCount * 3]
  *     - indices: Uint32Array[indexCount]
@@ -87,6 +90,11 @@ export function writeGeometry(
     // Write ifcType (as string length + UTF-8 bytes)
     const ifcType = mesh.ifcType || '';
     writer.writeString(ifcType);
+
+    // Write geometryClass (#957 Model/Types switch). Without this the viewer's
+    // view-mode filter sees every cache-restored mesh as class 0: instanced
+    // type-library geometry reappears in Model mode and the switch disappears.
+    writer.writeUint8(mesh.geometryClass ?? 0);
 
     // Write geometry arrays
     writer.writeTypedArray(mesh.positions);
@@ -191,6 +199,11 @@ export function readGeometry(reader: BufferReader, version: number = 2): {
       ifcType = reader.readString() || undefined;
     }
 
+    // Read geometryClass (version 5+) — the Model/Types view-switch tag.
+    // Older caches default to 0 (occurrence); v4 entries are bypassed by the
+    // viewer's bumped cache key, so they re-mesh fresh rather than load here.
+    const geometryClass = version >= 5 ? reader.readUint8() : 0;
+
     const positions = reader.readFloat32Array(vertexCount * 3);
     const normals = reader.readFloat32Array(vertexCount * 3);
     const indices = reader.readUint32Array(indexCount);
@@ -202,6 +215,7 @@ export function readGeometry(reader: BufferReader, version: number = 2): {
       indices,
       color,
       ifcType,
+      geometryClass,
     });
   }
 

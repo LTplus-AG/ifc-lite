@@ -12,8 +12,16 @@ import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 /** Magic bytes: "IFCL" */
 export const MAGIC = 0x4C434649; // "IFCL" in little-endian
 
-/** Current format version */
-export const FORMAT_VERSION = 4;
+/**
+ * Current format version.
+ *
+ * v5: per-mesh `geometryClass` byte (Model/Types view switch, #957). Earlier
+ * caches restored every mesh as class 0, so instanced type-library geometry
+ * (class 2) rendered in Model mode and the Model/Types switch vanished
+ * (`hasTypeGeometry` saw no non-zero classes). Bumping the version also bumps
+ * the viewer's cache key, so stale v4 entries miss and re-mesh fresh.
+ */
+export const FORMAT_VERSION = 5;
 
 /** Section types in the binary format */
 export enum SectionType {

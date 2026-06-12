@@ -181,6 +181,9 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
         normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
         indices: new Uint32Array([0, 1, 2]),
         color: [0.8, 0.8, 0.8, 1.0],
+        // Instanced type-library shape (#957) — must survive the cache round
+        // trip or the viewer's Model/Types switch breaks on cache hits.
+        geometryClass: 2,
       },
     ];
 
@@ -207,6 +210,7 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     expect(result.geometry).toBeTruthy();
     expect(result.geometry!.meshes.length).toBe(1);
     expect(result.geometry!.meshes[0].expressId).toBe(4);
+    expect(result.geometry!.meshes[0].geometryClass).toBe(2);
     expect(result.geometry!.totalVertices).toBe(3);
     expect(result.geometry!.totalTriangles).toBe(1);
   });

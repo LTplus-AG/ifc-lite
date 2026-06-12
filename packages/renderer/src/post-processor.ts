@@ -203,8 +203,8 @@ fn fs_main(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
       // Sample depths at same positions to filter coplanar entity boundaries.
       // Coplanar surfaces from different entities only differ by the z-hash
       // anti-z-fighting offset (~2.5e-4 relative). Two complementary gates:
-      //  - first difference > 5e-4: depth-DISCONTINUOUS edges (silhouettes,
-      //    one surface occluding another) — same as before.
+      //  - slope-aware first difference: depth-DISCONTINUOUS edges
+      //    (silhouettes, one surface occluding another).
       //  - per-axis second difference > 3e-4: depth-CONTINUOUS creases
       //    (wall/wall and floor/wall corners). At a corner the depth slope
       //    changes across the seam, so |d(+r) + d(-r) - 2*center| measures
@@ -226,11 +226,30 @@ fn fs_main(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
       let creaseX = abs(sX1 + sX0 - 2.0 * center) / depthRef > creaseRelThreshold;
       let creaseY = abs(sY1 + sY0 - 2.0 * center) / depthRef > creaseRelThreshold;
 
+      // Discontinuity gate, slope-aware: a depth jump only counts as an
+      // occlusion edge when it clearly exceeds the in-plane slope measured
+      // on the OPPOSITE side of the pixel (2x asymmetry) on top of the
+      // absolute floor. A flush coplanar joint viewed at a grazing angle
+      // carries a huge per-pixel slope that used to trip the absolute
+      // threshold and draw noisy dashed lines across floors/walls; its
+      // jumps are symmetric, so the asymmetry test suppresses it. Genuine
+      // silhouettes jump far beyond the opposite-side slope. Features whose
+      // depth step shrinks below the local slope are sub-pixel at that
+      // angle anyway, so fading their line out is the correct behaviour.
+      let jX1 = abs(sX1 - center) / depthRef;
+      let jX0 = abs(sX0 - center) / depthRef;
+      let jY1 = abs(sY1 - center) / depthRef;
+      let jY0 = abs(sY0 - center) / depthRef;
+      let discX1 = jX1 > max(depthRelThreshold, 2.0 * jX0);
+      let discX0 = jX0 > max(depthRelThreshold, 2.0 * jX1);
+      let discY1 = jY1 > max(depthRelThreshold, 2.0 * jY0);
+      let discY0 = jY0 > max(depthRelThreshold, 2.0 * jY1);
+
       let edge4Count =
-        f32(idX1 != idCenter && idX1 != 0u && (creaseX || abs(sX1 - center) / depthRef > depthRelThreshold)) +
-        f32(idX0 != idCenter && idX0 != 0u && (creaseX || abs(sX0 - center) / depthRef > depthRelThreshold)) +
-        f32(idY1 != idCenter && idY1 != 0u && (creaseY || abs(sY1 - center) / depthRef > depthRelThreshold)) +
-        f32(idY0 != idCenter && idY0 != 0u && (creaseY || abs(sY0 - center) / depthRef > depthRelThreshold));
+        f32(idX1 != idCenter && idX1 != 0u && (creaseX || discX1)) +
+        f32(idX0 != idCenter && idX0 != 0u && (creaseX || discX0)) +
+        f32(idY1 != idCenter && idY1 != 0u && (creaseY || discY1)) +
+        f32(idY0 != idCenter && idY0 != 0u && (creaseY || discY0));
       seam = edge4Count * 0.25;
 
       if (params.flags.y == 1u) {
@@ -242,14 +261,22 @@ fn fs_main(@builtin(position) fragPos: vec4<f32>) -> @location(0) vec4<f32> {
         let sD2 = sampleDepthClamped(p + vec2<i32>(-rs,  rs), dims);
         let sD3 = sampleDepthClamped(p + vec2<i32>( rs, -rs), dims);
         let sD4 = sampleDepthClamped(p + vec2<i32>(-rs, -rs), dims);
-        // Same crease (second-difference) gate along the two diagonals.
+        // Same crease + slope-aware discontinuity gates along the diagonals.
         let creaseD1 = abs(sD1 + sD4 - 2.0 * center) / depthRef > creaseRelThreshold;
         let creaseD2 = abs(sD2 + sD3 - 2.0 * center) / depthRef > creaseRelThreshold;
+        let jD1 = abs(sD1 - center) / depthRef;
+        let jD2 = abs(sD2 - center) / depthRef;
+        let jD3 = abs(sD3 - center) / depthRef;
+        let jD4 = abs(sD4 - center) / depthRef;
+        let discD1 = jD1 > max(depthRelThreshold, 2.0 * jD4);
+        let discD4 = jD4 > max(depthRelThreshold, 2.0 * jD1);
+        let discD2 = jD2 > max(depthRelThreshold, 2.0 * jD3);
+        let discD3 = jD3 > max(depthRelThreshold, 2.0 * jD2);
         let edgeDiagCount =
-          f32(idD1 != idCenter && idD1 != 0u && (creaseD1 || abs(sD1 - center) / depthRef > depthRelThreshold)) +
-          f32(idD2 != idCenter && idD2 != 0u && (creaseD2 || abs(sD2 - center) / depthRef > depthRelThreshold)) +
-          f32(idD3 != idCenter && idD3 != 0u && (creaseD2 || abs(sD3 - center) / depthRef > depthRelThreshold)) +
-          f32(idD4 != idCenter && idD4 != 0u && (creaseD1 || abs(sD4 - center) / depthRef > depthRelThreshold));
+          f32(idD1 != idCenter && idD1 != 0u && (creaseD1 || discD1)) +
+          f32(idD2 != idCenter && idD2 != 0u && (creaseD2 || discD2)) +
+          f32(idD3 != idCenter && idD3 != 0u && (creaseD2 || discD3)) +
+          f32(idD4 != idCenter && idD4 != 0u && (creaseD1 || discD4));
         let edgeDiag = edgeDiagCount * 0.25;
         seam = max(seam, (seam + edgeDiag) * 0.5);
       }

@@ -679,8 +679,15 @@ export function PropertiesPanel() {
     const members = extractGroupMembersOnDemand(dataStore, groupId);
     if (members.length === 0) return;
     const globalIds = members.map((m) => toGlobalIdFromModels(models, selectedEntity.modelId, m.id));
-    if (!typeVisibility.spaces) toggleTypeVisibility('spaces');
-    if (!typeVisibility.spatialZones) toggleTypeVisibility('spatialZones');
+    // Only turn a hidden class toggle on when the zone actually contains members
+    // of that class — otherwise clearing isolation later would surface unrelated
+    // spaces/zones the user had deliberately hidden (PR #1094 review).
+    if (!typeVisibility.spaces && members.some((m) => m.type === 'IfcSpace')) {
+      toggleTypeVisibility('spaces');
+    }
+    if (!typeVisibility.spatialZones && members.some((m) => m.type === 'IfcSpatialZone')) {
+      toggleTypeVisibility('spatialZones');
+    }
     isolateEntities(globalIds);
     setSelectedEntityIds(globalIds);
     if (cameraCallbacks.frameSelection) {

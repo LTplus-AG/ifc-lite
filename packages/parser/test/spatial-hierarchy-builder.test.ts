@@ -94,4 +94,54 @@ describe('SpatialHierarchyBuilder', () => {
     // reflect the full element list, not the post-filter empty list.
     expect(hierarchy.byBuilding.get(2273)).toHaveLength(1 + referentIds.length + signalIds.length);
   });
+
+  it('promotes spaces/zones contained via IfcRelContainedInSpatialStructure to tree nodes (#1075)', () => {
+    // Fresh-parse path (this builder is what ColumnarParser uses). Revit Family
+    // geometry authored via Dynamo attaches IfcSpace / IfcSpatialZone to a storey
+    // with IfcRelContainedInSpatialStructure instead of IfcRelAggregates. Such a
+    // space was filtered out of containedElements (it is a spatial-structure type)
+    // and, lacking an aggregate link, vanished from the tree. It must be promoted
+    // to a spatial child node, get a space→storey mapping, and stay out of the
+    // storey's flat element list.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(7, strings);
+    entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    entities.add(2, 'IFCSITE', 's0', 'Site', '', '');
+    entities.add(3, 'IFCBUILDING', 'b0', 'Building', '', '');
+    entities.add(4, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    entities.add(5, 'IFCSPACE', 'sp-agg', 'Room 101', '', '', true);    // aggregated room
+    entities.add(6, 'IFCSPACE', 'sp-con', 'Family Space', '', '', true); // contained (Dynamo)
+    entities.add(7, 'IFCSPATIALZONE', 'sz-con', 'GFA Apt', '', '', true); // contained GFA zone
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    relationships.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    relationships.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    relationships.addEdge(4, 5, RelationshipType.Aggregates, 103);
+    relationships.addEdge(4, 6, RelationshipType.ContainsElements, 104);
+    relationships.addEdge(4, 7, RelationshipType.ContainsElements, 105);
+
+    const hierarchy = new SpatialHierarchyBuilder().build(
+      entities.build(),
+      relationships.build(),
+      strings,
+      new Uint8Array(),
+      { byId: { get: () => undefined } },
+    );
+
+    const storey = hierarchy.project.children[0].children[0].children[0];
+    expect(storey.type).toBe(IfcTypeEnum.IfcBuildingStorey);
+
+    const childIds = storey.children.map((n) => n.expressId).sort((a, b) => a - b);
+    expect(childIds).toEqual([5, 6, 7]);
+    expect(storey.children.find((n) => n.expressId === 7)?.type).toBe(IfcTypeEnum.IfcSpatialZone);
+
+    // Contained spaces/zones are not also listed as flat storey elements.
+    expect(hierarchy.getStoreyElements(4)).toEqual([]);
+
+    // Every space/zone resolves which storey it's on (properties panel lookup).
+    expect(hierarchy.elementToStorey.get(5)).toBe(4);
+    expect(hierarchy.elementToStorey.get(6)).toBe(4);
+    expect(hierarchy.elementToStorey.get(7)).toBe(4);
+  });
 });

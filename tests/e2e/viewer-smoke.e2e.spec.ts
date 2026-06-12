@@ -246,12 +246,23 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
   test('page reports no uncaught errors on a clean load', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(String(err)));
+    // The geometry-stream stall watchdog surfaces as a console.error, not a
+    // pageerror — catch it explicitly. A healthy load must never trip it
+    // (worker liveness heartbeats + bounded batches keep events flowing).
+    const stallErrors: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error' && /Geometry stream stalled/.test(msg.text())) {
+        stallErrors.push(msg.text());
+      }
+    });
 
     const viewer = new ViewerBenchmarkPage(page);
     await viewer.setup();
     await viewer.loadFile(join(process.cwd(), FIXTURE));
     await waitForMeshCount(viewer, page, 120000);
     await page.waitForTimeout(2000); // let post-load work (metadata, spatial) settle
+
+    expect(stallErrors, `stream watchdog fired:\n${stallErrors.join('\n')}`).toEqual([]);
 
     // Under software WebGPU (CI) the device itself is unstable — losing
     // it mid-upload throws device-class errors that say nothing about

@@ -4,7 +4,34 @@ Detailed architecture of geometry processing in IFClite.
 
 ## Overview
 
-The geometry pipeline transforms IFC shape representations into GPU-ready triangle meshes:
+The geometry pipeline transforms IFC shape representations into GPU-ready triangle meshes.
+
+**One pipeline, two orchestrations.** Since the 2026-06 unification series
+(#1080 → #1088 → #1084 → shared prepass), per-element mesh production and
+prepass resolution exist exactly once, in `ifc-lite-processing`:
+
+- **`processing::element::produce_element_meshes`** — THE per-element decision
+  tree (type-product geometry #957, submesh-aware void cuts, per-item #858
+  palette splits, single-mesh fallback chain). Run by the native rayon loop
+  (server/CLI) and by the browser's `processGeometryBatch` per job. The only
+  sanctioned behavioural fork is `TypeGeometryMode` (an export suppresses
+  instanced type geometry; the viewer emits it tagged for its Model/Types
+  switch).
+- **`processing::prepass`** — the shared post-scan resolver (styled-item
+  precedence, IfcIndexedColourMap #663/#858, the #407 material chain, voids
+  with #845 aggregate propagation) plus `resolve_unit_scales` (length AND
+  plane-angle, resolved once with a documented fallback ladder for
+  late-in-file `IFCPROJECT`) and the flat wire codecs for the JS boundary.
+  The scan loops stay per-orchestration (native scan with properties/quick
+  metadata; browser `buildPrePassOnce`/`buildPrePassStreaming` with
+  incremental job emission), but they only span-stash — all semantics resolve
+  in the shared module.
+
+Geometry/styling fixes belong in those two modules; re-inlining logic in
+`processor.rs` or `gpu_meshes.rs` re-creates the historic both-sides drift
+(#858, #913, #957, #961 each had to be fixed twice before the unification).
+
+The per-representation processing below is shared by construction:
 
 ```mermaid
 flowchart TB

@@ -66,6 +66,12 @@ interface ByteStreamingPrePassResult {
   voidValues: Uint32Array;
   styleIds: Uint32Array;
   styleColors: Uint8Array;
+  /** Prepass-resolved plane-angle→radians scale (additive wire field). */
+  planeAngleToRadians?: number;
+  /** #407/#913 §2.3 per-element material colour lists (flat encoding). */
+  materialElementIds?: Uint32Array;
+  materialColorCounts?: Uint32Array;
+  materialColors?: Uint8Array;
 }
 
 export interface GeometryProcessorOptions {
@@ -351,6 +357,10 @@ export class GeometryProcessor {
           prePass.voidValues,
           prePass.styleIds,
           prePass.styleColors,
+          prePass.planeAngleToRadians,
+          prePass.materialElementIds,
+          prePass.materialColorCounts,
+          prePass.materialColors,
         );
         meshes.push(...convertMeshCollectionToBatch(collection));
       }
@@ -435,6 +445,10 @@ export class GeometryProcessor {
           prePass.voidValues,
           prePass.styleIds,
           prePass.styleColors,
+          prePass.planeAngleToRadians,
+          prePass.materialElementIds,
+          prePass.materialColorCounts,
+          prePass.materialColors,
         );
 
         const batch = convertMeshCollectionToBatch(collection);

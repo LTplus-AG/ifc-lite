@@ -1322,6 +1322,7 @@ async function parseMeshesViaPrePass(api, content, opts) {
         const collection = api.processGeometryBatch(
           bytes, jobSlice, pre.unitScale, rtcX, rtcY, rtcZ, pre.needsShift,
           pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+          pre.planeAngleToRadians, pre.materialElementIds, pre.materialColorCounts, pre.materialColors,
         );
         // The MeshDataJs getters copy into JS-owned typed arrays, so onBatch
         // consumers keep working after we free the WASM handles. Free every

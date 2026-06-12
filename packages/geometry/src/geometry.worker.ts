@@ -44,6 +44,14 @@ export interface GeometryWorkerStreamStartMessage {
   voidValues: Uint32Array;
   styleIds: Uint32Array;
   styleColors: Uint8Array;
+  /** Prepass-resolved plane-angle→radians scale (meta event). Seeds each
+   *  batch decoder so arc tessellation never re-pays an O(file) scan. */
+  planeAngleToRadians?: number;
+  /** #407/#913 §2.3 per-element material colour lists (flat encoding) —
+   *  drive the transparent/opaque sub-mesh alternation. */
+  materialElementIds?: Uint32Array;
+  materialColorCounts?: Uint32Array;
+  materialColors?: Uint8Array;
 }
 
 export interface GeometryWorkerStreamChunkMessage {
@@ -68,6 +76,10 @@ export interface GeometryWorkerSetStylesMessage {
   voidValues: Uint32Array;
   styleIds: Uint32Array;
   styleColors: Uint8Array;
+  /** #407/#913 §2.3 material colour lists (streamed `styles` event). */
+  materialElementIds?: Uint32Array;
+  materialColorCounts?: Uint32Array;
+  materialColors?: Uint8Array;
 }
 
 /**
@@ -328,6 +340,10 @@ interface ProcessingSession {
   voidValues: Uint32Array;
   styleIds: Uint32Array;
   styleColors: Uint8Array;
+  planeAngleToRadians: number | undefined;
+  materialElementIds: Uint32Array | undefined;
+  materialColorCounts: Uint32Array | undefined;
+  materialColors: Uint8Array | undefined;
   pendingMeshes: GeometryWorkerBatchMessage['meshes'];
   pendingTransfers: ArrayBuffer[];
   totalMeshesEmitted: number;
@@ -374,6 +390,10 @@ function startSession(input: {
   voidValues: Uint32Array;
   styleIds: Uint32Array;
   styleColors: Uint8Array;
+  planeAngleToRadians?: number;
+  materialElementIds?: Uint32Array;
+  materialColorCounts?: Uint32Array;
+  materialColors?: Uint8Array;
 }): ProcessingSession {
   return {
     sharedBuffer: input.sharedBuffer,
@@ -387,6 +407,10 @@ function startSession(input: {
     voidValues: input.voidValues,
     styleIds: input.styleIds,
     styleColors: input.styleColors,
+    planeAngleToRadians: input.planeAngleToRadians,
+    materialElementIds: input.materialElementIds,
+    materialColorCounts: input.materialColorCounts,
+    materialColors: input.materialColors,
     pendingMeshes: [],
     pendingTransfers: [],
     totalMeshesEmitted: 0,
@@ -520,6 +544,8 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
       session.voidKeys, session.voidCounts, session.voidValues,
       session.styleIds, session.styleColors,
+      session.planeAngleToRadians,
+      session.materialElementIds, session.materialColorCounts, session.materialColors,
     );
     collectMeshes(session, collection);
   } catch (err) {
@@ -666,6 +692,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         voidValues: e.data.voidValues,
         styleIds: e.data.styleIds,
         styleColors: e.data.styleColors,
+        planeAngleToRadians: e.data.planeAngleToRadians,
+        materialElementIds: e.data.materialElementIds,
+        materialColorCounts: e.data.materialColorCounts,
+        materialColors: e.data.materialColors,
       });
       return;
     }
@@ -690,6 +720,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       activeSession.voidKeys = e.data.voidKeys;
       activeSession.voidCounts = e.data.voidCounts;
       activeSession.voidValues = e.data.voidValues;
+      activeSession.materialElementIds = e.data.materialElementIds;
+      activeSession.materialColorCounts = e.data.materialColorCounts;
+      activeSession.materialColors = e.data.materialColors;
       return;
     }
 

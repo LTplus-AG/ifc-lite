@@ -30,6 +30,8 @@ import type { StreamingGeometryEvent } from './index.js';
 import { pickWorkerCount } from './worker-count.js';
 
 interface PrepassMeta {
+  /** Prepass-resolved plane-angle→radians scale; seeds worker batch decoders. */
+  planeAngleToRadians?: number;
   unitScale: number;
   rtcOffset: Float64Array;
   needsShift: boolean;
@@ -383,6 +385,7 @@ export async function* processParallel(
         type: 'stream-start' as const,
         sharedBuffer,
         unitScale: prepassMeta.unitScale,
+        planeAngleToRadians: prepassMeta.planeAngleToRadians,
         rtcX, rtcY, rtcZ,
         needsShift: effectiveNeedsShift,
         voidKeys: emptyU32,
@@ -496,6 +499,7 @@ export async function* processParallel(
       if (evt.type === 'meta') {
         prepassMeta = {
           unitScale: evt.unitScale as number,
+          planeAngleToRadians: (evt.planeAngleToRadians as number | undefined) ?? undefined,
           rtcOffset: evt.rtcOffset as Float64Array,
           needsShift: evt.needsShift as boolean,
           buildingRotation: (evt.buildingRotation as number | null | undefined) ?? null,
@@ -526,6 +530,9 @@ export async function* processParallel(
         const voidKeys = evt.voidKeys as Uint32Array;
         const voidCounts = evt.voidCounts as Uint32Array;
         const voidValues = evt.voidValues as Uint32Array;
+        const materialElementIds = (evt.materialElementIds as Uint32Array | undefined) ?? new Uint32Array(0);
+        const materialColorCounts = (evt.materialColorCounts as Uint32Array | undefined) ?? new Uint32Array(0);
+        const materialColors = (evt.materialColors as Uint8Array | undefined) ?? new Uint8Array(0);
         console.log(`[stream] styles @ ${elapsed()}ms (${styleIds.length} styled, ${voidKeys.length} void hosts), draining ${queuedChunks.length} queued chunks`);
 
         for (const w of workers) {
@@ -538,6 +545,9 @@ export async function* processParallel(
             const vKeys = voidKeys.slice();
             const vCounts = voidCounts.slice();
             const vValues = voidValues.slice();
+            const mIds = materialElementIds.slice();
+            const mCounts = materialColorCounts.slice();
+            const mColors = materialColors.slice();
             w.postMessage(
               {
                 type: 'set-styles' as const,
@@ -546,8 +556,14 @@ export async function* processParallel(
                 voidKeys: vKeys,
                 voidCounts: vCounts,
                 voidValues: vValues,
+                materialElementIds: mIds,
+                materialColorCounts: mCounts,
+                materialColors: mColors,
               },
-              [sIds.buffer, sColors.buffer, vKeys.buffer, vCounts.buffer, vValues.buffer],
+              [
+                sIds.buffer, sColors.buffer, vKeys.buffer, vCounts.buffer, vValues.buffer,
+                mIds.buffer, mCounts.buffer, mColors.buffer,
+              ],
             );
           } catch (err) {
             console.warn('[stream] set-styles dispatch failed:', err);

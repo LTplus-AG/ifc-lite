@@ -238,6 +238,66 @@ test('unit scale resolves conversion-based units (inch fixture → 0.0254)', () 
   }
 });
 
+test('prepass resolves planeAngleToRadians on the wire', () => {
+  // The shared resolver (prepass::resolve_unit_scales) resolves BOTH unit
+  // scales once and ships the plane-angle scale to workers so batch decoders
+  // are seeded instead of re-paying an O(file) IFCPROJECT hunt per call.
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = api.buildPrePassOnce(bytes);
+  try {
+    assert.equal(typeof pre.planeAngleToRadians, 'number',
+      'buildPrePassOnce must carry planeAngleToRadians');
+    assert.ok(pre.planeAngleToRadians > 0,
+      `plane-angle scale must be positive, got ${pre.planeAngleToRadians}`);
+  } finally {
+    api.clearPrePassCache();
+  }
+});
+
+test('streaming meta resolves units with IFCPROJECT moved to the END of DATA', () => {
+  // IfcOpenShell/Revit exports put IFCPROJECT + the unit chain near the end
+  // of the file. The streaming prepass must not wait for it (workers would
+  // idle until ~90% of the scan) NOR default silently to metres — the shared
+  // resolver finds the project by SIMD substring search and re-resolves
+  // against a full index. Transplant the fixture's project + unit chain to
+  // the end of DATA and require identical meta.
+  const projectBlock = [];
+  const remaining = [];
+  for (const line of columnContent.split('\n')) {
+    if (/^#\d+=\s*IFC(PROJECT|UNITASSIGNMENT|SIUNIT|CONVERSIONBASEDUNIT|MEASUREWITHUNIT|DIMENSIONALEXPONENTS)\(/.test(line)) {
+      projectBlock.push(line);
+    } else {
+      remaining.push(line);
+    }
+  }
+  assert.ok(projectBlock.length >= 2, 'fixture must contain a project + unit chain');
+  const joined = remaining.join('\n');
+  // Splice before the LAST `ENDSEC;` — the first one closes the HEADER.
+  const lastEnd = joined.lastIndexOf('ENDSEC;');
+  assert.ok(lastEnd > 0, 'fixture must close its DATA section');
+  const lateProject =
+    joined.slice(0, lastEnd) + projectBlock.join('\n') + '\n' + joined.slice(lastEnd);
+  assert.ok(lateProject.includes('IFCPROJECT'), 'transplant kept the project');
+  assert.ok(
+    lateProject.indexOf('IFCPROJECT') > lateProject.length / 2,
+    'project must now sit in the back half of the file',
+  );
+
+  const bytes = new TextEncoder().encode(lateProject);
+  const events = [];
+  api.buildPrePassStreaming(bytes, (evt) => events.push(evt), 4096);
+  api.clearPrePassCache();
+
+  const meta = events.find((e) => e.type === 'meta');
+  assert.ok(meta, 'streaming must emit meta');
+  assert.ok(Math.abs(meta.unitScale - 0.0254) < 1e-9,
+    `late-IFCPROJECT inch model must still yield unitScale 0.0254, got ${meta.unitScale}`);
+  assert.equal(typeof meta.planeAngleToRadians, 'number',
+    'meta must carry planeAngleToRadians');
+  const complete = events.find((e) => e.type === 'complete');
+  assert.ok(complete && complete.totalJobs > 0, 'streaming must complete with jobs');
+});
+
 test('unit scale resolves plain SI metres (georef fixture → 1.0)', () => {
   if (!GEOREF_AVAILABLE) {
     console.log('     (skipped — georef fixture missing, run `pnpm fixtures`)');

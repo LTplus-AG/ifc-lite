@@ -1810,6 +1810,17 @@ fn process_entity_job(
         }
     }
 
+    // A superseding strategy is about to re-process this element's
+    // representation and re-attempt the same (deterministic) cuts/booleans.
+    // Discard the abandoned attempt's diagnostics so only the path that
+    // actually produced the returned meshes contributes to
+    // total_csg_failures / products_with_failures — otherwise re-failures
+    // are double-counted. (`take_csg_failures` is the drain == clear; the
+    // voids→plain-element mini-fallback below intentionally keeps its
+    // records: a failed/emptying cut that leaves the host uncut IS the
+    // diagnostic.)
+    let _ = local_router.take_csg_failures();
+
     let mut mesh_candidate = local_router
         .process_element_with_voids(&entity, &mut local_decoder, void_index)
         .ok();

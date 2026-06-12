@@ -274,6 +274,23 @@ impl<'a> EntityDecoder<'a> {
         scale
     }
 
+    /// Pre-seed the unit-scale caches so [`Self::length_unit_scale`] and
+    /// [`Self::plane_angle_to_radians`] return immediately without the full-file
+    /// `IFCPROJECT` scan.
+    ///
+    /// Both lazy resolvers walk the whole DATA section to locate the (singleton)
+    /// `IFCPROJECT`. That scan is `O(file size)` and `IFCPROJECT` legally sits
+    /// anywhere — IfcOpenShell emits it near the *end*, so on a large model the
+    /// scan touches tens of MB. The cache is per-decoder, and the parallel
+    /// geometry pipeline builds a fresh decoder per element, so without seeding
+    /// every arc-bearing element re-pays the scan (≈135 ms each on a 75 MB
+    /// file). The orchestrator resolves both scales once on a warm shared
+    /// decoder and seeds each worker decoder here.
+    pub fn seed_unit_scales(&mut self, length_unit_scale: f64, plane_angle_to_radians: f64) {
+        self.length_unit_scale_cache = Some(length_unit_scale);
+        self.plane_angle_to_radians_cache = Some(plane_angle_to_radians);
+    }
+
     /// Resolve entity reference (follow #ID)
     /// Returns None for null/derived values
     #[inline]

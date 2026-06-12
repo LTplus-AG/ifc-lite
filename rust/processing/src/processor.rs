@@ -1403,6 +1403,15 @@ pub fn process_geometry_streaming_filtered_with_options(
     let entity_index_arc = entity_index; // Already Arc from above
     let unit_scale = router.unit_scale();
     let rtc_offset = router.rtc_offset();
+    // Resolve the plane-angle scale ONCE on the warm shared decoder, then seed
+    // every per-element worker decoder below (EntityDecoder::seed_unit_scales;
+    // the length scale is `unit_scale`, already resolved by the router). Both
+    // resolvers scan the whole DATA section for the singleton IFCPROJECT, which
+    // IfcOpenShell emits near the *end* of the file — and the parallel path
+    // builds a fresh (cold-cache) decoder per element, so without seeding every
+    // arc-bearing element re-pays that ~O(file) scan (≈135 ms each on a 75 MB
+    // model where IFCPROJECT sits at byte ~68 MB).
+    let seed_plane_angle_to_radians = decoder.plane_angle_to_radians();
     let void_index_arc = Arc::new(filtered_void_index);
     let skipped_entity_ids = Arc::new(skipped_entity_ids);
     // Fold indexed-colour-map colours in where no IFCSTYLEDITEM already claimed
@@ -1551,6 +1560,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     &entity_index_arc,
                     unit_scale,
                     rtc_offset,
+                    seed_plane_angle_to_radians,
                     options.tessellation_quality,
                     void_index_arc.as_ref(),
                     skipped_entity_ids.as_ref(),
@@ -1696,6 +1706,9 @@ fn process_entity_job(
     entity_index_arc: &Arc<EntityIndex>,
     unit_scale: f64,
     rtc_offset: (f64, f64, f64),
+    // Pre-resolved scales seeded into this job's decoder so arc tessellation and
+    // unit conversion never trigger a per-element full-file IFCPROJECT scan.
+    seed_plane_angle_to_radians: f64,
     tessellation_quality: TessellationQuality,
     void_index: &FxHashMap<u32, Vec<u32>>,
     skipped_entity_ids: &HashSet<u32>,
@@ -1717,6 +1730,9 @@ fn process_entity_job(
     }
 
     let mut local_decoder = EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+    // Seed the unit-scale caches so curve/arc processing skips the O(file)
+    // IFCPROJECT scan that each fresh per-element decoder would otherwise repeat.
+    local_decoder.seed_unit_scales(unit_scale, seed_plane_angle_to_radians);
 
     let entity = match local_decoder.decode_at(job.start, job.end) {
         Ok(entity) => entity,

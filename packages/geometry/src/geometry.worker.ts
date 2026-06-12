@@ -161,6 +161,13 @@ export interface GeometryWorkerBatchMessage {
   }[];
 }
 
+export interface GeometryWorkerProgressMessage {
+  type: 'progress';
+  /** Jobs handed to WASM so far within the current slice (pre-call count). */
+  processedJobs: number;
+  totalJobs: number;
+}
+
 export interface GeometryWorkerCompleteMessage {
   type: 'complete';
   totalMeshes: number;
@@ -332,20 +339,30 @@ let activeSession: ProcessingSession | null = null;
 /**
  * Jobs per inner WASM call inside `processSliceStreaming`.
  *
- * IMPORTANT: this is NOT just about batch size for the host post — every
- * `processGeometryBatch` call allocates a fresh `EntityDecoder.cache`
- * (FxHashMap) in Rust. Splitting one streaming chunk into many small
- * WASM calls forces the decoder to re-decode the same shared sub-entities
- * (`IfcCartesianPoint`, placements, etc.) per call. Main does one big
- * call per worker and reaps the cache locality.
+ * Two forces pull in opposite directions:
  *
- * Setting this to a very large value means each fanned-out streaming
- * chunk maps to exactly one WASM call per worker — main-equivalent
- * cache behaviour while preserving streaming's early-job dispatch.
- * Per-flush mesh count is then bounded by the chunk size (≤ 25K-ish on
- * the 986 MB test file with 50K Rust chunk + 2-way fan-out).
+ * - Cache locality: every `processGeometryBatch` call allocates a fresh
+ *   `EntityDecoder.cache` (FxHashMap) in Rust, so smaller batches re-decode
+ *   shared sub-entities (`IfcCartesianPoint`, placements, …) per call.
+ *   This once justified an effectively-unbounded value (1M): one WASM call
+ *   per worker slice. The dominant per-call fixed cost back then was an
+ *   O(file) IFCPROJECT scan for unit scales — that is now resolved once per
+ *   worker and seeded into each batch decoder, so the remaining per-call
+ *   overhead is small.
+ *
+ * - Liveness: a `processGeometryBatch` call is synchronous WASM — no batch
+ *   events, no progressive rendering, and nothing feeds the stream watchdog
+ *   while it runs. With one call per slice, a CSG-heavy model wedges every
+ *   worker for its entire slice (minutes on 70 MB+ steel models): the host
+ *   sees zero events, the watchdog kills a *healthy* load, and the user
+ *   stares at an empty viewport until the first worker finishes everything.
+ *
+ * 512 keeps typical call duration well under a second (~1.6 ms/job measured
+ * on a 72 MB IFC4 model) so meshes stream in continuously and the watchdog
+ * only fires on real wedges, while keeping the re-decode overhead a few
+ * percent (shared-entity locality is mostly intra-batch at this size).
  */
-const STREAM_BATCH_SIZE = 1_000_000;
+const STREAM_BATCH_SIZE = 512;
 
 function startSession(input: {
   sharedBuffer: SharedArrayBuffer;
@@ -531,6 +548,15 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
 async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint32Array): Promise<void> {
   const totalJobs = Math.floor(jobsFlat.length / 3);
   for (let jobOffset = 0; jobOffset < totalJobs; jobOffset += STREAM_BATCH_SIZE) {
+    // Liveness heartbeat BEFORE entering the synchronous WASM call: the host
+    // forwards it as a `progress` stream event so the consumer's stall
+    // watchdog measures "time inside one bounded WASM call", not "time since
+    // the last mesh" — a CSG-heavy region can legitimately produce nothing
+    // for tens of seconds while every worker is busy. Also covers batches
+    // that produce zero meshes (flushPending no-ops on empty).
+    (self as unknown as Worker).postMessage(
+      { type: 'progress', processedJobs: jobOffset, totalJobs } as GeometryWorkerProgressMessage,
+    );
     const start = jobOffset * 3;
     const end = Math.min(start + STREAM_BATCH_SIZE * 3, jobsFlat.length);
     await processBatch(session, jobsFlat.subarray(start, end));

@@ -132,6 +132,17 @@ pub struct IfcAPI {
     /// without locking — same contract as `merge_layers`. Default is Medium,
     /// which reproduces the historical hardcoded densities byte-for-byte.
     tessellation_quality: std::sync::atomic::AtomicU8,
+
+    /// Lazily-resolved plane-angle → radians scale for the current content,
+    /// seeded into every batch decoder via `EntityDecoder::seed_unit_scales`.
+    /// `EntityDecoder::plane_angle_to_radians()` walks the whole DATA section
+    /// to find the singleton `IFCPROJECT` — which IfcOpenShell emits near the
+    /// *end* of the file — and its cache is per-decoder, so without this
+    /// per-worker cache every `processGeometryBatch` call re-pays an O(file)
+    /// scan the moment any arc-bearing profile is tessellated (≈ the geometry
+    /// stream stall on large models with late IFCPROJECT). Content-scoped:
+    /// cleared by `clearPrePassCache` and on entity-index swap.
+    cached_plane_angle_to_radians: std::sync::Mutex<Option<f64>>,
 }
 
 #[wasm_bindgen]
@@ -156,6 +167,7 @@ impl IfcAPI {
                 ifc_lite_geometry::DEFAULT_GEOM_HASH_TOLERANCE.to_bits(),
             ),
             tessellation_quality: std::sync::atomic::AtomicU8::new(TESSELLATION_QUALITY_MEDIUM),
+            cached_plane_angle_to_radians: std::sync::Mutex::new(None),
         }
     }
 
@@ -214,6 +226,11 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
         icm_slot.take();
+        // The plane-angle scale belongs to the previous load's content.
+        self.cached_plane_angle_to_radians
+            .lock()
+            .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned")
+            .take();
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.
@@ -279,6 +296,10 @@ impl IfcAPI {
         self.cached_indexed_colour_maps
             .lock()
             .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned")
+            .take();
+        self.cached_plane_angle_to_radians
+            .lock()
+            .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned")
             .take();
     }
 
@@ -597,6 +618,37 @@ impl IfcAPI {
             .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
+    }
+
+    /// Resolve the file's plane-angle → radians scale once per worker and cache
+    /// it. The underlying `EntityDecoder::plane_angle_to_radians()` walks the
+    /// whole DATA section for `IFCPROJECT` (which IfcOpenShell emits near the
+    /// end of the file) and caches only per-decoder — but `processGeometryBatch`
+    /// builds a fresh decoder per call, so every batch would re-pay that
+    /// O(file) scan. Callers seed the batch decoder with the cached value via
+    /// `EntityDecoder::seed_unit_scales`.
+    pub(crate) fn get_or_resolve_plane_angle(
+        &self,
+        decoder: &mut ifc_lite_core::EntityDecoder,
+    ) -> f64 {
+        {
+            let slot = self
+                .cached_plane_angle_to_radians
+                .lock()
+                .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned");
+            if let Some(existing) = *slot {
+                return existing;
+            }
+        }
+
+        let scale = decoder.plane_angle_to_radians();
+
+        let mut slot = self
+            .cached_plane_angle_to_radians
+            .lock()
+            .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned");
+        *slot = Some(scale);
+        scale
     }
 }
 

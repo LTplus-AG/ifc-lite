@@ -829,6 +829,13 @@ impl IfcAPI {
             }
         };
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc);
+        // Seed the unit-scale caches so curve/arc tessellation never re-pays the
+        // O(file) IFCPROJECT scan: this decoder is fresh on every batch call,
+        // and `plane_angle_to_radians()` would otherwise walk the whole DATA
+        // section per batch on files whose IFCPROJECT sits near the end
+        // (IfcOpenShell exports) — the geometry-stream stall on large models.
+        let plane_angle_to_radians = self.get_or_resolve_plane_angle(&mut decoder);
+        decoder.seed_unit_scales(unit_scale, plane_angle_to_radians);
 
         // Create geometry router with unit scale and the consumer-selected
         // tessellation quality (issue #976) — Medium unless JS called

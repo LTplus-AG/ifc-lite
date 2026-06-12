@@ -193,6 +193,15 @@ export async function* processParallel(
         wake();
         return;
       }
+      if (msg.type === 'progress') {
+        // Worker liveness heartbeat, posted before each bounded WASM call.
+        // Forward it so the consumer's stall watchdog measures "one WASM
+        // call went silent", not "no meshes lately" — a CSG-heavy stretch
+        // can keep every worker busy past the watchdog with nothing to show.
+        eventQueue.push({ type: 'progress', phase: 'workers' });
+        wake();
+        return;
+      }
       if (msg.type === 'batch') {
         if (firstBatchByWorker[workerIndex] === undefined) {
           firstBatchByWorker[workerIndex] = elapsed();
@@ -393,20 +402,30 @@ export async function* processParallel(
     if (workers.length === 0 || jobs.length === 0) return;
     // Round-robin sending whole chunks to single workers leaves N-1
     // workers idle whenever the chunk count is small. Instead split each
-    // Rust chunk evenly across all workers so every worker processes a
-    // slice of every chunk in parallel — full pool utilisation from the
-    // very first chunk.
+    // Rust chunk across all workers so every worker processes a slice of
+    // every chunk in parallel — full pool utilisation from the very first
+    // chunk.
+    //
+    // The split is INTERLEAVED (worker i takes jobs i, i+N, i+2N, …), not
+    // contiguous quarters: geometric complexity clusters by file region
+    // (e.g. all the CSG-heavy slabs of a steel model at the end of DATA),
+    // and a contiguous split hands one worker the entire heavy cluster
+    // while the rest go idle — the load's tail runs single-threaded.
+    // Striding spreads any hot region evenly across the pool.
     const totalSubJobs = Math.floor(jobs.length / 3);
     if (totalSubJobs === 0) return;
-    const subPerWorker = Math.ceil(totalSubJobs / workers.length);
     try {
       for (let i = 0; i < workers.length; i++) {
-        const start = i * subPerWorker * 3;
-        const end = Math.min(start + subPerWorker * 3, jobs.length);
-        if (start >= end) continue;
-        // `slice` allocates a new ArrayBuffer per piece so each can be in
-        // its own transfer list. Cheap relative to the WASM work that follows.
-        const sub = jobs.slice(start, end);
+        const subJobs = Math.floor((totalSubJobs - i + workers.length - 1) / workers.length);
+        if (subJobs === 0) continue;
+        // New ArrayBuffer per piece so each can be in its own transfer
+        // list. Cheap relative to the WASM work that follows.
+        const sub = new Uint32Array(subJobs * 3);
+        for (let j = 0, src = i * 3; j < subJobs * 3; j += 3, src += workers.length * 3) {
+          sub[j] = jobs[src];
+          sub[j + 1] = jobs[src + 1];
+          sub[j + 2] = jobs[src + 2];
+        }
         workers[i].postMessage(
           { type: 'stream-chunk' as const, jobsFlat: sub },
           [sub.buffer],

@@ -7,6 +7,7 @@ import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { Viewport } from './Viewport';
 import { ViewportOverlays } from './ViewportOverlays';
 import { MergeLayersBanner } from './MergeLayersBanner';
+import { LevelDisplayIndicator } from './LevelDisplayIndicator';
 import { ToolOverlays } from './ToolOverlays';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { Section2DPanel } from './Section2DPanel';
@@ -1153,6 +1154,7 @@ export function ViewportContainer() {
           top of the canvas. Only renders when the user has flipped the
           merge-layers toggle while a model is in scope. */}
       <MergeLayersBanner />
+      <LevelDisplayIndicator />
       <ToolOverlays />
       <BasketPresentationDock />
       <Section2DPanel

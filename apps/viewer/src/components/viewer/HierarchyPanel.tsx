@@ -24,6 +24,7 @@ import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { HierarchyNode, SectionHeader } from './hierarchy/HierarchyNode';
+import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
 
 export function HierarchyPanel() {
   const {
@@ -47,6 +48,7 @@ export function HierarchyPanel() {
   const setStoreySelection = useViewerStore((s) => s.setStoreySelection);
   const setStoreysSelection = useViewerStore((s) => s.setStoreysSelection);
   const clearStoreySelection = useViewerStore((s) => s.clearStoreySelection);
+  const setActiveStorey = useViewerStore((s) => s.setActiveStorey);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
@@ -364,6 +366,15 @@ export function HierarchyPanel() {
         ? unified.storeys.map(s => s.storeyId)
         : node.expressIds;
 
+      // Update the shared active storey (model-aware) so Space Sketch, the
+      // Solo level-display mode, and the floorplan all follow the storey the
+      // user just clicked. For a multi-model unified storey, pick the first
+      // constituent as the representative.
+      const activeRep = unified && unified.storeys.length > 0
+        ? { modelId: unified.storeys[0].modelId, expressId: unified.storeys[0].storeyId }
+        : { modelId: node.modelIds[0] || 'legacy', expressId: storeyIds[0] };
+      if (activeRep.expressId != null) setActiveStorey(activeRep);
+
       // Set entity refs for property panel display
       if (unified && unified.storeys.length > 1) {
         // Multi-model unified storey: show all storeys combined in property panel
@@ -443,7 +454,7 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter]);
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter]);
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {
@@ -621,6 +632,7 @@ export function HierarchyPanel() {
           {/* Storeys Section */}
           <div style={{ height: `${splitRatio * 100}%` }} className="flex flex-col min-h-0">
             <SectionHeader icon={Layers} title="Building Storeys" count={storeysNodes.length} />
+            <StoreyDisplayControls />
             <div ref={storeysRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">
               <div
                 style={{
@@ -737,6 +749,10 @@ export function HierarchyPanel() {
 
       {/* Section Header */}
       <SectionHeader icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : groupingMode === 'material' ? Palette : FileBox} title={groupingMode === 'spatial' ? 'Hierarchy' : groupingMode === 'type' ? 'By Class' : groupingMode === 'material' ? 'By Material' : 'By Type'} count={filteredNodes.length} />
+
+      {/* Level display (Stacked / Exploded / Solo) + floorplan — only in the
+          spatial view where storeys are the organising concept. */}
+      {groupingMode === 'spatial' && <StoreyDisplayControls />}
 
       {/* Tree */}
       <div ref={parentRef} className="flex-1 overflow-auto scrollbar-thin bg-white dark:bg-black">

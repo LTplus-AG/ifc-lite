@@ -18,6 +18,17 @@ export interface SelectionSlice {
   selectedEntityId: number | null;
   selectedEntityIds: Set<number>;
   selectedStoreys: Set<number>;
+  /**
+   * The single storey the user is currently focused on, model-aware so
+   * federated scenes with overlapping express-ids resolve the right one.
+   * This is the shared "active storey" source of truth: the hierarchy sets
+   * it when a storey row is clicked, and Space Sketch, the Solo level-display
+   * mode, and the floorplan all read it — so picking a storey once makes
+   * every storey-aware surface respect it (instead of each defaulting to its
+   * own storey). Independent of `selectedStoreys` (which is the multi-select
+   * renderer filter); a single-storey click sets both.
+   */
+  activeStorey: EntityRef | null;
 
   // State (multi-model)
   /** Primary selected entity with model context */
@@ -35,6 +46,8 @@ export interface SelectionSlice {
   setStoreySelection: (id: number) => void;
   setStoreysSelection: (ids: number[]) => void;
   clearStoreySelection: () => void;
+  /** Set the shared active storey (or null to clear). */
+  setActiveStorey: (ref: EntityRef | null) => void;
   addToSelection: (id: number) => void;
   removeFromSelection: (id: number) => void;
   toggleSelection: (id: number) => void;
@@ -74,6 +87,7 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
   selectedEntityId: null,
   selectedEntityIds: new Set(),
   selectedStoreys: new Set(),
+  activeStorey: null,
 
   // Initial state (multi-model)
   selectedEntity: null,
@@ -110,6 +124,8 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
   setStoreysSelection: (ids) => set({ selectedStoreys: new Set(ids) }),
 
   clearStoreySelection: () => set({ selectedStoreys: new Set() }),
+
+  setActiveStorey: (activeStorey) => set({ activeStorey }),
 
   addToSelection: (id) => set((state) => {
     const newSelection = new Set(state.selectedEntityIds);

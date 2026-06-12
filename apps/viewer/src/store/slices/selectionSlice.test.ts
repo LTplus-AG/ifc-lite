@@ -286,4 +286,33 @@ describe('SelectionSlice', () => {
       assert.strictEqual(state.selectedStoreys.size, 0);
     });
   });
+
+  describe('shared active storey', () => {
+    it('defaults to null', () => {
+      assert.strictEqual(state.activeStorey, null);
+    });
+
+    it('sets a model-aware active storey', () => {
+      const ref: EntityRef = { modelId: 'model-1', expressId: 42 };
+      state.setActiveStorey(ref);
+      assert.deepStrictEqual(state.activeStorey, ref);
+    });
+
+    it('clears the active storey with null', () => {
+      state.setActiveStorey({ modelId: 'model-1', expressId: 42 });
+      state.setActiveStorey(null);
+      assert.strictEqual(state.activeStorey, null);
+    });
+
+    it('is independent of the selectedStoreys renderer filter', () => {
+      // The active storey is the single, model-aware focus; selectedStoreys
+      // is the multi-select isolation filter. Writing one must not mutate the
+      // other (the hierarchy sets both deliberately on a single-storey click).
+      state.setActiveStorey({ modelId: 'model-1', expressId: 7 });
+      assert.strictEqual(state.selectedStoreys.size, 0);
+
+      state.setStoreysSelection([7, 8]);
+      assert.deepStrictEqual(state.activeStorey, { modelId: 'model-1', expressId: 7 });
+    });
+  });
 });

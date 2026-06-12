@@ -222,9 +222,28 @@ export function SpaceSketchOverlay() {
   }, [underlay, showBuilding, hist]);
   const [storeyId, setStoreyId] = useState<number | null>(null);
   const lastDerivedRef = useRef<number | null>(null);
+  // Connect to the shared active storey instead of always defaulting to the
+  // lowest storey: seed from whatever the user already picked in the hierarchy,
+  // and follow it when it changes while the panel is open. The in-panel storey
+  // <select> stays as a local override; a later hierarchy pick wins.
+  const activeStorey = useViewerStore((s) => s.activeStorey);
+  const lastActiveStoreyRef = useRef<number | null>(null);
   useEffect(() => {
-    if (storeyId == null && storeys.length) setStoreyId(storeys[0].id);
-  }, [storeys, storeyId]);
+    if (!storeys.length) return;
+    const sketchModelId = activeModelId ?? 'legacy';
+    const activeHere =
+      activeStorey && activeStorey.modelId === sketchModelId && storeys.some((s) => s.id === activeStorey.expressId)
+        ? activeStorey.expressId
+        : null;
+    // Follow the shared active storey when it changes to one in this model.
+    if (activeHere != null && activeHere !== lastActiveStoreyRef.current) {
+      lastActiveStoreyRef.current = activeHere;
+      setStoreyId(activeHere);
+      return;
+    }
+    // Initial seed: prefer the active storey, else the lowest.
+    if (storeyId == null) setStoreyId(activeHere ?? storeys[0].id);
+  }, [storeys, storeyId, activeStorey, activeModelId]);
 
   // Click anywhere outside the panel closes the tool. Esc closes too.
   useEffect(() => {

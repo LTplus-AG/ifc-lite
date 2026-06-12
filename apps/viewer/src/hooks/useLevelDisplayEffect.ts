@@ -44,6 +44,9 @@ export function useLevelDisplayEffect(): void {
   const levelDisplayMode = useViewerStore((s) => s.levelDisplayMode);
   const explodedGap = useViewerStore((s) => s.explodedGap);
   const soloStorey = useViewerStore((s) => s.soloStorey);
+  // Shared active storey (set by the hierarchy / Space Sketch / the storey-tab
+  // control). Solo follows it so isolating a level is one connected concept.
+  const activeStorey = useViewerStore((s) => s.activeStorey);
   const models = useViewerStore((s) => s.models);
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const appliedStoreyOffsets = useViewerStore((s) => s.appliedStoreyOffsets);
@@ -109,8 +112,12 @@ export function useLevelDisplayEffect(): void {
     // storey express-ids isolate the right one. Slice default is
     // null → pick the lowest-elevation storey of the active model.
     if (levelDisplayMode === 'solo') {
-      let targetModelId: string | null = soloStorey?.modelId ?? null;
-      let storeyId: number | null = soloStorey?.expressId ?? null;
+      // Prefer the shared active storey, then any explicit soloStorey, then
+      // cold-start on the active model's lowest storey (the legacy fallback,
+      // now rarely hit because the storey-tab control seeds the active storey
+      // on Solo and every storey click updates it).
+      let targetModelId: string | null = activeStorey?.modelId ?? soloStorey?.modelId ?? null;
+      let storeyId: number | null = activeStorey?.expressId ?? soloStorey?.expressId ?? null;
       if (targetModelId === null || storeyId === null) {
         // Cold-start default — fall back to the active model's
         // lowest storey ONLY when the slice has no explicit pick.
@@ -151,6 +158,7 @@ export function useLevelDisplayEffect(): void {
     levelDisplayMode,
     explodedGap,
     soloStorey,
+    activeStorey,
     models,
     activeModelId,
     setPendingMeshTranslations,

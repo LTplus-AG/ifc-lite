@@ -83,13 +83,6 @@ export class IfcAPI {
   free(): void;
   [Symbol.dispose](): void;
   /**
-   * Fast pre-pass: scans for geometry entities ONLY (skips style/void/material resolution).
-   * Returns job list + unit scale + RTC offset in ~1-2s instead of ~6s.
-   * Geometry workers can start immediately with default colors + no void subtraction.
-   * A parallel style worker can run buildPrePassOnce for correct colors later.
-   */
-  buildPrePassFast(data: Uint8Array): any;
-  /**
    * Run the pre-pass ONCE and return serialized results for worker distribution.
    * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
    */
@@ -105,9 +98,8 @@ export class IfcAPI {
    *
    * Single linear walk over the file:
    *   1. Builds the entity index incrementally from the same scan that
-   *      collects geometry jobs (the old `build_pre_pass_fast` did two
-   *      full-file scans — one for entities, one for the index — which
-   *      doubled wall-clock).
+   *      collects geometry jobs (a separate index scan would double
+   *      wall-clock).
    *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
    *      first ~50 geometry jobs have been collected, resolves
    *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
@@ -876,7 +868,6 @@ export interface InitOutput {
   readonly gridaxisjs_gridId: (a: number) => number;
   readonly gridaxisjs_start: (a: number) => number;
   readonly gridaxisjs_tag: (a: number, b: number) => void;
-  readonly ifcapi_buildPrePassFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;

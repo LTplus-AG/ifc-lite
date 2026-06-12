@@ -6,8 +6,8 @@ parse_ok: true
 products_attempted: 2
 products_non_empty: 1
 process_errors: 1
-total_triangles: 124
-total_vertices: 136
+total_triangles: 150
+total_vertices: 214
 spike_triangles: 0
 total_surface_area: 10.797
 bbox_min: [0.000, 0.000, 0.000]

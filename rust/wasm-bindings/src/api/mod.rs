@@ -709,37 +709,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
             std::collections::HashMap::new();
         for fails in csg_failures.values() {
             for f in fails {
-                let key: &'static str = match &f.reason {
-                    ifc_lite_geometry::BoolFailureReason::OperandTooLarge { .. } => {
-                        "OperandTooLarge"
-                    }
-                    ifc_lite_geometry::BoolFailureReason::EmptyOperand => "EmptyOperand",
-                    ifc_lite_geometry::BoolFailureReason::DegenerateOperand => "DegenerateOperand",
-                    ifc_lite_geometry::BoolFailureReason::NoBoundsOverlap => "NoBoundsOverlap",
-                    ifc_lite_geometry::BoolFailureReason::KernelOutputInvalid => {
-                        "KernelOutputInvalid"
-                    }
-                    ifc_lite_geometry::BoolFailureReason::SolidSolidDifferenceSkipped => {
-                        "SolidSolidDifferenceSkipped"
-                    }
-                    ifc_lite_geometry::BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
-                        "PolygonalBoundedHalfSpaceFallback"
-                    }
-                    ifc_lite_geometry::BoolFailureReason::CutterUnionUnavailable => {
-                        "CutterUnionUnavailable"
-                    }
-                    ifc_lite_geometry::BoolFailureReason::UnknownBooleanOperator(_) => {
-                        "UnknownBooleanOperator"
-                    }
-                    ifc_lite_geometry::BoolFailureReason::ManifoldOutputDegenerate { .. } => {
-                        "ManifoldOutputDegenerate"
-                    }
-                    ifc_lite_geometry::BoolFailureReason::KernelError(_) => "KernelError",
-                    ifc_lite_geometry::BoolFailureReason::DifferenceEmptiedHost => {
-                        "DifferenceEmptiedHost"
-                    }
-                };
-                *by_reason.entry(key).or_insert(0) += 1;
+                *by_reason.entry(f.reason.label()).or_insert(0) += 1;
             }
         }
         let mut breakdown: Vec<(&'static str, usize)> = by_reason.into_iter().collect();

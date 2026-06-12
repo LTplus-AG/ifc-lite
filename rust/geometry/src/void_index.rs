@@ -12,7 +12,110 @@
 //! - RelatedOpeningElement: The opening (IfcOpeningElement)
 
 use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+/// Propagate openings from hosts that aggregate parts to every aggregated
+/// descendant — recursive and type-agnostic (IfcWallElementedCase panels,
+/// IfcRoof → IfcSlab skylights, nested assemblies, …).
+///
+/// The IFC4 spec allows an opening on a host whose geometry is distributed
+/// across aggregated parts; without propagation the cut runs against an empty
+/// host mesh and produces a "silent no-op" while the parts cover what should
+/// be the window/door hole.
+///
+/// Single shared kernel for all three pipelines (server `process_geometry`,
+/// wasm `buildPrePassOnce`, wasm `buildPrePassStreaming`) so they cannot
+/// drift on which descendants receive the cut.
+///
+/// Propagation is breadth-first with a visited-set cycle guard. Existing
+/// void entries for a part are extended (deduplicated) so an authored direct
+/// void is never overwritten.
+pub fn propagate_voids_via_aggregates(
+    void_index: &mut FxHashMap<u32, Vec<u32>>,
+    aggregate_children: &FxHashMap<u32, Vec<u32>>,
+) {
+    if void_index.is_empty() || aggregate_children.is_empty() {
+        return;
+    }
+
+    // Snapshot host ids first — we mutate void_index inside the loop.
+    let hosts: Vec<u32> = void_index.keys().copied().collect();
+
+    for host in hosts {
+        let openings = match void_index.get(&host) {
+            Some(list) if !list.is_empty() => list.clone(),
+            _ => continue,
+        };
+
+        // BFS over aggregated descendants of `host`. Skip the host itself.
+        let mut stack: Vec<u32> = match aggregate_children.get(&host) {
+            Some(kids) => kids.clone(),
+            None => continue,
+        };
+        let mut seen: FxHashSet<u32> = FxHashSet::default();
+        seen.insert(host);
+
+        while let Some(part) = stack.pop() {
+            if !seen.insert(part) {
+                continue;
+            }
+
+            // Mirror the openings onto this part, deduplicated.
+            let entry = void_index.entry(part).or_default();
+            for opening in &openings {
+                if !entry.contains(opening) {
+                    entry.push(*opening);
+                }
+            }
+
+            if let Some(grand_kids) = aggregate_children.get(&part) {
+                for kid in grand_kids {
+                    if !seen.contains(kid) {
+                        stack.push(*kid);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Scan `content` for `IfcRelAggregates` and build the full (unfiltered)
+/// parent → children map used by [`propagate_voids_via_aggregates`].
+pub fn build_aggregate_children_index(
+    content: &str,
+    decoder: &mut EntityDecoder,
+) -> FxHashMap<u32, Vec<u32>> {
+    let mut scanner = EntityScanner::new(content);
+    let mut aggregate_children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        if type_name != "IFCRELAGGREGATES" {
+            continue;
+        }
+        let entity = match decoder.decode_at_with_id(id, start, end) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        // IfcRelAggregates: attr 4 = RelatingObject, attr 5 = RelatedObjects
+        let parent_id = match entity.get_ref(4) {
+            Some(id) => id,
+            None => continue,
+        };
+        let children: Vec<u32> = match entity.get(5).and_then(|a| a.as_list()) {
+            Some(list) => list
+                .iter()
+                .filter_map(|item| item.as_entity_ref())
+                .collect(),
+            None => continue,
+        };
+        if !children.is_empty() {
+            aggregate_children
+                .entry(parent_id)
+                .or_default()
+                .extend(children);
+        }
+    }
+    aggregate_children
+}
 
 /// Propagate void (opening) relationships from aggregate parents to their children
 /// and return a child-part → parent-element map covering every emitted aggregate
@@ -44,82 +147,34 @@ pub fn propagate_voids_to_parts(
     content: &str,
     decoder: &mut EntityDecoder,
 ) -> FxHashMap<u32, u32> {
-    let mut scanner = EntityScanner::new(content);
-    let mut propagations: Vec<(u32, Vec<u32>)> = Vec::new();
+    let aggregate_children = build_aggregate_children_index(content, decoder);
+
+    // Void propagation: recursive + type-agnostic over the FULL aggregate
+    // tree (shared kernel — same behaviour as the server pipeline). The
+    // BEP/representation filters below apply only to the part → parent map.
+    propagate_voids_via_aggregates(void_index, &aggregate_children);
+
+    // part → parent map: restricted to IfcBuildingElementPart children with
+    // their own Representation, under parents that also have one (otherwise
+    // the caller could "skip" the only geometry available for the assembly).
     let mut part_to_parent: FxHashMap<u32, u32> = FxHashMap::default();
-
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if type_name != "IFCRELAGGREGATES" {
-            continue;
-        }
-        let entity = match decoder.decode_at_with_id(id, start, end) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        // IfcRelAggregates: attr 4 = RelatingObject, attr 5 = RelatedObjects
-        let parent_id = match entity.get_ref(4) {
-            Some(id) => id,
-            None => continue,
-        };
-
-        let children_attr = match entity.get(5) {
-            Some(attr) => attr,
-            None => continue,
-        };
-        let children: Vec<u32> = match children_attr.as_list() {
-            Some(list) => list
-                .iter()
-                .filter_map(|item| item.as_entity_ref())
-                .collect(),
-            None => continue,
-        };
-        if children.is_empty() {
-            continue;
-        }
-
-        // Verify the parent has its own representation. If it doesn't, the
-        // layer parts ARE the only geometry — we still want to propagate
-        // voids (in case the parent declares voids without geometry), but
-        // we must not record the part → parent mapping that would let the
-        // caller skip part emission.
+    for (&parent_id, children) in &aggregate_children {
         let parent_has_repr = decoder
             .decode_by_id(parent_id)
             .map(|p| p.get(6).map(|a| !a.is_null()).unwrap_or(false))
             .unwrap_or(false);
-
-        let mut eligible_children = Vec::new();
-        for child_id in children {
+        if !parent_has_repr {
+            continue;
+        }
+        for &child_id in children {
             if let Ok(child) = decoder.decode_by_id(child_id) {
                 if child.ifc_type == IfcType::IfcBuildingElementPart {
                     let has_repr = child.get(6).map(|a| !a.is_null()).unwrap_or(false);
                     if has_repr {
-                        eligible_children.push(child_id);
-                        // Only record the mapping when the parent itself has
-                        // geometry — otherwise the caller has no fallback.
-                        if parent_has_repr {
-                            part_to_parent.insert(child_id, parent_id);
-                        }
+                        part_to_parent.insert(child_id, parent_id);
                     }
                 }
             }
-        }
-
-        if !eligible_children.is_empty() && void_index.contains_key(&parent_id) {
-            propagations.push((parent_id, eligible_children));
-        }
-    }
-
-    for (parent_id, children) in propagations {
-        let parent_voids = match void_index.get(&parent_id) {
-            Some(v) => v.clone(),
-            None => continue,
-        };
-        for child_id in children {
-            void_index
-                .entry(child_id)
-                .or_default()
-                .extend(parent_voids.iter().copied());
         }
     }
 
@@ -568,5 +623,108 @@ END-ISO-10303-21;
         let part_to_parent = propagate_voids_to_parts(&mut void_index, &empty, &mut decoder);
         assert!(part_to_parent.is_empty());
         assert!(void_index.is_empty());
+    }
+
+    // ── propagate_voids_via_aggregates (shared BFS kernel) ───────────────
+
+    fn agg_map(pairs: &[(u32, &[u32])]) -> FxHashMap<u32, Vec<u32>> {
+        pairs.iter().map(|(k, v)| (*k, v.to_vec())).collect()
+    }
+
+    #[test]
+    fn propagate_voids_walks_full_aggregate_tree() {
+        // Host #100 voided by openings #200 and #201. The host aggregates
+        // parts #110 and #111; #110 further aggregates #120 (a grand-part).
+        // Every leaf in the aggregate sub-tree must inherit both openings.
+        let mut void_index = agg_map(&[(100, &[200, 201])]);
+        let aggregate_children = agg_map(&[(100, &[110, 111]), (110, &[120])]);
+
+        propagate_voids_via_aggregates(&mut void_index, &aggregate_children);
+
+        let expected = [200, 201];
+        for part in &[110, 111, 120] {
+            let got = void_index.get(part).expect("part should have voids");
+            assert_eq!(
+                got.iter().copied().collect::<std::collections::HashSet<_>>(),
+                expected.iter().copied().collect::<std::collections::HashSet<_>>(),
+                "part #{part} should receive both openings",
+            );
+        }
+        // Host entry is preserved untouched.
+        assert_eq!(void_index.get(&100), Some(&vec![200, 201]));
+    }
+
+    #[test]
+    fn propagate_voids_deduplicates_existing_part_voids() {
+        // Authored: part #110 already voided by opening #999 directly.
+        // After propagation it must have #200 and #999, not #200 twice.
+        let mut void_index = agg_map(&[(100, &[200]), (110, &[999])]);
+        let aggregate_children = agg_map(&[(100, &[110])]);
+
+        propagate_voids_via_aggregates(&mut void_index, &aggregate_children);
+
+        let mut part_voids = void_index.get(&110).unwrap().clone();
+        part_voids.sort();
+        assert_eq!(part_voids, vec![200, 999]);
+    }
+
+    #[test]
+    fn propagate_voids_handles_aggregate_cycles() {
+        // Cyclic IfcRelAggregates: #110 -> #120 -> #110. Without the visited
+        // guard this loops forever. With it the walk terminates and both
+        // parts get the openings exactly once.
+        let mut void_index = agg_map(&[(100, &[200])]);
+        let aggregate_children = agg_map(&[(100, &[110]), (110, &[120]), (120, &[110])]);
+
+        propagate_voids_via_aggregates(&mut void_index, &aggregate_children);
+
+        assert_eq!(void_index.get(&110), Some(&vec![200]));
+        assert_eq!(void_index.get(&120), Some(&vec![200]));
+    }
+
+    #[test]
+    fn propagate_voids_no_op_when_host_has_no_parts() {
+        let mut void_index = agg_map(&[(100, &[200])]);
+        let aggregate_children = agg_map(&[(101, &[110])]); // different host
+        let before = void_index.clone();
+
+        propagate_voids_via_aggregates(&mut void_index, &aggregate_children);
+
+        assert_eq!(void_index, before);
+    }
+
+    #[test]
+    fn propagate_voids_to_parts_covers_non_bep_descendants() {
+        // Parity with the server pipeline: an IfcRoof aggregating an IfcSlab
+        // (skylight pattern) must propagate the roof's opening to the slab
+        // even though the child is not an IfcBuildingElementPart.
+        let content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#50));
+#50=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#40));
+#40=IFCEXTRUDEDAREASOLID($,$,$,3.0);
+#100=IFCROOF('0001roof',$,'Roof',$,$,$,$,$,$);
+#101=IFCSLAB('0001slab',$,'Pitch',$,$,$,#51,$,$);
+#200=IFCOPENINGELEMENT('0001op',$,'Skylight',$,$,$,#51,$,$);
+#210=IFCRELVOIDSELEMENT('0001rv',$,$,$,#100,#200);
+#300=IFCRELAGGREGATES('0001ra',$,$,$,#100,(#101));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+        void_index.insert(100, vec![200]);
+
+        let part_to_parent = propagate_voids_to_parts(&mut void_index, content, &mut decoder);
+
+        // The slab inherits the skylight opening …
+        assert_eq!(void_index.get(&101), Some(&vec![200]));
+        // … but is NOT in the merge-layers map (not an IfcBuildingElementPart).
+        assert!(part_to_parent.is_empty());
     }
 }

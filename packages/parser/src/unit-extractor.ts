@@ -197,6 +197,14 @@ export function extractLengthUnitScale(
             } else if (Array.isArray(valueAttr) && valueAttr.length === 2 && typeof valueAttr[1] === 'number') {
               // Typed value like ['IFCLENGTHMEASURE', 0.3048]
               conversionValue = valueAttr[1];
+            } else {
+              // Unreadable ValueComponent: default to 1.0 but STILL apply the
+              // UnitComponent prefix below — parity with the Rust extractor
+              // (rust/core/src/units.rs), which drives geometry scaling. A
+              // millimetre-based IfcMeasureWithUnit with a garbled value must
+              // resolve to 0.001 on both sides, not fall through to metres
+              // here while the meshes scale by 0.001.
+              conversionValue = 1.0;
             }
 
             if (conversionValue !== undefined && conversionValue > 0) {

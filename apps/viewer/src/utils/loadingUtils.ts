@@ -13,7 +13,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { buildSpatialIndexAsync } from '@ifc-lite/spatial';
-import { useViewerStore } from '../store.js';
+import { useViewerStore } from '../store/index.js';
 
 /**
  * Build a spatial index in the background (time-sliced, non-blocking)

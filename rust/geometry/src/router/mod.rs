@@ -64,10 +64,6 @@ pub struct GeometryRouter {
     /// Cache for IfcRepresentationMap source geometry (MappedItem instancing)
     /// Key: RepresentationMap entity ID, Value: Processed mesh
     mapped_item_cache: RefCell<FxHashMap<u32, Arc<Mesh>>>,
-    /// Cache for FacetedBrep geometry (batch processed)
-    /// Key: FacetedBrep entity ID, Value: Processed mesh
-    /// Uses Box to avoid copying large meshes, entries are taken (removed) when used
-    faceted_brep_cache: RefCell<FxHashMap<u32, Mesh>>,
     /// Cache for geometry deduplication by content hash
     /// Buildings with repeated floors have 99% identical geometry
     /// Key: Hash of mesh content, Value: Processed mesh
@@ -207,7 +203,6 @@ impl GeometryRouter {
             schema,
             processors: HashMap::new(),
             mapped_item_cache: RefCell::new(FxHashMap::default()),
-            faceted_brep_cache: RefCell::new(FxHashMap::default()),
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
             unit_scale: 1.0,             // Default to base meters
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
@@ -339,8 +334,7 @@ impl GeometryRouter {
     /// Reusing one router across a quality change invalidates `mapped_item_cache`
     /// (keyed by RepresentationMap id, not by quality), so it is cleared here to
     /// avoid serving meshes tessellated at the previous level. The other caches
-    /// are content-hash keyed (`geometry_hash_cache`) or hold non-curved breps
-    /// (`faceted_brep_cache`), so they stay correct.
+    /// are content-hash keyed (`geometry_hash_cache`), so they stay correct.
     pub fn set_tessellation_quality(&mut self, quality: TessellationQuality) {
         if self.tessellation_quality == quality {
             return;
@@ -417,47 +411,6 @@ impl GeometryRouter {
         for ifc_type in processor_arc.supported_types() {
             self.processors.insert(ifc_type, Arc::clone(&processor_arc));
         }
-    }
-
-    /// Batch preprocess FacetedBrep entities for maximum parallelism
-    /// Call this before processing elements to enable batch triangulation
-    /// across all FacetedBrep entities instead of per-entity parallelism
-    pub fn preprocess_faceted_breps(&self, brep_ids: &[u32], decoder: &mut EntityDecoder) {
-        if brep_ids.is_empty() {
-            return;
-        }
-
-        // Use batch processing for parallel triangulation.
-        // Convert RTC from meters to file units so the Brep processor
-        // subtracts the offset in the same coordinate space as the vertices.
-        let processor = FacetedBrepProcessor::new();
-        let rtc_file_units = (
-            self.rtc_offset.0 / self.unit_scale,
-            self.rtc_offset.1 / self.unit_scale,
-            self.rtc_offset.2 / self.unit_scale,
-        );
-        let large_coord_threshold_file_units = 10000.0 / self.unit_scale;
-        let results = processor.process_batch(
-            brep_ids,
-            decoder,
-            rtc_file_units,
-            large_coord_threshold_file_units,
-        );
-
-        // Store results in cache (preallocate to avoid rehashing)
-        let mut cache = self.faceted_brep_cache.borrow_mut();
-        cache.reserve(results.len());
-        for (brep_idx, mesh) in results {
-            let brep_id = brep_ids[brep_idx];
-            cache.insert(brep_id, mesh);
-        }
-    }
-
-    /// Take FacetedBrep from cache (removes entry since each BREP is only used once)
-    /// Returns owned Mesh directly - no cloning needed
-    #[inline]
-    pub fn take_cached_faceted_brep(&self, brep_id: u32) -> Option<Mesh> {
-        self.faceted_brep_cache.borrow_mut().remove(&brep_id)
     }
 
     /// Resolve an element's ObjectPlacement to a scaled world-space transform matrix.

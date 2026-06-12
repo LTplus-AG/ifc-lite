@@ -19,8 +19,7 @@
   },
   "dependencies": {
     "@ifc-lite/geometry": "workspace:^",
-    "@ifc-lite/spatial": "workspace:^",
-    "@ifc-lite/wasm": "workspace:^"
+    "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.70",

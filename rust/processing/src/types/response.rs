@@ -129,4 +129,11 @@ pub struct ProcessingStats {
     pub total_time_ms: u64,
     /// Whether result was from cache.
     pub from_cache: bool,
+    /// Total CSG boolean failures recorded during geometry extraction
+    /// (mirrors the browser console diagnostics — see `BoolFailureReason`).
+    #[serde(default)]
+    pub total_csg_failures: u64,
+    /// Number of distinct products with at least one CSG failure.
+    #[serde(default)]
+    pub products_with_failures: u64,
 }

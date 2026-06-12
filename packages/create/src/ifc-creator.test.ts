@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
+import { isValidIfcGuid, ifcGuidToUuid, uuidToIfcGuid } from '@ifc-lite/encoding';
 import { IfcCreator } from './ifc-creator.js';
 
 describe('IfcCreator', () => {
@@ -407,16 +408,23 @@ describe('IfcCreator', () => {
     expect(result.content).toMatch(/END-ISO-10303-21;\s*$/);
   });
 
-  it('generates unique GlobalIds', () => {
+  it('generates unique, spec-valid GlobalIds that round-trip through UUID', () => {
     const creator = new IfcCreator();
     creator.addIfcBuildingStorey({ Name: 'S1', Elevation: 0 });
     creator.addIfcBuildingStorey({ Name: 'S2', Elevation: 3 });
     const result = creator.toIfc();
 
     // Extract all GlobalIds
-    const globalIds = result.content.match(/'[0-9A-Za-z_$]{22}'/g) ?? [];
+    const globalIds = (result.content.match(/'[0-9A-Za-z_$]{22}'/g) ?? []).map((g) => g.slice(1, -1));
     const uniqueIds = new Set(globalIds);
     expect(uniqueIds.size).toBe(globalIds.length);
+    expect(globalIds.length).toBeGreaterThan(0);
+    // Every GlobalId must encode 128 bits (first char 0-3) and survive a
+    // guid -> uuid -> guid round-trip without silently changing identity.
+    for (const id of globalIds) {
+      expect(isValidIfcGuid(id)).toBe(true);
+      expect(uuidToIfcGuid(ifcGuidToUuid(id))).toBe(id);
+    }
   });
 
   it('builds a complete building', () => {

@@ -20,6 +20,8 @@
  * and adjusts attribute counts via regex replacement on raw STEP lines.
  */
 
+import { generateIfcGuid } from '@ifc-lite/encoding';
+
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
 /**
@@ -287,7 +289,7 @@ export function convertStepLine(
   // Replace entities that have no valid representation in the target schema
   // with IFCPROXY placeholders to preserve EXPRESS IDs and prevent dangling references
   if (shouldSkipEntity(newType, toSchema)) {
-    return `${prefix}IFCPROXY('${generatePlaceholderId()}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
+    return `${prefix}IFCPROXY('${generateIfcGuid()}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
   }
 
   // Adjust attribute count if downgrading to IFC2X3
@@ -425,19 +427,3 @@ export function describeConversion(
     : `Converting ${fromSchema} → ${toSchema}`;
 }
 
-/**
- * Generate a compact placeholder GlobalId for IFCPROXY entities.
- * Not a true IFC GlobalId (base64 of GUID) but unique enough for placeholder use.
- */
-let _placeholderCounter = 0;
-function generatePlaceholderId(): string {
-  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
-  const counter = _placeholderCounter++;
-  let result = 'PROXY_';
-  let n = counter;
-  for (let i = 0; i < 16; i++) {
-    result += chars[n % 64];
-    n = Math.floor(n / 64) + i;
-  }
-  return result;
-}

@@ -9,8 +9,8 @@
 //! bounded randomized inputs:
 //!
 //! 1. Axis-aligned box difference (`ClippingProcessor::subtract_mesh`,
-//!    which dispatches to the Manifold kernel under the default
-//!    `manifold-csg` feature and to the legacy BSP port without it):
+//!    which dispatches to the pure-Rust exact CSG kernel — the only
+//!    kernel on every target since #1024):
 //!    NaN/Inf-freedom, volume bounds, exact analytic volume for AABB
 //!    pairs, emptiness under containment, identity under disjointness,
 //!    and watertightness of the output.
@@ -23,8 +23,8 @@
 //! Case counts are set explicitly per property (48–64) so the whole
 //! suite stays well under a minute. Volumes are checked against the
 //! f32-quantized inputs (Mesh stores f32 positions), with tolerances
-//! that account for the kernel's deliberate ~10 µm cutter inflation
-//! (`manifold_kernel::mesh_to_manifold_perturbed`) and f32 round-trips.
+//! that account for the kernel's on-grid coordinate quantization and
+//! f32 round-trips.
 //!
 //! If a property ever fails, proptest shrinks to a minimal
 //! counterexample and records it in
@@ -450,15 +450,9 @@ proptest! {
             );
         }
 
-        // Watertightness. Guaranteed by construction on the Manifold
-        // kernel. The legacy BSP port (`bsp_csg.rs`,
-        // --no-default-features) is not watertight in general (per-node
-        // re-triangulation can leave T-junctions on oblique cuts), but
-        // for axis-aligned box pairs every clip plane is axis-aligned
-        // and the property holds empirically (640+ random cases) — so
-        // keep it asserted on both kernels. If this ever fails under
-        // --no-default-features it is the known server-vs-viewer kernel
-        // drift surfacing; commit the recorded counterexample.
+        // Watertightness. Guaranteed by construction on the exact
+        // mesh-arrangement kernel (the only kernel since #1024); if it
+        // ever fails, commit the recorded counterexample.
         let violation = watertight_violation(&result);
         prop_assert!(
             violation.is_none(),

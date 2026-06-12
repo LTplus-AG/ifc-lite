@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
+import { isValidIfcGuid } from '@ifc-lite/encoding';
 import {
   convertEntityType,
   convertStepLine,
@@ -103,6 +104,11 @@ describe('schema-converter', () => {
       expect(result).toContain('#99=IFCPROXY(');
       expect(result).toContain('IFCALIGNMENTCANT');
       expect(result).toContain('.NOTDEFINED.');
+      // The placeholder GlobalId must be spec-valid (128-bit, first char 0-3),
+      // not a synthetic marker that fails isValidIfcGuid in downstream tools.
+      const guid = result?.match(/IFCPROXY\('([^']{22})'/)?.[1];
+      expect(guid).toBeDefined();
+      expect(isValidIfcGuid(guid as string)).toBe(true);
     });
 
     it('preserves alignment entities when converting IFC4X3 → IFC5', () => {

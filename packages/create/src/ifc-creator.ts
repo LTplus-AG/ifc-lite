@@ -37,6 +37,7 @@ import {
   esc, stepLine, num, vecLen, vecNorm, vecCross,
   NON_ELEMENT_TYPES,
 } from './ifc-creator-math.js';
+import { generateIfcGuid } from '@ifc-lite/encoding';
 
 // ============================================================================
 // STEP attribute helpers (scheduling — optional strings / enums / numbers)
@@ -123,23 +124,11 @@ export class IfcCreator {
     this.buildPreamble(params);
   }
 
-  /** Generate a 22-character IFC GlobalId (base64-ish) using crypto-strong randomness */
+  /** Generate a spec-valid 22-character IFC GlobalId (canonical encoder from @ifc-lite/encoding). */
   private newGlobalId(): string {
-    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
     let result: string;
     do {
-      // Use Web Crypto API (works in both Node.js and browsers)
-      const bytes = new Uint8Array(22);
-      if (typeof globalThis.crypto !== 'undefined' && globalThis.crypto.getRandomValues) {
-        globalThis.crypto.getRandomValues(bytes);
-      } else {
-        // Fallback for older environments
-        for (let i = 0; i < 22; i++) bytes[i] = Math.floor(Math.random() * 256);
-      }
-      result = '';
-      for (let i = 0; i < 22; i++) {
-        result += chars[bytes[i] % 64];
-      }
+      result = generateIfcGuid();
     } while (this.usedGlobalIds.has(result));
     this.usedGlobalIds.add(result);
     return result;

@@ -44,12 +44,9 @@
 //! 3 decimals and `worst_aspect` is deliberately excluded (a max over
 //! float ratios is too boundary-sensitive across platforms).
 //!
-//! Snapshots are pinned to the **default kernel** (`manifold-csg`).
-//! Under `--no-default-features` the legacy BSP kernel produces
-//! legitimately different mesh stats for CSG fixtures, so in that
-//! configuration the harness still enforces the universal invariants
-//! above but skips snapshot assertion entirely (see the
-//! `cfg!(feature = "manifold-csg")` gate in the test body).
+//! Snapshots are pinned to the pure-Rust exact CSG kernel — the only
+//! kernel on every target since #1024, so they are asserted
+//! unconditionally.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
@@ -619,19 +616,6 @@ fn geometry_correctness_harness() {
     // vendored, so every snapshot is asserted there. Accept intentional
     // changes with `cargo insta review` (or `INSTA_UPDATE=auto`).
     //
-    // Kernel gate: snapshots are pinned to the default Manifold kernel.
-    // The legacy BSP kernel (`--no-default-features`) yields different
-    // (but valid) mesh stats for CSG fixtures, so asserting the same
-    // snapshots there would false-fail. The loose invariants above
-    // still cover that configuration.
-    if !cfg!(feature = "manifold-csg") {
-        eprintln!(
-            "[harness] manifold-csg feature disabled (legacy BSP kernel): \
-             skipping insta snapshot assertions — snapshots are pinned to \
-             the default Manifold kernel and mesh stats are kernel-dependent"
-        );
-        return;
-    }
     for r in &reports {
         if !r.fixture_found {
             continue;

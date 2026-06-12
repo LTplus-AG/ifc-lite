@@ -80,7 +80,6 @@ fn prepare_streaming_data(content: String) -> PreparedData {
 
     // Collect jobs and build void index
     let mut scanner = EntityScanner::new(&content);
-    let mut faceted_brep_ids: Vec<u32> = Vec::new();
     let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut jobs: Vec<EntityJob> = Vec::with_capacity(2000);
     let mut schema_version = "IFC2X3".to_string();
@@ -91,9 +90,7 @@ fn prepare_streaming_data(content: String) -> PreparedData {
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         total_entities += 1;
 
-        if type_name == "IFCFACETEDBREP" {
-            faceted_brep_ids.push(id);
-        } else if type_name == "IFCRELVOIDSELEMENT" {
+        if type_name == "IFCRELVOIDSELEMENT" {
             if let Ok(entity) = decoder.decode_at(start, end) {
                 if let (Some(host), Some(opening)) = (entity.get_ref(4), entity.get_ref(5)) {
                     void_index.entry(host).or_default().push(opening);
@@ -147,15 +144,8 @@ fn prepare_streaming_data(content: String) -> PreparedData {
         .iter()
         .map(|j| (j.id, j.start, j.end, j.ifc_type))
         .collect();
-    let detected_rtc_offset = match router.detect_rtc_offset_from_jobs(&rtc_jobs, &mut decoder) {
-        Some(offset) => offset,
-        None => {
-            // No usable translation samples — fall back to full-file coordinate scan
-            // for files where large real-world coordinates are encoded in points
-            // rather than in placement transforms.
-            scan_placement_bounds(&content).rtc_offset()
-        }
-    };
+    let detected_rtc_offset =
+        router.detect_rtc_offset_with_fallback(&rtc_jobs, &mut decoder, &content);
 
     // Three-tier coordinate-space selection, mirroring the non-streaming path:
     //   1. site_local: IfcSite placement has a non-identity translation.
@@ -182,10 +172,6 @@ fn prepare_streaming_data(content: String) -> PreparedData {
             ((0.0, 0.0, 0.0), "raw_ifc")
         };
     router.set_rtc_offset(rtc_offset);
-    if !faceted_brep_ids.is_empty() {
-        router.preprocess_faceted_breps(&faceted_brep_ids, &mut decoder);
-    }
-
     // OPTIMIZATION: Extract unit_scale before dropping router
     // This allows process_batch to use with_scale() instead of with_units() per mesh
     let unit_scale = router.unit_scale();
@@ -513,6 +499,7 @@ pub fn process_streaming(
                 geometry_time_ms: total_time.as_millis() as u64 - prepared.parse_time_ms,
                 total_time_ms: total_time.as_millis() as u64,
                 from_cache: false,
+                ..Default::default()
             },
             metadata: ModelMetadata {
                 schema_version: prepared.schema_version,

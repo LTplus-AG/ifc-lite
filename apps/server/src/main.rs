@@ -176,7 +176,6 @@ async fn main() {
         cache_dir = %config.cache_dir,
         max_file_size_mb = config.max_file_size_mb,
         worker_threads = config.worker_threads,
-        batch_size = config.batch_size,
         "Starting IFC-Lite Server"
     );
 

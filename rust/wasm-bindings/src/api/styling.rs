@@ -195,8 +195,6 @@ pub(crate) struct PrePassData {
     pub geometry_styles: rustc_hash::FxHashMap<u32, [f32; 4]>,
     /// Host element → opening elements (from IfcRelVoidsElement)
     pub void_index: rustc_hash::FxHashMap<u32, Vec<u32>>,
-    /// FacetedBrep entity IDs for batch preprocessing
-    pub faceted_brep_ids: Vec<u32>,
     /// IfcProject entity ID (for unit extraction)
     pub project_id: Option<u32>,
     /// IfcSite entity position (id, start, end) — for building rotation extraction
@@ -227,7 +225,6 @@ pub(crate) fn combined_pre_pass(
     // the scan so IfcStyledItem keeps precedence regardless of scan order.
     let mut colour_map_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
     let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let mut faceted_brep_ids: Vec<u32> = Vec::with_capacity(estimated_elements / 10);
     let mut project_id: Option<u32> = None;
     let mut site_position: Option<(u32, usize, usize)> = None;
     let mut simple_jobs = Vec::with_capacity(estimated_elements / 2);
@@ -298,9 +295,6 @@ pub(crate) fn combined_pre_pass(
                         void_index.entry(host_id).or_default().push(opening_id);
                     }
                 }
-            }
-            "IFCFACETEDBREP" => {
-                faceted_brep_ids.push(id);
             }
             "IFCPROJECT" => {
                 if project_id.is_none() {
@@ -379,7 +373,6 @@ pub(crate) fn combined_pre_pass(
     PrePassData {
         geometry_styles,
         void_index,
-        faceted_brep_ids,
         project_id,
         site_position,
         simple_jobs,

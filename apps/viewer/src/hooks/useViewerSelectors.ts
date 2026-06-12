@@ -8,7 +8,7 @@
  * Extracted from Viewport.tsx for reusability
  */
 
-import { useViewerStore } from '../store.js';
+import { useViewerStore } from '../store/index.js';
 
 /**
  * Selection-related store state and actions

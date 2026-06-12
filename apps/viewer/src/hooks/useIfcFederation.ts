@@ -12,7 +12,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store.js';
+import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store/index.js';
 import {
   detectFormat,
   parseFederatedIfcx,

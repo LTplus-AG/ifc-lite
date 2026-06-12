@@ -361,6 +361,27 @@ impl GeometryRouter {
         Some(Self::rtc_offset_from_translations(&translations))
     }
 
+    /// Detect the RTC offset from sampled jobs, falling back to a full-file
+    /// placement-bounds scan when no usable translation samples were found.
+    ///
+    /// Single shared entry point for the server processing path and the wasm
+    /// prepasses so both sides make the identical needs-shift decision: a
+    /// model whose sampled placements fail to decode while raw geometry
+    /// carries >10 km coordinates must be re-based identically everywhere
+    /// (previously the wasm prepasses silently fell back to (0,0,0) and the
+    /// browser rendered f32 vertex jitter that the server never saw).
+    pub fn detect_rtc_offset_with_fallback(
+        &self,
+        jobs: &[(u32, usize, usize, IfcType)],
+        decoder: &mut EntityDecoder,
+        content: &str,
+    ) -> (f64, f64, f64) {
+        match self.detect_rtc_offset_from_jobs(jobs, decoder) {
+            Some(offset) => offset,
+            None => ifc_lite_core::scan_placement_bounds(content).rtc_offset(),
+        }
+    }
+
     /// Process building element (IfcWall, IfcBeam, etc.) into mesh
     /// Follows the representation chain:
     /// Element → Representation → ShapeRepresentation → Items
@@ -779,15 +800,6 @@ impl GeometryRouter {
         // Special handling for MappedItem with caching
         if item.ifc_type == IfcType::IfcMappedItem {
             return self.process_mapped_item_cached(item, decoder);
-        }
-
-        // Check FacetedBrep cache first (from batch preprocessing)
-        if item.ifc_type == IfcType::IfcFacetedBrep {
-            if let Some(mut mesh) = self.take_cached_faceted_brep(item.id) {
-                self.scale_mesh(&mut mesh);
-                let cached = self.get_or_cache_by_hash(mesh);
-                return Ok((*cached).clone());
-            }
         }
 
         // For raw world-coordinate FacetedBrep with RTC: subtract RTC from f64

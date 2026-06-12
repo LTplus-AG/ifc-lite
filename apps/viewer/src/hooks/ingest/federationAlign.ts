@@ -17,7 +17,7 @@ import {
   type ProjectedCRS,
 } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { useViewerStore, type FederatedModel } from '../../store.js';
+import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { getEffectiveGeoreference, getEffectiveHorizontalScale, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
 import { resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
 import { resolveProjection } from '../../lib/geo/reproject.js';

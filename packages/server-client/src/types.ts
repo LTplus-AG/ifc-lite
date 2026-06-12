@@ -115,6 +115,14 @@ export interface ProcessingStats {
   total_time_ms: number;
   /** Whether result was from cache */
   from_cache: boolean;
+  /**
+   * Total CSG boolean failures recorded during geometry extraction (the
+   * server-side mirror of the browser console CSG diagnostics). Optional:
+   * absent on responses from servers predating this field.
+   */
+  total_csg_failures?: number;
+  /** Number of distinct products with at least one CSG failure. */
+  products_with_failures?: number;
 }
 
 // ============================================

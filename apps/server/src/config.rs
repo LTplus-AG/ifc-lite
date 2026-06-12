@@ -24,8 +24,6 @@ pub struct Config {
     pub initial_batch_size: usize,
     /// Maximum batch size for throughput (batches 11+).
     pub max_batch_size: usize,
-    /// Batch size for streaming responses (deprecated, use dynamic sizing).
-    pub batch_size: usize,
     /// Maximum cache age in days.
     pub cache_max_age_days: u64,
     /// Allowed CORS origins (comma-separated, or "*" for all in development).
@@ -51,7 +49,6 @@ impl std::fmt::Debug for Config {
             .field("worker_threads", &self.worker_threads)
             .field("initial_batch_size", &self.initial_batch_size)
             .field("max_batch_size", &self.max_batch_size)
-            .field("batch_size", &self.batch_size)
             .field("cache_max_age_days", &self.cache_max_age_days)
             .field("cors_origins", &self.cors_origins)
             // Redacted: never print the bearer token.
@@ -102,10 +99,6 @@ impl Config {
                 .unwrap_or_else(|_| "1000".into())
                 .parse()
                 .unwrap_or(1000),
-            batch_size: std::env::var("BATCH_SIZE")
-                .unwrap_or_else(|_| "200".into())
-                .parse()
-                .unwrap_or(200),
             cache_max_age_days: std::env::var("CACHE_MAX_AGE_DAYS")
                 .unwrap_or_else(|_| "7".into())
                 .parse()

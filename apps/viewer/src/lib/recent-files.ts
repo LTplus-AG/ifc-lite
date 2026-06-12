@@ -24,19 +24,11 @@ export interface RecentFileEntry {
   name: string;
   size: number;
   timestamp: number;
-  /** Native filesystem path (Tauri only) — enables direct re-open from disk. */
-  path?: string;
-  /** Last-modified epoch in ms when known (Tauri stat). */
-  modifiedMs?: number | null;
 }
 
-// Input shape for `recordRecentFiles` — accepts the optional native fields
-// so callers can persist a path / modifiedMs without lying about the type.
 export type RecentFileInput = {
   name: string;
   size: number;
-  path?: string;
-  modifiedMs?: number | null;
 };
 
 // ── localStorage (metadata) ─────────────────────────────────────────────
@@ -46,12 +38,10 @@ export function getRecentFiles(): RecentFileEntry[] {
   catch { return []; }
 }
 
-// Path-aware dedup key: when a native filesystem path is available it
-// uniquely identifies the file (so `A/model.ifc` and `B/model.ifc` are
-// kept separate); otherwise fall back to the name (browser uploads
-// don't expose paths).
-function recentKey(f: { name: string; path?: string }): string {
-  return f.path ? `path:${f.path}` : `name:${f.name}`;
+// Browser uploads don't expose filesystem paths, so the file name is the
+// dedup key.
+function recentKey(f: { name: string }): string {
+  return `name:${f.name}`;
 }
 
 export function recordRecentFiles(files: RecentFileInput[]) {
@@ -62,8 +52,6 @@ export function recordRecentFiles(files: RecentFileInput[]) {
       name: f.name,
       size: f.size,
       timestamp: Date.now(),
-      path: f.path,
-      modifiedMs: f.modifiedMs ?? null,
     }));
     localStorage.setItem(KEY, JSON.stringify([...entries, ...existing].slice(0, 10)));
   } catch (err) {
@@ -130,14 +118,6 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
 
 /** Retrieve a cached file blob and reconstruct a File object. */
 export async function getCachedFile(target: string | RecentFileEntry): Promise<File | null> {
-  // Path-bearing entries (Tauri filesystem) are uniquely keyed by path
-  // in the recents list, but the IndexedDB cache is name-keyed. A
-  // name-only hit could resolve `A/model.ifc` to the cached blob from
-  // `B/model.ifc`, opening the wrong file silently. Defer to the
-  // caller's native re-open path instead.
-  if (typeof target !== 'string' && target.path) {
-    return null;
-  }
   const name = typeof target === 'string' ? target : target.name;
   try {
     const db = await openDB();

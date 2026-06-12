@@ -128,6 +128,30 @@ pub enum BoolFailureReason {
     DifferenceEmptiedHost,
 }
 
+impl BoolFailureReason {
+    /// Stable short label for per-reason aggregation. Single home shared by
+    /// the wasm console diagnostics and the server tracing summary so the
+    /// two surfaces cannot drift (Rust-first).
+    pub fn label(&self) -> &'static str {
+        match self {
+            BoolFailureReason::OperandTooLarge { .. } => "OperandTooLarge",
+            BoolFailureReason::EmptyOperand => "EmptyOperand",
+            BoolFailureReason::DegenerateOperand => "DegenerateOperand",
+            BoolFailureReason::NoBoundsOverlap => "NoBoundsOverlap",
+            BoolFailureReason::KernelOutputInvalid => "KernelOutputInvalid",
+            BoolFailureReason::SolidSolidDifferenceSkipped => "SolidSolidDifferenceSkipped",
+            BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
+                "PolygonalBoundedHalfSpaceFallback"
+            }
+            BoolFailureReason::CutterUnionUnavailable => "CutterUnionUnavailable",
+            BoolFailureReason::UnknownBooleanOperator(_) => "UnknownBooleanOperator",
+            BoolFailureReason::ManifoldOutputDegenerate { .. } => "ManifoldOutputDegenerate",
+            BoolFailureReason::KernelError(_) => "KernelError",
+            BoolFailureReason::DifferenceEmptiedHost => "DifferenceEmptiedHost",
+        }
+    }
+}
+
 impl fmt::Display for BoolFailureReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

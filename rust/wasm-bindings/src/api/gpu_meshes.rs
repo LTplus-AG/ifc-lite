@@ -112,9 +112,7 @@ impl IfcAPI {
             .chain(pre_pass.complex_jobs.iter().take(25))
             .copied()
             .collect();
-        let rtc_offset = router
-            .detect_rtc_offset_from_jobs(&rtc_jobs, &mut decoder)
-            .unwrap_or((0.0, 0.0, 0.0));
+        let rtc_offset = router.detect_rtc_offset_with_fallback(&rtc_jobs, &mut decoder, content);
         let needs_shift = rtc_offset.0.abs() > 10000.0
             || rtc_offset.1.abs() > 10000.0
             || rtc_offset.2.abs() > 10000.0;
@@ -180,13 +178,6 @@ impl IfcAPI {
             si += 1;
         }
 
-        // Serialize faceted_brep_ids
-        let faceted_brep_ids =
-            js_sys::Uint32Array::new_with_length(pre_pass.faceted_brep_ids.len() as u32);
-        for (i, &id) in pre_pass.faceted_brep_ids.iter().enumerate() {
-            faceted_brep_ids.set_index(i as u32, id);
-        }
-
         // Build result object
         let result = js_sys::Object::new();
         super::set_js_prop(&result, "jobs", &jobs_flat);
@@ -210,160 +201,6 @@ impl IfcAPI {
         super::set_js_prop(&result, "voidValues", &void_values);
         super::set_js_prop(&result, "styleIds", &style_ids);
         super::set_js_prop(&result, "styleColors", &style_colors);
-        super::set_js_prop(&result, "facetedBrepIds", &faceted_brep_ids);
-
-        result.into()
-    }
-
-    /// Fast pre-pass: scans for geometry entities ONLY (skips style/void/material resolution).
-    /// Returns job list + unit scale + RTC offset in ~1-2s instead of ~6s.
-    /// Geometry workers can start immediately with default colors + no void subtraction.
-    /// A parallel style worker can run buildPrePassOnce for correct colors later.
-    #[wasm_bindgen(js_name = buildPrePassFast)]
-    pub fn build_pre_pass_fast(&self, data: &[u8]) -> JsValue {
-        use super::styling::extract_building_rotation_from_site;
-        use ifc_lite_core::{is_simple_geometry_type, EntityDecoder, EntityScanner, IfcType};
-        use ifc_lite_geometry::GeometryRouter;
-
-        let content = decode_ifc_bytes(data);
-
-        let mut scanner = EntityScanner::new(content);
-        let estimated = content.len() / 2000;
-        let mut simple_jobs: Vec<(u32, usize, usize, IfcType)> = Vec::with_capacity(estimated / 2);
-        let mut complex_jobs: Vec<(u32, usize, usize, IfcType)> = Vec::with_capacity(estimated / 2);
-        let mut project_id: Option<u32> = None;
-        let mut site_position: Option<(u32, usize, usize)> = None;
-
-        // Fast scan: only collect geometry entity locations + project/site
-        // Skip ALL style/void/material/brep collection
-        while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            match type_name {
-                "IFCPROJECT" => {
-                    if project_id.is_none() {
-                        project_id = Some(id);
-                    }
-                }
-                "IFCSITE" => {
-                    if site_position.is_none() {
-                        site_position = Some((id, start, end));
-                    }
-                    let ifc_type = IfcType::from_str(type_name);
-                    complex_jobs.push((id, start, end, ifc_type));
-                }
-                _ => {
-                    if ifc_lite_core::has_geometry_by_name(type_name) {
-                        let ifc_type = IfcType::from_str(type_name);
-                        if is_simple_geometry_type(type_name) {
-                            simple_jobs.push((id, start, end, ifc_type));
-                        } else {
-                            complex_jobs.push((id, start, end, ifc_type));
-                        }
-                    }
-                }
-            }
-        }
-
-        // Resolve unit scale + RTC offset (needs entity index for decoder).
-        // Wrap in Arc so subsequent processGeometryBatch calls share by ref.
-        let entity_index = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
-        // Mutex held only briefly to install the Arc; rayon helpers
-        // pick up clones below without re-locking. Panic on poison —
-        // an earlier panic with the lock held would mean the cached
-        // index is in an inconsistent state.
-        let mut slot = self
-            .cached_entity_index
-            .lock()
-            .expect("ifc-lite cached_entity_index Mutex poisoned");
-        *slot = Some(entity_index.clone());
-        drop(slot);
-        let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
-
-        // #957 + Model/Types switch: IfcTypeProduct RepresentationMap geometry
-        // (orphan annex-E types AND instanced type-library shapes) — keep the fast
-        // prepass consistent with the once/streaming paths. processGeometryBatch
-        // tags each with a geometry_class for the viewer's view mode. The helper is
-        // guarded by a cheap `IFCREPRESENTATIONMAP` substring check, so files
-        // without type geometry pay almost nothing.
-        complex_jobs.extend(super::styling::collect_type_geometry_jobs(
-            content,
-            &mut decoder,
-        ));
-
-        let unit_scale = project_id
-            .and_then(|pid| ifc_lite_core::extract_length_unit_scale(&mut decoder, pid).ok())
-            .unwrap_or(1.0);
-        let mut router = GeometryRouter::with_scale(unit_scale);
-
-        let rtc_jobs: Vec<_> = simple_jobs
-            .iter()
-            .take(25)
-            .chain(complex_jobs.iter().take(25))
-            .copied()
-            .collect();
-        let rtc_offset = router
-            .detect_rtc_offset_from_jobs(&rtc_jobs, &mut decoder)
-            .unwrap_or((0.0, 0.0, 0.0));
-        let needs_shift = rtc_offset.0.abs() > 10000.0
-            || rtc_offset.1.abs() > 10000.0
-            || rtc_offset.2.abs() > 10000.0;
-
-        let building_rotation =
-            site_position.and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
-
-        // Serialize job list
-        let total_jobs = simple_jobs.len() + complex_jobs.len();
-        let jobs_flat = js_sys::Uint32Array::new_with_length((total_jobs * 3) as u32);
-        let mut idx = 0u32;
-        for &(id, start, end, _) in simple_jobs.iter().chain(complex_jobs.iter()) {
-            jobs_flat.set_index(idx, id);
-            jobs_flat.set_index(idx + 1, start as u32);
-            jobs_flat.set_index(idx + 2, end as u32);
-            idx += 3;
-        }
-
-        let result = js_sys::Object::new();
-        super::set_js_prop(&result, "jobs", &jobs_flat);
-        super::set_js_prop(&result, "totalJobs", &(total_jobs as f64).into());
-        super::set_js_prop(&result, "unitScale", &unit_scale.into());
-
-        let rtc_arr = js_sys::Float64Array::new_with_length(3);
-        rtc_arr.set_index(0, rtc_offset.0);
-        rtc_arr.set_index(1, rtc_offset.1);
-        rtc_arr.set_index(2, rtc_offset.2);
-        super::set_js_prop(&result, "rtcOffset", &rtc_arr);
-        super::set_js_prop(&result, "needsShift", &needs_shift.into());
-
-        match building_rotation {
-            Some(rot) => super::set_js_prop(&result, "buildingRotation", &rot.into()),
-            None => super::set_js_prop(&result, "buildingRotation", &JsValue::NULL),
-        };
-
-        // Empty style/void arrays — workers use default colors, no void subtraction
-        super::set_js_prop(
-            &result,
-            "voidKeys",
-            &js_sys::Uint32Array::new_with_length(0),
-        );
-        super::set_js_prop(
-            &result,
-            "voidCounts",
-            &js_sys::Uint32Array::new_with_length(0),
-        );
-        super::set_js_prop(
-            &result,
-            "voidValues",
-            &js_sys::Uint32Array::new_with_length(0),
-        );
-        super::set_js_prop(
-            &result,
-            "styleIds",
-            &js_sys::Uint32Array::new_with_length(0),
-        );
-        super::set_js_prop(
-            &result,
-            "styleColors",
-            &js_sys::Uint8Array::new_with_length(0),
-        );
 
         result.into()
     }
@@ -373,9 +210,8 @@ impl IfcAPI {
     ///
     /// Single linear walk over the file:
     ///   1. Builds the entity index incrementally from the same scan that
-    ///      collects geometry jobs (the old `build_pre_pass_fast` did two
-    ///      full-file scans — one for entities, one for the index — which
-    ///      doubled wall-clock).
+    ///      collects geometry jobs (a separate index scan would double
+    ///      wall-clock).
     ///   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
     ///      first ~50 geometry jobs have been collected, resolves
     ///      `unitScale` + `rtcOffset` and emits a `meta` callback so the
@@ -428,7 +264,6 @@ impl IfcAPI {
         let mut geometry_styles: rustc_hash::FxHashMap<u32, [f32; 4]> =
             rustc_hash::FxHashMap::default();
         let mut void_index: rustc_hash::FxHashMap<u32, Vec<u32>> = rustc_hash::FxHashMap::default();
-        let mut faceted_brep_ids: Vec<u32> = Vec::new();
         let mut orphan_styled_items: rustc_hash::FxHashMap<u32, [f32; 4]> =
             rustc_hash::FxHashMap::default();
         let mut material_def_reprs: rustc_hash::FxHashMap<u32, Vec<u32>> =
@@ -476,6 +311,9 @@ impl IfcAPI {
         let mut indexed_colour_map_spans: Vec<(u32, usize, usize)> = Vec::new();
         let mut material_entity_spans: Vec<(u32, &'static str, usize, usize)> = Vec::new();
         let mut void_rel_spans: Vec<(u32, usize, usize)> = Vec::new();
+        // IfcRelAggregates spans — decoded post-scan into the parent→children
+        // map that drives aggregate void propagation (no extra file scan).
+        let mut aggregate_rel_spans: Vec<(u32, usize, usize)> = Vec::new();
 
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
             // Build entity index inline (same data we'd otherwise re-scan for).
@@ -510,8 +348,8 @@ impl IfcAPI {
                 "IFCRELVOIDSELEMENT" => {
                     void_rel_spans.push((id, start, end));
                 }
-                "IFCFACETEDBREP" => {
-                    faceted_brep_ids.push(id);
+                "IFCRELAGGREGATES" => {
+                    aggregate_rel_spans.push((id, start, end));
                 }
                 _ => {
                     if has_geometry_by_name(type_name) {
@@ -565,9 +403,8 @@ impl IfcAPI {
                 let router = GeometryRouter::with_scale(unit_scale);
                 let is_large =
                     |t: (f64, f64, f64)| t.0.abs() > 10000.0 || t.1.abs() > 10000.0 || t.2.abs() > 10000.0;
-                let mut rtc_offset = router
-                    .detect_rtc_offset_from_jobs(&buffered_jobs, &mut decoder)
-                    .unwrap_or((0.0, 0.0, 0.0));
+                let detected_rtc = router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut decoder);
+                let mut rtc_offset = detected_rtc.unwrap_or((0.0, 0.0, 0.0));
 
                 // Streaming emits this meta as soon as RTC_SAMPLE_THRESHOLD geometry
                 // jobs are buffered (~the 50th element, near the top of the file), so
@@ -594,6 +431,14 @@ impl IfcAPI {
                             rtc_offset = full_rtc;
                         }
                     }
+                }
+                // Server parity: when sampling produced no usable translations
+                // at all, fall back to the full placement-bounds scan exactly
+                // like `process_geometry` does — otherwise a model whose
+                // sampled placements fail to decode renders re-based on the
+                // server but jittery (raw >10 km f32 coords) in the browser.
+                if detected_rtc.is_none() && !is_large(rtc_offset) {
+                    rtc_offset = ifc_lite_core::scan_placement_bounds(content).rtc_offset();
                 }
                 let needs_shift = is_large(rtc_offset);
 
@@ -643,9 +488,8 @@ impl IfcAPI {
                 .and_then(|pid| ifc_lite_core::extract_length_unit_scale(&mut decoder, pid).ok())
                 .unwrap_or(1.0);
             let router = GeometryRouter::with_scale(unit_scale);
-            let rtc_offset = router
-                .detect_rtc_offset_from_jobs(&buffered_jobs, &mut decoder)
-                .unwrap_or((0.0, 0.0, 0.0));
+            let rtc_offset =
+                router.detect_rtc_offset_with_fallback(&buffered_jobs, &mut decoder, content);
             let needs_shift = rtc_offset.0.abs() > 10000.0
                 || rtc_offset.1.abs() > 10000.0
                 || rtc_offset.2.abs() > 10000.0;
@@ -673,7 +517,7 @@ impl IfcAPI {
         buffered_jobs.clear();
 
         // Cache the entity index for processGeometryBatch reuse — same
-        // contract as buildPrePassFast / buildPrePassOnce. Wrapped in Arc
+        // contract as buildPrePassOnce. Wrapped in Arc
         // so process workers reuse the same index by reference instead of
         // cloning the 14 M-entry HashMap on every batch call.
         let entity_index_arc = std::sync::Arc::new(entity_index);
@@ -697,13 +541,13 @@ impl IfcAPI {
         // `combined_pre_pass` runs inline, but split into a post-phase so
         // we don't block streaming jobs on style decoding.
         //
-        // We deliberately SKIP `MaterialLayerIndex::from_content` and
-        // `propagate_voids_to_parts` here — both do their own full file
-        // scans and would add ~7 s to the streaming pre-pass for visual
-        // refinements (multilayer wall cuts, layered material rendering).
-        // Primary surface colors come through correctly without them, and
-        // the missing detail can be added later without changing the
-        // protocol shape.
+        // We deliberately SKIP `MaterialLayerIndex::from_content` here — it
+        // does its own full file scan and would add seconds to the streaming
+        // pre-pass for a visual refinement (layered material rendering).
+        // Aggregate void propagation, by contrast, IS included below: the
+        // scan already stashed the IfcRelAggregates spans, so the shared
+        // BFS kernel runs without any extra file pass — keeping streaming
+        // loads void-parity with `buildPrePassOnce` and the server.
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc);
 
         for &(id, start, end) in &styled_item_spans {
@@ -766,6 +610,31 @@ impl IfcAPI {
             }
         }
 
+        // Aggregate void propagation (shared kernel, parity with the once
+        // path and the server): openings authored on an aggregating host
+        // (IfcWallElementedCase panels, IfcRoof→IfcSlab skylights) must cut
+        // every descendant part. Decode the stashed IfcRelAggregates spans
+        // into the parent→children map — no extra file scan.
+        if !void_index.is_empty() && !aggregate_rel_spans.is_empty() {
+            let mut aggregate_children: rustc_hash::FxHashMap<u32, Vec<u32>> =
+                rustc_hash::FxHashMap::default();
+            for &(id, start, end) in &aggregate_rel_spans {
+                if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                    let Some(parent_id) = entity.get_ref(4) else {
+                        continue;
+                    };
+                    if let Some(list) = entity.get(5).and_then(|a| a.as_list()) {
+                        let children: Vec<u32> =
+                            list.iter().filter_map(|i| i.as_entity_ref()).collect();
+                        if !children.is_empty() {
+                            aggregate_children.entry(parent_id).or_default().extend(children);
+                        }
+                    }
+                }
+            }
+            ifc_lite_geometry::propagate_voids_via_aggregates(&mut void_index, &aggregate_children);
+        }
+
         // Resolve material chains → element colors.
         let material_styles = super::styling::build_material_style_index(
             &material_def_reprs,
@@ -792,7 +661,7 @@ impl IfcAPI {
             }
         }
 
-        // Serialise styles + voids + faceted_brep_ids and post a `styles`
+        // Serialise styles + voids and post a `styles`
         // event before `complete` so the host can dispatch them to all
         // process workers and emit a colorUpdate for already-rendered meshes.
         let styles_len = geometry_styles.len();
@@ -831,11 +700,6 @@ impl IfcAPI {
         for (i, &v) in void_values_vec.iter().enumerate() {
             void_values.set_index(i as u32, v);
         }
-        let faceted_brep_arr = js_sys::Uint32Array::new_with_length(faceted_brep_ids.len() as u32);
-        for (i, &id) in faceted_brep_ids.iter().enumerate() {
-            faceted_brep_arr.set_index(i as u32, id);
-        }
-
         let styles_event = js_sys::Object::new();
         super::set_js_prop(&styles_event, "type", &"styles".into());
         super::set_js_prop(&styles_event, "styleIds", &style_ids);
@@ -843,7 +707,6 @@ impl IfcAPI {
         super::set_js_prop(&styles_event, "voidKeys", &void_keys);
         super::set_js_prop(&styles_event, "voidCounts", &void_counts);
         super::set_js_prop(&styles_event, "voidValues", &void_values);
-        super::set_js_prop(&styles_event, "facetedBrepIds", &faceted_brep_arr);
         on_event.call1(&JsValue::NULL, &styles_event.into())?;
 
         // Export the entity_index as 3 column arrays so process workers
@@ -1205,71 +1068,12 @@ impl IfcAPI {
                         }
                     }
                 } else {
-                    // Only use expensive sub-mesh processing for types that need
-                    // per-item colors (windows with glass transparency, doors, etc).
-                    // Skip for ~90% of entities (beams, columns, slabs, walls).
-                    let needs_submesh = matches!(
-                        ifc_type,
-                        ifc_lite_core::IfcType::IfcWindow
-                            | ifc_lite_core::IfcType::IfcDoor
-                            | ifc_lite_core::IfcType::IfcCurtainWall
-                            | ifc_lite_core::IfcType::IfcPlate
-                            | ifc_lite_core::IfcType::IfcMember
-                    );
-
-                    let mut used_submesh = false;
-                    if needs_submesh {
-                        if let Ok(sub_meshes) =
-                            router.process_element_with_submeshes(&entity, &mut decoder)
-                        {
-                            if !sub_meshes.is_empty() {
-                                let default_color = default_color_for_type(ifc_type).to_array();
-                                let element_color = element_styles.get(&id).copied();
-                                let mut mat_color_idx = 0usize;
-                                for sub in sub_meshes.sub_meshes {
-                                    let geometry_id = sub.geometry_id;
-                                    let mut mesh = sub.mesh;
-                                    if mesh.is_empty() {
-                                        continue;
-                                    }
-                                    if mesh.normals.len() != mesh.positions.len() {
-                                        calculate_normals(&mut mesh);
-                                    }
-                                    let color = resolve_submesh_color(
-                                        geometry_id,
-                                        &geometry_styles,
-                                        &mut decoder,
-                                        None,
-                                        &mut mat_color_idx,
-                                        element_color,
-                                        default_color,
-                                    );
-                                    let ifc_type_name = type_name_cache
-                                        .entry(ifc_type)
-                                        .or_insert_with(|| ifc_type.name().to_string())
-                                        .clone();
-                                    if let Some(h) = entity_hasher.as_mut() {
-                                        h.add_mesh(&mesh.positions, &mesh.indices);
-                                    }
-                                    emit_submesh_with_palette_split(
-                                        &mut mesh_collection,
-                                        id,
-                                        &ifc_type_name,
-                                        geometry_id,
-                                        mesh,
-                                        color,
-                                        &indexed_colour_full,
-                                    );
-                                    used_submesh = true;
-                                }
-                            }
-                        }
-                    }
-
-                    if !used_submesh {
-                        // Use submesh path even for non-whitelisted types so that
-                        // unsupported representation items are skipped instead of
-                        // aborting the entire element (process_element uses `?`).
+                    // Submesh path for ALL types: per-geometry-item colors
+                    // (window glass transparency, multi-material doors) and —
+                    // crucially — unsupported representation items are skipped
+                    // instead of aborting the entire element (process_element
+                    // uses `?`).
+                    {
                         if let Ok(sub_meshes) =
                             router.process_element_with_submeshes(&entity, &mut decoder)
                         {

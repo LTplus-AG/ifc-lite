@@ -11,7 +11,7 @@
  */
 
 import { useCallback } from 'react';
-import { useViewerStore } from '../store.js';
+import { useViewerStore } from '../store/index.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import {
   IfcServerClient,

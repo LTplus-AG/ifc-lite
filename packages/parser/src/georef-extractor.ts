@@ -71,7 +71,7 @@ export interface GeoreferenceInfo {
   hasGeoreference: boolean;
   mapConversion?: MapConversion;
   projectedCRS?: ProjectedCRS;
-  source?: 'mapConversion' | 'siteLocation';
+  source?: 'mapConversion' | 'ePSetMapConversion' | 'siteLocation';
   // Computed transformation matrix (4x4) from local to world coordinates
   transformMatrix?: number[];
 }
@@ -114,6 +114,14 @@ export function extractGeoreferencing(
   }
 
   if (!info.hasGeoreference) {
+    // IFC2x3 ePSet_MapConversion fallback BEFORE the legacy site fallback —
+    // same precedence as the Rust extractor (ifc_lite_core::GeoRefExtractor),
+    // which previously found these models georeferenced while the browser
+    // reported none (alignment audit).
+    const epset = extractEPSetMapConversion(entities, entitiesByType);
+    if (epset) {
+      return epset;
+    }
     const legacySite = extractLegacySiteGeoreference(entities, entitiesByType);
     if (legacySite) {
       return legacySite;
@@ -121,6 +129,68 @@ export function extractGeoreferencing(
   }
 
   return info;
+}
+
+/**
+ * IFC2x3 fallback: a property set named `ePSet_MapConversion` /
+ * `EPset_MapConversion` carrying Eastings/Northings/OrthogonalHeight (+
+ * optional XAxisAbscissa/XAxisOrdinate/Scale) as IfcPropertySingleValue
+ * entries. Mirrors `GeoRefExtractor::parse_pset_map_conversion` in
+ * rust/core/src/georef.rs.
+ */
+function extractEPSetMapConversion(
+  entities: Map<number, IfcEntity>,
+  entitiesByType: Map<string, number[]>,
+): GeoreferenceInfo | null {
+  const psetIds = entitiesByType.get('IfcPropertySet') || [];
+  for (const psetId of psetIds) {
+    const pset = entities.get(psetId);
+    if (!pset) continue;
+    // IfcPropertySet: GlobalId (0), OwnerHistory (1), Name (2), Description (3), HasProperties (4)
+    const name = getString(pset.attributes[2]);
+    if (name !== 'ePSet_MapConversion' && name !== 'EPset_MapConversion') continue;
+
+    const values: Record<string, number> = {};
+    const props = pset.attributes[4];
+    if (Array.isArray(props)) {
+      for (const propRef of props) {
+        const propId = getReference(propRef);
+        if (!propId) continue;
+        const prop = entities.get(propId);
+        if (!prop) continue;
+        // IfcPropertySingleValue: Name (0), Description (1), NominalValue (2)
+        const propName = getString(prop.attributes[0]);
+        const value = getNumber(prop.attributes[2]);
+        if (propName && value !== undefined) {
+          values[propName] = value;
+        }
+      }
+    }
+
+    const eastings = values['Eastings'] ?? 0;
+    const northings = values['Northings'] ?? 0;
+    const orthogonalHeight = values['OrthogonalHeight'] ?? 0;
+    if (eastings === 0 && northings === 0 && orthogonalHeight === 0) continue;
+
+    const mapConversion: MapConversion = {
+      id: pset.expressId,
+      sourceCRS: 0,
+      targetCRS: 0,
+      eastings,
+      northings,
+      orthogonalHeight,
+      xAxisAbscissa: values['XAxisAbscissa'],
+      xAxisOrdinate: values['XAxisOrdinate'],
+      scale: values['Scale'],
+    };
+    return {
+      hasGeoreference: true,
+      source: 'ePSetMapConversion',
+      mapConversion,
+      transformMatrix: computeTransformMatrix(mapConversion),
+    };
+  }
+  return null;
 }
 
 function getAttributeValueByName(entity: IfcEntity, attributeName: string): unknown {

@@ -12,17 +12,57 @@ use crate::error::Result;
 use crate::generated::IfcType;
 use crate::schema_gen::DecodedEntity;
 
+/// Where the georeferencing data was authored in the file.
+///
+/// Single discriminator shared (string-for-string) with the TS parser's
+/// `GeoreferenceInfo.source`, so server consumers and browser consumers see
+/// the same provenance for the same model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeoRefSource {
+    /// IFC4 `IfcMapConversion` (+ optional `IfcProjectedCRS`).
+    MapConversion,
+    /// IFC2x3 `ePSet_MapConversion` property-set fallback.
+    EPSetMapConversion,
+    /// Legacy `IfcSite.RefLatitude`/`RefLongitude` (WGS84 degrees).
+    SiteLocation,
+}
+
+impl GeoRefSource {
+    /// Stable wire label (matches the TS parser's `source` union).
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::MapConversion => "mapConversion",
+            Self::EPSetMapConversion => "ePSetMapConversion",
+            Self::SiteLocation => "siteLocation",
+        }
+    }
+}
+
 /// Georeferencing information extracted from IFC model
 #[derive(Debug, Clone)]
 pub struct GeoReference {
     /// CRS name (e.g., "EPSG:32632")
     pub crs_name: Option<String>,
+    /// CRS description from `IfcProjectedCRS.Description`.
+    pub crs_description: Option<String>,
     /// Geodetic datum (e.g., "WGS84")
     pub geodetic_datum: Option<String>,
     /// Vertical datum (e.g., "NAVD88")
     pub vertical_datum: Option<String>,
     /// Map projection (e.g., "UTM Zone 32N")
     pub map_projection: Option<String>,
+    /// Map zone (e.g., "32N") from `IfcProjectedCRS.MapZone`.
+    pub map_zone: Option<String>,
+    /// Map unit name resolved from `IfcProjectedCRS.MapUnit`
+    /// (e.g. "METRE", "MILLIMETRE"). `None` when no MapUnit is authored —
+    /// per spec the project length unit then applies.
+    pub map_unit: Option<String>,
+    /// Scale factor converting MapConversion values to metres, derived from
+    /// `MapUnit` (0.001 for millimetres). `None` when no MapUnit is authored.
+    pub map_unit_scale: Option<f64>,
+    /// Where the data was authored (`IfcMapConversion`, ePSet fallback, or
+    /// legacy `IfcSite` lat/long).
+    pub source: GeoRefSource,
     /// False easting (X offset to map CRS)
     pub eastings: f64,
     /// False northing (Y offset to map CRS)
@@ -41,9 +81,14 @@ impl Default for GeoReference {
     fn default() -> Self {
         Self {
             crs_name: None,
+            crs_description: None,
             geodetic_datum: None,
             vertical_datum: None,
             map_projection: None,
+            map_zone: None,
+            map_unit: None,
+            map_unit_scale: None,
+            source: GeoRefSource::MapConversion,
             eastings: 0.0,
             northings: 0.0,
             orthogonal_height: 0.0,
@@ -73,6 +118,22 @@ impl GeoReference {
     #[inline]
     pub fn rotation(&self) -> f64 {
         self.x_axis_ordinate.atan2(self.x_axis_abscissa)
+    }
+
+    /// Normalize the X-axis direction to a unit vector.
+    ///
+    /// `IfcMapConversion.XAxisAbscissa/Ordinate` form a DIRECTION — files may
+    /// author non-unit components. `local_to_map`/`to_matrix` use them
+    /// directly as cos/sin, so without normalization those disagreed with
+    /// [`rotation`](Self::rotation) (which `atan2`-normalizes) within one
+    /// payload, and with the TS parser's matrix (alignment audit). Called at
+    /// parse time by every extraction path.
+    fn normalize_axis(&mut self) {
+        let len = self.x_axis_abscissa.hypot(self.x_axis_ordinate);
+        if len > f64::EPSILON && (len - 1.0).abs() > f64::EPSILON {
+            self.x_axis_abscissa /= len;
+            self.x_axis_ordinate /= len;
+        }
     }
 
     /// Transform local coordinates to map coordinates
@@ -153,32 +214,47 @@ pub struct GeoRefExtractor;
 
 impl GeoRefExtractor {
     /// Extract georeferencing from decoder
+    ///
+    /// Precedence (identical to the TS parser): `IfcMapConversion` →
+    /// `ePSet_MapConversion` (IFC2x3) → legacy `IfcSite` lat/long.
     pub fn extract(
         decoder: &mut EntityDecoder,
         entity_types: &[(u32, IfcType)],
     ) -> Result<Option<GeoReference>> {
-        // Find IfcMapConversion and IfcProjectedCRS entities
+        // Find IfcMapConversion and IfcProjectedCRS entities. FIRST one wins
+        // (same pick as the TS parser, which reads `mapConversionIds[0]`) —
+        // last-wins silently flipped the served conversion on files with
+        // several authored conversions (alignment audit).
         let mut map_conversion_id: Option<u32> = None;
         let mut projected_crs_id: Option<u32> = None;
 
         for (id, ifc_type) in entity_types {
             match ifc_type {
                 IfcType::IfcMapConversion => {
-                    map_conversion_id = Some(*id);
+                    if map_conversion_id.is_none() {
+                        map_conversion_id = Some(*id);
+                    }
                 }
                 IfcType::IfcProjectedCRS => {
-                    projected_crs_id = Some(*id);
+                    if projected_crs_id.is_none() {
+                        projected_crs_id = Some(*id);
+                    }
                 }
                 _ => {}
             }
         }
 
-        // If no map conversion, try IFC2X3 property set fallback
+        // If no map conversion, try IFC2X3 property set fallback, then the
+        // legacy IfcSite lat/long fallback (TS parity).
         if map_conversion_id.is_none() {
-            return Self::extract_from_pset(decoder, entity_types);
+            if let Some(georef) = Self::extract_from_pset(decoder, entity_types)? {
+                return Ok(Some(georef));
+            }
+            return Self::extract_from_site(decoder, entity_types);
         }
 
         let mut georef = GeoReference::new();
+        georef.source = GeoRefSource::MapConversion;
 
         // Parse IfcMapConversion
         // Attributes: SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight,
@@ -193,8 +269,10 @@ impl GeoRefExtractor {
         //             MapProjection, MapZone, MapUnit
         if let Some(id) = projected_crs_id {
             let entity = decoder.decode_by_id(id)?;
-            Self::parse_projected_crs(&entity, &mut georef);
+            Self::parse_projected_crs(&entity, decoder, &mut georef);
         }
+
+        georef.normalize_axis();
 
         if georef.has_georef() {
             Ok(Some(georef))
@@ -232,10 +310,18 @@ impl GeoRefExtractor {
     }
 
     /// Parse IfcProjectedCRS entity
-    fn parse_projected_crs(entity: &DecodedEntity, georef: &mut GeoReference) {
+    fn parse_projected_crs(
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        georef: &mut GeoReference,
+    ) {
         // Index 0: Name (e.g., "EPSG:32632")
         if let Some(name) = entity.get_string(0) {
             georef.crs_name = Some(name.to_string());
+        }
+        // Index 1: Description
+        if let Some(desc) = entity.get_string(1) {
+            georef.crs_description = Some(desc.to_string());
         }
         // Index 2: GeodeticDatum
         if let Some(datum) = entity.get_string(2) {
@@ -248,6 +334,42 @@ impl GeoRefExtractor {
         // Index 4: MapProjection
         if let Some(proj) = entity.get_string(4) {
             georef.map_projection = Some(proj.to_string());
+        }
+        // Index 5: MapZone
+        if let Some(zone) = entity.get_string(5) {
+            georef.map_zone = Some(zone.to_string());
+        }
+        // Index 6: MapUnit (IfcNamedUnit ref). Mirrors the TS parser: when a
+        // MapUnit IS authored, default to METRE/1.0 and refine from the
+        // IFCSIUNIT prefix — a millimetre-based conversion must scale by
+        // 0.001 on the server exactly like in the browser. When absent, the
+        // project length unit applies (spec default) and both stay `None`.
+        if let Some(unit_ref) = entity.get_ref(6) {
+            let mut unit_name = "METRE".to_string();
+            let mut unit_scale = 1.0_f64;
+            if let Ok(unit_entity) = decoder.decode_by_id(unit_ref) {
+                if unit_entity.ifc_type == IfcType::IfcSIUnit {
+                    // IFCSIUNIT: [0] Dimensions, [1] UnitType, [2] Prefix, [3] Name
+                    if let Some(prefix_attr) = unit_entity.get(2) {
+                        if !prefix_attr.is_null() {
+                            if let Some(prefix) = prefix_attr.as_enum() {
+                                let multiplier = crate::units::get_si_prefix_multiplier(prefix);
+                                if (multiplier - 1.0).abs() > f64::EPSILON {
+                                    unit_scale = multiplier;
+                                    let prefix_upper = prefix.to_ascii_uppercase();
+                                    unit_name = if prefix_upper == "MILLI" {
+                                        "MILLIMETRE".to_string()
+                                    } else {
+                                        format!("{prefix_upper}METRE")
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            georef.map_unit = Some(unit_name);
+            georef.map_unit_scale = Some(unit_scale);
         }
     }
 
@@ -279,6 +401,7 @@ impl GeoRefExtractor {
         pset: &DecodedEntity,
     ) -> Result<Option<GeoReference>> {
         let mut georef = GeoReference::new();
+        georef.source = GeoRefSource::EPSetMapConversion;
 
         // HasProperties is typically at index 4
         if let Some(props_list) = pset.get_list(4) {
@@ -326,11 +449,81 @@ impl GeoRefExtractor {
             }
         }
 
+        georef.normalize_axis();
+
         if georef.has_georef() {
             Ok(Some(georef))
         } else {
             Ok(None)
         }
+    }
+
+    /// Legacy `IfcSite.RefLatitude`/`RefLongitude` fallback (TS parity).
+    ///
+    /// Mirrors the TS parser's `extractLegacySiteGeoreference`: WGS84
+    /// degrees land in eastings (longitude) / northings (latitude) with the
+    /// site `RefElevation` as orthogonal height, under an `EPSG:4326`
+    /// pseudo-CRS — so `hasGeoreference`/`has_georef` agree between the
+    /// browser and the server for site-only models.
+    fn extract_from_site(
+        decoder: &mut EntityDecoder,
+        entity_types: &[(u32, IfcType)],
+    ) -> Result<Option<GeoReference>> {
+        for (id, ifc_type) in entity_types {
+            if *ifc_type != IfcType::IfcSite {
+                continue;
+            }
+            let site = decoder.decode_by_id(*id)?;
+            // IfcSite: RefLatitude (9), RefLongitude (10), RefElevation (11).
+            let latitude = Self::compound_plane_angle_to_degrees(&site, 9);
+            let longitude = Self::compound_plane_angle_to_degrees(&site, 10);
+            let (Some(latitude), Some(longitude)) = (latitude, longitude) else {
+                continue;
+            };
+            let elevation = site.get_float(11).unwrap_or(0.0);
+
+            let mut georef = GeoReference::new();
+            georef.source = GeoRefSource::SiteLocation;
+            georef.crs_name = Some("EPSG:4326".to_string());
+            georef.crs_description = Some("Legacy IfcSite geolocation".to_string());
+            georef.geodetic_datum = Some("WGS84".to_string());
+            georef.map_projection = Some("Geographic".to_string());
+            georef.map_unit = Some("DEGREE".to_string());
+            georef.eastings = longitude;
+            georef.northings = latitude;
+            georef.orthogonal_height = elevation;
+            return Ok(Some(georef));
+        }
+        Ok(None)
+    }
+
+    /// Convert an `IfcCompoundPlaneAngleMeasure` attribute (list of 3-4
+    /// integers: degrees, minutes, seconds, optional millionth-seconds) to
+    /// decimal degrees. Same sign handling as the TS parser: any negative
+    /// component makes the whole angle negative.
+    fn compound_plane_angle_to_degrees(entity: &DecodedEntity, index: usize) -> Option<f64> {
+        let list = entity.get_list(index)?;
+        let mut numbers = Vec::with_capacity(4);
+        for value in list {
+            if let Some(v) = value.as_float() {
+                numbers.push(v);
+            }
+        }
+        if numbers.len() < 3 {
+            return None;
+        }
+        let millionths = numbers.get(3).copied().unwrap_or(0.0);
+        let sign = if numbers[0] < 0.0 || numbers[1] < 0.0 || numbers[2] < 0.0 || millionths < 0.0
+        {
+            -1.0
+        } else {
+            1.0
+        };
+        let degrees = numbers[0].abs();
+        let minutes = numbers[1].abs();
+        let seconds = numbers[2].abs();
+        let millionths = millionths.abs();
+        Some(sign * (degrees + minutes / 60.0 + (seconds + millionths / 1_000_000.0) / 3600.0))
     }
 }
 

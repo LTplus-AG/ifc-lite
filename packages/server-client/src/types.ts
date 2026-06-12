@@ -85,6 +85,16 @@ export interface Georeferencing {
   rotation_degrees: number;
   /** Local→map transform as a column-major 4×4 matrix (16 values). */
   transform_matrix: number[];
+  /** CRS description from `IfcProjectedCRS.Description`. */
+  crs_description?: string;
+  /** Map zone (e.g. "32N") from `IfcProjectedCRS.MapZone`. */
+  map_zone?: string;
+  /** Map unit name from `IfcProjectedCRS.MapUnit` (e.g. "MILLIMETRE"). */
+  map_unit?: string;
+  /** Scale converting MapConversion values to metres (0.001 for mm). */
+  map_unit_scale?: number;
+  /** Provenance: "mapConversion" | "ePSetMapConversion" | "siteLocation". */
+  source?: string;
 }
 
 /**

@@ -1,10 +1,13 @@
 ---
-"@ifc-lite/renderer": patch
+"@ifc-lite/renderer": minor
 ---
 
 Keep contact shading and separation lines visible during camera interaction
 (orbit/zoom/pan and camera animations) instead of unconditionally disabling
-them and popping them back on a settle frame.
+them and popping them back on a settle frame. Adds the optional
+`RenderOptions.interactionFrameIntervalMs` so apps that intentionally cap
+continuous render cadence (large-model throttles) are judged against their
+own schedule rather than display refresh.
 
 An adaptive governor (`InteractionEffectsGovernor`) measures the cadence of
 interactive frames: effects stay on while the renderer keeps up with the

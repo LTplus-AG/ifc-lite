@@ -1002,7 +1002,12 @@ export class Renderer {
         // jank unrelated to steady-state cost — exclude them from the
         // governor's verdict so early navigation can't degrade a session.
         const timingUnstable = options.isStreaming === true || this.scene.hasQueuedMeshes();
-        const effectsLive = this.interactionEffects.frame(interacting, performance.now(), timingUnstable);
+        const effectsLive = this.interactionEffects.frame(
+            interacting,
+            performance.now(),
+            timingUnstable,
+            options.interactionFrameIntervalMs ?? 0,
+        );
         // Edge contrast is NOT interaction-gated: its per-fragment work runs
         // unconditionally in the shader and the gated tail is a handful of
         // ALU ops, so disabling it bought nothing and only made the crease

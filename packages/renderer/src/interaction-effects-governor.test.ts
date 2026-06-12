@@ -13,11 +13,12 @@ function burst(
     n: number,
     delta: number,
     unstable = false,
+    expectedIntervalMs = 0,
 ): { last: number; results: boolean[] } {
     const results: boolean[] = [];
     let t = start;
     for (let i = 0; i < n; i++) {
-        results.push(gov.frame(true, t, unstable));
+        results.push(gov.frame(true, t, unstable, expectedIntervalMs));
         t += delta;
     }
     return { last: t - delta, results };
@@ -118,6 +119,37 @@ test('repeated degradation escalates the cooldown', () => {
     // stays degraded; the base 3s cooldown would have re-probed already.
     const r6sec = burst(gov, lastEnd + 6000, 5, 16.7);
     assert.ok(r6sec.results.every(v => v === false), 'escalated cooldown holds at ~6s');
+});
+
+test('a GPU stuck at ~30fps degrades even with no fast frames to calibrate', () => {
+    // Codex P1: with the old 25ms refresh clamp, a 33ms cadence never
+    // counted as missed. The 17ms clamp assumes at least a 60Hz display
+    // when the app declares no slower schedule.
+    const gov = new InteractionEffectsGovernor();
+    const { results } = burst(gov, 0, 24, 33);
+    assert.equal(results[results.length - 1], false, '33ms cadence registers misses');
+});
+
+test('app-throttled cadence is not treated as missed frames', () => {
+    // The large-model interaction throttle renders at 33/25ms by design;
+    // the app passes that schedule so the governor judges against it.
+    const gov = new InteractionEffectsGovernor();
+    const { results } = burst(gov, 0, 60, 33, false, 33);
+    assert.ok(results.every(Boolean), 'throttled cadence stays clean');
+    // …but a GPU falling far behind even the throttled schedule degrades.
+    const r2 = burst(gov, 60 * 33 + 33, 24, 70, false, 33);
+    assert.equal(r2.results[r2.results.length - 1], false, '70ms vs 33ms target degrades');
+});
+
+test('refresh estimate re-calibrates per window across display changes', () => {
+    // Codex P2: a lifetime-minimum estimate from a 120Hz display made every
+    // healthy 16.7ms frame on a 60Hz display look missed.
+    const gov = new InteractionEffectsGovernor();
+    burst(gov, 0, 60, 8.3); // 120Hz gesture
+    gov.frame(false, 2000);
+    // Window moved to a 60Hz display: steady 16.7ms must stay clean.
+    const { results } = burst(gov, 3000, 80, 16.7);
+    assert.ok(results.every(Boolean), '60Hz cadence is clean after 120Hz history');
 });
 
 test('burst gap is not counted as a missed frame', () => {

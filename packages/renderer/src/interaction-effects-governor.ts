@@ -36,11 +36,17 @@ const WINDOW = 24;
 const MIN_SAMPLES = 8;
 /** Misses within the window that trigger degradation (25%). */
 const MISS_LIMIT = 6;
-/** A frame counts as missed when its delta exceeds refresh * MISS_FACTOR. */
+/** A frame counts as missed when its delta exceeds the baseline * MISS_FACTOR. */
 const MISS_FACTOR = 1.6;
-/** Refresh-interval estimate clamp (covers 40-240 Hz displays). */
+/**
+ * Refresh-interval estimate clamp. The upper clamp assumes at least a 60 Hz
+ * display when the app declares no slower target: a GPU that can only
+ * sustain ~30 fps must register misses (its cadence is the problem), while
+ * an app-side render throttle for huge models raises the baseline through
+ * `expectedIntervalMs` instead.
+ */
 const REFRESH_MIN_MS = 4;
-const REFRESH_MAX_MS = 25;
+const REFRESH_MAX_MS = 17;
 /**
  * Re-probe cooldown after a degraded gesture, growing with consecutive
  * degradations and capped — a persistently weak GPU re-probes at most once
@@ -53,8 +59,6 @@ const CLEAN_GESTURE_FRAMES = 30;
 
 export class InteractionEffectsGovernor {
     private lastInteractiveTs: number | null = null;
-    /** Rolling minimum of interactive deltas — refresh-interval estimate. */
-    private minDelta = Infinity;
     private deltas: number[] = [];
     private degraded = false;
     private strikes = 0;
@@ -69,8 +73,18 @@ export class InteractionEffectsGovernor {
      * `unstable` marks frames whose timing does not reflect steady-state
      * rendering (geometry still streaming/uploading): they neither count
      * toward degradation nor toward a clean streak.
+     *
+     * `expectedIntervalMs` is the app's own intentional cap on continuous
+     * render cadence (the large-model interaction throttle). When set, a
+     * frame is only "missed" relative to that slower schedule — otherwise
+     * the deliberately throttled cadence would read as GPU misses.
      */
-    frame(interacting: boolean, now: number, unstable = false): boolean {
+    frame(
+        interacting: boolean,
+        now: number,
+        unstable = false,
+        expectedIntervalMs = 0,
+    ): boolean {
         if (!interacting) {
             this.lastInteractiveTs = null;
             return true;
@@ -105,20 +119,26 @@ export class InteractionEffectsGovernor {
         }
 
         const delta = now - last;
-        if (delta >= REFRESH_MIN_MS && delta < this.minDelta) {
-            this.minDelta = delta;
-        }
 
         if (!this.degraded) {
             this.deltas.push(delta);
             if (this.deltas.length > WINDOW) {
                 this.deltas.shift();
             }
+            // Refresh estimate from the CURRENT window (not a lifetime
+            // minimum): moving the window between displays with different
+            // refresh rates re-calibrates within one gesture instead of
+            // permanently judging a 60 Hz screen by a stale 120 Hz minimum.
+            let windowMin = Infinity;
+            for (const d of this.deltas) {
+                if (d < windowMin) windowMin = d;
+            }
             const refresh = Math.min(
-                Math.max(this.minDelta, REFRESH_MIN_MS),
+                Math.max(windowMin, REFRESH_MIN_MS),
                 REFRESH_MAX_MS,
             );
-            const missThreshold = refresh * MISS_FACTOR;
+            const baseline = Math.max(refresh, expectedIntervalMs);
+            const missThreshold = baseline * MISS_FACTOR;
             if (this.deltas.length >= MIN_SAMPLES) {
                 let misses = 0;
                 for (const d of this.deltas) {

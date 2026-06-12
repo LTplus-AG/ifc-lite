@@ -201,6 +201,12 @@ export interface RenderOptions {
   // for the rest of the gesture (see InteractionEffectsGovernor). Full
   // quality is always restored on the next non-interacting frame.
   isInteracting?: boolean;
+  // The app's own intentional cap on continuous render cadence in ms
+  // (e.g. the large-model interaction throttle). When set, the effects
+  // governor judges missed frames against this slower schedule instead of
+  // the display refresh — a deliberately throttled 33ms cadence is not a
+  // GPU miss.
+  interactionFrameIntervalMs?: number;
 }
 
 /**

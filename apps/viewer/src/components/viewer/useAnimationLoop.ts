@@ -186,6 +186,9 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           clearColor: clearColorRef.current,
           visualEnhancement: visualEnhancementRef.current,
           isInteracting: isInteractingRef.current || isAnimating,
+          // Let the effects governor judge missed frames against the
+          // intentional large-model throttle instead of display refresh.
+          interactionFrameIntervalMs: continuousThrottleMs || undefined,
           buildingRotation: coordinateInfoRef.current?.buildingRotation,
           sectionPlane: activeToolRef.current === 'section' ? {
             axis: sectionPlaneRef.current.axis,

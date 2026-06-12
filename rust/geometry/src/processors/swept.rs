@@ -479,9 +479,9 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
                 .iter()
                 .flat_map(|p| [p.x, p.y])
                 .collect();
-            let cap_indices = earcutr::earcut(&profile_flat, &[], 2)
+            let cap_indices = crate::triangulation::safe_earcut(&profile_flat, &[], 2)
                 .map_err(|e| Error::geometry(format!(
-                    "Revolved profile cap triangulation failed: {e:?}"
+                    "Revolved profile cap triangulation failed: {e}"
                 )))?;
 
             for (ring_idx, flip) in [(0usize, true), (segments, false)] {

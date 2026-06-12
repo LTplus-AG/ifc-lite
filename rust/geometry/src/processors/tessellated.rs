@@ -417,8 +417,8 @@ impl PolygonalFaceSetProcessor {
             return;
         }
 
-        // Run ear-clipping triangulation
-        match earcutr::earcut(&coords_2d, &hole_starts, 2) {
+        // Run ear-clipping triangulation (guarded — see `triangulation::safe_earcut`)
+        match crate::triangulation::safe_earcut(&coords_2d, &hole_starts, 2) {
             Ok(tri_indices) => {
                 for tri in tri_indices.chunks(3) {
                     if tri.len() != 3

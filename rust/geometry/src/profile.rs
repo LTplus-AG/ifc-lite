@@ -102,13 +102,13 @@ impl Profile2D {
             }
         }
 
-        // Triangulate
+        // Triangulate (guarded — see `triangulation::safe_earcut`)
         let indices = if hole_indices.is_empty() {
-            earcutr::earcut(&vertices, &[], 2)
-                .map_err(|e| Error::TriangulationError(format!("{:?}", e)))?
+            crate::triangulation::safe_earcut(&vertices, &[], 2)
+                .map_err(Error::TriangulationError)?
         } else {
-            earcutr::earcut(&vertices, &hole_indices, 2)
-                .map_err(|e| Error::TriangulationError(format!("{:?}", e)))?
+            crate::triangulation::safe_earcut(&vertices, &hole_indices, 2)
+                .map_err(Error::TriangulationError)?
         };
 
         // Convert to Point2 array

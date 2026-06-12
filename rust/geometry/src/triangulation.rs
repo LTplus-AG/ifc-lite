@@ -13,6 +13,196 @@
 
 use crate::{Error, Point2, Point3, Result, Vector3};
 
+/// Guarded ear-clipping — the ONLY sanctioned way to call `earcutr` in this
+/// crate.
+///
+/// `earcutr` 0.5's hole elimination bridges every "hole" into the outer ring
+/// and assumes the hole lies inside it. Real-world exports violate that:
+/// a Revit→Bonsai IFC4X3 door (found in production) authors an
+/// `IfcArbitraryProfileDefWithVoids` whose "voids" are disjoint rectangles
+/// entirely OUTSIDE the outer boundary (sibling door panels). Bridging an
+/// outside ring produces a self-intersecting loop on which earcutr's
+/// `filter_points` spins FOREVER — wedging the rayon worker (native) or the
+/// whole WASM worker (the browser's geometry-stream stall). There is no
+/// upstream fix to take (0.5.0 is current), so this wrapper makes the input
+/// safe first:
+///
+/// - any non-finite coordinate ⇒ the face is rejected (an error, like any
+///   other failed triangulation — callers already handle that);
+/// - consecutive bitwise-duplicate vertices are dropped per ring, including
+///   the wrap-around closing duplicate (`P0 … P0`) many exporters write;
+/// - rings that collapse below 3 vertices are dropped (a collapsed hole is
+///   simply ignored; a collapsed outer ring yields zero triangles);
+/// - each "hole" is classified before earcut sees it: contained in the outer
+///   ring ⇒ a real hole; fully disjoint from it ⇒ a SEPARATE polygon,
+///   triangulated independently so the (malformed but renderable) geometry
+///   still shows; straddling the boundary ⇒ dropped (no safe interpretation).
+///
+/// Returned indices are remapped to the CALLER's original vertex order, so
+/// call sites keep indexing their own arrays.
+pub(crate) fn safe_earcut(
+    data: &[f64],
+    hole_indices: &[usize],
+    dims: usize,
+) -> std::result::Result<Vec<usize>, String> {
+    debug_assert_eq!(dims, 2, "safe_earcut is used for 2D rings only");
+    let n = data.len() / dims;
+
+    if data.iter().any(|c| !c.is_finite()) {
+        return Err("non-finite coordinate in polygon ring".to_string());
+    }
+
+    // FAST PATH (the overwhelming majority of calls): a single ring with no
+    // consecutive/closing duplicates needs no sanitisation, no classification,
+    // and no index remap — hand it straight to earcutr, zero-copy. Profile
+    // triangulation sits on the hot path for EVERY face in the pipeline.
+    if hole_indices.is_empty() {
+        let has_dup = n >= 2
+            && ((0..n - 1).any(|v| {
+                data[v * 2] == data[v * 2 + 2] && data[v * 2 + 1] == data[v * 2 + 3]
+            }) || (data[0] == data[(n - 1) * 2] && data[1] == data[(n - 1) * 2 + 1]));
+        if !has_dup {
+            return earcutr::earcut(data, &[], 2).map_err(|e| format!("{:?}", e));
+        }
+    }
+
+    // Ring boundaries in vertex indices: [start, end) per ring.
+    let mut ring_bounds: Vec<(usize, usize)> = Vec::with_capacity(hole_indices.len() + 1);
+    {
+        let mut start = 0usize;
+        for &h in hole_indices {
+            ring_bounds.push((start, h));
+            start = h;
+        }
+        ring_bounds.push((start, n));
+    }
+
+    // Sanitize each ring into its own (coords, original-indices) pair:
+    // drop consecutive duplicates incl. the closing wrap-around duplicate.
+    let mut rings: Vec<(Vec<f64>, Vec<usize>)> = Vec::with_capacity(ring_bounds.len());
+    for &(start, end) in &ring_bounds {
+        let mut coords: Vec<f64> = Vec::with_capacity((end - start) * 2);
+        let mut orig: Vec<usize> = Vec::with_capacity(end - start);
+        for v in start..end {
+            let (x, y) = (data[v * 2], data[v * 2 + 1]);
+            if let (Some(&px), Some(&py)) = (
+                coords.len().checked_sub(2).and_then(|i| coords.get(i)),
+                coords.len().checked_sub(1).and_then(|i| coords.get(i)),
+            ) {
+                if px == x && py == y {
+                    continue;
+                }
+            }
+            coords.push(x);
+            coords.push(y);
+            orig.push(v);
+        }
+        // Wrap-around closing duplicate.
+        if orig.len() >= 2
+            && coords[0] == coords[coords.len() - 2]
+            && coords[1] == coords[coords.len() - 1]
+        {
+            coords.truncate(coords.len() - 2);
+            orig.pop();
+        }
+        rings.push((coords, orig));
+    }
+
+    let (outer_coords, outer_orig) = &rings[0];
+    if outer_orig.len() < 3 {
+        // The outer boundary collapsed — nothing to triangulate.
+        return Ok(Vec::new());
+    }
+    let outer_bbox = ring_bbox(outer_coords);
+
+    // Classify each candidate hole.
+    let mut real_holes: Vec<usize> = Vec::new(); // index into `rings`
+    let mut separate_polys: Vec<usize> = Vec::new();
+    for (ring_no, (coords, orig)) in rings.iter().enumerate().skip(1) {
+        if orig.len() < 3 {
+            continue; // collapsed ring
+        }
+        let bbox = ring_bbox(coords);
+        let bbox_disjoint = bbox.2 < outer_bbox.0
+            || bbox.0 > outer_bbox.2
+            || bbox.3 < outer_bbox.1
+            || bbox.1 > outer_bbox.3;
+        if bbox_disjoint {
+            separate_polys.push(ring_no);
+        } else if coords
+            .chunks_exact(2)
+            .any(|p| point_in_ring(p[0], p[1], outer_coords))
+        {
+            // ANY vertex strictly inside ⇒ a real hole. The any-vertex vote
+            // keeps valid holes that touch the outer boundary (a vertex ON
+            // the boundary ray-casts as outside, but a touching hole's other
+            // vertices are interior).
+            real_holes.push(ring_no);
+        }
+        // else: overlapping bboxes but no vertex inside — straddles or sits
+        // against the outer boundary from outside. Drop it: there is no safe
+        // interpretation, and this is exactly the shape that wedges
+        // earcutr's bridge walk.
+    }
+
+    let mut out: Vec<usize> = Vec::new();
+
+    // Outer ring + its real holes in one earcut call.
+    {
+        let mut coords: Vec<f64> =
+            Vec::with_capacity(outer_coords.len() + real_holes.len() * 8);
+        let mut orig: Vec<usize> = Vec::with_capacity(outer_orig.len());
+        coords.extend_from_slice(outer_coords);
+        orig.extend_from_slice(outer_orig);
+        let mut holes: Vec<usize> = Vec::with_capacity(real_holes.len());
+        for &ring_no in &real_holes {
+            holes.push(orig.len());
+            coords.extend_from_slice(&rings[ring_no].0);
+            orig.extend_from_slice(&rings[ring_no].1);
+        }
+        let indices = earcutr::earcut(&coords, &holes, 2).map_err(|e| format!("{:?}", e))?;
+        out.extend(indices.into_iter().map(|i| orig[i]));
+    }
+
+    // Disjoint "holes" render as their own hole-less polygons.
+    for &ring_no in &separate_polys {
+        let (coords, orig) = &rings[ring_no];
+        let indices = earcutr::earcut(coords, &[], 2).map_err(|e| format!("{:?}", e))?;
+        out.extend(indices.into_iter().map(|i| orig[i]));
+    }
+
+    Ok(out)
+}
+
+/// Axis-aligned bbox of a flat `[x0,y0,x1,y1,…]` ring: `(min_x, min_y, max_x, max_y)`.
+fn ring_bbox(coords: &[f64]) -> (f64, f64, f64, f64) {
+    let (mut min_x, mut min_y) = (f64::INFINITY, f64::INFINITY);
+    let (mut max_x, mut max_y) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for p in coords.chunks_exact(2) {
+        min_x = min_x.min(p[0]);
+        min_y = min_y.min(p[1]);
+        max_x = max_x.max(p[0]);
+        max_y = max_y.max(p[1]);
+    }
+    (min_x, min_y, max_x, max_y)
+}
+
+/// Even-odd ray cast of `(x, y)` against a flat `[x0,y0,…]` ring.
+fn point_in_ring(x: f64, y: f64, ring: &[f64]) -> bool {
+    let n = ring.len() / 2;
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = (ring[i * 2], ring[i * 2 + 1]);
+        let (xj, yj) = (ring[j * 2], ring[j * 2 + 1]);
+        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
 /// Check if a polygon is convex (all cross products have same sign)
 #[inline]
 fn is_convex(points: &[Point2<f64>]) -> bool {
@@ -93,8 +283,7 @@ pub fn triangulate_polygon(points: &[Point2<f64>]) -> Result<Vec<usize>> {
         vertices.push(p.x);
         vertices.push(p.y);
     }
-    let indices = earcutr::earcut(&vertices, &[], 2)
-        .map_err(|e| Error::TriangulationError(format!("{:?}", e)))?;
+    let indices = safe_earcut(&vertices, &[], 2).map_err(Error::TriangulationError)?;
 
     Ok(indices)
 }
@@ -137,8 +326,8 @@ pub fn triangulate_polygon_with_holes(
             vertices.push(p.y);
         }
     }
-    let indices = earcutr::earcut(&vertices, &hole_indices, 2)
-        .map_err(|e| Error::TriangulationError(format!("{:?}", e)))?;
+    let indices =
+        safe_earcut(&vertices, &hole_indices, 2).map_err(Error::TriangulationError)?;
 
     Ok(indices)
 }
@@ -512,5 +701,82 @@ mod tests {
 
         assert_eq!(projected.len(), 4);
         // After projection, all Z values are ignored, and we get 2D coords
+    }
+
+    /// The production input that wedged earcutr 0.5 forever (Revit→Bonsai
+    /// IFC4X3 door): an `IfcArbitraryProfileDefWithVoids` whose two "voids"
+    /// are rectangles entirely OUTSIDE the outer boundary (sibling door
+    /// panels). Bridging an outside ring into the outer loop creates a
+    /// self-intersecting polygon on which `filter_points` never terminates —
+    /// one wedged rayon worker natively, a dead WASM worker (geometry-stream
+    /// stall) in the browser. `safe_earcut` must terminate AND render all
+    /// three rectangles as separate polygons.
+    #[test]
+    fn safe_earcut_terminates_on_outside_voids_and_renders_them() {
+        // Captured verbatim from the wedged element (#5222).
+        let data = vec![
+            0.0, -0.0, 0.0, 83.0, -2325.0, 83.0, -2325.0, -0.0, // outer
+            -2620.0, 83.0, -2620.0, -0.0, -2375.0, -0.0, -2375.0, 83.0, // "void" 1 (outside)
+            -2326.0, 83.0, -2374.0, 83.0, -2374.0, -0.0, -2326.0, -0.0, // "void" 2 (outside)
+        ];
+        let holes = vec![4, 8];
+
+        let indices = safe_earcut(&data, &holes, 2).expect("must triangulate");
+
+        // Three disjoint rectangles → 2 triangles each.
+        assert_eq!(indices.len(), 18, "3 rects × 2 tris × 3 idx");
+        // Each triangle must stay within a single ring's vertex range.
+        for tri in indices.chunks_exact(3) {
+            let ring = |v: usize| {
+                if v < 4 {
+                    0
+                } else if v < 8 {
+                    1
+                } else {
+                    2
+                }
+            };
+            assert_eq!(ring(tri[0]), ring(tri[1]));
+            assert_eq!(ring(tri[1]), ring(tri[2]));
+        }
+    }
+
+    /// A genuine contained hole must still subtract (the classification must
+    /// not break valid profiles).
+    #[test]
+    fn safe_earcut_keeps_contained_holes() {
+        // 10×10 outer, 2×2 hole in the middle.
+        let data = vec![
+            0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0, // outer
+            4.0, 4.0, 4.0, 6.0, 6.0, 6.0, 6.0, 4.0, // hole (CW)
+        ];
+        let indices = safe_earcut(&data, &[4], 2).expect("must triangulate");
+        // A square with a square hole triangulates to 8 triangles.
+        assert_eq!(indices.len() / 3, 8);
+        // Hole vertices must participate (the hole was not dropped).
+        assert!(indices.iter().any(|&i| i >= 4));
+    }
+
+    /// Closing wrap-around duplicates (P0 … P0) and consecutive duplicate
+    /// vertices must be tolerated, with indices remapped to the caller's
+    /// original vertex order.
+    #[test]
+    fn safe_earcut_drops_duplicate_vertices_and_remaps() {
+        let data = vec![
+            0.0, 0.0, 10.0, 0.0, 10.0, 0.0, // consecutive duplicate of v1
+            10.0, 10.0, 0.0, 10.0, 0.0, 0.0, // closing duplicate of v0
+        ];
+        let indices = safe_earcut(&data, &[], 2).expect("must triangulate");
+        assert_eq!(indices.len() / 3, 2, "a quad → 2 triangles");
+        // Remapped indices reference the caller's original positions; the
+        // dropped duplicates (2 and 5) must never appear.
+        assert!(indices.iter().all(|&i| i != 2 && i != 5 && i < 6));
+    }
+
+    /// Non-finite coordinates are rejected, not hung on.
+    #[test]
+    fn safe_earcut_rejects_non_finite() {
+        let data = vec![0.0, 0.0, 10.0, f64::NAN, 10.0, 10.0];
+        assert!(safe_earcut(&data, &[], 2).is_err());
     }
 }

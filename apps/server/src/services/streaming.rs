@@ -30,6 +30,37 @@ use ifc_lite_processing::{
 use std::pin::Pin;
 use tokio::sync::mpsc;
 
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+/// Detect the declared IFC schema from the STEP header.
+///
+/// Schema-like text in DATA values or comments must not influence metadata.
+pub(crate) fn detect_schema_version(content: &[u8]) -> &'static str {
+    let header_end = find_bytes(content, b"ENDSEC;").unwrap_or(content.len());
+    let header = &content[..header_end];
+    let Some(schema_start) = find_bytes(header, b"FILE_SCHEMA") else {
+        return "IFC2X3";
+    };
+    let declaration = &header[schema_start..];
+    let declaration_end = declaration
+        .iter()
+        .position(|byte| *byte == b';')
+        .unwrap_or(declaration.len());
+    let declaration = &declaration[..declaration_end];
+
+    if find_bytes(declaration, b"IFC4X3").is_some() {
+        "IFC4X3"
+    } else if find_bytes(declaration, b"IFC4").is_some() {
+        "IFC4"
+    } else {
+        "IFC2X3"
+    }
+}
+
 /// Generate streaming geometry events backed by the canonical pipeline.
 ///
 /// Takes the raw IFC bytes (issue #1023): localized non-UTF-8 byte sequences
@@ -42,6 +73,10 @@ pub fn process_streaming(
     opening_filter: OpeningFilterMode,
     tessellation_quality: TessellationQuality,
 ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send>> {
+    // Zero is a caller bug, not a reason to stall the stream.
+    let initial_batch_size = initial_batch_size.max(1);
+    let max_batch_size = max_batch_size.max(1);
+
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
 
     let handle = tokio::task::spawn_blocking(move || {

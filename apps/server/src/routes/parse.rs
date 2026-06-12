@@ -5,6 +5,7 @@
 //! Parse endpoints for IFC file processing.
 
 use crate::error::ApiError;
+use crate::services::streaming::detect_schema_version;
 use crate::services::{
     cache::DiskCache, extract_data_model, process_geometry_filtered, process_streaming,
     serialize_data_model_to_parquet, serialize_to_parquet,
@@ -695,20 +696,7 @@ pub async fn parse_metadata(
             }
         }
 
-        // Detect schema version
-        let schema_version = if content
-            .windows(b"IFC4X3".len())
-            .any(|window| window == b"IFC4X3")
-        {
-            "IFC4X3"
-        } else if content
-            .windows(b"IFC4".len())
-            .any(|window| window == b"IFC4")
-        {
-            "IFC4"
-        } else {
-            "IFC2X3"
-        };
+        let schema_version = detect_schema_version(&content);
 
         MetadataResponse {
             entity_count,
@@ -1334,5 +1322,18 @@ mod tests {
     fn symbolic_cache_key_default_filter() {
         let key = symbolic_cache_key("abc-default");
         assert_eq!(key, "abc-default-symbolic-v1");
+    }
+
+    #[test]
+    fn schema_detection_uses_file_schema_declaration_only() {
+        let content = b"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCDOCUMENTINFORMATION('IFC4X3',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);
+ENDSEC;";
+
+        assert_eq!(detect_schema_version(content), "IFC2X3");
     }
 }

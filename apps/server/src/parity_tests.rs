@@ -279,3 +279,27 @@ async fn streaming_complete_event_carries_symbolic_data() {
         "streaming Complete should include IfcAnnotation circle"
     );
 }
+
+#[tokio::test]
+async fn streaming_zero_batch_sizes_still_complete() {
+    let events = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        process_streaming(
+            FIXTURE.as_bytes().to_vec(),
+            0,
+            0,
+            ifc_lite_processing::OpeningFilterMode::Default,
+            ifc_lite_processing::TessellationQuality::default(),
+        )
+        .collect::<Vec<_>>(),
+    )
+    .await
+    .expect("zero batch sizes must not stall streaming");
+
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, StreamEvent::Complete { .. })),
+        "stream should emit a Complete event"
+    );
+}

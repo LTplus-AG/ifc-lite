@@ -16,7 +16,7 @@ use ifc_lite_core::{
     EntityIndex, EntityScanner, IfcType,
 };
 use ifc_lite_geometry::TessellationQuality;
-use ifc_lite_geometry::{calculate_normals, GeometryRouter};
+use ifc_lite_geometry::GeometryRouter;
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -249,22 +249,10 @@ fn populate_entity_job_metadata(
     }
 }
 
-#[derive(Debug, Clone)]
-struct GeometryStyleInfo {
-    /// Apparent colour for rendering: IfcSurfaceStyleRendering.DiffuseColour
-    /// when authored, otherwise the SurfaceColour. Matches what most IFC
-    /// viewers display.
-    color: [f32; 4],
-    /// SurfaceColour, populated only when the file authored a distinct
-    /// DiffuseColour. Read by the WASM bridge's parallel extractor so the
-    /// GLB exporter can offer "Shading" as a colour source; the
-    /// processing-crate `MeshData` doesn't propagate it (server pipeline
-    /// has no GLB consumer yet), so the field is intentionally read-only
-    /// here.
-    #[allow(dead_code)]
-    shading_color: Option<[f32; 4]>,
-    material_name: Option<String>,
-}
+// `GeometryStyleInfo` moved to `crate::style` — it is shared by this
+// orchestrator, the canonical per-element producer (`crate::element`), and
+// (via `from_color`) the browser batch path.
+use crate::style::GeometryStyleInfo;
 
 #[derive(Debug, Clone)]
 struct PropertySetDefinition {
@@ -279,7 +267,7 @@ struct RelDefinesByPropertiesLink {
 }
 
 /// Extract entity references from a list attribute.
-fn get_refs_from_list(entity: &DecodedEntity, index: usize) -> Option<Vec<u32>> {
+pub(crate) fn get_refs_from_list(entity: &DecodedEntity, index: usize) -> Option<Vec<u32>> {
     let list = entity.get_list(index)?;
     let refs: Vec<u32> = list.iter().filter_map(|v| v.as_entity_ref()).collect();
     if refs.is_empty() {
@@ -1210,18 +1198,19 @@ pub fn process_geometry_streaming_filtered_with_options(
     // buildingSMART annex-E "tessellated shape with style" files declare the
     // geometry only on the type, so without this they render nothing (#957).
     for (type_id, start, end, ifc_type, rep_map_ids) in &type_product_geometry {
-        // A type with occurrences (IfcRelDefinesByType) already renders through
-        // them; only genuinely orphan types (no occurrence) render their own map.
-        if instantiated_type_ids.contains(type_id) {
-            continue;
-        }
-        for &rep_map_id in rep_map_ids {
-            if referenced_representation_maps.contains(&rep_map_id) {
-                continue;
-            }
+        // The orphan/instanced decision is canonical in
+        // `element::plan_type_geometry`; the native pipeline suppresses
+        // instanced types entirely (an export must never duplicate geometry),
+        // so every planned map here renders as an orphan (class 1).
+        for (rep_map_id, _class) in crate::element::plan_type_geometry(
+            rep_map_ids,
+            &referenced_representation_maps,
+            instantiated_type_ids.contains(type_id),
+            crate::element::TypeGeometryMode::SuppressInstanced,
+        ) {
             entity_jobs.push(EntityJob {
                 id: *type_id,
-                ifc_type: ifc_type.clone(),
+                ifc_type: *ifc_type,
                 start: *start,
                 end: *end,
                 product_definition_shape_id: None,
@@ -1739,381 +1728,64 @@ fn process_entity_job(
         Err(_) => return Vec::new(),
     };
 
-    let has_representation = entity.get(6).is_some_and(|a| !a.is_null());
-    if !has_representation {
-        return Vec::new();
-    }
-
     let mut local_router = GeometryRouter::with_scale_and_quality(unit_scale, tessellation_quality);
     local_router.set_rtc_offset(rtc_offset);
     let local_router = local_router;
-    let result = (|| -> Vec<MeshData> {
-    let global_id = job.global_id.clone();
-    let name = job.name.clone();
-    let presentation_layer = job.presentation_layer.clone();
-    let space_zone_properties = job.space_zone_properties.clone();
-    let element_color = job.element_color;
 
-    // #957: synthetic type-only-geometry job — render the orphan
-    // RepresentationMap directly (baking its MappingOrigin) instead of walking
-    // the product's IfcProductDefinitionShape (a type has none).
-    if let Some(rep_map_id) = job.representation_map_id {
-        return process_type_representation_map_job(
-            job,
-            rep_map_id,
-            &local_router,
-            &mut local_decoder,
-            geometry_style_index,
-            texture_index,
-            element_color,
-            global_id,
-            name,
-            presentation_layer,
-            site_local_rotation,
-        );
-    }
-
-    let has_openings = void_index.get(&job.id).is_some_and(|v| !v.is_empty());
-
-    // Shared per-sub emission: per-item colour resolution through the
-    // canonical `resolve_submesh_color` precedence (#913 §4.2), identical to
-    // the wasm `processGeometryBatch` path so browser and backend can't
-    // drift on sub-mesh colouring.
-    let mut emit_sub_meshes = |sub_meshes: ifc_lite_geometry::SubMeshCollection,
-                               local_decoder: &mut EntityDecoder|
-     -> Vec<MeshData> {
-        let mut out: Vec<MeshData> = Vec::with_capacity(sub_meshes.len());
-        // Material colours for this element, used when a sub-mesh has no
-        // direct style — alternated so frame (opaque) and glazing
-        // (transparent) split across the window's parts (#913 §2.3).
-        let material_colors = element_material_colors.get(&job.id);
-        let mut mat_color_idx = 0usize;
-
-        for sub in sub_meshes.sub_meshes {
-            let mut sub_mesh = sub.mesh;
-            if sub_mesh.is_empty() {
-                continue;
-            }
-
-            if sub_mesh.normals.is_empty() {
-                calculate_normals(&mut sub_mesh);
-            }
-
-            let style = geometry_style_index.get(&sub.geometry_id);
-            // Direct style wins; else chase IfcMappedItem so mapped
-            // sub-geometry inherits its underlying style (#913 §2.7).
-            let direct_color = style.map(|s| s.color).or_else(|| {
-                find_geometry_item_color(sub.geometry_id, geometry_style_index, local_decoder)
-            });
-            let color = crate::style::resolve_submesh_color(
-                direct_color,
-                material_colors.map(|v| v.as_slice()),
-                &mut mat_color_idx,
-                element_color,
-            );
-            let material_name = style
-                .and_then(|s| s.material_name.as_ref())
-                .map(ToString::to_string);
-            let material_name = material_name.or_else(|| {
-                infer_opening_subpart_material_name(&job.ifc_type, color, sub.geometry_id)
-            });
-
-            let mut mesh_data = MeshData::new(
-                job.id,
-                job.ifc_type.name().to_string(),
-                sub_mesh.positions,
-                sub_mesh.normals,
-                sub_mesh.indices,
-                color,
-            )
-            .with_element_metadata(global_id.clone(), name.clone(), presentation_layer.clone())
-            .with_properties(space_zone_properties.clone())
-            .with_style_metadata(material_name, Some(sub.geometry_id));
-            convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
-            out.push(mesh_data);
-        }
-        out
+    let metadata = crate::element::ElementMeshMetadata {
+        global_id: job.global_id.clone(),
+        name: job.name.clone(),
+        presentation_layer: job.presentation_layer.clone(),
+        space_zone_properties: job.space_zone_properties.clone(),
+    };
+    // #957: the scan loop plans type geometry with `SuppressInstanced` (see
+    // `plan_type_geometry`), so a synthetic job's map always renders as an
+    // orphan — geometry_class 1.
+    let kind = match job.representation_map_id {
+        Some(rep_map_id) => crate::element::ElementJobKind::TypeProduct {
+            rep_maps: vec![(rep_map_id, 1)],
+        },
+        None => crate::element::ElementJobKind::Product,
+    };
+    let ctx = crate::element::MeshProductionContext {
+        void_index,
+        geometry_style_index,
+        indexed_colour_full,
+        element_material_colors,
+        texture_index,
+        site_local_rotation,
     };
 
-    if has_openings {
-        // Voided elements FIRST — branch order matches the wasm path, so a
-        // voided window is CUT rather than rendered uncut-as-subparts.
-        // Prefer the submesh-aware cut (per-part colours survive the void
-        // subtraction); the single-mesh cut below stays as the fallback.
-        if let Ok(sub_meshes) = local_router.process_element_with_submeshes_and_voids(
-            &entity,
-            &mut local_decoder,
-            void_index,
-        ) {
-            if !sub_meshes.is_empty() {
-                let out = emit_sub_meshes(sub_meshes, &mut local_decoder);
-                if !out.is_empty() {
-                    return out;
-                }
-            }
-        }
-    } else {
-        // #858: an IfcIndexedColourMap colours faces of a single face set —
-        // those elements keep the single-mesh + palette-split path below.
-        let has_indexed_colour = !indexed_colour_full.is_empty()
-            && find_indexed_colour_for_element(&entity, indexed_colour_full, &mut local_decoder)
-                .is_some();
-        if !has_indexed_colour {
-            // Submesh path for ALL types (parity with `processGeometryBatch`):
-            // per-item colours AND per-item error skipping — one unsupported
-            // representation item no longer makes the whole element invisible
-            // in server/parquet output while it renders partially in the
-            // browser.
-            if let Ok(sub_meshes) =
-                local_router.process_element_with_submeshes(&entity, &mut local_decoder)
-            {
-                if !sub_meshes.is_empty() {
-                    let out = emit_sub_meshes(sub_meshes, &mut local_decoder);
-                    if !out.is_empty() {
-                        return out;
-                    }
-                }
-            }
-        }
-    }
+    let produced = crate::element::produce_element_meshes(
+        &crate::element::ElementMeshJob {
+            id: job.id,
+            ifc_type: job.ifc_type,
+            entity: &entity,
+            kind,
+            element_color: Some(job.element_color),
+            metadata: Some(&metadata),
+        },
+        &ctx,
+        // Geometry hashing is a viewer diff feature — off on the native path.
+        &crate::element::MeshProductionOptions::default(),
+        &mut local_decoder,
+        &local_router,
+    );
 
-    // A superseding strategy is about to re-process this element's
-    // representation and re-attempt the same (deterministic) cuts/booleans.
-    // Discard the abandoned attempt's diagnostics so only the path that
-    // actually produced the returned meshes contributes to
-    // total_csg_failures / products_with_failures — otherwise re-failures
-    // are double-counted. (`take_csg_failures` is the drain == clear; the
-    // voids→plain-element mini-fallback below intentionally keeps its
-    // records: a failed/emptying cut that leaves the host uncut IS the
-    // diagnostic.)
-    let _ = local_router.take_csg_failures();
-
-    let mut mesh_candidate = local_router
-        .process_element_with_voids(&entity, &mut local_decoder, void_index)
-        .ok();
-    let needs_fallback = match mesh_candidate.as_ref() {
-        Some(mesh) => mesh.is_empty(),
-        None => true,
-    };
-    if needs_fallback {
-        mesh_candidate = local_router
-            .process_element(&entity, &mut local_decoder)
-            .ok();
-    }
-
-    if let Some(mut mesh) = mesh_candidate {
-        if !mesh.is_empty() {
-            // Multi-colour IfcIndexedColourMap → one sub-mesh per palette group
-            // (#858). Only applies when the produced triangle count still
-            // matches the face set's CoordIndex (no CSG/void retopology);
-            // otherwise we keep the single dominant-coloured mesh below.
-            if !indexed_colour_full.is_empty() {
-                if let Some(full) = find_indexed_colour_for_element(
-                    &entity,
-                    indexed_colour_full,
-                    &mut local_decoder,
-                ) {
-                    let geometry_id = full.geometry_id;
-                    if let Some(groups) = crate::style::split_mesh_by_indexed_colour(&mesh, full) {
-                        let mut out: Vec<MeshData> = Vec::with_capacity(groups.len());
-                        for (color, mut part) in groups {
-                            if part.normals.is_empty() {
-                                calculate_normals(&mut part);
-                            }
-                            let mut mesh_data = MeshData::new(
-                                job.id,
-                                job.ifc_type.name().to_string(),
-                                part.positions,
-                                part.normals,
-                                part.indices,
-                                color.to_array(),
-                            )
-                            .with_element_metadata(
-                                global_id.clone(),
-                                name.clone(),
-                                presentation_layer.clone(),
-                            )
-                            .with_properties(space_zone_properties.clone())
-                            .with_style_metadata(None, Some(geometry_id));
-                            convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
-                            out.push(mesh_data);
-                        }
-                        if !out.is_empty() {
-                            return out;
-                        }
-                    }
-                }
-            }
-
-            if mesh.normals.is_empty() {
-                calculate_normals(&mut mesh);
-            }
-
-            let mut mesh_data = MeshData::new(
-                job.id,
-                job.ifc_type.name().to_string(),
-                mesh.positions,
-                mesh.normals,
-                mesh.indices,
-                element_color,
-            )
-            .with_element_metadata(global_id, name, presentation_layer)
-            .with_properties(space_zone_properties);
-            convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
-            return vec![mesh_data];
-        }
-    }
-
-    Vec::new()
-    })();
-
-    // Drain the per-job router's CSG diagnostics into the shared collector
-    // BEFORE the router drops. The wasm path surfaces these in the browser
-    // console (`drain_and_log_csg_diagnostics`); without this drain the
-    // server silently discarded every failed opening cut, and the
-    // thread-local pending mapped-boolean buffer accumulated across
-    // requests on the long-lived rayon pool threads.
-    let failures = local_router.take_csg_failures();
-    if !failures.is_empty() {
+    // Surface this element's CSG diagnostics in the shared collector. The
+    // wasm path logs them in the browser console; without this the server
+    // would silently discard every failed opening cut.
+    if !produced.csg_failures.is_empty() {
         if let Ok(mut collector) = csg_failure_collector.lock() {
-            for (product_id, fails) in failures {
+            for (product_id, fails) in produced.csg_failures {
                 collector.entry(product_id).or_default().extend(fails);
             }
         }
     }
 
-    result
+    produced.meshes
 }
 
-/// Render an orphan type-product `IfcRepresentationMap` (issue #957).
-///
-/// Tessellates the map's `MappedRepresentation` (baking its MappingOrigin) and
-/// builds a single [`MeshData`] keyed on the type's express id. The colour is
-/// resolved from the mapped geometry's `IfcStyledItem` chain when present (the
-/// blob/image/pixel-texture annex-E fixtures author a white `IfcSurfaceStyle`),
-/// otherwise the type's default colour. Texture fidelity is layered on
-/// separately; this path makes the geometry visible.
-#[allow(clippy::too_many_arguments)]
-fn process_type_representation_map_job(
-    job: &EntityJob,
-    rep_map_id: u32,
-    router: &GeometryRouter,
-    decoder: &mut EntityDecoder,
-    geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
-    texture_index: &FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>,
-    element_color: [f32; 4],
-    global_id: Option<String>,
-    name: Option<String>,
-    presentation_layer: Option<String>,
-    site_local_rotation: Option<&Vec<f64>>,
-) -> Vec<MeshData> {
-    let Ok(rep_map) = decoder.decode_by_id(rep_map_id) else {
-        return Vec::new();
-    };
-    // Texture-aware build (#961): one part per output mesh — each textured face
-    // set carries its own UVs + decoded image; untextured items merge into one
-    // part with no texture.
-    let Ok(parts) =
-        router.process_representation_map_with_texture(&rep_map, decoder, texture_index)
-    else {
-        return Vec::new();
-    };
-    if parts.is_empty() {
-        return Vec::new();
-    }
-
-    let color = resolve_color_for_representation_map(rep_map_id, geometry_style_index, decoder)
-        .unwrap_or(element_color);
-
-    let mut out: Vec<MeshData> = Vec::with_capacity(parts.len());
-    for (mut mesh, uvs, texture) in parts {
-        if mesh.is_empty() {
-            continue;
-        }
-        if mesh.normals.is_empty() {
-            calculate_normals(&mut mesh);
-        }
-        let mut mesh_data = MeshData::new(
-            job.id,
-            job.ifc_type.name().to_string(),
-            mesh.positions,
-            mesh.normals,
-            mesh.indices,
-            color,
-        )
-        .with_element_metadata(global_id.clone(), name.clone(), presentation_layer.clone());
-
-        // Attach the decoded texture + UVs (#961). `convert_mesh_to_site_local`
-        // rotates positions/normals only; UVs are 2D and pass through unchanged.
-        if let Some(tex) = texture {
-            mesh_data = mesh_data.with_texture(
-                uvs,
-                crate::types::mesh::MeshTextureData {
-                    rgba: tex.rgba,
-                    width: tex.width,
-                    height: tex.height,
-                    repeat_s: tex.repeat_s,
-                    repeat_t: tex.repeat_t,
-                },
-            );
-        }
-
-        convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
-        out.push(mesh_data);
-    }
-    out
-}
-
-/// Resolve the authored colour for a type's `IfcRepresentationMap` (issue #957)
-/// by looking up its mapped geometry items in the styled-item index — the same
-/// index that colours ordinary products. Returns `None` when no item carries a
-/// style (caller falls back to the type's default colour).
-fn resolve_color_for_representation_map(
-    rep_map_id: u32,
-    geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
-    decoder: &mut EntityDecoder,
-) -> Option<[f32; 4]> {
-    let rep_map = decoder.decode_by_id(rep_map_id).ok()?;
-    // IfcRepresentationMap.MappedRepresentation = attr 1.
-    let mapped_rep_id = rep_map.get_ref(1)?;
-    let mapped_rep = decoder.decode_by_id(mapped_rep_id).ok()?;
-    // IfcShapeRepresentation.Items = attr 3.
-    let item_ids = get_refs_from_list(&mapped_rep, 3)?;
-    for item_id in item_ids {
-        if let Some(style) = geometry_style_index.get(&item_id) {
-            return Some(style.color);
-        }
-        if let Some(color) = find_geometry_item_color(item_id, geometry_style_index, decoder) {
-            return Some(color);
-        }
-    }
-    None
-}
-
-/// Find the first representation item of `entity` that carries a full
-/// `IfcIndexedColourMap` (issue #858). Used to drive per-triangle sub-mesh
-/// splitting in the single-mesh emission path.
-fn find_indexed_colour_for_element<'a>(
-    entity: &DecodedEntity,
-    indexed_colour_full: &'a FxHashMap<u32, crate::style::FullIndexedColourMap>,
-    decoder: &mut EntityDecoder,
-) -> Option<&'a crate::style::FullIndexedColourMap> {
-    let pds_id = entity.get_ref(6)?;
-    let pds = decoder.decode_by_id(pds_id).ok()?;
-    let repr_ids = get_refs_from_list(&pds, 2)?;
-    for repr_id in repr_ids {
-        if let Ok(repr) = decoder.decode_by_id(repr_id) {
-            if let Some(items) = get_refs_from_list(&repr, 3) {
-                for item_id in items {
-                    if let Some(full) = indexed_colour_full.get(&item_id) {
-                        return Some(full);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
 
 /// Fold `IfcIndexedColourMap` colours into the style index, keyed by target
 /// geometry id. `or_insert` preserves IFCSTYLEDITEM precedence: a geometry that
@@ -2167,9 +1839,11 @@ fn build_color_updates_for_jobs(
         // or a deferred IfcStyledItem (fast_first_batch) leaves the orphan type
         // geometry stuck at its fallback colour.
         if let Some(rep_map_id) = job.representation_map_id {
-            if let Some(color) =
-                resolve_color_for_representation_map(rep_map_id, geometry_styles, &mut decoder)
-            {
+            if let Some(color) = crate::element::resolve_color_for_representation_map(
+                rep_map_id,
+                geometry_styles,
+                &mut decoder,
+            ) {
                 if color != job.element_color {
                     updates.push((job.id, color));
                 }
@@ -2377,44 +2051,6 @@ fn find_color_in_shape_representation(
         }
     }
 
-    None
-}
-
-/// Resolve a single geometry item's colour, following `IfcMappedItem` into its
-/// mapped representation when the item itself carries no direct style. Mirrors
-/// the browser's `find_color_for_geometry` so mapped / instanced sub-geometry
-/// inherits its underlying style in the sub-mesh path too (issue #913 §2.7) —
-/// the element-level walk (`find_color_in_representation`) already did this, but
-/// the per-sub-mesh lookup was a flat `geometry_styles.get`.
-fn find_geometry_item_color(
-    geometry_id: u32,
-    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
-    decoder: &mut EntityDecoder,
-) -> Option<[f32; 4]> {
-    // Direct style on this exact geometry item wins.
-    if let Some(style) = geometry_styles.get(&geometry_id) {
-        return Some(style.color);
-    }
-
-    // Otherwise, if it's a mapped item, chase the mapping to the underlying
-    // geometry and resolve there (recursing handles nested mapped items).
-    let geom = decoder.decode_by_id(geometry_id).ok()?;
-    if geom.ifc_type != IfcType::IfcMappedItem {
-        return None;
-    }
-    // IfcMappedItem.MappingSource (attr 0) → IfcRepresentationMap.
-    let mapping_source_id = geom.get_ref(0)?;
-    // IfcRepresentationMap.MappedRepresentation (attr 1) → IfcShapeRepresentation.
-    let representation_map = decoder.decode_by_id(mapping_source_id).ok()?;
-    let mapped_representation_id = representation_map.get_ref(1)?;
-    let mapped_representation = decoder.decode_by_id(mapped_representation_id).ok()?;
-    // IfcShapeRepresentation.Items (attr 3).
-    let items = get_refs_from_list(&mapped_representation, 3)?;
-    for underlying in items {
-        if let Some(color) = find_geometry_item_color(underlying, geometry_styles, decoder) {
-            return Some(color);
-        }
-    }
     None
 }
 
@@ -2669,31 +2305,6 @@ fn has_glass_style(style: &GeometryStyleInfo) -> bool {
     false
 }
 
-fn is_opening_with_subparts(ifc_type: &IfcType) -> bool {
-    matches!(ifc_type, IfcType::IfcWindow | IfcType::IfcDoor)
-}
-
-fn infer_opening_subpart_material_name(
-    ifc_type: &IfcType,
-    color: [f32; 4],
-    geometry_id: u32,
-) -> Option<String> {
-    if !is_opening_with_subparts(ifc_type) {
-        return None;
-    }
-
-    let prefix = match ifc_type {
-        IfcType::IfcDoor => "Door",
-        _ => "Window",
-    };
-
-    // Transparency is a practical proxy for glazing in many BIM exports.
-    if color[3] <= 0.65 {
-        return Some(format!("{}_Glass", prefix));
-    }
-
-    Some(format!("{}_Frame_{}", prefix, geometry_id))
-}
 
 // Default IFC-type colors now come from the single canonical table in
 // `crate::style::default_color_for_type` (issue #913). Do not reintroduce a
@@ -2707,54 +2318,6 @@ mod tests {
         pairs.iter().map(|(k, v)| (*k, v.to_vec())).collect()
     }
 
-    #[test]
-    fn find_geometry_item_color_follows_mapped_item() {
-        // #100 IfcMappedItem → #101 IfcRepresentationMap → #103
-        // IfcShapeRepresentation whose Items = (#110). The style lives on the
-        // underlying item #110, not on the mapped item, so a flat lookup of
-        // #100 misses it — the resolver must chase the mapping (#913 §2.7).
-        const IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('m.ifc','2026-06-04T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,$,$);
-#100=IFCMAPPEDITEM(#101,#105);
-#101=IFCREPRESENTATIONMAP(#102,#103);
-#102=IFCAXIS2PLACEMENT3D(#104,$,$);
-#103=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#110));
-#104=IFCCARTESIANPOINT((0.,0.,0.));
-#105=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#104,$,$);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-        let blue = [0.1, 0.2, 0.9, 1.0];
-        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-        styles.insert(
-            110,
-            GeometryStyleInfo {
-                color: blue,
-                shading_color: None,
-                material_name: None,
-            },
-        );
-
-        let mut decoder = EntityDecoder::new(IFC);
-
-        // Mapped item, no direct style → inherits the underlying item's colour.
-        assert_eq!(
-            find_geometry_item_color(100, &styles, &mut decoder),
-            Some(blue)
-        );
-        // A direct style still wins.
-        assert_eq!(
-            find_geometry_item_color(110, &styles, &mut decoder),
-            Some(blue)
-        );
-        // A non-mapped, unstyled item (the representation map itself) → None.
-        assert_eq!(find_geometry_item_color(101, &styles, &mut decoder), None);
-    }
-
+    // `find_geometry_item_color_follows_mapped_item` lives in
+    // `crate::element::tests`, next to the resolver it pins.
 }

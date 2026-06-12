@@ -90,7 +90,7 @@ export type { ViewPreset, SectionAxis, ModelStats, EntityProperties, ModelInfo }
 // Default embed origin
 // ============================================================================
 
-const DEFAULT_ORIGIN = 'https://embed.ifc-lite.com';
+const DEFAULT_ORIGIN = 'https://embed.ifclite.com';
 
 // ============================================================================
 // IFCLiteEmbed class

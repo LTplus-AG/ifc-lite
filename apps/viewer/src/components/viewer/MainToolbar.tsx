@@ -44,6 +44,7 @@ import {
   CalendarClock,
   Globe2,
   Sun,
+  SunMoon,
   Move,
   PenLine,
   Layers3,
@@ -520,6 +521,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const solarEnabled = useViewerStore((state) => state.solarEnabled);
   const toggleSolar = useViewerStore((state) => state.toggleSolar);
   const setCesiumEnabled = useViewerStore((state) => state.setCesiumEnabled);
+  // Environment (sky + lighting) panel state
+  const envPanelOpen = useViewerStore((state) => state.envPanelOpen);
+  const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
+  const envSkyEnabled = useViewerStore((state) => state.envSkyEnabled);
+  const envPreset = useViewerStore((state) => state.envPreset);
   const storeModels = useViewerStore((state) => state.models);
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
@@ -1652,6 +1658,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </Tooltip>
         </>
       )}
+
+      {/* Environment (sky + lighting) panel — available for every model,
+          georeferenced or not. */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={envPanelOpen ? 'default' : 'ghost'}
+            size="icon-sm"
+            aria-label={envPanelOpen ? 'Close environment panel' : 'Open environment panel'}
+            aria-pressed={envPanelOpen}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              toggleEnvPanel();
+            }}
+            className={cn(
+              (envPanelOpen || envSkyEnabled || envPreset !== 'default')
+                && 'bg-sky-600 text-white hover:bg-sky-700',
+            )}
+          >
+            <SunMoon className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Sky &amp; lighting</TooltipContent>
+      </Tooltip>
 
       {/*
         Consolidated View dropdown — holds projection toggle, preset

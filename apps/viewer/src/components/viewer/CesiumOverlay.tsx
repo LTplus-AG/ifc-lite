@@ -261,6 +261,8 @@ export function CesiumOverlay({
   const solarShowSunPath = useViewerStore((s) => s.solarShowSunPath);
   const solarShowShadows = useViewerStore((s) => s.solarShowShadows);
   const setSolarSunInfo = useViewerStore((s) => s.setSolarSunInfo);
+  // Environment sky toggle — atmosphere + sun + fog in geo mode.
+  const envSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
   // Re-run the solar effect once the deferred GLB load completes, so the IFC
   // model's shadow mode is applied even when the study was enabled before the
   // model finished loading into Cesium.
@@ -723,6 +725,7 @@ export function CesiumOverlay({
       date,
       enabled: solarEnabled,
       shadows: solarShowShadows,
+      showSun: envSkyEnabled,
     });
 
     if (solarEnabled) {
@@ -792,9 +795,30 @@ export function CesiumOverlay({
     solarDateMs,
     solarShowSunPath,
     solarShowShadows,
+    envSkyEnabled,
     coordinateInfo,
     setSolarSunInfo,
   ]);
+
+  // ─── Effect 4b: Sky — atmosphere + sun + fog ────────────────────────────
+  // The environment panel's Sky toggle. Init disables all of these for
+  // transparent compositing; this effect re-enables them on demand. The
+  // area outside the atmosphere stays transparent (skyBox off), so space
+  // composites over the app background like the rest of the overlay.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const Cesium = cesiumModule;
+    if (status !== 'ready' || !viewer || !Cesium) return;
+    const scene = viewer.scene;
+    if (scene.skyAtmosphere) scene.skyAtmosphere.show = envSkyEnabled;
+    scene.fog.enabled = envSkyEnabled;
+    // Sun billboard only when the solar effect isn't already managing it
+    // (applySolarScene runs with showSun and wins on solar state changes).
+    if (scene.sun && !solarTouchedSceneRef.current) {
+      scene.sun.show = envSkyEnabled;
+    }
+    scene.requestRender();
+  }, [status, envSkyEnabled]);
 
   // ─── Effect 3: Camera sync loop ─────────────────────────────────────────
   useEffect(() => {

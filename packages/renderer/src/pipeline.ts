@@ -9,6 +9,12 @@
 import { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
+import {
+    ENVIRONMENT_UNIFORM_SIZE,
+    packEnvironmentUniforms,
+    resolveEnvironment,
+    type LightingEnvironment,
+} from './environment.js';
 
 export class RenderPipeline {
     private device: GPUDevice;
@@ -42,6 +48,13 @@ export class RenderPipeline {
     private uniformBuffer: GPUBuffer;
     private bindGroup: GPUBindGroup;
     private bindGroupLayout: GPUBindGroupLayout;  // Explicit layout shared between pipelines
+    // Global lighting environment at group(1): one small uniform buffer,
+    // bound once per pass, shared by every pipeline derived from the main
+    // shader (opaque/selection/transparent/overlay/textured).
+    private environmentBuffer: GPUBuffer;
+    private environmentBindGroup: GPUBindGroup;
+    private environmentBindGroupLayout: GPUBindGroupLayout;
+    private environmentScratch = new Float32Array(ENVIRONMENT_UNIFORM_SIZE / 4);
     private currentWidth: number;
     private currentHeight: number;
 
@@ -106,6 +119,29 @@ export class RenderPipeline {
             ],
         });
 
+        // Lighting environment at group(1) — written once per frame from
+        // RenderOptions.environment, initialized to the legacy default look.
+        this.environmentBindGroupLayout = this.device.createBindGroupLayout({
+            label: 'environment-bgl',
+            entries: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    buffer: { type: 'uniform' },
+                },
+            ],
+        });
+        this.environmentBuffer = this.device.createBuffer({
+            label: 'environment-uniforms',
+            size: ENVIRONMENT_UNIFORM_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        this.environmentBindGroup = this.device.createBindGroup({
+            layout: this.environmentBindGroupLayout,
+            entries: [{ binding: 0, resource: { buffer: this.environmentBuffer } }],
+        });
+        this.updateEnvironment();
+
         // Create shader module with PBR lighting, section plane clipping, and selection outline
         const shaderModule = this.device.createShaderModule({
             code: mainShaderSource,
@@ -113,7 +149,7 @@ export class RenderPipeline {
 
         // Create explicit pipeline layout (shared between main and selection pipelines)
         const pipelineLayout = this.device.createPipelineLayout({
-            bindGroupLayouts: [this.bindGroupLayout],
+            bindGroupLayouts: [this.bindGroupLayout, this.environmentBindGroupLayout],
         });
 
         // Create render pipeline descriptor
@@ -334,7 +370,7 @@ export class RenderPipeline {
         this.texturedPipeline = this.device.createRenderPipeline({
             label: 'textured-pipeline',
             layout: this.device.createPipelineLayout({
-                bindGroupLayouts: [this.texturedBindGroupLayout],
+                bindGroupLayouts: [this.texturedBindGroupLayout, this.environmentBindGroupLayout],
             }),
             vertex: {
                 module: texturedModule,
@@ -436,6 +472,20 @@ export class RenderPipeline {
 
         // Write the buffer
         this.device.queue.writeBuffer(this.uniformBuffer, 0, buffer);
+    }
+
+    /**
+     * Write the global lighting environment uniform buffer. Cheap (80 bytes);
+     * called once per frame with the resolved `RenderOptions.environment`.
+     */
+    updateEnvironment(env?: LightingEnvironment): void {
+        packEnvironmentUniforms(resolveEnvironment(env), this.environmentScratch);
+        this.device.queue.writeBuffer(this.environmentBuffer, 0, this.environmentScratch);
+    }
+
+    /** Lighting-environment bind group — set at group(1) once per render pass. */
+    getEnvironmentBindGroup(): GPUBindGroup {
+        return this.environmentBindGroup;
     }
 
     /**
@@ -601,5 +651,6 @@ export class RenderPipeline {
         this.multisampleTexture = null;
         this.multisampleTextureView = null;
         this.uniformBuffer.destroy();
+        this.environmentBuffer.destroy();
     }
 }

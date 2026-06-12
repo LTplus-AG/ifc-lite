@@ -43,6 +43,13 @@ export { BVH } from './bvh.js';
 export { FederationRegistry, federationRegistry } from './federation-registry.js';
 export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
 export * from './types.js';
+export {
+    resolveEnvironment,
+    deriveSkyGradient,
+    packEnvironmentUniforms,
+    ENVIRONMENT_UNIFORM_SIZE,
+} from './environment.js';
+export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color } from './environment.js';
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 
@@ -102,6 +109,9 @@ import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
 import { EdlPass } from './edl-pass.js';
+import { SkyPass } from './sky-pass.js';
+import { skyShaderSource } from './shaders/sky.wgsl.js';
+import { resolveEnvironment } from './environment.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion } from './overlay-routing.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -168,6 +178,9 @@ export class Renderer {
     private symbolicTextPipeline: SymbolicTextPipeline | null = null;
     private postProcessor: PostProcessor | null = null;
     private edlPass: EdlPass | null = null;
+    // Procedural sky background — created lazily on the first frame that
+    // enables it (most sessions never do).
+    private skyPass: SkyPass | null = null;
     private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
         enabled: false,
         strength: 1,
@@ -1465,6 +1478,54 @@ export class Renderer {
                 },
             });
 
+            // Global lighting environment: write the uniform once per frame
+            // and bind at group(1) — every pipeline derived from the main
+            // shader shares this layout, and bind groups persist across
+            // setPipeline calls within the pass.
+            const environment = resolveEnvironment(options.environment);
+            this.pipeline.updateEnvironment(options.environment);
+            pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+
+            // Procedural sky background — replaces the flat clear colour.
+            // Drawn before any geometry at the reverse-Z far plane with depth
+            // writes off, so it never occludes anything and transparent
+            // surfaces blend over it. (The viewer keeps this disabled while
+            // the Cesium overlay composites underneath a transparent clear.)
+            if (environment.skyEnabled) {
+                if (!this.skyPass) {
+                    this.skyPass = new SkyPass(device, {
+                        colorFormat: this.device.getFormat(),
+                        objectIdFormat: 'rgba8unorm',
+                        depthFormat: this.pipeline.getDepthFormat(),
+                        sampleCount: this.pipeline.getSampleCount(),
+                    }, skyShaderSource);
+                }
+                const camPos = this.camera.getPosition();
+                const camTgt = this.camera.getTarget();
+                const camUp = this.camera.getUp();
+                let fx = camTgt.x - camPos.x;
+                let fy = camTgt.y - camPos.y;
+                let fz = camTgt.z - camPos.z;
+                const flen = Math.hypot(fx, fy, fz) || 1;
+                fx /= flen; fy /= flen; fz /= flen;
+                // Right = normalize(cross(forward, up)); true up = cross(right, forward).
+                let rx = fy * camUp.z - fz * camUp.y;
+                let ry = fz * camUp.x - fx * camUp.z;
+                let rz = fx * camUp.y - fy * camUp.x;
+                const rlen = Math.hypot(rx, ry, rz) || 1;
+                rx /= rlen; ry /= rlen; rz /= rlen;
+                const ux = ry * fz - rz * fy;
+                const uy = rz * fx - rx * fz;
+                const uz = rx * fy - ry * fx;
+                this.skyPass.draw(pass, {
+                    forward: [fx, fy, fz],
+                    right: [rx, ry, rz],
+                    up: [ux, uy, uz],
+                    fovY: this.camera.getFOV(),
+                    aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
+                }, environment);
+            }
+
             pass.setPipeline(this.pipeline.getPipeline());
 
             // Check if we have batched meshes (preferred for performance)
@@ -2661,6 +2722,8 @@ export class Renderer {
         this.postProcessor = null;
         this.edlPass?.destroy();
         this.edlPass = null;
+        this.skyPass?.destroy();
+        this.skyPass = null;
 
         // Section-plane renderers
         this.sectionPlaneRenderer?.destroy();

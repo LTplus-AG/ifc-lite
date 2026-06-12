@@ -7,9 +7,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { Renderer, type VisualEnhancementOptions } from '@ifc-lite/renderer';
+import { Renderer, type VisualEnhancementOptions, type LightingEnvironment } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
 import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
+import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
+import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
 import {
   useSelectionState,
   useVisibilityState,
@@ -347,6 +349,54 @@ export function Viewport({
     }
     rendererRef.current?.requestRender();
   }, [cesiumActive, theme]);
+
+  // ── Lighting environment ───────────────────────────────────────────────
+  // Compose the renderer's lighting from the active preset, the user's
+  // sky/exposure choices, and (when the solar study runs) the true sun
+  // position at the site. The sky pass must stay OFF while Cesium is
+  // active — the WebGPU canvas composites over Cesium with a transparent
+  // clear, and Cesium draws its own atmosphere.
+  const envPreset = useViewerStore((s) => s.envPreset);
+  const envSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
+  const envSunFollowsSolar = useViewerStore((s) => s.envSunFollowsSolar);
+  const envExposure = useViewerStore((s) => s.envExposure);
+  const solarEnabledForEnv = useViewerStore((s) => s.solarEnabled);
+  const solarSunDirection = useViewerStore((s) => s.solarSunDirection);
+  const solarSunAltitude = useViewerStore((s) => s.solarSunInfo?.altitude);
+
+  const environment = useMemo<LightingEnvironment>(() => {
+    const preset = LIGHTING_PRESETS[envPreset].environment;
+    const env: LightingEnvironment = {
+      ...preset,
+      skyEnabled: envSkyEnabled && !cesiumActive,
+      exposure: (preset.exposure ?? 0.85) * envExposure,
+    };
+    if (solarEnabledForEnv && envSunFollowsSolar && solarSunDirection) {
+      const altitude = solarSunAltitude
+        ?? Math.asin(Math.max(-1, Math.min(1, solarSunDirection[1]))) * (180 / Math.PI);
+      const sun = sunLightingForAltitude(altitude);
+      env.sunDirection = solarSunDirection;
+      env.sunColor = sun.color;
+      env.sunIntensity = (preset.sunIntensity ?? 0.55) * sun.intensityFactor;
+      env.ambientIntensity = (preset.ambientIntensity ?? 0.25) * sun.ambientFactor;
+      // Let the sky derive its palette from the real sun altitude.
+      delete env.sky;
+    }
+    return env;
+  }, [
+    envPreset,
+    envSkyEnabled,
+    envExposure,
+    cesiumActive,
+    solarEnabledForEnv,
+    envSunFollowsSolar,
+    solarSunDirection,
+    solarSunAltitude,
+  ]);
+  const environmentRef = useLatestRef(environment);
+  useEffect(() => {
+    rendererRef.current?.requestRender();
+  }, [environment]);
 
   // Animation frame ref
   const animationFrameRef = useRef<number | null>(null);
@@ -1095,6 +1145,7 @@ export function Viewport({
     sectionRangeRef,
     modelBoundsRef,
     visualEnhancementRef,
+    environmentRef,
     selectedEntityIdsRef,
     coordinateInfoRef,
     isInteractingRef,

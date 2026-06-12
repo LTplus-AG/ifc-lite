@@ -19,6 +19,25 @@ export const mainShaderSource = `
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
 
+        // Global lighting environment — one buffer shared by every mesh in
+        // the pass (bound once per frame at group(1)). Field packing must
+        // match packEnvironmentUniforms() in environment.ts.
+        struct Environment {
+          sunDirection: vec3<f32>,      // unit vector TOWARD the sun
+          sunIntensity: f32,
+          sunColor: vec3<f32>,
+          ambientIntensity: f32,
+          skyColor: vec3<f32>,          // hemisphere-ambient sky tint
+          exposure: f32,
+          groundColor: vec3<f32>,       // hemisphere-ambient ground tint
+          fillIntensity: f32,
+          rimIntensity: f32,
+          _pad0: f32,
+          _pad1: f32,
+          _pad2: f32,
+        }
+        @binding(0) @group(1) var<uniform> env: Environment;
+
         struct VertexInput {
           @location(0) position: vec3<f32>,
           @location(1) normal: vec3<f32>,
@@ -160,29 +179,30 @@ export const mainShaderSource = `
             }
           }
 
-          // Enhanced lighting with multiple sources
-          let sunLight = normalize(vec3<f32>(0.5, 1.0, 0.3));  // Main directional light
+          // Lighting environment — sun/hemisphere/exposure come from the
+          // global env uniform (defaults reproduce the historic hardcoded
+          // values); fill + rim directions stay fixed in view-agnostic
+          // world space as stylistic shaping lights.
+          let sunLight = env.sunDirection;
           let fillLight = normalize(vec3<f32>(-0.5, 0.3, -0.3));  // Fill light
           let rimLight = normalize(vec3<f32>(0.0, 0.2, -1.0));  // Rim light for edge definition
 
-          // Hemisphere ambient - reduced for less washed-out look
-          let skyColor = vec3<f32>(0.3, 0.35, 0.4);  // Darker sky
-          let groundColor = vec3<f32>(0.15, 0.1, 0.08);  // Darker ground
+          // Hemisphere ambient
           let hemisphereFactor = N.y * 0.5 + 0.5;
-          let ambient = mix(groundColor, skyColor, hemisphereFactor) * 0.25;
+          let ambient = mix(env.groundColor, env.skyColor, hemisphereFactor) * env.ambientIntensity;
 
           // Two-sided sun light so inner faces (I-beam channels) stay visible
           let NdotL = abs(dot(N, sunLight));
           let wrap = 0.3;
-          let diffuseSun = max((NdotL + wrap) / (1.0 + wrap), 0.0) * 0.55;
+          let diffuseSun = max((NdotL + wrap) / (1.0 + wrap), 0.0) * env.sunIntensity;
 
           // Fill light - two-sided
           let NdotFill = abs(dot(N, fillLight));
-          let diffuseFill = NdotFill * 0.15;
+          let diffuseFill = NdotFill * env.fillIntensity;
 
           // Rim light for edge definition
           let NdotRim = max(dot(N, rimLight), 0.0);
-          let rim = pow(NdotRim, 4.0) * 0.15;
+          let rim = pow(NdotRim, 4.0) * env.rimIntensity;
 
           var baseColor = uniforms.baseColor.rgb;
 
@@ -195,7 +215,7 @@ export const mainShaderSource = `
           baseColor = mix(baseColor, baseColor * 0.7, isWhiteish * 0.4);
 
           // Combine all lighting
-          var color = baseColor * (ambient + diffuseSun + diffuseFill + rim);
+          var color = baseColor * (ambient + env.sunColor * diffuseSun + vec3<f32>(diffuseFill + rim));
 
           // flags.x is a bitfield:
           //   bit 0 (value 1) = isSelected  → selection-highlight + force opaque
@@ -258,8 +278,8 @@ export const mainShaderSource = `
             finalAlpha = finalAlpha * 0.7;
           }
 
-          // Exposure adjustment - darken overall
-          color *= 0.85;
+          // Exposure adjustment (historic default 0.85 darkens overall)
+          color *= env.exposure;
 
           // Contrast enhancement
           color = (color - 0.5) * 1.15 + 0.5;

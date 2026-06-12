@@ -51,6 +51,14 @@ export interface SolarSlice {
   /** Resolved sun position/times for the readout panel; null until computed. */
   solarSunInfo: SolarSunInfo | null;
   /**
+   * Unit vector toward the sun in viewer/world space (Y-up), derived from the
+   * studied instant + site georeference. Drives the WebGPU renderer's sun
+   * (lighting + procedural sky) so daylight reads identically with and
+   * without the Cesium context. Null when the study is off or the site is
+   * unknown.
+   */
+  solarSunDirection: [number, number, number] | null;
+  /**
    * Display times in local solar time derived from the site longitude
    * (15°/hour) instead of UTC. This is civil-timezone-agnostic on purpose —
    * sun-path studies care about solar time, and a longitude offset needs no
@@ -68,6 +76,7 @@ export interface SolarSlice {
   setSolarShowSunPath: (show: boolean) => void;
   setSolarShowShadows: (show: boolean) => void;
   setSolarSunInfo: (info: SolarSunInfo | null) => void;
+  setSolarSunDirection: (dir: [number, number, number] | null) => void;
   setSolarUseLocalTime: (use: boolean) => void;
   setSolarPlaying: (playing: boolean) => void;
   toggleSolarPlaying: () => void;
@@ -85,6 +94,7 @@ export const createSolarSlice: StateCreator<SolarSlice, [], [], SolarSlice> = (s
   solarShowSunPath: true,
   solarShowShadows: true,
   solarSunInfo: null,
+  solarSunDirection: null,
   // Default to the site's local solar time (derived from longitude): for a
   // sun-path study "9am" should mean 9am at the site, not UTC.
   solarUseLocalTime: true,
@@ -94,15 +104,16 @@ export const createSolarSlice: StateCreator<SolarSlice, [], [], SolarSlice> = (s
   setSolarEnabled: (enabled) =>
     set(enabled
       ? { solarEnabled: true }
-      : { solarEnabled: false, solarSunInfo: null, solarPlaying: false }),
+      : { solarEnabled: false, solarSunInfo: null, solarSunDirection: null, solarPlaying: false }),
   toggleSolar: () =>
     set((s) => (s.solarEnabled
-      ? { solarEnabled: false, solarSunInfo: null, solarPlaying: false }
+      ? { solarEnabled: false, solarSunInfo: null, solarSunDirection: null, solarPlaying: false }
       : { solarEnabled: true })),
   setSolarDateMs: (ms) => set({ solarDateMs: ms }),
   setSolarShowSunPath: (show) => set({ solarShowSunPath: show }),
   setSolarShowShadows: (show) => set({ solarShowShadows: show }),
   setSolarSunInfo: (info) => set({ solarSunInfo: info }),
+  setSolarSunDirection: (dir) => set({ solarSunDirection: dir }),
   setSolarUseLocalTime: (use) => set({ solarUseLocalTime: use }),
   setSolarPlaying: (playing) => set({ solarPlaying: playing }),
   toggleSolarPlaying: () => set((s) => ({ solarPlaying: !s.solarPlaying })),

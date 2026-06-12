@@ -154,6 +154,12 @@ export interface VisualEnhancementOptions {
 
 export interface RenderOptions {
   clearColor?: [number, number, number, number];
+  /**
+   * Global lighting environment (sun direction/colour, hemisphere ambient,
+   * exposure, procedural sky). Omitted/empty reproduces the legacy hardcoded
+   * look exactly. See {@link import('./environment.js').LightingEnvironment}.
+   */
+  environment?: import('./environment.js').LightingEnvironment;
   enableDepthTest?: boolean;
   enableFrustumCulling?: boolean;
   spatialIndex?: import('@ifc-lite/spatial').SpatialIndex;

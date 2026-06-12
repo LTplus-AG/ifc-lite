@@ -38,6 +38,11 @@ export interface SolarSceneOptions {
   enabled: boolean;
   /** Whether to render the shadow map (mutual model ↔ context shadows). */
   shadows: boolean;
+  /**
+   * Show the sun billboard. Off by default (transparent compositing); the
+   * environment panel's Sky toggle turns it on together with the atmosphere.
+   */
+  showSun?: boolean;
 }
 
 /**
@@ -50,11 +55,12 @@ export function applySolarScene(
   options: SolarSceneOptions,
 ): void {
   const scene = viewer.scene;
-  const { enabled, shadows, date } = options;
+  const { enabled, shadows, date, showSun = false } = options;
 
   if (!enabled) {
-    // Restore the transparent-compositing defaults set up in CesiumOverlay.
-    if (scene.sun) scene.sun.show = false;
+    // Restore the transparent-compositing defaults set up in CesiumOverlay
+    // (the sun billboard stays available for the Sky toggle).
+    if (scene.sun) scene.sun.show = showSun;
     scene.globe.enableLighting = false;
     viewer.shadows = false;
     scene.light = new Cesium.DirectionalLight({
@@ -69,7 +75,7 @@ export function applySolarScene(
   viewer.clock.shouldAnimate = false;
   viewer.clock.currentTime = julian;
   scene.light = new Cesium.SunLight();
-  if (scene.sun) scene.sun.show = false; // keep the sun billboard off (transparent compositing)
+  if (scene.sun) scene.sun.show = showSun; // billboard only with the Sky toggle
   scene.globe.enableLighting = true;
   viewer.shadows = shadows;
   if (viewer.shadowMap) {

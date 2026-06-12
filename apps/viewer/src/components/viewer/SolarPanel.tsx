@@ -101,6 +101,7 @@ export function SolarPanel() {
   const sweepMode = useViewerStore((s) => s.solarSweepMode);
   const setSweepMode = useViewerStore((s) => s.setSolarSweepMode);
 
+  const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
   const setCesiumEnabled = useViewerStore((s) => s.setCesiumEnabled);
   const dataSource = useViewerStore((s) => s.cesiumDataSource);
   const setDataSource = useViewerStore((s) => s.setCesiumDataSource);
@@ -160,7 +161,7 @@ export function SolarPanel() {
   };
 
   return (
-    <div className="absolute top-4 right-4 z-10 pointer-events-auto w-60 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 text-xs">
+    <div className="pointer-events-auto w-60 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 text-xs">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           Sun Path
@@ -264,6 +265,16 @@ export function SolarPanel() {
             <ToggleChip label="Dome" active={showSunPath} onClick={() => setShowSunPath(!showSunPath)} />
             <ToggleChip label="Shadows" active={showShadows} onClick={() => setShowShadows(!showShadows)} />
           </div>
+          {!cesiumEnabled && (
+            <button
+              type="button"
+              onClick={() => setCesiumEnabled(true)}
+              className="text-left text-[9px] leading-snug text-muted-foreground hover:text-foreground transition-colors"
+            >
+              The sun lights the model directly; dome &amp; shadows need the 3D
+              world context — click to enable it.
+            </button>
+          )}
 
           {/* Context source */}
           <div className="flex flex-col gap-0.5">

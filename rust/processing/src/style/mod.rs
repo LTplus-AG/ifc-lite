@@ -54,6 +54,41 @@ pub use surface::extract_surface_style_colors;
 /// vs frame (opaque) styles. Matches the browser's `TRANSPARENCY_ALPHA_THRESHOLD`.
 pub const TRANSPARENCY_ALPHA_THRESHOLD: f32 = 0.95;
 
+/// Resolved appearance of one geometry item (the value side of the
+/// styled-item index keyed by geometry express id).
+///
+/// Lives here — not in `processor.rs` — because it is shared by the native
+/// pipeline, the canonical per-element producer ([`crate::element`]), and the
+/// browser `wasm-bindings` batch path, which lifts its flat `(id, rgba8)`
+/// wire arrays into this richer form via [`GeometryStyleInfo::from_color`].
+#[derive(Debug, Clone)]
+pub struct GeometryStyleInfo {
+    /// Apparent colour for rendering: IfcSurfaceStyleRendering.DiffuseColour
+    /// when authored, otherwise the SurfaceColour. Matches what most IFC
+    /// viewers display.
+    pub color: [f32; 4],
+    /// SurfaceColour, populated only when the file authored a distinct
+    /// DiffuseColour. Read by the WASM bridge's parallel extractor so the
+    /// GLB exporter can offer "Shading" as a colour source; the
+    /// processing-crate `MeshData` doesn't propagate it (server pipeline
+    /// has no GLB consumer yet).
+    pub shading_color: Option<[f32; 4]>,
+    pub material_name: Option<String>,
+}
+
+impl GeometryStyleInfo {
+    /// Lift a bare RGBA colour (e.g. from the browser prepass's flat
+    /// `styleIds`/`styleColors` wire arrays) into the rich form. No shading
+    /// colour, no material name — exactly the fidelity the wire carries.
+    pub fn from_color(color: [f32; 4]) -> Self {
+        Self {
+            color,
+            shading_color: None,
+            material_name: None,
+        }
+    }
+}
+
 /// Canonical straight-alpha RGBA color, components in `0.0..=1.0`.
 ///
 /// Serializes transparently as a bare `[f32; 4]` JSON array, so it is a

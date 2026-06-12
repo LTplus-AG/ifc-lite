@@ -62,6 +62,18 @@ pub struct MeshData {
     /// Decoded surface texture, present only for textured meshes (#961).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub texture: Option<MeshTextureData>,
+    /// Provenance of the geometry for the viewer's Model/Types switch (#957):
+    /// 0 = ordinary occurrence, 1 = orphan type-product RepresentationMap (no
+    /// occurrence instantiates it), 2 = instanced type-product map (the type
+    /// library shape; its occurrences already draw the real geometry).
+    /// Serde-default so existing JSON payloads and disk caches stay readable;
+    /// skipped when 0 so ordinary meshes serialize byte-identically.
+    #[serde(default, skip_serializing_if = "geometry_class_is_occurrence")]
+    pub geometry_class: u8,
+}
+
+fn geometry_class_is_occurrence(class: &u8) -> bool {
+    *class == 0
 }
 
 impl MeshData {
@@ -89,7 +101,14 @@ impl MeshData {
             properties: None,
             uvs: None,
             texture: None,
+            geometry_class: 0,
         }
+    }
+
+    /// Tag the geometry's provenance for the Model/Types view switch (#957).
+    pub fn with_geometry_class(mut self, geometry_class: u8) -> Self {
+        self.geometry_class = geometry_class;
+        self
     }
 
     /// Attach per-vertex UVs + a decoded surface texture (issue #961).

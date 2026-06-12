@@ -125,3 +125,73 @@ fn contained_spaces_and_zones_become_spatial_tree_nodes() {
         "contained spaces/zones leaked into the storey's element list: {element_ids:?}"
     );
 }
+
+const REFERENCED_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-1075 referenced-link fixture'),'2;1');
+FILE_NAME('ref.ifc','2026-06-12T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1Project00000000001075',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCBUILDING('1Building000000001075',$,'Building',$,$,$,$,$,.ELEMENT.,$,$,$);
+#11=IFCBUILDINGSTOREY('1Storey1000000001075',$,'Level 1',$,$,$,$,$,.ELEMENT.,0.);
+#12=IFCBUILDINGSTOREY('1Storey2000000001075',$,'Level 2',$,$,$,$,$,.ELEMENT.,3.);
+#13=IFCSPACE('1Space0000000000001075',$,'Shared Room',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
+#50=IFCRELAGGREGATES('1RelAggProjBldg01075',$,$,$,#1,(#10));
+#51=IFCRELAGGREGATES('1RelAggBldgStrs1075',$,$,$,#10,(#11,#12));
+#52=IFCRELCONTAINEDINSPATIALSTRUCTURE('1RelConStorey1_1075',$,$,$,(#13),#11);
+#53=IFCRELREFERENCEDINSPATIALSTRUCTURE('1RelRefStorey2_1075',$,$,$,(#13),#12);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn referenced_in_links_do_not_steal_spatial_ownership() {
+    // A space contained in storey 1 and merely *referenced* from storey 2
+    // (IfcRelReferencedInSpatialStructure) must stay owned by storey 1; the
+    // referenced link must not re-parent it under storey 2 (#1075 review).
+    let mut captured: Option<QuickMetadataBootstrap> = None;
+    let options = StreamingOptions {
+        emit_quick_metadata_bootstrap: true,
+        ..Default::default()
+    };
+    process_geometry_streaming_with_options_and_bootstrap(
+        REFERENCED_IFC.as_bytes(),
+        options,
+        |_, _, _| {},
+        |_| {},
+        |b| captured = Some(b.clone()),
+    );
+
+    let tree = captured
+        .expect("bootstrap emitted")
+        .spatial_tree
+        .expect("spatial tree built");
+
+    let building = tree.children.first().expect("project has a building child");
+    let find = |id: u32| building.children.iter().find(|c| c.summary.express_id == id);
+    let storey1 = find(11).expect("storey 1 in tree");
+    let storey2 = find(12).expect("storey 2 in tree");
+
+    // Storey 1 owns the contained space as a child node.
+    assert!(
+        storey1.children.iter().any(|c| c.summary.express_id == 13),
+        "the contained space should be a child of its containing storey (1)"
+    );
+    // Storey 2 only references it — it must not own it as a child…
+    assert!(
+        !storey2.children.iter().any(|c| c.summary.express_id == 13),
+        "a referenced space must not become a child of the referencing storey (2)"
+    );
+    // …nor re-list it as one of storey 2's elements.
+    assert!(
+        !storey2.elements.iter().any(|e| e.express_id == 13),
+        "a referenced spatial node must not be re-listed as a storey element"
+    );
+}

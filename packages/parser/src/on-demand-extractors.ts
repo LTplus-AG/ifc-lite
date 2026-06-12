@@ -690,7 +690,11 @@ export function extractGroupMembersOnDemand(
         const ref = store.entityIndex.byId.get(id);
         if (!ref) continue;
         const name = store.entities?.getName(id);
-        members.push({ id, name: name || undefined, type: ref.type });
+        // Canonical IfcPascalCase (e.g. "IfcSpace") — `ref.type` is the raw STEP
+        // token ("IFCSPACE"), which would break case-sensitive class checks in
+        // consumers (member-isolation toggles, lens zone matching). (#1075)
+        const type = store.entities?.getTypeName(id) || ref.type;
+        members.push({ id, name: name || undefined, type });
     }
     return members;
 }

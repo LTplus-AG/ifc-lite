@@ -311,9 +311,11 @@ export function createLensDataProvider(
       if (!groupIds || groupIds.length === 0) return [];
       const out: Array<{ id: number; name?: string; type: string }> = [];
       for (const gid of groupIds) {
-        const ref = store.entityIndex?.byId.get(gid);
         const name = store.entities?.getName(gid);
-        out.push({ id: gid, name: name || undefined, type: ref?.type ?? 'Unknown' });
+        // Canonical IfcPascalCase so the "By Zone" lens can match `IfcZone`
+        // deterministically; `byId.get(gid).type` is the raw STEP token. (#1075)
+        const type = store.entities?.getTypeName?.(gid) || store.entityIndex?.byId.get(gid)?.type || 'Unknown';
+        out.push({ id: gid, name: name || undefined, type });
       }
       return out;
     },

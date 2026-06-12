@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, normalizePath } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
@@ -223,12 +223,16 @@ export default defineConfig({
     (() => {
       const cesiumPkg = path.dirname(require.resolve('cesium/package.json'));
       const cesiumBuild = path.join(cesiumPkg, 'Build', 'Cesium');
+      // vite-plugin-static-copy globs `src` with tinyglobby, which treats `\` as
+      // an escape char — so the raw Windows paths from path.join match nothing
+      // ("No file was found to copy"). normalizePath -> forward slashes fixes it
+      // cross-platform (no-op on POSIX).
       return viteStaticCopy({
         targets: [
-          { src: path.join(cesiumBuild, 'Workers'), dest: 'cesium' },
-          { src: path.join(cesiumBuild, 'ThirdParty'), dest: 'cesium' },
-          { src: path.join(cesiumBuild, 'Assets'), dest: 'cesium' },
-          { src: path.join(cesiumBuild, 'Widgets'), dest: 'cesium' },
+          { src: normalizePath(path.join(cesiumBuild, 'Workers')), dest: 'cesium' },
+          { src: normalizePath(path.join(cesiumBuild, 'ThirdParty')), dest: 'cesium' },
+          { src: normalizePath(path.join(cesiumBuild, 'Assets')), dest: 'cesium' },
+          { src: normalizePath(path.join(cesiumBuild, 'Widgets')), dest: 'cesium' },
         ],
       });
     })(),

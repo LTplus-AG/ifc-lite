@@ -82,12 +82,35 @@ function syncVersions() {
   );
 
   cargoToml = cargoToml.replace(
-    /(ifc-lite-(?:core|geometry|wasm)\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
+    /(ifc-lite-(?:core|geometry|processing|clash|wasm)\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
     `$1${version}$2`
   );
 
   writeFileSync(cargoTomlPath, cargoToml);
   console.log(`✅ Updated Cargo.toml workspace version to ${version}`);
+
+  // Crate manifests carry `version = "…"` on their internal `path`
+  // dependencies so they are publishable to crates.io (cargo strips the
+  // path and keeps the version requirement on publish). Those literals
+  // must track the workspace version or every workspace build breaks with
+  // a version/path mismatch after a bump.
+  for (const member of ['core', 'geometry', 'processing', 'clash', 'wasm-bindings']) {
+    const memberTomlPath = join(rootDir, 'rust', member, 'Cargo.toml');
+    let memberToml;
+    try {
+      memberToml = readFileSync(memberTomlPath, 'utf8');
+    } catch {
+      continue;
+    }
+    const updated = memberToml.replace(
+      /(ifc-lite-(?:core|geometry|processing|clash|wasm)\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
+      `$1${version}$2`
+    );
+    if (updated !== memberToml) {
+      writeFileSync(memberTomlPath, updated);
+      console.log(`✅ Updated rust/${member}/Cargo.toml internal dep versions to ${version}`);
+    }
+  }
 
   // Update root package.json
   if (rootPackageJson.version !== version) {

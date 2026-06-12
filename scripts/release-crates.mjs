@@ -13,16 +13,9 @@
  *   - version already on crates.io  → skip (expected, logged)
  *   - version missing               → `cargo publish`; any failure FAILS the release
  *
- * Only `ifc-lite-core` and `ifc-lite-geometry` are published.
- * `ifc-lite-processing` and `ifc-lite-clash` have never been on crates.io and
- * carry version-less `path` dependencies, which makes them — and
- * `ifc-lite-wasm`, which depends on both — unpublishable as-is. Publishing
- * them is a deliberate public-surface decision, not a release-script default;
- * if that decision is made, add versions to their path deps and append them
- * (and `ifc-lite-wasm`) here in dependency order.
- *
- * `cargo publish` (≥1.66) blocks until the new version is visible in the
- * index, so no sleep is needed between dependent publishes.
+ * Crates are listed in dependency order: `cargo publish` (≥1.66) blocks
+ * until the new version is visible in the index, so no sleep is needed
+ * between dependent publishes.
  */
 
 import { execSync } from 'child_process';
@@ -32,8 +25,15 @@ import { dirname, join } from 'path';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// Dependency order: geometry depends on core.
-const CRATES = ['ifc-lite-core', 'ifc-lite-geometry'];
+// Dependency order: geometry depends on core; clash is dependency-free;
+// processing depends on core+geometry; wasm depends on all four.
+const CRATES = [
+  'ifc-lite-core',
+  'ifc-lite-geometry',
+  'ifc-lite-clash',
+  'ifc-lite-processing',
+  'ifc-lite-wasm',
+];
 
 const cargoToml = readFileSync(join(rootDir, 'Cargo.toml'), 'utf8');
 const versionMatch = cargoToml.match(

@@ -96,6 +96,13 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
       fillIntensity: 0.08,
       rimIntensity: 0.2,
       exposure: 0.75,
+      // Explicit night sky — the altitude-derived palette would read the
+      // high moon direction as a midday sun and paint a blue daytime sky.
+      sky: {
+        zenith: [0.012, 0.018, 0.04],
+        horizon: [0.04, 0.05, 0.09],
+        ground: [0.02, 0.02, 0.025],
+      },
     },
   },
 };

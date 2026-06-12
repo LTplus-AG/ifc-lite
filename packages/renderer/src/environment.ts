@@ -104,15 +104,18 @@ export function deriveSkyGradient(sunElevation: number): SkyGradient {
     horizon: [0.45, 0.22, 0.18],
     ground: [0.05, 0.04, 0.05],
   };
+  // Ground tones stay near-neutral grey: BIM cameras spend most of their
+  // time looking DOWN, so the below-horizon colour fills the screen — a
+  // warm "earth" tone reads as a mud-brown background there.
   const golden: SkyGradient = {
     zenith: [0.18, 0.32, 0.56],
     horizon: [0.95, 0.55, 0.28],
-    ground: [0.12, 0.10, 0.09],
+    ground: [0.11, 0.105, 0.105],
   };
   const day: SkyGradient = {
     zenith: [0.18, 0.40, 0.78],
     horizon: [0.66, 0.78, 0.90],
-    ground: [0.16, 0.14, 0.12],
+    ground: [0.14, 0.145, 0.15],
   };
 
   // sin(altitude) stops: night below -0.21 (~-12°), twilight to ~0,

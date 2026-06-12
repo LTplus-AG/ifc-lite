@@ -24,19 +24,13 @@ export interface EnvironmentSlice {
   envPreset: LightingPresetId;
   /** Draw a sky (procedural in WebGPU; atmosphere + sun in Cesium geo mode). */
   envSkyEnabled: boolean;
-  /**
-   * When the solar study is active, its computed sun position overrides the
-   * preset's fixed sun so daylight studies light the model truthfully.
-   */
-  envSunFollowsSolar: boolean;
   /** User exposure trim, multiplied onto the preset exposure. 1 = neutral. */
   envExposure: number;
-  /** Whether the Environment panel is open. */
+  /** Whether the Sun & Sky panel is open. */
   envPanelOpen: boolean;
 
   setEnvPreset: (preset: LightingPresetId) => void;
   setEnvSkyEnabled: (enabled: boolean) => void;
-  setEnvSunFollowsSolar: (follow: boolean) => void;
   setEnvExposure: (exposure: number) => void;
   setEnvPanelOpen: (open: boolean) => void;
   toggleEnvPanel: () => void;
@@ -47,7 +41,6 @@ const STORAGE_KEY = 'ifc-lite:environment';
 interface PersistedEnvironment {
   preset?: string;
   skyEnabled?: boolean;
-  sunFollowsSolar?: boolean;
   exposure?: number;
 }
 
@@ -62,12 +55,11 @@ function loadPersisted(): PersistedEnvironment {
   }
 }
 
-function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | 'envSunFollowsSolar' | 'envExposure'>): void {
+function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | 'envExposure'>): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       preset: state.envPreset,
       skyEnabled: state.envSkyEnabled,
-      sunFollowsSolar: state.envSunFollowsSolar,
       exposure: state.envExposure,
     } satisfies PersistedEnvironment));
   } catch { /* storage unavailable */ }
@@ -83,7 +75,6 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
   const initial = {
     envPreset: (stored.preset && isLightingPresetId(stored.preset) ? stored.preset : 'default') as LightingPresetId,
     envSkyEnabled: stored.skyEnabled === true,
-    envSunFollowsSolar: stored.sunFollowsSolar !== false,
     envExposure: clampExposure(stored.exposure ?? 1),
   };
 
@@ -99,7 +90,6 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
 
     setEnvPreset: (preset) => update({ envPreset: preset }),
     setEnvSkyEnabled: (enabled) => update({ envSkyEnabled: enabled }),
-    setEnvSunFollowsSolar: (follow) => update({ envSunFollowsSolar: follow }),
     setEnvExposure: (exposure) => update({ envExposure: clampExposure(exposure) }),
     setEnvPanelOpen: (open) => set({ envPanelOpen: open }),
     toggleEnvPanel: () => set((s) => ({ envPanelOpen: !s.envPanelOpen })),

@@ -358,7 +358,6 @@ export function Viewport({
   // clear, and Cesium draws its own atmosphere.
   const envPreset = useViewerStore((s) => s.envPreset);
   const envSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
-  const envSunFollowsSolar = useViewerStore((s) => s.envSunFollowsSolar);
   const envExposure = useViewerStore((s) => s.envExposure);
   const solarEnabledForEnv = useViewerStore((s) => s.solarEnabled);
   const solarSunDirection = useViewerStore((s) => s.solarSunDirection);
@@ -371,7 +370,7 @@ export function Viewport({
       skyEnabled: envSkyEnabled && !cesiumActive,
       exposure: (preset.exposure ?? 0.85) * envExposure,
     };
-    if (solarEnabledForEnv && envSunFollowsSolar && solarSunDirection) {
+    if (solarEnabledForEnv && solarSunDirection) {
       const altitude = solarSunAltitude
         ?? Math.asin(Math.max(-1, Math.min(1, solarSunDirection[1]))) * (180 / Math.PI);
       const sun = sunLightingForAltitude(altitude);
@@ -389,7 +388,6 @@ export function Viewport({
     envExposure,
     cesiumActive,
     solarEnabledForEnv,
-    envSunFollowsSolar,
     solarSunDirection,
     solarSunAltitude,
   ]);

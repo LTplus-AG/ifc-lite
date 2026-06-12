@@ -14,9 +14,9 @@ import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
 import { CesiumPlacementEditor } from './CesiumPlacementEditor';
-import { SolarPanel } from './SolarPanel';
-import { EnvironmentPanel } from './EnvironmentPanel';
+import { SunSkyPanel } from './SunSkyPanel';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
+import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
@@ -367,6 +367,8 @@ export function ViewportContainer() {
   // Feed the solar study's sun position into the WebGPU lighting environment
   // (viewer-space sun direction + panel readout when Cesium is off).
   useSolarEnvironment(georef);
+  // Sweep animation runs here so collapsing/closing the panel doesn't stop it.
+  useSolarSweep();
 
   // Determine whether Cesium button should be visible (model has georef or user added it via mutations).
   // Runs independently of cesiumEnabled so the button appears/disappears reactively.
@@ -1115,11 +1117,11 @@ export function ViewportContainer() {
           storeyElevations={georef.storeyElevations}
         />
       )}
-      {/* Top-right panel stack: solar study (self-gates on georeference)
-          above the environment (sky + lighting) panel. */}
-      <div className="absolute top-4 right-4 z-10 pointer-events-none flex flex-col items-end gap-2">
-        {georef && <SolarPanel />}
-        <EnvironmentPanel />
+      {/* Sun & Sky panel — sky, lighting presets and the sun-path study.
+          Anchored below the ViewCube (60px cube at top-6 right-6, plus the
+          overflow of its rotating faces) so it never covers navigation. */}
+      <div className="absolute top-32 right-4 z-10 pointer-events-none flex flex-col items-end gap-2">
+        <SunSkyPanel />
       </div>
       {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
         <CesiumPlacementEditor

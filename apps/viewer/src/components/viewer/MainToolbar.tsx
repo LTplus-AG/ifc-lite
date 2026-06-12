@@ -44,7 +44,6 @@ import {
   CalendarClock,
   Globe2,
   Sun,
-  SunMoon,
   Move,
   PenLine,
   Layers3,
@@ -517,11 +516,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleCesium = useViewerStore((state) => state.toggleCesium);
   const cesiumPlacementEditMode = useViewerStore((state) => state.cesiumPlacementEditMode);
   const setCesiumPlacementEditMode = useViewerStore((state) => state.setCesiumPlacementEditMode);
-  // Solar sun-path / shadow study state
+  // Sun & Sky panel state (sky, lighting presets, sun-path study)
   const solarEnabled = useViewerStore((state) => state.solarEnabled);
-  const toggleSolar = useViewerStore((state) => state.toggleSolar);
-  const setCesiumEnabled = useViewerStore((state) => state.setCesiumEnabled);
-  // Environment (sky + lighting) panel state
   const envPanelOpen = useViewerStore((state) => state.envPanelOpen);
   const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
   const envSkyEnabled = useViewerStore((state) => state.envSkyEnabled);
@@ -1632,55 +1628,31 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               </TooltipContent>
             </Tooltip>
           )}
-          {/* Sun-path + shadow study — needs the Cesium context, so enabling
-              it turns Cesium on too. */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={solarEnabled ? 'default' : 'ghost'}
-                size="icon-sm"
-                aria-label={solarEnabled ? 'Hide sun-path study' : 'Show sun-path study'}
-                aria-pressed={solarEnabled}
-                onClick={(e) => {
-                  (e.currentTarget as HTMLButtonElement).blur();
-                  const willEnable = !solarEnabled;
-                  toggleSolar();
-                  if (willEnable) setCesiumEnabled(true);
-                }}
-                className={cn(solarEnabled && 'bg-amber-500 text-zinc-950 hover:bg-amber-400')}
-              >
-                <Sun className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {solarEnabled ? 'Hide' : 'Show'} sun-path &amp; shadow study
-            </TooltipContent>
-          </Tooltip>
         </>
       )}
 
-      {/* Environment (sky + lighting) panel — available for every model,
-          georeferenced or not. */}
+      {/* Sun & Sky panel — sky, lighting presets and the sun-path study.
+          Available for every model, georeferenced or not. */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant={envPanelOpen ? 'default' : 'ghost'}
             size="icon-sm"
-            aria-label={envPanelOpen ? 'Close environment panel' : 'Open environment panel'}
+            aria-label={envPanelOpen ? 'Close Sun & Sky panel' : 'Open Sun & Sky panel'}
             aria-pressed={envPanelOpen}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
               toggleEnvPanel();
             }}
             className={cn(
-              (envPanelOpen || envSkyEnabled || envPreset !== 'default')
-                && 'bg-sky-600 text-white hover:bg-sky-700',
+              (envPanelOpen || solarEnabled || envSkyEnabled || envPreset !== 'default')
+                && 'bg-amber-500 text-zinc-950 hover:bg-amber-400',
             )}
           >
-            <SunMoon className="h-4 w-4" />
+            <Sun className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Sky &amp; lighting</TooltipContent>
+        <TooltipContent>Sun &amp; sky</TooltipContent>
       </Tooltip>
 
       {/*

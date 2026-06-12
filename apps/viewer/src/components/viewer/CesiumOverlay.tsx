@@ -363,7 +363,9 @@ export function CesiumOverlay({
           bottomContainer.style.right = 'auto';
         }
 
-        // Disable skybox/atmosphere/fog for transparent compositing
+        // Disable skybox/atmosphere/fog for transparent compositing.
+        // (The Sun & Sky panel's Sky toggle re-enables atmosphere/sun/fog
+        // via Effect 4b.)
         if (scene.skyBox) (scene.skyBox as any).show = false;
         if (scene.sun) scene.sun.show = false;
         if (scene.moon) scene.moon.show = false;
@@ -372,7 +374,22 @@ export function CesiumOverlay({
         scene.globe.showGroundAtmosphere = false;
         scene.backgroundColor = Cesium.Color.TRANSPARENT;
         scene.globe.baseColor = Cesium.Color.TRANSPARENT;
-        scene.globe.show = false;
+        if (dataSource === 'osm-buildings') {
+          // OSM massing context: keep the globe with the satellite base map —
+          // the extruded buildings sit ON TOP of the imagery, and the globe
+          // is what receives their cast shadows during a sun study.
+          scene.globe.show = true;
+          scene.globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
+          try {
+            const imagery = await Cesium.createWorldImageryAsync();
+            if (!cancelled) viewer.imageryLayers.addImageryProvider(imagery);
+          } catch { /* imagery unavailable — buildings still render */ }
+        } else {
+          // Photorealistic tiles bring their own ground; the globe would
+          // z-fight underneath them.
+          scene.globe.show = false;
+        }
+        if (cancelled) { viewer.destroy(); return; }
 
         // Add terrain
         if (terrainEnabled && ionToken) {
@@ -812,6 +829,8 @@ export function CesiumOverlay({
     const scene = viewer.scene;
     if (scene.skyAtmosphere) scene.skyAtmosphere.show = envSkyEnabled;
     scene.fog.enabled = envSkyEnabled;
+    // Haze on the satellite base map (no-op while the globe is hidden).
+    scene.globe.showGroundAtmosphere = envSkyEnabled && scene.globe.show;
     // Sun billboard only when the solar effect isn't already managing it
     // (applySolarScene runs with showSun and wins on solar state changes).
     if (scene.sun && !solarTouchedSceneRef.current) {

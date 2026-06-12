@@ -26,7 +26,10 @@ use axum::{
 use flate2::read::GzDecoder;
 use futures::stream::StreamExt;
 use ifc_lite_core::EntityScanner;
-use ifc_lite_processing::{extract_symbolic_data, SymbolicData};
+use ifc_lite_processing::{
+    extract_symbolic_data, process_geometry_filtered_with_quality, SymbolicData,
+    TessellationQuality,
+};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::io::Read;
@@ -37,16 +40,47 @@ pub struct ParseQuery {
     /// Opening filter mode: "default", "ignore_all", or "ignore_opaque".
     #[serde(default)]
     pub opening_filter: OpeningFilterMode,
+    /// Tessellation detail level (#976): "lowest" | "low" | "medium" | "high"
+    /// | "highest". Omitted = "medium" (byte-identical to the historical
+    /// output — and to what the wasm path produces without
+    /// `setTessellationQuality`, keeping client and server meshes in parity).
+    #[serde(default)]
+    pub tessellation_quality: Option<String>,
 }
 
-fn reject_unsupported_streaming_opening_filter(query: &ParseQuery) -> Result<(), ApiError> {
-    if query.opening_filter == OpeningFilterMode::Default {
-        return Ok(());
+impl ParseQuery {
+    /// Resolve and validate the requested tessellation level.
+    fn resolved_tessellation_quality(&self) -> Result<TessellationQuality, ApiError> {
+        match self.tessellation_quality.as_deref() {
+            None => Ok(TessellationQuality::default()),
+            Some(s) => TessellationQuality::parse_label(s).ok_or_else(|| {
+                ApiError::BadRequest(format!(
+                    "Unknown tessellation_quality '{s}' — expected lowest | low | medium | high | highest"
+                ))
+            }),
+        }
     }
+}
 
-    Err(ApiError::BadRequest(
-        "opening_filter is not yet supported for streaming endpoints; use /api/v1/parse or /api/v1/parse/parquet instead".into(),
-    ))
+/// Cache-key segment for a tessellation level. Empty for the default level so
+/// every pre-existing cache entry (all written at implicit `medium`) stays
+/// valid; non-default levels get distinct entries.
+fn quality_cache_suffix(quality: TessellationQuality) -> String {
+    if quality == TessellationQuality::default() {
+        String::new()
+    } else {
+        format!("-q{}", quality.label())
+    }
+}
+
+/// Request-level cache key: file hash + opening-filter suffix + quality suffix.
+fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
+    format!(
+        "{}-{}{}",
+        DiskCache::generate_key(data),
+        query.opening_filter.cache_key_suffix(),
+        quality_cache_suffix(quality)
+    )
 }
 
 /// Build the parquet geometry cache key for a given file hash and opening filter.
@@ -54,21 +88,36 @@ fn reject_unsupported_streaming_opening_filter(query: &ParseQuery) -> Result<(),
 /// Must stay in sync with the writer in `parse_parquet` / `parse_parquet_stream`,
 /// which derives the same suffix from `OpeningFilterMode::cache_key_suffix()`.
 ///
-/// Version bumped `v2` → `v3` with issue #900: geometry entries cached before the
-/// symbolic sidecar existed have no `{cache_key}-symbolic-v1` companion, so serving
-/// them would make `GET /api/v1/parse/symbolic/{cache_key}` return `202` forever and
-/// the parquet-stream fast-path emit no symbols. Bumping invalidates those entries so
-/// the next request reprocesses and writes the sidecar alongside the geometry.
-fn parquet_cache_key(hash: &str, opening_filter: OpeningFilterMode) -> String {
-    format!("{}-{}-parquet-v3", hash, opening_filter.cache_key_suffix())
+/// Version bumped `v2` → `v3` with issue #900 (symbolic sidecar), and `v3` → `v4`
+/// with the alignment audit: the server default path switched to per-item
+/// sub-meshes, streamed geometry now comes from the canonical pipeline
+/// (material chain + indexed colours + aggregate void propagation), and
+/// native builds compute normals — entries cached by the old pipelines
+/// would serve visibly different meshes.
+fn parquet_cache_key(
+    hash: &str,
+    opening_filter: OpeningFilterMode,
+    quality: TessellationQuality,
+) -> String {
+    format!(
+        "{}-{}{}-parquet-v4",
+        hash,
+        opening_filter.cache_key_suffix(),
+        quality_cache_suffix(quality)
+    )
 }
 
 /// Build the parquet metadata cache key for a given file hash and opening filter.
-fn parquet_metadata_cache_key(hash: &str, opening_filter: OpeningFilterMode) -> String {
+fn parquet_metadata_cache_key(
+    hash: &str,
+    opening_filter: OpeningFilterMode,
+    quality: TessellationQuality,
+) -> String {
     format!(
-        "{}-{}-parquet-metadata-v3",
+        "{}-{}{}-parquet-metadata-v4",
         hash,
-        opening_filter.cache_key_suffix()
+        opening_filter.cache_key_suffix(),
+        quality_cache_suffix(quality)
     )
 }
 
@@ -190,11 +239,8 @@ pub async fn parse_full(
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
-    let cache_key = format!(
-        "{}-{}",
-        DiskCache::generate_key(&data),
-        query.opening_filter.cache_key_suffix()
-    );
+    let tessellation_quality = query.resolved_tessellation_quality()?;
+    let cache_key = request_cache_key(&data, &query, tessellation_quality);
 
     // Check cache first
     if let Some(mut cached) = state.cache.get::<ParseResponse>(&cache_key).await? {
@@ -214,7 +260,8 @@ pub async fn parse_full(
     // callers can render IfcGrid axes and IfcAnnotation polylines from
     // the same response without re-uploading the file.
     let (result, symbolic_data) = tokio::task::spawn_blocking(move || {
-        let result = process_geometry_filtered(&content, opening_filter);
+        let result =
+            process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality);
         let symbolic = ifc_lite_processing::extract_symbolic_data(&content);
         (result, symbolic)
     })
@@ -254,7 +301,7 @@ pub async fn parse_stream(
     mut multipart: Multipart,
 ) -> Result<axum::response::Response, ApiError> {
     use axum::response::IntoResponse;
-    reject_unsupported_streaming_opening_filter(&query)?;
+    let tessellation_quality = query.resolved_tessellation_quality()?;
 
     // Extract file
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
@@ -264,8 +311,14 @@ pub async fn parse_stream(
     let max_batch_size = state.config.max_batch_size;
 
     // Create streaming response with dynamic batch sizing
-    let stream =
-        process_streaming(content, initial_batch_size, max_batch_size).map(|event: StreamEvent| {
+    let stream = process_streaming(
+        content,
+        initial_batch_size,
+        max_batch_size,
+        query.opening_filter,
+        tessellation_quality,
+    )
+    .map(|event: StreamEvent| {
             let json = serde_json::to_string(&event).unwrap_or_else(|e| {
                 serde_json::to_string(&StreamEvent::Error {
                     message: e.to_string(),
@@ -338,23 +391,18 @@ pub async fn parse_parquet_stream(
     use futures::StreamExt;
     use std::sync::{Arc, Mutex};
 
-    reject_unsupported_streaming_opening_filter(&query)?;
-
     // Extract file
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
-    // Generate cache key before processing (include opening filter)
-    let cache_key = format!(
-        "{}-{}",
-        DiskCache::generate_key(&data),
-        query.opening_filter.cache_key_suffix()
-    );
+    // Generate cache key before processing (include opening filter + quality)
+    let tessellation_quality = query.resolved_tessellation_quality()?;
+    let cache_key = request_cache_key(&data, &query, tessellation_quality);
     let cache_key_clone = cache_key.clone();
 
     // OPTIMIZATION: Check cache first and fast-path return if available
     // This avoids re-processing files that are already cached
-    let parquet_cache_key = format!("{}-parquet-v3", cache_key);
-    let metadata_cache_key = format!("{}-parquet-metadata-v3", cache_key);
+    let parquet_cache_key = format!("{}-parquet-v4", cache_key);
+    let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key);
 
     if let (Some(cached_parquet), Some(cached_metadata_json)) = (
         state.cache.get_bytes(&parquet_cache_key).await?,
@@ -437,7 +485,14 @@ pub async fn parse_parquet_stream(
     let cache_key_for_geometry = cache_key.clone();
 
     // Create streaming response that yields Parquet batches
-    let stream = process_streaming(content.clone(), initial_batch_size, max_batch_size).map(move |event: StreamEvent| {
+    let stream = process_streaming(
+        content.clone(),
+        initial_batch_size,
+        max_batch_size,
+        query.opening_filter,
+        tessellation_quality,
+    )
+    .map(move |event: StreamEvent| {
         let sse_event = match event {
             StreamEvent::Start { total_estimate } => {
                 ParquetStreamEvent::Start {
@@ -532,7 +587,7 @@ pub async fn parse_parquet_stream(
                         combined_parquet.extend_from_slice(&0u32.to_le_bytes()); // data_model_len = 0
 
                         // Cache geometry (same format as non-streaming)
-                        let parquet_cache_key = format!("{}-parquet-v3", key);
+                        let parquet_cache_key = format!("{}-parquet-v4", key);
                         if let Err(e) = cache.set_bytes(&parquet_cache_key, &combined_parquet).await {
                             tracing::error!(error = %e, "Failed to cache geometry from stream");
                         } else {
@@ -554,7 +609,7 @@ pub async fn parse_parquet_stream(
                             data_model_stats: None, // Data model cached separately via data model endpoint
                         };
                         if let Ok(metadata_json) = serde_json::to_vec(&metadata_header) {
-                            let metadata_cache_key = format!("{}-parquet-metadata-v3", key);
+                            let metadata_cache_key = format!("{}-parquet-metadata-v4", key);
                             if let Err(e) = cache.set_bytes(&metadata_cache_key, &metadata_json).await {
                                 tracing::error!(error = %e, "Failed to cache metadata from stream");
                             } else {
@@ -703,15 +758,12 @@ pub async fn parse_parquet(
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
-    let cache_key = format!(
-        "{}-{}",
-        DiskCache::generate_key(&data),
-        query.opening_filter.cache_key_suffix()
-    );
+    let tessellation_quality = query.resolved_tessellation_quality()?;
+    let cache_key = request_cache_key(&data, &query, tessellation_quality);
 
     // Check cache first (before any processing)
-    let parquet_cache_key = format!("{}-parquet-v3", cache_key);
-    let metadata_cache_key = format!("{}-parquet-metadata-v3", cache_key);
+    let parquet_cache_key = format!("{}-parquet-v4", cache_key);
+    let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key);
 
     if let (Some(cached_parquet), Some(cached_metadata_json)) = (
         state.cache.get_bytes(&parquet_cache_key).await?,
@@ -757,7 +809,7 @@ pub async fn parse_parquet(
             let ((geometry_result, data_model), symbolic_data) = rayon::join(
                 || {
                     rayon::join(
-                        || process_geometry_filtered(&content, opening_filter),
+                        || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
                         || extract_data_model(&content),
                     )
                 },
@@ -842,8 +894,8 @@ pub async fn parse_parquet(
     let metadata_json = serde_json::to_string(&metadata_header)?;
 
     // Cache the results for future requests
-    let parquet_cache_key = format!("{}-parquet-v3", cache_key_clone);
-    let metadata_cache_key = format!("{}-parquet-metadata-v3", cache_key_clone);
+    let parquet_cache_key = format!("{}-parquet-v4", cache_key_clone);
+    let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key_clone);
     let combined_parquet_clone = combined_parquet.clone();
     let metadata_json_clone = metadata_json.clone();
     let cache = state.cache.clone();
@@ -919,11 +971,8 @@ pub async fn parse_parquet_optimized(
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
-    let cache_key = format!(
-        "{}-{}",
-        DiskCache::generate_key(&data),
-        query.opening_filter.cache_key_suffix()
-    );
+    let tessellation_quality = query.resolved_tessellation_quality()?;
+    let cache_key = request_cache_key(&data, &query, tessellation_quality);
 
     tracing::info!(
         cache_key = %cache_key,
@@ -940,7 +989,7 @@ pub async fn parse_parquet_optimized(
     // (issue #900) — it's cached and served via the symbolic fetch endpoint.
     let (result, symbolic_data) = tokio::task::spawn_blocking(move || {
         rayon::join(
-            || process_geometry_filtered(&content, opening_filter),
+            || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
             || extract_symbolic_data(&content),
         )
     })
@@ -1109,7 +1158,11 @@ pub async fn check_cache(
     Query(query): Query<ParseQuery>,
     axum::extract::Path(hash): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
-    let parquet_cache_key = parquet_cache_key(&hash, query.opening_filter);
+    let parquet_cache_key = parquet_cache_key(
+        &hash,
+        query.opening_filter,
+        query.resolved_tessellation_quality()?,
+    );
 
     match state.cache.get_bytes(&parquet_cache_key).await? {
         Some(_) => {
@@ -1147,8 +1200,16 @@ pub async fn get_cached_geometry(
     Query(query): Query<ParseQuery>,
     axum::extract::Path(hash): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
-    let parquet_cache_key = parquet_cache_key(&hash, query.opening_filter);
-    let metadata_cache_key = parquet_metadata_cache_key(&hash, query.opening_filter);
+    let parquet_cache_key = parquet_cache_key(
+        &hash,
+        query.opening_filter,
+        query.resolved_tessellation_quality()?,
+    );
+    let metadata_cache_key = parquet_metadata_cache_key(
+        &hash,
+        query.opening_filter,
+        query.resolved_tessellation_quality()?,
+    );
 
     match (
         state.cache.get_bytes(&parquet_cache_key).await?,
@@ -1186,33 +1247,51 @@ mod tests {
     use super::*;
 
     /// Regression test for #587: the reader (`check_cache`) used to look up
-    /// `{hash}-parquet-v3`, while the writer (`parse_parquet`) stored
-    /// `{hash}-{opening_filter}-parquet-v3`, so the check always returned 404.
+    /// `{hash}-parquet-v4`, while the writer (`parse_parquet`) stored
+    /// `{hash}-{opening_filter}-parquet-v4`, so the check always returned 404.
     /// The shared helper must produce the same key the writer stores under.
     #[test]
     fn parquet_cache_key_matches_writer_format() {
         let hash = "0ab20f4e4014";
 
         // The writer composes `cache_key = format!("{hash}-{suffix}")` and then
-        // `format!("{cache_key}-parquet-v3")`. The helper must produce the same string.
+        // `format!("{cache_key}-parquet-v4")`. The helper must produce the same string.
         for mode in [
             OpeningFilterMode::Default,
             OpeningFilterMode::IgnoreAll,
             OpeningFilterMode::IgnoreOpaque,
         ] {
-            let writer_cache_key = format!("{}-{}", hash, mode.cache_key_suffix());
-            let writer_parquet_key = format!("{}-parquet-v3", writer_cache_key);
-            let writer_metadata_key = format!("{}-parquet-metadata-v3", writer_cache_key);
+            for quality in [
+                TessellationQuality::Medium,
+                TessellationQuality::Low,
+                TessellationQuality::Highest,
+            ] {
+                let writer_cache_key = format!(
+                    "{}-{}{}",
+                    hash,
+                    mode.cache_key_suffix(),
+                    quality_cache_suffix(quality)
+                );
+                let writer_parquet_key = format!("{}-parquet-v4", writer_cache_key);
+                let writer_metadata_key = format!("{}-parquet-metadata-v4", writer_cache_key);
 
-            assert_eq!(parquet_cache_key(hash, mode), writer_parquet_key);
-            assert_eq!(parquet_metadata_cache_key(hash, mode), writer_metadata_key);
+                assert_eq!(parquet_cache_key(hash, mode, quality), writer_parquet_key);
+                assert_eq!(
+                    parquet_metadata_cache_key(hash, mode, quality),
+                    writer_metadata_key
+                );
+            }
         }
     }
 
+    /// The default (medium) level maps to the LEGACY key shape — pre-existing
+    /// cache entries written before the quality knob stay valid.
     #[test]
     fn parquet_cache_key_default_filter_uses_default_suffix() {
-        let key = parquet_cache_key("abc", OpeningFilterMode::Default);
-        assert_eq!(key, "abc-default-parquet-v3");
+        let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::Medium);
+        assert_eq!(key, "abc-default-parquet-v4");
+        let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::High);
+        assert_eq!(key, "abc-default-qhigh-parquet-v4");
     }
 
     /// The symbolic cache key (issue #900) is derived from the full

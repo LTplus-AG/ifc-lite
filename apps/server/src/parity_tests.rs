@@ -240,7 +240,13 @@ async fn symbolic_endpoint_pending_for_unknown_key() {
 /// `/parse/parquet-stream`) attaches `symbolic_data` to its `Complete` event.
 #[tokio::test]
 async fn streaming_complete_event_carries_symbolic_data() {
-    let events: Vec<StreamEvent> = process_streaming(FIXTURE.to_string(), 100, 1000)
+    let events: Vec<StreamEvent> = process_streaming(
+        FIXTURE.to_string(),
+        100,
+        1000,
+        ifc_lite_processing::OpeningFilterMode::Default,
+        ifc_lite_processing::TessellationQuality::default(),
+    )
         .collect()
         .await;
 

@@ -1046,25 +1046,78 @@ impl IfcAPI {
                     hash_tolerance.map(|tol| GeometryHasher::new(tol, hash_world_rtc));
 
                 if has_openings {
-                    if let Ok(mut mesh) =
-                        router.process_element_with_voids(&entity, &mut decoder, &void_index)
-                    {
-                        if !mesh.is_empty() {
-                            if mesh.normals.len() != mesh.positions.len() {
-                                calculate_normals(&mut mesh);
+                    // Submesh-aware cut first (server parity): per-part
+                    // colours survive the void subtraction, so a voided
+                    // multi-layer wall or window keeps frame/glass split.
+                    let mut used_voided_submesh = false;
+                    if let Ok(sub_meshes) = router.process_element_with_submeshes_and_voids(
+                        &entity,
+                        &mut decoder,
+                        &void_index,
+                    ) {
+                        if !sub_meshes.is_empty() {
+                            let default_color = default_color_for_type(ifc_type).to_array();
+                            let element_color = element_styles.get(&id).copied();
+                            let mut mat_color_idx = 0usize;
+                            for sub in sub_meshes.sub_meshes {
+                                let geometry_id = sub.geometry_id;
+                                let mut mesh = sub.mesh;
+                                if mesh.is_empty() {
+                                    continue;
+                                }
+                                if mesh.normals.len() != mesh.positions.len() {
+                                    calculate_normals(&mut mesh);
+                                }
+                                let color = resolve_submesh_color(
+                                    geometry_id,
+                                    &geometry_styles,
+                                    &mut decoder,
+                                    None,
+                                    &mut mat_color_idx,
+                                    element_color,
+                                    default_color,
+                                );
+                                let ifc_type_name = type_name_cache
+                                    .entry(ifc_type)
+                                    .or_insert_with(|| ifc_type.name().to_string())
+                                    .clone();
+                                if let Some(h) = entity_hasher.as_mut() {
+                                    h.add_mesh(&mesh.positions, &mesh.indices);
+                                }
+                                emit_submesh_with_palette_split(
+                                    &mut mesh_collection,
+                                    id,
+                                    &ifc_type_name,
+                                    geometry_id,
+                                    mesh,
+                                    color,
+                                    &indexed_colour_full,
+                                );
+                                used_voided_submesh = true;
                             }
-                            let color = element_styles
-                                .get(&id)
-                                .copied()
-                                .unwrap_or_else(|| default_color_for_type(ifc_type).to_array());
-                            let ifc_type_name = type_name_cache
-                                .entry(ifc_type)
-                                .or_insert_with(|| ifc_type.name().to_string())
-                                .clone();
-                            if let Some(h) = entity_hasher.as_mut() {
-                                h.add_mesh(&mesh.positions, &mesh.indices);
+                        }
+                    }
+                    if !used_voided_submesh {
+                        if let Ok(mut mesh) =
+                            router.process_element_with_voids(&entity, &mut decoder, &void_index)
+                        {
+                            if !mesh.is_empty() {
+                                if mesh.normals.len() != mesh.positions.len() {
+                                    calculate_normals(&mut mesh);
+                                }
+                                let color = element_styles
+                                    .get(&id)
+                                    .copied()
+                                    .unwrap_or_else(|| default_color_for_type(ifc_type).to_array());
+                                let ifc_type_name = type_name_cache
+                                    .entry(ifc_type)
+                                    .or_insert_with(|| ifc_type.name().to_string())
+                                    .clone();
+                                if let Some(h) = entity_hasher.as_mut() {
+                                    h.add_mesh(&mesh.positions, &mesh.indices);
+                                }
+                                mesh_collection.add(MeshDataJs::new(id, ifc_type_name, mesh, color));
                             }
-                            mesh_collection.add(MeshDataJs::new(id, ifc_type_name, mesh, color));
                         }
                     }
                 } else {

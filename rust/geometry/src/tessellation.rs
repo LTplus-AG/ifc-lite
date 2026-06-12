@@ -38,6 +38,55 @@ pub enum TessellationQuality {
 }
 
 impl TessellationQuality {
+    /// Stable lowercase label — the single string surface shared by the wasm
+    /// `setTessellationQuality` setter and the server's `tessellation_quality`
+    /// query parameter, so the two consumer-facing spellings cannot drift.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Lowest => "lowest",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Highest => "highest",
+        }
+    }
+
+    /// Parse a consumer-facing label (case-insensitive). Inverse of
+    /// [`label`](Self::label); `None` for unknown spellings.
+    pub fn parse_label(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "lowest" => Some(Self::Lowest),
+            "low" => Some(Self::Low),
+            "medium" => Some(Self::Medium),
+            "high" => Some(Self::High),
+            "highest" => Some(Self::Highest),
+            _ => None,
+        }
+    }
+
+    /// Dense 0-4 index (Lowest..Highest). Used by the wasm bindings to store
+    /// the level in an atomic; total inverse of [`from_index`](Self::from_index).
+    pub fn to_index(self) -> u8 {
+        match self {
+            Self::Lowest => 0,
+            Self::Low => 1,
+            Self::Medium => 2,
+            Self::High => 3,
+            Self::Highest => 4,
+        }
+    }
+
+    /// Inverse of [`to_index`](Self::to_index); unknown values map to `Medium`.
+    pub fn from_index(idx: u8) -> Self {
+        match idx {
+            0 => Self::Lowest,
+            1 => Self::Low,
+            3 => Self::High,
+            4 => Self::Highest,
+            _ => Self::Medium,
+        }
+    }
+
     /// Density multiplier applied to segment counts.
     ///
     /// `Medium == 1.0` is load-bearing: it guarantees [`scale_segments`] is the

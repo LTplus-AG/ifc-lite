@@ -69,6 +69,30 @@ async function computeFileHash(file: File | ArrayBuffer): Promise<string> {
  * console.log(`Meshes: ${result.meshes.length}`);
  * ```
  */
+/**
+ * Per-request parse options shared by all parse endpoints.
+ */
+export interface ParseRequestOptions {
+  /**
+   * Tessellation detail level (#976). Omitted = `'medium'`, which is
+   * byte-identical to the historical output — and to what the wasm path
+   * produces without `setTessellationQuality`, so client-side and
+   * server-side meshes stay in parity. Non-default levels get distinct
+   * server cache entries.
+   */
+  tessellationQuality?: 'lowest' | 'low' | 'medium' | 'high' | 'highest';
+}
+
+/** Build the query string shared by the parse endpoints. */
+function parseQuery(options?: ParseRequestOptions): string {
+  const params = new URLSearchParams();
+  if (options?.tessellationQuality && options.tessellationQuality !== 'medium') {
+    params.set('tessellation_quality', options.tessellationQuality);
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
 export class IfcServerClient {
   private baseUrl: string;
   private timeout: number;
@@ -118,7 +142,7 @@ export class IfcServerClient {
    * }
    * ```
    */
-  async parse(file: File | ArrayBuffer): Promise<ParseResponse> {
+  async parse(file: File | ArrayBuffer, options?: ParseRequestOptions): Promise<ParseResponse> {
     // Compress file before upload for faster transfer
     const compressedFile = await compressGzip(file);
     const fileName = file instanceof File ? file.name : 'model.ifc';
@@ -126,7 +150,7 @@ export class IfcServerClient {
     const formData = new FormData();
     formData.append('file', compressedFile, fileName);
 
-    const response = await fetch(`${this.baseUrl}/api/v1/parse`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/parse${parseQuery(options)}`, {
       method: 'POST',
       body: formData,
       signal: AbortSignal.timeout(this.timeout),
@@ -164,7 +188,7 @@ export class IfcServerClient {
    * }
    * ```
    */
-  async parseParquet(file: File | ArrayBuffer): Promise<ParquetParseResponse> {
+  async parseParquet(file: File | ArrayBuffer, options?: ParseRequestOptions): Promise<ParquetParseResponse> {
     // Check if Parquet decoding is available
     const parquetReady = await isParquetAvailable();
     if (!parquetReady) {
@@ -182,7 +206,7 @@ export class IfcServerClient {
 
     // Step 2: Check if already cached
     const cacheCheckStart = performance.now();
-    const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}`, {
+    const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}${parseQuery(options)}`, {
       method: 'GET',
       signal: AbortSignal.timeout(5000), // 5s timeout for cache check
     });
@@ -191,12 +215,12 @@ export class IfcServerClient {
     if (cacheCheck.ok) {
       // Cache HIT - fetch directly without uploading!
       console.log(`[client] Cache HIT (check: ${cacheCheckTime.toFixed(0)}ms) - skipping upload`);
-      return this.fetchCachedGeometry(hash);
+      return this.fetchCachedGeometry(hash, options);
     }
 
     // Cache MISS - upload and process as usual
     console.log(`[client] Cache MISS (check: ${cacheCheckTime.toFixed(0)}ms) - uploading file`);
-    return this.uploadAndProcessParquet(file, hash);
+    return this.uploadAndProcessParquet(file, hash, options);
   }
 
   /**
@@ -226,7 +250,8 @@ export class IfcServerClient {
    */
   async parseParquetStream(
     file: File | ArrayBuffer,
-    onBatch: (batch: ParquetBatch) => void
+    onBatch: (batch: ParquetBatch) => void,
+    options?: ParseRequestOptions
   ): Promise<ParquetStreamResult> {
     const parquetReady = await isParquetAvailable();
     if (!parquetReady) {
@@ -294,7 +319,7 @@ export class IfcServerClient {
     formData.append('file', file instanceof File ? file : new Blob([file]), fileName);
 
     const uploadStart = performance.now();
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet-stream`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet-stream${parseQuery(options)}`, {
       method: 'POST',
       body: formData,
       signal: AbortSignal.timeout(this.timeout),
@@ -410,9 +435,12 @@ export class IfcServerClient {
    * Fetch cached geometry directly without uploading the file.
    * @private
    */
-  private async fetchCachedGeometry(hash: string): Promise<ParquetParseResponse> {
+  private async fetchCachedGeometry(
+    hash: string,
+    options?: ParseRequestOptions
+  ): Promise<ParquetParseResponse> {
     const fetchStart = performance.now();
-    const response = await fetch(`${this.baseUrl}/api/v1/cache/geometry/${hash}`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/cache/geometry/${hash}${parseQuery(options)}`, {
       method: 'GET',
       signal: AbortSignal.timeout(this.timeout),
     });
@@ -444,7 +472,7 @@ export class IfcServerClient {
    * Upload file and process on server.
    * @private
    */
-  private async uploadAndProcessParquet(file: File | ArrayBuffer, hash: string): Promise<ParquetParseResponse> {
+  private async uploadAndProcessParquet(file: File | ArrayBuffer, hash: string, options?: ParseRequestOptions): Promise<ParquetParseResponse> {
     const fileSize = file instanceof File ? file.size : file.byteLength;
     const fileName = file instanceof File ? file.name : 'model.ifc';
 
@@ -467,7 +495,7 @@ export class IfcServerClient {
     formData.append('file', uploadFile as Blob, fileName);
 
     const uploadStart = performance.now();
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet${parseQuery(options)}`, {
       method: 'POST',
       body: formData,
       signal: AbortSignal.timeout(this.timeout),
@@ -487,9 +515,11 @@ export class IfcServerClient {
 
     const metadata: ParquetMetadataHeader = JSON.parse(metadataHeader);
 
-    // Verify hash matches (sanity check)
-    if (metadata.cache_key !== hash) {
-      console.warn(`[client] Cache key mismatch: expected ${hash.substring(0, 16)}..., got ${metadata.cache_key.substring(0, 16)}...`);
+    // Sanity check: the server cache key is the file hash plus request
+    // suffixes (`{hash}-{opening_filter}[-q{level}]`), so verify derivation,
+    // not equality — the old equality check warned on every fresh upload.
+    if (!metadata.cache_key.startsWith(hash)) {
+      console.warn(`[client] Cache key mismatch: expected a key derived from ${hash.substring(0, 16)}..., got ${metadata.cache_key.substring(0, 16)}...`);
     }
 
     // Get binary payload
@@ -738,7 +768,7 @@ export class IfcServerClient {
    * console.log(`Payload: ${result.parquet_stats.payload_size} bytes`);
    * ```
    */
-  async parseParquetOptimized(file: File | ArrayBuffer): Promise<OptimizedParquetParseResponse> {
+  async parseParquetOptimized(file: File | ArrayBuffer, options?: ParseRequestOptions): Promise<OptimizedParquetParseResponse> {
     // Check if Parquet decoding is available
     const parquetReady = await isParquetAvailable();
     if (!parquetReady) {
@@ -755,7 +785,7 @@ export class IfcServerClient {
     const formData = new FormData();
     formData.append('file', compressedFile, fileName);
 
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet/optimized`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet/optimized${parseQuery(options)}`, {
       method: 'POST',
       body: formData,
       signal: AbortSignal.timeout(this.timeout),
@@ -832,7 +862,10 @@ export class IfcServerClient {
    * }
    * ```
    */
-  async *parseStream(file: File | ArrayBuffer): AsyncGenerator<StreamEvent> {
+  async *parseStream(
+    file: File | ArrayBuffer,
+    options?: ParseRequestOptions
+  ): AsyncGenerator<StreamEvent> {
     const formData = new FormData();
     const blob = file instanceof File ? file : new Blob([file], { type: 'application/octet-stream' });
     formData.append(
@@ -841,7 +874,7 @@ export class IfcServerClient {
       file instanceof File ? file.name : 'model.ifc'
     );
 
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/stream`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/parse/stream${parseQuery(options)}`, {
       method: 'POST',
       body: formData,
       // Don't set Content-Type header - browser will set it with boundary for FormData

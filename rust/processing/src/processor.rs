@@ -12,9 +12,10 @@ use crate::types::response::{
     QuickMetadataEntitySummary, QuickMetadataSpatialNode,
 };
 use ifc_lite_core::{
-    build_entity_index, scan_placement_bounds, AttributeValue, DecodedEntity, EntityDecoder,
+    build_entity_index, AttributeValue, DecodedEntity, EntityDecoder,
     EntityIndex, EntityScanner, IfcType,
 };
+use ifc_lite_geometry::TessellationQuality;
 use ifc_lite_geometry::{calculate_normals, GeometryRouter};
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -76,6 +77,13 @@ pub struct StreamingOptions {
     pub emit_quick_metadata_bootstrap: bool,
     /// Retain emitted meshes in the returned ProcessingResult.
     pub retain_emitted_meshes: bool,
+    /// Tessellation detail level (#976). `Medium` reproduces the historical
+    /// output byte-for-byte; consumer-selectable on the wasm path via
+    /// `setTessellationQuality`, and on the server via the
+    /// `tessellation_quality` query parameter. 2D symbolic extraction
+    /// (`symbolic.rs`) deliberately ignores the level — symbols are
+    /// resolution-independent line work.
+    pub tessellation_quality: TessellationQuality,
 }
 
 impl Default for StreamingOptions {
@@ -88,6 +96,7 @@ impl Default for StreamingOptions {
             include_presentation_layers: true,
             emit_quick_metadata_bootstrap: false,
             retain_emitted_meshes: true,
+            tessellation_quality: TessellationQuality::default(),
         }
     }
 }
@@ -744,12 +753,24 @@ pub fn process_geometry_streaming_with_options_and_bootstrap(
 
 /// Process IFC content with parallel geometry extraction and a configurable opening filter.
 pub fn process_geometry_filtered(content: &str, opening_filter: OpeningFilterMode) -> ProcessingResult {
+    process_geometry_filtered_with_quality(content, opening_filter, TessellationQuality::default())
+}
+
+/// Like [`process_geometry_filtered`] with a consumer-selected tessellation
+/// detail level (#976) — the server half of the quality knob the wasm path
+/// exposes via `setTessellationQuality`.
+pub fn process_geometry_filtered_with_quality(
+    content: &str,
+    opening_filter: OpeningFilterMode,
+    tessellation_quality: TessellationQuality,
+) -> ProcessingResult {
     process_geometry_streaming_filtered_with_options(
         content,
         opening_filter,
         StreamingOptions {
             initial_batch_size: usize::MAX,
             throughput_batch_size: usize::MAX,
+            tessellation_quality,
             ..StreamingOptions::default()
         },
         |_, _, _| {},
@@ -1278,6 +1299,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     // Preprocess complex geometry
     let preprocess_start = std::time::Instant::now();
     let mut router = GeometryRouter::with_units(content, &mut decoder);
+    router.set_tessellation_quality(options.tessellation_quality);
 
     // Resolve IfcSite and IfcBuilding placement transforms.
     let site_transform: Option<Vec<f64>> = site_entity_pos.and_then(|(start, end)| {
@@ -1486,6 +1508,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     &entity_index_arc,
                     unit_scale,
                     rtc_offset,
+                    options.tessellation_quality,
                     void_index_arc.as_ref(),
                     skipped_entity_ids.as_ref(),
                     geometry_style_index.as_ref(),
@@ -1622,6 +1645,7 @@ fn process_entity_job(
     entity_index_arc: &Arc<EntityIndex>,
     unit_scale: f64,
     rtc_offset: (f64, f64, f64),
+    tessellation_quality: TessellationQuality,
     void_index: &FxHashMap<u32, Vec<u32>>,
     skipped_entity_ids: &HashSet<u32>,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
@@ -1653,7 +1677,9 @@ fn process_entity_job(
         return Vec::new();
     }
 
-    let local_router = GeometryRouter::with_scale_and_rtc(unit_scale, rtc_offset);
+    let mut local_router = GeometryRouter::with_scale_and_quality(unit_scale, tessellation_quality);
+    local_router.set_rtc_offset(rtc_offset);
+    let local_router = local_router;
     let result = (|| -> Vec<MeshData> {
     let global_id = job.global_id.clone();
     let name = job.name.clone();
@@ -1680,69 +1706,105 @@ fn process_entity_job(
         );
     }
 
-    if is_opening_with_subparts(&job.ifc_type) {
-        if let Ok(sub_meshes) = local_router.process_element_with_submeshes(&entity, &mut local_decoder) {
+    let has_openings = void_index.get(&job.id).is_some_and(|v| !v.is_empty());
+
+    // Shared per-sub emission: per-item colour resolution through the
+    // canonical `resolve_submesh_color` precedence (#913 §4.2), identical to
+    // the wasm `processGeometryBatch` path so browser and backend can't
+    // drift on sub-mesh colouring.
+    let mut emit_sub_meshes = |sub_meshes: ifc_lite_geometry::SubMeshCollection,
+                               local_decoder: &mut EntityDecoder|
+     -> Vec<MeshData> {
+        let mut out: Vec<MeshData> = Vec::with_capacity(sub_meshes.len());
+        // Material colours for this element, used when a sub-mesh has no
+        // direct style — alternated so frame (opaque) and glazing
+        // (transparent) split across the window's parts (#913 §2.3).
+        let material_colors = element_material_colors.get(&job.id);
+        let mut mat_color_idx = 0usize;
+
+        for sub in sub_meshes.sub_meshes {
+            let mut sub_mesh = sub.mesh;
+            if sub_mesh.is_empty() {
+                continue;
+            }
+
+            if sub_mesh.normals.is_empty() {
+                calculate_normals(&mut sub_mesh);
+            }
+
+            let style = geometry_style_index.get(&sub.geometry_id);
+            // Direct style wins; else chase IfcMappedItem so mapped
+            // sub-geometry inherits its underlying style (#913 §2.7).
+            let direct_color = style.map(|s| s.color).or_else(|| {
+                find_geometry_item_color(sub.geometry_id, geometry_style_index, local_decoder)
+            });
+            let color = crate::style::resolve_submesh_color(
+                direct_color,
+                material_colors.map(|v| v.as_slice()),
+                &mut mat_color_idx,
+                element_color,
+            );
+            let material_name = style
+                .and_then(|s| s.material_name.as_ref())
+                .map(ToString::to_string);
+            let material_name = material_name.or_else(|| {
+                infer_opening_subpart_material_name(&job.ifc_type, color, sub.geometry_id)
+            });
+
+            let mut mesh_data = MeshData::new(
+                job.id,
+                job.ifc_type.name().to_string(),
+                sub_mesh.positions,
+                sub_mesh.normals,
+                sub_mesh.indices,
+                color,
+            )
+            .with_element_metadata(global_id.clone(), name.clone(), presentation_layer.clone())
+            .with_properties(space_zone_properties.clone())
+            .with_style_metadata(material_name, Some(sub.geometry_id));
+            convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
+            out.push(mesh_data);
+        }
+        out
+    };
+
+    if has_openings {
+        // Voided elements FIRST — branch order matches the wasm path, so a
+        // voided window is CUT rather than rendered uncut-as-subparts.
+        // Prefer the submesh-aware cut (per-part colours survive the void
+        // subtraction); the single-mesh cut below stays as the fallback.
+        if let Ok(sub_meshes) = local_router.process_element_with_submeshes_and_voids(
+            &entity,
+            &mut local_decoder,
+            void_index,
+        ) {
             if !sub_meshes.is_empty() {
-                let mut out: Vec<MeshData> = Vec::with_capacity(sub_meshes.len());
-                // Material colours for this element, used when a sub-mesh has no
-                // direct style — alternated so frame (opaque) and glazing
-                // (transparent) split across the window's parts (#913 §2.3).
-                let material_colors = element_material_colors.get(&job.id);
-                let mut mat_color_idx = 0usize;
-
-                for sub in sub_meshes.sub_meshes {
-                    let mut sub_mesh = sub.mesh;
-                    if sub_mesh.is_empty() {
-                        continue;
-                    }
-
-                    if sub_mesh.normals.is_empty() {
-                        calculate_normals(&mut sub_mesh);
-                    }
-
-                    let style = geometry_style_index.get(&sub.geometry_id);
-                    // Direct style wins; else chase IfcMappedItem so mapped
-                    // sub-geometry inherits its underlying style (#913 §2.7).
-                    let direct_color = style.map(|s| s.color).or_else(|| {
-                        find_geometry_item_color(
-                            sub.geometry_id,
-                            geometry_style_index,
-                            &mut local_decoder,
-                        )
-                    });
-                    // The shared resolver owns the precedence below the direct
-                    // style + the transparent/opaque alternation (#913 §4.2), so
-                    // the browser and the backend can't drift on it.
-                    let color = crate::style::resolve_submesh_color(
-                        direct_color,
-                        material_colors.map(|v| v.as_slice()),
-                        &mut mat_color_idx,
-                        element_color,
-                    );
-                    let material_name = style
-                        .and_then(|s| s.material_name.as_ref())
-                        .map(ToString::to_string);
-                    let material_name = material_name.or_else(|| {
-                        infer_opening_subpart_material_name(&job.ifc_type, color, sub.geometry_id)
-                    });
-
-                    let mut mesh_data = MeshData::new(
-                        job.id,
-                        job.ifc_type.name().to_string(),
-                        sub_mesh.positions,
-                        sub_mesh.normals,
-                        sub_mesh.indices,
-                        color,
-                    )
-                    .with_element_metadata(global_id.clone(), name.clone(), presentation_layer.clone())
-                    .with_properties(space_zone_properties.clone())
-                    .with_style_metadata(material_name, Some(sub.geometry_id));
-                    convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
-                    out.push(mesh_data);
-                }
-
+                let out = emit_sub_meshes(sub_meshes, &mut local_decoder);
                 if !out.is_empty() {
                     return out;
+                }
+            }
+        }
+    } else {
+        // #858: an IfcIndexedColourMap colours faces of a single face set —
+        // those elements keep the single-mesh + palette-split path below.
+        let has_indexed_colour = !indexed_colour_full.is_empty()
+            && find_indexed_colour_for_element(&entity, indexed_colour_full, &mut local_decoder)
+                .is_some();
+        if !has_indexed_colour {
+            // Submesh path for ALL types (parity with `processGeometryBatch`):
+            // per-item colours AND per-item error skipping — one unsupported
+            // representation item no longer makes the whole element invisible
+            // in server/parquet output while it renders partially in the
+            // browser.
+            if let Ok(sub_meshes) =
+                local_router.process_element_with_submeshes(&entity, &mut local_decoder)
+            {
+                if !sub_meshes.is_empty() {
+                    let out = emit_sub_meshes(sub_meshes, &mut local_decoder);
+                    if !out.is_empty() {
+                        return out;
+                    }
                 }
             }
         }

@@ -355,15 +355,11 @@ impl IfcAPI {
     pub fn set_tessellation_quality(&self, level: Option<String>) -> Result<(), JsValue> {
         let discriminant = match level.as_deref() {
             None => TESSELLATION_QUALITY_MEDIUM,
-            Some(s) => match s.to_ascii_lowercase().as_str() {
-                "lowest" => 0,
-                "low" => 1,
-                "medium" => TESSELLATION_QUALITY_MEDIUM,
-                "high" => 3,
-                "highest" => 4,
-                other => {
+            Some(s) => match ifc_lite_geometry::TessellationQuality::parse_label(s) {
+                Some(q) => q.to_index(),
+                None => {
                     return Err(JsValue::from_str(&format!(
-                        "Unknown tessellation quality '{other}' — expected \
+                        "Unknown tessellation quality '{s}' — expected \
                          lowest | low | medium | high | highest"
                     )))
                 }
@@ -393,11 +389,7 @@ impl IfcAPI {
             .tessellation_quality
             .load(std::sync::atomic::Ordering::Relaxed)
         {
-            0 => TessellationQuality::Lowest,
-            1 => TessellationQuality::Low,
-            3 => TessellationQuality::High,
-            4 => TessellationQuality::Highest,
-            _ => TessellationQuality::Medium,
+            idx => TessellationQuality::from_index(idx),
         }
     }
 

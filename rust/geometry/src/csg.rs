@@ -1289,14 +1289,13 @@ fn add_triangle_to_mesh(mesh: &mut Mesh, triangle: &Triangle) {
 }
 
 /// Calculate smooth normals for a mesh.
-/// On desktop, this is a no-op because the frontend computes normals in JS
-/// after decoding (normals are not sent over IPC to save bandwidth).
-/// WASM path keeps full normal calculation.
-#[cfg(not(target_arch = "wasm32"))]
-#[inline]
-pub fn calculate_normals(_mesh: &mut Mesh) {}
-
-#[cfg(target_arch = "wasm32")]
+///
+/// One real implementation on every target. This used to be a no-op on
+/// native (a leftover of the decommissioned desktop IPC path, which
+/// recomputed normals in JS): the server silently shipped EMPTY normal
+/// buffers for brep/surface/swept meshes, which the parquet writer
+/// zero-padded and the glTF exporter dropped — while the same model loaded
+/// via wasm had real normals (alignment audit).
 #[inline]
 pub fn calculate_normals(mesh: &mut Mesh) {
     let vertex_count = mesh.vertex_count();

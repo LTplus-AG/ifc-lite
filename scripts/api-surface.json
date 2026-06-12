@@ -3574,6 +3574,7 @@
     "ParquetStreamProgressEvent: interface",
     "ParquetStreamResult: interface",
     "ParquetStreamStartEvent: interface",
+    "ParseRequestOptions: interface",
     "ParseResponse: interface",
     "ProcessingStats: interface",
     "Quantity: interface",

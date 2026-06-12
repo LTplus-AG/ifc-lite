@@ -4,45 +4,6 @@
 
 //! Styling, color extraction, and building rotation for IFC-Lite API
 
-/// Resolve the geometry ID + dominant colour from an `IfcIndexedColourMap`.
-///
-/// Schema (IFC4):
-/// - attr 0: `MappedTo` → IfcTessellatedFaceSet (target geometry)
-/// - attr 1: `Opacity` (optional REAL, 0..1 — 1.0 when omitted)
-/// - attr 2: `Colours` → IfcColourRgbList
-/// - attr 3: `ColourIndex` → list of 1-based indices into `Colours`
-///
-/// CATIA exports almost always reference a single colour, so picking
-/// `colour[ColourIndex[0]]` is the right call. For multi-colour maps we
-/// pick the most-frequent index — captures the dominant tone, leaves the
-/// per-face variation for a future mesh-data upgrade.
-///
-/// Used by the streaming pre-pass in `gpu_meshes.rs` which has already
-/// collected entity spans during its scan — hence the span-based signature
-/// rather than entity-id-only.
-pub(crate) fn extract_color_from_indexed_colour_map_span(
-    id: u32,
-    start: usize,
-    end: usize,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<(u32, [f32; 4])> {
-    extract_color_from_indexed_colour_map(id, start, end, decoder)
-}
-
-fn extract_color_from_indexed_colour_map(
-    id: u32,
-    start: usize,
-    end: usize,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<(u32, [f32; 4])> {
-    // Delegate to the canonical resolver in `ifc_lite_processing::style`
-    // (issue #913, Phase 2e). The browser keeps only the span→entity decode;
-    // the dominant-colour logic lives once, shared with the backend.
-    let entity = decoder.decode_at_with_id(id, start, end).ok()?;
-    let map = ifc_lite_processing::style::resolve_indexed_colour_map_full(&entity, decoder)?;
-    Some((map.geometry_id, map.dominant().to_array()))
-}
-
 /// Find color for a geometry item, following MappedItem references if needed.
 /// This handles the case where IfcStyledItem points to geometry inside a MappedRepresentation,
 /// not to the MappedItem itself.
@@ -189,12 +150,9 @@ fn extract_color_from_style_assignment(
 /// Data collected during the combined single-pass scan.
 /// For a 487 MB file this saves ~2-3 s by eliminating redundant full-file scans.
 pub(crate) struct PrePassData {
-    /// Geometry ID → apparent rendering color (IfcStyledItem →
-    /// IfcSurfaceStyleRendering.DiffuseColour with SurfaceColour fallback,
-    /// or IfcIndexedColourMap dominant colour).
-    pub geometry_styles: rustc_hash::FxHashMap<u32, [f32; 4]>,
-    /// Host element → opening elements (from IfcRelVoidsElement)
-    pub void_index: rustc_hash::FxHashMap<u32, Vec<u32>>,
+    /// The shared post-scan resolution (styles, material chain, voids) — the
+    /// exact resolver the native pipeline and the streaming prepass run.
+    pub resolved: ifc_lite_processing::prepass::ResolvedPrepass,
     /// IfcProject entity ID (for unit extraction)
     pub project_id: Option<u32>,
     /// IfcSite entity position (id, start, end) — for building rotation extraction
@@ -206,95 +164,39 @@ pub(crate) struct PrePassData {
 }
 
 /// Single EntityScanner pass that collects everything needed before geometry
-/// processing. Replaces the former sequence of:
-///   build_geometry_style_index  (full scan)
-///   build_element_style_index   (full scan + 208 K decodes)
-///   pre-pass for void + brep    (full scan)
-///   processing scan              (full scan)
+/// processing: the scan loop stashes spans, and ALL semantic resolution
+/// (styled-item precedence, #663/#858 indexed colours, the #407 material
+/// chain, voids + #845 aggregate propagation) runs in the SHARED
+/// `ifc_lite_processing::prepass::resolve_prepass` — the same code the native
+/// pipeline and `buildPrePassStreaming` run.
 pub(crate) fn combined_pre_pass(
     content: &[u8],
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> PrePassData {
     use ifc_lite_core::EntityScanner;
-    use rustc_hash::FxHashMap;
+    use ifc_lite_processing::prepass::{resolve_prepass, PrepassSpans, ResolveOptions};
 
     let estimated_elements = content.len() / 2000;
 
-    let mut geometry_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    // IfcIndexedColourMap side-map (#663). Merged into `geometry_styles` after
-    // the scan so IfcStyledItem keeps precedence regardless of scan order.
-    let mut colour_map_styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    let mut spans = PrepassSpans::default();
     let mut project_id: Option<u32> = None;
     let mut site_position: Option<(u32, usize, usize)> = None;
     let mut simple_jobs = Vec::with_capacity(estimated_elements / 2);
     let mut complex_jobs = Vec::with_capacity(estimated_elements / 2);
 
-    // Material chain collection: orphan styled items, material def reprs, rel associates
-    // Orphan IfcStyledItem (null Item): styled_item_id → color
-    let mut orphan_styled_items: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    // IfcMaterialDefinitionRepresentation: material_id → [styled_repr_id, ...]
-    let mut material_def_reprs: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    // IfcRelAssociatesMaterial: element_id → material_select_id
-    let mut element_to_material: FxHashMap<u32, u32> = FxHashMap::default();
-
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         match type_name {
-            "IFCSTYLEDITEM" => {
-                if let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) {
-                    if let Some(geometry_id) = styled_item.get_ref(0) {
-                        // Normal IfcStyledItem with Item reference → geometry_styles
-                        if !geometry_styles.contains_key(&geometry_id) {
-                            if let Some(styles_attr) = styled_item.get(1) {
-                                if let Some(color) = extract_color_from_styles(styles_attr, decoder)
-                                {
-                                    geometry_styles.insert(geometry_id, color);
-                                }
-                            }
-                        }
-                    } else {
-                        // Orphan IfcStyledItem (null Item) — material-based color
-                        if let Some(styles_attr) = styled_item.get(1) {
-                            if let Some(color) = extract_color_from_styles(styles_attr, decoder) {
-                                orphan_styled_items.insert(id, color);
-                            }
-                        }
-                    }
-                }
+            "IFCSTYLEDITEM" => spans.styled_items.push((id, start, end)),
+            "IFCINDEXEDCOLOURMAP" => spans.indexed_colour_maps.push((id, start, end)),
+            "IFCMATERIALDEFINITIONREPRESENTATION" => {
+                spans.material_def_reprs.push((id, start, end))
             }
-            "IFCINDEXEDCOLOURMAP" => {
-                // IFC4 per-face-set colour mechanism used by CATIA /
-                // 3DEXPERIENCE exports (#663). Held in a side map and merged
-                // below with lower precedence than IfcStyledItem.
-                if let Some((geometry_id, color)) =
-                    extract_color_from_indexed_colour_map(id, start, end, decoder)
-                {
-                    colour_map_styles.entry(geometry_id).or_insert(color);
-                }
-            }
-            "IFCMATERIALDEFINITIONREPRESENTATION" | "IFCRELASSOCIATESMATERIAL" => {
-                collect_material_entity(
-                    id,
-                    type_name,
-                    start,
-                    end,
-                    decoder,
-                    &mut orphan_styled_items,
-                    &mut material_def_reprs,
-                    &mut element_to_material,
-                );
-            }
-            "IFCRELVOIDSELEMENT" => {
-                if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                    if let (Some(host_id), Some(opening_id)) =
-                        (entity.get_ref(4), entity.get_ref(5))
-                    {
-                        void_index.entry(host_id).or_default().push(opening_id);
-                    }
-                }
-            }
+            "IFCRELASSOCIATESMATERIAL" => spans.rel_associates_material.push((id, start, end)),
+            "IFCRELVOIDSELEMENT" => spans.void_rels.push((id, start, end)),
+            "IFCRELFILLSELEMENT" => spans.fills_rels.push((id, start, end)),
+            "IFCRELAGGREGATES" => spans.aggregate_rels.push((id, start, end)),
             "IFCPROJECT" => {
                 if project_id.is_none() {
                     project_id = Some(id);
@@ -320,49 +222,17 @@ pub(crate) fn combined_pre_pass(
         }
     }
 
-    // IfcStyledItem wins; only geometries WITHOUT a styled-item entry pick up
-    // their IfcIndexedColourMap colour (#663). Done after the scan so scan
-    // order doesn't decide precedence.
-    for (geometry_id, color) in colour_map_styles {
-        geometry_styles.entry(geometry_id).or_insert(color);
-    }
-
-    // Build material style index: material_id → [color, ...]
-    // Chain: material → IfcMaterialDefinitionRepresentation → IfcStyledRepresentation → orphan IfcStyledItem
-    let material_styles =
-        build_material_style_index(&material_def_reprs, &orphan_styled_items, decoder);
-
-    // Build element → material colors map
-    let element_material_styles =
-        build_element_material_styles(&element_to_material, &material_styles, decoder);
-
-    // Flat material_id → color map; merge into geometry_styles so per-layer
-    // slices (whose geometry_id = IfcMaterial id) resolve through the normal
-    // path. IFC express IDs are globally unique across types so no collision.
-    for (&mat_id, &color) in flatten_material_color_index(&material_styles).iter() {
-        geometry_styles.entry(mat_id).or_insert(color);
-    }
-
-    // Mirror what `buildPrePassStreaming` already does in `gpu_meshes.rs`
-    // (the `for (&element_id, colors) in &element_material_styles { … }`
-    // block): fold each element's single resolved material colour into
-    // `geometry_styles` keyed by the **element** express ID. Without this,
-    // the path that goes through `combined_pre_pass` (`buildPrePassOnce`)
-    // leaves the colour unread — `resolve_element_color`'s element-id fallback
-    // finds nothing and material-chain-only elements render as the
-    // per-type grey default on those APIs. The streaming path didn't
-    // exhibit the bug because it folds entries inline.
-    for (&element_id, colors) in &element_material_styles {
-        if let Some(&color) = colors.first() {
-            geometry_styles.entry(element_id).or_insert(color);
-        }
-    }
-
-    // Propagate voids from aggregate parents (IfcWall) to children (IfcBuildingElementPart)
-    // so that multilayer wall parts also get window/door cutouts. The returned
-    // part→parent map is unused here (the merge-layers skip-set is rebuilt in
-    // gpu_meshes), but the call mutates `void_index` in place — keep it.
-    let _ = ifc_lite_geometry::propagate_voids_to_parts(&mut void_index, content, decoder);
+    // Shared post-scan resolution. Full per-triangle palettes stay per-worker
+    // rebuilds (`get_or_build_indexed_colour_maps`); the prepass only ships
+    // the dominant colours on the wire.
+    let resolved = resolve_prepass(
+        &spans,
+        decoder,
+        ResolveOptions {
+            collect_indexed_colour_full: false,
+            defer_attached_styles: false,
+        },
+    );
 
     // #957 + Model/Types switch: emit IfcTypeProduct RepresentationMap geometry
     // (annex-E orphan types AND instanced type-library shapes). processGeometryBatch
@@ -370,8 +240,7 @@ pub(crate) fn combined_pre_pass(
     complex_jobs.extend(collect_type_geometry_jobs(content, decoder));
 
     PrePassData {
-        geometry_styles,
-        void_index,
+        resolved,
         project_id,
         site_position,
         simple_jobs,
@@ -503,129 +372,6 @@ pub(crate) fn build_instantiated_type_ids(
     instantiated
 }
 
-/// Build material style index: maps material IDs to their colors.
-/// Follows: material → IfcMaterialDefinitionRepresentation → IfcStyledRepresentation → orphan IfcStyledItem
-pub(crate) fn build_material_style_index(
-    material_def_reprs: &rustc_hash::FxHashMap<u32, Vec<u32>>,
-    orphan_styled_items: &rustc_hash::FxHashMap<u32, [f32; 4]>,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> {
-    // Canonical implementation lives in `ifc_lite_processing::style` (#913).
-    ifc_lite_processing::style::build_material_style_index(
-        material_def_reprs,
-        orphan_styled_items,
-        decoder,
-    )
-}
-
-/// Build element → material colors map.
-/// Resolves the full chain from element → IfcRelAssociatesMaterial → material select →
-/// individual materials → colors.
-/// Handles: IfcMaterial, IfcMaterialList, IfcMaterialLayerSet, IfcMaterialLayerSetUsage,
-///          IfcMaterialConstituentSet (IFC4), IfcMaterialProfileSet (IFC4)
-pub(crate) fn build_element_material_styles(
-    element_to_material: &rustc_hash::FxHashMap<u32, u32>,
-    material_styles: &rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> {
-    use rustc_hash::FxHashMap;
-
-    let mut result: FxHashMap<u32, Vec<[f32; 4]>> = FxHashMap::default();
-
-    for (&element_id, &material_select_id) in element_to_material {
-        let mut colors: Vec<[f32; 4]> = Vec::new();
-
-        // Collect all individual material IDs from the material select
-        // (canonical SELECT-walk in `ifc_lite_processing::style`, #913).
-        let material_ids =
-            ifc_lite_processing::style::resolve_material_ids(material_select_id, decoder);
-
-        for material_id in material_ids {
-            if let Some(mat_colors) = material_styles.get(&material_id) {
-                colors.extend(mat_colors);
-            }
-        }
-
-        if !colors.is_empty() {
-            result.insert(element_id, colors);
-        }
-    }
-
-    result
-}
-
-/// Flatten a `material_id -> Vec<color>` map into `material_id -> color` by
-/// picking the first opaque color per material. Used to key layered sub-mesh
-/// colour lookups on material ID — each layer slice's `geometry_id` is its
-/// `IfcMaterial` entity ID. Canonical impl in `ifc_lite_processing::style` (#913).
-pub(crate) fn flatten_material_color_index(
-    material_styles: &rustc_hash::FxHashMap<u32, Vec<[f32; 4]>>,
-) -> rustc_hash::FxHashMap<u32, [f32; 4]> {
-    ifc_lite_processing::style::flatten_material_color_index(material_styles)
-}
-
-/// Process a single entity for material-related data collection.
-/// Called from both `combined_pre_pass` (inline in the scan loop) and
-/// `collect_material_data` (standalone scan).
-pub(crate) fn collect_material_entity(
-    id: u32,
-    type_name: &str,
-    start: usize,
-    end: usize,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-    orphan_styled_items: &mut rustc_hash::FxHashMap<u32, [f32; 4]>,
-    material_def_reprs: &mut rustc_hash::FxHashMap<u32, Vec<u32>>,
-    element_to_material: &mut rustc_hash::FxHashMap<u32, u32>,
-) {
-    match type_name {
-        "IFCSTYLEDITEM" => {
-            if let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) {
-                // Only collect orphan styled items (null Item attribute)
-                if styled_item.get_ref(0).is_none() {
-                    if let Some(styles_attr) = styled_item.get(1) {
-                        if let Some(color) = extract_color_from_styles(styles_attr, decoder) {
-                            orphan_styled_items.insert(id, color);
-                        }
-                    }
-                }
-            }
-        }
-        "IFCMATERIALDEFINITIONREPRESENTATION" => {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                if let Some(material_id) = entity.get_ref(3) {
-                    if let Some(reprs_attr) = entity.get(2) {
-                        if let Some(list) = reprs_attr.as_list() {
-                            for item in list {
-                                if let Some(repr_id) = item.as_entity_ref() {
-                                    material_def_reprs
-                                        .entry(material_id)
-                                        .or_default()
-                                        .push(repr_id);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        "IFCRELASSOCIATESMATERIAL" => {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                if let Some(material_select_id) = entity.get_ref(5) {
-                    if let Some(related_attr) = entity.get(4) {
-                        if let Some(list) = related_attr.as_list() {
-                            for item in list {
-                                if let Some(element_id) = item.as_entity_ref() {
-                                    element_to_material.insert(element_id, material_select_id);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
-}
 
 /// Resolve element color inline during processing by following its
 /// representation chain. Replaces the upfront `build_element_style_index`

@@ -91,7 +91,7 @@ export class IfcAPI {
    * Process geometry for a subset of pre-scanned entities.
    * Takes raw bytes and pre-pass data from buildPrePassOnce.
    */
-  processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array): MeshCollection;
+  processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
   /**
    * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
    * instead of waiting for the full file scan to complete.
@@ -845,7 +845,7 @@ export interface InitOutput {
   readonly ifcapi_parseGridAxes: (a: number, b: number, c: number) => number;
   readonly ifcapi_parseGridLines: (a: number, b: number, c: number) => number;
   readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
-  readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number) => number;
+  readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
   readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;

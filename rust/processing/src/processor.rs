@@ -840,34 +840,20 @@ pub fn process_geometry_streaming_filtered_with_options(
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
     tracing::debug!("Built entity index");
 
-    let mut geometry_style_index: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-    // IfcIndexedColourMap data, keyed by target geometry id (issue #913).
-    // Collected eagerly regardless of `defer_style_updates`. The dominant
-    // colour is merged into `geometry_style_index` (styled items win); the full
-    // per-triangle map drives sub-mesh splitting at emission (#858).
-    let mut indexed_colour_index: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    let mut indexed_colour_full: FxHashMap<u32, crate::style::FullIndexedColourMap> =
-        FxHashMap::default();
-    // Material-chain colour inputs (issue #407): orphan IfcStyledItem colours,
-    // material → styled representations, and element → material associations.
-    // Joined into `element_material_color` after the scan.
-    let mut orphan_styled_items: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
-    let mut material_def_reprs: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let mut element_to_material: FxHashMap<u32, u32> = FxHashMap::default();
+    // Styled items / indexed colour maps / material chain / voids / fills /
+    // aggregates are span-stashed during the scan and resolved afterwards by
+    // the SHARED resolver (`crate::prepass::resolve_prepass`) — the exact code
+    // the browser prepasses run, so the #858/#913-class resolution drift
+    // cannot recur.
+    let mut prepass_spans = crate::prepass::PrepassSpans::default();
+    let mut project_id: Option<u32> = None;
     let mut presentation_layer_by_assigned_id: FxHashMap<u32, String> = FxHashMap::default();
     let mut property_values_by_id: FxHashMap<u32, (String, String)> = FxHashMap::default();
     let mut property_sets_by_id: FxHashMap<u32, PropertySetDefinition> = FxHashMap::default();
     let mut rel_defines_by_properties: Vec<RelDefinesByPropertiesLink> = Vec::new();
 
-    // Collect geometry entities and build void index
+    // Collect geometry entities
     let mut scanner = EntityScanner::new(content);
-    let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let mut filling_by_opening: FxHashMap<u32, u32> = FxHashMap::default();
-    // Parent → aggregated children, used to propagate void cuts from a
-    // host with no body (e.g. IFC4 IfcWallElementedCase) to the parts
-    // that actually carry the geometry. See `propagate_voids_to_parts`
-    // below.
-    let mut aggregate_children: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut entity_jobs: Vec<EntityJob> = Vec::with_capacity(2000);
     // #957: type-product geometry (IfcXxxType + its RepresentationMaps) and the
     // set of RepresentationMaps already instantiated by an IfcMappedItem. After
@@ -910,7 +896,6 @@ pub fn process_geometry_streaming_filtered_with_options(
     let defer_style_updates = options.fast_first_batch
         && opening_filter == OpeningFilterMode::Default
         && !options.include_presentation_layers;
-    let mut deferred_styled_item_positions: Vec<(usize, usize)> = Vec::new();
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         total_entities += 1;
@@ -958,89 +943,22 @@ pub fn process_geometry_streaming_filtered_with_options(
         }
 
         if type_name == "IFCINDEXEDCOLOURMAP" {
-            // Collect authored tessellation colours so the backend matches the
-            // browser on CATIA-style exports that have no IFCSTYLEDITEM (#663,
-            // #858).
-            if let Ok(icm) = decoder.decode_at(start, end) {
-                if let Some(full) =
-                    crate::style::resolve_indexed_colour_map_full(&icm, &mut decoder)
-                {
-                    let geometry_id = full.geometry_id;
-                    indexed_colour_index
-                        .entry(geometry_id)
-                        .or_insert(full.dominant().to_array());
-                    indexed_colour_full.entry(geometry_id).or_insert(full);
-                }
-            }
+            // Span-stashed for the shared post-scan resolver (#663, #858).
+            prepass_spans.indexed_colour_maps.push((id, start, end));
             continue;
         }
 
         if type_name == "IFCSTYLEDITEM" {
-            if defer_style_updates {
-                // Only *geometry-attached* styled items are deferred (rebuilt
-                // from saved byte positions after the first batch). Orphan
-                // styled items (null Item) are material appearances (#407) that
-                // feed the material chain — resolved once, up front, before the
-                // deferred rebuild — so they must be collected now or
-                // material-only-styled elements render as the default gray even
-                // after the deferred pass (#913 §2c). The classifying decode is
-                // the cost of telling the two apart.
-                if let Ok(styled_item) = decoder.decode_at(start, end) {
-                    if styled_item.get_ref(0).is_none() {
-                        if let Some(info) =
-                            extract_style_info_from_styled_item(&styled_item, &mut decoder)
-                        {
-                            orphan_styled_items.insert(id, info.color);
-                        }
-                        continue;
-                    }
-                }
-                // Geometry-attached (or undecodable) → defer the rebuild.
-                deferred_styled_item_positions.push((start, end));
-                continue;
-            }
-            if let Ok(styled_item) = decoder.decode_at(start, end) {
-                if styled_item.get_ref(0).is_none() {
-                    // Orphan styled item (null Item) = a material appearance
-                    // (#407). Collect its colour for the material chain.
-                    if let Some(info) =
-                        extract_style_info_from_styled_item(&styled_item, &mut decoder)
-                    {
-                        orphan_styled_items.insert(id, info.color);
-                    }
-                } else {
-                    collect_geometry_style_info(
-                        &mut geometry_style_index,
-                        &styled_item,
-                        &mut decoder,
-                    );
-                }
-            }
+            // Span-stashed; the shared resolver classifies orphan (material
+            // appearance, #407 — always resolved up front) vs
+            // geometry-attached (deferred in fast_first_batch mode, #913 §2c).
+            prepass_spans.styled_items.push((id, start, end));
             continue;
         } else if type_name == "IFCMATERIALDEFINITIONREPRESENTATION" {
-            // RepresentedMaterial (attr 3) → Representations (attr 2).
-            if let Ok(entity) = decoder.decode_at(start, end) {
-                if let Some(material_id) = entity.get_ref(3) {
-                    if let Some(reprs) = get_refs_from_list(&entity, 2) {
-                        material_def_reprs
-                            .entry(material_id)
-                            .or_default()
-                            .extend(reprs);
-                    }
-                }
-            }
+            prepass_spans.material_def_reprs.push((id, start, end));
             continue;
         } else if type_name == "IFCRELASSOCIATESMATERIAL" {
-            // RelatingMaterial (attr 5) ← RelatedObjects (attr 4).
-            if let Ok(entity) = decoder.decode_at(start, end) {
-                if let Some(material_select_id) = entity.get_ref(5) {
-                    if let Some(related) = get_refs_from_list(&entity, 4) {
-                        for element_id in related {
-                            element_to_material.insert(element_id, material_select_id);
-                        }
-                    }
-                }
-            }
+            prepass_spans.rel_associates_material.push((id, start, end));
             continue;
         } else if type_name == "IFCPRESENTATIONLAYERASSIGNMENT" {
             if !options.include_presentation_layers {
@@ -1084,36 +1002,17 @@ pub fn process_geometry_streaming_filtered_with_options(
             }
             continue;
         } else if type_name == "IFCRELVOIDSELEMENT" {
-            if let Ok(entity) = decoder.decode_at(start, end) {
-                if let (Some(host), Some(opening)) = (entity.get_ref(4), entity.get_ref(5)) {
-                    void_index.entry(host).or_default().push(opening);
-                }
-            }
+            prepass_spans.void_rels.push((id, start, end));
         } else if type_name == "IFCRELFILLSELEMENT" {
-            if let Ok(entity) = decoder.decode_at(start, end) {
-                // attr 4 = RelatingOpeningElement, attr 5 = RelatedBuildingElement (window/door)
-                if let (Some(opening_id), Some(filling_id)) = (entity.get_ref(4), entity.get_ref(5))
-                {
-                    filling_by_opening.insert(opening_id, filling_id);
-                }
-            }
+            prepass_spans.fills_rels.push((id, start, end));
         } else if type_name == "IFCRELAGGREGATES" {
-            // Independent of quick-metadata mode: keep a parent → children
-            // index so we can push voids down to aggregated parts when the
-            // host element has no body of its own (IfcWallElementedCase).
-            let args = parse_step_arguments(&content[start..end]);
-            if let Some(parent_id) = args.get(4).and_then(|token| parse_step_ref(token)) {
-                let kids = args
-                    .get(5)
-                    .map(|token| parse_step_ref_list(token))
-                    .unwrap_or_default();
-                if !kids.is_empty() {
-                    aggregate_children
-                        .entry(parent_id)
-                        .or_default()
-                        .extend(kids);
-                }
-            }
+            // Independent of quick-metadata mode: the shared resolver decodes
+            // these into the parent → children map that pushes voids down to
+            // aggregated parts when the host has no body of its own
+            // (IfcWallElementedCase, #845).
+            prepass_spans.aggregate_rels.push((id, start, end));
+        } else if type_name == "IFCPROJECT" && project_id.is_none() {
+            project_id = Some(id);
         } else if type_name == "IFCSITE" && site_entity_pos.is_none() {
             site_entity_pos = Some((start, end));
         } else if type_name == "IFCBUILDING" && building_entity_pos.is_none() {
@@ -1224,13 +1123,28 @@ pub fn process_geometry_streaming_filtered_with_options(
         }
     }
 
-    // IfcWallElementedCase + friends: when an opening voids a host that
-    // aggregates parts (drywall panels, studs, tracks) and has no body
-    // representation of its own, the opening must propagate to every
-    // aggregated descendant so the part meshes get the cut. Without this
-    // propagation the cut silently no-ops (the host has nothing to clip)
-    // and panels/studs cover what should be the window/door hole.
-    ifc_lite_geometry::propagate_voids_via_aggregates(&mut void_index, &aggregate_children);
+    // ── Shared post-scan resolution (`crate::prepass`) ──
+    // Styled items (orphan vs attached, defer-aware), IfcIndexedColourMap,
+    // the #407 material chain join, voids + fills, and the #845 aggregate
+    // void propagation — the exact code the browser prepasses run.
+    let resolved = crate::prepass::resolve_prepass(
+        &prepass_spans,
+        &mut decoder,
+        crate::prepass::ResolveOptions {
+            collect_indexed_colour_full: true,
+            defer_attached_styles: defer_style_updates,
+        },
+    );
+    let crate::prepass::ResolvedPrepass {
+        mut geometry_style_index,
+        indexed_colour_index,
+        indexed_colour_full,
+        element_material_colors,
+        void_index,
+        filling_by_opening,
+        deferred_attached_styled_spans: deferred_styled_item_positions,
+        ..
+    } = resolved;
 
     let entity_scan_time = entity_scan_start.elapsed();
 
@@ -1328,7 +1242,17 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     // Preprocess complex geometry
     let preprocess_start = std::time::Instant::now();
-    let mut router = GeometryRouter::with_units(content, &mut decoder);
+    // Resolve BOTH unit scales once via the shared resolver (the scan recorded
+    // IFCPROJECT's id, so this is an O(1) decode — no more full-file hunts:
+    // the historic `with_units` + `plane_angle_to_radians` pair each re-walked
+    // the whole DATA section). Seed the shared decoder so every later consumer
+    // (opening filter, metadata phase, deferred-style replay) inherits them.
+    let unit_scales = crate::prepass::resolve_unit_scales(content, project_id, &mut decoder);
+    decoder.seed_unit_scales(
+        unit_scales.length_unit_scale,
+        unit_scales.plane_angle_to_radians,
+    );
+    let mut router = GeometryRouter::with_scale(unit_scales.length_unit_scale);
     router.set_tessellation_quality(options.tessellation_quality);
 
     // Resolve IfcSite and IfcBuilding placement transforms.
@@ -1393,19 +1317,18 @@ pub fn process_geometry_streaming_filtered_with_options(
     let unit_scale = router.unit_scale();
     let rtc_offset = router.rtc_offset();
     // Resolve the plane-angle scale ONCE on the warm shared decoder, then seed
-    // every per-element worker decoder below (EntityDecoder::seed_unit_scales;
-    // the length scale is `unit_scale`, already resolved by the router). Both
-    // resolvers scan the whole DATA section for the singleton IFCPROJECT, which
-    // IfcOpenShell emits near the *end* of the file — and the parallel path
-    // builds a fresh (cold-cache) decoder per element, so without seeding every
-    // arc-bearing element re-pays that ~O(file) scan (≈135 ms each on a 75 MB
-    // model where IFCPROJECT sits at byte ~68 MB).
-    let seed_plane_angle_to_radians = decoder.plane_angle_to_radians();
+    // every per-element worker decoder below (EntityDecoder::seed_unit_scales).
+    // Resolved once by the shared `prepass::resolve_unit_scales` above — the
+    // parallel path builds a fresh (cold-cache) decoder per element, so
+    // without seeding every arc-bearing element would re-pay an O(file)
+    // IFCPROJECT scan (≈135 ms each on a 75 MB model where IFCPROJECT sits at
+    // byte ~68 MB).
+    let seed_plane_angle_to_radians = unit_scales.plane_angle_to_radians;
     let void_index_arc = Arc::new(filtered_void_index);
     let skipped_entity_ids = Arc::new(skipped_entity_ids);
     // Fold indexed-colour-map colours in where no IFCSTYLEDITEM already claimed
     // the geometry (styled items win, matching the browser precedence).
-    merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
+    crate::prepass::merge_indexed_colours(&mut geometry_style_index, &indexed_colour_index);
     let mut geometry_style_index = Arc::new(geometry_style_index);
     let indexed_colour_full = Arc::new(indexed_colour_full);
     // #961: decode surface textures (IfcBlobTexture PNG / IfcPixelTexture) and
@@ -1416,15 +1339,9 @@ pub fn process_geometry_streaming_filtered_with_options(
         content,
         &mut decoder,
     ));
-    // Join the material chain into colours per element (#407). The single
+    // Material chain joined by the shared resolver (#407). The single
     // opaque-first colour is the general-path element fallback; the full list
     // feeds the opening sub-mesh transparent/opaque split (#913 §2.3).
-    let element_material_colors = crate::style::build_element_material_colors(
-        &material_def_reprs,
-        &orphan_styled_items,
-        &element_to_material,
-        &mut decoder,
-    );
     let element_material_color: FxHashMap<u32, [f32; 4]> = element_material_colors
         .iter()
         .filter_map(|(&id, colors)| crate::style::pick_opaque_first(colors).map(|c| (id, c)))
@@ -1583,21 +1500,17 @@ pub fn process_geometry_streaming_filtered_with_options(
             if !deferred_styles_applied {
                 // Replay saved IFCSTYLEDITEM positions instead of re-scanning
                 // the entire file.  This eliminates ~0.5-1 s for 1 GB files.
-                let mut rebuilt_styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-                {
+                // The replay is the shared resolver's styled-item building
+                // block, so deferred and up-front resolution cannot drift.
+                let mut rebuilt_styles = {
                     let mut style_decoder =
                         EntityDecoder::with_arc_index(content, entity_index_arc.clone());
-                    for &(start, end) in &deferred_styled_item_positions {
-                        if let Ok(styled_item) = style_decoder.decode_at(start, end) {
-                            collect_geometry_style_info(
-                                &mut rebuilt_styles,
-                                &styled_item,
-                                &mut style_decoder,
-                            );
-                        }
-                    }
-                }
-                merge_indexed_colours(&mut rebuilt_styles, &indexed_colour_index);
+                    crate::prepass::resolve_styled_item_spans(
+                        &deferred_styled_item_positions,
+                        &mut style_decoder,
+                    )
+                };
+                crate::prepass::merge_indexed_colours(&mut rebuilt_styles, &indexed_colour_index);
                 geometry_style_index = Arc::new(rebuilt_styles);
                 let deferred_color_updates = build_color_updates_for_jobs(
                     &entity_jobs[..processed_jobs],
@@ -1787,41 +1700,6 @@ fn process_entity_job(
 }
 
 
-/// Fold `IfcIndexedColourMap` colours into the style index, keyed by target
-/// geometry id. `or_insert` preserves IFCSTYLEDITEM precedence: a geometry that
-/// already has a direct style keeps it; the indexed colour only fills the gaps.
-fn merge_indexed_colours(
-    geometry_styles: &mut FxHashMap<u32, GeometryStyleInfo>,
-    indexed_colours: &FxHashMap<u32, [f32; 4]>,
-) {
-    for (&geometry_id, &color) in indexed_colours {
-        geometry_styles
-            .entry(geometry_id)
-            .or_insert_with(|| GeometryStyleInfo {
-                color,
-                shading_color: None,
-                material_name: None,
-            });
-    }
-}
-
-fn collect_geometry_style_info(
-    geometry_styles: &mut FxHashMap<u32, GeometryStyleInfo>,
-    styled_item: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) {
-    let Some(geometry_id) = styled_item.get_ref(0) else {
-        return;
-    };
-
-    if geometry_styles.contains_key(&geometry_id) {
-        return;
-    }
-
-    if let Some(style_info) = extract_style_info_from_styled_item(styled_item, decoder) {
-        geometry_styles.insert(geometry_id, style_info);
-    }
-}
 
 fn build_color_updates_for_jobs(
     jobs: &[EntityJob],
@@ -2052,67 +1930,6 @@ fn find_color_in_shape_representation(
     }
 
     None
-}
-
-/// Extract color from an IfcStyledItem by traversing style references.
-fn extract_style_info_from_styled_item(
-    styled_item: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Option<GeometryStyleInfo> {
-    let style_refs = get_refs_from_list(styled_item, 1)?;
-
-    for style_id in style_refs {
-        if let Ok(style) = decoder.decode_by_id(style_id) {
-            // IfcPresentationStyleAssignment has nested style refs at attr 0.
-            if let Some(inner_refs) = get_refs_from_list(&style, 0) {
-                for inner_id in inner_refs {
-                    if let Some(info) = extract_surface_style_info(inner_id, decoder) {
-                        return Some(info);
-                    }
-                }
-            }
-
-            // Or the style ref points directly to IfcSurfaceStyle.
-            if let Some(info) = extract_surface_style_info(style_id, decoder) {
-                return Some(info);
-            }
-        }
-    }
-
-    None
-}
-
-/// Extract colour + style name from an `IfcSurfaceStyle`. Colour resolution is
-/// the canonical [`crate::style::extract_surface_style_colors`], shared with the
-/// browser pre-pass so the server and viewer can't disagree on
-/// `SurfaceColour` vs `DiffuseColour` precedence (see that fn for the #859/#871
-/// semantics — `SurfaceColour` is the apparent colour; a `DiffuseColour`
-/// `IfcColourRgb` becomes the optional `shading_color`, not the rendered colour).
-fn extract_surface_style_info(
-    style_id: u32,
-    decoder: &mut EntityDecoder,
-) -> Option<GeometryStyleInfo> {
-    let style = decoder.decode_by_id(style_id).ok()?;
-    let material_name = normalize_style_name(style.get_string(0));
-    let (color, shading_color) = crate::style::extract_surface_style_colors(style_id, decoder)?;
-    Some(GeometryStyleInfo {
-        color,
-        shading_color,
-        material_name,
-    })
-}
-
-fn normalize_style_name(raw: Option<&str>) -> Option<String> {
-    let name = raw?.trim();
-    if name.is_empty() || name == "$" {
-        return None;
-    }
-
-    if name.eq_ignore_ascii_case("<unnamed>") || name.eq_ignore_ascii_case("unnamed") {
-        return None;
-    }
-
-    Some(name.to_string())
 }
 
 /// Apply the opening filter and return which entity IDs to suppress and a filtered void index.

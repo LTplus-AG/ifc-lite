@@ -53,11 +53,16 @@ impl IfcAPI {
         // Run combined pre-pass
         let pre_pass = combined_pre_pass(content, &mut decoder);
 
-        // Extract unit scale
-        let unit_scale = pre_pass
-            .project_id
-            .and_then(|pid| ifc_lite_core::extract_length_unit_scale(&mut decoder, pid).ok())
-            .unwrap_or(1.0);
+        // Resolve BOTH unit scales once via the shared resolver (handles a
+        // missing project-id hint and partial-index chains internally) and
+        // seed the decoder so nothing downstream re-pays the IFCPROJECT hunt.
+        let unit_scales = ifc_lite_processing::prepass::resolve_unit_scales(
+            content,
+            pre_pass.project_id,
+            &mut decoder,
+        );
+        let unit_scale = unit_scales.length_unit_scale;
+        decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
         let mut router = GeometryRouter::with_scale(unit_scale);
 
         // Detect RTC offset
@@ -95,50 +100,38 @@ impl IfcAPI {
             idx += 3;
         }
 
-        // Serialize void_index as 3 flat arrays: keys, counts, values
-        let void_keys_vec: Vec<u32> = pre_pass.void_index.keys().copied().collect();
-        let mut void_counts_vec: Vec<u32> = Vec::with_capacity(void_keys_vec.len());
-        let mut void_values_vec: Vec<u32> = Vec::new();
-        for &key in &void_keys_vec {
-            if let Some(openings) = pre_pass.void_index.get(&key) {
-                void_counts_vec.push(openings.len() as u32);
-                void_values_vec.extend_from_slice(openings);
-            }
-        }
+        // Flat wire encodings from the shared resolver: styles (layered
+        // precedence), voids, and the #407 material colour lists.
+        let (style_ids_vec, style_colors_vec) = ifc_lite_processing::prepass::flat_styles_rgba8(
+            &pre_pass.resolved,
+            &mut decoder,
+        );
+        let (void_keys_vec, void_counts_vec, void_values_vec) =
+            ifc_lite_processing::prepass::flat_voids(&pre_pass.resolved.void_index);
+        let (mat_ids_vec, mat_counts_vec, mat_colors_vec) =
+            ifc_lite_processing::prepass::flat_material_colors(
+                &pre_pass.resolved.element_material_colors,
+            );
 
-        let void_keys = js_sys::Uint32Array::new_with_length(void_keys_vec.len() as u32);
-        for (i, &k) in void_keys_vec.iter().enumerate() {
-            void_keys.set_index(i as u32, k);
-        }
-        let void_counts = js_sys::Uint32Array::new_with_length(void_counts_vec.len() as u32);
-        for (i, &c) in void_counts_vec.iter().enumerate() {
-            void_counts.set_index(i as u32, c);
-        }
-        let void_values = js_sys::Uint32Array::new_with_length(void_values_vec.len() as u32);
-        for (i, &v) in void_values_vec.iter().enumerate() {
-            void_values.set_index(i as u32, v);
-        }
-
-        // Serialize geometry_styles as two arrays: styleIds (u32) + styleColors (u8 RGBA)
-        let styles_len = pre_pass.geometry_styles.len();
-        let style_ids = js_sys::Uint32Array::new_with_length(styles_len as u32);
-        let style_colors = js_sys::Uint8Array::new_with_length((styles_len * 4) as u32);
-        let mut si = 0u32;
-        for (&id, &color) in &pre_pass.geometry_styles {
-            style_ids.set_index(si, id);
-            let ci = si * 4;
-            style_colors.set_index(ci, (color[0] * 255.0) as u8);
-            style_colors.set_index(ci + 1, (color[1] * 255.0) as u8);
-            style_colors.set_index(ci + 2, (color[2] * 255.0) as u8);
-            style_colors.set_index(ci + 3, (color[3] * 255.0) as u8);
-            si += 1;
-        }
+        let void_keys = js_sys::Uint32Array::from(void_keys_vec.as_slice());
+        let void_counts = js_sys::Uint32Array::from(void_counts_vec.as_slice());
+        let void_values = js_sys::Uint32Array::from(void_values_vec.as_slice());
+        let style_ids = js_sys::Uint32Array::from(style_ids_vec.as_slice());
+        let style_colors = js_sys::Uint8Array::from(style_colors_vec.as_slice());
+        let material_element_ids = js_sys::Uint32Array::from(mat_ids_vec.as_slice());
+        let material_color_counts = js_sys::Uint32Array::from(mat_counts_vec.as_slice());
+        let material_colors = js_sys::Uint8Array::from(mat_colors_vec.as_slice());
 
         // Build result object
         let result = js_sys::Object::new();
         super::set_js_prop(&result, "jobs", &jobs_flat);
         super::set_js_prop(&result, "totalJobs", &(total_jobs as f64).into());
         super::set_js_prop(&result, "unitScale", &unit_scale.into());
+        super::set_js_prop(
+            &result,
+            "planeAngleToRadians",
+            &unit_scales.plane_angle_to_radians.into(),
+        );
 
         let rtc_arr = js_sys::Float64Array::new_with_length(3);
         rtc_arr.set_index(0, rtc_offset.0);
@@ -157,6 +150,11 @@ impl IfcAPI {
         super::set_js_prop(&result, "voidValues", &void_values);
         super::set_js_prop(&result, "styleIds", &style_ids);
         super::set_js_prop(&result, "styleColors", &style_colors);
+        // #407/#913 §2.3: per-element material colour lists so the batch path
+        // can run the transparent/opaque sub-mesh alternation.
+        super::set_js_prop(&result, "materialElementIds", &material_element_ids);
+        super::set_js_prop(&result, "materialColorCounts", &material_color_counts);
+        super::set_js_prop(&result, "materialColors", &material_colors);
 
         result.into()
     }
@@ -211,21 +209,10 @@ impl IfcAPI {
         let mut project_id: Option<u32> = None;
         let mut site_position: Option<(u32, usize, usize)> = None;
         let mut meta_emitted = false;
+        // Plane-angle scale, resolved with the meta by the shared resolver and
+        // carried on the meta event so workers seed their batch decoders.
+        let mut plane_angle_to_radians = 1.0f64;
 
-        // Style/void/material data collected during the scan — same shape as
-        // `combined_pre_pass` collects for `buildPrePassOnce`. Emitted as a
-        // `styles` event after the scan completes so workers can switch from
-        // default colors to resolved colors mid-stream and the host can fire a
-        // `colorUpdate` to retroactively fix already-emitted meshes.
-        let mut geometry_styles: rustc_hash::FxHashMap<u32, [f32; 4]> =
-            rustc_hash::FxHashMap::default();
-        let mut void_index: rustc_hash::FxHashMap<u32, Vec<u32>> = rustc_hash::FxHashMap::default();
-        let mut orphan_styled_items: rustc_hash::FxHashMap<u32, [f32; 4]> =
-            rustc_hash::FxHashMap::default();
-        let mut material_def_reprs: rustc_hash::FxHashMap<u32, Vec<u32>> =
-            rustc_hash::FxHashMap::default();
-        let mut element_to_material: rustc_hash::FxHashMap<u32, u32> =
-            rustc_hash::FxHashMap::default();
         // Hold a chunk buffer that we drain to JS — these are the last
         // `chunk_size` jobs awaiting flush. After `meta` the buffer is
         // drained as the first jobs event; subsequent flushes happen at
@@ -259,17 +246,10 @@ impl IfcAPI {
         // Spans of entities that need decoding for style collection — we
         // can't decode mid-scan because the decoder borrows `content` and
         // would need `entity_index` populated for any references it follows.
-        // Stash the spans here and process them after the scan in one pass.
-        let mut styled_item_spans: Vec<(u32, usize, usize)> = Vec::new();
-        // IfcIndexedColourMap entries — the second IFC4 colouring mechanism
-        // used by CATIA / 3DEXPERIENCE exports (#663). Resolved in the same
-        // post-scan pass as IfcStyledItem.
-        let mut indexed_colour_map_spans: Vec<(u32, usize, usize)> = Vec::new();
-        let mut material_entity_spans: Vec<(u32, &'static str, usize, usize)> = Vec::new();
-        let mut void_rel_spans: Vec<(u32, usize, usize)> = Vec::new();
-        // IfcRelAggregates spans — decoded post-scan into the parent→children
-        // map that drives aggregate void propagation (no extra file scan).
-        let mut aggregate_rel_spans: Vec<(u32, usize, usize)> = Vec::new();
+        // Stash them in the SHARED span container and resolve after the scan
+        // with `ifc_lite_processing::prepass::resolve_prepass` — the exact
+        // resolver the native pipeline and `buildPrePassOnce` run.
+        let mut prepass_spans = ifc_lite_processing::prepass::PrepassSpans::default();
 
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
             // Build entity index inline (same data we'd otherwise re-scan for).
@@ -290,27 +270,25 @@ impl IfcAPI {
                     total_jobs += 1;
                 }
                 "IFCSTYLEDITEM" => {
-                    styled_item_spans.push((id, start, end));
+                    prepass_spans.styled_items.push((id, start, end));
                 }
                 "IFCINDEXEDCOLOURMAP" => {
-                    indexed_colour_map_spans.push((id, start, end));
+                    prepass_spans.indexed_colour_maps.push((id, start, end));
                 }
                 "IFCMATERIALDEFINITIONREPRESENTATION" => {
-                    material_entity_spans.push((
-                        id,
-                        "IFCMATERIALDEFINITIONREPRESENTATION",
-                        start,
-                        end,
-                    ));
+                    prepass_spans.material_def_reprs.push((id, start, end));
                 }
                 "IFCRELASSOCIATESMATERIAL" => {
-                    material_entity_spans.push((id, "IFCRELASSOCIATESMATERIAL", start, end));
+                    prepass_spans.rel_associates_material.push((id, start, end));
                 }
                 "IFCRELVOIDSELEMENT" => {
-                    void_rel_spans.push((id, start, end));
+                    prepass_spans.void_rels.push((id, start, end));
+                }
+                "IFCRELFILLSELEMENT" => {
+                    prepass_spans.fills_rels.push((id, start, end));
                 }
                 "IFCRELAGGREGATES" => {
-                    aggregate_rel_spans.push((id, start, end));
+                    prepass_spans.aggregate_rels.push((id, start, end));
                 }
                 _ => {
                     if has_geometry_by_name(type_name) {
@@ -326,35 +304,27 @@ impl IfcAPI {
                 }
             }
 
-            // Once we have project + enough sample jobs, resolve the meta
-            // (unit scale + RTC offset + building rotation) and emit it
-            // along with the buffered first chunk so workers can start.
-            if !meta_emitted && project_id.is_some() && buffered_jobs.len() >= RTC_SAMPLE_THRESHOLD
-            {
+            // Once enough sample jobs are buffered, resolve the meta (unit
+            // scales + RTC offset + building rotation) and emit it along with
+            // the buffered first chunk so workers can start. The gate
+            // deliberately does NOT wait for IFCPROJECT: IfcOpenShell/Revit
+            // exports emit it near the END of the file, and waiting would
+            // delay every worker until ~90% of the scan on such models. The
+            // shared resolver finds a not-yet-scanned project by SIMD
+            // substring search and resolves partial-index chains against a
+            // full index instead of silently defaulting (a millimetre model
+            // resolved as metres renders 1000× oversized).
+            if !meta_emitted && buffered_jobs.len() >= RTC_SAMPLE_THRESHOLD {
                 // Build a decoder over the partial entity index built so far.
                 let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
-                let pid = project_id.expect("project_id checked");
-
-                // Resolve the length-unit scale. The assignment + IFCSIUNIT
-                // usually sit near the top of a STEP file, so the partial
-                // index resolves them directly (fast path). But many real
-                // exports (Revit) place the IFCPROJECT / IFCUNITASSIGNMENT
-                // AFTER the bulk of geometry — there the partial index does
-                // not yet contain the assigned IFCSIUNIT, and silently
-                // defaulting to metres renders a millimetre model 1000×
-                // oversized (and dwarfs any correctly-scaled federated peer).
-                // When the chain isn't fully decodable here, resolve against a
-                // complete index instead of trusting the metres default.
-                let unit_scale =
-                    match ifc_lite_core::try_extract_length_unit_scale(&mut decoder, pid) {
-                        Some(scale) => scale,
-                        None => {
-                            let full_index = ifc_lite_core::build_entity_index(content);
-                            let mut full_decoder = EntityDecoder::with_index(content, full_index);
-                            ifc_lite_core::extract_length_unit_scale(&mut full_decoder, pid)
-                                .unwrap_or(1.0)
-                        }
-                    };
+                let unit_scales = ifc_lite_processing::prepass::resolve_unit_scales(
+                    content,
+                    project_id,
+                    &mut decoder,
+                );
+                let unit_scale = unit_scales.length_unit_scale;
+                decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
+                plane_angle_to_radians = unit_scales.plane_angle_to_radians;
 
                 let router = GeometryRouter::with_scale(unit_scale);
                 let is_large = |t: (f64, f64, f64)| {
@@ -407,6 +377,11 @@ impl IfcAPI {
                 let meta = js_sys::Object::new();
                 super::set_js_prop(&meta, "type", &"meta".into());
                 super::set_js_prop(&meta, "unitScale", &unit_scale.into());
+                super::set_js_prop(
+                    &meta,
+                    "planeAngleToRadians",
+                    &plane_angle_to_radians.into(),
+                );
                 let rtc_arr = js_sys::Float64Array::new_with_length(3);
                 rtc_arr.set_index(0, rtc_offset.0);
                 rtc_arr.set_index(1, rtc_offset.1);
@@ -442,9 +417,14 @@ impl IfcAPI {
             // sub-50-job file the scan is essentially instant anyway, so
             // buying a second pass here is irrelevant.
             let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
-            let unit_scale = project_id
-                .and_then(|pid| ifc_lite_core::extract_length_unit_scale(&mut decoder, pid).ok())
-                .unwrap_or(1.0);
+            let unit_scales = ifc_lite_processing::prepass::resolve_unit_scales(
+                content,
+                project_id,
+                &mut decoder,
+            );
+            let unit_scale = unit_scales.length_unit_scale;
+            decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
+            plane_angle_to_radians = unit_scales.plane_angle_to_radians;
             let router = GeometryRouter::with_scale(unit_scale);
             let rtc_offset =
                 router.detect_rtc_offset_with_fallback(&buffered_jobs, &mut decoder, content);
@@ -457,6 +437,11 @@ impl IfcAPI {
             let meta = js_sys::Object::new();
             super::set_js_prop(&meta, "type", &"meta".into());
             super::set_js_prop(&meta, "unitScale", &unit_scale.into());
+            super::set_js_prop(
+                &meta,
+                "planeAngleToRadians",
+                &plane_angle_to_radians.into(),
+            );
             let rtc_arr = js_sys::Float64Array::new_with_length(3);
             rtc_arr.set_index(0, rtc_offset.0);
             rtc_arr.set_index(1, rtc_offset.1);
@@ -507,167 +492,76 @@ impl IfcAPI {
         // BFS kernel runs without any extra file pass — keeping streaming
         // loads void-parity with `buildPrePassOnce` and the server.
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc);
+        decoder.seed_unit_scales(1.0, plane_angle_to_radians);
 
-        for &(id, start, end) in &styled_item_spans {
-            if let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) {
-                if let Some(geometry_id) = styled_item.get_ref(0) {
-                    if !geometry_styles.contains_key(&geometry_id) {
-                        if let Some(styles_attr) = styled_item.get(1) {
-                            if let Some(color) =
-                                super::styling::extract_color_from_styles(styles_attr, &mut decoder)
-                            {
-                                geometry_styles.insert(geometry_id, color);
-                            }
-                        }
-                    }
-                } else {
-                    // Orphan IfcStyledItem (null Item) — material-based color.
-                    if let Some(styles_attr) = styled_item.get(1) {
-                        if let Some(color) =
-                            super::styling::extract_color_from_styles(styles_attr, &mut decoder)
-                        {
-                            orphan_styled_items.insert(id, color);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Resolve IfcIndexedColourMap entries — IFC4's per-tessellated-face-set
-        // colouring mechanism used by CATIA / 3DEXPERIENCE exports (#663).
-        // IfcStyledItem entries above win when both target the same geometry,
-        // so `entry().or_insert` preserves the authored-intent path.
-        for &(id, start, end) in &indexed_colour_map_spans {
-            if let Some((geometry_id, color)) =
-                super::styling::extract_color_from_indexed_colour_map_span(
-                    id,
-                    start,
-                    end,
-                    &mut decoder,
-                )
-            {
-                geometry_styles.entry(geometry_id).or_insert(color);
-            }
-        }
-
-        for &(id, type_name, start, end) in &material_entity_spans {
-            super::styling::collect_material_entity(
-                id,
-                type_name,
-                start,
-                end,
-                &mut decoder,
-                &mut orphan_styled_items,
-                &mut material_def_reprs,
-                &mut element_to_material,
-            );
-        }
-
-        for &(id, start, end) in &void_rel_spans {
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                if let (Some(host_id), Some(opening_id)) = (entity.get_ref(4), entity.get_ref(5)) {
-                    void_index.entry(host_id).or_default().push(opening_id);
-                }
-            }
-        }
-
-        // Aggregate void propagation (shared kernel, parity with the once
-        // path and the server): openings authored on an aggregating host
-        // (IfcWallElementedCase panels, IfcRoof→IfcSlab skylights) must cut
-        // every descendant part. Decode the stashed IfcRelAggregates spans
-        // into the parent→children map — no extra file scan.
-        if !void_index.is_empty() && !aggregate_rel_spans.is_empty() {
-            let mut aggregate_children: rustc_hash::FxHashMap<u32, Vec<u32>> =
-                rustc_hash::FxHashMap::default();
-            for &(id, start, end) in &aggregate_rel_spans {
-                if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                    let Some(parent_id) = entity.get_ref(4) else {
-                        continue;
-                    };
-                    if let Some(list) = entity.get(5).and_then(|a| a.as_list()) {
-                        let children: Vec<u32> =
-                            list.iter().filter_map(|i| i.as_entity_ref()).collect();
-                        if !children.is_empty() {
-                            aggregate_children.entry(parent_id).or_default().extend(children);
-                        }
-                    }
-                }
-            }
-            ifc_lite_geometry::propagate_voids_via_aggregates(&mut void_index, &aggregate_children);
-        }
-
-        // Resolve material chains → element colors.
-        let material_styles = super::styling::build_material_style_index(
-            &material_def_reprs,
-            &orphan_styled_items,
+        // Shared post-scan resolution — the exact resolver the native
+        // pipeline and `buildPrePassOnce` run. Full per-triangle palettes
+        // (#858) stay per-worker rebuilds; the wire carries dominants only.
+        let resolved = ifc_lite_processing::prepass::resolve_prepass(
+            &prepass_spans,
             &mut decoder,
+            ifc_lite_processing::prepass::ResolveOptions {
+                collect_indexed_colour_full: false,
+                defer_attached_styles: false,
+            },
         );
-        let element_material_styles = super::styling::build_element_material_styles(
-            &element_to_material,
-            &material_styles,
-            &mut decoder,
-        );
-        // Flat material_id → color, merge into geometry_styles for layered
-        // resolution per `combined_pre_pass`.
-        for (&mat_id, &color) in
-            super::styling::flatten_material_color_index(&material_styles).iter()
-        {
-            geometry_styles.entry(mat_id).or_insert(color);
-        }
-        // For elements that have a single resolved material color, register
-        // it so processGeometryBatch's per-type fallback picks it up.
-        for (&element_id, colors) in &element_material_styles {
-            if let Some(&color) = colors.first() {
-                geometry_styles.entry(element_id).or_insert(color);
-            }
-        }
 
-        // Serialise styles + voids and post a `styles`
+        // Serialise styles + voids + material colour lists and post a `styles`
         // event before `complete` so the host can dispatch them to all
         // process workers and emit a colorUpdate for already-rendered meshes.
-        let styles_len = geometry_styles.len();
-        let style_ids = js_sys::Uint32Array::new_with_length(styles_len as u32);
-        let style_colors = js_sys::Uint8Array::new_with_length((styles_len * 4) as u32);
-        let mut si = 0u32;
-        for (&id, &color) in &geometry_styles {
-            style_ids.set_index(si, id);
-            let ci = si * 4;
-            style_colors.set_index(ci, (color[0] * 255.0).clamp(0.0, 255.0) as u8);
-            style_colors.set_index(ci + 1, (color[1] * 255.0).clamp(0.0, 255.0) as u8);
-            style_colors.set_index(ci + 2, (color[2] * 255.0).clamp(0.0, 255.0) as u8);
-            style_colors.set_index(ci + 3, (color[3] * 255.0).clamp(0.0, 255.0) as u8);
-            si += 1;
-        }
+        let (style_ids_vec, style_colors_vec) =
+            ifc_lite_processing::prepass::flat_styles_rgba8(&resolved, &mut decoder);
+        let (void_keys_vec, void_counts_vec, void_values_vec) =
+            ifc_lite_processing::prepass::flat_voids(&resolved.void_index);
+        let (mat_ids_vec, mat_counts_vec, mat_colors_vec) =
+            ifc_lite_processing::prepass::flat_material_colors(
+                &resolved.element_material_colors,
+            );
 
-        // void_index → flat (keys, counts, values) arrays in the same shape
-        // processGeometryBatch already accepts.
-        let mut void_keys_vec: Vec<u32> = Vec::with_capacity(void_index.len());
-        let mut void_counts_vec: Vec<u32> = Vec::with_capacity(void_index.len());
-        let mut void_values_vec: Vec<u32> = Vec::new();
-        for (&host_id, openings) in &void_index {
-            void_keys_vec.push(host_id);
-            void_counts_vec.push(openings.len() as u32);
-            void_values_vec.extend(openings.iter().copied());
-        }
-        let void_keys = js_sys::Uint32Array::new_with_length(void_keys_vec.len() as u32);
-        for (i, &k) in void_keys_vec.iter().enumerate() {
-            void_keys.set_index(i as u32, k);
-        }
-        let void_counts = js_sys::Uint32Array::new_with_length(void_counts_vec.len() as u32);
-        for (i, &c) in void_counts_vec.iter().enumerate() {
-            void_counts.set_index(i as u32, c);
-        }
-        let void_values = js_sys::Uint32Array::new_with_length(void_values_vec.len() as u32);
-        for (i, &v) in void_values_vec.iter().enumerate() {
-            void_values.set_index(i as u32, v);
-        }
         let styles_event = js_sys::Object::new();
         super::set_js_prop(&styles_event, "type", &"styles".into());
-        super::set_js_prop(&styles_event, "styleIds", &style_ids);
-        super::set_js_prop(&styles_event, "styleColors", &style_colors);
-        super::set_js_prop(&styles_event, "voidKeys", &void_keys);
-        super::set_js_prop(&styles_event, "voidCounts", &void_counts);
-        super::set_js_prop(&styles_event, "voidValues", &void_values);
+        super::set_js_prop(
+            &styles_event,
+            "styleIds",
+            &js_sys::Uint32Array::from(style_ids_vec.as_slice()),
+        );
+        super::set_js_prop(
+            &styles_event,
+            "styleColors",
+            &js_sys::Uint8Array::from(style_colors_vec.as_slice()),
+        );
+        super::set_js_prop(
+            &styles_event,
+            "voidKeys",
+            &js_sys::Uint32Array::from(void_keys_vec.as_slice()),
+        );
+        super::set_js_prop(
+            &styles_event,
+            "voidCounts",
+            &js_sys::Uint32Array::from(void_counts_vec.as_slice()),
+        );
+        super::set_js_prop(
+            &styles_event,
+            "voidValues",
+            &js_sys::Uint32Array::from(void_values_vec.as_slice()),
+        );
+        // #407/#913 §2.3: per-element material colour lists so the batch path
+        // can run the transparent/opaque sub-mesh alternation.
+        super::set_js_prop(
+            &styles_event,
+            "materialElementIds",
+            &js_sys::Uint32Array::from(mat_ids_vec.as_slice()),
+        );
+        super::set_js_prop(
+            &styles_event,
+            "materialColorCounts",
+            &js_sys::Uint32Array::from(mat_counts_vec.as_slice()),
+        );
+        super::set_js_prop(
+            &styles_event,
+            "materialColors",
+            &js_sys::Uint8Array::from(mat_colors_vec.as_slice()),
+        );
         on_event.call1(&JsValue::NULL, &styles_event.into())?;
 
         // Export the entity_index as 3 column arrays so process workers
@@ -744,6 +638,14 @@ impl IfcAPI {
         void_values: &[u32],
         style_ids: &[u32],   // geometry style entity IDs
         style_colors: &[u8], // [r, g, b, a, r, g, b, a, ...] (0-255)
+        // Trailing optional wire fields (additive — older callers omit them):
+        // the prepass-resolved plane-angle scale (falls back to the per-worker
+        // cache when absent), and the #407 per-element material colour lists
+        // in `flat_material_colors` encoding.
+        plane_angle_to_radians: Option<f64>,
+        material_element_ids: Option<Vec<u32>>,
+        material_color_counts: Option<Vec<u32>>,
+        material_colors_rgba: Option<Vec<u8>>,
     ) -> MeshCollection {
         use super::styling::resolve_element_color;
         use ifc_lite_core::EntityDecoder;
@@ -800,7 +702,8 @@ impl IfcAPI {
         // and `plane_angle_to_radians()` would otherwise walk the whole DATA
         // section per batch on files whose IFCPROJECT sits near the end
         // (IfcOpenShell exports) — the geometry-stream stall on large models.
-        let plane_angle_to_radians = self.get_or_resolve_plane_angle(&mut decoder);
+        let plane_angle_to_radians = plane_angle_to_radians
+            .unwrap_or_else(|| self.get_or_resolve_plane_angle(&mut decoder));
         decoder.seed_unit_scales(unit_scale, plane_angle_to_radians);
 
         // Create geometry router with unit scale and the consumer-selected
@@ -901,11 +804,20 @@ impl IfcAPI {
         // Surface textures + UV maps (#961), built once per worker (cheap
         // substring bail-out for untextured files).
         let texture_index = self.get_or_build_texture_index(content, &mut decoder);
-        // The browser prepass doesn't ship material-chain colour lists yet
-        // (planned with the shared-prepass step); the alternation inside the
-        // producer simply never fires on an empty map — today's behaviour.
-        let element_material_colors: rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> =
-            rustc_hash::FxHashMap::default();
+        // #407/#913 §2.3: per-element material colour lists from the prepass
+        // wire, so the canonical producer's transparent/opaque sub-mesh
+        // alternation fires in the browser exactly like on the server.
+        // Absent (older callers) ⇒ empty map ⇒ alternation never fires.
+        let element_material_colors: rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> = match (
+            material_element_ids.as_deref(),
+            material_color_counts.as_deref(),
+            material_colors_rgba.as_deref(),
+        ) {
+            (Some(ids), Some(counts), Some(rgba)) => {
+                ifc_lite_processing::prepass::material_colors_from_flat(ids, counts, rgba)
+            }
+            _ => rustc_hash::FxHashMap::default(),
+        };
 
         let ctx = MeshProductionContext {
             void_index: &void_index,

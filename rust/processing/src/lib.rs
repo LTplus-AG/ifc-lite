@@ -9,6 +9,7 @@
 
 pub mod element;
 mod georeferencing;
+pub mod prepass;
 mod processor;
 pub mod style;
 mod symbolic;

@@ -82,6 +82,19 @@ export function physicalToLogical(physical: number, pageSize: number): number {
 }
 
 /**
+ * Convert a logical (CRC-stripped) offset back to its physical (on-disk)
+ * offset — the inverse of `physicalToLogical`. Needed by the streaming
+ * reader to translate XML / section offsets into the byte ranges it must
+ * `Blob.slice()` from disk.
+ */
+export function logicalToPhysical(logical: number, pageSize: number): number {
+  const payloadPerPage = pageSize - 4;
+  const pages = Math.floor(logical / payloadPerPage);
+  const within = logical - pages * payloadPerPage;
+  return pages * pageSize + within;
+}
+
+/**
  * Read a CompressedVector binary-section header (E57 spec §6.4.2) and
  * return the LOGICAL byte offset where its DataPackets actually start.
  *

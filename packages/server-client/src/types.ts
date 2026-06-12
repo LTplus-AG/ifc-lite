@@ -10,6 +10,13 @@ export interface ServerConfig {
   baseUrl: string;
   /** Request timeout in milliseconds (default: 300000 = 5 minutes) */
   timeout?: number;
+  /**
+   * Bearer token sent as `Authorization: Bearer <token>` on every request.
+   * Required when the server sets `IFC_SERVER_API_TOKEN` (its parse/cache
+   * routes then reject unauthenticated calls); previously no TS client
+   * could authenticate at all (alignment audit).
+   */
+  token?: string;
 }
 
 /**
@@ -28,6 +35,18 @@ export interface MeshData {
   indices: Uint32Array;
   /** RGBA color [r, g, b, a] in 0-1 range */
   color: [number, number, number, number];
+  /** IfcGloballyUniqueId of the source element, when extracted. */
+  global_id?: string;
+  /** Element Name attribute, when extracted. */
+  name?: string;
+  /** Presentation layer assignment, when extracted. */
+  presentation_layer?: string;
+  /** Resolved material name for this (sub-)mesh, when known. */
+  material_name?: string;
+  /** Source geometry item id for per-item styled sub-meshes. */
+  geometry_item_id?: number;
+  /** Space/zone properties attached to the element, when extracted. */
+  properties?: Record<string, string>;
 }
 
 /**
@@ -119,6 +138,12 @@ export interface ProcessingStats {
   total_triangles: number;
   /** Time spent parsing entities (ms) */
   parse_time_ms: number;
+  /** Time spent scanning entities and building job lists (ms). */
+  entity_scan_time_ms?: number;
+  /** Time spent resolving lookups, styles, and optional metadata (ms). */
+  lookup_time_ms?: number;
+  /** Time spent in geometry preprocessing before extraction (ms). */
+  preprocess_time_ms?: number;
   /** Time spent processing geometry (ms) */
   geometry_time_ms: number;
   /** Total processing time (ms) */
@@ -254,6 +279,15 @@ export interface ParseResponse {
   cache_key: string;
   /** All meshes extracted from the IFC file */
   meshes: MeshData[];
+  /**
+   * Coordinate space of serialized mesh vertices: `site_local`,
+   * `model_rtc`, or `raw_ifc`. Absent on older servers.
+   */
+  mesh_coordinate_space?: string;
+  /** IfcSite ObjectPlacement as a column-major 4×4 matrix (metres). */
+  site_transform?: number[];
+  /** IfcBuilding ObjectPlacement as a column-major 4×4 matrix (metres). */
+  building_transform?: number[];
   /** Model metadata */
   metadata: ModelMetadata;
   /** Processing statistics */

@@ -355,17 +355,6 @@ impl MeshCollection {
     pub fn geometry_hash_count(&self) -> usize {
         self.geometry_hash_ids.len()
     }
-
-    /// Convert local coordinates to world coordinates
-    /// Use this to convert mesh positions back to original IFC coordinates
-    #[wasm_bindgen(js_name = localToWorld)]
-    pub fn local_to_world(&self, x: f32, y: f32, z: f32) -> Vec<f64> {
-        vec![
-            x as f64 + self.rtc_offset_x,
-            y as f64 + self.rtc_offset_y,
-            z as f64 + self.rtc_offset_z,
-        ]
-    }
 }
 
 impl MeshCollection {
@@ -1006,6 +995,22 @@ pub struct SymbolicRepresentationCollection {
 
 #[wasm_bindgen]
 impl SymbolicRepresentationCollection {
+    /// Get all express IDs that have symbolic representations
+    #[wasm_bindgen(js_name = getExpressIds)]
+    pub fn get_express_ids(&self) -> Vec<u32> {
+        let mut ids: Vec<u32> = self
+            .polylines
+            .iter()
+            .map(|p| p.express_id)
+            .chain(self.circles.iter().map(|c| c.express_id))
+            .chain(self.texts.iter().map(|t| t.express_id))
+            .chain(self.fills.iter().map(|f| f.express_id))
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
     /// Get number of polylines
     #[wasm_bindgen(getter, js_name = polylineCount)]
     pub fn polyline_count(&self) -> usize {
@@ -1115,21 +1120,6 @@ impl SymbolicRepresentationCollection {
         })
     }
 
-    /// Get all express IDs that have symbolic representations
-    #[wasm_bindgen(js_name = getExpressIds)]
-    pub fn get_express_ids(&self) -> Vec<u32> {
-        let mut ids: Vec<u32> = self
-            .polylines
-            .iter()
-            .map(|p| p.express_id)
-            .chain(self.circles.iter().map(|c| c.express_id))
-            .chain(self.texts.iter().map(|t| t.express_id))
-            .chain(self.fills.iter().map(|f| f.express_id))
-            .collect();
-        ids.sort_unstable();
-        ids.dedup();
-        ids
-    }
 }
 
 impl SymbolicRepresentationCollection {
@@ -1240,4 +1230,3 @@ impl Default for SymbolicRepresentationCollection {
 pub fn get_memory() -> JsValue {
     wasm_bindgen::memory()
 }
-

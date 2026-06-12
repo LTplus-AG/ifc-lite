@@ -18,7 +18,6 @@ export interface PreScannedEntityIndex {
 
 export interface WasmScanApi {
   scanEntitiesFastBytes?: (data: Uint8Array) => unknown;
-  scanRelevantEntitiesFastBytes?: (data: Uint8Array) => unknown;
   scanEntitiesFast?: (content: string) => unknown;
 }
 
@@ -124,9 +123,8 @@ function selectWasmScanFunction(api: WasmScanApi | undefined, uint8Buffer: Uint8
     return () => api.scanEntitiesFastBytes?.(uint8Buffer);
   }
 
-  // Deliberately NOT falling back to scanRelevantEntitiesFastBytes: it returns
-  // a filtered subset (relevant entities only), which would build an incomplete
-  // entity index here. Fall through to the full-scan scanEntitiesFast instead.
+  // Only the FULL Rust scan is acceptable here — a filtered scan would build
+  // an incomplete entity index. Fall through to scanEntitiesFast otherwise.
   if (typeof api.scanEntitiesFast !== 'function') {
     return null;
   }

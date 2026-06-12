@@ -117,12 +117,10 @@ function postOutput(message: ParserWorkerOutputMessage, transfers?: Transferable
  * One-shot WASM init. The first parse pays ~50–100 ms to compile the
  * 1 MB module; subsequent parses on the same worker reuse the instance.
  *
- * The WASM `IfcAPI` exposes `scanRelevantEntitiesFastBytes` (filters to
- * ~1 % of entities — too narrow for the lite parser, which needs to find
- * IFCSIUNIT, IFCMATERIAL, IFCCLASSIFICATIONREFERENCE, etc.) and
- * `scanEntitiesFastBytes` (full Rust scan, 5–10× faster than the JS
- * tokenizer). We expose only the latter so `parseColumnar`'s preference
- * logic picks the full scan unconditionally.
+ * The WASM `IfcAPI` exposes `scanEntitiesFastBytes` (full Rust scan,
+ * 5–10× faster than the JS tokenizer); the lite parser needs the FULL
+ * entity set (IFCSIUNIT, IFCMATERIAL, IFCCLASSIFICATIONREFERENCE, …), so
+ * a filtered scan would build an incomplete index.
  */
 let cachedFullScanApi: Pick<WasmScanApi, 'scanEntitiesFastBytes'> | null = null;
 let initPromise: Promise<void> | null = null;

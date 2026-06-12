@@ -205,6 +205,7 @@ export async function* processParallel(
           normals: Float32Array;
           indices: Uint32Array;
           color: [number, number, number, number];
+          shadingColor?: [number, number, number, number];
           // #961: optional per-vertex UVs + decoded surface texture.
           uvs?: MeshData['uvs'];
           texture?: MeshData['texture'];
@@ -217,6 +218,8 @@ export async function* processParallel(
           normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals),
           indices: m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices),
           color: m.color,
+          // SurfaceColour for GLB "Shading" export (worker parity fix).
+          ...(m.shadingColor ? { shadingColor: m.shadingColor } : {}),
           // #961: carry per-vertex UVs + decoded surface texture through to the
           // renderer (transferables; already typed arrays from the worker).
           ...(m.uvs ? { uvs: m.uvs } : {}),

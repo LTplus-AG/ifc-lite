@@ -35,6 +35,7 @@ import {
   serializeStepValue,
   splitTopLevelArgs,
   splitTopLevelStepArguments,
+  assembleStepBytes,
 } from './step-serialization.js';
 
 /**
@@ -1290,41 +1291,3 @@ export function exportToStep(
   return new TextDecoder().decode(result.content);
 }
 
-/**
- * Assemble a STEP file from header and entity lines as a Uint8Array.
- * Encodes each entity individually to avoid hitting V8's ~256 MB string length limit
- * when exporting large models.
- */
-function assembleStepBytes(header: string, entities: string[]): Uint8Array {
-  const encoder = new TextEncoder();
-
-  const headBytes = encoder.encode(`${header}DATA;\n`);
-  const tailBytes = encoder.encode('ENDSEC;\nEND-ISO-10303-21;\n');
-  const newline = encoder.encode('\n');
-
-  // Calculate total size
-  let totalSize = headBytes.byteLength + tailBytes.byteLength;
-  const entityBytes: Uint8Array[] = new Array(entities.length);
-  for (let i = 0; i < entities.length; i++) {
-    entityBytes[i] = encoder.encode(entities[i]);
-    totalSize += entityBytes[i].byteLength + newline.byteLength;
-  }
-
-  // Assemble into a single buffer
-  const result = new Uint8Array(totalSize);
-  let offset = 0;
-
-  result.set(headBytes, offset);
-  offset += headBytes.byteLength;
-
-  for (let i = 0; i < entityBytes.length; i++) {
-    result.set(entityBytes[i], offset);
-    offset += entityBytes[i].byteLength;
-    result.set(newline, offset);
-    offset += newline.byteLength;
-  }
-
-  result.set(tailBytes, offset);
-
-  return result;
-}

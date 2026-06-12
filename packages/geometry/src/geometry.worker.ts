@@ -150,6 +150,7 @@ export interface GeometryWorkerBatchMessage {
     normals: Float32Array;
     indices: Uint32Array;
     color: [number, number, number, number];
+    shadingColor?: [number, number, number, number];
     // #961: optional surface texture + per-vertex UVs (transferables).
     uvs?: MeshData['uvs'];
     texture?: MeshData['texture'];
@@ -409,12 +410,22 @@ function collectMeshes(
         // Read the WASM copy-to-JS color getter once; indexing it directly
         // would copy a fresh Float32Array out of WASM per access.
         const color = mesh.color;
+        // Optional SurfaceColour for the GLB exporter's "Shading" mode —
+        // parity with the single-thread converter in geometry-coordinate.ts
+        // (the worker path silently dropped it, degrading "Shading" export
+        // on the DEFAULT load path — alignment audit).
+        const shadingArray = mesh.shadingColor;
+        const shadingColor: [number, number, number, number] | undefined =
+          shadingArray && shadingArray.length === 4
+            ? [shadingArray[0], shadingArray[1], shadingArray[2], shadingArray[3]]
+            : undefined;
         const geometryHash = geometryHashes.get(mesh.expressId);
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
           positions, normals, indices,
           color: [color[0], color[1], color[2], color[3]],
+          ...(shadingColor ? { shadingColor } : {}),
           // Provenance for the Model/Types switch (0=occurrence, 1=orphan type,
           // 2=instanced type). Older wasm bundles lack the getter → default 0.
           geometryClass: mesh.geometryClass ?? 0,

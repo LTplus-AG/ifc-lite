@@ -95,6 +95,7 @@ function parseQuery(options?: ParseRequestOptions): string {
 
 export class IfcServerClient {
   private baseUrl: string;
+  private readonly token?: string;
   private timeout: number;
 
   /**
@@ -106,7 +107,18 @@ export class IfcServerClient {
     // Remove trailing slash from base URL
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
     this.timeout = config.timeout ?? 300000; // 5 minutes default
+    this.token = config.token;
   }
+  /**
+   * Authorization header for servers running with `IFC_SERVER_API_TOKEN`.
+   * Empty when no token is configured, so open servers see no change.
+   */
+  private authHeaders(extra?: Record<string, string>): Record<string, string> {
+    return this.token
+      ? { Authorization: `Bearer ${this.token}`, ...extra }
+      : { ...(extra ?? {}) };
+  }
+
 
   /**
    * Check server health.
@@ -152,6 +164,7 @@ export class IfcServerClient {
 
     const response = await fetch(`${this.baseUrl}/api/v1/parse${parseQuery(options)}`, {
       method: 'POST',
+      headers: this.authHeaders(),
       body: formData,
       signal: AbortSignal.timeout(this.timeout),
     });
@@ -208,6 +221,7 @@ export class IfcServerClient {
     const cacheCheckStart = performance.now();
     const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}${parseQuery(options)}`, {
       method: 'GET',
+      headers: this.authHeaders(),
       signal: AbortSignal.timeout(5000), // 5s timeout for cache check
     });
     const cacheCheckTime = performance.now() - cacheCheckStart;
@@ -274,6 +288,7 @@ export class IfcServerClient {
     const cacheCheckStart = performance.now();
     const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}`, {
       method: 'GET',
+      headers: this.authHeaders(),
       signal: AbortSignal.timeout(5000),
     });
     const cacheCheckTime = performance.now() - cacheCheckStart;
@@ -321,6 +336,7 @@ export class IfcServerClient {
     const uploadStart = performance.now();
     const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet-stream${parseQuery(options)}`, {
       method: 'POST',
+      headers: this.authHeaders(),
       body: formData,
       signal: AbortSignal.timeout(this.timeout),
     });
@@ -442,6 +458,7 @@ export class IfcServerClient {
     const fetchStart = performance.now();
     const response = await fetch(`${this.baseUrl}/api/v1/cache/geometry/${hash}${parseQuery(options)}`, {
       method: 'GET',
+      headers: this.authHeaders(),
       signal: AbortSignal.timeout(this.timeout),
     });
 
@@ -497,6 +514,7 @@ export class IfcServerClient {
     const uploadStart = performance.now();
     const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet${parseQuery(options)}`, {
       method: 'POST',
+      headers: this.authHeaders(),
       body: formData,
       signal: AbortSignal.timeout(this.timeout),
     });
@@ -787,6 +805,7 @@ export class IfcServerClient {
 
     const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet/optimized${parseQuery(options)}`, {
       method: 'POST',
+      headers: this.authHeaders(),
       body: formData,
       signal: AbortSignal.timeout(this.timeout),
     });
@@ -878,9 +897,7 @@ export class IfcServerClient {
       method: 'POST',
       body: formData,
       // Don't set Content-Type header - browser will set it with boundary for FormData
-      headers: {
-        Accept: 'text/event-stream',
-      },
+      headers: this.authHeaders({ Accept: 'text/event-stream' }),
       signal: AbortSignal.timeout(this.timeout),
     });
 
@@ -959,6 +976,7 @@ export class IfcServerClient {
 
     const response = await fetch(`${this.baseUrl}/api/v1/parse/metadata`, {
       method: 'POST',
+      headers: this.authHeaders(),
       body: formData,
       signal: AbortSignal.timeout(30000), // 30 second timeout for metadata
     });

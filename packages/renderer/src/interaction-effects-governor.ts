@@ -19,10 +19,13 @@
  * interactive frames holds. If a meaningful share of recent interactive
  * frames miss the (estimated) display refresh interval, effects degrade for
  * the rest of the gesture — i.e. exactly the old behaviour — and the
- * governor re-probes on later gestures. After MAX_STRIKES degraded gestures
- * it stops probing for the session, so a weak GPU sees at most a few brief
- * quality pops before converging to the legacy always-off behaviour, while
- * a capable GPU keeps the architectural look permanently.
+ * governor re-probes later. Degradation is never permanent: misses are often
+ * environmental (model still streaming in, GC, tab contention), so probing
+ * resumes after a cooldown that grows with consecutive degraded gestures,
+ * and one clean gesture resets the penalty. Frames rendered while geometry
+ * is still streaming are excluded from the verdict entirely — the upload
+ * jank would otherwise strike out the session before the user ever saw the
+ * effects (the "load model, orbit immediately" path).
  */
 
 /** Gap between interactive frames that splits two gestures/bursts. */
@@ -38,8 +41,15 @@ const MISS_FACTOR = 1.6;
 /** Refresh-interval estimate clamp (covers 40-240 Hz displays). */
 const REFRESH_MIN_MS = 4;
 const REFRESH_MAX_MS = 25;
-/** Degraded gestures before the governor stops re-probing this session. */
-const MAX_STRIKES = 3;
+/**
+ * Re-probe cooldown after a degraded gesture, growing with consecutive
+ * degradations and capped — a persistently weak GPU re-probes at most once
+ * a minute (a single sub-second quality pop), never continuously flickering.
+ */
+const REPROBE_BASE_MS = 3_000;
+const REPROBE_MAX_MS = 60_000;
+/** Interactive frames a gesture must sustain cleanly to reset the penalty. */
+const CLEAN_GESTURE_FRAMES = 30;
 
 export class InteractionEffectsGovernor {
     private lastInteractiveTs: number | null = null;
@@ -48,13 +58,19 @@ export class InteractionEffectsGovernor {
     private deltas: number[] = [];
     private degraded = false;
     private strikes = 0;
+    private lastStrikeTs = -Infinity;
+    private cleanStreak = 0;
 
     /**
      * Record one rendered frame and decide whether post effects may run.
      * Call exactly once per render() with the frame timestamp.
      * Idle (non-interacting) frames always render at full quality.
+     *
+     * `unstable` marks frames whose timing does not reflect steady-state
+     * rendering (geometry still streaming/uploading): they neither count
+     * toward degradation nor toward a clean streak.
      */
-    frame(interacting: boolean, now: number): boolean {
+    frame(interacting: boolean, now: number, unstable = false): boolean {
         if (!interacting) {
             this.lastInteractiveTs = null;
             return true;
@@ -64,11 +80,27 @@ export class InteractionEffectsGovernor {
         this.lastInteractiveTs = now;
 
         if (last === null || now - last > BURST_GAP_MS) {
-            // New gesture: clear the window and re-probe unless struck out.
+            // New gesture: clear the window; re-probe when the cooldown
+            // (growing with consecutive degraded gestures) has elapsed.
             this.deltas.length = 0;
-            if (this.degraded && this.strikes < MAX_STRIKES) {
-                this.degraded = false;
+            this.cleanStreak = 0;
+            if (this.degraded) {
+                const cooldown = Math.min(
+                    REPROBE_BASE_MS * Math.pow(2, Math.max(0, this.strikes - 1)),
+                    REPROBE_MAX_MS,
+                );
+                if (now - this.lastStrikeTs >= cooldown) {
+                    this.degraded = false;
+                }
             }
+            return !this.degraded;
+        }
+
+        if (unstable) {
+            // Streaming/upload jank: keep effects in their current state but
+            // do not let these frames influence the verdict either way.
+            this.deltas.length = 0;
+            this.cleanStreak = 0;
             return !this.degraded;
         }
 
@@ -95,16 +127,20 @@ export class InteractionEffectsGovernor {
                 if (misses >= MISS_LIMIT) {
                     this.degraded = true;
                     this.strikes++;
+                    this.lastStrikeTs = now;
                     this.deltas.length = 0;
+                    this.cleanStreak = 0;
+                } else {
+                    this.cleanStreak++;
+                    if (this.cleanStreak >= CLEAN_GESTURE_FRAMES && this.strikes > 0) {
+                        // Sustained clean interaction: forgive past strikes so
+                        // a transient bad phase doesn't dampen future probing.
+                        this.strikes = 0;
+                    }
                 }
             }
         }
 
         return !this.degraded;
-    }
-
-    /** True once the governor has permanently settled on degraded mode. */
-    isPermanentlyDegraded(): boolean {
-        return this.degraded && this.strikes >= MAX_STRIKES;
     }
 }

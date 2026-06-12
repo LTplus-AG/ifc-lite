@@ -12,11 +12,12 @@ function burst(
     start: number,
     n: number,
     delta: number,
+    unstable = false,
 ): { last: number; results: boolean[] } {
     const results: boolean[] = [];
     let t = start;
     for (let i = 0; i < n; i++) {
-        results.push(gov.frame(true, t));
+        results.push(gov.frame(true, t, unstable));
         t += delta;
     }
     return { last: t - delta, results };
@@ -58,35 +59,70 @@ test('a brief hitch (GC pause) does not degrade', () => {
     assert.ok(results.every(Boolean), 'recovered without degrading');
 });
 
-test('re-probes on a new gesture, strikes out after 3 degraded gestures', () => {
+test('streaming frames are excluded from the verdict', () => {
+    const gov = new InteractionEffectsGovernor();
+    // Slow frames during streaming must not degrade (regression: the
+    // "load model, orbit immediately" path struck out the whole session).
+    const { last } = burst(gov, 0, 60, 80, /* unstable */ true);
+    assert.equal(gov.frame(true, last + 80, true), true, 'still on after streaming jank');
+    // Steady non-streaming interaction afterwards stays on.
+    const { results } = burst(gov, last + 160, 60, 16.7);
+    assert.ok(results.every(Boolean));
+});
+
+test('degradation is not permanent: re-probes after the cooldown', () => {
+    const gov = new InteractionEffectsGovernor();
+    burst(gov, 0, 10, 16.7);
+    const r1 = burst(gov, 10 * 16.7, 30, 45);
+    assert.equal(r1.results[r1.results.length - 1], false, 'degraded');
+    // New gesture immediately after: still inside the cooldown -> stays off.
+    gov.frame(false, r1.last + 300);
+    const r2 = burst(gov, r1.last + 600, 5, 16.7);
+    assert.ok(r2.results.every(v => v === false), 'cooldown holds');
+    // After the cooldown a new gesture re-probes with effects on.
+    gov.frame(false, r1.last + 4000);
+    const r3 = burst(gov, r1.last + 5000, 5, 16.7);
+    assert.equal(r3.results[0], true, 're-probes after cooldown');
+});
+
+test('a clean gesture after re-probe forgives strikes', () => {
+    const gov = new InteractionEffectsGovernor();
+    burst(gov, 0, 10, 16.7);
+    const r1 = burst(gov, 10 * 16.7, 30, 45); // strike 1
+    assert.equal(r1.results[r1.results.length - 1], false);
+    // Past the cooldown: long clean gesture resets the penalty.
+    const t2 = r1.last + 5000;
+    const r2 = burst(gov, t2, 60, 16.7);
+    assert.equal(r2.results[0], true, 're-probed');
+    assert.ok(r2.results.every(Boolean), 'clean gesture stays on');
+    // Next degradation behaves like the first (base cooldown, not escalated):
+    const r3 = burst(gov, r2.last + 1000, 30, 45);
+    assert.equal(r3.results[r3.results.length - 1], false, 'degrades again');
+    const r4 = burst(gov, r3.last + 3500, 5, 16.7);
+    assert.equal(r4.results[0], true, 'base cooldown applies after forgiveness');
+});
+
+test('repeated degradation escalates the cooldown', () => {
     const gov = new InteractionEffectsGovernor();
     let t = 0;
-    for (let gesture = 1; gesture <= 3; gesture++) {
-        burst(gov, t, 6, 16.7); // calibrate refresh
+    let lastEnd = 0;
+    // Three degraded gestures, each separated by enough idle to re-probe.
+    for (let i = 0; i < 3; i++) {
+        burst(gov, t, 6, 16.7);
         const r = burst(gov, t + 6 * 16.7, 30, 45);
-        assert.equal(
-            r.results[0],
-            true,
-            `gesture ${gesture} starts with an effects-on probe`,
-        );
-        assert.equal(
-            r.results[r.results.length - 1],
-            false,
-            `gesture ${gesture} degrades under sustained misses`,
-        );
-        t = r.last + 1000; // idle gap -> next gesture
-        gov.frame(false, t - 500);
+        assert.equal(r.results[r.results.length - 1], false, `gesture ${i + 1} degrades`);
+        lastEnd = r.last;
+        t = r.last + 70_000; // beyond even the max cooldown
     }
-    assert.equal(gov.isPermanentlyDegraded(), true);
-    // Fourth gesture: no more probing, degraded from the first frame.
-    const r4 = burst(gov, t, 10, 16.7);
-    assert.ok(r4.results.every(v => v === false), 'struck out: no re-probe');
+    // Strikes = 3 -> cooldown 12s. A gesture ~6s after the third strike
+    // stays degraded; the base 3s cooldown would have re-probed already.
+    const r6sec = burst(gov, lastEnd + 6000, 5, 16.7);
+    assert.ok(r6sec.results.every(v => v === false), 'escalated cooldown holds at ~6s');
 });
 
 test('burst gap is not counted as a missed frame', () => {
     const gov = new InteractionEffectsGovernor();
     let t = 0;
-    // Many short steady gestures separated by long idle gaps.
     for (let i = 0; i < 10; i++) {
         const { last } = burst(gov, t, 10, 16.7);
         t = last + 2000;

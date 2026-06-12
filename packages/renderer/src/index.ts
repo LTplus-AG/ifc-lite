@@ -998,7 +998,11 @@ export class Renderer {
         // on machines that measurably miss frames — integrated GPUs at large
         // canvases. See InteractionEffectsGovernor.
         const interacting = options.isInteracting === true;
-        const effectsLive = this.interactionEffects.frame(interacting, performance.now());
+        // Frames rendered while geometry is still streaming in carry upload
+        // jank unrelated to steady-state cost — exclude them from the
+        // governor's verdict so early navigation can't degrade a session.
+        const timingUnstable = options.isStreaming === true || this.scene.hasQueuedMeshes();
+        const effectsLive = this.interactionEffects.frame(interacting, performance.now(), timingUnstable);
         // Edge contrast is NOT interaction-gated: its per-fragment work runs
         // unconditionally in the shader and the gated tail is a handful of
         // ALU ops, so disabling it bought nothing and only made the crease

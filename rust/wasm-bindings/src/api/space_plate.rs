@@ -223,6 +223,32 @@ impl SpacePlateHandle {
         let patches = self.inner.merge_faces(HalfEdgeId(edge)).map_err(edit_err)?;
         patches_to_js(patches)
     }
+
+    /// Dissolve a degree-2 vertex, welding its two edges into one straight
+    /// edge between the neighbours — the inverse of `splitEdge`, and the
+    /// "delete this corner / node" affordance. Returns the rooms it changed.
+    /// Rejects a wall junction (degree ≥ 3) or a weld that would duplicate an
+    /// edge.
+    #[wasm_bindgen(js_name = dissolveVertex)]
+    pub fn dissolve_vertex(&mut self, v: u32) -> Result<JsValue, JsValue> {
+        let patches = self.inner.dissolve_vertex(VertexId(v)).map_err(edit_err)?;
+        patches_to_js(patches)
+    }
+
+    /// Author a new room from a flat ring `[x0, y0, x1, y1, …]` (no repeated
+    /// closing vertex). `source` `-1` marks a user-drawn room. Winding is
+    /// normalised to CCW; returns the new room patch. The room is its own
+    /// connected component — it does not merge into existing topology.
+    #[wasm_bindgen(js_name = addFace)]
+    pub fn add_face(&mut self, coords: &[f64], source: i32) -> Result<JsValue, JsValue> {
+        if !coords.len().is_multiple_of(2) {
+            return Err(JsValue::from_str("coords length must be even (x, y per vertex)"));
+        }
+        let pts: Vec<[f64; 2]> = coords.chunks_exact(2).map(|c| [c[0], c[1]]).collect();
+        let src = if source < 0 { None } else { Some(source as u32) };
+        let patch = self.inner.add_face(&pts, src).map_err(edit_err)?;
+        patches_to_js(vec![patch])
+    }
 }
 
 fn patches_to_js(patches: Vec<FacePatch>) -> Result<JsValue, JsValue> {
@@ -242,6 +268,8 @@ fn edit_err(e: EditError) -> JsValue {
         EditError::DegenerateCut => "DegenerateCut: split endpoints are equal or already adjacent",
         EditError::BordersExterior => "BordersExterior: edge borders the exterior — nothing to merge",
         EditError::BridgeEdge => "BridgeEdge: edge is a bridge — removing it would split connectivity",
+        EditError::VertexNotDissolvable => "VertexNotDissolvable: only a degree-2 vertex (a node between exactly two walls) can be dissolved",
+        EditError::InvalidPolygon => "InvalidPolygon: need a simple ring of 3+ points enclosing non-zero area",
     };
     JsValue::from_str(msg)
 }

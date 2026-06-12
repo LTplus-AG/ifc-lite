@@ -165,6 +165,13 @@ pub enum EditError {
     /// `merge_faces`: both sides are the same face — the edge is a bridge,
     /// and removing it would change connectivity rather than union two rooms.
     BridgeEdge,
+    /// `dissolve_vertex`: the vertex isn't a simple degree-2 node (a junction
+    /// where 3+ walls meet, or a dangling tip), so there's no unambiguous pair
+    /// of edges to weld into one.
+    VertexNotDissolvable,
+    /// `add_face`: the ring has fewer than 3 points, self-intersects, or
+    /// encloses near-zero area.
+    InvalidPolygon,
 }
 
 /// The persistent floor-plate topology. See the module docs.
@@ -515,6 +522,161 @@ impl SpacePlate {
         }
 
         Ok(vec![self.face_patch(f_keep)])
+    }
+
+    /// Dissolve a **degree-2** vertex `v`, welding its two incident edges into
+    /// one straight edge between its neighbours — the inverse of `split_edge`,
+    /// and the "delete this corner / errant node" affordance. Both incident
+    /// faces lose a boundary vertex; if `v` was a real corner the faces change
+    /// shape (the edge becomes the straight chord A→B), which is the intended
+    /// edit. Returns a patch per incident *room* face.
+    ///
+    /// Rejects:
+    /// - a vertex whose degree isn't exactly 2 — a wall junction or dangling
+    ///   tip has no unambiguous edge pair to merge (`VertexNotDissolvable`);
+    /// - a weld whose two neighbours are already directly joined, which would
+    ///   make a parallel edge / collapse a triangle to a digon (`DegenerateCut`).
+    pub fn dissolve_vertex(&mut self, v: VertexId) -> Result<Vec<FacePatch>, EditError> {
+        let vi = v.0 as usize;
+        if vi >= self.vertices.len() || !self.vertices[vi].alive {
+            return Err(EditError::StaleHandle);
+        }
+        // Degree must be exactly 2 (two live outgoing half-edges).
+        let outs: Vec<HalfEdgeId> = self.outgoing_half_edges(v).collect();
+        if outs.len() != 2 {
+            return Err(EditError::VertexNotDissolvable);
+        }
+        let (o1, o2) = (outs[0], outs[1]); // v→X, v→Y
+        let t1 = self.half_edges[o1.0 as usize].twin; // X→v — kept, becomes X→Y
+        let t2 = self.half_edges[o2.0 as usize].twin; // Y→v — kept, becomes Y→X
+        let x = self.dest(o1);
+        let y = self.dest(o2);
+        if x == y {
+            return Err(EditError::DegenerateCut); // both edges to one neighbour (digon)
+        }
+        // Welding X and Y when they already share an edge would duplicate it.
+        if self.outgoing_half_edges(x).any(|h| self.dest(h) == y) {
+            return Err(EditError::DegenerateCut);
+        }
+        // Degree-2 invariant: the edge arriving at v before o1 (in o1's face) is
+        // t2, and symmetrically prev(o2)==t1. If this doesn't hold one edge is a
+        // dangling antenna — bail rather than corrupt the rotation.
+        if self.half_edges[o1.0 as usize].prev != t2 || self.half_edges[o2.0 as usize].prev != t1 {
+            return Err(EditError::VertexNotDissolvable);
+        }
+        let fa = self.half_edges[t2.0 as usize].face; // face that saw Y→v→X
+        let fb = self.half_edges[t1.0 as usize].face; // face that saw X→v→Y
+        let qa = self.half_edges[o1.0 as usize].next; // what followed o1 in fa
+        let qb = self.half_edges[o2.0 as usize].next; // what followed o2 in fb
+
+        // Re-twin the survivors into one undirected edge X↔Y, splicing out v.
+        self.half_edges[t1.0 as usize].twin = t2; // t1 now X→Y
+        self.half_edges[t1.0 as usize].next = qb;
+        self.half_edges[qb.0 as usize].prev = t1;
+        self.half_edges[t2.0 as usize].twin = t1; // t2 now Y→X
+        self.half_edges[t2.0 as usize].next = qa;
+        self.half_edges[qa.0 as usize].prev = t2;
+
+        // Tombstone the two v-originating half-edges and v itself.
+        self.half_edges[o1.0 as usize].alive = false;
+        self.half_edges[o2.0 as usize].alive = false;
+        self.vertices[vi].outgoing = None;
+        self.vertices[vi].alive = false;
+
+        // A face anchor may have pointed at a now-dead half-edge.
+        for (face, keep) in [(fa, t2), (fb, t1)] {
+            let anchor = self.faces[face.0 as usize].half_edge;
+            if anchor == Some(o1) || anchor == Some(o2) {
+                self.faces[face.0 as usize].half_edge = Some(keep);
+            }
+        }
+        // X keeps its survivor t1 (origin X) and Y keeps t2 (origin Y); their
+        // outgoing slots could only have referenced o1/o2 via v, now gone.
+
+        let mut faces = vec![fa, fb];
+        faces.sort();
+        faces.dedup();
+        Ok(faces
+            .into_iter()
+            .filter(|f| !self.faces[f.0 as usize].is_outer)
+            .map(|f| self.face_patch(f))
+            .collect())
+    }
+
+    /// Author a brand-new room from a closed ring of points — the "draw a
+    /// room" affordance. The polygon becomes its **own** connected component:
+    /// a CCW interior room face plus the CW exterior face bounding it. It does
+    /// NOT merge into existing topology (there's no arrangement overlay), so
+    /// drawing over an existing room leaves two independent components — the
+    /// documented prototype limitation.
+    ///
+    /// `points` is the ring with no repeated closing vertex; winding is
+    /// normalised to CCW. Rejects a ring that is too short, self-intersecting,
+    /// or near-zero area (`InvalidPolygon`). Returns the new room's patch.
+    pub fn add_face(&mut self, points: &[[f64; 2]], source_element: Option<u32>) -> Result<FacePatch, EditError> {
+        if points.len() < 3 || !is_simple_polygon(points) {
+            return Err(EditError::InvalidPolygon);
+        }
+        let signed = polygon_area(points);
+        if signed.abs() < EPS {
+            return Err(EditError::InvalidPolygon);
+        }
+        // Normalise to CCW so the interior winds positive (room on the left).
+        let ring: Vec<[f64; 2]> =
+            if signed > 0.0 { points.to_vec() } else { points.iter().rev().copied().collect() };
+        let nn = ring.len() as u32;
+
+        let v0 = self.vertices.len() as u32; // first new vertex id
+        let h0 = self.half_edges.len() as u32; // first interior half-edge id
+        let g0 = h0 + nn; // first exterior (twin) half-edge id
+        let room = FaceId(self.faces.len() as u32);
+        let outer = FaceId(self.faces.len() as u32 + 1);
+
+        for (i, &p) in ring.iter().enumerate() {
+            self.vertices.push(Vertex { pos: p, outgoing: Some(HalfEdgeId(h0 + i as u32)), alive: true });
+        }
+        // Interior half-edges h_i: v_i → v_{i+1}, CCW, room on the left.
+        for i in 0..nn {
+            self.half_edges.push(HalfEdge {
+                origin: VertexId(v0 + i),
+                twin: HalfEdgeId(g0 + i),
+                next: HalfEdgeId(h0 + (i + 1) % nn),
+                prev: HalfEdgeId(h0 + (i + nn - 1) % nn),
+                face: room,
+                source_element,
+                alive: true,
+            });
+        }
+        // Exterior twins g_i: v_{i+1} → v_i, winding CW around the room.
+        for i in 0..nn {
+            self.half_edges.push(HalfEdge {
+                origin: VertexId(v0 + (i + 1) % nn),
+                twin: HalfEdgeId(h0 + i),
+                next: HalfEdgeId(g0 + (i + nn - 1) % nn),
+                prev: HalfEdgeId(g0 + (i + 1) % nn),
+                face: outer,
+                source_element,
+                alive: true,
+            });
+        }
+        self.faces.push(Face {
+            half_edge: Some(HalfEdgeId(h0)),
+            is_outer: false,
+            floor_z: 0.0,
+            ceiling_z: 0.0,
+            non_planar_ceiling: false,
+            alive: true,
+        });
+        self.faces.push(Face {
+            half_edge: Some(HalfEdgeId(g0)),
+            is_outer: true,
+            floor_z: 0.0,
+            ceiling_z: 0.0,
+            non_planar_ceiling: false,
+            alive: true,
+        });
+
+        Ok(self.face_patch(room))
     }
 
     // ─────────────────────────── queries ────────────────────────────
@@ -1368,6 +1530,123 @@ mod tests {
             .filter(|(_, s)| s.is_none())
             .count();
         assert!(unsourced >= 1, "the user-drawn partition has no source element");
+    }
+
+    #[test]
+    fn dissolve_is_the_inverse_of_split_edge() {
+        let mut plate = two_room_plate();
+        let rooms: Vec<FaceId> = plate.rooms().collect();
+        let areas_before: Vec<f64> = rooms.iter().map(|f| plate.face_area(*f)).collect();
+        let verts_before: Vec<usize> = rooms.iter().map(|f| plate.face_outline(*f).len()).collect();
+        // Add a node mid-shared-wall, then dissolve it back out.
+        let shared = plate
+            .face_half_edges(rooms[0])
+            .find(|h| {
+                plate
+                    .neighbor_across(*h)
+                    .map(|n| n != rooms[0] && !plate.faces[n.0 as usize].is_outer)
+                    .unwrap_or(false)
+            })
+            .expect("shared edge");
+        let a = plate.vertices[plate.half_edges[shared.0 as usize].origin.0 as usize].pos;
+        let bvid = plate.half_edges[plate.half_edges[shared.0 as usize].twin.0 as usize].origin;
+        let b = plate.vertices[bvid.0 as usize].pos;
+        let mid = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
+        let n = plate.split_edge(shared, mid[0], mid[1]).expect("split_edge");
+        assert_eq!(plate.face_outline(rooms[0]).len(), verts_before[0] + 1, "node added");
+
+        let patches = plate.dissolve_vertex(n).expect("dissolve the node");
+        assert_eq!(patches.len(), 2, "both rooms touching the welded wall come back");
+        assert_eq!(plate.vertex_position(n), None, "the node is tombstoned");
+        assert_eq!(plate.room_count(), 2, "no room added or lost");
+        for (f, (a0, v0)) in rooms.iter().zip(areas_before.iter().zip(&verts_before)) {
+            assert!((plate.face_area(*f) - a0).abs() < 1e-6, "area restored");
+            assert_eq!(plate.face_outline(*f).len(), *v0, "vertex count restored");
+        }
+    }
+
+    #[test]
+    fn dissolve_corner_straightens_the_room() {
+        // A 4×3 rectangle; dropping corner (0,0) leaves the triangle
+        // (4,0)-(4,3)-(0,3) = 12 − 6 = 6 m².
+        let segs = loop_segments(&rect(0.0, 0.0, 4.0, 3.0), 400);
+        let mut plate = SpacePlate::build(&segs, BuildOptions::default());
+        let v00 = plate.find_vertex([0.0, 0.0]);
+        let patches = plate.dissolve_vertex(v00).expect("dissolve a convex corner");
+        assert_eq!(plate.room_count(), 1);
+        assert_eq!(patches.len(), 1, "one incident room (the other side is exterior)");
+        assert!((patches[0].area - 6.0).abs() < 1e-6, "area = 6 m²: {}", patches[0].area);
+        assert!(patches[0].simple, "the triangle stays simple");
+        assert_eq!(plate.face_outline(patches[0].face).len(), 3, "now a triangle");
+    }
+
+    #[test]
+    fn dissolve_rejects_a_wall_junction() {
+        // (4,0) is where the central wall meets the bottom wall: degree 3.
+        let mut plate = two_room_plate();
+        let junction = plate.find_vertex([4.0, 0.0]);
+        assert_eq!(plate.dissolve_vertex(junction), Err(EditError::VertexNotDissolvable));
+    }
+
+    #[test]
+    fn dissolve_rejects_triangle_collapse() {
+        // A triangle room: dropping any corner welds two already-adjacent
+        // neighbours into a parallel edge → a digon. Reject.
+        let segs = loop_segments(&[[0.0, 0.0], [4.0, 0.0], [0.0, 3.0]], 500);
+        let mut plate = SpacePlate::build(&segs, BuildOptions::default());
+        assert_eq!(plate.room_count(), 1, "triangle is one room");
+        let corner = plate.find_vertex([0.0, 0.0]);
+        assert_eq!(plate.dissolve_vertex(corner), Err(EditError::DegenerateCut));
+    }
+
+    #[test]
+    fn dissolve_rejects_a_stale_handle() {
+        let mut plate = two_room_plate();
+        assert_eq!(plate.dissolve_vertex(VertexId(9999)), Err(EditError::StaleHandle));
+    }
+
+    #[test]
+    fn add_face_creates_a_room_on_an_empty_plate() {
+        let mut plate = SpacePlate::build(&[], BuildOptions::default());
+        assert_eq!(plate.room_count(), 0, "no walls → no rooms");
+        let patch = plate.add_face(&rect(0.0, 0.0, 5.0, 4.0), None).expect("draw a room");
+        assert_eq!(plate.room_count(), 1, "the drawn room exists");
+        assert!((patch.area - 20.0).abs() < 1e-6, "area = 20 m²: {}", patch.area);
+        assert!(patch.simple);
+        assert!((plate.face_area(patch.face) - 20.0).abs() < 1e-6, "queryable like any room");
+    }
+
+    #[test]
+    fn add_face_normalises_clockwise_winding() {
+        let mut plate = SpacePlate::build(&[], BuildOptions::default());
+        // CW ring (reverse of a rect): area must still come out correct.
+        let cw = vec![[0.0, 0.0], [0.0, 4.0], [5.0, 4.0], [5.0, 0.0]];
+        let patch = plate.add_face(&cw, Some(7)).expect("draw a CW room");
+        assert!((patch.area - 20.0).abs() < 1e-6, "winding normalised: {}", patch.area);
+        assert!(polygon_area(&patch.outline) > 0.0, "interior face winds CCW");
+    }
+
+    #[test]
+    fn add_face_into_an_existing_plate_keeps_the_old_rooms() {
+        let mut plate = two_room_plate();
+        let before: f64 = plate.rooms().map(|f| plate.face_area(f)).sum();
+        plate.add_face(&rect(20.0, 20.0, 23.0, 22.0), None).expect("draw a third room"); // 3×2 = 6 m²
+        assert_eq!(plate.room_count(), 3, "two original + one drawn");
+        let total: f64 = plate.rooms().map(|f| plate.face_area(f)).sum();
+        assert!((total - (before + 6.0)).abs() < 1e-6, "old rooms intact: {total} vs {}", before + 6.0);
+    }
+
+    #[test]
+    fn add_face_rejects_bad_rings() {
+        let mut plate = SpacePlate::build(&[], BuildOptions::default());
+        // Too few points.
+        assert_eq!(plate.add_face(&[[0.0, 0.0], [1.0, 0.0]], None), Err(EditError::InvalidPolygon));
+        // Self-intersecting bow-tie.
+        let bowtie = vec![[0.0, 0.0], [4.0, 4.0], [4.0, 0.0], [0.0, 4.0]];
+        assert_eq!(plate.add_face(&bowtie, None), Err(EditError::InvalidPolygon));
+        // Collinear (zero area).
+        let line = vec![[0.0, 0.0], [2.0, 0.0], [4.0, 0.0]];
+        assert_eq!(plate.add_face(&line, None), Err(EditError::InvalidPolygon));
     }
 
     // Test-only helper.

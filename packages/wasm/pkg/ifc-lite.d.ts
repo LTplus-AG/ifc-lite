@@ -543,6 +543,14 @@ export class SpacePlateHandle {
    */
   faceOutline(face: number): Float64Array;
   /**
+   * Dissolve a degree-2 vertex, welding its two edges into one straight
+   * edge between the neighbours — the inverse of `splitEdge`, and the
+   * "delete this corner / node" affordance. Returns the rooms it changed.
+   * Rejects a wall junction (degree ≥ 3) or a weld that would duplicate an
+   * edge.
+   */
+  dissolveVertex(v: number): any;
+  /**
    * The room on the far side of a half-edge (its twin's face), or
    * `undefined`. O(1) — the "who's across this wall" query.
    */
@@ -569,6 +577,13 @@ export class SpacePlateHandle {
    * `snapTolerance` / `minArea`: pass `<= 0` to take the defaults.
    */
   constructor(seg_coords: Float64Array, seg_sources: Int32Array, snap_tolerance: number, min_area: number);
+  /**
+   * Author a new room from a flat ring `[x0, y0, x1, y1, …]` (no repeated
+   * closing vertex). `source` `-1` marks a user-drawn room. Winding is
+   * normalised to CCW; returns the new room patch. The room is its own
+   * connected component — it does not merge into existing topology.
+   */
+  addFace(coords: Float64Array, source: number): any;
   /**
    * Face ids of every live room.
    */
@@ -899,7 +914,9 @@ export interface InitOutput {
   readonly profileentryjs_modelIndex: (a: number) => number;
   readonly profileentryjs_outerPoints: (a: number) => number;
   readonly profileentryjs_transform: (a: number) => number;
+  readonly spaceplatehandle_addFace: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly spaceplatehandle_boundingElements: (a: number, b: number, c: number) => void;
+  readonly spaceplatehandle_dissolveVertex: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_dragVertex: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly spaceplatehandle_duplicate: (a: number) => number;
   readonly spaceplatehandle_faceArea: (a: number, b: number) => number;

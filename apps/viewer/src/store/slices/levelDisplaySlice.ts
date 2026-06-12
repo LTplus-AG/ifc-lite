@@ -19,12 +19,13 @@
  *                           and cleared together with the mode by
  *                           `store/levelDisplay.applyLevelDisplayMode`.
  *
- * The slice owns mode + parameters only. The actual mesh
- * translation (Exploded) and isolation (Solo) are applied by a
- * separate hook in the viewer — `useLevelDisplayEffect` — which
- * watches the slice and the active model's spatial hierarchy and
- * flushes per-entity updates to the renderer via
- * `pendingMeshTranslations` and `setIsolatedEntities`.
+ * The slice owns mode + parameters only. The Exploded mesh
+ * translation is applied by `useLevelDisplayEffect`, which watches
+ * the slice and flushes per-entity offsets to the renderer via
+ * `pendingMeshTranslations`. Solo isolation is NOT applied here —
+ * it rides the storey filter (`selectedStoreys`), driven by
+ * `store/levelDisplay.applyLevelDisplayMode`; the effect only adds
+ * a guard that drops Solo → Stacked when that filter is cleared.
  *
  * Reversibility: the slice keeps the LAST APPLIED offset per
  * storey so the effect can compute the delta between target and

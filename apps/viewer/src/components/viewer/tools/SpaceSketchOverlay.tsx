@@ -221,13 +221,15 @@ export function SpaceSketchOverlay() {
     ));
   }, [underlay, showBuilding, hist]);
   const [storeyId, setStoreyId] = useState<number | null>(null);
-  const lastDerivedRef = useRef<number | null>(null);
+  const lastDerivedRef = useRef<string | null>(null);
   // Connect to the shared active storey instead of always defaulting to the
   // lowest storey: seed from whatever the user already picked in the hierarchy,
   // and follow it when it changes while the panel is open. The in-panel storey
   // <select> stays as a local override; a later hierarchy pick wins.
   const activeStorey = useViewerStore((s) => s.activeStorey);
-  const lastActiveStoreyRef = useRef<number | null>(null);
+  // Keyed by `${modelId}:${expressId}` (not a bare id) so switching to another
+  // model that happens to share a storey express-id still counts as a change.
+  const lastActiveStoreyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!storeys.length) return;
     const sketchModelId = activeModelId ?? 'legacy';
@@ -235,9 +237,10 @@ export function SpaceSketchOverlay() {
       activeStorey && activeStorey.modelId === sketchModelId && storeys.some((s) => s.id === activeStorey.expressId)
         ? activeStorey.expressId
         : null;
+    const activeKey = activeHere == null ? null : `${sketchModelId}:${activeHere}`;
     // Follow the shared active storey when it changes to one in this model.
-    if (activeHere != null && activeHere !== lastActiveStoreyRef.current) {
-      lastActiveStoreyRef.current = activeHere;
+    if (activeKey != null && activeKey !== lastActiveStoreyRef.current) {
+      lastActiveStoreyRef.current = activeKey;
       setStoreyId(activeHere);
       return;
     }
@@ -394,11 +397,15 @@ export function SpaceSketchOverlay() {
   // the first storey auto-selects) so the user doesn't have to click Derive.
   // Guarded so it fires once per storey, and never clobbers a loaded demo.
   useEffect(() => {
-    if (storeyId != null && ifcDataStore && lastDerivedRef.current !== storeyId) {
-      lastDerivedRef.current = storeyId;
+    // Key by model + storey so switching to another model with the same storey
+    // express-id still re-derives (a bare-id guard would treat it as unchanged
+    // and leave the previous model's rooms on screen).
+    const deriveKey = storeyId == null ? null : `${activeModelId ?? 'legacy'}:${storeyId}`;
+    if (deriveKey != null && ifcDataStore && lastDerivedRef.current !== deriveKey) {
+      lastDerivedRef.current = deriveKey;
       void deriveFromStorey();
     }
-  }, [storeyId, ifcDataStore, deriveFromStorey]);
+  }, [storeyId, activeModelId, ifcDataStore, deriveFromStorey]);
 
   const floorToFloor = useCallback((sid: number): number => {
     const idx = storeys.findIndex((s) => s.id === sid);

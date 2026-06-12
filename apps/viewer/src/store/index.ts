@@ -215,6 +215,9 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       selectedEntityId: null,
       selectedEntityIds: new Set(),
       selectedStoreys: new Set(),
+      // Drop the shared active storey — it references the outgoing model, so a
+      // new file must not inherit a stale storey for Solo / Space Sketch.
+      activeStorey: null,
 
       // Selection (multi-model)
       selectedEntity: null,

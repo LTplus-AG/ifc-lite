@@ -46,6 +46,16 @@ export function pickTopStorey(): EntityRef | null {
   return bestRef;
 }
 
+/** True when the storey ref still resolves to a loaded model + storey. Guards
+ *  against a stale `activeStorey` left over after a model is removed or the
+ *  viewer is reset for a new file. */
+function storeyExists(ref: EntityRef): boolean {
+  const s = useViewerStore.getState();
+  const ds = (ref.modelId === 'legacy' ? s.ifcDataStore : s.models.get(ref.modelId)?.ifcDataStore) as ElevationCarrier;
+  const elevs = ds?.spatialHierarchy?.storeyElevations;
+  return !!elevs && elevs.has(ref.expressId);
+}
+
 /**
  * Apply a level-display mode through the single unified storey-isolation
  * channel.
@@ -60,7 +70,11 @@ export function pickTopStorey(): EntityRef | null {
 export function applyLevelDisplayMode(mode: LevelDisplayMode, soloRef?: EntityRef | null): void {
   const s = useViewerStore.getState();
   if (mode === 'solo') {
-    const ref = soloRef ?? s.activeStorey ?? pickTopStorey();
+    // Prefer an explicit ref, then the active storey — but only if it still
+    // resolves to a loaded storey (it may be stale after a model removal /
+    // reset). Otherwise fall back to the top storey of the current scene.
+    const candidate = soloRef ?? s.activeStorey;
+    const ref = candidate && storeyExists(candidate) ? candidate : pickTopStorey();
     if (!ref) return; // nothing to solo (no storeys) — leave the mode unchanged
     s.setActiveStorey(ref);
     s.setStoreysSelection([ref.expressId]);

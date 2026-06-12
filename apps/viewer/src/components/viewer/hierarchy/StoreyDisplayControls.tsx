@@ -38,12 +38,19 @@ export function StoreyDisplayControls() {
   const setExplodedGap = useViewerStore((s) => s.setExplodedGap);
   const activeStorey = useViewerStore((s) => s.activeStorey);
 
-  // Level display only makes sense with multiple storeys to stack/explode/solo.
-  if (availableStoreys.length < 2) return null;
+  // Nothing storey-related to offer without a storey at all.
+  if (availableStoreys.length < 1) return null;
+
+  // Stacked / Exploded / Solo only make sense with multiple storeys; Floorplan
+  // works for a single storey too (it replaced the toolbar Quick-Floorplan).
+  const showModes = availableStoreys.length >= 2;
 
   const activeInfo = activeStorey
     ? availableStoreys.find((s) => s.modelId === activeStorey.modelId && s.expressId === activeStorey.expressId) ?? null
     : null;
+  // Single-storey models have one obvious target, so floorplan it directly
+  // without first requiring a storey pick (matches the old Quick-Floorplan).
+  const floorplanTarget = activeInfo ?? (availableStoreys.length === 1 ? availableStoreys[0] : null);
 
   // One unified transition: Solo isolates the active/top storey via the storey
   // filter; Stacked / Exploded clear that isolation. No second channel to
@@ -53,39 +60,44 @@ export function StoreyDisplayControls() {
   return (
     <div className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 px-2 py-1.5">
       <div className="flex items-center gap-1">
-        <div className="inline-flex flex-1 rounded-md border border-zinc-200 dark:border-zinc-800 p-0.5">
-          {MODES.map(({ key, label, Icon, hint }) => (
-            <button
-              key={key}
-              type="button"
-              title={hint}
-              aria-pressed={levelDisplayMode === key}
-              onClick={() => handleMode(key)}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium transition-colors',
-                levelDisplayMode === key
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-              )}
-            >
-              <Icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{label}</span>
-            </button>
-          ))}
-        </div>
+        {showModes && (
+          <div className="inline-flex flex-1 rounded-md border border-zinc-200 dark:border-zinc-800 p-0.5">
+            {MODES.map(({ key, label, Icon, hint }) => (
+              <button
+                key={key}
+                type="button"
+                title={hint}
+                aria-pressed={levelDisplayMode === key}
+                onClick={() => handleMode(key)}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium transition-colors',
+                  levelDisplayMode === key
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <button
           type="button"
-          disabled={!activeInfo}
-          title={activeInfo ? `Floorplan: ${activeInfo.name}` : 'Pick a storey to floorplan it'}
+          disabled={!floorplanTarget}
+          title={floorplanTarget ? `Floorplan: ${floorplanTarget.name}` : 'Pick a storey to floorplan it'}
           aria-label="Floorplan the active storey"
-          onClick={() => activeInfo && activateFloorplan(activeInfo)}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+          onClick={() => floorplanTarget && activateFloorplan(floorplanTarget)}
+          className={cn(
+            'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 dark:border-zinc-800 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40',
+            !showModes && 'ml-auto',
+          )}
         >
           <Building2 className="h-3.5 w-3.5" />
         </button>
       </div>
 
-      {levelDisplayMode === 'exploded' && (
+      {showModes && levelDisplayMode === 'exploded' && (
         <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
           <span>Gap</span>
           <input
@@ -104,7 +116,7 @@ export function StoreyDisplayControls() {
         </div>
       )}
 
-      {levelDisplayMode === 'solo' && (
+      {showModes && levelDisplayMode === 'solo' && (
         <div className="mt-1 text-[10px] leading-tight text-muted-foreground">
           {activeInfo ? (
             <>

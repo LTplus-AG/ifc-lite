@@ -503,33 +503,6 @@ pub(crate) fn build_instantiated_type_ids(
     instantiated
 }
 
-/// #957: resolve the authored colour for a type's `IfcRepresentationMap` by
-/// looking up its mapped geometry items in the prepass geometry-style index
-/// (the annex-E samples author a white `IfcSurfaceStyle`). Returns `None` when
-/// no item carries a style (caller falls back to the type's default colour).
-pub(crate) fn color_for_representation_map(
-    rep_map_id: u32,
-    geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<[f32; 4]> {
-    let rep_map = decoder.decode_by_id(rep_map_id).ok()?;
-    // IfcRepresentationMap.MappedRepresentation = attr 1.
-    let mapped_rep_id = rep_map.get_ref(1)?;
-    let mapped_rep = decoder.decode_by_id(mapped_rep_id).ok()?;
-    // IfcShapeRepresentation.Items = attr 3.
-    let item_ids: Vec<u32> = mapped_rep
-        .get(3)
-        .and_then(|a| a.as_list())
-        .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
-        .unwrap_or_default();
-    for item_id in item_ids {
-        if let Some(color) = find_color_for_geometry(item_id, geometry_styles, decoder) {
-            return Some(color);
-        }
-    }
-    None
-}
-
 /// Build material style index: maps material IDs to their colors.
 /// Follows: material → IfcMaterialDefinitionRepresentation → IfcStyledRepresentation → orphan IfcStyledItem
 pub(crate) fn build_material_style_index(
@@ -652,33 +625,6 @@ pub(crate) fn collect_material_entity(
         }
         _ => {}
     }
-}
-
-/// Resolve color for a sub-mesh using the fallback chain:
-/// direct geometry style -> material-based style -> element style -> default.
-///
-/// `mat_color_idx` is the current index for material color alternation (transparent/opaque).
-/// It is incremented when a material fallback is attempted (caller should track this).
-pub(crate) fn resolve_submesh_color(
-    geometry_id: u32,
-    geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-    material_colors: Option<&Vec<[f32; 4]>>,
-    mat_color_idx: &mut usize,
-    element_color: Option<[f32; 4]>,
-    default_color: [f32; 4],
-) -> [f32; 4] {
-    // Step 1 (the direct geometry style, incl. IfcMappedItem traversal) is the
-    // browser's own lookup over its `[f32; 4]` style map. The precedence below
-    // it and the transparent/opaque alternation are the shared resolver, so the
-    // browser and the backend can't drift on them (#913 §4.2).
-    let direct_color = find_color_for_geometry(geometry_id, geometry_styles, decoder);
-    ifc_lite_processing::style::resolve_submesh_color(
-        direct_color,
-        material_colors.map(|v| v.as_slice()),
-        mat_color_idx,
-        element_color.unwrap_or(default_color),
-    )
 }
 
 /// Resolve element color inline during processing by following its

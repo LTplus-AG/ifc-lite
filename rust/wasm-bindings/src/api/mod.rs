@@ -682,9 +682,19 @@ fn set_js_prop_jv(obj: &JsValue, key: &JsValue, value: &JsValue) -> bool {
 /// failure summary at `console.warn` only when there's at least one
 /// failure to report. Per-host detail is included for the worst-failing
 /// products (capped to keep the log readable on large files).
-pub(super) fn drain_and_log_csg_diagnostics(router: &ifc_lite_geometry::GeometryRouter) -> JsValue {
+pub(super) fn drain_and_log_csg_diagnostics(
+    router: &ifc_lite_geometry::GeometryRouter,
+    // Failures already drained per element by the canonical producer
+    // (`ifc_lite_processing::element` empties the warm batch router after
+    // every element so failures can't bleed between elements). Merged with
+    // whatever still sits on the router (non-canonical paths).
+    collected_failures: rustc_hash::FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
+) -> JsValue {
     let cls = router.take_classification_stats();
-    let csg_failures = router.take_csg_failures();
+    let mut csg_failures = router.take_csg_failures();
+    for (product_id, fails) in collected_failures {
+        csg_failures.entry(product_id).or_default().extend(fails);
+    }
     let host_diags = router.take_host_opening_diagnostics();
 
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;

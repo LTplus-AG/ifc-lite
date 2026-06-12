@@ -235,6 +235,36 @@ impl MeshDataJs {
         self.texture_repeat_s = repeat_s;
         self.texture_repeat_t = repeat_t;
     }
+
+    /// Build from the canonical per-element producer's [`MeshData`]
+    /// (`ifc_lite_processing::element`): wraps [`MeshDataJs::new`] (IFC Z-up →
+    /// WebGL Y-up + winding reversal), copies the `geometry_class` tag and the
+    /// optional texture/UVs. Element metadata the browser doesn't carry
+    /// (global_id / name / presentation layer / material name / properties) is
+    /// dropped — the viewer gets it from the parser worker instead.
+    pub fn from_mesh_data(m: ifc_lite_processing::MeshData) -> Self {
+        let mesh = Mesh {
+            positions: m.positions,
+            normals: m.normals,
+            indices: m.indices,
+            // Positions are final here (the canonical producer already applied
+            // placement/RTC); the flag only guards upstream double-subtraction.
+            rtc_applied: true,
+        };
+        let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
+        js.set_geometry_class(m.geometry_class);
+        if let (Some(uvs), Some(tex)) = (m.uvs, m.texture) {
+            js.set_texture(
+                uvs,
+                tex.rgba,
+                tex.width,
+                tex.height,
+                tex.repeat_s,
+                tex.repeat_t,
+            );
+        }
+        js
+    }
 }
 
 /// Collection of mesh data for returning multiple meshes

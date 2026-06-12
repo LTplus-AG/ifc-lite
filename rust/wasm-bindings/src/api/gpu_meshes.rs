@@ -12,53 +12,15 @@ use crate::zero_copy::{MeshCollection, MeshDataJs};
 use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
-/// Emit a sub-mesh, splitting it into one mesh per `IfcIndexedColourMap` palette
-/// group when the face set carries a per-triangle colour map whose triangle
-/// count still matches the produced mesh (issue #858). This restores the split
-/// the live viewer lost when the geometry pipeline was unified onto
-/// `processGeometryBatch` (#874) — the prepass only carries one dominant colour
-/// per geometry, so without this the green/yellow triangles collapse into red.
-///
-/// Falls back to a single `color` mesh when there is no map, when the map no
-/// longer applies (CSG/void retopology changed the triangle count), or when
-/// fewer than two distinct palette colours are used — the same guards the native
-/// processor relies on (see `split_mesh_by_indexed_colour`).
-fn emit_submesh_with_palette_split(
-    mesh_collection: &mut MeshCollection,
-    express_id: u32,
-    ifc_type_name: &str,
-    geometry_id: u32,
-    mesh: ifc_lite_geometry::Mesh,
-    color: [f32; 4],
-    indexed_colour_full: &rustc_hash::FxHashMap<
-        u32,
-        ifc_lite_processing::style::FullIndexedColourMap,
-    >,
-) {
-    if let Some(full) = indexed_colour_full.get(&geometry_id) {
-        if let Some(groups) = ifc_lite_processing::style::split_mesh_by_indexed_colour(&mesh, full)
-        {
-            for (rgba, mut part) in groups {
-                if part.normals.len() != part.positions.len() {
-                    ifc_lite_geometry::calculate_normals(&mut part);
-                }
-                mesh_collection.add(MeshDataJs::new(
-                    express_id,
-                    ifc_type_name.to_string(),
-                    part,
-                    rgba.to_array(),
-                ));
-            }
-            return;
-        }
+fn decode_ifc_bytes<'a>(data: &'a [u8]) -> &'a str {
+    match std::str::from_utf8(data) {
+        Ok(content) => content,
+        Err(error) => wasm_bindgen::throw_str(&format!("Invalid UTF-8 IFC data: {error}")),
     }
-    mesh_collection.add(MeshDataJs::new(
-        express_id,
-        ifc_type_name.to_string(),
-        mesh,
-        color,
-    ));
 }
+
+// The per-submesh #858 palette split lives inside the canonical per-element
+// producer (`ifc_lite_processing::element`) — shared with the native pipeline.
 
 #[wasm_bindgen]
 impl IfcAPI {
@@ -783,10 +745,14 @@ impl IfcAPI {
         style_ids: &[u32],   // geometry style entity IDs
         style_colors: &[u8], // [r, g, b, a, r, g, b, a, ...] (0-255)
     ) -> MeshCollection {
-        use super::styling::{resolve_element_color, resolve_submesh_color};
+        use super::styling::resolve_element_color;
         use ifc_lite_core::EntityDecoder;
-        use ifc_lite_geometry::{calculate_normals, GeometryHasher, GeometryRouter};
-        use ifc_lite_processing::default_color_for_type;
+        use ifc_lite_geometry::GeometryRouter;
+        use ifc_lite_processing::element::{
+            plan_type_geometry, produce_element_meshes, ElementJobKind, ElementMeshJob,
+            GeometryHashConfig, MeshProductionContext, MeshProductionOptions, TypeGeometryMode,
+        };
+        use ifc_lite_processing::style::GeometryStyleInfo;
 
         let content = data;
 
@@ -910,10 +876,6 @@ impl IfcAPI {
             mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
         }
 
-        // Cache IFC type name strings
-        let mut type_name_cache: rustc_hash::FxHashMap<ifc_lite_core::IfcType, String> =
-            rustc_hash::FxHashMap::default();
-
         // When merge-layers is on, fetch (or lazily build) the set of
         // IfcBuildingElementPart express IDs to skip. Built once per worker
         // and reused across every subsequent batch on the same content via
@@ -925,13 +887,55 @@ impl IfcAPI {
         };
 
         // IfcIndexedColourMap index (geometry id → full per-triangle palette),
-        // built once per worker. Drives the #858 per-palette-group split below
-        // so a face set whose ColourIndex assigns several colours to different
-        // triangles renders multi-coloured instead of collapsing to the single
-        // dominant colour the prepass `geometry_styles` carries.
+        // built once per worker (#858) — the canonical producer splits face
+        // sets per palette group so multi-coloured triangles don't collapse to
+        // the single dominant colour the prepass `geometry_styles` carries.
         let indexed_colour_full = self.get_or_build_indexed_colour_maps(content, &mut decoder);
 
-        // Process only the entities specified in jobs_flat
+        // Lift the flat wire styles into the canonical styled-item index the
+        // shared producer consumes (colour-only — exactly what the wire has).
+        let geometry_style_index: rustc_hash::FxHashMap<u32, GeometryStyleInfo> = geometry_styles
+            .iter()
+            .map(|(&id, &c)| (id, GeometryStyleInfo::from_color(c)))
+            .collect();
+        // Surface textures + UV maps (#961), built once per worker (cheap
+        // substring bail-out for untextured files).
+        let texture_index = self.get_or_build_texture_index(content, &mut decoder);
+        // The browser prepass doesn't ship material-chain colour lists yet
+        // (planned with the shared-prepass step); the alternation inside the
+        // producer simply never fires on an empty map — today's behaviour.
+        let element_material_colors: rustc_hash::FxHashMap<u32, Vec<[f32; 4]>> =
+            rustc_hash::FxHashMap::default();
+
+        let ctx = MeshProductionContext {
+            void_index: &void_index,
+            geometry_style_index: &geometry_style_index,
+            indexed_colour_full: &indexed_colour_full,
+            element_material_colors: &element_material_colors,
+            texture_index: &texture_index,
+            // The browser's axis change (IFC Z-up → WebGL Y-up) happens at the
+            // FFI boundary in `MeshDataJs::from_mesh_data`, not here.
+            site_local_rotation: None,
+        };
+        let opts = MeshProductionOptions {
+            geometry_hash: hash_tolerance.map(|tolerance| GeometryHashConfig {
+                tolerance,
+                world_rtc: hash_world_rtc,
+            }),
+        };
+
+        // CSG diagnostics, aggregated across the batch: the canonical producer
+        // drains the (warm, batch-shared) router per element so one element's
+        // failures never bleed into the next; we collect them here and hand
+        // them to the logger below.
+        let mut batch_csg_failures: rustc_hash::FxHashMap<
+            u32,
+            Vec<ifc_lite_geometry::BoolFailure>,
+        > = rustc_hash::FxHashMap::default();
+
+        // Process only the entities specified in jobs_flat — every job runs
+        // THE canonical per-element producer (`ifc_lite_processing::element`),
+        // the same code the native pipeline runs.
         for chunk in jobs_flat.chunks(3) {
             if chunk.len() < 3 {
                 break;
@@ -944,257 +948,73 @@ impl IfcAPI {
                 continue;
             }
 
-            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                // IfcAlignment exception — see `parse_meshes`.
-                let has_representation = entity.get(6).map(|a| !a.is_null()).unwrap_or(false);
-                let is_alignment = entity.ifc_type == ifc_lite_core::IfcType::IfcAlignment;
-                if !has_representation && !is_alignment {
+            let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
+                continue;
+            };
+            let ifc_type = entity.ifc_type;
+
+            // #957: type products render their planned RepresentationMaps. The
+            // viewer emits BOTH orphan (class 1) and instanced (class 2) maps —
+            // `EmitTagged` — so the Model/Types switch can filter at render
+            // time; the native pipeline plans the same jobs with
+            // `SuppressInstanced` (an export must not duplicate geometry).
+            let kind = if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
+                let rep_map_ids: Vec<u32> = entity
+                    .get(6)
+                    .and_then(|a| a.as_list())
+                    .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+                    .unwrap_or_default();
+                if rep_map_ids.is_empty() {
                     continue;
                 }
-
-                let ifc_type = entity.ifc_type;
-
-                // #957: orphan type-product geometry — an IfcXxxType carrying its
-                // own RepresentationMaps with no occurrence to instantiate them
-                // (buildingSMART annex-E "tessellated shape with style" files).
-                // Render each RepresentationMap NOT referenced by an IfcMappedItem
-                // (the referenced ones draw through their occurrence — no double
-                // render).
-                if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
-                    // #957 follow-up + Model/Types view switch: type-product
-                    // RepresentationMap geometry is ALWAYS emitted here, tagged with
-                    // a geometry_class so the viewer can choose what to show:
-                    //   class 1 = orphan type (no occurrence) — part of "the model"
-                    //             since nothing else renders it (annex-E showcase).
-                    //   class 2 = instanced type (an IfcRelDefinesByType links it to
-                    //             an occurrence that already draws the real geometry).
-                    //             Hidden in Model mode (else the AC20/ArchiCAD
-                    //             duplicate-boxes-at-MappingOrigin regression returns);
-                    //             shown in Types mode as the type-library shape.
-                    // The native process_geometry path still SUPPRESSES class 2 (an
-                    // export must not duplicate geometry); only the interactive viewer
-                    // emits both and filters by view mode at render time.
-                    let instantiated =
-                        self.get_or_build_instantiated_type_ids(content, &mut decoder);
-                    let type_class: u8 = if instantiated.contains(&id) { 2 } else { 1 };
-                    let rep_map_ids: Vec<u32> = entity
-                        .get(6)
-                        .and_then(|a| a.as_list())
-                        .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
-                        .unwrap_or_default();
-                    if !rep_map_ids.is_empty() {
-                        let referenced =
-                            self.get_or_build_referenced_repmaps(content, &mut decoder);
-                        // Surface textures + UV maps (#961), built once per worker.
-                        let texture_index = self.get_or_build_texture_index(content, &mut decoder);
-                        for rm_id in rep_map_ids {
-                            if referenced.contains(&rm_id) {
-                                continue;
-                            }
-                            let Ok(rep_map) = decoder.decode_by_id(rm_id) else {
-                                continue;
-                            };
-                            // One part per output mesh: each textured face set
-                            // carries its own image; untextured items merge (#961).
-                            let Ok(parts) = router.process_representation_map_with_texture(
-                                &rep_map,
-                                &mut decoder,
-                                &texture_index,
-                            ) else {
-                                continue;
-                            };
-                            if parts.is_empty() {
-                                continue;
-                            }
-                            let color = super::styling::color_for_representation_map(
-                                rm_id,
-                                &geometry_styles,
-                                &mut decoder,
-                            )
-                            .unwrap_or_else(|| default_color_for_type(ifc_type).to_array());
-                            let ifc_type_name = type_name_cache
-                                .entry(ifc_type)
-                                .or_insert_with(|| ifc_type.name().to_string())
-                                .clone();
-                            for (mut mesh, uvs, texture) in parts {
-                                if mesh.is_empty() {
-                                    continue;
-                                }
-                                if mesh.normals.len() != mesh.positions.len() {
-                                    calculate_normals(&mut mesh);
-                                }
-                                let mut mesh_js =
-                                    MeshDataJs::new(id, ifc_type_name.clone(), mesh, color);
-                                mesh_js.set_geometry_class(type_class);
-                                if let Some(tex) = texture {
-                                    mesh_js.set_texture(
-                                        uvs,
-                                        tex.rgba,
-                                        tex.width,
-                                        tex.height,
-                                        tex.repeat_s,
-                                        tex.repeat_t,
-                                    );
-                                }
-                                mesh_collection.add(mesh_js);
-                            }
-                        }
-                    }
+                let referenced = self.get_or_build_referenced_repmaps(content, &mut decoder);
+                let instantiated = self.get_or_build_instantiated_type_ids(content, &mut decoder);
+                let rep_maps = plan_type_geometry(
+                    &rep_map_ids,
+                    &referenced,
+                    instantiated.contains(&id),
+                    TypeGeometryMode::EmitTagged,
+                );
+                if rep_maps.is_empty() {
                     continue;
                 }
+                ElementJobKind::TypeProduct { rep_maps }
+            } else {
+                ElementJobKind::Product
+            };
 
-                let has_openings = void_index.contains_key(&id);
+            let produced = produce_element_meshes(
+                &ElementMeshJob {
+                    id,
+                    ifc_type,
+                    entity: &entity,
+                    kind,
+                    element_color: element_styles.get(&id).copied(),
+                    // The viewer gets element metadata from the parser worker.
+                    metadata: None,
+                },
+                &ctx,
+                &opts,
+                &mut decoder,
+                &router,
+            );
 
-                // One fingerprint accumulator per entity. All of an entity's
-                // submeshes are produced within this single loop iteration, so
-                // the hash is fully resolved here — no cross-batch merge.
-                let mut entity_hasher =
-                    hash_tolerance.map(|tol| GeometryHasher::new(tol, hash_world_rtc));
-
-                if has_openings {
-                    // Submesh-aware cut first (server parity): per-part
-                    // colours survive the void subtraction, so a voided
-                    // multi-layer wall or window keeps frame/glass split.
-                    let mut used_voided_submesh = false;
-                    if let Ok(sub_meshes) = router.process_element_with_submeshes_and_voids(
-                        &entity,
-                        &mut decoder,
-                        &void_index,
-                    ) {
-                        if !sub_meshes.is_empty() {
-                            let default_color = default_color_for_type(ifc_type).to_array();
-                            let element_color = element_styles.get(&id).copied();
-                            let mut mat_color_idx = 0usize;
-                            for sub in sub_meshes.sub_meshes {
-                                let geometry_id = sub.geometry_id;
-                                let mut mesh = sub.mesh;
-                                if mesh.is_empty() {
-                                    continue;
-                                }
-                                if mesh.normals.len() != mesh.positions.len() {
-                                    calculate_normals(&mut mesh);
-                                }
-                                let color = resolve_submesh_color(
-                                    geometry_id,
-                                    &geometry_styles,
-                                    &mut decoder,
-                                    None,
-                                    &mut mat_color_idx,
-                                    element_color,
-                                    default_color,
-                                );
-                                let ifc_type_name = type_name_cache
-                                    .entry(ifc_type)
-                                    .or_insert_with(|| ifc_type.name().to_string())
-                                    .clone();
-                                if let Some(h) = entity_hasher.as_mut() {
-                                    h.add_mesh(&mesh.positions, &mesh.indices);
-                                }
-                                emit_submesh_with_palette_split(
-                                    &mut mesh_collection,
-                                    id,
-                                    &ifc_type_name,
-                                    geometry_id,
-                                    mesh,
-                                    color,
-                                    &indexed_colour_full,
-                                );
-                                used_voided_submesh = true;
-                            }
-                        }
-                    }
-                    if !used_voided_submesh {
-                        if let Ok(mut mesh) =
-                            router.process_element_with_voids(&entity, &mut decoder, &void_index)
-                        {
-                            if !mesh.is_empty() {
-                                if mesh.normals.len() != mesh.positions.len() {
-                                    calculate_normals(&mut mesh);
-                                }
-                                let color = element_styles
-                                    .get(&id)
-                                    .copied()
-                                    .unwrap_or_else(|| default_color_for_type(ifc_type).to_array());
-                                let ifc_type_name = type_name_cache
-                                    .entry(ifc_type)
-                                    .or_insert_with(|| ifc_type.name().to_string())
-                                    .clone();
-                                if let Some(h) = entity_hasher.as_mut() {
-                                    h.add_mesh(&mesh.positions, &mesh.indices);
-                                }
-                                mesh_collection.add(MeshDataJs::new(id, ifc_type_name, mesh, color));
-                            }
-                        }
-                    }
-                } else {
-                    // Submesh path for ALL types: per-geometry-item colors
-                    // (window glass transparency, multi-material doors) and —
-                    // crucially — unsupported representation items are skipped
-                    // instead of aborting the entire element (process_element
-                    // uses `?`).
-                    {
-                        if let Ok(sub_meshes) =
-                            router.process_element_with_submeshes(&entity, &mut decoder)
-                        {
-                            if !sub_meshes.is_empty() {
-                                let default_color = default_color_for_type(ifc_type).to_array();
-                                let element_color = element_styles.get(&id).copied();
-                                let mut mat_color_idx = 0usize;
-                                for sub in sub_meshes.sub_meshes {
-                                    let geometry_id = sub.geometry_id;
-                                    let mut mesh = sub.mesh;
-                                    if mesh.is_empty() {
-                                        continue;
-                                    }
-                                    if mesh.normals.len() != mesh.positions.len() {
-                                        calculate_normals(&mut mesh);
-                                    }
-                                    let color = resolve_submesh_color(
-                                        geometry_id,
-                                        &geometry_styles,
-                                        &mut decoder,
-                                        None,
-                                        &mut mat_color_idx,
-                                        element_color,
-                                        default_color,
-                                    );
-                                    let ifc_type_name = type_name_cache
-                                        .entry(ifc_type)
-                                        .or_insert_with(|| ifc_type.name().to_string())
-                                        .clone();
-                                    if let Some(h) = entity_hasher.as_mut() {
-                                        h.add_mesh(&mesh.positions, &mesh.indices);
-                                    }
-                                    emit_submesh_with_palette_split(
-                                        &mut mesh_collection,
-                                        id,
-                                        &ifc_type_name,
-                                        geometry_id,
-                                        mesh,
-                                        color,
-                                        &indexed_colour_full,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Record the entity's geometry fingerprint (if any geometry
-                // was produced and hashing is enabled).
-                if let Some(h) = entity_hasher {
-                    if !h.is_empty() {
-                        mesh_collection.push_geometry_hash(id, h.finish());
-                    }
-                }
+            for mesh_data in produced.meshes {
+                mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));
+            }
+            if let Some(hash) = produced.geometry_hash {
+                mesh_collection.push_geometry_hash(id, hash);
+            }
+            for (product_id, fails) in produced.csg_failures {
+                batch_csg_failures.entry(product_id).or_default().extend(fails);
             }
         }
 
-        // Drain & surface the opening / CSG diagnostics. The viewer's
-        // large-file path goes processAdaptive -> processParallel -> Web
-        // Workers -> `processGeometryBatch`, so the drain has to run here
-        // or the diagnostic helper never fires for real-world files.
-        let _ = super::drain_and_log_csg_diagnostics(&router);
+        // Surface the opening / CSG diagnostics. The viewer's large-file path
+        // goes processAdaptive -> processParallel -> Web Workers ->
+        // `processGeometryBatch`, so the log has to fire here or the
+        // diagnostic helper never runs for real-world files.
+        let _ = super::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
 
         mesh_collection
     }

@@ -22,7 +22,11 @@ import { isLightingPresetId, type LightingPresetId } from '@/lib/lighting-preset
 export interface EnvironmentSlice {
   /** Active lighting preset for the WebGPU viewport. */
   envPreset: LightingPresetId;
-  /** Draw a sky (procedural in WebGPU; atmosphere + sun in Cesium geo mode). */
+  /**
+   * Cesium geo mode: show the atmosphere, sun disc and fog. (Standalone the
+   * sky comes with the lighting preset — every preset except `default`
+   * enables it — so this flag only drives the world-context scene.)
+   */
   envSkyEnabled: boolean;
   /** User exposure trim, multiplied onto the preset exposure. 1 = neutral. */
   envExposure: number;

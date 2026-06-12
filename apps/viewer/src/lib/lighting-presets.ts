@@ -10,6 +10,10 @@
  * preset is intentionally empty so it renders pixel-identical to every
  * ifc-lite build before lighting became configurable.
  *
+ * A preset IS the whole environment: every preset except `default` brings
+ * its sky along (`skyEnabled: true`) — picking "Day" gives day lighting AND
+ * a day sky, with no separate sky switch to discover.
+ *
  * When the solar study drives the sun, the preset still supplies the base
  * sun intensity and hemisphere colours; only direction/colour/fades are
  * overridden per the computed sun altitude.
@@ -38,6 +42,7 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
     label: 'Day',
     hint: 'Bright neutral daylight, high sun',
     environment: {
+      skyEnabled: true,
       sunDirection: [0.45, 0.83, 0.33],
       sunColor: [1.0, 0.98, 0.92],
       sunIntensity: 0.62,
@@ -52,6 +57,7 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
     label: 'Overcast',
     hint: 'Soft shadowless grey-sky light',
     environment: {
+      skyEnabled: true,
       sunDirection: [0.2, 0.95, 0.24],
       sunColor: [0.9, 0.92, 0.95],
       sunIntensity: 0.28,
@@ -73,6 +79,7 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
     label: 'Evening',
     hint: 'Low warm sun, golden-hour mood',
     environment: {
+      skyEnabled: true,
       sunDirection: [0.85, 0.18, 0.49],
       sunColor: [1.0, 0.72, 0.45],
       sunIntensity: 0.6,
@@ -87,6 +94,7 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
     label: 'Night',
     hint: 'Cool moonlit ambience',
     environment: {
+      skyEnabled: true,
       sunDirection: [-0.3, 0.7, -0.65],
       sunColor: [0.65, 0.72, 0.9],
       sunIntensity: 0.18,

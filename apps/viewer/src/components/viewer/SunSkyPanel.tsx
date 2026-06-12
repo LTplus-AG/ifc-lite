@@ -104,34 +104,40 @@ export function SunSkyPanel() {
 
       {!collapsed && (
         <>
-          {/* Sky + lighting */}
-          <div className="flex items-center gap-1">
-            <ToggleChip
-              label="Sky"
-              active={skyEnabled}
-              onClick={() => setSkyEnabled(!skyEnabled)}
-              title={cesiumEnabled
-                ? 'Atmosphere + sun in the world context'
-                : 'Procedural sky behind the model'}
-            />
-            {cesiumEnabled ? (
+          {/* Environment — the preset IS the whole look: every preset except
+              Default brings its own sky. In the world context the model is
+              lit by Cesium's sun instead, so the choice becomes a single
+              Atmosphere switch. */}
+          {cesiumEnabled ? (
+            <div className="flex items-center gap-1">
+              <ToggleChip
+                label="Atmosphere"
+                active={skyEnabled}
+                onClick={() => setSkyEnabled(!skyEnabled)}
+                title="Sky, sun disc and haze in the world context"
+              />
               <span className="flex-1 px-1 text-[9px] leading-tight text-muted-foreground">
                 Lighting follows the sun &amp; atmosphere
               </span>
-            ) : (
+            </div>
+          ) : (
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Environment</span>
               <select
-                aria-label="Lighting preset"
+                aria-label="Environment preset"
                 value={preset}
                 onChange={(e) => { if (isLightingPresetId(e.target.value)) setPreset(e.target.value); }}
                 title={LIGHTING_PRESETS[preset].hint}
-                className="flex-1 bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]"
+                className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]"
               >
                 {LIGHTING_PRESET_ORDER.map((id) => (
-                  <option key={id} value={id}>{LIGHTING_PRESETS[id].label}</option>
+                  <option key={id} value={id}>
+                    {LIGHTING_PRESETS[id].label}{id === 'default' ? ' (no sky)' : ''}
+                  </option>
                 ))}
               </select>
-            )}
-          </div>
+            </label>
+          )}
 
           {/* Exposure — WebGPU shading only, hidden in world-context mode */}
           {!cesiumEnabled && (

@@ -351,13 +351,13 @@ export function Viewport({
   }, [cesiumActive, theme]);
 
   // ── Lighting environment ───────────────────────────────────────────────
-  // Compose the renderer's lighting from the active preset, the user's
-  // sky/exposure choices, and (when the solar study runs) the true sun
+  // Compose the renderer's lighting from the active preset (which brings
+  // its own sky — picking "Day" means day lighting AND a day sky), the
+  // user's exposure trim, and (when the solar study runs) the true sun
   // position at the site. The sky pass must stay OFF while Cesium is
   // active — the WebGPU canvas composites over Cesium with a transparent
   // clear, and Cesium draws its own atmosphere.
   const envPreset = useViewerStore((s) => s.envPreset);
-  const envSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
   const envExposure = useViewerStore((s) => s.envExposure);
   const solarEnabledForEnv = useViewerStore((s) => s.solarEnabled);
   const solarSunDirection = useViewerStore((s) => s.solarSunDirection);
@@ -367,7 +367,7 @@ export function Viewport({
     const preset = LIGHTING_PRESETS[envPreset].environment;
     const env: LightingEnvironment = {
       ...preset,
-      skyEnabled: envSkyEnabled && !cesiumActive,
+      skyEnabled: (preset.skyEnabled ?? false) && !cesiumActive,
       exposure: (preset.exposure ?? 0.85) * envExposure,
     };
     if (solarEnabledForEnv && solarSunDirection) {
@@ -384,7 +384,6 @@ export function Viewport({
     return env;
   }, [
     envPreset,
-    envSkyEnabled,
     envExposure,
     cesiumActive,
     solarEnabledForEnv,

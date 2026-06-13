@@ -243,6 +243,57 @@ fn ilambda_of(p: &ImplicitPoint) -> (Iv3, RnInterval) {
     }
 }
 
+/// Cached homogeneous interval lambda `(λ, d)` for ANY point — the f64-interval
+/// analogue of `fixed::Lam`. Computed ONCE per interned point (the interner caches
+/// it), so the hot re-triangulation predicates can run a directed-rounding f64
+/// determinant straight from it — NO per-call LPI/TPI recompute, and crucially NO
+/// wide-integer (I512) arithmetic, which wasm emulates ~hundreds× slower than
+/// native. An `Explicit` point is `(coords, d=1)`.
+pub(super) type IvLam = ([RnInterval; 3], RnInterval);
+
+#[inline]
+pub(super) fn ilambda_cached(p: &ImplicitPoint) -> IvLam {
+    match p {
+        ImplicitPoint::Lpi(l) => lpi_lambda(l),
+        ImplicitPoint::Tpi(t) => tpi_lambda(t),
+        ImplicitPoint::Explicit(e) => (ivec(*e), RnInterval::point(1.0)),
+    }
+}
+
+/// 2-D orientation of three points from their CACHED interval lambdas — the exact
+/// mirror of `fixed::orient2d_from_lam`'s determinant, in directed-rounding f64.
+/// Returns `Some(sign)` ONLY when the interval determinant is strictly one side of
+/// zero ⇒ that sign equals the exact sign (outward rounding, no FMA) and is
+/// bit-identical native==wasm; a straddle returns `None` so the caller runs the
+/// exact I512/BigRational tiers, unchanged.
+pub(super) fn orient2d_from_lam_iv(a: &IvLam, b: &IvLam, c: &IvLam, axis: DropAxis) -> Option<Sign> {
+    let (i, j) = axis_idx(axis);
+    let (l1, d1) = (&a.0, a.1);
+    let (l2, d2) = (&b.0, b.1);
+    let (l3, d3) = (&c.0, c.1);
+    let u_i = d1.mul(l2[i]).sub(d2.mul(l1[i]));
+    let u_j = d1.mul(l2[j]).sub(d2.mul(l1[j]));
+    let v_i = d1.mul(l3[i]).sub(d3.mul(l1[i]));
+    let v_j = d1.mul(l3[j]).sub(d3.mul(l1[j]));
+    let det = u_i.mul(v_j).sub(u_j.mul(v_i));
+    Some(super::assemble_sign(det.sign()?, &[d2.sign()?, d3.sign()?]))
+}
+
+/// Lexicographic compare of two points from their CACHED interval lambdas — the
+/// f64 mirror of `fixed::cmp_lex_from_lam`. `None` as soon as any axis straddles.
+pub(super) fn cmp_lex_from_lam_iv(a: &IvLam, b: &IvLam) -> Option<Sign> {
+    let (la, da) = (&a.0, a.1);
+    let (lb, db) = (&b.0, b.1);
+    for k in 0..3 {
+        let s = la[k].mul(db).sub(lb[k].mul(da));
+        let sg = super::assemble_sign(s.sign()?, &[da.sign()?, db.sign()?]);
+        if sg != Sign::Zero {
+            return Some(sg);
+        }
+    }
+    Some(Sign::Zero)
+}
+
 /// Interval tier of `rational::orient2d_2i` — `None` on a zero-straddle.
 pub fn orient2d_2i(a: &ImplicitPoint, b: &ImplicitPoint, c: [f64; 3], axis: DropAxis) -> Option<Sign> {
     let (i, j) = axis_idx(axis);

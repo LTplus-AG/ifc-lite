@@ -17,7 +17,7 @@
 
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d, orient2d_any};
-use super::fixed;
+use super::{fixed, interval};
 use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
@@ -27,23 +27,26 @@ fn e(p: [f64; 3]) -> ImplicitPoint {
     ImplicitPoint::Explicit(p)
 }
 
-/// Vid-based exact orient2d via the interner's cached I1024 lambdas — skips the
-/// interval filter (which can't resolve the degenerate box configs) AND the
-/// LPI/TPI lambda recomputation. Falls back to the ImplicitPoint cascade only on
-/// off-grid/overflow. The dominant re-triangulation predicate.
+/// Vid-based exact orient2d — the dominant re-triangulation predicate. Tiers, all
+/// returning the SAME exact sign (faster ones resolve the easy cases first):
+/// all-explicit Shewchuk (f64) → f64 directed-rounding interval from the cached
+/// lambdas → cached-I1024 determinant → ImplicitPoint cascade (BigRational tail).
+/// The interval tier carries the non-degenerate majority of implicit-point
+/// predicates in pure f64, so the wasm-emulated I1024 path is reached only on a
+/// genuine zero-straddle — the fix for the dense-opening-wall wasm cost.
 #[inline]
 fn orient2d_v(it: &Interner, a: Vid, b: Vid, c: Vid, axis: DropAxis) -> Sign {
     let (pa, pb, pc) = (it.get(a), it.get(b), it.get(c));
-    // All-explicit triple — the common case in a fragmented host face. The
-    // Shewchuk adaptive predicate is EXACT yet evaluates in f64 (its own
-    // semi-static→exact ladder), so it never touches the I1024 lambda path —
-    // which WASM emulates ~hundreds× slower than native wide-integer ops and was
-    // the dominant cost on dense-opening walls. Same exact sign ⇒ byte-identical
-    // native==wasm. Implicit (LPI/TPI) points still take the cached-lambda path.
+    // All-explicit: the Shewchuk adaptive predicate is EXACT yet pure f64.
     if let (ImplicitPoint::Explicit(_), ImplicitPoint::Explicit(_), ImplicitPoint::Explicit(_)) =
         (pa, pb, pc)
     {
         return orient2d(pa, pb, pc, axis);
+    }
+    // f64 INTERVAL from the cached lambdas — pure f64, no wide-int; resolves the
+    // non-degenerate majority and is bit-identical to the exact sign when definite.
+    if let Some(s) = interval::orient2d_from_lam_iv(it.lam_iv(a), it.lam_iv(b), it.lam_iv(c), axis) {
+        return s;
     }
     if let (Some(la), Some(lb), Some(lc)) = (it.lam(a), it.lam(b), it.lam(c)) {
         if let Some(s) = fixed::orient2d_from_lam(la, lb, lc, axis) {
@@ -53,9 +56,13 @@ fn orient2d_v(it: &Interner, a: Vid, b: Vid, c: Vid, axis: DropAxis) -> Sign {
     orient2d_any(pa, pb, pc, axis)
 }
 
-/// Vid-based exact lexicographic compare via the cached lambdas.
+/// Vid-based exact lexicographic compare — f64 interval from the cached lambdas
+/// first, then the cached-I1024 compare, then the ImplicitPoint cascade.
 #[inline]
 fn cmp_lex_v(it: &Interner, a: Vid, b: Vid) -> Sign {
+    if let Some(s) = interval::cmp_lex_from_lam_iv(it.lam_iv(a), it.lam_iv(b)) {
+        return s;
+    }
     if let (Some(la), Some(lb)) = (it.lam(a), it.lam(b)) {
         if let Some(s) = fixed::cmp_lex_from_lam(la, lb) {
             return s;

@@ -14,7 +14,7 @@
 //! processing order is the position in the `cmp_lex`-sorted index (`lex_order`).
 
 use super::predicates::cmp_lex;
-use super::{fixed, ImplicitPoint, Sign};
+use super::{fixed, interval, ImplicitPoint, Sign};
 use std::cmp::Ordering;
 
 /// Stable, append-only vertex identifier.
@@ -29,6 +29,12 @@ pub struct Interner {
     // recomputing the LPI/TPI cross products every call. `None` = off-grid /
     // overflow ⇒ predicates fall back to the exact BigRational cascade.
     lambdas: Vec<Option<fixed::Lam>>,
+    // Per-Vid cached f64-INTERVAL homogeneous lambda (also computed once). The hot
+    // predicates run a directed-rounding f64 determinant from this FIRST and only
+    // fall to the I512 `lambdas` on a zero-straddle — so the non-degenerate
+    // majority never touches wasm-emulated wide integers. Always present (f64 is
+    // always computable, even where the I512 lambda overflows to `None`).
+    lambdas_iv: Vec<interval::IvLam>,
 }
 
 impl Interner {
@@ -44,12 +50,18 @@ impl Interner {
         // use it (fast exact) and fall back to the ImplicitPoint cmp_lex only on
         // off-grid/overflow.
         let new_lam = fixed::lambda1024(&p);
+        let new_lam_iv = interval::ilambda_cached(&p);
         let search = self.sorted.binary_search_by(|&vid| {
-            let s = match (&self.lambdas[vid as usize], &new_lam) {
-                (Some(le), Some(ln)) => fixed::cmp_lex_from_lam(le, ln),
-                _ => None,
-            }
-            .unwrap_or_else(|| cmp_lex(&self.points[vid as usize], &p));
+            // f64 interval compare from the cached lambdas first (pure f64, no
+            // wide-int) → cached-I1024 compare → ImplicitPoint cascade. Each tier
+            // gives the SAME exact order; the interval just carries the
+            // distinct-coordinate majority off the wasm-emulated I512 path.
+            let s = interval::cmp_lex_from_lam_iv(&self.lambdas_iv[vid as usize], &new_lam_iv)
+                .or_else(|| match (&self.lambdas[vid as usize], &new_lam) {
+                    (Some(le), Some(ln)) => fixed::cmp_lex_from_lam(le, ln),
+                    _ => None,
+                })
+                .unwrap_or_else(|| cmp_lex(&self.points[vid as usize], &p));
             match s {
                 Sign::Negative => Ordering::Less,
                 Sign::Positive => Ordering::Greater,
@@ -62,6 +74,7 @@ impl Interner {
                 let vid = self.points.len() as Vid;
                 self.points.push(p);
                 self.lambdas.push(new_lam);
+                self.lambdas_iv.push(new_lam_iv);
                 self.sorted.insert(idx, vid);
                 vid
             }
@@ -76,6 +89,12 @@ impl Interner {
     #[inline]
     pub fn lam(&self, v: Vid) -> &Option<fixed::Lam> {
         &self.lambdas[v as usize]
+    }
+
+    /// The cached f64-interval lambda for a Vid (always present).
+    #[inline]
+    pub fn lam_iv(&self, v: Vid) -> &interval::IvLam {
+        &self.lambdas_iv[v as usize]
     }
 
     pub fn len(&self) -> usize {

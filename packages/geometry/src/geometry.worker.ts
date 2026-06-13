@@ -824,6 +824,13 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       }
       emitSessionEnd(activeSession);
       activeSession = null;
+      // Release the per-load entity index and drop the applied flag. Workers
+      // are normally terminated after a load, but a reused worker must not
+      // retain the (large) index buffers across loads, nor replay a stale
+      // index on a recovery re-init before the next load's set-entity-index
+      // arrives. The next load re-populates via its own set-entity-index.
+      cachedEntityIndex = null;
+      entityIndexApplied = false;
       return;
     }
   } catch (err) {

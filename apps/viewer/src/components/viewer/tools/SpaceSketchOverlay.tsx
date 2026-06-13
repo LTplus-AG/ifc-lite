@@ -31,7 +31,7 @@ import {
   GENERATED_SPACE_OBJECTTYPE,
   type BoundaryMode,
 } from '@ifc-lite/create';
-import { X, Undo2, Redo2, Layers, Maximize, AlertTriangle, Magnet, SlidersHorizontal, HelpCircle } from 'lucide-react';
+import { X, Undo2, Redo2, Layers, Maximize, AlertTriangle, Magnet, SlidersHorizontal, HelpCircle, Eraser } from 'lucide-react';
 
 let wasmReady: Promise<void> | null = null;
 function ensureWasm(): Promise<void> {
@@ -859,6 +859,39 @@ export function SpaceSketchOverlay() {
     else setActiveTool('select');
   }, [dirty, setActiveTool]);
 
+  // "Simplify" — bulk-remove every redundant node: one that lies on a straight
+  // run in EVERY room it touches (so dissolving it can't change any room's
+  // shape). This clears the derivation cruft without deforming geometry. Wall
+  // junctions (3+ walls) are left alone — those are removed by merging.
+  const simplifyRedundantNodes = useCallback(() => {
+    const plate = plateRef.current;
+    if (!plate || !rooms.length) return;
+    const COLL_TOL = 0.02; // m — perpendicular distance to the chord through neighbours
+    const byPos = new Map<string, { p: Pt; collinearEverywhere: boolean }>();
+    for (const r of rooms) {
+      const n = r.outline.length;
+      for (let i = 0; i < n; i++) {
+        const a = r.outline[(i + n - 1) % n], c = r.outline[i], b = r.outline[(i + 1) % n];
+        const coll = distToSeg(c[0], c[1], a[0], a[1], b[0], b[1]) < COLL_TOL;
+        const key = `${c[0].toFixed(4)},${c[1].toFixed(4)}`;
+        const e = byPos.get(key);
+        if (e) e.collinearEverywhere = e.collinearEverywhere && coll;
+        else byPos.set(key, { p: c, collinearEverywhere: coll });
+      }
+    }
+    const candidates = [...byPos.values()].filter((e) => e.collinearEverywhere).map((e) => e.p);
+    if (!candidates.length) { setStatus('No redundant nodes to remove.'); return; }
+    const snap = plate.duplicate();
+    let removed = 0;
+    for (const p of candidates) {
+      const vid = plate.findVertexNear(p[0], p[1], 1e-3); // positions don't move as others dissolve
+      if (vid === undefined) continue;
+      try { plate.dissolveVertex(vid); removed++; } catch { /* junction/triangle — leave it */ }
+    }
+    if (removed > 0) { commitUndo(snap); refreshRooms(); setStatus(`Removed ${removed} redundant node(s).`); }
+    else { snap.free(); setStatus('No removable redundant nodes.'); }
+  }, [rooms, commitUndo, refreshRooms]);
+
   const processMove = useCallback(() => {
     rafRef.current = null;
     const m = moveRef.current;
@@ -1036,9 +1069,11 @@ export function SpaceSketchOverlay() {
           plate.dissolveVertex(v);
           commitUndo(snap); refreshRooms(); setHover(null); setDeleteHover(null);
           setStatus(`Removed vertex — ${plate.roomCount} room(s).`);
-        } catch (err) {
+        } catch {
           plate.free(); plateRef.current = snap; refreshRooms();
-          setStatus(`Can't remove vertex: ${String(err).replace(/^\w+:\s*/, '')}`);
+          // The only nodes that can't dissolve are wall junctions (3+ walls meet)
+          // — removing one there means removing a wall, i.e. merging rooms.
+          setStatus('Can’t remove a wall-junction node — ⌥-click a wall to merge the rooms instead.');
         }
         return;
       }
@@ -1067,10 +1102,21 @@ export function SpaceSketchOverlay() {
         }
         return;
       }
-      const target = resolveSplitTarget(wx, wy);
-      if (target) {
-        setSplitPick(target); setSplitHover(target.pos);
-        setStatus('Cut started — click another wall (or corner) on the same room to finish.');
+      // Insert a node on the wall RIGHT NOW (so "add a node" actually adds one,
+      // visible + undoable), and arm a cut from it. A second wall/corner click
+      // splits the room between the two; Esc/elsewhere keeps the added node.
+      const snap = plate.duplicate();
+      try {
+        const pos = projectOnSeg([wx, wy], ed.a, ed.b);
+        const va = plate.splitEdge(ed.edge, pos[0], pos[1]);
+        commitUndo(snap);
+        refreshRooms();
+        setSplitPick({ kind: 'vertex', vid: va, pos });
+        setSplitHover(pos);
+        setStatus('Node added — click another wall or corner to split between them, or Esc to keep the node.');
+      } catch (err) {
+        plate.free(); plateRef.current = snap; refreshRooms();
+        setStatus(`Can't add node here: ${String(err).replace(/^\w+:\s*/, '')}`);
       }
       return;
     }
@@ -1224,6 +1270,8 @@ export function SpaceSketchOverlay() {
           <SlidersHorizontal className="h-4 w-4" />
           {(boundaryMode !== 'inner' || snapTol != null || showDiagnostics) && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />}
         </button>
+        <button className={iconBtn} onClick={simplifyRedundantNodes}
+          disabled={!rooms.length} title="Clean up — remove redundant nodes on straight walls (shape unchanged)"><Eraser className="h-4 w-4" /></button>
         <button className={iconBtn} onClick={() => applyFit(computeFit(rooms, sizeRef.current.w, sizeRef.current.h))}
           disabled={!rooms.length} title="Fit plan to canvas (reset zoom & pan)"><Maximize className="h-4 w-4" /></button>
         <span className="ml-auto pr-1 text-[11px] tabular-nums text-muted-foreground">

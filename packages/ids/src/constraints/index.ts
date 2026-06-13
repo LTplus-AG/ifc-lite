@@ -22,6 +22,7 @@ import {
   isStrictNumericLiteral,
   isBooleanLiteral,
 } from './comparators.js';
+import { isNumericXsdBase, isBooleanXsdBase } from './xsd-cast.js';
 
 /** Tolerance for the bounds matcher's exclusive comparators. */
 const NUMERIC_TOLERANCE = 1e-6;
@@ -118,12 +119,24 @@ function matchPattern(
   actualValue: string | number | boolean,
   caseInsensitive = false
 ): boolean {
-  // Per IDS 1.0 spec patterns ONLY apply to string values. A pattern
-  // tested against a number / boolean fails outright — even if the
-  // textual representation would happen to match — so the validator
-  // can distinguish "wrong shape" from "wrong value".
-  if (typeof actualValue === 'number' || typeof actualValue === 'boolean') {
-    return false;
+  // An XSD `xs:pattern` facet constrains the *lexical* space of its base
+  // datatype, so it matches the textual representation of the value — the
+  // official IDS reference (ifctester) does `re.fullmatch(pattern,
+  // str(value))`. A numeric value therefore satisfies e.g.
+  // `<restriction base="xs:decimal"><pattern value="^.*$"/>` ("any
+  // decimal value present"), which the previous blanket number/boolean
+  // bail-out wrongly failed on every numeric property.
+  //
+  // But the runtime value must first be type-compatible with the declared
+  // base: a number only matches a numeric base and a boolean only a
+  // boolean base. A number tested against `base="xs:string"` is a type
+  // mismatch — buildingSMART's corpus encodes exactly this as
+  // `patterns_always_fail_on_any_number`. (A string actual is already the
+  // lexical form, so it is matched directly regardless of base.)
+  if (typeof actualValue === 'number') {
+    if (!isNumericXsdBase(constraint.base)) return false;
+  } else if (typeof actualValue === 'boolean') {
+    if (!isBooleanXsdBase(constraint.base)) return false;
   }
   const actualStr = String(actualValue);
 

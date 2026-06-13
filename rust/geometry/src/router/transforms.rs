@@ -764,6 +764,29 @@ impl GeometryRouter {
     /// during raw world-coordinate triangulation are guarded by `rtc_applied`.
     #[inline]
     pub(super) fn transform_mesh_world(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
+        // DIAGNOSTIC: temporarily false to isolate the geometry-loss source.
+        self.transform_mesh_world_framed(mesh, transform, false);
+    }
+
+    /// World placement with an explicit choice of whether to relativize positions
+    /// into a per-mesh local `origin`.
+    ///
+    /// `relativize = true` defers the building/georef-scale world magnitude into
+    /// `mesh.origin` (the AABB centre) and stores positions RELATIVE to it, so f32
+    /// can't collapse adjacent vertices into degenerate needles (the gross-fan bug).
+    ///
+    /// `relativize = false` keeps absolute world/RTC coordinates in `positions`.
+    /// The void-cut path needs this: `apply_void_context` matches the host against
+    /// world-coordinate opening cutters, so the host must stay in the world frame
+    /// for the CSG (relativizing only the host silently breaks every cut). The
+    /// void path applies its own shared-origin relativization to the CSG OUTPUT.
+    #[inline]
+    pub(super) fn transform_mesh_world_framed(
+        &self,
+        mesh: &mut Mesh,
+        transform: &Matrix4<f64>,
+        relativize: bool,
+    ) {
         let rtc = self.rtc_offset;
         let needs_rtc = self.has_rtc_offset() && !mesh.rtc_applied;
         let (rx, ry, rz) = if needs_rtc {
@@ -802,7 +825,7 @@ impl GeometryRouter {
         // Per-element local origin = AABB centre (f64), deterministic (not a running
         // mean). Vertices are stored RELATIVE to it, so they stay element-small and
         // f32-exact at any building/georef scale; the world position is `origin + p`.
-        let origin = if world.is_empty() {
+        let origin = if !relativize || world.is_empty() {
             [0.0; 3]
         } else {
             [
@@ -812,7 +835,8 @@ impl GeometryRouter {
             ]
         };
 
-        // Pass 2 — store (world - origin) as f32: small, exact, collapse-free.
+        // Pass 2 — store (world - origin) as f32. When relativized, small + exact +
+        // collapse-free; otherwise absolute world/RTC (origin == 0).
         for (chunk, w) in mesh.positions.chunks_exact_mut(3).zip(world.iter()) {
             chunk[0] = (w[0] - origin[0]) as f32;
             chunk[1] = (w[1] - origin[1]) as f32;

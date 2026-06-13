@@ -249,9 +249,17 @@ test.describe('Viewer Performance Benchmarks', () => {
         thresholds: thresholdResult,
       };
 
-      const outputPath = join(outputDir, `viewer-${fileName.replace(/[^a-zA-Z0-9]/g, '_')}.json`);
+      const safeName = fileName.replace(/[^a-zA-Z0-9]/g, '_');
+      const outputPath = join(outputDir, `viewer-${safeName}.json`);
       writeFileSync(outputPath, JSON.stringify(result, null, 2));
       console.log(`Results saved to ${outputPath}`);
+
+      // Dump the full browser console log so the detailed [stream]/[useIfc]
+      // timeline (pre-pass scan, worker count, per-worker first batch, parse
+      // milestones) is available for profiling, not just the parsed KPIs.
+      const logPath = join(outputDir, `viewer-${safeName}.console.log`);
+      writeFileSync(logPath, benchmarkPage.getConsoleLogs().join('\n'));
+      console.log(`Console log saved to ${logPath}`);
 
       // Assertions — the load actually completed and produced geometry.
       // (modelOpenMs is a legacy log the current viewer no longer emits;

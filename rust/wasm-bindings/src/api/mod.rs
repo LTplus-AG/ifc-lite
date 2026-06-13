@@ -327,6 +327,13 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned")
             .take();
+        // The geometry-style maps belong to the previous load's wire styles —
+        // drop them on content swap so a reused IfcAPI can't reuse a stale map
+        // (the (len,first,last) signature would otherwise collide rarely).
+        self.cached_geometry_styles
+            .lock()
+            .expect("ifc-lite cached_geometry_styles Mutex poisoned")
+            .take();
     }
 
     /// Get WASM memory for zero-copy access

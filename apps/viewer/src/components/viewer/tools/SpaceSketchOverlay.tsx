@@ -24,6 +24,7 @@ import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
 import { snapPoint, alignToAxes, type SnapKind } from '@/lib/space-snap';
 import { editError } from '@/lib/space-edit-error';
+import { pointerButton, isRemoveModifier } from '@/lib/space-interaction';
 import {
   SpacePlateSession,
   ensureSpaceWasm,
@@ -825,7 +826,7 @@ export function SpaceSketchOverlay() {
       return;
     }
     const [x, y] = svgPoint(e);
-    moveRef.current = { x, y, shift: e.shiftKey, del: e.ctrlKey || e.altKey || e.metaKey };
+    moveRef.current = { x, y, shift: e.shiftKey, del: isRemoveModifier(e) };
     if (rafRef.current == null) rafRef.current = requestAnimationFrame(processMove);
   }, [processMove]);
 
@@ -837,7 +838,7 @@ export function SpaceSketchOverlay() {
       if (e.key !== 'Alt' && e.key !== 'Control' && e.key !== 'Meta' && e.key !== 'Shift') return;
       const m = moveRef.current;
       if (!m || dragRef.current != null || panningRef.current) return;
-      m.del = e.altKey || e.ctrlKey || e.metaKey;
+      m.del = isRemoveModifier(e);
       m.shift = e.shiftKey;
       if (rafRef.current == null) rafRef.current = requestAnimationFrame(processMove);
     };
@@ -929,7 +930,7 @@ export function SpaceSketchOverlay() {
     const session = sessionRef.current;
     if (!session?.alive) return;
     // Middle-mouse drag pans the view in any mode (Issue 4).
-    if (e.button === 1) {
+    if (pointerButton(e) === 'middle') {
       panningRef.current = true;
       svgRef.current?.setPointerCapture(e.pointerId);
       return;
@@ -937,12 +938,12 @@ export function SpaceSketchOverlay() {
     // Right-click (incl. macOS Ctrl-click) is the remove gesture — handled in
     // onContextMenu so it fires reliably; ignore it here so a secondary-button
     // press never starts a drag / cut / draw.
-    if (e.button === 2) return;
+    if (pointerButton(e) === 'secondary') return;
     const [sx, sy] = svgPoint(e);
     const wx = wX(fitRef.current, sx), wy = wY(fitRef.current, sy);
     // Dissolve/merge intent on a left-click held with a modifier (Win/Linux
     // Ctrl, macOS Alt/Cmd; macOS Ctrl-click arrives via onContextMenu instead).
-    const mod = e.altKey || e.ctrlKey || e.metaKey;
+    const mod = isRemoveModifier(e);
     const tol = PICK_PX / fitRef.current.scale;
 
     // 1. Drawing in progress → add a corner (or close on the first dot).

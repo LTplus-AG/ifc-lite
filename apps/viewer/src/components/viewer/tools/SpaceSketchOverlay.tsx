@@ -23,6 +23,7 @@ import { useViewerStore } from '@/store';
 import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
 import { snapPoint, alignToAxes, type SnapKind } from '@/lib/space-snap';
+import { editError } from '@/lib/space-edit-error';
 import init, { SpacePlateHandle } from '@ifc-lite/wasm';
 import {
   extractWallSegmentsForStorey,
@@ -756,7 +757,7 @@ export function SpaceSketchOverlay() {
       plate.free();
       plateRef.current = snapshot; // roll back inserted nodes + partial cut
       refreshRooms();
-      setStatus(`Split rejected: ${String(err).replace(/^Error:\s*/, '')}`);
+      setStatus(`Split rejected: ${editError(err).message}`);
       return;
     }
     commitUndo(snapshot);
@@ -788,7 +789,7 @@ export function SpaceSketchOverlay() {
       plate.free();
       plateRef.current = snap;
       refreshRooms();
-      setStatus(`Draw rejected: ${String(err).replace(/^\w+:\s*/, '')}`);
+      setStatus(`Draw rejected: ${editError(err).message}`);
     }
   }, [drawPts, commitUndo, refreshRooms]);
 
@@ -872,7 +873,7 @@ export function SpaceSketchOverlay() {
       removed = plate.prune();
     } catch (err) {
       plate.free(); plateRef.current = snap; refreshRooms();
-      setStatus(`Cleanup failed: ${String(err).replace(/^\w+:\s*/, '')}`);
+      setStatus(`Cleanup failed: ${editError(err).message}`);
       return;
     }
     if (removed > 0) {
@@ -1031,7 +1032,7 @@ export function SpaceSketchOverlay() {
       let reason = '';
       try { plate.dissolveVertex(v); ok = true; setStatus(`Removed node — ${plate.roomCount} room(s).`); }
       catch (err) {
-        reason = String(err).replace(/^\w+:\s*/, '');
+        reason = editError(err).message;
         // The node won't straighten away (it's a wall junction). Remove one of
         // its incident walls instead: `removeEdge` unions two real rooms, or
         // deletes a bridge/spur wall and auto-cleans the orphaned inner lines
@@ -1077,7 +1078,7 @@ export function SpaceSketchOverlay() {
         setStatus(`Removed wall — ${plate.roomCount} room(s) left.`);
       } catch (err) {
         plate.free(); plateRef.current = snap; refreshRooms();
-        setStatus(`Can't remove this wall: ${String(err).replace(/^\w+:\s*/, '')}`);
+        setStatus(`Can't remove this wall: ${editError(err).message}`);
       }
       return true;
     }
@@ -1176,7 +1177,7 @@ export function SpaceSketchOverlay() {
         setStatus('Node added — click another wall or corner to split between them, or Esc to keep the node.');
       } catch (err) {
         plate.free(); plateRef.current = snap; refreshRooms();
-        setStatus(`Can't add node here: ${String(err).replace(/^\w+:\s*/, '')}`);
+        setStatus(`Can't add node here: ${editError(err).message}`);
       }
       return;
     }

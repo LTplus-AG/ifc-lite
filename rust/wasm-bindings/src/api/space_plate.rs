@@ -283,16 +283,21 @@ fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(value).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Map a topology-edit rejection to a JS `Error` with a stable, readable code.
+/// Map a topology-edit rejection to a JS `Error` whose `name` is a STABLE code
+/// (the `EditError` variant) and whose `message` is human prose. The TS side
+/// switches on `err.name` rather than parsing the message string — see
+/// `space-edit-error.ts`.
 fn edit_err(e: EditError) -> JsValue {
-    let msg = match e {
-        EditError::StaleHandle => "StaleHandle: id is tombstoned or out of range",
-        EditError::VerticesNotOnFace => "VerticesNotOnFace: both split vertices must lie on the face",
-        EditError::DegenerateCut => "DegenerateCut: split endpoints are equal or already adjacent",
-        EditError::BordersExterior => "BordersExterior: edge borders the exterior — nothing to merge",
-        EditError::BridgeEdge => "BridgeEdge: edge is a bridge — removing it would split connectivity",
-        EditError::VertexNotDissolvable => "VertexNotDissolvable: only a degree-2 vertex (a node between exactly two walls) can be dissolved",
-        EditError::InvalidPolygon => "InvalidPolygon: need a simple ring of 3+ points enclosing non-zero area",
+    let (code, msg) = match e {
+        EditError::StaleHandle => ("StaleHandle", "this element no longer exists (it was removed or merged)"),
+        EditError::VerticesNotOnFace => ("VerticesNotOnFace", "both split points must lie on the same room"),
+        EditError::DegenerateCut => ("DegenerateCut", "the two points are the same or already share a wall"),
+        EditError::BordersExterior => ("BordersExterior", "this wall is the room's outer edge — removing it would open the room"),
+        EditError::BridgeEdge => ("BridgeEdge", "this wall bridges the room to itself"),
+        EditError::VertexNotDissolvable => ("VertexNotDissolvable", "this node joins three or more walls"),
+        EditError::InvalidPolygon => ("InvalidPolygon", "a room needs a simple ring of 3+ points enclosing real area"),
     };
-    JsValue::from_str(msg)
+    let err = js_sys::Error::new(msg);
+    err.set_name(code);
+    err.into()
 }

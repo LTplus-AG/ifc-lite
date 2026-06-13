@@ -678,7 +678,7 @@ export function SpaceSketchOverlay() {
     plateRef.current = null;
   }, [freeHistory]);
 
-  const svgPoint = (e: React.PointerEvent): Pt => {
+  const svgPoint = (e: React.MouseEvent): Pt => {
     const rect = svgRef.current!.getBoundingClientRect();
     // Clamp to the canvas: during a drag the pointer is captured, so moving it
     // past the panel (e.g. dragging a vertex down off the bottom) would report
@@ -1011,6 +1011,91 @@ export function SpaceSketchOverlay() {
     return () => { window.removeEventListener('keydown', onMod); window.removeEventListener('keyup', onMod); };
   }, [processMove]);
 
+  // The "remove at this point" gesture, shared by modifier+left-click
+  // (onPointerDown) and right-click / macOS Ctrl-click (onContextMenu): a node
+  // dissolves or its incident wall is removed; a wall is removed; both auto-clean
+  // the orphans. Returns true if it acted on something under the cursor.
+  const removeAtPoint = useCallback((wx: number, wy: number): boolean => {
+    const plate = plateRef.current;
+    if (!plate) return false;
+    // Over a node → dissolve it, else remove one of its incident walls.
+    const v = pickVertex(wx, wy);
+    if (v != null) {
+      const snap = plate.duplicate();
+      // Remove ANY node: a degree-2 node dissolves (straighten/remove); a wall
+      // junction (3+ walls) collapses by removing one of its incident walls.
+      // Scan EVERY wall incident to the node (not just the cursor-nearest) so a
+      // junction with one removable wall still goes.
+      const vp = nearestVertPos(wx, wy);
+      let ok = false;
+      let reason = '';
+      try { plate.dissolveVertex(v); ok = true; setStatus(`Removed node — ${plate.roomCount} room(s).`); }
+      catch (err) {
+        reason = String(err).replace(/^\w+:\s*/, '');
+        // The node won't straighten away (it's a wall junction). Remove one of
+        // its incident walls instead: `removeEdge` unions two real rooms, or
+        // deletes a bridge/spur wall and auto-cleans the orphaned inner lines
+        // and nodes it leaves — handling the BridgeEdge/BordersExterior cases
+        // the old merge-only path rejected.
+        if (vp) {
+          for (const r of rooms) {
+            const n = r.outline.length;
+            const k = r.outline.findIndex((p) => Math.abs(p[0] - vp[0]) < EPS && Math.abs(p[1] - vp[1]) < EPS);
+            if (k < 0) continue;
+            const bounds = plate.boundingElements(r.face) as Boundary[];
+            for (const idx of [k, (k - 1 + n) % n]) {
+              const b = bounds[idx];
+              if (!b) continue;
+              try { plate.removeEdge(b.edge); ok = true; setStatus(`Removed wall & cleaned up — ${plate.roomCount} room(s).`); }
+              catch { /* an enclosing wall — try the next incident wall */ }
+              if (ok) break;
+            }
+            if (ok) break;
+          }
+        }
+      }
+      if (ok) { commitUndo(snap); refreshRooms(); setHover(null); setDeleteHover(null); }
+      else {
+        plate.free(); plateRef.current = snap; refreshRooms();
+        // Genuinely unremovable: every incident wall borders the outside (no
+        // second room to merge into) and the node won't dissolve. Surface the
+        // kernel reason so it's diagnosable rather than mysterious.
+        setStatus(`Can’t remove this node — no wall here separates two rooms${reason ? ` (${reason})` : ''}.`);
+      }
+      return true;
+    }
+    // Over a wall → remove it (merge two rooms / delete a bridge-spur + clean up).
+    const ed = pickEdge(wx, wy);
+    if (ed != null) {
+      const snap = plate.duplicate();
+      try {
+        // `removeEdge` unions two real rooms, or deletes a bridge/spur wall and
+        // auto-cleans the orphaned inner lines & nodes — only a real enclosing
+        // wall (room ↔ exterior) is refused, so a room never silently opens.
+        plate.removeEdge(ed.edge);
+        commitUndo(snap); refreshRooms(); setHover(null);
+        setStatus(`Removed wall — ${plate.roomCount} room(s) left.`);
+      } catch (err) {
+        plate.free(); plateRef.current = snap; refreshRooms();
+        setStatus(`Can't remove this wall: ${String(err).replace(/^\w+:\s*/, '')}`);
+      }
+      return true;
+    }
+    return false; // nothing under the cursor
+  }, [pickVertex, pickEdge, nearestVertPos, rooms, commitUndo, refreshRooms]);
+
+  // Right-click / macOS Ctrl-click is the remove gesture. macOS turns Ctrl-click
+  // into a real right-click (button 2 + contextmenu), so routing it here — rather
+  // than the button-2 pointerdown — makes Ctrl-click remove reliably, matching
+  // Cmd/Alt-click. preventDefault keeps the native menu away regardless.
+  const onContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!plateRef.current) return;
+    if (drawPts.length > 0 || splitPick) return; // mid-gesture → leave it to Esc
+    const [sx, sy] = svgPoint(e);
+    removeAtPoint(wX(fitRef.current, sx), wY(fitRef.current, sy));
+  }, [drawPts, splitPick, removeAtPoint]);
+
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     const plate = plateRef.current;
     if (!plate) return;
@@ -1020,11 +1105,15 @@ export function SpaceSketchOverlay() {
       svgRef.current?.setPointerCapture(e.pointerId);
       return;
     }
+    // Right-click (incl. macOS Ctrl-click) is the remove gesture — handled in
+    // onContextMenu so it fires reliably; ignore it here so a secondary-button
+    // press never starts a drag / cut / draw.
+    if (e.button === 2) return;
     const [sx, sy] = svgPoint(e);
     const wx = wX(fitRef.current, sx), wy = wY(fitRef.current, sy);
-    // Dissolve/merge intent: Alt/Ctrl/Cmd, OR a right-click (button 2) — which is
-    // also what macOS Ctrl-click emits, so Ctrl-click works there too.
-    const mod = e.altKey || e.ctrlKey || e.metaKey || e.button === 2;
+    // Dissolve/merge intent on a left-click held with a modifier (Win/Linux
+    // Ctrl, macOS Alt/Cmd; macOS Ctrl-click arrives via onContextMenu instead).
+    const mod = e.altKey || e.ctrlKey || e.metaKey;
     const tol = PICK_PX / fitRef.current.scale;
 
     // 1. Drawing in progress → add a corner (or close on the first dot).
@@ -1053,54 +1142,13 @@ export function SpaceSketchOverlay() {
       return;
     }
 
-    // 3. Over a node → ⌥ removes it, else drag it.
+    // Modifier + left-click anywhere on a node/wall → remove (shared with the
+    // right-click path). macOS Ctrl-click is a right-click → onContextMenu.
+    if (mod) { removeAtPoint(wx, wy); return; }
+
+    // 3. Over a node → drag it.
     const v = pickVertex(wx, wy);
     if (v != null) {
-      if (mod) {
-        const snap = plate.duplicate();
-        // Remove ANY node: a degree-2 node dissolves (straighten/remove); a wall
-        // junction (3+ walls) collapses by merging across one of its walls that
-        // separates two rooms. Scan EVERY wall incident to the node (not just the
-        // cursor-nearest) so a junction with one mergeable wall still goes.
-        const vp = nearestVertPos(wx, wy);
-        let ok = false;
-        let reason = '';
-        try { plate.dissolveVertex(v); ok = true; setStatus(`Removed node — ${plate.roomCount} room(s).`); }
-        catch (err) {
-          reason = String(err).replace(/^\w+:\s*/, '');
-          // The node won't straighten away (it's a wall junction). Remove one of
-          // its incident walls instead: `removeEdge` unions two real rooms, or
-          // deletes a bridge/spur wall and auto-cleans the orphaned inner lines
-          // and nodes it leaves — handling the BridgeEdge/BordersExterior cases
-          // the old merge-only path rejected. Scan EVERY incident wall so a
-          // junction with one removable wall still goes.
-          if (vp) {
-            for (const r of rooms) {
-              const n = r.outline.length;
-              const k = r.outline.findIndex((p) => Math.abs(p[0] - vp[0]) < EPS && Math.abs(p[1] - vp[1]) < EPS);
-              if (k < 0) continue;
-              const bounds = plate.boundingElements(r.face) as Boundary[];
-              for (const idx of [k, (k - 1 + n) % n]) {
-                const b = bounds[idx];
-                if (!b) continue;
-                try { plate.removeEdge(b.edge); ok = true; setStatus(`Removed wall & cleaned up — ${plate.roomCount} room(s).`); }
-                catch { /* an enclosing wall — try the next incident wall */ }
-                if (ok) break;
-              }
-              if (ok) break;
-            }
-          }
-        }
-        if (ok) { commitUndo(snap); refreshRooms(); setHover(null); setDeleteHover(null); }
-        else {
-          plate.free(); plateRef.current = snap; refreshRooms();
-          // Genuinely unremovable: every incident wall borders the outside (no
-          // second room to merge into) and the node won't dissolve. Surface the
-          // kernel reason so it's diagnosable rather than mysterious.
-          setStatus(`Can’t remove this node — no wall here separates two rooms${reason ? ` (${reason})` : ''}.`);
-        }
-        return;
-      }
       const start = nearestVertPos(wx, wy);
       dragRef.current = v; dragStartRef.current = start; draggedRef.current = false;
       pendingUndoRef.current = plate.duplicate();
@@ -1111,24 +1159,9 @@ export function SpaceSketchOverlay() {
       return;
     }
 
-    // 4. Over a wall → ⌥ merges across it, else start a cut (first point).
+    // 4. Over a wall → start a cut (first point) by inserting a node.
     const ed = pickEdge(wx, wy);
     if (ed != null) {
-      if (mod) {
-        const snap = plate.duplicate();
-        try {
-          // `removeEdge` unions two real rooms, or deletes a bridge/spur wall and
-          // auto-cleans the orphaned inner lines & nodes — only a real enclosing
-          // wall (room ↔ exterior) is refused, so a room never silently opens.
-          plate.removeEdge(ed.edge);
-          commitUndo(snap); refreshRooms(); setHover(null);
-          setStatus(`Removed wall — ${plate.roomCount} room(s) left.`);
-        } catch (err) {
-          plate.free(); plateRef.current = snap; refreshRooms();
-          setStatus(`Can't remove this wall: ${String(err).replace(/^\w+:\s*/, '')}`);
-        }
-        return;
-      }
       // Insert a node on the wall RIGHT NOW (so "add a node" actually adds one,
       // visible + undoable), and arm a cut from it. A second wall/corner click
       // splits the room between the two; Esc/elsewhere keeps the added node.
@@ -1148,10 +1181,8 @@ export function SpaceSketchOverlay() {
       return;
     }
 
-    // 5. Empty space → a right-click here does nothing (it's the dissolve gesture,
-    //    only meaningful on a node/wall). Shift pans (so you can still pan now
-    //    that a plain click draws). Otherwise start drawing a new room.
-    if (e.button === 2) return;
+    // 5. Empty space → Shift pans (so you can still pan now that a plain click
+    //    draws). Otherwise start drawing a new room.
     if (e.shiftKey) {
       panningRef.current = true;
       svgRef.current?.setPointerCapture(e.pointerId);
@@ -1161,7 +1192,7 @@ export function SpaceSketchOverlay() {
     drawRedoRef.current = [];
     setDrawPts([snap.pt]);
     setStatus('Drawing — click to add corners · Enter / double-click / first dot to close · Shift = straight.');
-  }, [drawPts, splitPick, pickVertex, nearestVertPos, pickEdge, rooms, resolveSplitTarget, performSplit, commitUndo, refreshRooms, commitDraw]);
+  }, [drawPts, splitPick, pickVertex, nearestVertPos, pickEdge, rooms, resolveSplitTarget, performSplit, commitUndo, refreshRooms, commitDraw, removeAtPoint]);
 
   const endDrag = useCallback((e: React.PointerEvent) => {
     if (panningRef.current) {
@@ -1392,7 +1423,7 @@ export function SpaceSketchOverlay() {
         className="rounded border bg-muted/20 touch-none"
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag}
         onDoubleClick={() => { if (drawPts.length > 0) commitDraw(); }}
-        onContextMenu={(e) => e.preventDefault()}
+        onContextMenu={onContextMenu}
         onPointerLeave={() => { setHover(null); setSplitHover(null); setDeleteHover(null); setDrawCursor(null); setAlignGuides({ vRef: null, hRef: null }); setIntent(null); }}>
         {gridLines.map((l, i) => <line key={`g${i}`} {...l} stroke="currentColor" strokeOpacity={0.06} strokeWidth={1} />)}
 

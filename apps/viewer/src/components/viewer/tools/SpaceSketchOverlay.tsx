@@ -1065,22 +1065,42 @@ export function SpaceSketchOverlay() {
     if (v != null) {
       if (mod) {
         const snap = plate.duplicate();
-        // A degree-2 node dissolves (straighten/remove). A wall JUNCTION (3+
-        // walls) can't dissolve — removing it there means removing a wall, so
-        // fall back to merging across the wall nearest the cursor. Together
-        // these "remove" every node: redundant ones vanish, junctions collapse
-        // by joining the two rooms that wall separated.
+        // Remove ANY node: a degree-2 node dissolves (straighten/remove); a wall
+        // junction (3+ walls) collapses by merging across one of its walls that
+        // separates two rooms. Scan EVERY wall incident to the node (not just the
+        // cursor-nearest) so a junction with one mergeable wall still goes.
+        const vp = nearestVertPos(wx, wy);
         let ok = false;
+        let reason = '';
         try { plate.dissolveVertex(v); ok = true; setStatus(`Removed node — ${plate.roomCount} room(s).`); }
-        catch {
-          const ed2 = pickEdge(wx, wy);
-          if (ed2 && plate.neighborAcross(ed2.edge) !== undefined) {
-            try { plate.mergeFaces(ed2.edge); ok = true; setStatus(`Merged across the wall — ${plate.roomCount} room(s).`); }
-            catch { /* falls to the failure path below */ }
+        catch (err) {
+          reason = String(err).replace(/^\w+:\s*/, '');
+          if (vp) {
+            for (const r of rooms) {
+              const n = r.outline.length;
+              const k = r.outline.findIndex((p) => Math.abs(p[0] - vp[0]) < EPS && Math.abs(p[1] - vp[1]) < EPS);
+              if (k < 0) continue;
+              const bounds = plate.boundingElements(r.face) as Boundary[];
+              for (const idx of [k, (k - 1 + n) % n]) {
+                const b = bounds[idx];
+                if (b && plate.neighborAcross(b.edge) !== undefined) {
+                  try { plate.mergeFaces(b.edge); ok = true; setStatus(`Merged across the wall — ${plate.roomCount} room(s).`); }
+                  catch { /* try the next incident wall */ }
+                }
+                if (ok) break;
+              }
+              if (ok) break;
+            }
           }
         }
         if (ok) { commitUndo(snap); refreshRooms(); setHover(null); setDeleteHover(null); }
-        else { plate.free(); plateRef.current = snap; refreshRooms(); setStatus('Can’t remove this node — its walls border the outside or don’t separate two rooms.'); }
+        else {
+          plate.free(); plateRef.current = snap; refreshRooms();
+          // Genuinely unremovable: every incident wall borders the outside (no
+          // second room to merge into) and the node won't dissolve. Surface the
+          // kernel reason so it's diagnosable rather than mysterious.
+          setStatus(`Can’t remove this node — no wall here separates two rooms${reason ? ` (${reason})` : ''}.`);
+        }
         return;
       }
       const start = nearestVertPos(wx, wy);

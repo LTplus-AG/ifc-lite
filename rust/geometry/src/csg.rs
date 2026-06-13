@@ -201,6 +201,73 @@ fn emit_triangle(mesh: &mut Mesh, v: &[Point3<f64>; 3], normal: &Vector3<f64>) {
     mesh.add_triangle(base, base + 1, base + 2);
 }
 
+/// Count OPEN boundary edges: undirected edges whose directed half-edges do not
+/// pair (one forward + one reverse). Vertices are merged on a 1 mm grid — bigger
+/// than the few-ULP spread between the per-bucket duplicate vertices
+/// `consolidate_coplanar` emits at a shared position (a finer grid would read every
+/// inter-bucket edge as "open"), yet far smaller than a genuine crack (which spans a
+/// facet width, cm). A watertight closed mesh returns 0; the consolidation tear
+/// shows up as a positive count the (watertight) raw kernel output lacks.
+fn count_open_boundary_edges(mesh: &Mesh) -> usize {
+    if mesh.positions.len() < 9 || mesh.indices.len() < 3 {
+        return 0;
+    }
+    let q = |v: f32| (v as f64 * 1.0e3).round() as i64;
+    let mut vid: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
+    let mut id_of = |i: usize| -> u32 {
+        let k = (
+            q(mesh.positions[i * 3]),
+            q(mesh.positions[i * 3 + 1]),
+            q(mesh.positions[i * 3 + 2]),
+        );
+        let next = vid.len() as u32;
+        *vid.entry(k).or_insert(next)
+    };
+    let mut bal: FxHashMap<(u32, u32), i32> = FxHashMap::default();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (
+            id_of(tri[0] as usize),
+            id_of(tri[1] as usize),
+            id_of(tri[2] as usize),
+        );
+        for (x, y) in [(a, b), (b, c), (c, a)] {
+            let (key, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
+            *bal.entry(key).or_insert(0) += s;
+        }
+    }
+    bal.values().filter(|&&v| v != 0).count()
+}
+
+/// Count spike triangles (longest-edge / shortest-edge > 50:1) — the same quality
+/// bar the `csg_quality_regression` tests use. Combined with the open-edge count
+/// into a "badness" score so the consolidation fallback reverts to raw ONLY when raw
+/// is the cleaner mesh overall (a curved / offset-jittered host's raw is watertight
+/// AND well-formed), never when raw carries needle fans consolidation would merge.
+fn count_spike_triangles(mesh: &Mesh) -> usize {
+    let mut n = 0usize;
+    for tri in mesh.indices.chunks_exact(3) {
+        let p = |i: u32| {
+            let i = i as usize;
+            [
+                mesh.positions[i * 3],
+                mesh.positions[i * 3 + 1],
+                mesh.positions[i * 3 + 2],
+            ]
+        };
+        let (a, b, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
+        let d = |u: [f32; 3], v: [f32; 3]| {
+            ((u[0] - v[0]).powi(2) + (u[1] - v[1]).powi(2) + (u[2] - v[2]).powi(2)).sqrt()
+        };
+        let (e0, e1, e2) = (d(a, b), d(b, c), d(c, a));
+        let mn = e0.min(e1).min(e2);
+        let mx = e0.max(e1).max(e2);
+        if mn > 1.0e-6 && mx / mn > 50.0 {
+            n += 1;
+        }
+    }
+    n
+}
+
 /// Drop 2D contour vertices that are collinear with both neighbours. The
 /// i_overlay union of many small fragments often leaves "phantom"
 /// vertices on every fragment boundary that crosses the outer outline;
@@ -976,6 +1043,57 @@ impl ClippingProcessor {
 
         if output.is_empty() {
             return mesh;
+        }
+        // WATERTIGHTNESS GUARD (curved / opening-dense wall hairline cracks). The
+        // per-bucket re-triangulation above treats each coplanar plane bucket
+        // independently. Where a FLAT bucket's boundary runs along a faceted surface
+        // — an opening reveal, a cap, the rim of a curved or offset-jittered wall —
+        // the i_overlay union + collinear simplify chords that boundary, dropping the
+        // facet-boundary vertices the abutting buckets keep. The result is open
+        // boundary edges + T-junctions at the cut seam that the raw kernel output
+        // (which is watertight) did NOT have = the white horizontal hairlines that
+        // shimmer under DoubleSide. Detect it directly and pick the better mesh by
+        // (open edges + spike triangles): when consolidation introduced open edges
+        // and the raw mesh is the cleaner one overall, return raw. A curved/offset-
+        // jittered host's raw is watertight and well-formed (raw wins -> crack gone);
+        // a host whose raw carries needle fans consolidation exists to merge keeps the
+        // consolidated mesh. Watertight, spike-free hosts (the overwhelming majority,
+        // incl. #780 bath and ordinary flat walls) have cons_open == 0 and return
+        // immediately -> byte-identical, determinism snapshots unmoved. The exact
+        // kernel (and `indirect_sign_manifest`) is untouched; this only repairs what
+        // the post-kernel consolidation drops.
+        // Cheap geometric pre-filter so the per-host open-edge scan (its hashmap is
+        // the WASM load cost, not the rare fallback) stays OFF the hot path for the
+        // ~13k ordinary box-like walls. A host can only have a chorded seam if it is
+        // FACETED: either NON-ORTHOGONAL plane pairs (a curved wall, a sloped gable
+        // roof clip — neither parallel nor perpendicular) or many PARALLEL offset
+        // buckets per normal direction (an f32-jittered opening-dense wall like the
+        // curved reception counter, distinct_normals=5 / 168 planes). A box wall has
+        // only axis-aligned planes and consolidates watertight -> skipped.
+        let mut bnorms: Vec<Vector3<f64>> = Vec::new();
+        for tris in buckets.values() {
+            if let Some(t0) = tris.first() {
+                if !bnorms.iter().any(|m| m.dot(&t0.normal).abs() > 0.99999) {
+                    bnorms.push(t0.normal);
+                }
+            }
+        }
+        let nonorthogonal = (0..bnorms.len()).any(|i| {
+            ((i + 1)..bnorms.len()).any(|j| {
+                let d = bnorms[i].dot(&bnorms[j]).abs();
+                d > 0.01 && d < 0.9999 // angle in (~0.8°, ~89.4°)
+            })
+        });
+        let offset_jittered = buckets.len() > 4 * bnorms.len().max(1);
+        if nonorthogonal || offset_jittered {
+            let cons_open = count_open_boundary_edges(&output);
+            if cons_open > 0 {
+                let raw_bad = count_open_boundary_edges(&mesh) + count_spike_triangles(&mesh);
+                let cons_bad = cons_open + count_spike_triangles(&output);
+                if raw_bad < cons_bad {
+                    return mesh;
+                }
+            }
         }
         output
     }
@@ -1947,6 +2065,123 @@ mod tests {
             m.add_triangle(tri[0], tri[1], tri[2]);
         }
         m
+    }
+
+    /// Build a watertight curved (arc-extruded) wall solid with `n` facets over a
+    /// quarter turn, radius `r`, thickness `t`, height `h`. Each facet is its own
+    /// plane bucket in `consolidate_coplanar` — the curved-wall seam case.
+    fn curved_wall(n: usize, r: f64, t: f64, h: f64) -> Mesh {
+        use std::f64::consts::PI;
+        let mut m = Mesh::with_capacity(0, 0);
+        let nrm = Vector3::new(0.0, 0.0, 0.0);
+        let mut verts = Vec::new();
+        for i in 0..=n {
+            let a = (i as f64) / (n as f64) * (PI / 2.0);
+            let (c, s) = (a.cos(), a.sin());
+            verts.push(Point3::new(r * c, r * s, 0.0)); // 4i+0 O_bot
+            verts.push(Point3::new(r * c, r * s, h)); //   4i+1 O_top
+            verts.push(Point3::new((r - t) * c, (r - t) * s, 0.0)); // 4i+2 I_bot
+            verts.push(Point3::new((r - t) * c, (r - t) * s, h)); //   4i+3 I_top
+        }
+        for p in &verts {
+            m.add_vertex(*p, nrm);
+        }
+        let (ob, ot, ib, it) = (
+            |i: usize| 4 * i as u32,
+            |i: usize| 4 * i as u32 + 1,
+            |i: usize| 4 * i as u32 + 2,
+            |i: usize| 4 * i as u32 + 3,
+        );
+        let mut quad = |a: u32, b: u32, c: u32, d: u32, m: &mut Mesh| {
+            m.add_triangle(a, b, c);
+            m.add_triangle(a, c, d);
+        };
+        for i in 0..n {
+            quad(ob(i), ob(i + 1), ot(i + 1), ot(i), &mut m); // outer
+            quad(ib(i + 1), ib(i), it(i), it(i + 1), &mut m); // inner
+            quad(ot(i), ot(i + 1), it(i + 1), it(i), &mut m); // top
+            quad(ib(i), ib(i + 1), ob(i + 1), ob(i), &mut m); // bottom
+        }
+        quad(ob(0), ot(0), it(0), ib(0), &mut m); // cap @ a=0
+        quad(ib(n), it(n), ot(n), ob(n), &mut m); // cap @ a=90
+        m
+    }
+
+    fn axis_box(lo: [f64; 3], hi: [f64; 3]) -> Mesh {
+        let mut m = Mesh::with_capacity(8, 36);
+        let n = Vector3::new(0.0, 0.0, 0.0);
+        let c = [
+            Point3::new(lo[0], lo[1], lo[2]),
+            Point3::new(hi[0], lo[1], lo[2]),
+            Point3::new(hi[0], hi[1], lo[2]),
+            Point3::new(lo[0], hi[1], lo[2]),
+            Point3::new(lo[0], lo[1], hi[2]),
+            Point3::new(hi[0], lo[1], hi[2]),
+            Point3::new(hi[0], hi[1], hi[2]),
+            Point3::new(lo[0], hi[1], hi[2]),
+        ];
+        for p in c.iter() {
+            m.add_vertex(*p, n);
+        }
+        for tri in [
+            [0u32, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+            [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+            [1, 2, 6], [1, 6, 5], [3, 0, 4], [3, 4, 7],
+        ] {
+            m.add_triangle(tri[0], tri[1], tri[2]);
+        }
+        m
+    }
+
+    /// Count open boundary edges (undirected edges whose directed half-edges do
+    /// not pair forward+reverse) on a micron-snapped vertex topology — a watertight
+    /// closed mesh has 0.
+    fn count_open_edges(mesh: &Mesh) -> usize {
+        use std::collections::HashMap;
+        let q = |v: f32| (v as f64 * 1.0e6).round() as i64;
+        let mut vid: HashMap<(i64, i64, i64), u32> = HashMap::new();
+        let mut id = |i: usize| -> u32 {
+            let k = (
+                q(mesh.positions[i * 3]),
+                q(mesh.positions[i * 3 + 1]),
+                q(mesh.positions[i * 3 + 2]),
+            );
+            let n = vid.len() as u32;
+            *vid.entry(k).or_insert(n)
+        };
+        let mut edge: HashMap<(u32, u32), i32> = HashMap::new();
+        for tri in mesh.indices.chunks_exact(3) {
+            let (a, b, c) = (id(tri[0] as usize), id(tri[1] as usize), id(tri[2] as usize));
+            for (x, y) in [(a, b), (b, c), (c, a)] {
+                let (k, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
+                *edge.entry(k).or_insert(0) += s;
+            }
+        }
+        edge.values().filter(|&&v| v != 0).count()
+    }
+
+    #[test]
+    fn curved_wall_opening_seam_is_watertight() {
+        let host = curved_wall(8, 5.0, 0.3, 3.0); // 11.25°/facet
+        assert_eq!(count_open_edges(&host), 0, "host must be watertight");
+        // a window box straddling the arc around 30°..60°
+        let cutter = axis_box([2.4, 2.4, 1.0], [4.4, 4.4, 2.0]);
+        let raw = crate::kernel::mesh_bridge::subtract(&host, &cutter);
+        let raw_open = count_open_edges(&raw);
+        let consolidated = ClippingProcessor::consolidate_coplanar(raw.clone());
+        let cons_open = count_open_edges(&consolidated);
+        eprintln!(
+            "SEAMTEST raw_tris={} raw_open={} cons_tris={} cons_open={}",
+            raw.triangle_count(),
+            raw_open,
+            consolidated.triangle_count(),
+            cons_open
+        );
+        assert_eq!(raw_open, 0, "raw kernel output must be watertight");
+        assert_eq!(
+            cons_open, 0,
+            "consolidate must preserve the curved-wall opening seam (was torn)"
+        );
     }
 
     /// On a cube with 8 shared corner vertices, the naive averaging

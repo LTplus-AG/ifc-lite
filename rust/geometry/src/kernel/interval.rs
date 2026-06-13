@@ -279,6 +279,20 @@ pub(super) fn orient2d_from_lam_iv(a: &IvLam, b: &IvLam, c: &IvLam, axis: DropAx
     Some(super::assemble_sign(det.sign()?, &[d2.sign()?, d3.sign()?]))
 }
 
+/// Interval tier of `cmp_along` — the f64 mirror of `fixed::cmp_along`: the sign
+/// of `(a−b)·u` over the homogeneous lambdas. `None` on a zero-straddle ⇒ the
+/// caller runs the exact I512/BigRational tiers. Closes the latent slow path where
+/// EVERY tri-tri `cmp_along` skipped the float filter and went straight to bignum.
+pub fn cmp_along(a: &ImplicitPoint, b: &ImplicitPoint, u: [f64; 3]) -> Option<Sign> {
+    let (la, da) = ilambda_cached(a);
+    let (lb, db) = ilambda_cached(b);
+    let ur = ivec(u);
+    let dot_a = la[0].mul(ur[0]).add(la[1].mul(ur[1])).add(la[2].mul(ur[2]));
+    let dot_b = lb[0].mul(ur[0]).add(lb[1].mul(ur[1])).add(lb[2].mul(ur[2]));
+    let num = dot_a.mul(db).sub(dot_b.mul(da));
+    Some(super::assemble_sign(num.sign()?, &[da.sign()?, db.sign()?]))
+}
+
 /// Lexicographic compare of two points from their CACHED interval lambdas — the
 /// f64 mirror of `fixed::cmp_lex_from_lam`. `None` as soon as any axis straddles.
 pub(super) fn cmp_lex_from_lam_iv(a: &IvLam, b: &IvLam) -> Option<Sign> {

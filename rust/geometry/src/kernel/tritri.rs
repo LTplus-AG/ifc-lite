@@ -135,7 +135,13 @@ pub enum TriTri {
 
 #[inline]
 fn cmp_along(a: &ImplicitPoint, b: &ImplicitPoint, u: [f64; 3]) -> Sign {
-    super::fixed::cmp_along(a, b, u).unwrap_or_else(|| super::rational::cmp_along(a, b, u))
+    // f64 interval filter FIRST (pure f64), then the exact I512 tier, then
+    // BigRational. The interval resolves the non-degenerate majority off the
+    // wasm-emulated wide-integer path; a definite interval sign equals the exact
+    // sign (outward rounding, no FMA) ⇒ identical ordering, byte-identical.
+    super::interval::cmp_along(a, b, u)
+        .or_else(|| super::fixed::cmp_along(a, b, u))
+        .unwrap_or_else(|| super::rational::cmp_along(a, b, u))
 }
 
 /// A triangle's intersection with another triangle's supporting plane — the

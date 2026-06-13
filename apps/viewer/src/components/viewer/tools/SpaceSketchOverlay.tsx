@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
+import { snapPoint, type SnapKind } from '@/lib/space-snap';
 import init, { SpacePlateHandle } from '@ifc-lite/wasm';
 import {
   extractWallSegmentsForStorey,
@@ -30,7 +31,7 @@ import {
   GENERATED_SPACE_OBJECTTYPE,
   type BoundaryMode,
 } from '@ifc-lite/create';
-import { X, Undo2, Redo2, Building2, Layers, Maximize, AlertTriangle } from 'lucide-react';
+import { X, Undo2, Redo2, Building2, Layers, Maximize, AlertTriangle, Magnet } from 'lucide-react';
 
 let wasmReady: Promise<void> | null = null;
 function ensureWasm(): Promise<void> {
@@ -175,6 +176,15 @@ export function SpaceSketchOverlay() {
 
   const undoRef = useRef<SpacePlateHandle[]>([]);
   const redoRef = useRef<SpacePlateHandle[]>([]);
+  // While drawing, Undo pops the last placed point onto this stack and Redo
+  // re-adds it — so point placement uses the panel Undo/Redo, not a separate
+  // draw-only control. Cleared when the draw is committed/cancelled.
+  const drawRedoRef = useRef<Pt[]>([]);
+  // Timestamp of the last bare Esc — a second within 400 ms closes the panel.
+  const escTimeRef = useRef(0);
+  // Building wall lines (room frame) for snapping; synced from a memo so the
+  // per-frame pointer math can read it without re-binding processMove.
+  const buildingSegmentsRef = useRef<Array<[Pt, Pt]>>([]);
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [mode, setMode] = useState<Mode>('drag');
@@ -182,6 +192,11 @@ export function SpaceSketchOverlay() {
   const [splitPick, setSplitPick] = useState<SplitTarget | null>(null);
   const [splitHover, setSplitHover] = useState<Pt | null>(null);
   const [snapPos, setSnapPos] = useState<Pt | null>(null);
+  // What the live snap landed on, so the cue can differ for a wall vs a corner.
+  const [snapKind, setSnapKind] = useState<SnapKind>('none');
+  // Snap every node to the building's 2D wall lines (corners + along walls).
+  // Default on; the magnet toggle in the toolbar turns it off (vertex-only).
+  const [snapToBuilding, setSnapToBuilding] = useState(true);
   // Issue 3: the vertex that an ⌥/Ctrl-click would dissolve — telegraphed live.
   const [deleteHover, setDeleteHover] = useState<Pt | null>(null);
   // Issue 2: the in-progress drawn room (world coords) + the live cursor point.
@@ -234,7 +249,16 @@ export function SpaceSketchOverlay() {
     () => (derivedStorey == null ? null : storeys.find((s) => s.id === derivedStorey)?.elev ?? null),
     [derivedStorey, storeys],
   );
-  const { lines: underlay } = useConstructionUnderlay(showBuilding && rooms.length > 0, derivedFloorElev);
+  // Compute the underlay when it's shown OR when snapping needs it (snapping to
+  // building lines must work even if the underlay isn't drawn).
+  const { lines: underlay } = useConstructionUnderlay((showBuilding || snapToBuilding) && rooms.length > 0, derivedFloorElev);
+
+  // Building wall lines as snap segments (room frame), only while snapping is on.
+  const buildingSegments = useMemo<Array<[Pt, Pt]>>(
+    () => (snapToBuilding ? underlay.map((l) => [l.a, l.b] as [Pt, Pt]) : []),
+    [underlay, snapToBuilding],
+  );
+  useEffect(() => { buildingSegmentsRef.current = buildingSegments; }, [buildingSegments]);
 
   // Pre-render the (potentially large) building underlay once per (re)derive,
   // NOT on every drag frame — re-creating hundreds of SVG lines each frame
@@ -260,14 +284,17 @@ export function SpaceSketchOverlay() {
   // and follow it when it changes while the panel is open. The in-panel storey
   // <select> stays as a local override; a later hierarchy pick wins.
   const activeStorey = useViewerStore((s) => s.activeStorey);
-  // Keyed by `${modelId}:${expressId}` (not a bare id) so switching to another
-  // model that happens to share a storey express-id still counts as a change.
+  // Match the active storey to THIS model's storey list by express-id. We don't
+  // compare modelId: `storeys` already comes from the active model's store, so
+  // membership is inherently model-scoped — and `activeModelId` can be null for
+  // a single model in the map (where the hierarchy stores the model UUID), so a
+  // strict modelId equality wrongly failed and fell back to the lowest storey.
   const lastActiveStoreyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!storeys.length) return;
-    const sketchModelId = activeModelId ?? 'legacy';
+    const sketchModelId = activeStorey?.modelId ?? activeModelId ?? 'legacy';
     const activeHere =
-      activeStorey && activeStorey.modelId === sketchModelId && storeys.some((s) => s.id === activeStorey.expressId)
+      activeStorey && storeys.some((s) => s.id === activeStorey.expressId)
         ? activeStorey.expressId
         : null;
     const activeKey = activeHere == null ? null : `${sketchModelId}:${activeHere}`;
@@ -281,19 +308,10 @@ export function SpaceSketchOverlay() {
     if (storeyId == null) setStoreyId(activeHere ?? storeys[0].id);
   }, [storeys, storeyId, activeStorey, activeModelId]);
 
-  // Click anywhere outside the panel closes the tool. Esc closes too.
-  useEffect(() => {
-    const onDown = (e: PointerEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) setActiveTool('select');
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setActiveTool('select'); };
-    document.addEventListener('pointerdown', onDown, true);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDown, true);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [setActiveTool]);
+  // Panel stays open while you work — it no longer closes on an outside click
+  // (you need to click the hierarchy to pick a storey) or on a single Esc.
+  // Keyboard handling (Esc aborts the current op / double-Esc closes / Enter
+  // closes a drawn room) lives below, after `commitDraw` is defined.
 
   const refreshRooms = useCallback(() => {
     const plate = plateRef.current;
@@ -324,22 +342,36 @@ export function SpaceSketchOverlay() {
   }, []);
 
   const undo = useCallback(() => {
+    // While drawing, Undo removes the last placed point (no separate draw undo).
+    if (mode === 'draw' && drawPts.length > 0) {
+      drawRedoRef.current.push(drawPts[drawPts.length - 1]);
+      setDrawPts((p) => p.slice(0, -1));
+      setStatus('Removed last point.');
+      return;
+    }
     const plate = plateRef.current;
     if (!plate || !undoRef.current.length) return;
     redoRef.current.push(plate);
     plateRef.current = undoRef.current.pop()!;
     resetInteraction(); refreshRooms(); setHist((v) => v + 1);
     setStatus('Undo.');
-  }, [resetInteraction, refreshRooms]);
+  }, [mode, drawPts, resetInteraction, refreshRooms]);
 
   const redo = useCallback(() => {
+    // While drawing, Redo re-adds the last point Undo removed.
+    if (mode === 'draw' && drawRedoRef.current.length > 0) {
+      const pt = drawRedoRef.current.pop()!;
+      setDrawPts((p) => [...p, pt]);
+      setStatus('Re-added point.');
+      return;
+    }
     const plate = plateRef.current;
     if (!plate || !redoRef.current.length) return;
     undoRef.current.push(plate);
     plateRef.current = redoRef.current.pop()!;
     resetInteraction(); refreshRooms(); setHist((v) => v + 1);
     setStatus('Redo.');
-  }, [resetInteraction, refreshRooms]);
+  }, [mode, resetInteraction, refreshRooms]);
 
   // Ctrl/Cmd+Z (Shift = redo) must drive THIS overlay's history, not the 3D
   // model behind the panel. The global handler in useKeyboardShortcuts routes
@@ -700,12 +732,18 @@ export function SpaceSketchOverlay() {
   const commitDraw = useCallback(() => {
     const plate = plateRef.current;
     if (!plate) return;
-    if (drawPts.length < 3) { setStatus('A room needs at least 3 points.'); return; }
+    // Drop trailing duplicate point(s) — e.g. the second click of a double-click
+    // close lands on the same spot as the final corner.
+    let pts = drawPts;
+    while (pts.length >= 2 && Math.hypot(pts[pts.length - 1][0] - pts[pts.length - 2][0], pts[pts.length - 1][1] - pts[pts.length - 2][1]) < EPS) {
+      pts = pts.slice(0, -1);
+    }
+    if (pts.length < 3) { setStatus('A room needs at least 3 points.'); return; }
     const snap = plate.duplicate();
     try {
-      plate.addFace(new Float64Array(drawPts.flat()), -1);
+      plate.addFace(new Float64Array(pts.flat()), -1);
       commitUndo(snap);
-      setDrawPts([]); setDrawCursor(null);
+      setDrawPts([]); setDrawCursor(null); drawRedoRef.current = [];
       refreshRooms();
       setStatus(`Drew a room — ${plate.roomCount} room(s).`);
     } catch (err) {
@@ -717,6 +755,58 @@ export function SpaceSketchOverlay() {
     }
   }, [drawPts, commitUndo, refreshRooms]);
 
+  // Single Esc aborts the in-progress operation (in priority order); it does NOT
+  // close the panel. Returns true if something was aborted.
+  const abortCurrentOp = useCallback((): boolean => {
+    if (mode === 'draw' && (drawPts.length > 0 || drawCursor)) {
+      setDrawPts([]); setDrawCursor(null); drawRedoRef.current = [];
+      setStatus('Draw cancelled.');
+      return true;
+    }
+    if (splitPick) {
+      setSplitPick(null); setSplitHover(null);
+      setStatus('Split cancelled.');
+      return true;
+    }
+    if (dragRef.current != null) {
+      // Revert the live drag to its pre-drag snapshot.
+      const plate = plateRef.current;
+      if (plate && pendingUndoRef.current) {
+        plate.free();
+        plateRef.current = pendingUndoRef.current;
+        pendingUndoRef.current = null;
+        refreshRooms();
+      }
+      dragRef.current = null; dragStartRef.current = null;
+      draggedRef.current = false; setSnapPos(null);
+      setStatus('Drag cancelled.');
+      return true;
+    }
+    return false;
+  }, [mode, drawPts, drawCursor, splitPick, refreshRooms]);
+
+  // Esc = abort current op (single) / close panel (double-tap ≤400 ms).
+  // Enter (in draw mode) closes the room. Both skip text inputs.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const inField = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (e.key === 'Escape') {
+        if (inField) return;
+        e.preventDefault();
+        const now = Date.now();
+        if (abortCurrentOp()) { escTimeRef.current = 0; return; }
+        if (now - escTimeRef.current <= 400) { escTimeRef.current = 0; setActiveTool('select'); }
+        else { escTimeRef.current = now; setStatus('Press Esc again to close.'); }
+      } else if (e.key === 'Enter' && mode === 'draw' && !inField) {
+        e.preventDefault();
+        commitDraw();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [abortCurrentOp, commitDraw, mode, setActiveTool]);
+
   const processMove = useCallback(() => {
     rafRef.current = null;
     const m = moveRef.current;
@@ -727,21 +817,19 @@ export function SpaceSketchOverlay() {
     const vid = dragRef.current;
     if (vid != null) {
       draggedRef.current = true;
-      let tx = wx, ty = wy;
-      if (m.shift && dragStartRef.current) {
-        const [ox, oy] = dragStartRef.current;
-        if (Math.abs(wx - ox) >= Math.abs(wy - oy)) ty = oy; else tx = ox;
-      }
-      const tol = SNAP_PX / fitRef.current.scale;
-      let snapped: Pt | null = null, bestD = tol;
-      for (const p of otherVertsRef.current) {
-        const d = Math.hypot(p[0] - tx, p[1] - ty);
-        if (d < bestD) { bestD = d; snapped = p; }
-      }
-      if (snapped) { tx = snapped[0]; ty = snapped[1]; }
-      setSnapPos(snapped);
+      // Snap to other room vertices + building wall lines (corners and along
+      // walls), with Shift constraining to ortho from the drag start first.
+      const snap = snapPoint([wx, wy], {
+        vertices: otherVertsRef.current,
+        segments: buildingSegmentsRef.current,
+        tol: SNAP_PX / fitRef.current.scale,
+        ortho: m.shift,
+        anchor: dragStartRef.current,
+      });
+      setSnapPos(snap.kind === 'none' ? null : snap.pt);
+      setSnapKind(snap.kind);
       try {
-        plate.dragVertex(vid, tx, ty);
+        plate.dragVertex(vid, snap.pt[0], snap.pt[1]);
         refreshRooms();
       } catch (e) {
         console.debug('[space-sketch] dragVertex failed (plate torn down mid-drag?)', e);
@@ -760,9 +848,18 @@ export function SpaceSketchOverlay() {
       setSplitHover(t ? t.pos : null);
       setHover(t && t.kind === 'vertex' ? { kind: 'vertex', pos: t.pos } : null);
     } else if (mode === 'draw') {
-      // Snap the preview point to an existing corner so drawn rooms align.
-      const snapV = nearestVertPos(wx, wy);
-      setDrawCursor(snapV ?? [wx, wy]);
+      // Preview the next corner: snap to room vertices + building walls; Shift
+      // constrains to ortho from the previous corner.
+      const anchor = drawPts.length > 0 ? drawPts[drawPts.length - 1] : null;
+      const snap = snapPoint([wx, wy], {
+        vertices: uniqueVerts(rooms),
+        segments: buildingSegmentsRef.current,
+        tol: PICK_PX / fitRef.current.scale,
+        ortho: m.shift,
+        anchor,
+      });
+      setDrawCursor(snap.pt);
+      setSnapKind(snap.kind);
     } else {
       const v = pickVertex(wx, wy);
       const pos = v != null ? nearestVertPos(wx, wy) : null;
@@ -770,7 +867,7 @@ export function SpaceSketchOverlay() {
       // Telegraph the ⌥/Ctrl-click delete on whatever vertex is under the cursor.
       setDeleteHover(m.del && pos ? pos : null);
     }
-  }, [mode, pickEdge, pickVertex, nearestVertPos, resolveSplitTarget, refreshRooms]);
+  }, [mode, drawPts, rooms, pickEdge, pickVertex, nearestVertPos, resolveSplitTarget, refreshRooms]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (panningRef.current) {
@@ -859,8 +956,16 @@ export function SpaceSketchOverlay() {
       return;
     }
     if (mode === 'draw') {
-      const snapV = nearestVertPos(wx, wy);
-      const p: Pt = snapV ?? [wx, wy];
+      // Snap the dropped corner to room vertices + building walls; Shift = ortho
+      // from the previous corner.
+      const anchor = drawPts.length > 0 ? drawPts[drawPts.length - 1] : null;
+      const p = snapPoint([wx, wy], {
+        vertices: uniqueVerts(rooms),
+        segments: buildingSegmentsRef.current,
+        tol: PICK_PX / fitRef.current.scale,
+        ortho: e.shiftKey,
+        anchor,
+      }).pt;
       // With ≥3 points placed, clicking the first dot closes the loop.
       if (drawPts.length >= 3) {
         const first = drawPts[0];
@@ -869,8 +974,9 @@ export function SpaceSketchOverlay() {
           return;
         }
       }
+      drawRedoRef.current = []; // a new point invalidates the point-redo stack
       setDrawPts((pts) => [...pts, p]);
-      setStatus(`Drawing — ${drawPts.length + 1} point(s). Click the first dot (or “Finish”) to close.`);
+      setStatus(`Drawing — ${drawPts.length + 1} pt(s) · Enter / double-click / first dot to close · Shift = straight · Ctrl+Z removes last.`);
     }
   }, [mode, pickVertex, nearestVertPos, pickEdge, rooms, splitPick, resolveSplitTarget, performSplit, commitUndo, refreshRooms, drawPts, commitDraw]);
 
@@ -895,8 +1001,9 @@ export function SpaceSketchOverlay() {
   const mergeRooms = hover?.kind === 'edge' ? new Set(hover.rooms) : null;
   const cursorWorld = moveRef.current ? [wX(f, moveRef.current.x), wY(f, moveRef.current.y)] as Pt : null;
   const cursor = panningRef.current || dragRef.current != null ? 'grabbing' : (mode === 'drag' && hover?.kind === 'vertex') ? 'grab' : 'crosshair';
-  const canUndo = undoRef.current.length > 0;
-  const canRedo = redoRef.current.length > 0;
+  // During a draw, Undo/Redo act on the placed points (not the plate stack).
+  const canUndo = (mode === 'draw' && drawPts.length > 0) || undoRef.current.length > 0;
+  const canRedo = (mode === 'draw' && drawRedoRef.current.length > 0) || redoRef.current.length > 0;
   void hist; void fitTick;
 
   const gridStep = f.scale > 14 ? 1 : f.scale > 5 ? 2 : 5;
@@ -964,7 +1071,7 @@ export function SpaceSketchOverlay() {
         <div className="flex items-center gap-2 text-sm font-semibold">
           <Layers className="h-4 w-4 text-muted-foreground" /> Space Sketch
         </div>
-        <button className={iconBtn} onClick={() => setActiveTool('select')} title="Close (Esc)"><X className="h-4 w-4" /></button>
+        <button className={iconBtn} onClick={() => setActiveTool('select')} title="Close (double-tap Esc)"><X className="h-4 w-4" /></button>
       </div>
 
       {/* Storey + whole-building */}
@@ -984,25 +1091,28 @@ export function SpaceSketchOverlay() {
           {(['drag', 'split', 'merge', 'draw'] as Mode[]).map((m) => (
             <button key={m}
               className={`rounded px-2 py-0.5 text-xs capitalize transition-colors ${mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              onClick={() => { setMode(m); setSplitPick(null); setSplitHover(null); setHover(null); setDeleteHover(null); setDrawPts([]); setDrawCursor(null); }}
+              onClick={() => { setMode(m); setSplitPick(null); setSplitHover(null); setHover(null); setDeleteHover(null); setDrawPts([]); setDrawCursor(null); drawRedoRef.current = []; }}
               title={m === 'draw' ? 'Author a new room by clicking its corners' : `Edit derived rooms (${m})`}
               disabled={m === 'draw' ? derivedStorey == null : !rooms.length}>{m}</button>
           ))}
         </div>
         <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
         <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"><Redo2 className="h-4 w-4" /></button>
+        <button
+          className={`${iconBtn} ${snapToBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
+          onClick={() => setSnapToBuilding((v) => !v)}
+          aria-pressed={snapToBuilding}
+          title={snapToBuilding ? 'Snap to building walls: on — click to disable' : 'Snap to building walls: off — click to enable'}
+        ><Magnet className="h-4 w-4" /></button>
       </div>
 
-      {/* Draw-room controls (Issue 2) — only while authoring a new room. */}
+      {/* Draw-room hint (Issue 2) — point placement uses the panel Undo/Redo and
+          Esc; no separate draw buttons. Only while authoring a new room. */}
       {mode === 'draw' && (
-        <div className="flex items-center gap-1.5 mb-2 text-[11px]">
-          <span className="text-muted-foreground">Draw room · {drawPts.length} pt(s)</span>
-          <button onClick={commitDraw} disabled={drawPts.length < 3}
-            className="rounded bg-emerald-600 px-2 py-0.5 font-medium text-white hover:bg-emerald-700 disabled:opacity-40">Finish</button>
-          <button onClick={() => setDrawPts((p) => p.slice(0, -1))} disabled={!drawPts.length}
-            className="rounded border px-2 py-0.5 hover:bg-muted disabled:opacity-40" title="Remove the last point">Undo point</button>
-          <button onClick={() => { setDrawPts([]); setDrawCursor(null); setStatus('Draw cancelled.'); }} disabled={!drawPts.length}
-            className="rounded border px-2 py-0.5 hover:bg-muted disabled:opacity-40">Cancel</button>
+        <div className="mb-2 text-[11px] text-muted-foreground leading-tight">
+          {drawPts.length === 0
+            ? 'Click to drop the first corner. Shift = straight · snaps to walls.'
+            : `${drawPts.length} pt(s) · Enter, double-click, or click the first dot to close · Esc cancels · Ctrl+Z removes last · Shift = straight.`}
         </div>
       )}
 
@@ -1056,6 +1166,7 @@ export function SpaceSketchOverlay() {
       <svg ref={svgRef} width={size.w} height={size.h} style={{ cursor }}
         className="rounded border bg-muted/20 touch-none"
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag}
+        onDoubleClick={() => { if (mode === 'draw') commitDraw(); }}
         onContextMenu={(e) => e.preventDefault()}
         onPointerLeave={() => { setHover(null); setSplitHover(null); setDeleteHover(null); setDrawCursor(null); }}>
         {gridLines.map((l, i) => <line key={`g${i}`} {...l} stroke="currentColor" strokeOpacity={0.06} strokeWidth={1} />)}
@@ -1114,8 +1225,15 @@ export function SpaceSketchOverlay() {
         )}
         {snapPos && (
           <g pointerEvents="none">
-            <circle cx={sX(f, snapPos[0])} cy={sY(f, snapPos[1])} r={9} fill="none" stroke="#22c55e" strokeWidth={1.5} />
-            <circle cx={sX(f, snapPos[0])} cy={sY(f, snapPos[1])} r={2.5} fill="#22c55e" />
+            {snapKind === 'line' ? (
+              // On-wall snap — amber diamond.
+              <rect x={sX(f, snapPos[0]) - 5} y={sY(f, snapPos[1]) - 5} width={10} height={10} fill="none"
+                stroke="#f59e0b" strokeWidth={1.5} transform={`rotate(45 ${sX(f, snapPos[0])} ${sY(f, snapPos[1])})`} />
+            ) : (
+              // Corner/vertex snap — green ring.
+              <circle cx={sX(f, snapPos[0])} cy={sY(f, snapPos[1])} r={9} fill="none" stroke="#22c55e" strokeWidth={1.5} />
+            )}
+            <circle cx={sX(f, snapPos[0])} cy={sY(f, snapPos[1])} r={2.5} fill={snapKind === 'line' ? '#f59e0b' : '#22c55e'} />
           </g>
         )}
 
@@ -1129,6 +1247,12 @@ export function SpaceSketchOverlay() {
             {drawCursor && (
               <line x1={sX(f, drawPts[drawPts.length - 1][0])} y1={sY(f, drawPts[drawPts.length - 1][1])}
                 x2={sX(f, drawCursor[0])} y2={sY(f, drawCursor[1])} stroke="#22c55e" strokeOpacity={0.5} strokeDasharray="4 3" strokeWidth={1.2} />
+            )}
+            {drawCursor && snapKind !== 'none' && (
+              snapKind === 'line'
+                ? <rect x={sX(f, drawCursor[0]) - 5} y={sY(f, drawCursor[1]) - 5} width={10} height={10} fill="none"
+                    stroke="#f59e0b" strokeWidth={1.5} transform={`rotate(45 ${sX(f, drawCursor[0])} ${sY(f, drawCursor[1])})`} />
+                : <circle cx={sX(f, drawCursor[0])} cy={sY(f, drawCursor[1])} r={7} fill="none" stroke="#22c55e" strokeWidth={1.5} />
             )}
             {drawPts.map((p, i) => (
               <circle key={`d${i}`} cx={sX(f, p[0])} cy={sY(f, p[1])} r={i === 0 && drawPts.length >= 3 ? 6 : 3.5}
@@ -1165,10 +1289,10 @@ export function SpaceSketchOverlay() {
       </div>
       <div className="mt-1.5 text-[11px] text-muted-foreground">
         {!rooms.length && mode !== 'draw' && 'Pick a storey to derive its rooms, “Generate all” for the building, or “draw” a room by hand.'}
-        {!!rooms.length && mode === 'drag' && 'Drag a vertex — shared vertices move both rooms; snaps to others, Shift = ortho. ⌥/Ctrl-click a node to remove it.'}
+        {!!rooms.length && mode === 'drag' && 'Drag a vertex — shared vertices move both rooms; snaps to corners + walls, Shift = straight. ⌥/Ctrl-click a node to remove it.'}
         {!!rooms.length && mode === 'split' && 'Click two points — corners or anywhere on a wall (new nodes added as needed).'}
         {!!rooms.length && mode === 'merge' && 'Hover highlights the wall + both rooms; click to merge them.'}
-        {mode === 'draw' && 'Click to drop corners; click the first dot (or “Finish”) to close the room. It’s a standalone room — it won’t merge into existing walls.'}
+        {mode === 'draw' && 'Click corners (snap to walls; Shift = straight). Enter, double-click, or click the first dot to close. Esc cancels; Ctrl+Z removes the last point. Standalone room — won’t merge into existing walls.'}
         {unboundedCount > 0 && (
           <span className="text-amber-600 dark:text-amber-500"> · {unboundedCount} room(s) unchanged by {boundaryMode} (dashed) — no wall offset.</span>
         )}

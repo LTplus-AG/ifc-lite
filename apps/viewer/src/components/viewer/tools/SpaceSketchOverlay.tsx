@@ -31,7 +31,7 @@ import {
   GENERATED_SPACE_OBJECTTYPE,
   type BoundaryMode,
 } from '@ifc-lite/create';
-import { X, Undo2, Redo2, Building2, Layers, Maximize, AlertTriangle, Magnet } from 'lucide-react';
+import { X, Undo2, Redo2, Layers, Maximize, AlertTriangle, Magnet, SlidersHorizontal, HelpCircle } from 'lucide-react';
 
 let wasmReady: Promise<void> | null = null;
 function ensureWasm(): Promise<void> {
@@ -195,6 +195,14 @@ export function SpaceSketchOverlay() {
   // Snap every node to the building's 2D wall lines (corners + along walls).
   // Default on; the magnet toggle in the toolbar turns it off (vertex-only).
   const [snapToBuilding, setSnapToBuilding] = useState(true);
+  // True once the user has edited the plate (drag/split/merge/draw/dissolve)
+  // since the last bake/derive — drives the "close with unbaked edits" guard.
+  const [dirty, setDirty] = useState(false);
+  // Disclosure popovers (self-managed; no radix Popover primitive here) + the
+  // unbaked-edits close confirmation. Keep the default panel clean.
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
   // Issue 3: the vertex that an ⌥/Ctrl-click would dissolve — telegraphed live.
   const [deleteHover, setDeleteHover] = useState<Pt | null>(null);
   // Issue 2: the in-progress drawn room (world coords) + the live cursor point.
@@ -337,6 +345,7 @@ export function SpaceSketchOverlay() {
     redoRef.current.forEach((h) => h.free());
     redoRef.current = [];
     setHist((v) => v + 1);
+    setDirty(true); // an edit happened — unbaked until the next Bake
   }, []);
 
   const resetInteraction = useCallback(() => {
@@ -452,6 +461,7 @@ export function SpaceSketchOverlay() {
       resetInteraction();
       setDerivedStorey(storey);
       setRooms(snap); setHist((v) => v + 1);
+      setDirty(false); // a fresh derive is the new clean baseline
       // Surface the room-count consequence of a corner-tolerance change (only a
       // snap rebuild sets pendingSnapPrevRef; an initial derive leaves it null).
       const prevCount = pendingSnapPrevRef.current;
@@ -597,6 +607,7 @@ export function SpaceSketchOverlay() {
     const authored = existingSpaceFootprintsByStorey(ifcDataStore).get(derivedStorey) ?? [];
     const { emitted, skipped, error } = bakeStorey(derivedStorey, outlines, ext?.segments, ext?.thicknesses, authored);
     if (emitted > 0) revealSpaces();
+    if (!error) setDirty(false); // this storey's rooms are now written to IfcSpace
     setStatus(error
       ? `Baked ${emitted} IfcSpace — others failed: ${error}`
       : `Baked ${emitted} IfcSpace${skipped ? `, skipped ${skipped} (already a space)` : ''}.`);
@@ -631,6 +642,7 @@ export function SpaceSketchOverlay() {
       if (emitted) floors++;
     }
     if (totalEmitted > 0) revealSpaces();
+    if (!firstError) setDirty(false);
     setStatus(firstError
       ? `Generated ${totalEmitted} IfcSpace — others failed: ${firstError}`
       : `Generated ${totalEmitted} IfcSpace across ${floors} storey(s)${totalSkipped ? `; skipped ${totalSkipped} existing` : ''}.`);
@@ -800,8 +812,11 @@ export function SpaceSketchOverlay() {
         e.preventDefault();
         const now = Date.now();
         if (abortCurrentOp()) { escTimeRef.current = 0; return; }
-        if (now - escTimeRef.current <= 400) { escTimeRef.current = 0; setActiveTool('select'); }
-        else { escTimeRef.current = now; setStatus('Press Esc again to close.'); }
+        if (now - escTimeRef.current <= 400) {
+          escTimeRef.current = 0;
+          if (dirty) setConfirmClose(true); // guard unbaked edits
+          else setActiveTool('select');
+        } else { escTimeRef.current = now; setStatus(dirty ? 'Unbaked edits — Esc again to discard & close.' : 'Press Esc again to close.'); }
       } else if (e.key === 'Enter' && drawPts.length > 0 && !inField) {
         e.preventDefault();
         commitDraw();
@@ -809,7 +824,13 @@ export function SpaceSketchOverlay() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [abortCurrentOp, commitDraw, drawPts.length, setActiveTool]);
+  }, [abortCurrentOp, commitDraw, drawPts.length, dirty, setActiveTool]);
+
+  // Close request from the ✕ button: guard unbaked edits with an inline confirm.
+  const requestClose = useCallback(() => {
+    if (dirty) setConfirmClose(true);
+    else setActiveTool('select');
+  }, [dirty, setActiveTool]);
 
   const processMove = useCallback(() => {
     rafRef.current = null;
@@ -997,7 +1018,13 @@ export function SpaceSketchOverlay() {
       return;
     }
 
-    // 5. Empty space → start drawing a new room.
+    // 5. Empty space → Shift pans (so you can still pan now that a plain click
+    //    draws); otherwise start drawing a new room.
+    if (e.shiftKey) {
+      panningRef.current = true;
+      svgRef.current?.setPointerCapture(e.pointerId);
+      return;
+    }
     const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
     drawRedoRef.current = [];
     setDrawPts([snap.pt]);
@@ -1091,11 +1118,26 @@ export function SpaceSketchOverlay() {
   return (
     <div ref={panelRef} className="absolute left-1/2 top-4 -translate-x-1/2 z-30 rounded-xl border bg-background/95 shadow-xl backdrop-blur p-3 select-none pointer-events-auto"
          style={{ width: size.w + 24 }}>
+      {/* Inline unbaked-edits close confirmation (not a native dialog). */}
+      {confirmClose && (
+        <div className="absolute inset-x-0 top-0 z-40 flex items-center gap-2 rounded-t-xl border-b border-amber-600/40 bg-amber-500 px-3 py-2 text-xs text-amber-950">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="flex-1 font-medium">Unbaked edits will be lost.</span>
+          <button onClick={() => setConfirmClose(false)} className="rounded px-2 py-1 font-medium hover:bg-black/10">Keep editing</button>
+          <button onClick={() => { setConfirmClose(false); setActiveTool('select'); }} className="rounded bg-amber-950 px-2 py-1 font-medium text-amber-50 hover:bg-amber-900">Discard &amp; close</button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <Layers className="h-4 w-4 text-muted-foreground" /> Space Sketch
+          {dirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" title="Unbaked edits" />}
         </div>
-        <button className={iconBtn} onClick={() => setActiveTool('select')} title="Close (double-tap Esc)"><X className="h-4 w-4" /></button>
+        <div className="flex items-center gap-0.5">
+          <button className={`${iconBtn} ${helpOpen ? 'bg-muted text-foreground' : ''}`} aria-pressed={helpOpen}
+            onClick={() => { setHelpOpen((v) => !v); setOptionsOpen(false); }} title="How it works"><HelpCircle className="h-4 w-4" /></button>
+          <button className={iconBtn} onClick={requestClose} title="Close (double-tap Esc)"><X className="h-4 w-4" /></button>
+        </div>
       </div>
 
       {/* Storey + whole-building */}
@@ -1109,72 +1151,99 @@ export function SpaceSketchOverlay() {
           title="Create IfcSpace for every storey at once — auto floor-to-floor height, skips rooms that already have a space">Generate all</button>
       </div>
 
-      {/* History + snap. The tool is modeless — what happens is driven by what's
-          under the cursor (node / wall / empty), so there are no mode tabs. */}
-      <div className="flex items-center gap-1.5 mb-2">
+      {/* Action row — modeless, so no mode tabs: history · snap · options · fit,
+          with a live room tally. Secondary settings hide behind Options. */}
+      <div className="flex items-center gap-1 mb-2">
         <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 className="h-4 w-4" /></button>
         <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"><Redo2 className="h-4 w-4" /></button>
-        <button
-          className={`${iconBtn} ${snapToBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
-          onClick={() => setSnapToBuilding((v) => !v)}
-          aria-pressed={snapToBuilding}
-          title={snapToBuilding ? 'Snap to building walls: on — click to disable' : 'Snap to building walls: off — click to enable'}
-        ><Magnet className="h-4 w-4" /></button>
+        <span className="mx-0.5 h-5 w-px bg-border" />
+        <button className={`${iconBtn} ${snapToBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
+          onClick={() => setSnapToBuilding((v) => !v)} aria-pressed={snapToBuilding}
+          title={snapToBuilding ? 'Snap to walls + corners: on' : 'Snap to walls + corners: off'}><Magnet className="h-4 w-4" /></button>
+        <button className={`${iconBtn} relative ${optionsOpen ? 'bg-muted text-foreground' : ''}`} aria-pressed={optionsOpen}
+          onClick={() => { setOptionsOpen((v) => !v); setHelpOpen(false); }} title="Options — boundary, corner tolerance, underlay">
+          <SlidersHorizontal className="h-4 w-4" />
+          {(boundaryMode !== 'inner' || snapTol != null || showDiagnostics) && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />}
+        </button>
+        <button className={iconBtn} onClick={() => applyFit(computeFit(rooms, sizeRef.current.w, sizeRef.current.h))}
+          disabled={!rooms.length} title="Fit plan to canvas (reset zoom & pan)"><Maximize className="h-4 w-4" /></button>
+        <span className="ml-auto pr-1 text-[11px] tabular-nums text-muted-foreground">
+          {rooms.length} {rooms.length === 1 ? 'room' : 'rooms'} · {total.toFixed(1)} m²
+        </span>
       </div>
 
-      {/* While drawing a room, the point-placement hint. */}
-      {drawPts.length > 0 && (
-        <div className="mb-2 text-[11px] text-muted-foreground leading-tight">
-          {`${drawPts.length} pt(s) · Enter, double-click, or click the first dot to close · Esc cancels · Ctrl+Z removes last · Shift = straight.`}
+      {/* Click-away backdrop for the disclosure popovers (panel-local). */}
+      {(optionsOpen || helpOpen) && (
+        <div className="absolute inset-0 z-10" aria-hidden onMouseDown={() => { setOptionsOpen(false); setHelpOpen(false); }} />
+      )}
+
+      {/* Options popover — the set-once settings, out of the main flow. */}
+      {optionsOpen && (
+        <div className="absolute right-3 top-12 z-20 w-64 space-y-3 rounded-lg border bg-popover p-3 text-[11px] text-muted-foreground shadow-xl">
+          <div className="space-y-1.5">
+            <div className="font-medium text-foreground">Boundary</div>
+            <div className="inline-flex rounded-md border p-0.5">
+              {(['center', 'inner', 'outer'] as BoundaryMode[]).map((m) => {
+                const noWallData = !ext && m !== 'center';
+                return (
+                  <button key={m}
+                    className={`rounded px-2 py-0.5 capitalize transition-colors disabled:opacity-40 ${boundaryMode === m ? 'bg-primary text-primary-foreground' : 'hover:text-foreground'}`}
+                    onClick={() => setBoundaryMode(m)} disabled={noWallData}
+                    title={noWallData ? 'No wall data on this derive — only the centreline is available' : m === 'center' ? 'Wall centreline' : m === 'inner' ? 'Inner (net) face' : 'Outer (gross) face'}>{m}</button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-foreground">Corner tolerance</span>
+              {snapDelta && (
+                <span className={`tabular-nums ${snapDelta.to === 0 ? 'text-red-500' : snapDelta.to < snapDelta.from ? 'text-amber-500' : 'text-emerald-500'}`}
+                  title="Rooms before → after">{snapDelta.from} → {snapDelta.to}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="flex-1 accent-primary"
+                disabled={derivedStorey == null} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
+              <input type="number" min={0.05} max={1} step={0.05} value={usedTol} aria-label="Corner tolerance (metres)"
+                className="w-12 rounded border bg-background px-1 py-0.5 tabular-nums disabled:opacity-40"
+                disabled={derivedStorey == null}
+                onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) rebuildWithSnap(Math.min(1, Math.max(0.05, v))); }} />
+              <button className="rounded px-1 hover:text-foreground disabled:opacity-40" onClick={() => rebuildWithSnap(null)}
+                disabled={derivedStorey == null}
+                title={snapTol == null ? 'Automatic — escalates until rooms close' : 'Reset to automatic'}>{snapTol == null ? 'auto' : 'reset'}</button>
+            </div>
+          </div>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-foreground">Show building underlay</span>
+            <input type="checkbox" className="accent-primary" checked={showBuilding} onChange={() => setShowBuilding((v) => !v)} />
+          </label>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-foreground">Leak diagnostics</span>
+            <input type="checkbox" className="accent-primary" checked={showDiagnostics} disabled={!ext} onChange={() => setShowDiagnostics((v) => !v)} />
+          </label>
         </div>
       )}
 
-      {/* Corner-closing tolerance — the gap two wall centrelines may have and
-          still close a room corner. NOT vertex snapping (that's the drag
-          behaviour); the name "snap" was conflated with it. Numeric field for
-          precise values; the badge flashes the room-count change so the effect
-          is visible on the plan (Issue 5). */}
-      <div className="flex items-center gap-1.5 mb-2 text-[11px] text-muted-foreground">
-        <span title="How far apart two wall centrelines can be and still close a room corner. Larger closes bigger gaps but can over-merge. This is NOT vertex snapping.">Corner tol</span>
-        <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="w-20 accent-primary"
-          disabled={derivedStorey == null} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
-        <input type="number" min={0.05} max={1} step={0.05} value={usedTol} aria-label="Corner tolerance (metres)"
-          className="w-14 rounded border bg-background px-1 py-0.5 tabular-nums disabled:opacity-40"
-          disabled={derivedStorey == null}
-          onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) rebuildWithSnap(Math.min(1, Math.max(0.05, v))); }} />
-        <span>m</span>
-        <button className="rounded px-1 hover:text-foreground disabled:opacity-40" onClick={() => rebuildWithSnap(null)}
-          disabled={derivedStorey == null}
-          title={snapTol == null ? 'Automatic — escalates the tolerance until rooms close' : 'Reset to automatic'}>{snapTol == null ? 'auto' : 'reset'}</button>
-        {snapDelta && (
-          <span className={`ml-auto rounded px-1 tabular-nums animate-pulse ${snapDelta.to === 0 ? 'text-red-500' : snapDelta.to < snapDelta.from ? 'text-amber-500' : 'text-emerald-500'}`}
-            title="Rooms before → after this tolerance change">{snapDelta.from} → {snapDelta.to} rooms</span>
-        )}
-      </div>
-
-      {/* View: boundary relative to walls + building underlay */}
-      <div className="flex items-center gap-2 mb-2 text-[11px] text-muted-foreground">
-        <span title="Where the space boundary sits relative to its walls — drives the 2D preview and the bake">Boundary</span>
-        <div className="inline-flex rounded-md border p-0.5">
-          {(['center', 'inner', 'outer'] as BoundaryMode[]).map((m) => {
-            const noWallData = !ext && m !== 'center';
-            return (
-              <button key={m}
-                className={`rounded px-2 py-0.5 capitalize transition-colors disabled:opacity-40 ${boundaryMode === m ? 'bg-primary text-primary-foreground' : 'hover:text-foreground'}`}
-                onClick={() => setBoundaryMode(m)} disabled={noWallData}
-                title={noWallData ? 'No wall data on this derive — only the centreline is available' : m === 'center' ? 'Wall centreline' : m === 'inner' ? 'Inner (net) face' : 'Outer (gross) face'}>{m}</button>
-            );
-          })}
+      {/* Help popover — the full gesture legend, on demand (keeps the panel clean). */}
+      {helpOpen && (
+        <div className="absolute right-3 top-12 z-20 w-72 space-y-1.5 rounded-lg border bg-popover p-3 text-[11px] shadow-xl">
+          <div className="mb-1 font-medium text-foreground">One tool — actions follow the cursor:</div>
+          {([
+            ['Drag a node', 'move it (snaps; Shift = straight)'],
+            ['Click a wall, then another', 'split the room between them'],
+            ['Click empty space', 'draw a room (Enter / dbl-click closes)'],
+            ['⌥/Ctrl-click a node', 'remove it'],
+            ['⌥/Ctrl-click a wall', 'merge the two rooms'],
+            ['Shift-drag / middle-drag', 'pan · scroll = zoom'],
+          ] as [string, string][]).map(([k, v]) => (
+            <div key={k} className="flex gap-2">
+              <span className="shrink-0 font-medium text-foreground">{k}</span>
+              <span className="text-muted-foreground">— {v}</span>
+            </div>
+          ))}
         </div>
-        <button className={`${iconBtn} ml-auto`} onClick={() => applyFit(computeFit(rooms, sizeRef.current.w, sizeRef.current.h))}
-          disabled={!rooms.length} title="Fit the plan to the canvas (reset zoom & pan)"><Maximize className="h-4 w-4" /></button>
-        <button className={`${iconBtn} ${showBuilding ? 'bg-primary/10 text-primary hover:bg-primary/15' : ''}`}
-          onClick={() => setShowBuilding((v) => !v)}
-          title="Show surrounding building elements (plan cut ~1.2 m above the floor)"><Building2 className="h-4 w-4" /></button>
-        <button className={`${iconBtn} ${showDiagnostics ? 'bg-red-500/10 text-red-500 hover:bg-red-500/15' : ''}`}
-          onClick={() => setShowDiagnostics((v) => !v)} disabled={!ext}
-          title="Diagnostics — highlight walls that bound no room (possible leaks) and rooms that failed to close"><AlertTriangle className="h-4 w-4" /></button>
-      </div>
+      )}
 
       <svg ref={svgRef} width={size.w} height={size.h} style={{ cursor }}
         className="rounded border bg-muted/20 touch-none"
@@ -1321,33 +1390,36 @@ export function SpaceSketchOverlay() {
         )}
       </svg>
 
-      <div className="mt-2.5 flex items-center gap-2">
-        <button className="h-8 shrink-0 rounded-md bg-emerald-600 px-3 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
-          onClick={bake} disabled={derivedStorey == null || !rooms.length}
-          title="Write this storey's rooms as IfcSpace — replaces any this tool already dropped here">Bake storey</button>
-        <div className="min-w-0 flex-1 text-right text-xs text-muted-foreground leading-tight">
-          <div>{rooms.length} room(s) · {total.toFixed(1)} m²</div>
-          {status && <div className="truncate">{status}</div>}
-        </div>
-      </div>
-      <div className="mt-1.5 text-[11px] text-muted-foreground">
-        {!rooms.length && drawPts.length === 0 && 'Pick a storey to derive its rooms, “Generate all” for the building, or click empty space to draw a room by hand.'}
-        {drawPts.length > 0
-          ? 'Click corners (snap to walls + earlier corners; Shift = straight). Enter, double-click, or click the first dot to close. Esc cancels; Ctrl+Z removes the last point.'
-          : splitPick
-            ? 'Click another wall (or corner) on the same room to finish the cut. Esc cancels.'
-            : 'Drag a node to move it · click a wall then another to split · ⌥-click a wall to merge · click empty space to draw a room · ⌥-click a node to remove it.'}
-        {unboundedCount > 0 && (
-          <span className="text-amber-600 dark:text-amber-500"> · {unboundedCount} room(s) unchanged by {boundaryMode} (dashed) — no wall offset.</span>
-        )}
-        {!!rooms.length && <span className="opacity-60"> · Scroll = zoom · middle- or empty-drag = pan · ⤢ = fit.</span>}
-        {showDiagnostics && (
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-            <span className="text-emerald-600 dark:text-emerald-500">▬ wall bounds a room</span>
-            <span className="text-red-500">╌ wall bounds nothing ({leakCount} — leak suspect)</span>
-            <span className="text-red-500">▦ room failed to close ({badCount})</span>
+      {/* Footer — an in-the-moment hint only while drawing/cutting (the full
+          legend lives behind “?”), the live status, then the primary action. */}
+      <div className="mt-2.5 space-y-1.5">
+        {(drawPts.length > 0 || splitPick) && (
+          <div className="text-[11px] leading-tight text-primary">
+            {drawPts.length > 0
+              ? 'Click corners · Enter / double-click / first dot to close · Shift = straight · Esc cancels.'
+              : 'Click another wall or corner to finish the cut · Esc cancels.'}
           </div>
         )}
+        {status && drawPts.length === 0 && !splitPick && (
+          <div className="truncate text-[11px] leading-tight text-muted-foreground" title={status}>{status}</div>
+        )}
+        {unboundedCount > 0 && (
+          <div className="text-[11px] leading-tight text-amber-600 dark:text-amber-500">
+            {unboundedCount} room(s) unchanged by “{boundaryMode}” (dashed) — no wall offset.
+          </div>
+        )}
+        {showDiagnostics && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
+            <span className="text-emerald-600 dark:text-emerald-500">▬ bounds a room</span>
+            <span className="text-red-500">╌ bounds nothing ({leakCount})</span>
+            <span className="text-red-500">▦ failed to close ({badCount})</span>
+          </div>
+        )}
+        <button className="h-9 w-full rounded-md bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+          onClick={bake} disabled={derivedStorey == null || !rooms.length}
+          title="Write this storey's rooms as IfcSpace — replaces any this tool already dropped here">
+          Bake storey to IfcSpace
+        </button>
       </div>
 
       {/* Resize grip (Issue 4) — drag to grow/shrink the canvas; the plan stays

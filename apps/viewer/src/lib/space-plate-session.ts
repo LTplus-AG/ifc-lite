@@ -46,22 +46,27 @@ export function ensureSpaceWasm(): Promise<void> {
   return wasmReady;
 }
 
+/** Half-thickness (m) per wall segment, parallel to the coords/sources arrays;
+ *  carried onto derived edges so net/gross outlines can be queried. Empty = none. */
+export type Thicknesses = Float64Array;
+
 /** Build a plate from flat wall segments. With `manualTol` null, escalate the
  *  corner-snap tolerance until one encloses rooms (real centrelines miss corners
  *  by ~½ a wall thickness, so a tight snap leaves the loop open → 0 rooms). */
 function buildHandle(
   coords: Float64Array,
   sources: Int32Array,
+  thicknesses: Thicknesses,
   manualTol: number | null,
   minArea: number,
 ): { handle: SpacePlateHandle; tol: number } {
   if (manualTol != null) {
-    return { handle: new SpacePlateHandle(coords, sources, manualTol, minArea), tol: manualTol };
+    return { handle: new SpacePlateHandle(coords, sources, thicknesses, manualTol, minArea), tol: manualTol };
   }
   let handle: SpacePlateHandle | null = null;
   let tol = 0.1;
   for (const t of [0.1, 0.25, 0.5]) {
-    const p = new SpacePlateHandle(coords, sources, t, minArea);
+    const p = new SpacePlateHandle(coords, sources, thicknesses, t, minArea);
     handle?.free();
     handle = p;
     tol = t;
@@ -70,13 +75,37 @@ function buildHandle(
   return { handle: handle!, tol };
 }
 
-/** Build a throwaway plate, read its rooms, and free it — for paths (e.g.
- *  whole-building bake) that need a storey's rooms without a live session. */
-export function snapshotRooms(coords: Float64Array, sources: Int32Array, minArea = 0.5): Room[] {
-  const { handle } = buildHandle(coords, sources, null, minArea);
+/** One room from a throwaway-plate snapshot: its centreline outline + the outline
+ *  at the requested wall boundary (net/gross/centre). */
+export interface RoomWithBoundary {
+  outline: [number, number][];
+  boundary: [number, number][];
+}
+
+function flatToPts(flat: Float64Array): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 0; i + 1 < flat.length; i += 2) out.push([flat[i], flat[i + 1]]);
+  return out;
+}
+
+/** Build a throwaway plate, read each room's centreline + boundary outline at
+ *  `boundary` mode, and free it — for paths (whole-building bake) that need a
+ *  storey's rooms without a live session. */
+export function snapshotRooms(
+  coords: Float64Array,
+  sources: Int32Array,
+  thicknesses: Thicknesses,
+  boundary: 'center' | 'inner' | 'outer',
+  minArea = 0.5,
+): RoomWithBoundary[] {
+  const { handle } = buildHandle(coords, sources, thicknesses, null, minArea);
   const rooms = handle.snapshot() as Room[];
+  const out = rooms.map((r) => ({
+    outline: r.outline,
+    boundary: boundary === 'center' ? r.outline : flatToPts(handle.netOutline(r.face, boundary === 'inner')),
+  }));
   handle.free();
-  return rooms;
+  return out;
 }
 
 export class SpacePlateSession {
@@ -103,8 +132,8 @@ export class SpacePlateSession {
 
   /** Build a fresh plate, replacing the current one and clearing all history.
    *  Resets `dirty` (a fresh derive is the new clean baseline). */
-  build(coords: Float64Array, sources: Int32Array, manualTol: number | null, minArea = 0.5): { rooms: Room[]; tol: number } {
-    const { handle, tol } = buildHandle(coords, sources, manualTol, minArea);
+  build(coords: Float64Array, sources: Int32Array, thicknesses: Thicknesses, manualTol: number | null, minArea = 0.5): { rooms: Room[]; tol: number } {
+    const { handle, tol } = buildHandle(coords, sources, thicknesses, manualTol, minArea);
     this.discardPending();
     this.disposeHandle();
     this.clearHistory();
@@ -116,6 +145,17 @@ export class SpacePlateSession {
   // ───────────────────────────── reads ─────────────────────────────
 
   rooms(): Room[] { return this.handle ? (this.handle.snapshot() as Room[]) : []; }
+
+  /** A room's outline at the chosen wall boundary: the centreline (`center`),
+   *  the net inner face (`inner`), or the gross outer face (`outer`). */
+  boundaryOutline(face: number, boundary: 'center' | 'inner' | 'outer'): [number, number][] {
+    if (!this.handle || boundary === 'center') {
+      const room = this.rooms().find((r) => r.face === face);
+      return room ? room.outline : [];
+    }
+    return flatToPts(this.handle.netOutline(face, boundary === 'inner'));
+  }
+
   neighborAcross(edge: number): number | undefined { return this.handle?.neighborAcross(edge); }
   boundingElements(face: number): Boundary[] {
     return this.handle ? (this.handle.boundingElements(face) as Boundary[]) : [];

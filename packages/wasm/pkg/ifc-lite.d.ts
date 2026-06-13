@@ -539,6 +539,15 @@ export class SpacePlateHandle {
    */
   mergeFaces(edge: number): any;
   /**
+   * The face outline offset to a wall boundary, as flat `[x0, y0, …]`: each
+   * edge is moved by its own wall's half-thickness — inward when `inset`
+   * (the net / inner face), outward otherwise (the gross / outer face).
+   * Shared room↔room edges are pinned when pushing outward. Falls back to the
+   * centreline outline when no offset applies — so it's always a sane ring.
+   * (For a `center` boundary just use `faceOutline`.)
+   */
+  netOutline(face: number, inset: boolean): Float64Array;
+  /**
    * Remove a wall edge, choosing the right semantics from its two faces:
    * two real rooms → union them; a bridge / spur / outer-only wall → delete
    * it and auto-clean the orphaned inner lines and nodes it leaves; a real
@@ -584,9 +593,12 @@ export class SpacePlateHandle {
    *
    * `segCoords`: `[ax, ay, bx, by, …]` (length a multiple of 4).
    * `segSources`: one `i32` per segment, `-1` for none.
+   * `segHalfThickness`: one `f64` per segment — half the wall's thickness in
+   * metres, carried onto the derived edges for `netOutline`. Pass an empty
+   * array (or all zeros) when thickness is unknown (centreline only).
    * `snapTolerance` / `minArea`: pass `<= 0` to take the defaults.
    */
-  constructor(seg_coords: Float64Array, seg_sources: Int32Array, snap_tolerance: number, min_area: number);
+  constructor(seg_coords: Float64Array, seg_sources: Int32Array, seg_half_thickness: Float64Array, snap_tolerance: number, min_area: number);
   /**
    * Sweep the whole plate clean: remove dangling spur walls, isolated nodes,
    * and redundant collinear nodes — the "clean up orphans" / eraser action.
@@ -942,7 +954,8 @@ export interface InitOutput {
   readonly spaceplatehandle_findVertexNear: (a: number, b: number, c: number, d: number) => number;
   readonly spaceplatehandle_mergeFaces: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_neighborAcross: (a: number, b: number) => number;
-  readonly spaceplatehandle_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly spaceplatehandle_netOutline: (a: number, b: number, c: number, d: number) => void;
+  readonly spaceplatehandle_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly spaceplatehandle_prune: (a: number) => number;
   readonly spaceplatehandle_removeEdge: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_roomCount: (a: number) => number;

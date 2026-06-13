@@ -72,11 +72,15 @@ impl SpacePlateHandle {
     ///
     /// `segCoords`: `[ax, ay, bx, by, …]` (length a multiple of 4).
     /// `segSources`: one `i32` per segment, `-1` for none.
+    /// `segHalfThickness`: one `f64` per segment — half the wall's thickness in
+    /// metres, carried onto the derived edges for `netOutline`. Pass an empty
+    /// array (or all zeros) when thickness is unknown (centreline only).
     /// `snapTolerance` / `minArea`: pass `<= 0` to take the defaults.
     #[wasm_bindgen(constructor)]
     pub fn new(
         seg_coords: &[f64],
         seg_sources: &[i32],
+        seg_half_thickness: &[f64],
         snap_tolerance: f64,
         min_area: f64,
     ) -> Result<SpacePlateHandle, JsValue> {
@@ -91,15 +95,22 @@ impl SpacePlateHandle {
                 "segSources length must equal the segment count (segCoords.len / 4)",
             ));
         }
+        if !seg_half_thickness.is_empty() && seg_half_thickness.len() != n {
+            return Err(JsValue::from_str(
+                "segHalfThickness must be empty or have one entry per segment",
+            ));
+        }
         let segments: Vec<InputSegment> = (0..n)
             .map(|i| {
                 let o = i * 4;
                 let src = seg_sources[i];
+                let half = seg_half_thickness.get(i).copied().unwrap_or(0.0);
                 InputSegment::new(
                     [seg_coords[o], seg_coords[o + 1]],
                     [seg_coords[o + 2], seg_coords[o + 3]],
                     if src < 0 { None } else { Some(src as u32) },
                 )
+                .with_half_thickness(half.max(0.0))
             })
             .collect();
         let defaults = BuildOptions::default();
@@ -148,6 +159,21 @@ impl SpacePlateHandle {
     pub fn face_outline(&self, face: u32) -> Vec<f64> {
         self.inner
             .face_outline(FaceId(face))
+            .into_iter()
+            .flat_map(|p| [p[0], p[1]])
+            .collect()
+    }
+
+    /// The face outline offset to a wall boundary, as flat `[x0, y0, …]`: each
+    /// edge is moved by its own wall's half-thickness — inward when `inset`
+    /// (the net / inner face), outward otherwise (the gross / outer face).
+    /// Shared room↔room edges are pinned when pushing outward. Falls back to the
+    /// centreline outline when no offset applies — so it's always a sane ring.
+    /// (For a `center` boundary just use `faceOutline`.)
+    #[wasm_bindgen(js_name = netOutline)]
+    pub fn net_outline(&self, face: u32, inset: bool) -> Vec<f64> {
+        self.inner
+            .net_outline(FaceId(face), inset)
             .into_iter()
             .flat_map(|p| [p[0], p[1]])
             .collect()

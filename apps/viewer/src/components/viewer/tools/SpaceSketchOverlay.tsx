@@ -38,7 +38,6 @@ import {
 } from '@/lib/space-sketch-geometry';
 import {
   extractWallSegmentsForStorey,
-  offsetRoomFootprint,
   existingSpaceFootprintsByStorey,
   GENERATED_SPACE_OBJECTTYPE,
   type BoundaryMode,
@@ -133,12 +132,13 @@ export function SpaceSketchOverlay() {
   const [snapTol, setSnapTol] = useState<number | null>(null); // null = auto-escalate
   const [usedTol, setUsedTol] = useState(0.1);
   const snapTolRef = useRef<number | null>(null);
-  const lastBuildRef = useRef<{ coords: Float64Array; sources: Int32Array; label: string; storey: number | null } | null>(null);
-  // Wall segments + thicknesses from the last derive, kept for net-footprint
-  // inset at bake (so the IfcSpace solid stops at the inner wall face).
+  const lastBuildRef = useRef<{ coords: Float64Array; sources: Int32Array; thicknesses: Float64Array; label: string; storey: number | null } | null>(null);
+  // Wall segments + thicknesses from the last derive, kept for the leak
+  // diagnostics overlay + the "has wall data" affordance (net/gross outlines now
+  // come from the engine via half-thickness carried on each edge).
   const extractionRef = useRef<{
-    segments: Parameters<typeof offsetRoomFootprint>[1];
-    thicknesses: Parameters<typeof offsetRoomFootprint>[2];
+    segments: ReturnType<typeof extractWallSegmentsForStorey>['segments'];
+    thicknesses: ReturnType<typeof extractWallSegmentsForStorey>['wallThicknesses'];
   } | null>(null);
   const [hist, setHist] = useState(0);
   const [status, setStatus] = useState('Load the demo plate or derive from a storey.');
@@ -321,7 +321,7 @@ export function SpaceSketchOverlay() {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  const buildFrom = useCallback(async (coords: Float64Array, sources: Int32Array, label: string, storey: number | null) => {
+  const buildFrom = useCallback(async (coords: Float64Array, sources: Int32Array, thicknesses: Float64Array, label: string, storey: number | null) => {
     // Re-entrancy guard: a rapid rebuild (snap slider) must not let an older
     // async build free/replace the plate a newer one is using — that races the
     // shared wasm heap. Only the latest build applies; superseded ones bail.
@@ -333,14 +333,14 @@ export function SpaceSketchOverlay() {
       // to keep an older rebuild (rapid snap-slider drags) from replacing the
       // plate a newer one is building — the stale one bails before touching it.
       if (seq !== buildSeqRef.current) return;
-      lastBuildRef.current = { coords, sources, label, storey };
+      lastBuildRef.current = { coords, sources, thicknesses, label, storey };
       const manual = snapTolRef.current;
       let session = sessionRef.current;
       if (!session) { session = new SpacePlateSession(); sessionRef.current = session; }
       // Auto-escalate the corner-snap (real centrelines miss corners by ~½ a
       // wall thickness, so a tight snap leaves the loop open → 0 rooms); the
       // session tries [0.1, 0.25, 0.5] and keeps the first that encloses rooms.
-      const { rooms: snap, tol: used } = session.build(coords, sources, manual, 0.5);
+      const { rooms: snap, tol: used } = session.build(coords, sources, thicknesses, manual, 0.5);
       setUsedTol(used);
       applyFit(computeFit(snap, sizeRef.current.w, sizeRef.current.h));
       resetInteraction();
@@ -379,7 +379,7 @@ export function SpaceSketchOverlay() {
     rebuildTimerRef.current = setTimeout(() => {
       rebuildTimerRef.current = null;
       const lb = lastBuildRef.current;
-      if (lb) void buildFrom(lb.coords, lb.sources, lb.label, lb.storey);
+      if (lb) void buildFrom(lb.coords, lb.sources, lb.thicknesses, lb.label, lb.storey);
     }, 180);
   }, [buildFrom]);
 
@@ -394,12 +394,17 @@ export function SpaceSketchOverlay() {
       extractionRef.current = { segments, thicknesses: wallThicknesses };
       const coords = new Float64Array(segments.length * 4);
       const sources = new Int32Array(segments.length).fill(-1);
+      // Half-thickness per segment (m), carried onto the edges so the engine can
+      // offset to the net/gross wall face.
+      const half = new Float64Array(segments.length);
       segments.forEach((s, i) => {
         coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1];
         coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1];
+        const t = wallThicknesses[i];
+        half[i] = t && t > 0 ? t / 2 : 0;
       });
       const name = ifcDataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
-      await buildFrom(coords, sources, name, storeyId);
+      await buildFrom(coords, sources, half, name, storeyId);
     } catch (e) {
       setStatus(`Derive failed: ${String(e)}`);
     }
@@ -447,9 +452,7 @@ export function SpaceSketchOverlay() {
    */
   const bakeStorey = useCallback((
     sid: number,
-    outlines: Pt[][],
-    segments: Parameters<typeof offsetRoomFootprint>[1] | undefined,
-    thicknesses: Parameters<typeof offsetRoomFootprint>[2] | undefined,
+    rooms: { outline: Pt[]; boundary: Pt[] }[],
     authored: Pt[][],
   ): { emitted: number; skipped: number; error: string | null } => {
     if (!activeModelId) return { emitted: 0, skipped: 0, error: null };
@@ -463,23 +466,22 @@ export function SpaceSketchOverlay() {
     // line tells the user the truth instead of silently dropping spaces
     // that would then be missing from the export.
     let error: string | null = null;
-    for (let oi = 0; oi < outlines.length; oi++) {
-      const outline = outlines[oi];
-      const [cx, cy] = centroid(outline);
+    for (const room of rooms) {
+      const [cx, cy] = centroid(room.outline);
       if (authored.some((fp) => pointInPoly(cx, cy, fp))) { skipped++; continue; }
-      const others = outlines.filter((_, j) => j !== oi);
-      const inset = segments && thicknesses ? offsetRoomFootprint(outline, segments, thicknesses, boundaryMode, others) : outline;
+      // `boundary` is the engine's net/gross/centre outline; gross area stays on
+      // the centreline so the quantity reflects the room, not the wall face.
       const res = addSpace(activeModelId, sid, {
-        Profile: 'polygon', OuterCurve: inset, Height: height,
+        Profile: 'polygon', OuterCurve: room.boundary, Height: height,
         Name: `Space ${newIds.length + 1}`, ObjectType: GENERATED_SPACE_OBJECTTYPE,
-        grossFloorArea: polyArea(outline),
+        grossFloorArea: polyArea(room.outline),
       });
       if (res && 'expressId' in res) newIds.push(res.expressId);
       else error ??= (res && 'error' in res ? res.error : 'unknown error');
     }
     generatedRef.current.set(sid, newIds);
     return { emitted: newIds.length, skipped, error };
-  }, [activeModelId, removeEntity, addSpace, floorToFloor, boundaryMode]);
+  }, [activeModelId, removeEntity, addSpace, floorToFloor]);
 
   const bake = useCallback(() => {
     const session = sessionRef.current;
@@ -487,16 +489,18 @@ export function SpaceSketchOverlay() {
       setStatus('Derive a storey first.');
       return;
     }
-    const outlines = session.rooms().map((r) => r.outline);
-    const ext = extractionRef.current;
+    const rooms = session.rooms().map((r) => ({
+      outline: r.outline,
+      boundary: session.boundaryOutline(r.face, boundaryMode),
+    }));
     const authored = existingSpaceFootprintsByStorey(ifcDataStore).get(derivedStorey) ?? [];
-    const { emitted, skipped, error } = bakeStorey(derivedStorey, outlines, ext?.segments, ext?.thicknesses, authored);
+    const { emitted, skipped, error } = bakeStorey(derivedStorey, rooms, authored);
     if (emitted > 0) revealSpaces();
     if (!error) { session.dirty = false; setDirty(false); } // rooms now written to IfcSpace
     setStatus(error
       ? `Baked ${emitted} IfcSpace — others failed: ${error}`
       : `Baked ${emitted} IfcSpace${skipped ? `, skipped ${skipped} (already a space)` : ''}.`);
-  }, [activeModelId, derivedStorey, ifcDataStore, bakeStorey, revealSpaces]);
+  }, [activeModelId, derivedStorey, ifcDataStore, bakeStorey, revealSpaces, boundaryMode]);
 
   const bakeWholeBuilding = useCallback(async () => {
     if (!activeModelId || !ifcDataStore) { setStatus('No model loaded.'); return; }
@@ -510,12 +514,18 @@ export function SpaceSketchOverlay() {
       if (!segments.length) continue;
       const coords = new Float64Array(segments.length * 4);
       const sources = new Int32Array(segments.length).fill(-1);
-      segments.forEach((s, i) => { coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1]; coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1]; });
+      const half = new Float64Array(segments.length);
+      segments.forEach((s, i) => {
+        coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1]; coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1];
+        const t = wallThicknesses[i];
+        half[i] = t && t > 0 ? t / 2 : 0;
+      });
       // Throwaway plate per storey (escalation + deterministic free handled by
-      // the session module) — this path doesn't touch the live session.
-      const outlines = snapshotRooms(coords, sources).map((r) => r.outline);
-      if (!outlines.length) continue;
-      const { emitted, skipped, error } = bakeStorey(st.id, outlines, segments, wallThicknesses, authoredMap.get(st.id) ?? []);
+      // the session module) — this path doesn't touch the live session. Reads
+      // each room's centreline + the boundary outline at the chosen mode.
+      const rooms = snapshotRooms(coords, sources, half, boundaryMode);
+      if (!rooms.length) continue;
+      const { emitted, skipped, error } = bakeStorey(st.id, rooms, authoredMap.get(st.id) ?? []);
       totalEmitted += emitted; totalSkipped += skipped;
       firstError ??= error;
       if (emitted) floors++;
@@ -525,7 +535,7 @@ export function SpaceSketchOverlay() {
     setStatus(firstError
       ? `Generated ${totalEmitted} IfcSpace — others failed: ${firstError}`
       : `Generated ${totalEmitted} IfcSpace across ${floors} storey(s)${totalSkipped ? `; skipped ${totalSkipped} existing` : ''}.`);
-  }, [activeModelId, ifcDataStore, storeys, bakeStorey, revealSpaces]);
+  }, [activeModelId, ifcDataStore, storeys, bakeStorey, revealSpaces, boundaryMode]);
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -1073,14 +1083,17 @@ export function SpaceSketchOverlay() {
   // broken (Issue 6).
   const boundaryInfo = useMemo(
     () =>
-      rooms.map((r, ri) => {
+      rooms.map((r) => {
         if (boundaryMode === 'center') return { disp: r.outline, unbounded: false };
-        if (!ext) return { disp: r.outline, unbounded: true };
-        const others = rooms.filter((_, j) => j !== ri).map((x) => x.outline);
-        const disp = offsetRoomFootprint(r.outline, ext.segments, ext.thicknesses, boundaryMode, others);
+        // Net/gross outline straight from the engine (per-edge wall thickness);
+        // it falls back to the centreline when no wall offset applies, so a
+        // no-change result flags the room as unbounded (Issue 6).
+        const disp = sessionRef.current?.boundaryOutline(r.face, boundaryMode) ?? r.outline;
         return { disp, unbounded: Math.abs(polyArea(disp) - r.area) < 1e-3 };
       }),
-    [rooms, boundaryMode, ext],
+    // `hist` re-derives this after a plate edit (rooms identity also changes then).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rooms, boundaryMode, hist],
   );
   const unboundedCount = boundaryMode === 'center' ? 0 : boundaryInfo.filter((b) => b.unbounded).length;
 

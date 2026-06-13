@@ -1065,16 +1065,22 @@ export function SpaceSketchOverlay() {
     if (v != null) {
       if (mod) {
         const snap = plate.duplicate();
-        try {
-          plate.dissolveVertex(v);
-          commitUndo(snap); refreshRooms(); setHover(null); setDeleteHover(null);
-          setStatus(`Removed vertex — ${plate.roomCount} room(s).`);
-        } catch {
-          plate.free(); plateRef.current = snap; refreshRooms();
-          // The only nodes that can't dissolve are wall junctions (3+ walls meet)
-          // — removing one there means removing a wall, i.e. merging rooms.
-          setStatus('Can’t remove a wall-junction node — ⌥-click a wall to merge the rooms instead.');
+        // A degree-2 node dissolves (straighten/remove). A wall JUNCTION (3+
+        // walls) can't dissolve — removing it there means removing a wall, so
+        // fall back to merging across the wall nearest the cursor. Together
+        // these "remove" every node: redundant ones vanish, junctions collapse
+        // by joining the two rooms that wall separated.
+        let ok = false;
+        try { plate.dissolveVertex(v); ok = true; setStatus(`Removed node — ${plate.roomCount} room(s).`); }
+        catch {
+          const ed2 = pickEdge(wx, wy);
+          if (ed2 && plate.neighborAcross(ed2.edge) !== undefined) {
+            try { plate.mergeFaces(ed2.edge); ok = true; setStatus(`Merged across the wall — ${plate.roomCount} room(s).`); }
+            catch { /* falls to the failure path below */ }
+          }
         }
+        if (ok) { commitUndo(snap); refreshRooms(); setHover(null); setDeleteHover(null); }
+        else { plate.free(); plateRef.current = snap; refreshRooms(); setStatus('Can’t remove this node — its walls border the outside or don’t separate two rooms.'); }
         return;
       }
       const start = nearestVertPos(wx, wy);

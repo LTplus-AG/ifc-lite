@@ -859,37 +859,28 @@ export function SpaceSketchOverlay() {
     else setActiveTool('select');
   }, [dirty, setActiveTool]);
 
-  // "Simplify" — bulk-remove every redundant node: one that lies on a straight
-  // run in EVERY room it touches (so dissolving it can't change any room's
-  // shape). This clears the derivation cruft without deforming geometry. Wall
-  // junctions (3+ walls) are left alone — those are removed by merging.
-  const simplifyRedundantNodes = useCallback(() => {
+  // "Clean up" — sweep the whole plate clean in the engine: remove dangling
+  // spur walls, isolated nodes, and redundant collinear nodes left by the
+  // non-destructive wall arrangement. Area-neutral and idempotent (the Rust
+  // `prune` does the topology surgery; real corners and wall junctions stay).
+  const cleanupOrphans = useCallback(() => {
     const plate = plateRef.current;
     if (!plate || !rooms.length) return;
-    const COLL_TOL = 0.02; // m — perpendicular distance to the chord through neighbours
-    const byPos = new Map<string, { p: Pt; collinearEverywhere: boolean }>();
-    for (const r of rooms) {
-      const n = r.outline.length;
-      for (let i = 0; i < n; i++) {
-        const a = r.outline[(i + n - 1) % n], c = r.outline[i], b = r.outline[(i + 1) % n];
-        const coll = distToSeg(c[0], c[1], a[0], a[1], b[0], b[1]) < COLL_TOL;
-        const key = `${c[0].toFixed(4)},${c[1].toFixed(4)}`;
-        const e = byPos.get(key);
-        if (e) e.collinearEverywhere = e.collinearEverywhere && coll;
-        else byPos.set(key, { p: c, collinearEverywhere: coll });
-      }
-    }
-    const candidates = [...byPos.values()].filter((e) => e.collinearEverywhere).map((e) => e.p);
-    if (!candidates.length) { setStatus('No redundant nodes to remove.'); return; }
     const snap = plate.duplicate();
     let removed = 0;
-    for (const p of candidates) {
-      const vid = plate.findVertexNear(p[0], p[1], 1e-3); // positions don't move as others dissolve
-      if (vid === undefined) continue;
-      try { plate.dissolveVertex(vid); removed++; } catch { /* junction/triangle — leave it */ }
+    try {
+      removed = plate.prune();
+    } catch (err) {
+      plate.free(); plateRef.current = snap; refreshRooms();
+      setStatus(`Cleanup failed: ${String(err).replace(/^\w+:\s*/, '')}`);
+      return;
     }
-    if (removed > 0) { commitUndo(snap); refreshRooms(); setStatus(`Removed ${removed} redundant node(s).`); }
-    else { snap.free(); setStatus('No removable redundant nodes.'); }
+    if (removed > 0) {
+      commitUndo(snap); refreshRooms();
+      setStatus(`Cleaned up ${removed} orphan wall${removed === 1 ? '' : 's'}/node${removed === 1 ? '' : 's'} — ${plate.roomCount} room(s).`);
+    } else {
+      snap.free(); setStatus('Nothing to clean up — no orphan walls or nodes.');
+    }
   }, [rooms, commitUndo, refreshRooms]);
 
   const processMove = useCallback(() => {
@@ -967,11 +958,13 @@ export function SpaceSketchOverlay() {
     if (ed != null) {
       setDeleteHover(null); setDrawCursor(null); setSnapPos(null);
       if (m.del) {
-        // ⌥/Ctrl over a wall → merge preview (both rooms if the wall is shared).
+        // ⌥/Ctrl over a wall → remove preview. A distinct room across → merge;
+        // otherwise removeEdge deletes the wall and cleans up the orphans.
         const nbr = plate.neighborAcross(ed.edge);
-        setHover({ kind: 'edge', edge: ed.edge, rooms: [ed.face, ...(nbr !== undefined ? [nbr] : [])], a: ed.a, b: ed.b });
+        const shared = nbr !== undefined && nbr !== ed.face;
+        setHover({ kind: 'edge', edge: ed.edge, rooms: [ed.face, ...(shared ? [nbr] : [])], a: ed.a, b: ed.b });
         setSplitHover(null);
-        setIntent({ text: nbr !== undefined ? 'Merge rooms' : 'No room to merge', tone: 'remove' });
+        setIntent({ text: shared ? 'Merge rooms' : 'Remove wall', tone: 'remove' });
       } else {
         // plain → cut cue ("+") at the projected point on the wall.
         setHover(null);
@@ -1075,6 +1068,12 @@ export function SpaceSketchOverlay() {
         try { plate.dissolveVertex(v); ok = true; setStatus(`Removed node — ${plate.roomCount} room(s).`); }
         catch (err) {
           reason = String(err).replace(/^\w+:\s*/, '');
+          // The node won't straighten away (it's a wall junction). Remove one of
+          // its incident walls instead: `removeEdge` unions two real rooms, or
+          // deletes a bridge/spur wall and auto-cleans the orphaned inner lines
+          // and nodes it leaves — handling the BridgeEdge/BordersExterior cases
+          // the old merge-only path rejected. Scan EVERY incident wall so a
+          // junction with one removable wall still goes.
           if (vp) {
             for (const r of rooms) {
               const n = r.outline.length;
@@ -1083,10 +1082,9 @@ export function SpaceSketchOverlay() {
               const bounds = plate.boundingElements(r.face) as Boundary[];
               for (const idx of [k, (k - 1 + n) % n]) {
                 const b = bounds[idx];
-                if (b && plate.neighborAcross(b.edge) !== undefined) {
-                  try { plate.mergeFaces(b.edge); ok = true; setStatus(`Merged across the wall — ${plate.roomCount} room(s).`); }
-                  catch { /* try the next incident wall */ }
-                }
+                if (!b) continue;
+                try { plate.removeEdge(b.edge); ok = true; setStatus(`Removed wall & cleaned up — ${plate.roomCount} room(s).`); }
+                catch { /* an enclosing wall — try the next incident wall */ }
                 if (ok) break;
               }
               if (ok) break;
@@ -1119,12 +1117,15 @@ export function SpaceSketchOverlay() {
       if (mod) {
         const snap = plate.duplicate();
         try {
-          plate.mergeFaces(ed.edge);
+          // `removeEdge` unions two real rooms, or deletes a bridge/spur wall and
+          // auto-cleans the orphaned inner lines & nodes — only a real enclosing
+          // wall (room ↔ exterior) is refused, so a room never silently opens.
+          plate.removeEdge(ed.edge);
           commitUndo(snap); refreshRooms(); setHover(null);
-          setStatus(`Merged across wall — ${plate.roomCount} room(s) left.`);
+          setStatus(`Removed wall — ${plate.roomCount} room(s) left.`);
         } catch (err) {
           plate.free(); plateRef.current = snap; refreshRooms();
-          setStatus(`Merge rejected: ${String(err).replace(/^Error:\s*/, '')}`);
+          setStatus(`Can't remove this wall: ${String(err).replace(/^\w+:\s*/, '')}`);
         }
         return;
       }
@@ -1296,8 +1297,8 @@ export function SpaceSketchOverlay() {
           <SlidersHorizontal className="h-4 w-4" />
           {(boundaryMode !== 'inner' || snapTol != null || showDiagnostics) && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />}
         </button>
-        <button className={iconBtn} onClick={simplifyRedundantNodes}
-          disabled={!rooms.length} title="Clean up — remove redundant nodes on straight walls (shape unchanged)"><Eraser className="h-4 w-4" /></button>
+        <button className={iconBtn} onClick={cleanupOrphans}
+          disabled={!rooms.length} title="Clean up — remove orphaned inner walls & redundant nodes (room shapes unchanged)"><Eraser className="h-4 w-4" /></button>
         <button className={iconBtn} onClick={() => applyFit(computeFit(rooms, sizeRef.current.w, sizeRef.current.h))}
           disabled={!rooms.length} title="Fit plan to canvas (reset zoom & pan)"><Maximize className="h-4 w-4" /></button>
         <span className="ml-auto pr-1 text-[11px] tabular-nums text-muted-foreground">
@@ -1366,8 +1367,8 @@ export function SpaceSketchOverlay() {
             ['Drag a node', 'move it (snaps; Shift = straight)'],
             ['Click a wall, then another', 'split the room between them'],
             ['Click empty space', 'draw a room (Enter / dbl-click closes)'],
-            ['⌥/Ctrl/right-click a node', 'remove it'],
-            ['⌥/Ctrl/right-click a wall', 'merge the two rooms'],
+            ['⌥/Ctrl/right-click a node', 'remove it (cleans up orphans)'],
+            ['⌥/Ctrl/right-click a wall', 'merge rooms / remove & clean up'],
             ['Shift-drag / middle-drag', 'pan · scroll = zoom'],
           ] as [string, string][]).map(([k, v]) => (
             <div key={k} className="flex gap-2">

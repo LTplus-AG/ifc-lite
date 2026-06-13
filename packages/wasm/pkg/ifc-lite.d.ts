@@ -539,6 +539,16 @@ export class SpacePlateHandle {
    */
   mergeFaces(edge: number): any;
   /**
+   * Remove a wall edge, choosing the right semantics from its two faces:
+   * two real rooms → union them; a bridge / spur / outer-only wall → delete
+   * it and auto-clean the orphaned inner lines and nodes it leaves; a real
+   * enclosing wall (room ↔ exterior) → rejected (`BordersExterior`). This is
+   * the "remove this wall and tidy up" affordance for the orphan cruft the
+   * non-destructive wall arrangement leaves behind. Returns the rooms it
+   * changed (empty if the edge bounded no room).
+   */
+  removeEdge(edge: number): any;
+  /**
    * Flat outline `[x0, y0, x1, y1, …]` of a face (no repeated closing vertex).
    */
   faceOutline(face: number): Float64Array;
@@ -577,6 +587,14 @@ export class SpacePlateHandle {
    * `snapTolerance` / `minArea`: pass `<= 0` to take the defaults.
    */
   constructor(seg_coords: Float64Array, seg_sources: Int32Array, snap_tolerance: number, min_area: number);
+  /**
+   * Sweep the whole plate clean: remove dangling spur walls, isolated nodes,
+   * and redundant collinear nodes — the "clean up orphans" / eraser action.
+   * Area-neutral and idempotent. Returns how many topology elements were
+   * pruned (0 = the plate was already clean); the caller re-renders via
+   * `snapshot` like any other edit.
+   */
+  prune(): number;
   /**
    * Author a new room from a flat ring `[x0, y0, x1, y1, …]` (no repeated
    * closing vertex). `source` `-1` marks a user-drawn room. Winding is
@@ -925,6 +943,8 @@ export interface InitOutput {
   readonly spaceplatehandle_mergeFaces: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_neighborAcross: (a: number, b: number) => number;
   readonly spaceplatehandle_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly spaceplatehandle_prune: (a: number) => number;
+  readonly spaceplatehandle_removeEdge: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_roomCount: (a: number) => number;
   readonly spaceplatehandle_roomIds: (a: number, b: number) => void;
   readonly spaceplatehandle_setFaceHeight: (a: number, b: number, c: number, d: number, e: number) => void;

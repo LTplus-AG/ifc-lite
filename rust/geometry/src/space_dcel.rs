@@ -183,6 +183,11 @@ pub struct SpacePlate {
 }
 
 const EPS: f64 = 1e-9;
+/// Perpendicular-distance threshold (metres) for "this degree-2 node is a
+/// redundant collinear point on a straight run" — used by `prune_orphans` to
+/// dissolve derivation cruft. Far below the wall snap tolerance (default 0.1 m)
+/// so genuine corners are never mistaken for collinear and dissolved away.
+const EPS_COLL: f64 = 1e-6;
 
 impl SpacePlate {
     // ───────────────────────── construction ─────────────────────────
@@ -199,7 +204,13 @@ impl SpacePlate {
     /// 7. flag CW cycles as exterior and drop sub-`min_area` rooms.
     pub fn build(segments: &[InputSegment], options: BuildOptions) -> Self {
         let arr = Arrangement::resolve(segments, options.snap_tolerance);
-        Self::from_arrangement(arr, options.min_area)
+        let mut plate = Self::from_arrangement(arr, options.min_area);
+        // The arrangement is non-destructive, so it can carry cruft that bounds
+        // no room — dangling spur walls and the redundant collinear nodes they
+        // leave behind. Clean them so a derived plate starts as just its rooms
+        // (a no-op on already-clean inputs; never changes a room's area).
+        plate.prune_orphans();
+        plate
     }
 
     fn from_arrangement(arr: Arrangement, min_area: f64) -> Self {
@@ -616,6 +627,209 @@ impl SpacePlate {
             .collect())
     }
 
+    /// Live degree of a vertex (its number of live outgoing half-edges).
+    fn vertex_degree(&self, v: VertexId) -> usize {
+        let vi = v.0 as usize;
+        if vi >= self.vertices.len() || !self.vertices[vi].alive {
+            return 0;
+        }
+        self.outgoing_half_edges(v).count()
+    }
+
+    /// Remove the undirected edge of a **degree-1 spur tip** — a dangling wall
+    /// poking into a face — splicing the face cycle closed and tombstoning the
+    /// tip. `spur_he` may be either half-edge of the spur. Internal; driven by
+    /// `prune_orphans` / `remove_edge`. Area-neutral: the tip's out-and-back
+    /// boundary contributes cancelling shoelace terms, so no face area changes.
+    fn remove_spur_edge(&mut self, spur_he: HalfEdgeId) -> Result<(), EditError> {
+        let hi = spur_he.0 as usize;
+        if hi >= self.half_edges.len() || !self.half_edges[hi].alive {
+            return Err(EditError::StaleHandle);
+        }
+        let t = self.half_edges[hi].twin;
+        // Orient so `s = T→J` (origin is the degree-1 tip) and `s_t = J→T`.
+        let (s, s_t) = if self.vertex_degree(self.half_edges[hi].origin) == 1 {
+            (spur_he, t)
+        } else if self.vertex_degree(self.half_edges[t.0 as usize].origin) == 1 {
+            (t, spur_he)
+        } else {
+            return Err(EditError::VertexNotDissolvable); // neither end is a tip
+        };
+        let tip = self.half_edges[s.0 as usize].origin;
+        let j = self.half_edges[s_t.0 as usize].origin;
+        let f = self.half_edges[s.0 as usize].face;
+        // A genuine tip is a peninsula: both half-edges share one face and the
+        // rotation at the tip is the out-and-back pattern. Else it's corrupt.
+        if self.half_edges[s_t.0 as usize].face != f
+            || self.half_edges[s_t.0 as usize].next != s
+            || self.half_edges[s.0 as usize].prev != s_t
+        {
+            return Err(EditError::StaleHandle);
+        }
+        let a = self.half_edges[s_t.0 as usize].prev; // ends at J
+        let b = self.half_edges[s.0 as usize].next; // starts at J
+
+        if a == s {
+            // Lone stick: J is degree-1 too — the whole 2-vertex component is just
+            // this edge bounding one outer face. Tombstone the lot.
+            if !self.faces[f.0 as usize].is_outer {
+                return Err(EditError::StaleHandle); // a lone stick can't bound a room
+            }
+            self.half_edges[s.0 as usize].alive = false;
+            self.half_edges[s_t.0 as usize].alive = false;
+            self.vertices[tip.0 as usize].outgoing = None;
+            self.vertices[tip.0 as usize].alive = false;
+            self.vertices[j.0 as usize].outgoing = None;
+            self.vertices[j.0 as usize].alive = false;
+            self.faces[f.0 as usize].alive = false;
+            self.faces[f.0 as usize].half_edge = None;
+            return Ok(());
+        }
+
+        // Splice the spur out of F's cycle: A → B directly.
+        self.half_edges[a.0 as usize].next = b;
+        self.half_edges[b.0 as usize].prev = a;
+        self.half_edges[s.0 as usize].alive = false;
+        self.half_edges[s_t.0 as usize].alive = false;
+        self.vertices[tip.0 as usize].outgoing = None;
+        self.vertices[tip.0 as usize].alive = false;
+        self.repair_vertex_outgoing(j, s_t);
+        if matches!(self.faces[f.0 as usize].half_edge, Some(h) if h == s || h == s_t) {
+            self.faces[f.0 as usize].half_edge = Some(a);
+        }
+        Ok(())
+    }
+
+    /// Remove all orphaned cruft the wall arrangement leaves behind: dangling
+    /// spur walls (degree-1 chains), isolated vertices, and redundant collinear
+    /// degree-2 nodes. Idempotent, and never changes a room's area (spurs bound
+    /// no room; collinear dissolve only straightens a node already on its chord).
+    /// Returns how many topology elements were pruned.
+    pub fn prune_orphans(&mut self) -> usize {
+        let mut removed = 0usize;
+        // Phase A — spur sweep to a fixpoint (chews whole chains).
+        loop {
+            let tips: Vec<VertexId> = (0..self.vertices.len())
+                .map(|i| VertexId(i as u32))
+                .filter(|&v| self.vertex_degree(v) == 1)
+                .collect();
+            if tips.is_empty() {
+                break;
+            }
+            for tip in tips {
+                if self.vertex_degree(tip) != 1 {
+                    continue; // a sibling removal already changed it
+                }
+                let s = self.outgoing_half_edges(tip).next();
+                if let Some(s) = s {
+                    if self.remove_spur_edge(s).is_ok() {
+                        removed += 1;
+                    }
+                }
+            }
+        }
+        // Phase B — drop leftover degree-0 (isolated) vertices.
+        for i in 0..self.vertices.len() {
+            let v = VertexId(i as u32);
+            if self.vertices[i].alive && self.vertex_degree(v) == 0 {
+                self.vertices[i].alive = false;
+                self.vertices[i].outgoing = None;
+                removed += 1;
+            }
+        }
+        // Phase C — dissolve redundant collinear degree-2 nodes (fixpoint).
+        loop {
+            let mut progress = false;
+            let cands: Vec<VertexId> = (0..self.vertices.len())
+                .map(|i| VertexId(i as u32))
+                .filter(|&v| self.vertex_degree(v) == 2)
+                .collect();
+            for v in cands {
+                if self.vertex_degree(v) != 2 {
+                    continue;
+                }
+                let outs: Vec<HalfEdgeId> = self.outgoing_half_edges(v).collect();
+                let p = self.vertices[v.0 as usize].pos;
+                let x = self.vertices[self.dest(outs[0]).0 as usize].pos;
+                let y = self.vertices[self.dest(outs[1]).0 as usize].pos;
+                if perp_distance(p, x, y) >= EPS_COLL {
+                    continue; // a genuine corner — keep it
+                }
+                if self.dissolve_vertex(v).is_ok() {
+                    removed += 1;
+                    progress = true;
+                }
+            }
+            if !progress {
+                break;
+            }
+        }
+        removed
+    }
+
+    /// Remove the wall `edge`, choosing the right semantics from its two
+    /// incident faces, and auto-clean the orphans it leaves:
+    /// - room ↔ room → union the two rooms (`merge_faces`);
+    /// - bridge (same face both sides) or outer ↔ outer → delete it + `prune_orphans`;
+    /// - room ↔ outer (a real enclosing wall) → `BordersExterior` (don't open a room).
+    pub fn remove_edge(&mut self, edge: HalfEdgeId) -> Result<Vec<FacePatch>, EditError> {
+        let hi = edge.0 as usize;
+        if hi >= self.half_edges.len() || !self.half_edges[hi].alive {
+            return Err(EditError::StaleHandle);
+        }
+        let t = self.half_edges[hi].twin;
+        let f_keep = self.half_edges[hi].face;
+        let f_drop = self.half_edges[t.0 as usize].face;
+        let keep_outer = self.faces[f_keep.0 as usize].is_outer;
+        let drop_outer = self.faces[f_drop.0 as usize].is_outer;
+
+        if f_keep != f_drop && !keep_outer && !drop_outer {
+            return self.merge_faces(edge); // two real rooms → union
+        }
+        if f_keep != f_drop && keep_outer != drop_outer {
+            return Err(EditError::BordersExterior); // would open a room
+        }
+
+        // Bridge (f_keep == f_drop) or outer ↔ outer → delete + clean.
+        let hn = self.half_edges[hi].next;
+        let hp = self.half_edges[hi].prev;
+        let tn = self.half_edges[t.0 as usize].next;
+        let tp = self.half_edges[t.0 as usize].prev;
+        let oh = self.half_edges[hi].origin;
+        let ot = self.half_edges[t.0 as usize].origin;
+
+        self.half_edges[hp.0 as usize].next = tn;
+        self.half_edges[tn.0 as usize].prev = hp;
+        self.half_edges[tp.0 as usize].next = hn;
+        self.half_edges[hn.0 as usize].prev = tp;
+
+        if f_drop != f_keep {
+            // outer ↔ outer: fold f_drop's loop into f_keep.
+            self.faces[f_keep.0 as usize].half_edge = Some(hp);
+            let merged: Vec<HalfEdgeId> = self.face_half_edges(f_keep).collect();
+            for he in merged {
+                self.half_edges[he.0 as usize].face = f_keep;
+            }
+            self.faces[f_drop.0 as usize].alive = false;
+            self.faces[f_drop.0 as usize].half_edge = None;
+        }
+        self.half_edges[hi].alive = false;
+        self.half_edges[t.0 as usize].alive = false;
+        self.repair_vertex_outgoing(oh, edge);
+        self.repair_vertex_outgoing(ot, t);
+        // The face's anchor may have been one of the removed half-edges (esp. a
+        // bridge / spur in the outer face) — re-point it at a survivor.
+        self.reanchor_face_if_dead(f_keep);
+
+        self.prune_orphans();
+
+        let mut out = Vec::new();
+        if self.faces[f_keep.0 as usize].alive && !self.faces[f_keep.0 as usize].is_outer {
+            out.push(self.face_patch(f_keep));
+        }
+        Ok(out)
+    }
+
     /// Author a brand-new room from a closed ring of points — the "draw a
     /// room" affordance. The polygon becomes its **own** connected component:
     /// a CCW interior room face plus the CW exterior face bounding it. It does
@@ -852,6 +1066,31 @@ impl SpacePlate {
         self.vertices[v.0 as usize].outgoing = replacement;
         if replacement.is_none() {
             self.vertices[v.0 as usize].alive = false;
+        }
+    }
+
+    /// Ensure `f`'s anchor half-edge is a live half-edge that still belongs to
+    /// `f`; if the anchor was tombstoned (or re-homed), re-point it at any
+    /// surviving member, and tombstone the face if none remain.
+    fn reanchor_face_if_dead(&mut self, f: FaceId) {
+        let fi = f.0 as usize;
+        if fi >= self.faces.len() || !self.faces[fi].alive {
+            return;
+        }
+        let ok = matches!(self.faces[fi].half_edge, Some(h)
+            if self.half_edges[h.0 as usize].alive && self.half_edges[h.0 as usize].face == f);
+        if ok {
+            return;
+        }
+        let replacement = (0..self.half_edges.len())
+            .map(|i| HalfEdgeId(i as u32))
+            .find(|h| {
+                let he = &self.half_edges[h.0 as usize];
+                he.alive && he.face == f
+            });
+        self.faces[fi].half_edge = replacement;
+        if replacement.is_none() {
+            self.faces[fi].alive = false;
         }
     }
 
@@ -1212,6 +1451,19 @@ fn polygon_area(pts: &[[f64; 2]]) -> f64 {
         acc += p[0] * q[1] - q[0] * p[1];
     }
     acc * 0.5
+}
+
+/// Perpendicular distance of point `p` to the infinite line through `a` and `b`
+/// (degenerates to the point distance when `a == b`). Used to judge whether a
+/// degree-2 node is a redundant collinear point on its neighbours' chord.
+fn perp_distance(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+    let dx = b[0] - a[0];
+    let dy = b[1] - a[1];
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < EPS {
+        return ((p[0] - a[0]).powi(2) + (p[1] - a[1]).powi(2)).sqrt();
+    }
+    ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx).abs() / len
 }
 
 /// Cheap self-intersection screen for edit feedback: O(n²) edge-pair test on a
@@ -1682,6 +1934,177 @@ mod tests {
         // Repeated closing point (first == last) — the wrap-around case.
         let closed = vec![[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 0.0]];
         assert_eq!(plate.add_face(&closed, None), Err(EditError::InvalidPolygon));
+    }
+
+    // ───────────────── orphan removal + auto-cleanup ─────────────────
+
+    /// rect(0,0,4,3) plus a spur wall poking out of the right wall's midpoint
+    /// to (6, 1.5). The T-junction snap splits the right wall at (4,1.5), so
+    /// the arrangement carries a degree-1 tip at (6,1.5) and a redundant
+    /// collinear node at (4,1.5).
+    fn spur_segs() -> Vec<InputSegment> {
+        let mut s = loop_segments(&rect(0.0, 0.0, 4.0, 3.0), 100);
+        s.push(InputSegment::new([4.0, 1.5], [6.0, 1.5], Some(200)));
+        s
+    }
+
+    /// Build the spur plate WITHOUT the `build` auto-prune (via the raw
+    /// `from_arrangement`) so the spur survives for the removal/prune tests.
+    fn spur_plate_unpruned() -> SpacePlate {
+        let arr = Arrangement::resolve(&spur_segs(), 0.1);
+        SpacePlate::from_arrangement(arr, 0.5)
+    }
+
+    fn live_vertex_count(plate: &SpacePlate) -> usize {
+        (0..plate.vertices.len()).filter(|&i| plate.vertices[i].alive).count()
+    }
+
+    #[test]
+    fn spur_fixture_actually_has_a_spur() {
+        let plate = spur_plate_unpruned();
+        assert_eq!(plate.room_count(), 1, "the rectangle is still one room");
+        let tip = plate.find_vertex([6.0, 1.5]);
+        assert_eq!(plate.vertex_degree(tip), 1, "the spur end is a degree-1 tip");
+        let junction = plate.find_vertex([4.0, 1.5]);
+        assert_eq!(plate.vertex_degree(junction), 3, "the spur base is a T-junction");
+    }
+
+    #[test]
+    fn remove_spur_edge_drops_the_tip_and_keeps_area() {
+        let mut plate = spur_plate_unpruned();
+        let area_before: f64 = plate.rooms().map(|f| plate.face_area(f)).sum();
+        let tip = plate.find_vertex([6.0, 1.5]);
+        let spur_he = plate.outgoing_half_edges(tip).next().expect("tip has an outgoing he");
+        plate.remove_spur_edge(spur_he).expect("remove the spur");
+        assert_eq!(plate.vertex_position(tip), None, "the tip is tombstoned");
+        assert_eq!(plate.room_count(), 1, "no room gained or lost");
+        let area_after: f64 = plate.rooms().map(|f| plate.face_area(f)).sum();
+        assert!(
+            (area_before - area_after).abs() < 1e-6,
+            "spur removal is area-neutral: {area_before} vs {area_after}",
+        );
+    }
+
+    #[test]
+    fn remove_spur_edge_rejects_a_non_tip_and_a_stale_handle() {
+        let mut plate = spur_plate_unpruned();
+        // Any room boundary edge has both ends at degree ≥ 2 → not a spur.
+        let room = plate.rooms().next().unwrap();
+        let non_spur = plate.face_half_edges(room).next().expect("a room edge");
+        assert_eq!(plate.remove_spur_edge(non_spur), Err(EditError::VertexNotDissolvable));
+        assert_eq!(plate.remove_spur_edge(HalfEdgeId(99_999)), Err(EditError::StaleHandle));
+    }
+
+    #[test]
+    fn prune_orphans_removes_the_spur_and_dissolves_the_exposed_node() {
+        let mut plate = spur_plate_unpruned();
+        let room = plate.rooms().next().unwrap();
+        assert!(
+            plate.face_outline(room).len() >= 5,
+            "unpruned room boundary carries the T-junction node",
+        );
+        let removed = plate.prune_orphans();
+        assert!(removed >= 2, "pruned the spur edge + the now-collinear node: {removed}");
+        let room = plate.rooms().next().unwrap();
+        assert_eq!(plate.face_outline(room).len(), 4, "back to a clean 4-corner rectangle");
+        assert!((plate.face_area(room) - 12.0).abs() < 1e-6, "area unchanged: {}", plate.face_area(room));
+        assert_eq!(live_vertex_count(&plate), 4, "only the four corners survive");
+    }
+
+    #[test]
+    fn prune_orphans_is_idempotent_and_a_noop_on_clean_plates() {
+        // Clean by construction (build auto-prunes) → nothing to do.
+        let mut clean = two_room_plate();
+        assert_eq!(clean.prune_orphans(), 0, "a clean two-room plate prunes nothing");
+        assert_eq!(clean.room_count(), 2);
+        let total: f64 = clean.rooms().map(|f| clean.face_area(f)).sum();
+        assert!((total - 24.0).abs() < 1e-6, "areas intact: {total}");
+        // A second prune right after a real one finds nothing.
+        let mut messy = spur_plate_unpruned();
+        messy.prune_orphans();
+        assert_eq!(messy.prune_orphans(), 0, "prune is idempotent");
+    }
+
+    #[test]
+    fn prune_keeps_genuine_corners() {
+        let segs = loop_segments(&rect(0.0, 0.0, 4.0, 3.0), 100);
+        let mut plate = SpacePlate::build(&segs, BuildOptions::default());
+        assert_eq!(plate.prune_orphans(), 0, "a clean rectangle has nothing to prune");
+        assert_eq!(
+            plate.face_outline(plate.rooms().next().unwrap()).len(),
+            4,
+            "all four real corners are kept (not mistaken for collinear)",
+        );
+    }
+
+    #[test]
+    fn build_auto_prunes_spur_walls() {
+        let plate = SpacePlate::build(&spur_segs(), BuildOptions::default());
+        assert_eq!(plate.room_count(), 1, "the spur doesn't create a phantom room");
+        let room = plate.rooms().next().unwrap();
+        assert_eq!(plate.face_outline(room).len(), 4, "derived room is a clean rectangle, no spur stub");
+        assert!((plate.face_area(room) - 12.0).abs() < 1e-6, "area is the rectangle: {}", plate.face_area(room));
+    }
+
+    #[test]
+    fn remove_edge_merges_two_real_rooms() {
+        let mut plate = two_room_plate();
+        let rooms: Vec<FaceId> = plate.rooms().collect();
+        let shared = plate
+            .face_half_edges(rooms[0])
+            .find(|h| {
+                plate
+                    .neighbor_across(*h)
+                    .map(|n| n != rooms[0] && !plate.faces[n.0 as usize].is_outer)
+                    .unwrap_or(false)
+            })
+            .expect("shared edge");
+        let patches = plate.remove_edge(shared).expect("remove the shared wall");
+        assert_eq!(plate.room_count(), 1, "two rooms merged into one");
+        let total: f64 = patches.iter().map(|p| p.area).sum();
+        assert!((total - 24.0).abs() < 1e-6, "merged area = full box: {total}");
+    }
+
+    #[test]
+    fn remove_edge_refuses_an_enclosing_wall() {
+        let mut plate = two_room_plate();
+        let rooms: Vec<FaceId> = plate.rooms().collect();
+        let exterior_edge = plate
+            .face_half_edges(rooms[0])
+            .find(|h| {
+                plate
+                    .neighbor_across(*h)
+                    .map(|n| plate.faces[n.0 as usize].is_outer)
+                    .unwrap_or(false)
+            })
+            .expect("an outer wall");
+        assert_eq!(plate.remove_edge(exterior_edge), Err(EditError::BordersExterior));
+    }
+
+    #[test]
+    fn remove_edge_deletes_a_bridge_and_cleans_orphans() {
+        let mut plate = spur_plate_unpruned();
+        let tip = plate.find_vertex([6.0, 1.5]);
+        let spur = plate.outgoing_half_edges(tip).next().expect("spur he");
+        // Both of the spur's half-edges sit in the same (exterior) face → bridge.
+        let t = plate.half_edges[spur.0 as usize].twin;
+        assert_eq!(
+            plate.half_edges[spur.0 as usize].face,
+            plate.half_edges[t.0 as usize].face,
+            "the spur is a bridge (same face both sides)",
+        );
+        let patches = plate.remove_edge(spur).expect("remove the bridge/spur wall");
+        assert!(patches.is_empty(), "a bridge in the exterior bounds no room");
+        assert_eq!(plate.room_count(), 1, "the rectangle room survives");
+        let room = plate.rooms().next().unwrap();
+        assert_eq!(plate.face_outline(room).len(), 4, "room cleaned back to a rectangle");
+        assert!((plate.face_area(room) - 12.0).abs() < 1e-6, "area unchanged: {}", plate.face_area(room));
+    }
+
+    #[test]
+    fn remove_edge_rejects_a_stale_handle() {
+        let mut plate = two_room_plate();
+        assert_eq!(plate.remove_edge(HalfEdgeId(99_999)), Err(EditError::StaleHandle));
     }
 
     // Test-only helper.

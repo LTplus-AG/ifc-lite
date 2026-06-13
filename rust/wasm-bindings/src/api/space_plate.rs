@@ -249,6 +249,29 @@ impl SpacePlateHandle {
         let patch = self.inner.add_face(&pts, src).map_err(edit_err)?;
         patches_to_js(vec![patch])
     }
+
+    /// Remove a wall edge, choosing the right semantics from its two faces:
+    /// two real rooms → union them; a bridge / spur / outer-only wall → delete
+    /// it and auto-clean the orphaned inner lines and nodes it leaves; a real
+    /// enclosing wall (room ↔ exterior) → rejected (`BordersExterior`). This is
+    /// the "remove this wall and tidy up" affordance for the orphan cruft the
+    /// non-destructive wall arrangement leaves behind. Returns the rooms it
+    /// changed (empty if the edge bounded no room).
+    #[wasm_bindgen(js_name = removeEdge)]
+    pub fn remove_edge(&mut self, edge: u32) -> Result<JsValue, JsValue> {
+        let patches = self.inner.remove_edge(HalfEdgeId(edge)).map_err(edit_err)?;
+        patches_to_js(patches)
+    }
+
+    /// Sweep the whole plate clean: remove dangling spur walls, isolated nodes,
+    /// and redundant collinear nodes — the "clean up orphans" / eraser action.
+    /// Area-neutral and idempotent. Returns how many topology elements were
+    /// pruned (0 = the plate was already clean); the caller re-renders via
+    /// `snapshot` like any other edit.
+    #[wasm_bindgen(js_name = prune)]
+    pub fn prune(&mut self) -> usize {
+        self.inner.prune_orphans()
+    }
 }
 
 fn patches_to_js(patches: Vec<FacePatch>) -> Result<JsValue, JsValue> {

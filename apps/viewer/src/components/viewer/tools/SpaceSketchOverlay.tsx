@@ -146,6 +146,25 @@ function uniqueVerts(rooms: Room[]): Pt[] {
 
 const ROOM_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16', '#a855f7', '#ef4444'];
 
+// Live action-intent chip — one consistent colour language across the tool:
+// green = create/draw, blue = cut/split, red = remove/merge (dissolve),
+// neutral = move/pan. The on-canvas cues use the same hues.
+type IntentTone = 'move' | 'draw' | 'cut' | 'remove' | 'pan';
+const INTENT_TEXT_CLASS: Record<IntentTone, string> = {
+  move: 'text-foreground',
+  draw: 'text-emerald-600 dark:text-emerald-400',
+  cut: 'text-blue-600 dark:text-blue-400',
+  remove: 'text-red-600 dark:text-red-400',
+  pan: 'text-muted-foreground',
+};
+const INTENT_DOT_CLASS: Record<IntentTone, string> = {
+  move: 'bg-zinc-400',
+  draw: 'bg-emerald-500',
+  cut: 'bg-blue-500',
+  remove: 'bg-red-500',
+  pan: 'bg-zinc-400',
+};
+
 export function SpaceSketchOverlay() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const addSpace = useViewerStore((s) => s.addSpace);
@@ -212,6 +231,8 @@ export function SpaceSketchOverlay() {
   // / Y (horizontal guide) the cursor is currently locked to — so the closing
   // corner can line up under the first point, etc.
   const [alignGuides, setAlignGuides] = useState<{ vRef: Pt | null; hRef: Pt | null }>({ vRef: null, hRef: null });
+  // Live "what will this click do" label, shown top-right of the canvas.
+  const [intent, setIntent] = useState<{ text: string; tone: IntentTone } | null>(null);
   // Issue 4: canvas size (resizable) + a tick that forces a re-render whenever
   // the view transform in fitRef changes (zoom/pan/fit) without making the
   // per-frame pointer math go through React state.
@@ -801,30 +822,36 @@ export function SpaceSketchOverlay() {
     return false;
   }, [drawPts, splitPick, refreshRooms]);
 
-  // Esc = abort current op (single) / close panel (double-tap ≤400 ms).
-  // Enter (in draw mode) closes the room. Both skip text inputs.
+  // While the panel is open, Esc belongs to the sketch — NOT the global
+  // shortcut (which closes the tool and would lose the sketch). Capture-phase +
+  // stopImmediatePropagation beats the window-level handler in useKeyboardShortcuts.
+  // Esc: close a popover/confirm → abort the current op → (double-tap) close, with
+  // an unbaked-edits guard. Enter closes a drawn room.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const inField = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
       if (e.key === 'Escape') {
-        if (inField) return;
         e.preventDefault();
+        e.stopImmediatePropagation(); // own Esc; don't let the global handler close us
+        if (helpOpen || optionsOpen) { setHelpOpen(false); setOptionsOpen(false); return; }
+        if (confirmClose) { setConfirmClose(false); return; } // Esc cancels the confirm (never discards)
         const now = Date.now();
         if (abortCurrentOp()) { escTimeRef.current = 0; return; }
         if (now - escTimeRef.current <= 400) {
           escTimeRef.current = 0;
-          if (dirty) setConfirmClose(true); // guard unbaked edits
+          if (dirty) setConfirmClose(true); // guard unbaked edits — must click Discard
           else setActiveTool('select');
-        } else { escTimeRef.current = now; setStatus(dirty ? 'Unbaked edits — Esc again to discard & close.' : 'Press Esc again to close.'); }
+        } else { escTimeRef.current = now; setStatus(dirty ? 'Unbaked edits — Esc again to review.' : 'Press Esc again to close.'); }
       } else if (e.key === 'Enter' && drawPts.length > 0 && !inField) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         commitDraw();
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [abortCurrentOp, commitDraw, drawPts.length, dirty, setActiveTool]);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [abortCurrentOp, commitDraw, drawPts.length, dirty, helpOpen, optionsOpen, confirmClose, setActiveTool]);
 
   // Close request from the ✕ button: guard unbaked edits with an inline confirm.
   const requestClose = useCallback(() => {
@@ -853,6 +880,7 @@ export function SpaceSketchOverlay() {
       });
       setSnapPos(snap.kind === 'none' ? null : snap.pt);
       setSnapKind(snap.kind);
+      setIntent({ text: snap.kind === 'line' ? 'Move onto wall' : snap.kind === 'vertex' ? 'Move onto corner' : m.shift ? 'Move (straight)' : 'Move node', tone: 'move' });
       try {
         plate.dragVertex(vid, snap.pt[0], snap.pt[1]);
         refreshRooms();
@@ -869,52 +897,62 @@ export function SpaceSketchOverlay() {
       const tol = PICK_PX / fitRef.current.scale;
       const anchor = drawPts[drawPts.length - 1];
       const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: m.shift, anchor });
+      let pt = snap.pt;
       if (snap.kind === 'none') {
         const al = alignToAxes(snap.pt, drawPts, tol);
-        setDrawCursor(al.pt); setSnapKind('none'); setAlignGuides({ vRef: al.vRef, hRef: al.hRef });
+        pt = al.pt; setSnapKind('none'); setAlignGuides({ vRef: al.vRef, hRef: al.hRef });
       } else {
-        setDrawCursor(snap.pt); setSnapKind(snap.kind); setAlignGuides({ vRef: null, hRef: null });
+        setSnapKind(snap.kind); setAlignGuides({ vRef: null, hRef: null });
       }
+      setDrawCursor(pt);
+      const closing = drawPts.length >= 3 && Math.hypot(pt[0] - drawPts[0][0], pt[1] - drawPts[0][1]) <= tol;
+      setIntent({ text: closing ? 'Close room' : m.shift ? 'Add corner (straight)' : 'Add corner', tone: 'draw' });
       return;
     }
 
-    // Cutting: first cut point placed → preview the second point.
+    // Cutting: preview the second point. Track the cursor (snapped target or raw)
+    // so the rubber band follows even over empty space.
     if (splitPick) {
       const t = resolveSplitTarget(wx, wy);
-      setSplitHover(t ? t.pos : null);
+      setSplitHover(t ? t.pos : [wx, wy]);
       setHover(t && t.kind === 'vertex' ? { kind: 'vertex', pos: t.pos } : null);
+      setIntent({ text: t ? 'Finish cut here' : 'Click a wall or corner to cut', tone: 'cut' });
       return;
     }
 
-    // Idle hover — context cues by what's under the cursor.
+    // Idle hover — context cues + the intent label by what's under the cursor.
     const v = pickVertex(wx, wy);
     if (v != null) {
       const pos = nearestVertPos(wx, wy);
       setHover(pos ? { kind: 'vertex', pos } : null);
-      setDeleteHover(m.del && pos ? pos : null); // ⌥ telegraphs node removal
+      setDeleteHover(m.del && pos ? pos : null); // ⌥/Ctrl telegraphs node removal
       setSplitHover(null); setDrawCursor(null); setSnapPos(null); setAlignGuides({ vRef: null, hRef: null });
+      setIntent(m.del ? { text: 'Remove node', tone: 'remove' } : { text: 'Move node', tone: 'move' });
       return;
     }
     const ed = pickEdge(wx, wy);
     if (ed != null) {
       setDeleteHover(null); setDrawCursor(null); setSnapPos(null);
       if (m.del) {
-        // ⌥ over a wall → merge preview (both rooms if the wall is shared).
+        // ⌥/Ctrl over a wall → merge preview (both rooms if the wall is shared).
         const nbr = plate.neighborAcross(ed.edge);
         setHover({ kind: 'edge', edge: ed.edge, rooms: [ed.face, ...(nbr !== undefined ? [nbr] : [])], a: ed.a, b: ed.b });
         setSplitHover(null);
+        setIntent({ text: nbr !== undefined ? 'Merge rooms' : 'No room to merge', tone: 'remove' });
       } else {
         // plain → cut cue ("+") at the projected point on the wall.
         setHover(null);
         setSplitHover(projectOnSeg([wx, wy], ed.a, ed.b));
+        setIntent({ text: 'Cut from here', tone: 'cut' });
       }
       return;
     }
-    // Empty space → preview where a new room's first corner would drop.
-    setHover(null); setDeleteHover(null); setSplitHover(null);
+    // Empty space → draw a room (or Shift = pan; hide the draw dot then).
+    setHover(null); setDeleteHover(null); setSplitHover(null); setAlignGuides({ vRef: null, hRef: null });
     const tol = PICK_PX / fitRef.current.scale;
     const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol });
-    setDrawCursor(snap.pt); setSnapKind(snap.kind); setAlignGuides({ vRef: null, hRef: null });
+    setDrawCursor(m.shift ? null : snap.pt); setSnapKind(snap.kind);
+    setIntent(m.shift ? { text: 'Pan', tone: 'pan' } : { text: 'Draw room', tone: 'draw' });
   }, [drawPts, splitPick, rooms, pickEdge, pickVertex, nearestVertPos, resolveSplitTarget, refreshRooms]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
@@ -930,6 +968,23 @@ export function SpaceSketchOverlay() {
     if (rafRef.current == null) rafRef.current = requestAnimationFrame(processMove);
   }, [processMove]);
 
+  // Pressing/releasing a modifier re-evaluates the hover preview at the current
+  // cursor (so the action label + cues flip the instant you hold ⌥/Ctrl/Shift,
+  // without having to move). No-op until the cursor has been over the canvas.
+  useEffect(() => {
+    const onMod = (e: KeyboardEvent) => {
+      if (e.key !== 'Alt' && e.key !== 'Control' && e.key !== 'Meta' && e.key !== 'Shift') return;
+      const m = moveRef.current;
+      if (!m || dragRef.current != null || panningRef.current) return;
+      m.del = e.altKey || e.ctrlKey || e.metaKey;
+      m.shift = e.shiftKey;
+      if (rafRef.current == null) rafRef.current = requestAnimationFrame(processMove);
+    };
+    window.addEventListener('keydown', onMod);
+    window.addEventListener('keyup', onMod);
+    return () => { window.removeEventListener('keydown', onMod); window.removeEventListener('keyup', onMod); };
+  }, [processMove]);
+
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     const plate = plateRef.current;
     if (!plate) return;
@@ -941,7 +996,9 @@ export function SpaceSketchOverlay() {
     }
     const [sx, sy] = svgPoint(e);
     const wx = wX(fitRef.current, sx), wy = wY(fitRef.current, sy);
-    const mod = e.altKey || e.ctrlKey || e.metaKey; // ⌥/Ctrl = dissolve
+    // Dissolve/merge intent: Alt/Ctrl/Cmd, OR a right-click (button 2) — which is
+    // also what macOS Ctrl-click emits, so Ctrl-click works there too.
+    const mod = e.altKey || e.ctrlKey || e.metaKey || e.button === 2;
     const tol = PICK_PX / fitRef.current.scale;
 
     // 1. Drawing in progress → add a corner (or close on the first dot).
@@ -1018,8 +1075,10 @@ export function SpaceSketchOverlay() {
       return;
     }
 
-    // 5. Empty space → Shift pans (so you can still pan now that a plain click
-    //    draws); otherwise start drawing a new room.
+    // 5. Empty space → a right-click here does nothing (it's the dissolve gesture,
+    //    only meaningful on a node/wall). Shift pans (so you can still pan now
+    //    that a plain click draws). Otherwise start drawing a new room.
+    if (e.button === 2) return;
     if (e.shiftKey) {
       panningRef.current = true;
       svgRef.current?.setPointerCapture(e.pointerId);
@@ -1233,8 +1292,8 @@ export function SpaceSketchOverlay() {
             ['Drag a node', 'move it (snaps; Shift = straight)'],
             ['Click a wall, then another', 'split the room between them'],
             ['Click empty space', 'draw a room (Enter / dbl-click closes)'],
-            ['⌥/Ctrl-click a node', 'remove it'],
-            ['⌥/Ctrl-click a wall', 'merge the two rooms'],
+            ['⌥/Ctrl/right-click a node', 'remove it'],
+            ['⌥/Ctrl/right-click a wall', 'merge the two rooms'],
             ['Shift-drag / middle-drag', 'pan · scroll = zoom'],
           ] as [string, string][]).map(([k, v]) => (
             <div key={k} className="flex gap-2">
@@ -1245,12 +1304,21 @@ export function SpaceSketchOverlay() {
         </div>
       )}
 
+      <div className="relative">
+      {/* Live action preview — tells you what the next click will do, colour-keyed
+          to the on-canvas cues (green draw · blue cut · red remove/merge). */}
+      {intent && (
+        <div className="pointer-events-none absolute right-2 top-2 z-20 flex items-center gap-1.5 rounded-md border bg-background/85 px-2 py-1 text-[11px] font-semibold shadow-sm backdrop-blur">
+          <span className={`h-1.5 w-1.5 rounded-full ${INTENT_DOT_CLASS[intent.tone]}`} />
+          <span className={INTENT_TEXT_CLASS[intent.tone]}>{intent.text}</span>
+        </div>
+      )}
       <svg ref={svgRef} width={size.w} height={size.h} style={{ cursor }}
         className="rounded border bg-muted/20 touch-none"
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag}
         onDoubleClick={() => { if (drawPts.length > 0) commitDraw(); }}
         onContextMenu={(e) => e.preventDefault()}
-        onPointerLeave={() => { setHover(null); setSplitHover(null); setDeleteHover(null); setDrawCursor(null); setAlignGuides({ vRef: null, hRef: null }); }}>
+        onPointerLeave={() => { setHover(null); setSplitHover(null); setDeleteHover(null); setDrawCursor(null); setAlignGuides({ vRef: null, hRef: null }); setIntent(null); }}>
         {gridLines.map((l, i) => <line key={`g${i}`} {...l} stroke="currentColor" strokeOpacity={0.06} strokeWidth={1} />)}
 
         {/* Building-element underlay (plan cut ~1.2 m above the storey) for orientation. */}
@@ -1389,6 +1457,7 @@ export function SpaceSketchOverlay() {
           </g>
         )}
       </svg>
+      </div>
 
       {/* Footer — an in-the-moment hint only while drawing/cutting (the full
           legend lives behind “?”), the live status, then the primary action. */}

@@ -24,7 +24,13 @@ import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
 import { snapPoint, alignToAxes, type SnapKind } from '@/lib/space-snap';
 import { editError } from '@/lib/space-edit-error';
-import init, { SpacePlateHandle } from '@ifc-lite/wasm';
+import {
+  SpacePlateSession,
+  ensureSpaceWasm,
+  snapshotRooms,
+  type Room,
+  type Boundary,
+} from '@/lib/space-plate-session';
 import {
   extractWallSegmentsForStorey,
   offsetRoomFootprint,
@@ -34,22 +40,6 @@ import {
 } from '@ifc-lite/create';
 import { X, Undo2, Redo2, Layers, Maximize, AlertTriangle, Magnet, SlidersHorizontal, HelpCircle, Eraser } from 'lucide-react';
 
-let wasmReady: Promise<void> | null = null;
-function ensureWasm(): Promise<void> {
-  if (!wasmReady) wasmReady = init().then(() => undefined);
-  return wasmReady;
-}
-
-interface Room {
-  face: number;
-  area: number;
-  simple: boolean;
-  outline: [number, number][];
-}
-interface Boundary {
-  edge: number;
-  source: number | null;
-}
 type Pt = [number, number];
 type Hover =
   | { kind: 'vertex'; pos: Pt }
@@ -66,7 +56,6 @@ const MIN_H = 280;
 const PAD = 36;
 const PICK_PX = 12;
 const SNAP_PX = 10;
-const MAX_UNDO = 40;
 const BAKE_HEIGHT = 3;
 const EPS = 1e-6;
 
@@ -173,7 +162,7 @@ export function SpaceSketchOverlay() {
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const { ifcDataStore } = useIfc();
 
-  const plateRef = useRef<SpacePlateHandle | null>(null);
+  const sessionRef = useRef<SpacePlateSession | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const fitRef = useRef<Fit>({ scale: 1, offX: PAD, offY: DEFAULT_H - PAD });
@@ -188,13 +177,9 @@ export function SpaceSketchOverlay() {
   const dragRef = useRef<number | null>(null);
   const dragStartRef = useRef<Pt | null>(null);
   const otherVertsRef = useRef<Pt[]>([]);
-  const pendingUndoRef = useRef<SpacePlateHandle | null>(null);
   const draggedRef = useRef(false);
   const panningRef = useRef(false); // Issue 4: middle-mouse / empty-drag panning
   const resizeRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
-
-  const undoRef = useRef<SpacePlateHandle[]>([]);
-  const redoRef = useRef<SpacePlateHandle[]>([]);
   // While drawing, Undo pops the last placed point onto this stack and Redo
   // re-adds it — so point placement uses the panel Undo/Redo, not a separate
   // draw-only control. Cleared when the draw is committed/cancelled.
@@ -347,33 +332,26 @@ export function SpaceSketchOverlay() {
   // Keyboard handling (Esc aborts the current op / double-Esc closes / Enter
   // closes a drawn room) lives below, after `commitDraw` is defined.
 
+  // Re-read the rooms from the session into render state (cheap per-frame use
+  // during a drag — no history/dirty side effects).
   const refreshRooms = useCallback(() => {
-    const plate = plateRef.current;
-    if (plate) setRooms(plate.snapshot() as Room[]);
+    const s = sessionRef.current;
+    if (s) setRooms(s.rooms());
   }, []);
 
-  const freeHistory = useCallback(() => {
-    undoRef.current.forEach((h) => h.free());
-    redoRef.current.forEach((h) => h.free());
-    undoRef.current = [];
-    redoRef.current = [];
-    pendingUndoRef.current?.free();
-    pendingUndoRef.current = null;
-  }, []);
-
-  const commitUndo = useCallback((snap: SpacePlateHandle) => {
-    undoRef.current.push(snap);
-    if (undoRef.current.length > MAX_UNDO) undoRef.current.shift()!.free();
-    redoRef.current.forEach((h) => h.free());
-    redoRef.current = [];
+  // After any committed plate change: re-render the canvas, refresh the
+  // undo/redo button states (`hist`), and mirror the session's dirty flag.
+  const commit = useCallback(() => {
+    const s = sessionRef.current;
+    setRooms(s?.rooms() ?? []);
     setHist((v) => v + 1);
-    setDirty(true); // an edit happened — unbaked until the next Bake
+    setDirty(s?.dirty ?? false);
   }, []);
 
   const resetInteraction = useCallback(() => {
     setHover(null); setSplitPick(null); setSplitHover(null); setSnapPos(null);
     dragRef.current = null; dragStartRef.current = null;
-    pendingUndoRef.current?.free(); pendingUndoRef.current = null;
+    sessionRef.current?.cancelDrag(); // discard any in-flight drag snapshot
   }, []);
 
   const undo = useCallback(() => {
@@ -384,13 +362,11 @@ export function SpaceSketchOverlay() {
       setStatus('Removed last point.');
       return;
     }
-    const plate = plateRef.current;
-    if (!plate || !undoRef.current.length) return;
-    redoRef.current.push(plate);
-    plateRef.current = undoRef.current.pop()!;
-    resetInteraction(); refreshRooms(); setHist((v) => v + 1);
-    setStatus('Undo.');
-  }, [drawPts, resetInteraction, refreshRooms]);
+    if (sessionRef.current?.undo()) {
+      resetInteraction(); commit();
+      setStatus('Undo.');
+    }
+  }, [drawPts, resetInteraction, commit]);
 
   const redo = useCallback(() => {
     // While drawing, Redo re-adds the last point Undo removed.
@@ -400,13 +376,11 @@ export function SpaceSketchOverlay() {
       setStatus('Re-added point.');
       return;
     }
-    const plate = plateRef.current;
-    if (!plate || !redoRef.current.length) return;
-    undoRef.current.push(plate);
-    plateRef.current = redoRef.current.pop()!;
-    resetInteraction(); refreshRooms(); setHist((v) => v + 1);
-    setStatus('Redo.');
-  }, [resetInteraction, refreshRooms]);
+    if (sessionRef.current?.redo()) {
+      resetInteraction(); commit();
+      setStatus('Redo.');
+    }
+  }, [resetInteraction, commit]);
 
   // Ctrl/Cmd+Z (Shift = redo) must drive THIS overlay's history, not the 3D
   // model behind the panel. The global handler in useKeyboardShortcuts routes
@@ -451,34 +425,21 @@ export function SpaceSketchOverlay() {
     // shared wasm heap. Only the latest build applies; superseded ones bail.
     const seq = ++buildSeqRef.current;
     try {
-      await ensureWasm();
+      await ensureSpaceWasm();
+      // The only async gap is the wasm init above; after it, build() runs
+      // synchronously and atomically. So a single post-await seq check is enough
+      // to keep an older rebuild (rapid snap-slider drags) from replacing the
+      // plate a newer one is building — the stale one bails before touching it.
       if (seq !== buildSeqRef.current) return;
-      plateRef.current?.free();
-      freeHistory();
-      // Real wall centrelines don't meet exactly at corners — they're offset
-      // by ~half the wall thickness. A tight snap leaves the loop open (0
-      // rooms). Auto-escalate: take the first tolerance that encloses rooms,
-      // else the largest tried (least surprising than silently finding none).
       lastBuildRef.current = { coords, sources, label, storey };
       const manual = snapTolRef.current;
-      let plate: SpacePlateHandle | null = null;
-      let used = 0.1;
-      if (manual != null) {
-        plate = new SpacePlateHandle(coords, sources, manual, 0.5);
-        used = manual;
-      } else {
-        for (const tol of [0.1, 0.25, 0.5]) {
-          const p = new SpacePlateHandle(coords, sources, tol, 0.5);
-          plate?.free();
-          plate = p;
-          used = tol;
-          if (p.roomCount > 0) break;
-        }
-      }
-      if (seq !== buildSeqRef.current) { plate?.free(); return; }
-      plateRef.current = plate!;
+      let session = sessionRef.current;
+      if (!session) { session = new SpacePlateSession(); sessionRef.current = session; }
+      // Auto-escalate the corner-snap (real centrelines miss corners by ~½ a
+      // wall thickness, so a tight snap leaves the loop open → 0 rooms); the
+      // session tries [0.1, 0.25, 0.5] and keeps the first that encloses rooms.
+      const { rooms: snap, tol: used } = session.build(coords, sources, manual, 0.5);
       setUsedTol(used);
-      const snap = plate!.snapshot() as Room[];
       applyFit(computeFit(snap, sizeRef.current.w, sizeRef.current.h));
       resetInteraction();
       setDerivedStorey(storey);
@@ -498,7 +459,7 @@ export function SpaceSketchOverlay() {
     } catch (e) {
       setStatus(`Build failed: ${String(e)}`);
     }
-  }, [freeHistory, resetInteraction, applyFit]);
+  }, [resetInteraction, applyFit]);
 
   // Manual snap override (null → back to auto-escalate). Rebuilds the current
   // plate from its source segments at the chosen tolerance.
@@ -507,7 +468,7 @@ export function SpaceSketchOverlay() {
     setSnapTol(tol);
     if (tol != null) setUsedTol(tol); // move the slider thumb/label immediately
     // Remember the room count before this rebuild so buildFrom can flash the delta.
-    pendingSnapPrevRef.current = plateRef.current?.roomCount ?? null;
+    pendingSnapPrevRef.current = sessionRef.current?.roomCount ?? null;
     // Debounce the actual rebuild: the range input fires onChange on every
     // tick, and buildFrom is async + frees/creates wasm handles — rebuilding
     // per tick raced the shared heap and froze the editor. Rebuild once the
@@ -619,17 +580,17 @@ export function SpaceSketchOverlay() {
   }, [activeModelId, removeEntity, addSpace, floorToFloor, boundaryMode]);
 
   const bake = useCallback(() => {
-    const plate = plateRef.current;
-    if (!plate || !activeModelId || derivedStorey == null || !ifcDataStore) {
+    const session = sessionRef.current;
+    if (!session?.alive || !activeModelId || derivedStorey == null || !ifcDataStore) {
       setStatus('Derive a storey first.');
       return;
     }
-    const outlines = (plate.snapshot() as Room[]).map((r) => r.outline);
+    const outlines = session.rooms().map((r) => r.outline);
     const ext = extractionRef.current;
     const authored = existingSpaceFootprintsByStorey(ifcDataStore).get(derivedStorey) ?? [];
     const { emitted, skipped, error } = bakeStorey(derivedStorey, outlines, ext?.segments, ext?.thicknesses, authored);
     if (emitted > 0) revealSpaces();
-    if (!error) setDirty(false); // this storey's rooms are now written to IfcSpace
+    if (!error) { session.dirty = false; setDirty(false); } // rooms now written to IfcSpace
     setStatus(error
       ? `Baked ${emitted} IfcSpace — others failed: ${error}`
       : `Baked ${emitted} IfcSpace${skipped ? `, skipped ${skipped} (already a space)` : ''}.`);
@@ -638,7 +599,7 @@ export function SpaceSketchOverlay() {
   const bakeWholeBuilding = useCallback(async () => {
     if (!activeModelId || !ifcDataStore) { setStatus('No model loaded.'); return; }
     setStatus('Generating spaces for every storey…');
-    await ensureWasm();
+    await ensureSpaceWasm();
     const authoredMap = existingSpaceFootprintsByStorey(ifcDataStore);
     let totalEmitted = 0, totalSkipped = 0, floors = 0;
     let firstError: string | null = null;
@@ -648,15 +609,9 @@ export function SpaceSketchOverlay() {
       const coords = new Float64Array(segments.length * 4);
       const sources = new Int32Array(segments.length).fill(-1);
       segments.forEach((s, i) => { coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1]; coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1]; });
-      let plate: SpacePlateHandle | null = null;
-      for (const tol of [0.1, 0.25, 0.5]) {
-        const p = new SpacePlateHandle(coords, sources, tol, 0.5);
-        plate?.free();
-        plate = p;
-        if (p.roomCount > 0) break;
-      }
-      const outlines = (plate!.snapshot() as Room[]).map((r) => r.outline);
-      plate!.free();
+      // Throwaway plate per storey (escalation + deterministic free handled by
+      // the session module) — this path doesn't touch the live session.
+      const outlines = snapshotRooms(coords, sources).map((r) => r.outline);
       if (!outlines.length) continue;
       const { emitted, skipped, error } = bakeStorey(st.id, outlines, segments, wallThicknesses, authoredMap.get(st.id) ?? []);
       totalEmitted += emitted; totalSkipped += skipped;
@@ -664,7 +619,7 @@ export function SpaceSketchOverlay() {
       if (emitted) floors++;
     }
     if (totalEmitted > 0) revealSpaces();
-    if (!firstError) setDirty(false);
+    if (!firstError) { if (sessionRef.current) sessionRef.current.dirty = false; setDirty(false); }
     setStatus(firstError
       ? `Generated ${totalEmitted} IfcSpace — others failed: ${firstError}`
       : `Generated ${totalEmitted} IfcSpace across ${floors} storey(s)${totalSkipped ? `; skipped ${totalSkipped} existing` : ''}.`);
@@ -674,10 +629,9 @@ export function SpaceSketchOverlay() {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (rebuildTimerRef.current) clearTimeout(rebuildTimerRef.current);
     if (snapDeltaTimerRef.current) clearTimeout(snapDeltaTimerRef.current);
-    freeHistory();
-    plateRef.current?.free();
-    plateRef.current = null;
-  }, [freeHistory]);
+    sessionRef.current?.dispose();
+    sessionRef.current = null;
+  }, []);
 
   const svgPoint = (e: React.MouseEvent): Pt => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -693,10 +647,7 @@ export function SpaceSketchOverlay() {
   };
 
   const pickVertex = useCallback((wx: number, wy: number): number | null => {
-    const plate = plateRef.current;
-    if (!plate) return null;
-    const v = plate.findVertexNear(wx, wy, PICK_PX / fitRef.current.scale);
-    return v === undefined ? null : v;
+    return sessionRef.current?.findVertexNear(wx, wy, PICK_PX / fitRef.current.scale) ?? null;
   }, []);
 
   const nearestVertPos = useCallback((wx: number, wy: number): Pt | null => {
@@ -709,12 +660,12 @@ export function SpaceSketchOverlay() {
   }, [rooms]);
 
   const pickEdge = useCallback((wx: number, wy: number): { face: number; edge: number; a: Pt; b: Pt } | null => {
-    const plate = plateRef.current;
-    if (!plate) return null;
+    const session = sessionRef.current;
+    if (!session) return null;
     const tol = PICK_PX / fitRef.current.scale;
     let best: { face: number; edge: number; a: Pt; b: Pt; d: number } | null = null;
     for (const r of rooms) {
-      const bounds = plate.boundingElements(r.face) as Boundary[];
+      const bounds = session.boundingElements(r.face);
       const n = r.outline.length;
       for (let i = 0; i < n; i++) {
         const a = r.outline[i], b = r.outline[(i + 1) % n];
@@ -738,38 +689,37 @@ export function SpaceSketchOverlay() {
   // Commit a split between two targets, inserting nodes for edge endpoints.
   // The whole gesture is atomic: on any failure the inserted nodes roll back.
   const performSplit = useCallback((first: SplitTarget, second: SplitTarget) => {
-    const plate = plateRef.current;
-    if (!plate) return;
+    const session = sessionRef.current;
+    if (!session?.alive) return;
     if (first.kind === 'edge' && second.kind === 'edge' && first.edge === second.edge) {
       setStatus('Pick points on two different edges (or corners).'); return;
     }
-    const snapshot = plate.duplicate();
     try {
-      const va = first.kind === 'vertex' ? first.vid : plate.splitEdge(first.edge, first.pos[0], first.pos[1]);
-      const vb = second.kind === 'vertex' ? second.vid : plate.splitEdge(second.edge, second.pos[0], second.pos[1]);
-      if (va === vb) throw new Error('DegenerateCut: same point');
-      const fresh = plate.snapshot() as Room[];
-      const onBoundary = (r: Room, p: Pt) => r.outline.some((q) => Math.abs(q[0] - p[0]) < EPS && Math.abs(q[1] - p[1]) < EPS);
-      const room = fresh.find((r) => onBoundary(r, first.pos) && onBoundary(r, second.pos));
-      if (!room) throw new Error('points are not on the same room');
-      plate.splitFace(room.face, va, vb, -1);
+      // One atomic edit: insert any edge-endpoint nodes, then cut between them.
+      // session.edit rolls the whole thing back if any step throws.
+      session.edit((h) => {
+        const va = first.kind === 'vertex' ? first.vid : h.splitEdge(first.edge, first.pos[0], first.pos[1]);
+        const vb = second.kind === 'vertex' ? second.vid : h.splitEdge(second.edge, second.pos[0], second.pos[1]);
+        if (va === vb) throw new Error('the two cut points are the same');
+        const fresh = h.snapshot() as Room[];
+        const onBoundary = (r: Room, p: Pt) => r.outline.some((q) => Math.abs(q[0] - p[0]) < EPS && Math.abs(q[1] - p[1]) < EPS);
+        const room = fresh.find((r) => onBoundary(r, first.pos) && onBoundary(r, second.pos));
+        if (!room) throw new Error('the two points are not on the same room');
+        h.splitFace(room.face, va, vb, -1);
+      });
+      commit();
+      setStatus(`Split — ${session.roomCount} room(s).`);
     } catch (err) {
-      plate.free();
-      plateRef.current = snapshot; // roll back inserted nodes + partial cut
-      refreshRooms();
+      commit(); // session rolled the plate back; re-render the restored state
       setStatus(`Split rejected: ${editError(err).message}`);
-      return;
     }
-    commitUndo(snapshot);
-    refreshRooms();
-    setStatus(`Split — ${plate.roomCount} room(s).`);
-  }, [commitUndo, refreshRooms]);
+  }, [commit]);
 
   // Commit the in-progress drawn polygon as a new room face (Issue 2). The new
   // room is its own connected component — it doesn't merge into existing walls.
   const commitDraw = useCallback(() => {
-    const plate = plateRef.current;
-    if (!plate) return;
+    const session = sessionRef.current;
+    if (!session?.alive) return;
     // Drop trailing duplicate point(s) — e.g. the second click of a double-click
     // close lands on the same spot as the final corner.
     let pts = drawPts;
@@ -777,21 +727,16 @@ export function SpaceSketchOverlay() {
       pts = pts.slice(0, -1);
     }
     if (pts.length < 3) { setStatus('A room needs at least 3 points.'); return; }
-    const snap = plate.duplicate();
     try {
-      plate.addFace(new Float64Array(pts.flat()), -1);
-      commitUndo(snap);
+      session.edit((h) => h.addFace(new Float64Array(pts.flat()), -1));
       setDrawPts([]); setDrawCursor(null); drawRedoRef.current = []; setAlignGuides({ vRef: null, hRef: null });
-      refreshRooms();
-      setStatus(`Drew a room — ${plate.roomCount} room(s).`);
+      commit();
+      setStatus(`Drew a room — ${session.roomCount} room(s).`);
     } catch (err) {
-      // Roll back to the pre-draw snapshot (mirror performSplit/merge).
-      plate.free();
-      plateRef.current = snap;
-      refreshRooms();
+      commit(); // session rolled back the partial draw
       setStatus(`Draw rejected: ${editError(err).message}`);
     }
-  }, [drawPts, commitUndo, refreshRooms]);
+  }, [drawPts, commit]);
 
   // Single Esc aborts the in-progress operation (in priority order); it does NOT
   // close the panel. Returns true if something was aborted.
@@ -807,14 +752,8 @@ export function SpaceSketchOverlay() {
       return true;
     }
     if (dragRef.current != null) {
-      // Revert the live drag to its pre-drag snapshot.
-      const plate = plateRef.current;
-      if (plate && pendingUndoRef.current) {
-        plate.free();
-        plateRef.current = pendingUndoRef.current;
-        pendingUndoRef.current = null;
-        refreshRooms();
-      }
+      sessionRef.current?.cancelDrag(); // revert the live drag to its pre-drag snapshot
+      refreshRooms();
       dragRef.current = null; dragStartRef.current = null;
       draggedRef.current = false; setSnapPos(null);
       setStatus('Drag cancelled.');
@@ -865,30 +804,28 @@ export function SpaceSketchOverlay() {
   // non-destructive wall arrangement. Area-neutral and idempotent (the Rust
   // `prune` does the topology surgery; real corners and wall junctions stay).
   const cleanupOrphans = useCallback(() => {
-    const plate = plateRef.current;
-    if (!plate || !rooms.length) return;
-    const snap = plate.duplicate();
-    let removed = 0;
+    const session = sessionRef.current;
+    if (!session?.alive || !rooms.length) return;
     try {
-      removed = plate.prune();
+      // Commit only if prune actually removed something (no-op → no undo entry).
+      const removed = session.edit((h) => h.prune(), (n) => n > 0);
+      if (removed > 0) {
+        commit();
+        setStatus(`Cleaned up ${removed} orphan wall${removed === 1 ? '' : 's'}/node${removed === 1 ? '' : 's'} — ${session.roomCount} room(s).`);
+      } else {
+        setStatus('Nothing to clean up — no orphan walls or nodes.');
+      }
     } catch (err) {
-      plate.free(); plateRef.current = snap; refreshRooms();
+      commit();
       setStatus(`Cleanup failed: ${editError(err).message}`);
-      return;
     }
-    if (removed > 0) {
-      commitUndo(snap); refreshRooms();
-      setStatus(`Cleaned up ${removed} orphan wall${removed === 1 ? '' : 's'}/node${removed === 1 ? '' : 's'} — ${plate.roomCount} room(s).`);
-    } else {
-      snap.free(); setStatus('Nothing to clean up — no orphan walls or nodes.');
-    }
-  }, [rooms, commitUndo, refreshRooms]);
+  }, [rooms, commit]);
 
   const processMove = useCallback(() => {
     rafRef.current = null;
     const m = moveRef.current;
-    const plate = plateRef.current;
-    if (!m || !plate) return;
+    const session = sessionRef.current;
+    if (!m || !session?.alive) return;
     const wx = wX(fitRef.current, m.x), wy = wY(fitRef.current, m.y);
 
     const vid = dragRef.current;
@@ -906,12 +843,8 @@ export function SpaceSketchOverlay() {
       setSnapPos(snap.kind === 'none' ? null : snap.pt);
       setSnapKind(snap.kind);
       setIntent({ text: snap.kind === 'line' ? 'Move onto wall' : snap.kind === 'vertex' ? 'Move onto corner' : m.shift ? 'Move (straight)' : 'Move node', tone: 'move' });
-      try {
-        plate.dragVertex(vid, snap.pt[0], snap.pt[1]);
-        refreshRooms();
-      } catch (e) {
-        console.debug('[space-sketch] dragVertex failed (plate torn down mid-drag?)', e);
-      }
+      session.dragTo(vid, snap.pt[0], snap.pt[1]);
+      refreshRooms();
       return;
     }
 
@@ -961,7 +894,7 @@ export function SpaceSketchOverlay() {
       if (m.del) {
         // ⌥/Ctrl over a wall → remove preview. A distinct room across → merge;
         // otherwise removeEdge deletes the wall and cleans up the orphans.
-        const nbr = plate.neighborAcross(ed.edge);
+        const nbr = session.neighborAcross(ed.edge);
         const shared = nbr !== undefined && nbr !== ed.face;
         setHover({ kind: 'edge', edge: ed.edge, rooms: [ed.face, ...(shared ? [nbr] : [])], a: ed.a, b: ed.b });
         setSplitHover(null);
@@ -1017,73 +950,67 @@ export function SpaceSketchOverlay() {
   // dissolves or its incident wall is removed; a wall is removed; both auto-clean
   // the orphans. Returns true if it acted on something under the cursor.
   const removeAtPoint = useCallback((wx: number, wy: number): boolean => {
-    const plate = plateRef.current;
-    if (!plate) return false;
+    const session = sessionRef.current;
+    if (!session?.alive) return false;
     // Over a node → dissolve it, else remove one of its incident walls.
     const v = pickVertex(wx, wy);
     if (v != null) {
-      const snap = plate.duplicate();
-      // Remove ANY node: a degree-2 node dissolves (straighten/remove); a wall
-      // junction (3+ walls) collapses by removing one of its incident walls.
-      // Scan EVERY wall incident to the node (not just the cursor-nearest) so a
-      // junction with one removable wall still goes.
       const vp = nearestVertPos(wx, wy);
-      let ok = false;
-      let reason = '';
-      try { plate.dissolveVertex(v); ok = true; setStatus(`Removed node — ${plate.roomCount} room(s).`); }
-      catch (err) {
-        reason = editError(err).message;
-        // The node won't straighten away (it's a wall junction). Remove one of
-        // its incident walls instead: `removeEdge` unions two real rooms, or
-        // deletes a bridge/spur wall and auto-cleans the orphaned inner lines
-        // and nodes it leaves — handling the BridgeEdge/BordersExterior cases
-        // the old merge-only path rejected.
-        if (vp) {
-          for (const r of rooms) {
-            const n = r.outline.length;
-            const k = r.outline.findIndex((p) => Math.abs(p[0] - vp[0]) < EPS && Math.abs(p[1] - vp[1]) < EPS);
-            if (k < 0) continue;
-            const bounds = plate.boundingElements(r.face) as Boundary[];
-            for (const idx of [k, (k - 1 + n) % n]) {
-              const b = bounds[idx];
-              if (!b) continue;
-              try { plate.removeEdge(b.edge); ok = true; setStatus(`Removed wall & cleaned up — ${plate.roomCount} room(s).`); }
-              catch { /* an enclosing wall — try the next incident wall */ }
-              if (ok) break;
+      try {
+        // One atomic edit: a degree-2 node dissolves (straighten/remove); a wall
+        // junction (3+ walls) won't, so fall back to removing one incident wall
+        // (removeEdge unions two real rooms, or deletes a bridge/spur wall and
+        // auto-cleans the orphans — handling the BridgeEdge/BordersExterior
+        // cases the old merge-only path rejected). Throws if nothing is
+        // removable, so session.edit rolls back.
+        const outcome = session.edit((h): 'node' | 'wall' => {
+          try { h.dissolveVertex(v); return 'node'; }
+          catch (dissolveErr) {
+            const reason = editError(dissolveErr).message;
+            if (vp) {
+              for (const r of rooms) {
+                const n = r.outline.length;
+                const k = r.outline.findIndex((p) => Math.abs(p[0] - vp[0]) < EPS && Math.abs(p[1] - vp[1]) < EPS);
+                if (k < 0) continue;
+                const bounds = h.boundingElements(r.face) as Boundary[];
+                for (const idx of [k, (k - 1 + n) % n]) {
+                  const b = bounds[idx];
+                  if (!b) continue;
+                  try { h.removeEdge(b.edge); return 'wall'; }
+                  catch { /* an enclosing wall — try the next incident wall */ }
+                }
+              }
             }
-            if (ok) break;
+            throw new Error(`no wall here separates two rooms${reason ? ` (${reason})` : ''}`);
           }
-        }
-      }
-      if (ok) { commitUndo(snap); refreshRooms(); setHover(null); setDeleteHover(null); }
-      else {
-        plate.free(); plateRef.current = snap; refreshRooms();
-        // Genuinely unremovable: every incident wall borders the outside (no
-        // second room to merge into) and the node won't dissolve. Surface the
-        // kernel reason so it's diagnosable rather than mysterious.
-        setStatus(`Can’t remove this node — no wall here separates two rooms${reason ? ` (${reason})` : ''}.`);
+        });
+        commit(); setHover(null); setDeleteHover(null);
+        setStatus(outcome === 'node'
+          ? `Removed node — ${session.roomCount} room(s).`
+          : `Removed wall & cleaned up — ${session.roomCount} room(s).`);
+      } catch (err) {
+        commit(); // session rolled back
+        setStatus(`Can’t remove this node — ${editError(err).message}.`);
       }
       return true;
     }
     // Over a wall → remove it (merge two rooms / delete a bridge-spur + clean up).
     const ed = pickEdge(wx, wy);
     if (ed != null) {
-      const snap = plate.duplicate();
       try {
-        // `removeEdge` unions two real rooms, or deletes a bridge/spur wall and
-        // auto-cleans the orphaned inner lines & nodes — only a real enclosing
-        // wall (room ↔ exterior) is refused, so a room never silently opens.
-        plate.removeEdge(ed.edge);
-        commitUndo(snap); refreshRooms(); setHover(null);
-        setStatus(`Removed wall — ${plate.roomCount} room(s) left.`);
+        // removeEdge unions two real rooms, or deletes a bridge/spur wall and
+        // auto-cleans the orphans — only a real enclosing wall is refused.
+        session.edit((h) => h.removeEdge(ed.edge));
+        commit(); setHover(null);
+        setStatus(`Removed wall — ${session.roomCount} room(s) left.`);
       } catch (err) {
-        plate.free(); plateRef.current = snap; refreshRooms();
+        commit();
         setStatus(`Can't remove this wall: ${editError(err).message}`);
       }
       return true;
     }
     return false; // nothing under the cursor
-  }, [pickVertex, pickEdge, nearestVertPos, rooms, commitUndo, refreshRooms]);
+  }, [pickVertex, pickEdge, nearestVertPos, rooms, commit]);
 
   // Right-click / macOS Ctrl-click is the remove gesture. macOS turns Ctrl-click
   // into a real right-click (button 2 + contextmenu), so routing it here — rather
@@ -1091,15 +1018,15 @@ export function SpaceSketchOverlay() {
   // Cmd/Alt-click. preventDefault keeps the native menu away regardless.
   const onContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    if (!plateRef.current) return;
+    if (!sessionRef.current?.alive) return;
     if (drawPts.length > 0 || splitPick) return; // mid-gesture → leave it to Esc
     const [sx, sy] = svgPoint(e);
     removeAtPoint(wX(fitRef.current, sx), wY(fitRef.current, sy));
   }, [drawPts, splitPick, removeAtPoint]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    const plate = plateRef.current;
-    if (!plate) return;
+    const session = sessionRef.current;
+    if (!session?.alive) return;
     // Middle-mouse drag pans the view in any mode (Issue 4).
     if (e.button === 1) {
       panningRef.current = true;
@@ -1152,7 +1079,7 @@ export function SpaceSketchOverlay() {
     if (v != null) {
       const start = nearestVertPos(wx, wy);
       dragRef.current = v; dragStartRef.current = start; draggedRef.current = false;
-      pendingUndoRef.current = plate.duplicate();
+      session.beginDrag(); // pre-drag snapshot; committed on drop, reverted on cancel
       otherVertsRef.current = start
         ? uniqueVerts(rooms).filter((p) => Math.hypot(p[0] - start[0], p[1] - start[1]) > 1e-6)
         : uniqueVerts(rooms);
@@ -1166,17 +1093,15 @@ export function SpaceSketchOverlay() {
       // Insert a node on the wall RIGHT NOW (so "add a node" actually adds one,
       // visible + undoable), and arm a cut from it. A second wall/corner click
       // splits the room between the two; Esc/elsewhere keeps the added node.
-      const snap = plate.duplicate();
       try {
         const pos = projectOnSeg([wx, wy], ed.a, ed.b);
-        const va = plate.splitEdge(ed.edge, pos[0], pos[1]);
-        commitUndo(snap);
-        refreshRooms();
+        const va = session.edit((h) => h.splitEdge(ed.edge, pos[0], pos[1]));
+        commit();
         setSplitPick({ kind: 'vertex', vid: va, pos });
         setSplitHover(pos);
         setStatus('Node added — click another wall or corner to split between them, or Esc to keep the node.');
       } catch (err) {
-        plate.free(); plateRef.current = snap; refreshRooms();
+        commit();
         setStatus(`Can't add node here: ${editError(err).message}`);
       }
       return;
@@ -1193,7 +1118,7 @@ export function SpaceSketchOverlay() {
     drawRedoRef.current = [];
     setDrawPts([snap.pt]);
     setStatus('Drawing — click to add corners · Enter / double-click / first dot to close · Shift = straight.');
-  }, [drawPts, splitPick, pickVertex, nearestVertPos, pickEdge, rooms, resolveSplitTarget, performSplit, commitUndo, refreshRooms, commitDraw, removeAtPoint]);
+  }, [drawPts, splitPick, pickVertex, nearestVertPos, pickEdge, rooms, resolveSplitTarget, performSplit, commit, commitDraw, removeAtPoint]);
 
   const endDrag = useCallback((e: React.PointerEvent) => {
     if (panningRef.current) {
@@ -1204,12 +1129,12 @@ export function SpaceSketchOverlay() {
     if (dragRef.current == null) return;
     dragRef.current = null; dragStartRef.current = null; setSnapPos(null);
     svgRef.current?.releasePointerCapture(e.pointerId);
-    if (draggedRef.current && pendingUndoRef.current) commitUndo(pendingUndoRef.current);
-    else pendingUndoRef.current?.free();
-    pendingUndoRef.current = null;
+    const session = sessionRef.current;
+    if (draggedRef.current) { session?.commitDrag(); commit(); }
+    else session?.cancelDrag(); // a click without a drag → discard the snapshot
     const total = rooms.reduce((s, r) => s + r.area, 0);
     if (draggedRef.current) setStatus(`Drag done — ${rooms.length} room(s), ${total.toFixed(1)} m² (conserved).`);
-  }, [rooms, commitUndo]);
+  }, [rooms, commit]);
 
   const f = fitRef.current;
   const total = rooms.reduce((s, r) => s + r.area, 0);
@@ -1217,8 +1142,9 @@ export function SpaceSketchOverlay() {
   const cursorWorld = moveRef.current ? [wX(f, moveRef.current.x), wY(f, moveRef.current.y)] as Pt : null;
   const cursor = panningRef.current || dragRef.current != null ? 'grabbing' : hover?.kind === 'vertex' ? 'grab' : 'crosshair';
   // During a draw, Undo/Redo act on the placed points (not the plate stack).
-  const canUndo = drawPts.length > 0 || undoRef.current.length > 0;
-  const canRedo = drawRedoRef.current.length > 0 || redoRef.current.length > 0;
+  // `hist` bumps on every committed change so these recompute on re-render.
+  const canUndo = drawPts.length > 0 || (sessionRef.current?.canUndo ?? false);
+  const canRedo = drawRedoRef.current.length > 0 || (sessionRef.current?.canRedo ?? false);
   void hist; void fitTick;
 
   const gridStep = f.scale > 14 ? 1 : f.scale > 5 ? 2 : 5;

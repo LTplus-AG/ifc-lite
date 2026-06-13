@@ -118,19 +118,62 @@ describe('matchConstraint — pattern', () => {
     expect(matchConstraint(pat('IfcWall'), 'IfcWall')).toBe(true);
   });
 
-  it('converts XSD \\i to initial name char class', () => {
-    // \i matches [A-Za-z_:]
+  it('converts XSD \\i to initial name char class (Unicode letters)', () => {
+    // \i matches [\p{L}_:]
     expect(matchConstraint(pat('\\i.*'), 'abc')).toBe(true);
     expect(matchConstraint(pat('\\i.*'), '_test')).toBe(true);
+    expect(matchConstraint(pat('\\i.*'), 'Ölaf')).toBe(true); // non-ASCII letter
+    expect(matchConstraint(pat('\\i.*'), '9abc')).toBe(false); // digit can't start
   });
 
   it('converts XSD \\c to name char class', () => {
-    // \c matches [A-Za-z0-9._:-]
+    // \c matches [\p{L}\p{Nd}_:.-…]
     expect(matchConstraint(pat('\\c+'), 'a.b-c:1')).toBe(true);
+    expect(matchConstraint(pat('\\c+'), 'a b')).toBe(false); // space is not a name char
   });
 
-  it('handles \\p{...} unicode categories as dot', () => {
+  it('matches XSD \\p{...} unicode categories with full fidelity', () => {
+    // Regression: the old translator collapsed every \p{...} to `.`, so
+    // a letter class wrongly matched digits/punctuation. With the `u`
+    // flag the property escapes are honoured exactly.
     expect(matchConstraint(pat('\\p{L}+'), 'hello')).toBe(true);
+    expect(matchConstraint(pat('\\p{L}+'), 'café')).toBe(true);
+    expect(matchConstraint(pat('\\p{L}+'), '123')).toBe(false);
+    expect(matchConstraint(pat('\\p{L}+'), 'ab12')).toBe(false);
+    expect(matchConstraint(pat('\\p{Nd}+'), '123')).toBe(true);
+    expect(matchConstraint(pat('\\p{Nd}+'), 'abc')).toBe(false);
+  });
+
+  it('treats XSD \\d / \\w as Unicode classes (not ASCII-only)', () => {
+    expect(matchConstraint(pat('\\d+'), '42')).toBe(true);
+    expect(matchConstraint(pat('\\d+'), '4.2')).toBe(false); // dot is not a digit
+    expect(matchConstraint(pat('\\w+'), 'abc123')).toBe(true);
+    expect(matchConstraint(pat('\\w+'), 'a b')).toBe(false); // space is not \w
+  });
+
+  it('handles multi-char escapes inside character classes', () => {
+    // [\w] / [\d] / [\i] must compile and match, not reject every value.
+    expect(matchConstraint(pat('[\\w]+'), 'abc123')).toBe(true);
+    expect(matchConstraint(pat('[\\w]+'), 'a b')).toBe(false);
+    expect(matchConstraint(pat('[\\d]+'), '42')).toBe(true);
+    expect(matchConstraint(pat('[\\d]+'), '4a')).toBe(false);
+    expect(matchConstraint(pat('[\\i][\\c]*'), 'Name_1')).toBe(true);
+  });
+
+  it('does not reject valid values for XSD block escapes JS cannot model', () => {
+    // `\p{IsBasicLatin}` has no JS equivalent; approximate permissively
+    // (as the legacy `.` did) rather than failing every value.
+    expect(matchConstraint(pat('\\p{IsBasicLatin}+'), 'A')).toBe(true);
+    expect(matchConstraint(pat('\\p{IsBasicLatin}+'), 'Hello')).toBe(true);
+  });
+
+  it('anchors top-level alternation across the whole value', () => {
+    // `^a|b$` would match a left-anchored "a" or right-anchored "b";
+    // the matcher wraps the pattern so the alternation spans the value.
+    expect(matchConstraint(pat('foo|bar'), 'foo')).toBe(true);
+    expect(matchConstraint(pat('foo|bar'), 'bar')).toBe(true);
+    expect(matchConstraint(pat('foo|bar'), 'foobar')).toBe(false);
+    expect(matchConstraint(pat('foo|bar'), 'xbar')).toBe(false);
   });
 
   it('returns false for invalid regex', () => {

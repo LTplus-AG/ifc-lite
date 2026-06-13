@@ -1030,6 +1030,35 @@ impl GeometryRouter {
         // snapped; a no-op for already-planar extrusion hosts.
         let mut result = crate::facet_weld::weld_near_coplanar_facets(&mesh);
 
+        // OPENING-DENSE HOST REFINEMENT: when many openings target the same host
+        // (a window wall is usually 2 big face-triangles per side), every cut's
+        // intersection segments pile onto those few triangles — the exact
+        // arrangement then re-triangulates a single triangle carrying dozens of
+        // constraints (O(k²)), and the batched N-ary subtract leaves unrecovered
+        // constraints and degrades to the O(N²) sequential path. Pre-subdividing
+        // the host spreads the segments across many small triangles (small k each)
+        // so the batched cut recovers. `consolidate_coplanar` re-triangulates each
+        // coplanar group afterwards, so the temporary interior vertices don't
+        // bloat the final mesh. Levels are scaled to opening count and capped.
+        let n_openings = ctx.merged_openings.len();
+        if n_openings >= 8 {
+            // Just enough subdivision that each host triangle carries only a few
+            // intersection segments, so the batched N-ary subtract RECOVERS rather
+            // than degrading to the O(N²) sequential path — that recovery is the
+            // win (≈10× on the densest walls), not the per-triangle segment count
+            // itself. Over-subdividing is counter-productive: the extra triangles
+            // cost more in the arrangement than the spreading saves (level 3 was
+            // ~3× slower than level 1 on a 14-opening wall). Aim for ≳ a handful of
+            // host triangles per opening, capped at 2 levels.
+            let host_tris = result.triangle_count().max(1);
+            let mut levels = 0usize;
+            while host_tris * (1usize << (2 * (levels + 1))) < 4 * n_openings && levels < 2 {
+                levels += 1;
+            }
+            let levels = levels.max(1);
+            result = result.subdivided(levels);
+        }
+
         let (wall_min_f32, wall_max_f32) = result.bounds();
         let wall_min = Point3::new(
             wall_min_f32.x as f64,

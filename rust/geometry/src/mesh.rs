@@ -321,6 +321,75 @@ impl Mesh {
         self.indices.len() / 3
     }
 
+    /// Uniform 1→4 midpoint subdivision applied `levels` times. Each triangle is
+    /// split into four by its three edge midpoints; midpoint positions/normals are
+    /// the f32 average of the edge endpoints (commutative ⇒ a shared edge yields
+    /// the SAME midpoint from either adjacent triangle, so the result stays
+    /// watertight once the kernel's interner welds coincident vertices).
+    ///
+    /// Purpose: a host face that is one or two huge triangles concentrates ALL of
+    /// a wall's opening cuts onto it, so the exact arrangement re-triangulates a
+    /// single triangle carrying dozens of constraint segments — O(k²) and, worse,
+    /// dense enough that the batched N-ary subtract leaves unrecovered constraints
+    /// and falls back to the O(N²) sequential path. Spreading the face into many
+    /// small triangles localises each opening to a few of them (small k), so the
+    /// batched cut recovers. `consolidate_coplanar` re-triangulates each coplanar
+    /// group afterwards, so the extra interior vertices do not survive into the
+    /// final mesh except where a hole boundary pins them.
+    pub fn subdivided(&self, levels: usize) -> Mesh {
+        let mut cur = self.clone();
+        for _ in 0..levels {
+            cur = cur.subdivide_once();
+        }
+        cur
+    }
+
+    fn subdivide_once(&self) -> Mesh {
+        let vcount = self.positions.len() / 3;
+        let has_normals = self.normals.len() == self.positions.len();
+        let mut positions = self.positions.clone();
+        let mut normals = if has_normals { self.normals.clone() } else { Vec::new() };
+        let mut indices = Vec::with_capacity(self.indices.len() * 4);
+        // Edge → midpoint vertex index, keyed by the ordered endpoint pair so the
+        // two triangles sharing an edge reuse one midpoint (no T-junctions).
+        let mut mid_of: rustc_hash::FxHashMap<(u32, u32), u32> = rustc_hash::FxHashMap::default();
+        let mut midpoint = |a: u32, b: u32, positions: &mut Vec<f32>, normals: &mut Vec<f32>| -> u32 {
+            let key = if a < b { (a, b) } else { (b, a) };
+            if let Some(&m) = mid_of.get(&key) {
+                return m;
+            }
+            let (ia, ib) = (a as usize * 3, b as usize * 3);
+            let m = (positions.len() / 3) as u32;
+            for k in 0..3 {
+                positions.push((self.positions[ia + k] + self.positions[ib + k]) * 0.5);
+            }
+            if has_normals {
+                for k in 0..3 {
+                    normals.push((self.normals[ia + k] + self.normals[ib + k]) * 0.5);
+                }
+            }
+            mid_of.insert(key, m);
+            m
+        };
+        for tri in self.indices.chunks_exact(3) {
+            let (a, b, c) = (tri[0], tri[1], tri[2]);
+            if a as usize >= vcount || b as usize >= vcount || c as usize >= vcount {
+                continue;
+            }
+            let ab = midpoint(a, b, &mut positions, &mut normals);
+            let bc = midpoint(b, c, &mut positions, &mut normals);
+            let ca = midpoint(c, a, &mut positions, &mut normals);
+            // four sub-triangles, preserving the parent winding
+            indices.extend_from_slice(&[a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca]);
+        }
+        Mesh {
+            positions,
+            normals,
+            indices,
+            rtc_applied: self.rtc_applied,
+        }
+    }
+
     /// Remove triangle indices that reference vertices beyond the positions array.
     /// This prevents panics from malformed IFC data (e.g. Revit exports with invalid indices).
     #[inline]

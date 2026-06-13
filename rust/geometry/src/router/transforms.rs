@@ -766,24 +766,61 @@ impl GeometryRouter {
     pub(super) fn transform_mesh_world(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
         let rtc = self.rtc_offset;
         let needs_rtc = self.has_rtc_offset() && !mesh.rtc_applied;
-
-        if needs_rtc {
-            mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
-                let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-                let t = transform.transform_point(&point);
-                chunk[0] = (t.x - rtc.0) as f32;
-                chunk[1] = (t.y - rtc.1) as f32;
-                chunk[2] = (t.z - rtc.2) as f32;
-            });
-            mesh.rtc_applied = true;
+        let (rx, ry, rz) = if needs_rtc {
+            (rtc.0, rtc.1, rtc.2)
         } else {
-            mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
+            (0.0, 0.0, 0.0)
+        };
+
+        // Pass 1 — transform every vertex into the world/RTC frame in f64 and track
+        // the AABB. The exact kernel built `positions` in a small local frame, so the
+        // f32 input is precise here; the precision is only lost if we store the
+        // world-magnitude result (building placement ~hundreds of metres) back to f32,
+        // where one ULP (~15 µm at 220 m) collapses adjacent vertices into degenerate
+        // needles. So we defer the world magnitude into a per-mesh `origin`.
+        let mut min = [f64::INFINITY; 3];
+        let mut max = [f64::NEG_INFINITY; 3];
+        let world: Vec<[f64; 3]> = mesh
+            .positions
+            .chunks_exact(3)
+            .map(|chunk| {
                 let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
                 let t = transform.transform_point(&point);
-                chunk[0] = t.x as f32;
-                chunk[1] = t.y as f32;
-                chunk[2] = t.z as f32;
-            });
+                let w = [t.x - rx, t.y - ry, t.z - rz];
+                for k in 0..3 {
+                    if w[k] < min[k] {
+                        min[k] = w[k];
+                    }
+                    if w[k] > max[k] {
+                        max[k] = w[k];
+                    }
+                }
+                w
+            })
+            .collect();
+
+        // Per-element local origin = AABB centre (f64), deterministic (not a running
+        // mean). Vertices are stored RELATIVE to it, so they stay element-small and
+        // f32-exact at any building/georef scale; the world position is `origin + p`.
+        let origin = if world.is_empty() {
+            [0.0; 3]
+        } else {
+            [
+                (min[0] + max[0]) * 0.5,
+                (min[1] + max[1]) * 0.5,
+                (min[2] + max[2]) * 0.5,
+            ]
+        };
+
+        // Pass 2 — store (world - origin) as f32: small, exact, collapse-free.
+        for (chunk, w) in mesh.positions.chunks_exact_mut(3).zip(world.iter()) {
+            chunk[0] = (w[0] - origin[0]) as f32;
+            chunk[1] = (w[1] - origin[1]) as f32;
+            chunk[2] = (w[2] - origin[2]) as f32;
+        }
+        mesh.origin = origin;
+        if needs_rtc {
+            mesh.rtc_applied = true;
         }
 
         self.transform_normals(mesh, transform);

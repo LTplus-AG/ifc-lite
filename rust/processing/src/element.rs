@@ -498,6 +498,7 @@ fn build_mesh_data(
     geometry_class: u8,
     ctx: &MeshProductionContext<'_>,
 ) -> MeshData {
+    let mesh_origin = mesh.origin;
     let mut mesh_data = MeshData::new(
         job.id,
         job.ifc_type.name().to_string(),
@@ -505,7 +506,8 @@ fn build_mesh_data(
         mesh.normals,
         mesh.indices,
         color,
-    );
+    )
+    .with_origin(mesh_origin);
     if let Some(meta) = job.metadata {
         mesh_data = mesh_data
             .with_element_metadata(

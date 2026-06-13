@@ -137,6 +137,7 @@ pub fn split_mesh_by_indexed_colour(
 
     let has_normals = mesh.normals.len() == mesh.positions.len();
     let rtc_applied = mesh.rtc_applied;
+    let origin = mesh.origin;
 
     // One accumulator per palette entry; built lazily so empty groups vanish.
     #[derive(Default)]
@@ -189,6 +190,7 @@ pub fn split_mesh_by_indexed_colour(
                 normals: group.normals,
                 indices: group.indices,
                 rtc_applied,
+                origin,
             };
             Some((map.colours[palette], mesh))
         })
@@ -213,8 +215,8 @@ mod tests {
             positions,
             normals: Vec::new(),
             indices: vec![0, 1, 2, 3, 4, 5, 0, 1, 99],
-            rtc_applied: false,
-        };
+            rtc_applied: false, 
+            origin: [0.0; 3],        };
         let map = FullIndexedColourMap {
             geometry_id: 1,
             colours: vec![Rgba::new(1.0, 0.0, 0.0, 1.0), Rgba::new(0.0, 1.0, 0.0, 1.0)],

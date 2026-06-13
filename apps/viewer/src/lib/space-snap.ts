@@ -56,6 +56,35 @@ function projectOnSeg(p: Pt, a: readonly [number, number], b: readonly [number, 
   return [a[0] + t * dx, a[1] + t * dy];
 }
 
+export interface AlignResult {
+  pt: Pt;
+  /** Reference point whose X the result aligned to (vertical guide), if any. */
+  vRef: Pt | null;
+  /** Reference point whose Y the result aligned to (horizontal guide), if any. */
+  hRef: Pt | null;
+}
+
+/**
+ * Alignment / object-snap tracking: independently snap `p`'s X to the nearest
+ * reference point's X (a vertical guide) and its Y to the nearest reference's Y
+ * (a horizontal guide). Lets a drawn corner lock under/level-with an earlier
+ * corner — e.g. the closing point aligns vertically with the first point — so
+ * rectangles close cleanly. X and Y snap independently, so the result can sit at
+ * the intersection of two different references' axes.
+ */
+export function alignToAxes(p: Pt, refs: ReadonlyArray<Pt>, tol: number): AlignResult {
+  let x = p[0], y = p[1];
+  let vRef: Pt | null = null, hRef: Pt | null = null;
+  let bestVX = tol, bestHY = tol;
+  for (const r of refs) {
+    const dx = Math.abs(r[0] - p[0]);
+    if (dx < bestVX) { bestVX = dx; x = r[0]; vRef = r; }
+    const dy = Math.abs(r[1] - p[1]);
+    if (dy < bestHY) { bestHY = dy; y = r[1]; hRef = r; }
+  }
+  return { pt: [x, y], vRef, hRef };
+}
+
 export function snapPoint(p: Pt, opts: SnapOptions): SnapResult {
   const { vertices = [], segments = [], tol, ortho = false, anchor = null } = opts;
   const base: Pt = ortho && anchor ? applyOrtho(p, anchor) : [p[0], p[1]];

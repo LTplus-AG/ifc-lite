@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useConstructionUnderlay } from '@/hooks/useConstructionUnderlay';
 import { useIfc } from '@/hooks/useIfc';
-import { snapPoint, type SnapKind } from '@/lib/space-snap';
+import { snapPoint, alignToAxes, type SnapKind } from '@/lib/space-snap';
 import init, { SpacePlateHandle } from '@ifc-lite/wasm';
 import {
   extractWallSegmentsForStorey,
@@ -202,6 +202,10 @@ export function SpaceSketchOverlay() {
   // Issue 2: the in-progress drawn room (world coords) + the live cursor point.
   const [drawPts, setDrawPts] = useState<Pt[]>([]);
   const [drawCursor, setDrawCursor] = useState<Pt | null>(null);
+  // Alignment guides while drawing: reference corners whose X (vertical guide)
+  // / Y (horizontal guide) the cursor is currently locked to — so the closing
+  // corner can line up under the first point, etc.
+  const [alignGuides, setAlignGuides] = useState<{ vRef: Pt | null; hRef: Pt | null }>({ vRef: null, hRef: null });
   // Issue 4: canvas size (resizable) + a tick that forces a re-render whenever
   // the view transform in fitRef changes (zoom/pan/fit) without making the
   // per-frame pointer math go through React state.
@@ -249,9 +253,11 @@ export function SpaceSketchOverlay() {
     () => (derivedStorey == null ? null : storeys.find((s) => s.id === derivedStorey)?.elev ?? null),
     [derivedStorey, storeys],
   );
-  // Compute the underlay when it's shown OR when snapping needs it (snapping to
-  // building lines must work even if the underlay isn't drawn).
-  const { lines: underlay } = useConstructionUnderlay((showBuilding || snapToBuilding) && rooms.length > 0, derivedFloorElev);
+  // Compute the underlay whenever a storey is derived (so snapping works even
+  // before any room exists — e.g. drawing the FIRST room must still snap to the
+  // building walls), not only when rooms are already present. Gated by show OR
+  // snap so it's not computed when neither needs it.
+  const { lines: underlay } = useConstructionUnderlay((showBuilding || snapToBuilding) && derivedFloorElev != null, derivedFloorElev);
 
   // Building wall lines as snap segments (room frame), only while snapping is on.
   const buildingSegments = useMemo<Array<[Pt, Pt]>>(
@@ -743,7 +749,7 @@ export function SpaceSketchOverlay() {
     try {
       plate.addFace(new Float64Array(pts.flat()), -1);
       commitUndo(snap);
-      setDrawPts([]); setDrawCursor(null); drawRedoRef.current = [];
+      setDrawPts([]); setDrawCursor(null); drawRedoRef.current = []; setAlignGuides({ vRef: null, hRef: null });
       refreshRooms();
       setStatus(`Drew a room — ${plate.roomCount} room(s).`);
     } catch (err) {
@@ -759,7 +765,7 @@ export function SpaceSketchOverlay() {
   // close the panel. Returns true if something was aborted.
   const abortCurrentOp = useCallback((): boolean => {
     if (mode === 'draw' && (drawPts.length > 0 || drawCursor)) {
-      setDrawPts([]); setDrawCursor(null); drawRedoRef.current = [];
+      setDrawPts([]); setDrawCursor(null); drawRedoRef.current = []; setAlignGuides({ vRef: null, hRef: null });
       setStatus('Draw cancelled.');
       return true;
     }
@@ -848,18 +854,29 @@ export function SpaceSketchOverlay() {
       setSplitHover(t ? t.pos : null);
       setHover(t && t.kind === 'vertex' ? { kind: 'vertex', pos: t.pos } : null);
     } else if (mode === 'draw') {
-      // Preview the next corner: snap to room vertices + building walls; Shift
-      // constrains to ortho from the previous corner.
+      // Preview the next corner. Strong osnap (room vertices + building walls)
+      // wins; otherwise align to the drawn corners' axes (so the closing corner
+      // locks under the first point, etc.). Shift constrains to ortho from the
+      // previous corner first.
+      const tol = PICK_PX / fitRef.current.scale;
       const anchor = drawPts.length > 0 ? drawPts[drawPts.length - 1] : null;
       const snap = snapPoint([wx, wy], {
         vertices: uniqueVerts(rooms),
         segments: buildingSegmentsRef.current,
-        tol: PICK_PX / fitRef.current.scale,
+        tol,
         ortho: m.shift,
         anchor,
       });
-      setDrawCursor(snap.pt);
-      setSnapKind(snap.kind);
+      if (snap.kind === 'none' && drawPts.length > 0) {
+        const al = alignToAxes(snap.pt, drawPts, tol);
+        setDrawCursor(al.pt);
+        setSnapKind('none');
+        setAlignGuides({ vRef: al.vRef, hRef: al.hRef });
+      } else {
+        setDrawCursor(snap.pt);
+        setSnapKind(snap.kind);
+        setAlignGuides({ vRef: null, hRef: null });
+      }
     } else {
       const v = pickVertex(wx, wy);
       const pos = v != null ? nearestVertPos(wx, wy) : null;
@@ -956,16 +973,20 @@ export function SpaceSketchOverlay() {
       return;
     }
     if (mode === 'draw') {
-      // Snap the dropped corner to room vertices + building walls; Shift = ortho
-      // from the previous corner.
+      // Snap the dropped corner: strong osnap (room vertices + building walls)
+      // wins; otherwise align to the drawn corners' axes. Shift = ortho from the
+      // previous corner first. Mirrors the preview in processMove.
+      const tol = PICK_PX / fitRef.current.scale;
       const anchor = drawPts.length > 0 ? drawPts[drawPts.length - 1] : null;
-      const p = snapPoint([wx, wy], {
+      const snap = snapPoint([wx, wy], {
         vertices: uniqueVerts(rooms),
         segments: buildingSegmentsRef.current,
-        tol: PICK_PX / fitRef.current.scale,
+        tol,
         ortho: e.shiftKey,
         anchor,
-      }).pt;
+      });
+      const p = snap.kind === 'none' && drawPts.length > 0 ? alignToAxes(snap.pt, drawPts, tol).pt : snap.pt;
+      setAlignGuides({ vRef: null, hRef: null });
       // With ≥3 points placed, clicking the first dot closes the loop.
       if (drawPts.length >= 3) {
         const first = drawPts[0];
@@ -1091,7 +1112,7 @@ export function SpaceSketchOverlay() {
           {(['drag', 'split', 'merge', 'draw'] as Mode[]).map((m) => (
             <button key={m}
               className={`rounded px-2 py-0.5 text-xs capitalize transition-colors ${mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              onClick={() => { setMode(m); setSplitPick(null); setSplitHover(null); setHover(null); setDeleteHover(null); setDrawPts([]); setDrawCursor(null); drawRedoRef.current = []; }}
+              onClick={() => { setMode(m); setSplitPick(null); setSplitHover(null); setHover(null); setDeleteHover(null); setDrawPts([]); setDrawCursor(null); drawRedoRef.current = []; setAlignGuides({ vRef: null, hRef: null }); }}
               title={m === 'draw' ? 'Author a new room by clicking its corners' : `Edit derived rooms (${m})`}
               disabled={m === 'draw' ? derivedStorey == null : !rooms.length}>{m}</button>
           ))}
@@ -1168,7 +1189,7 @@ export function SpaceSketchOverlay() {
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag}
         onDoubleClick={() => { if (mode === 'draw') commitDraw(); }}
         onContextMenu={(e) => e.preventDefault()}
-        onPointerLeave={() => { setHover(null); setSplitHover(null); setDeleteHover(null); setDrawCursor(null); }}>
+        onPointerLeave={() => { setHover(null); setSplitHover(null); setDeleteHover(null); setDrawCursor(null); setAlignGuides({ vRef: null, hRef: null }); }}>
         {gridLines.map((l, i) => <line key={`g${i}`} {...l} stroke="currentColor" strokeOpacity={0.06} strokeWidth={1} />)}
 
         {/* Building-element underlay (plan cut ~1.2 m above the storey) for orientation. */}
@@ -1240,6 +1261,16 @@ export function SpaceSketchOverlay() {
         {/* Draw-room in progress (Issue 2): placed points, rubber band, close hint. */}
         {mode === 'draw' && drawPts.length > 0 && (
           <g pointerEvents="none">
+            {/* Alignment guides — the dashed lines that telegraph "this corner
+                is lined up with that earlier corner" (e.g. under the first). */}
+            {drawCursor && alignGuides.vRef && (
+              <line x1={sX(f, drawCursor[0])} y1={sY(f, alignGuides.vRef[1])} x2={sX(f, drawCursor[0])} y2={sY(f, drawCursor[1])}
+                stroke="#f59e0b" strokeOpacity={0.7} strokeDasharray="3 3" strokeWidth={1} />
+            )}
+            {drawCursor && alignGuides.hRef && (
+              <line x1={sX(f, alignGuides.hRef[0])} y1={sY(f, drawCursor[1])} x2={sX(f, drawCursor[0])} y2={sY(f, drawCursor[1])}
+                stroke="#f59e0b" strokeOpacity={0.7} strokeDasharray="3 3" strokeWidth={1} />
+            )}
             {drawPts.length >= 3 && (
               <polygon points={drawPts.map((p) => `${sX(f, p[0])},${sY(f, p[1])}`).join(' ')} fill="#22c55e" fillOpacity={0.1} stroke="none" />
             )}

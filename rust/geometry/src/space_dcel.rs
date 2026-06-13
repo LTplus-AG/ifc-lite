@@ -569,11 +569,24 @@ impl SpacePlate {
         let qa = self.half_edges[o1.0 as usize].next; // what followed o1 in fa
         let qb = self.half_edges[o2.0 as usize].next; // what followed o2 in fb
 
+        // The welded X↔Y edge only carries a wall provenance when BOTH survivors
+        // agreed on one — otherwise it spans two different source walls and must
+        // drop to `None`, so we don't emit a stale IfcRelSpaceBoundary link.
+        let welded_source = if self.half_edges[t1.0 as usize].source_element
+            == self.half_edges[t2.0 as usize].source_element
+        {
+            self.half_edges[t1.0 as usize].source_element
+        } else {
+            None
+        };
+
         // Re-twin the survivors into one undirected edge X↔Y, splicing out v.
         self.half_edges[t1.0 as usize].twin = t2; // t1 now X→Y
+        self.half_edges[t1.0 as usize].source_element = welded_source;
         self.half_edges[t1.0 as usize].next = qb;
         self.half_edges[qb.0 as usize].prev = t1;
         self.half_edges[t2.0 as usize].twin = t1; // t2 now Y→X
+        self.half_edges[t2.0 as usize].source_element = welded_source;
         self.half_edges[t2.0 as usize].next = qa;
         self.half_edges[qa.0 as usize].prev = t2;
 
@@ -616,6 +629,20 @@ impl SpacePlate {
     pub fn add_face(&mut self, points: &[[f64; 2]], source_element: Option<u32>) -> Result<FacePatch, EditError> {
         if points.len() < 3 || !is_simple_polygon(points) {
             return Err(EditError::InvalidPolygon);
+        }
+        // Reject consecutive coincident points, including the closing wrap. A
+        // zero-length edge slips past `is_simple_polygon` (its segment-cross test
+        // treats a degenerate segment as parallel), so a ring like [A, A, B, C]
+        // has non-zero area yet would persist a duplicate vertex + zero-length
+        // half-edge — malformed for later editing/offsetting/baking. Reachable
+        // from the draw UI (e.g. a double-click landing the final corner twice).
+        let n = points.len();
+        for i in 0..n {
+            let a = points[i];
+            let b = points[(i + 1) % n];
+            if (a[0] - b[0]).abs() < EPS && (a[1] - b[1]).abs() < EPS {
+                return Err(EditError::InvalidPolygon);
+            }
         }
         let signed = polygon_area(points);
         if signed.abs() < EPS {
@@ -1647,6 +1674,14 @@ mod tests {
         // Collinear (zero area).
         let line = vec![[0.0, 0.0], [2.0, 0.0], [4.0, 0.0]];
         assert_eq!(plate.add_face(&line, None), Err(EditError::InvalidPolygon));
+        // Consecutive duplicate point (zero-length edge) — non-zero area, but a
+        // degenerate edge that is_simple_polygon misses. Reachable via a
+        // double-click that lands the final corner twice.
+        let dup = vec![[0.0, 0.0], [0.0, 0.0], [4.0, 0.0], [4.0, 4.0]];
+        assert_eq!(plate.add_face(&dup, None), Err(EditError::InvalidPolygon));
+        // Repeated closing point (first == last) — the wrap-around case.
+        let closed = vec![[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 0.0]];
+        assert_eq!(plate.add_face(&closed, None), Err(EditError::InvalidPolygon));
     }
 
     // Test-only helper.

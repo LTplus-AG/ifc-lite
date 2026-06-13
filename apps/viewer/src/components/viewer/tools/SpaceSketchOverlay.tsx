@@ -1258,6 +1258,21 @@ export function SpaceSketchOverlay() {
           </g>
         )}
 
+        {/* First-corner preview: before any point is placed, show where the
+            click will land + the snap cue, so the snap is visible up front. */}
+        {mode === 'draw' && drawPts.length === 0 && drawCursor && (
+          <g pointerEvents="none">
+            {snapKind === 'line' && (
+              <rect x={sX(f, drawCursor[0]) - 5} y={sY(f, drawCursor[1]) - 5} width={10} height={10} fill="none"
+                stroke="#f59e0b" strokeWidth={1.5} transform={`rotate(45 ${sX(f, drawCursor[0])} ${sY(f, drawCursor[1])})`} />
+            )}
+            {snapKind === 'vertex' && (
+              <circle cx={sX(f, drawCursor[0])} cy={sY(f, drawCursor[1])} r={7} fill="none" stroke="#22c55e" strokeWidth={1.5} />
+            )}
+            <circle cx={sX(f, drawCursor[0])} cy={sY(f, drawCursor[1])} r={4} fill="#22c55e" stroke="#16a34a" strokeWidth={1.5} />
+          </g>
+        )}
+
         {/* Draw-room in progress (Issue 2): placed points, rubber band, close hint. */}
         {mode === 'draw' && drawPts.length > 0 && (
           <g pointerEvents="none">

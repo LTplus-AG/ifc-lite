@@ -4,6 +4,11 @@
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import type { MeshData, TessellationQuality } from './types.js';
+import {
+  MIN_BATCH_JOBS,
+  MAX_BATCH_JOBS,
+  nextAdaptiveBatchJobs,
+} from './batch-sizing.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -234,6 +239,8 @@ async function ensureInit(): Promise<IfcAPI> {
   applyComputeGeometryHashesToApi();
   tessellationQualityApplied = false;
   applyTessellationQualityToApi();
+  entityIndexApplied = false;
+  applyEntityIndexToApi();
   return api;
 }
 
@@ -306,6 +313,27 @@ function applyTessellationQualityToApi(): void {
 }
 
 /**
+ * Cached pre-built entity index (issue #1097). Same replay contract as the
+ * flags above, but here it guards a perf cliff rather than a feature toggle:
+ * the binary-split recovery in `processBatch` sets `api = null` to force a
+ * WASM re-init after a failing entity. Without replay, the freshly-built
+ * IfcAPI has no entity index, so its next `processGeometryBatch` falls back to
+ * the lazy O(file) re-scan (~5 s on a 1 GB IFC) — a giant silent window that
+ * compounds across a cluster of failures. Re-applying the cached index keeps
+ * recovery cheap and quiet.
+ */
+let cachedEntityIndex: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array } | null = null;
+let entityIndexApplied: boolean = false;
+
+/** Push the cached entity index onto the IfcAPI (once per API). */
+function applyEntityIndexToApi(): void {
+  const ifcApi = api;
+  if (!ifcApi || entityIndexApplied || !cachedEntityIndex) return;
+  ifcApi.setEntityIndex(cachedEntityIndex.ids, cachedEntityIndex.starts, cachedEntityIndex.lengths);
+  entityIndexApplied = true;
+}
+
+/**
  * Build a Uint8Array view over the shared buffer. Modern wasm-bindgen accepts
  * SAB-backed views directly and copies them into linear memory itself, so an
  * extra JS-side `.set()` copy is wasted memory (was N × file_size in the old
@@ -353,32 +381,19 @@ interface ProcessingSession {
 let activeSession: ProcessingSession | null = null;
 
 /**
- * Jobs per inner WASM call inside `processSliceStreaming`.
- *
- * Two forces pull in opposite directions:
- *
- * - Cache locality: every `processGeometryBatch` call allocates a fresh
- *   `EntityDecoder.cache` (FxHashMap) in Rust, so smaller batches re-decode
- *   shared sub-entities (`IfcCartesianPoint`, placements, …) per call.
- *   This once justified an effectively-unbounded value (1M): one WASM call
- *   per worker slice. The dominant per-call fixed cost back then was an
- *   O(file) IFCPROJECT scan for unit scales — that is now resolved once per
- *   worker and seeded into each batch decoder, so the remaining per-call
- *   overhead is small.
- *
- * - Liveness: a `processGeometryBatch` call is synchronous WASM — no batch
- *   events, no progressive rendering, and nothing feeds the stream watchdog
- *   while it runs. With one call per slice, a CSG-heavy model wedges every
- *   worker for its entire slice (minutes on 70 MB+ steel models): the host
- *   sees zero events, the watchdog kills a *healthy* load, and the user
- *   stares at an empty viewport until the first worker finishes everything.
- *
- * 512 keeps typical call duration well under a second (~1.6 ms/job measured
- * on a 72 MB IFC4 model) so meshes stream in continuously and the watchdog
- * only fires on real wedges, while keeping the re-decode overhead a few
- * percent (shared-entity locality is mostly intra-batch at this size).
+ * Adaptive per-call job budget for `processSliceStreaming`. The sizing formula
+ * + rationale live in `./batch-sizing.ts` (pure, unit-tested); this is just
+ * the running state, seeded at MAX and reset per load in the `stream-start`
+ * handler.
  */
-const STREAM_BATCH_SIZE = 512;
+let adaptiveBatchJobs = MAX_BATCH_JOBS;
+
+/** Liveness ping (no slice context) for recovery paths that recurse/re-init. */
+function postWorkerHeartbeat(): void {
+  (self as unknown as Worker).postMessage(
+    { type: 'progress', processedJobs: 0, totalJobs: 0 } as GeometryWorkerProgressMessage,
+  );
+}
 
 function startSession(input: {
   sharedBuffer: SharedArrayBuffer;
@@ -550,6 +565,12 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
     collectMeshes(session, collection);
   } catch (err) {
     const msg = (err as Error).message;
+    // The recovery below issues more synchronous WASM work — a SAB-fallback
+    // re-decode, two binary-split halves, or a per-entity WASM re-init — none
+    // of which feed the host watchdog on their own. A cluster of failing
+    // entities could therefore blow the silent-window budget invisibly
+    // (#1097, secondary window). Ping liveness before we recurse / re-init.
+    postWorkerHeartbeat();
     if (!session.sabFallbackTaken && session.localBytes.buffer instanceof SharedArrayBuffer) {
       session.sabFallbackTaken = true;
       console.warn(`[Worker] processGeometryBatch rejected SAB view (${msg}), falling back to copy`);
@@ -570,23 +591,35 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
   }
 }
 
-/** Run a slice in STREAM_BATCH_SIZE chunks, flushing after each chunk. */
+/** Run a slice in adaptive-sized chunks, flushing after each chunk. */
 async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint32Array): Promise<void> {
   const totalJobs = Math.floor(jobsFlat.length / 3);
-  for (let jobOffset = 0; jobOffset < totalJobs; jobOffset += STREAM_BATCH_SIZE) {
+  let jobOffset = 0;
+  while (jobOffset < totalJobs) {
+    const batchJobs = Math.max(MIN_BATCH_JOBS, Math.min(MAX_BATCH_JOBS, adaptiveBatchJobs));
     // Liveness heartbeat BEFORE entering the synchronous WASM call: the host
     // forwards it as a `progress` stream event so the consumer's stall
     // watchdog measures "time inside one bounded WASM call", not "time since
     // the last mesh" — a CSG-heavy region can legitimately produce nothing
-    // for tens of seconds while every worker is busy. Also covers batches
+    // for several seconds while every worker is busy. Also covers batches
     // that produce zero meshes (flushPending no-ops on empty).
     (self as unknown as Worker).postMessage(
       { type: 'progress', processedJobs: jobOffset, totalJobs } as GeometryWorkerProgressMessage,
     );
     const start = jobOffset * 3;
-    const end = Math.min(start + STREAM_BATCH_SIZE * 3, jobsFlat.length);
+    const end = Math.min(start + batchJobs * 3, jobsFlat.length);
+    const jobsThisBatch = (end - start) / 3;
+    const callStart = performance.now();
     await processBatch(session, jobsFlat.subarray(start, end));
     flushPending(session);
+    // Resize the next call from this one's measured throughput so the silent
+    // window stays near TARGET_BATCH_MS regardless of CSG density (#1097).
+    adaptiveBatchJobs = nextAdaptiveBatchJobs(
+      adaptiveBatchJobs,
+      jobsThisBatch,
+      performance.now() - callStart,
+    );
+    jobOffset += jobsThisBatch;
   }
 }
 
@@ -673,6 +706,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         applyComputeGeometryHashesToApi();
         tessellationQualityApplied = false;
         applyTessellationQualityToApi();
+        entityIndexApplied = false;
+        applyEntityIndexToApi();
       } else {
         await ensureInit();
       }
@@ -682,6 +717,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
 
     if (e.data.type === 'stream-start') {
       await ensureInit();
+      // Fresh load: relearn batch sizing from scratch (a reused worker may
+      // carry a small size from a previous dense model).
+      adaptiveBatchJobs = MAX_BATCH_JOBS;
       activeSession = startSession({
         sharedBuffer: e.data.sharedBuffer,
         unitScale: e.data.unitScale,
@@ -733,8 +771,13 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // (~5 s on a 1 GB IFC) — the dominant TTFG bottleneck before this
       // change. Now the only cost is FxHashMap construction from the
       // input slices (~1 s for 14 M entries).
-      const ifcApi = await ensureInit();
-      ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
+      await ensureInit();
+      // Cache then apply via the replay helper so a later recovery re-init
+      // (api = null in processBatch) re-installs the index instead of falling
+      // back to the lazy O(file) re-scan (#1097).
+      cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
+      entityIndexApplied = false;
+      applyEntityIndexToApi();
       return;
     }
 

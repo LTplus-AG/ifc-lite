@@ -44,6 +44,7 @@ import {
 } from '@ifc-lite/create';
 import { X, Undo2, Redo2, Layers, Maximize, AlertTriangle, Magnet, SlidersHorizontal, HelpCircle, Eraser } from 'lucide-react';
 import { SpaceSketchCanvas } from './space-sketch/SpaceSketchCanvas';
+import { OptionsPopover, HelpPopover } from './space-sketch/SpaceSketchPopovers';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
 
 const DEFAULT_W = 580;
@@ -1169,73 +1170,24 @@ export function SpaceSketchOverlay() {
         <div className="absolute inset-0 z-10" aria-hidden onMouseDown={() => { setOptionsOpen(false); setHelpOpen(false); }} />
       )}
 
-      {/* Options popover — the set-once settings, out of the main flow. */}
+      {/* Disclosure popovers (Options / Help) — kept out of the default flow. */}
       {optionsOpen && (
-        <div className="absolute right-3 top-12 z-20 w-64 space-y-3 rounded-lg border bg-popover p-3 text-[11px] text-muted-foreground shadow-xl">
-          <div className="space-y-1.5">
-            <div className="font-medium text-foreground">Boundary</div>
-            <div className="inline-flex rounded-md border p-0.5">
-              {(['center', 'inner', 'outer'] as BoundaryMode[]).map((m) => {
-                const noWallData = !ext && m !== 'center';
-                return (
-                  <button key={m}
-                    className={`rounded px-2 py-0.5 capitalize transition-colors disabled:opacity-40 ${boundaryMode === m ? 'bg-primary text-primary-foreground' : 'hover:text-foreground'}`}
-                    onClick={() => setBoundaryMode(m)} disabled={noWallData}
-                    title={noWallData ? 'No wall data on this derive — only the centreline is available' : m === 'center' ? 'Wall centreline' : m === 'inner' ? 'Inner (net) face' : 'Outer (gross) face'}>{m}</button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-foreground">Corner tolerance</span>
-              {snapDelta && (
-                <span className={`tabular-nums ${snapDelta.to === 0 ? 'text-red-500' : snapDelta.to < snapDelta.from ? 'text-amber-500' : 'text-emerald-500'}`}
-                  title="Rooms before → after">{snapDelta.from} → {snapDelta.to}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="flex-1 accent-primary"
-                disabled={derivedStorey == null} onChange={(e) => rebuildWithSnap(Number(e.target.value))} />
-              <input type="number" min={0.05} max={1} step={0.05} value={usedTol} aria-label="Corner tolerance (metres)"
-                className="w-12 rounded border bg-background px-1 py-0.5 tabular-nums disabled:opacity-40"
-                disabled={derivedStorey == null}
-                onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) rebuildWithSnap(Math.min(1, Math.max(0.05, v))); }} />
-              <button className="rounded px-1 hover:text-foreground disabled:opacity-40" onClick={() => rebuildWithSnap(null)}
-                disabled={derivedStorey == null}
-                title={snapTol == null ? 'Automatic — escalates until rooms close' : 'Reset to automatic'}>{snapTol == null ? 'auto' : 'reset'}</button>
-            </div>
-          </div>
-          <label className="flex cursor-pointer items-center justify-between">
-            <span className="text-foreground">Show building underlay</span>
-            <input type="checkbox" className="accent-primary" checked={showBuilding} onChange={() => setShowBuilding((v) => !v)} />
-          </label>
-          <label className="flex cursor-pointer items-center justify-between">
-            <span className="text-foreground">Leak diagnostics</span>
-            <input type="checkbox" className="accent-primary" checked={showDiagnostics} disabled={!ext} onChange={() => setShowDiagnostics((v) => !v)} />
-          </label>
-        </div>
+        <OptionsPopover
+          boundaryMode={boundaryMode}
+          onBoundaryMode={setBoundaryMode}
+          hasWallData={!!ext}
+          snapDelta={snapDelta}
+          usedTol={usedTol}
+          snapDisabled={derivedStorey == null}
+          onSnap={rebuildWithSnap}
+          snapTol={snapTol}
+          showBuilding={showBuilding}
+          onToggleBuilding={() => setShowBuilding((v) => !v)}
+          showDiagnostics={showDiagnostics}
+          onToggleDiagnostics={() => setShowDiagnostics((v) => !v)}
+        />
       )}
-
-      {/* Help popover — the full gesture legend, on demand (keeps the panel clean). */}
-      {helpOpen && (
-        <div className="absolute right-3 top-12 z-20 w-72 space-y-1.5 rounded-lg border bg-popover p-3 text-[11px] shadow-xl">
-          <div className="mb-1 font-medium text-foreground">One tool — actions follow the cursor:</div>
-          {([
-            ['Drag a node', 'move it (snaps; Shift = straight)'],
-            ['Click a wall, then another', 'split the room between them'],
-            ['Click empty space', 'draw a room (Enter / dbl-click closes)'],
-            ['⌥/Ctrl/right-click a node', 'remove it (cleans up orphans)'],
-            ['⌥/Ctrl/right-click a wall', 'merge rooms / remove & clean up'],
-            ['Shift-drag / middle-drag', 'pan · scroll = zoom'],
-          ] as [string, string][]).map(([k, v]) => (
-            <div key={k} className="flex gap-2">
-              <span className="shrink-0 font-medium text-foreground">{k}</span>
-              <span className="text-muted-foreground">— {v}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {helpOpen && <HelpPopover />}
 
       <SpaceSketchCanvas
         svgRef={svgRef}

@@ -43,6 +43,20 @@ function readBatchSizingOverride(): Partial<BatchSizingConfig> | undefined {
   return v && typeof v === 'object' ? v : undefined;
 }
 
+/**
+ * Optional load-time visibility filter (#1097), read off `globalThis` on the
+ * host thread (tuning / benchmarking escape hatch). `{ disabledTypes,
+ * skipTypeGeometry }` skip the matching geometry jobs at the prepass so they're
+ * never decoded/meshed/uploaded. Unset ⇒ load everything.
+ */
+function readVisibilityFilterOverride(): { disabledTypes?: string[]; skipTypeGeometry?: boolean } | undefined {
+  const g = globalThis as unknown as {
+    __IFC_LITE_VISIBILITY_FILTER?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
+  };
+  const v = g.__IFC_LITE_VISIBILITY_FILTER;
+  return v && typeof v === 'object' ? v : undefined;
+}
+
 interface PrepassMeta {
   /** Prepass-resolved plane-angle→radians scale; seeds worker batch decoders. */
   planeAngleToRadians?: number;
@@ -111,6 +125,15 @@ export interface ProcessParallelOptions {
    * in its `stream-start` message and validated there.
    */
   batchSizing?: Partial<BatchSizingConfig>;
+  /**
+   * #1097 load-time visibility filter. `disabledTypes` (uppercase STEP keywords)
+   * and `skipTypeGeometry` are forwarded to the prepass so the matching geometry
+   * jobs are never produced — cutting decode + CSG + tessellation + upload for
+   * hidden types (spaces/annotations/grids/type-library). Takes precedence over
+   * the `globalThis.__IFC_LITE_VISIBILITY_FILTER` hook. Toggling a type back on
+   * requires a reload.
+   */
+  visibilityFilter?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
 }
 
 export async function* processParallel(
@@ -734,7 +757,17 @@ export async function* processParallel(
   //     has fixed setup cost that compounds badly when invoked 30+ times.
   // Per-chunk fan-out (see `dispatchJobsChunkInternal`) splits each chunk
   // evenly across all workers so parallelism is preserved at every chunk.
-  prepassWorker.postMessage({ type: 'prepass-streaming', sharedBuffer, chunkSize: 50_000 });
+  const visibilityFilter = options?.visibilityFilter ?? readVisibilityFilterOverride();
+  if (visibilityFilter?.disabledTypes?.length || visibilityFilter?.skipTypeGeometry) {
+    console.log(`[stream] load-time visibility filter: disabledTypes=[${visibilityFilter.disabledTypes?.join(',') ?? ''}] skipTypeGeometry=${visibilityFilter.skipTypeGeometry === true}`);
+  }
+  prepassWorker.postMessage({
+    type: 'prepass-streaming',
+    sharedBuffer,
+    chunkSize: 50_000,
+    ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
+    ...(visibilityFilter?.skipTypeGeometry ? { skipTypeGeometry: true } : {}),
+  });
 
   // Drain the event queue until the pre-pass and all process workers complete.
   // The pre-pass `complete` event is captured inside the message handler

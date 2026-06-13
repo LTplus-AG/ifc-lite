@@ -117,7 +117,7 @@ export class IfcAPI {
    *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
    *   `{ type: "complete", totalJobs }`
    */
-  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number): any;
+  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
   /**
    * Parse the file and return structured per-axis data (tag + endpoints) in
    * the renderer's Y-up world space (RTC-subtracted, metres). Use this when
@@ -306,9 +306,19 @@ export class MeshCollection {
    */
   hasRtcOffset(): boolean;
   /**
-   * Get mesh at index
+   * Get mesh at index (clones — non-destructive). Prefer `takeMesh` on the
+   * hot streaming path; this stays for callers that read meshes more than once.
    */
   get(index: number): MeshDataJs | undefined;
+  /**
+   * #1097 perf: MOVE the mesh at `index` out of the collection (the Vec
+   * buffers are `std::mem::take`-n, leaving an empty stub). The streaming
+   * worker reads each mesh exactly once, so moving avoids the full vertex-
+   * data clone `get` pays — one fewer copy of positions/normals/indices/uvs/
+   * texture per mesh (the JS getters still do the single Rust→JS copy). Calling
+   * it twice for the same index yields the second call an empty mesh.
+   */
+  takeMesh(index: number): MeshDataJs | undefined;
   /**
    * Get RTC offset X (for converting local coords back to world coords)
    * Add this to local X coordinates to get world X coordinates
@@ -835,7 +845,7 @@ export interface InitOutput {
   readonly gridaxisjs_start: (a: number) => number;
   readonly gridaxisjs_tag: (a: number, b: number) => void;
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
-  readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+  readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
   readonly ifcapi_getMemory: (a: number) => number;
@@ -865,6 +875,7 @@ export interface InitOutput {
   readonly meshcollection_rtcOffsetX: (a: number) => number;
   readonly meshcollection_rtcOffsetY: (a: number) => number;
   readonly meshcollection_rtcOffsetZ: (a: number) => number;
+  readonly meshcollection_takeMesh: (a: number, b: number) => number;
   readonly meshcollection_totalTriangles: (a: number) => number;
   readonly meshcollection_totalVertices: (a: number) => number;
   readonly meshdatajs_color: (a: number, b: number) => void;

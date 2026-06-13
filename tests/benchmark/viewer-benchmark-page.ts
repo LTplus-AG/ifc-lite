@@ -113,6 +113,22 @@ export class ViewerBenchmarkPage {
       }
     }
 
+    // Optional load-time visibility filter for sweeping #1097 (skip disabled
+    // types at job generation). Set VIEWER_BENCHMARK_VISIBILITY_FILTER to JSON
+    // like {"disabledTypes":["IFCSPACE","IFCANNOTATION"],"skipTypeGeometry":true}.
+    const visFilterEnv = process.env.VIEWER_BENCHMARK_VISIBILITY_FILTER;
+    if (visFilterEnv) {
+      try {
+        const f = JSON.parse(visFilterEnv);
+        await this.page.addInitScript((c) => {
+          (globalThis as unknown as { __IFC_LITE_VISIBILITY_FILTER?: unknown }).__IFC_LITE_VISIBILITY_FILTER = c;
+        }, f);
+        console.log(`[Benchmark] visibility filter: ${visFilterEnv}`);
+      } catch (e) {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_VISIBILITY_FILTER: ${visFilterEnv}`);
+      }
+    }
+
     // Navigate to viewer app
     await this.page.goto('http://localhost:3000');
     

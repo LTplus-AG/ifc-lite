@@ -295,7 +295,8 @@ impl MeshCollection {
         self.meshes.len()
     }
 
-    /// Get mesh at index
+    /// Get mesh at index (clones — non-destructive). Prefer `takeMesh` on the
+    /// hot streaming path; this stays for callers that read meshes more than once.
     #[wasm_bindgen]
     pub fn get(&self, index: usize) -> Option<MeshDataJs> {
         self.meshes.get(index).map(|m| MeshDataJs {
@@ -308,6 +309,32 @@ impl MeshCollection {
             shading_color: m.shading_color,
             uvs: m.uvs.clone(),
             texture_rgba: m.texture_rgba.clone(),
+            texture_width: m.texture_width,
+            texture_height: m.texture_height,
+            texture_repeat_s: m.texture_repeat_s,
+            texture_repeat_t: m.texture_repeat_t,
+            geometry_class: m.geometry_class,
+        })
+    }
+
+    /// #1097 perf: MOVE the mesh at `index` out of the collection (the Vec
+    /// buffers are `std::mem::take`-n, leaving an empty stub). The streaming
+    /// worker reads each mesh exactly once, so moving avoids the full vertex-
+    /// data clone `get` pays — one fewer copy of positions/normals/indices/uvs/
+    /// texture per mesh (the JS getters still do the single Rust→JS copy). Calling
+    /// it twice for the same index yields the second call an empty mesh.
+    #[wasm_bindgen(js_name = takeMesh)]
+    pub fn take_mesh(&mut self, index: usize) -> Option<MeshDataJs> {
+        self.meshes.get_mut(index).map(|m| MeshDataJs {
+            express_id: m.express_id,
+            ifc_type: std::mem::take(&mut m.ifc_type),
+            positions: std::mem::take(&mut m.positions),
+            normals: std::mem::take(&mut m.normals),
+            indices: std::mem::take(&mut m.indices),
+            color: m.color,
+            shading_color: m.shading_color,
+            uvs: std::mem::take(&mut m.uvs),
+            texture_rgba: std::mem::take(&mut m.texture_rgba),
             texture_width: m.texture_width,
             texture_height: m.texture_height,
             texture_repeat_s: m.texture_repeat_s,

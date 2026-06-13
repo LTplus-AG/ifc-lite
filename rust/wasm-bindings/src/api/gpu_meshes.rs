@@ -188,6 +188,15 @@ impl IfcAPI {
         data: &[u8],
         on_event: &Function,
         chunk_size: u32,
+        // #1097 perf: optional load-time visibility filter. `disabled_type_names`
+        // (uppercase STEP keywords, e.g. "IFCSPACE", "IFCANNOTATION") are skipped
+        // at job generation so their geometry is never decoded/meshed/uploaded;
+        // `skip_type_geometry` drops the #957 type-library (IfcTypeProduct) jobs.
+        // Both default to "load everything" (None / false) — callers that don't
+        // pass them keep the old behaviour. Toggling a type back ON requires a
+        // reload (the jobs were never produced).
+        disabled_type_names: Option<Vec<String>>,
+        skip_type_geometry: bool,
     ) -> Result<JsValue, JsValue> {
         use super::styling::extract_building_rotation_from_site;
         use ifc_lite_core::{has_geometry_by_name, EntityDecoder, EntityScanner, IfcType};
@@ -195,6 +204,14 @@ impl IfcAPI {
 
         let chunk_size = chunk_size.max(1024) as usize;
         let content = data;
+
+        // Build the load-time skip set (uppercase STEP keywords). Empty when the
+        // caller passes nothing → no filtering.
+        let disabled_types: rustc_hash::FxHashSet<String> = disabled_type_names
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.to_ascii_uppercase())
+            .collect();
 
         // Single-pass scan: gather (id, start, end, type) for everything,
         // tag geometry-bearing rows so we can emit jobs incrementally.
@@ -291,7 +308,7 @@ impl IfcAPI {
                     prepass_spans.aggregate_rels.push((id, start, end));
                 }
                 _ => {
-                    if has_geometry_by_name(type_name) {
+                    if has_geometry_by_name(type_name) && !disabled_types.contains(type_name) {
                         let ifc_type = IfcType::from_str(type_name);
                         // We don't bucket by simple/complex here — the host
                         // distributes work across N geometry workers anyway,
@@ -606,10 +623,15 @@ impl IfcAPI {
         // fold the mapped-item-source + type-candidate collection into the
         // streaming scan loop so orphans resolve with no extra pass. Kept as a
         // separate pass for now to avoid destabilising the streaming hot path.
-        let type_jobs = super::styling::collect_type_geometry_jobs(content, &mut decoder);
-        if !type_jobs.is_empty() {
-            total_jobs += type_jobs.len() as u32;
-            emit_jobs_chunk(on_event, &type_jobs)?;
+        // #1097 perf: the viewer's default Model view does not render the
+        // type-library (#957) geometry, so skip producing it at load when the
+        // caller asks (the Types view re-loads on demand).
+        if !skip_type_geometry {
+            let type_jobs = super::styling::collect_type_geometry_jobs(content, &mut decoder);
+            if !type_jobs.is_empty() {
+                total_jobs += type_jobs.len() as u32;
+                emit_jobs_chunk(on_event, &type_jobs)?;
+            }
         }
 
         // Complete event.
@@ -729,46 +751,58 @@ impl IfcAPI {
             value_offset += count;
         }
 
-        // Reconstruct geometry_styles from flat arrays
-        let mut geometry_styles: rustc_hash::FxHashMap<u32, [f32; 4]> =
-            rustc_hash::FxHashMap::default();
-        for i in 0..style_ids.len() {
-            let base = i * 4;
-            if base + 3 < style_colors.len() {
-                geometry_styles.insert(
-                    style_ids[i],
-                    [
-                        style_colors[base] as f32 / 255.0,
-                        style_colors[base + 1] as f32 / 255.0,
-                        style_colors[base + 2] as f32 / 255.0,
-                        style_colors[base + 3] as f32 / 255.0,
-                    ],
-                );
-            }
-        }
-
-        // Build element_styles by resolving colors for each entity in this batch
-        let mut element_styles: rustc_hash::FxHashMap<u32, [f32; 4]> =
-            rustc_hash::FxHashMap::default();
-        if !geometry_styles.is_empty() {
-            for chunk in jobs_flat.chunks(3) {
-                if chunk.len() < 3 {
-                    break;
+        // #1097: the wire styles are session-constant, so build the colour map
+        // AND the GeometryStyleInfo index the producer consumes ONCE per worker
+        // and reuse across batches (was ~18 M HashMap inserts each on a 140 K-
+        // styled model). Keyed by a cheap (len, first_id, last_id) signature.
+        let style_maps: std::sync::Arc<(
+            rustc_hash::FxHashMap<u32, [f32; 4]>,
+            rustc_hash::FxHashMap<u32, GeometryStyleInfo>,
+        )> = {
+            let sig_len = style_ids.len();
+            let sig_first = style_ids.first().copied().unwrap_or(0);
+            let sig_last = style_ids.last().copied().unwrap_or(0);
+            let mut slot = self
+                .cached_geometry_styles
+                .lock()
+                .expect("ifc-lite cached_geometry_styles Mutex poisoned");
+            match slot.as_ref() {
+                Some((l, f, la, arc)) if *l == sig_len && *f == sig_first && *la == sig_last => {
+                    std::sync::Arc::clone(arc)
                 }
-                let id = chunk[0];
-                let start = chunk[1] as usize;
-                let end = chunk[2] as usize;
-                if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                    if entity.get(6).map(|a| !a.is_null()).unwrap_or(false) {
-                        if let Some(color) =
-                            resolve_element_color(&entity, &geometry_styles, &mut decoder)
-                        {
-                            element_styles.insert(id, color);
+                _ => {
+                    let mut colors: rustc_hash::FxHashMap<u32, [f32; 4]> =
+                        rustc_hash::FxHashMap::with_capacity_and_hasher(sig_len, Default::default());
+                    for i in 0..style_ids.len() {
+                        let base = i * 4;
+                        if base + 3 < style_colors.len() {
+                            colors.insert(
+                                style_ids[i],
+                                [
+                                    style_colors[base] as f32 / 255.0,
+                                    style_colors[base + 1] as f32 / 255.0,
+                                    style_colors[base + 2] as f32 / 255.0,
+                                    style_colors[base + 3] as f32 / 255.0,
+                                ],
+                            );
                         }
                     }
+                    let index: rustc_hash::FxHashMap<u32, GeometryStyleInfo> = colors
+                        .iter()
+                        .map(|(&id, &c)| (id, GeometryStyleInfo::from_color(c)))
+                        .collect();
+                    let arc = std::sync::Arc::new((colors, index));
+                    *slot = Some((sig_len, sig_first, sig_last, std::sync::Arc::clone(&arc)));
+                    arc
                 }
             }
-        }
+        };
+        let geometry_styles = &style_maps.0;
+        // #1097: element colours were resolved in a separate pre-pass that
+        // re-decoded every job entity (a second full decode + deep-clone pass).
+        // That resolution is now folded into the main loop below — each entity
+        // is decoded ONCE (as an Arc, no deep clone), so we no longer build an
+        // `element_styles` map up front.
 
         // Pre-allocate
         let num_jobs = jobs_flat.len() / 3;
@@ -795,12 +829,9 @@ impl IfcAPI {
         // the single dominant colour the prepass `geometry_styles` carries.
         let indexed_colour_full = self.get_or_build_indexed_colour_maps(content, &mut decoder);
 
-        // Lift the flat wire styles into the canonical styled-item index the
-        // shared producer consumes (colour-only — exactly what the wire has).
-        let geometry_style_index: rustc_hash::FxHashMap<u32, GeometryStyleInfo> = geometry_styles
-            .iter()
-            .map(|(&id, &c)| (id, GeometryStyleInfo::from_color(c)))
-            .collect();
+        // The canonical styled-item index the shared producer consumes — built
+        // once per worker alongside `geometry_styles` above (#1097).
+        let geometry_style_index = &style_maps.1;
         // Surface textures + UV maps (#961), built once per worker (cheap
         // substring bail-out for untextured files).
         let texture_index = self.get_or_build_texture_index(content, &mut decoder);
@@ -821,7 +852,7 @@ impl IfcAPI {
 
         let ctx = MeshProductionContext {
             void_index: &void_index,
-            geometry_style_index: &geometry_style_index,
+            geometry_style_index,
             indexed_colour_full: &indexed_colour_full,
             element_material_colors: &element_material_colors,
             texture_index: &texture_index,
@@ -860,10 +891,24 @@ impl IfcAPI {
                 continue;
             }
 
-            let Ok(entity) = decoder.decode_at_with_id(id, start, end) else {
+            // #1097: decode_and_cache returns the cached Arc (cheap Arc::clone),
+            // not a deep clone of the DecodedEntity — was the dominant per-job
+            // marshalling cost across ~60-110 K jobs. produce_element_meshes
+            // takes `&DecodedEntity`, so we deref the Arc at the call site.
+            let Ok(entity) = decoder.decode_and_cache(id, start, end) else {
                 continue;
             };
             let ifc_type = entity.ifc_type;
+
+            // Resolve the element-level colour inline (folded from the deleted
+            // pre-pass) so the entity is decoded exactly once.
+            let element_color = if !geometry_styles.is_empty()
+                && entity.get(6).map(|a| !a.is_null()).unwrap_or(false)
+            {
+                resolve_element_color(entity.as_ref(), geometry_styles, &mut decoder)
+            } else {
+                None
+            };
 
             // #957: type products render their planned RepresentationMaps. The
             // viewer emits BOTH orphan (class 1) and instanced (class 2) maps —
@@ -899,9 +944,9 @@ impl IfcAPI {
                 &ElementMeshJob {
                     id,
                     ifc_type,
-                    entity: &entity,
+                    entity: entity.as_ref(),
                     kind,
-                    element_color: element_styles.get(&id).copied(),
+                    element_color,
                     // The viewer gets element metadata from the parser worker.
                     metadata: None,
                 },

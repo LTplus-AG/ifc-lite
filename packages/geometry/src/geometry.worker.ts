@@ -111,6 +111,13 @@ export interface GeometryWorkerPrePassMessage {
   sharedBuffer: SharedArrayBuffer;
   /** Jobs per chunk (defaults to 50_000). */
   chunkSize?: number;
+  /** #1097 load-time visibility filter: uppercase STEP keywords whose
+   *  geometry jobs are skipped at generation (e.g. ["IFCSPACE","IFCANNOTATION"]).
+   *  Toggling one back on requires a reload. Omitted ⇒ load everything. */
+  disabledTypes?: string[];
+  /** Skip #957 type-library (IfcTypeProduct) geometry at load (default Model
+   *  view doesn't render it). Omitted ⇒ load it. */
+  skipTypeGeometry?: boolean;
 }
 
 /**
@@ -463,7 +470,8 @@ function collectMeshes(
     const geometryHashes = extractGeometryHashesFromCollection(collection);
 
     for (let i = 0; i < collection.length; i++) {
-      const mesh = collection.get(i);
+      // #1097: takeMesh MOVES the mesh out (no clone) — each mesh is read once.
+      const mesh = collection.takeMesh(i);
       if (!mesh) continue;
       try {
         const positions = new Float32Array(mesh.positions);
@@ -676,6 +684,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const sharedBuffer = e.data.sharedBuffer;
       const chunkSize = e.data.chunkSize ?? 50_000;
+      // #1097 load-time visibility filter (skip disabled types at job gen).
+      const disabledTypes = e.data.disabledTypes ?? undefined;
+      const skipTypeGeometry = e.data.skipTypeGeometry === true;
 
       // Forward Rust events 1:1 — the host (`geometry-parallel.ts`) treats
       // them as the streaming-prepass protocol. SAB-decode fallback: try the
@@ -687,14 +698,14 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
       };
       try {
-        ifcApi.buildPrePassStreaming(view, onEvent, chunkSize);
+        ifcApi.buildPrePassStreaming(view, onEvent, chunkSize, disabledTypes, skipTypeGeometry);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (!triedFallback) {
           triedFallback = true;
           console.warn(`[Worker] Streaming prepass with SAB view failed (${msg}), retrying with copy`);
           view = materialiseSharedBytes(sharedBuffer);
-          ifcApi.buildPrePassStreaming(view, onEvent, chunkSize);
+          ifcApi.buildPrePassStreaming(view, onEvent, chunkSize, disabledTypes, skipTypeGeometry);
         } else {
           throw err;
         }

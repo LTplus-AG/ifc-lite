@@ -1051,12 +1051,21 @@ impl GeometryRouter {
             // ~3× slower than level 1 on a 14-opening wall). Aim for ≳ a handful of
             // host triangles per opening, capped at 2 levels.
             let host_tris = result.triangle_count().max(1);
+            let target = 4 * n_openings;
             let mut levels = 0usize;
-            while host_tris * (1usize << (2 * (levels + 1))) < 4 * n_openings && levels < 2 {
+            while host_tris * (1usize << (2 * (levels + 1))) < target && levels < 2 {
                 levels += 1;
             }
-            let levels = levels.max(1);
-            result = result.subdivided(levels);
+            // A COARSE host (a box wall is ~12 triangles) still needs one split
+            // even when the next level would overshoot the target; an ALREADY-dense
+            // host (e.g. a faceted-BREP wall whose triangle count already meets the
+            // target) is left untouched — extra geometry there only slows the cut.
+            if levels == 0 && host_tris < target {
+                levels = 1;
+            }
+            if levels > 0 {
+                result = result.subdivided(levels);
+            }
         }
 
         let (wall_min_f32, wall_max_f32) = result.bounds();

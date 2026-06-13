@@ -245,6 +245,13 @@ fn locate(it: &Interner, tri: SubTri, p: Vid, axis: DropAxis, w0: Sign) -> Locat
     }
 }
 
+/// Minimum working-set size before the f64-AABB broadphase prefilters engage.
+/// Below this the exact scan is already short, so the cache/AABB bookkeeping
+/// would be pure overhead (it measurably slowed boolean-dense-but-simple models);
+/// above it the O(N²) exact-predicate blow-up dominates and the prefilter wins.
+/// Purely a performance gate — it never changes which triangles `locate` accepts.
+const PREFILTER_MIN: usize = 32;
+
 /// `p`'s coordinates dropped to the kept 2D plane for projection `axis`.
 #[inline]
 fn project2d(p: [f64; 3], axis: DropAxis) -> [f64; 2] {
@@ -351,7 +358,12 @@ fn insert_point(mesh: &mut Mesh2d, it: &Interner, p: Vid) {
     // collapses the per-host-face O(points·triangles) exact-predicate blowup on
     // heavily fragmented faces (many openings in one wall) toward O(points +
     // triangles) exact calls — the cause of the WASM stall on dense facades.
-    let pc = coord2d_cached(it, p, axis, &mut mesh.coords);
+    // Engaged only once the triangle set is large enough to amortise the cache.
+    let pc = if mesh.tris.len() > PREFILTER_MIN {
+        coord2d_cached(it, p, axis, &mut mesh.coords)
+    } else {
+        None
+    };
     let mut cavity = Vec::new();
     for ti in 0..mesh.tris.len() {
         let tri = mesh.tris[ti];
@@ -556,16 +568,22 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
     // orient2d crossing tests for triangles whose widened AABB is disjoint — the
     // margin makes this conservative (a genuinely crossing triangle is never
     // skipped on any platform), so the channel — and recovery — is byte-identical.
-    let ac = coord2d_cached(it, a, axis, &mut mesh.coords);
-    let bc = coord2d_cached(it, b, axis, &mut mesh.coords);
-    let ab_box: Option<[f64; 4]> = match (ac, bc) {
-        (Some(a2), Some(b2)) => Some([
-            a2[0].min(b2[0]),
-            a2[1].min(b2[1]),
-            a2[0].max(b2[0]),
-            a2[1].max(b2[1]),
-        ]),
-        _ => None,
+    // Engaged only once the triangle set is large enough to amortise the cache.
+    let ab_box: Option<[f64; 4]> = if mesh.tris.len() > PREFILTER_MIN {
+        match (
+            coord2d_cached(it, a, axis, &mut mesh.coords),
+            coord2d_cached(it, b, axis, &mut mesh.coords),
+        ) {
+            (Some(a2), Some(b2)) => Some([
+                a2[0].min(b2[0]),
+                a2[1].min(b2[1]),
+                a2[0].max(b2[0]),
+                a2[1].max(b2[1]),
+            ]),
+            _ => None,
+        }
+    } else {
+        None
     };
     let channel: Vec<usize> = (0..mesh.tris.len())
         .filter(|&ti| {
@@ -749,16 +767,22 @@ fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
     // platform, so `on_seg` — and the recovered topology — is byte-identical.
     // This is the hot loop: enforce runs per constraint per fixed-point pass, so
     // the unfiltered O(verts) exact scan is what stalls many-opening facades.
-    let sc = coord2d_cached(it, s, axis, &mut mesh.coords);
-    let tc = coord2d_cached(it, t, axis, &mut mesh.coords);
-    let seg_box: Option<[f64; 4]> = match (sc, tc) {
-        (Some(s2), Some(t2)) => Some([
-            s2[0].min(t2[0]),
-            s2[1].min(t2[1]),
-            s2[0].max(t2[0]),
-            s2[1].max(t2[1]),
-        ]),
-        _ => None,
+    // Engaged only once the vertex set is large enough to amortise the cache.
+    let seg_box: Option<[f64; 4]> = if verts.len() > PREFILTER_MIN {
+        match (
+            coord2d_cached(it, s, axis, &mut mesh.coords),
+            coord2d_cached(it, t, axis, &mut mesh.coords),
+        ) {
+            (Some(s2), Some(t2)) => Some([
+                s2[0].min(t2[0]),
+                s2[1].min(t2[1]),
+                s2[0].max(t2[0]),
+                s2[1].max(t2[1]),
+            ]),
+            _ => None,
+        }
+    } else {
+        None
     };
     let mut on_seg: Vec<Vid> = verts
         .into_iter()

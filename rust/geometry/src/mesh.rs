@@ -364,9 +364,23 @@ impl Mesh {
                 positions.push((self.positions[ia + k] + self.positions[ib + k]) * 0.5);
             }
             if has_normals {
-                for k in 0..3 {
-                    normals.push((self.normals[ia + k] + self.normals[ib + k]) * 0.5);
+                // Average then re-normalise: the rest of the pipeline treats
+                // stored normals as unit vectors. On a flat face both endpoints
+                // share a normal so this is a no-op; only a midpoint on an edge
+                // between non-coplanar facets needs the renormalisation (and a
+                // degenerate near-zero average falls back to endpoint `a`).
+                let mut n = [
+                    (self.normals[ia] + self.normals[ib]) * 0.5,
+                    (self.normals[ia + 1] + self.normals[ib + 1]) * 0.5,
+                    (self.normals[ia + 2] + self.normals[ib + 2]) * 0.5,
+                ];
+                let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+                if len > 1.0e-6 {
+                    n = [n[0] / len, n[1] / len, n[2] / len];
+                } else {
+                    n = [self.normals[ia], self.normals[ia + 1], self.normals[ia + 2]];
                 }
+                normals.extend_from_slice(&n);
             }
             mid_of.insert(key, m);
             m

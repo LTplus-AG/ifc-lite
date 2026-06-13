@@ -37,10 +37,10 @@ describe('getGeometryStreamWatchdogMs', () => {
     // to trip its own MB-scaled deadline mid-stream.
     expect(getGeometryStreamWatchdogMs({
       desktopStableWasm: false, batchCount: 1, fileSizeMB: 275,
-    })).toBe(30_000);
+    })).toBe(40_000);
     expect(getGeometryStreamWatchdogMs({
       desktopStableWasm: false, batchCount: 1, fileSizeMB: 4096,
-    })).toBe(30_000);
+    })).toBe(40_000);
   });
 
   it('browser, subsequent deadline is constant across wildly different sizes', () => {
@@ -64,10 +64,10 @@ describe('getGeometryStreamWatchdogMs', () => {
   it('desktop stable WASM, after first batch → fixed grace, independent of file size', () => {
     expect(getGeometryStreamWatchdogMs({
       desktopStableWasm: true, batchCount: 3, fileSizeMB: 1024,
-    })).toBe(20_000);
+    })).toBe(25_000);
     expect(getGeometryStreamWatchdogMs({
       desktopStableWasm: true, batchCount: 3, fileSizeMB: 16,
-    })).toBe(20_000);
+    })).toBe(25_000);
   });
 
   it('never returns below the previous fixed floors (regression guard)', () => {

@@ -44,12 +44,15 @@ const FIRST_BATCH_FLOOR_MS_DESKTOP = 15_000;
 // Subsequent-batch grace — a fixed silent-window budget once geometry is
 // flowing, independent of file size (issue #1097). Raised above the old 15 s /
 // 5 s floors to comfortably exceed the worker's bounded per-call wall-time
-// (~TARGET_BATCH_MS, plus headroom for the single transitional call that
-// crosses a light→dense boundary at the max batch size) while still catching a
-// genuinely wedged pool. The old per-MB ramp here scaled with the wrong metric
+// (~`DEFAULT_BATCH_SIZING.targetMs` = 8 s, ~5× headroom) while still catching a
+// genuinely wedged pool. The extra room above the target covers the one call
+// adaptive sizing can't pre-empt: a `maxJobs` (512) batch that first crosses a
+// light→dense boundary before throughput is re-measured. On the reporter's
+// Windows machine that was ~23 s at the observed worst density (45 ms/job); 40 s
+// keeps ~1.7× headroom there. The old per-MB ramp scaled with the wrong metric
 // (bytes, not CSG density) and killed healthy CSG-dense loads.
-const SUBSEQUENT_BATCH_MS_BROWSER = 30_000;
-const SUBSEQUENT_BATCH_MS_DESKTOP = 20_000;
+const SUBSEQUENT_BATCH_MS_BROWSER = 40_000;
+const SUBSEQUENT_BATCH_MS_DESKTOP = 25_000;
 
 const FIRST_BATCH_PER_MB_BROWSER = 60;   // 1 GB → +60 s, total 90 s
 const FIRST_BATCH_PER_MB_DESKTOP = 30;   // 1 GB → +30 s, total 45 s

@@ -4,7 +4,7 @@
 
 import { test, expect } from '@playwright/test';
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, isAbsolute } from 'path';
 import { ViewerBenchmarkPage, ViewerBenchmarkMetrics } from './viewer-benchmark-page';
 
 interface ViewerBenchmarkResult {
@@ -129,7 +129,9 @@ test.describe('Viewer Performance Benchmarks', () => {
   for (const ifcFile of ifcFiles) {
     test(`benchmark ${ifcFile}`, async ({ page }) => {
       const fileName = ifcFile.split('/').pop() || 'unknown';
-      const filePath = join(process.cwd(), ifcFile);
+      // Accept absolute paths (e.g. a model outside the repo) as well as
+      // repo-relative ones.
+      const filePath = isAbsolute(ifcFile) ? ifcFile : join(process.cwd(), ifcFile);
 
       // Skip if file doesn't exist
       if (!existsSync(filePath)) {
@@ -251,8 +253,10 @@ test.describe('Viewer Performance Benchmarks', () => {
       writeFileSync(outputPath, JSON.stringify(result, null, 2));
       console.log(`Results saved to ${outputPath}`);
 
-      // Assertions
-      expect(metrics.modelOpenMs).not.toBeNull();
+      // Assertions — the load actually completed and produced geometry.
+      // (modelOpenMs is a legacy log the current viewer no longer emits;
+      // streamCompleteMs is the real "geometry finished" signal.)
+      expect(metrics.streamCompleteMs).not.toBeNull();
       expect(metrics.totalMeshes).toBeGreaterThan(0);
 
       // Geometry correctness validation: Check mesh count matches expected (within 5% tolerance)

@@ -4,62 +4,87 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  TARGET_BATCH_MS,
-  MIN_BATCH_JOBS,
-  MAX_BATCH_JOBS,
+  DEFAULT_BATCH_SIZING,
+  resolveBatchSizing,
   nextAdaptiveBatchJobs,
 } from './batch-sizing.js';
 
+const CFG = DEFAULT_BATCH_SIZING;
+
 describe('nextAdaptiveBatchJobs', () => {
   it('grows toward MAX on light geometry (fast call)', () => {
-    // 256 jobs in 100 ms ⇒ 0.39 ms/job ⇒ projected ≫ MAX ⇒ clamp to MAX.
-    expect(nextAdaptiveBatchJobs(256, 256, 100)).toBe(MAX_BATCH_JOBS);
+    // 512 jobs in 100 ms ⇒ 0.2 ms/job ⇒ projected ≫ MAX ⇒ clamp to MAX.
+    expect(nextAdaptiveBatchJobs(CFG.maxJobs, 512, 100, CFG)).toBe(CFG.maxJobs);
   });
 
-  it('shrinks toward MIN on dense CSG (slow call)', () => {
-    // The reported steel model: ~45 ms/job ⇒ target 2 s ⇒ ~44 jobs ⇒ clamp up
-    // to MIN. Either way it must collapse from MAX to the floor in one step.
-    expect(nextAdaptiveBatchJobs(MAX_BATCH_JOBS, 256, 256 * 45)).toBe(MIN_BATCH_JOBS);
+  it('lands near targetMs on dense CSG (slow call)', () => {
+    // ~45 ms/job (the reported steel model) ⇒ target 8000 ms ⇒ ~177 jobs,
+    // which is inside [min, max] and returned as-is.
+    const next = nextAdaptiveBatchJobs(CFG.maxJobs, 512, 512 * 45, CFG);
+    expect(next).toBe(Math.floor(CFG.targetMs / 45));
+    expect(next).toBeGreaterThanOrEqual(CFG.minJobs);
+    expect(next).toBeLessThanOrEqual(CFG.maxJobs);
   });
 
-  it('lands near TARGET_BATCH_MS in the adaptive mid-range', () => {
-    // 5 ms/job: target 2000 ms ⇒ 400 jobs, but capped at MAX (256).
-    expect(nextAdaptiveBatchJobs(MAX_BATCH_JOBS, 100, 100 * 5)).toBe(MAX_BATCH_JOBS);
-    // 15 ms/job: target 2000 ms ⇒ 133 jobs — inside [MIN, MAX], returned as-is.
-    const next = nextAdaptiveBatchJobs(MAX_BATCH_JOBS, 100, 100 * 15);
-    expect(next).toBe(Math.floor(TARGET_BATCH_MS / 15));
-    expect(next).toBeGreaterThanOrEqual(MIN_BATCH_JOBS);
-    expect(next).toBeLessThanOrEqual(MAX_BATCH_JOBS);
-  });
-
-  it('a single dense call never exceeds the projected wall-time budget at steady state', () => {
-    // At MIN_BATCH_JOBS the worst silent window is MIN × ms/job; confirm that
-    // for the observed worst density it is far under the 30 s subsequent grace.
-    const worstMsPerJob = 45;
-    expect(MIN_BATCH_JOBS * worstMsPerJob).toBeLessThan(30_000);
+  it('collapses to MIN on pathologically dense geometry', () => {
+    // 1000 ms/job ⇒ target 8000 ⇒ 8 jobs ⇒ clamp up to MIN.
+    expect(nextAdaptiveBatchJobs(CFG.maxJobs, 64, 64 * 1000, CFG)).toBe(CFG.minJobs);
   });
 
   it('never returns below MIN or above MAX', () => {
-    for (const [jobs, ms] of [[256, 0.01], [256, 1e9], [1, 1e9], [1, 0.0001]] as const) {
-      const n = nextAdaptiveBatchJobs(MAX_BATCH_JOBS, jobs, ms);
-      expect(n).toBeGreaterThanOrEqual(MIN_BATCH_JOBS);
-      expect(n).toBeLessThanOrEqual(MAX_BATCH_JOBS);
+    for (const [jobs, ms] of [[512, 0.01], [512, 1e9], [1, 1e9], [1, 0.0001]] as const) {
+      const n = nextAdaptiveBatchJobs(CFG.maxJobs, jobs, ms, CFG);
+      expect(n).toBeGreaterThanOrEqual(CFG.minJobs);
+      expect(n).toBeLessThanOrEqual(CFG.maxJobs);
     }
   });
 
   it('returns the current size unchanged when nothing was measured (jobs <= 0)', () => {
-    expect(nextAdaptiveBatchJobs(123, 0, 50)).toBe(123);
-    expect(nextAdaptiveBatchJobs(MIN_BATCH_JOBS, -1, 50)).toBe(MIN_BATCH_JOBS);
+    expect(nextAdaptiveBatchJobs(123, 0, 50, CFG)).toBe(123);
+    expect(nextAdaptiveBatchJobs(CFG.minJobs, -1, 50, CFG)).toBe(CFG.minJobs);
   });
 
   it('treats a zero/sub-ms measurement as light → grows to MAX', () => {
-    expect(nextAdaptiveBatchJobs(MIN_BATCH_JOBS, 256, 0)).toBe(MAX_BATCH_JOBS);
+    expect(nextAdaptiveBatchJobs(CFG.minJobs, 512, 0, CFG)).toBe(CFG.maxJobs);
   });
 
-  it('the transitional call (MAX size first hitting dense) stays under the browser grace', () => {
-    // The one window adaptive sizing cannot pre-empt: a MAX-sized call that
-    // crosses into a dense region before throughput is re-measured. Even at 2×
-    // the observed worst density it must stay under the 30 s subsequent grace.
-    expect(MAX_BATCH_JOBS * 90).toBeLessThan(30_000);
+  it('honours a custom config', () => {
+    const cfg = resolveBatchSizing({ targetMs: 2000, minJobs: 32, maxJobs: 128 });
+    // 10 ms/job ⇒ 200 projected ⇒ clamp to custom max 128.
+    expect(nextAdaptiveBatchJobs(128, 100, 1000, cfg)).toBe(128);
+    // 100 ms/job ⇒ 20 projected ⇒ clamp up to custom min 32.
+    expect(nextAdaptiveBatchJobs(128, 100, 10000, cfg)).toBe(32);
+  });
+
+  it('the steady-state silent window stays under the browser grace at default config', () => {
+    // The dominant window is one targetMs-budgeted call; confirm it (and the
+    // transitional max-size call at the observed worst density) sit under the
+    // 40 s browser subsequent grace (see watchdog.ts) with headroom.
+    expect(CFG.targetMs).toBeLessThan(40_000);
+    expect(CFG.maxJobs * 45).toBeLessThan(40_000); // transitional, ~45 ms/job
+  });
+});
+
+describe('resolveBatchSizing', () => {
+  it('returns defaults for undefined/empty', () => {
+    expect(resolveBatchSizing()).toEqual(DEFAULT_BATCH_SIZING);
+    expect(resolveBatchSizing(null)).toEqual(DEFAULT_BATCH_SIZING);
+    expect(resolveBatchSizing({})).toEqual(DEFAULT_BATCH_SIZING);
+  });
+
+  it('drops non-finite/non-positive fields back to defaults', () => {
+    expect(resolveBatchSizing({ targetMs: 0, minJobs: -5, maxJobs: NaN })).toEqual(DEFAULT_BATCH_SIZING);
+    expect(resolveBatchSizing({ targetMs: Infinity })).toEqual(DEFAULT_BATCH_SIZING);
+  });
+
+  it('enforces minJobs <= maxJobs', () => {
+    const cfg = resolveBatchSizing({ minJobs: 400, maxJobs: 100 });
+    expect(cfg.minJobs).toBe(400);
+    expect(cfg.maxJobs).toBe(400);
+  });
+
+  it('floors fractional values', () => {
+    expect(resolveBatchSizing({ targetMs: 1234.9, minJobs: 33.7, maxJobs: 200.1 }))
+      .toEqual({ targetMs: 1234, minJobs: 33, maxJobs: 200 });
   });
 });

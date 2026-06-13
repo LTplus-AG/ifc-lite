@@ -28,6 +28,20 @@ import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { pickWorkerCount } from './worker-count.js';
+import type { BatchSizingConfig } from './batch-sizing.js';
+
+/**
+ * Optional runtime override for the geometry worker's adaptive batch sizing
+ * (#1097), read off `globalThis` on the host thread. A zero-cost escape hatch
+ * for hardware-specific tuning / field-debugging the watchdog↔throughput
+ * trade-off without a rebuild; unset ⇒ the worker uses DEFAULT_BATCH_SIZING.
+ * Validation/merge happens in the worker via `resolveBatchSizing`.
+ */
+function readBatchSizingOverride(): Partial<BatchSizingConfig> | undefined {
+  const g = globalThis as unknown as { __IFC_LITE_BATCH_SIZING?: Partial<BatchSizingConfig> };
+  const v = g.__IFC_LITE_BATCH_SIZING;
+  return v && typeof v === 'object' ? v : undefined;
+}
 
 interface PrepassMeta {
   /** Prepass-resolved plane-angle→radians scale; seeds worker batch decoders. */
@@ -90,6 +104,13 @@ export interface ProcessParallelOptions {
   wasmUrls?: {
     wasm?: string;
   };
+  /**
+   * Issue #1097 — optional override for the worker's adaptive batch sizing
+   * (the watchdog↔throughput knob). Takes precedence over the `globalThis`
+   * tuning hook; omitted ⇒ `DEFAULT_BATCH_SIZING`. Forwarded to every worker
+   * in its `stream-start` message and validated there.
+   */
+  batchSizing?: Partial<BatchSizingConfig>;
 }
 
 export async function* processParallel(
@@ -380,6 +401,7 @@ export async function* processParallel(
 
     const emptyU32 = new Uint32Array(0);
     const emptyU8 = new Uint8Array(0);
+    const batchSizing = options?.batchSizing ?? readBatchSizingOverride();
     for (const worker of workers) {
       worker.postMessage({
         type: 'stream-start' as const,
@@ -393,6 +415,7 @@ export async function* processParallel(
         voidValues: emptyU32,
         styleIds: emptyU32,
         styleColors: emptyU8,
+        ...(batchSizing ? { batchSizing } : {}),
       });
     }
 

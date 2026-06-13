@@ -5,9 +5,10 @@
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import type { MeshData, TessellationQuality } from './types.js';
 import {
-  MIN_BATCH_JOBS,
-  MAX_BATCH_JOBS,
+  DEFAULT_BATCH_SIZING,
+  resolveBatchSizing,
   nextAdaptiveBatchJobs,
+  type BatchSizingConfig,
 } from './batch-sizing.js';
 
 export interface GeometryWorkerInitMessage {
@@ -57,6 +58,9 @@ export interface GeometryWorkerStreamStartMessage {
   materialElementIds?: Uint32Array;
   materialColorCounts?: Uint32Array;
   materialColors?: Uint8Array;
+  /** #1097 optional adaptive-batch-sizing override (hardware tuning hook).
+   *  Omitted ⇒ DEFAULT_BATCH_SIZING. Resolved/validated in the worker. */
+  batchSizing?: Partial<BatchSizingConfig>;
 }
 
 export interface GeometryWorkerStreamChunkMessage {
@@ -382,11 +386,13 @@ let activeSession: ProcessingSession | null = null;
 
 /**
  * Adaptive per-call job budget for `processSliceStreaming`. The sizing formula
- * + rationale live in `./batch-sizing.ts` (pure, unit-tested); this is just
- * the running state, seeded at MAX and reset per load in the `stream-start`
- * handler.
+ * + rationale live in `./batch-sizing.ts` (pure, unit-tested); these are just
+ * the running state. `batchSizing` is re-resolved per load from the optional
+ * `stream-start` override (a hardware-tuning hook); `adaptiveBatchJobs` is
+ * seeded at MAX and relearned each load.
  */
-let adaptiveBatchJobs = MAX_BATCH_JOBS;
+let batchSizing: BatchSizingConfig = DEFAULT_BATCH_SIZING;
+let adaptiveBatchJobs = batchSizing.maxJobs;
 
 /** Liveness ping (no slice context) for recovery paths that recurse/re-init. */
 function postWorkerHeartbeat(): void {
@@ -596,7 +602,7 @@ async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint3
   const totalJobs = Math.floor(jobsFlat.length / 3);
   let jobOffset = 0;
   while (jobOffset < totalJobs) {
-    const batchJobs = Math.max(MIN_BATCH_JOBS, Math.min(MAX_BATCH_JOBS, adaptiveBatchJobs));
+    const batchJobs = Math.max(batchSizing.minJobs, Math.min(batchSizing.maxJobs, adaptiveBatchJobs));
     // Liveness heartbeat BEFORE entering the synchronous WASM call: the host
     // forwards it as a `progress` stream event so the consumer's stall
     // watchdog measures "time inside one bounded WASM call", not "time since
@@ -618,6 +624,7 @@ async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint3
       adaptiveBatchJobs,
       jobsThisBatch,
       performance.now() - callStart,
+      batchSizing,
     );
     jobOffset += jobsThisBatch;
   }
@@ -717,9 +724,11 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
 
     if (e.data.type === 'stream-start') {
       await ensureInit();
-      // Fresh load: relearn batch sizing from scratch (a reused worker may
-      // carry a small size from a previous dense model).
-      adaptiveBatchJobs = MAX_BATCH_JOBS;
+      // Fresh load: re-resolve the (optionally overridden) sizing config and
+      // relearn batch sizing from scratch (a reused worker may carry a small
+      // size from a previous dense model).
+      batchSizing = resolveBatchSizing(e.data.batchSizing);
+      adaptiveBatchJobs = batchSizing.maxJobs;
       activeSession = startSession({
         sharedBuffer: e.data.sharedBuffer,
         unitScale: e.data.unitScale,

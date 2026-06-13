@@ -73,11 +73,22 @@ pub struct InputSegment {
     pub a: [f64; 2],
     pub b: [f64; 2],
     pub source_element: Option<u32>,
+    /// Half the source wall's thickness (metres). Carried onto every half-edge
+    /// derived from this segment so `net_outline` can inset each room edge by
+    /// its own wall's half-thickness — no fuzzy edge↔wall matching, unlike the
+    /// TS `offsetRoomFootprint`. `0.0` = unknown/no thickness (centreline only).
+    pub half_thickness: f64,
 }
 
 impl InputSegment {
     pub fn new(a: [f64; 2], b: [f64; 2], source_element: Option<u32>) -> Self {
-        Self { a, b, source_element }
+        Self { a, b, source_element, half_thickness: 0.0 }
+    }
+
+    /// Builder: set the half-thickness (metres) carried to derived half-edges.
+    pub fn with_half_thickness(mut self, half_thickness: f64) -> Self {
+        self.half_thickness = half_thickness;
+        self
     }
 }
 
@@ -118,6 +129,9 @@ struct HalfEdge {
     /// The IFC element this edge bounds, propagated from the input segment.
     /// `None` for the exterior side of a boundary-less cut or a user split.
     source_element: Option<u32>,
+    /// Half the source wall's thickness (metres); `0.0` for a user-drawn edge.
+    /// Both twins carry the same value (it's the wall, not a side).
+    half_thickness: f64,
     alive: bool,
 }
 
@@ -227,7 +241,7 @@ impl SpacePlate {
         // Two half-edges per undirected edge, twinned. Record outgoing fans.
         let mut fans: Vec<Vec<(HalfEdgeId, f64)>> = vec![Vec::new(); arr.vertices.len()];
         for e in &arr.edges {
-            let (a, b, src) = (e.a, e.b, e.source);
+            let (a, b, src, ht) = (e.a, e.b, e.source, e.half_thickness);
             let pa = arr.vertices[a];
             let pb = arr.vertices[b];
             let fwd = HalfEdgeId(plate.half_edges.len() as u32);
@@ -240,6 +254,7 @@ impl SpacePlate {
                 prev: fwd,
                 face: FaceId(0),
                 source_element: src,
+                half_thickness: ht,
                 alive: true,
             });
             plate.half_edges.push(HalfEdge {
@@ -249,6 +264,7 @@ impl SpacePlate {
                 prev: bwd,
                 face: FaceId(0),
                 source_element: src,
+                half_thickness: ht,
                 alive: true,
             });
             fans[a].push((fwd, (pb[1] - pa[1]).atan2(pb[0] - pa[0])));
@@ -401,6 +417,7 @@ impl SpacePlate {
             prev: pa_prev,
             face,
             source_element,
+            half_thickness: 0.0, // a user-drawn partition has no wall thickness yet
             alive: true,
         });
         self.half_edges.push(HalfEdge {
@@ -410,6 +427,7 @@ impl SpacePlate {
             prev: pb_prev,
             face: new_face,
             source_element,
+            half_thickness: 0.0,
             alive: true,
         });
 
@@ -460,6 +478,9 @@ impl SpacePlate {
         let t_next = self.half_edges[t.0 as usize].next;
         let h_src = self.half_edges[h.0 as usize].source_element;
         let t_src = self.half_edges[t.0 as usize].source_element;
+        // The two new halves continue the same wall → inherit its thickness.
+        let h_ht = self.half_edges[h.0 as usize].half_thickness;
+        let t_ht = self.half_edges[t.0 as usize].half_thickness;
 
         let n = VertexId(self.vertices.len() as u32);
         let e1 = HalfEdgeId(self.half_edges.len() as u32); // N → B (was dest of h)
@@ -467,10 +488,10 @@ impl SpacePlate {
 
         self.vertices.push(Vertex { pos: [x, y], outgoing: Some(e1), alive: true });
         self.half_edges.push(HalfEdge {
-            origin: n, twin: t, next: h_next, prev: h, face: f1, source_element: h_src, alive: true,
+            origin: n, twin: t, next: h_next, prev: h, face: f1, source_element: h_src, half_thickness: h_ht, alive: true,
         });
         self.half_edges.push(HalfEdge {
-            origin: n, twin: h, next: t_next, prev: t, face: f2, source_element: t_src, alive: true,
+            origin: n, twin: h, next: t_next, prev: t, face: f2, source_element: t_src, half_thickness: t_ht, alive: true,
         });
 
         // h becomes A→N; t becomes B→N. Their twins/nexts re-point through N.
@@ -885,6 +906,7 @@ impl SpacePlate {
                 prev: HalfEdgeId(h0 + (i + nn - 1) % nn),
                 face: room,
                 source_element,
+                half_thickness: 0.0, // a drawn room has no source wall thickness
                 alive: true,
             });
         }
@@ -897,6 +919,7 @@ impl SpacePlate {
                 prev: HalfEdgeId(g0 + (i + 1) % nn),
                 face: outer,
                 source_element,
+                half_thickness: 0.0,
                 alive: true,
             });
         }
@@ -952,6 +975,80 @@ impl SpacePlate {
     /// Absolute area of a face.
     pub fn face_area(&self, face: FaceId) -> f64 {
         self.signed_area_of_cycle(&self.face_half_edges(face).collect::<Vec<_>>()).abs()
+    }
+
+    /// The room's outline offset to a wall **boundary face** rather than the
+    /// centreline: each boundary edge is moved perpendicular by its own wall's
+    /// half-thickness — inward for the net (inner) face, outward for the gross
+    /// (outer) face — then adjacent offset lines are re-intersected for the
+    /// corners. Because every half-edge carries its source wall's thickness,
+    /// this needs no fuzzy edge↔wall matching (unlike the TS `offsetRoomFootprint`).
+    ///
+    /// An edge shared with another room (its twin bounds a room, not the
+    /// exterior) is pinned to the centreline in **outward** mode so it can't
+    /// push into the neighbour. Falls back to the unchanged centreline outline
+    /// when no offset applies, a corner is degenerate, or an inset would invert
+    /// the polygon — so the result is always a sane ring.
+    pub fn net_outline(&self, face: FaceId, inset: bool) -> Vec<[f64; 2]> {
+        let centre = self.face_outline(face);
+        let n = centre.len();
+        if n < 3 {
+            return centre;
+        }
+        let cycle: Vec<HalfEdgeId> = self.face_half_edges(face).collect();
+        if cycle.len() != n {
+            return centre; // outline / cycle mismatch (e.g. a hole) — don't guess
+        }
+        let sign = if inset { 1.0 } else { -1.0 };
+        // Per edge: a point on its offset line + the edge's unit direction.
+        let mut lines: Vec<([f64; 2], [f64; 2])> = Vec::with_capacity(n);
+        for i in 0..n {
+            let a = centre[i];
+            let b = centre[(i + 1) % n];
+            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+            let l = (dx * dx + dy * dy).sqrt();
+            if l < EPS {
+                return centre;
+            }
+            let (ux, uy) = (dx / l, dy / l);
+            let mut half = self.half_edges[cycle[i].0 as usize].half_thickness;
+            // Outward: a shared (room↔room) edge would overlap the neighbour, so pin it.
+            if !inset {
+                if let Some(nbr) = self.neighbor_across(cycle[i]) {
+                    if !self.faces[nbr.0 as usize].is_outer {
+                        half = 0.0;
+                    }
+                }
+            }
+            let off = sign * half;
+            // Inward normal of a CCW outline is to the left of a→b: (-uy, ux).
+            lines.push(([a[0] - uy * off, a[1] + ux * off], [ux, uy]));
+        }
+        let mut verts: Vec<[f64; 2]> = Vec::with_capacity(n);
+        for i in 0..n {
+            let (pp, pd) = lines[(i + n - 1) % n];
+            let (cp, cd) = lines[i];
+            let hit = line_intersection(pp, [pp[0] + pd[0], pp[1] + pd[1]], cp, [cp[0] + cd[0], cp[1] + cd[1]]);
+            // Parallel offset lines (a collinear node, e.g. a mid-wall split, or
+            // two edges of equal thickness in a straight run) don't intersect —
+            // drop the corner onto the current offset line so it sits flush on
+            // the inset boundary instead of poking back to the centreline.
+            verts.push(hit.unwrap_or_else(|| {
+                let t = (centre[i][0] - cp[0]) * cd[0] + (centre[i][1] - cp[1]) * cd[1];
+                [cp[0] + t * cd[0], cp[1] + t * cd[1]]
+            }));
+        }
+        if verts.iter().any(|v| !v[0].is_finite() || !v[1].is_finite()) {
+            return centre;
+        }
+        let got = polygon_area(&verts).abs();
+        if got <= EPS {
+            return centre;
+        }
+        if inset && got > polygon_area(&centre).abs() + 1e-6 {
+            return centre; // the inset inverted the polygon — keep the centreline
+        }
+        verts
     }
 
     /// The bounding half-edges of a face paired with the IFC element each
@@ -1170,6 +1267,7 @@ struct ArrEdge {
     a: usize,
     b: usize,
     source: Option<u32>,
+    half_thickness: f64,
 }
 
 /// The planar arrangement: snapped vertices + split, deduped edges. This is
@@ -1223,7 +1321,7 @@ impl Arrangement {
             let ai = lookup(s.a, &mut vertices);
             let bi = lookup(s.b, &mut vertices);
             if ai != bi {
-                segs.push(Seg { a: ai, b: bi, source: s.source_element });
+                segs.push(Seg { a: ai, b: bi, source: s.source_element, half_thickness: s.half_thickness });
             }
         }
 
@@ -1242,7 +1340,7 @@ impl Arrangement {
             'outer: for vid in endpoints {
                 let p = vertices[vid];
                 for si in 0..segs.len() {
-                    let Seg { a, b, source } = segs[si];
+                    let Seg { a, b, source, half_thickness } = segs[si];
                     if a == vid || b == vid {
                         continue;
                     }
@@ -1255,8 +1353,8 @@ impl Arrangement {
                         if !(1e-6..=1.0 - 1e-6).contains(&t) {
                             continue; // endpoint, not interior
                         }
-                        segs[si] = Seg { a, b: vid, source };
-                        segs.push(Seg { a: vid, b, source });
+                        segs[si] = Seg { a, b: vid, source, half_thickness };
+                        segs.push(Seg { a: vid, b, source, half_thickness });
                         applied = true;
                         break 'outer;
                     }
@@ -1309,13 +1407,14 @@ impl Arrangement {
         let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
         for (i, mut cuts) in splits.into_iter().enumerate() {
             let source = seeds[i].source;
+            let ht = seeds[i].half_thickness;
             if cuts.len() <= 2 {
-                push_edge(&mut edges, &mut seen, cuts[0].1, cuts[1].1, source);
+                push_edge(&mut edges, &mut seen, cuts[0].1, cuts[1].1, source, ht);
                 continue;
             }
             cuts.sort_by(|p, q| p.0.partial_cmp(&q.0).unwrap_or(std::cmp::Ordering::Equal));
             for w in cuts.windows(2) {
-                push_edge(&mut edges, &mut seen, w[0].1, w[1].1, source);
+                push_edge(&mut edges, &mut seen, w[0].1, w[1].1, source, ht);
             }
         }
 
@@ -1328,21 +1427,24 @@ struct Seg {
     a: usize,
     b: usize,
     source: Option<u32>,
+    half_thickness: f64,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_edge(
     edges: &mut Vec<ArrEdge>,
     seen: &mut std::collections::HashSet<(usize, usize)>,
     a: usize,
     b: usize,
     source: Option<u32>,
+    half_thickness: f64,
 ) {
     if a == b {
         return;
     }
     let key = if a < b { (a, b) } else { (b, a) };
     if seen.insert(key) {
-        edges.push(ArrEdge { a, b, source });
+        edges.push(ArrEdge { a, b, source, half_thickness });
     }
 }
 
@@ -2105,6 +2207,82 @@ mod tests {
     fn remove_edge_rejects_a_stale_handle() {
         let mut plate = two_room_plate();
         assert_eq!(plate.remove_edge(HalfEdgeId(99_999)), Err(EditError::StaleHandle));
+    }
+
+    // ───────────────── net-area (wall-thickness offset) ─────────────────
+
+    /// A closed loop with a uniform wall half-thickness on every edge.
+    fn thick_loop(corners: &[[f64; 2]], base: u32, half: f64) -> Vec<InputSegment> {
+        loop_segments(corners, base).into_iter().map(|s| s.with_half_thickness(half)).collect()
+    }
+
+    fn thick_two_room_plate(half: f64) -> SpacePlate {
+        let segs = vec![
+            InputSegment::new([0.0, 0.0], [8.0, 0.0], Some(1)).with_half_thickness(half),
+            InputSegment::new([8.0, 0.0], [8.0, 3.0], Some(2)).with_half_thickness(half),
+            InputSegment::new([8.0, 3.0], [0.0, 3.0], Some(3)).with_half_thickness(half),
+            InputSegment::new([0.0, 3.0], [0.0, 0.0], Some(4)).with_half_thickness(half),
+            InputSegment::new([4.0, 0.0], [4.0, 3.0], Some(99)).with_half_thickness(half),
+        ];
+        SpacePlate::build(&segs, BuildOptions::default())
+    }
+
+    #[test]
+    fn net_outline_insets_and_outsets_by_the_wall_half_thickness() {
+        let plate = SpacePlate::build(&thick_loop(&rect(0.0, 0.0, 4.0, 3.0), 100, 0.25), BuildOptions::default());
+        let room = plate.rooms().next().unwrap();
+        // Inner: 0.25 in on every side → 3.5 × 2.5 = 8.75 m².
+        let inner = polygon_area(&plate.net_outline(room, true)).abs();
+        assert!((inner - 8.75).abs() < 1e-6, "inset 0.25 all round = 8.75, got {inner}");
+        // Outer: 0.25 out on every side → 4.5 × 3.5 = 15.75 m².
+        let outer = polygon_area(&plate.net_outline(room, false)).abs();
+        assert!((outer - 15.75).abs() < 1e-6, "outset 0.25 all round = 15.75, got {outer}");
+    }
+
+    #[test]
+    fn net_outline_is_the_centreline_without_thickness() {
+        // loop_segments leaves half_thickness at 0 → nothing to offset.
+        let plate = SpacePlate::build(&loop_segments(&rect(0.0, 0.0, 4.0, 3.0), 100), BuildOptions::default());
+        let room = plate.rooms().next().unwrap();
+        assert_eq!(plate.net_outline(room, true), plate.face_outline(room), "no thickness → unchanged");
+        assert_eq!(plate.net_outline(room, false), plate.face_outline(room));
+    }
+
+    #[test]
+    fn net_outline_pins_a_shared_wall_when_pushing_outward() {
+        let plate = thick_two_room_plate(0.25);
+        assert_eq!(plate.room_count(), 2);
+        // The left room (centroid x < 4) shares the central wall at x = 4.
+        let left = plate
+            .rooms()
+            .find(|f| {
+                let o = plate.face_outline(*f);
+                (o.iter().map(|p| p[0]).sum::<f64>() / o.len() as f64) < 4.0
+            })
+            .expect("a left room");
+        let outer = plate.net_outline(left, false);
+        let max_x = outer.iter().map(|p| p[0]).fold(f64::MIN, f64::max);
+        let min_x = outer.iter().map(|p| p[0]).fold(f64::MAX, f64::min);
+        assert!((max_x - 4.0).abs() < 1e-6, "shared wall (x=4) is pinned outward, got {max_x}");
+        assert!((min_x + 0.25).abs() < 1e-6, "the exterior wall pushes out to -0.25, got {min_x}");
+    }
+
+    #[test]
+    fn net_outline_thickness_survives_an_edge_split() {
+        let mut plate = SpacePlate::build(&thick_loop(&rect(0.0, 0.0, 4.0, 3.0), 100, 0.25), BuildOptions::default());
+        let room = plate.rooms().next().unwrap();
+        // Split the bottom edge (y = 0) at its midpoint; both halves keep 0.25.
+        let bottom = plate
+            .face_half_edges(room)
+            .find(|h| {
+                let a = plate.vertices[plate.half_edges[h.0 as usize].origin.0 as usize].pos;
+                let b = plate.vertices[plate.dest(*h).0 as usize].pos;
+                a[1].abs() < 1e-9 && b[1].abs() < 1e-9
+            })
+            .expect("the bottom edge");
+        plate.split_edge(bottom, 2.0, 0.0).expect("split");
+        let inner = polygon_area(&plate.net_outline(room, true)).abs();
+        assert!((inner - 8.75).abs() < 1e-6, "the split edge keeps its wall thickness: {inner}");
     }
 
     // Test-only helper.

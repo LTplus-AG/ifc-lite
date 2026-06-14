@@ -4,6 +4,12 @@
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import type { MeshData, TessellationQuality } from './types.js';
+import {
+  DEFAULT_BATCH_SIZING,
+  resolveBatchSizing,
+  nextAdaptiveBatchJobs,
+  type BatchSizingConfig,
+} from './batch-sizing.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -52,6 +58,9 @@ export interface GeometryWorkerStreamStartMessage {
   materialElementIds?: Uint32Array;
   materialColorCounts?: Uint32Array;
   materialColors?: Uint8Array;
+  /** #1097 optional adaptive-batch-sizing override (hardware tuning hook).
+   *  Omitted ⇒ DEFAULT_BATCH_SIZING. Resolved/validated in the worker. */
+  batchSizing?: Partial<BatchSizingConfig>;
 }
 
 export interface GeometryWorkerStreamChunkMessage {
@@ -102,6 +111,13 @@ export interface GeometryWorkerPrePassMessage {
   sharedBuffer: SharedArrayBuffer;
   /** Jobs per chunk (defaults to 50_000). */
   chunkSize?: number;
+  /** #1097 load-time visibility filter: uppercase STEP keywords whose
+   *  geometry jobs are skipped at generation (e.g. ["IFCSPACE","IFCANNOTATION"]).
+   *  Toggling one back on requires a reload. Omitted ⇒ load everything. */
+  disabledTypes?: string[];
+  /** Skip #957 type-library (IfcTypeProduct) geometry at load (default Model
+   *  view doesn't render it). Omitted ⇒ load it. */
+  skipTypeGeometry?: boolean;
 }
 
 /**
@@ -234,6 +250,8 @@ async function ensureInit(): Promise<IfcAPI> {
   applyComputeGeometryHashesToApi();
   tessellationQualityApplied = false;
   applyTessellationQualityToApi();
+  entityIndexApplied = false;
+  applyEntityIndexToApi();
   return api;
 }
 
@@ -306,6 +324,27 @@ function applyTessellationQualityToApi(): void {
 }
 
 /**
+ * Cached pre-built entity index (issue #1097). Same replay contract as the
+ * flags above, but here it guards a perf cliff rather than a feature toggle:
+ * the binary-split recovery in `processBatch` sets `api = null` to force a
+ * WASM re-init after a failing entity. Without replay, the freshly-built
+ * IfcAPI has no entity index, so its next `processGeometryBatch` falls back to
+ * the lazy O(file) re-scan (~5 s on a 1 GB IFC) — a giant silent window that
+ * compounds across a cluster of failures. Re-applying the cached index keeps
+ * recovery cheap and quiet.
+ */
+let cachedEntityIndex: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array } | null = null;
+let entityIndexApplied: boolean = false;
+
+/** Push the cached entity index onto the IfcAPI (once per API). */
+function applyEntityIndexToApi(): void {
+  const ifcApi = api;
+  if (!ifcApi || entityIndexApplied || !cachedEntityIndex) return;
+  ifcApi.setEntityIndex(cachedEntityIndex.ids, cachedEntityIndex.starts, cachedEntityIndex.lengths);
+  entityIndexApplied = true;
+}
+
+/**
  * Build a Uint8Array view over the shared buffer. Modern wasm-bindgen accepts
  * SAB-backed views directly and copies them into linear memory itself, so an
  * extra JS-side `.set()` copy is wasted memory (was N × file_size in the old
@@ -353,32 +392,21 @@ interface ProcessingSession {
 let activeSession: ProcessingSession | null = null;
 
 /**
- * Jobs per inner WASM call inside `processSliceStreaming`.
- *
- * Two forces pull in opposite directions:
- *
- * - Cache locality: every `processGeometryBatch` call allocates a fresh
- *   `EntityDecoder.cache` (FxHashMap) in Rust, so smaller batches re-decode
- *   shared sub-entities (`IfcCartesianPoint`, placements, …) per call.
- *   This once justified an effectively-unbounded value (1M): one WASM call
- *   per worker slice. The dominant per-call fixed cost back then was an
- *   O(file) IFCPROJECT scan for unit scales — that is now resolved once per
- *   worker and seeded into each batch decoder, so the remaining per-call
- *   overhead is small.
- *
- * - Liveness: a `processGeometryBatch` call is synchronous WASM — no batch
- *   events, no progressive rendering, and nothing feeds the stream watchdog
- *   while it runs. With one call per slice, a CSG-heavy model wedges every
- *   worker for its entire slice (minutes on 70 MB+ steel models): the host
- *   sees zero events, the watchdog kills a *healthy* load, and the user
- *   stares at an empty viewport until the first worker finishes everything.
- *
- * 512 keeps typical call duration well under a second (~1.6 ms/job measured
- * on a 72 MB IFC4 model) so meshes stream in continuously and the watchdog
- * only fires on real wedges, while keeping the re-decode overhead a few
- * percent (shared-entity locality is mostly intra-batch at this size).
+ * Adaptive per-call job budget for `processSliceStreaming`. The sizing formula
+ * + rationale live in `./batch-sizing.ts` (pure, unit-tested); these are just
+ * the running state. `batchSizing` is re-resolved per load from the optional
+ * `stream-start` override (a hardware-tuning hook); `adaptiveBatchJobs` is
+ * seeded at MAX and relearned each load.
  */
-const STREAM_BATCH_SIZE = 512;
+let batchSizing: BatchSizingConfig = DEFAULT_BATCH_SIZING;
+let adaptiveBatchJobs = batchSizing.maxJobs;
+
+/** Liveness ping (no slice context) for recovery paths that recurse/re-init. */
+function postWorkerHeartbeat(): void {
+  (self as unknown as Worker).postMessage(
+    { type: 'progress', processedJobs: 0, totalJobs: 0 } as GeometryWorkerProgressMessage,
+  );
+}
 
 function startSession(input: {
   sharedBuffer: SharedArrayBuffer;
@@ -442,7 +470,8 @@ function collectMeshes(
     const geometryHashes = extractGeometryHashesFromCollection(collection);
 
     for (let i = 0; i < collection.length; i++) {
-      const mesh = collection.get(i);
+      // #1097: takeMesh MOVES the mesh out (no clone) — each mesh is read once.
+      const mesh = collection.takeMesh(i);
       if (!mesh) continue;
       try {
         const positions = new Float32Array(mesh.positions);
@@ -461,12 +490,21 @@ function collectMeshes(
             ? [shadingArray[0], shadingArray[1], shadingArray[2], shadingArray[3]]
             : undefined;
         const geometryHash = geometryHashes.get(mesh.expressId);
+        // Per-element local-frame origin (world = origin + position). Older wasm
+        // bundles lack the getter; [0,0,0] means absolute. Metadata only — the
+        // 3-tuple rides structured-clone, NOT pendingTransfers.
+        const originArr = mesh.origin;
+        const origin: [number, number, number] | undefined =
+          originArr && originArr.length === 3 && (originArr[0] || originArr[1] || originArr[2])
+            ? [originArr[0], originArr[1], originArr[2]]
+            : undefined;
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
           positions, normals, indices,
           color: [color[0], color[1], color[2], color[3]],
           ...(shadingColor ? { shadingColor } : {}),
+          ...(origin ? { origin } : {}),
           // Provenance for the Model/Types switch (0=occurrence, 1=orphan type,
           // 2=instanced type). Older wasm bundles lack the getter → default 0.
           geometryClass: mesh.geometryClass ?? 0,
@@ -550,6 +588,12 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
     collectMeshes(session, collection);
   } catch (err) {
     const msg = (err as Error).message;
+    // The recovery below issues more synchronous WASM work — a SAB-fallback
+    // re-decode, two binary-split halves, or a per-entity WASM re-init — none
+    // of which feed the host watchdog on their own. A cluster of failing
+    // entities could therefore blow the silent-window budget invisibly
+    // (#1097, secondary window). Ping liveness before we recurse / re-init.
+    postWorkerHeartbeat();
     if (!session.sabFallbackTaken && session.localBytes.buffer instanceof SharedArrayBuffer) {
       session.sabFallbackTaken = true;
       console.warn(`[Worker] processGeometryBatch rejected SAB view (${msg}), falling back to copy`);
@@ -570,23 +614,36 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
   }
 }
 
-/** Run a slice in STREAM_BATCH_SIZE chunks, flushing after each chunk. */
+/** Run a slice in adaptive-sized chunks, flushing after each chunk. */
 async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint32Array): Promise<void> {
   const totalJobs = Math.floor(jobsFlat.length / 3);
-  for (let jobOffset = 0; jobOffset < totalJobs; jobOffset += STREAM_BATCH_SIZE) {
+  let jobOffset = 0;
+  while (jobOffset < totalJobs) {
+    const batchJobs = Math.max(batchSizing.minJobs, Math.min(batchSizing.maxJobs, adaptiveBatchJobs));
     // Liveness heartbeat BEFORE entering the synchronous WASM call: the host
     // forwards it as a `progress` stream event so the consumer's stall
     // watchdog measures "time inside one bounded WASM call", not "time since
     // the last mesh" — a CSG-heavy region can legitimately produce nothing
-    // for tens of seconds while every worker is busy. Also covers batches
+    // for several seconds while every worker is busy. Also covers batches
     // that produce zero meshes (flushPending no-ops on empty).
     (self as unknown as Worker).postMessage(
       { type: 'progress', processedJobs: jobOffset, totalJobs } as GeometryWorkerProgressMessage,
     );
     const start = jobOffset * 3;
-    const end = Math.min(start + STREAM_BATCH_SIZE * 3, jobsFlat.length);
+    const end = Math.min(start + batchJobs * 3, jobsFlat.length);
+    const jobsThisBatch = (end - start) / 3;
+    const callStart = performance.now();
     await processBatch(session, jobsFlat.subarray(start, end));
     flushPending(session);
+    // Resize the next call from this one's measured throughput so the silent
+    // window stays near TARGET_BATCH_MS regardless of CSG density (#1097).
+    adaptiveBatchJobs = nextAdaptiveBatchJobs(
+      adaptiveBatchJobs,
+      jobsThisBatch,
+      performance.now() - callStart,
+      batchSizing,
+    );
+    jobOffset += jobsThisBatch;
   }
 }
 
@@ -636,6 +693,9 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const sharedBuffer = e.data.sharedBuffer;
       const chunkSize = e.data.chunkSize ?? 50_000;
+      // #1097 load-time visibility filter (skip disabled types at job gen).
+      const disabledTypes = e.data.disabledTypes ?? undefined;
+      const skipTypeGeometry = e.data.skipTypeGeometry === true;
 
       // Forward Rust events 1:1 — the host (`geometry-parallel.ts`) treats
       // them as the streaming-prepass protocol. SAB-decode fallback: try the
@@ -647,14 +707,14 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
       };
       try {
-        ifcApi.buildPrePassStreaming(view, onEvent, chunkSize);
+        ifcApi.buildPrePassStreaming(view, onEvent, chunkSize, disabledTypes, skipTypeGeometry);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (!triedFallback) {
           triedFallback = true;
           console.warn(`[Worker] Streaming prepass with SAB view failed (${msg}), retrying with copy`);
           view = materialiseSharedBytes(sharedBuffer);
-          ifcApi.buildPrePassStreaming(view, onEvent, chunkSize);
+          ifcApi.buildPrePassStreaming(view, onEvent, chunkSize, disabledTypes, skipTypeGeometry);
         } else {
           throw err;
         }
@@ -673,6 +733,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         applyComputeGeometryHashesToApi();
         tessellationQualityApplied = false;
         applyTessellationQualityToApi();
+        entityIndexApplied = false;
+        applyEntityIndexToApi();
       } else {
         await ensureInit();
       }
@@ -682,6 +744,11 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
 
     if (e.data.type === 'stream-start') {
       await ensureInit();
+      // Fresh load: re-resolve the (optionally overridden) sizing config and
+      // relearn batch sizing from scratch (a reused worker may carry a small
+      // size from a previous dense model).
+      batchSizing = resolveBatchSizing(e.data.batchSizing);
+      adaptiveBatchJobs = batchSizing.maxJobs;
       activeSession = startSession({
         sharedBuffer: e.data.sharedBuffer,
         unitScale: e.data.unitScale,
@@ -733,8 +800,13 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // (~5 s on a 1 GB IFC) — the dominant TTFG bottleneck before this
       // change. Now the only cost is FxHashMap construction from the
       // input slices (~1 s for 14 M entries).
-      const ifcApi = await ensureInit();
-      ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
+      await ensureInit();
+      // Cache then apply via the replay helper so a later recovery re-init
+      // (api = null in processBatch) re-installs the index instead of falling
+      // back to the lazy O(file) re-scan (#1097).
+      cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
+      entityIndexApplied = false;
+      applyEntityIndexToApi();
       return;
     }
 
@@ -772,6 +844,13 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       }
       emitSessionEnd(activeSession);
       activeSession = null;
+      // Release the per-load entity index and drop the applied flag. Workers
+      // are normally terminated after a load, but a reused worker must not
+      // retain the (large) index buffers across loads, nor replay a stale
+      // index on a recovery re-init before the next load's set-entity-index
+      // arrives. The next load re-populates via its own set-entity-index.
+      cachedEntityIndex = null;
+      entityIndexApplied = false;
       return;
     }
   } catch (err) {

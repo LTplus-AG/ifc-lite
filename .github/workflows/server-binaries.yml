@@ -87,6 +87,10 @@ jobs:
           sudo apt-get install -y musl-tools musl-dev
 
       - name: Build Server Binary
+        # Force bash so the if/else runs under Git Bash on Windows runners too
+        # (default shell there is PowerShell, which choked on the POSIX test →
+        # win32-x64 release build failed with a ParserError).
+        shell: bash
         run: |
           if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
             cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
@@ -177,6 +181,10 @@ jobs:
           sudo apt-get install -y musl-tools musl-dev
 
       - name: Build Server Binary
+        # Force bash so the if/else runs under Git Bash on Windows runners too
+        # (default shell there is PowerShell, which choked on the POSIX test →
+        # win32-x64 release build failed with a ParserError).
+        shell: bash
         run: |
           if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
             cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}

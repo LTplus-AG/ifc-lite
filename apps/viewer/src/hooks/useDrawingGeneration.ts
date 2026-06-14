@@ -700,9 +700,24 @@ export function useDrawingGeneration({
       // build → the generator falls back to the TS mesh silhouette.
       const outlineProvider =
         projectionOn && typeof meshOutline2dFn === 'function'
-          ? (mesh: { positions: Float32Array; indices: Uint32Array }, axis: 'x' | 'y' | 'z', flipped: boolean): MeshOutline2D | null => {
+          ? (mesh: { positions: Float32Array; indices: Uint32Array; origin?: readonly number[] }, axis: 'x' | 'y' | 'z', flipped: boolean): MeshOutline2D | null => {
               try {
-                const handle = meshOutline2dFn(mesh.positions, mesh.indices, AXIS_CODE[axis], flipped);
+                // Positions are in the element's local frame (world = origin +
+                // position). Feed WORLD positions to the outline extractor so its
+                // contours + axisMin/axisMax come back in the same render-frame
+                // world space as the (origin-folded) section cut. No-op when the
+                // origin is absent/[0,0,0].
+                const o = mesh.origin;
+                let outlinePositions = mesh.positions;
+                if (o && (o[0] !== 0 || o[1] !== 0 || o[2] !== 0)) {
+                  outlinePositions = new Float32Array(mesh.positions.length);
+                  for (let i = 0; i < mesh.positions.length; i += 3) {
+                    outlinePositions[i] = mesh.positions[i] + o[0];
+                    outlinePositions[i + 1] = mesh.positions[i + 1] + o[1];
+                    outlinePositions[i + 2] = mesh.positions[i + 2] + o[2];
+                  }
+                }
+                const handle = meshOutline2dFn(outlinePositions, mesh.indices, AXIS_CODE[axis], flipped);
                 if (!handle) return null;
                 try {
                   const contours: Float32Array[] = [];

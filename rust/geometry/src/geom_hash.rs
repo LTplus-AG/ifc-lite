@@ -96,13 +96,15 @@ impl GeometryHasher {
     }
 
     /// Hash the quantized world position of one vertex into a per-corner value.
+    /// `origin` is the per-mesh local-frame origin (`world = origin + position`);
+    /// pass `[0.0; 3]` for absolute-coordinate positions.
     #[inline]
-    fn corner(&self, positions: &[f32], vi: usize) -> [i64; 3] {
+    fn corner(&self, positions: &[f32], vi: usize, origin: &[f64; 3]) -> [i64; 3] {
         let base = vi * 3;
         [
-            quantize(positions[base] as f64 + self.rtc[0], self.inv_tol),
-            quantize(positions[base + 1] as f64 + self.rtc[1], self.inv_tol),
-            quantize(positions[base + 2] as f64 + self.rtc[2], self.inv_tol),
+            quantize(positions[base] as f64 + origin[0] + self.rtc[0], self.inv_tol),
+            quantize(positions[base + 1] as f64 + origin[1] + self.rtc[1], self.inv_tol),
+            quantize(positions[base + 2] as f64 + origin[2] + self.rtc[2], self.inv_tol),
         ]
     }
 
@@ -110,6 +112,15 @@ impl GeometryHasher {
     /// triangle index buffer). Indices that run past the position buffer or
     /// trailing non-triangle remainder are skipped defensively.
     pub fn add_mesh(&mut self, positions: &[f32], indices: &[u32]) {
+        self.add_mesh_with_origin(positions, indices, [0.0; 3]);
+    }
+
+    /// Like [`add_mesh`] but for positions stored in a per-element LOCAL frame:
+    /// `origin` (the per-mesh AABB-centre origin) is folded back so the hash is
+    /// over absolute world coordinates. This keeps the fingerprint identical
+    /// whether the producer emitted absolute positions (native) or local +
+    /// origin (the wasm local-frame path), and still detects element MOVES.
+    pub fn add_mesh_with_origin(&mut self, positions: &[f32], indices: &[u32], origin: [f64; 3]) {
         let vertex_limit = positions.len() / 3;
         let triangle_end = indices.len() - (indices.len() % 3);
         let mut i = 0;
@@ -126,9 +137,9 @@ impl GeometryHasher {
             // starting vertex don't affect the hash — only the (multiset of)
             // positions and their adjacency as a triangle.
             let mut tri = [
-                self.corner(positions, i0),
-                self.corner(positions, i1),
-                self.corner(positions, i2),
+                self.corner(positions, i0, &origin),
+                self.corner(positions, i1, &origin),
+                self.corner(positions, i2, &origin),
             ];
             tri.sort_unstable();
 

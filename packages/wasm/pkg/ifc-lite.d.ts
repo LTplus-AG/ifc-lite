@@ -117,7 +117,7 @@ export class IfcAPI {
    *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
    *   `{ type: "complete", totalJobs }`
    */
-  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number): any;
+  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
   /**
    * Parse the file and return structured per-axis data (tag + endpoints) in
    * the renderer's Y-up world space (RTC-subtracted, metres). Use this when
@@ -306,9 +306,19 @@ export class MeshCollection {
    */
   hasRtcOffset(): boolean;
   /**
-   * Get mesh at index
+   * Get mesh at index (clones — non-destructive). Prefer `takeMesh` on the
+   * hot streaming path; this stays for callers that read meshes more than once.
    */
   get(index: number): MeshDataJs | undefined;
+  /**
+   * #1097 perf: MOVE the mesh at `index` out of the collection (the Vec
+   * buffers are `std::mem::take`-n, leaving an empty stub). The streaming
+   * worker reads each mesh exactly once, so moving avoids the full vertex-
+   * data clone `get` pays — one fewer copy of positions/normals/indices/uvs/
+   * texture per mesh (the JS getters still do the single Rust→JS copy). Calling
+   * it twice for the same index yields the second call an empty mesh.
+   */
+  takeMesh(index: number): MeshDataJs | undefined;
   /**
    * Get RTC offset X (for converting local coords back to world coords)
    * Add this to local X coordinates to get world X coordinates
@@ -413,6 +423,12 @@ export class MeshDataJs {
    * Get color as [r, g, b, a] array
    */
   readonly color: Float32Array;
+  /**
+   * Per-element local-frame origin (Float64Array[3], WebGL Y-up, metres):
+   * world position of vertex i = `origin + positions[3i..3i+3]`. Returns
+   * [0,0,0] when positions are absolute (legacy / local frame off).
+   */
+  readonly origin: Float64Array;
   /**
    * Get indices as Uint32Array (copy to JS)
    */
@@ -880,7 +896,7 @@ export interface InitOutput {
   readonly gridaxisjs_start: (a: number) => number;
   readonly gridaxisjs_tag: (a: number, b: number) => void;
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
-  readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+  readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
   readonly ifcapi_getMemory: (a: number) => number;
@@ -910,6 +926,7 @@ export interface InitOutput {
   readonly meshcollection_rtcOffsetX: (a: number) => number;
   readonly meshcollection_rtcOffsetY: (a: number) => number;
   readonly meshcollection_rtcOffsetZ: (a: number) => number;
+  readonly meshcollection_takeMesh: (a: number, b: number) => number;
   readonly meshcollection_totalTriangles: (a: number) => number;
   readonly meshcollection_totalVertices: (a: number) => number;
   readonly meshdatajs_color: (a: number, b: number) => void;
@@ -919,6 +936,7 @@ export interface InitOutput {
   readonly meshdatajs_ifcType: (a: number, b: number) => void;
   readonly meshdatajs_indices: (a: number) => number;
   readonly meshdatajs_normals: (a: number) => number;
+  readonly meshdatajs_origin: (a: number) => number;
   readonly meshdatajs_positions: (a: number) => number;
   readonly meshdatajs_shadingColor: (a: number, b: number) => void;
   readonly meshdatajs_textureHeight: (a: number) => number;
@@ -935,7 +953,6 @@ export interface InitOutput {
   readonly meshoutlinejs_contourCount: (a: number) => number;
   readonly profilecollection_get: (a: number, b: number) => number;
   readonly profilecollection_length: (a: number) => number;
-  readonly profileentryjs_expressId: (a: number) => number;
   readonly profileentryjs_extrusionDepth: (a: number) => number;
   readonly profileentryjs_extrusionDir: (a: number) => number;
   readonly profileentryjs_holeCounts: (a: number) => number;
@@ -1016,6 +1033,7 @@ export interface InitOutput {
   readonly init: () => void;
   readonly symbolicpolyline_pointCount: (a: number) => number;
   readonly get_memory: () => number;
+  readonly profileentryjs_expressId: (a: number) => number;
   readonly symbolicfillarea_expressId: (a: number) => number;
   readonly symbolicpolyline_worldY: (a: number) => number;
   readonly symbolictext_colorB: (a: number) => number;

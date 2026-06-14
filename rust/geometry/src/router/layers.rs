@@ -64,6 +64,15 @@ impl GeometryRouter {
         if collection.sub_meshes.len() < 2 {
             return None;
         }
+        // Mesh hygiene: slicing the base mesh by layer-interface planes can
+        // introduce zero-area/collinear slivers at the cut, and this layered
+        // path early-returns to its callers (process_element_with_submeshes /
+        // _and_voids) BEFORE their own cleanup loop runs — so clean here, the
+        // single gateway both layered call sites share. See clean_degenerate.
+        let mut collection = collection;
+        for sub in &mut collection.sub_meshes {
+            sub.mesh.clean_degenerate();
+        }
         Some(collection)
     }
 

@@ -13,20 +13,32 @@ import { StepExporter } from './step-exporter.js';
 /** Decode Uint8Array content to string for test assertions */
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
-function buildMockDataStore(entries: Array<[number, string, string]>): IfcDataStore {
+type MockEntityRef = { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number };
+
+function buildMockDataStore(
+  entries: Array<[number, string, string]>,
+  deferredIds?: Set<number>,
+): IfcDataStore {
   const encoder = new TextEncoder();
   const parts: Uint8Array[] = [];
-  const byId = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>();
+  const byId = new Map<number, MockEntityRef>();
+  const deferred = new Map<number, MockEntityRef>();
   const byType = new Map<string, number[]>();
   let offset = 0;
 
   for (const [id, type, text] of entries) {
     const encoded = encoder.encode(text);
-    byId.set(id, { expressId: id, type: type.toUpperCase(), byteOffset: offset, byteLength: encoded.byteLength, lineNumber: 0 });
-    if (!byType.has(type.toUpperCase())) {
-      byType.set(type.toUpperCase(), []);
+    const upper = type.toUpperCase();
+    const ref: MockEntityRef = { expressId: id, type: upper, byteOffset: offset, byteLength: encoded.byteLength, lineNumber: 0 };
+    // Deferred property atoms live in the source buffer but are split out of
+    // byId/byType into deferredEntityIndex (mirrors deferPropertyAtomIndex).
+    if (deferredIds?.has(id)) {
+      deferred.set(id, ref);
+    } else {
+      byId.set(id, ref);
+      if (!byType.has(upper)) byType.set(upper, []);
+      byType.get(upper)!.push(id);
     }
-    byType.get(type.toUpperCase())!.push(id);
     parts.push(encoded);
     offset += encoded.byteLength;
   }
@@ -45,7 +57,20 @@ function buildMockDataStore(entries: Array<[number, string, string]>): IfcDataSt
     parseTime: 0,
     source,
     entityIndex: { byId, byType },
+    ...(deferred.size > 0 ? { deferredEntityIndex: deferred } : {}),
   } as unknown as IfcDataStore;
+}
+
+/** Count `#N` references in the output that have no `#N=` definition. */
+function findDanglingRefs(content: string): number[] {
+  const defined = new Set<number>();
+  for (const m of content.matchAll(/(^|\n)#(\d+)=/g)) defined.add(+m[2]);
+  const dangling = new Set<number>();
+  for (const m of content.matchAll(/#(\d+)/g)) {
+    const id = +m[1];
+    if (!defined.has(id)) dangling.add(id);
+  }
+  return [...dangling].sort((a, b) => a - b);
 }
 
 const SIMPLE_TYPE_INHERITANCE_IFC = `ISO-10303-21;
@@ -504,5 +529,29 @@ describe('StepExporter', () => {
     expect(content).toContain('IFCWALL');
     expect(content).toContain("'SAB-Safe Wall'");
     expect(result.stats.entityCount).toBeGreaterThan(0);
+  });
+
+  // Regression: github.com/LTplus-AG/ifc-lite/issues/1110
+  // The parser can defer property atoms (IfcPropertySingleValue, IfcQuantity*)
+  // out of byId on huge files. The exporter must still emit them, or the kept
+  // IfcPropertySet/IfcElementQuantity containers reference dropped entities.
+  it('emits deferred property atoms so the output has no dangling refs', () => {
+    const store = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('g2',$,'W',$,$,$,$,$);"],
+      [3, 'IFCPROPERTYSET', "#3=IFCPROPERTYSET('g3',$,'Pset_Wall',$,(#5));"],
+      [4, 'IFCELEMENTQUANTITY', "#4=IFCELEMENTQUANTITY('g4',$,'Qto',$,$,(#6));"],
+      [5, 'IFCPROPERTYSINGLEVALUE', "#5=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);"],
+      [6, 'IFCQUANTITYLENGTH', "#6=IFCQUANTITYLENGTH('Length',$,$,2500.,$);"],
+      [7, 'IFCRELDEFINESBYPROPERTIES', "#7=IFCRELDEFINESBYPROPERTIES('g7',$,$,$,(#2),#3);"],
+    ], new Set([5, 6]));
+
+    const exporter = new StepExporter(store);
+    const result = exporter.export({ schema: 'IFC4' });
+    const content = decode(result.content);
+
+    expect(content).toContain("#5=IFCPROPERTYSINGLEVALUE('IsExternal'");
+    expect(content).toContain("#6=IFCQUANTITYLENGTH('Length'");
+    expect(findDanglingRefs(content)).toEqual([]);
   });
 });

@@ -414,8 +414,15 @@ export class GPUSectionCutter {
     let entityCounter = 0;
 
     for (const mesh of meshes) {
-      const { positions, indices, expressId, ifcType, modelIndex } = mesh;
+      const { positions, indices, expressId, ifcType, modelIndex, origin } = mesh;
       const triangleCount = indices.length / 3;
+
+      // Positions are stored in the element's local frame; the GPU plane test
+      // runs in world space, so lift each vertex by the per-mesh origin
+      // (world = origin + local). No-op when origin is absent/[0,0,0].
+      const ox = origin ? origin[0] : 0;
+      const oy = origin ? origin[1] : 0;
+      const oz = origin ? origin[2] : 0;
 
       // Map entity counter to mesh info
       entityMap.set(entityCounter, {
@@ -432,19 +439,19 @@ export class GPUSectionCutter {
         const base = triIdx * 12;
 
         // v0
-        buffer[base + 0] = positions[i0 * 3];
-        buffer[base + 1] = positions[i0 * 3 + 1];
-        buffer[base + 2] = positions[i0 * 3 + 2];
+        buffer[base + 0] = positions[i0 * 3] + ox;
+        buffer[base + 1] = positions[i0 * 3 + 1] + oy;
+        buffer[base + 2] = positions[i0 * 3 + 2] + oz;
         // float 3 = vec3 alignment padding
         // v1
-        buffer[base + 4] = positions[i1 * 3];
-        buffer[base + 5] = positions[i1 * 3 + 1];
-        buffer[base + 6] = positions[i1 * 3 + 2];
+        buffer[base + 4] = positions[i1 * 3] + ox;
+        buffer[base + 5] = positions[i1 * 3 + 1] + oy;
+        buffer[base + 6] = positions[i1 * 3 + 2] + oz;
         // float 7 = vec3 alignment padding
         // v2
-        buffer[base + 8] = positions[i2 * 3];
-        buffer[base + 9] = positions[i2 * 3 + 1];
-        buffer[base + 10] = positions[i2 * 3 + 2];
+        buffer[base + 8] = positions[i2 * 3] + ox;
+        buffer[base + 9] = positions[i2 * 3 + 1] + oy;
+        buffer[base + 10] = positions[i2 * 3 + 2] + oz;
         // entityId (as u32, float slot 11)
         const entityView = new DataView(buffer.buffer, (base + 11) * 4, 4);
         entityView.setUint32(0, entityCounter, true);

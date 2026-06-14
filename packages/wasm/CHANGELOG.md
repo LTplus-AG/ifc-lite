@@ -1,5 +1,134 @@
 # @ifc-lite/wasm
 
+## 2.8.1
+
+### Patch Changes
+
+- [#1108](https://github.com/LTplus-AG/ifc-lite/pull/1108) [`4af01aa`](https://github.com/LTplus-AG/ifc-lite/commit/4af01aabe1c669864c3c3d1757789d7de81beaec) Thanks [@louistrue](https://github.com/louistrue)! - Fix curved / opening-dense wall hairline cracks (a watertightness guard on consolidation)
+
+  `ClippingProcessor::consolidate_coplanar` re-triangulates each coplanar plane
+  bucket of the exact-kernel cut output INDEPENDENTLY. On a curved/faceted or
+  opening-dense host, a FLAT bucket whose boundary runs along the faceted surface
+  (an opening reveal, a cap, a curved-wall rim) gets its boundary chorded by the
+  i_overlay union + collinear simplify — dropping the facet-boundary vertices the
+  abutting buckets keep. The result was open boundary edges + T-junctions at the
+  cut seam: thin white horizontal hairline cracks that shimmer under double-sided
+  rendering. The raw kernel output is watertight; only the post-kernel
+  consolidation introduced the gaps (a 24-facet curved host cut by one opening went
+  from 0 open edges raw to 9 after consolidation).
+
+  The fix is a watertightness guard at the end of `consolidate_coplanar`: if
+  consolidation INTRODUCED open boundary edges and the raw kernel mesh is the
+  cleaner one overall (by open edges + spike triangles), return the raw mesh. The
+  overwhelming majority of hosts consolidate watertight (count 0) and return
+  immediately — byte-identical, so the determinism snapshots and the
+  `indirect_sign_manifest` constant are unchanged (the exact kernel is untouched).
+  Only genuinely-torn hosts fall back to raw.
+
+  Result on ISSUE_068 (opening-dense school): curved-wall open boundary edges
+  4973 → 2323 (-53%), with the worst walls (the curved reception counter) now
+  watertight. Also fixes a latent cavity crack on the [#780](https://github.com/LTplus-AG/ifc-lite/issues/780) bath and ~110 latent
+  open edges on the FZK-Haus gable walls (their `csg_quality` bar is updated from
+  spike-free to watertight, since the visible defect was the cracks). A future
+  seam-preserving consolidation should deliver both watertight AND sliver-free for
+  the residual "both-outputs-imperfect" hosts.
+
+- [#1099](https://github.com/LTplus-AG/ifc-lite/pull/1099) [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8) Thanks [@louistrue](https://github.com/louistrue)! - Fix WASM geometry stall on opening-dense walls (follow-up to [#1097](https://github.com/LTplus-AG/ifc-lite/issues/1097)).
+
+  Walls carrying many openings (e.g. a curtain/window wall with 8-14 voids) stalled
+  the streaming geometry load in WASM — one such element could block a worker for
+  40-150 s, tripping the stream watchdog. Native processing of the same element was
+  ~0.2 s; the gap is WASM's emulation of the exact kernel's wide-integer (i1024)
+  predicates, amplified by two structural costs that this change removes:
+
+  - **Opening-dense host refinement.** A window wall is usually two huge face
+    triangles per side, so every void's intersection segments pile onto those few
+    triangles. The exact arrangement then re-triangulates a single triangle carrying
+    dozens of constraint segments (O(k²)), and — worse — the batched N-ary subtract
+    leaves unrecovered constraints and degrades to the O(N²) sequential path
+    (re-arranging the growing host once per opening). When a host has ≥ 8 openings we
+    now pre-subdivide it (1-2 levels of uniform midpoint subdivision) so each
+    triangle carries only a few segments and the batched cut recovers. `consolidate_
+coplanar` re-triangulates each coplanar group afterwards, so the temporary
+    interior vertices don't survive except where a hole boundary pins them.
+  - **Conservative broadphase prefilters in the exact re-triangulation.** The three
+    O(N²) exact-predicate scans (`insert_point` point-location, `enforce_constraint`'s
+    collinear-vertex scan, `recover_subsegment`'s channel scan) now skip the exact
+    test for vertices/triangles outside a generously-widened f64 AABB, and all-explicit
+    `orient2d` triples use the fast adaptive Shewchuk predicate instead of the
+    WASM-emulated i1024 lambda path. The margin dwarfs any f64/implicit-point error,
+    so the exact predicate still decides every retained case — output is byte-identical
+    on every platform.
+
+  Net: the worst dense wall drops from ~150 s to ~30 s in WASM (10× on most), the
+  model loads without stalling, and native cold-load is ~20 % faster overall. The
+  refinement is gated to ≥ 8-opening hosts (absent from the snapshot fixtures), so
+  the determinism corpus and committed snapshots are unchanged; the prefilters and
+  Shewchuk path are byte-identical everywhere. Geometry suite 439/439 green.
+
+- [#1114](https://github.com/LTplus-AG/ifc-lite/pull/1114) [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb) Thanks [@louistrue](https://github.com/louistrue)! - Drop sub-grid sliver triangles so faceted geometry stops rendering spikes
+
+  After the pure-Rust CSG kernel replaced Manifold ([#1024](https://github.com/LTplus-AG/ifc-lite/issues/1024)), the pipeline no longer
+  cleaned the degenerate output Manifold used to remove on import. Faceted breps,
+  extrusion-profile walls and walls with openings could therefore render visible
+  needle "spikes" and jagged silhouettes coming from zero-area / collinear sliver
+  triangles (other viewers don't show them because they clean degenerates on import).
+
+  `Mesh::clean_degenerate` now drops triangles whose perpendicular height is below the
+  kernel's reconcile grid (1/65536 m ≈ 15.3 µm) — sub-resolution coincident-pair and
+  collinear slivers that carry no area. It runs at every mesh-output chokepoint
+  (per element, per sub-mesh, and on the void-cut output), so both wasm (viewer) and
+  native (server) get identical output. Vertices and normals are left untouched, so
+  flat shading / sharp creases are preserved and the result is bit-deterministic. On a
+  large faceted-brep building this removes 100% of the genuine degenerate slivers for a
+  ~1% triangle reduction with no performance cost.
+
+- [#1099](https://github.com/LTplus-AG/ifc-lite/pull/1099) [`02d5ba7`](https://github.com/LTplus-AG/ifc-lite/commit/02d5ba76151bcab80595c8ea80e4046260be73e8) Thanks [@louistrue](https://github.com/louistrue)! - Geometry load-cost reductions for large models (follow-up to [#1097](https://github.com/LTplus-AG/ifc-lite/issues/1097) profiling).
+
+  Profiling the streaming geometry pipeline on large models (Holter 169 MB / 109 k meshes, bouwkundig 327 MB / 55 k meshes) showed the load is bound by per-element decode + mesh production, NOT by CSG (measured ~2 k / ~246 boolean ops — negligible), distribution, or tessellation. The following reduce redundant per-batch work without changing geometry output (wasm-contract 19/19, mesh counts identical):
+
+  - **Cache the geometry-style maps per worker.** The style→RGBA map and the derived `GeometryStyleInfo` index were rebuilt from the session-constant wire arrays on every `processGeometryBatch` call (~18 M HashMap inserts each on a 140 k-styled model). They're now built once per worker, keyed by a cheap signature — a measured ~5 % wall-clock win.
+  - **Fold the element-colour resolution into the main producer loop** instead of a separate pre-pass that re-decoded every job entity, and decode each entity once via the cached `Arc<DecodedEntity>` (no deep clone). Eliminates a full duplicate decode pass per batch.
+  - **`MeshCollection.takeMesh`**: move the mesh out of the collection on the streaming read path instead of cloning all vertex buffers, then copying again to JS — one fewer full copy of positions/normals/indices per mesh.
+  - **Load-time visibility filter** (`ProcessParallelOptions.visibilityFilter` / `globalThis.__IFC_LITE_VISIBILITY_FILTER`): skip geometry jobs for disabled types (spaces, annotations, type-library) at prepass generation so they're never decoded/meshed/uploaded. Toggling a type back on requires a reload.
+
+- [#1106](https://github.com/LTplus-AG/ifc-lite/pull/1106) [`977b41d`](https://github.com/LTplus-AG/ifc-lite/commit/977b41db04a83d912f85cc9167cd564ffcb0aafb) Thanks [@louistrue](https://github.com/louistrue)! - Faster exact CSG kernel (stage 2a): f64 interval tier for `cmp_along` (tri-tri ordering).
+
+  Closes the last plan-flagged float-filter hole on top of the interval-lambda filter: the 1-D ordering of tri-tri crossing points (`cmp_along`) went straight to the I512 tier then BigRational with no interval pre-filter. `interval::cmp_along` (a pure-f64 directed-rounding mirror of `fixed::cmp_along`) now runs first; `tritri.rs` falls to I512/BigRational only on a zero-straddle. Because the interval is outward-rounded (no FMA), a definite sign equals the exact sign and is bit-identical native==wasm==x86_64==aarch64 — manifest constant and snapshots unchanged. Cumulative with the interval-lambda filter: native geometry ~4.2s → ~2.8s.
+
+- [#1105](https://github.com/LTplus-AG/ifc-lite/pull/1105) [`e42b703`](https://github.com/LTplus-AG/ifc-lite/commit/e42b70324a9d5caab23257d52e96df0198d8caa9) Thanks [@louistrue](https://github.com/louistrue)! - Faster exact CSG kernel: cached f64 interval-lambda predicate filter (one canonical kernel).
+
+  Stage 1 of migrating the exact predicate cascade off WASM-emulated wide-integer
+  (I512) arithmetic toward the modern "spend the budget in the float filter" design
+  (Cherchi/Attene). The exact kernel's hot re-triangulation predicates resolved via
+  the cached I512 lambda determinant, which WASM emulates ~hundreds× slower than
+  native's hardware path — on opening-dense models that bignum dominated worker CPU.
+
+  The interner now caches a directed-rounding **f64 interval lambda** per point
+  (alongside the existing I512 lambda). `orient2d_v`, `cmp_lex_v`, and the interner's
+  dedup compare run a pure-f64 interval determinant from it FIRST, falling to the
+  exact I512/BigRational tiers only on a genuine zero-straddle. Because the interval
+  is outward-rounded (no FMA), a definite sign equals the exact sign and is
+  bit-identical across native/wasm/x86_64/aarch64 — the `indirect_sign_manifest`
+  constant and the geometry-correctness snapshots are unchanged (determinism
+  preserved, no drift, no parallel path).
+
+  Result on ISSUE_068 (opening-dense facade): native geometry 4.2s → 2.9s (−30%,
+  benefits the server too), WASM load 46s → 41s. Byte-identical mesh output; full
+  geometry suite green (53/53 binaries, manifest + snapshots unchanged). Follow-ups
+  extend the same filter to the remaining bignum sites and add a float-expansion
+  exact tier for the degenerate tail.
+
+- [#1114](https://github.com/LTplus-AG/ifc-lite/pull/1114) [`16d87f2`](https://github.com/LTplus-AG/ifc-lite/commit/16d87f201dfd7d4cba46bb43e0f4a44ccce717bb) Thanks [@louistrue](https://github.com/louistrue)! - Per-element local frame: eliminate f32 "fan" corruption on building-scale and georeferenced models.
+
+  When a mesh is stored at f32 precision while its vertices sit at building-scale world coordinates (a model whose extent reaches ~200 m from the coordinate origin), the f32 mantissa only resolves ~15 µm there, so vertices closer than one ULP collapse to the same value and the triangles joining them fan out as long needles across the model. Lowering the global RTC threshold is the wrong lever (it is reserved for >10 km federation re-basing), and a single global recentre still leaves the model genuinely spanning ~200 m.
+
+  Each element's vertices are now stored RELATIVE to a per-element `MeshData.origin` (the f64 AABB centre, snapped to the kernel reconcile grid `1/65536 m`), so the f32 coordinates stay element-small and collapse-free at any building or georef scale; the world position is `origin + position`. The renderer reconstructs world space with a per-batch model-matrix translate around a single shared scene origin (so abutting elements in different colour batches stay bit-coincident with no seam z-fighting), and the selection-highlight / GPU-picker buffers replicate the batch's exact f32 path so highlights are bit-coincident with no depth bias. The local frame is ON for the wasm (viewer) path and opt-in for native/server, so determinism snapshots and server output stay absolute-coordinate byte-identical.
+
+  Every world-space consumer of element geometry now folds `origin` (`world = origin + position`): camera/scene bounds, the CPU raycast + BVH narrow phase, snap detection, the section cutters (CPU + GPU), the BIM↔scan deviation BVH, the spatial index, clash (world-frame triangles fed to both the TS and Rust kernels), the glTF / IFC5 / Parquet exporters, the Cesium GLB overlay, the construction-projection outline + storey-band derivation, and the federation alignment / mesh-duplicate paths. `MeshData.origin` is serialized in the geometry cache (format version 6, which auto-heals stale entries). Position differences (normals, edge vectors, areas) are origin-invariant and unchanged.
+
+  This composes with the sub-grid sliver hygiene pass: the local frame removes the f32-storage fans, and `Mesh::clean_degenerate` removes the sub-grid slivers the finer-grained CSG host emits.
+
 ## 2.8.0
 
 ### Minor Changes

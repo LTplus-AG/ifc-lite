@@ -828,10 +828,15 @@ export class Renderer {
 
         for (const mesh of meshes) {
             const positions = mesh.positions;
+            // Positions are in the element's local frame (world = origin + position).
+            // Model bounds are world-space, so fold the per-mesh origin. No-op when
+            // origin is absent/[0,0,0]. Mirrors coordinate-handler.ts.
+            const o = mesh.origin;
+            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
             for (let i = 0; i < positions.length; i += 3) {
-                const x = positions[i];
-                const y = positions[i + 1];
-                const z = positions[i + 2];
+                const x = positions[i] + ox;
+                const y = positions[i + 1] + oy;
+                const z = positions[i + 2] + oz;
                 if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
                     this.modelBounds.min.x = Math.min(this.modelBounds.min.x, x);
                     this.modelBounds.min.y = Math.min(this.modelBounds.min.y, y);
@@ -857,12 +862,27 @@ export class Renderer {
         const interleaved = new Float32Array(interleavedRaw);
         const interleavedU32 = new Uint32Array(interleavedRaw);
 
+        // Build this individual mesh (selection highlight + GPU object-id picker)
+        // in ABSOLUTE world space so it renders with an identity model matrix.
+        // CRITICAL: replicate the BATCH's exact two-step f32 path so the highlight
+        // is bit-coincident with its source surface (no z-fight, no depth bias):
+        //   batch stores  s = f32(local + (origin - sharedOrigin))   [merge]
+        //   batch shader  world = f32(f32(sharedOrigin) + s)         [draw]
+        // We compute the same `world` here. When there's no shared origin yet
+        // (legacy / pre-batch), fall back to a plain f64 fold (local + origin).
+        const o = meshData.origin;
+        const so = this.scene.getSharedFrameOrigin();
+        const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
+        const fr = Math.fround;
+        const sox = so ? fr(so[0]) : null, soy = so ? fr(so[1]) : 0, soz = so ? fr(so[2]) : 0;
+        const dx = so ? (ox - so[0]) : ox, dy = so ? (oy - so[1]) : oy, dz = so ? (oz - so[2]) : oz;
+        const p = meshData.positions;
         for (let i = 0; i < vertexCount; i++) {
             const base = i * 7;
             const posBase = i * 3;
-            interleaved[base] = meshData.positions[posBase];
-            interleaved[base + 1] = meshData.positions[posBase + 1];
-            interleaved[base + 2] = meshData.positions[posBase + 2];
+            interleaved[base] = so ? fr((sox as number) + fr(p[posBase] + dx)) : (p[posBase] + dx);
+            interleaved[base + 1] = so ? fr(soy + fr(p[posBase + 1] + dy)) : (p[posBase + 1] + dy);
+            interleaved[base + 2] = so ? fr(soz + fr(p[posBase + 2] + dz)) : (p[posBase + 2] + dz);
             const hasNormals = meshData.normals.length > 0;
             interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
             interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;
@@ -1750,6 +1770,17 @@ export class Renderer {
                     tpl[34] = batch.color[2];
                     tpl[35] = alphaForBatch(batch, batch.color[3]);
 
+                    // Per-batch local frame: the batch's vertices are stored
+                    // RELATIVE to batch.origin (f32-small), so set the model
+                    // matrix translation column to origin (world = origin + pos).
+                    // The 12 rotation/scale floats stay identity from the template;
+                    // the translation lives at column-major indices 12/13/14 →
+                    // tpl[28/29/30]. [0,0,0] for legacy absolute batches.
+                    const o = batch.origin;
+                    tpl[28] = o ? o[0] : 0;
+                    tpl[29] = o ? o[1] : 0;
+                    tpl[30] = o ? o[2] : 0;
+
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
 
                     // Single draw call for entire batch!
@@ -1772,6 +1803,10 @@ export class Renderer {
                 const texturedMeshes = this.scene.getTexturedMeshes();
                 if (texturedMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTexturedPipeline());
+                    // Textured meshes carry absolute (origin-0) positions, so the
+                    // model translation must be identity here — reset the column
+                    // that renderBatch left set to the last opaque batch's origin.
+                    tpl[28] = 0; tpl[29] = 0; tpl[30] = 0;
                     for (const tm of texturedMeshes) {
                         // Honour hide/isolate — textured meshes bypass the batch
                         // visibility filtering above, so apply it per-mesh here or

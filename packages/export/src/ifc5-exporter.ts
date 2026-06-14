@@ -607,13 +607,19 @@ export class Ifc5Exporter {
     let indexOffset = 0;
 
     for (const mesh of meshes) {
+      // Positions are in the element's local frame (world = origin + position);
+      // fold the per-mesh origin to world BEFORE the Y-up→Z-up swap. The IFCX
+      // consumer treats points as absolute, so bake into the points (no per-node
+      // xformop). No-op when origin is absent/[0,0,0].
+      const o = mesh.origin;
+      const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
       // Convert positions from Y-up to Z-up
       // Y-up: X=right, Y=up, Z=back
       // Z-up: X=right, Y=forward, Z=up
       for (let i = 0; i < mesh.positions.length; i += 3) {
-        const x = mesh.positions[i];
-        const y = mesh.positions[i + 1];   // Y-up Y = Z-up Z
-        const z = mesh.positions[i + 2];   // Y-up Z = -Z-up Y
+        const x = mesh.positions[i] + ox;
+        const y = mesh.positions[i + 1] + oy;   // Y-up Y = Z-up Z
+        const z = mesh.positions[i + 2] + oz;   // Y-up Z = -Z-up Y
         allPoints.push([x, -z, y]);
       }
 

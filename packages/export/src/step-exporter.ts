@@ -25,6 +25,7 @@ import { safeUtf8Decode } from '@ifc-lite/data';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import {
   escapeStepString,
   toStepReal,
@@ -468,6 +469,11 @@ export class StepExporter {
       };
     }
 
+    // Complete view over byId + any deferred property atoms. Walking byId alone
+    // drops deferred atoms while keeping the IfcPropertySet/IfcElementQuantity
+    // references to them, producing dangling #-refs in the output.
+    const completeIndex = getCompleteEntityIndex(this.dataStore);
+
     // Build visible-only closure if requested
     let allowedEntityIds: Set<number> | null = null;
     if (options.visibleOnly && this.dataStore.source) {
@@ -479,7 +485,7 @@ export class StepExporter {
       allowedEntityIds = collectReferencedEntityIds(
         roots,
         this.dataStore.source,
-        this.dataStore.entityIndex.byId,
+        completeIndex,
         hiddenProductIds,
       );
       // Second pass: collect IFCSTYLEDITEM entities that reference included
@@ -488,7 +494,7 @@ export class StepExporter {
       collectStyleEntities(
         allowedEntityIds,
         this.dataStore.source,
-        this.dataStore.entityIndex,
+        { byId: completeIndex, byType: this.dataStore.entityIndex.byType },
       );
     }
 
@@ -498,7 +504,7 @@ export class StepExporter {
 
       // Extract existing entities from source
       const overlayActive = !!this.mutationView && (options.applyMutations !== false);
-      for (const [expressId, entityRef] of this.dataStore.entityIndex.byId) {
+      for (const [expressId, entityRef] of completeIndex) {
         // Skip entities deleted via the overlay (only when mutations are applied)
         if (overlayActive && typeof this.mutationView!.isDeleted === 'function' && this.mutationView!.isDeleted(expressId)) {
           continue;
@@ -680,7 +686,7 @@ export class StepExporter {
     const onProgress = options.onProgress;
 
     // Report preparing phase
-    const totalEntities = this.dataStore.entityIndex.byId.size;
+    const totalEntities = getCompleteEntityIndex(this.dataStore).size;
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
     await new Promise(r => setTimeout(r, 0));
 
@@ -998,11 +1004,9 @@ export class StepExporter {
    * Find the maximum EXPRESS ID in the data store
    */
   private findMaxExpressId(): number {
-    let max = 0;
-    for (const [id] of this.dataStore.entityIndex.byId) {
-      if (id > max) max = id;
-    }
-    return max;
+    // Span deferred property atoms too, so newly allocated ids can't collide
+    // with a deferred entity sitting at a higher express id than anything in byId.
+    return getMaxExpressId(getCompleteEntityIndex(this.dataStore));
   }
 
   /**

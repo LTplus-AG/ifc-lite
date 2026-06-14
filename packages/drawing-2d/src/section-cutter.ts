@@ -115,7 +115,7 @@ export class SectionCutter {
    */
   cutSingleMesh(mesh: MeshData): MeshCutResult {
     const segments: CutSegment[] = [];
-    const { positions, indices, expressId, ifcType, modelIndex } = mesh;
+    const { positions, indices, expressId, ifcType, modelIndex, origin } = mesh;
 
     const triangleCount = indices.length / 3;
     let intersectedCount = 0;
@@ -125,10 +125,12 @@ export class SectionCutter {
       const i1 = indices[t * 3 + 1];
       const i2 = indices[t * 3 + 2];
 
-      // Get triangle vertices
-      const v0 = this.getVertex(positions, i0);
-      const v1 = this.getVertex(positions, i1);
-      const v2 = this.getVertex(positions, i2);
+      // Get triangle vertices in WORLD space (positions are stored in the
+      // element's local frame; world = origin + local). The section plane is
+      // world-space, so we must lift each vertex by the per-mesh origin.
+      const v0 = this.getVertex(positions, i0, origin);
+      const v1 = this.getVertex(positions, i1, origin);
+      const v2 = this.getVertex(positions, i2, origin);
 
       // Compute signed distances from plane
       const d0 = signedDistanceToPlane(v0, this.planeNormal, this.planeDistance);
@@ -180,9 +182,19 @@ export class SectionCutter {
   /**
    * Get vertex from positions array
    */
-  private getVertex(positions: Float32Array, index: number): Vec3 {
+  private getVertex(
+    positions: Float32Array,
+    index: number,
+    origin?: [number, number, number],
+  ): Vec3 {
     const base = index * 3;
-    return vec3(positions[base], positions[base + 1], positions[base + 2]);
+    return origin
+      ? vec3(
+          positions[base] + origin[0],
+          positions[base + 1] + origin[1],
+          positions[base + 2] + origin[2],
+        )
+      : vec3(positions[base], positions[base + 1], positions[base + 2]);
   }
 
   /**

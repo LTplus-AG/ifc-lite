@@ -20,8 +20,14 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * (class 2) rendered in Model mode and the Model/Types switch vanished
  * (`hasTypeGeometry` saw no non-zero classes). Bumping the version also bumps
  * the viewer's cache key, so stale v4 entries miss and re-mesh fresh.
+ *
+ * v6: per-mesh local-frame `origin` (3×f64) — the per-element AABB-centre the
+ * wasm pipeline stores so building-scale f32 vertices don't collapse into fans
+ * (world = origin + position). Without it, a cache restored from a local-frame
+ * load has small local positions but no origin → every element renders scattered
+ * near scene origin. The bump also invalidates pre-origin caches so they re-mesh.
  */
-export const FORMAT_VERSION = 5;
+export const FORMAT_VERSION = 6;
 
 /** Section types in the binary format */
 export enum SectionType {

@@ -81,14 +81,21 @@ export function buildTriangleBVH(
     const positions = mesh.positions;
     const indices = mesh.indices;
     if (!positions || positions.length === 0) continue;
+    // Positions are in the element's local frame (world = origin + position).
+    // The deviation scan runs in world space, so fold the per-mesh origin into
+    // the triangle buffer / centroids / AABBs. The face normal below uses
+    // differences and is origin-invariant. No-op when origin is absent/[0,0,0].
+    const ox = mesh.origin ? mesh.origin[0] : 0;
+    const oy = mesh.origin ? mesh.origin[1] : 0;
+    const oz = mesh.origin ? mesh.origin[2] : 0;
     const n = indices ? indices.length : positions.length / 3;
     for (let i = 0; i + 2 < n; i += 3) {
       const i0 = indices ? indices[i]     * 3 : (i)     * 3;
       const i1 = indices ? indices[i + 1] * 3 : (i + 1) * 3;
       const i2 = indices ? indices[i + 2] * 3 : (i + 2) * 3;
-      const x0 = positions[i0], y0 = positions[i0 + 1], z0 = positions[i0 + 2];
-      const x1 = positions[i1], y1 = positions[i1 + 1], z1 = positions[i1 + 2];
-      const x2 = positions[i2], y2 = positions[i2 + 1], z2 = positions[i2 + 2];
+      const x0 = positions[i0] + ox, y0 = positions[i0 + 1] + oy, z0 = positions[i0 + 2] + oz;
+      const x1 = positions[i1] + ox, y1 = positions[i1 + 1] + oy, z1 = positions[i1 + 2] + oz;
+      const x2 = positions[i2] + ox, y2 = positions[i2 + 1] + oy, z2 = positions[i2 + 2] + oz;
       const off = triIndex * 12;
       triBuf[off]      = x0; triBuf[off + 1]  = y0; triBuf[off + 2]  = z0;
       triBuf[off + 3]  = x1; triBuf[off + 4]  = y1; triBuf[off + 5]  = z1;

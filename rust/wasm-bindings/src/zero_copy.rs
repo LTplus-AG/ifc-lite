@@ -43,6 +43,12 @@ pub struct MeshDataJs {
     /// via IfcRelDefinesByType — the type-library shape, hidden in Model mode to
     /// avoid double-rendering, shown in Types mode). See #957 follow-up.
     geometry_class: u8,
+    /// Per-element local-frame origin (f64), in the SAME (WebGL Y-up) frame as
+    /// `positions`: world position of vertex i = `origin + positions[3i..]`.
+    /// Default `[0,0,0]` means positions are absolute (legacy). Carries the
+    /// per-element AABB-centre relativization so building-scale coordinates stay
+    /// f32-precise (no fan collapse). See `Mesh::origin`/transform_mesh_world_framed.
+    origin: [f64; 3],
 }
 
 #[wasm_bindgen]
@@ -151,6 +157,14 @@ impl MeshDataJs {
     pub fn geometry_class(&self) -> u8 {
         self.geometry_class
     }
+
+    /// Per-element local-frame origin (Float64Array[3], WebGL Y-up, metres):
+    /// world position of vertex i = `origin + positions[3i..3i+3]`. Returns
+    /// [0,0,0] when positions are absolute (legacy / local frame off).
+    #[wasm_bindgen(getter)]
+    pub fn origin(&self) -> js_sys::Float64Array {
+        js_sys::Float64Array::from(&self.origin[..])
+    }
 }
 
 impl MeshDataJs {
@@ -184,6 +198,12 @@ impl MeshDataJs {
             mesh.indices.swap(i + 1, i + 2);
         }
 
+        // The per-element origin is a world-frame point and MUST undergo the
+        // identical IFC Z-up → WebGL Y-up swap as the positions above, or
+        // `world = origin + position` would mix axes (element renders mirrored
+        // / displaced). Default [0,0,0] swaps to [0,0,0] (no-op for legacy).
+        let origin = [mesh.origin[0], mesh.origin[2], -mesh.origin[1]];
+
         Self {
             express_id,
             ifc_type,
@@ -199,6 +219,7 @@ impl MeshDataJs {
             texture_repeat_s: true,
             texture_repeat_t: true,
             geometry_class: 0,
+            origin,
         }
     }
 
@@ -250,6 +271,9 @@ impl MeshDataJs {
             // Positions are final here (the canonical producer already applied
             // placement/RTC); the flag only guards upstream double-subtraction.
             rtc_applied: true,
+            // Per-element local-frame origin from the producer (IFC frame); the
+            // Z-up→Y-up swap is applied in `new`. [0,0,0] when local frame off.
+            origin: m.origin,
         };
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);
@@ -295,7 +319,8 @@ impl MeshCollection {
         self.meshes.len()
     }
 
-    /// Get mesh at index
+    /// Get mesh at index (clones — non-destructive). Prefer `takeMesh` on the
+    /// hot streaming path; this stays for callers that read meshes more than once.
     #[wasm_bindgen]
     pub fn get(&self, index: usize) -> Option<MeshDataJs> {
         self.meshes.get(index).map(|m| MeshDataJs {
@@ -313,6 +338,34 @@ impl MeshCollection {
             texture_repeat_s: m.texture_repeat_s,
             texture_repeat_t: m.texture_repeat_t,
             geometry_class: m.geometry_class,
+            origin: m.origin,
+        })
+    }
+
+    /// #1097 perf: MOVE the mesh at `index` out of the collection (the Vec
+    /// buffers are `std::mem::take`-n, leaving an empty stub). The streaming
+    /// worker reads each mesh exactly once, so moving avoids the full vertex-
+    /// data clone `get` pays — one fewer copy of positions/normals/indices/uvs/
+    /// texture per mesh (the JS getters still do the single Rust→JS copy). Calling
+    /// it twice for the same index yields the second call an empty mesh.
+    #[wasm_bindgen(js_name = takeMesh)]
+    pub fn take_mesh(&mut self, index: usize) -> Option<MeshDataJs> {
+        self.meshes.get_mut(index).map(|m| MeshDataJs {
+            express_id: m.express_id,
+            ifc_type: std::mem::take(&mut m.ifc_type),
+            positions: std::mem::take(&mut m.positions),
+            normals: std::mem::take(&mut m.normals),
+            indices: std::mem::take(&mut m.indices),
+            color: m.color,
+            shading_color: m.shading_color,
+            uvs: std::mem::take(&mut m.uvs),
+            texture_rgba: std::mem::take(&mut m.texture_rgba),
+            texture_width: m.texture_width,
+            texture_height: m.texture_height,
+            texture_repeat_s: m.texture_repeat_s,
+            texture_repeat_t: m.texture_repeat_t,
+            geometry_class: m.geometry_class,
+            origin: m.origin,
         })
     }
 
@@ -499,6 +552,7 @@ impl Clone for MeshCollection {
                     texture_repeat_s: m.texture_repeat_s,
                     texture_repeat_t: m.texture_repeat_t,
                     geometry_class: m.geometry_class,
+                    origin: m.origin,
                 })
                 .collect(),
             rtc_offset_x: self.rtc_offset_x,

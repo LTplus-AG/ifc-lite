@@ -121,6 +121,32 @@ fn assert_no_spikes(mesh: &Mesh, label: &str) {
     );
 }
 
+/// Open boundary edges (undirected edges not paired forward+reverse), on a 1 mm
+/// position-snapped topology — the same metric `consolidate_coplanar`'s
+/// watertightness guard uses. A watertight closed solid returns 0.
+fn open_boundary_edges(mesh: &Mesh) -> usize {
+    let q = |v: f32| (v as f64 * 1.0e3).round() as i64;
+    let mut vid: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
+    let mut id = |i: usize| -> u32 {
+        let k = (
+            q(mesh.positions[i * 3]),
+            q(mesh.positions[i * 3 + 1]),
+            q(mesh.positions[i * 3 + 2]),
+        );
+        let n = vid.len() as u32;
+        *vid.entry(k).or_insert(n)
+    };
+    let mut bal: FxHashMap<(u32, u32), i32> = FxHashMap::default();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (id(tri[0] as usize), id(tri[1] as usize), id(tri[2] as usize));
+        for (x, y) in [(a, b), (b, c), (c, a)] {
+            let (k, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
+            *bal.entry(k).or_insert(0) += s;
+        }
+    }
+    bal.values().filter(|&&v| v != 0).count()
+}
+
 fn find_first_entity_id(content: &str, type_upper: &str) -> Option<u32> {
     let mut scanner = EntityScanner::new(content);
     while let Some((id, name, _, _)) = scanner.next_entity() {
@@ -135,27 +161,45 @@ fn find_first_entity_id(content: &str, type_upper: &str) -> Option<u32> {
 
 /// Wand-Ext-OG-1 — a gable wall whose body is
 /// `IfcBooleanClippingResult(.DIFFERENCE., extrusion, polygonal-bounded-
-/// halfspace)` chained twice (one clip per roof slope). Exercises the
-/// "collect chained polygonal half-spaces and apply as one CSG op" fast
-/// path in `BooleanClippingProcessor::process_with_depth`. Without the
-/// coplanar pre-merge, this used to leave sliver triangles around the
-/// gable apex.
+/// halfspace)` chained twice (one clip per roof slope).
+///
+/// These gable walls are a multi-plane host, so `consolidate_coplanar`'s
+/// per-bucket re-triangulation chorded their shared seams: the CONSOLIDATED output
+/// carried ~110 open boundary edges (latent hairline cracks the old spike-only
+/// assertion never measured) while being spike-free. The consolidation
+/// watertightness guard now prefers the watertight raw kernel output (zero open
+/// edges) for these hosts, which eliminates the cracks at the cost of the raw
+/// kernel's needle slivers. So the bar here is WATERTIGHTNESS, not spike-freeness —
+/// the visible defect (cracks) is what mattered. A future seam-preserving
+/// consolidation should deliver both watertight AND sliver-free.
 #[test]
-fn fzk_haus_gable_wall_60012_no_spike_triangles() {
+fn fzk_haus_gable_wall_60012_is_watertight() {
     let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
         return;
     };
     let mesh = process(&content, 60012, true).expect("process wall #60012");
-    assert_no_spikes(&mesh, "FZK-Haus wall #60012 (gable)");
+    assert!(!mesh.indices.is_empty(), "FZK-Haus wall #60012: empty mesh");
+    assert_eq!(
+        open_boundary_edges(&mesh),
+        0,
+        "FZK-Haus wall #60012 (gable): open boundary edges (hairline cracks) — \
+         consolidation watertightness guard regressed"
+    );
 }
 
 #[test]
-fn fzk_haus_gable_wall_67828_no_spike_triangles() {
+fn fzk_haus_gable_wall_67828_is_watertight() {
     let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
         return;
     };
     let mesh = process(&content, 67828, true).expect("process wall #67828");
-    assert_no_spikes(&mesh, "FZK-Haus wall #67828 (gable)");
+    assert!(!mesh.indices.is_empty(), "FZK-Haus wall #67828: empty mesh");
+    assert_eq!(
+        open_boundary_edges(&mesh),
+        0,
+        "FZK-Haus wall #67828 (gable): open boundary edges (hairline cracks) — \
+         consolidation watertightness guard regressed"
+    );
 }
 
 // ────────────────────── known-bad: opening-cut path ───────────────────

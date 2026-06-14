@@ -109,6 +109,58 @@ fn subtract_records_empty_operand() {
 // the kernel must succeed past the legacy cap with zero failures.
 // `BoolFailureReason::OperandTooLarge` survives only as void-router plumbing.
 
+/// A host of overlapping boxes whose seams sit a few µm OFF the snap grid, so
+/// adjacent faces are NEAR- (not exactly-) coplanar — the configuration that
+/// drives the exact predicate cascade off the cheap interval filter (#1109).
+/// Exactly-coplanar faces would resolve at the interval tier for free; the
+/// off-grid drift is what forces escalation.
+fn near_coplanar_overlapping_boxes() -> Mesh {
+    let mut m = Mesh::new();
+    for i in 0..24 {
+        // 0.5 m step (boxes overlap) + cumulative off-grid drift.
+        let off = i as f64 * 0.5 + i as f64 * 1.0e-5;
+        m.merge(&unit_box_at(Point3::new(off, off * 0.5, 0.0)));
+    }
+    m
+}
+
+#[test]
+fn subtract_trips_escalation_budget_and_falls_back_deterministically() {
+    use ifc_lite_geometry::kernel::budget;
+    let host = near_coplanar_overlapping_boxes();
+    let cutter = unit_box_at(Point3::new(2.0, 1.0, 0.0));
+
+    let restore = budget::cap();
+
+    // Unbounded first: confirm this fixture actually exercises the exact tier,
+    // or the trip assertion below would be vacuous.
+    budget::set_cap(None);
+    let p0 = ClippingProcessor::new();
+    let _ = p0.subtract_mesh(&host, &cutter).expect("subtract ok");
+    let escalations = budget::count();
+
+    // Cap of 1 → trips on the first exact evaluation → host returned un-cut and
+    // OperandTooLarge recorded. Deterministic: the same fixture trips at the same
+    // point on every target (the #1109 parity-preserving guardrail).
+    budget::set_cap(Some(1));
+    let p1 = ClippingProcessor::new();
+    let result = p1.subtract_mesh(&host, &cutter).expect("subtract ok");
+    let failures = p1.take_failures();
+
+    budget::set_cap(restore);
+
+    assert!(escalations > 0, "fixture did not reach the exact tier — trip test is vacuous");
+    assert_eq!(
+        result.triangle_count(),
+        host.triangle_count(),
+        "a tripped boolean must return the host un-cut (→ #635 AABB fallback)"
+    );
+    assert!(
+        failures.iter().any(|f| matches!(f.reason, BoolFailureReason::OperandTooLarge { .. })),
+        "a tripped boolean must record OperandTooLarge (got {failures:?})"
+    );
+}
+
 #[test]
 fn subtract_past_legacy_cap_succeeds() {
     // 180 polygons of host vs a unit-box cutter — past the legacy BSP cap.

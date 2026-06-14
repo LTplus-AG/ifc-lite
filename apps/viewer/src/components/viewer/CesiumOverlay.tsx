@@ -75,7 +75,20 @@ function buildMergedGLB(meshes: import('@ifc-lite/geometry').MeshData[]): Uint8A
   for (const m of meshes) {
     if (!m.positions?.length || !m.indices?.length) continue;
     const nv = m.positions.length / 3;
-    positions.set(m.positions, vertOff * 3);
+    // Positions are in the element's local frame (world = origin + position);
+    // fold the per-mesh origin while merging so the GLB is world-space. No-op
+    // when origin is absent/[0,0,0].
+    const ox = m.origin?.[0] ?? 0, oy = m.origin?.[1] ?? 0, oz = m.origin?.[2] ?? 0;
+    if (ox !== 0 || oy !== 0 || oz !== 0) {
+      for (let i = 0; i < nv; i++) {
+        const s = (vertOff + i) * 3, t = i * 3;
+        positions[s] = m.positions[t] + ox;
+        positions[s + 1] = m.positions[t + 1] + oy;
+        positions[s + 2] = m.positions[t + 2] + oz;
+      }
+    } else {
+      positions.set(m.positions, vertOff * 3);
+    }
     // Vertex colors from mesh color
     const r = Math.round((m.color?.[0] ?? 0.7) * 255);
     const g = Math.round((m.color?.[1] ?? 0.7) * 255);

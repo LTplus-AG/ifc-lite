@@ -96,6 +96,14 @@ export function writeGeometry(
     // type-library geometry reappears in Model mode and the switch disappears.
     writer.writeUint8(mesh.geometryClass ?? 0);
 
+    // Write per-element local-frame origin (v6+, 3×f64): world = origin +
+    // position. [0,0,0] for absolute meshes. Without it a cache from a
+    // local-frame load restores small local positions with no origin → every
+    // element renders scattered near scene origin.
+    writer.writeFloat64(mesh.origin ? mesh.origin[0] : 0);
+    writer.writeFloat64(mesh.origin ? mesh.origin[1] : 0);
+    writer.writeFloat64(mesh.origin ? mesh.origin[2] : 0);
+
     // Write geometry arrays
     writer.writeTypedArray(mesh.positions);
     writer.writeTypedArray(mesh.normals);
@@ -204,6 +212,15 @@ export function readGeometry(reader: BufferReader, version: number = 2): {
     // viewer's bumped cache key, so they re-mesh fresh rather than load here.
     const geometryClass = version >= 5 ? reader.readUint8() : 0;
 
+    // Read per-element local-frame origin (version 6+); world = origin + position.
+    let origin: [number, number, number] | undefined;
+    if (version >= 6) {
+      const ox = reader.readFloat64();
+      const oy = reader.readFloat64();
+      const oz = reader.readFloat64();
+      if (ox || oy || oz) origin = [ox, oy, oz];
+    }
+
     const positions = reader.readFloat32Array(vertexCount * 3);
     const normals = reader.readFloat32Array(vertexCount * 3);
     const indices = reader.readUint32Array(indexCount);
@@ -216,6 +233,7 @@ export function readGeometry(reader: BufferReader, version: number = 2): {
       color,
       ifcType,
       geometryClass,
+      ...(origin ? { origin } : {}),
     });
   }
 

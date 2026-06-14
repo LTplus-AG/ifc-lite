@@ -17,7 +17,7 @@
 
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d, orient2d_any};
-use super::fixed;
+use super::{fixed, interval};
 use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
@@ -27,24 +27,42 @@ fn e(p: [f64; 3]) -> ImplicitPoint {
     ImplicitPoint::Explicit(p)
 }
 
-/// Vid-based exact orient2d via the interner's cached I1024 lambdas — skips the
-/// interval filter (which can't resolve the degenerate box configs) AND the
-/// LPI/TPI lambda recomputation. Falls back to the ImplicitPoint cascade only on
-/// off-grid/overflow. The dominant re-triangulation predicate.
+/// Vid-based exact orient2d — the dominant re-triangulation predicate. Tiers, all
+/// returning the SAME exact sign (faster ones resolve the easy cases first):
+/// all-explicit Shewchuk (f64) → f64 directed-rounding interval from the cached
+/// lambdas → cached-I1024 determinant → ImplicitPoint cascade (BigRational tail).
+/// The interval tier carries the non-degenerate majority of implicit-point
+/// predicates in pure f64, so the wasm-emulated I1024 path is reached only on a
+/// genuine zero-straddle — the fix for the dense-opening-wall wasm cost.
 #[inline]
 fn orient2d_v(it: &Interner, a: Vid, b: Vid, c: Vid, axis: DropAxis) -> Sign {
+    let (pa, pb, pc) = (it.get(a), it.get(b), it.get(c));
+    // All-explicit: the Shewchuk adaptive predicate is EXACT yet pure f64.
+    if let (ImplicitPoint::Explicit(_), ImplicitPoint::Explicit(_), ImplicitPoint::Explicit(_)) =
+        (pa, pb, pc)
+    {
+        return orient2d(pa, pb, pc, axis);
+    }
+    // f64 INTERVAL from the cached lambdas — pure f64, no wide-int; resolves the
+    // non-degenerate majority and is bit-identical to the exact sign when definite.
+    if let Some(s) = interval::orient2d_from_lam_iv(it.lam_iv(a), it.lam_iv(b), it.lam_iv(c), axis) {
+        return s;
+    }
     if let (Some(la), Some(lb), Some(lc)) = (it.lam(a), it.lam(b), it.lam(c)) {
         if let Some(s) = fixed::orient2d_from_lam(la, lb, lc, axis) {
             return s;
         }
     }
-    let (pa, pb, pc) = (it.get(a), it.get(b), it.get(c));
     orient2d_any(pa, pb, pc, axis)
 }
 
-/// Vid-based exact lexicographic compare via the cached lambdas.
+/// Vid-based exact lexicographic compare — f64 interval from the cached lambdas
+/// first, then the cached-I1024 compare, then the ImplicitPoint cascade.
 #[inline]
 fn cmp_lex_v(it: &Interner, a: Vid, b: Vid) -> Sign {
+    if let Some(s) = interval::cmp_lex_from_lam_iv(it.lam_iv(a), it.lam_iv(b)) {
+        return s;
+    }
     if let (Some(la), Some(lb)) = (it.lam(a), it.lam(b)) {
         if let Some(s) = fixed::cmp_lex_from_lam(la, lb) {
             return s;
@@ -197,6 +215,12 @@ pub struct Mesh2d {
     /// force its edge (any bail path). Gates the final conformity audit in
     /// [`triangulate`] so the clean common path pays nothing for it.
     pub audit_needed: bool,
+    /// Per-`Vid` cached 2D f64 coordinate (dropped to `axis`, `None` when the
+    /// implicit point has no finite f64 image). Used ONLY as a conservative
+    /// broadphase prefilter in [`insert_point`] — the exact predicate still
+    /// decides every retained triangle, so this never affects topology. Cached
+    /// because the same vertices are re-scanned on every point insertion.
+    pub coords: BTreeMap<Vid, Option<[f64; 2]>>,
 }
 
 enum Locate {
@@ -228,6 +252,101 @@ fn locate(it: &Interner, tri: SubTri, p: Vid, axis: DropAxis, w0: Sign) -> Locat
     }
 }
 
+/// Minimum working-set size before the f64-AABB broadphase prefilters engage.
+/// Below this the exact scan is already short, so the cache/AABB bookkeeping
+/// would be pure overhead (it measurably slowed boolean-dense-but-simple models);
+/// above it the O(N²) exact-predicate blow-up dominates and the prefilter wins.
+/// Purely a performance gate — it never changes which triangles `locate` accepts.
+const PREFILTER_MIN: usize = 32;
+
+/// `p`'s coordinates dropped to the kept 2D plane for projection `axis`.
+#[inline]
+fn project2d(p: [f64; 3], axis: DropAxis) -> [f64; 2] {
+    match axis {
+        DropAxis::X => [p[1], p[2]],
+        DropAxis::Y => [p[0], p[2]],
+        DropAxis::Z => [p[0], p[1]],
+    }
+}
+
+/// Cached 2D f64 image of vertex `v` (dropped to `axis`). `None` when the
+/// implicit point has no finite f64 image (degenerate construction). Used ONLY
+/// by the [`insert_point`] broadphase, never by an exact decision; cached
+/// because the same vertices are re-scanned on every point insertion.
+#[inline]
+fn coord2d_cached(
+    it: &Interner,
+    v: Vid,
+    axis: DropAxis,
+    cache: &mut BTreeMap<Vid, Option<[f64; 2]>>,
+) -> Option<[f64; 2]> {
+    if let Some(&c) = cache.get(&v) {
+        return c;
+    }
+    let c = fixed::point_to_f64(it.get(v)).map(|p3| project2d(p3, axis));
+    cache.insert(v, c);
+    c
+}
+
+/// True when `p2` (a point's 2D f64 image) lies outside `tri`'s f64 AABB widened
+/// by a generous margin ⇒ `tri` provably cannot contain it. The margin (absolute
+/// floor + magnitude-relative term) dwarfs the worst f64 rounding / implicit-
+/// point image error by many orders, so this is a CONSERVATIVE reject: it never
+/// excludes a triangle that genuinely contains the point, on any platform. A
+/// vertex without a finite f64 image disables the reject for `tri` (keep it).
+#[inline]
+fn aabb_excludes(
+    it: &Interner,
+    tri: SubTri,
+    p2: [f64; 2],
+    axis: DropAxis,
+    cache: &mut BTreeMap<Vid, Option<[f64; 2]>>,
+) -> bool {
+    let (a, b, c) = match (
+        coord2d_cached(it, tri[0], axis, cache),
+        coord2d_cached(it, tri[1], axis, cache),
+        coord2d_cached(it, tri[2], axis, cache),
+    ) {
+        (Some(a), Some(b), Some(c)) => (a, b, c),
+        _ => return false,
+    };
+    let min_x = a[0].min(b[0]).min(c[0]);
+    let max_x = a[0].max(b[0]).max(c[0]);
+    let min_y = a[1].min(b[1]).min(c[1]);
+    let max_y = a[1].max(b[1]).max(c[1]);
+    let mx = 1e-6 + p2[0].abs() * 1e-9;
+    let my = 1e-6 + p2[1].abs() * 1e-9;
+    p2[0] < min_x - mx || p2[0] > max_x + mx || p2[1] < min_y - my || p2[1] > max_y + my
+}
+
+/// True when triangle `tri`'s 2D f64 AABB is disjoint (beyond a generous margin)
+/// from the box `bx` = `[min_x, min_y, max_x, max_y]` ⇒ no edge of `tri` can
+/// cross a segment contained in `bx`. Conservative (margin dwarfs the f64 /
+/// implicit-point error); a vertex with no finite f64 image disables the reject.
+#[inline]
+fn tri_aabb_disjoint(
+    it: &Interner,
+    tri: SubTri,
+    bx: [f64; 4],
+    axis: DropAxis,
+    cache: &mut BTreeMap<Vid, Option<[f64; 2]>>,
+) -> bool {
+    let (a, b, c) = match (
+        coord2d_cached(it, tri[0], axis, cache),
+        coord2d_cached(it, tri[1], axis, cache),
+        coord2d_cached(it, tri[2], axis, cache),
+    ) {
+        (Some(a), Some(b), Some(c)) => (a, b, c),
+        _ => return false,
+    };
+    let tmin_x = a[0].min(b[0]).min(c[0]);
+    let tmax_x = a[0].max(b[0]).max(c[0]);
+    let tmin_y = a[1].min(b[1]).min(c[1]);
+    let tmax_y = a[1].max(b[1]).max(c[1]);
+    let m = 1e-6 + bx[2].abs().max(bx[3].abs()).max(tmax_x.abs()).max(tmax_y.abs()) * 1e-9;
+    tmax_x < bx[0] - m || tmin_x > bx[2] + m || tmax_y < bx[1] - m || tmin_y > bx[3] + m
+}
+
 /// PHASE C — insert point `p` (interned), splitting the triangle(s) containing
 /// it. Uniform cavity-fan: gather the triangles that contain `p` (one if
 /// interior, two across a shared edge), take the cavity's boundary edges, and
@@ -235,9 +354,32 @@ fn locate(it: &Interner, tri: SubTri, p: Vid, axis: DropAxis, w0: Sign) -> Locat
 /// has `p` on its left ⇒ `[u,v,p]` preserves `w0`. Handles interior (1→3) and
 /// on-edge (→4) uniformly; an already-present vertex is a no-op.
 fn insert_point(mesh: &mut Mesh2d, it: &Interner, p: Vid) {
+    let axis = mesh.axis;
+    let w0 = mesh.w0;
+    // Conservative broadphase prefilter. `pc` is `p`'s f64 image dropped to the
+    // projection axis; for each triangle we skip the (possibly BigRational)
+    // exact `locate` when `p` lies outside that triangle's widened f64 AABB. The
+    // margin guarantees a triangle truly containing `p` (interior / on-edge /
+    // on-vertex) is NEVER skipped on any platform, so the cavity — and the whole
+    // resulting topology — is bit-identical to the unfiltered scan. This
+    // collapses the per-host-face O(points·triangles) exact-predicate blowup on
+    // heavily fragmented faces (many openings in one wall) toward O(points +
+    // triangles) exact calls — the cause of the WASM stall on dense facades.
+    // Engaged only once the triangle set is large enough to amortise the cache.
+    let pc = if mesh.tris.len() > PREFILTER_MIN {
+        coord2d_cached(it, p, axis, &mut mesh.coords)
+    } else {
+        None
+    };
     let mut cavity = Vec::new();
     for ti in 0..mesh.tris.len() {
-        match locate(it, mesh.tris[ti], p, mesh.axis, mesh.w0) {
+        let tri = mesh.tris[ti];
+        if let Some(p2) = pc {
+            if aabb_excludes(it, tri, p2, axis, &mut mesh.coords) {
+                continue;
+            }
+        }
+        match locate(it, tri, p, axis, w0) {
             Locate::OnVertex => return,
             Locate::Interior | Locate::OnEdge => cavity.push(ti),
             Locate::Outside => {}
@@ -246,7 +388,6 @@ fn insert_point(mesh: &mut Mesh2d, it: &Interner, p: Vid) {
     if cavity.is_empty() {
         return; // p not inside T
     }
-    let axis = mesh.axis;
     let cavity_set: BTreeSet<usize> = cavity.iter().copied().collect();
     let mut edges: BTreeSet<(Vid, Vid)> = BTreeSet::new();
     for &ti in &cavity {
@@ -284,8 +425,14 @@ pub fn triangulate_points(input: &RetriInput, interner: &mut Interner) -> Option
     let canon = canonicalize(input, interner);
     // The initial triangle is T's corners in input order; by Phase A its
     // orientation is exactly w0.
-    let mut mesh =
-        Mesh2d { tris: vec![canon.corners], axis, w0, unrecovered: 0, audit_needed: false };
+    let mut mesh = Mesh2d {
+        tris: vec![canon.corners],
+        axis,
+        w0,
+        unrecovered: 0,
+        audit_needed: false,
+        coords: BTreeMap::new(),
+    };
     let mut pts: BTreeSet<Vid> = BTreeSet::new();
     for &(lo, hi) in &canon.segments {
         pts.insert(lo);
@@ -423,8 +570,38 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
         s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2
             && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
     };
+    // Broadphase: only a triangle whose 2D f64 AABB overlaps the (a,b) segment's
+    // AABB can have an edge that properly crosses (a,b). Skip the four exact
+    // orient2d crossing tests for triangles whose widened AABB is disjoint — the
+    // margin makes this conservative (a genuinely crossing triangle is never
+    // skipped on any platform), so the channel — and recovery — is byte-identical.
+    // Engaged only once the triangle set is large enough to amortise the cache.
+    let ab_box: Option<[f64; 4]> = if mesh.tris.len() > PREFILTER_MIN {
+        match (
+            coord2d_cached(it, a, axis, &mut mesh.coords),
+            coord2d_cached(it, b, axis, &mut mesh.coords),
+        ) {
+            (Some(a2), Some(b2)) => Some([
+                a2[0].min(b2[0]),
+                a2[1].min(b2[1]),
+                a2[0].max(b2[0]),
+                a2[1].max(b2[1]),
+            ]),
+            _ => None,
+        }
+    } else {
+        None
+    };
     let channel: Vec<usize> = (0..mesh.tris.len())
-        .filter(|&ti| tri_edges(mesh.tris[ti]).iter().any(|&(u, v)| crosses(u, v)))
+        .filter(|&ti| {
+            let tri = mesh.tris[ti];
+            if let Some(bx) = ab_box {
+                if tri_aabb_disjoint(it, tri, bx, axis, &mut mesh.coords) {
+                    return false;
+                }
+            }
+            tri_edges(tri).iter().any(|&(u, v)| crosses(u, v))
+        })
         .collect();
     if channel.is_empty() {
         return;
@@ -590,13 +767,50 @@ fn between(it: &Interner, s: Vid, t: Vid, v: Vid) -> bool {
 fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
     let axis = mesh.axis;
     let verts: BTreeSet<Vid> = mesh.tris.iter().flatten().copied().collect();
+    // Broadphase: a vertex collinear with AND between s,t must lie in the
+    // segment's 2D f64 AABB. Skip the (i1024, WASM-emulated) exact orient2d for
+    // vertices outside the widened box. Same conservative margin as the
+    // insert_point prefilter ⇒ a real on-segment vertex is never skipped on any
+    // platform, so `on_seg` — and the recovered topology — is byte-identical.
+    // This is the hot loop: enforce runs per constraint per fixed-point pass, so
+    // the unfiltered O(verts) exact scan is what stalls many-opening facades.
+    // Engaged only once the vertex set is large enough to amortise the cache.
+    let seg_box: Option<[f64; 4]> = if verts.len() > PREFILTER_MIN {
+        match (
+            coord2d_cached(it, s, axis, &mut mesh.coords),
+            coord2d_cached(it, t, axis, &mut mesh.coords),
+        ) {
+            (Some(s2), Some(t2)) => Some([
+                s2[0].min(t2[0]),
+                s2[1].min(t2[1]),
+                s2[0].max(t2[0]),
+                s2[1].max(t2[1]),
+            ]),
+            _ => None,
+        }
+    } else {
+        None
+    };
     let mut on_seg: Vec<Vid> = verts
         .into_iter()
         .filter(|&v| {
-            v != s
-                && v != t
-                && orient2d_v(it, s, t, v, axis) == Sign::Zero
-                && between(it, s, t, v)
+            if v == s || v == t {
+                return false;
+            }
+            if let Some(bx) = seg_box {
+                if let Some(vc) = coord2d_cached(it, v, axis, &mut mesh.coords) {
+                    let mx = 1e-6 + vc[0].abs() * 1e-9;
+                    let my = 1e-6 + vc[1].abs() * 1e-9;
+                    if vc[0] < bx[0] - mx
+                        || vc[0] > bx[2] + mx
+                        || vc[1] < bx[1] - my
+                        || vc[1] > bx[3] + my
+                    {
+                        return false; // outside segment AABB ⇒ cannot lie on it
+                    }
+                }
+            }
+            orient2d_v(it, s, t, v, axis) == Sign::Zero && between(it, s, t, v)
         })
         .collect();
     on_seg.sort_by(|&x, &y| lex_cmp(it, x, y));
@@ -617,8 +831,14 @@ fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
 pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d> {
     let (axis, w0) = projection_axis(&input.tri)?;
     let canon = canonicalize(input, interner);
-    let mut mesh =
-        Mesh2d { tris: vec![canon.corners], axis, w0, unrecovered: 0, audit_needed: false };
+    let mut mesh = Mesh2d {
+        tris: vec![canon.corners],
+        axis,
+        w0,
+        unrecovered: 0,
+        audit_needed: false,
+        coords: BTreeMap::new(),
+    };
     let mut pts: BTreeSet<Vid> = BTreeSet::new();
     for &(lo, hi) in &canon.segments {
         pts.insert(lo);
@@ -978,6 +1198,7 @@ mod tests {
             w0: Sign::Positive,
             unrecovered: 0,
             audit_needed: false,
+            coords: BTreeMap::new(),
         };
         let pt = |v: Vid| point_of(it.get(v));
         let origin = point_of(&e([0., 0., 0.]));

@@ -155,7 +155,8 @@ export class StoreEditor {
     // the current source index BEFORE calling createEntity, so we don't
     // emit phantom CREATE_ENTITY / DELETE_ENTITY pairs into the mutation
     // history just to fix our own bookkeeping.
-    if (this.store.entityIndex.byId.has(this.view.peekNextExpressId())) {
+    const nextId = this.view.peekNextExpressId();
+    if (this.store.entityIndex.byId.has(nextId) || this.store.deferredEntityIndex?.has(nextId)) {
       this.refreshWatermark();
     }
     const created = this.view.createEntity(canonical, attributes);
@@ -260,6 +261,15 @@ export class StoreEditor {
     let max = 0;
     for (const id of this.store.entityIndex.byId.keys()) {
       if (id > max) max = id;
+    }
+    // Deferred property atoms occupy express ids too — clear them so a newly
+    // allocated overlay id can never collide with a deferred atom that sits
+    // above the primary-index maximum (which the exporter now emits).
+    const deferred = this.store.deferredEntityIndex;
+    if (deferred) {
+      for (const id of deferred.keys()) {
+        if (id > max) max = id;
+      }
     }
     return max;
   }

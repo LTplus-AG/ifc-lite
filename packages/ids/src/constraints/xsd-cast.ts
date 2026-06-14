@@ -66,6 +66,48 @@ export function literalCastsUnder(value: string, xsdType: string): boolean {
  * Returns an empty array for measures we don't have a mapping for —
  * `literalCastsUnderAnyType` then no-ops.
  */
+/**
+ * XSD base local-names (the part after `xs:`) whose value space is
+ * numeric. Used to decide whether a numeric runtime value is
+ * type-compatible with a restriction's declared `@base` before its
+ * lexical form is pattern-matched.
+ */
+const NUMERIC_BASE_LOCALS = new Set([
+  'decimal',
+  'double',
+  'float',
+  'integer',
+  'long',
+  'int',
+  'short',
+  'byte',
+  'nonnegativeinteger',
+  'positiveinteger',
+  'nonpositiveinteger',
+  'negativeinteger',
+  'unsignedlong',
+  'unsignedint',
+  'unsignedshort',
+  'unsignedbyte',
+]);
+
+/** Strip any namespace prefix (`xs:`, `xsd:`) and lower-case the base. */
+function baseLocalName(base: string | undefined): string {
+  if (!base) return '';
+  const colon = base.lastIndexOf(':');
+  return (colon >= 0 ? base.slice(colon + 1) : base).toLowerCase();
+}
+
+/** True iff the restriction `@base` declares a numeric value space. */
+export function isNumericXsdBase(base: string | undefined): boolean {
+  return NUMERIC_BASE_LOCALS.has(baseLocalName(base));
+}
+
+/** True iff the restriction `@base` declares the boolean value space. */
+export function isBooleanXsdBase(base: string | undefined): boolean {
+  return baseLocalName(base) === 'boolean';
+}
+
 export function ifcMeasureToXsdTypes(measure: string | undefined): readonly string[] {
   if (!measure) return [];
   const m = measure.toUpperCase();

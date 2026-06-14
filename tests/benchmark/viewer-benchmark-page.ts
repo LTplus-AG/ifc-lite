@@ -95,6 +95,40 @@ export class ViewerBenchmarkPage {
       this.consoleLogs.push(text);
     });
 
+    // Optional adaptive-batch-sizing override for sweeping the watchdog↔
+    // throughput knob (#1097). Set VIEWER_BENCHMARK_BATCH_SIZING to a JSON
+    // object like {"targetMs":8000,"minJobs":64,"maxJobs":512}; it lands on
+    // globalThis before the app boots and the geometry host forwards it to the
+    // worker pool. Unset ⇒ DEFAULT_BATCH_SIZING.
+    const batchSizingEnv = process.env.VIEWER_BENCHMARK_BATCH_SIZING;
+    if (batchSizingEnv) {
+      try {
+        const cfg = JSON.parse(batchSizingEnv);
+        await this.page.addInitScript((c) => {
+          (globalThis as unknown as { __IFC_LITE_BATCH_SIZING?: unknown }).__IFC_LITE_BATCH_SIZING = c;
+        }, cfg);
+        console.log(`[Benchmark] batch sizing override: ${batchSizingEnv}`);
+      } catch (e) {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_BATCH_SIZING: ${batchSizingEnv}`);
+      }
+    }
+
+    // Optional load-time visibility filter for sweeping #1097 (skip disabled
+    // types at job generation). Set VIEWER_BENCHMARK_VISIBILITY_FILTER to JSON
+    // like {"disabledTypes":["IFCSPACE","IFCANNOTATION"],"skipTypeGeometry":true}.
+    const visFilterEnv = process.env.VIEWER_BENCHMARK_VISIBILITY_FILTER;
+    if (visFilterEnv) {
+      try {
+        const f = JSON.parse(visFilterEnv);
+        await this.page.addInitScript((c) => {
+          (globalThis as unknown as { __IFC_LITE_VISIBILITY_FILTER?: unknown }).__IFC_LITE_VISIBILITY_FILTER = c;
+        }, f);
+        console.log(`[Benchmark] visibility filter: ${visFilterEnv}`);
+      } catch (e) {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_VISIBILITY_FILTER: ${visFilterEnv}`);
+      }
+    }
+
     // Navigate to viewer app
     await this.page.goto('http://localhost:3000');
     
@@ -188,11 +222,21 @@ export class ViewerBenchmarkPage {
       const hasUnifiedSummary = this.consoleLogs.some(log =>
         log.includes('[useIfc]') && log.includes('meshes') && log.includes('first:') && log.includes('total:')
       );
+      // Primary-path definitive end-of-load marker (current viewer format):
+      //   [ifc-lite] <file> (327.0MB) → 39146 meshes, 12345k verts in 11.9s
+      const hasFinalSummary = this.consoleLogs.some(log =>
+        /\[ifc-lite\].*→\s*\d[\d,]*\s*meshes.*in\s*[\d.]+s/.test(log)
+      );
 
       // Check canvas has actual content
       const canvasReady = await this.checkCanvasHasContent();
-      
-      if ((hasStreamingComplete && hasDataModelComplete && hasTotalLoadTime) || hasUnifiedSummary) {
+
+      if (
+        (hasStreamingComplete && hasDataModelComplete && hasTotalLoadTime)
+        || hasUnifiedSummary
+        || hasFinalSummary
+        || (hasStreamingComplete && hasDataModelComplete)
+      ) {
         // Record when we see completion in logs
         if (!renderCompleteTime) {
           renderCompleteTime = Date.now();
@@ -359,6 +403,18 @@ export class ViewerBenchmarkPage {
     const totalLoadMatch = logs.match(/\[useIfc\] TOTAL LOAD TIME.*?: (\d+)ms/);
     if (totalLoadMatch) {
       this.metrics.totalWallClockMs = parseInt(totalLoadMatch[1], 10);
+    }
+
+    // Current primary-path final summary carries the app's own measured total:
+    //   [ifc-lite] <file> (327.0MB) → 39146 meshes, 12345k verts in 11.9s
+    // Prefer it over the test's wall-clock (excludes Playwright polling jitter).
+    const finalSummaryMatch = logs.match(
+      /\[ifc-lite\].*?\(([\d.]+)MB\)\s*→\s*([\d,]+)\s*meshes.*?in\s*([\d.]+)s/
+    );
+    if (finalSummaryMatch) {
+      this.metrics.fileSizeMB = this.metrics.fileSizeMB ?? parseFloat(finalSummaryMatch[1]);
+      this.metrics.totalMeshes = this.metrics.totalMeshes ?? parseInt(finalSummaryMatch[2].replace(/,/g, ''), 10);
+      this.metrics.totalWallClockMs = Math.round(parseFloat(finalSummaryMatch[3]) * 1000);
     }
   }
 

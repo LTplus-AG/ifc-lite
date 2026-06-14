@@ -1,5 +1,13 @@
 # @ifc-lite/mutations
 
+## 1.15.4
+
+### Patch Changes
+
+- [#1116](https://github.com/LTplus-AG/ifc-lite/pull/1116) [`49778b1`](https://github.com/LTplus-AG/ifc-lite/commit/49778b179826d46e1c96361fe7b557e42db4ecfe) Thanks [@louistrue](https://github.com/louistrue)! - Seed the overlay express-id watermark above deferred property atoms, not just `entityIndex.byId`.
+
+  On huge files the parser defers high-cardinality property atoms out of `byId` into `deferredEntityIndex` (`deferPropertyAtomIndex`). `StoreEditor.computeMaxExistingId()` scanned only `byId`, so a deferred atom sitting above the primary-index maximum could have its express id reused for a newly created overlay entity. With the export fix now emitting deferred atoms, that collision would surface as two `#ID=` definitions in the STEP output. The watermark (and the post-construction "store grew" guard) now span `deferredEntityIndex` too. Surfaced in review of the [#1110](https://github.com/LTplus-AG/ifc-lite/issues/1110) export fix.
+
 ## 1.15.3
 
 ### Patch Changes

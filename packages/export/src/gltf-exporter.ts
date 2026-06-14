@@ -22,6 +22,7 @@ interface GLTFScene {
 interface GLTFNode {
     mesh?: number;
     name?: string;
+    translation?: [number, number, number];
     extras?: Record<string, unknown>;
 }
 
@@ -354,6 +355,15 @@ export class GLTFExporter {
             // Node
             const nodeIdx = gltf.nodes.length;
             const node: GLTFNode = { mesh: meshIdx };
+            // Positions/accessor bounds are stored in the element's LOCAL frame
+            // (world = origin + local). Express the per-mesh origin as a glTF
+            // node translation so the buffer keeps small, precise f32 coords
+            // (no fan reintroduction) while the element lands at its world
+            // position. Omitted when origin is absent or all-zero.
+            const mo = mesh.origin;
+            if (mo && (mo[0] !== 0 || mo[1] !== 0 || mo[2] !== 0)) {
+                node.translation = [mo[0], mo[1], mo[2]];
+            }
             if (options.includeMetadata && mesh.expressId !== undefined) {
                 node.extras = mesh.modelIndex !== undefined
                     ? { expressId: mesh.expressId, modelIndex: mesh.modelIndex }

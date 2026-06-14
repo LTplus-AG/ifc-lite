@@ -1,5 +1,13 @@
 # @ifc-lite/server-bin
 
+## 1.16.3
+
+### Patch Changes
+
+- [#1115](https://github.com/LTplus-AG/ifc-lite/pull/1115) [`65335ad`](https://github.com/LTplus-AG/ifc-lite/commit/65335ad86ec8c72954f49eba0f8feb7144e342fb) Thanks [@louistrue](https://github.com/louistrue)! - Rebuild the prebuilt native server binary to ship the latest Rust geometry/processing changes.
+
+  `@ifc-lite/server-bin` downloads its per-platform native archive from a GitHub release tagged at its own version, and the release workflow skips rebuilding assets when that tag already exists. Bump the patch version so a fresh `v<server-bin>` release fires and the prebuilt binary carries the merged native-side geometry work — the per-element local frame, the deterministic CSG escalation budget (the [#1109](https://github.com/LTplus-AG/ifc-lite/issues/1109) 95% hang fix), the f64 interval-lambda / cmp_along predicate filters, and the curved-wall watertightness guard.
+
 ## 1.16.2
 
 ### Patch Changes

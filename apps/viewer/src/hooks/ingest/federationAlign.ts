@@ -223,10 +223,17 @@ function applyAlignmentTransformAndUpdateBounds(
 
   for (const mesh of geometry.meshes) {
     const positions = mesh.positions;
+    // Positions may be in the element's local frame (world = origin + position)
+    // on the wasm path. Fold the per-mesh origin into the world coord BEFORE the
+    // alignment affine; the result is written as absolute reference-frame coords
+    // and the stale origin is cleared below (else the renderer's model-matrix
+    // translate would double-count it). No-op when origin is absent/[0,0,0].
+    const o = mesh.origin;
+    const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
     for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i];
-      const y = positions[i + 1];
-      const z = positions[i + 2];
+      const x = positions[i] + ox;
+      const y = positions[i + 1] + oy;
+      const z = positions[i + 2] + oz;
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
         continue;
       }
@@ -239,6 +246,9 @@ function applyAlignmentTransformAndUpdateBounds(
       positions[i + 2] = alignedZ;
       found = updateBounds(bounds, alignedX, alignedY, alignedZ) || found;
     }
+    // Positions are now absolute in the reference viewer frame; drop the stale
+    // local-frame origin so downstream consumers don't re-add it.
+    if (o) mesh.origin = [0, 0, 0];
 
     // Rotate normals by the transform's 3×3 linear part (translation omitted)
     // and renormalize. CRS alignment is a rigid rotation, so the linear part
@@ -330,10 +340,16 @@ async function alignGeometryAcrossCrs(
 
   for (const mesh of geometry.meshes) {
     const positions = mesh.positions;
+    // Fold the per-element local-frame origin into the world coord before the
+    // reprojection (proj4 is nonlinear, so it must run on the absolute world
+    // vertex). Output is absolute reference-frame coords; the stale origin is
+    // cleared below. No-op when origin is absent/[0,0,0].
+    const o = mesh.origin;
+    const oox = o ? o[0] : 0, ooy = o ? o[1] : 0, ooz = o ? o[2] : 0;
     for (let i = 0; i < positions.length; i += 3) {
-      const vx = positions[i];
-      const vy = positions[i + 1];
-      const vz = positions[i + 2];
+      const vx = positions[i] + oox;
+      const vy = positions[i + 1] + ooy;
+      const vz = positions[i + 2] + ooz;
       if (!Number.isFinite(vx) || !Number.isFinite(vy) || !Number.isFinite(vz)) continue;
 
       // viewer(Y-up, source-local) → world(Y-up) → IFC(Z-up, source)
@@ -391,6 +407,9 @@ async function alignGeometryAcrossCrs(
       positions[i + 2] = alignedZ;
       found = updateBounds(bounds, alignedX, alignedY, alignedZ) || found;
     }
+    // Positions are now absolute in the reference viewer frame; drop the stale
+    // local-frame origin so downstream consumers don't re-add it.
+    if (o) mesh.origin = [0, 0, 0];
   }
 
   if (!found) {

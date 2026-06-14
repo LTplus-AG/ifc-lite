@@ -545,6 +545,61 @@ impl VoidContext {
     fn is_noop(&self) -> bool {
         self.openings.is_empty()
     }
+
+    /// Return a copy of this context with every opening (raw + merged)
+    /// translated by `-origin`, i.e. moved from the world frame into the host's
+    /// per-element local frame. Used by [`GeometryRouter::apply_void_context`]
+    /// so the cutters share the host's local frame for the CSG — the missing
+    /// piece that previously made relativizing only the host silently drop cuts.
+    fn relativized_by(&self, origin: [f64; 3]) -> VoidContext {
+        VoidContext {
+            openings: self.openings.iter().map(|o| o.translated(origin)).collect(),
+            merged_openings: self
+                .merged_openings
+                .iter()
+                .map(|o| o.translated(origin))
+                .collect(),
+        }
+    }
+}
+
+/// Translate a cutter mesh's positions by `-origin` in f64 before the f32 store,
+/// moving it into the host's local frame. `origin` is carried on the result as
+/// zero (the mesh is now expressed in the shared local frame).
+fn translate_cutter_mesh(mesh: &Mesh, origin: [f64; 3]) -> Mesh {
+    let mut positions = Vec::with_capacity(mesh.positions.len());
+    for c in mesh.positions.chunks_exact(3) {
+        positions.push((c[0] as f64 - origin[0]) as f32);
+        positions.push((c[1] as f64 - origin[1]) as f32);
+        positions.push((c[2] as f64 - origin[2]) as f32);
+    }
+    Mesh {
+        positions,
+        normals: mesh.normals.clone(),
+        indices: mesh.indices.clone(),
+        rtc_applied: mesh.rtc_applied,
+        origin: [0.0; 3],
+    }
+}
+
+impl OpeningType {
+    /// Return a copy translated by `-origin` (world → host-local frame). Bounds
+    /// (`Point3`) shift; direction vectors and the oriented `OpeningFrame` are
+    /// translation-invariant and pass through unchanged.
+    fn translated(&self, origin: [f64; 3]) -> OpeningType {
+        let sub = |p: &Point3<f64>| Point3::new(p.x - origin[0], p.y - origin[1], p.z - origin[2]);
+        match self {
+            OpeningType::Rectangular(min, max, dir) => {
+                OpeningType::Rectangular(sub(min), sub(max), *dir)
+            }
+            OpeningType::DiagonalRectangular(mesh, frame) => {
+                OpeningType::DiagonalRectangular(translate_cutter_mesh(mesh, origin), *frame)
+            }
+            OpeningType::NonRectangular(mesh, min, max, dir) => {
+                OpeningType::NonRectangular(translate_cutter_mesh(mesh, origin), sub(min), sub(max), *dir)
+            }
+        }
+    }
 }
 
 impl GeometryRouter {
@@ -713,9 +768,12 @@ impl GeometryRouter {
                     _ => continue,
                 };
 
-                // Use the same transform_mesh as process_element → apply_placement
-                // This handles ObjectPlacement, unit scaling, and conditional RTC
-                self.transform_mesh_world(&mut mesh, &placement_transform);
+                // Keep the host in absolute world/RTC coordinates here: the void cut
+                // (`apply_void_context`) matches it against world-coordinate opening
+                // cutters, so relativizing the host now would silently break every
+                // cut. The per-element local-origin relativization is applied to the
+                // CSG OUTPUT instead (shared host+cutter frame).
+                self.transform_mesh_world_framed(&mut mesh, &placement_transform, false);
 
                 item_meshes.push(mesh);
             }
@@ -931,7 +989,11 @@ impl GeometryRouter {
             }
         };
 
-        Ok(self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder))
+        let mut voided = self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder);
+        // Clean slivers the CSG cut can introduce at opening seams — same
+        // hygiene as the tessellation chokepoints (Mesh::clean_degenerate).
+        voided.clean_degenerate();
+        Ok(voided)
     }
 
     /// Apply opening subtraction and clipping planes to an already-built mesh.
@@ -1001,7 +1063,38 @@ impl GeometryRouter {
     /// [`GeometryRouter::take_csg_failures`]). The router's failure log is
     /// the only path failures reach the caller; `apply_void_context` itself
     /// always returns the (possibly un-cut) mesh.
-    pub(super) fn apply_void_context(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
+    /// Apply a pre-built `VoidContext`, honouring the host's per-element local
+    /// frame.
+    ///
+    /// When local-frame precision is on, the host mesh arrives stored relative
+    /// to `mesh.origin` (small, f32-exact). The CSG must run with host AND
+    /// cutters in that SAME frame, or the cutters (resolved in world coords)
+    /// won't overlap the local host and every cut silently drops — the
+    /// 222692→190201 regression from the first attempt. This wrapper strips the
+    /// origin off the host (so the inner body works in a pure origin-0 local
+    /// frame with no origin-aware-merge surprises), relativizes the cutters by
+    /// the same origin, runs the CSG, then re-stamps the origin on the result so
+    /// `world = origin + position` holds for the renderer.
+    pub(super) fn apply_void_context(
+        &self,
+        mut mesh: Mesh,
+        ctx: &VoidContext,
+        element_id: u32,
+    ) -> Mesh {
+        let origin = mesh.origin;
+        if origin == [0.0, 0.0, 0.0] {
+            // Legacy/world frame: no relativization needed.
+            return self.apply_void_context_inner(mesh, ctx, element_id);
+        }
+        // Work entirely in the host's local frame (origin 0 on every operand).
+        mesh.origin = [0.0, 0.0, 0.0];
+        let local_ctx = ctx.relativized_by(origin);
+        let mut result = self.apply_void_context_inner(mesh, &local_ctx, element_id);
+        result.origin = origin;
+        result
+    }
+
+    fn apply_void_context_inner(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // Capture the input triangle count + bounds so the per-host
         // diagnostic can flag the "cuts attempted but produced no
         // change" case — the silent-no-op signature when an opening
@@ -1029,6 +1122,44 @@ impl GeometryRouter {
         // gone) with a clean opening hole. Deterministic + watertight + grid-
         // snapped; a no-op for already-planar extrusion hosts.
         let mut result = crate::facet_weld::weld_near_coplanar_facets(&mesh);
+
+        // OPENING-DENSE HOST REFINEMENT: when many openings target the same host
+        // (a window wall is usually 2 big face-triangles per side), every cut's
+        // intersection segments pile onto those few triangles — the exact
+        // arrangement then re-triangulates a single triangle carrying dozens of
+        // constraints (O(k²)), and the batched N-ary subtract leaves unrecovered
+        // constraints and degrades to the O(N²) sequential path. Pre-subdividing
+        // the host spreads the segments across many small triangles (small k each)
+        // so the batched cut recovers. `consolidate_coplanar` re-triangulates each
+        // coplanar group afterwards, so the temporary interior vertices don't
+        // bloat the final mesh. Levels are scaled to opening count and capped.
+        let n_openings = ctx.merged_openings.len();
+        if n_openings >= 8 {
+            // Just enough subdivision that each host triangle carries only a few
+            // intersection segments, so the batched N-ary subtract RECOVERS rather
+            // than degrading to the O(N²) sequential path — that recovery is the
+            // win (≈10× on the densest walls), not the per-triangle segment count
+            // itself. Over-subdividing is counter-productive: the extra triangles
+            // cost more in the arrangement than the spreading saves (level 3 was
+            // ~3× slower than level 1 on a 14-opening wall). Aim for ≳ a handful of
+            // host triangles per opening, capped at 2 levels.
+            let host_tris = result.triangle_count().max(1);
+            let target = 4 * n_openings;
+            let mut levels = 0usize;
+            while host_tris * (1usize << (2 * (levels + 1))) < target && levels < 2 {
+                levels += 1;
+            }
+            // A COARSE host (a box wall is ~12 triangles) still needs one split
+            // even when the next level would overshoot the target; an ALREADY-dense
+            // host (e.g. a faceted-BREP wall whose triangle count already meets the
+            // target) is left untouched — extra geometry there only slows the cut.
+            if levels == 0 && host_tris < target {
+                levels = 1;
+            }
+            if levels > 0 {
+                result = result.subdivided(levels);
+            }
+        }
 
         let (wall_min_f32, wall_max_f32) = result.bounds();
         let wall_min = Point3::new(
@@ -1645,7 +1776,9 @@ impl GeometryRouter {
         let mut voided = SubMeshCollection::new();
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;
-            let voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
+            let mut voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
+            // Same CSG-seam hygiene as the single-mesh void path.
+            voided_mesh.clean_degenerate();
             if !voided_mesh.is_empty() {
                 voided
                     .sub_meshes

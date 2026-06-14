@@ -4,7 +4,33 @@
 
 import { describe, it, expect } from 'vitest';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { resolveEntityTypeName } from './extract-walls.js';
+import { resolveEntityTypeName, footprintMidOffset } from './extract-walls.js';
+
+describe('footprintMidOffset', () => {
+  it('is ~zero for a symmetric footprint (centroid == geometric mid)', () => {
+    const off = footprintMidOffset([[0, 0], [4, 0], [4, 0.3], [0, 0.3]]);
+    expect(off).not.toBeNull();
+    expect(Math.hypot(off![0], off![1])).toBeLessThan(1e-9);
+  });
+
+  it('returns the perpendicular offset when the centroid is pulled off-centre', () => {
+    // Extra vertices crowd the bottom face → the centroid is pulled down, so the
+    // geometric mid is ABOVE it (+Y). The offset is along the minor (Y) axis,
+    // not along X (the length).
+    const pts: [number, number][] = [
+      [0, 0], [1, 0], [2, 0], [3, 0], [4, 0], // dense bottom face
+      [4, 0.3], [0, 0.3],
+    ];
+    const off = footprintMidOffset(pts);
+    expect(off).not.toBeNull();
+    expect(Math.abs(off![0])).toBeLessThan(1e-6); // no length-axis component
+    expect(off![1]).toBeGreaterThan(0.01); // mid is above the low centroid
+  });
+
+  it('returns null for fewer than 3 points', () => {
+    expect(footprintMidOffset([[0, 0], [1, 0]])).toBeNull();
+  });
+});
 
 /**
  * Regression for the AC20-FZK-Haus "no rooms" bug: the columnar entity table

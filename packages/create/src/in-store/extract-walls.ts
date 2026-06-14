@@ -77,6 +77,14 @@ export interface WallExtractionResult {
    * centreline footprint to a net (inner-face) area.
    */
   wallThicknesses: (number | undefined)[];
+  /**
+   * Per-segment world offset `[dx, dy]` (metres, parallel to `segments`) from the
+   * derived centroid axis to the wall's geometric mid — only for body-footprint
+   * walls (PCA centroid sits off-centre on a meshed/asymmetric footprint);
+   * `undefined` for axis-rep / rect-profile walls (well-defined axis). Pass to the
+   * `SpacePlateHandle` so it slides corners onto the wall mid post-build.
+   */
+  centerings: ([number, number] | undefined)[];
   /** Walls dropped by the extractor, with the reason. */
   skipped: WallSkip[];
   /** Best-effort total wall count visible on the storey (existing + overlay). */
@@ -134,6 +142,7 @@ export function extractWallSegmentsForStorey(
   const segments: Segment[] = [];
   const contributing: number[] = [];
   const wallThicknesses: (number | undefined)[] = [];
+  const centerings: ([number, number] | undefined)[] = [];
   const skipped: WallSkip[] = [];
   const debug = !!options.debug;
   const log = debug ? (...args: unknown[]) => console.debug('[extract-walls]', ...args) : () => {};
@@ -155,7 +164,7 @@ export function extractWallSegmentsForStorey(
 
   if (!store.source) {
     log('no source bytes on data store — extraction cannot run');
-    return { segments, contributingWallIds: contributing, wallThicknesses, skipped, considered: 0, lengthUnitScale };
+    return { segments, contributingWallIds: contributing, wallThicknesses, centerings, skipped, considered: 0, lengthUnitScale };
   }
 
   const dividerTypes = new Set(DEFAULT_DIVIDER_TYPES);
@@ -173,6 +182,10 @@ export function extractWallSegmentsForStorey(
       segments.push(scaleSegment(result.segment, lengthUnitScale));
       contributing.push(id);
       wallThicknesses.push(wallThicknessFromMaterial(store, id));
+      // Centering is in raw native units (like the segment) → scale to metres.
+      centerings.push(result.centering
+        ? [result.centering[0] * lengthUnitScale, result.centering[1] * lengthUnitScale]
+        : undefined);
     } else {
       skipped.push({ wallId: id, reason: result.reason ?? 'no-axis-or-rect-profile' });
     }
@@ -190,6 +203,7 @@ export function extractWallSegmentsForStorey(
         segments.push(result.segment);
         contributing.push(ent.expressId);
         wallThicknesses.push(undefined); // overlay walls carry no material yet
+        centerings.push(result.centering); // already metres; overlay walls are axis/rect → undefined
       } else {
         skipped.push({ wallId: ent.expressId, reason: result.reason ?? 'no-axis-or-rect-profile' });
       }
@@ -213,6 +227,7 @@ export function extractWallSegmentsForStorey(
     segments,
     contributingWallIds: contributing,
     wallThicknesses,
+    centerings,
     skipped,
     considered: dividerIds.length + overlayCount,
     lengthUnitScale,
@@ -391,6 +406,12 @@ function buildRelatingChildrenIndex(
 interface ExtractAttempt {
   segment: Segment | null;
   reason?: WallSkipReason;
+  /** World offset (same units as `segment`) from the derived centroid axis to
+   *  the wall's geometric mid — only set for the body-footprint strategy, whose
+   *  PCA centroid sits off-centre on an asymmetric/meshed footprint. The engine
+   *  slides corners onto the mid post-build. `undefined` for axis-rep / rect
+   *  (well-defined axis) → no re-centring. */
+  centering?: Vec2;
 }
 
 function extractWallAxisFromSource(
@@ -487,7 +508,12 @@ function computeWallSegment(
     if (centreline) {
       const start = applyFrame(frame, centreline[0]);
       const end = applyFrame(frame, centreline[1]);
-      return finaliseSegment(start, end, wallId, log, 'body-footprint');
+      // The PCA centroid of a meshed/asymmetric footprint is pulled off the true
+      // wall mid; record the (rotated-to-world) offset to it so the engine can
+      // slide corners onto the mid without disturbing the arrangement.
+      const midLocal = footprintMidOffset(footprint);
+      const centering = midLocal ? applyFrameVec(frame, midLocal) : undefined;
+      return { ...finaliseSegment(start, end, wallId, log, 'body-footprint'), centering };
     }
   }
 
@@ -717,6 +743,46 @@ function principalAxisCentreline(points: Vec2[]): [Vec2, Vec2] | null {
   return [[cx + ex * tmin, cy + ey * tmin], [cx + ex * tmax, cy + ey * tmax]];
 }
 
+/**
+ * Local perpendicular offset from the footprint's PCA centroid to its geometric
+ * mid (the midpoint of its extent along the minor axis). The centroid — and so
+ * `principalAxisCentreline`'s axis — is pulled off the true wall mid by a
+ * meshed/asymmetric footprint (more vertices on one face, a duplicate closing
+ * point, an attached element); the bbox mid is invariant to that. Returns the
+ * offset VECTOR in the footprint's local frame (centroid → mid), null if
+ * degenerate. The engine slides corners by this (post-build) rather than moving
+ * the axis, which would re-arrange and collapse rooms.
+ */
+export function footprintMidOffset(points: Vec2[]): Vec2 | null {
+  const n = points.length;
+  if (n < 3) return null;
+  let cx = 0, cy = 0;
+  for (const [x, y] of points) { cx += x; cy += y; }
+  cx /= n; cy /= n;
+  let sxx = 0, sxy = 0, syy = 0;
+  for (const [x, y] of points) {
+    const dx = x - cx, dy = y - cy;
+    sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+  }
+  const tr = sxx + syy;
+  const disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - (sxx * syy - sxy * sxy)));
+  const lambda = tr / 2 + disc;
+  let ex = sxy, ey = lambda - sxx;
+  if (Math.hypot(ex, ey) < 1e-12) { ex = lambda - syy; ey = sxy; }
+  const elen = Math.hypot(ex, ey);
+  if (elen < 1e-12) return null;
+  ex /= elen; ey /= elen;
+  const px = -ey, py = ex; // minor (thickness) axis
+  let smin = Infinity, smax = -Infinity;
+  for (const [x, y] of points) {
+    const s = (x - cx) * px + (y - cy) * py;
+    if (s < smin) smin = s;
+    if (s > smax) smax = s;
+  }
+  const perpMid = (smin + smax) / 2;
+  return [px * perpMid, py * perpMid];
+}
+
 function finaliseSegment(start: Vec2, end: Vec2, wallId: number, log: Logger, source: string): ExtractAttempt {
   const dx = end[0] - start[0];
   const dy = end[1] - start[1];
@@ -783,6 +849,14 @@ function applyFrame(frame: PlacementFrame, local: Vec2): Vec2 {
     frame.origin[0] + ax * local[0] + px * local[1],
     frame.origin[1] + ay * local[0] + py * local[1],
   ];
+}
+
+/** Rotate a local *vector* (no translation) into world by the frame — for an
+ *  offset like the wall-mid re-centring, where only the rotation applies. */
+function applyFrameVec(frame: PlacementFrame, v: Vec2): Vec2 {
+  const ax = frame.axisX[0], ay = frame.axisX[1];
+  const px = -ay, py = ax;
+  return [ax * v[0] + px * v[1], ay * v[0] + py * v[1]];
 }
 
 /**

@@ -78,16 +78,30 @@ pub struct InputSegment {
     /// its own wall's half-thickness — no fuzzy edge↔wall matching, unlike the
     /// TS `offsetRoomFootprint`. `0.0` = unknown/no thickness (centreline only).
     pub half_thickness: f64,
+    /// World offset vector from this segment's (centroid-derived) axis to the
+    /// wall's true geometric mid — the PCA centroid of a meshed/asymmetric wall
+    /// footprint is pulled off-centre, so the derived axis sits a couple of cm
+    /// off the wall. `recenter_to_wall_mid` (a topology-preserving post-build
+    /// vertex relaxation) uses it to slide corners onto the wall mid without
+    /// touching the arrangement. `[0,0]` for a well-defined axis (axis-rep,
+    /// rect-profile) or a user-drawn partition.
+    pub centering: [f64; 2],
 }
 
 impl InputSegment {
     pub fn new(a: [f64; 2], b: [f64; 2], source_element: Option<u32>) -> Self {
-        Self { a, b, source_element, half_thickness: 0.0 }
+        Self { a, b, source_element, half_thickness: 0.0, centering: [0.0, 0.0] }
     }
 
     /// Builder: set the half-thickness (metres) carried to derived half-edges.
     pub fn with_half_thickness(mut self, half_thickness: f64) -> Self {
         self.half_thickness = half_thickness;
+        self
+    }
+
+    /// Builder: set the wall-mid re-centring offset (world vector).
+    pub fn with_centering(mut self, centering: [f64; 2]) -> Self {
+        self.centering = centering;
         self
     }
 }
@@ -132,6 +146,10 @@ struct HalfEdge {
     /// Half the source wall's thickness (metres); `0.0` for a user-drawn edge.
     /// Both twins carry the same value (it's the wall, not a side).
     half_thickness: f64,
+    /// World offset from the (centroid) axis to the wall's geometric mid (see
+    /// `InputSegment::centering`). Same on both twins and inherited by splits —
+    /// it's a world translation of the wall's line, direction-independent.
+    centering: [f64; 2],
     alive: bool,
 }
 
@@ -224,7 +242,83 @@ impl SpacePlate {
         // leave behind. Clean them so a derived plate starts as just its rooms
         // (a no-op on already-clean inputs; never changes a room's area).
         plate.prune_orphans();
+        // Slide corners onto the true wall mid — the axis from a meshed/asymmetric
+        // footprint is its vertex centroid, a couple of cm off-centre. A no-op
+        // when no edge carries a centering offset (axis-rep / rect-profile walls).
+        plate.recenter_to_wall_mid();
         plate
+    }
+
+    /// Slide each corner onto the wall geometric-mid by re-intersecting the
+    /// **centred** supporting lines of its incident edges. A wall axis derived
+    /// from a meshed/asymmetric footprint is the vertex centroid — pulled a
+    /// couple of cm off the true wall mid — and each edge carries a `centering`
+    /// world offset to that mid, so a corner's true position is where the
+    /// incident walls' mid-lines cross.
+    ///
+    /// TOPOLOGY-PRESERVING: it only moves vertex *positions* (never re-arranges),
+    /// so it cannot collapse a room — unlike shifting the input segments, which
+    /// re-runs the arrangement and merges rooms. A degree-<2 or collinear node
+    /// (parallel incident lines) is left put, as is any vertex whose incident
+    /// edges carry no centering or whose move would be implausibly large.
+    fn recenter_to_wall_mid(&mut self) {
+        let n = self.vertices.len();
+        let mut moved: Vec<Option<[f64; 2]>> = vec![None; n];
+        for vi in 0..n {
+            if !self.vertices[vi].alive {
+                continue;
+            }
+            let v = VertexId(vi as u32);
+            let here = self.vertices[vi].pos;
+            // Centred supporting line per incident edge: through (origin + centering)
+            // with the edge's direction. Both share the origin (this vertex).
+            let mut lines: Vec<([f64; 2], [f64; 2])> = Vec::new();
+            let mut any_centering = false;
+            for h in self.outgoing_half_edges(v).collect::<Vec<_>>() {
+                let d = self.vertices[self.dest(h).0 as usize].pos;
+                let dir = [d[0] - here[0], d[1] - here[1]];
+                let len = (dir[0] * dir[0] + dir[1] * dir[1]).sqrt();
+                if len < EPS {
+                    continue;
+                }
+                let c = self.half_edges[h.0 as usize].centering;
+                if c[0] != 0.0 || c[1] != 0.0 {
+                    any_centering = true;
+                }
+                lines.push(([here[0] + c[0], here[1] + c[1]], [dir[0] / len, dir[1] / len]));
+            }
+            if !any_centering || lines.len() < 2 {
+                continue;
+            }
+            // Least-squares point minimising Σ (n_i · (X − p_i))² over the centred
+            // lines (exact for two non-parallel lines; best-fit at a junction).
+            let (mut m00, mut m01, mut m11, mut b0, mut b1) = (0.0, 0.0, 0.0, 0.0, 0.0);
+            for (p, dir) in &lines {
+                let (nx, ny) = (-dir[1], dir[0]);
+                let rhs = nx * p[0] + ny * p[1];
+                m00 += nx * nx;
+                m01 += nx * ny;
+                m11 += ny * ny;
+                b0 += nx * rhs;
+                b1 += ny * rhs;
+            }
+            let det = m00 * m11 - m01 * m01;
+            if det.abs() < 1e-12 {
+                continue; // incident lines parallel (collinear node) — leave it on the line
+            }
+            let x = (m11 * b0 - m01 * b1) / det;
+            let y = (m00 * b1 - m01 * b0) / det;
+            let (dx, dy) = (x - here[0], y - here[1]);
+            if (dx * dx + dy * dy).sqrt() > 0.3 {
+                continue; // implausible (e.g. a shallow-angle corner) — don't fling it
+            }
+            moved[vi] = Some([x, y]);
+        }
+        for (vi, m) in moved.into_iter().enumerate() {
+            if let Some(p) = m {
+                self.vertices[vi].pos = p;
+            }
+        }
     }
 
     fn from_arrangement(arr: Arrangement, min_area: f64) -> Self {
@@ -241,7 +335,7 @@ impl SpacePlate {
         // Two half-edges per undirected edge, twinned. Record outgoing fans.
         let mut fans: Vec<Vec<(HalfEdgeId, f64)>> = vec![Vec::new(); arr.vertices.len()];
         for e in &arr.edges {
-            let (a, b, src, ht) = (e.a, e.b, e.source, e.half_thickness);
+            let (a, b, src, ht, ct) = (e.a, e.b, e.source, e.half_thickness, e.centering);
             let pa = arr.vertices[a];
             let pb = arr.vertices[b];
             let fwd = HalfEdgeId(plate.half_edges.len() as u32);
@@ -255,6 +349,7 @@ impl SpacePlate {
                 face: FaceId(0),
                 source_element: src,
                 half_thickness: ht,
+                centering: ct,
                 alive: true,
             });
             plate.half_edges.push(HalfEdge {
@@ -265,6 +360,7 @@ impl SpacePlate {
                 face: FaceId(0),
                 source_element: src,
                 half_thickness: ht,
+                centering: ct,
                 alive: true,
             });
             fans[a].push((fwd, (pb[1] - pa[1]).atan2(pb[0] - pa[0])));
@@ -418,6 +514,7 @@ impl SpacePlate {
             face,
             source_element,
             half_thickness: 0.0, // a user-drawn partition has no wall thickness yet
+            centering: [0.0, 0.0], // …nor a re-centring offset
             alive: true,
         });
         self.half_edges.push(HalfEdge {
@@ -428,6 +525,7 @@ impl SpacePlate {
             face: new_face,
             source_element,
             half_thickness: 0.0,
+            centering: [0.0, 0.0],
             alive: true,
         });
 
@@ -478,9 +576,12 @@ impl SpacePlate {
         let t_next = self.half_edges[t.0 as usize].next;
         let h_src = self.half_edges[h.0 as usize].source_element;
         let t_src = self.half_edges[t.0 as usize].source_element;
-        // The two new halves continue the same wall → inherit its thickness.
+        // The two new halves continue the same wall → inherit its thickness +
+        // re-centring offset.
         let h_ht = self.half_edges[h.0 as usize].half_thickness;
         let t_ht = self.half_edges[t.0 as usize].half_thickness;
+        let h_ct = self.half_edges[h.0 as usize].centering;
+        let t_ct = self.half_edges[t.0 as usize].centering;
 
         let n = VertexId(self.vertices.len() as u32);
         let e1 = HalfEdgeId(self.half_edges.len() as u32); // N → B (was dest of h)
@@ -488,10 +589,10 @@ impl SpacePlate {
 
         self.vertices.push(Vertex { pos: [x, y], outgoing: Some(e1), alive: true });
         self.half_edges.push(HalfEdge {
-            origin: n, twin: t, next: h_next, prev: h, face: f1, source_element: h_src, half_thickness: h_ht, alive: true,
+            origin: n, twin: t, next: h_next, prev: h, face: f1, source_element: h_src, half_thickness: h_ht, centering: h_ct, alive: true,
         });
         self.half_edges.push(HalfEdge {
-            origin: n, twin: h, next: t_next, prev: t, face: f2, source_element: t_src, half_thickness: t_ht, alive: true,
+            origin: n, twin: h, next: t_next, prev: t, face: f2, source_element: t_src, half_thickness: t_ht, centering: t_ct, alive: true,
         });
 
         // h becomes A→N; t becomes B→N. Their twins/nexts re-point through N.
@@ -907,6 +1008,7 @@ impl SpacePlate {
                 face: room,
                 source_element,
                 half_thickness: 0.0, // a drawn room has no source wall thickness
+                centering: [0.0, 0.0],
                 alive: true,
             });
         }
@@ -920,6 +1022,7 @@ impl SpacePlate {
                 face: outer,
                 source_element,
                 half_thickness: 0.0,
+                centering: [0.0, 0.0],
                 alive: true,
             });
         }
@@ -1268,6 +1371,7 @@ struct ArrEdge {
     b: usize,
     source: Option<u32>,
     half_thickness: f64,
+    centering: [f64; 2],
 }
 
 /// The planar arrangement: snapped vertices + split, deduped edges. This is
@@ -1321,7 +1425,7 @@ impl Arrangement {
             let ai = lookup(s.a, &mut vertices);
             let bi = lookup(s.b, &mut vertices);
             if ai != bi {
-                segs.push(Seg { a: ai, b: bi, source: s.source_element, half_thickness: s.half_thickness });
+                segs.push(Seg { a: ai, b: bi, source: s.source_element, half_thickness: s.half_thickness, centering: s.centering });
             }
         }
 
@@ -1340,7 +1444,7 @@ impl Arrangement {
             'outer: for vid in endpoints {
                 let p = vertices[vid];
                 for si in 0..segs.len() {
-                    let Seg { a, b, source, half_thickness } = segs[si];
+                    let Seg { a, b, source, half_thickness, centering } = segs[si];
                     if a == vid || b == vid {
                         continue;
                     }
@@ -1353,8 +1457,8 @@ impl Arrangement {
                         if !(1e-6..=1.0 - 1e-6).contains(&t) {
                             continue; // endpoint, not interior
                         }
-                        segs[si] = Seg { a, b: vid, source, half_thickness };
-                        segs.push(Seg { a: vid, b, source, half_thickness });
+                        segs[si] = Seg { a, b: vid, source, half_thickness, centering };
+                        segs.push(Seg { a: vid, b, source, half_thickness, centering });
                         applied = true;
                         break 'outer;
                     }
@@ -1408,13 +1512,14 @@ impl Arrangement {
         for (i, mut cuts) in splits.into_iter().enumerate() {
             let source = seeds[i].source;
             let ht = seeds[i].half_thickness;
+            let ct = seeds[i].centering;
             if cuts.len() <= 2 {
-                push_edge(&mut edges, &mut seen, cuts[0].1, cuts[1].1, source, ht);
+                push_edge(&mut edges, &mut seen, cuts[0].1, cuts[1].1, source, ht, ct);
                 continue;
             }
             cuts.sort_by(|p, q| p.0.partial_cmp(&q.0).unwrap_or(std::cmp::Ordering::Equal));
             for w in cuts.windows(2) {
-                push_edge(&mut edges, &mut seen, w[0].1, w[1].1, source, ht);
+                push_edge(&mut edges, &mut seen, w[0].1, w[1].1, source, ht, ct);
             }
         }
 
@@ -1428,6 +1533,7 @@ struct Seg {
     b: usize,
     source: Option<u32>,
     half_thickness: f64,
+    centering: [f64; 2],
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1438,13 +1544,14 @@ fn push_edge(
     b: usize,
     source: Option<u32>,
     half_thickness: f64,
+    centering: [f64; 2],
 ) {
     if a == b {
         return;
     }
     let key = if a < b { (a, b) } else { (b, a) };
     if seen.insert(key) {
-        edges.push(ArrEdge { a, b, source, half_thickness });
+        edges.push(ArrEdge { a, b, source, half_thickness, centering });
     }
 }
 
@@ -2283,6 +2390,56 @@ mod tests {
         plate.split_edge(bottom, 2.0, 0.0).expect("split");
         let inner = polygon_area(&plate.net_outline(room, true)).abs();
         assert!((inner - 8.75).abs() < 1e-6, "the split edge keeps its wall thickness: {inner}");
+    }
+
+    // ───────────────── wall-mid re-centring ─────────────────
+
+    #[test]
+    fn recenter_slides_corners_onto_the_wall_mid() {
+        // 4×3 room; the bottom wall's footprint centroid is 0.05 below its true
+        // mid → recorded as a +Y centering. After build the bottom corners sit at
+        // y = 0.05 (the wall mid); topology unchanged (still one rectangle room).
+        let segs = vec![
+            InputSegment::new([0.0, 0.0], [4.0, 0.0], Some(1)).with_centering([0.0, 0.05]),
+            InputSegment::new([4.0, 0.0], [4.0, 3.0], Some(2)),
+            InputSegment::new([4.0, 3.0], [0.0, 3.0], Some(3)),
+            InputSegment::new([0.0, 3.0], [0.0, 0.0], Some(4)),
+        ];
+        let plate = SpacePlate::build(&segs, BuildOptions::default());
+        assert_eq!(plate.room_count(), 1, "still one room (topology preserved)");
+        let room = plate.rooms().next().unwrap();
+        let o = plate.face_outline(room);
+        assert_eq!(o.len(), 4, "still a quad");
+        let bottom: Vec<f64> = o.iter().map(|p| p[1]).filter(|&y| y < 1.5).collect();
+        assert!(bottom.len() == 2 && bottom.iter().all(|&y| (y - 0.05).abs() < 1e-6),
+            "bottom corners slid to the wall mid y=0.05, got {bottom:?}");
+    }
+
+    #[test]
+    fn recenter_is_a_noop_without_centering() {
+        // No centering on any wall → the plate is byte-identical to no re-centring
+        // (well-defined axis-rep / rect-profile walls don't move).
+        let plate = SpacePlate::build(&loop_segments(&rect(0.0, 0.0, 4.0, 3.0), 100), BuildOptions::default());
+        let room = plate.rooms().next().unwrap();
+        assert!((plate.face_area(room) - 12.0).abs() < 1e-9, "area exactly 12, got {}", plate.face_area(room));
+        let o = plate.face_outline(room);
+        assert!(o.iter().all(|p| (p[0] == 0.0 || p[0] == 4.0) && (p[1] == 0.0 || p[1] == 3.0)),
+            "corners exactly on the input rectangle: {o:?}");
+    }
+
+    #[test]
+    fn recenter_preserves_two_rooms() {
+        // Two rooms sharing a wall, every wall carrying a centering offset. The
+        // re-centring must keep BOTH rooms (it only moves vertices).
+        let segs = vec![
+            InputSegment::new([0.0, 0.0], [8.0, 0.0], Some(1)).with_centering([0.0, 0.04]),
+            InputSegment::new([8.0, 0.0], [8.0, 3.0], Some(2)).with_centering([-0.04, 0.0]),
+            InputSegment::new([8.0, 3.0], [0.0, 3.0], Some(3)).with_centering([0.0, -0.04]),
+            InputSegment::new([0.0, 3.0], [0.0, 0.0], Some(4)).with_centering([0.04, 0.0]),
+            InputSegment::new([4.0, 0.0], [4.0, 3.0], Some(99)).with_centering([0.02, 0.0]),
+        ];
+        let plate = SpacePlate::build(&segs, BuildOptions::default());
+        assert_eq!(plate.room_count(), 2, "both rooms survive re-centring");
     }
 
     // Test-only helper.

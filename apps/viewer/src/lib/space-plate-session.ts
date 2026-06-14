@@ -50,6 +50,10 @@ export function ensureSpaceWasm(): Promise<void> {
  *  carried onto derived edges so net/gross outlines can be queried. Empty = none. */
 export type Thicknesses = Float64Array;
 
+/** Per-segment wall-mid re-centring offset, flat `[dx, dy, …]` (metres, two per
+ *  segment), so the engine slides corners onto the wall mid post-build. Empty = none. */
+export type Centerings = Float64Array;
+
 /** Build a plate from flat wall segments. With `manualTol` null, escalate the
  *  corner-snap tolerance until one encloses rooms (real centrelines miss corners
  *  by ~½ a wall thickness, so a tight snap leaves the loop open → 0 rooms). */
@@ -57,16 +61,17 @@ function buildHandle(
   coords: Float64Array,
   sources: Int32Array,
   thicknesses: Thicknesses,
+  centerings: Centerings,
   manualTol: number | null,
   minArea: number,
 ): { handle: SpacePlateHandle; tol: number } {
   if (manualTol != null) {
-    return { handle: new SpacePlateHandle(coords, sources, thicknesses, manualTol, minArea), tol: manualTol };
+    return { handle: new SpacePlateHandle(coords, sources, thicknesses, centerings, manualTol, minArea), tol: manualTol };
   }
   let handle: SpacePlateHandle | null = null;
   let tol = 0.1;
   for (const t of [0.1, 0.25, 0.5]) {
-    const p = new SpacePlateHandle(coords, sources, thicknesses, t, minArea);
+    const p = new SpacePlateHandle(coords, sources, thicknesses, centerings, t, minArea);
     handle?.free();
     handle = p;
     tol = t;
@@ -95,10 +100,11 @@ export function snapshotRooms(
   coords: Float64Array,
   sources: Int32Array,
   thicknesses: Thicknesses,
+  centerings: Centerings,
   boundary: 'center' | 'inner' | 'outer',
   minArea = 0.5,
 ): RoomWithBoundary[] {
-  const { handle } = buildHandle(coords, sources, thicknesses, null, minArea);
+  const { handle } = buildHandle(coords, sources, thicknesses, centerings, null, minArea);
   const rooms = handle.snapshot() as Room[];
   const out = rooms.map((r) => ({
     outline: r.outline,
@@ -132,8 +138,8 @@ export class SpacePlateSession {
 
   /** Build a fresh plate, replacing the current one and clearing all history.
    *  Resets `dirty` (a fresh derive is the new clean baseline). */
-  build(coords: Float64Array, sources: Int32Array, thicknesses: Thicknesses, manualTol: number | null, minArea = 0.5): { rooms: Room[]; tol: number } {
-    const { handle, tol } = buildHandle(coords, sources, thicknesses, manualTol, minArea);
+  build(coords: Float64Array, sources: Int32Array, thicknesses: Thicknesses, centerings: Centerings, manualTol: number | null, minArea = 0.5): { rooms: Room[]; tol: number } {
+    const { handle, tol } = buildHandle(coords, sources, thicknesses, centerings, manualTol, minArea);
     this.discardPending();
     this.disposeHandle();
     this.clearHistory();

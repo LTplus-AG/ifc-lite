@@ -18,3 +18,12 @@ removal and engine-computed wall-boundary outlines:
 The constructor now takes an additional `segHalfThickness: Float64Array`
 (per-segment half-thickness in metres, carried onto the derived edges for
 `netOutline`); pass an empty array when thickness is unknown.
+
+It also takes a `segCentering: Float64Array` (`[dx, dy, …]`, two per segment) and
+**slides each corner onto the wall's true geometric mid after building**. A wall
+axis derived from a meshed/asymmetric footprint is its vertex centroid — pulled a
+couple of cm off the wall mid — and `segCentering` carries the world offset to
+the mid. The re-centring is a topology-preserving vertex relaxation (it
+re-intersects the incident walls' mid-lines), so unlike shifting the input
+segments it cannot collapse a room. Pass an empty array (or zeros) for
+well-defined axes (axis-rep / rect-profile); those walls don't move.

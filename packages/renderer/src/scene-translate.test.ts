@@ -64,4 +64,22 @@ describe('Scene.translateMeshesForEntity', () => {
     const scene = new Scene();
     assert.strictEqual(scene.translateMeshesForEntity(999, [1, 0, 0]), false);
   });
+
+  it('evicts the entity\'s stale selection-highlight meshes on move (no ghost)', () => {
+    const scene = new Scene();
+    scene.addMeshData(mesh(7, [0, 0, 0, 1, 0, 0, 0, 1, 0]));
+    // A standalone highlight mesh (frozen copy made at selection time) lives in
+    // scene.meshes and would otherwise linger at the old position after a move.
+    let destroyed = false;
+    const stub = () => ({ destroy: () => { destroyed = true; } });
+    const sceneMeshes = scene as unknown as { meshes: unknown[] };
+    sceneMeshes.meshes.push({ expressId: 7, vertexBuffer: stub(), indexBuffer: stub() });
+    sceneMeshes.meshes.push({ expressId: 99, vertexBuffer: { destroy() {} }, indexBuffer: { destroy() {} } });
+
+    scene.translateMeshesForEntity(7, [5, 0, 0]);
+
+    assert.strictEqual(sceneMeshes.meshes.length, 1, 'entity 7 highlight evicted, other kept');
+    assert.strictEqual((sceneMeshes.meshes[0] as { expressId: number }).expressId, 99);
+    assert.strictEqual(destroyed, true, 'evicted highlight GPU buffers were freed');
+  });
 });

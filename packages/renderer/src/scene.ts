@@ -632,6 +632,10 @@ export class Scene {
     for (const key of affectedKeys) {
       this.pendingBatchKeys.add(key);
     }
+    // Also drop the entity's standalone selection-highlight meshes — they're not
+    // in the buckets and would otherwise linger after a delete/split (same ghost
+    // class as a move).
+    this.evictHighlightMeshes(expressId);
     // True when at least one dedicated mesh was removed — covers
     // the case where a mesh was queued but not yet bucketed.
     return removedDedicated;
@@ -725,10 +729,31 @@ export class Scene {
     }
 
     this.boundingBoxes.delete(expressId);
+    // The per-entity selection-highlight meshes in `this.meshes` are frozen
+    // position copies made at selection time and are otherwise only cleared by
+    // clear() — so a moved-while-selected entity (the gizmo holds the selection
+    // through the drag) keeps drawing its highlight at the OLD position: a ghost.
+    // Evict them so the highlight re-extracts from the moved geometry next frame.
+    this.evictHighlightMeshes(expressId);
     for (const key of affectedKeys) {
       this.pendingBatchKeys.add(key);
     }
     return true;
+  }
+
+  /** Drop the per-entity selection-highlight meshes for `expressId` (frozen
+   *  copies in `this.meshes`) + free their GPU buffers, so the highlight is
+   *  rebuilt from the entity's current geometry on the next render. Used after a
+   *  translate or removal, which mutate the underlying geometry but don't touch
+   *  these standalone highlight meshes. */
+  private evictHighlightMeshes(expressId: number): void {
+    if (this.meshes.length === 0) return;
+    const kept: Mesh[] = [];
+    for (const mesh of this.meshes) {
+      if (mesh.expressId === expressId) destroyGpuResources(mesh);
+      else kept.push(mesh);
+    }
+    this.meshes = kept;
   }
 
   /** Bulk variant of `translateMeshesForEntity`. */

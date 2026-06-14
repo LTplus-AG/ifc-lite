@@ -978,11 +978,19 @@ impl SpacePlate {
     }
 
     /// The room's outline offset to a wall **boundary face** rather than the
-    /// centreline: each boundary edge is moved perpendicular by its own wall's
-    /// half-thickness — inward for the net (inner) face, outward for the gross
-    /// (outer) face — then adjacent offset lines are re-intersected for the
-    /// corners. Because every half-edge carries its source wall's thickness,
-    /// this needs no fuzzy edge↔wall matching (unlike the TS `offsetRoomFootprint`).
+    /// centreline: every boundary edge is moved perpendicular by ONE thickness
+    /// for the whole room — inward for the net (inner) face, outward for the
+    /// gross (outer) face — then adjacent offset lines are re-intersected for the
+    /// corners.
+    ///
+    /// The offset uses the **median** of the room's wall half-thicknesses, not
+    /// each edge's own. A real model mixes wall thicknesses (e.g. a 0.34 m
+    /// load-bearing wall next to 0.20 m partitions), and a strict per-wall offset
+    /// makes the boundary ragged — one edge juts out further than its neighbours.
+    /// A single representative (median) thickness keeps the ring symmetric and
+    /// tidy while still being a real measured value. The median is robust to the
+    /// odd over-thick wall, and degrades to the centreline when no wall on the
+    /// room carries a thickness.
     ///
     /// An edge shared with another room (its twin bounds a room, not the
     /// exterior) is pinned to the centreline in **outward** mode so it can't
@@ -999,6 +1007,26 @@ impl SpacePlate {
         if cycle.len() != n {
             return centre; // outline / cycle mismatch (e.g. a hole) — don't guess
         }
+        // One representative half-thickness for the whole room — the median of
+        // its walls that carry a thickness. Symmetric/tidy beats per-wall-exact.
+        let room_half = {
+            let mut halves: Vec<f64> = cycle
+                .iter()
+                .map(|h| self.half_edges[h.0 as usize].half_thickness)
+                .filter(|&t| t > EPS)
+                .collect();
+            if halves.is_empty() {
+                0.0
+            } else {
+                halves.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                let m = halves.len() / 2;
+                if halves.len() % 2 == 1 {
+                    halves[m]
+                } else {
+                    (halves[m - 1] + halves[m]) / 2.0
+                }
+            }
+        };
         let sign = if inset { 1.0 } else { -1.0 };
         // Per edge: a point on its offset line + the edge's unit direction.
         let mut lines: Vec<([f64; 2], [f64; 2])> = Vec::with_capacity(n);
@@ -1011,7 +1039,7 @@ impl SpacePlate {
                 return centre;
             }
             let (ux, uy) = (dx / l, dy / l);
-            let mut half = self.half_edges[cycle[i].0 as usize].half_thickness;
+            let mut half = room_half;
             // Outward: a shared (room↔room) edge would overlap the neighbour, so pin it.
             if !inset {
                 if let Some(nbr) = self.neighbor_across(cycle[i]) {
@@ -2265,6 +2293,29 @@ mod tests {
         let min_x = outer.iter().map(|p| p[0]).fold(f64::MAX, f64::min);
         assert!((max_x - 4.0).abs() < 1e-6, "shared wall (x=4) is pinned outward, got {max_x}");
         assert!((min_x + 0.25).abs() < 1e-6, "the exterior wall pushes out to -0.25, got {min_x}");
+    }
+
+    #[test]
+    fn net_outline_uses_the_room_median_not_per_wall_thickness() {
+        // A 4×3 room with three 0.10 m-half walls and one fat 0.30 m-half wall at
+        // x = 4. The median half-thickness (0.10) is applied to every edge, so the
+        // ring stays a tidy rectangle instead of jutting in on the fat wall.
+        let segs = vec![
+            InputSegment::new([0.0, 0.0], [4.0, 0.0], Some(1)).with_half_thickness(0.10),
+            InputSegment::new([4.0, 0.0], [4.0, 3.0], Some(2)).with_half_thickness(0.30), // fat
+            InputSegment::new([4.0, 3.0], [0.0, 3.0], Some(3)).with_half_thickness(0.10),
+            InputSegment::new([0.0, 3.0], [0.0, 0.0], Some(4)).with_half_thickness(0.10),
+        ];
+        let plate = SpacePlate::build(&segs, BuildOptions::default());
+        let room = plate.rooms().next().unwrap();
+        // Median 0.10 inset on every side → 3.8 × 2.8 = 10.64 (NOT 3.6×2.8 = 10.08
+        // that a per-wall offset of the fat edge would give).
+        let ring = plate.net_outline(room, true);
+        let inner = polygon_area(&ring).abs();
+        assert!((inner - 10.64).abs() < 1e-6, "median 0.10 all round = 10.64, got {inner}");
+        // The fat wall's edge moved in by the median (x = 3.90), not its own 0.30.
+        let max_x = ring.iter().map(|p| p[0]).fold(f64::MIN, f64::max);
+        assert!((max_x - 3.90).abs() < 1e-6, "fat wall offset by the median, not 0.30: max_x = {max_x}");
     }
 
     #[test]

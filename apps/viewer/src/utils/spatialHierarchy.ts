@@ -223,6 +223,65 @@ export function rebuildSpatialHierarchy(
   };
 }
 
+/** Depth-first search for a spatial node by express id. */
+function findSpatialNode(node: SpatialNode, expressId: number): SpatialNode | null {
+  if (node.expressId === expressId) return node;
+  for (const child of node.children) {
+    const hit = findSpatialNode(child, expressId);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Register a freshly-authored element into an ALREADY-BUILT spatial hierarchy,
+ * in place, so it's a first-class citizen the instant it's created — visible in
+ * the spatial tree under its storey and resolving its storey assignment.
+ *
+ * Authored entities live in the store's mutation overlay, not the columnar parse
+ * the hierarchy was built from at load, so a full `rebuildSpatialHierarchy` can't
+ * see them (and would be O(n) per add anyway). This patches the maps + tree
+ * directly, mirroring how each relationship type lands a child:
+ *   - A spatial-structure element (IfcSpace / IfcSpatialZone, linked by
+ *     IfcRelAggregates) becomes a child NODE of the storey.
+ *   - Any other element (slab / wall / … linked by IfcRelContainedInSpatialStructure)
+ *     joins the storey's contained-element list (what the tree reads via byStorey).
+ * Idempotent. A later export+reparse rebuilds the hierarchy from the real
+ * relationships, so this is purely the live-session bridge.
+ */
+export function registerAuthoredElement(
+  hierarchy: SpatialHierarchy,
+  storeyExpressId: number,
+  entityId: number,
+  ifcTypeName: string,
+  name: string,
+): void {
+  hierarchy.elementToStorey.set(entityId, storeyExpressId);
+
+  const upper = ifcTypeName.toUpperCase();
+  if (upper === 'IFCSPACE' || upper === 'IFCSPATIALZONE') {
+    if (!hierarchy.bySpace.has(entityId)) hierarchy.bySpace.set(entityId, []);
+    const storeyNode = findSpatialNode(hierarchy.project, storeyExpressId);
+    if (storeyNode && !storeyNode.children.some((c) => c.expressId === entityId)) {
+      storeyNode.children.push({
+        expressId: entityId,
+        type: upper === 'IFCSPATIALZONE' ? IfcTypeEnum.IfcSpatialZone : IfcTypeEnum.IfcSpace,
+        name: name || (upper === 'IFCSPATIALZONE' ? 'IfcSpatialZone' : 'IfcSpace'),
+        children: [],
+        elements: [],
+      });
+    }
+    return;
+  }
+
+  const existing = hierarchy.byStorey.get(storeyExpressId);
+  if (existing) {
+    if (!existing.includes(entityId)) existing.push(entityId);
+  } else {
+    hierarchy.byStorey.set(storeyExpressId, [entityId]);
+  }
+}
+
 /**
  * Entity index type for property/quantity set lookup
  */

@@ -72,6 +72,7 @@ import {
 } from '@/lib/slab-edit.js';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale.js';
 import type { Point2D } from '@/lib/polygon-clip.js';
+import { registerAuthoredElement } from '@/utils/spatialHierarchy.js';
 
 /**
  * IFC-space directions for {@link MutationSlice.duplicateEntity}.
@@ -919,6 +920,18 @@ function runInStoreElementBuilder(
     entityId = build(editor, anchor);
   } catch (err) {
     return { error: err instanceof Error ? err.message : `Failed to ${errorContext}` };
+  }
+
+  // Make the authored element a first-class citizen immediately: register it in
+  // the spatial hierarchy so it appears in the spatial tree under its storey and
+  // resolves its storey assignment. The hierarchy is built from the columnar
+  // parse at load and otherwise never sees overlay-authored entities — so a
+  // baked IfcSpace would be invisible in the tree, have no storey, and (since it
+  // can't be picked from the tree) feel un-selectable / un-movable. (Aggregated
+  // spaces become a child node; contained elements join the storey's list.)
+  if (dataStore.spatialHierarchy) {
+    const name = dataStore.entities?.getName?.(entityId) ?? '';
+    registerAuthoredElement(dataStore.spatialHierarchy, storeyExpressId, entityId, ifcType, name);
   }
 
   // Build a renderer-frame mesh for the new element so it appears in

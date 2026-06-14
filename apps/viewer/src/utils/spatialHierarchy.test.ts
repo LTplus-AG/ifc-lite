@@ -11,7 +11,62 @@ import {
   RelationshipType,
   StringTable,
 } from '@ifc-lite/data';
-import { rebuildSpatialHierarchy, rebuildOnDemandMaps } from './spatialHierarchy';
+import { rebuildSpatialHierarchy, rebuildOnDemandMaps, registerAuthoredElement } from './spatialHierarchy';
+
+describe('registerAuthoredElement', () => {
+  function baseHierarchy() {
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(4, strings);
+    entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    entities.add(2, 'IFCSITE', 's0', 'Site', '', '');
+    entities.add(3, 'IFCBUILDING', 'b0', 'Building', '', '');
+    entities.add(4, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    rels.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    const h = rebuildSpatialHierarchy(entities.build(), rels.build());
+    assert.ok(h);
+    return h;
+  }
+  const storeyNodeOf = (h: NonNullable<ReturnType<typeof rebuildSpatialHierarchy>>) =>
+    h.project.children[0].children[0].children[0];
+
+  it('adds an authored IfcSpace as a storey child node with a storey assignment', () => {
+    const h = baseHierarchy();
+    registerAuthoredElement(h, 4, 50, 'IFCSPACE', 'Kitchen');
+    assert.equal(h.elementToStorey.get(50), 4, 'space resolves its storey');
+    assert.ok(h.bySpace.has(50), 'space registered in bySpace');
+    const space = storeyNodeOf(h).children.find((c) => c.expressId === 50);
+    assert.ok(space, 'space is a child node of the storey');
+    assert.equal(space.type, IfcTypeEnum.IfcSpace);
+    assert.equal(space.name, 'Kitchen');
+  });
+
+  it('adds an authored contained element (slab) to the storey element list', () => {
+    const h = baseHierarchy();
+    registerAuthoredElement(h, 4, 60, 'IFCSLAB', 'Floor');
+    assert.equal(h.elementToStorey.get(60), 4);
+    assert.deepEqual(h.getStoreyElements(4), [60], 'slab joins the storey contained list');
+  });
+
+  it('is idempotent for repeated registration', () => {
+    const h = baseHierarchy();
+    registerAuthoredElement(h, 4, 50, 'IFCSPACE', 'Kitchen');
+    registerAuthoredElement(h, 4, 50, 'IFCSPACE', 'Kitchen');
+    registerAuthoredElement(h, 4, 60, 'IFCSLAB', 'Floor');
+    registerAuthoredElement(h, 4, 60, 'IFCSLAB', 'Floor');
+    assert.equal(storeyNodeOf(h).children.filter((c) => c.expressId === 50).length, 1);
+    assert.deepEqual(h.getStoreyElements(4), [60]);
+  });
+
+  it('falls back to a type name when no name is given', () => {
+    const h = baseHierarchy();
+    registerAuthoredElement(h, 4, 51, 'IFCSPACE', '');
+    const space = storeyNodeOf(h).children.find((c) => c.expressId === 51);
+    assert.equal(space?.name, 'IfcSpace');
+  });
+});
 
 describe('rebuildSpatialHierarchy', () => {
   it('preserves IFC4.3 facility-part trees during cache rebuilds', () => {

@@ -266,6 +266,7 @@ export async function* processParallel(
           texture?: MeshData['texture'];
           geometryHash?: bigint;
           geometryClass?: number;
+          origin?: [number, number, number];
         }) => ({
           expressId: m.expressId,
           ifcType: m.ifcType,
@@ -286,6 +287,9 @@ export async function* processParallel(
           // worker→main re-map (else the viewer's view-mode filter sees only
           // class 0 and the Types view renders nothing).
           ...(m.geometryClass !== undefined ? { geometryClass: m.geometryClass } : {}),
+          // Per-element local-frame origin (world = origin + position); the
+          // renderer reconstructs world via a per-batch model-matrix translate.
+          ...(m.origin ? { origin: m.origin } : {}),
         }));
         if (meshes.length > 0) {
           // Update totalMeshes per batch so consumers see a live

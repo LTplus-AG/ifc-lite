@@ -224,7 +224,7 @@ export function raycastTriangles(
   rayDir: Vec3,
   rayDirInv: Vec3,
   rayDirSign: [number, number, number],
-  meshDataMap: Map<number, { positions: Float32Array; indices: Uint32Array; entityIds?: Uint32Array; modelIndex?: number }[]>,
+  meshDataMap: Map<number, { positions: Float32Array; indices: Uint32Array; entityIds?: Uint32Array; modelIndex?: number; origin?: [number, number, number] }[]>,
   getEntityBoundingBox: (expressId: number) => BoundingBox | null,
   hiddenIds?: Set<number>,
   isolatedIds?: Set<number> | null,
@@ -257,6 +257,15 @@ export function raycastTriangles(
       const indices = piece.indices;
       const pieceEntityIds = piece.entityIds;
 
+      // Positions are in the element's local frame (world = origin + position).
+      // Rather than offset every triangle vertex, shift the ray origin into the
+      // local frame once (a pure translation; rayDir + the returned distance t
+      // are translation-invariant). No-op when origin is absent/[0,0,0].
+      const o = piece.origin;
+      const localRayOrigin: Vec3 = o
+        ? { x: rayOrigin.x - o[0], y: rayOrigin.y - o[1], z: rayOrigin.z - o[2] }
+        : rayOrigin;
+
       for (let i = 0; i < indices.length; i += 3) {
         // For color-merged meshes, skip triangles that don't belong to
         // this entity.
@@ -273,7 +282,7 @@ export function raycastTriangles(
         const v1: Vec3 = { x: positions[i1], y: positions[i1 + 1], z: positions[i1 + 2] };
         const v2: Vec3 = { x: positions[i2], y: positions[i2 + 1], z: positions[i2 + 2] };
 
-        const t = rayTriangleIntersect(rayOrigin, rayDir, v0, v1, v2);
+        const t = rayTriangleIntersect(localRayOrigin, rayDir, v0, v1, v2);
         if (t !== null && t < closestDistance) {
           closestDistance = t;
           closestHit = { expressId, distance: t, modelIndex: piece.modelIndex };

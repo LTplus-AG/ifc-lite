@@ -902,6 +902,9 @@ export class Scene {
         normals: new Float32Array(normals),
         indices,
         color: meshData.color,
+        // Fragments are subsets of the same source mesh → same local frame.
+        // Preserve origin so each fragment relativizes/renders in world space.
+        ...(meshData.origin ? { origin: meshData.origin } : {}),
       });
     }
 
@@ -1097,10 +1100,14 @@ export class Scene {
 
       for (const piece of pieces) {
         const positions = piece.positions;
+        // world = origin + position (per-element local frame); bake WORLD bbox.
+        const ox = piece.origin ? piece.origin[0] : 0;
+        const oy = piece.origin ? piece.origin[1] : 0;
+        const oz = piece.origin ? piece.origin[2] : 0;
         for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i];
-          const y = positions[i + 1];
-          const z = positions[i + 2];
+          const x = positions[i] + ox;
+          const y = positions[i + 1] + oy;
+          const z = positions[i + 2] + oz;
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (z < minZ) minZ = z;
@@ -1166,10 +1173,14 @@ export class Scene {
 
       for (const piece of pieces) {
         const positions = piece.positions;
+        // world = origin + position (per-element local frame); bake WORLD bbox.
+        const ox = piece.origin ? piece.origin[0] : 0;
+        const oy = piece.origin ? piece.origin[1] : 0;
+        const oz = piece.origin ? piece.origin[2] : 0;
         for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i];
-          const y = positions[i + 1];
-          const z = positions[i + 2];
+          const x = positions[i] + ox;
+          const y = positions[i + 1] + oy;
+          const z = positions[i + 2] + oz;
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (z < minZ) minZ = z;
@@ -1383,6 +1394,9 @@ export class Scene {
       bindGroup,
       uniformBuffer,
       bounds: merged.bounds,
+      // Per-batch local frame: positions are stored relative to this; the draw
+      // loop applies model = translate(origin) so they land in world space.
+      origin: merged.origin,
     };
   }
 
@@ -1395,6 +1409,7 @@ export class Scene {
     vertexData: Float32Array;
     indices: Uint32Array;
     bounds: { min: [number, number, number]; max: [number, number, number] };
+    origin: [number, number, number];
   } {
     return mergeGeometry(meshDataArray);
   }
@@ -1824,10 +1839,14 @@ export class Scene {
     for (const pieces of this.meshDataMap.values()) {
       for (const piece of pieces) {
         const positions = piece.positions;
+        // world = origin + position (per-element local frame).
+        const ox = piece.origin ? piece.origin[0] : 0;
+        const oy = piece.origin ? piece.origin[1] : 0;
+        const oz = piece.origin ? piece.origin[2] : 0;
         for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i];
-          const y = positions[i + 1];
-          const z = positions[i + 2];
+          const x = positions[i] + ox;
+          const y = positions[i + 1] + oy;
+          const z = positions[i + 2] + oz;
           if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
             hasValidData = true;
             if (x < minX) minX = x;
@@ -1880,10 +1899,15 @@ export class Scene {
 
     for (const piece of pieces) {
       const positions = piece.positions;
+      // world = origin + position (per-element local frame); origin absent/[0,0,0]
+      // for legacy absolute meshes.
+      const ox = piece.origin ? piece.origin[0] : 0;
+      const oy = piece.origin ? piece.origin[1] : 0;
+      const oz = piece.origin ? piece.origin[2] : 0;
       for (let i = 0; i < positions.length; i += 3) {
-        const x = positions[i];
-        const y = positions[i + 1];
-        const z = positions[i + 2];
+        const x = positions[i] + ox;
+        const y = positions[i + 1] + oy;
+        const z = positions[i + 2] + oz;
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (z < minZ) minZ = z;

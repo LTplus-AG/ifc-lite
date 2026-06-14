@@ -68,8 +68,13 @@ export interface BatchedMesh {
   expressIds: number[];  // For picking - all expressIds in this batch
   bindGroup?: GPUBindGroup;
   uniformBuffer?: GPUBuffer;
-  // Bounding box for frustum culling (optional)
+  // Bounding box for frustum culling (optional) — WORLD space.
   bounds?: { min: [number, number, number]; max: [number, number, number] };
+  /** Per-batch local-frame origin: stored vertex positions are RELATIVE to it,
+   *  so this batch must be drawn with model = translate(origin) to land in world
+   *  space (world = origin + position). Keeps f32 vertex coords element-small at
+   *  building/georef scale (no fan collapse). [0,0,0] = absolute (legacy). */
+  origin?: [number, number, number];
 }
 
 // Section plane for clipping

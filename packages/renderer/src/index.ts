@@ -857,12 +857,20 @@ export class Renderer {
         const interleaved = new Float32Array(interleavedRaw);
         const interleavedU32 = new Uint32Array(interleavedRaw);
 
+        // Fold the per-element origin back into the VBO so this individual mesh
+        // (selection highlight + GPU object-id picker) stays in ABSOLUTE world
+        // space and renders correctly with an identity model matrix — unlike the
+        // batched path, single meshes aren't worth a per-mesh translate. At
+        // single-element extent f32 is precise even at building scale.
+        const ox = meshData.origin ? meshData.origin[0] : 0;
+        const oy = meshData.origin ? meshData.origin[1] : 0;
+        const oz = meshData.origin ? meshData.origin[2] : 0;
         for (let i = 0; i < vertexCount; i++) {
             const base = i * 7;
             const posBase = i * 3;
-            interleaved[base] = meshData.positions[posBase];
-            interleaved[base + 1] = meshData.positions[posBase + 1];
-            interleaved[base + 2] = meshData.positions[posBase + 2];
+            interleaved[base] = meshData.positions[posBase] + ox;
+            interleaved[base + 1] = meshData.positions[posBase + 1] + oy;
+            interleaved[base + 2] = meshData.positions[posBase + 2] + oz;
             const hasNormals = meshData.normals.length > 0;
             interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
             interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;
@@ -1750,6 +1758,17 @@ export class Renderer {
                     tpl[34] = batch.color[2];
                     tpl[35] = alphaForBatch(batch, batch.color[3]);
 
+                    // Per-batch local frame: the batch's vertices are stored
+                    // RELATIVE to batch.origin (f32-small), so set the model
+                    // matrix translation column to origin (world = origin + pos).
+                    // The 12 rotation/scale floats stay identity from the template;
+                    // the translation lives at column-major indices 12/13/14 →
+                    // tpl[28/29/30]. [0,0,0] for legacy absolute batches.
+                    const o = batch.origin;
+                    tpl[28] = o ? o[0] : 0;
+                    tpl[29] = o ? o[1] : 0;
+                    tpl[30] = o ? o[2] : 0;
+
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
 
                     // Single draw call for entire batch!
@@ -1772,6 +1791,10 @@ export class Renderer {
                 const texturedMeshes = this.scene.getTexturedMeshes();
                 if (texturedMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTexturedPipeline());
+                    // Textured meshes carry absolute (origin-0) positions, so the
+                    // model translation must be identity here — reset the column
+                    // that renderBatch left set to the last opaque batch's origin.
+                    tpl[28] = 0; tpl[29] = 0; tpl[30] = 0;
                     for (const tm of texturedMeshes) {
                         // Honour hide/isolate — textured meshes bypass the batch
                         // visibility filtering above, so apply it per-mesh here or

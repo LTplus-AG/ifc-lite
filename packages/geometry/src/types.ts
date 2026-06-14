@@ -47,6 +47,13 @@ export interface MeshData {
    *  occurrence — hidden in Model mode, shown in Types mode). Absent/0 for caches
    *  and non-wasm paths. */
   geometryClass?: number;
+  /** Per-element local-frame origin (WebGL Y-up, metres): world position of
+   *  vertex i = `origin + positions[3i..3i+3]`. Present when the wasm pipeline
+   *  emits a per-element frame (building-scale f32 precision); absent/[0,0,0]
+   *  means `positions` are already absolute world coords (legacy / native /
+   *  caches predating local frame). The renderer reconstructs world via a
+   *  per-batch model-matrix translate. */
+  origin?: [number, number, number];
 }
 
 /** A decoded RGBA8 surface texture attached to a mesh (issue #961). */

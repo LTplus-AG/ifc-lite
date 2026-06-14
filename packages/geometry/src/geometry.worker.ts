@@ -490,12 +490,21 @@ function collectMeshes(
             ? [shadingArray[0], shadingArray[1], shadingArray[2], shadingArray[3]]
             : undefined;
         const geometryHash = geometryHashes.get(mesh.expressId);
+        // Per-element local-frame origin (world = origin + position). Older wasm
+        // bundles lack the getter; [0,0,0] means absolute. Metadata only — the
+        // 3-tuple rides structured-clone, NOT pendingTransfers.
+        const originArr = mesh.origin;
+        const origin: [number, number, number] | undefined =
+          originArr && originArr.length === 3 && (originArr[0] || originArr[1] || originArr[2])
+            ? [originArr[0], originArr[1], originArr[2]]
+            : undefined;
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
           positions, normals, indices,
           color: [color[0], color[1], color[2], color[3]],
           ...(shadingColor ? { shadingColor } : {}),
+          ...(origin ? { origin } : {}),
           // Provenance for the Model/Types switch (0=occurrence, 1=orphan type,
           // 2=instanced type). Older wasm bundles lack the getter → default 0.
           geometryClass: mesh.geometryClass ?? 0,

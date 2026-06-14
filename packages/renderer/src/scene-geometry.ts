@@ -25,6 +25,11 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
   vertexData: Float32Array;
   indices: Uint32Array;
   bounds: { min: [number, number, number]; max: [number, number, number] };
+  /** Per-batch local-frame origin (world bbox centre). Stored positions are
+   *  RELATIVE to it; the renderer draws this batch with model = translate(origin)
+   *  so f32 vertex coords stay element-small (no building-scale fan collapse).
+   *  [0,0,0] when no mesh carried an origin (legacy absolute positions). */
+  origin: [number, number, number];
 } {
   let totalVertices = 0;
   let totalIndices = 0;
@@ -41,9 +46,27 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
   const vertexDataU32 = new Uint32Array(vertexBufferRaw); // entityId lane
   const indices = new Uint32Array(totalIndices);
 
-  // Track bounds during merge (avoids a second pass)
+  // Pre-pass: WORLD bounding box of the batch (world = mesh.origin + position).
+  // batchOrigin = bbox centre; storing vertices relative to it keeps the f32
+  // magnitudes small (≈ half the batch's spatial spread) regardless of the
+  // model's world placement — which is what prevents f32 fan collapse. A mesh
+  // without an origin contributes its absolute positions (legacy no-op shift).
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const mesh of meshDataArray) {
+    const p = mesh.positions;
+    const ox = mesh.origin ? mesh.origin[0] : 0;
+    const oy = mesh.origin ? mesh.origin[1] : 0;
+    const oz = mesh.origin ? mesh.origin[2] : 0;
+    for (let i = 0; i < p.length; i += 3) {
+      const x = p[i] + ox, y = p[i + 1] + oy, z = p[i + 2] + oz;
+      if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
+    }
+  }
+  const batchOrigin: [number, number, number] = Number.isFinite(minX)
+    ? [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2]
+    : [0, 0, 0];
 
   let indexOffset = 0;
   let vertexBase = 0;
@@ -52,6 +75,11 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
     const positions = mesh.positions;
     const normals = mesh.normals;
     const vertexCount = positions.length / 3;
+    // Shift this mesh into the batch-local frame: stored = world - batchOrigin
+    // = (mesh.origin - batchOrigin) + localPosition. f64 fold, f32 store.
+    const dox = (mesh.origin ? mesh.origin[0] : 0) - batchOrigin[0];
+    const doy = (mesh.origin ? mesh.origin[1] : 0) - batchOrigin[1];
+    const doz = (mesh.origin ? mesh.origin[2] : 0) - batchOrigin[2];
 
     // Interleave vertex data (position + normal + entityId)
     let outIdx = vertexBase * 7;
@@ -67,24 +95,13 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
     const hasNormals = normals.length > 0;
     for (let i = 0; i < vertexCount; i++) {
       const srcIdx = i * 3;
-      const px = positions[srcIdx];
-      const py = positions[srcIdx + 1];
-      const pz = positions[srcIdx + 2];
-      vertexData[outIdx++] = px;
-      vertexData[outIdx++] = py;
-      vertexData[outIdx++] = pz;
+      vertexData[outIdx++] = positions[srcIdx] + dox;
+      vertexData[outIdx++] = positions[srcIdx + 1] + doy;
+      vertexData[outIdx++] = positions[srcIdx + 2] + doz;
       vertexData[outIdx++] = hasNormals ? normals[srcIdx] : 0;
       vertexData[outIdx++] = hasNormals ? normals[srcIdx + 1] : 0;
       vertexData[outIdx++] = hasNormals ? normals[srcIdx + 2] : 0;
       vertexDataU32[outIdx++] = perVertexEntityIds ? (perVertexEntityIds[i] >>> 0) : entityId;
-
-      // Update bounds
-      if (px < minX) minX = px;
-      if (py < minY) minY = py;
-      if (pz < minZ) minZ = pz;
-      if (px > maxX) maxX = px;
-      if (py > maxY) maxY = py;
-      if (pz > maxZ) maxZ = pz;
     }
 
     // Copy indices with vertex base offset
@@ -101,10 +118,12 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
   return {
     vertexData,
     indices,
+    // WORLD-space bounds (from the pre-pass) so raycast/fit/section stay world.
     bounds: {
       min: [minX, minY, minZ],
       max: [maxX, maxY, maxZ],
     },
+    origin: batchOrigin,
   };
 }
 

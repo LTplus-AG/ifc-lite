@@ -512,11 +512,14 @@ fn build_mesh_data(
     // coordinates an f32 mantissa can't separate sub-15µm-apart vertices, so
     // triangles collapse into zero-area / long-thin "fan" slivers that visibly
     // span large georeferenced models. Drop the unambiguously-degenerate ones
-    // here — the single funnel for every element MeshData. (Proper fix is
-    // local-frame / tiled vertex storage; this keeps the viewer clean meanwhile.)
+    // here — the single funnel for every element MeshData. With local-frame
+    // precision on, the mesh is stored relative to `origin` (small coords) so
+    // collapse is PREVENTED upstream and this drops nothing; it stays as the
+    // defence-in-depth safety net for any element still too large for its frame.
     if !degenerate_backstop_disabled() {
         mesh.drop_degenerate_triangles();
     }
+    let mesh_origin = mesh.origin;
     let mut mesh_data = MeshData::new(
         job.id,
         job.ifc_type.name().to_string(),
@@ -524,7 +527,8 @@ fn build_mesh_data(
         mesh.normals,
         mesh.indices,
         color,
-    );
+    )
+    .with_origin(mesh_origin);
     if let Some(meta) = job.metadata {
         mesh_data = mesh_data
             .with_element_metadata(

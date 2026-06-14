@@ -62,6 +62,14 @@ pub struct Mesh {
     /// Set by `FacetedBrepProcessor::process_with_rtc` to prevent
     /// `transform_mesh` from double-subtracting RTC.
     pub rtc_applied: bool,
+    /// Per-mesh local origin (f64), in the RTC/world frame. When non-zero,
+    /// `positions` are stored RELATIVE to this origin (so they stay small and
+    /// f32-precise regardless of the element's world placement), and the world
+    /// position of a vertex is `origin + position`. Set by `transform_mesh_world`
+    /// to the element's centroid so building-scale coordinates (~hundreds of
+    /// metres) never collapse adjacent vertices to bit-identical f32. Default
+    /// `[0, 0, 0]` means positions are already absolute (legacy/local meshes).
+    pub origin: [f64; 3],
 }
 
 /// A sub-mesh with its source geometry item ID.
@@ -135,8 +143,8 @@ impl Mesh {
             positions: Vec::new(),
             normals: Vec::new(),
             indices: Vec::new(),
-            rtc_applied: false,
-        }
+            rtc_applied: false, 
+            origin: [0.0; 3],        }
     }
 
     /// Create a mesh with capacity
@@ -145,8 +153,8 @@ impl Mesh {
             positions: Vec::with_capacity(vertex_count * 3),
             normals: Vec::with_capacity(vertex_count * 3),
             indices: Vec::with_capacity(index_count),
-            rtc_applied: false,
-        }
+            rtc_applied: false, 
+            origin: [0.0; 3],        }
     }
 
     /// Create a mesh from a single triangle
@@ -253,12 +261,27 @@ impl Mesh {
         self.indices.push(i2);
     }
 
-    /// Merge another mesh into this one
+    /// Merge another mesh into this one.
+    ///
+    /// Positions are stored relative to `origin`. The common case is merging
+    /// local/origin-zero meshes (sub-meshes combined BEFORE the world transform),
+    /// where origins match and concatenation is exact. If the two meshes carry
+    /// different non-zero origins, `other` is rebased into self's frame so the
+    /// merged positions stay consistent (correct, though large-coordinate if the
+    /// origins are far apart — which the pre-transform merge order avoids).
     #[inline]
     pub fn merge(&mut self, other: &Mesh) {
         if other.is_empty() {
             return;
         }
+        if self.positions.is_empty() {
+            self.origin = other.origin;
+        }
+        let d = [
+            other.origin[0] - self.origin[0],
+            other.origin[1] - self.origin[1],
+            other.origin[2] - self.origin[2],
+        ];
 
         let vertex_offset = (self.positions.len() / 3) as u32;
 
@@ -267,7 +290,15 @@ impl Mesh {
         self.normals.reserve(other.normals.len());
         self.indices.reserve(other.indices.len());
 
-        self.positions.extend_from_slice(&other.positions);
+        if d == [0.0, 0.0, 0.0] {
+            self.positions.extend_from_slice(&other.positions);
+        } else {
+            for chunk in other.positions.chunks_exact(3) {
+                self.positions.push((chunk[0] as f64 + d[0]) as f32);
+                self.positions.push((chunk[1] as f64 + d[1]) as f32);
+                self.positions.push((chunk[2] as f64 + d[2]) as f32);
+            }
+        }
         self.normals.extend_from_slice(&other.normals);
 
         // Vectorized index offset - more cache-friendly than loop
@@ -292,20 +323,11 @@ impl Mesh {
         self.normals.reserve(total_positions);
         self.indices.reserve(total_indices);
 
-        // Merge all meshes
+        // Delegate to `merge` for origin reconciliation (positions are stored
+        // relative to `origin`; a naive concat would be wrong across differing
+        // origins).
         for mesh in meshes {
-            if !mesh.is_empty() {
-                let vertex_offset = (self.positions.len() / 3) as u32;
-                self.positions.extend_from_slice(&mesh.positions);
-                self.normals.extend_from_slice(&mesh.normals);
-                self.indices
-                    .extend(mesh.indices.iter().map(|&i| i + vertex_offset));
-
-                // Preserve RTC state: if any mesh has RTC applied, the merged result does too
-                if mesh.rtc_applied {
-                    self.rtc_applied = true;
-                }
-            }
+            self.merge(mesh);
         }
     }
 
@@ -401,6 +423,7 @@ impl Mesh {
             normals,
             indices,
             rtc_applied: self.rtc_applied,
+            origin: self.origin,
         }
     }
 
@@ -840,6 +863,7 @@ fn weld_impl(
         normals: new_normals,
         indices: new_indices,
         rtc_applied: mesh.rtc_applied,
+        origin: mesh.origin,
     }
 }
 
@@ -998,8 +1022,8 @@ mod tests {
                 0, 1, 5, // invalid: vertex 5 out of bounds
                 3, 4, 5, // invalid: all out of bounds
             ],
-            rtc_applied: false,
-        };
+            rtc_applied: false, 
+            origin: [0.0; 3],        };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
     }
@@ -1010,8 +1034,8 @@ mod tests {
             positions: vec![],
             normals: vec![],
             indices: vec![0, 1, 2],
-            rtc_applied: false,
-        };
+            rtc_applied: false, 
+            origin: [0.0; 3],        };
         mesh.validate_indices();
         assert!(mesh.indices.is_empty());
     }
@@ -1022,8 +1046,8 @@ mod tests {
             positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
             normals: vec![],
             indices: vec![0, 1, 2, 0, 1], // trailing incomplete triangle
-            rtc_applied: false,
-        };
+            rtc_applied: false, 
+            origin: [0.0; 3],        };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
     }
@@ -1159,8 +1183,8 @@ mod tests {
             positions: vec![0.0; 12], // 4 vertices
             normals: vec![],
             indices: vec![0, 1, 2, 1, 2, 3],
-            rtc_applied: false,
-        };
+            rtc_applied: false, 
+            origin: [0.0; 3],        };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2, 1, 2, 3]);
     }

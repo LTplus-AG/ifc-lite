@@ -70,10 +70,23 @@ pub struct MeshData {
     /// skipped when 0 so ordinary meshes serialize byte-identically.
     #[serde(default, skip_serializing_if = "geometry_class_is_occurrence")]
     pub geometry_class: u8,
+    /// Per-mesh local origin (world/RTC frame, f64). `positions` are stored
+    /// RELATIVE to this — the world position of a vertex is `origin + position` —
+    /// so building/georef-scale placement never collapses adjacent vertices to
+    /// bit-identical f32. The renderer applies it as a per-mesh translation
+    /// (camera-relative). `[0, 0, 0]` ⇒ positions are absolute (legacy/local).
+    /// Serde-default + skip-when-zero so existing payloads/caches stay readable
+    /// and local meshes serialize byte-identically.
+    #[serde(default, skip_serializing_if = "origin_is_zero")]
+    pub origin: [f64; 3],
 }
 
 fn geometry_class_is_occurrence(class: &u8) -> bool {
     *class == 0
+}
+
+fn origin_is_zero(origin: &[f64; 3]) -> bool {
+    origin[0] == 0.0 && origin[1] == 0.0 && origin[2] == 0.0
 }
 
 impl MeshData {
@@ -102,12 +115,19 @@ impl MeshData {
             uvs: None,
             texture: None,
             geometry_class: 0,
+            origin: [0.0; 3],
         }
     }
 
     /// Tag the geometry's provenance for the Model/Types view switch (#957).
     pub fn with_geometry_class(mut self, geometry_class: u8) -> Self {
         self.geometry_class = geometry_class;
+        self
+    }
+
+    /// Set the per-mesh local origin (positions are relative to it).
+    pub fn with_origin(mut self, origin: [f64; 3]) -> Self {
+        self.origin = origin;
         self
     }
 

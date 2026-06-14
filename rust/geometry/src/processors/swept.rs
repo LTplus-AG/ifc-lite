@@ -258,8 +258,8 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
             positions,
             normals: Vec::new(),
             indices,
-            rtc_applied: false,
-        })
+            rtc_applied: false, 
+            origin: [0.0; 3],        })
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -507,8 +507,8 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
             positions,
             normals: Vec::new(),
             indices,
-            rtc_applied: false,
-        };
+            rtc_applied: false, 
+            origin: [0.0; 3],        };
 
         // Apply Position to lift Position-local coords into object coords.
         apply_transform(&mut mesh, &position_transform);

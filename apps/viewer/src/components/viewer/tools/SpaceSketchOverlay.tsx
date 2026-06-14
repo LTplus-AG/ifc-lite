@@ -235,7 +235,10 @@ export function SpaceSketchOverlay() {
     // offset (along the edge's outward normal). Centred = symmetric (e.g. -0.10/+0.10);
     // off-centre = asymmetric (e.g. -0.06/+0.16 → node is 0.05 toward the -0.06 face).
     const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
-    const r0 = rooms[0].outline;
+    // Use the LARGEST room (a real one, not a sliver between structural members).
+    const big = rooms.reduce((m, r) => (r.area > m.area ? r : m), rooms[0]);
+    const r0 = big.outline;
+    console.log(`[space-diag] LARGEST room face=${big.face} area=${big.area.toFixed(2)} corners`, r0.map((p) => `(${p[0].toFixed(2)},${p[1].toFixed(2)})`).join(' '));
     for (let i = 0; i < r0.length; i++) {
       const a = r0[i], b = r0[(i + 1) % r0.length];
       const dx = b[0] - a[0], dy = b[1] - a[1];
@@ -251,14 +254,17 @@ export function SpaceSketchOverlay() {
           if (ll < 1e-6) return null;
           if (Math.abs(cross(ux, uy, ldx / ll, ldy / ll)) > 0.08) return null; // not parallel
           const lmx = (l.a[0] + l.b[0]) / 2, lmy = (l.a[1] + l.b[1]) / 2;
-          // only consider lines whose span overlaps the edge midpoint region
           const along = (lmx - mx) * ux + (lmy - my) * uy;
           if (Math.abs(along) > L / 2 + 0.5) return null;
-          return (lmx - mx) * nx + (lmy - my) * ny; // signed perp offset
+          return (lmx - mx) * nx + (lmy - my) * ny; // signed perp offset (outward +)
         })
         .filter((o): o is number => o !== null && Math.abs(o) < 0.45)
         .sort((p, q) => p - q);
-      console.log(`[space-diag] edge${i} (len ${L.toFixed(2)}) parallel-face offsets:`, offs.map((o) => o.toFixed(3)).join(', ') || 'none');
+      // nearest face on each side → midpoint = how far the edge is off the wall centre
+      const pos = offs.filter((o) => o > 0.005)[0];
+      const neg = [...offs].reverse().filter((o) => o < -0.005)[0];
+      const centre = pos !== undefined && neg !== undefined ? ((pos + neg) / 2).toFixed(3) : 'n/a';
+      console.log(`[space-diag] edge${i} (len ${L.toFixed(2)}) faces [${offs.map((o) => o.toFixed(3)).join(', ') || 'none'}] | off-centre=${centre}`);
     }
     /* eslint-enable no-console */
   }, [rooms, underlay, dbgCoord]);

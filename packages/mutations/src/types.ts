@@ -181,6 +181,15 @@ export interface MutationStoreShape {
   entityIndex: {
     byId: MutationEntityByIdIndex;
   };
+  /**
+   * Secondary index of property atoms the parser deferred out of `byId` on
+   * huge files (`deferPropertyAtomIndex`). These still occupy express ids in
+   * the source, so the overlay id allocator must clear them too — otherwise a
+   * deferred atom sitting above `max(byId)` gets its id reused for a new
+   * overlay entity, producing a duplicate `#ID=` definition once the exporter
+   * emits both. See @ifc-lite/export `getCompleteEntityIndex`.
+   */
+  deferredEntityIndex?: MutationEntityByIdIndex;
 }
 
 /**

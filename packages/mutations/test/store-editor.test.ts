@@ -11,10 +11,17 @@ import {
   type MutationStoreShape,
 } from '../src/index.js';
 
-function makeStore(maxId: number): MutationStoreShape {
+function makeStore(maxId: number, deferredIds?: number[]): MutationStoreShape {
   const byId = new Map<number, MutationEntityRef>();
   for (let id = 1; id <= maxId; id++) {
     byId.set(id, { expressId: id, type: 'IFCWALL', byteOffset: 0, byteLength: 1, lineNumber: id });
+  }
+  if (deferredIds && deferredIds.length > 0) {
+    const deferred = new Map<number, MutationEntityRef>();
+    for (const id of deferredIds) {
+      deferred.set(id, { expressId: id, type: 'IFCPROPERTYSINGLEVALUE', byteOffset: 0, byteLength: 1, lineNumber: id });
+    }
+    return { entityIndex: { byId }, deferredEntityIndex: deferred };
   }
   return { entityIndex: { byId } };
 }
@@ -34,6 +41,22 @@ describe('StoreEditor', () => {
 
     expect(editor.getNewEntities()).toHaveLength(1);
     expect(editor.getNewEntity(11)?.attributes).toEqual(['.AREA.', null, '#34', 0.6, 0.4]);
+  });
+
+  // Regression: github.com/LTplus-AG/ifc-lite/issues/1110 (PR review)
+  // On huge files the parser defers property atoms out of byId; a deferred atom
+  // can sit ABOVE max(byId). The overlay id watermark must clear it, or a new
+  // entity reuses that id and the exporter emits two #ID= definitions for it.
+  it('addEntity allocates above deferred property atoms sitting beyond max(byId)', () => {
+    // byId max = 10, but a deferred atom occupies #25.
+    const store = makeStore(10, [25]);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    const ref = editor.addEntity('IFCDIRECTION', [[0, 0, 1]]);
+
+    // Must clear the deferred atom at #25, not collide at #11.
+    expect(ref.expressId).toBe(26);
   });
 
   it('addEntity continues allocating monotonically across calls', () => {

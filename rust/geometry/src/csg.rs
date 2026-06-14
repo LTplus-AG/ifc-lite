@@ -620,7 +620,24 @@ impl ClippingProcessor {
         // output carries >50:1 needle fragments that consolidation legitimately
         // merges (the pinned `csg_quality_regression` spike bar). A
         // seam-preserving consolidation is the remaining follow-up.
+        crate::kernel::budget::begin();
         let raw = crate::kernel::mesh_bridge::subtract(host_mesh, opening_mesh);
+        // Deterministic escalation guardrail (#1109): if the exact predicate
+        // cascade escalated past the per-boolean budget, the cut bailed mid-
+        // arrangement. Discard the partial result and return the host un-cut so
+        // the void router's #635 AABB box-cut fallback fires. The trip point is a
+        // pure function of the snapped operands, so server (native) and client
+        // (wasm) degrade the SAME element identically — parity preserved.
+        if crate::kernel::budget::tripped() {
+            self.record_failure(
+                BoolOp::Difference,
+                BoolFailureReason::OperandTooLarge {
+                    polys_a: host_mesh.triangle_count(),
+                    polys_b: opening_mesh.triangle_count(),
+                },
+            );
+            return Ok(host_mesh.clone());
+        }
         let result = Self::consolidate_coplanar(raw);
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
@@ -655,7 +672,16 @@ impl ClippingProcessor {
         if live.is_empty() {
             return Ok(host_mesh.clone()); // silent: sequential path takes over
         }
-        let Some(raw) = crate::kernel::mesh_bridge::subtract_many(host_mesh, &live) else {
+        crate::kernel::budget::begin();
+        let raw = crate::kernel::mesh_bridge::subtract_many(host_mesh, &live);
+        if crate::kernel::budget::tripped() {
+            // Escalation budget exceeded on the batched arrangement (#1109).
+            // Reject silently so the per-opening sequential path takes over —
+            // each opening gets its own budget + #635 AABB fallback, so the few
+            // hard cutters degrade while the rest cut exactly. Deterministic.
+            return Ok(host_mesh.clone());
+        }
+        let Some(raw) = raw else {
             // Unrecovered constraint in the N-ary arrangement — reject the
             // group (silently, see above) so the sequential per-opening path
             // (few constraints per arrangement) takes over.

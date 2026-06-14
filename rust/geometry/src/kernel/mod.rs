@@ -16,6 +16,7 @@
 
 pub mod arrangement;
 pub mod broadphase;
+pub mod budget;
 pub mod coplanar;
 pub mod fixed;
 pub mod interner;

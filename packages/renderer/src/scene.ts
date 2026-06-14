@@ -79,6 +79,11 @@ export class Scene {
   private activeBucketKey: Map<string, string> = new Map(); // base colorKey -> current active bucket key
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
+  // Shared local-frame origin for ALL batches (set from the first batch's world
+  // bbox centre). Every batch stores positions relative to it and draws with
+  // model = translate(sharedFrameOrigin), so coincident faces across batches
+  // stay bit-coincident (no seam z-fight) while f32 vertex coords stay small.
+  private sharedFrameOrigin: [number, number, number] | null = null;
   private cachedMaxBufferSize: number = 0; // device.limits.maxBufferSize * safety factor (set on first use)
   private static readonly STREAMING_FRAGMENT_MAX_INDICES = 180_000;
   private static readonly STREAMING_FRAGMENT_MAX_VERTEX_BYTES = 8 * 1024 * 1024;
@@ -1343,7 +1348,16 @@ export class Scene {
     pipeline: RenderPipeline,
     bucketKey?: string
   ): BatchedMesh {
-    const merged = this.mergeGeometry(meshDataArray);
+    // Use ONE shared scene origin for every batch (set from the first batch's
+    // world bbox centre). A per-batch origin would make abutting elements in
+    // different colour batches diverge by a few f32 ULP at building-scale world
+    // coords → seam/end-cap z-fighting. A shared origin makes every coincident
+    // world point relativize identically → no seam z-fight, and the model
+    // sits at most ±(model extent) from it (f32-precise at building scale).
+    const merged = this.mergeGeometry(meshDataArray, this.sharedFrameOrigin ?? undefined);
+    if (!this.sharedFrameOrigin && (merged.origin[0] || merged.origin[1] || merged.origin[2])) {
+      this.sharedFrameOrigin = merged.origin;
+    }
     const expressIds = meshDataArray.map(m => m.expressId);
 
     // Create vertex buffer (interleaved positions + normals)
@@ -1405,13 +1419,13 @@ export class Scene {
    * Merge multiple mesh geometries into single vertex/index buffers.
    * Delegates to the extracted mergeGeometry() utility.
    */
-  private mergeGeometry(meshDataArray: MeshData[]): {
+  private mergeGeometry(meshDataArray: MeshData[], forcedOrigin?: [number, number, number]): {
     vertexData: Float32Array;
     indices: Uint32Array;
     bounds: { min: [number, number, number]; max: [number, number, number] };
     origin: [number, number, number];
   } {
-    return mergeGeometry(meshDataArray);
+    return mergeGeometry(meshDataArray, forcedOrigin);
   }
 
   /**
@@ -1786,6 +1800,8 @@ export class Scene {
     this.streamingFragments = [];
     this.destroyOverrideBatches();
     this.colorOverrides = null;
+    // Reset the shared frame origin so the next model picks its own.
+    this.sharedFrameOrigin = null;
     this.meshes = [];
     this.batchedMeshes = [];
     this.buckets.clear();

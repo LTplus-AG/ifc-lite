@@ -21,14 +21,24 @@ let warnedEntityIdRange = false;
  * Layout per vertex: position (3f) + normal (3f) + entityId (1u32) = 7 × 4 bytes.
  * Bounds are tracked during the merge pass to avoid a second iteration.
  */
-export function mergeGeometry(meshDataArray: MeshData[]): {
+export function mergeGeometry(
+  meshDataArray: MeshData[],
+  // A SHARED scene origin used by EVERY batch. Passing the same origin to all
+  // batches is what kills inter-batch seam z-fighting: a world point shared by
+  // two abutting elements in different colour batches relativizes to the SAME
+  // f32 value (stored = world - sharedOrigin) and draws with the SAME model
+  // matrix (translate(sharedOrigin)), so the two surfaces land bit-coincident
+  // instead of diverging by a few f32 ULP. When omitted (first batch / legacy),
+  // the batch's own world bbox centre is used and returned so the caller can
+  // pin it as the shared origin for all subsequent batches.
+  forcedOrigin?: [number, number, number],
+): {
   vertexData: Float32Array;
   indices: Uint32Array;
   bounds: { min: [number, number, number]; max: [number, number, number] };
-  /** Per-batch local-frame origin (world bbox centre). Stored positions are
-   *  RELATIVE to it; the renderer draws this batch with model = translate(origin)
-   *  so f32 vertex coords stay element-small (no building-scale fan collapse).
-   *  [0,0,0] when no mesh carried an origin (legacy absolute positions). */
+  /** The local-frame origin actually used (forcedOrigin, or this batch's world
+   *  bbox centre). Stored positions are RELATIVE to it; the renderer draws with
+   *  model = translate(origin) so f32 vertex coords stay small. */
   origin: [number, number, number];
 } {
   let totalVertices = 0;
@@ -64,9 +74,12 @@ export function mergeGeometry(meshDataArray: MeshData[]): {
       if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
     }
   }
-  const batchOrigin: [number, number, number] = Number.isFinite(minX)
-    ? [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2]
-    : [0, 0, 0];
+  // Prefer the caller's shared scene origin (consistent across all batches → no
+  // seam z-fight); fall back to this batch's own world bbox centre.
+  const batchOrigin: [number, number, number] = forcedOrigin
+    ?? (Number.isFinite(minX)
+      ? [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2]
+      : [0, 0, 0]);
 
   let indexOffset = 0;
   let vertexBase = 0;

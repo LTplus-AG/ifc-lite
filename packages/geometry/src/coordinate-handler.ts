@@ -108,10 +108,14 @@ export class CoordinateHandler {
 
         for (const mesh of meshes) {
             const positions = mesh.positions;
+            // world = origin + position (per-element local frame); without folding
+            // the origin, bounds collapse to each element's local frame near 0.
+            const o = mesh.origin;
+            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
             for (let i = 0; i < positions.length; i += 3) {
-                const x = positions[i];
-                const y = positions[i + 1];
-                const z = positions[i + 2];
+                const x = positions[i] + ox;
+                const y = positions[i + 1] + oy;
+                const z = positions[i + 2] + oz;
 
                 // Only include values within threshold (filter out outliers/garbage)
                 const coordsFinite = Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z);
@@ -154,11 +158,15 @@ export class CoordinateHandler {
             const positions = mesh.positions;
             const len = positions.length;
             if (len < 3) continue;
+            // world = origin + position (per-element local frame); without the
+            // origin every element's sampled verts sit near 0 → bounds collapse.
+            const o = mesh.origin;
+            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
 
             // Sample first vertex
-            const x0 = positions[0];
-            const y0 = positions[1];
-            const z0 = positions[2];
+            const x0 = positions[0] + ox;
+            const y0 = positions[1] + oy;
+            const z0 = positions[2] + oz;
             if (x0 < minX) minX = x0;
             if (y0 < minY) minY = y0;
             if (z0 < minZ) minZ = z0;
@@ -168,9 +176,9 @@ export class CoordinateHandler {
 
             // Sample last vertex (if different from first)
             if (len >= 6) {
-                const x1 = positions[len - 3];
-                const y1 = positions[len - 2];
-                const z1 = positions[len - 1];
+                const x1 = positions[len - 3] + ox;
+                const y1 = positions[len - 2] + oy;
+                const z1 = positions[len - 1] + oz;
                 if (x1 < minX) minX = x1;
                 if (y1 < minY) minY = y1;
                 if (z1 < minZ) minZ = z1;

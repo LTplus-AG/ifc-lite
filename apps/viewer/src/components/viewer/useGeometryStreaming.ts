@@ -634,8 +634,13 @@ function computeBounds(meshes: MeshData[]): { min: { x: number; y: number; z: nu
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   for (let gi = 0; gi < meshes.length; gi++) {
     const positions = meshes[gi].positions;
+    // world = origin + position (per-element local frame); without folding the
+    // origin every element's local positions cluster near 0, so the camera fits
+    // to the origin while geometry draws at its true world coords → blank view.
+    const o = meshes[gi].origin;
+    const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
     for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i], y = positions[i + 1], z = positions[i + 2];
+      const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
       if (Math.abs(x) < MAX_VALID_COORD && Math.abs(y) < MAX_VALID_COORD && Math.abs(z) < MAX_VALID_COORD) {
         if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
         if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;

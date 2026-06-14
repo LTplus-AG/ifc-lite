@@ -486,6 +486,16 @@ fn produce_type_geometry(
     out
 }
 
+/// Whether the f32-collapse degenerate-triangle backstop is disabled.
+///
+/// On by default. Set `IFC_LITE_DISABLE_DEGENERATE_BACKSTOP=1` to keep the raw
+/// (possibly fan-corrupted) triangles — an escape hatch for debugging the
+/// heuristic or measuring exactly what it removes. Read once and cached.
+fn degenerate_backstop_disabled() -> bool {
+    static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DISABLED.get_or_init(|| std::env::var("IFC_LITE_DISABLE_DEGENERATE_BACKSTOP").is_ok())
+}
+
 /// Construct the final [`MeshData`]: metadata stamp, style metadata,
 /// geometry-class tag, and the optional site-local rotation. ALWAYS the last
 /// step — geometry hashing happens before this (native IFC frame).
@@ -504,7 +514,9 @@ fn build_mesh_data(
     // span large georeferenced models. Drop the unambiguously-degenerate ones
     // here — the single funnel for every element MeshData. (Proper fix is
     // local-frame / tiled vertex storage; this keeps the viewer clean meanwhile.)
-    mesh.drop_degenerate_triangles();
+    if !degenerate_backstop_disabled() {
+        mesh.drop_degenerate_triangles();
+    }
     let mut mesh_data = MeshData::new(
         job.id,
         job.ifc_type.name().to_string(),

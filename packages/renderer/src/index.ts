@@ -828,10 +828,15 @@ export class Renderer {
 
         for (const mesh of meshes) {
             const positions = mesh.positions;
+            // Positions are in the element's local frame (world = origin + position).
+            // Model bounds are world-space, so fold the per-mesh origin. No-op when
+            // origin is absent/[0,0,0]. Mirrors coordinate-handler.ts.
+            const o = mesh.origin;
+            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
             for (let i = 0; i < positions.length; i += 3) {
-                const x = positions[i];
-                const y = positions[i + 1];
-                const z = positions[i + 2];
+                const x = positions[i] + ox;
+                const y = positions[i + 1] + oy;
+                const z = positions[i + 2] + oz;
                 if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
                     this.modelBounds.min.x = Math.min(this.modelBounds.min.x, x);
                     this.modelBounds.min.y = Math.min(this.modelBounds.min.y, y);

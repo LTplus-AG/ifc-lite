@@ -1305,6 +1305,7 @@ mod tests {
             normals: vec![],
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
+            origin: [0.0; 3],
         };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![3, 4, 5], "sliver dropped, real kept");
@@ -1320,6 +1321,7 @@ mod tests {
             normals: vec![],
             indices: vec![0, 1, 2],
             rtc_applied: false,
+            origin: [0.0; 3],
         };
         mesh.drop_thin_triangles(GRID);
         assert!(mesh.indices.is_empty(), "coincident-pair needle dropped");
@@ -1333,6 +1335,7 @@ mod tests {
             normals: vec![],
             indices: vec![0, 1, 2],
             rtc_applied: false,
+            origin: [0.0; 3],
         };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![0, 1, 2], "above-grid triangle kept");
@@ -1363,6 +1366,7 @@ mod tests {
                 0, 1, 4, // the degenerate sliver along edge 0→1
             ],
             rtc_applied: false,
+            origin: [0.0; 3],
         };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(
@@ -1383,6 +1387,7 @@ mod tests {
                 0, 0, 0, // fully collapsed (longest == 0) → skipped
             ],
             rtc_applied: false,
+            origin: [0.0; 3],
         };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -1398,6 +1403,7 @@ mod tests {
             normals: vec![],
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
+            origin: [0.0; 3],
         };
         mesh.drop_thin_triangles(GRID);
         let once = mesh.indices.clone();
@@ -1417,6 +1423,7 @@ mod tests {
             normals: vec![],
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
+            origin: [0.0; 3],
         };
         mesh.clean_degenerate();
         assert_eq!(mesh.indices, vec![3, 4, 5]);

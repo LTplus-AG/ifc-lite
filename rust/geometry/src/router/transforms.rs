@@ -821,6 +821,28 @@ impl GeometryRouter {
             (0.0, 0.0, 0.0)
         };
 
+        // Fast path — absolute world/RTC coordinates (origin == 0). Used by the
+        // native/server default and the void-cut host (see the doc comment), and
+        // bit-identical to the framed path with origin [0,0,0]
+        // (`(w - 0) as f32 == w as f32`), so determinism snapshots are unaffected.
+        // Avoids the per-element `Vec<[f64;3]>` allocation + second pass the AABB
+        // framing below needs, keeping the absolute path at its original cost.
+        if !relativize {
+            for chunk in mesh.positions.chunks_exact_mut(3) {
+                let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+                let t = transform.transform_point(&point);
+                chunk[0] = (t.x - rx) as f32;
+                chunk[1] = (t.y - ry) as f32;
+                chunk[2] = (t.z - rz) as f32;
+            }
+            mesh.origin = [0.0; 3];
+            if needs_rtc {
+                mesh.rtc_applied = true;
+            }
+            self.transform_normals(mesh, transform);
+            return;
+        }
+
         // Pass 1 — transform every vertex into the world/RTC frame in f64 and track
         // the AABB. The exact kernel built `positions` in a small local frame, so the
         // f32 input is precise here; the precision is only lost if we store the

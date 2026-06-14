@@ -38,13 +38,22 @@ export function buildGeometryCache(mesh: MeshData): MeshGeometryCache {
     };
   }
 
+  // Positions are stored in the element's local frame (world = origin + local).
+  // Snap targets are compared against world-space raycast hit points, so the
+  // cache is built in WORLD space by lifting every absolute vertex read by the
+  // per-mesh origin. (Triangle-normal math below uses position *differences*,
+  // where the origin cancels — those reads are left untouched.)
+  const ox = mesh.origin ? mesh.origin[0] : 0;
+  const oy = mesh.origin ? mesh.origin[1] : 0;
+  const oz = mesh.origin ? mesh.origin[2] : 0;
+
   const vertexMap = new Map<string, Vec3>();
 
   for (let i = 0; i < positions.length; i += 3) {
     const vertex: Vec3 = {
-      x: positions[i],
-      y: positions[i + 1],
-      z: positions[i + 2],
+      x: positions[i] + ox,
+      y: positions[i + 1] + oy,
+      z: positions[i + 2] + oz,
     };
 
     // Skip invalid vertices
@@ -109,14 +118,14 @@ export function buildGeometryCache(mesh: MeshData): MeshGeometryCache {
         const i1 = idx1 * 3;
 
         const v0: Vec3 = {
-          x: positions[i0],
-          y: positions[i0 + 1],
-          z: positions[i0 + 2],
+          x: positions[i0] + ox,
+          y: positions[i0 + 1] + oy,
+          z: positions[i0 + 2] + oz,
         };
         const v1: Vec3 = {
-          x: positions[i1],
-          y: positions[i1 + 1],
-          z: positions[i1 + 2],
+          x: positions[i1] + ox,
+          y: positions[i1 + 1] + oy,
+          z: positions[i1 + 2] + oz,
         };
 
         // Create canonical edge key (smaller index first)

@@ -161,12 +161,16 @@ function cloneMeshesWithOffset(
   const out: MeshData[] = [];
   for (const m of meshes) {
     if (m.expressId !== sourceGlobalId) continue;
-    const positions = new Float32Array(m.positions.length);
-    for (let i = 0; i < m.positions.length; i += 3) {
-      positions[i]     = m.positions[i]     + viewerOffset.x;
-      positions[i + 1] = m.positions[i + 1] + viewerOffset.y;
-      positions[i + 2] = m.positions[i + 2] + viewerOffset.z;
-    }
+    // Positions are in the element's local frame (world = origin + position).
+    // Keep the buffer verbatim-local (f32-precise) and fold the duplicate's
+    // viewerOffset into the per-element origin instead, so the copy lands at
+    // original-world + offset without re-quantizing vertices at world scale.
+    const positions = new Float32Array(m.positions);
+    const origin: [number, number, number] = [
+      (m.origin?.[0] ?? 0) + viewerOffset.x,
+      (m.origin?.[1] ?? 0) + viewerOffset.y,
+      (m.origin?.[2] ?? 0) + viewerOffset.z,
+    ];
     out.push({
       expressId: newGlobalId,
       positions,
@@ -175,6 +179,7 @@ function cloneMeshesWithOffset(
       color: m.color,
       ifcType: m.ifcType,
       modelIndex: m.modelIndex,
+      origin,
       // Per-vertex entity ids only matter for color-merged batches;
       // a single-mesh duplicate carries one expressId everywhere.
       entityIds: m.entityIds ? new Uint32Array(m.entityIds.length).fill(newGlobalId) : undefined,

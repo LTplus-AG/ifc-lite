@@ -55,13 +55,21 @@ export class BVH {
         maxY = Math.max(maxY, y);
         maxZ = Math.max(maxZ, z);
       }
+      // Positions are in the element's local frame (world = origin + position).
+      // The ray traverses world space, so store WORLD-space AABBs by adding the
+      // per-mesh origin to all six extents (a pure translation, so the box stays
+      // valid). No-op when origin is absent/[0,0,0].
+      const orig = meshes[m].origin;
+      const ox = orig ? orig[0] : 0;
+      const oy = orig ? orig[1] : 0;
+      const oz = orig ? orig[2] : 0;
       const o = m * 6;
-      aabbs[o] = minX;
-      aabbs[o + 1] = minY;
-      aabbs[o + 2] = minZ;
-      aabbs[o + 3] = maxX;
-      aabbs[o + 4] = maxY;
-      aabbs[o + 5] = maxZ;
+      aabbs[o] = minX + ox;
+      aabbs[o + 1] = minY + oy;
+      aabbs[o + 2] = minZ + oz;
+      aabbs[o + 3] = maxX + ox;
+      aabbs[o + 4] = maxY + oy;
+      aabbs[o + 5] = maxZ + oz;
     }
     this.meshAABBs = aabbs;
 

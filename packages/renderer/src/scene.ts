@@ -355,6 +355,10 @@ export class Scene {
       normals: outNorm,
       indices: new Uint32Array(tmpIdx),
       color: merged.color,
+      // Extracted vertices are copied verbatim from the merged mesh's local
+      // frame, so carry its origin forward (world = origin + position) — else
+      // raycast/highlight/snap would treat these local coords as world.
+      origin: merged.origin,
     };
   }
 

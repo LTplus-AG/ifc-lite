@@ -681,9 +681,20 @@ export class Scene {
     const affectedKeys = new Set<string>();
     let anyMoved = false;
     for (const meshData of meshDataList) {
-      // Skip shared color-merged meshes — translating their
-      // positions would move every entity in the merge.
-      if (meshData.entityIds && meshData.entityIds.length > 0) continue;
+      // Skip a genuinely shared color-merged mesh — one whose vertices belong to
+      // MORE than this entity — because translating it would drag the others too.
+      // An authored single-entity mesh (slab/space/wall added in-session) tags
+      // EVERY vertex with its own id for picking; all-same-id is safe to move, so
+      // only bail when a foreign id is present (was: skip on any entityIds at all,
+      // which froze authored elements under the gizmo even though their placement
+      // and bbox resolved fine).
+      if (meshData.entityIds && meshData.entityIds.length > 0) {
+        let shared = false;
+        for (let i = 0; i < meshData.entityIds.length; i++) {
+          if (meshData.entityIds[i] !== expressId) { shared = true; break; }
+        }
+        if (shared) continue;
+      }
       const pos = meshData.positions;
       for (let i = 0; i < pos.length; i += 3) {
         pos[i] += dx;

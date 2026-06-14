@@ -53,6 +53,9 @@ export function parseMeshesViaPrePass(api, content) {
             vertexCount: m.vertexCount,
             triangleCount: m.triangleCount,
             geometryClass: m.geometryClass,
+            // Per-element local-frame origin (world = origin + position). Present
+            // on the wasm local-frame path; consumers fold it to recover world.
+            origin: m.origin ? Array.from(m.origin) : undefined,
             free: () => {},
           });
           totalVertices += m.vertexCount;

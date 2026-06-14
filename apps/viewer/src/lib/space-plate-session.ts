@@ -88,6 +88,38 @@ function flatToPts(flat: Float64Array): [number, number][] {
   return out;
 }
 
+/** Signed-area magnitude of a closed polygon (shoelace), m². */
+function polyArea2(pts: [number, number][]): number {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a) / 2;
+}
+
+/** Wall-axis-factor for the face-based `gapBoundary` query: the room face IS the
+ *  gap between wall rectangles (= net inner-face outline), and each room edge is
+ *  offset outward by `factor · ½ wall-thickness` — 0 = net (inner faces), 1 = the
+ *  wall AXIS (true centreline), 2 = gross (outer faces). */
+function gapFactor(boundary: 'center' | 'inner' | 'outer'): number {
+  return boundary === 'inner' ? 0 : boundary === 'outer' ? 2 : 1;
+}
+
+/** Flatten N wall rectangles ([[x,y]×4] each, CCW) into the `8·N` float array
+ *  `fromWallRects` expects (4 corners × 2 coords per wall, wall-major). */
+export function flattenWallRects(rects: ([number, number][])[]): Float64Array {
+  const flat = new Float64Array(rects.length * 8);
+  rects.forEach((r, w) => {
+    for (let c = 0; c < 4; c++) {
+      flat[w * 8 + c * 2] = r[c][0];
+      flat[w * 8 + c * 2 + 1] = r[c][1];
+    }
+  });
+  return flat;
+}
+
 /** Build a throwaway plate, read each room's centreline + boundary outline at
  *  `boundary` mode, and free it — for paths (whole-building bake) that need a
  *  storey's rooms without a live session. */
@@ -108,6 +140,28 @@ export function snapshotRooms(
   return out;
 }
 
+/** Face-based whole-building bake: build a throwaway plate from wall RECTANGLES
+ *  (the gaps between them are the rooms), and for each room read its wall-axis
+ *  `outline` (the centreline — the gross-area basis) and its `boundary` outline
+ *  at the chosen mode (net / axis / gross). The room face is the net inner-face
+ *  polygon; `gapBoundary` offsets it outward per edge. Frees the plate. */
+export function snapshotRoomsFromRects(
+  rectCoords: Float64Array,
+  boundary: 'center' | 'inner' | 'outer',
+  snapTolerance = 0.05,
+  minArea = 0.3,
+): RoomWithBoundary[] {
+  const handle = SpacePlateHandle.fromWallRects(rectCoords, snapTolerance, minArea);
+  const rooms = handle.snapshot() as Room[];
+  const factor = gapFactor(boundary);
+  const out = rooms.map((r) => ({
+    outline: flatToPts(handle.gapBoundary(r.face, 1)), // wall axis — gross-area basis
+    boundary: flatToPts(handle.gapBoundary(r.face, factor)),
+  }));
+  handle.free();
+  return out;
+}
+
 export class SpacePlateSession {
   private handle: SpacePlateHandle | null = null;
   private undoStack: SpacePlateHandle[] = [];
@@ -116,6 +170,11 @@ export class SpacePlateSession {
   private pending: SpacePlateHandle | null = null;
   /** True once the plate has been edited since the last build/bake-clear. */
   dirty = false;
+  /** Face-based plate (built from wall RECTANGLES via `buildFromRects`): rooms are
+   *  the gaps between walls, the plate vertices sit on the inner faces, and each
+   *  room is PRESENTED at its wall axis (centreline) so nodes land on the wall
+   *  centre. A centreline plate (`build`) presents its raw outline unchanged. */
+  private faceBased = false;
 
   /** Adopt an already-built handle (no history). For tests / direct seeding;
    *  normal use goes through `build`. */
@@ -138,17 +197,49 @@ export class SpacePlateSession {
     this.disposeHandle();
     this.clearHistory();
     this.handle = handle;
+    this.faceBased = false;
     this.dirty = false;
     return { rooms: this.rooms(), tol };
   }
 
+  /** Build a face-based plate from wall RECTANGLES (each wall's 4 footprint
+   *  corners, wall-major, `8·N` floats — see `flattenWallRects`). Rooms are the
+   *  bounded gaps between the rectangles, so the room boundary IS the wall faces
+   *  (no centroid bias) — and each room is presented at its true wall axis.
+   *  Replaces the current plate and clears history. */
+  buildFromRects(rectCoords: Float64Array, snapTolerance = 0.05, minArea = 0.3): { rooms: Room[] } {
+    const handle = SpacePlateHandle.fromWallRects(rectCoords, snapTolerance, minArea);
+    this.discardPending();
+    this.disposeHandle();
+    this.clearHistory();
+    this.handle = handle;
+    this.faceBased = true;
+    this.dirty = false;
+    return { rooms: this.rooms() };
+  }
+
   // ───────────────────────────── reads ─────────────────────────────
 
-  rooms(): Room[] { return this.handle ? (this.handle.snapshot() as Room[]) : []; }
+  /** Present a raw plate room. In face-based mode the plate vertices sit on the
+   *  inner wall faces (the gap), so swap the outline for the wall AXIS and report
+   *  the axis (centreline) area — the gross-area basis nodes are drawn at. */
+  private materialize(r: Room): Room {
+    if (!this.faceBased || !this.handle) return r;
+    const outline = flatToPts(this.handle.gapBoundary(r.face, 1));
+    return outline.length >= 3 ? { ...r, outline, area: polyArea2(outline) } : r;
+  }
+
+  rooms(): Room[] {
+    return this.handle ? (this.handle.snapshot() as Room[]).map((r) => this.materialize(r)) : [];
+  }
 
   /** A room's outline at the chosen wall boundary: the centreline (`center`),
    *  the net inner face (`inner`), or the gross outer face (`outer`). */
   boundaryOutline(face: number, boundary: 'center' | 'inner' | 'outer'): [number, number][] {
+    if (this.faceBased && this.handle) {
+      // Face-based: every room edge is a wall face, so the offset always applies.
+      return flatToPts(this.handle.gapBoundary(face, gapFactor(boundary)));
+    }
     if (!this.handle || boundary === 'center') {
       const room = this.rooms().find((r) => r.face === face);
       return room ? room.outline : [];

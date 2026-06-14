@@ -28,16 +28,17 @@ import { pointerButton, isRemoveModifier } from '@/lib/space-interaction';
 import {
   SpacePlateSession,
   ensureSpaceWasm,
-  snapshotRooms,
+  snapshotRoomsFromRects,
+  flattenWallRects,
   type Room,
   type Boundary,
 } from '@/lib/space-plate-session';
+import { wallRectsFromMeshes, type WallRect } from '@/lib/wall-rects-from-meshes';
 import {
   polyArea, pointInPoly, centroid, uniqueVerts, distToSeg, projectOnSeg,
   computeFit, zoomFit, sX, sY, wX, wY, PAD, type Fit, type Pt,
 } from '@/lib/space-sketch-geometry';
 import {
-  extractWallSegmentsForStorey,
   existingSpaceFootprintsByStorey,
   GENERATED_SPACE_OBJECTTYPE,
   type BoundaryMode,
@@ -55,17 +56,16 @@ const PICK_PX = 12;
 const SNAP_PX = 10;
 const BAKE_HEIGHT = 3;
 const EPS = 1e-6;
-// Assumed wall thickness (m) for the Inner/Outer boundary offset when a wall
-// carries no resolvable material-layer thickness — so the net/gross face works
-// on every model, not just ones with full material data. Real layer thickness
-// is used whenever it's available.
-const DEFAULT_WALL_THICKNESS = 0.2;
 
 export function SpaceSketchOverlay() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const addSpace = useViewerStore((s) => s.addSpace);
   const removeEntity = useViewerStore((s) => s.removeEntity);
   const activeModelId = useViewerStore((s) => s.activeModelId);
+  // Rooms are derived from the RENDERED wall meshes (the geometry the user sees),
+  // so the room lines land on the rendered wall faces — not from STEP source
+  // geometry, which has no per-wall thickness here and a centroid-biased axis.
+  const geometryResult = useViewerStore((s) => s.geometryResult);
   const { ifcDataStore } = useIfc();
 
   const sessionRef = useRef<SpacePlateSession | null>(null);
@@ -137,19 +137,21 @@ export function SpaceSketchOverlay() {
   const [snapTol, setSnapTol] = useState<number | null>(null); // null = auto-escalate
   const [usedTol, setUsedTol] = useState(0.1);
   const snapTolRef = useRef<number | null>(null);
-  const lastBuildRef = useRef<{ coords: Float64Array; sources: Int32Array; thicknesses: Float64Array; label: string; storey: number | null } | null>(null);
-  // Wall segments + thicknesses from the last derive, kept for the leak
-  // diagnostics overlay + the "has wall data" affordance (net/gross outlines now
-  // come from the engine via half-thickness carried on each edge).
+  const lastBuildRef = useRef<{ rects: WallRect[]; label: string; storey: number | null } | null>(null);
+  // Wall centrelines + thicknesses from the last derive, kept for the leak
+  // diagnostics overlay + the "has wall data" affordance.
   const extractionRef = useRef<{
-    segments: ReturnType<typeof extractWallSegmentsForStorey>['segments'];
-    thicknesses: ReturnType<typeof extractWallSegmentsForStorey>['wallThicknesses'];
+    segments: { a: Pt; b: Pt }[];
+    thicknesses: number[];
   } | null>(null);
   const [hist, setHist] = useState(0);
-  const [status, setStatus] = useState('Load the demo plate or derive from a storey.');
+  const [status, setStatus] = useState('Pick a storey to derive rooms from its walls.');
   const [showBuilding, setShowBuilding] = useState(true);
   const [showDiagnostics, setShowDiagnostics] = useState(false); // Issue 7 — leak diagnostics
-  const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>('inner');
+  // Default to the wall AXIS (face-based rooms are the gaps between wall
+  // rectangles): `center` puts the room outline + nodes on the true wall
+  // centreline. `inner`/`outer` show the net/gross faces.
+  const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>('center');
   // Transient "12 → 9 rooms" badge after a corner-tolerance rebuild — the
   // effect on the plan is otherwise invisible (Issue 5).
   const [snapDelta, setSnapDelta] = useState<{ from: number; to: number } | null>(null);
@@ -326,33 +328,31 @@ export function SpaceSketchOverlay() {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  const buildFrom = useCallback(async (coords: Float64Array, sources: Int32Array, thicknesses: Float64Array, label: string, storey: number | null) => {
+  // Build a face-based plate from the storey's wall RECTANGLES (read from the
+  // rendered meshes): rooms are the gaps between walls, so the room boundary IS
+  // the rendered wall faces and every node lands on the true wall axis. `snapTol`
+  // welds nearby rectangle corners (default 5 cm); a manual override comes from
+  // the slider.
+  const buildFrom = useCallback(async (rects: WallRect[], label: string, storey: number | null) => {
     // Re-entrancy guard: a rapid rebuild (snap slider) must not let an older
     // async build free/replace the plate a newer one is using — that races the
     // shared wasm heap. Only the latest build applies; superseded ones bail.
     const seq = ++buildSeqRef.current;
     try {
       await ensureSpaceWasm();
-      // The only async gap is the wasm init above; after it, build() runs
-      // synchronously and atomically. So a single post-await seq check is enough
-      // to keep an older rebuild (rapid snap-slider drags) from replacing the
-      // plate a newer one is building — the stale one bails before touching it.
       if (seq !== buildSeqRef.current) return;
-      lastBuildRef.current = { coords, sources, thicknesses, label, storey };
-      const manual = snapTolRef.current;
+      lastBuildRef.current = { rects, label, storey };
+      const snapTol = snapTolRef.current ?? 0.05;
       let session = sessionRef.current;
       if (!session) { session = new SpacePlateSession(); sessionRef.current = session; }
-      // Auto-escalate the corner-snap (real centrelines miss corners by ~½ a
-      // wall thickness, so a tight snap leaves the loop open → 0 rooms); the
-      // session tries [0.1, 0.25, 0.5] and keeps the first that encloses rooms.
-      const { rooms: snap, tol: used } = session.build(coords, sources, thicknesses, manual, 0.5);
-      setUsedTol(used);
+      const { rooms: snap } = session.buildFromRects(flattenWallRects(rects.map((r) => r.corners)), snapTol, 0.3);
+      setUsedTol(snapTol);
       applyFit(computeFit(snap, sizeRef.current.w, sizeRef.current.h));
       resetInteraction();
       setDerivedStorey(storey);
       setRooms(snap); setHist((v) => v + 1);
       setDirty(false); // a fresh derive is the new clean baseline
-      // Surface the room-count consequence of a corner-tolerance change (only a
+      // Surface the room-count consequence of a weld-tolerance change (only a
       // snap rebuild sets pendingSnapPrevRef; an initial derive leaves it null).
       const prevCount = pendingSnapPrevRef.current;
       pendingSnapPrevRef.current = null;
@@ -362,14 +362,14 @@ export function SpaceSketchOverlay() {
         snapDeltaTimerRef.current = setTimeout(() => setSnapDelta(null), 1800);
       }
       const total = snap.reduce((s, r) => s + r.area, 0);
-      setStatus(`${label}: ${snap.length} room(s), ${total.toFixed(1)} m² · corner tol ${used}m${manual == null ? ' (auto)' : ''}.`);
+      setStatus(`${label}: ${snap.length} room(s), ${total.toFixed(1)} m² · ${rects.length} walls.`);
     } catch (e) {
       setStatus(`Build failed: ${String(e)}`);
     }
   }, [resetInteraction, applyFit]);
 
-  // Manual snap override (null → back to auto-escalate). Rebuilds the current
-  // plate from its source segments at the chosen tolerance.
+  // Manual weld-tolerance override (null → 5 cm default). Rebuilds the current
+  // plate from its wall rectangles at the chosen tolerance.
   const rebuildWithSnap = useCallback((tol: number | null) => {
     snapTolRef.current = tol;
     setSnapTol(tol);
@@ -384,36 +384,33 @@ export function SpaceSketchOverlay() {
     rebuildTimerRef.current = setTimeout(() => {
       rebuildTimerRef.current = null;
       const lb = lastBuildRef.current;
-      if (lb) void buildFrom(lb.coords, lb.sources, lb.thicknesses, lb.label, lb.storey);
+      if (lb) void buildFrom(lb.rects, lb.label, lb.storey);
     }, 180);
   }, [buildFrom]);
 
   const deriveFromStorey = useCallback(async () => {
     if (!ifcDataStore || storeyId == null) { setStatus('No model / storey to derive from.'); return; }
+    const meshes = geometryResult?.meshes;
+    if (!meshes || meshes.length === 0) { setStatus('Model geometry still loading — try again in a moment.'); return; }
     try {
-      const { segments, considered, skipped, wallThicknesses } = extractWallSegmentsForStorey(ifcDataStore, storeyId);
-      if (!segments.length) {
-        setStatus(`No wall axes on storey ${storeyId} (${considered} walls, ${skipped.length} skipped).`);
+      const elev = storeys.find((s) => s.id === storeyId)?.elev ?? 0;
+      const rects = wallRectsFromMeshes(meshes, geometryResult?.coordinateInfo, elev, floorToFloor(storeyId));
+      if (!rects.length) {
+        setStatus(`No walls found on storey ${storeyId} (no rendered wall meshes in its height band).`);
         return;
       }
-      extractionRef.current = { segments, thicknesses: wallThicknesses };
-      const coords = new Float64Array(segments.length * 4);
-      const sources = new Int32Array(segments.length).fill(-1);
-      // Half-thickness per segment (m), carried onto the edges so the engine can
-      // offset to the net/gross wall face.
-      const half = new Float64Array(segments.length);
-      segments.forEach((s, i) => {
-        coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1];
-        coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1];
-        const t = wallThicknesses[i];
-        half[i] = (t && t > 0 ? t : DEFAULT_WALL_THICKNESS) / 2;
-      });
+      extractionRef.current = {
+        segments: rects.map((r) => ({ a: r.centreline[0], b: r.centreline[1] })),
+        thicknesses: rects.map((r) => r.thickness),
+      };
       const name = ifcDataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
-      await buildFrom(coords, sources, half, name, storeyId);
+      await buildFrom(rects, name, storeyId);
     } catch (e) {
       setStatus(`Derive failed: ${String(e)}`);
     }
-  }, [ifcDataStore, storeyId, buildFrom]);
+    // floorToFloor depends on `storeys`; both are stable per render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ifcDataStore, storeyId, geometryResult, buildFrom, storeys]);
 
   // Auto-detect: derive rooms the moment a storey is chosen (and on open, when
   // the first storey auto-selects) so the user doesn't have to click Derive.
@@ -509,26 +506,21 @@ export function SpaceSketchOverlay() {
 
   const bakeWholeBuilding = useCallback(async () => {
     if (!activeModelId || !ifcDataStore) { setStatus('No model loaded.'); return; }
+    const meshes = geometryResult?.meshes;
+    if (!meshes || meshes.length === 0) { setStatus('Model geometry still loading.'); return; }
     setStatus('Generating spaces for every storey…');
     await ensureSpaceWasm();
     const authoredMap = existingSpaceFootprintsByStorey(ifcDataStore);
+    const coord = geometryResult?.coordinateInfo;
     let totalEmitted = 0, totalSkipped = 0, floors = 0;
     let firstError: string | null = null;
     for (const st of storeys) {
-      const { segments, wallThicknesses } = extractWallSegmentsForStorey(ifcDataStore, st.id);
-      if (!segments.length) continue;
-      const coords = new Float64Array(segments.length * 4);
-      const sources = new Int32Array(segments.length).fill(-1);
-      const half = new Float64Array(segments.length);
-      segments.forEach((s, i) => {
-        coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1]; coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1];
-        const t = wallThicknesses[i];
-        half[i] = (t && t > 0 ? t : DEFAULT_WALL_THICKNESS) / 2;
-      });
-      // Throwaway plate per storey (escalation + deterministic free handled by
-      // the session module) — this path doesn't touch the live session. Reads
-      // each room's centreline + the boundary outline at the chosen mode.
-      const rooms = snapshotRooms(coords, sources, half, boundaryMode);
+      const rects = wallRectsFromMeshes(meshes, coord, st.elev, floorToFloor(st.id));
+      if (!rects.length) continue;
+      // Throwaway face-based plate per storey (deterministic free handled by the
+      // session module) — this path doesn't touch the live session. Reads each
+      // room's wall axis + the boundary outline at the chosen mode.
+      const rooms = snapshotRoomsFromRects(flattenWallRects(rects.map((r) => r.corners)), boundaryMode);
       if (!rooms.length) continue;
       const { emitted, skipped, error } = bakeStorey(st.id, rooms, authoredMap.get(st.id) ?? []);
       totalEmitted += emitted; totalSkipped += skipped;
@@ -540,7 +532,7 @@ export function SpaceSketchOverlay() {
     setStatus(firstError
       ? `Generated ${totalEmitted} IfcSpace — others failed: ${firstError}`
       : `Generated ${totalEmitted} IfcSpace across ${floors} storey(s)${totalSkipped ? `; skipped ${totalSkipped} existing` : ''}.`);
-  }, [activeModelId, ifcDataStore, storeys, bakeStorey, revealSpaces, boundaryMode]);
+  }, [activeModelId, ifcDataStore, geometryResult, storeys, floorToFloor, bakeStorey, revealSpaces, boundaryMode]);
 
   useEffect(() => () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);

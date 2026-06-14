@@ -121,6 +121,44 @@ impl SpacePlateHandle {
         Ok(SpacePlateHandle { inner: SpacePlate::build(&segments, opts) })
     }
 
+    /// FACE-BASED build: rooms are the gaps between wall footprint rectangles.
+    /// `rectCoords` is flat `[x0, y0, x1, y1, x2, y2, x3, y3, …]` — 8 f64 per wall
+    /// (its 4 plan-rectangle corners, CCW). A bounded arrangement face is a room
+    /// only if its centroid is outside every rectangle (a gap, not a wall
+    /// interior). The room outline IS the net (inner-face) area; `gapBoundary`
+    /// gives the centre axis (½ thickness) and the gross outer face.
+    #[wasm_bindgen(js_name = fromWallRects)]
+    pub fn from_wall_rects(rect_coords: &[f64], snap_tolerance: f64, min_area: f64) -> Result<SpacePlateHandle, JsValue> {
+        if !rect_coords.len().is_multiple_of(8) {
+            return Err(JsValue::from_str(
+                "rectCoords length must be a multiple of 8 (4 corners × x,y per wall)",
+            ));
+        }
+        let rects: Vec<[[f64; 2]; 4]> = rect_coords
+            .chunks_exact(8)
+            .map(|c| [[c[0], c[1]], [c[2], c[3]], [c[4], c[5]], [c[6], c[7]]])
+            .collect();
+        let defaults = BuildOptions::default();
+        let opts = BuildOptions {
+            snap_tolerance: if snap_tolerance > 0.0 { snap_tolerance } else { defaults.snap_tolerance },
+            min_area: if min_area > 0.0 { min_area } else { defaults.min_area },
+        };
+        Ok(SpacePlateHandle { inner: SpacePlate::build_from_wall_rects(&rects, opts) })
+    }
+
+    /// Face-based gap-room boundary as flat `[x0, y0, …]`: each edge pushed
+    /// OUTWARD (into the wall) by `factor × the source wall's half-thickness`.
+    /// `0` → net (the gap / inner faces); `1` → centre axis (½ thickness, the
+    /// editable node line on the wall mid); `2` → gross outer face.
+    #[wasm_bindgen(js_name = gapBoundary)]
+    pub fn gap_boundary(&self, face: u32, factor: f64) -> Vec<f64> {
+        self.inner
+            .gap_boundary(FaceId(face), factor)
+            .into_iter()
+            .flat_map(|p| [p[0], p[1]])
+            .collect()
+    }
+
     /// Number of live rooms.
     #[wasm_bindgen(getter, js_name = roomCount)]
     pub fn room_count(&self) -> usize {

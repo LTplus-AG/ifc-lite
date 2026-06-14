@@ -4,7 +4,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { SpacePlateSession, MAX_UNDO } from './space-plate-session.js';
+import { SpacePlateSession, MAX_UNDO, flattenWallRects } from './space-plate-session.js';
 import type { SpacePlateHandle } from '@ifc-lite/wasm';
 
 // A stand-in for the wasm handle: tracks the live-handle count and throws on a
@@ -131,5 +131,55 @@ describe('SpacePlateSession', () => {
     assert.strictEqual(s.canUndo, true);
     s.dispose();
     assert.strictEqual(live, 0, 'dispose frees current + history + pending');
+  });
+});
+
+describe('SpacePlateSession — face-based presentation', () => {
+  // The face-based plate's vertices sit on the inner wall faces (the room is the
+  // gap between wall rectangles); the session must present each room at its wall
+  // AXIS so nodes land on the wall centre. These poke `faceBased` directly so the
+  // swap is tested without a real wasm plate (build path is covered by the viewer
+  // integration). The fake's `gapBoundary(_, 1)` returns the axis outline.
+  const makeFaceBased = (handle: Partial<SpacePlateHandle>): SpacePlateSession => {
+    const s = SpacePlateSession.fromHandle({ free: () => {}, ...handle } as unknown as SpacePlateHandle);
+    (s as unknown as { faceBased: boolean }).faceBased = true;
+    return s;
+  };
+
+  it('presents each room at its wall axis (gapBoundary factor 1) and reports the axis area', () => {
+    const net = [[0, 0], [2, 0], [2, 2], [0, 2]]; // gap / inner faces — 2×2
+    const axis = Float64Array.from([-0.5, -0.5, 2.5, -0.5, 2.5, 2.5, -0.5, 2.5]); // +½t each edge — 3×3
+    const s = makeFaceBased({
+      snapshot: () => [{ face: 7, area: 4, simple: true, outline: net }] as unknown as ReturnType<SpacePlateHandle['snapshot']>,
+      gapBoundary: (_f: number, factor: number) => (factor === 1 ? axis : new Float64Array()),
+    });
+    const [room] = s.rooms();
+    assert.deepStrictEqual(room.outline, [[-0.5, -0.5], [2.5, -0.5], [2.5, 2.5], [-0.5, 2.5]], 'outline swapped to the wall axis');
+    assert.strictEqual(room.area, 9, 'reported area is the axis (gross-basis) 3×3 area');
+    assert.strictEqual(room.face, 7, 'face id preserved for editing/boundary lookups');
+  });
+
+  it('maps boundaryOutline net/center/outer to gapBoundary factors 0/1/2', () => {
+    const calls: number[] = [];
+    const s = makeFaceBased({
+      snapshot: () => [] as unknown as ReturnType<SpacePlateHandle['snapshot']>,
+      gapBoundary: (_f: number, factor: number) => { calls.push(factor); return Float64Array.from([0, 0, 1, 0, 1, 1]); },
+    });
+    s.boundaryOutline(3, 'inner');
+    s.boundaryOutline(3, 'center');
+    s.boundaryOutline(3, 'outer');
+    assert.deepStrictEqual(calls, [0, 1, 2], 'inner→net, center→axis, outer→gross');
+  });
+});
+
+describe('flattenWallRects', () => {
+  it('lays out 4 corners × 2 coords per wall, wall-major', () => {
+    const flat = flattenWallRects([
+      [[0, 0], [1, 0], [1, 2], [0, 2]],
+      [[5, 5], [6, 5], [6, 7], [5, 7]],
+    ]);
+    assert.strictEqual(flat.length, 16, '8 floats per wall × 2 walls');
+    assert.deepStrictEqual(Array.from(flat.slice(0, 8)), [0, 0, 1, 0, 1, 2, 0, 2]);
+    assert.deepStrictEqual(Array.from(flat.slice(8)), [5, 5, 6, 5, 6, 7, 5, 7]);
   });
 });

@@ -194,6 +194,12 @@ pub struct SpacePlate {
     vertices: Vec<Vertex>,
     half_edges: Vec<HalfEdge>,
     faces: Vec<Face>,
+    /// Wall footprint rectangles (4 corners each), set only by the FACE-BASED
+    /// build (`build_from_wall_rects`). When non-empty, a bounded face is a ROOM
+    /// only if its centroid lies OUTSIDE every wall rectangle (it's a gap between
+    /// walls, not a wall interior). Empty for the centreline build, where every
+    /// non-outer bounded face is a room.
+    wall_rects: Vec<[[f64; 2]; 4]>,
 }
 
 const EPS: f64 = 1e-9;
@@ -227,6 +233,37 @@ impl SpacePlate {
         plate
     }
 
+    /// FACE-BASED build: rooms are the gaps BETWEEN wall footprint rectangles,
+    /// not the faces of a centreline arrangement. Each `rect` is a wall's plan
+    /// rectangle (4 corners); its 4 edges (the two long ones are the wall faces)
+    /// are arranged, and a resulting bounded face is a room iff its centroid lies
+    /// outside every rectangle (a gap, not a wall interior or a junction overlap).
+    ///
+    /// Because the room boundary is literally the wall faces, a node can't sit
+    /// off the wall axis the way a centroid-derived centreline could, and there's
+    /// no fragile centreline-position sensitivity. Each edge carries half the
+    /// source wall's thickness (the rectangle's short extent / 2), so `net_outline`
+    /// offsets the gap (= the net / inner-face area) outward to the centre axis
+    /// (½ thickness) or the gross outer face (full thickness).
+    pub fn build_from_wall_rects(rects: &[[[f64; 2]; 4]], options: BuildOptions) -> Self {
+        let mut segments: Vec<InputSegment> = Vec::with_capacity(rects.len() * 4);
+        for (wi, r) in rects.iter().enumerate() {
+            // Wall thickness = the rectangle's shorter side (faces are the long pair).
+            let side = |a: [f64; 2], b: [f64; 2]| ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
+            let s01 = side(r[0], r[1]);
+            let s12 = side(r[1], r[2]);
+            let half = s01.min(s12) / 2.0;
+            let src = Some(wi as u32);
+            for i in 0..4 {
+                segments.push(InputSegment::new(r[i], r[(i + 1) % 4], src).with_half_thickness(half));
+            }
+        }
+        let arr = Arrangement::resolve(&segments, options.snap_tolerance);
+        let mut plate = Self::from_arrangement(arr, options.min_area);
+        plate.wall_rects = rects.to_vec();
+        plate
+    }
+
     fn from_arrangement(arr: Arrangement, min_area: f64) -> Self {
         let mut plate = SpacePlate {
             vertices: arr
@@ -236,6 +273,7 @@ impl SpacePlate {
                 .collect(),
             half_edges: Vec::with_capacity(arr.edges.len() * 2),
             faces: Vec::new(),
+            wall_rects: Vec::new(),
         };
 
         // Two half-edges per undirected edge, twinned. Record outgoing fans.
@@ -955,14 +993,37 @@ impl SpacePlate {
         Some(self.half_edges[he.twin.0 as usize].face)
     }
 
-    /// Every live interior (room) face.
+    /// Every live interior (room) face. In the FACE-BASED build (`wall_rects`
+    /// non-empty) a bounded face is a room only if it's a gap between walls — its
+    /// centroid lies outside every wall rectangle, so wall interiors and junction
+    /// overlaps are excluded.
     pub fn rooms(&self) -> impl Iterator<Item = FaceId> + '_ {
         (0..self.faces.len())
             .map(|i| FaceId(i as u32))
             .filter(move |f| {
                 let face = &self.faces[f.0 as usize];
-                face.alive && !face.is_outer
+                face.alive && !face.is_outer && self.is_room_face(*f)
             })
+    }
+
+    /// Face-based room test: a bounded face is a room when its centroid is not
+    /// inside any wall rectangle (a gap, not a wall interior). Always true for
+    /// the centreline build (no `wall_rects`).
+    fn is_room_face(&self, face: FaceId) -> bool {
+        if self.wall_rects.is_empty() {
+            return true;
+        }
+        let outline = self.face_outline(face);
+        if outline.len() < 3 {
+            return false;
+        }
+        let (mut cx, mut cy) = (0.0, 0.0);
+        for p in &outline {
+            cx += p[0];
+            cy += p[1];
+        }
+        let c = [cx / outline.len() as f64, cy / outline.len() as f64];
+        !self.wall_rects.iter().any(|r| point_in_quad(c, r))
     }
 
     /// CCW outline of a face (no repeated closing vertex).
@@ -1047,6 +1108,55 @@ impl SpacePlate {
         }
         if inset && got > polygon_area(&centre).abs() + 1e-6 {
             return centre; // the inset inverted the polygon — keep the centreline
+        }
+        verts
+    }
+
+    /// FACE-BASED boundary of a gap room: the gap outline IS the net (inner-face)
+    /// area, so this pushes every edge OUTWARD (into the wall, away from the room)
+    /// by `factor × the source wall's half-thickness`, then re-intersects corners.
+    /// `factor = 0` → net (the gap itself); `1` → the wall **axis / centre line**
+    /// (½ thickness — where the editable node sits, on the wall mid); `2` → the
+    /// gross outer face (full thickness). No shared-edge pinning: two rooms across
+    /// a wall correctly meet at the mid axis and overlap into it for gross.
+    pub fn gap_boundary(&self, face: FaceId, factor: f64) -> Vec<[f64; 2]> {
+        let centre = self.face_outline(face);
+        let n = centre.len();
+        if n < 3 || factor.abs() < EPS {
+            return centre;
+        }
+        let cycle: Vec<HalfEdgeId> = self.face_half_edges(face).collect();
+        if cycle.len() != n {
+            return centre;
+        }
+        let mut lines: Vec<([f64; 2], [f64; 2])> = Vec::with_capacity(n);
+        for i in 0..n {
+            let a = centre[i];
+            let b = centre[(i + 1) % n];
+            let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+            let l = (dx * dx + dy * dy).sqrt();
+            if l < EPS {
+                return centre;
+            }
+            let (ux, uy) = (dx / l, dy / l);
+            let half = self.half_edges[cycle[i].0 as usize].half_thickness;
+            // Outward (right of a→b on a CCW ring) = (uy, -ux), i.e. negate the
+            // inward normal (-uy, ux). Push the edge out by factor × half.
+            let off = factor * half;
+            lines.push(([a[0] + uy * off, a[1] - ux * off], [ux, uy]));
+        }
+        let mut verts: Vec<[f64; 2]> = Vec::with_capacity(n);
+        for i in 0..n {
+            let (pp, pd) = lines[(i + n - 1) % n];
+            let (cp, cd) = lines[i];
+            let hit = line_intersection(pp, [pp[0] + pd[0], pp[1] + pd[1]], cp, [cp[0] + cd[0], cp[1] + cd[1]]);
+            verts.push(hit.unwrap_or_else(|| {
+                let t = (centre[i][0] - cp[0]) * cd[0] + (centre[i][1] - cp[1]) * cd[1];
+                [cp[0] + t * cd[0], cp[1] + t * cd[1]]
+            }));
+        }
+        if verts.iter().any(|v| !v[0].is_finite() || !v[1].is_finite()) || polygon_area(&verts).abs() <= EPS {
+            return centre;
         }
         verts
     }
@@ -1555,6 +1665,22 @@ fn polygon_area(pts: &[[f64; 2]]) -> f64 {
     acc * 0.5
 }
 
+/// Ray-cast point-in-polygon for a wall rectangle (4 corners). A face centroid
+/// inside any wall rect = a wall interior / junction overlap, not a room gap.
+fn point_in_quad(p: [f64; 2], quad: &[[f64; 2]; 4]) -> bool {
+    let mut inside = false;
+    let mut j = 3;
+    for i in 0..4 {
+        let (xi, yi) = (quad[i][0], quad[i][1]);
+        let (xj, yj) = (quad[j][0], quad[j][1]);
+        if ((yi > p[1]) != (yj > p[1])) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
 /// Perpendicular distance of point `p` to the infinite line through `a` and `b`
 /// (degenerates to the point distance when `a == b`). Used to judge whether a
 /// degree-2 node is a redundant collinear point on its neighbours' chord.
@@ -1617,6 +1743,29 @@ mod tests {
         assert_eq!(plate.room_count(), 1);
         let room = plate.rooms().next().unwrap();
         assert!((plate.face_area(room) - 12.0).abs() < 1e-6, "area {}", plate.face_area(room));
+    }
+
+    #[test]
+    fn face_based_room_is_the_gap_between_wall_rects() {
+        // A 4×3 room boxed by four 0.2 m-thick wall rectangles (they overlap at
+        // the corners, as real walls do). The room is the GAP between them: net
+        // (inner faces) = 3.8×2.8 = 10.64; axis (+½t) = 4×3 = 12; gross (+t) =
+        // 4.2×3.2 = 13.44. Nodes sit on the axis = the true wall mid.
+        let rects = vec![
+            [[-0.1, -0.1], [4.1, -0.1], [4.1, 0.1], [-0.1, 0.1]], // bottom
+            [[-0.1, 2.9], [4.1, 2.9], [4.1, 3.1], [-0.1, 3.1]],   // top
+            [[-0.1, -0.1], [0.1, -0.1], [0.1, 3.1], [-0.1, 3.1]], // left
+            [[3.9, -0.1], [4.1, -0.1], [4.1, 3.1], [3.9, 3.1]],   // right
+        ];
+        let plate = SpacePlate::build_from_wall_rects(&rects, BuildOptions::default());
+        assert_eq!(plate.room_count(), 1, "the gap between the four walls is the one room");
+        let room = plate.rooms().next().unwrap();
+        let net = polygon_area(&plate.face_outline(room)).abs();
+        assert!((net - 10.64).abs() < 1e-6, "net (gap / inner faces) = 10.64, got {net}");
+        let axis = polygon_area(&plate.gap_boundary(room, 1.0)).abs();
+        assert!((axis - 12.0).abs() < 1e-6, "axis (+½ thickness, the node line) = 12, got {axis}");
+        let gross = polygon_area(&plate.gap_boundary(room, 2.0)).abs();
+        assert!((gross - 13.44).abs() < 1e-6, "gross (+ full thickness) = 13.44, got {gross}");
     }
 
     /// Two rooms sharing a central wall — the canonical "shared edge"

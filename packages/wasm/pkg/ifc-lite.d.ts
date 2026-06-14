@@ -578,6 +578,13 @@ export class SpacePlateHandle {
    */
   faceOutline(face: number): Float64Array;
   /**
+   * Face-based gap-room boundary as flat `[x0, y0, …]`: each edge pushed
+   * OUTWARD (into the wall) by `factor × the source wall's half-thickness`.
+   * `0` → net (the gap / inner faces); `1` → centre axis (½ thickness, the
+   * editable node line on the wall mid); `2` → gross outer face.
+   */
+  gapBoundary(face: number, factor: number): Float64Array;
+  /**
    * Dissolve a degree-2 vertex, welding its two edges into one straight
    * edge between the neighbours — the inverse of `splitEdge`, and the
    * "delete this corner / node" affordance. Returns the rooms it changed.
@@ -585,6 +592,15 @@ export class SpacePlateHandle {
    * edge.
    */
   dissolveVertex(v: number): any;
+  /**
+   * FACE-BASED build: rooms are the gaps between wall footprint rectangles.
+   * `rectCoords` is flat `[x0, y0, x1, y1, x2, y2, x3, y3, …]` — 8 f64 per wall
+   * (its 4 plan-rectangle corners, CCW). A bounded arrangement face is a room
+   * only if its centroid is outside every rectangle (a gap, not a wall
+   * interior). The room outline IS the net (inner-face) area; `gapBoundary`
+   * gives the centre axis (½ thickness) and the gross outer face.
+   */
+  static fromWallRects(rect_coords: Float64Array, snap_tolerance: number, min_area: number): SpacePlateHandle;
   /**
    * The room on the far side of a half-edge (its twin's face), or
    * `undefined`. O(1) — the "who's across this wall" query.
@@ -969,6 +985,8 @@ export interface InitOutput {
   readonly spaceplatehandle_faceArea: (a: number, b: number) => number;
   readonly spaceplatehandle_faceOutline: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_findVertexNear: (a: number, b: number, c: number, d: number) => number;
+  readonly spaceplatehandle_fromWallRects: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly spaceplatehandle_gapBoundary: (a: number, b: number, c: number, d: number) => void;
   readonly spaceplatehandle_mergeFaces: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_neighborAcross: (a: number, b: number) => number;
   readonly spaceplatehandle_netOutline: (a: number, b: number, c: number, d: number) => void;

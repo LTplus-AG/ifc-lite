@@ -2,15 +2,16 @@
 "@ifc-lite/wasm": minor
 ---
 
-`SpacePlateHandle` gains a face-based room derivation: `fromWallRects(rectCoords,
-snapTolerance, minArea)` builds a plate from each wall's footprint **rectangle**
-(4 corners, wall-major) instead of its centreline. Rooms are the bounded **gaps
-between** the rectangles — a face is a room iff its centroid falls outside every
-wall rectangle — so the room boundary is the wall faces themselves and every node
-lands on the true wall axis (no centreline distribution bias).
+`SpacePlateHandle` gains `fromWallRects(rectCoords, snapTolerance, minArea)`: build
+a plate from each wall's footprint **rectangle** (4 corners, wall-major) instead of
+its centreline. Rooms are detected as the bounded **gaps between** the rectangles
+(a face is a room iff its centroid is outside every rectangle), so the room
+boundary lands on the wall faces with no centreline distribution bias — then each
+room is LIFTED to its wall axis, so the returned plate is a normal centreline plate
+whose room outlines are the wall axes and whose vertices are the editable nodes.
+Every edit op (drag / split / merge) therefore acts directly on what's displayed,
+and `netOutline(face, inset)` recovers the inner (net) / outer (gross) faces.
 
-`gapBoundary(face, factor)` reads a room's outline offset outward per edge by
-`factor · ½ thickness`: `0` = net (inner faces), `1` = the wall axis (centreline),
-`2` = gross (outer faces). The corner re-intersection is miter-clamped so a
-concave room's outward offset can't blow up. Centreline plates
-(`new SpacePlateHandle(...)`) are unchanged.
+Room classification is now a stable per-face flag set once at build and carried
+through edits (split inherits it, merge ORs it) — so dragging a vertex or cutting a
+room can no longer silently re-classify faces into phantom rooms.

@@ -140,6 +140,13 @@ struct Face {
     /// One boundary half-edge, or `None` once tombstoned.
     half_edge: Option<HalfEdgeId>,
     is_outer: bool,
+    /// Whether this bounded face is surfaced as a ROOM. Classified ONCE at build
+    /// (every bounded face for a centreline plate; only the gaps between wall
+    /// rectangles for a face-based plate) and then carried THROUGH edits — a
+    /// split inherits it, a merge ORs it. Never re-derived from geometry, so
+    /// dragging a vertex or cutting a room can't silently re-classify faces into
+    /// phantom rooms (the wall-rect centroid test was the culprit).
+    is_room: bool,
     floor_z: f64,
     ceiling_z: f64,
     /// Set when the ceiling plane is inferred (e.g. pitched roof underside);
@@ -233,35 +240,69 @@ impl SpacePlate {
         plate
     }
 
-    /// FACE-BASED build: rooms are the gaps BETWEEN wall footprint rectangles,
-    /// not the faces of a centreline arrangement. Each `rect` is a wall's plan
-    /// rectangle (4 corners); its 4 edges (the two long ones are the wall faces)
-    /// are arranged, and a resulting bounded face is a room iff its centroid lies
-    /// outside every rectangle (a gap, not a wall interior or a junction overlap).
+    /// FACE-BASED build → an editable CENTRELINE plate sitting on the wall axes.
     ///
-    /// Because the room boundary is literally the wall faces, a node can't sit
-    /// off the wall axis the way a centroid-derived centreline could, and there's
-    /// no fragile centreline-position sensitivity. Each edge carries half the
-    /// source wall's thickness (the rectangle's short extent / 2), so `net_outline`
-    /// offsets the gap (= the net / inner-face area) outward to the centre axis
-    /// (½ thickness) or the gross outer face (full thickness).
+    /// Two stages. (1) DETECT: arrange the wall footprint rectangle edges and keep
+    /// each bounded face whose centroid lies OUTSIDE every rectangle — i.e. a GAP
+    /// between walls (not a wall interior or a junction overlap). This locates the
+    /// rooms accurately, with the room boundary literally on the rendered wall
+    /// faces (no centroid-derived-centreline drift). (2) LIFT: take each gap room's
+    /// wall-AXIS outline (the net gap offset out by ½ thickness, corners
+    /// re-intersected) and arrange THOSE edges into the returned plate.
+    ///
+    /// The returned plate is therefore a normal centreline plate whose room
+    /// outlines ARE the wall axes and whose vertices ARE the displayed nodes — so
+    /// every editing op (drag / split / merge / dissolve) acts directly on what the
+    /// user sees, with no axis-vs-face offset. Each axis edge carries its wall's
+    /// half-thickness, so `net_outline` recovers the inner (net) and outer (gross)
+    /// faces. Adjacent rooms' shared wall maps to one shared centreline edge.
     pub fn build_from_wall_rects(rects: &[[[f64; 2]; 4]], options: BuildOptions) -> Self {
-        let mut segments: Vec<InputSegment> = Vec::with_capacity(rects.len() * 4);
+        // --- Stage 1: detect rooms as the gaps between wall rectangles. ---
+        let mut rect_edges: Vec<InputSegment> = Vec::with_capacity(rects.len() * 4);
         for (wi, r) in rects.iter().enumerate() {
             // Wall thickness = the rectangle's shorter side (faces are the long pair).
             let side = |a: [f64; 2], b: [f64; 2]| ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
-            let s01 = side(r[0], r[1]);
-            let s12 = side(r[1], r[2]);
-            let half = s01.min(s12) / 2.0;
+            let half = side(r[0], r[1]).min(side(r[1], r[2])) / 2.0;
             let src = Some(wi as u32);
             for i in 0..4 {
-                segments.push(InputSegment::new(r[i], r[(i + 1) % 4], src).with_half_thickness(half));
+                rect_edges.push(InputSegment::new(r[i], r[(i + 1) % 4], src).with_half_thickness(half));
             }
         }
-        let arr = Arrangement::resolve(&segments, options.snap_tolerance);
-        let mut plate = Self::from_arrangement(arr, options.min_area);
-        plate.wall_rects = rects.to_vec();
-        plate
+        let mut gap = Self::from_arrangement(Arrangement::resolve(&rect_edges, options.snap_tolerance), options.min_area);
+        gap.wall_rects = rects.to_vec();
+
+        // --- Stage 2: lift each gap room to its wall-axis outline and re-arrange. ---
+        let mut axis_edges: Vec<InputSegment> = Vec::new();
+        for i in 0..gap.faces.len() {
+            let f = FaceId(i as u32);
+            if gap.faces[i].is_outer || !gap.is_gap_face(f) {
+                continue;
+            }
+            let axis = gap.gap_boundary(f, 1.0); // net gap → wall axis (½ thickness out)
+            let cycle: Vec<HalfEdgeId> = gap.face_half_edges(f).collect();
+            if axis.len() < 3 || axis.len() != cycle.len() {
+                continue;
+            }
+            for k in 0..axis.len() {
+                let he = &gap.half_edges[cycle[k].0 as usize];
+                axis_edges.push(
+                    InputSegment::new(axis[k], axis[(k + 1) % axis.len()], he.source_element)
+                        .with_half_thickness(he.half_thickness),
+                );
+            }
+        }
+        // Fallback: if the lift produced nothing usable (degenerate input), return
+        // the gap plate as-is so the caller still gets rooms.
+        if axis_edges.is_empty() {
+            for i in 0..gap.faces.len() {
+                let f = FaceId(i as u32);
+                gap.faces[i].is_room = !gap.faces[i].is_outer && gap.is_gap_face(f);
+            }
+            return gap;
+        }
+        // The returned plate has no `wall_rects`, so `is_room` defaults to every
+        // bounded face — exactly the lifted axis rooms.
+        Self::from_arrangement(Arrangement::resolve(&axis_edges, options.snap_tolerance), options.min_area)
     }
 
     fn from_arrangement(arr: Arrangement, min_area: f64) -> Self {
@@ -362,6 +403,9 @@ impl SpacePlate {
             plate.faces.push(Face {
                 half_edge: cycle.first().copied(),
                 is_outer: is_outer || too_small,
+                // Centreline default: every bounded, non-tiny face is a room.
+                // `build_from_wall_rects` re-classifies to gaps-only afterwards.
+                is_room: !(is_outer || too_small),
                 floor_z: 0.0,
                 ceiling_z: 0.0,
                 non_planar_ceiling: false,
@@ -481,6 +525,7 @@ impl SpacePlate {
         self.faces.push(Face {
             half_edge: Some(e_ba),
             is_outer: false,
+            is_room: parent.is_room, // both halves of a split stay rooms
             floor_z: parent.floor_z,
             ceiling_z: parent.ceiling_z,
             non_planar_ceiling: parent.non_planar_ceiling,
@@ -575,6 +620,8 @@ impl SpacePlate {
         self.half_edges[tp.0 as usize].next = hn;
         self.half_edges[hn.0 as usize].prev = tp;
 
+        // The merged face is a room if either side was.
+        self.faces[f_keep.0 as usize].is_room |= self.faces[f_drop.0 as usize].is_room;
         // Re-home f_drop's loop onto f_keep, then tombstone f_drop + the edge.
         self.faces[f_keep.0 as usize].half_edge = Some(hp);
         let merged_cycle: Vec<HalfEdgeId> = self.face_half_edges(f_keep).collect();
@@ -964,6 +1011,7 @@ impl SpacePlate {
         self.faces.push(Face {
             half_edge: Some(HalfEdgeId(h0)),
             is_outer: false,
+            is_room: true, // a user-drawn partition is a room
             floor_z: 0.0,
             ceiling_z: 0.0,
             non_planar_ceiling: false,
@@ -972,6 +1020,7 @@ impl SpacePlate {
         self.faces.push(Face {
             half_edge: Some(HalfEdgeId(g0)),
             is_outer: true,
+            is_room: false,
             floor_z: 0.0,
             ceiling_z: 0.0,
             non_planar_ceiling: false,
@@ -1002,14 +1051,15 @@ impl SpacePlate {
             .map(|i| FaceId(i as u32))
             .filter(move |f| {
                 let face = &self.faces[f.0 as usize];
-                face.alive && !face.is_outer && self.is_room_face(*f)
+                face.alive && face.is_room
             })
     }
 
-    /// Face-based room test: a bounded face is a room when its centroid is not
-    /// inside any wall rectangle (a gap, not a wall interior). Always true for
-    /// the centreline build (no `wall_rects`).
-    fn is_room_face(&self, face: FaceId) -> bool {
+    /// Geometric gap test used ONCE at build to classify face-based rooms: a
+    /// bounded face is a gap (room) when its centroid is not inside any wall
+    /// rectangle. True for the centreline build (no `wall_rects`). Not used after
+    /// build — `Face::is_room` is the carried-through source of truth.
+    fn is_gap_face(&self, face: FaceId) -> bool {
         if self.wall_rects.is_empty() {
             return true;
         }
@@ -1789,12 +1839,41 @@ mod tests {
         let plate = SpacePlate::build_from_wall_rects(&rects, BuildOptions::default());
         assert_eq!(plate.room_count(), 1, "the gap between the four walls is the one room");
         let room = plate.rooms().next().unwrap();
-        let net = polygon_area(&plate.face_outline(room)).abs();
-        assert!((net - 10.64).abs() < 1e-6, "net (gap / inner faces) = 10.64, got {net}");
-        let axis = polygon_area(&plate.gap_boundary(room, 1.0)).abs();
-        assert!((axis - 12.0).abs() < 1e-6, "axis (+½ thickness, the node line) = 12, got {axis}");
-        let gross = polygon_area(&plate.gap_boundary(room, 2.0)).abs();
-        assert!((gross - 13.44).abs() < 1e-6, "gross (+ full thickness) = 13.44, got {gross}");
+        // The editable plate sits on the wall AXIS: the room outline IS the axis
+        // (4×3 = 12), and net_outline recovers the inner (net) / outer (gross) faces.
+        let axis = polygon_area(&plate.face_outline(room)).abs();
+        assert!((axis - 12.0).abs() < 1e-6, "room outline is the wall axis (4×3=12), got {axis}");
+        let net = polygon_area(&plate.net_outline(room, true)).abs();
+        assert!((net - 10.64).abs() < 1e-3, "net (inner faces) = 10.64, got {net}");
+        let gross = polygon_area(&plate.net_outline(room, false)).abs();
+        assert!((gross - 13.44).abs() < 1e-3, "gross (outer faces) = 13.44, got {gross}");
+    }
+
+    #[test]
+    fn face_based_edits_preserve_room_classification() {
+        // The 4-wall box → one gap room. `is_room` is set once at build and
+        // carried through edits, so neither a drag nor a split can re-classify
+        // wall-interior faces into phantom rooms — and a split yields TWO rooms.
+        let rects = vec![
+            [[-0.1, -0.1], [4.1, -0.1], [4.1, 0.1], [-0.1, 0.1]],
+            [[-0.1, 2.9], [4.1, 2.9], [4.1, 3.1], [-0.1, 3.1]],
+            [[-0.1, -0.1], [0.1, -0.1], [0.1, 3.1], [-0.1, 3.1]],
+            [[3.9, -0.1], [4.1, -0.1], [4.1, 3.1], [3.9, 3.1]],
+        ];
+        let mut plate = SpacePlate::build_from_wall_rects(&rects, BuildOptions::default());
+        assert_eq!(plate.room_count(), 1);
+        // The plate sits on the wall axis, so the room corners are the axis corners
+        // (0,0)…(4,3). Drag one inward — must NOT spawn a phantom room.
+        let corner = plate.find_vertex([4.0, 3.0]);
+        plate.drag_vertex(corner, 3.7, 2.7).expect("drag");
+        assert_eq!(plate.room_count(), 1, "a drag must not spawn phantom rooms");
+        // Cut the room across → two rooms (both halves inherit is_room; this was
+        // the "can't cut a space in half" bug).
+        let room = plate.rooms().next().unwrap();
+        let a = plate.find_vertex([0.0, 0.0]);
+        let b = plate.find_vertex([3.7, 2.7]);
+        plate.split_face(room, a, b, None).expect("split");
+        assert_eq!(plate.room_count(), 2, "a split produces two rooms");
     }
 
     /// Two rooms sharing a central wall — the canonical "shared edge"

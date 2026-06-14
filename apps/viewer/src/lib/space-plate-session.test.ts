@@ -134,41 +134,23 @@ describe('SpacePlateSession', () => {
   });
 });
 
-describe('SpacePlateSession — face-based presentation', () => {
-  // The face-based plate's vertices sit on the inner wall faces (the room is the
-  // gap between wall rectangles); the session must present each room at its wall
-  // AXIS so nodes land on the wall centre. These poke `faceBased` directly so the
-  // swap is tested without a real wasm plate (build path is covered by the viewer
-  // integration). The fake's `gapBoundary(_, 1)` returns the axis outline.
-  const makeFaceBased = (handle: Partial<SpacePlateHandle>): SpacePlateSession => {
-    const s = SpacePlateSession.fromHandle({ free: () => {}, ...handle } as unknown as SpacePlateHandle);
-    (s as unknown as { faceBased: boolean }).faceBased = true;
-    return s;
-  };
-
-  it('presents each room at its wall axis (gapBoundary factor 1) and reports the axis area', () => {
-    const net = [[0, 0], [2, 0], [2, 2], [0, 2]]; // gap / inner faces — 2×2
-    const axis = Float64Array.from([-0.5, -0.5, 2.5, -0.5, 2.5, 2.5, -0.5, 2.5]); // +½t each edge — 3×3
-    const s = makeFaceBased({
-      snapshot: () => [{ face: 7, area: 4, simple: true, outline: net }] as unknown as ReturnType<SpacePlateHandle['snapshot']>,
-      gapBoundary: (_f: number, factor: number) => (factor === 1 ? axis : new Float64Array()),
-    });
-    const [room] = s.rooms();
-    assert.deepStrictEqual(room.outline, [[-0.5, -0.5], [2.5, -0.5], [2.5, 2.5], [-0.5, 2.5]], 'outline swapped to the wall axis');
-    assert.strictEqual(room.area, 9, 'reported area is the axis (gross-basis) 3×3 area');
-    assert.strictEqual(room.face, 7, 'face id preserved for editing/boundary lookups');
-  });
-
-  it('maps boundaryOutline net/center/outer to gapBoundary factors 0/1/2', () => {
-    const calls: number[] = [];
-    const s = makeFaceBased({
-      snapshot: () => [] as unknown as ReturnType<SpacePlateHandle['snapshot']>,
-      gapBoundary: (_f: number, factor: number) => { calls.push(factor); return Float64Array.from([0, 0, 1, 0, 1, 1]); },
-    });
+describe('SpacePlateSession — boundary outlines', () => {
+  // `fromWallRects` returns a centreline plate whose room outline IS the wall
+  // axis, so `center` is the room outline itself and `inner`/`outer` route to
+  // `net_outline` (inset/outset by the wall half-thickness). Fake handle, no wasm.
+  it('center returns the room outline; inner/outer route to net_outline (inset/outset)', () => {
+    const axisOutline: [number, number][] = [[0, 0], [3, 0], [3, 3], [0, 3]];
+    const insets: boolean[] = [];
+    const handle = {
+      snapshot: () => [{ face: 3, area: 9, simple: true, outline: axisOutline }] as unknown as ReturnType<SpacePlateHandle['snapshot']>,
+      netOutline: (_f: number, inset: boolean) => { insets.push(inset); return Float64Array.from([0, 0, 1, 0, 1, 1]); },
+      free: () => {},
+    } as unknown as SpacePlateHandle;
+    const s = SpacePlateSession.fromHandle(handle);
+    assert.deepStrictEqual(s.boundaryOutline(3, 'center'), axisOutline, 'center = the wall axis outline');
     s.boundaryOutline(3, 'inner');
-    s.boundaryOutline(3, 'center');
     s.boundaryOutline(3, 'outer');
-    assert.deepStrictEqual(calls, [0, 1, 2], 'inner→net, center→axis, outer→gross');
+    assert.deepStrictEqual(insets, [true, false], 'inner → inset (net), outer → outset (gross)');
   });
 });
 

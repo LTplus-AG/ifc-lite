@@ -42,9 +42,14 @@ for (const [sid, els] of sh.byStorey) {
     if (rooms.length) break;
   }
   const name = store.entities.getName ? store.entities.getName(sid) : '';
+  const th = res.wallThicknesses.filter((t) => typeof t === 'number' && t > 0);
+  const thSummary = th.length
+    ? `${th.length}/${res.wallThicknesses.length} (min=${Math.min(...th).toFixed(3)} max=${Math.max(...th).toFixed(3)} m)`
+    : `0/${res.wallThicknesses.length}`;
   console.log(
     `storey #${sid} "${name}": byStorey=${els.length} considered=${res.considered} ` +
     `segments=${res.segments.length} skipped=${res.skipped.length} ` +
-    `skipReasons=${JSON.stringify(reasons)} rooms=${rooms.length}@snap${usedTol}`,
+    `skipReasons=${JSON.stringify(reasons)} rooms=${rooms.length}@snap${usedTol} ` +
+    `thickness=${thSummary}`,
   );
 }

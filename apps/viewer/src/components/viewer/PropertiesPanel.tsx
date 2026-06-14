@@ -329,8 +329,13 @@ export function PropertiesPanel() {
       if (mesh.expressId !== targetExpressId) continue;
       found = true;
       const pos = mesh.positions;
+      // Positions are in the element's local frame (world = origin + position);
+      // fold the per-mesh origin so the reported bbox/centre is in the render
+      // frame, matching scene.getEntityBoundingBox. No-op when origin absent.
+      const o = mesh.origin;
+      const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
       for (let i = 0; i < pos.length; i += 3) {
-        const x = pos[i], y = pos[i + 1], z = pos[i + 2];
+        const x = pos[i] + ox, y = pos[i + 1] + oy, z = pos[i + 2] + oz;
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (z < minZ) minZ = z;

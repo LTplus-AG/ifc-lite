@@ -79,6 +79,11 @@ export class Scene {
   private activeBucketKey: Map<string, string> = new Map(); // base colorKey -> current active bucket key
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
+  // Shared local-frame origin for ALL batches (set from the first batch's world
+  // bbox centre). Every batch stores positions relative to it and draws with
+  // model = translate(sharedFrameOrigin), so coincident faces across batches
+  // stay bit-coincident (no seam z-fight) while f32 vertex coords stay small.
+  private sharedFrameOrigin: [number, number, number] | null = null;
   private cachedMaxBufferSize: number = 0; // device.limits.maxBufferSize * safety factor (set on first use)
   private static readonly STREAMING_FRAGMENT_MAX_INDICES = 180_000;
   private static readonly STREAMING_FRAGMENT_MAX_VERTEX_BYTES = 8 * 1024 * 1024;
@@ -136,6 +141,13 @@ export class Scene {
    */
   getBatchedMeshes(): BatchedMesh[] {
     return this.batchedMeshes;
+  }
+
+  /** The shared local-frame origin all batches relativize against (null until
+   *  the first batch is built). Per-mesh highlight/picker VBOs replicate the
+   *  batch's exact f32 path against this so they render bit-coincident. */
+  getSharedFrameOrigin(): [number, number, number] | null {
+    return this.sharedFrameOrigin;
   }
 
   /**
@@ -343,6 +355,10 @@ export class Scene {
       normals: outNorm,
       indices: new Uint32Array(tmpIdx),
       color: merged.color,
+      // Extracted vertices are copied verbatim from the merged mesh's local
+      // frame, so carry its origin forward (world = origin + position) — else
+      // raycast/highlight/snap would treat these local coords as world.
+      origin: merged.origin,
     };
   }
 
@@ -954,6 +970,9 @@ export class Scene {
         normals: new Float32Array(normals),
         indices,
         color: meshData.color,
+        // Fragments are subsets of the same source mesh → same local frame.
+        // Preserve origin so each fragment relativizes/renders in world space.
+        ...(meshData.origin ? { origin: meshData.origin } : {}),
       });
     }
 
@@ -1149,10 +1168,14 @@ export class Scene {
 
       for (const piece of pieces) {
         const positions = piece.positions;
+        // world = origin + position (per-element local frame); bake WORLD bbox.
+        const ox = piece.origin ? piece.origin[0] : 0;
+        const oy = piece.origin ? piece.origin[1] : 0;
+        const oz = piece.origin ? piece.origin[2] : 0;
         for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i];
-          const y = positions[i + 1];
-          const z = positions[i + 2];
+          const x = positions[i] + ox;
+          const y = positions[i + 1] + oy;
+          const z = positions[i + 2] + oz;
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (z < minZ) minZ = z;
@@ -1218,10 +1241,14 @@ export class Scene {
 
       for (const piece of pieces) {
         const positions = piece.positions;
+        // world = origin + position (per-element local frame); bake WORLD bbox.
+        const ox = piece.origin ? piece.origin[0] : 0;
+        const oy = piece.origin ? piece.origin[1] : 0;
+        const oz = piece.origin ? piece.origin[2] : 0;
         for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i];
-          const y = positions[i + 1];
-          const z = positions[i + 2];
+          const x = positions[i] + ox;
+          const y = positions[i + 1] + oy;
+          const z = positions[i + 2] + oz;
           if (x < minX) minX = x;
           if (y < minY) minY = y;
           if (z < minZ) minZ = z;
@@ -1384,7 +1411,16 @@ export class Scene {
     pipeline: RenderPipeline,
     bucketKey?: string
   ): BatchedMesh {
-    const merged = this.mergeGeometry(meshDataArray);
+    // Use ONE shared scene origin for every batch (set from the first batch's
+    // world bbox centre). A per-batch origin would make abutting elements in
+    // different colour batches diverge by a few f32 ULP at building-scale world
+    // coords → seam/end-cap z-fighting. A shared origin makes every coincident
+    // world point relativize identically → no seam z-fight, and the model
+    // sits at most ±(model extent) from it (f32-precise at building scale).
+    const merged = this.mergeGeometry(meshDataArray, this.sharedFrameOrigin ?? undefined);
+    if (!this.sharedFrameOrigin && (merged.origin[0] || merged.origin[1] || merged.origin[2])) {
+      this.sharedFrameOrigin = merged.origin;
+    }
     const expressIds = meshDataArray.map(m => m.expressId);
 
     // Create vertex buffer (interleaved positions + normals)
@@ -1435,6 +1471,9 @@ export class Scene {
       bindGroup,
       uniformBuffer,
       bounds: merged.bounds,
+      // Per-batch local frame: positions are stored relative to this; the draw
+      // loop applies model = translate(origin) so they land in world space.
+      origin: merged.origin,
     };
   }
 
@@ -1443,12 +1482,13 @@ export class Scene {
    * Merge multiple mesh geometries into single vertex/index buffers.
    * Delegates to the extracted mergeGeometry() utility.
    */
-  private mergeGeometry(meshDataArray: MeshData[]): {
+  private mergeGeometry(meshDataArray: MeshData[], forcedOrigin?: [number, number, number]): {
     vertexData: Float32Array;
     indices: Uint32Array;
     bounds: { min: [number, number, number]; max: [number, number, number] };
+    origin: [number, number, number];
   } {
-    return mergeGeometry(meshDataArray);
+    return mergeGeometry(meshDataArray, forcedOrigin);
   }
 
   /**
@@ -1823,6 +1863,8 @@ export class Scene {
     this.streamingFragments = [];
     this.destroyOverrideBatches();
     this.colorOverrides = null;
+    // Reset the shared frame origin so the next model picks its own.
+    this.sharedFrameOrigin = null;
     this.meshes = [];
     this.batchedMeshes = [];
     this.buckets.clear();
@@ -1876,10 +1918,14 @@ export class Scene {
     for (const pieces of this.meshDataMap.values()) {
       for (const piece of pieces) {
         const positions = piece.positions;
+        // world = origin + position (per-element local frame).
+        const ox = piece.origin ? piece.origin[0] : 0;
+        const oy = piece.origin ? piece.origin[1] : 0;
+        const oz = piece.origin ? piece.origin[2] : 0;
         for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i];
-          const y = positions[i + 1];
-          const z = positions[i + 2];
+          const x = positions[i] + ox;
+          const y = positions[i + 1] + oy;
+          const z = positions[i + 2] + oz;
           if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
             hasValidData = true;
             if (x < minX) minX = x;
@@ -1932,10 +1978,15 @@ export class Scene {
 
     for (const piece of pieces) {
       const positions = piece.positions;
+      // world = origin + position (per-element local frame); origin absent/[0,0,0]
+      // for legacy absolute meshes.
+      const ox = piece.origin ? piece.origin[0] : 0;
+      const oy = piece.origin ? piece.origin[1] : 0;
+      const oz = piece.origin ? piece.origin[2] : 0;
       for (let i = 0; i < positions.length; i += 3) {
-        const x = positions[i];
-        const y = positions[i + 1];
-        const z = positions[i + 2];
+        const x = positions[i] + ox;
+        const y = positions[i + 1] + oy;
+        const z = positions[i + 2] + oz;
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (z < minZ) minZ = z;

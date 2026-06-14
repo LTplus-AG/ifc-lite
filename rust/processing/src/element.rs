@@ -311,7 +311,7 @@ fn produce_inner(
             let geometry_id = full.geometry_id;
             if let Some(groups) = crate::style::split_mesh_by_indexed_colour(&mesh, full) {
                 if let Some(h) = hasher.as_mut() {
-                    h.add_mesh(&mesh.positions, &mesh.indices);
+                    h.add_mesh_with_origin(&mesh.positions, &mesh.indices, mesh.origin);
                 }
                 let mut out: Vec<MeshData> = Vec::with_capacity(groups.len());
                 for (color, mut part) in groups {
@@ -339,7 +339,7 @@ fn produce_inner(
         calculate_normals(&mut mesh);
     }
     if let Some(h) = hasher.as_mut() {
-        h.add_mesh(&mesh.positions, &mesh.indices);
+        h.add_mesh_with_origin(&mesh.positions, &mesh.indices, mesh.origin);
     }
     vec![build_mesh_data(job, mesh, element_color, None, None, 0, ctx)]
 }
@@ -389,7 +389,7 @@ fn emit_sub_meshes(
             .or_else(|| infer_opening_subpart_material_name(&job.ifc_type, color, sub.geometry_id));
 
         if let Some(h) = hasher.as_mut() {
-            h.add_mesh(&sub_mesh.positions, &sub_mesh.indices);
+            h.add_mesh_with_origin(&sub_mesh.positions, &sub_mesh.indices, sub_mesh.origin);
         }
 
         // #858: a face set with a per-triangle colour map splits into one
@@ -486,18 +486,40 @@ fn produce_type_geometry(
     out
 }
 
+/// Whether the f32-collapse degenerate-triangle backstop is disabled.
+///
+/// On by default. Set `IFC_LITE_DISABLE_DEGENERATE_BACKSTOP=1` to keep the raw
+/// (possibly fan-corrupted) triangles — an escape hatch for debugging the
+/// heuristic or measuring exactly what it removes. Read once and cached.
+fn degenerate_backstop_disabled() -> bool {
+    static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DISABLED.get_or_init(|| std::env::var("IFC_LITE_DISABLE_DEGENERATE_BACKSTOP").is_ok())
+}
+
 /// Construct the final [`MeshData`]: metadata stamp, style metadata,
 /// geometry-class tag, and the optional site-local rotation. ALWAYS the last
 /// step — geometry hashing happens before this (native IFC frame).
 fn build_mesh_data(
     job: &ElementMeshJob<'_>,
-    mesh: Mesh,
+    mut mesh: Mesh,
     color: [f32; 4],
     material_name: Option<String>,
     geometry_item_id: Option<u32>,
     geometry_class: u8,
     ctx: &MeshProductionContext<'_>,
 ) -> MeshData {
+    // Backstop for f32 vertex-storage collapse: at building-scale world
+    // coordinates an f32 mantissa can't separate sub-15µm-apart vertices, so
+    // triangles collapse into zero-area / long-thin "fan" slivers that visibly
+    // span large georeferenced models. Drop the unambiguously-degenerate ones
+    // here — the single funnel for every element MeshData. With local-frame
+    // precision on, the mesh is stored relative to `origin` (small coords) so
+    // collapse is PREVENTED upstream and this drops nothing; it stays as the
+    // defence-in-depth safety net for any element still too large for its frame.
+    if !degenerate_backstop_disabled() {
+        mesh.drop_degenerate_triangles();
+    }
+    let mesh_origin = mesh.origin;
     let mut mesh_data = MeshData::new(
         job.id,
         job.ifc_type.name().to_string(),
@@ -505,7 +527,8 @@ fn build_mesh_data(
         mesh.normals,
         mesh.indices,
         color,
-    );
+    )
+    .with_origin(mesh_origin);
     if let Some(meta) = job.metadata {
         mesh_data = mesh_data
             .with_element_metadata(

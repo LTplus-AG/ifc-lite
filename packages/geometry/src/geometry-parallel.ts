@@ -28,6 +28,34 @@ import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { pickWorkerCount } from './worker-count.js';
+import type { BatchSizingConfig } from './batch-sizing.js';
+
+/**
+ * Optional runtime override for the geometry worker's adaptive batch sizing
+ * (#1097), read off `globalThis` on the host thread. A zero-cost escape hatch
+ * for hardware-specific tuning / field-debugging the watchdog↔throughput
+ * trade-off without a rebuild; unset ⇒ the worker uses DEFAULT_BATCH_SIZING.
+ * Validation/merge happens in the worker via `resolveBatchSizing`.
+ */
+function readBatchSizingOverride(): Partial<BatchSizingConfig> | undefined {
+  const g = globalThis as unknown as { __IFC_LITE_BATCH_SIZING?: Partial<BatchSizingConfig> };
+  const v = g.__IFC_LITE_BATCH_SIZING;
+  return v && typeof v === 'object' ? v : undefined;
+}
+
+/**
+ * Optional load-time visibility filter (#1097), read off `globalThis` on the
+ * host thread (tuning / benchmarking escape hatch). `{ disabledTypes,
+ * skipTypeGeometry }` skip the matching geometry jobs at the prepass so they're
+ * never decoded/meshed/uploaded. Unset ⇒ load everything.
+ */
+function readVisibilityFilterOverride(): { disabledTypes?: string[]; skipTypeGeometry?: boolean } | undefined {
+  const g = globalThis as unknown as {
+    __IFC_LITE_VISIBILITY_FILTER?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
+  };
+  const v = g.__IFC_LITE_VISIBILITY_FILTER;
+  return v && typeof v === 'object' ? v : undefined;
+}
 
 interface PrepassMeta {
   /** Prepass-resolved plane-angle→radians scale; seeds worker batch decoders. */
@@ -90,6 +118,22 @@ export interface ProcessParallelOptions {
   wasmUrls?: {
     wasm?: string;
   };
+  /**
+   * Issue #1097 — optional override for the worker's adaptive batch sizing
+   * (the watchdog↔throughput knob). Takes precedence over the `globalThis`
+   * tuning hook; omitted ⇒ `DEFAULT_BATCH_SIZING`. Forwarded to every worker
+   * in its `stream-start` message and validated there.
+   */
+  batchSizing?: Partial<BatchSizingConfig>;
+  /**
+   * #1097 load-time visibility filter. `disabledTypes` (uppercase STEP keywords)
+   * and `skipTypeGeometry` are forwarded to the prepass so the matching geometry
+   * jobs are never produced — cutting decode + CSG + tessellation + upload for
+   * hidden types (spaces/annotations/grids/type-library). Takes precedence over
+   * the `globalThis.__IFC_LITE_VISIBILITY_FILTER` hook. Toggling a type back on
+   * requires a reload.
+   */
+  visibilityFilter?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
 }
 
 export async function* processParallel(
@@ -222,6 +266,7 @@ export async function* processParallel(
           texture?: MeshData['texture'];
           geometryHash?: bigint;
           geometryClass?: number;
+          origin?: [number, number, number];
         }) => ({
           expressId: m.expressId,
           ifcType: m.ifcType,
@@ -242,6 +287,9 @@ export async function* processParallel(
           // worker→main re-map (else the viewer's view-mode filter sees only
           // class 0 and the Types view renders nothing).
           ...(m.geometryClass !== undefined ? { geometryClass: m.geometryClass } : {}),
+          // Per-element local-frame origin (world = origin + position); the
+          // renderer reconstructs world via a per-batch model-matrix translate.
+          ...(m.origin ? { origin: m.origin } : {}),
         }));
         if (meshes.length > 0) {
           // Update totalMeshes per batch so consumers see a live
@@ -380,6 +428,7 @@ export async function* processParallel(
 
     const emptyU32 = new Uint32Array(0);
     const emptyU8 = new Uint8Array(0);
+    const batchSizing = options?.batchSizing ?? readBatchSizingOverride();
     for (const worker of workers) {
       worker.postMessage({
         type: 'stream-start' as const,
@@ -393,6 +442,7 @@ export async function* processParallel(
         voidValues: emptyU32,
         styleIds: emptyU32,
         styleColors: emptyU8,
+        ...(batchSizing ? { batchSizing } : {}),
       });
     }
 
@@ -711,7 +761,17 @@ export async function* processParallel(
   //     has fixed setup cost that compounds badly when invoked 30+ times.
   // Per-chunk fan-out (see `dispatchJobsChunkInternal`) splits each chunk
   // evenly across all workers so parallelism is preserved at every chunk.
-  prepassWorker.postMessage({ type: 'prepass-streaming', sharedBuffer, chunkSize: 50_000 });
+  const visibilityFilter = options?.visibilityFilter ?? readVisibilityFilterOverride();
+  if (visibilityFilter?.disabledTypes?.length || visibilityFilter?.skipTypeGeometry) {
+    console.log(`[stream] load-time visibility filter: disabledTypes=[${visibilityFilter.disabledTypes?.join(',') ?? ''}] skipTypeGeometry=${visibilityFilter.skipTypeGeometry === true}`);
+  }
+  prepassWorker.postMessage({
+    type: 'prepass-streaming',
+    sharedBuffer,
+    chunkSize: 50_000,
+    ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
+    ...(visibilityFilter?.skipTypeGeometry ? { skipTypeGeometry: true } : {}),
+  });
 
   // Drain the event queue until the pre-pass and all process workers complete.
   // The pre-pass `complete` event is captured inside the message handler

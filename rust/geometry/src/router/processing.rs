@@ -521,6 +521,14 @@ impl GeometryRouter {
             }
         }
 
+        // Mesh hygiene before placement (rigid transform preserves geometry, so
+        // welding/dropping in local coords is identical and uses smaller f32
+        // magnitudes). Single chokepoint downstream of every per-item branch,
+        // incl. CSG output — restores the cleanup #1024 lost with Manifold:
+        // redundant/coincident source vertices that otherwise triangulate into
+        // visible needle spikes and jagged silhouettes. See clean_degenerate.
+        combined_mesh.clean_degenerate();
+
         // Apply placement transformation
         self.apply_placement(element, decoder, &mut combined_mesh)?;
 
@@ -651,6 +659,15 @@ impl GeometryRouter {
             for item in items {
                 self.collect_submeshes_from_item(&item, decoder, &mut sub_meshes)?;
             }
+        }
+
+        // Mesh hygiene before placement — same chokepoint as process_element,
+        // applied per sub-mesh for the multi-item (per-style) channel. Rigid
+        // placement preserves geometry, so order is immaterial. (The layered
+        // and textured channels are cleaned at their own sites:
+        // try_layered_sub_meshes and process_representation_map_with_texture.)
+        for sub in &mut sub_meshes.sub_meshes {
+            sub.mesh.clean_degenerate();
         }
 
         // Apply placement transformation to all sub-meshes
@@ -1118,12 +1135,18 @@ impl GeometryRouter {
             if let Some(t) = &origin_transform {
                 self.transform_mesh_local(&mut mesh, t);
             }
+            // Same sliver hygiene as the other mesh-output chokepoints. This is
+            // the type-geometry (RepresentationMap) channel and the only one
+            // carrying a parallel per-vertex UV array; clean_degenerate edits
+            // only indices (vertices/UVs untouched), so the UVs stay in sync.
+            mesh.clean_degenerate();
             out.push((mesh, uvs, Some(texture)));
         }
         if !untextured.is_empty() {
             if let Some(t) = &origin_transform {
                 self.transform_mesh_local(&mut untextured, t);
             }
+            untextured.clean_degenerate();
             out.push((untextured, Vec::new(), None));
         }
 

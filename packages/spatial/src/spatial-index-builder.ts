@@ -109,8 +109,17 @@ function computeMeshBounds(mesh: MeshData): AABB {
     maxZ = Math.max(maxZ, z);
   }
 
+  // Positions are in the element's local frame (world = origin + position). The
+  // spatial index is queried in world space, so lift the AABB by the per-mesh
+  // origin. Origin is constant per mesh, so a single add to the final extents is
+  // exact and cheapest. No-op when origin is absent/[0,0,0].
+  const o = mesh.origin;
+  const ox = o ? o[0] : 0;
+  const oy = o ? o[1] : 0;
+  const oz = o ? o[2] : 0;
+
   return {
-    min: [minX, minY, minZ],
-    max: [maxX, maxY, maxZ],
+    min: [minX + ox, minY + oy, minZ + oz],
+    max: [maxX + ox, maxY + oy, maxZ + oz],
   };
 }

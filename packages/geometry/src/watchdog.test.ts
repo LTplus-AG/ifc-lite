@@ -30,12 +30,23 @@ describe('getGeometryStreamWatchdogMs', () => {
     })).toBe(30_000 + 2048 * 60);
   });
 
-  it('browser, after first batch → 15 s floor + per-MB ramp', () => {
-    // Subsequent-batch deadline now scales with file size too — workers
-    // running big-chunk WASM calls (~25K jobs) take >15s on multi-GB files.
+  it('browser, after first batch → fixed grace, independent of file size (#1097)', () => {
+    // Subsequent-batch deadline is a fixed silent-window budget. It must NOT
+    // scale with file size — the silent window is one bounded WASM call's
+    // wall-time (CSG density), not bytes. A ~275 MB CSG-dense steel model used
+    // to trip its own MB-scaled deadline mid-stream.
+    expect(getGeometryStreamWatchdogMs({
+      desktopStableWasm: false, batchCount: 1, fileSizeMB: 275,
+    })).toBe(40_000);
     expect(getGeometryStreamWatchdogMs({
       desktopStableWasm: false, batchCount: 1, fileSizeMB: 4096,
-    })).toBe(15_000 + 4096 * 30);
+    })).toBe(40_000);
+  });
+
+  it('browser, subsequent deadline is constant across wildly different sizes', () => {
+    const small = getGeometryStreamWatchdogMs({ desktopStableWasm: false, batchCount: 1, fileSizeMB: 1 });
+    const huge = getGeometryStreamWatchdogMs({ desktopStableWasm: false, batchCount: 50, fileSizeMB: 8192 });
+    expect(small).toBe(huge);
   });
 
   it('desktop stable WASM, first batch, small file → 15 s floor', () => {
@@ -50,14 +61,18 @@ describe('getGeometryStreamWatchdogMs', () => {
     })).toBe(15_000 + 1024 * 30);
   });
 
-  it('desktop stable WASM, after first batch → 5 s floor + per-MB ramp', () => {
+  it('desktop stable WASM, after first batch → fixed grace, independent of file size', () => {
     expect(getGeometryStreamWatchdogMs({
       desktopStableWasm: true, batchCount: 3, fileSizeMB: 1024,
-    })).toBe(5_000 + 1024 * 15);
+    })).toBe(25_000);
+    expect(getGeometryStreamWatchdogMs({
+      desktopStableWasm: true, batchCount: 3, fileSizeMB: 16,
+    })).toBe(25_000);
   });
 
   it('never returns below the previous fixed floors (regression guard)', () => {
-    // Browser path floor was 30s/15s; desktop was 15s/5s.
+    // Previous floors: browser 30s first / 15s subsequent; desktop 15s / 5s.
+    // The fixed subsequent grace was raised above those, so this still holds.
     expect(getGeometryStreamWatchdogMs({
       desktopStableWasm: false, batchCount: 0, fileSizeMB: 0,
     })).toBeGreaterThanOrEqual(30_000);

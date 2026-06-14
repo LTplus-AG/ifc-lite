@@ -172,6 +172,38 @@ pub fn convert_mesh_to_site_local(mesh: &mut MeshData, site_transform: Option<&V
 
     apply_inverse_rotation_in_place(&mut mesh.positions, site_transform);
     apply_inverse_rotation_in_place(&mut mesh.normals, site_transform);
+    // Positions are stored RELATIVE to `mesh.origin`, so the world point is
+    // `origin + position`. The site-local inverse rotation acts on the world
+    // point, so the origin must be rotated by the SAME inverse rotation (in f64)
+    // — otherwise the element would be rotated about the wrong centre.
+    apply_inverse_rotation_point_f64(&mut mesh.origin, site_transform);
+}
+
+/// Inverse-rotate a single f64 point in place by `column_major_matrix` (the same
+/// Rᵀ used by `apply_inverse_rotation_in_place`). Used for the per-mesh origin.
+fn apply_inverse_rotation_point_f64(p: &mut [f64; 3], column_major_matrix: &[f64]) {
+    if column_major_matrix.len() < 16 || (p[0] == 0.0 && p[1] == 0.0 && p[2] == 0.0) {
+        return;
+    }
+    let (r00, r10, r20) = (
+        column_major_matrix[0],
+        column_major_matrix[1],
+        column_major_matrix[2],
+    );
+    let (r01, r11, r21) = (
+        column_major_matrix[4],
+        column_major_matrix[5],
+        column_major_matrix[6],
+    );
+    let (r02, r12, r22) = (
+        column_major_matrix[8],
+        column_major_matrix[9],
+        column_major_matrix[10],
+    );
+    let (x, y, z) = (p[0], p[1], p[2]);
+    p[0] = r00 * x + r10 * y + r20 * z;
+    p[1] = r01 * x + r11 * y + r21 * z;
+    p[2] = r02 * x + r12 * y + r22 * z;
 }
 
 /// Job for processing a single entity.

@@ -141,6 +141,14 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     let mut pt_b: Vec<Vec<ImplicitPoint>> = (0..b.len()).map(|_| Vec::new()).collect();
     let pairs = super::broadphase::candidate_pairs(a, b);
     for (i, j) in pairs {
+        // Deterministic escalation guardrail (#1109): stop accumulating
+        // intersections once this boolean has blown its BigRational budget. The
+        // partial arrangement is discarded by the caller (csg.rs checks
+        // `budget::tripped()` and falls back), so an early break is safe; it just
+        // bounds the wasted work to ~one more triangle pair.
+        if super::budget::tripped() {
+            break;
+        }
         let (ta, tb) = (&a[i], &b[j]);
         match tri_tri_intersection(ta, tb) {
             TriTri::Segment([s, t]) => {
@@ -219,9 +227,16 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
         meshes.iter().map(|m| (0..m.len()).map(|_| Vec::new()).collect()).collect();
     // intersect every unordered mesh pair (i<j); push constraints to BOTH.
     for i in 0..n {
+        if super::budget::tripped() {
+            break;
+        }
         for j in (i + 1)..n {
             let pairs = super::broadphase::candidate_pairs(meshes[i], meshes[j]);
             for (ti, tj) in pairs {
+                // Escalation guardrail (#1109) — see `arrange`.
+                if super::budget::tripped() {
+                    break;
+                }
                 let (ta, tb) = (&meshes[i][ti], &meshes[j][tj]);
                 match tri_tri_intersection(ta, tb) {
                     TriTri::Segment([s, t]) => {
@@ -397,6 +412,12 @@ fn retriangulate_each(
     let mut out = Vec::new();
     let mut coplanar = Vec::new();
     for (i, t) in tris.iter().enumerate() {
+        // Escalation guardrail (#1109): the seam retriangulation runs exact
+        // orient2d per ear and is the other heavy escalation site. Stop once the
+        // budget is blown — the caller discards the partial arrangement.
+        if super::budget::tripped() {
+            break;
+        }
         let parent_cop = cop_parent.get(i).copied().unwrap_or(false);
         let passthrough = |it: &mut Interner| {
             [

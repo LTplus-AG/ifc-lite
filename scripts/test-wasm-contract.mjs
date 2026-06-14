@@ -429,19 +429,24 @@ test('coordinates just under the 10km threshold should NOT trigger the shift', (
   assert.equal(collection.rtcOffsetY, 0, 'rtcOffset must stay [0,0,0] under threshold');
   assert.equal(collection.rtcOffsetZ, 0, 'rtcOffset must stay [0,0,0] under threshold');
 
-  // No rebase ⇒ geometry stays at its (large-ish) world position.
+  // No rebase ⇒ geometry stays at its (large-ish) world position. Positions are
+  // stored in the per-element local frame (world = origin + position) on the
+  // wasm path, so fold the origin back before checking the world magnitude
+  // (origin is [0,0,0] / absent on an absolute-coordinate build → unchanged).
   assert.ok(collection.length > 0, 'Moved column should still mesh');
   let maxAbs = 0;
   for (let i = 0; i < collection.length; i++) {
     const mesh = collection.get(i);
+    const o = mesh.origin;
     for (let j = 0; j < mesh.positions.length; j++) {
-      maxAbs = Math.max(maxAbs, Math.abs(mesh.positions[j]));
+      const world = mesh.positions[j] + (o ? o[j % 3] : 0);
+      maxAbs = Math.max(maxAbs, Math.abs(world));
     }
     mesh.free();
   }
   assert.ok(
     maxAbs > 9000,
-    `Unshifted geometry should stay near its 9.95km placement, got max |p| = ${maxAbs}`,
+    `Unshifted geometry should stay near its 9.95km placement, got max |world| = ${maxAbs}`,
   );
 
   collection.free();

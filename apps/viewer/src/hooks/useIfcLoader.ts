@@ -106,11 +106,14 @@ function computeFastFingerprint(buffer: ArrayBuffer): string {
 }
 
 /**
- * Size-aware first-batch watchdog. Delegates to the package-level helper so
- * the formula stays unit-tested in `@ifc-lite/geometry`. Subsequent-batch
- * deadlines are unchanged from the previous fixed values; only the
- * first-batch deadline grows with file size to give the WASM pre-pass time
- * to finish on multi-GB files (issue #600).
+ * Geometry stream watchdog. Delegates to the package-level helper so the
+ * formula stays unit-tested in `@ifc-lite/geometry`. The first-batch deadline
+ * grows with file size to give the single-threaded WASM pre-pass time to finish
+ * on multi-GB files (issue #600). The subsequent-batch deadline is a FIXED
+ * grace, deliberately NOT scaled by size: the mid-stream silent window is one
+ * bounded `processGeometryBatch` call's wall-time (CSG density), which is
+ * uncorrelated with megabytes — the old per-MB ramp killed healthy CSG-dense
+ * loads (issue #1097).
  */
 function getGeometryStreamWatchdogMs(
   desktopStableWasm: boolean,

@@ -225,6 +225,12 @@ export class RenderPipeline {
                 format: this.depthFormat,
                 depthWriteEnabled: false,  // Don't overwrite depth - selected objects render on top of existing depth
                 depthCompare: 'greater-equal',  // Allow rendering at same depth, but still respect objects in front
+                // No depth bias: the highlight mesh's VBO is built to be
+                // BIT-IDENTICAL to how its source surface renders (same shared
+                // origin + same f32 relativization — see createMeshFromData), so
+                // it sits exactly coincident and 'greater-equal' draws it on top
+                // without a bias. A bias here would x-ray the highlight through
+                // neighbouring geometry and spike at grazing angles.
                 depthBias: 0,
                 depthBiasSlopeScale: 0,
             },

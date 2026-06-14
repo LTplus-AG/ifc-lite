@@ -143,6 +143,26 @@ pub struct IfcAPI {
     /// stream stall on large models with late IFCPROJECT). Content-scoped:
     /// cleared by `clearPrePassCache` and on entity-index swap.
     cached_plane_angle_to_radians: std::sync::Mutex<Option<f64>>,
+    /// #1097 perf: the geometry-style maps (style-entity-id → RGBA, and the
+    /// derived `GeometryStyleInfo` index the canonical producer consumes) are
+    /// rebuilt from the flat wire arrays on EVERY `processGeometryBatch` call,
+    /// but those arrays are session-constant (set once via the streaming
+    /// `styles` event). On a model with ~140 K styled entities that's two
+    /// 140 K-entry HashMaps built ~30×/worker (~18 M inserts each). Cache both,
+    /// keyed by a cheap (len, first_id, last_id) signature of the wire arrays —
+    /// rebuilt only when the signature changes.
+    #[allow(clippy::type_complexity)]
+    cached_geometry_styles: std::sync::Mutex<
+        Option<(
+            usize,
+            u32,
+            u32,
+            std::sync::Arc<(
+                rustc_hash::FxHashMap<u32, [f32; 4]>,
+                rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+            )>,
+        )>,
+    >,
 }
 
 #[wasm_bindgen]
@@ -168,6 +188,7 @@ impl IfcAPI {
             ),
             tessellation_quality: std::sync::atomic::AtomicU8::new(TESSELLATION_QUALITY_MEDIUM),
             cached_plane_angle_to_radians: std::sync::Mutex::new(None),
+            cached_geometry_styles: std::sync::Mutex::new(None),
         }
     }
 
@@ -230,6 +251,11 @@ impl IfcAPI {
         self.cached_plane_angle_to_radians
             .lock()
             .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned")
+            .take();
+        // The geometry-style maps belong to the previous load's wire styles.
+        self.cached_geometry_styles
+            .lock()
+            .expect("ifc-lite cached_geometry_styles Mutex poisoned")
             .take();
     }
 
@@ -300,6 +326,13 @@ impl IfcAPI {
         self.cached_plane_angle_to_radians
             .lock()
             .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned")
+            .take();
+        // The geometry-style maps belong to the previous load's wire styles —
+        // drop them on content swap so a reused IfcAPI can't reuse a stale map
+        // (the (len,first,last) signature would otherwise collide rarely).
+        self.cached_geometry_styles
+            .lock()
+            .expect("ifc-lite cached_geometry_styles Mutex poisoned")
             .take();
     }
 

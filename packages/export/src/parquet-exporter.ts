@@ -182,7 +182,19 @@ export class ParquetExporter {
         const allNormals: number[] = [];
 
         for (const mesh of this.geometryResult.meshes) {
-            allPositions.push(...Array.from(mesh.positions));
+            // Positions are in the element's local frame (world = origin + position).
+            // The BOS columnar layout has no transform column, so bake the per-mesh
+            // origin into the world vertices. Normals are origin-invariant. No-op
+            // when origin is absent/[0,0,0].
+            const o = mesh.origin;
+            if (o && (o[0] !== 0 || o[1] !== 0 || o[2] !== 0)) {
+                const p = mesh.positions;
+                for (let i = 0; i < p.length; i += 3) {
+                    allPositions.push(p[i] + o[0], p[i + 1] + o[1], p[i + 2] + o[2]);
+                }
+            } else {
+                allPositions.push(...Array.from(mesh.positions));
+            }
             allNormals.push(...Array.from(mesh.normals));
         }
 

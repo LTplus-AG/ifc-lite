@@ -25,7 +25,10 @@ import type { ProjectionBandDepths } from './projection-bands.js';
  *  a hard dependency on `@ifc-lite/geometry`'s `MeshData`). */
 export interface StoreyFloorMesh {
   readonly expressId: number;
-  readonly positions: Float32Array; // interleaved [x, y, z, …] in the render frame
+  readonly positions: Float32Array; // interleaved [x, y, z, …] in the element-local frame
+  /** Per-element local-frame origin (world = origin + position). Optional: absent
+   *  on the native/legacy path, in which case positions are already world-space. */
+  readonly origin?: readonly [number, number, number];
 }
 
 /**
@@ -63,9 +66,13 @@ export function storeyFloorsFromMeshes(
     const storeyId = elementToStorey.get(mesh.expressId);
     if (storeyId === undefined) continue;
     const pos = mesh.positions;
+    // Fold the per-element origin so minY is world-Y, matching the section cut
+    // position / axisMin / axisMax (which are world-frame). No-op when absent.
+    const oy = mesh.origin ? mesh.origin[1] : 0;
     let minY = Infinity;
     for (let i = 1; i < pos.length; i += 3) {
-      if (pos[i] < minY) minY = pos[i];
+      const y = pos[i] + oy;
+      if (y < minY) minY = y;
     }
     if (!Number.isFinite(minY)) continue;
     const cur = storeyMinY.get(storeyId);

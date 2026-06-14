@@ -22,6 +22,8 @@ import {
   isStrictNumericLiteral,
   isBooleanLiteral,
 } from './comparators.js';
+import { isNumericXsdBase, isBooleanXsdBase } from './xsd-cast.js';
+import { translateXsdRegex } from './xsd-regex.js';
 
 /** Tolerance for the bounds matcher's exclusive comparators. */
 const NUMERIC_TOLERANCE = 1e-6;
@@ -118,45 +120,95 @@ function matchPattern(
   actualValue: string | number | boolean,
   caseInsensitive = false
 ): boolean {
-  // Per IDS 1.0 spec patterns ONLY apply to string values. A pattern
-  // tested against a number / boolean fails outright — even if the
-  // textual representation would happen to match — so the validator
-  // can distinguish "wrong shape" from "wrong value".
-  if (typeof actualValue === 'number' || typeof actualValue === 'boolean') {
-    return false;
+  // An XSD `xs:pattern` facet constrains the *lexical* space of its base
+  // datatype, so it matches the textual representation of the value — the
+  // official IDS reference (ifctester) does `re.fullmatch(pattern,
+  // str(value))`. A numeric value therefore satisfies e.g.
+  // `<restriction base="xs:decimal"><pattern value="^.*$"/>` ("any
+  // decimal value present"), which the previous blanket number/boolean
+  // bail-out wrongly failed on every numeric property.
+  //
+  // But the runtime value must first be type-compatible with the declared
+  // base: a number only matches a numeric base and a boolean only a
+  // boolean base. A number tested against `base="xs:string"` is a type
+  // mismatch — buildingSMART's corpus encodes exactly this as
+  // `patterns_always_fail_on_any_number`. (A string actual is already the
+  // lexical form, so it is matched directly regardless of base.)
+  if (typeof actualValue === 'number') {
+    if (!isNumericXsdBase(constraint.base)) return false;
+  } else if (typeof actualValue === 'boolean') {
+    if (!isBooleanXsdBase(constraint.base)) return false;
   }
   const actualStr = String(actualValue);
 
-  try {
-    // Convert XSD regex to JavaScript regex
-    const jsPattern = xsdToJsRegex(constraint.pattern);
-    // IDS patterns must match the entire string. Case-insensitive
-    // matching is opt-in per the call site (entity / predefined-type
-    // names use it; property and attribute values do not).
-    const flags = caseInsensitive ? 'i' : '';
-    const regex = new RegExp(`^${jsPattern}$`, flags);
-    return regex.test(actualStr);
-  } catch {
-    // If pattern is invalid, don't match
-    return false;
-  }
+  const regex = compilePatternRegex(constraint, caseInsensitive);
+  // An un-compilable pattern can't match anything (e.g. an unbalanced
+  // `[`); treat it as a non-match rather than throwing.
+  return regex ? regex.test(actualStr) : false;
 }
 
 /**
- * Convert XSD regex syntax to JavaScript regex
+ * Compiled-pattern cache. Translating XSD → JS regex and building the
+ * `RegExp` on every value check dominated pattern-heavy validation; the
+ * compiled form depends only on (constraint, caseInsensitive), and the
+ * constraint object is stable per parsed document.
  */
-function xsdToJsRegex(xsdPattern: string): string {
-  return (
-    xsdPattern
-      // XSD \i (initial name char) -> [A-Za-z_:]
-      .replace(/\\i/g, '[A-Za-z_:]')
-      // XSD \c (name char) -> [A-Za-z0-9._:-]
-      .replace(/\\c/g, '[A-Za-z0-9._:-]')
-      // XSD \p{...} character classes - simplified handling
-      .replace(/\\p\{[^}]+\}/g, '.')
-      // XSD subtraction [a-z-[aeiou]] not supported in JS - simplify
-      .replace(/\[([^\]]+)-\[[^\]]+\]\]/g, '[$1]')
+const PATTERN_REGEX_CACHE = new WeakMap<
+  IDSPatternConstraint,
+  { cs?: RegExp | null; ci?: RegExp | null }
+>();
+
+function compilePatternRegex(
+  constraint: IDSPatternConstraint,
+  caseInsensitive: boolean
+): RegExp | null {
+  let entry = PATTERN_REGEX_CACHE.get(constraint);
+  if (!entry) {
+    entry = {};
+    PATTERN_REGEX_CACHE.set(constraint, entry);
+  }
+  const slot = caseInsensitive ? 'ci' : 'cs';
+  let regex = entry[slot];
+  if (regex === undefined) {
+    regex = buildPatternRegex(constraint.pattern, caseInsensitive);
+    entry[slot] = regex;
+  }
+  return regex;
+}
+
+function buildPatternRegex(
+  xsdPattern: string,
+  caseInsensitive: boolean
+): RegExp | null {
+  // XSD char-class subtraction `[a-z-[aeiou]]` has no JS equivalent;
+  // approximate as the positive class (drop the exclusion) so the rest
+  // of the pattern still evaluates, matching long-standing behaviour.
+  const desubtracted = xsdPattern.replace(
+    /\[([^\]]+)-\[[^\]]+\]\]/g,
+    '[$1]'
   );
+  // Shared XSD → JS translation: `\i`/`\c`/`\d`/`\w` (and their
+  // negations) map to Unicode property escapes, and verbatim `\p{…}`
+  // classes pass through — both require the `u` flag for full fidelity.
+  const { pattern } = translateXsdRegex(desubtracted);
+  // IDS patterns must match the entire lexical value. Wrapping in a
+  // non-capturing group anchors top-level alternation correctly
+  // (`a|b` → `^(?:a|b)$`, not `^a|b$`). Case-insensitive matching is
+  // opt-in per the call site (entity / predefined-type names use it;
+  // property and attribute values do not).
+  const anchored = `^(?:${pattern})$`;
+  try {
+    return new RegExp(anchored, caseInsensitive ? 'iu' : 'u');
+  } catch {
+    // Some patterns are valid under JS's lenient (Annex-B) dialect but
+    // rejected under `u`. Retry without it so plain patterns keep
+    // matching; this loses `\p{…}` fidelity for that one pattern only.
+    try {
+      return new RegExp(anchored, caseInsensitive ? 'i' : '');
+    } catch {
+      return null;
+    }
+  }
 }
 
 /**

@@ -203,6 +203,36 @@ export function SpaceSketchOverlay() {
         pointerEvents="none" />
     ));
   }, [underlay, showBuilding, fitTick]);
+  // TEMP-DIAG (node-on-axis): compare room centreline corners to the underlay
+  // walls in the SAME (room) frame, so we can see whether there's a systematic
+  // offset between the two pipelines. Remove once the alignment is confirmed.
+  const dbgCoord = useViewerStore((s) => s.geometryResult?.coordinateInfo);
+  useEffect(() => {
+    if (!rooms.length || !underlay.length) return;
+    const corners = rooms.flatMap((r) => r.outline);
+    const bbox = (pts: Pt[]) => pts.reduce(
+      (b, p) => ({ minx: Math.min(b.minx, p[0]), miny: Math.min(b.miny, p[1]), maxx: Math.max(b.maxx, p[0]), maxy: Math.max(b.maxy, p[1]) }),
+      { minx: Infinity, miny: Infinity, maxx: -Infinity, maxy: -Infinity },
+    );
+    const uPts = underlay.flatMap((l) => [l.a, l.b]);
+    const rb = bbox(corners), ub = bbox(uPts);
+    const distSeg = (p: Pt, a: Pt, b: Pt) => {
+      const vx = b[0] - a[0], vy = b[1] - a[1];
+      const c2 = vx * vx + vy * vy;
+      let t = c2 > 1e-12 ? ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / c2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy));
+    };
+    const dists = corners.map((p) => Math.min(...underlay.map((l) => distSeg(p, l.a, l.b)))).sort((x, y) => x - y);
+    /* eslint-disable no-console */
+    console.log('[space-diag] coordinateInfo', JSON.stringify(dbgCoord));
+    console.log('[space-diag] room-corner bbox', JSON.stringify(rb), '| underlay bbox', JSON.stringify(ub));
+    console.log('[space-diag] bbox-center delta (room−underlay)', ((rb.minx + rb.maxx) / 2 - (ub.minx + ub.maxx) / 2).toFixed(3), ((rb.miny + rb.maxy) / 2 - (ub.miny + ub.maxy) / 2).toFixed(3));
+    console.log('[space-diag] corner→nearest-underlay-line dist: min', dists[0]?.toFixed(3), 'median', dists[dists.length >> 1]?.toFixed(3), 'max', dists[dists.length - 1]?.toFixed(3));
+    console.log('[space-diag] room[0] centreline', rooms[0].outline.map((p) => `(${p[0].toFixed(2)},${p[1].toFixed(2)})`).join(' '));
+    /* eslint-enable no-console */
+  }, [rooms, underlay, dbgCoord]);
+
   const [storeyId, setStoreyId] = useState<number | null>(null);
   const lastDerivedRef = useRef<string | null>(null);
   // Connect to the shared active storey instead of always defaulting to the

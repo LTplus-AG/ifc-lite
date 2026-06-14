@@ -230,6 +230,36 @@ export function SpaceSketchOverlay() {
     console.log('[space-diag] bbox-center delta (room−underlay)', ((rb.minx + rb.maxx) / 2 - (ub.minx + ub.maxx) / 2).toFixed(3), ((rb.miny + rb.maxy) / 2 - (ub.miny + ub.maxy) / 2).toFixed(3));
     console.log('[space-diag] corner→nearest-underlay-line dist: min', dists[0]?.toFixed(3), 'median', dists[dists.length >> 1]?.toFixed(3), 'max', dists[dists.length - 1]?.toFixed(3));
     console.log('[space-diag] room[0] centreline', rooms[0].outline.map((p) => `(${p[0].toFixed(2)},${p[1].toFixed(2)})`).join(' '));
+    // Per-edge: where do the wall FACES sit relative to the room centreline edge?
+    // Find underlay lines parallel to the edge and report their SIGNED perpendicular
+    // offset (along the edge's outward normal). Centred = symmetric (e.g. -0.10/+0.10);
+    // off-centre = asymmetric (e.g. -0.06/+0.16 → node is 0.05 toward the -0.06 face).
+    const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx;
+    const r0 = rooms[0].outline;
+    for (let i = 0; i < r0.length; i++) {
+      const a = r0[i], b = r0[(i + 1) % r0.length];
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const L = Math.hypot(dx, dy);
+      if (L < 1e-6) continue;
+      const ux = dx / L, uy = dy / L; // edge dir
+      const nx = -uy, ny = ux;        // edge normal
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      const offs = underlay
+        .map((l) => {
+          const ldx = l.b[0] - l.a[0], ldy = l.b[1] - l.a[1];
+          const ll = Math.hypot(ldx, ldy);
+          if (ll < 1e-6) return null;
+          if (Math.abs(cross(ux, uy, ldx / ll, ldy / ll)) > 0.08) return null; // not parallel
+          const lmx = (l.a[0] + l.b[0]) / 2, lmy = (l.a[1] + l.b[1]) / 2;
+          // only consider lines whose span overlaps the edge midpoint region
+          const along = (lmx - mx) * ux + (lmy - my) * uy;
+          if (Math.abs(along) > L / 2 + 0.5) return null;
+          return (lmx - mx) * nx + (lmy - my) * ny; // signed perp offset
+        })
+        .filter((o): o is number => o !== null && Math.abs(o) < 0.45)
+        .sort((p, q) => p - q);
+      console.log(`[space-diag] edge${i} (len ${L.toFixed(2)}) parallel-face offsets:`, offs.map((o) => o.toFixed(3)).join(', ') || 'none');
+    }
     /* eslint-enable no-console */
   }, [rooms, underlay, dbgCoord]);
 

@@ -217,9 +217,10 @@ pub struct Mesh2d {
     pub audit_needed: bool,
     /// Per-`Vid` cached 2D f64 coordinate (dropped to `axis`, `None` when the
     /// implicit point has no finite f64 image). Used ONLY as a conservative
-    /// broadphase prefilter in [`insert_point`] — the exact predicate still
-    /// decides every retained triangle, so this never affects topology. Cached
-    /// because the same vertices are re-scanned on every point insertion.
+    /// broadphase prefilter in [`insert_point`] / channel detection — the exact
+    /// predicate still decides every retained triangle, so this never affects
+    /// topology. Cached because the same vertices are re-scanned on every point
+    /// insertion AND on every constraint sub-segment's O(tris) channel scan.
     pub coords: BTreeMap<Vid, Option<[f64; 2]>>,
 }
 
@@ -474,22 +475,64 @@ fn strictly_outside(it: &Interner, a: Vid, b: Vid, c: Vid, p: Vid, axis: DropAxi
 /// simple polygon always has an ear → termination.
 pub fn earcut(it: &Interner, ring: &[Vid], axis: DropAxis, w0: Sign) -> Vec<SubTri> {
     let mut poly: Vec<Vid> = ring.to_vec();
+    // f64 2D images of the ring vertices, maintained parallel to `poly`. Used ONLY
+    // as a conservative AABB prefilter in the ear-emptiness test (the dominant
+    // #1109 earcut cost on dense-opening slabs): a vertex outside the candidate
+    // ear's widened f64 AABB is provably outside the ear, so its exact
+    // `strictly_outside` predicate is skipped. The margin dwarfs the f64 /
+    // implicit-point image error, exactly as `tri_aabb_disjoint`, so a vertex
+    // genuinely inside the ear is NEVER skipped — the chosen ear, and thus the
+    // whole triangulation, is byte-identical to the all-exact form (parity).
+    let mut pc: Vec<Option<[f64; 2]>> = poly
+        .iter()
+        .map(|&v| fixed::point_to_f64(it.get(v)).map(|p3| project2d(p3, axis)))
+        .collect();
     let mut out = Vec::new();
     while poly.len() > 3 {
         let n = poly.len();
+        // Below PREFILTER_MIN the exact emptiness scan is already short, so the
+        // AABB bookkeeping would be pure overhead — fall back to all-exact, which
+        // is the identical decision. Above it the O(n) exact scan dominates.
+        let prefilter = n > PREFILTER_MIN;
         let mut best: Option<usize> = None;
         for i in 0..n {
-            let a = poly[(i + n - 1) % n];
+            let (ia, ic) = ((i + n - 1) % n, (i + 1) % n);
+            let a = poly[ia];
             let b = poly[i];
-            let c = poly[(i + 1) % n];
+            let c = poly[ic];
             // strictly convex under w0
             if orient2d_v(it, a, b, c, axis) != w0 {
                 continue;
             }
+            let ear_box: Option<[f64; 4]> = if prefilter {
+                match (pc[ia], pc[i], pc[ic]) {
+                    (Some(pa), Some(pb), Some(pc2)) => Some([
+                        pa[0].min(pb[0]).min(pc2[0]),
+                        pa[1].min(pb[1]).min(pc2[1]),
+                        pa[0].max(pb[0]).max(pc2[0]),
+                        pa[1].max(pb[1]).max(pc2[1]),
+                    ]),
+                    _ => None,
+                }
+            } else {
+                None
+            };
             // empty: every other ring vertex is strictly outside the closed ear
-            let empty = poly
-                .iter()
-                .all(|&v| v == a || v == b || v == c || strictly_outside(it, a, b, c, v, axis, w0));
+            let empty = (0..n).all(|k| {
+                let v = poly[k];
+                if v == a || v == b || v == c {
+                    return true;
+                }
+                if let (Some(bx), Some(p)) = (ear_box, pc[k]) {
+                    let m = 1e-6
+                        + bx[2].abs().max(bx[3].abs()).max(p[0].abs()).max(p[1].abs()) * 1e-9;
+                    if p[0] < bx[0] - m || p[0] > bx[2] + m || p[1] < bx[1] - m || p[1] > bx[3] + m
+                    {
+                        return true; // provably outside the ear ⇒ skip the exact test
+                    }
+                }
+                strictly_outside(it, a, b, c, v, axis, w0)
+            });
             if !empty {
                 continue;
             }
@@ -516,6 +559,7 @@ pub fn earcut(it: &Interner, ring: &[Vid], axis: DropAxis, w0: Sign) -> Vec<SubT
         let n = poly.len();
         out.push([poly[(i + n - 1) % n], poly[i], poly[(i + 1) % n]]);
         poly.remove(i);
+        pc.remove(i);
     }
     out.push([poly[0], poly[1], poly[2]]);
     out
@@ -565,14 +609,38 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
     mesh.audit_needed = true;
 
     let (axis, w0) = (mesh.axis, mesh.w0);
-    // open segment (a,b) properly crosses open edge (u,v)?
-    let crosses = |u: Vid, v: Vid| {
-        let s1 = orient2d_v(it, a, b, u, axis);
-        let s2 = orient2d_v(it, a, b, v, axis);
-        let s3 = orient2d_v(it, u, v, a, axis);
-        let s4 = orient2d_v(it, u, v, b, axis);
-        s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2
-            && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
+    // Does any open edge of `tri` PROPERLY cross the open segment (a,b)? This is
+    // the dominant cost of constraint recovery (#1109): it runs per triangle for
+    // every constraint sub-segment. The naive form recomputes `orient(a,b,vertex)`
+    // for each of the triangle's three edges — but a triangle has only THREE
+    // vertices, so we compute each vertex's side of the (a,b) line ONCE, then an
+    // edge can only cross when its two endpoints straddle that line (opposite
+    // nonzero signs); only then do we run the reciprocal `orient(edge, a/b)` test.
+    // Identical exact result to the per-edge form (same signs, same crossing
+    // definition), ~3 predicates/triangle instead of up to 12 — byte-identical
+    // channel ⇒ parity preserved.
+    let tri_crosses = |tri: SubTri| {
+        let s = [
+            orient2d_v(it, a, b, tri[0], axis),
+            orient2d_v(it, a, b, tri[1], axis),
+            orient2d_v(it, a, b, tri[2], axis),
+        ];
+        for k in 0..3 {
+            let (su, sv) = (s[k], s[(k + 1) % 3]);
+            if su == Sign::Zero || sv == Sign::Zero || su == sv {
+                continue; // endpoints don't straddle (a,b) ⇒ no proper crossing
+            }
+            let (u, v) = (tri[k], tri[(k + 1) % 3]);
+            let s3 = orient2d_v(it, u, v, a, axis);
+            if s3 == Sign::Zero {
+                continue;
+            }
+            let s4 = orient2d_v(it, u, v, b, axis);
+            if s4 != Sign::Zero && s3 != s4 {
+                return true;
+            }
+        }
+        false
     };
     // Broadphase: only a triangle whose 2D f64 AABB overlaps the (a,b) segment's
     // AABB can have an edge that properly crosses (a,b). Skip the four exact
@@ -604,7 +672,7 @@ fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
                     return false;
                 }
             }
-            tri_edges(tri).iter().any(|&(u, v)| crosses(u, v))
+            tri_crosses(tri)
         })
         .collect();
     if channel.is_empty() {

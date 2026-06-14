@@ -601,6 +601,14 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       if (scene.hasPendingBatches()) {
         scene.rebuildPendingBatches(device, pipeline);
       }
+      // An element appended during streaming (e.g. an authored IfcSpace) lingers
+      // as a streaming fragment at its ORIGINAL position on top of its now-moved
+      // bucket batch — a ghost duplicate. Finalising merges fragments into clean
+      // buckets (no-op once none remain). Skipped in ephemeral mode, where no
+      // geometry is retained to rebuild the batches from.
+      if (scene.hasStreamingFragments() && !scene.isEphemeralStreaming()) {
+        scene.finalizeStreaming(device, pipeline);
+      }
       renderer.requestRender();
     }
     clearPendingMeshTranslations();

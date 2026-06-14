@@ -761,6 +761,22 @@ export class Scene {
     return this.meshQueueReadIndex < this.meshQueue.length;
   }
 
+  /** True while un-finalised streaming fragments are still being drawn. An
+   *  element appended during streaming (e.g. an authored IfcSpace) renders as
+   *  such a fragment AND accumulates in its colour bucket; once the bucket is
+   *  re-batched (e.g. by a move) the fragment becomes a stale duplicate, so the
+   *  caller should `finalizeStreaming` to merge fragments away. */
+  hasStreamingFragments(): boolean {
+    return this.streamingFragments.length > 0;
+  }
+
+  /** True when streaming runs in ephemeral mode (huge files) — fragments render
+   *  directly from GPU and geometry is NOT retained for re-batch, so callers
+   *  must NOT finalize (there's nothing to rebuild the batches from). */
+  isEphemeralStreaming(): boolean {
+    return this.ephemeralStreamingMode;
+  }
+
   setEphemeralStreamingMode(enabled: boolean): void {
     this.ephemeralStreamingMode = enabled;
   }

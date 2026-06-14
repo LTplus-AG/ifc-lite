@@ -75,17 +75,12 @@ impl SpacePlateHandle {
     /// `segHalfThickness`: one `f64` per segment — half the wall's thickness in
     /// metres, carried onto the derived edges for `netOutline`. Pass an empty
     /// array (or all zeros) when thickness is unknown (centreline only).
-    /// `segCentering`: two `f64` per segment `[dx, dy, …]` — the world offset from
-    /// the segment's (centroid-derived) axis to the wall's true geometric mid, so
-    /// corners can be slid onto the wall mid post-build without re-arranging. Pass
-    /// an empty array (or all zeros) for a well-defined axis (axis-rep / rect).
     /// `snapTolerance` / `minArea`: pass `<= 0` to take the defaults.
     #[wasm_bindgen(constructor)]
     pub fn new(
         seg_coords: &[f64],
         seg_sources: &[i32],
         seg_half_thickness: &[f64],
-        seg_centering: &[f64],
         snap_tolerance: f64,
         min_area: f64,
     ) -> Result<SpacePlateHandle, JsValue> {
@@ -105,25 +100,17 @@ impl SpacePlateHandle {
                 "segHalfThickness must be empty or have one entry per segment",
             ));
         }
-        if !seg_centering.is_empty() && seg_centering.len() != n * 2 {
-            return Err(JsValue::from_str(
-                "segCentering must be empty or have two entries (dx, dy) per segment",
-            ));
-        }
         let segments: Vec<InputSegment> = (0..n)
             .map(|i| {
                 let o = i * 4;
                 let src = seg_sources[i];
                 let half = seg_half_thickness.get(i).copied().unwrap_or(0.0);
-                let cx = seg_centering.get(i * 2).copied().unwrap_or(0.0);
-                let cy = seg_centering.get(i * 2 + 1).copied().unwrap_or(0.0);
                 InputSegment::new(
                     [seg_coords[o], seg_coords[o + 1]],
                     [seg_coords[o + 2], seg_coords[o + 3]],
                     if src < 0 { None } else { Some(src as u32) },
                 )
                 .with_half_thickness(half.max(0.0))
-                .with_centering([cx, cy])
             })
             .collect();
         let defaults = BuildOptions::default();

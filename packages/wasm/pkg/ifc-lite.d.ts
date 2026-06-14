@@ -612,13 +612,9 @@ export class SpacePlateHandle {
    * `segHalfThickness`: one `f64` per segment — half the wall's thickness in
    * metres, carried onto the derived edges for `netOutline`. Pass an empty
    * array (or all zeros) when thickness is unknown (centreline only).
-   * `segCentering`: two `f64` per segment `[dx, dy, …]` — the world offset from
-   * the segment's (centroid-derived) axis to the wall's true geometric mid, so
-   * corners can be slid onto the wall mid post-build without re-arranging. Pass
-   * an empty array (or all zeros) for a well-defined axis (axis-rep / rect).
    * `snapTolerance` / `minArea`: pass `<= 0` to take the defaults.
    */
-  constructor(seg_coords: Float64Array, seg_sources: Int32Array, seg_half_thickness: Float64Array, seg_centering: Float64Array, snap_tolerance: number, min_area: number);
+  constructor(seg_coords: Float64Array, seg_sources: Int32Array, seg_half_thickness: Float64Array, snap_tolerance: number, min_area: number);
   /**
    * Sweep the whole plate clean: remove dangling spur walls, isolated nodes,
    * and redundant collinear nodes — the "clean up orphans" / eraser action.
@@ -976,7 +972,7 @@ export interface InitOutput {
   readonly spaceplatehandle_mergeFaces: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_neighborAcross: (a: number, b: number) => number;
   readonly spaceplatehandle_netOutline: (a: number, b: number, c: number, d: number) => void;
-  readonly spaceplatehandle_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
+  readonly spaceplatehandle_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly spaceplatehandle_prune: (a: number) => number;
   readonly spaceplatehandle_removeEdge: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_roomCount: (a: number) => number;

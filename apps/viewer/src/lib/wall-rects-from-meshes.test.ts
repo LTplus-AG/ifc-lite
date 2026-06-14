@@ -40,6 +40,21 @@ describe('footprintOBB', () => {
     assert.ok(near(o.length, 5, 1e-6));
     assert.ok(near(o.thickness, 0.3, 1e-6));
   });
+
+  it('is distribution-invariant: a dense diagonal interior cluster does NOT tilt it (PCA would)', () => {
+    // An axis-aligned 4 × 0.4 wall, plus many interior vertices packed along a
+    // diagonal. PCA's principal axis would tilt toward the cluster (this is the
+    // real-model bug — uneven mesh density skewed walls up to ~5°). The min-area
+    // rectangle depends only on the hull, so it stays axis-aligned.
+    const pts: Pt[] = [[0, 0], [4, 0], [4, 0.4], [0, 0.4]];
+    for (let i = 0; i < 60; i++) { const t = i / 59; pts.push([t * 4, t * 0.4]); }
+    const o = footprintOBB(pts)!;
+    const ang = Math.atan2(o.corners[1][1] - o.corners[0][1], o.corners[1][0] - o.corners[0][0]) * 180 / Math.PI;
+    const off = Math.min(Math.abs(((ang % 90) + 90) % 90), 90 - Math.abs(((ang % 90) + 90) % 90));
+    assert.ok(off < 0.01, `off-axis ${off}° (should be ~0 — not tilted by the interior cluster)`);
+    assert.ok(near(o.thickness, 0.4, 1e-4), `thickness ${o.thickness}`);
+    assert.ok(near(o.length, 4, 1e-4), `length ${o.length}`);
+  });
 });
 
 describe('wallRectsFromMeshes', () => {

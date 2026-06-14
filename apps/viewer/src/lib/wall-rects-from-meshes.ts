@@ -49,31 +49,69 @@ const MAX_THICK = 2.5;
 /** A wall is "on" a storey when its height range overlaps the band interior. */
 const BAND_MARGIN = 0.2;
 
-/** Oriented bounding box of a thin plan point cloud → its 4 CCW corners, length
- *  and thickness, via PCA + min/max extents (distribution-invariant). */
-export function footprintOBB(pts: Pt[]): { corners: [Pt, Pt, Pt, Pt]; length: number; thickness: number } | null {
-  const n = pts.length;
-  if (n < 3) return null;
-  let cx = 0, cy = 0;
-  for (const p of pts) { cx += p[0]; cy += p[1]; }
-  cx /= n; cy /= n;
-  let sxx = 0, sxy = 0, syy = 0;
-  for (const p of pts) { const dx = p[0] - cx, dy = p[1] - cy; sxx += dx * dx; sxy += dx * dy; syy += dy * dy; }
-  const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
-  let u: Pt = [Math.cos(ang), Math.sin(ang)];
-  let nrm: Pt = [-Math.sin(ang), Math.cos(ang)];
-  let umin = Infinity, umax = -Infinity, nmin = Infinity, nmax = -Infinity;
-  for (const p of pts) {
-    const dx = p[0] - cx, dy = p[1] - cy;
-    const pu = dx * u[0] + dy * u[1], pn = dx * nrm[0] + dy * nrm[1];
-    if (pu < umin) umin = pu; if (pu > umax) umax = pu;
-    if (pn < nmin) nmin = pn; if (pn > nmax) nmax = pn;
+/** Convex hull (Andrew's monotone chain), CCW, of a plan point cloud. */
+function convexHull(pts: Pt[]): Pt[] {
+  const uniq = [...new Map(pts.map((p) => [`${p[0].toFixed(5)},${p[1].toFixed(5)}`, p])).values()]
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (uniq.length < 3) return uniq;
+  const cross = (o: Pt, a: Pt, b: Pt) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: Pt[] = [];
+  for (const p of uniq) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
   }
-  let len = umax - umin, thick = nmax - nmin;
-  // Ensure u is the long (length) axis.
-  if (thick > len) { [u, nrm] = [nrm, u]; [len, thick] = [thick, len]; const t0 = umin, t1 = umax; umin = nmin; umax = nmax; nmin = t0; nmax = t1; }
-  const corner = (a: number, b: number): Pt => [cx + u[0] * a + nrm[0] * b, cy + u[1] * a + nrm[1] * b];
-  return { corners: [corner(umin, nmin), corner(umax, nmin), corner(umax, nmax), corner(umin, nmax)], length: len, thickness: thick };
+  const upper: Pt[] = [];
+  for (let i = uniq.length - 1; i >= 0; i--) {
+    const p = uniq[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
+
+/**
+ * MINIMUM-AREA bounding rectangle of a thin plan point cloud (rotating calipers
+ * on the convex hull) → its 4 CCW corners (long edge first), length, thickness.
+ *
+ * NOT PCA. PCA orients by minimizing variance, so on a wall whose mesh has uneven
+ * vertex density (short structural stubs especially) the principal axis tilts by
+ * several degrees even though the wall is axis-aligned — which skews the room into
+ * a parallelogram. The min-area rectangle depends only on the footprint OUTLINE
+ * (the hull), so it returns the true rectangle: measured 0.000° skew / 0 m off the
+ * rendered faces on the storeys where PCA produced ~5° skew.
+ */
+export function footprintOBB(pts: Pt[]): { corners: [Pt, Pt, Pt, Pt]; length: number; thickness: number } | null {
+  const h = convexHull(pts);
+  if (h.length < 3) return null;
+  let best: { area: number; corners: [Pt, Pt, Pt, Pt]; length: number; thickness: number } | null = null;
+  // The min-area rectangle is collinear with one hull edge — try them all.
+  for (let i = 0; i < h.length; i++) {
+    const a = h[i], b = h[(i + 1) % h.length];
+    let ex = b[0] - a[0], ey = b[1] - a[1];
+    const L = Math.hypot(ex, ey);
+    if (L < 1e-9) continue;
+    ex /= L; ey /= L;
+    const nx = -ey, ny = ex; // +90° (CCW) of the edge dir
+    let umin = Infinity, umax = -Infinity, vmin = Infinity, vmax = -Infinity;
+    for (const q of h) {
+      const du = (q[0] - a[0]) * ex + (q[1] - a[1]) * ey;
+      const dv = (q[0] - a[0]) * nx + (q[1] - a[1]) * ny;
+      if (du < umin) umin = du; if (du > umax) umax = du;
+      if (dv < vmin) vmin = dv; if (dv > vmax) vmax = dv;
+    }
+    const ulen = umax - umin, vlen = vmax - vmin;
+    const area = ulen * vlen;
+    if (best && area >= best.area) continue;
+    const P = (du: number, dv: number): Pt => [a[0] + ex * du + nx * dv, a[1] + ey * du + ny * dv];
+    // CCW corners; rotate so corners[0]→corners[1] is the LONG (length) axis,
+    // which `wallRectsFromMeshes` relies on to take the centreline.
+    let corners: [Pt, Pt, Pt, Pt] = [P(umin, vmin), P(umax, vmin), P(umax, vmax), P(umin, vmax)];
+    if (ulen < vlen) corners = [corners[1], corners[2], corners[3], corners[0]];
+    best = { area, corners, length: Math.max(ulen, vlen), thickness: Math.min(ulen, vlen) };
+  }
+  return best;
 }
 
 /**

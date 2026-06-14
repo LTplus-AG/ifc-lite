@@ -930,7 +930,11 @@ function runInStoreElementBuilder(
   // can't be picked from the tree) feel un-selectable / un-movable. (Aggregated
   // spaces become a child node; contained elements join the storey's list.)
   if (dataStore.spatialHierarchy) {
-    const name = dataStore.entities?.getName?.(entityId) ?? '';
+    // Name lives on the overlay record (attrs[2] = Name for every IfcRoot
+    // subtype), not the columnar parse, so the tree label reads the authored
+    // name ("Space 1") rather than falling back to the type.
+    const rawName = editor.getNewEntity(entityId)?.attributes?.[2];
+    const name = typeof rawName === 'string' ? rawName : '';
     registerAuthoredElement(dataStore.spatialHierarchy, storeyExpressId, entityId, ifcType, name);
   }
 

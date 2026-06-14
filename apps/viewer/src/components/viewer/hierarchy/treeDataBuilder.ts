@@ -462,15 +462,28 @@ export function buildTreeData(
   return nodes;
 }
 
+/** An authored (overlay) product to fold into the class/type trees — it lives in
+ *  the mutation overlay, not the columnar parse those builders scan. */
+export interface AuthoredProduct {
+  modelId: string;
+  expressId: number;
+  globalId: number;
+  name: string;
+  ifcType: string;
+}
+
 /** Build tree data grouped by IFC class instead of spatial hierarchy.
  *  Only includes entities that have geometry (visible in the 3D viewer).
- *  @param geometricIds Pre-computed set of global IDs with geometry (memoized by caller). */
+ *  @param geometricIds Pre-computed set of global IDs with geometry (memoized by caller).
+ *  @param authoredProducts Overlay-authored products (e.g. a baked IfcSpace) that
+ *    aren't in the columnar table but have geometry — folded into their class. */
 export function buildTypeTree(
   models: Map<string, FederatedModel>,
   ifcDataStore: IfcDataStore | null | undefined,
   expandedNodes: Set<string>,
   isMultiModel: boolean,
   geometricIds?: Set<number>,
+  authoredProducts?: AuthoredProduct[],
 ): TreeNode[] {
   // Collect entities grouped by IFC class across all models
   const typeGroups = new Map<string, Array<{ expressId: number; globalId: number; name: string; modelId: string }>>();
@@ -502,6 +515,17 @@ export function buildTypeTree(
     }
   } else if (ifcDataStore) {
     processDataStore(ifcDataStore, 'legacy');
+  }
+
+  // Fold in authored (overlay) products — a baked IfcSpace, an added slab, … —
+  // which the columnar scan above can't see, so they'd otherwise be absent from
+  // the "By Class" tree even though they render in 3D.
+  for (const p of authoredProducts ?? []) {
+    let list = typeGroups.get(p.ifcType);
+    if (!list) { list = []; typeGroups.set(p.ifcType, list); }
+    if (!list.some((e) => e.globalId === p.globalId)) {
+      list.push({ expressId: p.expressId, globalId: p.globalId, name: p.name, modelId: p.modelId });
+    }
   }
 
   // Sort types alphabetically

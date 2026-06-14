@@ -16,6 +16,7 @@ import {
   buildMaterialTree,
   filterNodes,
   splitNodes,
+  type AuthoredProduct,
 } from './treeDataBuilder';
 
 export type GroupingMode = 'spatial' | 'type' | 'ifc-type' | 'material';
@@ -183,12 +184,44 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     return expressIds.map((expressId) => state.toGlobalId(modelId, expressId));
   }, []);
 
+  // Authored (overlay) products with geometry. They live in the mutation overlay,
+  // not the columnar parse the class/type builders scan, so a baked IfcSpace was
+  // absent from the "By Class" tree. Filtering by geometricIds keeps it to real
+  // products (the space has a mesh; its helper points/placements/solids don't).
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const authoredProducts = useMemo<AuthoredProduct[]>(() => {
+    const out: AuthoredProduct[] = [];
+    const state = useViewerStore.getState();
+    for (const [modelId, view] of mutationViews) {
+      const getNew = (view as { getNewEntities?: () => Iterable<{ expressId: number; type: string; attributes: unknown[] }> }).getNewEntities;
+      if (typeof getNew !== 'function') continue;
+      for (const ent of getNew.call(view)) {
+        const globalId = modelId === 'legacy' || !models.has(modelId)
+          ? ent.expressId
+          : state.toGlobalId(modelId, ent.expressId);
+        if (!geometricIds.has(globalId)) continue;
+        const rawName = ent.attributes?.[2];
+        out.push({
+          modelId,
+          expressId: ent.expressId,
+          globalId,
+          ifcType: ent.type,
+          name: typeof rawName === 'string' && rawName ? rawName : `${ent.type} #${ent.expressId}`,
+        });
+      }
+    }
+    return out;
+    // mutationVersion bumps on every authoring edit; geometricIds tracks the mesh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mutationViews, models, geometricIds, mutationVersion]);
+
   // Build the tree data structure based on grouping mode
   // Note: hiddenEntities intentionally NOT in deps - visibility computed lazily for performance
   const treeData = useMemo(
     (): TreeNode[] => {
       if (groupingMode === 'type') {
-        return buildTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
+        return buildTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, authoredProducts);
       }
       if (groupingMode === 'ifc-type') {
         return buildIfcTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
@@ -198,7 +231,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       }
       return buildTreeData(models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys);
     },
-    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, groupingMode, geometricIds]
+    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, groupingMode, geometricIds, authoredProducts]
   );
 
   // Filter nodes based on search

@@ -7,7 +7,7 @@ import assert from 'node:assert';
 import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { buildTreeData } from './treeDataBuilder';
+import { buildTreeData, buildTypeTree, type AuthoredProduct } from './treeDataBuilder';
 
 function createSpatialNode(
   expressId: number,
@@ -114,6 +114,31 @@ function createModel(idOffset: number): FederatedModel {
     maxExpressId: 7,
   };
 }
+
+describe('buildTypeTree — authored (overlay) products', () => {
+  // entities.count === 0 so the columnar scan is empty; only the authored
+  // fold-in produces nodes — isolating the new path.
+  it('folds an authored IfcSpace into its class group and dedups by globalId', () => {
+    const ds = createDataStore();
+    const authored: AuthoredProduct[] = [
+      { modelId: 'legacy', expressId: 900, globalId: 900, name: 'Space 1', ifcType: 'IfcSpace' },
+      { modelId: 'legacy', expressId: 900, globalId: 900, name: 'dup', ifcType: 'IfcSpace' },
+    ];
+    const nodes = buildTypeTree(new Map(), ds, new Set(['type-IfcSpace']), false, new Set([900]), authored);
+    const group = nodes.find((n) => n.type === 'type-group' && n.ifcType === 'IfcSpace');
+    assert.ok(group, 'an IfcSpace class group exists');
+    assert.strictEqual(group.elementCount, 1, 'deduped by globalId');
+    const el = nodes.find((n) => n.type !== 'type-group' && n.expressIds[0] === 900);
+    assert.ok(el, 'the authored space appears as an element (group expanded)');
+    assert.strictEqual(el.name, 'Space 1');
+  });
+
+  it('does nothing when there are no authored products', () => {
+    const ds = createDataStore();
+    const nodes = buildTypeTree(new Map(), ds, new Set(), false, new Set(), []);
+    assert.strictEqual(nodes.length, 0);
+  });
+});
 
 describe('buildTreeData', () => {
   it('keeps IfcSpace as a spatial node, expands bySpace children, and avoids storey duplicates', () => {

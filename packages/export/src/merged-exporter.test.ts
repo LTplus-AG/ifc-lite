@@ -6,25 +6,40 @@ import { describe, it, expect } from 'vitest';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
+type MockEntityRef = { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number };
+
 /**
  * Helper: build a minimal IfcDataStore from STEP entity lines.
  * Each entry is [expressId, type, stepText].
+ *
+ * `deferredIds` mirrors the parser's `deferPropertyAtomIndex` mode: those
+ * entities live in the source buffer but are split out of `entityIndex.byId`
+ * (and `byType`) into a separate `deferredEntityIndex`, exactly as the columnar
+ * parser does for property atoms on huge files.
  */
 function buildMockDataStore(
   entries: Array<[number, string, string]>,
+  deferredIds?: Set<number>,
 ): IfcDataStore {
   const encoder = new TextEncoder();
   const parts: Uint8Array[] = [];
-  const byId = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>();
+  const byId = new Map<number, MockEntityRef>();
+  const deferred = new Map<number, MockEntityRef>();
   const byType = new Map<string, number[]>();
   let offset = 0;
 
   for (const [id, type, text] of entries) {
     const encoded = encoder.encode(text);
-    byId.set(id, { expressId: id, type: type.toUpperCase(), byteOffset: offset, byteLength: encoded.byteLength, lineNumber: 0 });
     const upper = type.toUpperCase();
-    if (!byType.has(upper)) byType.set(upper, []);
-    byType.get(upper)!.push(id);
+    const ref: MockEntityRef = { expressId: id, type: upper, byteOffset: offset, byteLength: encoded.byteLength, lineNumber: 0 };
+    if (deferredIds?.has(id)) {
+      // Deferred atoms are NOT in byId or byType (matches real parser behaviour).
+      deferred.set(id, ref);
+    } else {
+      byId.set(id, ref);
+      if (!byType.has(upper)) byType.set(upper, []);
+      byType.get(upper)!.push(id);
+    }
     parts.push(encoded);
     offset += encoded.byteLength;
   }
@@ -43,15 +58,28 @@ function buildMockDataStore(
     parseTime: 0,
     source,
     entityIndex: { byId, byType },
+    ...(deferred.size > 0 ? { deferredEntityIndex: deferred } : {}),
   } as unknown as IfcDataStore;
 }
 
-function buildModel(id: string, name: string, entries: Array<[number, string, string]>): MergeModelInput {
-  return { id, name, dataStore: buildMockDataStore(entries) };
+function buildModel(id: string, name: string, entries: Array<[number, string, string]>, deferredIds?: Set<number>): MergeModelInput {
+  return { id, name, dataStore: buildMockDataStore(entries, deferredIds) };
 }
 
 /** Decode Uint8Array content to string for test assertions */
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+
+/** Count `#N` references in the output that have no `#N=` definition. */
+function findDanglingRefs(content: string): number[] {
+  const defined = new Set<number>();
+  for (const m of content.matchAll(/(^|\n)#(\d+)=/g)) defined.add(+m[2]);
+  const dangling = new Set<number>();
+  for (const m of content.matchAll(/#(\d+)/g)) {
+    const id = +m[1];
+    if (!defined.has(id)) dangling.add(id);
+  }
+  return [...dangling].sort((a, b) => a - b);
+}
 
 describe('MergedExporter', () => {
   it('should export a single model unchanged', () => {
@@ -248,6 +276,87 @@ describe('MergedExporter', () => {
 
   it('should throw if no models provided', () => {
     expect(() => new MergedExporter([])).toThrow('at least one model');
+  });
+
+  // Regression: github.com/LTplus-AG/ifc-lite/issues/1110
+  // When the parser defers property atoms out of byId (deferPropertyAtomIndex
+  // on huge files), the merge must still emit them — otherwise the kept
+  // IfcPropertySet/IfcElementQuantity containers reference dropped entities and
+  // the output is full of dangling #-refs that strict viewers reject.
+  it('should emit deferred property atoms (no dangling refs)', () => {
+    // #5 (single value) and #6 (quantity) live in deferredEntityIndex, but are
+    // referenced by the pset #3 and element-quantity #4 which stay in byId.
+    const entries: Array<[number, string, string]> = [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('g2',$,'W',$,$,$,$,$);"],
+      [3, 'IFCPROPERTYSET', "#3=IFCPROPERTYSET('g3',$,'Pset_Wall',$,(#5));"],
+      [4, 'IFCELEMENTQUANTITY', "#4=IFCELEMENTQUANTITY('g4',$,'Qto',$,$,(#6));"],
+      [5, 'IFCPROPERTYSINGLEVALUE', "#5=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);"],
+      [6, 'IFCQUANTITYLENGTH', "#6=IFCQUANTITYLENGTH('Length',$,$,2500.,$);"],
+      [7, 'IFCRELDEFINESBYPROPERTIES', "#7=IFCRELDEFINESBYPROPERTIES('g7',$,$,$,(#2),#3);"],
+    ];
+    const deferred = new Set([5, 6]);
+
+    const model1 = buildModel('m1', 'Arch', entries, deferred);
+    const model2 = buildModel('m2', 'Struct', entries, deferred);
+
+    const exporter = new MergedExporter([model1, model2]);
+    const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first' });
+    const content = decode(result.content);
+
+    // The deferred atoms must be present in the output for both models.
+    expect(content).toContain("IFCPROPERTYSINGLEVALUE('IsExternal'");
+    expect(content).toContain("IFCQUANTITYLENGTH('Length'");
+    // Two models → the single-value atom is emitted twice (once per model).
+    expect(content.match(/IFCPROPERTYSINGLEVALUE\('IsExternal'/g)?.length).toBe(2);
+
+    // No dangling references anywhere in the merged file.
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('should emit deferred property atoms via exportAsync too', async () => {
+    const entries: Array<[number, string, string]> = [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('g2',$,'W',$,$,$,$,$);"],
+      [3, 'IFCPROPERTYSET', "#3=IFCPROPERTYSET('g3',$,'Pset_Wall',$,(#4));"],
+      [4, 'IFCPROPERTYSINGLEVALUE', "#4=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);"],
+      [5, 'IFCRELDEFINESBYPROPERTIES', "#5=IFCRELDEFINESBYPROPERTIES('g5',$,$,$,(#2),#3);"],
+    ];
+    const deferred = new Set([4]);
+
+    const exporter = new MergedExporter([
+      buildModel('m1', 'Arch', entries, deferred),
+      buildModel('m2', 'Struct', entries, deferred),
+    ]);
+    const result = await exporter.exportAsync({ schema: 'IFC4', projectStrategy: 'keep-first' });
+    const content = decode(result.content);
+
+    expect(content.match(/IFCPROPERTYSINGLEVALUE\('IsExternal'/g)?.length).toBe(2);
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('should not collide remapped ids with a deferred atom at the max express id', () => {
+    // Model1's highest id (10) is a DEFERRED atom — the second model's offset
+    // must clear it, or model2's entities overwrite model1's deferred atom.
+    const model1 = buildModel('m1', 'Arch', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('g2',$,'W',$,$,$,$,$);"],
+      [3, 'IFCPROPERTYSET', "#3=IFCPROPERTYSET('g3',$,'Pset',$,(#10));"],
+      [10, 'IFCPROPERTYSINGLEVALUE', "#10=IFCPROPERTYSINGLEVALUE('A',$,IFCLABEL('x'),$);"],
+    ], new Set([10]));
+    const model2 = buildModel('m2', 'Struct', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g4',$,'P2',$,$,$,$,$,$);"],
+      [2, 'IFCCOLUMN', "#2=IFCCOLUMN('g5',$,'C',$,$,$,$,$);"],
+    ]);
+
+    const exporter = new MergedExporter([model1, model2]);
+    const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first' });
+    const content = decode(result.content);
+
+    // Model1's deferred atom keeps id #10; model2's column must land beyond it.
+    expect(content).toContain("#10=IFCPROPERTYSINGLEVALUE('A'");
+    expect(content).toContain("#12=IFCCOLUMN('g5'"); // offset = maxId(10) → #2 → #12
+    expect(findDanglingRefs(content)).toEqual([]);
   });
 
   it('should produce valid STEP structure', () => {

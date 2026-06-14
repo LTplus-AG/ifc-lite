@@ -17,6 +17,7 @@ import { safeUtf8Decode } from '@ifc-lite/data';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { assembleStepBytes } from './step-serialization.js';
+import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 
 /** Entity types forming shared infrastructure (deduplicated across models). */
 const SHARED_INFRASTRUCTURE_TYPES = new Set([
@@ -157,14 +158,12 @@ export class MergedExporter {
     let nextAvailableId = 1;
     const modelOffsets = new Map<string, number>();
 
-    // First pass: determine ID offsets
+    // First pass: determine ID offsets. Span the COMPLETE entity set (incl.
+    // deferred property atoms) so the next model's offset clears every id this
+    // model will emit — otherwise a deferred atom at a high id collides.
     for (const model of this.models) {
       modelOffsets.set(model.id, nextAvailableId - 1); // offset = nextAvailableId - 1 so IDs start at nextAvailableId
-      let maxId = 0;
-      for (const [id] of model.dataStore.entityIndex.byId) {
-        if (id > maxId) maxId = id;
-      }
-      nextAvailableId += maxId;
+      nextAvailableId += getMaxExpressId(getCompleteEntityIndex(model.dataStore));
     }
 
     // Collect first model's info for deduplication
@@ -184,6 +183,10 @@ export class MergedExporter {
       const source = model.dataStore.source;
       if (!source || source.length === 0) continue;
 
+      // Complete view over byId + any deferred property atoms, so the closure
+      // walk and the emit loop both reach every entity the source defines.
+      const completeIndex = getCompleteEntityIndex(model.dataStore);
+
       // Determine which entities to include
       let includedEntityIds: Set<number> | null = null;
 
@@ -194,11 +197,14 @@ export class MergedExporter {
         includedEntityIds = collectReferencedEntityIds(
           roots,
           source,
-          model.dataStore.entityIndex.byId,
+          completeIndex,
           hiddenProductIds,
         );
         // Second pass: collect style entities that reference included geometry
-        collectStyleEntities(includedEntityIds, source, model.dataStore.entityIndex);
+        collectStyleEntities(includedEntityIds, source, {
+          byId: completeIndex,
+          byType: model.dataStore.entityIndex.byType,
+        });
       }
 
       // Build remap table (references to remap) and skip set (entities to omit)
@@ -240,7 +246,7 @@ export class MergedExporter {
       }
 
       // Emit entities for this model
-      for (const [expressId, entityRef] of model.dataStore.entityIndex.byId) {
+      for (const [expressId, entityRef] of completeIndex) {
         // Skip entities outside the visible closure
         if (includedEntityIds !== null && !includedEntityIds.has(expressId)) {
           continue;
@@ -316,7 +322,7 @@ export class MergedExporter {
     // First pass: count total entities for progress
     let totalEntities = 0;
     for (const model of this.models) {
-      totalEntities += model.dataStore.entityIndex.byId.size;
+      totalEntities += getCompleteEntityIndex(model.dataStore).size;
     }
 
     let nextAvailableId = 1;
@@ -324,11 +330,7 @@ export class MergedExporter {
 
     for (const model of this.models) {
       modelOffsets.set(model.id, nextAvailableId - 1);
-      let maxId = 0;
-      for (const [id] of model.dataStore.entityIndex.byId) {
-        if (id > maxId) maxId = id;
-      }
-      nextAvailableId += maxId;
+      nextAvailableId += getMaxExpressId(getCompleteEntityIndex(model.dataStore));
     }
 
     const firstModel = this.models[0];
@@ -358,15 +360,20 @@ export class MergedExporter {
         });
       }
 
+      const completeIndex = getCompleteEntityIndex(model.dataStore);
+
       let includedEntityIds: Set<number> | null = null;
       if (options.visibleOnly) {
         const hiddenIds = options.hiddenEntityIdsByModel?.get(model.id) ?? new Set<number>();
         const isolatedIds = options.isolatedEntityIdsByModel?.get(model.id) ?? null;
         const { roots, hiddenProductIds } = getVisibleEntityIds(model.dataStore, hiddenIds, isolatedIds);
         includedEntityIds = collectReferencedEntityIds(
-          roots, source, model.dataStore.entityIndex.byId, hiddenProductIds,
+          roots, source, completeIndex, hiddenProductIds,
         );
-        collectStyleEntities(includedEntityIds, source, model.dataStore.entityIndex);
+        collectStyleEntities(includedEntityIds, source, {
+          byId: completeIndex,
+          byType: model.dataStore.entityIndex.byType,
+        });
       }
 
       const sharedRemap = new Map<number, number>();
@@ -395,7 +402,7 @@ export class MergedExporter {
       }
 
       let entityCount = 0;
-      for (const [expressId, entityRef] of model.dataStore.entityIndex.byId) {
+      for (const [expressId, entityRef] of completeIndex) {
         if (includedEntityIds !== null && !includedEntityIds.has(expressId)) continue;
         if (skipEntityIds.has(expressId)) continue;
 

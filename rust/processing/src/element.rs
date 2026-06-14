@@ -311,7 +311,7 @@ fn produce_inner(
             let geometry_id = full.geometry_id;
             if let Some(groups) = crate::style::split_mesh_by_indexed_colour(&mesh, full) {
                 if let Some(h) = hasher.as_mut() {
-                    h.add_mesh(&mesh.positions, &mesh.indices);
+                    h.add_mesh_with_origin(&mesh.positions, &mesh.indices, mesh.origin);
                 }
                 let mut out: Vec<MeshData> = Vec::with_capacity(groups.len());
                 for (color, mut part) in groups {
@@ -339,7 +339,7 @@ fn produce_inner(
         calculate_normals(&mut mesh);
     }
     if let Some(h) = hasher.as_mut() {
-        h.add_mesh(&mesh.positions, &mesh.indices);
+        h.add_mesh_with_origin(&mesh.positions, &mesh.indices, mesh.origin);
     }
     vec![build_mesh_data(job, mesh, element_color, None, None, 0, ctx)]
 }
@@ -389,7 +389,7 @@ fn emit_sub_meshes(
             .or_else(|| infer_opening_subpart_material_name(&job.ifc_type, color, sub.geometry_id));
 
         if let Some(h) = hasher.as_mut() {
-            h.add_mesh(&sub_mesh.positions, &sub_mesh.indices);
+            h.add_mesh_with_origin(&sub_mesh.positions, &sub_mesh.indices, sub_mesh.origin);
         }
 
         // #858: a face set with a per-triangle colour map splits into one

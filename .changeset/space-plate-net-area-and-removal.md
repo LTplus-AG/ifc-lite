@@ -21,3 +21,12 @@ removal and engine-computed wall-boundary outlines:
 The constructor now takes an additional `segHalfThickness: Float64Array`
 (per-segment half-thickness in metres, carried onto the derived edges for
 `netOutline`); pass an empty array when thickness is unknown.
+
+`build` also **regularizes the derived plate onto the model's own orthogonal
+frame**: derived centrelines carry sub-degree skew (e.g. a PCA-of-footprint axis
+tilted ~0.5°), so corners sat on the tilted axis rather than the true wall line.
+A topology-preserving vertex snap straightens near-axial walls (collinear runs
+collapse onto one grid line, corners land where walls truly cross) while leaving
+genuinely-angled walls untouched — so rooms stay clean and a non-orthogonal
+building is unaffected. It only moves vertex positions (never merges edges), so
+it can't collapse a room.

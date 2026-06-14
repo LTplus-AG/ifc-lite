@@ -77,6 +77,13 @@ export interface WallExtractionResult {
    * centreline footprint to a net (inner-face) area.
    */
   wallThicknesses: (number | undefined)[];
+  /**
+   * Per-wall footprint rectangle (4 CCW corners, metres, parallel to
+   * `contributingWallIds`) — the face-accurate plan outline for the face-based
+   * room derivation (its two long edges are the wall faces). `undefined` for
+   * walls with no body footprint (axis-rep / rect-profile / overlay).
+   */
+  obbs: ([Vec2, Vec2, Vec2, Vec2] | undefined)[];
   /** Walls dropped by the extractor, with the reason. */
   skipped: WallSkip[];
   /** Best-effort total wall count visible on the storey (existing + overlay). */
@@ -134,6 +141,7 @@ export function extractWallSegmentsForStorey(
   const segments: Segment[] = [];
   const contributing: number[] = [];
   const wallThicknesses: (number | undefined)[] = [];
+  const obbs: ([Vec2, Vec2, Vec2, Vec2] | undefined)[] = [];
   const skipped: WallSkip[] = [];
   const debug = !!options.debug;
   const log = debug ? (...args: unknown[]) => console.debug('[extract-walls]', ...args) : () => {};
@@ -155,7 +163,7 @@ export function extractWallSegmentsForStorey(
 
   if (!store.source) {
     log('no source bytes on data store — extraction cannot run');
-    return { segments, contributingWallIds: contributing, wallThicknesses, skipped, considered: 0, lengthUnitScale };
+    return { segments, contributingWallIds: contributing, wallThicknesses, obbs, skipped, considered: 0, lengthUnitScale };
   }
 
   const dividerTypes = new Set(DEFAULT_DIVIDER_TYPES);
@@ -173,6 +181,9 @@ export function extractWallSegmentsForStorey(
       segments.push(scaleSegment(result.segment, lengthUnitScale));
       contributing.push(id);
       wallThicknesses.push(wallThicknessFromMaterial(store, id));
+      obbs.push(result.obb
+        ? (result.obb.map((c) => [c[0] * lengthUnitScale, c[1] * lengthUnitScale]) as [Vec2, Vec2, Vec2, Vec2])
+        : undefined);
     } else {
       skipped.push({ wallId: id, reason: result.reason ?? 'no-axis-or-rect-profile' });
     }
@@ -190,6 +201,7 @@ export function extractWallSegmentsForStorey(
         segments.push(result.segment);
         contributing.push(ent.expressId);
         wallThicknesses.push(undefined); // overlay walls carry no material yet
+        obbs.push(result.obb); // already metres; overlay walls are axis/rect → undefined
       } else {
         skipped.push({ wallId: ent.expressId, reason: result.reason ?? 'no-axis-or-rect-profile' });
       }
@@ -213,6 +225,7 @@ export function extractWallSegmentsForStorey(
     segments,
     contributingWallIds: contributing,
     wallThicknesses,
+    obbs,
     skipped,
     considered: dividerIds.length + overlayCount,
     lengthUnitScale,
@@ -391,6 +404,11 @@ function buildRelatingChildrenIndex(
 interface ExtractAttempt {
   segment: Segment | null;
   reason?: WallSkipReason;
+  /** Wall footprint rectangle (4 CCW world corners) — the face-accurate plan
+   *  outline for the face-based room derivation. Only set for body-footprint
+   *  walls; `undefined` otherwise (the face engine falls back to a thin box
+   *  around the centreline). Same units as `segment`. */
+  obb?: [Vec2, Vec2, Vec2, Vec2];
 }
 
 function extractWallAxisFromSource(
@@ -487,7 +505,11 @@ function computeWallSegment(
     if (centreline) {
       const start = applyFrame(frame, centreline[0]);
       const end = applyFrame(frame, centreline[1]);
-      return finaliseSegment(start, end, wallId, log, 'body-footprint');
+      const obbLocal = footprintOBB(footprint);
+      const obb = obbLocal
+        ? (obbLocal.map((c) => applyFrame(frame, c)) as [Vec2, Vec2, Vec2, Vec2])
+        : undefined;
+      return { ...finaliseSegment(start, end, wallId, log, 'body-footprint'), obb };
     }
   }
 
@@ -724,6 +746,47 @@ function principalAxisCentreline(points: Vec2[]): [Vec2, Vec2] | null {
   }
   if (tmax - tmin < AXIS_EPS) return null;
   return [[cx + ex * tmin, cy + ey * tmin], [cx + ex * tmax, cy + ey * tmax]];
+}
+
+/**
+ * Oriented bounding box of a footprint as 4 CCW corners (local frame) — the
+ * wall's plan rectangle (its two faces + two ends). Uses the PCA axis DIRECTIONS
+ * plus the min/max extents along them, so it's invariant to vertex distribution
+ * (unlike the centroid). This is the face-accurate footprint the room derivation
+ * needs: the two long edges ARE the wall faces. Null if it collapses to a line.
+ */
+function footprintOBB(points: Vec2[]): [Vec2, Vec2, Vec2, Vec2] | null {
+  const n = points.length;
+  if (n < 3) return null;
+  let cx = 0, cy = 0;
+  for (const [x, y] of points) { cx += x; cy += y; }
+  cx /= n; cy /= n;
+  let sxx = 0, sxy = 0, syy = 0;
+  for (const [x, y] of points) {
+    const dx = x - cx, dy = y - cy;
+    sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+  }
+  const tr = sxx + syy;
+  const disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - (sxx * syy - sxy * sxy)));
+  const lambda = tr / 2 + disc;
+  let ex = sxy, ey = lambda - sxx;
+  if (Math.hypot(ex, ey) < 1e-12) { ex = lambda - syy; ey = sxy; }
+  const elen = Math.hypot(ex, ey);
+  if (elen < 1e-12) return null;
+  ex /= elen; ey /= elen;
+  const px = -ey, py = ex;
+  let tmin = Infinity, tmax = -Infinity, smin = Infinity, smax = -Infinity;
+  for (const [x, y] of points) {
+    const t = (x - cx) * ex + (y - cy) * ey;
+    const s = (x - cx) * px + (y - cy) * py;
+    if (t < tmin) tmin = t;
+    if (t > tmax) tmax = t;
+    if (s < smin) smin = s;
+    if (s > smax) smax = s;
+  }
+  if (tmax - tmin < AXIS_EPS || smax - smin < AXIS_EPS) return null;
+  const corner = (t: number, s: number): Vec2 => [cx + ex * t + px * s, cy + ey * t + py * s];
+  return [corner(tmin, smin), corner(tmax, smin), corner(tmax, smax), corner(tmin, smax)];
 }
 
 function finaliseSegment(start: Vec2, end: Vec2, wallId: number, log: Logger, source: string): ExtractAttempt {

@@ -21,7 +21,20 @@ use nalgebra::Matrix4;
 /// enables it for native verification meanwhile. Read once and cached.
 pub(crate) fn local_frame_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| std::env::var("IFC_LITE_LOCAL_FRAME").is_ok())
+    *ENABLED.get_or_init(|| {
+        // The viewer (wasm) is the precision-critical target: building-scale f32
+        // vertex storage collapses near-edges into fans, fixed by storing each
+        // element relative to its AABB-centre origin (the renderer reconstructs
+        // world = origin + position). Default ON for wasm. Native stays opt-in
+        // (env) so server output + the cross-arch determinism snapshots remain
+        // absolute-coord byte-identical; native consumers reconstruct from
+        // MeshData.origin when they want the local frame.
+        if cfg!(target_arch = "wasm32") {
+            true
+        } else {
+            std::env::var("IFC_LITE_LOCAL_FRAME").is_ok()
+        }
+    })
 }
 
 impl GeometryRouter {
@@ -841,10 +854,18 @@ impl GeometryRouter {
         let origin = if !relativize || world.is_empty() {
             [0.0; 3]
         } else {
+            // Snap the AABB-centre origin to the kernel reconcile grid. The void
+            // CSG relativizes its operands by this origin (subtract it) and then
+            // snaps to SNAP_GRID; `round((x-o)/G) == round(x/G) - o/G` holds ONLY
+            // when `o` is itself a grid multiple. An off-grid origin shifts every
+            // operand off the snap lattice → the cut emits slivers / zero-area
+            // tris (the ~1.4% void loss). Must use the SAME grid as the kernel.
+            const G: f64 = crate::kernel::mesh_bridge::SNAP_GRID;
+            let snap = |lo: f64, hi: f64| (((lo + hi) * 0.5) / G).round() * G;
             [
-                (min[0] + max[0]) * 0.5,
-                (min[1] + max[1]) * 0.5,
-                (min[2] + max[2]) * 0.5,
+                snap(min[0], max[0]),
+                snap(min[1], max[1]),
+                snap(min[2], max[2]),
             ]
         };
 

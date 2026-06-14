@@ -989,7 +989,11 @@ impl GeometryRouter {
             }
         };
 
-        Ok(self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder))
+        let mut voided = self.apply_voids_to_mesh(wall_mesh, element, opening_ids, decoder);
+        // Clean slivers the CSG cut can introduce at opening seams — same
+        // hygiene as the tessellation chokepoints (Mesh::clean_degenerate).
+        voided.clean_degenerate();
+        Ok(voided)
     }
 
     /// Apply opening subtraction and clipping planes to an already-built mesh.
@@ -1772,7 +1776,9 @@ impl GeometryRouter {
         let mut voided = SubMeshCollection::new();
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;
-            let voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
+            let mut voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);
+            // Same CSG-seam hygiene as the single-mesh void path.
+            voided_mesh.clean_degenerate();
             if !voided_mesh.is_empty() {
                 voided
                     .sub_meshes

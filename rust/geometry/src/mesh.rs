@@ -634,6 +634,101 @@ impl Mesh {
         weld_impl(self, position_eps, None, /*average_normals=*/ true)
     }
 
+    /// Drop triangles whose perpendicular height (= 2·area / longest edge) is
+    /// below `h_eps` metres — i.e. genuinely-degenerate **collinear** slivers
+    /// (three distinct but near-collinear vertices, zero area). These come from
+    /// redundant collinear vertices in source brep faces / extrusion profiles
+    /// triangulated as-is; vertex welding can't merge them (the vertices are
+    /// distinct), so this catches them. At `h_eps` ≈ 15 µm — far below any real
+    /// architectural feature — the dropped triangles carry no area, so the
+    /// surrounding triangulation still covers the face (visually lossless,
+    /// watertight-preserving). Only `indices` change.
+    pub fn drop_thin_triangles(&mut self, h_eps: f64) {
+        if self.indices.len() < 3 {
+            return;
+        }
+        let vertex_count = self.positions.len() / 3;
+        let p = |i: u32| -> [f64; 3] {
+            let i = i as usize;
+            [
+                self.positions[i * 3] as f64,
+                self.positions[i * 3 + 1] as f64,
+                self.positions[i * 3 + 2] as f64,
+            ]
+        };
+        let mut kept = Vec::with_capacity(self.indices.len());
+        for tri in self.indices.chunks_exact(3) {
+            if (tri[0] as usize) >= vertex_count
+                || (tri[1] as usize) >= vertex_count
+                || (tri[2] as usize) >= vertex_count
+            {
+                continue;
+            }
+            let (a, b, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
+            let d = |u: [f64; 3], v: [f64; 3]| {
+                ((u[0] - v[0]).powi(2) + (u[1] - v[1]).powi(2) + (u[2] - v[2]).powi(2)).sqrt()
+            };
+            let longest = d(a, b).max(d(b, c)).max(d(c, a));
+            if longest <= 0.0 {
+                continue; // fully collapsed
+            }
+            let ux = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let vx = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let cr = [
+                ux[1] * vx[2] - ux[2] * vx[1],
+                ux[2] * vx[0] - ux[0] * vx[2],
+                ux[0] * vx[1] - ux[1] * vx[0],
+            ];
+            let area = 0.5 * (cr[0] * cr[0] + cr[1] * cr[1] + cr[2] * cr[2]).sqrt();
+            let height = 2.0 * area / longest;
+            if height < h_eps {
+                continue; // collinear / zero-area sliver
+            }
+            kept.extend_from_slice(tri);
+        }
+        self.indices = kept;
+    }
+
+    /// Mesh hygiene applied to every element mesh before it leaves the router.
+    ///
+    /// Restores the cleanup the pure-Rust pipeline lost when #1024 removed
+    /// Manifold (which implicitly dropped degenerate output). Without it,
+    /// redundant/near-collinear source vertices in faceted breps and extrusion
+    /// profiles get triangulated into visible needle "spikes" and jagged
+    /// silhouettes (the regression reported on large breps); BIMcollab and
+    /// other viewers don't show them because they clean degenerates on import.
+    ///
+    /// Deliberately **does not weld vertices**. The pipeline emits per-face
+    /// flat-shaded facet soup on purpose (each facet keeps its own vertices +
+    /// normal so creases stay sharp — see issue #846); welding would share
+    /// vertices across facets and re-smooth every crease. Instead we drop only
+    /// the genuinely-degenerate triangles via
+    /// [`drop_thin_triangles`](Self::drop_thin_triangles) below the kernel's
+    /// reconcile grid (`1/65536 ≈ 15.3 µm`): coincident-pair needles (area 0)
+    /// and collinear slivers (three distinct near-collinear vertices). The grid
+    /// is the kernel's own representable resolution, so sub-grid triangles are
+    /// degenerate by definition; measured triangle counts are flat from
+    /// 10–50 µm and only start touching real geometry at ~100 µm (6.5× higher),
+    /// confirming nothing real lives in that band. Positions/normals are left
+    /// untouched, so it is visually lossless and bit-deterministic.
+    ///
+    /// The 15.3 µm threshold is most precise when applied in a small-magnitude
+    /// (element-local) frame, where f32 positions resolve well below it — which
+    /// the tessellation chokepoints honour (they clean *before* world
+    /// placement). The void-cut output is cleaned in world coordinates (the cut
+    /// runs there), so on a model georeferenced a few hundred metres to ~10 km
+    /// from origin — below the RTC re-basing threshold — the f32 grid at that
+    /// magnitude approaches the threshold and the margin near opening seams
+    /// erodes slightly; the `longest <= 0` guard still catches full collapse at
+    /// extreme scale. NaN/Inf triangles are kept (the comparison is false),
+    /// i.e. non-finite geometry is left for upstream to handle, never dropped.
+    pub fn clean_degenerate(&mut self) {
+        // 1/65536 m — matches kernel::mesh_bridge::SNAP_GRID (power-of-two for
+        // bit-determinism). Sub-grid triangles are below kernel resolution.
+        const RECONCILE_GRID: f64 = 1.0 / 65536.0;
+        self.drop_thin_triangles(RECONCILE_GRID);
+    }
+
     /// Filter out triangles with edges exceeding the threshold
     /// This removes "stretched" triangles that span unreasonably large distances,
     /// which can occur when disconnected geometry is incorrectly merged.
@@ -1187,5 +1282,143 @@ mod tests {
             origin: [0.0; 3],        };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2, 1, 2, 3]);
+    }
+
+    // ── drop_thin_triangles / clean_degenerate ───────────────────────────
+
+    const GRID: f64 = 1.0 / 65536.0; // ≈ 15.26 µm, the kernel reconcile grid
+
+    #[test]
+    fn drop_thin_removes_collinear_sliver_keeps_real_triangle() {
+        // v0,v1,v2 are near-collinear: v2 sits 5 µm off the v0→v1 line over a
+        // 1 m span — a zero-area sliver. A second, well-formed triangle
+        // (v3,v4,v5, height 0.5 m) must survive.
+        let mut mesh = Mesh {
+            positions: vec![
+                0.0, 0.0, 0.0, // v0
+                1.0, 0.0, 0.0, // v1
+                0.5, 5.0e-6, 0.0, // v2  (5 µm off the line → sliver)
+                0.0, 0.0, 0.0, // v3
+                1.0, 0.0, 0.0, // v4
+                0.5, 0.5, 0.0, // v5  (real, 0.5 m tall)
+            ],
+            normals: vec![],
+            indices: vec![0, 1, 2, 3, 4, 5],
+            rtc_applied: false,
+        };
+        mesh.drop_thin_triangles(GRID);
+        assert_eq!(mesh.indices, vec![3, 4, 5], "sliver dropped, real kept");
+        // Positions/normals are never touched (orphan vertices are fine).
+        assert_eq!(mesh.positions.len(), 18);
+    }
+
+    #[test]
+    fn drop_thin_removes_coincident_pair_needle() {
+        // Two vertices identical → zero area regardless of the third.
+        let mut mesh = Mesh {
+            positions: vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            normals: vec![],
+            indices: vec![0, 1, 2],
+            rtc_applied: false,
+        };
+        mesh.drop_thin_triangles(GRID);
+        assert!(mesh.indices.is_empty(), "coincident-pair needle dropped");
+    }
+
+    #[test]
+    fn drop_thin_keeps_thin_but_real_triangle_just_above_grid() {
+        // Height 30 µm (> 15.26 µm grid) over a 1 m base — thin but real.
+        let mut mesh = Mesh {
+            positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 30.0e-6, 0.0],
+            normals: vec![],
+            indices: vec![0, 1, 2],
+            rtc_applied: false,
+        };
+        mesh.drop_thin_triangles(GRID);
+        assert_eq!(mesh.indices, vec![0, 1, 2], "above-grid triangle kept");
+    }
+
+    #[test]
+    fn drop_thin_does_not_open_a_crack_in_a_closed_solid() {
+        // A closed tetrahedron with ONE extra degenerate sliver triangle glued
+        // along an existing edge. Dropping the sliver must leave exactly the 4
+        // real faces — i.e. it removes the sliver and nothing else, so the
+        // watertight surface is unchanged (no real face is collateral-dropped).
+        let a = [0.0f32, 0.0, 0.0];
+        let b = [1.0f32, 0.0, 0.0];
+        let c = [0.0f32, 1.0, 0.0];
+        let d = [0.0f32, 0.0, 1.0];
+        let mut pos = vec![];
+        for v in [a, b, c, d] {
+            pos.extend_from_slice(&v);
+        }
+        // sliver vertex on edge a→b, 5 µm off-line
+        pos.extend_from_slice(&[0.5, 5.0e-6, 0.0]); // index 4
+        let mut mesh = Mesh {
+            positions: pos,
+            normals: vec![],
+            indices: vec![
+                0, 1, 2, // 4 tetra faces
+                0, 1, 3, 0, 2, 3, 1, 2, 3, // (winding irrelevant for this test)
+                0, 1, 4, // the degenerate sliver along edge 0→1
+            ],
+            rtc_applied: false,
+        };
+        mesh.drop_thin_triangles(GRID);
+        assert_eq!(
+            mesh.indices,
+            vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3],
+            "only the sliver dropped; the 4 closed faces are intact"
+        );
+    }
+
+    #[test]
+    fn drop_thin_skips_oob_and_fully_collapsed_without_panic() {
+        let mut mesh = Mesh {
+            positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            normals: vec![],
+            indices: vec![
+                0, 1, 2, // valid, real
+                0, 1, 9, // out-of-bounds index → skipped
+                0, 0, 0, // fully collapsed (longest == 0) → skipped
+            ],
+            rtc_applied: false,
+        };
+        mesh.drop_thin_triangles(GRID);
+        assert_eq!(mesh.indices, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn drop_thin_is_idempotent() {
+        let mut mesh = Mesh {
+            positions: vec![
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 5.0e-6, 0.0, // sliver
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 0.5, 0.0, // real
+            ],
+            normals: vec![],
+            indices: vec![0, 1, 2, 3, 4, 5],
+            rtc_applied: false,
+        };
+        mesh.drop_thin_triangles(GRID);
+        let once = mesh.indices.clone();
+        mesh.drop_thin_triangles(GRID);
+        assert_eq!(mesh.indices, once, "second pass is a no-op");
+    }
+
+    #[test]
+    fn clean_degenerate_uses_the_reconcile_grid() {
+        // clean_degenerate must drop a 10 µm sliver (below grid) and keep a
+        // 30 µm one (above grid).
+        let mut mesh = Mesh {
+            positions: vec![
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 10.0e-6, 0.0, // below grid
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 30.0e-6, 0.0, // above grid
+            ],
+            normals: vec![],
+            indices: vec![0, 1, 2, 3, 4, 5],
+            rtc_applied: false,
+        };
+        mesh.clean_degenerate();
+        assert_eq!(mesh.indices, vec![3, 4, 5]);
     }
 }

@@ -424,6 +424,12 @@ export class MeshDataJs {
    */
   readonly color: Float32Array;
   /**
+   * Per-element local-frame origin (Float64Array[3], WebGL Y-up, metres):
+   * world position of vertex i = `origin + positions[3i..3i+3]`. Returns
+   * [0,0,0] when positions are absolute (legacy / local frame off).
+   */
+  readonly origin: Float64Array;
+  /**
    * Get indices as Uint32Array (copy to JS)
    */
   readonly indices: Uint32Array;
@@ -885,6 +891,7 @@ export interface InitOutput {
   readonly meshdatajs_ifcType: (a: number, b: number) => void;
   readonly meshdatajs_indices: (a: number) => number;
   readonly meshdatajs_normals: (a: number) => number;
+  readonly meshdatajs_origin: (a: number) => number;
   readonly meshdatajs_positions: (a: number) => number;
   readonly meshdatajs_shadingColor: (a: number, b: number) => void;
   readonly meshdatajs_textureHeight: (a: number) => number;
@@ -901,7 +908,6 @@ export interface InitOutput {
   readonly meshoutlinejs_contourCount: (a: number) => number;
   readonly profilecollection_get: (a: number, b: number) => number;
   readonly profilecollection_length: (a: number) => number;
-  readonly profileentryjs_expressId: (a: number) => number;
   readonly profileentryjs_extrusionDepth: (a: number) => number;
   readonly profileentryjs_extrusionDir: (a: number) => number;
   readonly profileentryjs_holeCounts: (a: number) => number;
@@ -977,6 +983,7 @@ export interface InitOutput {
   readonly init: () => void;
   readonly symbolicpolyline_pointCount: (a: number) => number;
   readonly get_memory: () => number;
+  readonly profileentryjs_expressId: (a: number) => number;
   readonly symbolicfillarea_expressId: (a: number) => number;
   readonly symbolicpolyline_worldY: (a: number) => number;
   readonly symbolictext_colorB: (a: number) => number;

@@ -143,6 +143,13 @@ export class Scene {
     return this.batchedMeshes;
   }
 
+  /** The shared local-frame origin all batches relativize against (null until
+   *  the first batch is built). Per-mesh highlight/picker VBOs replicate the
+   *  batch's exact f32 path against this so they render bit-coincident. */
+  getSharedFrameOrigin(): [number, number, number] | null {
+    return this.sharedFrameOrigin;
+  }
+
   /**
    * Store MeshData for lazy GPU buffer creation (used for selection highlighting)
    * This avoids creating 2x GPU buffers during streaming

@@ -857,20 +857,27 @@ export class Renderer {
         const interleaved = new Float32Array(interleavedRaw);
         const interleavedU32 = new Uint32Array(interleavedRaw);
 
-        // Fold the per-element origin back into the VBO so this individual mesh
-        // (selection highlight + GPU object-id picker) stays in ABSOLUTE world
-        // space and renders correctly with an identity model matrix — unlike the
-        // batched path, single meshes aren't worth a per-mesh translate. At
-        // single-element extent f32 is precise even at building scale.
-        const ox = meshData.origin ? meshData.origin[0] : 0;
-        const oy = meshData.origin ? meshData.origin[1] : 0;
-        const oz = meshData.origin ? meshData.origin[2] : 0;
+        // Build this individual mesh (selection highlight + GPU object-id picker)
+        // in ABSOLUTE world space so it renders with an identity model matrix.
+        // CRITICAL: replicate the BATCH's exact two-step f32 path so the highlight
+        // is bit-coincident with its source surface (no z-fight, no depth bias):
+        //   batch stores  s = f32(local + (origin - sharedOrigin))   [merge]
+        //   batch shader  world = f32(f32(sharedOrigin) + s)         [draw]
+        // We compute the same `world` here. When there's no shared origin yet
+        // (legacy / pre-batch), fall back to a plain f64 fold (local + origin).
+        const o = meshData.origin;
+        const so = this.scene.getSharedFrameOrigin();
+        const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
+        const fr = Math.fround;
+        const sox = so ? fr(so[0]) : null, soy = so ? fr(so[1]) : 0, soz = so ? fr(so[2]) : 0;
+        const dx = so ? (ox - so[0]) : ox, dy = so ? (oy - so[1]) : oy, dz = so ? (oz - so[2]) : oz;
+        const p = meshData.positions;
         for (let i = 0; i < vertexCount; i++) {
             const base = i * 7;
             const posBase = i * 3;
-            interleaved[base] = meshData.positions[posBase] + ox;
-            interleaved[base + 1] = meshData.positions[posBase + 1] + oy;
-            interleaved[base + 2] = meshData.positions[posBase + 2] + oz;
+            interleaved[base] = so ? fr((sox as number) + fr(p[posBase] + dx)) : (p[posBase] + dx);
+            interleaved[base + 1] = so ? fr(soy + fr(p[posBase + 1] + dy)) : (p[posBase + 1] + dy);
+            interleaved[base + 2] = so ? fr(soz + fr(p[posBase + 2] + dz)) : (p[posBase + 2] + dz);
             const hasNormals = meshData.normals.length > 0;
             interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
             interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;

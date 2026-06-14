@@ -225,17 +225,14 @@ export class RenderPipeline {
                 format: this.depthFormat,
                 depthWriteEnabled: false,  // Don't overwrite depth - selected objects render on top of existing depth
                 depthCompare: 'greater-equal',  // Allow rendering at same depth, but still respect objects in front
-                // Per-element local frame: the highlight mesh is a separate
-                // world-absolute VBO while its source surface renders via a
-                // per-batch (relative + model-translate) path, so at building-
-                // scale world coords (~hundreds of m) the two f32 depth paths
-                // diverge by a few ULP and the coincident highlight loses the
-                // greater-equal test on some facets (fragmented highlight). A
-                // small toward-camera bias (positive in reverse-Z) overwhelms
-                // that sub-mm divergence without x-raying through other elements
-                // (which are cm+ away). slopeScale covers angled/curved facets.
-                depthBias: 256,
-                depthBiasSlopeScale: 8,
+                // No depth bias: the highlight mesh's VBO is built to be
+                // BIT-IDENTICAL to how its source surface renders (same shared
+                // origin + same f32 relativization — see createMeshFromData), so
+                // it sits exactly coincident and 'greater-equal' draws it on top
+                // without a bias. A bias here would x-ray the highlight through
+                // neighbouring geometry and spike at grazing angles.
+                depthBias: 0,
+                depthBiasSlopeScale: 0,
             },
             // MSAA configuration - must match render pass attachment sample count
             multisample: {

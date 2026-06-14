@@ -349,6 +349,15 @@ impl IfcAPI {
                 };
                 let detected_rtc = router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut decoder);
                 let mut rtc_offset = detected_rtc.unwrap_or((0.0, 0.0, 0.0));
+                // True once ANY detection (partial OR the full re-detect below)
+                // resolved usable placement samples — even if it concluded "no
+                // shift" (0,0,0). The placement-bounds fallback must NOT override
+                // a successful "no shift": that scan averages ALL placement
+                // points incl. a far georef anchor (e.g. IfcSite/MapConversion at
+                // national grid), so on a building whose geometry sits near origin
+                // but carries a georef datum it returns a bogus ~-792 km offset,
+                // pushing the whole model off-screen.
+                let mut detection_succeeded = detected_rtc.is_some();
 
                 // Streaming emits this meta as soon as RTC_SAMPLE_THRESHOLD geometry
                 // jobs are buffered (~the 50th element, near the top of the file), so
@@ -371,18 +380,25 @@ impl IfcAPI {
                     if let Some(full_rtc) =
                         router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut full_decoder)
                     {
+                        // The full index resolved the placement chain — this is a
+                        // successful detection whether it shifts (large) or not.
+                        detection_succeeded = true;
                         if is_large(full_rtc) {
                             rtc_offset = full_rtc;
                         }
                     }
                 }
-                // Server parity: when sampling produced no usable translations
-                // at all, fall back to the full placement-bounds scan exactly
-                // like `process_geometry` does — otherwise a model whose
-                // sampled placements fail to decode renders re-based on the
-                // server but jittery (raw >10 km f32 coords) in the browser.
-                if detected_rtc.is_none() && !is_large(rtc_offset) {
-                    rtc_offset = ifc_lite_core::scan_placement_bounds(content).rtc_offset();
+                // Server parity LAST RESORT: only when NO detection (partial or
+                // full) found any usable placement translations do we scan the
+                // placement bounds (a model whose placements truly can't decode
+                // from this index, e.g. a genuine >10 km georef whose chain is
+                // unresolved). A successful "no shift" must NOT reach here, or the
+                // georef-anchor-skewed scan would re-base an origin-local model.
+                if !detection_succeeded && !is_large(rtc_offset) {
+                    let raw = ifc_lite_core::scan_placement_bounds(content).rtc_offset();
+                    // scan_placement_bounds reads raw IfcCartesianPoint values
+                    // (FILE units); the detection path is unit-scaled to metres.
+                    rtc_offset = (raw.0 * unit_scale, raw.1 * unit_scale, raw.2 * unit_scale);
                 }
                 let needs_shift = is_large(rtc_offset);
 

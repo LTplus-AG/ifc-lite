@@ -545,6 +545,61 @@ impl VoidContext {
     fn is_noop(&self) -> bool {
         self.openings.is_empty()
     }
+
+    /// Return a copy of this context with every opening (raw + merged)
+    /// translated by `-origin`, i.e. moved from the world frame into the host's
+    /// per-element local frame. Used by [`GeometryRouter::apply_void_context`]
+    /// so the cutters share the host's local frame for the CSG — the missing
+    /// piece that previously made relativizing only the host silently drop cuts.
+    fn relativized_by(&self, origin: [f64; 3]) -> VoidContext {
+        VoidContext {
+            openings: self.openings.iter().map(|o| o.translated(origin)).collect(),
+            merged_openings: self
+                .merged_openings
+                .iter()
+                .map(|o| o.translated(origin))
+                .collect(),
+        }
+    }
+}
+
+/// Translate a cutter mesh's positions by `-origin` in f64 before the f32 store,
+/// moving it into the host's local frame. `origin` is carried on the result as
+/// zero (the mesh is now expressed in the shared local frame).
+fn translate_cutter_mesh(mesh: &Mesh, origin: [f64; 3]) -> Mesh {
+    let mut positions = Vec::with_capacity(mesh.positions.len());
+    for c in mesh.positions.chunks_exact(3) {
+        positions.push((c[0] as f64 - origin[0]) as f32);
+        positions.push((c[1] as f64 - origin[1]) as f32);
+        positions.push((c[2] as f64 - origin[2]) as f32);
+    }
+    Mesh {
+        positions,
+        normals: mesh.normals.clone(),
+        indices: mesh.indices.clone(),
+        rtc_applied: mesh.rtc_applied,
+        origin: [0.0; 3],
+    }
+}
+
+impl OpeningType {
+    /// Return a copy translated by `-origin` (world → host-local frame). Bounds
+    /// (`Point3`) shift; direction vectors and the oriented `OpeningFrame` are
+    /// translation-invariant and pass through unchanged.
+    fn translated(&self, origin: [f64; 3]) -> OpeningType {
+        let sub = |p: &Point3<f64>| Point3::new(p.x - origin[0], p.y - origin[1], p.z - origin[2]);
+        match self {
+            OpeningType::Rectangular(min, max, dir) => {
+                OpeningType::Rectangular(sub(min), sub(max), *dir)
+            }
+            OpeningType::DiagonalRectangular(mesh, frame) => {
+                OpeningType::DiagonalRectangular(translate_cutter_mesh(mesh, origin), *frame)
+            }
+            OpeningType::NonRectangular(mesh, min, max, dir) => {
+                OpeningType::NonRectangular(translate_cutter_mesh(mesh, origin), sub(min), sub(max), *dir)
+            }
+        }
+    }
 }
 
 impl GeometryRouter {
@@ -1004,7 +1059,38 @@ impl GeometryRouter {
     /// [`GeometryRouter::take_csg_failures`]). The router's failure log is
     /// the only path failures reach the caller; `apply_void_context` itself
     /// always returns the (possibly un-cut) mesh.
-    pub(super) fn apply_void_context(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
+    /// Apply a pre-built `VoidContext`, honouring the host's per-element local
+    /// frame.
+    ///
+    /// When local-frame precision is on, the host mesh arrives stored relative
+    /// to `mesh.origin` (small, f32-exact). The CSG must run with host AND
+    /// cutters in that SAME frame, or the cutters (resolved in world coords)
+    /// won't overlap the local host and every cut silently drops — the
+    /// 222692→190201 regression from the first attempt. This wrapper strips the
+    /// origin off the host (so the inner body works in a pure origin-0 local
+    /// frame with no origin-aware-merge surprises), relativizes the cutters by
+    /// the same origin, runs the CSG, then re-stamps the origin on the result so
+    /// `world = origin + position` holds for the renderer.
+    pub(super) fn apply_void_context(
+        &self,
+        mut mesh: Mesh,
+        ctx: &VoidContext,
+        element_id: u32,
+    ) -> Mesh {
+        let origin = mesh.origin;
+        if origin == [0.0, 0.0, 0.0] {
+            // Legacy/world frame: no relativization needed.
+            return self.apply_void_context_inner(mesh, ctx, element_id);
+        }
+        // Work entirely in the host's local frame (origin 0 on every operand).
+        mesh.origin = [0.0, 0.0, 0.0];
+        let local_ctx = ctx.relativized_by(origin);
+        let mut result = self.apply_void_context_inner(mesh, &local_ctx, element_id);
+        result.origin = origin;
+        result
+    }
+
+    fn apply_void_context_inner(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // Capture the input triangle count + bounds so the per-host
         // diagnostic can flag the "cuts attempted but produced no
         // change" case — the silent-no-op signature when an opening

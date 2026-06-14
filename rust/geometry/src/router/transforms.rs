@@ -10,6 +10,20 @@ use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality, Vector2, V
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
+/// Whether per-element local-frame vertex precision is enabled.
+///
+/// When ON, `transform_mesh_world` stores positions relative to a per-element
+/// f64 `origin` (so f32 coords stay element-small and never collapse to
+/// degenerate fans at building/georef scale), and the void CSG runs in that same
+/// local frame. The renderer + WASM + cache must all consume `MeshData.origin`
+/// (world = origin + position) for this to render correctly — so it stays OFF by
+/// default until that whole stack ships, then flips on. `IFC_LITE_LOCAL_FRAME=1`
+/// enables it for native verification meanwhile. Read once and cached.
+pub(crate) fn local_frame_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("IFC_LITE_LOCAL_FRAME").is_ok())
+}
+
 impl GeometryRouter {
     /// Apply local placement transformation to mesh
     pub(super) fn apply_placement(
@@ -764,8 +778,7 @@ impl GeometryRouter {
     /// during raw world-coordinate triangulation are guarded by `rtc_applied`.
     #[inline]
     pub(super) fn transform_mesh_world(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-        // DIAGNOSTIC: temporarily false to isolate the geometry-loss source.
-        self.transform_mesh_world_framed(mesh, transform, false);
+        self.transform_mesh_world_framed(mesh, transform, local_frame_enabled());
     }
 
     /// World placement with an explicit choice of whether to relativize positions

@@ -55,6 +55,11 @@ const PICK_PX = 12;
 const SNAP_PX = 10;
 const BAKE_HEIGHT = 3;
 const EPS = 1e-6;
+// Assumed wall thickness (m) for the Inner/Outer boundary offset when a wall
+// carries no resolvable material-layer thickness — so the net/gross face works
+// on every model, not just ones with full material data. Real layer thickness
+// is used whenever it's available.
+const DEFAULT_WALL_THICKNESS = 0.2;
 
 export function SpaceSketchOverlay() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
@@ -401,7 +406,7 @@ export function SpaceSketchOverlay() {
         coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1];
         coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1];
         const t = wallThicknesses[i];
-        half[i] = t && t > 0 ? t / 2 : 0;
+        half[i] = (t && t > 0 ? t : DEFAULT_WALL_THICKNESS) / 2;
       });
       const name = ifcDataStore.entities.getName(storeyId) || `Storey #${storeyId}`;
       await buildFrom(coords, sources, half, name, storeyId);
@@ -518,7 +523,7 @@ export function SpaceSketchOverlay() {
       segments.forEach((s, i) => {
         coords[i * 4] = s.a[0]; coords[i * 4 + 1] = s.a[1]; coords[i * 4 + 2] = s.b[0]; coords[i * 4 + 3] = s.b[1];
         const t = wallThicknesses[i];
-        half[i] = t && t > 0 ? t / 2 : 0;
+        half[i] = (t && t > 0 ? t : DEFAULT_WALL_THICKNESS) / 2;
       });
       // Throwaway plate per storey (escalation + deterministic free handled by
       // the session module) — this path doesn't touch the live session. Reads
@@ -1226,7 +1231,7 @@ export function SpaceSketchOverlay() {
         drawCursor={drawCursor}
         alignGuides={alignGuides}
         deleteHover={deleteHover}
-        intent={intent}
+        intent={optionsOpen || helpOpen || confirmClose ? null : intent}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

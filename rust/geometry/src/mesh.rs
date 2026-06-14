@@ -426,6 +426,85 @@ impl Mesh {
         self.indices = valid;
     }
 
+    /// Drop triangles that collapsed into degenerate needles when the mesh was
+    /// stored at f32 precision.
+    ///
+    /// At building-scale world coordinates (e.g. ~220 m) an f32 mantissa only
+    /// resolves ~15 µm, so two genuinely-distinct vertices less than one ULP
+    /// apart round to the *same* (or near-same) f32 value. The triangle that
+    /// joined them becomes a zero-area sliver — and when its third vertex is far
+    /// away, a long thin "fan" that visibly spans the model (the gross
+    /// corruption seen on large georeferenced buildings).
+    ///
+    /// These slivers carry effectively no area, so the neighbouring triangles of
+    /// the same face already cover the surface; removing them is visually
+    /// lossless while eliminating the fans. The proper fix (local-frame / tiled
+    /// vertex storage) keeps the vertices distinct in the first place; this is
+    /// the backstop for meshes that still arrive degenerate.
+    ///
+    /// Conservative by design — only drops triangles that are *unambiguously*
+    /// garbage: a bit-identical f32 vertex pair (exact zero area) or an aspect
+    /// ratio (longest edge / shortest edge) above 1e5. Legitimate thin members
+    /// (mullions, braces) sit far below that. Only `indices` change; the vertex
+    /// buffer and per-vertex data are left intact, so the operation is
+    /// deterministic and keeps vertex indices stable.
+    pub fn drop_degenerate_triangles(&mut self) {
+        if self.indices.len() < 3 {
+            return;
+        }
+        const MAX_ASPECT: f64 = 1.0e5;
+        let vertex_count = self.positions.len() / 3;
+        let vert = |i: u32| -> Option<[f64; 3]> {
+            let i = i as usize;
+            if i >= vertex_count {
+                return None;
+            }
+            Some([
+                self.positions[i * 3] as f64,
+                self.positions[i * 3 + 1] as f64,
+                self.positions[i * 3 + 2] as f64,
+            ])
+        };
+        let bits = |i: u32| -> [u32; 3] {
+            let i = i as usize;
+            [
+                self.positions[i * 3].to_bits(),
+                self.positions[i * 3 + 1].to_bits(),
+                self.positions[i * 3 + 2].to_bits(),
+            ]
+        };
+        let dist = |a: [f64; 3], b: [f64; 3]| -> f64 {
+            ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+        };
+
+        let mut kept = Vec::with_capacity(self.indices.len());
+        for tri in self.indices.chunks_exact(3) {
+            let (ia, ib, ic) = (tri[0], tri[1], tri[2]);
+            // Bit-identical f32 vertex pair → exact zero-area collapse.
+            let (ba, bb, bc) = (bits(ia), bits(ib), bits(ic));
+            if ba == bb || bb == bc || ba == bc {
+                continue;
+            }
+            let (va, vb, vc) = match (vert(ia), vert(ib), vert(ic)) {
+                (Some(a), Some(b), Some(c)) => (a, b, c),
+                _ => continue, // out-of-range index: drop (matches validate_indices)
+            };
+            let e0 = dist(va, vb);
+            let e1 = dist(vb, vc);
+            let e2 = dist(vc, va);
+            let min_edge = e0.min(e1).min(e2);
+            let max_edge = e0.max(e1).max(e2);
+            // Catastrophic needle: a sliver whose longest edge dwarfs its
+            // shortest by >1e5. min_edge==0 is already handled by the bit check
+            // above, so a finite ratio here means near-but-not-identical f32.
+            if min_edge > 0.0 && max_edge / min_edge > MAX_ASPECT {
+                continue;
+            }
+            kept.extend_from_slice(tri);
+        }
+        self.indices = kept;
+    }
+
     /// Check if mesh is empty
     #[inline]
     pub fn is_empty(&self) -> bool {

@@ -491,13 +491,20 @@ fn produce_type_geometry(
 /// step — geometry hashing happens before this (native IFC frame).
 fn build_mesh_data(
     job: &ElementMeshJob<'_>,
-    mesh: Mesh,
+    mut mesh: Mesh,
     color: [f32; 4],
     material_name: Option<String>,
     geometry_item_id: Option<u32>,
     geometry_class: u8,
     ctx: &MeshProductionContext<'_>,
 ) -> MeshData {
+    // Backstop for f32 vertex-storage collapse: at building-scale world
+    // coordinates an f32 mantissa can't separate sub-15µm-apart vertices, so
+    // triangles collapse into zero-area / long-thin "fan" slivers that visibly
+    // span large georeferenced models. Drop the unambiguously-degenerate ones
+    // here — the single funnel for every element MeshData. (Proper fix is
+    // local-frame / tiled vertex storage; this keeps the viewer clean meanwhile.)
+    mesh.drop_degenerate_triangles();
     let mut mesh_data = MeshData::new(
         job.id,
         job.ifc_type.name().to_string(),

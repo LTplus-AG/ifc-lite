@@ -47,12 +47,24 @@ describe('snapPoint', () => {
     assert.strictEqual(r.kind, 'none');
   });
 
-  it('still snaps to a corner that lies along the ortho line', () => {
-    // Ortho locks [4,0.1] → [4,0]; a vertex near that ortho point still snaps,
-    // so straight runs land cleanly on aligned corners.
-    const r = snapPoint([4, 0.1], { vertices: [[4.05, 0.02]], tol: 0.3, ortho: true, anchor: [0, 0] });
-    assert.deepStrictEqual(r.pt, [4.05, 0.02]);
+  it('ortho DOMINATES snap — snapping moves ALONG the line, never off it', () => {
+    // Ortho locks [4,0.1] → the horizontal line y=0. A vertex at [4.05, 0.4] is
+    // far OFF the line but its X is near → the result aligns X to 4.05 yet stays
+    // on the line (y=0). The old behaviour jumped to the vertex and broke ortho.
+    const r = snapPoint([4, 0.1], { vertices: [[4.05, 0.4]], tol: 0.3, ortho: true, anchor: [0, 0] });
+    assert.deepStrictEqual(r.pt, [4.05, 0], 'X aligned to the corner, Y still on the ortho line');
     assert.strictEqual(r.kind, 'vertex');
+  });
+
+  it('ortho snaps the free coord to where a wall crosses the ortho line', () => {
+    // Horizontal ortho line y=0 through the anchor; a diagonal wall [2,-1]→[4,1]
+    // crosses it at (3,0) (endpoints out of range) → the point snaps along the
+    // line to that crossing.
+    const r = snapPoint([3.1, 0.05], {
+      segments: [[[2, -1], [4, 1]]], tol: 0.3, ortho: true, anchor: [0, 0],
+    });
+    assert.deepStrictEqual(r.pt, [3, 0]);
+    assert.strictEqual(r.kind, 'line');
   });
 });
 

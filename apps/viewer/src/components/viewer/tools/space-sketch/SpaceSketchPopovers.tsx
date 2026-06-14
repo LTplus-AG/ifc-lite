@@ -14,7 +14,7 @@ export interface OptionsPopoverProps {
   hasWallData: boolean;
   snapDelta: { from: number; to: number } | null;
   usedTol: number;
-  /** Corner-tolerance controls are disabled until a storey is derived. */
+  /** The weld-tolerance control is disabled until a storey is derived. */
   snapDisabled: boolean;
   onSnap: (tol: number | null) => void;
   snapTol: number | null;
@@ -47,7 +47,7 @@ export function OptionsPopover(props: OptionsPopoverProps) {
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <span className="font-medium text-foreground">Corner tolerance</span>
+          <span className="font-medium text-foreground" title="How close two wall-rectangle corners must be to be welded into one when deriving rooms">Weld tolerance</span>
           {snapDelta && (
             <span className={`tabular-nums ${snapDelta.to === 0 ? 'text-red-500' : snapDelta.to < snapDelta.from ? 'text-amber-500' : 'text-emerald-500'}`}
               title="Rooms before → after">{snapDelta.from} → {snapDelta.to}</span>
@@ -56,13 +56,13 @@ export function OptionsPopover(props: OptionsPopoverProps) {
         <div className="flex items-center gap-1.5">
           <input type="range" min={0.05} max={1} step={0.05} value={usedTol} className="flex-1 accent-primary"
             disabled={snapDisabled} onChange={(e) => onSnap(Number(e.target.value))} />
-          <input type="number" min={0.05} max={1} step={0.05} value={usedTol} aria-label="Corner tolerance (metres)"
+          <input type="number" min={0.05} max={1} step={0.05} value={usedTol} aria-label="Weld tolerance (metres)"
             className="w-12 rounded border bg-background px-1 py-0.5 tabular-nums disabled:opacity-40"
             disabled={snapDisabled}
             onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) onSnap(Math.min(1, Math.max(0.05, v))); }} />
           <button className="rounded px-1 hover:text-foreground disabled:opacity-40" onClick={() => onSnap(null)}
             disabled={snapDisabled}
-            title={snapTol == null ? 'Automatic — escalates until rooms close' : 'Reset to automatic'}>{snapTol == null ? 'auto' : 'reset'}</button>
+            title={snapTol == null ? 'Default (5 cm)' : 'Reset to the 5 cm default'}>{snapTol == null ? 'auto' : 'reset'}</button>
         </div>
       </div>
       <label className="flex cursor-pointer items-center justify-between">

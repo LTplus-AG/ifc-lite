@@ -12,9 +12,10 @@
  * Both work in the room (model-metre) frame, the same frame the underlay lines
  * and room outlines already live in.
  *
- * Ortho (Shift) is applied first, relative to `anchor`, so straight runs still
- * land on corners/walls; an in-range snap then overrides the ortho point (snap
- * beats straightness, matching the drag behaviour the editor already had).
+ * Ortho (Shift) DOMINATES snap: when `ortho` is set the point is locked to the
+ * horizontal/vertical line through `anchor` and snapping only moves it ALONG that
+ * line (to a corner's aligned coordinate, or where the line crosses a wall) — it
+ * can never break the straight constraint. Without Shift, snap is free in 2D.
  */
 
 export type Pt = [number, number];
@@ -37,14 +38,6 @@ export interface SnapOptions {
 export interface SnapResult {
   pt: Pt;
   kind: SnapKind;
-}
-
-/** Constrain `p` to a horizontal or vertical line through `anchor`, whichever
- *  axis the cursor has moved further along. */
-function applyOrtho(p: Pt, anchor: Pt): Pt {
-  const dx = Math.abs(p[0] - anchor[0]);
-  const dy = Math.abs(p[1] - anchor[1]);
-  return dx >= dy ? [p[0], anchor[1]] : [anchor[0], p[1]];
 }
 
 /** Closest point on segment a→b to p (clamped to the segment). */
@@ -85,9 +78,53 @@ export function alignToAxes(p: Pt, refs: ReadonlyArray<Pt>, tol: number): AlignR
   return { pt: [x, y], vRef, hRef };
 }
 
+/**
+ * Snap ALONG the ortho line through `anchor` (Shift held): the point stays on the
+ * horizontal/vertical line, and only the free coordinate is snapped — to a nearby
+ * corner's aligned coordinate (so the new node lines up with an existing one) or
+ * to where the ortho line crosses a wall. Never breaks the straight constraint.
+ */
+function snapAlongOrtho(
+  p: Pt,
+  anchor: Pt,
+  vertices: ReadonlyArray<Pt>,
+  segments: ReadonlyArray<readonly [Pt, Pt]>,
+  tol: number,
+): SnapResult {
+  const horizontal = Math.abs(p[0] - anchor[0]) >= Math.abs(p[1] - anchor[1]);
+  const free = horizontal ? 0 : 1; // coordinate that varies along the line
+  const fixed = horizontal ? 1 : 0; // coordinate pinned to the anchor
+  const fixedVal = anchor[fixed];
+  const target = p[free];
+  let best = target, bestD = tol;
+  let kind: SnapKind = 'none';
+  // (a) align the free coord with a nearby corner (room vertex or wall endpoint).
+  const alignTo = (q: Pt) => {
+    const d = Math.abs(q[free] - target);
+    if (d < bestD) { bestD = d; best = q[free]; kind = 'vertex'; }
+  };
+  for (const q of vertices) alignTo(q);
+  for (const seg of segments) { alignTo(seg[0]); alignTo(seg[1]); }
+  // (b) where the ortho line (fixed = fixedVal) crosses a wall segment.
+  for (const seg of segments) {
+    const fa = seg[0][fixed], fb = seg[1][fixed];
+    const denom = fb - fa;
+    if (Math.abs(denom) < 1e-9 || (fa - fixedVal) * (fb - fixedVal) > 0) continue; // parallel / no crossing
+    const t = (fixedVal - fa) / denom;
+    if (t < 0 || t > 1) continue;
+    const cross = seg[0][free] + t * (seg[1][free] - seg[0][free]);
+    const d = Math.abs(cross - target);
+    if (d < bestD) { bestD = d; best = cross; kind = 'line'; }
+  }
+  const pt: Pt = horizontal ? [best, fixedVal] : [fixedVal, best];
+  return { pt, kind };
+}
+
 export function snapPoint(p: Pt, opts: SnapOptions): SnapResult {
   const { vertices = [], segments = [], tol, ortho = false, anchor = null } = opts;
-  const base: Pt = ortho && anchor ? applyOrtho(p, anchor) : [p[0], p[1]];
+  // Shift held → ortho dominates: snap only along the straight line.
+  if (ortho && anchor) return snapAlongOrtho(p, anchor, vertices, segments, tol);
+  const base: Pt = [p[0], p[1]];
 
   // 1. Corner snap — room vertices + segment endpoints. Scalar trackers (not a
   // `Pt | null`) so TS control-flow doesn't narrow the accumulator to `never`.

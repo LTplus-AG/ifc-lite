@@ -7,13 +7,15 @@
  * `SpacePlateHandle` topology editor (rust/geometry `space_dcel`).
  *
  * Self-contained: owns its own wasm handle + local state (no shared slice).
- * Seed from the active storey's walls (or a demo plate), drag a shared vertex
- * (both rooms follow), split a room — between corners OR new nodes added
- * anywhere on a wall — merge two rooms, then Bake to real `IfcSpace` through
- * the viewer's existing `addSpace`.
+ * Rooms are derived from the active storey's RENDERED wall meshes (min-area
+ * footprint rectangles → gap detection → lifted onto the wall axis), then the
+ * user can drag a shared vertex (both rooms follow), split a room — between
+ * corners OR new nodes added anywhere on a wall — merge two rooms, then Bake to
+ * real `IfcSpace` through the viewer's existing `addSpace`.
  *
- * Fluency (RFC §4.2): hover telegraphs the op; dragging snaps to other
- * vertices (Shift = ortho). Undo/redo snapshots the plate via `duplicate()`
+ * Fluency (RFC §4.2): hover telegraphs the op; drawing/dragging/cutting snap to
+ * other vertices + walls, with Shift = ortho (which dominates snap). Undo/redo
+ * snapshots the plate via `duplicate()`
  * (each clone owns its heap, freed deterministically — never JS GC). 2D plan
  * sketch; 3D-on-model registration is the next step.
  */
@@ -56,6 +58,12 @@ const PICK_PX = 12;
 const SNAP_PX = 10;
 const BAKE_HEIGHT = 3;
 const EPS = 1e-6;
+
+/** Lock `p` to a horizontal or vertical line through `anchor` (Shift-ortho),
+ *  whichever axis the cursor moved further along. Used for straight cut lines. */
+function orthoLock(anchor: Pt, p: Pt): Pt {
+  return Math.abs(p[0] - anchor[0]) >= Math.abs(p[1] - anchor[1]) ? [p[0], anchor[1]] : [anchor[0], p[1]];
+}
 
 export function SpaceSketchOverlay() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
@@ -765,7 +773,10 @@ export function SpaceSketchOverlay() {
       const anchor = drawPts[drawPts.length - 1];
       const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: m.shift, anchor });
       let pt = snap.pt;
-      if (snap.kind === 'none') {
+      // Axis-align to the drawn corners only when NOT holding Shift — under Shift
+      // the ortho constraint is authoritative and alignToAxes (which snaps X and Y
+      // independently) would pull the point off the straight line.
+      if (snap.kind === 'none' && !m.shift) {
         const al = alignToAxes(snap.pt, drawPts, tol);
         pt = al.pt; setSnapKind('none'); setAlignGuides({ vRef: al.vRef, hRef: al.hRef });
       } else {
@@ -780,10 +791,14 @@ export function SpaceSketchOverlay() {
     // Cutting: preview the second point. Track the cursor (snapped target or raw)
     // so the rubber band follows even over empty space.
     if (splitPick) {
-      const t = resolveSplitTarget(wx, wy);
-      setSplitHover(t ? t.pos : [wx, wy]);
+      // Shift = straight cut: lock the second point ortho from the first, then
+      // resolve onto a wall/corner along that line (so a rectangular room cuts
+      // cleanly perpendicular). Shift dominates — snap can't bend the cut.
+      const cur: Pt = m.shift ? orthoLock(splitPick.pos, [wx, wy]) : [wx, wy];
+      const t = resolveSplitTarget(cur[0], cur[1]);
+      setSplitHover(t ? t.pos : cur);
       setHover(t && t.kind === 'vertex' ? { kind: 'vertex', pos: t.pos } : null);
-      setIntent({ text: t ? 'Finish cut here' : 'Click a wall or corner to cut', tone: 'cut' });
+      setIntent({ text: t ? (m.shift ? 'Finish cut (straight)' : 'Finish cut here') : 'Click a wall or corner to cut', tone: 'cut' });
       return;
     }
 
@@ -957,7 +972,8 @@ export function SpaceSketchOverlay() {
     if (drawPts.length > 0) {
       const anchor = drawPts[drawPts.length - 1];
       const snap = snapPoint([wx, wy], { vertices: uniqueVerts(rooms), segments: buildingSegmentsRef.current, tol, ortho: e.shiftKey, anchor });
-      const p = snap.kind === 'none' ? alignToAxes(snap.pt, drawPts, tol).pt : snap.pt;
+      // Under Shift the ortho point is authoritative; only axis-align when free.
+      const p = snap.kind === 'none' && !e.shiftKey ? alignToAxes(snap.pt, drawPts, tol).pt : snap.pt;
       setAlignGuides({ vRef: null, hRef: null });
       if (drawPts.length >= 3) {
         const first = drawPts[0];
@@ -969,9 +985,11 @@ export function SpaceSketchOverlay() {
       return;
     }
 
-    // 2. Cutting in progress → place the second cut point and split.
+    // 2. Cutting in progress → place the second cut point and split (Shift =
+    // straight cut, ortho from the first point).
     if (splitPick) {
-      const target = resolveSplitTarget(wx, wy);
+      const cur: Pt = e.shiftKey ? orthoLock(splitPick.pos, [wx, wy]) : [wx, wy];
+      const target = resolveSplitTarget(cur[0], cur[1]);
       if (!target) { setStatus('Click another wall (or corner) on the same room to finish the cut.'); return; }
       const first = splitPick;
       setSplitPick(null); setSplitHover(null);

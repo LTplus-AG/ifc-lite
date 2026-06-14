@@ -12,11 +12,8 @@ removal and engine-computed wall-boundary outlines:
   redundant collinear nodes); returns how many elements were pruned. Build also
   auto-prunes so derived plates start as just their rooms.
 - `netOutline(face, inset)` — the room outline offset to the net (inner) or
-  gross (outer) wall face. Every edge is offset by the room's **median** wall
-  half-thickness (one representative thickness keeps the ring symmetric on models
-  that mix 0.20 m partitions with 0.34 m load-bearing walls, instead of jutting
-  out on the fat edge), with topology-aware shared-edge pinning and no fuzzy
-  edge↔wall matching.
+  gross (outer) wall face, using each edge's own wall half-thickness with
+  topology-aware shared-edge pinning (no fuzzy edge↔wall matching).
 
 The constructor now takes an additional `segHalfThickness: Float64Array`
 (per-segment half-thickness in metres, carried onto the derived edges for

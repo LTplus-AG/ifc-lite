@@ -72,10 +72,9 @@ export interface WallExtractionResult {
   contributingWallIds: number[];
   /**
    * Per-segment wall thickness in metres (parallel to `segments` /
-   * `contributingWallIds`). Resolved from the wall's `IfcMaterialLayerSet` total
-   * when present, otherwise derived from the body geometry (the footprint's
-   * extent perpendicular to its length axis); `undefined` only when neither is
-   * readable. Used to inset the centreline footprint to a net (inner-face) area.
+   * `contributingWallIds`), from the wall's material layer set; `undefined`
+   * when the wall carries no resolvable layer thickness. Used to inset the
+   * centreline footprint to a net (inner-face) area.
    */
   wallThicknesses: (number | undefined)[];
   /** Walls dropped by the extractor, with the reason. */
@@ -173,11 +172,7 @@ export function extractWallSegmentsForStorey(
     if (result.segment) {
       segments.push(scaleSegment(result.segment, lengthUnitScale));
       contributing.push(id);
-      // Material layer-set total (already metres) is canonical; otherwise fall
-      // back to the geometric thickness from the body footprint (raw → metres).
-      const material = wallThicknessFromMaterial(store, id);
-      const geometry = result.thicknessRaw !== undefined ? result.thicknessRaw * lengthUnitScale : undefined;
-      wallThicknesses.push(material ?? geometry);
+      wallThicknesses.push(wallThicknessFromMaterial(store, id));
     } else {
       skipped.push({ wallId: id, reason: result.reason ?? 'no-axis-or-rect-profile' });
     }
@@ -194,9 +189,7 @@ export function extractWallSegmentsForStorey(
         // metre coords — don't double-scale.
         segments.push(result.segment);
         contributing.push(ent.expressId);
-        // No material on overlay walls; the body footprint already gives the
-        // authored thickness (in metres, so no scaling).
-        wallThicknesses.push(result.thicknessRaw);
+        wallThicknesses.push(undefined); // overlay walls carry no material yet
       } else {
         skipped.push({ wallId: ent.expressId, reason: result.reason ?? 'no-axis-or-rect-profile' });
       }
@@ -398,11 +391,6 @@ function buildRelatingChildrenIndex(
 interface ExtractAttempt {
   segment: Segment | null;
   reason?: WallSkipReason;
-  /** Wall thickness derived from the body footprint, in the SAME units as the
-   *  returned segment (raw/native for source walls, metres for overlay walls).
-   *  `undefined` when no body footprint is readable. The caller prefers the
-   *  material-layer total and uses this as the geometric fallback. */
-  thicknessRaw?: number;
 }
 
 function extractWallAxisFromSource(
@@ -464,13 +452,6 @@ function computeWallSegment(
     return { segment: null, reason: 'placement-not-resolvable' };
   }
 
-  // Body footprint (local frame, segment units) — reused for the centreline
-  // fallback (Strategy 3) AND as the geometric thickness source: a wall body is
-  // a long thin rectangle, so its extent perpendicular to the principal (length)
-  // axis is the wall thickness. Gathered once here so any strategy can report it.
-  const footprint = gatherBodyFootprintPoints(store, extractor, overlay, representationId);
-  const thicknessRaw = footprint && footprint.length >= 3 ? footprintThickness(footprint) : undefined;
-
   // Strategy 1 — Axis representation (start, end of polyline). Walks
   // the wall's `Axis` representation and reads its first item if it's
   // a 2-vertex IfcPolyline. This matches the standard authoring-tool
@@ -479,7 +460,7 @@ function computeWallSegment(
   if (axisEndpoints) {
     const start = applyFrame(frame, axisEndpoints[0]);
     const end = applyFrame(frame, axisEndpoints[1]);
-    return { ...finaliseSegment(start, end, wallId, log, 'axis-rep'), thicknessRaw };
+    return finaliseSegment(start, end, wallId, log, 'axis-rep');
   }
 
   // Strategy 2 — addWallToStore convention. Origin = Start, length =
@@ -491,7 +472,7 @@ function computeWallSegment(
       frame.origin[0] + frame.axisX[0] * length,
       frame.origin[1] + frame.axisX[1] * length,
     ];
-    return { ...finaliseSegment(start, end, wallId, log, 'rect-profile'), thicknessRaw };
+    return finaliseSegment(start, end, wallId, log, 'rect-profile');
   }
 
   // Strategy 3 — body-footprint centreline. For walls with only a meshed
@@ -500,12 +481,13 @@ function computeWallSegment(
   // local vertical Z) and take the principal axis of that footprint as the
   // wall centreline. Covers tessellated exports that the two shape-specific
   // strategies miss.
+  const footprint = gatherBodyFootprintPoints(store, extractor, overlay, representationId);
   if (footprint && footprint.length >= 3) {
     const centreline = principalAxisCentreline(footprint);
     if (centreline) {
       const start = applyFrame(frame, centreline[0]);
       const end = applyFrame(frame, centreline[1]);
-      return { ...finaliseSegment(start, end, wallId, log, 'body-footprint'), thicknessRaw };
+      return finaliseSegment(start, end, wallId, log, 'body-footprint');
     }
   }
 
@@ -733,46 +715,6 @@ function principalAxisCentreline(points: Vec2[]): [Vec2, Vec2] | null {
   }
   if (tmax - tmin < AXIS_EPS) return null;
   return [[cx + ex * tmin, cy + ey * tmin], [cx + ex * tmax, cy + ey * tmax]];
-}
-
-/**
- * Wall thickness (same units as `points`) from its plan footprint: the extent of
- * the footprint along the axis PERPENDICULAR to its principal (length) axis. A
- * wall body is a long thin rectangle, so the principal axis is the length and the
- * minor-axis extent is the thickness — the geometric, schema-agnostic source used
- * when no `IfcMaterialLayerSet` is present. Returns `undefined` if it collapses.
- */
-export function footprintThickness(points: Vec2[]): number | undefined {
-  const n = points.length;
-  if (n < 3) return undefined;
-  let cx = 0, cy = 0;
-  for (const [x, y] of points) { cx += x; cy += y; }
-  cx /= n; cy /= n;
-
-  let sxx = 0, sxy = 0, syy = 0;
-  for (const [x, y] of points) {
-    const dx = x - cx, dy = y - cy;
-    sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
-  }
-  const tr = sxx + syy;
-  const disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - (sxx * syy - sxy * sxy)));
-  const lambda = tr / 2 + disc; // largest eigenvalue → principal (length) axis
-  let ex = sxy, ey = lambda - sxx;
-  if (Math.hypot(ex, ey) < 1e-12) { ex = lambda - syy; ey = sxy; }
-  const elen = Math.hypot(ex, ey);
-  if (elen < 1e-12) return undefined;
-  ex /= elen; ey /= elen;
-
-  // Project onto the perpendicular (minor) axis; its extent is the thickness.
-  const px = -ey, py = ex;
-  let tmin = Infinity, tmax = -Infinity;
-  for (const [x, y] of points) {
-    const t = (x - cx) * px + (y - cy) * py;
-    if (t < tmin) tmin = t;
-    if (t > tmax) tmax = t;
-  }
-  const thickness = tmax - tmin;
-  return thickness > AXIS_EPS ? thickness : undefined;
 }
 
 function finaliseSegment(start: Vec2, end: Vec2, wallId: number, log: Logger, source: string): ExtractAttempt {

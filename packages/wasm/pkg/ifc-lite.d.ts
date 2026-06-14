@@ -539,14 +539,12 @@ export class SpacePlateHandle {
    */
   mergeFaces(edge: number): any;
   /**
-   * The face outline offset to a wall boundary, as flat `[x0, y0, …]`: every
-   * edge is moved by the room's median wall half-thickness — inward when
-   * `inset` (the net / inner face), outward otherwise (the gross / outer
-   * face). One representative thickness per room keeps the ring symmetric on
-   * models that mix wall thicknesses. Shared room↔room edges are pinned when
-   * pushing outward. Falls back to the centreline outline when no offset
-   * applies — so it's always a sane ring. (For a `center` boundary just use
-   * `faceOutline`.)
+   * The face outline offset to a wall boundary, as flat `[x0, y0, …]`: each
+   * edge is moved by its own wall's half-thickness — inward when `inset`
+   * (the net / inner face), outward otherwise (the gross / outer face).
+   * Shared room↔room edges are pinned when pushing outward. Falls back to the
+   * centreline outline when no offset applies — so it's always a sane ring.
+   * (For a `center` boundary just use `faceOutline`.)
    */
   netOutline(face: number, inset: boolean): Float64Array;
   /**

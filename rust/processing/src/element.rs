@@ -193,6 +193,15 @@ pub fn produce_element_meshes(
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
 ) -> ProducedElementMeshes {
+    // Open a per-element CSG escalation scope (#1109). Every boolean this element
+    // issues (one per opening, plus clip cuts) accumulates into ONE deterministic
+    // budget, so a boolean-heavy element (a slab cut by 24+ openings, a Tekla
+    // member with stacked half-space clips) degrades as a UNIT — its remaining
+    // cuts bail to the #635 AABB fallback — instead of grinding the geometry
+    // stream past the 95% watchdog. The per-boolean cap alone could not see this
+    // distributed cost. Unbounded under the server/offline-export profile.
+    ifc_lite_geometry::kernel::budget::begin_element();
+
     let mut hasher = match (&job.kind, opts.geometry_hash) {
         (ElementJobKind::Product, Some(cfg)) => {
             Some(GeometryHasher::new(cfg.tolerance, cfg.world_rtc))

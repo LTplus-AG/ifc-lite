@@ -446,6 +446,10 @@ pub fn triangulate_points(input: &RetriInput, interner: &mut Interner) -> Option
     let mut ordered: Vec<Vid> = pts.into_iter().collect();
     ordered.sort_by(|&a, &b| lex_cmp(interner, a, b));
     for p in ordered {
+        // #1109 overshoot guard — see `triangulate`.
+        if super::budget::tripped() {
+            break;
+        }
         insert_point(&mut mesh, interner, p);
     }
     Some(mesh)
@@ -851,6 +855,17 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
     let mut ordered: Vec<Vid> = pts.into_iter().collect();
     ordered.sort_by(|&a, &b| lex_cmp(interner, a, b));
     for p in ordered {
+        // #1109 overshoot guard: a heavily-fragmented host face (a slab cut by
+        // 24+ openings) inserts thousands of constraint points here, each
+        // running exact orient2d in `insert_point`. The per-triangle
+        // `tripped()` check in `retriangulate_each` only fires BETWEEN
+        // triangles, so without this one `triangulate` call ran ~1.7M
+        // escalations (3.3× a 500k cap) — seconds of work — before bailing.
+        // Stop mid-insertion: the caller discards the partial arrangement once
+        // `tripped()`, so the incomplete triangulation is never emitted.
+        if super::budget::tripped() {
+            break;
+        }
         insert_point(&mut mesh, interner, p);
     }
     // Enforce to a FIXED POINT: recovering one constraint deletes the channel
@@ -866,8 +881,17 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
     // of exact predicates ⇒ deterministic, byte-identical native==wasm.
     let mut converged = false;
     for _pass in 0..4 {
+        // #1109 overshoot guard: constraint recovery runs exact predicates per
+        // sub-segment; a slab face with thousands of seam segments is the other
+        // heavy escalation site between per-triangle `tripped()` checks.
+        if super::budget::tripped() {
+            break;
+        }
         let before = mesh.tris.clone();
         for &(s, t) in &canon.segments {
+            if super::budget::tripped() {
+                break;
+            }
             enforce_constraint(&mut mesh, interner, s, t);
         }
         if mesh.tris == before {

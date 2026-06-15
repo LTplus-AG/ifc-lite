@@ -63,6 +63,14 @@ pub struct Arrangement {
     pub coplanar_a: Vec<bool>,
     /// Per-sub-triangle (parallel to `tris_b`) coplanar-parent flag.
     pub coplanar_b: Vec<bool>,
+    /// Lazy per-Vid materialized f64 point cache. Classification
+    /// (`centroid`/`tri_normal` per sub-triangle) and the final output map all
+    /// call `to_f64_pt` on the SAME heavily-shared conforming vertices many times;
+    /// materialising the interned point (fixed-width lambda, or the BigRational
+    /// fallback) is not free, so each Vid is computed once and reused. The cached
+    /// value equals a fresh computation exactly, so the boolean output is
+    /// unchanged. Indexed by `Vid`; `None` = not yet materialised.
+    f64_cache: std::cell::RefCell<Vec<Option<[f64; 3]>>>,
 }
 
 /// A raw intersection segment on a triangle, tagged with the cutter triangle that
@@ -195,7 +203,16 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
         retriangulate_each(a, &ca, &pt_a, &cop_parent_a, &mut interner, &mut unrecovered);
     let (tris_b, coplanar_b) =
         retriangulate_each(b, &cb, &pt_b, &cop_parent_b, &mut interner, &mut unrecovered);
-    Arrangement { interner, tris_a, tris_b, coplanar_a, coplanar_b, unrecovered }
+    let n_pts = interner.len();
+    Arrangement {
+        interner,
+        tris_a,
+        tris_b,
+        coplanar_a,
+        coplanar_b,
+        unrecovered,
+        f64_cache: std::cell::RefCell::new(vec![None; n_pts]),
+    }
 }
 
 /// The conforming arrangement of `n` operand meshes over one shared interner.
@@ -538,14 +555,25 @@ fn point_inside_bvh(
 }
 
 fn to_f64_pt(arr: &Arrangement, v: Vid) -> [f64; 3] {
+    let idx = v as usize;
+    if let Some(slot) = arr.f64_cache.borrow().get(idx).copied() {
+        if let Some(p) = slot {
+            return p;
+        }
+    }
     let pt = arr.interner.get(v);
     // Fast path: materialize via the fixed-width lambda. Falls back to the exact
     // BigRational `point_of` only for off-grid/overflow points (rare).
-    if let Some(f) = super::fixed::point_to_f64(pt) {
-        return f;
+    let p = if let Some(f) = super::fixed::point_to_f64(pt) {
+        f
+    } else {
+        let q = point_of(pt);
+        [q[0].to_f64().unwrap(), q[1].to_f64().unwrap(), q[2].to_f64().unwrap()]
+    };
+    if let Some(slot) = arr.f64_cache.borrow_mut().get_mut(idx) {
+        *slot = Some(p);
     }
-    let p = point_of(pt);
-    [p[0].to_f64().unwrap(), p[1].to_f64().unwrap(), p[2].to_f64().unwrap()]
+    p
 }
 
 fn sub_f64(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {

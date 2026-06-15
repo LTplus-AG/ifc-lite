@@ -1235,20 +1235,43 @@ impl ClippingProcessor {
     /// cuts, only ~100-3000× cheaper. Set `IFC_LITE_DISABLE_PLANAR_CLIP=1`
     /// (native) to force the exact kernel everywhere.
     pub fn subtract_one(&self, host: &Mesh, cutter: &Mesh) -> Result<Mesh> {
-        if !planar_clip_disabled() {
-            if let Some(clipped) = self.try_planar_clip(host, cutter)? {
+        if !planar_clip_disabled() && !PLANAR_TL_DISABLE.with(|c| c.get()) && !planar_gave_up() {
+            if let Some(mut clipped) = self.try_planar_clip(host, cutter)? {
+                // Verify the mesh AS IT WILL SHIP: the downstream hygiene chokepoint
+                // (element.rs) drops degenerate triangles, and an earcut cap over a
+                // non-convex cross-section (I-beam/channel flanges with collinear
+                // boundary points) can emit zero-area slivers whose removal orphans
+                // an interior edge — a crack invisible on the pre-hygiene mesh. Drop
+                // them here first so the watertightness gate below sees the real,
+                // shipped state and defers a cap that would crack.
+                clipped.drop_degenerate_triangles();
                 // Safety gate: fire ONLY when the cap produced a provably watertight
-                // solid (no open boundary edges on the 1 mm grid). This is the one
-                // jitter-robust signal: on degenerate input — coincident faces, or
-                // the f32 vertex jitter of a georeferenced model whose coordinates
-                // are baked into the geometry (not the placement, so neither the
-                // per-element nor the batch RTC path can relocalize it) — the cap
-                // cannot close cleanly, so the clip defers to the exact kernel
-                // rather than ship a non-watertight (and volume-wrong) solid. The
-                // exact kernel degrades identically on such input, so deferring is
-                // never worse; on well-localized geometry the cap is watertight and
-                // the fast path fires.
-                if count_open_boundary_edges(&clipped) == 0 {
+                // solid. The quantum is proportional to the host's own extent so the
+                // check is correct in ANY length unit — a fixed 1 mm grid reads a
+                // metre-scale Tekla model stored in millimetres as riddled with
+                // false cracks (its f32 ULP there is ~µm, far below 1 mm) and would
+                // wrongly accept genuinely-open caps. On degenerate input —
+                // coincident faces, a mis-detected cutter, or f32 jitter — the cap
+                // cannot close to within this scale-relative grid, so the clip
+                // defers to the exact kernel rather than ship a non-watertight (and
+                // volume-wrong) solid. The exact kernel degrades identically on such
+                // input, so deferring is never worse.
+                let quantum = mesh_extent(host) * 1.0e-4;
+                let vh = mesh_signed_volume(host);
+                let vc = mesh_signed_volume(&clipped);
+                // Two gates together make the fast path a pure optimization:
+                //  (1) WATERTIGHT at the host's scale (no open boundary edges), and
+                //  (2) VOLUME-CONSERVING — a clip only ever removes material, so the
+                //      result must keep the host's orientation and have magnitude no
+                //      greater than the host. A cap that mis-triangulates a non-convex
+                //      cross-section (I-beams, channels, angles — most steel) self-
+                //      intersects and inflates the volume many-fold; the open-edge
+                //      count alone misses it because the outline still cancels, but
+                //      the volume bound catches it. Either gate failing ⇒ defer.
+                let watertight = open_boundary_edges_at(&clipped, quantum) == 0;
+                let vol_ok = vc.signum() == vh.signum() && vc.abs() <= vh.abs() * 1.001;
+                if watertight && vol_ok {
+                    PLANAR_TL_FIRED.with(|c| c.set(c.get() + 1));
                     return Ok(clipped);
                 }
             }
@@ -1684,19 +1707,21 @@ impl ClippingProcessor {
             .sqrt();
         let tol = (diag * 1.0e-6).max(1.0e-9);
 
-        // Precision regime: f32 vertices are only trustworthy below the codebase's
-        // large-coordinate threshold (10 km — `ModelBounds::has_large_coordinates`).
-        // Above it the ULP grows past a millimetre, so the straddle/convexity
-        // classification and the cap's watertightness become unverifiable; defer
-        // the whole element to the exact kernel (which degrades identically on such
-        // un-localized georeferenced geometry, so this is never worse). Localized
-        // models — the production rebases placement-based georef to a local origin —
-        // fall well under the threshold and take the fast path.
+        // Precision regime (UNIT-INDEPENDENT): defer when the host sits so far from
+        // the coordinate origin that f32 ULP at its vertices approaches the cut
+        // feature scale. ULP(max) / diag = (max/diag) * 2^-23, so at ~800 host-
+        // diagonals of offset the ULP reaches ~1e-4 of the host extent — the grid
+        // the watertightness gate uses below — and beyond that the straddle /
+        // convexity classification and the cap's closure become unverifiable. This
+        // compares the offset to the host's OWN size rather than an absolute metre
+        // threshold, so it is correct whether the mesh is in mm (Tekla), m, or ft.
+        // Above the bound, defer to the exact kernel (which degrades identically on
+        // such un-localized geometry, so deferring is never worse).
         let max_mag = lo
             .iter()
             .chain(hi.iter())
             .fold(0.0f64, |m, &c| m.max(c.abs()));
-        if max_mag > 10_000.0 {
+        if diag > 0.0 && max_mag > diag * 800.0 {
             return Ok(None);
         }
 
@@ -1774,6 +1799,139 @@ impl ClippingProcessor {
 fn planar_clip_disabled() -> bool {
     static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *DISABLED.get_or_init(|| std::env::var("IFC_LITE_DISABLE_PLANAR_CLIP").is_ok())
+}
+
+thread_local! {
+    /// Per-thread override that forces the exact kernel even when the global flag
+    /// leaves the fast path on — used by the element-level fallback to re-process
+    /// an element whose fast-path result cracked downstream (post scale/placement).
+    static PLANAR_TL_DISABLE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Per-thread count of planar fast-path fires since the last reset, so the
+    /// fallback only re-runs elements the fast path actually touched.
+    static PLANAR_TL_FIRED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Force the exact kernel on this thread (planar fast path off) and return the
+/// previous setting. The element-level fallback sets this for its verify re-run.
+pub fn set_planar_clip_thread_disabled(v: bool) -> bool {
+    PLANAR_TL_DISABLE.with(|c| c.replace(v))
+}
+
+/// Read the per-thread planar fire counter WITHOUT resetting it, so callers can
+/// take a before/after delta around one element (robust to nesting, e.g. a voided
+/// element whose wall is processed through `process_element`).
+pub fn peek_planar_clip_fired() -> u32 {
+    PLANAR_TL_FIRED.with(|c| c.get())
+}
+
+thread_local! {
+    /// Per-thread adaptive give-up: planar fast-path attempts that reached the
+    /// element-level fallback, how many of those FELL BACK to the exact kernel,
+    /// and whether the fast path has given up on this thread.
+    static PLANAR_ATTEMPTS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static PLANAR_FALLBACKS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static PLANAR_GAVE_UP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the fast path has adaptively given up on this thread because it kept
+/// cracking (e.g. a model whose source tessellation is riddled with T-junctions,
+/// where every fast clip falls back and is therefore pure overhead).
+fn planar_gave_up() -> bool {
+    PLANAR_GAVE_UP.with(|c| c.get())
+}
+
+/// Record one element-level outcome of the fast path (whether it had to fall back
+/// to the exact kernel). After a warm-up, if the majority of attempts fell back,
+/// the fast path gives up for the rest of this thread's work so it never costs
+/// more than the exact kernel on a model it cannot help.
+pub fn planar_record_outcome(fell_back: bool) {
+    let attempts = PLANAR_ATTEMPTS.with(|c| {
+        let v = c.get() + 1;
+        c.set(v);
+        v
+    });
+    if fell_back {
+        PLANAR_FALLBACKS.with(|c| c.set(c.get() + 1));
+    }
+    // Warm up on the first 32 firing elements, then give up if ≥50% fell back.
+    if attempts >= 32 && PLANAR_FALLBACKS.with(|c| c.get()) * 2 >= attempts {
+        PLANAR_GAVE_UP.with(|c| c.set(true));
+    }
+}
+
+/// Count a mesh's open boundary edges on a grid relative to its own extent — the
+/// element-level watertightness check the fallback uses on the final (scaled,
+/// placed) mesh, where the per-cut gate could not see the f32 world coordinates.
+pub fn element_open_edges(mesh: &Mesh) -> usize {
+    open_boundary_edges_at(mesh, mesh_extent(mesh) * 1.0e-4)
+}
+
+/// Divergence-theorem signed volume of a triangle mesh — used by the planar-clip
+/// volume-conservation gate to reject self-intersecting caps.
+fn mesh_signed_volume(m: &Mesh) -> f64 {
+    let p = &m.positions;
+    let mut v = 0.0;
+    for t in m.indices.chunks_exact(3) {
+        let g = |i: u32| {
+            let b = i as usize * 3;
+            [p[b] as f64, p[b + 1] as f64, p[b + 2] as f64]
+        };
+        let (a, b, c) = (g(t[0]), g(t[1]), g(t[2]));
+        v += a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2])
+            + a[2] * (b[0] * c[1] - b[1] * c[0]);
+    }
+    v / 6.0
+}
+
+/// Bounding-box diagonal length of a mesh (its characteristic size), used to make
+/// the planar-clip gates scale- and unit-independent.
+fn mesh_extent(mesh: &Mesh) -> f64 {
+    let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for c in mesh.positions.chunks(3) {
+        for k in 0..3 {
+            lo[k] = lo[k].min(c[k] as f64);
+            hi[k] = hi[k].max(c[k] as f64);
+        }
+    }
+    if !lo[0].is_finite() {
+        return 0.0;
+    }
+    ((hi[0] - lo[0]).powi(2) + (hi[1] - lo[1]).powi(2) + (hi[2] - lo[2]).powi(2)).sqrt()
+}
+
+/// Count directed boundary edges with no reverse partner, merging vertices on a
+/// grid of side `quantum` — 0 ⇒ watertight at that scale. Like
+/// [`count_open_boundary_edges`] but with a caller-chosen grid so the watertightness
+/// test can be made proportional to the mesh extent (unit-independent).
+fn open_boundary_edges_at(mesh: &Mesh, quantum: f64) -> usize {
+    if mesh.positions.len() < 9 || mesh.indices.len() < 3 || !(quantum > 0.0) {
+        return 0;
+    }
+    let inv = 1.0 / quantum;
+    let q = |v: f32| (v as f64 * inv).round() as i64;
+    let mut vid: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
+    let mut id_of = |i: usize| -> u32 {
+        let k = (
+            q(mesh.positions[i * 3]),
+            q(mesh.positions[i * 3 + 1]),
+            q(mesh.positions[i * 3 + 2]),
+        );
+        let next = vid.len() as u32;
+        *vid.entry(k).or_insert(next)
+    };
+    let mut bal: FxHashMap<(u32, u32), i32> = FxHashMap::default();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (
+            id_of(tri[0] as usize),
+            id_of(tri[1] as usize),
+            id_of(tri[2] as usize),
+        );
+        for (x, y) in [(a, b), (b, c), (c, a)] {
+            let (key, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
+            *bal.entry(key).or_insert(0) += s;
+        }
+    }
+    bal.values().filter(|&&v| v != 0).count()
 }
 
 /// Group a (closed, outward-wound) mesh's triangles into face planes, returning

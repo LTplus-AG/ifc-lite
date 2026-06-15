@@ -967,6 +967,15 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
             break;
         }
     }
+    // #1109: if the per-element budget tripped while inserting points or recovering
+    // constraints above, the boolean caller discards this entire arrangement
+    // (csg.rs returns the host un-cut → #635 AABB fallback). Skip the conformity
+    // audit below — it runs O(segments × vertices) exact predicates with NO budget
+    // check, so without this a tripped, heavily-fragmented face keeps grinding well
+    // past the cap. The partial triangulation we return is dropped anyway.
+    if super::budget::tripped() {
+        return Some(mesh);
+    }
     if !converged {
         // Pass-cap exit: the LAST pass's rebuilds may have broken an edge that
         // was forced earlier without any later recover attempt re-flagging it,

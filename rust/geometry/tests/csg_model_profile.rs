@@ -1,8 +1,19 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! #1109 calibration harness: per-element CSG timing + escalation profile on a
 //! real model. Drives the same per-element path as the viewer/native batch
 //! (`begin_element()` + the router), reports total wall-time and the slowest
 //! elements with their per-boolean and per-element escalation counts, and is how
 //! `DEFAULT_ELEMENT_CAP` is calibrated (healthy p99 vs the pathological tail).
+//!
+//! CAVEAT: this constructs `GeometryRouter` directly with a ZERO RTC offset — it
+//! does NOT rebase georeferenced models the way the streaming native/viewer path
+//! does. On models with >~10 km world coordinates the f32 jitter fabricates
+//! degenerate geometry (see AGENTS.md), skewing the timings/escalation
+//! distribution — so calibrate the cap on LOCAL-ORIGIN models only (the shipped
+//! `DEFAULT_ELEMENT_CAP` was calibrated on ISSUE_129, a local-origin model).
 //!
 //! IFCLT_MODEL=/abs/path.ifc cargo test -p ifc-lite-geometry --release \
 //!   --test csg_model_profile -- --ignored --nocapture
@@ -94,9 +105,9 @@ fn profile_model() {
     let products = list_products(&content);
     println!("products to process: {}\n", products.len());
 
-    let cap = budget::cap().unwrap_or(u64::MAX);
-    let ecap = budget::element_cap().unwrap_or(u64::MAX);
-    println!("per-element cap: {:?}", budget::element_cap());
+    let cap = budget::cap();
+    let ecap = budget::element_cap();
+    println!("per-element cap: {ecap:?}");
     let mut recs: Vec<Rec> = Vec::new();
     let t_all = Instant::now();
     let mut done = 0usize;
@@ -115,10 +126,14 @@ fn profile_model() {
             router.process_element(&entity, &mut decoder)
         };
         let ms = t.elapsed().as_secs_f64() * 1000.0;
-        let peak_escal = budget::peak();
+        // Read the ACTIVE per-thread budget state, not the configured caps:
+        // `begin_element()` promotes the element cap to unbounded under an
+        // unbounded per-boolean profile, so comparing against `cap`/`ecap` would
+        // misclassify. `peak().max(count())` folds in the last in-flight boolean.
+        let peak_escal = budget::peak().max(budget::count());
         let elem_escal = budget::element_count();
         let tris = mesh_result.map(|m| m.triangle_count()).unwrap_or(0);
-        let tripped = peak_escal >= cap || elem_escal >= ecap;
+        let tripped = budget::tripped();
         if ms > 1000.0 {
             over_1s += 1;
             // live flush so a hang shows the culprit element immediately
@@ -138,7 +153,9 @@ fn profile_model() {
 
     println!("\nTOTAL serial geometry: {:.0}ms over {} elements", total_ms, recs.len());
     println!("  elements > 1s: {over_1s}");
-    println!("  elements that tripped the per-boolean cap ({cap}): {tripped_n}");
+    println!(
+        "  elements that tripped active budgets (per-boolean={cap:?}, per-element={ecap:?}): {tripped_n}"
+    );
 
     recs.sort_by(|a, b| b.ms.partial_cmp(&a.ms).unwrap());
     for k in [1usize, 5, 10, 25, 50, 100] {

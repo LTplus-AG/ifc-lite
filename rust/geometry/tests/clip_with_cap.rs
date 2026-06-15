@@ -154,6 +154,149 @@ fn capped_clip_is_watertight_and_complete() {
     assert!(applied >= total * 8 / 10, "fast-cap applied only {applied}/{total} — too many fallbacks");
 }
 
+/// A faceted cylinder (drilling cutter) spanning the bar along Z, centred at
+/// (cx,cy), radius r, `seg` facets. Its side facets each straddle the bar, so the
+/// planar-clip detector must DEFER it to the exact kernel.
+fn cylinder_z(cx: f32, cy: f32, r: f32, z0: f32, z1: f32, seg: usize) -> Mesh {
+    let mut m = Mesh::new();
+    let ring: Vec<[f32; 2]> = (0..seg)
+        .map(|k| {
+            let a = std::f32::consts::TAU * k as f32 / seg as f32;
+            [cx + r * a.cos(), cy + r * a.sin()]
+        })
+        .collect();
+    let mut tri = |a: [f32; 3], b: [f32; 3], c: [f32; 3]| {
+        let base = (m.positions.len() / 3) as u32;
+        for v in [a, b, c] {
+            m.positions.extend_from_slice(&v);
+            m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+        }
+        m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+    };
+    for k in 0..seg {
+        let (p, q) = (ring[k], ring[(k + 1) % seg]);
+        // side wall (two tris, outward)
+        tri([p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1]);
+        tri([p[0], p[1], z0], [q[0], q[1], z1], [p[0], p[1], z1]);
+        // caps
+        tri([cx, cy, z1], [p[0], p[1], z1], [q[0], q[1], z1]);
+        tri([cx, cy, z0], [q[0], q[1], z0], [p[0], p[1], z0]);
+    }
+    m
+}
+
+/// Extrude a 2D polygon (CCW in XY) along Z into a prism mesh with outward-wound
+/// side walls. Caps are fan-triangulated (fine even when non-convex — the test
+/// only needs the face planes + vertices for the convexity gate).
+fn extrude_z(poly: &[[f32; 2]], z0: f32, z1: f32) -> Mesh {
+    let mut m = Mesh::new();
+    let mut tri = |a: [f32; 3], b: [f32; 3], c: [f32; 3]| {
+        let base = (m.positions.len() / 3) as u32;
+        for v in [a, b, c] {
+            m.positions.extend_from_slice(&v);
+            m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+        }
+        m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+    };
+    let n = poly.len();
+    for k in 0..n {
+        let p = poly[k];
+        let q = poly[(k + 1) % n];
+        // side wall, outward normal for a CCW polygon
+        tri([p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1]);
+        tri([p[0], p[1], z0], [q[0], q[1], z1], [p[0], p[1], z1]);
+    }
+    for k in 1..n - 1 {
+        tri([poly[0][0], poly[0][1], z1], [poly[k][0], poly[k][1], z1], [poly[k + 1][0], poly[k + 1][1], z1]);
+        tri([poly[0][0], poly[0][1], z0], [poly[k + 1][0], poly[k + 1][1], z0], [poly[k][0], poly[k][1], z0]);
+    }
+    m
+}
+
+#[test]
+fn planar_clip_detection_routes_end_clips_and_defers_the_rest() {
+    let clipper = ClippingProcessor::new();
+    let bar = box_mesh([0.0, 0.0, 0.0], [1.0, 0.1, 0.05], 4);
+    let bar_vol = volume(&bar);
+
+    // (1) End-clip box overhanging the bar on every side but the cut face: APPLIES,
+    //     and matches the exact subtract.
+    let end_clip = box_mesh([0.8, -1.0, -1.0], [2.0, 2.0, 2.0], 1);
+    let routed = clipper
+        .try_planar_clip(&bar, &end_clip)
+        .unwrap()
+        .expect("end-clip must take the fast planar path");
+    let exact = clipper.subtract_mesh(&bar, &end_clip).unwrap();
+    let _ = clipper.take_failures();
+    let rel = (volume(&routed) - volume(&exact)).abs() / volume(&exact).abs().max(1e-9);
+    println!("end-clip: routed {:.6} vs exact {:.6}  rel {rel:.2e}  open {}",
+        volume(&routed), volume(&exact), open_edges(&routed));
+    assert_eq!(open_edges(&routed), 0, "routed end-clip not watertight");
+    assert!(rel < 1.0e-3, "routed end-clip ≠ exact subtract ({rel:.2e})");
+    assert!(volume(&routed) < bar_vol, "end-clip removed nothing");
+
+    // (2) Drilling cutter through the bar (round hole): MANY straddling facets ⇒ DEFER.
+    let drill = cylinder_z(0.5, 0.05, 0.02, -1.0, 1.0, 16);
+    assert!(
+        clipper.try_planar_clip(&bar, &drill).unwrap().is_none(),
+        "a through-hole must defer to the exact kernel, not the planar clip"
+    );
+
+    // (3) A pocket/notch fully inside the bar (cutter doesn't overhang): two faces
+    //     straddle ⇒ DEFER.
+    let notch = box_mesh([0.4, 0.02, -1.0], [0.6, 0.08, 0.5], 1);
+    assert!(
+        clipper.try_planar_clip(&bar, &notch).unwrap().is_none(),
+        "an interior pocket must defer to the exact kernel"
+    );
+    // (4) NON-CONVEX L-prism whose left face (x=0.8) cleanly straddles the bar and
+    //     overhangs it everywhere else — it passes the single-straddle test but its
+    //     reflex corner means the cutter ≠ the half-space, so the convexity gate
+    //     must DEFER it (clipping would over-cut).
+    let l_prism = extrude_z(
+        &[[0.8, -1.0], [3.0, -1.0], [3.0, 3.0], [2.0, 3.0], [2.0, 1.0], [0.8, 1.0]],
+        -1.0,
+        2.0,
+    );
+    assert!(
+        clipper.try_planar_clip(&bar, &l_prism).unwrap().is_none(),
+        "a non-convex (L) cutter must defer — the convexity gate failed"
+    );
+    println!("detection OK: end-clip → fast path; hole, pocket, non-convex L → exact fallback");
+}
+
+#[test]
+fn subtract_one_fires_on_clean_end_clip_and_matches_exact() {
+    let c = ClippingProcessor::new();
+    let bar = box_mesh([0.0, 0.0, 0.0], [1.0, 0.1, 0.05], 6);
+    let cutter = box_mesh([0.8, -1.0, -1.0], [2.0, 2.0, 2.0], 1);
+
+    // The wired entry point must take the fast path on a clean end-clip: the
+    // result is watertight (so the strict gate accepts it) and volume-matches
+    // the exact subtract.
+    let fast = c.subtract_one(&bar, &cutter).unwrap();
+    let exact = c.subtract_mesh(&bar, &cutter).unwrap();
+    let _ = c.take_failures();
+    assert_eq!(open_edges(&fast), 0, "subtract_one result not watertight");
+    let rel = (volume(&fast) - volume(&exact)).abs() / volume(&exact).abs().max(1e-9);
+    assert!(rel < 1.0e-3, "subtract_one diverged from exact subtract ({rel:.2e})");
+    // It genuinely fired (the detector accepts this cutter)...
+    assert!(c.try_planar_clip(&bar, &cutter).unwrap().is_some());
+    // ...and the fast path produces a DIFFERENT triangulation than the exact
+    // arrangement (proof it didn't silently fall through to subtract_mesh).
+    assert_ne!(fast.triangle_count(), exact.triangle_count());
+
+    // A through-hole cutter must defer (the exact kernel handles it); subtract_one
+    // then returns exactly what subtract_mesh would.
+    let drill = cylinder_z(0.5, 0.05, 0.02, -1.0, 1.0, 16);
+    assert!(c.try_planar_clip(&bar, &drill).unwrap().is_none());
+    let via_one = c.subtract_one(&bar, &drill).unwrap();
+    let via_exact = c.subtract_mesh(&bar, &drill).unwrap();
+    let _ = c.take_failures();
+    assert_eq!(via_one.triangle_count(), via_exact.triangle_count());
+    println!("subtract_one: fires on end-clip (watertight, matches exact), defers on hole");
+}
+
 #[test]
 fn capped_clip_matches_exact_subtract_and_is_faster() {
     let clipper = ClippingProcessor::new();

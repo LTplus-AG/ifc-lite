@@ -1610,7 +1610,10 @@ impl GeometryRouter {
                         depth_dir,
                     );
                     let cutter = &extended_opening;
-                    match clipper.subtract_mesh(&result, cutter) {
+                    // A through-opening straddles the host on >1 face and defers to
+                    // the exact kernel; a cutter that acts as a single end-clip
+                    // takes the fast f64 capped clip.
+                    match clipper.subtract_one(&result, cutter) {
                         Ok(csg_result) => {
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                                 .max(MIN_VALID_TRIANGLES);

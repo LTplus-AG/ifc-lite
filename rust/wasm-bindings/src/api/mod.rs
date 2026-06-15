@@ -268,6 +268,14 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_geometry_styles Mutex poisoned")
             .take();
+        // The content-dedup cache holds the previous model's item meshes, keyed by
+        // a content hash of that model's entities. Drop it so a new file on the
+        // same reused IfcAPI starts with an empty cache (bounds memory across
+        // loads; defensive even though the key is content- not id-based).
+        self.cached_item_dedup
+            .lock()
+            .expect("ifc-lite cached_item_dedup Mutex poisoned")
+            .take();
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.
@@ -344,6 +352,13 @@ impl IfcAPI {
         self.cached_geometry_styles
             .lock()
             .expect("ifc-lite cached_geometry_styles Mutex poisoned")
+            .take();
+        // The content-dedup cache holds the previous model's item meshes — drop it
+        // on content swap so a reused IfcAPI starts the new file with an empty
+        // cache (bounds memory across loads).
+        self.cached_item_dedup
+            .lock()
+            .expect("ifc-lite cached_item_dedup Mutex poisoned")
             .take();
     }
 

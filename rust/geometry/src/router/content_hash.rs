@@ -31,9 +31,11 @@ use ifc_lite_core::{AttributeValue, EntityDecoder};
 use rustc_hash::FxHashMap;
 
 /// Defensive recursion bound. IFC geometry is a DAG (item → solids → profiles →
-/// points), so this is never hit by well-formed files; it bounds a malformed
-/// cyclic one.
-const MAX_DEPTH: u32 = 96;
+/// points); deeply NESTED `IfcBooleanResult` chains are the realistic deep case,
+/// so this is set well above any plausible cut chain. Beyond it the hash falls
+/// back to an entity-id-distinct value (see `sig_entity`) so over-depth subtrees
+/// can never COLLIDE — they simply stop deduping rather than risk a false merge.
+const MAX_DEPTH: u32 = 256;
 
 /// Sentinel written into the memo while an entity's hash is being computed, so a
 /// (malformed) cycle resolves to a fixed value instead of recursing forever.
@@ -104,7 +106,11 @@ fn sig_entity(decoder: &mut EntityDecoder, id: u32, memo: &mut FxHashMap<u32, u1
         return s;
     }
     if depth > MAX_DEPTH {
-        return fold(0, 0xDEAD_BEEF_DEAD_BEEF);
+        // Fold the entity id so two DIFFERENT over-depth subtrees get DIFFERENT
+        // values — they stop deduping (id breaks renumbering-invariance) but can
+        // never false-merge, which matters far more than deduping a pathological
+        // boolean chain.
+        return fold(0xDEAD_BEEF_DEAD_BEEF, id as u64);
     }
     memo.insert(id, CYCLE_SENTINEL); // break cycles (DAG ⇒ unreachable in practice)
     let entity = match decoder.decode_by_id(id) {

@@ -93,6 +93,13 @@ fn run(
     content: &str,
     index: FxHashMap<u32, (usize, usize)>,
 ) -> (Vec<(u32, u64)>, usize, f64) {
+    // Sentinel fingerprints for the non-mesh outcomes, so EVERY product yields an
+    // entry — ON and OFF stay 1:1 aligned and a config-dependent decode/mesh
+    // divergence surfaces as a fingerprint mismatch instead of silently shrinking
+    // the compared set.
+    const FP_DECODE_ERR: u64 = u64::MAX;
+    const FP_MESH_ERR: u64 = u64::MAX - 1;
+
     let mut decoder = EntityDecoder::with_index(content, index);
     let mut fps: Vec<(u32, u64)> = Vec::with_capacity(products.len());
     let mut tris = 0usize;
@@ -100,7 +107,10 @@ fn run(
     for (id, _ty) in products {
         let entity = match decoder.decode_by_id(*id) {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(_) => {
+                fps.push((*id, FP_DECODE_ERR));
+                continue;
+            }
         };
         let openings = void_idx.get(id).map(|v| v.len()).unwrap_or(0);
         let sm = if openings > 0 {
@@ -108,9 +118,12 @@ fn run(
         } else {
             router.process_element_with_submeshes(&entity, &mut decoder)
         };
-        if let Ok(sm) = sm {
-            tris += sm.sub_meshes.iter().map(|s| s.mesh.indices.len() / 3).sum::<usize>();
-            fps.push((*id, fingerprint(&sm)));
+        match sm {
+            Ok(sm) => {
+                tris += sm.sub_meshes.iter().map(|s| s.mesh.indices.len() / 3).sum::<usize>();
+                fps.push((*id, fingerprint(&sm)));
+            }
+            Err(_) => fps.push((*id, FP_MESH_ERR)),
         }
     }
     (fps, tris, t.elapsed().as_secs_f64() * 1000.0)

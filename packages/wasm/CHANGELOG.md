@@ -1,5 +1,47 @@
 # @ifc-lite/wasm
 
+## 2.9.0
+
+### Minor Changes
+
+- [#1120](https://github.com/LTplus-AG/ifc-lite/pull/1120) [`d5fe21e`](https://github.com/LTplus-AG/ifc-lite/commit/d5fe21ef7e066466ceceedbac5d66b3104c4a7aa) Thanks [@louistrue](https://github.com/louistrue)! - Add two interactive editing operations to `SpacePlateHandle` (the persistent space-topology editor):
+
+  - `dissolveVertex(v)` — dissolve a degree-2 vertex, welding its two incident edges into one straight edge between the neighbours (the inverse of `splitEdge`). Rejects wall junctions (degree ≥ 3) and welds that would duplicate an edge.
+  - `addFace(coords, source)` — author a new room face from a flat ring `[x0, y0, x1, y1, …]`; winding is normalised to CCW and the room becomes its own connected component. Rejects rings that are too short, self-intersecting, or near-zero area.
+
+  Backed by new `dissolve_vertex` / `add_face` operations in the `ifc-lite-geometry` `space_dcel` core.
+
+- [#1120](https://github.com/LTplus-AG/ifc-lite/pull/1120) [`d5fe21e`](https://github.com/LTplus-AG/ifc-lite/commit/d5fe21ef7e066466ceceedbac5d66b3104c4a7aa) Thanks [@louistrue](https://github.com/louistrue)! - `SpacePlateHandle` gains `fromWallRects(rectCoords, snapTolerance, minArea)`: build
+  a plate from each wall's footprint **rectangle** (4 corners, wall-major) instead of
+  its centreline. Rooms are detected as the bounded **gaps between** the rectangles
+  (a face is a room iff its centroid is outside every rectangle), so the room
+  boundary lands on the wall faces with no centreline distribution bias — then each
+  room is LIFTED to its wall axis, so the returned plate is a normal centreline plate
+  whose room outlines are the wall axes and whose vertices are the editable nodes.
+  Every edit op (drag / split / merge) therefore acts directly on what's displayed,
+  and `netOutline(face, inset)` recovers the inner (net) / outer (gross) faces.
+
+  Room classification is now a stable per-face flag set once at build and carried
+  through edits (split inherits it, merge ORs it) — so dragging a vertex or cutting a
+  room can no longer silently re-classify faces into phantom rooms.
+
+- [#1120](https://github.com/LTplus-AG/ifc-lite/pull/1120) [`d5fe21e`](https://github.com/LTplus-AG/ifc-lite/commit/d5fe21ef7e066466ceceedbac5d66b3104c4a7aa) Thanks [@louistrue](https://github.com/louistrue)! - Extend `SpacePlateHandle` (the persistent space-topology editor) with orphan
+  removal and engine-computed wall-boundary outlines:
+
+  - `removeEdge(edge)` — remove a wall, choosing the right semantics from its two
+    faces: union two real rooms, or delete a bridge/spur wall and auto-clean the
+    orphaned inner lines + nodes it leaves; a real enclosing wall is refused.
+  - `prune()` — sweep the plate clean (dangling spur walls, isolated nodes,
+    redundant collinear nodes); returns how many elements were pruned. Build also
+    auto-prunes so derived plates start as just their rooms.
+  - `netOutline(face, inset)` — the room outline offset to the net (inner) or
+    gross (outer) wall face, using each edge's own wall half-thickness with
+    topology-aware shared-edge pinning (no fuzzy edge↔wall matching).
+
+  The constructor now takes an additional `segHalfThickness: Float64Array`
+  (per-segment half-thickness in metres, carried onto the derived edges for
+  `netOutline`); pass an empty array when thickness is unknown.
+
 ## 2.8.1
 
 ### Patch Changes

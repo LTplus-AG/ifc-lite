@@ -1,5 +1,35 @@
 # @ifc-lite/renderer
 
+## 1.28.1
+
+### Patch Changes
+
+- [#1120](https://github.com/LTplus-AG/ifc-lite/pull/1120) [`d5fe21e`](https://github.com/LTplus-AG/ifc-lite/commit/d5fe21ef7e066466ceceedbac5d66b3104c4a7aa) Thanks [@louistrue](https://github.com/louistrue)! - Fix the ghost left when moving (or deleting/splitting) a selected element. The
+  per-entity selection-highlight meshes in `Scene.meshes` are frozen position
+  copies made at selection time and were only ever cleared by `clear()` — so an
+  element moved while selected (the gizmo holds the selection through the drag)
+  kept drawing its highlight at the OLD position, a faint duplicate. `Scene` now
+  evicts an entity's standalone highlight meshes (freeing their GPU buffers) in
+  `translateMeshesForEntity` and `removeMeshesForEntity`, so the highlight is
+  re-extracted from the entity's current geometry on the next frame.
+
+- [#1120](https://github.com/LTplus-AG/ifc-lite/pull/1120) [`d5fe21e`](https://github.com/LTplus-AG/ifc-lite/commit/d5fe21ef7e066466ceceedbac5d66b3104c4a7aa) Thanks [@louistrue](https://github.com/louistrue)! - Add `Scene.hasStreamingFragments()` and `Scene.isEphemeralStreaming()`
+  accessors. They let the viewer detect an element that was appended during
+  streaming and still rendered as a streaming fragment — which, after the element
+  is moved (its colour bucket re-batched), would otherwise linger as a ghost
+  duplicate at the original position — and finalise the fragments into clean
+  buckets (skipping ephemeral mode, where no geometry is retained to rebuild from).
+
+- [#1120](https://github.com/LTplus-AG/ifc-lite/pull/1120) [`d5fe21e`](https://github.com/LTplus-AG/ifc-lite/commit/d5fe21ef7e066466ceceedbac5d66b3104c4a7aa) Thanks [@louistrue](https://github.com/louistrue)! - Fix `Scene.translateMeshesForEntity` skipping single-entity meshes. The move
+  gizmo couldn't move an authored element (a baked IfcSpace, or an added
+  slab/wall/…) even though its placement and bounding box resolved: those meshes
+  tag every vertex with their own entity id for picking, and the translate path
+  skipped _any_ mesh with a non-empty `entityIds` (meant to protect shared
+  colour-merged meshes from dragging unrelated entities). Now it skips only a
+  genuine merge — one whose vertices carry a _different_ entity id — so a
+  single-entity mesh (all vertices tagged with the target id) translates as
+  expected. Parsed single-entity meshes (empty `entityIds`) are unaffected.
+
 ## 1.28.0
 
 ### Minor Changes

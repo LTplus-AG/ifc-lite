@@ -751,6 +751,20 @@ impl IfcAPI {
         let mut router =
             GeometryRouter::with_scale_and_quality(unit_scale, self.tessellation_quality());
 
+        // Arm content-dedup against the per-worker shared cache so byte-identical
+        // geometry (e.g. Tekla parts the exporter failed to share via
+        // IfcMappedItem) is meshed ONCE across batches, not once per batch.
+        {
+            let mut slot = self
+                .cached_item_dedup
+                .lock()
+                .expect("ifc-lite cached_item_dedup Mutex poisoned");
+            let cache = slot
+                .get_or_insert_with(GeometryRouter::new_dedup_cache)
+                .clone();
+            router.enable_content_dedup_shared(cache);
+        }
+
         // Set RTC offset if needed
         if needs_shift {
             router.set_rtc_offset((rtc_x, rtc_y, rtc_z));

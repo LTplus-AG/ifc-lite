@@ -1464,6 +1464,13 @@ pub fn process_geometry_streaming_filtered_with_options(
     let csg_failure_collector: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>> =
         std::sync::Mutex::new(FxHashMap::default());
 
+    // Shared content-dedup cache for the whole model: every per-job router (built
+    // fresh per element below) dedups against it, so byte-identical geometry the
+    // exporter failed to share via IfcMappedItem (Tekla parts) is meshed once
+    // across the rayon pool instead of once per element. The lock is held only for
+    // a hash get/insert; meshing runs outside it.
+    let item_dedup_cache = GeometryRouter::new_dedup_cache();
+
     while chunk_start < total_jobs {
         let chunk_end = (chunk_start + current_chunk_size).min(total_jobs);
         let jobs_chunk = &mut entity_jobs[chunk_start..chunk_end];
@@ -1569,6 +1576,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     texture_index.as_ref(),
                     site_local_rotation,
                     &csg_failure_collector,
+                    &item_dedup_cache,
                 )
             })
             .collect();
@@ -1719,6 +1727,9 @@ fn process_entity_job(
     // Shared sink for per-job router CSG diagnostics (parity with the wasm
     // path's `drain_and_log_csg_diagnostics`).
     csg_failure_collector: &std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>>,
+    // Model-wide content-dedup cache shared by every per-job router so identical
+    // geometry is meshed once across the rayon pool (#1109 follow-up).
+    item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
 ) -> Vec<MeshData> {
     if skipped_entity_ids.contains(&job.id) {
         return Vec::new();
@@ -1736,6 +1747,7 @@ fn process_entity_job(
 
     let mut local_router = GeometryRouter::with_scale_and_quality(unit_scale, tessellation_quality);
     local_router.set_rtc_offset(rtc_offset);
+    local_router.enable_content_dedup_shared(item_dedup_cache.clone());
     let local_router = local_router;
 
     let metadata = crate::element::ElementMeshMetadata {

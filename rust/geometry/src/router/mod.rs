@@ -8,6 +8,7 @@
 
 mod caching;
 mod clipping;
+mod content_hash;
 mod layers;
 mod processing;
 mod transforms;
@@ -33,7 +34,7 @@ use nalgebra::Matrix4;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Geometry processor trait
 /// Each processor handles one type of IFC representation
@@ -57,6 +58,14 @@ pub trait GeometryProcessor {
     fn supported_types(&self) -> Vec<IfcType>;
 }
 
+/// Shared content-dedup cache: maps a 128-bit structural item hash to the
+/// LOCAL (pre-placement, void-free, colour-free) item mesh. Build ONE per loaded
+/// model with [`GeometryRouter::new_dedup_cache`] and inject it into every
+/// per-element / per-batch router via
+/// [`GeometryRouter::enable_content_dedup_shared`] so byte-identical geometry is
+/// meshed once regardless of how the work is partitioned across threads/batches.
+pub type ItemDedupCache = Arc<Mutex<FxHashMap<u128, Arc<Mesh>>>>;
+
 /// Geometry router - routes entities to processors
 pub struct GeometryRouter {
     schema: IfcSchema,
@@ -68,6 +77,25 @@ pub struct GeometryRouter {
     /// Buildings with repeated floors have 99% identical geometry
     /// Key: Hash of mesh content, Value: Processed mesh
     geometry_hash_cache: RefCell<FxHashMap<u64, Arc<Mesh>>>,
+    /// SHARED content-dedup of LOCAL (pre-placement, void-free) representation-ITEM
+    /// meshes, keyed by a 128-bit structural hash of the item subtree
+    /// (`content_hash::item_signature`). Skips the meshing + CSG for byte-identical
+    /// geometry the exporter failed to share via `IfcMappedItem` (Tekla connection
+    /// plates/bolts). The cached mesh is COLOUR-FREE; the per-instance
+    /// `geometry_id` (colour/palette/texture), voids and placement are applied by
+    /// the caller, so reuse never changes an instance's appearance.
+    ///
+    /// `Arc<Mutex<_>>` so ONE cache outlives any single router and is shared across
+    /// the native rayon pool's per-element routers AND a wasm worker's per-batch
+    /// routers (re-injected each batch). A hit skips the expensive build entirely,
+    /// so the lock is held only for a map get/clone (hit) or insert (miss); the
+    /// build runs outside it. `None` ⇒ dedup disabled (e.g. `new()` in tests).
+    item_dedup_cache: Option<ItemDedupCache>,
+    /// Per-router memo for the per-item structural hash (shared sub-entities hashed
+    /// once). Keyed by entity id ⇒ valid for one loaded model. Kept LOCAL (not
+    /// shared) so the recursive DAG walk never contends the shared cache's lock;
+    /// recomputing it per router is cheap next to meshing.
+    content_sig_memo: RefCell<FxHashMap<u32, u128>>,
     /// Unit scale factor (e.g., 0.001 for millimeters -> meters)
     /// Applied to all mesh positions after processing
     unit_scale: f64,
@@ -204,6 +232,8 @@ impl GeometryRouter {
             processors: HashMap::new(),
             mapped_item_cache: RefCell::new(FxHashMap::default()),
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
+            item_dedup_cache: None, // armed by `with_units` / `enable_content_dedup_shared`
+            content_sig_memo: RefCell::new(FxHashMap::default()),
             unit_scale: 1.0,             // Default to base meters
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
             material_layer_index: None,
@@ -250,21 +280,25 @@ impl GeometryRouter {
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let content = content.as_ref();
-        let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        let mut scale = 1.0;
+        let scale = Self::scan_unit_scale(content.as_ref(), decoder);
+        let mut router = Self::with_scale(scale);
+        router.arm_content_dedup();
+        router
+    }
 
-        // Scan through file to find IFCPROJECT
+    /// Scan to the first `IFCPROJECT` and extract its length-unit scale (e.g.
+    /// `0.001` for millimetres → metres); `1.0` if none is found.
+    fn scan_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
+        let mut scanner = ifc_lite_core::EntityScanner::new(content);
         while let Some((id, type_name, _, _)) = scanner.next_entity() {
             if type_name == "IFCPROJECT" {
                 if let Ok(s) = ifc_lite_core::extract_length_unit_scale(decoder, id) {
-                    scale = s;
+                    return s;
                 }
                 break;
             }
         }
-
-        Self::with_scale(scale)
+        1.0
     }
 
     /// Create router with unit scale extracted from IFC file AND RTC offset for large coordinates
@@ -282,21 +316,10 @@ impl GeometryRouter {
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let content = content.as_ref();
-        let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        let mut scale = 1.0;
-
-        // Scan through file to find IFCPROJECT
-        while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if type_name == "IFCPROJECT" {
-                if let Ok(s) = ifc_lite_core::extract_length_unit_scale(decoder, id) {
-                    scale = s;
-                }
-                break;
-            }
-        }
-
-        Self::with_scale_and_rtc(scale, rtc_offset)
+        let scale = Self::scan_unit_scale(content.as_ref(), decoder);
+        let mut router = Self::with_scale_and_rtc(scale, rtc_offset);
+        router.arm_content_dedup();
+        router
     }
 
     /// Create router with pre-calculated unit scale
@@ -304,6 +327,47 @@ impl GeometryRouter {
         let mut router = Self::new();
         router.unit_scale = unit_scale;
         router
+    }
+
+    /// Arm content-dedup with a NEW empty cache. Used by the model constructors
+    /// (`with_units*`) where this router owns the only reference; multi-router
+    /// callers (native pool, wasm batches) should build ONE shared cache via
+    /// [`Self::new_dedup_cache`] and inject it into every router with
+    /// [`Self::enable_content_dedup_shared`] so the cache persists across them.
+    fn arm_content_dedup(&mut self) {
+        self.item_dedup_cache = Some(Self::new_dedup_cache());
+    }
+
+    /// A fresh empty shared item-dedup cache, to be cloned into every per-element /
+    /// per-batch router of ONE loaded model so they all dedup against it. Keep one
+    /// per model: the key is a per-model entity-structure hash, and the cached
+    /// meshes bake in this model's unit scale / tessellation quality.
+    pub fn new_dedup_cache() -> ItemDedupCache {
+        Arc::new(Mutex::new(FxHashMap::default()))
+    }
+
+    /// Inject a shared item-dedup cache (see [`Self::new_dedup_cache`]) into this
+    /// router. All routers given the SAME `Arc` dedup against one cache, so
+    /// byte-identical geometry is meshed once across the whole model regardless of
+    /// how elements are partitioned across threads or batches.
+    pub fn enable_content_dedup_shared(&mut self, cache: ItemDedupCache) {
+        self.item_dedup_cache = Some(cache);
+    }
+
+    /// Disable content-dedup (drops the cache reference so `item_dedup_key`
+    /// returns `None` and meshing is never skipped). Test/bench helper for an A/B
+    /// against the deduped path.
+    pub fn disable_content_dedup(&mut self) {
+        self.item_dedup_cache = None;
+    }
+
+    /// Number of unique item meshes cached by content-dedup so far — the reuse the
+    /// pipeline recovered (vs. the meshed-item count). Diagnostics.
+    pub fn dedup_unique_count(&self) -> usize {
+        self.item_dedup_cache
+            .as_ref()
+            .map(|c| c.lock().expect("dedup cache poisoned").len())
+            .unwrap_or(0)
     }
 
     /// Create router with RTC offset for large coordinate handling

@@ -126,7 +126,7 @@ pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
 pub use router::{
-    ClassificationStats, GeometryProcessor, GeometryRouter, HostOpeningDiagnostic,
+    ClassificationStats, GeometryProcessor, GeometryRouter, HostOpeningDiagnostic, ItemDedupCache,
     OpeningDiagnostic, OpeningKindDiag,
 };
 pub use tessellation::{scale_segments, TessellationQuality};

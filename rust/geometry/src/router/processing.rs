@@ -670,9 +670,21 @@ impl GeometryRouter {
             sub.mesh.clean_degenerate();
         }
 
-        // Apply placement transformation to all sub-meshes
-        // ObjectPlacement translation is in file units (e.g., mm) but geometry is scaled to meters,
-        // so we MUST scale the transform to match. Same as apply_placement does.
+        self.apply_submesh_placement(&mut sub_meshes, element, decoder)?;
+        Ok(sub_meshes)
+    }
+
+    /// Apply the element's `ObjectPlacement` (scaled to metres) to every sub-mesh.
+    /// Placement is a rigid per-instance transform, kept OUT of the dedup cache so
+    /// instances of one shared geometry land at their own positions.
+    fn apply_submesh_placement(
+        &self,
+        sub_meshes: &mut SubMeshCollection,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<()> {
+        // ObjectPlacement translation is in file units (e.g. mm) but geometry is
+        // scaled to metres, so the transform MUST be scaled to match.
         if let Some(placement_attr) = element.get(5) {
             if !placement_attr.is_null() {
                 if let Some(placement) = decoder.resolve_ref(placement_attr)? {
@@ -684,8 +696,7 @@ impl GeometryRouter {
                 }
             }
         }
-
-        Ok(sub_meshes)
+        Ok(())
     }
 
     /// Collect sub-meshes from a representation item, following MappedItem references.
@@ -810,19 +821,69 @@ impl GeometryRouter {
         Ok(())
     }
 
-    /// Process a single representation item (IfcExtrudedAreaSolid, etc.)
-    /// Uses hash-based caching for geometry deduplication across repeated floors
+    /// Process a single representation item (IfcExtrudedAreaSolid, etc.), with
+    /// content-dedup: a 128-bit structural hash of the item subtree skips the
+    /// meshing + CSG for geometry byte-identical to an item meshed earlier (e.g.
+    /// the thousands of Tekla connection plates/bolts an exporter failed to share
+    /// via `IfcMappedItem`). The cached mesh is colour-free and pre-placement; the
+    /// caller keeps this item's own `geometry_id` (so colour/palette/texture stay
+    /// per-instance) and applies voids + placement afterwards, so a cache hit is
+    /// indistinguishable from a fresh build.
     #[inline]
     pub fn process_representation_item(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
-        // Special handling for MappedItem with caching
+        // MappedItem has its own instancing cache (the source representation is
+        // already shared), so it never enters the structural-hash path.
         if item.ifc_type == IfcType::IfcMappedItem {
             return self.process_mapped_item_cached(item, decoder);
         }
 
+        // `None` ⇒ dedup disabled (no hash overhead). On a hit, return a clone of
+        // the cached item mesh; meshing is skipped entirely.
+        let dedup_key = self.item_dedup_key(item, decoder);
+        if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
+            let hit = cache.lock().expect("dedup cache poisoned").get(&key).cloned();
+            if let Some(mesh) = hit {
+                return Ok((*mesh).clone());
+            }
+        }
+
+        let mesh = self.process_representation_item_uncached(item, decoder)?;
+
+        // Cache the freshly-meshed item under its structural hash. Empty meshes
+        // (unsupported/degenerate geometry) are never cached.
+        if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
+            if !mesh.positions.is_empty() {
+                cache
+                    .lock()
+                    .expect("dedup cache poisoned")
+                    .insert(key, Arc::new(mesh.clone()));
+            }
+        }
+
+        Ok(mesh)
+    }
+
+    /// Structural-hash key for an item, or `None` when dedup is disabled (skips
+    /// the hash walk entirely so disabled = zero overhead).
+    fn item_dedup_key(&self, item: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<u128> {
+        self.item_dedup_cache.as_ref()?;
+        let mut memo = self.content_sig_memo.borrow_mut();
+        Some(super::content_hash::item_signature(
+            decoder, item.id, &mut memo,
+        ))
+    }
+
+    /// The meshing body of [`Self::process_representation_item`] (everything except
+    /// the MappedItem path and the content-dedup wrapper).
+    fn process_representation_item_uncached(
+        &self,
+        item: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Mesh> {
         // For raw world-coordinate FacetedBrep with RTC: subtract RTC from f64
         // coordinates BEFORE f32 conversion. Do not use this path for ordinary
         // local Breps whose large position comes from IfcObjectPlacement; those

@@ -27,7 +27,7 @@
     "@xmldom/xmldom": "^0.9.10"
   },
   "devDependencies": {
-    "happy-dom": "^20.10.2",
+    "happy-dom": "^20.10.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.0"
   },

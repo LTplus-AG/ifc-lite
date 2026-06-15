@@ -34,12 +34,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "acorn": "^8.12.0",
+    "acorn": "^8.17.0",
     "acorn-walk": "^8.3.0",
     "fflate": "^0.8.2"
   },
   "devDependencies": {
-    "@types/node": "^25.9.2",
+    "@types/node": "^25.9.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.0"
   },

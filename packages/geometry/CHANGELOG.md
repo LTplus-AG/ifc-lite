@@ -1,5 +1,31 @@
 # @ifc-lite/geometry
 
+## 2.7.1
+
+### Patch Changes
+
+- [#1121](https://github.com/LTplus-AG/ifc-lite/pull/1121) [`33874e3`](https://github.com/LTplus-AG/ifc-lite/commit/33874e3088c67f6dfe26666852bd80d6ac1dea71) Thanks [@louistrue](https://github.com/louistrue)! - Stop boolean-heavy models still hanging at 95% after the per-boolean escalation budget ([#1109](https://github.com/LTplus-AG/ifc-lite/issues/1109) follow-up).
+
+  The deterministic per-boolean budget ([#1112](https://github.com/LTplus-AG/ifc-lite/issues/1112)) bounded a _single_ boolean, but two holes kept dense models stalling past the geometry-stream watchdog:
+
+  - **Overshoot.** The budget's `tripped()` check only fired at arrangement loop boundaries — once per triangle in the seam retriangulation. A single heavily-fragmented host face (a slab cut by 24-47 openings) inserts thousands of constraint points in _one_ `triangulate` call, so a boolean ran to **7.7M** escalations — ~4 minutes — between two checks before bailing. Profiled on a real model: one IFCSLAB took 243 s.
+  - **Distributed cost.** An element with many openings runs one boolean _per_ opening, each well under the per-boolean cap, so none trips — yet the element's total exact work is huge and the geometry batch blows the stream watchdog.
+
+  This adds a **per-element** escalation budget alongside the per-boolean one. `kernel::budget::begin_element()` (called once per element at the unified `produce_element_meshes` entry — native _and_ wasm) accumulates escalations across every boolean the element issues; when the element total crosses `DEFAULT_ELEMENT_CAP = 100_000` it degrades as a whole (remaining cuts bail to the [#635](https://github.com/LTplus-AG/ifc-lite/issues/635) AABB box-cut), instead of grinding. The kernel's per-point retriangulation and constraint-recovery loops now also check the budget, so a single boolean can no longer overshoot the cap by 15×.
+
+  Still a **deterministic count**, accumulated in deterministic per-opening order on the element's single worker thread (the kernel has no internal rayon), so native and wasm degrade the _same_ element identically — the cross-target parity the kernel exists to guarantee is preserved. Calibrated against the model corpus: healthy per-element totals are p99 ≈ 13k escalations, so the 100k cap (~8× p99) never false-trips a legitimate cut. The cap engages only when an element scope is opened (the batch path); direct kernel/router callers, the server, and offline export stay unbounded via the existing `set_cap(None)` / `IFC_LITE_CSG_BUDGET=0` switch — so the pinned determinism manifests are unchanged.
+
+  Measured on the profiling corpus (one boolean-heavy structural model): the worst element drops from 243 s to 2.9 s, and total serial geometry from minutes to ~28 s.
+
+- [#1121](https://github.com/LTplus-AG/ifc-lite/pull/1121) [`33874e3`](https://github.com/LTplus-AG/ifc-lite/commit/33874e3088c67f6dfe26666852bd80d6ac1dea71) Thanks [@louistrue](https://github.com/louistrue)! - Speed up the exact CSG kernel's constraint-recovery hot path on dense-opening models ([#1109](https://github.com/LTplus-AG/ifc-lite/issues/1109)).
+
+  Profiling the boolean-heavy slabs that hung the geometry stream showed the kernel spends ~80% of its time in constraint-recovery retriangulation — split between the channel-detection scan and the pocket earcut. Two parity-safe optimizations:
+
+  - **Channel detection.** The per-segment O(tris) channel scan recomputed `orient(a,b,vertex)` for each triangle _edge_, but a triangle has only three vertices — so compute each vertex's side of the `(a,b)` line once and run the reciprocal edge-side test only for edges whose endpoints straddle it: ~3 exact predicates per triangle instead of up to 12. **Channel scan 9.6s → 2.9s (3.3×)** on the profiling corpus.
+  - **Pocket earcut.** The ear-emptiness test ran an exact `strictly_outside` predicate for every other ring vertex. A conservative f64-AABB prefilter (the same widened-margin technique already used by `tri_aabb_disjoint`) skips the exact test for vertices provably outside the ear's AABB. This cuts the earcut's exact-predicate count on large pockets, which also lowers the per-element escalation count, so the [#1109](https://github.com/LTplus-AG/ifc-lite/issues/1109) budget cuts more openings exactly before degrading.
+
+  Both produce **byte-identical** output — they compute the same exact predicate signs, and the prefilter only skips vertices it proves are outside — so the pinned determinism manifests, snapshots, and native==wasm parity are unchanged. End-to-end on a boolean-heavy structural model (per-element budget on): 23.6s → 19.4s of serial geometry; the channel-detection raw speedup is 3.3× (the budget converts the remaining headroom into more openings cut exactly rather than pure wall-time).
+
 ## 2.7.0
 
 ### Minor Changes
@@ -8,7 +34,7 @@
 
   The pure-Rust exact kernel ([#1024](https://github.com/LTplus-AG/ifc-lite/issues/1024)) replaced Manifold + the legacy BSP port with one bit-deterministic kernel — the right call for server↔client parity (clients run a native Rust server _and_ the wasm viewer and need matching results). But the flip dropped Manifold's/BSP's operand cap, so a boolean-heavy model (Tekla half-space end-clips, Revit flush openings — full of near-coplanar faces) drives the exact predicate cascade off its interval filter on a huge fraction of predicates, climbing the fixed-width rungs (to ~1340 bits) and into BigRational with no safety valve. The geometry stream never finishes; the loader stalls at 95%.
 
-  This adds a **deterministic** per-boolean budget: it counts interval-filter failures (every predicate that needs the expensive exact tier) and, when the count crosses a cap, bails the boolean to the un-cut host so the existing [#635](https://github.com/LTplus-AG/ifc-lite/issues/635) AABB box-cut fallback fires. The count is a pure function of the snap-grid operands, so the trip point is identical on native x86_64/aarch64 and wasm32 — the server and the browser degrade the _same_ hard element to the _same_ fallback. A wall-clock budget would have broken parity (fast native finishes the exact cut while slow wasm trips), so the metric is deliberately platform-independent.
+  This adds a **deterministic** per-boolean budget: it counts interval-filter failures (every predicate that needs the expensive exact tier) and, when the count crosses a cap, bails the boolean to the un-cut host so the existing [#635](https://github.com/LTplus-AG/ifc-lite/issues/635) AABB box-cut fallback fires. The count is a pure function of the snap-grid operands, so the trip point is identical on native x86*64/aarch64 and wasm32 — the server and the browser degrade the \_same* hard element to the _same_ fallback. A wall-clock budget would have broken parity (fast native finishes the exact cut while slow wasm trips), so the metric is deliberately platform-independent.
 
   The cap (`budget::DEFAULT_CAP = 500_000`) is calibrated 33× above the worst healthy boolean measured across the model corpus (~15k exact evaluations), so it never false-trips a legitimate cut; healthy models are byte-identical (determinism manifests unchanged). `budget::set_cap(None)` (or `IFC_LITE_CSG_BUDGET=0`) lifts it for the server/offline-export profile where "exact but slow" is acceptable — one code path, two profiles, no kernel fork.
 

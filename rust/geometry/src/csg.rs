@@ -1408,6 +1408,227 @@ impl ClippingProcessor {
 
         Ok(result)
     }
+
+    /// f64 plane clip (keep the FRONT half-space) that CAPS the cut so the result
+    /// is a watertight solid — the fast path for planar end-clips of a closed
+    /// host (the dominant Tekla connection-part pattern). Equivalent to
+    /// `subtract_mesh` by an unbounded half-space cutter, but ~1000× faster
+    /// because it never builds an exact arrangement. Returns `None` when the cut
+    /// boundary can't be assembled into clean closed loops (degenerate / grazing /
+    /// host already open) so the caller falls back to the exact kernel.
+    ///
+    /// The cap is the cross-section polygon (`plane ∩ host`): the OPEN boundary of
+    /// the clipped surface (directed edges with no reverse), stitched into loops,
+    /// triangulated (outer + holes for hollow profiles), and wound to face the
+    /// removed side (`-plane.normal`).
+    pub fn clip_mesh_with_cap(&self, mesh: &Mesh, plane: &Plane) -> Result<Option<Mesh>> {
+        // Quantize plane-coincident vertices for exact loop stitching. The clip
+        // computes a triangle-edge∩plane point identically for the two triangles
+        // sharing that edge, so shared cut endpoints match to ~1e-9.
+        const Q: f64 = 1.0e6;
+        let key = |p: &Point3<f64>| -> (i64, i64, i64) {
+            (
+                (p.x * Q).round() as i64,
+                (p.y * Q).round() as i64,
+                (p.z * Q).round() as i64,
+            )
+        };
+
+        let mut result = Mesh::new();
+        // Directed boundary edges of the clipped (open) surface: a→b present, b→a
+        // absent ⇒ boundary. Keep the 3D endpoints for the cap geometry.
+        let mut dir: std::collections::HashMap<((i64, i64, i64), (i64, i64, i64)), Point3<f64>> =
+            std::collections::HashMap::new();
+        let vert_count = mesh.positions.len() / 3;
+        let pt = |i: usize| {
+            Point3::new(
+                mesh.positions[i * 3] as f64,
+                mesh.positions[i * 3 + 1] as f64,
+                mesh.positions[i * 3 + 2] as f64,
+            )
+        };
+        let mut add_kept = |tri: &Triangle,
+                            dir: &mut std::collections::HashMap<
+            ((i64, i64, i64), (i64, i64, i64)),
+            Point3<f64>,
+        >| {
+            add_triangle_to_mesh(&mut result, tri);
+            for (a, b) in [(tri.v0, tri.v1), (tri.v1, tri.v2), (tri.v2, tri.v0)] {
+                let (ka, kb) = (key(&a), key(&b));
+                if ka == kb {
+                    continue;
+                }
+                // If the reverse exists, this edge is interior — cancel both.
+                if dir.remove(&(kb, ka)).is_some() {
+                    continue;
+                }
+                dir.insert((ka, kb), a);
+            }
+        };
+
+        for i in (0..mesh.indices.len()).step_by(3) {
+            if i + 2 >= mesh.indices.len() {
+                break;
+            }
+            let (i0, i1, i2) = (
+                mesh.indices[i] as usize,
+                mesh.indices[i + 1] as usize,
+                mesh.indices[i + 2] as usize,
+            );
+            if i0 >= vert_count || i1 >= vert_count || i2 >= vert_count {
+                continue;
+            }
+            let triangle = Triangle::new(pt(i0), pt(i1), pt(i2));
+            match self.clip_triangle(&triangle, plane) {
+                ClipResult::AllFront(tri) => add_kept(&tri, &mut dir),
+                ClipResult::AllBehind => {}
+                ClipResult::Split(triangles) => {
+                    for tri in &triangles {
+                        add_kept(tri, &mut dir);
+                    }
+                }
+            }
+        }
+
+        if dir.is_empty() {
+            // Nothing straddled the plane — either fully kept or fully removed.
+            return Ok(Some(result));
+        }
+
+        // Stitch the directed boundary edges into closed loops.
+        let mut next: std::collections::HashMap<(i64, i64, i64), ((i64, i64, i64), Point3<f64>)> =
+            std::collections::HashMap::with_capacity(dir.len());
+        for ((ka, kb), a) in &dir {
+            // Reject if a vertex has >1 outgoing boundary edge (non-manifold cut).
+            if next.insert(*ka, (*kb, *a)).is_some() {
+                return Ok(None);
+            }
+        }
+        let mut loops: Vec<Vec<Point3<f64>>> = Vec::new();
+        let mut visited: std::collections::HashSet<(i64, i64, i64)> =
+            std::collections::HashSet::new();
+        for start in next.keys().copied().collect::<Vec<_>>() {
+            if visited.contains(&start) {
+                continue;
+            }
+            let mut loop_pts: Vec<Point3<f64>> = Vec::new();
+            let mut cur = start;
+            loop {
+                if !visited.insert(cur) {
+                    break;
+                }
+                let Some((nxt, a)) = next.get(&cur).copied() else {
+                    return Ok(None); // open chain — not a clean loop
+                };
+                loop_pts.push(a);
+                cur = nxt;
+                if cur == start {
+                    break;
+                }
+            }
+            if loop_pts.len() >= 3 {
+                loops.push(loop_pts);
+            }
+        }
+        if loops.is_empty() {
+            return Ok(None);
+        }
+
+        // Plane basis for 2D projection.
+        let n = plane.normal;
+        let u = if n.x.abs() < 0.9 {
+            Vector3::new(1.0, 0.0, 0.0)
+        } else {
+            Vector3::new(0.0, 1.0, 0.0)
+        };
+        let u = (u - n * u.dot(&n)).normalize();
+        let v = n.cross(&u);
+        let signed_area = |loop2d: &[nalgebra::Point2<f64>]| -> f64 {
+            let mut a = 0.0;
+            for i in 0..loop2d.len() {
+                let p = loop2d[i];
+                let q = loop2d[(i + 1) % loop2d.len()];
+                a += p.x * q.y - q.x * p.y;
+            }
+            a * 0.5
+        };
+
+        // Project each loop; the largest |area| is the outer boundary, the rest
+        // are holes (hollow profiles). (One outer region per cut — multi-region
+        // cuts fall back via the caller's volume gate.)
+        let projected: Vec<Vec<nalgebra::Point2<f64>>> = loops
+            .iter()
+            .map(|lp| {
+                crate::triangulation::project_to_2d_with_basis(lp, &u, &v, &Point3::origin())
+            })
+            .collect();
+        let outer_idx = (0..projected.len())
+            .max_by(|&a, &b| {
+                signed_area(&projected[a])
+                    .abs()
+                    .partial_cmp(&signed_area(&projected[b]).abs())
+                    .unwrap()
+            })
+            .unwrap();
+        let outer = &projected[outer_idx];
+        let holes: Vec<Vec<nalgebra::Point2<f64>>> = (0..projected.len())
+            .filter(|&i| i != outer_idx)
+            .map(|i| projected[i].clone())
+            .collect();
+
+        let Ok(tri_idx) =
+            crate::triangulation::triangulate_polygon_with_holes(outer, &holes)
+        else {
+            return Ok(None);
+        };
+
+        // Flat index → 3D point across [outer, holes...].
+        let mut pts3d: Vec<Point3<f64>> = loops[outer_idx].clone();
+        for i in 0..projected.len() {
+            if i != outer_idx {
+                pts3d.extend_from_slice(&loops[i]);
+            }
+        }
+        // The cap must be WATERTIGHT with the clipped surface: each cap boundary
+        // edge must be the REVERSE of a surface boundary edge (in `dir`) so the
+        // half-edges cancel. Determine the global winding from one boundary edge —
+        // earcut gives all cap triangles a consistent orientation, so one sample
+        // fixes the whole cap (and yields the correct outward normal as a
+        // consequence). For axis-aligned cuts a normal test happens to agree, but
+        // it does NOT for angled cuts — boundary cancellation is the real rule.
+        let mut flip: Option<bool> = None;
+        'find: for t in tri_idx.chunks(3) {
+            if t.len() < 3 {
+                continue;
+            }
+            for (i, j) in [(0, 1), (1, 2), (2, 0)] {
+                let (ka, kb) = (key(&pts3d[t[i]]), key(&pts3d[t[j]]));
+                if dir.contains_key(&(ka, kb)) {
+                    flip = Some(true); // same dir as surface ⇒ must reverse
+                    break 'find;
+                }
+                if dir.contains_key(&(kb, ka)) {
+                    flip = Some(false); // already reverse ⇒ keep
+                    break 'find;
+                }
+            }
+        }
+        let flip = flip.unwrap_or(false);
+        for t in tri_idx.chunks(3) {
+            if t.len() < 3 {
+                continue;
+            }
+            let (a, b, c) = (pts3d[t[0]], pts3d[t[1]], pts3d[t[2]]);
+            let tri = if flip {
+                Triangle::new(a, c, b)
+            } else {
+                Triangle::new(a, b, c)
+            };
+            add_triangle_to_mesh(&mut result, &tri);
+        }
+
+        Ok(Some(result))
+    }
 }
 
 impl Default for ClippingProcessor {

@@ -867,13 +867,23 @@ impl GeometryRouter {
         Ok(mesh)
     }
 
-    /// Structural-hash key for an item, or `None` when dedup is disabled (skips
-    /// the hash walk entirely so disabled = zero overhead).
+    /// Cache key for an item: its structural hash combined with the router params
+    /// that change the meshed output (tessellation quality / unit scale / RTC), or
+    /// `None` when dedup is disabled (skips the hash walk so disabled = zero
+    /// overhead). The quality fold is what keeps `setTessellationQuality` correct —
+    /// the shared cache persists across quality changes on a worker, so the key
+    /// must distinguish them (#976).
     fn item_dedup_key(&self, item: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<u128> {
         self.item_dedup_cache.as_ref()?;
-        let mut memo = self.content_sig_memo.borrow_mut();
-        Some(super::content_hash::item_signature(
-            decoder, item.id, &mut memo,
+        let structural = {
+            let mut memo = self.content_sig_memo.borrow_mut();
+            super::content_hash::item_signature(decoder, item.id, &mut memo)
+        };
+        Some(super::content_hash::key_with_params(
+            structural,
+            self.tessellation_quality.to_index(),
+            self.unit_scale,
+            self.rtc_offset,
         ))
     }
 

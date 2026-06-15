@@ -84,6 +84,21 @@ pub fn item_signature(decoder: &mut EntityDecoder, root_id: u32, memo: &mut FxHa
     sig_entity(decoder, root_id, memo, 0)
 }
 
+/// Combine the pure structural item hash with the router parameters that change
+/// the MESHED output but live outside the IFC structure — tessellation quality
+/// (curved profiles tessellate finer at higher quality), unit scale, and RTC
+/// offset. Without this, a cache shared across routers — or one that outlives a
+/// `setTessellationQuality` change on the same worker — would serve a mesh built
+/// under different parameters (e.g. #976: every quality level returns the
+/// first-cached triangle count).
+pub fn key_with_params(structural: u128, quality_index: u8, unit_scale: f64, rtc: (f64, f64, f64)) -> u128 {
+    let mut s = fold(structural, quality_index as u64);
+    s = fold(s, unit_scale.to_bits());
+    s = fold(s, rtc.0.to_bits());
+    s = fold(s, rtc.1.to_bits());
+    fold(s, rtc.2.to_bits())
+}
+
 fn sig_entity(decoder: &mut EntityDecoder, id: u32, memo: &mut FxHashMap<u32, u128>, depth: u32) -> u128 {
     if let Some(&s) = memo.get(&id) {
         return s;

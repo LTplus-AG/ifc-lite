@@ -182,6 +182,72 @@ END-ISO-10303-21;
     .to_string()
 }
 
+/// A single cylinder (circle-profile extrusion) — curved, so its triangle count
+/// scales with tessellation quality.
+fn curved_extrusion_ifc() -> String {
+    r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('curve.ifc','2025-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('proj',$,'P','',$,$,$,(#12),#7);
+#7=IFCUNITASSIGNMENT((#8));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#12=IFCGEOMETRICREPRESENTATIONCONTEXT('3D','Model',3,1.E-6,#14,$);
+#14=IFCAXIS2PLACEMENT3D(#15,$,$);
+#15=IFCCARTESIANPOINT((0.,0.,0.));
+#40=IFCLOCALPLACEMENT($,#41);
+#41=IFCAXIS2PLACEMENT3D(#42,$,$);
+#42=IFCCARTESIANPOINT((0.,0.,0.));
+#50=IFCBUILDINGELEMENTPROXY('c',$,'C','',$,#40,#51,$,$);
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#52));
+#52=IFCSHAPEREPRESENTATION(#12,'Body','SweptSolid',(#53));
+#53=IFCEXTRUDEDAREASOLID(#54,#57,#60,1.);
+#54=IFCCIRCLEPROFILEDEF(.AREA.,$,#55,0.5);
+#55=IFCAXIS2PLACEMENT2D(#56,$);
+#56=IFCCARTESIANPOINT((0.,0.));
+#57=IFCAXIS2PLACEMENT3D(#58,$,$);
+#58=IFCCARTESIANPOINT((0.,0.,0.));
+#60=IFCDIRECTION((0.,0.,1.));
+ENDSEC;
+END-ISO-10303-21;
+"#
+    .to_string()
+}
+
+/// CI guard for #976 × dedup: the shared cache persists across
+/// `setTessellationQuality` changes, so the cache KEY must fold in the quality —
+/// otherwise the first-meshed quality is served for every later one. Two routers
+/// sharing ONE cache at different qualities must still tessellate the curve
+/// differently.
+#[test]
+fn content_dedup_keys_on_tessellation_quality() {
+    use ifc_lite_geometry::TessellationQuality;
+    let content = curved_extrusion_ifc();
+    let cache = GeometryRouter::new_dedup_cache();
+
+    let tris = |quality: TessellationQuality| -> usize {
+        let mut d = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let mut r = GeometryRouter::with_scale_and_quality(1.0, quality);
+        r.enable_content_dedup_shared(cache.clone()); // SAME cache across qualities
+        let e = d.decode_by_id(50).expect("decode element");
+        let sm = r
+            .process_element_with_submeshes(&e, &mut d)
+            .expect("mesh element");
+        sm.sub_meshes.iter().map(|s| s.mesh.indices.len() / 3).sum()
+    };
+
+    let low = tris(TessellationQuality::Lowest);
+    let high = tris(TessellationQuality::Highest);
+    assert!(low > 0 && high > 0, "curved extrusion produced no geometry");
+    assert!(
+        high > low,
+        "higher quality must tessellate finer despite the shared dedup cache (low={low}, high={high})"
+    );
+}
+
 /// CI guard (no external fixture): content-dedup must produce BYTE-IDENTICAL
 /// geometry to the non-deduped path, collapse structurally-identical items to one
 /// cached mesh, and keep placement per-instance.

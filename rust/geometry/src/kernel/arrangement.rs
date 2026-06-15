@@ -86,13 +86,29 @@ fn tri_plane(t: &Tri) -> [[f64; 3]; 3] {
     *t
 }
 
+/// A segment endpoint paired with its CACHED interval lambda, so `orient2d` can run
+/// the f64-interval determinant straight from the lambda (the >95%-resolving fast
+/// tier) without re-deriving the degree-4/7 LPI/TPI lambda on every call. The raw
+/// `ImplicitPoint` is kept only for the exact-tier fallback on an interval straddle.
+type EndLam<'a> = (&'a super::interval::IvLam, &'a ImplicitPoint);
+
+/// 2-D orientation from cached interval lambdas, falling to the full exact cascade
+/// (`orient2d_any`) only when the interval determinant straddles zero. Either way
+/// the returned sign is the EXACT sign, so callers are byte-identical to recomputing.
+#[inline]
+fn orient2d_end(a: EndLam, b: EndLam, c: EndLam, axis: super::DropAxis) -> Sign {
+    super::interval::orient2d_from_lam_iv(a.0, b.0, c.0, axis)
+        .unwrap_or_else(|| orient2d_any(a.1, b.1, c.1, axis))
+}
+
 /// Do segments `(a1,b1)` and `(a2,b2)` (in `T`'s plane, projected by `axis`)
-/// properly cross at an interior point? (Shared endpoints don't count.)
-fn segments_cross(a1: &ImplicitPoint, b1: &ImplicitPoint, a2: &ImplicitPoint, b2: &ImplicitPoint, axis: super::DropAxis) -> bool {
-    let s1 = orient2d_any(a1, b1, a2, axis);
-    let s2 = orient2d_any(a1, b1, b2, axis);
-    let s3 = orient2d_any(a2, b2, a1, axis);
-    let s4 = orient2d_any(a2, b2, b1, axis);
+/// properly cross at an interior point? (Shared endpoints don't count.) Lambda-
+/// cached variant of the classic four-orientation test.
+fn segments_cross(a1: EndLam, b1: EndLam, a2: EndLam, b2: EndLam, axis: super::DropAxis) -> bool {
+    let s1 = orient2d_end(a1, b1, a2, axis);
+    let s2 = orient2d_end(a1, b1, b2, axis);
+    let s3 = orient2d_end(a2, b2, a1, axis);
+    let s4 = orient2d_end(a2, b2, b1, axis);
     s1 != Sign::Zero && s2 != Sign::Zero && s1 != s2 && s3 != Sign::Zero && s4 != Sign::Zero && s3 != s4
 }
 
@@ -107,10 +123,20 @@ fn split_crossings(t: &Tri, raws: &[RawSeg]) -> Vec<Constraint> {
         None => return Vec::new(),
     };
     let n = raws.len();
+    // Cache each endpoint's interval lambda ONCE (Attene "Indirect Predicates" §5.4):
+    // the O(n²) crossing loop reuses every endpoint across many `orient2d` calls and
+    // would otherwise re-derive its degree-4/7 LPI/TPI lambda on each. Byte-identical
+    // — the cached lambda equals a fresh one and the exact tiers are unchanged.
+    let iv: Vec<(super::interval::IvLam, super::interval::IvLam)> = raws
+        .iter()
+        .map(|r| (super::interval::ilambda_cached(&r.a), super::interval::ilambda_cached(&r.b)))
+        .collect();
     let mut splits: Vec<Vec<ImplicitPoint>> = vec![Vec::new(); n];
     for k in 0..n {
+        let (ka, kb) = ((&iv[k].0, &raws[k].a), (&iv[k].1, &raws[k].b));
         for l in (k + 1)..n {
-            if segments_cross(&raws[k].a, &raws[k].b, &raws[l].a, &raws[l].b, axis) {
+            let (la, lb) = ((&iv[l].0, &raws[l].a), (&iv[l].1, &raws[l].b));
+            if segments_cross(ka, kb, la, lb, axis) {
                 let x = ImplicitPoint::Tpi(Tpi {
                     planes: [tri_plane(t), tri_plane(&raws[k].cutter), tri_plane(&raws[l].cutter)],
                 });

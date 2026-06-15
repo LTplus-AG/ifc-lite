@@ -38,4 +38,9 @@ runs:
     - name: Install wasm-pack
       uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
       with:
-        version: latest
+        # Pinned, not `latest`: `latest` makes the action hit the GitHub releases
+        # API on every run to resolve the newest version, which intermittently
+        # returns an HTML rate-limit page instead of JSON ("Unexpected token '<'")
+        # and fails the WASM build for reasons unrelated to the change under test.
+        # A fixed version is reproducible and skips the lookup entirely.
+        version: v0.15.0

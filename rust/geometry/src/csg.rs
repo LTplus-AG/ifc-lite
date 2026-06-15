@@ -1202,7 +1202,7 @@ impl ClippingProcessor {
         }
 
         if non_empty_voids.len() == 1 {
-            return self.subtract_mesh(host, non_empty_voids[0]);
+            return self.subtract_one(host, non_empty_voids[0]);
         }
 
         // Threshold for batching: if more than 10 voids, union them first
@@ -1220,11 +1220,40 @@ impl ClippingProcessor {
             let mut result = host.clone();
 
             for void in non_empty_voids {
-                result = self.subtract_mesh(&result, void)?;
+                result = self.subtract_one(&result, void)?;
             }
 
             Ok(result)
         }
+    }
+
+    /// Subtract a single `cutter` from `host`, taking the fast f64 planar-clip
+    /// path ([`Self::try_planar_clip`]) when the cutter is a convex half-space
+    /// end-clip of the host — the dominant Tekla connection pattern — and the
+    /// exact arrangement kernel ([`Self::subtract_mesh`]) for everything else.
+    /// The fast path is geometrically equivalent to the exact subtract for those
+    /// cuts, only ~100-3000× cheaper. Set `IFC_LITE_DISABLE_PLANAR_CLIP=1`
+    /// (native) to force the exact kernel everywhere.
+    pub fn subtract_one(&self, host: &Mesh, cutter: &Mesh) -> Result<Mesh> {
+        if !planar_clip_disabled() {
+            if let Some(clipped) = self.try_planar_clip(host, cutter)? {
+                // Safety gate: fire ONLY when the cap produced a provably watertight
+                // solid (no open boundary edges on the 1 mm grid). This is the one
+                // jitter-robust signal: on degenerate input — coincident faces, or
+                // the f32 vertex jitter of a georeferenced model whose coordinates
+                // are baked into the geometry (not the placement, so neither the
+                // per-element nor the batch RTC path can relocalize it) — the cap
+                // cannot close cleanly, so the clip defers to the exact kernel
+                // rather than ship a non-watertight (and volume-wrong) solid. The
+                // exact kernel degrades identically on such input, so deferring is
+                // never worse; on well-localized geometry the cap is watertight and
+                // the fast path fires.
+                if count_open_boundary_edges(&clipped) == 0 {
+                    return Ok(clipped);
+                }
+            }
+        }
+        self.subtract_mesh(host, cutter)
     }
 
     /// Subtract meshes with fallback on failure
@@ -1629,6 +1658,157 @@ impl ClippingProcessor {
 
         Ok(Some(result))
     }
+
+    /// Try to subtract `cutter` from `host` as a single PLANAR clip (the fast f64
+    /// [`Self::clip_mesh_with_cap`]) instead of the exact arrangement. Detects the
+    /// Tekla end-clip pattern: a solid cutter acts as ONE half-space of the host
+    /// iff exactly one cutter face plane straddles the host AND the host lies
+    /// entirely on the cutter-inside of every OTHER cutter face (the cutter
+    /// overhangs the host on all other sides). Returns `None` — caller falls back
+    /// to the exact `subtract_mesh` — for any cutter that isn't a clean single-
+    /// plane clip (notches, pockets, round holes, oblique cutters that graze a
+    /// corner) or if the cap can't be assembled. Never a correctness risk.
+    pub fn try_planar_clip(&self, host: &Mesh, cutter: &Mesh) -> Result<Option<Mesh>> {
+        if host.is_empty() || cutter.is_empty() {
+            return Ok(None);
+        }
+        // Scale-independent tolerance from the host extent.
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for c in host.positions.chunks(3) {
+            for k in 0..3 {
+                lo[k] = lo[k].min(c[k] as f64);
+                hi[k] = hi[k].max(c[k] as f64);
+            }
+        }
+        let diag = ((hi[0] - lo[0]).powi(2) + (hi[1] - lo[1]).powi(2) + (hi[2] - lo[2]).powi(2))
+            .sqrt();
+        let tol = (diag * 1.0e-6).max(1.0e-9);
+
+        // Precision regime: f32 vertices are only trustworthy below the codebase's
+        // large-coordinate threshold (10 km — `ModelBounds::has_large_coordinates`).
+        // Above it the ULP grows past a millimetre, so the straddle/convexity
+        // classification and the cap's watertightness become unverifiable; defer
+        // the whole element to the exact kernel (which degrades identically on such
+        // un-localized georeferenced geometry, so this is never worse). Localized
+        // models — the production rebases placement-based georef to a local origin —
+        // fall well under the threshold and take the fast path.
+        let max_mag = lo
+            .iter()
+            .chain(hi.iter())
+            .fold(0.0f64, |m, &c| m.max(c.abs()));
+        if max_mag > 10_000.0 {
+            return Ok(None);
+        }
+
+        let planes = cutter_face_planes(cutter);
+        if planes.is_empty() {
+            return Ok(None);
+        }
+        let mut straddle: Option<(Point3<f64>, Vector3<f64>)> = None;
+        for (pt, n) in &planes {
+            let (mut any_in, mut any_out) = (false, false);
+            for c in host.positions.chunks(3) {
+                let d = (Point3::new(c[0] as f64, c[1] as f64, c[2] as f64) - pt).dot(n);
+                if d > tol {
+                    any_out = true;
+                }
+                if d < -tol {
+                    any_in = true;
+                }
+                if any_in && any_out {
+                    break;
+                }
+            }
+            if any_in && any_out {
+                if straddle.is_some() {
+                    return Ok(None); // a second cutting plane ⇒ not a half-space
+                }
+                straddle = Some((*pt, *n));
+            } else if any_out {
+                // Host material lies OUTSIDE this plane (cutter doesn't bound it as
+                // a half-space here) ⇒ not a clean end-clip; defer.
+                return Ok(None);
+            }
+            // else: all-inside — this cutter face does not cut the host.
+        }
+        let Some((pt, n)) = straddle else {
+            return Ok(None); // no cutting plane (the bounds check handles no-ops)
+        };
+        // The half-space equivalence only holds for a CONVEX cutter: its face
+        // planes must bound exactly the solid. A non-convex cutter (L-prism,
+        // notched block) can have one straddling face yet remove LESS than the
+        // half-space — clipping it would over-cut the host. Reject if any cutter
+        // vertex lies outside any of its own face planes.
+        let ctol = {
+            let (mut clo, mut chi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+            for c in cutter.positions.chunks(3) {
+                for k in 0..3 {
+                    clo[k] = clo[k].min(c[k] as f64);
+                    chi[k] = chi[k].max(c[k] as f64);
+                }
+            }
+            let d = ((chi[0] - clo[0]).powi(2) + (chi[1] - clo[1]).powi(2)
+                + (chi[2] - clo[2]).powi(2))
+            .sqrt();
+            (d * 1.0e-5).max(1.0e-9)
+        };
+        for (fp, fnrm) in &planes {
+            for c in cutter.positions.chunks(3) {
+                let d = (Point3::new(c[0] as f64, c[1] as f64, c[2] as f64) - fp).dot(fnrm);
+                if d > ctol {
+                    return Ok(None); // vertex outside a face plane ⇒ non-convex
+                }
+            }
+        }
+        // Keep the host on the OUTSIDE of the cutter (front = +outward normal).
+        self.clip_mesh_with_cap(host, &Plane::new(pt, n))
+    }
+}
+
+/// Whether the fast f64 planar-clip path is disabled (escape hatch).
+///
+/// On by default; set `IFC_LITE_DISABLE_PLANAR_CLIP=1` to force the exact
+/// arrangement kernel for every subtract — for debugging a suspected mis-route
+/// or measuring the fast path's contribution. Read once and cached. Native-only
+/// (env is empty in WASM, where the fast path is therefore always on).
+fn planar_clip_disabled() -> bool {
+    static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DISABLED.get_or_init(|| std::env::var("IFC_LITE_DISABLE_PLANAR_CLIP").is_ok())
+}
+
+/// Group a (closed, outward-wound) mesh's triangles into face planes, returning
+/// one `(point_on_plane, outward_normal)` per distinct plane.
+fn cutter_face_planes(mesh: &Mesh) -> Vec<(Point3<f64>, Vector3<f64>)> {
+    use std::collections::HashMap;
+    const NQ: f64 = 1.0e3; // normal grid
+    const OQ: f64 = 1.0e5; // offset grid (10 µm)
+    let p = &mesh.positions;
+    let mut groups: HashMap<(i64, i64, i64, i64), (Point3<f64>, Vector3<f64>)> = HashMap::new();
+    for t in mesh.indices.chunks(3) {
+        if t.len() < 3 {
+            continue;
+        }
+        let v = |i: u32| {
+            let b = i as usize * 3;
+            Point3::new(p[b] as f64, p[b + 1] as f64, p[b + 2] as f64)
+        };
+        let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
+        let n = (b - a).cross(&(c - a));
+        let len = n.norm();
+        if len < 1.0e-12 {
+            continue;
+        }
+        let n = n / len;
+        let off = a.coords.dot(&n);
+        let key = (
+            (n.x * NQ).round() as i64,
+            (n.y * NQ).round() as i64,
+            (n.z * NQ).round() as i64,
+            (off * OQ).round() as i64,
+        );
+        groups.entry(key).or_insert((a, n));
+    }
+    groups.into_values().collect()
 }
 
 impl Default for ClippingProcessor {

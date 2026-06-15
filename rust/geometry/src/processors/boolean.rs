@@ -1031,7 +1031,12 @@ impl BooleanClippingProcessor {
                     agreement,
                 ) {
                     let clipper = ClippingProcessor::new();
-                    let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
+                    // When the clip polygon spans the host cross-section the prism
+                    // acts as a half-space and `subtract_one` takes the fast f64
+                    // capped clip — which also sidesteps the coincident-side-wall
+                    // sliver collapse described below. A partial (non-spanning) or
+                    // non-convex polygon straddles on >1 face and defers to exact.
+                    let subtract_result = clipper.subtract_one(&mesh, &bound_mesh);
                     self.drain_clipper_failures(&clipper);
                     if let Ok(clipped) = subtract_result {
                         // The bounded-prism subtract is fragile on coincident
@@ -1087,7 +1092,7 @@ impl BooleanClippingProcessor {
                 return Ok(mesh);
             }
             let clipper = ClippingProcessor::new();
-            let result = clipper.subtract_mesh(&mesh, &second_mesh);
+            let result = clipper.subtract_one(&mesh, &second_mesh);
             self.drain_clipper_failures(&clipper);
             return result;
         }

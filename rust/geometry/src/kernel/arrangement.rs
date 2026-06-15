@@ -588,14 +588,20 @@ fn to_f64_pt(arr: &Arrangement, v: Vid) -> [f64; 3] {
         }
     }
     let pt = arr.interner.get(v);
-    // Fast path: materialize via the fixed-width lambda. Falls back to the exact
-    // BigRational `point_of` only for off-grid/overflow points (rare).
-    let p = if let Some(f) = super::fixed::point_to_f64(pt) {
-        f
-    } else {
-        let q = point_of(pt);
-        [q[0].to_f64().unwrap(), q[1].to_f64().unwrap(), q[2].to_f64().unwrap()]
-    };
+    // Reuse the interner's already-cached I512 lambda (computed once at intern time)
+    // rather than re-deriving it at I1024 in `point_to_f64`; fall to the from-scratch
+    // fixed-width path on a cache miss (overflow), then to exact BigRational `point_of`
+    // for off-grid points. All three yield the identical f64.
+    let p = arr
+        .interner
+        .lam(v)
+        .as_ref()
+        .and_then(super::fixed::point_to_f64_from_lam)
+        .or_else(|| super::fixed::point_to_f64(pt))
+        .unwrap_or_else(|| {
+            let q = point_of(pt);
+            [q[0].to_f64().unwrap(), q[1].to_f64().unwrap(), q[2].to_f64().unwrap()]
+        });
     if let Some(slot) = arr.f64_cache.borrow_mut().get_mut(idx) {
         *slot = Some(p);
     }

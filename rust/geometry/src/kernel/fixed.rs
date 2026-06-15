@@ -496,6 +496,23 @@ pub fn point_to_f64(p: &ImplicitPoint) -> Option<[f64; 3]> {
     }
 }
 
+/// f64 coordinates from an ALREADY-CACHED [`Lam`] (the interner's per-Vid I512
+/// lambda), skipping the from-scratch I1024 recompute `point_to_f64` does. The
+/// cached lambda is stored in one homogeneous COARSE convention (fine-scale points
+/// fold their 2^20 scale ratio into `d`), so `real = λ/(d·COARSE)` for either grid
+/// and the result is bit-identical to `point_to_f64`. `None` only when the cached
+/// lambda was absent (overflow) — the caller then falls back to `point_to_f64`.
+pub fn point_to_f64_from_lam(lam: &Lam) -> Option<[f64; 3]> {
+    use num_traits::ToPrimitive;
+    let (l, d) = lam;
+    let denom = d.to_f64()? * COARSE;
+    if denom == 0.0 || !denom.is_finite() {
+        return None;
+    }
+    let (x, y, z) = (l[0].to_f64()? / denom, l[1].to_f64()? / denom, l[2].to_f64()? / denom);
+    (x.is_finite() && y.is_finite() && z.is_finite()).then_some([x, y, z])
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{interner::Interner, ImplicitPoint, Lpi, Tpi};

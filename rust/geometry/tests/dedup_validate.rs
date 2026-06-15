@@ -22,6 +22,273 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::Instant;
 
+/// Simulate an N-worker partition: greedily pack each key's cost onto the
+/// least-loaded worker (a good static-affinity scheduler), return the wall time =
+/// the busiest worker's total cost. `groups` are reordered.
+fn partition_wall(mut groups: Vec<f64>, workers: usize) -> f64 {
+    // Sort heaviest-first so least-loaded packing approaches optimal makespan.
+    groups.sort_by(|a, b| b.partial_cmp(a).unwrap());
+    let mut load = vec![0.0f64; workers];
+    for g in groups {
+        let w = (0..workers).min_by(|&a, &b| load[a].partial_cmp(&load[b]).unwrap()).unwrap();
+        load[w] += g;
+    }
+    load.into_iter().fold(0.0, f64::max)
+}
+
+/// The wall time the ACTUAL dispatcher gets: assign each key round-robin in
+/// FIRST-APPEARANCE order (cost-blind), `groups` already in appearance order.
+fn partition_wall_roundrobin(groups: &[f64], workers: usize) -> f64 {
+    let mut load = vec![0.0f64; workers];
+    for (i, g) in groups.iter().enumerate() {
+        load[i % workers] += g;
+    }
+    load.into_iter().fold(0.0, f64::max)
+}
+
+/// TRUE per-worker-cache simulation for a given routing key: `workers` routers,
+/// each its OWN dedup cache (exactly the viewer's separate WASM realms). Assign
+/// each element to a worker by its routing key (round-robin sticky) and ACTUALLY
+/// mesh it there, so an item shared by element-geometries on different workers is
+/// re-meshed on each. Returns (per-worker mesh ms, total items meshed across all
+/// workers — vs the global unique count, the cross-worker redundancy).
+fn worker_sim(
+    content: &str,
+    void_idx: &FxHashMap<u32, Vec<u32>>,
+    all_jobs: &[u32],
+    key_of: &FxHashMap<u32, u128>,
+    workers: usize,
+) -> (Vec<f64>, usize) {
+    let mut k2w: FxHashMap<u128, usize> = FxHashMap::default();
+    let mut nxt = 0usize;
+    let mut wr: Vec<GeometryRouter> = Vec::new();
+    let mut wd: Vec<EntityDecoder> = Vec::new();
+    for _ in 0..workers {
+        let mut d = EntityDecoder::with_index(content, build_entity_index(content));
+        wr.push(GeometryRouter::with_units(content, &mut d));
+        wd.push(d);
+    }
+    let mut wtime = vec![0.0f64; workers];
+    for id in all_jobs {
+        let key = *key_of.get(id).unwrap_or(&(*id as u128));
+        let w = *k2w.entry(key).or_insert_with(|| {
+            let v = nxt;
+            nxt = (nxt + 1) % workers;
+            v
+        });
+        let e = match wd[w].decode_by_id(*id) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let openings = void_idx.get(id).map(|v| v.len()).unwrap_or(0);
+        let t = Instant::now();
+        let _ = if openings > 0 {
+            wr[w].process_element_with_submeshes_and_voids(&e, &mut wd[w], void_idx)
+        } else {
+            wr[w].process_element_with_submeshes(&e, &mut wd[w])
+        };
+        wtime[w] += t.elapsed().as_secs_f64() * 1000.0;
+    }
+    let meshed: usize = wr.iter().map(|r| r.dedup_unique_count()).sum();
+    (wtime, meshed)
+}
+
+/// What-routing-key analysis (#1131 follow-up): for a real model, how does the
+/// 4-worker wall time of content-dedup'd meshing depend on the routing key — by
+/// ObjectType (the cheap PR #1131 proxy) vs by exact geometry hash (the dedup
+/// unit) vs the interleaved baseline? Measures the per-UNIQUE-geometry mesh cost
+/// once, then packs the unique costs under each grouping.
+///
+/// IFCLT_MODEL=/abs/path.ifc cargo test -p ifc-lite-geometry --release \
+///   --test dedup_validate analyze_affinity -- --ignored --nocapture
+#[test]
+#[ignore = "manual; needs IFCLT_MODEL"]
+fn analyze_affinity_partition() {
+    const WORKERS: usize = 4;
+    let path = match std::env::var("IFCLT_MODEL") {
+        Ok(p) => p,
+        Err(_) => {
+            println!("set IFCLT_MODEL=/abs/path.ifc");
+            return;
+        }
+    };
+    let content = std::fs::read_to_string(&path).expect("read model");
+    let void_idx = build_void_index(&content);
+    let products = list_products(&content);
+
+    let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+
+    // Per UNIQUE geometry (cache miss): (mesh_ms, object_type, element_id).
+    let mut uniques: Vec<(f64, Option<String>, u32)> = Vec::new();
+    let mut total_ms = 0.0;
+    let mut prev_unique = 0usize;
+    for (id, _ty) in &products {
+        let entity = match decoder.decode_by_id(*id) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let obj_type = entity
+            .get(4)
+            .and_then(|a| a.as_string())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        let openings = void_idx.get(id).map(|v| v.len()).unwrap_or(0);
+        let t = Instant::now();
+        let _ = if openings > 0 {
+            router.process_element_with_submeshes_and_voids(&entity, &mut decoder, &void_idx)
+        } else {
+            router.process_element_with_submeshes(&entity, &mut decoder)
+        };
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        total_ms += ms;
+        // A cache MISS (the cache grew) means this element meshed a new unique
+        // geometry — its time is the cost that routing must spread.
+        let now_unique = router.dedup_unique_count();
+        if now_unique > prev_unique {
+            uniques.push((ms, obj_type, *id));
+            prev_unique = now_unique;
+        }
+    }
+
+    let unique_ms: f64 = uniques.iter().map(|u| u.0).sum();
+    println!("\n=== affinity routing analysis ({WORKERS} workers) ===");
+    println!("model: {path}");
+    println!("elements: {}  unique geometries: {}", products.len(), uniques.len());
+    println!("total serial mesh: {total_ms:.0}ms   unique-only (dedup floor): {unique_ms:.0}ms");
+
+    // Group cost by ObjectType (empty ⇒ its own group, mirroring the id fallback).
+    let mut by_type: FxHashMap<String, f64> = FxHashMap::default();
+    for (ms, ot, id) in &uniques {
+        let key = ot.clone().unwrap_or_else(|| format!("__id_{id}"));
+        *by_type.entry(key).or_default() += ms;
+    }
+    let object_types = by_type.values().filter(|_| true).count();
+    let real_types = by_type.keys().filter(|k| !k.starts_with("__id_")).count();
+    println!("distinct ObjectTypes (routing buckets): {object_types} ({real_types} real, rest id-fallback)");
+
+    // Walls: ideal lower bound (unique_ms / workers), per-geometry routing (each
+    // unique its own bucket), per-ObjectType routing (PR #1131), and serial.
+    let ideal = unique_ms / WORKERS as f64;
+    let geo_costs: Vec<f64> = uniques.iter().map(|u| u.0).collect(); // appearance order
+    let by_geometry_opt = partition_wall(geo_costs.clone(), WORKERS);
+    let by_geometry_rr = partition_wall_roundrobin(&geo_costs, WORKERS);
+    let by_objtype = partition_wall(by_type.values().copied().collect(), WORKERS);
+
+    println!("\nprojected 4-worker wall (unique meshing only):");
+    println!("  ideal (perfect split):           {ideal:.0}ms");
+    println!("  by GEOMETRY hash, OPTIMAL pack:   {by_geometry_opt:.0}ms");
+    println!("  by GEOMETRY hash, ROUND-ROBIN:    {by_geometry_rr:.0}ms  <- actual dispatcher");
+    println!("  by OBJECTTYPE, optimal pack:      {by_objtype:.0}ms");
+    println!("  serial (1 worker):               {unique_ms:.0}ms");
+
+    // Cost concentration: how much of the floor is in the heaviest few uniques?
+    let mut sorted = geo_costs.clone();
+    sorted.sort_by(|a, b| b.partial_cmp(a).unwrap());
+    let topn = |n: usize| sorted.iter().take(n).sum::<f64>();
+    println!(
+        "\ncost concentration: top1={:.0}ms top5={:.0}ms top10={:.0}ms top25={:.0}ms top50={:.0}ms (of {:.0}ms)",
+        topn(1), topn(5), topn(10), topn(25), topn(50), unique_ms
+    );
+
+    // Prepass cost of computing the geometry routing key (hash only, no meshing),
+    // from a COLD router — this is what the streaming pre-pass would add to emit
+    // an exact-geometry affinity key instead of the ObjectType proxy.
+    let mut hk_decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
+    let hk_router = GeometryRouter::with_units(&content, &mut hk_decoder);
+    let t = Instant::now();
+    let mut keyed = 0usize;
+    for (id, _ty) in &products {
+        if let Ok(e) = hk_decoder.decode_by_id(*id) {
+            if hk_router.geometry_routing_key(&e, &mut hk_decoder).is_some() {
+                keyed += 1;
+            }
+        }
+    }
+    let hash_ms = t.elapsed().as_secs_f64() * 1000.0;
+    println!(
+        "\nrouting-key (geometry hash) prepass cost: {hash_ms:.0}ms for {keyed} elements"
+    );
+    println!(
+        "  → projected total, round-robin routing: ~{:.0}ms (prepass {hash_ms:.0} + parallel {by_geometry_rr:.0})",
+        hash_ms + by_geometry_rr
+    );
+
+    // ── REALISTIC dispatcher simulation over EVERY geometry job ──
+    // The above used the narrow `list_products` filter; the viewer's pre-pass
+    // emits a job for every `has_geometry_by_name` entity. Re-run over the full
+    // set with a COLD router, routing by the exact geometry key the dispatcher
+    // uses, and accumulate REAL per-element time (build OR hit) onto the assigned
+    // worker — the wall the viewer actually pays.
+    let mut all_jobs: Vec<u32> = Vec::new();
+    {
+        let mut scanner = EntityScanner::new(&content);
+        while let Some((id, name, _, _)) = scanner.next_entity() {
+            if ifc_lite_core::has_geometry_by_name(name) {
+                all_jobs.push(id);
+            }
+        }
+    }
+    let mut d2 = EntityDecoder::with_index(&content, build_entity_index(&content));
+    let r2 = GeometryRouter::with_units(&content, &mut d2);
+    let mut per_elem: Vec<(u128, f64)> = Vec::with_capacity(all_jobs.len());
+    let mut rkeys: FxHashMap<u128, usize> = FxHashMap::default();
+    let mut all_ms = 0.0;
+    for id in &all_jobs {
+        let e = match d2.decode_by_id(*id) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let rkey = r2.geometry_routing_key(&e, &mut d2).unwrap_or(*id as u128);
+        let openings = void_idx.get(id).map(|v| v.len()).unwrap_or(0);
+        let t = Instant::now();
+        let _ = if openings > 0 {
+            r2.process_element_with_submeshes_and_voids(&e, &mut d2, &void_idx)
+        } else {
+            r2.process_element_with_submeshes(&e, &mut d2)
+        };
+        all_ms += t.elapsed().as_secs_f64() * 1000.0;
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        per_elem.push((rkey, ms));
+        *rkeys.entry(rkey).or_default() += 1;
+    }
+    let unique_items = r2.dedup_unique_count();
+    println!("\n=== REALISTIC sim over ALL {} geometry jobs ===", all_jobs.len());
+    println!(
+        "distinct routing keys (PDS hash): {}   unique item geometries (dedup): {}   {}",
+        rkeys.len(),
+        unique_items,
+        if rkeys.len() > unique_items * 12 / 10 {
+            "<- MISALIGNED: routing splits shared geometry"
+        } else {
+            "(aligned)"
+        }
+    );
+    println!("total serial mesh (incl hits): {all_ms:.0}ms   global floor (/{WORKERS}): {:.0}ms", all_ms / WORKERS as f64);
+
+    // Build the routing key per element and run the TRUE per-worker sim. The
+    // redundancy ≈ 1.0× confirms the affinity routing reaches the meshing floor
+    // (each item meshed once across the pool); the WALL is the native floor — the
+    // browser pays this × the wasm exact-arithmetic slowdown.
+    let mut key_of: FxHashMap<u32, u128> = FxHashMap::default();
+    {
+        let mut dk = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let rk = GeometryRouter::with_units(&content, &mut dk);
+        for id in &all_jobs {
+            if let Ok(e) = dk.decode_by_id(*id) {
+                key_of.insert(*id, rk.geometry_routing_key(&e, &mut dk).unwrap_or(*id as u128));
+            }
+        }
+    }
+    let (wtime, meshed) = worker_sim(&content, &void_idx, &all_jobs, &key_of, WORKERS);
+    let wall = wtime.iter().cloned().fold(0.0, f64::max);
+    println!(
+        "\nTRUE per-worker sim ({WORKERS} caches, geometry-hash routing):\n  per-worker mesh (ms): {:?}   WALL: {wall:.0}ms\n  items meshed across workers: {meshed} (global unique {unique_items}, redundancy {:.2}x)",
+        wtime.iter().map(|v| *v as u64).collect::<Vec<_>>(),
+        meshed as f64 / unique_items.max(1) as f64,
+    );
+}
+
 fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
     let mut idx: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut scanner = EntityScanner::new(content);

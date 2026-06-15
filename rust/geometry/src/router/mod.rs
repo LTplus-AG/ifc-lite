@@ -370,6 +370,28 @@ impl GeometryRouter {
             .unwrap_or(0)
     }
 
+    /// Content-routing key for an element: a 128-bit structural hash of its WHOLE
+    /// representation subtree (the `Representation` attribute, e.g. an
+    /// `IfcProductDefinitionShape`), or `None` if it has no geometry. Two elements
+    /// with byte-identical geometry — even renumbered — share a key, so a host can
+    /// route them to the same worker; combined with the per-worker dedup cache the
+    /// geometry is then meshed once per worker. Meshing-free (decode + fold) and
+    /// reuses the per-router signature memo so shared sub-entities are hashed once.
+    ///
+    /// (A per-instance shape-representation wrapper can make this finer than the
+    /// per-ITEM dedup unit, but a true 4-router simulation showed that costs
+    /// essentially no extra meshing — 1.01× — because the shared items still land
+    /// on one worker, so the simpler whole-representation hash is used.)
+    pub fn geometry_routing_key(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<u128> {
+        let rep = element.get(6)?.as_entity_ref()?;
+        let mut memo = self.content_sig_memo.borrow_mut();
+        Some(content_hash::item_signature(decoder, rep, &mut memo))
+    }
+
     /// Create router with RTC offset for large coordinate handling
     /// Use this for georeferenced models (e.g., Swiss UTM coordinates)
     pub fn with_rtc(rtc_offset: (f64, f64, f64)) -> Self {

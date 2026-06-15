@@ -19,6 +19,18 @@ fn decode_ifc_bytes<'a>(data: &'a [u8]) -> &'a str {
     }
 }
 
+/// Reduce a 128-bit geometry hash to the 32-bit worker-affinity key the job
+/// stream carries. Jobs with the SAME key are routed to the same geometry worker,
+/// so their (byte-identical) geometry is meshed once per model instead of once per
+/// worker — the win the per-worker content-dedup cache can't get across separate
+/// WASM realms. A 32-bit collision only co-locates two unrelated geometries on one
+/// worker (harmless: the cache still keys them apart), so xor-folding the lanes is
+/// plenty.
+#[inline]
+fn fold_u128_to_u32(h: u128) -> u32 {
+    (h as u32) ^ ((h >> 32) as u32) ^ ((h >> 64) as u32) ^ ((h >> 96) as u32)
+}
+
 // The per-submesh #858 palette split lives inside the canonical per-element
 // producer (`ifc_lite_processing::element`) — shared with the native pipeline.
 
@@ -236,26 +248,35 @@ impl IfcAPI {
         // every `chunk_size` boundary.
         const RTC_SAMPLE_THRESHOLD: usize = 50;
 
-        // Emit a chunk of jobs to JS as a Uint32Array of [id, start, end] triples.
-        // Internal helper, returns total emitted so far.
+        // Emit a chunk of jobs to JS as a Uint32Array of [id, start, end] triples,
+        // PLUS a parallel `affinity` Uint32Array (one precomputed key per job). The
+        // host dispatcher routes all jobs sharing an affinity key to the SAME
+        // worker, so byte-identical geometry the exporter failed to share via
+        // IfcMappedItem is meshed once per model instead of once per worker (#1130
+        // follow-up). `affinity` must be the same length as `jobs`; keys are the
+        // element's exact geometry hash (see the post-scan pass that builds them).
         fn emit_jobs_chunk(
             on_event: &Function,
             jobs: &[(u32, usize, usize, IfcType)],
+            affinity: &[u32],
         ) -> Result<(), JsValue> {
             if jobs.is_empty() {
                 return Ok(());
             }
             let arr = js_sys::Uint32Array::new_with_length((jobs.len() * 3) as u32);
+            let aff = js_sys::Uint32Array::new_with_length(jobs.len() as u32);
             let mut idx = 0u32;
-            for &(id, start, end, _) in jobs {
+            for (j, &(id, start, end, _)) in jobs.iter().enumerate() {
                 arr.set_index(idx, id);
                 arr.set_index(idx + 1, start as u32);
                 arr.set_index(idx + 2, end as u32);
                 idx += 3;
+                aff.set_index(j as u32, affinity.get(j).copied().unwrap_or(id));
             }
             let event = js_sys::Object::new();
             super::set_js_prop(&event, "type", &"jobs".into());
             super::set_js_prop(&event, "jobs", &arr);
+            super::set_js_prop(&event, "affinity", &aff);
             on_event.call1(&JsValue::NULL, &event.into())?;
             Ok(())
         }
@@ -426,19 +447,13 @@ impl IfcAPI {
                     None => super::set_js_prop(&meta, "buildingRotation", &JsValue::NULL),
                 };
                 on_event.call1(&JsValue::NULL, &meta.into())?;
-
-                // Drain the buffered jobs as the first jobs event so workers
-                // start immediately on whatever we already collected.
-                emit_jobs_chunk(on_event, &buffered_jobs)?;
-                buffered_jobs.clear();
                 meta_emitted = true;
+                // NOTE: jobs are NOT drained here. They are buffered through the
+                // whole scan and emitted post-scan with an exact geometry-hash
+                // affinity key (which needs the COMPLETE entity index). Deferring
+                // is free: workers gate on the styles + entity-index events, both
+                // of which are themselves post-scan.
                 continue;
-            }
-
-            // Steady state: flush every chunk_size jobs.
-            if meta_emitted && buffered_jobs.len() >= chunk_size {
-                emit_jobs_chunk(on_event, &buffered_jobs)?;
-                buffered_jobs.clear();
             }
         }
 
@@ -488,10 +503,6 @@ impl IfcAPI {
             on_event.call1(&JsValue::NULL, &meta.into())?;
         }
 
-        // Final tail chunk.
-        emit_jobs_chunk(on_event, &buffered_jobs)?;
-        buffered_jobs.clear();
-
         // Cache the entity index for processGeometryBatch reuse — same
         // contract as buildPrePassOnce. Wrapped in Arc
         // so process workers reuse the same index by reference instead of
@@ -509,6 +520,42 @@ impl IfcAPI {
         // `with_arc_index` consumes the Arc so we'd lose the reference
         // after the decoder is created.
         let index_for_export = entity_index_arc.clone();
+
+        // ── Geometry-hash affinity + job emission (post-scan) ──
+        // The entity index is COMPLETE now, so tag every buffered job with the
+        // exact 128-bit hash of its representation subtree (`geometry_routing_key`)
+        // and stream the jobs in chunks. The host routes all jobs of a key to ONE
+        // worker, so each unique geometry is meshed once per model — the per-worker
+        // dedup cache turns the rest into cheap hits — instead of every worker
+        // re-meshing the full unique set. Cheap: ~tens of ms for a 25 k-element
+        // model (decode is index-cached, the hash is integer folds). On decode
+        // failure the key falls back to the element id (its own bucket).
+        {
+            let mut akey_decoder =
+                EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+            // The routing key is a STRUCTURAL hash (`item_signature`) — it neither
+            // tessellates nor scales, so the router's unit scale is irrelevant here
+            // and we skip seeding it.
+            let akey_router = GeometryRouter::new();
+            let mut affinity: Vec<u32> = Vec::with_capacity(buffered_jobs.len());
+            for &(id, _s, _e, _t) in &buffered_jobs {
+                let key = match akey_decoder.decode_by_id(id) {
+                    Ok(ent) => akey_router
+                        .geometry_routing_key(&ent, &mut akey_decoder)
+                        .map(fold_u128_to_u32)
+                        .unwrap_or(id),
+                    Err(_) => id,
+                };
+                affinity.push(key);
+            }
+            for (jobs_chunk, aff_chunk) in buffered_jobs
+                .chunks(chunk_size)
+                .zip(affinity.chunks(chunk_size))
+            {
+                emit_jobs_chunk(on_event, jobs_chunk, aff_chunk)?;
+            }
+        }
+        buffered_jobs.clear();
 
         // ── Style + void resolution (post-scan) ──
         // The streaming scan stashed entity spans for IfcStyledItem,
@@ -646,7 +693,10 @@ impl IfcAPI {
             let type_jobs = super::styling::collect_type_geometry_jobs(content, &mut decoder);
             if !type_jobs.is_empty() {
                 total_jobs += type_jobs.len() as u32;
-                emit_jobs_chunk(on_event, &type_jobs)?;
+                // Type-library geometry is a small, usually-suppressed tail; route
+                // each job to its own bucket (id key) so they spread round-robin.
+                let type_affinity: Vec<u32> = type_jobs.iter().map(|&(id, ..)| id).collect();
+                emit_jobs_chunk(on_event, &type_jobs, &type_affinity)?;
             }
         }
 
@@ -1004,5 +1054,24 @@ impl IfcAPI {
         let _ = super::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
 
         mesh_collection
+    }
+}
+
+#[cfg(test)]
+mod affinity_tests {
+    use super::fold_u128_to_u32;
+
+    #[test]
+    fn fold_is_stable_and_mixes_all_lanes() {
+        // Identical hashes fold to identical keys (routing stickiness).
+        assert_eq!(fold_u128_to_u32(0x1234_5678_9abc_def0_1111_2222_3333_4444),
+                   fold_u128_to_u32(0x1234_5678_9abc_def0_1111_2222_3333_4444));
+        // A change confined to ANY single 32-bit lane changes the key — so two
+        // geometries differing only in their high bits still route apart.
+        let base = 0u128;
+        assert_ne!(fold_u128_to_u32(base), fold_u128_to_u32(base | (1u128 << 0)));
+        assert_ne!(fold_u128_to_u32(base), fold_u128_to_u32(base | (1u128 << 40)));
+        assert_ne!(fold_u128_to_u32(base), fold_u128_to_u32(base | (1u128 << 72)));
+        assert_ne!(fold_u128_to_u32(base), fold_u128_to_u32(base | (1u128 << 120)));
     }
 }

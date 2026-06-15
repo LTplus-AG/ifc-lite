@@ -31,6 +31,37 @@ import { pickWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 
 /**
+ * Plan content-affinity routing for one chunk: assign each job (by index) to a
+ * worker bucket so that every job sharing an affinity key lands on the SAME
+ * worker — across the whole stream, since `keyToWorker` is the caller's sticky
+ * map. New keys are handed out round-robin from `startWorker`, so each worker
+ * owns roughly `1/workerCount` of the distinct keys (≈ distinct geometries, the
+ * dominant meshing cost). Pure: mutates only the passed `keyToWorker` and returns
+ * the advanced round-robin cursor. (#1130 follow-up — see `affinity_key` in Rust.)
+ */
+export function planAffinityRouting(
+  affinity: Uint32Array,
+  totalJobs: number,
+  workerCount: number,
+  keyToWorker: Map<number, number>,
+  startWorker: number,
+): { buckets: number[][]; nextWorker: number } {
+  const buckets: number[][] = Array.from({ length: workerCount }, () => []);
+  let nextWorker = startWorker % workerCount;
+  for (let j = 0; j < totalJobs; j++) {
+    const key = affinity[j];
+    let w = keyToWorker.get(key);
+    if (w === undefined) {
+      w = nextWorker;
+      nextWorker = (nextWorker + 1) % workerCount;
+      keyToWorker.set(key, w);
+    }
+    buckets[w].push(j);
+  }
+  return { buckets, nextWorker };
+}
+
+/**
  * Optional runtime override for the geometry worker's adaptive batch sizing
  * (#1097), read off `globalThis` on the host thread. A zero-cost escape hatch
  * for hardware-specific tuning / field-debugging the watchdog↔throughput
@@ -215,9 +246,20 @@ export async function* processParallel(
    * geometry-style meshes (geometry-IDs don't match the host's
    * mesh.expressId; only element-material colours did).
    */
-  const queuedChunks: Uint32Array[] = [];
+  const queuedChunks: { jobs: Uint32Array; affinity: Uint32Array | null }[] = [];
   let stylesReceived = false;
   let entityIndexReceived = false;
+
+  // Content-affinity routing (#1130 follow-up): the pre-pass tags every job with
+  // an affinity key (ObjectType hash, see `affinity_key` in Rust). Sending all
+  // jobs of one key to the SAME worker means each unique geometry is meshed ONCE
+  // per model — the per-worker content-dedup cache then turns the rest into cheap
+  // hits — instead of every worker re-meshing the full unique set (the cap of
+  // PR #1130 on its own). `keyToWorker` is sticky for the whole stream; new keys
+  // round-robin so each worker owns ~1/N of the distinct geometries (the dominant
+  // cost). Falls back to interleaving when the pre-pass sends no affinity array.
+  const keyToWorker = new Map<number, number>();
+  let nextAffinityWorker = 0;
 
   // Per-worker first-batch timestamps (filled lazily so we don't need
   // workerCount at this point). The closure indexes by workerIndex.
@@ -451,23 +493,55 @@ export async function* processParallel(
     // handler does the drain after posting set-styles.
   };
 
-  function dispatchJobsChunkInternal(jobs: Uint32Array): void {
+  /**
+   * Group a chunk's jobs by the worker each job's affinity key maps to, then
+   * post one contiguous slice per worker. All jobs of a key reach the same
+   * worker across the whole stream (`keyToWorker` is sticky), so each unique
+   * geometry is meshed once; new keys round-robin for even spread.
+   */
+  function dispatchByAffinity(jobs: Uint32Array, affinity: Uint32Array): void {
+    const n = workers.length;
+    const totalSubJobs = Math.floor(jobs.length / 3);
+    const { buckets, nextWorker } = planAffinityRouting(
+      affinity,
+      totalSubJobs,
+      n,
+      keyToWorker,
+      nextAffinityWorker,
+    );
+    nextAffinityWorker = nextWorker;
+    for (let i = 0; i < n; i++) {
+      const idxs = buckets[i];
+      if (idxs.length === 0) continue;
+      const sub = new Uint32Array(idxs.length * 3);
+      for (let k = 0, o = 0; k < idxs.length; k++, o += 3) {
+        const src = idxs[k] * 3;
+        sub[o] = jobs[src];
+        sub[o + 1] = jobs[src + 1];
+        sub[o + 2] = jobs[src + 2];
+      }
+      workers[i].postMessage(
+        { type: 'stream-chunk' as const, jobsFlat: sub },
+        [sub.buffer],
+      );
+    }
+  }
+
+  function dispatchJobsChunkInternal(jobs: Uint32Array, affinity: Uint32Array | null): void {
     if (workers.length === 0 || jobs.length === 0) return;
-    // Round-robin sending whole chunks to single workers leaves N-1
-    // workers idle whenever the chunk count is small. Instead split each
-    // Rust chunk across all workers so every worker processes a slice of
-    // every chunk in parallel — full pool utilisation from the very first
-    // chunk.
-    //
-    // The split is INTERLEAVED (worker i takes jobs i, i+N, i+2N, …), not
-    // contiguous quarters: geometric complexity clusters by file region
-    // (e.g. all the CSG-heavy slabs of a steel model at the end of DATA),
-    // and a contiguous split hands one worker the entire heavy cluster
-    // while the rest go idle — the load's tail runs single-threaded.
-    // Striding spreads any hot region evenly across the pool.
     const totalSubJobs = Math.floor(jobs.length / 3);
     if (totalSubJobs === 0) return;
     try {
+      // Preferred path: content-affinity routing so each unique geometry is
+      // meshed once per model rather than once per worker (#1130 follow-up).
+      if (affinity && affinity.length === totalSubJobs) {
+        dispatchByAffinity(jobs, affinity);
+        return;
+      }
+      // Fallback (no affinity array): INTERLEAVED split — worker i takes jobs i,
+      // i+N, i+2N, …. Geometric complexity clusters by file region, so striding
+      // spreads any hot region across the pool instead of handing one worker the
+      // entire heavy cluster while the rest go idle.
       for (let i = 0; i < workers.length; i++) {
         const subJobs = Math.floor((totalSubJobs - i + workers.length - 1) / workers.length);
         if (subJobs === 0) continue;
@@ -490,24 +564,25 @@ export async function* processParallel(
     }
   }
 
-  const dispatchJobsChunk = (jobs: Uint32Array) => {
+  const dispatchJobsChunk = (jobs: Uint32Array, affinity: Uint32Array | null) => {
     if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived) {
       // Hold until stream-start AND styles AND entity-index have all
       // been posted to workers. Without styles the meshes would render
       // with default per-type colours; without the pre-built entity
       // index, the worker's first WASM call would re-scan the file
       // (~5 s on 1 GB) to rebuild the index inside Rust.
-      queuedChunks.push(jobs);
+      queuedChunks.push({ jobs, affinity });
       return;
     }
-    dispatchJobsChunkInternal(jobs);
+    dispatchJobsChunkInternal(jobs, affinity);
   };
 
   /** Drain queued chunks once all gating conditions are met. */
   const drainQueuedChunksIfReady = () => {
     if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived) return;
     while (queuedChunks.length > 0) {
-      dispatchJobsChunkInternal(queuedChunks.shift()!);
+      const c = queuedChunks.shift()!;
+      dispatchJobsChunkInternal(c.jobs, c.affinity);
     }
   };
 
@@ -559,17 +634,20 @@ export async function* processParallel(
         wake();
       } else if (evt.type === 'jobs') {
         const jobsArr = evt.jobs as Uint32Array;
+        // Parallel per-job affinity keys (#1130 follow-up). Absent on older
+        // pre-pass builds → dispatcher falls back to interleaving.
+        const affinityArr = (evt.affinity as Uint32Array | undefined) ?? null;
         const jobCount = Math.floor(jobsArr.length / 3);
         chunkArrivals++;
         totalDispatchedJobs += jobCount;
         if (firstChunkAt < 0) {
           firstChunkAt = elapsed();
-          console.log(`[stream] first jobs chunk @ ${firstChunkAt}ms (${jobCount} jobs)`);
+          console.log(`[stream] first jobs chunk @ ${firstChunkAt}ms (${jobCount} jobs, affinity=${affinityArr ? 'on' : 'off'})`);
         }
         if (chunkArrivals % 10 === 1 || jobCount < 1000) {
           console.log(`[stream] chunk #${chunkArrivals} @ ${elapsed()}ms (+${jobCount} jobs, total ${totalDispatchedJobs})`);
         }
-        dispatchJobsChunk(jobsArr);
+        dispatchJobsChunk(jobsArr, affinityArr);
       } else if (evt.type === 'styles') {
         // Streaming pre-pass resolved styles + voids after its main scan.
         // Push them into every worker, then drain any chunks that were

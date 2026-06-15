@@ -2,12 +2,11 @@
 "@ifc-lite/geometry": patch
 ---
 
-Speed up the exact CSG kernel's boolean classification with a BVH, cutting its O(N²) operand scans to O(N log N) — byte-identical output.
+Speed up the exact CSG kernel ~42% on boolean-heavy models (Tekla 170_KM: 22.0s → 12.8s of serial geometry), byte-identical — the sign / boolean / retriangulation determinism manifests and full geometry suite are unchanged. Four profile- and literature-driven optimizations (Attene "Indirect Predicates" §5.4, Shewchuk):
 
-`boolean_vids` decides each arrangement triangle's keep/drop by scanning the *entire* opposite operand per triangle: an exact ray-cast (`point_inside`) for in/out, plus an exact coincident- and near-coplanar-face probe (`on_surface_normal` / `near_on_surface_normal`). On boolean-heavy meshes (e.g. structural steel with hundreds of host triangles per cut) these are the dominant cost. The kernel now builds one median-split AABB BVH over the operand and queries it per triangle — a conservative ray query for the in/out test and a band-radius point query for the coincident-face test — so the expensive exact predicate runs only on the handful of candidates instead of every triangle.
+- **BVH boolean classification** — `boolean_vids` scanned the *entire* opposite operand per arrangement triangle (an exact ray-cast + an exact coincident-face probe). A median-split AABB BVH (conservative ray + band-radius point queries) prunes each to O(log N + hits); the parity/any-match results are order-independent, so the verdict is unchanged.
+- **Memoize `to_f64_pt`** — classification and the output map materialize the same heavily-shared conforming vertices many times; each interned point's f64 value is now computed once per arrangement.
+- **Cache interval lambdas in the seg×seg pre-pass** — the O(n²) crossing loop re-derived each endpoint's degree-4/7 LPI/TPI interval lambda on every `orient2d`; compute it once and run the crossing test straight from it, falling to the exact cascade only on a straddle.
+- **Materialize f64 from the cached lambda** — reuse the interner's already-cached I512 lambda instead of re-deriving it at I1024.
 
-The BVH is a pure prefilter: its candidate set is a guaranteed superset of the exact hits (a small padding absorbs f64 slab/containment rounding), the in/out result is a crossing-parity count (order-independent), and the coincident test reduces to "any candidate matches" (also order-independent). So the boolean output is unchanged.
-
-It also memoizes `to_f64_pt`: classification (`centroid`/`tri_normal` per sub-triangle) and the final output map all materialize the SAME heavily-shared conforming vertices many times over, so each interned point's f64 value is now computed once per arrangement and reused.
-
-Both are byte-identical — the pinned sign / boolean / retriangulation determinism manifests are unchanged. On a real Tekla model the two together cut total serial geometry time ~28% (BVH ~12%, the f64 memoization a further ~18%); the win grows with operand size and applies to every boolean-heavy model.
+The remaining cost is the conforming retriangulation (constrained Delaunay) and the exact predicate arithmetic itself — the genuine exact-CSG floor. The win grows with operand size and applies to every boolean-heavy model.

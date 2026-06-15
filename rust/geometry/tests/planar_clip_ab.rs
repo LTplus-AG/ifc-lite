@@ -80,16 +80,29 @@ fn volume(m: &Mesh) -> f64 {
     v / 6.0
 }
 
-/// Directed edges with no reverse partner (quantized) — 0 ⇒ watertight.
+/// Directed edges with no reverse partner — 0 ⇒ watertight. Quantized on a grid
+/// proportional to the element's own extent so it is correct in any length unit
+/// (a fixed grid reads a mm-stored metre-scale model as full of false cracks).
 fn open_edges(m: &Mesh) -> usize {
-    const Q: f64 = 1.0e5;
     let p = &m.positions;
+    let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for c in p.chunks(3) {
+        for k in 0..3 {
+            lo[k] = lo[k].min(c[k] as f64);
+            hi[k] = hi[k].max(c[k] as f64);
+        }
+    }
+    if !lo[0].is_finite() {
+        return 0;
+    }
+    let diag = ((hi[0] - lo[0]).powi(2) + (hi[1] - lo[1]).powi(2) + (hi[2] - lo[2]).powi(2)).sqrt();
+    let inv = 1.0 / (diag * 1.0e-4).max(1.0e-12);
     let key = |i: u32| {
         let b = i as usize * 3;
         (
-            (p[b] as f64 * Q).round() as i64,
-            (p[b + 1] as f64 * Q).round() as i64,
-            (p[b + 2] as f64 * Q).round() as i64,
+            (p[b] as f64 * inv).round() as i64,
+            (p[b + 1] as f64 * inv).round() as i64,
+            (p[b + 2] as f64 * inv).round() as i64,
         )
     };
     let mut dir: HashMap<((i64, i64, i64), (i64, i64, i64)), i32> = HashMap::new();
@@ -115,17 +128,15 @@ fn planar_clip_ab() {
     let content = String::from_utf8_lossy(&std::fs::read(&path).expect("read model")).into_owned();
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
-    let mut router = GeometryRouter::with_units(&content, &mut decoder);
-    // Rebase georeferenced models so the RTC=0 harness does not render f32 vertex
-    // jitter on national-grid coordinates (tens of km), which fabricates degenerate
-    // geometry unrelated to the fast path (AGENTS.md / csg_model_profile caveat).
-    // `scan_model_bounds` reads the actual IfcCartesianPoints, so it catches an
-    // offset baked into the geometry (skolebygg) that placement sampling misses.
-    let rtc = ifc_lite_core::scan_model_bounds(content.as_str()).rtc_offset();
-    router.set_rtc_offset(rtc);
-    if rtc != (0.0, 0.0, 0.0) {
-        println!("rebased: RTC offset = ({:.1}, {:.1}, {:.1})", rtc.0, rtc.1, rtc.2);
-    }
+    // No RTC rebase: the fast-path gates are scale-RELATIVE (offset vs host
+    // diagonal), so they handle precision per element without it — and a naive
+    // rebase is actively harmful, because `scan_model_bounds` is unit-unaware and
+    // flags a local building stored in millimetres (e.g. a 47 m Tekla model whose
+    // raw mm coordinates exceed the 10 km threshold) as "georeferenced", flinging
+    // the mesh to a huge coordinate where f32 jitter corrupts the geometry. A truly
+    // georeferenced model (metre coords in the tens of km) simply stays far from
+    // origin here and the magnitude gate defers it — which is the safe outcome.
+    let router = GeometryRouter::with_units(&content, &mut decoder);
     let void_idx = build_void_index(&content);
     let products = list_products(&content);
     let disabled = std::env::var("IFC_LITE_DISABLE_PLANAR_CLIP").is_ok();
@@ -139,7 +150,13 @@ fn planar_clip_ab() {
     let mut sig: Vec<(u32, usize, f64, usize, [f64; 3], [f64; 3])> =
         Vec::with_capacity(products.len());
     let t_all = Instant::now();
+    let only_id: Option<u32> = std::env::var("IFCLT_ONLY_ID").ok().and_then(|s| s.parse().ok());
     for id in &products {
+        if let Some(oid) = only_id {
+            if *id != oid {
+                continue;
+            }
+        }
         let Ok(entity) = decoder.decode_by_id(*id) else {
             continue;
         };
@@ -180,13 +197,12 @@ fn planar_clip_ab() {
         "WALLTIME_MS {wall_ms:.0}   ELEMENTS {}   TOTAL_TRIS {total_tris}   MESH_CENTER_MAG {center_mag:.0}m",
         sig.len()
     );
-    if center_mag >= 10_000.0 {
-        println!(
-            "  WARNING: meshes at {center_mag:.0}m — f32 jitter; the strict watertightness gate \
-             should make the fast path DEFER here (per-element router does not relocalize baked \
-             georef coords). Treat absolute diffs with care; watch OPEN_REGRESSIONS=0."
-        );
-    }
+    // NOTE: meshes are in model units (mm for Tekla), not metres, and the
+    // per-element router does not relocalize. The fast-path gates are now scale-
+    // RELATIVE (offset vs host diagonal), so a large center magnitude on a
+    // locally-coordinated model is fine; only an offset of many host-diagonals
+    // (true georef jitter) makes them defer. Reported for context only.
+    println!("  (mesh center magnitude {center_mag:.0} model-units)");
 
     if let Ok(out) = std::env::var("IFCLT_AB_OUT") {
         let mut f = std::fs::File::create(&out).expect("create out");

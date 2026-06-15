@@ -15,6 +15,20 @@ use std::sync::Arc;
 /// Maximum nested IfcMappedItem depth we will traverse for a single geometry item.
 const MAX_MAPPED_ITEM_DEPTH: usize = 32;
 
+/// Open boundary edges a planar-clip element may have before the element-level
+/// fallback re-processes it with the exact kernel. A clean fast-path solid is
+/// watertight; a handful of stray edges is tolerated (source meshes are not all
+/// perfectly manifold), but a cracked non-conforming cap shows hundreds.
+const PLANAR_FALLBACK_OPEN_TOLERANCE: usize = 8;
+
+thread_local! {
+    /// While set, the item-dedup cache LOOKUP is skipped (a fresh mesh is built)
+    /// but the result is still written. The element-level planar fallback sets it
+    /// for its exact re-run so a cached BROKEN fast-path mesh is recomputed and
+    /// overwritten — for this element and every content-identical instance.
+    static GEOM_CACHE_BYPASS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 impl GeometryRouter {
     /// Compute median-based RTC offset from sampled translations.
     /// Returns `(0,0,0)` if empty or coordinates are within 10km of origin.
@@ -386,11 +400,61 @@ impl GeometryRouter {
         }
     }
 
-    /// Process building element (IfcWall, IfcBeam, etc.) into mesh
-    /// Follows the representation chain:
-    /// Element → Representation → ShapeRepresentation → Items
+    /// Process building element (IfcWall, IfcBeam, etc.) into mesh.
+    ///
+    /// Wraps [`Self::process_element_impl`] with the planar-clip **element-level
+    /// fallback**: the per-cut watertightness gate verifies the fast clip in f64
+    /// before scale + placement, but a cap that does not conform to a T-junction
+    /// in the source tessellation can still crack once the element is placed into
+    /// f32 world coordinates — which `subtract_one` cannot see. So if the fast path
+    /// fired for this element and the FINAL mesh has open boundary edges, re-process
+    /// it with the fast path forced off and keep whichever is more watertight. The
+    /// re-run only happens for elements the fast path both touched and left open, so
+    /// clean fast-path elements keep their speedup and the result is never worse
+    /// than the exact kernel.
     #[inline]
     pub fn process_element(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Mesh> {
+        let before = crate::csg::peek_planar_clip_fired();
+        let mesh = self.process_element_impl(element, decoder)?;
+        if crate::csg::peek_planar_clip_fired() == before {
+            return Ok(mesh); // fast path didn't fire here
+        }
+        let open = crate::csg::element_open_edges(&mesh);
+        if open <= PLANAR_FALLBACK_OPEN_TOLERANCE {
+            crate::csg::planar_record_outcome(false); // clean fast-path element
+            return Ok(mesh);
+        }
+        let prev = crate::csg::set_planar_clip_thread_disabled(true);
+        let cache_prev = self.set_geometry_cache_bypass(true);
+        let exact = self.process_element_impl(element, decoder);
+        self.set_geometry_cache_bypass(cache_prev);
+        crate::csg::set_planar_clip_thread_disabled(prev);
+        match exact {
+            Ok(ex) if crate::csg::element_open_edges(&ex) < open => {
+                crate::csg::planar_record_outcome(true); // fast path cracked → exact
+                Ok(ex)
+            }
+            _ => {
+                crate::csg::planar_record_outcome(false);
+                Ok(mesh)
+            }
+        }
+    }
+
+    /// Skip the item-dedup cache lookup on this thread (still writing results), so
+    /// the planar fallback's exact re-run rebuilds and overwrites a cached broken
+    /// mesh. Returns the previous setting. See [`GEOM_CACHE_BYPASS`].
+    fn set_geometry_cache_bypass(&self, v: bool) -> bool {
+        GEOM_CACHE_BYPASS.with(|c| c.replace(v))
+    }
+
+    /// Inner element processing (no planar-clip fallback); see [`Self::process_element`].
+    #[inline]
+    pub fn process_element_impl(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -844,10 +908,12 @@ impl GeometryRouter {
         // `None` ⇒ dedup disabled (no hash overhead). On a hit, return a clone of
         // the cached item mesh; meshing is skipped entirely.
         let dedup_key = self.item_dedup_key(item, decoder);
-        if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
-            let hit = cache.lock().expect("dedup cache poisoned").get(&key).cloned();
-            if let Some(mesh) = hit {
-                return Ok((*mesh).clone());
+        if !GEOM_CACHE_BYPASS.with(|c| c.get()) {
+            if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
+                let hit = cache.lock().expect("dedup cache poisoned").get(&key).cloned();
+                if let Some(mesh) = hit {
+                    return Ok((*mesh).clone());
+                }
             }
         }
 

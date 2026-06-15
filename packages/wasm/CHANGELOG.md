@@ -38,10 +38,6 @@
     gross (outer) wall face, using each edge's own wall half-thickness with
     topology-aware shared-edge pinning (no fuzzy edge↔wall matching).
 
-  The constructor now takes an additional `segHalfThickness: Float64Array`
-  (per-segment half-thickness in metres, carried onto the derived edges for
-  `netOutline`); pass an empty array when thickness is unknown.
-
 ## 2.8.1
 
 ### Patch Changes

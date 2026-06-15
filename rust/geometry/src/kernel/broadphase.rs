@@ -31,6 +31,40 @@ fn overlap(a: &Aabb, b: &Aabb) -> bool {
     (0..3).all(|k| a.0[k] <= b.1[k] && b.0[k] <= a.1[k])
 }
 
+/// Whether point `p` is inside `bb` grown by `pad` on every side.
+fn aabb_contains(p: [f64; 3], bb: &Aabb, pad: f64) -> bool {
+    (0..3).all(|k| p[k] >= bb.0[k] - pad && p[k] <= bb.1[k] + pad)
+}
+
+/// Slab test: whether the segment `p`→`far` intersects `bb` grown by `pad`.
+/// Conservative — returns true on any rounding-ambiguous near-miss so the BVH
+/// never drops a triangle the exact ray-cast would hit.
+fn seg_hits_aabb(p: [f64; 3], far: [f64; 3], bb: &Aabb, pad: f64) -> bool {
+    let (mut tmin, mut tmax) = (0.0f64, 1.0f64);
+    for k in 0..3 {
+        let (lo, hi) = (bb.0[k] - pad, bb.1[k] + pad);
+        let d = far[k] - p[k];
+        if d.abs() <= f64::MIN_POSITIVE {
+            // Segment parallel to this slab — admit unless clearly outside it.
+            if p[k] < lo || p[k] > hi {
+                return false;
+            }
+        } else {
+            let inv = 1.0 / d;
+            let (mut t0, mut t1) = ((lo - p[k]) * inv, (hi - p[k]) * inv);
+            if t0 > t1 {
+                std::mem::swap(&mut t0, &mut t1);
+            }
+            tmin = tmin.max(t0);
+            tmax = tmax.min(t1);
+            if tmin > tmax {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 struct Node {
     aabb: Aabb,
     tri: u32, // u32::MAX ⇒ inner node
@@ -41,6 +75,14 @@ struct Node {
 pub struct Bvh {
     nodes: Vec<Node>,
     root: u32,
+    /// Conservative padding (a small fraction of the scene diagonal) added to
+    /// every AABB test so f64 rounding in the slab / containment math can never
+    /// prune a node a triangle the EXACT predicate would hit lives under. The
+    /// exact test on the returned candidates is what decides — the pad only ever
+    /// admits a few extra candidates, never drops a real one, so ray/point
+    /// queries are a conservative SUPERSET of the brute-force scan and the
+    /// downstream exact parity/containment result is byte-identical.
+    pad: f64,
 }
 
 impl Bvh {
@@ -64,7 +106,61 @@ impl Bvh {
         } else {
             build_node(&mut nodes, &mut items)
         };
-        Bvh { nodes, root }
+        let pad = if root == u32::MAX {
+            0.0
+        } else {
+            let (lo, hi) = nodes[root as usize].aabb;
+            let diag = ((hi[0] - lo[0]).powi(2) + (hi[1] - lo[1]).powi(2) + (hi[2] - lo[2]).powi(2))
+                .sqrt();
+            (diag * 1.0e-9).max(1.0e-12)
+        };
+        Bvh { nodes, root, pad }
+    }
+
+    /// Append the index of every triangle whose (padded) AABB the segment
+    /// `p`→`far` may pass through — a conservative superset of the triangles the
+    /// exact ray could hit. Used to turn the O(N) `point_inside` ray-cast into an
+    /// O(log N + hits) one without changing its parity result.
+    pub fn ray_candidates(&self, p: [f64; 3], far: [f64; 3], out: &mut Vec<u32>) {
+        if self.root != u32::MAX {
+            self.descend_ray(self.root, p, far, out);
+        }
+    }
+
+    fn descend_ray(&self, idx: u32, p: [f64; 3], far: [f64; 3], out: &mut Vec<u32>) {
+        let n = &self.nodes[idx as usize];
+        if !seg_hits_aabb(p, far, &n.aabb, self.pad) {
+            return;
+        }
+        if n.tri != u32::MAX {
+            out.push(n.tri);
+        } else {
+            self.descend_ray(n.left, p, far, out);
+            self.descend_ray(n.right, p, far, out);
+        }
+    }
+
+    /// Append the index of every triangle whose AABB, grown by `radius` (plus the
+    /// conservative pad), contains point `p`. `radius = 0` ⇒ exact-on-surface
+    /// candidates; `radius = band` ⇒ near-coplanar-flush candidates. A conservative
+    /// superset, so the exact per-triangle test that follows decides the verdict.
+    pub fn point_candidates(&self, p: [f64; 3], radius: f64, out: &mut Vec<u32>) {
+        if self.root != u32::MAX {
+            self.descend_point(self.root, p, radius, out);
+        }
+    }
+
+    fn descend_point(&self, idx: u32, p: [f64; 3], radius: f64, out: &mut Vec<u32>) {
+        let n = &self.nodes[idx as usize];
+        if !aabb_contains(p, &n.aabb, self.pad + radius) {
+            return;
+        }
+        if n.tri != u32::MAX {
+            out.push(n.tri);
+        } else {
+            self.descend_point(n.left, p, radius, out);
+            self.descend_point(n.right, p, radius, out);
+        }
     }
 
     /// Append the indices of every triangle whose AABB overlaps `q`.
@@ -170,6 +266,45 @@ mod tests {
         }
         p.sort_unstable();
         p
+    }
+
+    #[test]
+    fn ray_and_point_candidates_are_conservative_supersets() {
+        // A scattered cloud of triangles; every ray/point query's candidate set
+        // must CONTAIN every triangle the brute-force AABB test admits (a missed
+        // candidate would change the exact parity/containment downstream).
+        let tris: Vec<Tri> = (0..60)
+            .map(|i| {
+                let (x, y, z) = (i as f64 * 0.7, (i % 7) as f64 * 1.3, (i % 5) as f64 * 0.9);
+                [[x, y, z], [x + 0.4, y, z], [x, y + 0.5, z + 0.3]]
+            })
+            .collect();
+        let bvh = Bvh::build(&tris);
+        let rays = [
+            ([0.0, 0.0, 0.0], [40.0, 9.0, 4.0]),
+            ([5.0, 3.0, 1.0], [5.0001, 3.0, 100.0]),
+            ([-2.0, -2.0, -2.0], [42.0, 12.0, 6.0]),
+        ];
+        for (p, far) in rays {
+            let mut cand = Vec::new();
+            bvh.ray_candidates(p, far, &mut cand);
+            let cset: std::collections::HashSet<u32> = cand.into_iter().collect();
+            for (i, t) in tris.iter().enumerate() {
+                if seg_hits_aabb(p, far, &tri_aabb(t), 0.0) {
+                    assert!(cset.contains(&(i as u32)), "ray missed candidate {i}");
+                }
+            }
+        }
+        for p in [[5.2, 3.0, 0.1], [0.1, 0.0, 0.0], [41.0, 7.0, 3.6]] {
+            let mut cand = Vec::new();
+            bvh.point_candidates(p, 0.0, &mut cand);
+            let cset: std::collections::HashSet<u32> = cand.into_iter().collect();
+            for (i, t) in tris.iter().enumerate() {
+                if aabb_contains(p, &tri_aabb(t), 0.0) {
+                    assert!(cset.contains(&(i as u32)), "point missed candidate {i}");
+                }
+            }
+        }
     }
 
     #[test]

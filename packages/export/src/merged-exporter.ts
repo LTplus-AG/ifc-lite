@@ -142,7 +142,9 @@ export class MergedExporter {
     const onProgress = options.onProgress;
     const schema = (options.schema || 'IFC4') as IfcSchemaVersion;
 
-    // Generate header
+    // Generate header. Policy: a federated/merged file has no single source
+    // header to round-trip, so we deliberately emit an ifc-lite provenance
+    // header rather than picking one model's FILE_DESCRIPTION arbitrarily.
     const header = generateHeader({
       schema,
       description: options.description || `Merged export of ${this.models.length} models from ifc-lite`,
@@ -308,6 +310,8 @@ export class MergedExporter {
     const onProgress = options.onProgress;
 
     const schema = (options.schema || 'IFC4') as IfcSchemaVersion;
+    // See export(): merged files emit an ifc-lite provenance header by policy
+    // (no single source header to preserve across federated models).
     const header = generateHeader({
       schema,
       description: options.description || `Merged export of ${this.models.length} models from ifc-lite`,

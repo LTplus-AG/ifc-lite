@@ -44,6 +44,7 @@ import {
 } from './columnar-parser-indexes.js';
 import { extractRelFast, extractPropertyRelFast } from './columnar-parser-relationships.js';
 import { safeUtf8Decode } from '@ifc-lite/data';
+import { parseSourceHeader } from './source-header.js';
 
 import type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
@@ -159,6 +160,12 @@ export class ColumnarParser {
 
         // Detect schema version from FILE_SCHEMA header
         const schemaVersion = detectSchemaVersion(uint8Buffer);
+
+        // Capture verbatim HEADER fields so a round-trip export can reproduce
+        // the source FILE_DESCRIPTION items + exact FILE_SCHEMA token instead
+        // of regenerating a fresh ifc-lite header. Cheap: only the header
+        // (first ~2 KB, already decoded above) is scanned.
+        const sourceHeader = parseSourceHeader(uint8Buffer);
 
         // Initialize builders (entity table capacity set after categorization below)
         const strings = new StringTable();
@@ -499,6 +506,7 @@ export class ColumnarParser {
         const earlyStore: IfcDataStore = {
             fileSize: buffer.byteLength,
             schemaVersion,
+            sourceHeader,
             entityCount: totalEntities,
             parseTime: performance.now() - startTime,
             source: uint8Buffer,

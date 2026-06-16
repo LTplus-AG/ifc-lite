@@ -9,10 +9,11 @@
  * Supports applying property and root attribute mutations before export.
  */
 
-import type { IfcDataStore, IfcAttributeValue } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
 import {
   EntityExtractor,
   generateHeader,
+  parseSourceHeader,
   getAttributeNames,
   serializeValue,
   ref,
@@ -165,15 +166,55 @@ export class StepExporter {
       throw new Error('Georeferencing creation and editing requires IFC4 or newer. IFC2X3 does not support IfcProjectedCRS or IfcMapConversion.');
     }
 
-    // Generate header
-    const header = generateHeader({
-      schema,
-      description: options.description || 'Exported from ifc-lite',
-      author: options.author || '',
-      organization: options.organization || '',
-      application: options.application || 'ifc-lite',
-      filename: options.filename || 'export.ifc',
-    });
+    // Round-trip header fidelity: prefer the verbatim source HEADER fields so
+    // a re-export reproduces the original FILE_DESCRIPTION items + exact
+    // FILE_SCHEMA token instead of a fresh ifc-lite header. The parser stores
+    // `sourceHeader`; fall back to parsing the (always-present) source bytes so
+    // cache-restored stores — which don't carry `sourceHeader` — still work.
+    const sourceHeader: IfcSourceHeader | undefined =
+      this.dataStore.sourceHeader
+      ?? (this.dataStore.source ? parseSourceHeader(this.dataStore.source) : undefined);
+
+    // Preserve the exact FILE_SCHEMA identifier (e.g. IFC4X3_ADD2) only when we
+    // are NOT converting schemas; conversion must emit the coarse target token.
+    const schemaToken: string =
+      !converting && sourceHeader?.schemaIdentifiers?.[0]
+        ? sourceHeader.schemaIdentifiers[0]
+        : schema;
+
+    // Built once entity counts are known, so the provenance item can report the
+    // actual modification count. See the two call sites (empty delta + final).
+    const buildHeader = (modifications: number): string => {
+      // FILE_DESCRIPTION items: an explicit option wins, else the source items
+      // verbatim, else the generic default.
+      const description: string[] =
+        options.description !== undefined
+          ? [options.description]
+          : sourceHeader && sourceHeader.description.length > 0
+            ? [...sourceHeader.description]
+            : ['Exported from ifc-lite'];
+      // Honest provenance: never claim untouched source output. Append (never
+      // overwrite) one item when ifc-lite actually changed the file.
+      if (modifications > 0) {
+        description.push(
+          `Re-exported by ifc-lite, ${modifications} modification${modifications === 1 ? '' : 's'}`,
+        );
+      }
+      return generateHeader({
+        schema: schemaToken,
+        description,
+        implementationLevel: sourceHeader?.implementationLevel,
+        author: options.author ?? sourceHeader?.author,
+        organization: options.organization ?? sourceHeader?.organization,
+        // preprocessor_version = the tool that WROTE this file (ifc-lite);
+        // originating_system keeps the source authoring tool so it isn't erased.
+        preprocessorVersion: options.application ?? 'ifc-lite',
+        originatingSystem: sourceHeader?.originatingSystem,
+        authorization: sourceHeader?.authorization,
+        application: options.application ?? 'ifc-lite',
+        filename: options.filename ?? 'export.ifc',
+      });
+    };
 
     // Collect entities that need to be modified or created
     const modifiedEntities = new Set<number>();
@@ -457,7 +498,7 @@ export class StepExporter {
       && overlayNewEntityCount === 0
       && newGeorefLines.length === 0
     ) {
-      const emptyContent = new TextEncoder().encode(header + 'DATA;\nENDSEC;\nEND-ISO-10303-21;\n');
+      const emptyContent = new TextEncoder().encode(buildHeader(0) + 'DATA;\nENDSEC;\nEND-ISO-10303-21;\n');
       return {
         content: emptyContent,
         stats: {
@@ -664,7 +705,9 @@ export class StepExporter {
       }
     }
 
-    // Assemble final file as Uint8Array chunks to avoid V8 string length limit
+    // Assemble final file as Uint8Array chunks to avoid V8 string length limit.
+    // The header is built last so its provenance item reflects the real count.
+    const header = buildHeader(newEntityCount + modifiedEntityCount);
     const content = assembleStepBytes(header, entities);
 
     return {

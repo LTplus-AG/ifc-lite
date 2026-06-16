@@ -33,7 +33,7 @@ export * from './types.js';
 // Explicitly export const enums for runtime use
 export { IfcTypeEnum, PropertyValueType, QuantityType, RelationshipType, EntityFlags } from './types.js';
 export type { SpatialNode, SpatialHierarchy } from './types.js';
-export type { IfcStoreBase } from './data-store.js';
+export type { IfcStoreBase, IfcSourceHeader } from './data-store.js';
 export * from './spatial-types.js';
 export * from './epsg-types.js';
 export {

@@ -247,6 +247,7 @@ export interface ParserMemorySnapshot {
 export interface DataStoreTransport {
   fileSize: number;
   schemaVersion: IfcDataStore['schemaVersion'];
+  sourceHeader?: IfcDataStore['sourceHeader'];
   entityCount: number;
   parseTime: number;
   lengthUnitScale?: number;
@@ -400,6 +401,7 @@ export function toTransport(store: IfcDataStore): DataStoreTransportEnvelope {
   const payload: DataStoreTransport = {
     fileSize: store.fileSize,
     schemaVersion: store.schemaVersion,
+    sourceHeader: store.sourceHeader,
     entityCount: store.entityCount,
     parseTime: store.parseTime,
     lengthUnitScale: store.lengthUnitScale,
@@ -477,6 +479,7 @@ export function fromTransport(payload: DataStoreTransport, source: Uint8Array): 
   return attachDataStoreAccessors({
     fileSize: payload.fileSize,
     schemaVersion: payload.schemaVersion,
+    sourceHeader: payload.sourceHeader,
     entityCount: payload.entityCount,
     parseTime: payload.parseTime,
     lengthUnitScale: payload.lengthUnitScale,

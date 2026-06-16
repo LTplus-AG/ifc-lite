@@ -187,28 +187,48 @@ export function toStepLine(entity: StepEntity): string {
 }
 
 /**
- * Generate STEP file header
+ * Generate STEP file header.
+ *
+ * \`description\`, \`author\`, and \`organization\` accept either a single string
+ * or an array, so a round-trip export can reproduce a multi-item source
+ * \`FILE_DESCRIPTION\` / multiple authors verbatim. \`schema\` is a free string so
+ * exact tokens like \`IFC4X3_ADD2\` survive (the coarse enum would flatten them).
+ * All string fields are STEP-escaped.
  */
 export function generateHeader(options: {
-  description?: string;
-  author?: string;
-  organization?: string;
+  description?: string | string[];
+  implementationLevel?: string;
+  author?: string | string[];
+  organization?: string | string[];
   application?: string;
-  schema: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
+  schema: string;
   filename?: string;
+  timeStamp?: string;
+  preprocessorVersion?: string;
+  originatingSystem?: string;
+  authorization?: string;
 }): string {
-  const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
-  const desc = options.description || 'ViewDefinition [CoordinationView]';
-  const author = options.author || '';
-  const org = options.organization || '';
+  const toList = (v: string | string[] | undefined, fallback: string[]): string[] =>
+    v === undefined ? fallback : Array.isArray(v) ? v : [v];
+  const quoteList = (items: string[]): string =>
+    '(' + items.map(s => "'" + escapeStepString(s) + "'").join(',') + ')';
+
+  const now = options.timeStamp ?? new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
+  const description = toList(options.description, ['ViewDefinition [CoordinationView]']);
+  const implementationLevel = options.implementationLevel || '2;1';
+  const authors = toList(options.author, ['']);
+  const orgs = toList(options.organization, ['']);
   const app = options.application || 'ifc-lite';
+  const preprocessor = options.preprocessorVersion || app;
+  const originatingSystem = options.originatingSystem || app;
+  const authorization = options.authorization ?? '';
   const filename = options.filename || 'output.ifc';
 
   return \`ISO-10303-21;
 HEADER;
-FILE_DESCRIPTION('\${desc}','2;1');
-FILE_NAME('\${filename}','\${now}',('\${author}'),('\${org}'),'\${app}','\${app}','');
-FILE_SCHEMA(('\${options.schema}'));
+FILE_DESCRIPTION(\${quoteList(description)},'\${escapeStepString(implementationLevel)}');
+FILE_NAME('\${escapeStepString(filename)}','\${escapeStepString(now)}',\${quoteList(authors)},\${quoteList(orgs)},'\${escapeStepString(preprocessor)}','\${escapeStepString(originatingSystem)}','\${escapeStepString(authorization)}');
+FILE_SCHEMA(('\${escapeStepString(options.schema)}'));
 ENDSEC;
 \`;
 }

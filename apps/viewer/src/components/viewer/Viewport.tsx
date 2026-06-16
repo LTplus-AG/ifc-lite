@@ -136,9 +136,14 @@ export function Viewport({
   // IMPORTANT: pickResult.expressId is now a globalId (transformed at load time)
   // resolveEntityRef is the single source of truth for globalId → EntityRef
   const handlePickForSelection = useCallback((pickResult: import('@ifc-lite/renderer').PickResult | null) => {
-    // Normal click clears multi-select set (fresh single-selection)
+    // Normal click clears any lingering multi-highlight (fresh single-selection).
+    // Gate on EITHER set: `selectedEntityIds` is the legacy global-id set that
+    // drives the renderer highlight, and some features populate it WITHOUT the
+    // multi-model `selectedEntitiesSet` — e.g. "isolate group members" (#1075)
+    // and clash-pair highlight. Checking only `selectedEntitiesSet` left those
+    // highlights stuck on with no way to clear them by clicking away.
     const currentState = useViewerStore.getState();
-    if (currentState.selectedEntitiesSet.size > 0) {
+    if (currentState.selectedEntitiesSet.size > 0 || currentState.selectedEntityIds.size > 0) {
       useViewerStore.setState({ selectedEntitiesSet: new Set(), selectedEntityIds: new Set() });
     }
 

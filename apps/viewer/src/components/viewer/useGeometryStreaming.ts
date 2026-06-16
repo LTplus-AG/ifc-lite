@@ -402,6 +402,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       }
       if (fitted) {
         cameraFittedRef.current = true;
+        // Populate the camera's cached scene bounds. The viewer streams meshes
+        // directly (not via Renderer.loadGeometry), so this is the only place
+        // the camera learns the bounds — consumers like the orbit-pivot
+        // fallback (issue #1107) and tight near/far clipping depend on it.
+        renderer.getCamera().setSceneBounds(geometryBoundsRef.current);
         const pos = renderer.getCamera().getPosition();
         const tgt = renderer.getCamera().getTarget();
         cameraSnapshotRef.current = { px: pos.x, py: pos.y, pz: pos.z, tx: tgt.x, ty: tgt.y, tz: tgt.z };
@@ -486,6 +491,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
                 }
               }
               geometryBoundsRef.current = exactBounds;
+              // Refresh the camera's cached bounds with the final exact extent
+              // (issue #1107 orbit-pivot fallback / clipping).
+              r.getCamera().setSceneBounds(exactBounds);
               finalBoundsRefittedRef.current = true;
             }
           }

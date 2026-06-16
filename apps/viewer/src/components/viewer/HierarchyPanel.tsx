@@ -58,6 +58,7 @@ export function HierarchyPanel() {
   const classFilter = useViewerStore((s) => s.classFilter);
   const setClassFilter = useViewerStore((s) => s.setClassFilter);
   const addFilterRule = useViewerStore((s) => s.addFilterRule);
+  const updateFilterRule = useViewerStore((s) => s.updateFilterRule);
   const clearClassFilter = useViewerStore((s) => s.clearClassFilter);
   const clearAllFilters = useViewerStore((s) => s.clearAllFilters);
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
@@ -270,15 +271,22 @@ export function HierarchyPanel() {
           const className = node.ifcType || node.name;
           // Class tab → class filter (combinable with storey + type isolation)
           setClassFilter(elements, className);
-          // Also mirror the selection into the advanced filter panel as an
-          // additive ifcType rule so it can be refined/queried there
-          // (issue #1107, item 6). Silent — we don't open the modal. Skip if an
-          // identical rule already exists so repeated clicks don't pile up.
+          // Also mirror the selection into the advanced filter panel
+          // (issue #1107, item 6). Silent — we don't open the modal. Merge into
+          // an existing `ifcType in [...]` rule's values rather than appending a
+          // second singleton: with the default AND combinator two singleton
+          // ifcType rules (e.g. IfcWall AND IfcDoor) can never both match, so
+          // the filter would return nothing. Merging gives OR-within-the-rule.
           const rules = useViewerStore.getState().searchFilter.rules;
-          const alreadyHasRule = rules.some(
-            (r) => r.kind === 'ifcType' && r.values.length === 1 && r.values[0] === className,
-          );
-          if (!alreadyHasRule) {
+          const existingIdx = rules.findIndex((r) => r.kind === 'ifcType' && r.op === 'in');
+          const existing = existingIdx >= 0 ? rules[existingIdx] : null;
+          if (existing && existing.kind === 'ifcType') {
+            if (!existing.values.includes(className)) {
+              updateFilterRule(existingIdx, Rule.ifcType([...existing.values, className], 'in'));
+              toast.success(`Added "${className}" to advanced filter`);
+            }
+            // else: already in the rule — no-op, no toast
+          } else {
             addFilterRule(Rule.ifcType([className], 'in'));
             toast.success(`Added "${className}" to advanced filter`);
           }
@@ -493,7 +501,7 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, addFilterRule]);
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, addFilterRule, updateFilterRule]);
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {

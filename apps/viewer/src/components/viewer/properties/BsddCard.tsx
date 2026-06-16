@@ -200,8 +200,11 @@ export function BsddCard({
       if (modelId === 'legacy') normalizedModelId = '__legacy__';
 
       if (psetName === BSDD_ATTRIBUTES_GROUP) {
-        // Route entity-level attributes (Name, Description, ObjectType, Tag, etc.)
-        storeSetAttribute(normalizedModelId, entityId, prop.name, '');
+        // Route entity-level attributes (Name, Description, ObjectType, Tag,
+        // PredefinedType, etc.). Honour an inline-chosen value (e.g. an enum
+        // attribute like PredefinedType) — attributes are stored as strings
+        // (issue #1107, item 10 review follow-up).
+        storeSetAttribute(normalizedModelId, entityId, prop.name, valueOverride != null ? String(valueOverride) : '');
       } else if (isQuantitySet(psetName)) {
         // Route Qto_* through quantity creation
         const qType = inferQuantityType(prop.units);

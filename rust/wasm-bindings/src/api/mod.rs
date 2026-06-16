@@ -983,6 +983,32 @@ pub(super) fn drain_and_log_csg_diagnostics(
         }
     }
 
+    // Rectangular-opening fast-path tally (PR #1153): how often the analytic
+    // box subtract fired vs fell through to the exact kernel, and why — so the
+    // real-model fire rate is visible instead of guessed.
+    let bf = ifc_lite_geometry::csg::take_boxfast_stats();
+    let cuttable = bf.fired + bf.deferred();
+    if bf.attempts() > 0 {
+        let pct = if cuttable > 0 {
+            100.0 * bf.fired as f64 / cuttable as f64
+        } else {
+            0.0
+        };
+        web_sys::console::info_1(
+            &format!(
+                "[IFC-LITE] Rect box fast path: fired={} ({pct:.0}% of {cuttable} cuttable) \
+                 deferred={} (gate={} rim={} open={}), noop={}",
+                bf.fired,
+                bf.deferred(),
+                bf.defer_gate,
+                bf.defer_rim,
+                bf.defer_open,
+                bf.noop,
+            )
+            .into(),
+        );
+    }
+
     summary.into()
 }
 

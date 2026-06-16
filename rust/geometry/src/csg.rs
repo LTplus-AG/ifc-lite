@@ -151,6 +151,49 @@ fn record_csg_op(op: u8, a_tris: usize, b_tris: usize) {
     }
 }
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
+/// Global tally of the rectangular-opening box fast path
+/// ([`ClippingProcessor::subtract_box_fast`]) outcomes, so we can see — on a real
+/// model — how often it actually fires vs falls through to the exact kernel and
+/// why. Atomics (lock-free) capture rayon worker threads too. Reset/drained
+/// around a measured run by the wasm diagnostics.
+static BOXFAST_FIRED: AtomicU32 = AtomicU32::new(0); // a real analytic cut emitted
+static BOXFAST_NOOP: AtomicU32 = AtomicU32::new(0); // box disjoint from host (no change)
+static BOXFAST_DEFER_GATE: AtomicU32 = AtomicU32::new(0); // not a clean transversal box
+static BOXFAST_DEFER_RIM: AtomicU32 = AtomicU32::new(0); // a reveal face had no rim to span
+static BOXFAST_DEFER_OPEN: AtomicU32 = AtomicU32::new(0); // result didn't close (non-slab host)
+
+/// One box-fast outcome bucket.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BoxFastStats {
+    pub fired: u32,
+    pub noop: u32,
+    pub defer_gate: u32,
+    pub defer_rim: u32,
+    pub defer_open: u32,
+}
+
+impl BoxFastStats {
+    pub fn attempts(&self) -> u32 {
+        self.fired + self.noop + self.defer_gate + self.defer_rim + self.defer_open
+    }
+    pub fn deferred(&self) -> u32 {
+        self.defer_gate + self.defer_rim + self.defer_open
+    }
+}
+
+/// Read AND reset the box-fast tally (call once per measured batch).
+pub fn take_boxfast_stats() -> BoxFastStats {
+    BoxFastStats {
+        fired: BOXFAST_FIRED.swap(0, Ordering::Relaxed),
+        noop: BOXFAST_NOOP.swap(0, Ordering::Relaxed),
+        defer_gate: BOXFAST_DEFER_GATE.swap(0, Ordering::Relaxed),
+        defer_rim: BOXFAST_DEFER_RIM.swap(0, Ordering::Relaxed),
+        defer_open: BOXFAST_DEFER_OPEN.swap(0, Ordering::Relaxed),
+    }
+}
+
 /// CSG Clipping Processor
 pub struct ClippingProcessor {
     /// Epsilon for floating point comparisons
@@ -670,6 +713,7 @@ impl ClippingProcessor {
             + (hmax[2] - hmin[2]).powi(2))
         .sqrt();
         if !diag.is_finite() || diag <= 0.0 {
+            BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
             return Ok(None);
         }
         let tol = (diag * 1.0e-6).max(1.0e-9);
@@ -679,6 +723,7 @@ impl ClippingProcessor {
         // the exact path's no-overlap behaviour.
         for k in 0..3 {
             if bmax[k] <= hmin[k] + tol || bmin[k] >= hmax[k] - tol {
+                BOXFAST_NOOP.fetch_add(1, Ordering::Relaxed);
                 return Ok(Some(host.clone()));
             }
         }
@@ -692,22 +737,27 @@ impl ClippingProcessor {
             let interior = bmin[k] > hmin[k] + tol && bmax[k] < hmax[k] - tol;
             if spans {
                 if through.is_some() {
+                    BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
                     return Ok(None); // >1 through-axis (slot / full cut) → defer
                 }
                 through = Some(k);
             } else if interior {
                 lateral.push(k);
             } else {
-                // Box flush-with or partially past the host on this axis
-                // (blind pocket, edge/corner opening) → not a clean transversal
-                // box; defer to the exact kernel.
+                // Box flush-with or partially past the host on this axis (a door
+                // flush with the floor, an edge window, a blind pocket) → not a
+                // clean transversal box; defer to the exact kernel. (This is the
+                // dominant deferral on real models — see BOXFAST_DEFER_GATE.)
+                BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
                 return Ok(None);
             }
         }
         let Some(t_axis) = through else {
+            BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
             return Ok(None);
         };
         if lateral.len() != 2 {
+            BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
             return Ok(None);
         }
         let (la, lb) = (lateral[0], lateral[1]);
@@ -838,6 +888,7 @@ impl ClippingProcessor {
             let back = collect_sorted(t_back);
             // Need at least the two corners on each face to span the reveal.
             if front.len() < 2 || back.len() < 2 {
+                BOXFAST_DEFER_RIM.fetch_add(1, Ordering::Relaxed);
                 return Ok(None);
             }
             // The reveal face is the strip between the front chain (at t_front)
@@ -932,11 +983,14 @@ impl ClippingProcessor {
             // The trim + reveal didn't close: the host wasn't a clean slab around
             // the opening (sloped/stepped surface, pre-existing gap, mismatched
             // front/back rim). Defer to the exact kernel rather than emit a crack.
+            BOXFAST_DEFER_OPEN.fetch_add(1, Ordering::Relaxed);
             return Ok(None);
         }
         if result.is_empty() {
+            BOXFAST_DEFER_OPEN.fetch_add(1, Ordering::Relaxed);
             return Ok(None);
         }
+        BOXFAST_FIRED.fetch_add(1, Ordering::Relaxed);
         Ok(Some(result))
     }
 

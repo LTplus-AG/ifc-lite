@@ -288,6 +288,9 @@ export class HeadlessLikeBackend implements BimBackend {
         if (descriptor.limit && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);
         return filtered;
       },
+      // Headless contexts have no interactive viewer filter, so there is never
+      // an "active filter" to report (issue #1107).
+      entitiesMatchingActiveFilter: () => null,
       entityData: getEntityData,
       attributes(ref: EntityRef): EntityAttributeData[] {
         return extractAllEntityAttributes(store, ref.expressId);

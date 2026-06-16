@@ -1201,6 +1201,20 @@ impl GeometryRouter {
         //
         // `synth_rect` owns the synthesised box meshes so they outlive the loop's
         // borrowed `&OpeningType`s below.
+        // PHASE-2 FAST PATH (rect openings): a clean transversal rectangular cut
+        // (a window/door box through a slab-like wall — the overwhelmingly common
+        // case) is subtracted analytically by `subtract_box_fast`, which bypasses
+        // the exact arrangement entirely (~100-3000× cheaper) and is byte-
+        // identical native==wasm by construction. On success the host is cut in
+        // place and the opening is consumed; on `None` (non-slab host, blind
+        // pocket, edge/corner cut, grazing, or any leftover open boundary) it
+        // falls through to the exact box-mesh subtract below, so it is never a
+        // correctness risk. Disjoint openings commute, so cutting the fast ones
+        // first changes nothing. The fast path shares the planar clip's gate and
+        // element-level fallback (`f64_fast_path_active`/`note_planar_clip_fired`):
+        // if the cut cracks once scaled/placed into f32 world coords, the element
+        // is re-processed on the exact kernel.
+        let boxfast_active = crate::csg::f64_fast_path_active();
         let mut synth_rect: Vec<OpeningType> = Vec::new();
         let mut non_rect_openings: Vec<&OpeningType> = Vec::new();
         for opening in &ctx.merged_openings {
@@ -1213,6 +1227,15 @@ impl GeometryRouter {
                     } else {
                         (*open_min, *open_max)
                     };
+                    if boxfast_active {
+                        if let Ok(Some(cut)) =
+                            clipper.subtract_box_fast(&result, final_min, final_max)
+                        {
+                            result = cut;
+                            crate::csg::note_planar_clip_fired();
+                            continue;
+                        }
+                    }
                     let box_mesh = Self::make_box_mesh(final_min, final_max);
                     synth_rect.push(OpeningType::NonRectangular(
                         box_mesh,
@@ -3489,4 +3512,86 @@ mod reveal_tests {
         assert_eq!(new_max, open_max, "-X-poke-out: extension must not change max");
     }
 
+    fn mesh_volume(m: &Mesh) -> f64 {
+        let p = &m.positions;
+        let mut v = 0.0;
+        for t in m.indices.chunks_exact(3) {
+            let g = |i: u32| {
+                let b = i as usize * 3;
+                [p[b] as f64, p[b + 1] as f64, p[b + 2] as f64]
+            };
+            let (a, b, c) = (g(t[0]), g(t[1]), g(t[2]));
+            v += a[0] * (b[1] * c[2] - b[2] * c[1])
+                + a[1] * (b[2] * c[0] - b[0] * c[2])
+                + a[2] * (b[0] * c[1] - b[1] * c[0]);
+        }
+        (v / 6.0).abs()
+    }
+
+    fn is_watertight(m: &Mesh) -> bool {
+        use std::collections::HashMap;
+        type Edge = ((i64, i64, i64), (i64, i64, i64));
+        let p = &m.positions;
+        let key = |i: u32| {
+            let b = i as usize * 3;
+            (
+                (p[b] as f64 * 1.0e4).round() as i64,
+                (p[b + 1] as f64 * 1.0e4).round() as i64,
+                (p[b + 2] as f64 * 1.0e4).round() as i64,
+            )
+        };
+        let mut bal: HashMap<Edge, i32> = HashMap::new();
+        for t in m.indices.chunks_exact(3) {
+            for (u, v) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+                let (ku, kv) = (key(u), key(v));
+                if ku == kv {
+                    continue;
+                }
+                *bal.entry((ku, kv)).or_insert(0) += 1;
+                *bal.entry((kv, ku)).or_insert(0) -= 1;
+            }
+        }
+        bal.values().all(|&c| c == 0)
+    }
+
+    /// END-TO-END wiring check: a clean axis-aligned rectangular opening driven
+    /// through `apply_void_context` must take the Phase-2 box fast path (not the
+    /// exact kernel) and produce the same watertight, volume-correct cut. Without
+    /// this, the fast path could silently never fire in the real pipeline.
+    #[test]
+    fn rect_opening_routes_through_box_fast_path() {
+        let router = GeometryRouter::new();
+        // Wall slab: X[0,4] length × Y[0,0.2] thickness × Z[0,3] height.
+        let host = make_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(4.0, 0.2, 3.0));
+        assert!((mesh_volume(&host) - 2.4).abs() < 1.0e-4);
+
+        // A 1×1 window cut transversally through the Y thickness; the router
+        // extends it through the wall along the extrusion direction.
+        let opening = |_: ()| {
+            OpeningType::Rectangular(
+                Point3::new(1.0, 0.0, 1.0),
+                Point3::new(2.0, 0.2, 2.0),
+                Some(Vector3::new(0.0, 1.0, 0.0)),
+            )
+        };
+        // `is_noop` keys off `openings`, the cut loop off `merged_openings` — both
+        // must be populated, as in the real classifier.
+        let ctx = VoidContext {
+            openings: vec![opening(())],
+            merged_openings: vec![opening(())],
+        };
+
+        let before = crate::csg::peek_planar_clip_fired();
+        let result = router.apply_void_context(host, &ctx, 42);
+        let fired = crate::csg::peek_planar_clip_fired().wrapping_sub(before);
+
+        assert!(
+            fired >= 1,
+            "box fast path did NOT fire on a clean rectangular opening (fired={fired}) — wiring is dead"
+        );
+        assert!(is_watertight(&result), "box-fast cut is not watertight");
+        // wall 2.4 − window column (1 × 0.2 × 1 = 0.2) ⇒ 2.2.
+        let cut_vol = mesh_volume(&result);
+        assert!((cut_vol - 2.2).abs() < 1.0e-3, "cut volume {cut_vol} != 2.2");
+    }
 }

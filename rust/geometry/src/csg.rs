@@ -626,6 +626,320 @@ impl ClippingProcessor {
         self.subtract_mesh(mesh, &box_mesh)
     }
 
+    /// PHASE-2 FAST PATH: subtract an axis-aligned box (a rectangular opening)
+    /// from `host` WITHOUT building the exact arrangement — the analytic
+    /// equivalent of `subtract_mesh` for the overwhelmingly common case (a
+    /// rectangular window/door cut transversally through a slab-like wall),
+    /// ~100-3000× cheaper.
+    ///
+    /// Geometry: the box spans the host on exactly ONE axis (the through /
+    /// thickness axis — `extend_opening_along_direction` pushed both caps past
+    /// the host) and lies strictly inside the host on the other two (the 4
+    /// lateral cutting planes). Each host triangle is split against those 4
+    /// planes keeping only the OUTSIDE fragments (the window footprint is
+    /// removed); the 4 reveal faces (inner walls of the hole) are synthesised as
+    /// rectangles spanning the host through-extent, wound from the open rim so
+    /// the result is closed.
+    ///
+    /// DETERMINISM: plain FMA-free f64 over the host's own (f32-sourced) coords,
+    /// a fixed plane/triangle/loop iteration order, and the same `Q`-grid edge
+    /// stitching as [`Self::clip_mesh_with_cap`] ⇒ byte-identical native==wasm.
+    /// Only sign/comparison results are consumed, never an epsilon-snapped
+    /// magnitude. Safe by construction: returns `Ok(None)` (caller falls back to
+    /// the exact kernel) for ANYTHING that is not a clean transversal box cut
+    /// (blind pocket, edge/corner cut, non-slab host, or any leftover open
+    /// boundary), so it can only ever REMOVE work, never produce a wrong result.
+    pub fn subtract_box_fast(
+        &self,
+        host: &Mesh,
+        bmin: Point3<f64>,
+        bmax: Point3<f64>,
+    ) -> Result<Option<Mesh>> {
+        if host.is_empty() {
+            return Ok(Some(Mesh::new()));
+        }
+        let (hmn, hmx) = host.bounds();
+        let hmin = [hmn.x as f64, hmn.y as f64, hmn.z as f64];
+        let hmax = [hmx.x as f64, hmx.y as f64, hmx.z as f64];
+        let bmin = [bmin.x, bmin.y, bmin.z];
+        let bmax = [bmax.x, bmax.y, bmax.z];
+
+        // Scale-relative tolerance from the host diagonal (unit-independent).
+        let diag = ((hmax[0] - hmin[0]).powi(2)
+            + (hmax[1] - hmin[1]).powi(2)
+            + (hmax[2] - hmin[2]).powi(2))
+        .sqrt();
+        if !diag.is_finite() || diag <= 0.0 {
+            return Ok(None);
+        }
+        let tol = (diag * 1.0e-6).max(1.0e-9);
+
+        // The box must overlap the host on every axis, else the cut removes
+        // nothing (the silent-no-op case) — return the host unchanged, matching
+        // the exact path's no-overlap behaviour.
+        for k in 0..3 {
+            if bmax[k] <= hmin[k] + tol || bmin[k] >= hmax[k] - tol {
+                return Ok(Some(host.clone()));
+            }
+        }
+
+        // Classify each axis. A clean transversal cut spans the host on exactly
+        // one axis and lies strictly interior on the other two.
+        let mut through: Option<usize> = None;
+        let mut lateral: Vec<usize> = Vec::with_capacity(2);
+        for k in 0..3 {
+            let spans = bmin[k] <= hmin[k] + tol && bmax[k] >= hmax[k] - tol;
+            let interior = bmin[k] > hmin[k] + tol && bmax[k] < hmax[k] - tol;
+            if spans {
+                if through.is_some() {
+                    return Ok(None); // >1 through-axis (slot / full cut) → defer
+                }
+                through = Some(k);
+            } else if interior {
+                lateral.push(k);
+            } else {
+                // Box flush-with or partially past the host on this axis
+                // (blind pocket, edge/corner opening) → not a clean transversal
+                // box; defer to the exact kernel.
+                return Ok(None);
+            }
+        }
+        let Some(t_axis) = through else {
+            return Ok(None);
+        };
+        if lateral.len() != 2 {
+            return Ok(None);
+        }
+        let (la, lb) = (lateral[0], lateral[1]);
+
+        // Host through-extent (slab assumption — the watertight gate below
+        // rejects any host whose surface isn't flat at these coords).
+        let t_front = hmin[t_axis];
+        let t_back = hmax[t_axis];
+
+        // The 4 lateral cutting planes, outward normals pointing INTO the host
+        // material (away from the window interior) ⇒ "front" = outside column.
+        let axis_unit = |k: usize, s: f64| {
+            let mut v = Vector3::zeros();
+            v[k] = s;
+            v
+        };
+        let plane_on = |k: usize, val: f64, s: f64| {
+            let mut p = Point3::new(
+                (bmin[0] + bmax[0]) * 0.5,
+                (bmin[1] + bmax[1]) * 0.5,
+                (bmin[2] + bmax[2]) * 0.5,
+            );
+            p[k] = val;
+            Plane::new(p, axis_unit(k, s))
+        };
+        let planes = [
+            plane_on(la, bmin[la], -1.0),
+            plane_on(la, bmax[la], 1.0),
+            plane_on(lb, bmin[lb], -1.0),
+            plane_on(lb, bmax[lb], 1.0),
+        ];
+
+        let mut result = Mesh::new();
+        // Directed open-boundary edges keyed by quantized endpoints; the value is
+        // the real f64 start point (full precision for the reveal rim).
+        let mut dir: BoxClipBoundary = FxHashMap::default();
+
+        // ── Trim the host surface: keep every fragment OUTSIDE the window column.
+        let vc = host.positions.len() / 3;
+        let pt = |i: usize| {
+            Point3::new(
+                host.positions[i * 3] as f64,
+                host.positions[i * 3 + 1] as f64,
+                host.positions[i * 3 + 2] as f64,
+            )
+        };
+        for tri in host.indices.chunks(3) {
+            if tri.len() < 3 {
+                break;
+            }
+            let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+            if i0 >= vc || i1 >= vc || i2 >= vc {
+                continue;
+            }
+            let (p0, p1, p2) = (pt(i0), pt(i1), pt(i2));
+            // Partition the triangle by ALL 4 lateral planes, KEEPING both sides
+            // at every plane (a conforming 3×3 cell subdivision in the face
+            // plane). Splitting every fragment by every plane makes adjacent
+            // cells share their dividing edge EXACTLY — emitting the 8 outside
+            // cells and dropping the 1 inside cell leaves no T-junctions, so
+            // interior edges cancel and only the true outer + hole-rim boundary
+            // survives. (A first-exit split instead leaves the outside fragment's
+            // cut edge full-length while its neighbours border only sub-segments
+            // ⇒ uncancelled interior edges.)
+            let mut pieces: Vec<Vec<Point3<f64>>> = vec![vec![p0, p1, p2]];
+            for plane in &planes {
+                let mut next: Vec<Vec<Point3<f64>>> = Vec::with_capacity(pieces.len() * 2);
+                for poly in &pieces {
+                    let (front, back) = split_convex_polygon_by_plane(poly, plane, tol);
+                    if front.len() >= 3 {
+                        next.push(front);
+                    }
+                    if back.len() >= 3 {
+                        next.push(back);
+                    }
+                }
+                pieces = next;
+            }
+            for poly in &pieces {
+                // Inside the window column ⇔ behind (inside of) all 4 lateral
+                // planes. Test the centroid (strictly interior to its cell).
+                let mut c = Point3::origin();
+                for p in poly {
+                    c += p.coords;
+                }
+                c /= poly.len() as f64;
+                let inside_column = planes.iter().all(|pl| pl.signed_distance(&c) < 0.0);
+                if inside_column {
+                    continue; // the window footprint — removed
+                }
+                for w in 1..poly.len() - 1 {
+                    box_emit_tri(&mut result, &mut dir, poly[0], poly[w], poly[w + 1]);
+                }
+            }
+        }
+
+        // ── Synthesise the 4 reveal faces (inner walls of the hole). After the
+        // trim, `dir` holds exactly the open hole rim: a front loop (at t_front)
+        // and a back loop (at t_back), each carrying whatever subdivision points
+        // the host tessellation introduced (face diagonals, welds). Each reveal
+        // face is built FROM those rim points (not as a fixed rectangle) so its
+        // edges match the host rim exactly — no T-junctions. The face is the
+        // lateral-plane polygon: front rim points (ascending) then back rim
+        // points (descending), earcut-triangulated. Faces are wound consistently
+        // w.r.t. their into-void normals (a closed tube ⇒ the vertical seams
+        // cancel), then one global flip aligns the tube to the host winding.
+        let rim_pts: Vec<Point3<f64>> = dir.values().copied().collect();
+        let mut reveal_tris: Vec<(Point3<f64>, Point3<f64>, Point3<f64>)> = Vec::new();
+        for &(fixed_axis, fixed_val) in &[
+            (la, bmin[la]),
+            (la, bmax[la]),
+            (lb, bmin[lb]),
+            (lb, bmax[lb]),
+        ] {
+            let var_axis = if fixed_axis == la { lb } else { la };
+            let on_plane = |p: &Point3<f64>| (p[fixed_axis] - fixed_val).abs() <= tol;
+            let collect_sorted = |t_val: f64| -> Vec<Point3<f64>> {
+                let mut v: Vec<Point3<f64>> = rim_pts
+                    .iter()
+                    .copied()
+                    .filter(|p| on_plane(p) && (p[t_axis] - t_val).abs() <= tol)
+                    .collect();
+                v.sort_by(|a, b| a[var_axis].partial_cmp(&b[var_axis]).unwrap());
+                v.dedup_by(|a, b| box_clip_key(a) == box_clip_key(b));
+                v
+            };
+            let front = collect_sorted(t_front);
+            let back = collect_sorted(t_back);
+            // Need at least the two corners on each face to span the reveal.
+            if front.len() < 2 || back.len() < 2 {
+                return Ok(None);
+            }
+            // The reveal face is the strip between the front chain (at t_front)
+            // and the back chain (at t_back), both ascending in `var` and sharing
+            // the vmin/vmax box corners — but the two chains may carry DIFFERENT
+            // subdivision points (the host's front and back faces can be
+            // tessellated differently, especially after an earlier cut). A
+            // two-pointer merge triangulates the strip while keeping every front
+            // point on the front edge and every back point on the back edge (so
+            // each cancels its own host rim), with only internal diagonals
+            // bridging them. Every triangle spans front→back ⇒ non-degenerate.
+            let mut tris_face: Vec<(Point3<f64>, Point3<f64>, Point3<f64>)> = Vec::new();
+            let (nf, nb) = (front.len(), back.len());
+            let (mut i, mut j) = (0usize, 0usize);
+            while i + 1 < nf || j + 1 < nb {
+                let adv_front = if i + 1 >= nf {
+                    false
+                } else if j + 1 >= nb {
+                    true
+                } else {
+                    front[i + 1][var_axis] <= back[j + 1][var_axis]
+                };
+                if adv_front {
+                    tris_face.push((front[i], front[i + 1], back[j]));
+                    i += 1;
+                } else {
+                    tris_face.push((front[i], back[j + 1], back[j]));
+                    j += 1;
+                }
+            }
+            // Into-void normal: +axis if the face sits at the box minimum on its
+            // fixed axis (interior is toward +axis), else -axis. Wind the whole
+            // face uniformly so it aligns with that normal.
+            let mut n = Vector3::zeros();
+            n[fixed_axis] = if fixed_val <= (bmin[fixed_axis] + bmax[fixed_axis]) * 0.5 {
+                1.0
+            } else {
+                -1.0
+            };
+            let face_flip = tris_face
+                .iter()
+                .find_map(|&(a, b, c)| {
+                    let raw = (b - a).cross(&(c - a));
+                    if raw.norm() > 0.0 {
+                        Some(raw.dot(&n) < 0.0)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(false);
+            for (a, b, c) in tris_face {
+                if face_flip {
+                    reveal_tris.push((a, c, b));
+                } else {
+                    reveal_tris.push((a, b, c));
+                }
+            }
+        }
+        // Global flip: a reveal rim edge cancels its host rim edge only when they
+        // run in OPPOSITE directions. The into-void winding fixes the tube's
+        // internal consistency but not its absolute sense vs the host (which
+        // depends on whether the host is wound inward or outward). Count rim edges
+        // that currently coincide with the host SAME-direction (won't cancel) vs
+        // REVERSE (will cancel); flip the whole tube if the same-direction count
+        // dominates. Seam edges aren't in the host rim, so they don't vote.
+        let (mut same, mut rev) = (0usize, 0usize);
+        for &(a, b, c) in &reveal_tris {
+            for (u, v) in [(a, b), (b, c), (c, a)] {
+                let (ku, kv) = (box_clip_key(&u), box_clip_key(&v));
+                if dir.contains_key(&(ku, kv)) {
+                    same += 1;
+                }
+                if dir.contains_key(&(kv, ku)) {
+                    rev += 1;
+                }
+            }
+        }
+        let gflip = same > rev;
+        for &(a, b, c) in &reveal_tris {
+            if gflip {
+                box_emit_tri(&mut result, &mut dir, a, c, b);
+            } else {
+                box_emit_tri(&mut result, &mut dir, a, b, c);
+            }
+        }
+
+        // ── Watertight gate. Any leftover open edge means the host wasn't a
+        // clean slab around the opening (sloped/stepped surface, pre-existing
+        // gap, grazing cut) — defer to the exact kernel rather than emit a
+        // cracked result.
+        if !dir.is_empty() {
+            // The trim + reveal didn't close: the host wasn't a clean slab around
+            // the opening (sloped/stepped surface, pre-existing gap, mismatched
+            // front/back rim). Defer to the exact kernel rather than emit a crack.
+            return Ok(None);
+        }
+        if result.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(result))
+    }
+
     /// Check if two meshes' bounding boxes overlap
     fn bounds_overlap(host_mesh: &Mesh, opening_mesh: &Mesh) -> bool {
         let (host_min, host_max) = host_mesh.bounds();
@@ -1824,6 +2138,24 @@ pub fn peek_planar_clip_fired() -> u32 {
     PLANAR_TL_FIRED.with(|c| c.get())
 }
 
+/// Whether a deterministic f64 fast path (planar clip OR box subtract) may run on
+/// this thread: the global escape hatch is off, the element-level fallback hasn't
+/// forced exact for a verify re-run, and the adaptive give-up hasn't tripped. The
+/// box-subtract fast path ([`ClippingProcessor::subtract_box_fast`]) shares this
+/// gate AND the fallback below with the planar clip because both are f64 clips
+/// that can crack under the element's final f32 world placement and must defer to
+/// the exact kernel identically.
+pub fn f64_fast_path_active() -> bool {
+    !planar_clip_disabled() && !PLANAR_TL_DISABLE.with(|c| c.get()) && !planar_gave_up()
+}
+
+/// Record that an f64 fast path fired on this element so the element-level
+/// fallback verifies it (and re-runs the element on the exact kernel if the
+/// result cracked once scaled/placed into f32 world coordinates).
+pub fn note_planar_clip_fired() {
+    PLANAR_TL_FIRED.with(|c| c.set(c.get() + 1));
+}
+
 thread_local! {
     /// Per-thread adaptive give-up: planar fast-path attempts that reached the
     /// element-level fallback, how many of those FELL BACK to the exact kernel,
@@ -1975,7 +2307,104 @@ impl Default for ClippingProcessor {
     }
 }
 
-/// Add a triangle to a mesh
+/// Quantization for boundary-edge stitching in the box fast path. Matches
+/// `clip_mesh_with_cap`'s `Q`: a triangle-edge∩plane point is computed
+/// identically for the two triangles sharing that edge, so shared cut endpoints
+/// round to the same key (~1e-6 grid) and interior half-edges cancel.
+const BOX_CLIP_Q: f64 = 1.0e6;
+
+/// Quantized vertex key for the box fast path's edge stitching.
+type BoxClipKey = (i64, i64, i64);
+/// Directed open-boundary edges (`from→to` keys) → the real f64 `from` point.
+/// Empty at the end of `subtract_box_fast` ⇒ the result is closed (watertight).
+type BoxClipBoundary = FxHashMap<(BoxClipKey, BoxClipKey), Point3<f64>>;
+
+#[inline]
+fn box_clip_key(p: &Point3<f64>) -> BoxClipKey {
+    (
+        (p.x * BOX_CLIP_Q).round() as i64,
+        (p.y * BOX_CLIP_Q).round() as i64,
+        (p.z * BOX_CLIP_Q).round() as i64,
+    )
+}
+
+/// Split a convex polygon by a plane into its (front, back) parts, where front =
+/// the positive-signed-distance side. Deterministic f64 Sutherland-Hodgman with
+/// a fixed vertex iteration order so the cut point is bit-identical native==wasm.
+/// A vertex within `eps` of the plane is emitted to BOTH sides so the shared cut
+/// edge appears on each fragment (boundary half-edges then cancel during
+/// stitching). Either returned polygon may have <3 vertices (degenerate/empty).
+fn split_convex_polygon_by_plane(
+    poly: &[Point3<f64>],
+    plane: &Plane,
+    eps: f64,
+) -> (Vec<Point3<f64>>, Vec<Point3<f64>>) {
+    let n = poly.len();
+    if n == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    // A polygon entirely within `eps` of the plane is COPLANAR. The normal
+    // sweep below would emit it on BOTH sides (every vertex passes both the
+    // `>= -eps` and `<= eps` tests), duplicating it — which corrupts the rim
+    // when this box's cutting plane coincides with another opening's reveal face
+    // (e.g. two windows sharing a sill height). Send it to ONE side (back) only;
+    // its keep/drop is then decided by the centroid test against ALL planes, so
+    // a far-away coplanar face is still classified outside the column and kept
+    // exactly once.
+    if poly.iter().all(|p| plane.signed_distance(p).abs() <= eps) {
+        return (Vec::new(), poly.to_vec());
+    }
+    let mut front = Vec::with_capacity(n + 1);
+    let mut back = Vec::with_capacity(n + 1);
+    let mut p_prev = poly[n - 1];
+    let mut d_prev = plane.signed_distance(&p_prev);
+    for &p_cur in poly {
+        let d_cur = plane.signed_distance(&p_cur);
+        // Edge p_prev→p_cur strictly crosses the plane ⇒ add the intersection to
+        // both sides.
+        if (d_prev > eps && d_cur < -eps) || (d_prev < -eps && d_cur > eps) {
+            let t = d_prev / (d_prev - d_cur);
+            let ip = p_prev + (p_cur - p_prev) * t;
+            front.push(ip);
+            back.push(ip);
+        }
+        if d_cur >= -eps {
+            front.push(p_cur);
+        }
+        if d_cur <= eps {
+            back.push(p_cur);
+        }
+        p_prev = p_cur;
+        d_prev = d_cur;
+    }
+    (front, back)
+}
+
+/// Emit a triangle to `result` and update the directed boundary-edge map `dir`
+/// (a→b present, b→a absent ⇒ open boundary; a shared interior edge cancels its
+/// reverse). Used by [`ClippingProcessor::subtract_box_fast`] to track the open
+/// cut boundary the reveal faces must close for the result to be watertight.
+fn box_emit_tri(
+    result: &mut Mesh,
+    dir: &mut BoxClipBoundary,
+    a: Point3<f64>,
+    b: Point3<f64>,
+    c: Point3<f64>,
+) {
+    add_triangle_to_mesh(result, &Triangle::new(a, b, c));
+    for (u, v) in [(a, b), (b, c), (c, a)] {
+        let (ku, kv) = (box_clip_key(&u), box_clip_key(&v));
+        if ku == kv {
+            continue;
+        }
+        if dir.remove(&(kv, ku)).is_some() {
+            continue;
+        }
+        dir.insert((ku, kv), u);
+    }
+}
+
+/// Add a triangle to a mesh (three fresh vertices with the face normal).
 fn add_triangle_to_mesh(mesh: &mut Mesh, triangle: &Triangle) {
     let base_idx = mesh.vertex_count() as u32;
 

@@ -15,6 +15,8 @@ import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
 import { type PropertyValue, PropertyValueType, QuantityType } from '@ifc-lite/data';
 import {
@@ -59,9 +61,19 @@ function toPropertyValueType(bsddType: string | null): PropertyValueType {
   return PropertyValueType.Label;
 }
 
-function defaultValue(_bsddType: string | null): PropertyValue {
-  // Always return empty string – user fills in values manually
+function defaultValue(bsddType: string | null): PropertyValue {
+  // Boolean gets a concrete default (false) so the value is valid the moment
+  // it's added and the inline Switch has a state to toggle. Everything else
+  // starts empty for manual entry (issue #1107, item 10).
+  if (toPropertyValueType(bsddType) === PropertyValueType.Boolean) return false;
   return '';
+}
+
+/** Which inline value control (if any) a bSDD property offers before "Add". */
+function inlineControlKind(prop: BsddClassProperty): 'boolean' | 'enum' | null {
+  if (toPropertyValueType(prop.dataType) === PropertyValueType.Boolean) return 'boolean';
+  if (prop.allowedValues && prop.allowedValues.length > 0) return 'enum';
+  return null;
 }
 
 /** bSDD properties with null propertySet are IFC entity-level attributes */
@@ -109,6 +121,13 @@ export function BsddCard({
   const [error, setError] = useState<string | null>(null);
   const [expandedPsets, setExpandedPsets] = useState<Set<string>>(new Set());
   const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
+  // Values the user sets inline (boolean/enum) before clicking Add, keyed by
+  // `${psetName}:${prop.name}` — issue #1107, item 10.
+  const [pendingValues, setPendingValues] = useState<Map<string, PropertyValue>>(new Map());
+
+  const setPendingValue = useCallback((key: string, value: PropertyValue) => {
+    setPendingValues((prev) => new Map(prev).set(key, value));
+  }, []);
 
   const setProperty = useViewerStore((s) => s.setProperty);
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
@@ -176,7 +195,7 @@ export function BsddCard({
   }, []);
 
   const handleAddProperty = useCallback(
-    (psetName: string, prop: BsddClassProperty) => {
+    (psetName: string, prop: BsddClassProperty, valueOverride?: PropertyValue) => {
       let normalizedModelId = modelId;
       if (modelId === 'legacy') normalizedModelId = '__legacy__';
 
@@ -206,7 +225,7 @@ export function BsddCard({
       } else {
         // Route Pset_* / other through property creation
         const valueType = toPropertyValueType(prop.dataType);
-        const value = defaultValue(prop.dataType);
+        const value = valueOverride !== undefined ? valueOverride : defaultValue(prop.dataType);
         const psetExists = existingPsets.includes(psetName);
 
         if (!psetExists) {
@@ -463,6 +482,33 @@ export function BsddCard({
                           {prop.dataType && <p className="mt-0.5 text-sky-400">{bsddDataTypeLabel(prop.dataType)}</p>}
                         </TooltipContent>
                       </Tooltip>
+                      {/* Inline value control for boolean / enum so a value can
+                          be set before adding (issue #1107, item 10). */}
+                      {!alreadyExists && inlineControlKind(prop) === 'boolean' && (
+                        <Switch
+                          checked={pendingValues.get(addedKey) === true}
+                          onCheckedChange={(v) => setPendingValue(addedKey, v)}
+                          className="shrink-0"
+                          aria-label={`Set ${prop.name}`}
+                        />
+                      )}
+                      {!alreadyExists && inlineControlKind(prop) === 'enum' && (
+                        <Select
+                          value={typeof pendingValues.get(addedKey) === 'string' ? (pendingValues.get(addedKey) as string) : undefined}
+                          onValueChange={(v) => setPendingValue(addedKey, v)}
+                        >
+                          <SelectTrigger className="h-6 w-28 shrink-0 px-2 text-[11px]">
+                            <SelectValue placeholder="Value…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {prop.allowedValues!.filter((av) => av.value).map((av) => (
+                              <SelectItem key={av.value} value={av.value} className="text-xs">
+                                {av.value}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                       {/* Add button - always visible on right */}
                       {alreadyExists ? (
                         <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
@@ -473,7 +519,7 @@ export function BsddCard({
                               variant="ghost"
                               size="icon"
                               className="h-5 w-5 p-0 shrink-0 hover:bg-sky-200 dark:hover:bg-sky-800"
-                              onClick={() => handleAddProperty(psetName, prop)}
+                              onClick={() => handleAddProperty(psetName, prop, pendingValues.get(addedKey))}
                             >
                               <Plus className="h-3 w-3 text-sky-600 dark:text-sky-400" />
                             </Button>

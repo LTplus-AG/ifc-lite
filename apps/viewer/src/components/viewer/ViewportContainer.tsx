@@ -5,6 +5,12 @@
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
 import { Viewport } from './Viewport';
+import {
+  initialDragOverlayState,
+  reduceDragOverlay,
+  type DragOverlayEvent,
+  type DragOverlayState,
+} from './dragOverlayState';
 import { ViewportOverlays } from './ViewportOverlays';
 import { MergeLayersBanner } from './MergeLayersBanner';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
@@ -407,18 +413,19 @@ export function ViewportContainer() {
 
   // Track drag enter/leave depth so the overlay doesn't flicker when the
   // cursor moves between child elements (each child boundary fires its own
-  // dragenter/dragleave that bubbles to the container).
-  const dragDepthRef = useRef(0);
+  // dragenter/dragleave that bubbles to the container). See dragOverlayState.ts.
+  const dragStateRef = useRef<DragOverlayState>(initialDragOverlayState);
+
+  const applyDragEvent = useCallback((event: DragOverlayEvent) => {
+    dragStateRef.current = reduceDragOverlay(dragStateRef.current, event, webgpu.supported);
+    setIsDragging(dragStateRef.current.dragging);
+  }, [webgpu.supported]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    dragDepthRef.current += 1;
-    // Only show drag state if WebGPU is supported
-    if (webgpu.supported) {
-      setIsDragging(true);
-    }
-  }, [webgpu.supported]);
+    applyDragEvent('enter');
+  }, [applyDragEvent]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     // Needed to allow the drop, but does not toggle drag state (avoids flicker)
@@ -429,19 +436,13 @@ export function ViewportContainer() {
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    dragDepthRef.current -= 1;
-    // Only hide once we've actually left the container (depth back to zero)
-    if (dragDepthRef.current <= 0) {
-      dragDepthRef.current = 0;
-      setIsDragging(false);
-    }
-  }, []);
+    applyDragEvent('leave');
+  }, [applyDragEvent]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    dragDepthRef.current = 0;
-    setIsDragging(false);
+    applyDragEvent('drop');
 
     // Block file loading if WebGPU not supported
     if (!webgpu.supported) {

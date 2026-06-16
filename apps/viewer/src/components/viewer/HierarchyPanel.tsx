@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
+import { Rule } from '@/lib/search/filter-rules';
+import { toast } from '@/components/ui/toast';
 
 import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
@@ -55,6 +57,7 @@ export function HierarchyPanel() {
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
   const classFilter = useViewerStore((s) => s.classFilter);
   const setClassFilter = useViewerStore((s) => s.setClassFilter);
+  const addFilterRule = useViewerStore((s) => s.addFilterRule);
   const clearClassFilter = useViewerStore((s) => s.clearClassFilter);
   const clearAllFilters = useViewerStore((s) => s.clearAllFilters);
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
@@ -264,8 +267,21 @@ export function HierarchyPanel() {
         setSelectedEntityIds([]);
         setSelectedEntity(resolveEntityRef(elements[0]));
         if (groupingMode === 'type') {
+          const className = node.ifcType || node.name;
           // Class tab → class filter (combinable with storey + type isolation)
-          setClassFilter(elements, node.ifcType || node.name);
+          setClassFilter(elements, className);
+          // Also mirror the selection into the advanced filter panel as an
+          // additive ifcType rule so it can be refined/queried there
+          // (issue #1107, item 6). Silent — we don't open the modal. Skip if an
+          // identical rule already exists so repeated clicks don't pile up.
+          const rules = useViewerStore.getState().searchFilter.rules;
+          const alreadyHasRule = rules.some(
+            (r) => r.kind === 'ifcType' && r.values.length === 1 && r.values[0] === className,
+          );
+          if (!alreadyHasRule) {
+            addFilterRule(Rule.ifcType([className], 'in'));
+            toast.success(`Added "${className}" to advanced filter`);
+          }
         } else {
           // Type tab → type isolation (combinable with storey + class filter)
           isolateEntities(elements);
@@ -477,7 +493,7 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter]);
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, addFilterRule]);
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {

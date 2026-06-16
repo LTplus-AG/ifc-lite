@@ -62,6 +62,9 @@
   --tab-text: #71717a;
   --tab-active-bg: #ffffff;
   --tab-active-text: #18181b;
+  /* Slightly-raised inactive tab (properties strip). Light mode lifts toward
+     white; dark mode overrides this to skip the lift (see below). */
+  --tab-inactive-bg: color-mix(in srgb, var(--tabs-bg) 82%, white 18%);
 }
 
 .dark {
@@ -79,6 +82,11 @@
   --tab-text: #828bb8;
   --tab-active-bg: #16161e;
   --tab-active-text: #a9b1d6;
+  /* No white-lift on the inactive trigger in dark mode: even an 18% lift takes
+     the bg to ~#474b59 where --tab-text (#828bb8) drops to 2.6:1. Keep it flat
+     on --tabs-bg so the muted label stays at 4.69:1 AA; the active tab is still
+     distinct via its darker bg + accent border (issue #1107, item 1 review). */
+  --tab-inactive-bg: var(--tabs-bg);
 }
 
 /* Custom theme configuration */
@@ -354,7 +362,7 @@ body {
   border-bottom: 0;
   border-left: 0;
   border-radius: 0 !important;
-  background-color: color-mix(in srgb, var(--tabs-bg) 82%, white 18%) !important;
+  background-color: var(--tab-inactive-bg) !important;
   color: var(--tab-text) !important;
   font-weight: 600;
   line-height: 1;

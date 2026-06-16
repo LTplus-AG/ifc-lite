@@ -260,10 +260,13 @@ function extractAutoColorValue(
       if (!groups || groups.length === 0) return undefined;
       // Prefer an IfcZone membership so multi-group entities (IfcZone +
       // IfcGroup/IfcSystem) bucket by zone deterministically, not by whichever
-      // relation happened to come first. Use the name when present, else
-      // "Type #id" so unnamed groups still bucket distinctly.
+      // relation happened to come first. Use the name when present, then the
+      // ObjectType (e.g. a system designation), else "Type #id" so unnamed
+      // groups still bucket distinctly. (#1075)
       const g = groups.find((x) => x.type === 'IfcZone') ?? groups[0];
-      return g.name && g.name.trim() !== '' ? g.name : `${g.type} #${g.id}`;
+      if (g.name && g.name.trim() !== '') return g.name;
+      if (g.objectType && g.objectType.trim() !== '') return `${g.type}: ${g.objectType}`;
+      return `${g.type} #${g.id}`;
     }
 
     default:

@@ -28,6 +28,11 @@ export enum IfcTypeEnum {
   // stripped by the wasm-free typecheck lane (#1002) — added for #1075.
   IfcSpatialZone = 317,
   IfcZone = 318,
+  // IfcSystem / IfcDistributionSystem are IfcGroup-family groupings (MEP
+  // systems, distribution networks). Listed/coloured by membership like
+  // IfcZone. Ids continue the #1075 block above the platform-variant max.
+  IfcSystem = 319,
+  IfcDistributionSystem = 320,
 
   // Building elements
   IfcWall = 10,
@@ -250,6 +255,8 @@ const TYPE_STRING_TO_ENUM = new Map<string, IfcTypeEnum>([
   ['IFCSPACE', IfcTypeEnum.IfcSpace],
   ['IFCSPATIALZONE', IfcTypeEnum.IfcSpatialZone],
   ['IFCZONE', IfcTypeEnum.IfcZone],
+  ['IFCSYSTEM', IfcTypeEnum.IfcSystem],
+  ['IFCDISTRIBUTIONSYSTEM', IfcTypeEnum.IfcDistributionSystem],
   ['IFCFACILITY', IfcTypeEnum.IfcFacility],
   ['IFCFACILITYPART', IfcTypeEnum.IfcFacilityPart],
   ['IFCBRIDGE', IfcTypeEnum.IfcBridge],
@@ -400,6 +407,8 @@ const TYPE_ENUM_TO_STRING = new Map<IfcTypeEnum, string>([
   [IfcTypeEnum.IfcSpace, 'IfcSpace'],
   [IfcTypeEnum.IfcSpatialZone, 'IfcSpatialZone'],
   [IfcTypeEnum.IfcZone, 'IfcZone'],
+  [IfcTypeEnum.IfcSystem, 'IfcSystem'],
+  [IfcTypeEnum.IfcDistributionSystem, 'IfcDistributionSystem'],
   [IfcTypeEnum.IfcFacility, 'IfcFacility'],
   [IfcTypeEnum.IfcFacilityPart, 'IfcFacilityPart'],
   [IfcTypeEnum.IfcBridge, 'IfcBridge'],

@@ -211,10 +211,20 @@ export class ColumnarParser {
         // already knows the full inheritance chain, so use it.
         const RELEVANT_PRODUCT_ROOTS = new Set(['IFCPRODUCT']);
 
+        // IfcGroup family (IfcZone, IfcSystem, IfcDistributionSystem,
+        // IfcBuildingSystem, IfcDistributionCircuit, …). These are NOT
+        // IfcProduct subtypes, so without an explicit branch they fall through
+        // to CAT_SKIP and never enter the EntityTable — leaving their Name
+        // unresolvable (`getName` → '') and making them invisible to
+        // `getByType`. The Relationships card then shows "Group #<id>" and the
+        // lens/lists can't surface them. Route them into their own bucket so we
+        // can extract Name/LongName/ObjectType for the group label (#1075).
+        const GROUP_ROOTS = new Set(['IFCGROUP']);
+
         // Category constants for the lookup cache
         const CAT_SKIP = 0, CAT_SPATIAL = 1, CAT_GEOMETRY = 2, CAT_HIERARCHY_REL = 3,
               CAT_PROPERTY_REL = 4, CAT_PROPERTY_ENTITY = 5, CAT_ASSOCIATION_REL = 6,
-              CAT_TYPE_OBJECT = 7, CAT_RELEVANT = 8;
+              CAT_TYPE_OBJECT = 7, CAT_RELEVANT = 8, CAT_GROUP = 9;
 
 
         /** Returns true if `upper` (already uppercased) is a subtype of any type in `set`. */
@@ -236,6 +246,7 @@ export class ColumnarParser {
             else if (PROPERTY_ENTITY_TYPES.has(upper)) cat = CAT_PROPERTY_ENTITY;
             else if (ASSOCIATION_REL_TYPES.has(upper)) cat = CAT_ASSOCIATION_REL;
             else if (isIfcTypeLikeEntity(upper)) cat = CAT_TYPE_OBJECT;
+            else if (isSubtypeOfAny(upper, GROUP_ROOTS)) cat = CAT_GROUP;
             else if (
                 RELEVANT_NON_PRODUCT_HELPERS.has(upper)
                 || isSubtypeOfAny(upper, RELEVANT_PRODUCT_ROOTS)
@@ -271,6 +282,7 @@ export class ColumnarParser {
         const associationRelRefs: EntityRef[] = [];
         const typeObjectRefs: EntityRef[] = [];
         const otherRelevantRefs: EntityRef[] = [];
+        const groupRefs: EntityRef[] = [];
 
         for (let i = 0; i < entityRefs.length; i++) {
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
@@ -306,10 +318,11 @@ export class ColumnarParser {
             }
             else if (cat === CAT_ASSOCIATION_REL) associationRelRefs.push(ref);
             else if (cat === CAT_TYPE_OBJECT) typeObjectRefs.push(ref);
+            else if (cat === CAT_GROUP) groupRefs.push(ref);
             else if (cat === CAT_RELEVANT) otherRelevantRefs.push(ref);
         }
 
-        logPhase(`categorize ${totalEntities} → spatial:${spatialRefs.length} geom:${geometryRefs.length} rel:${relationshipRefs.length} propRel:${propertyRelRefs.length} propContainers:${propertyContainerRefs.length} propAtoms:${propertyAtomRefs.length} assocRel:${associationRelRefs.length} type:${typeObjectRefs.length} other:${otherRelevantRefs.length}`);
+        logPhase(`categorize ${totalEntities} → spatial:${spatialRefs.length} geom:${geometryRefs.length} rel:${relationshipRefs.length} propRel:${propertyRelRefs.length} propContainers:${propertyContainerRefs.length} propAtoms:${propertyAtomRefs.length} assocRel:${associationRelRefs.length} type:${typeObjectRefs.length} group:${groupRefs.length} other:${otherRelevantRefs.length}`);
 
         // Pre-scan association rels to discover relatingRef target IDs (e.g.
         // IfcClassificationReference, IfcMaterial, IfcDocumentReference).  These
@@ -325,7 +338,7 @@ export class ColumnarParser {
         // Single O(n) pass over entityRefs filtered to the (small) target ID set.
         const alreadyIndexedIds = new Set<number>();
         for (const arr of [spatialRefs, geometryRefs, relationshipRefs, propertyRelRefs,
-            propertyContainerRefs, associationRelRefs, typeObjectRefs, otherRelevantRefs,
+            propertyContainerRefs, associationRelRefs, typeObjectRefs, groupRefs, otherRelevantRefs,
             ...(deferPropertyAtomIndex ? [] : [propertyAtomRefs])]) {
             for (const r of arr) alreadyIndexedIds.add(r.expressId);
         }
@@ -361,7 +374,7 @@ export class ColumnarParser {
         // includes millions of geometry-representation entities we don't store).
         // For a 14M entity file, this reduces allocation from ~546MB to ~20MB.
         const relevantCount = spatialRefs.length + geometryRefs.length + typeObjectRefs.length
-            + relationshipRefs.length + otherRelevantRefs.length;
+            + relationshipRefs.length + groupRefs.length + otherRelevantRefs.length;
         const entityTableBuilder = new EntityTableBuilder(relevantCount, strings);
 
         const entityIndex = {
@@ -392,6 +405,27 @@ export class ColumnarParser {
 
         await yieldIfNeeded();
 
+        // Group family (IfcZone / IfcSystem / IfcDistributionSystem / …): small
+        // count, full extract so we can resolve Name + LongName + ObjectType for
+        // the group label. Name is often empty on these — the human label lives
+        // in LongName (IfcZone/IfcDistributionSystem) — so fall back to it, and
+        // keep ObjectType (e.g. a system designation) for richer display. (#1075)
+        const groupExtra = new Map<number, { description: string; objectType: string }>();
+        for (const ref of groupRefs) {
+            const entity = extractor.extractEntity(ref);
+            if (!entity) continue;
+            const root = extractRootAttributesFromEntity(entity);
+            const longName = pickLongName(entity);
+            parsedEntityData.set(ref.expressId, {
+                globalId: root.globalId,
+                name: root.name || longName,
+            });
+            groupExtra.set(ref.expressId, { description: root.description, objectType: root.objectType });
+        }
+        logPhase('group entities');
+
+        await yieldIfNeeded();
+
         // Geometry + type object entities: batch extract GlobalId+Name with 2 TextDecoder calls
         options.onProgress?.({ phase: 'parsing geometry names', percent: 12 });
         const geomData = await batchExtractGlobalIdAndName(uint8Buffer, geometryRefs, yieldIfNeeded);
@@ -402,6 +436,17 @@ export class ColumnarParser {
         const typeData = await batchExtractGlobalIdAndName(uint8Buffer, typeObjectRefs, yieldIfNeeded);
         for (const [id, data] of typeData) parsedEntityData.set(id, data);
         logPhase('batch geom GlobalId+Name');
+
+        await yieldIfNeeded();
+
+        // Other relevant products (IfcSpatialZone, IfcVirtualElement, IfcGrid,
+        // IfcAnnotation, …): batch GlobalId+Name so they show their Name in the
+        // hierarchy / lists instead of nothing. Previously these were added to
+        // the EntityTable with an empty name (parsedEntityData never covered
+        // this bucket), so e.g. IfcSpatialZone listed without a label. (#1075)
+        const otherData = await batchExtractGlobalIdAndName(uint8Buffer, otherRelevantRefs, yieldIfNeeded);
+        for (const [id, data] of otherData) parsedEntityData.set(id, data);
+        logPhase('batch other-relevant GlobalId+Name');
 
         await yieldIfNeeded();
 
@@ -452,6 +497,23 @@ export class ColumnarParser {
         addEntityBatch(typeObjectRefs, false, true);
         addEntityBatch(relationshipRefs, false, false);
         addEntityBatch(otherRelevantRefs, false, false);
+        // Groups carry Description + ObjectType (the system designation), which
+        // the shared addEntityBatch drops as ''. Add them with the extra fields
+        // so the Properties title / lists / lens can surface them. (#1075)
+        for (const ref of groupRefs) {
+            const entityData = parsedEntityData.get(ref.expressId);
+            const extra = groupExtra.get(ref.expressId);
+            entityTableBuilder.add(
+                ref.expressId,
+                ref.type,
+                entityData?.globalId || '',
+                entityData?.name || '',
+                extra?.description || '',
+                extra?.objectType || '',
+                false,
+                false
+            );
+        }
         logPhase('add entity batches');
 
         const entityTable = entityTableBuilder.build();
@@ -963,6 +1025,7 @@ interface RootAttrIndices {
     description: number;
     objectType: number;
     tag: number;
+    longName: number;
 }
 
 // getAttributeNames() walks the schema registry (an O(types) scan for the
@@ -982,6 +1045,7 @@ function getRootAttrIndices(type: string): RootAttrIndices {
             description: names.indexOf('Description'),
             objectType: names.indexOf('ObjectType'),
             tag: names.indexOf('Tag'),
+            longName: names.indexOf('LongName'),
         };
         rootAttrIndexCache.set(type, idx);
     }
@@ -1020,6 +1084,20 @@ export function extractRootAttributesFromEntity(
         objectType: pick(idx.objectType, 4),
         tag: pick(idx.tag, 7),
     };
+}
+
+/**
+ * Resolve an entity's LongName (IfcZone, IfcSystem subtypes, IfcSpatialZone,
+ * IfcBuildingSystem, …) by schema attribute name. Groups frequently leave Name
+ * empty and carry their human label in LongName, so consumers fall back to this
+ * for the display label. Returns '' when the type does not declare LongName.
+ * (#1075)
+ */
+export function pickLongName(entity: IfcEntity): string {
+    const idx = getRootAttrIndices(entity.type);
+    if (!idx.known || idx.longName < 0) return '';
+    const raw = (entity.attributes || [])[idx.longName];
+    return typeof raw === 'string' ? raw : '';
 }
 
 // Re-export on-demand extraction functions from focused module

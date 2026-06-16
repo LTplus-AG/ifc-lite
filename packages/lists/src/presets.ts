@@ -123,6 +123,22 @@ export const LIST_PRESETS: ListDefinition[] = [
   ),
 
   makePreset(
+    'Zones & Systems',
+    'All spatial zones, zones and systems with their names',
+    [
+      IfcTypeEnum.IfcSpatialZone, IfcTypeEnum.IfcZone,
+      IfcTypeEnum.IfcSystem, IfcTypeEnum.IfcDistributionSystem,
+    ],
+    [
+      attr('Name'),
+      attr('Class'),
+      attr('Description'),
+      attr('ObjectType'),
+      attr('GlobalId'),
+    ],
+  ),
+
+  makePreset(
     'All Elements',
     'Overview of all building elements',
     [

@@ -626,7 +626,11 @@ export function extractRelationshipsOnDemand(
         const ref = store.entityIndex.byId.get(id);
         if (!ref) return { type: 'Unknown' };
         const name = store.entities?.getName(id);
-        return { name: name || undefined, type: ref.type };
+        // Canonical IfcPascalCase (e.g. "IfcZone") for display + case-sensitive
+        // consumers; `ref.type` is the raw STEP token ("IFCZONE"). Groups now
+        // live in the EntityTable so getTypeName resolves them too. (#1075)
+        const type = store.entities?.getTypeName?.(id) || ref.type;
+        return { name: name || undefined, type };
     };
 
     // VoidsElement: openings that void this element

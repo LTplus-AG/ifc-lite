@@ -301,7 +301,7 @@ export function createLensDataProvider(
       return entry?.name ?? modelId;
     },
 
-    getEntityGroups(globalId: number): ReadonlyArray<{ id: number; name?: string; type: string }> {
+    getEntityGroups(globalId: number): ReadonlyArray<{ id: number; name?: string; type: string; objectType?: string }> {
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return [];
       const store = resolved.entry.ifcDataStore;
@@ -309,13 +309,16 @@ export function createLensDataProvider(
       // Inverse IfcRelAssignsToGroup: entity → the groups/zones it belongs to.
       const groupIds = store.relationships.getRelated(resolved.expressId, RelationshipType.AssignsToGroup, 'inverse');
       if (!groupIds || groupIds.length === 0) return [];
-      const out: Array<{ id: number; name?: string; type: string }> = [];
+      const out: Array<{ id: number; name?: string; type: string; objectType?: string }> = [];
       for (const gid of groupIds) {
         const name = store.entities?.getName(gid);
         // Canonical IfcPascalCase so the "By Zone" lens can match `IfcZone`
         // deterministically; `byId.get(gid).type` is the raw STEP token. (#1075)
         const type = store.entities?.getTypeName?.(gid) || store.entityIndex?.byId.get(gid)?.type || 'Unknown';
-        out.push({ id: gid, name: name || undefined, type });
+        // ObjectType carries the system designation for unnamed groups; the
+        // lens legend falls back to it when Name/LongName are empty. (#1075)
+        const objectType = store.entities?.getObjectType?.(gid);
+        out.push({ id: gid, name: name || undefined, type, objectType: objectType || undefined });
       }
       return out;
     },

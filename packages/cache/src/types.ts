@@ -26,8 +26,15 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * (world = origin + position). Without it, a cache restored from a local-frame
  * load has small local positions but no origin → every element renders scattered
  * near scene origin. The bump also invalidates pre-origin caches so they re-mesh.
+ *
+ * v7: IfcGroup-family entities (IfcZone / IfcSystem / IfcDistributionSystem) and
+ * IfcSpatialZone now enter the EntityTable WITH their Name/LongName/ObjectType
+ * (#1075). The binary format is unchanged, but a v6 cache has no group rows, so
+ * a restored model would still show "Group #<id>" and omit zones/systems from
+ * lists/lens. The bump invalidates pre-#1075 caches so they re-parse and resolve
+ * the names.
  */
-export const FORMAT_VERSION = 6;
+export const FORMAT_VERSION = 7;
 
 /** Section types in the binary format */
 export enum SectionType {

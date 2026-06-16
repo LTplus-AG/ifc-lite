@@ -474,3 +474,65 @@ describe('evaluateAutoColorLens', () => {
     expect(result.legend[0].count).toBe(2);
   });
 });
+
+// ============================================================================
+// evaluateAutoColorLens — "By Zone" (group) source (#1075)
+// ============================================================================
+
+/** Mock provider where each entity belongs to a set of groups/zones. */
+function createGroupProvider(
+  entities: Array<{ id: number; groups: Array<{ id: number; name?: string; type: string; objectType?: string }> }>,
+): LensDataProvider {
+  const map = new Map(entities.map((e) => [e.id, e]));
+  return {
+    getEntityCount: () => entities.length,
+    forEachEntity: (cb) => { for (const e of entities) cb(e.id, 'model-1'); },
+    getEntityType: () => 'IfcSpace',
+    getPropertyValue: () => undefined,
+    getPropertySets: () => [],
+    getEntityGroups: (id) => map.get(id)?.groups ?? [],
+  };
+}
+
+describe('evaluateAutoColorLens — By Zone', () => {
+  it('buckets by distinct named zones instead of collapsing to one (#1075 47-vs-4)', () => {
+    // Each space sits in its own named zone — must yield one legend entry per zone.
+    const provider = createGroupProvider([
+      { id: 1, groups: [{ id: 100, name: 'Dwelling A', type: 'IfcZone' }] },
+      { id: 2, groups: [{ id: 101, name: 'Dwelling B', type: 'IfcZone' }] },
+      { id: 3, groups: [{ id: 102, name: 'Dwelling C', type: 'IfcZone' }] },
+    ]);
+    const result = evaluateAutoColorLens({ source: 'group' }, provider);
+    expect(result.legend.map((e) => e.name).sort()).toEqual(['Dwelling A', 'Dwelling B', 'Dwelling C']);
+  });
+
+  it('prefers the IfcZone membership when an element is in several groups', () => {
+    const provider = createGroupProvider([
+      { id: 1, groups: [
+        { id: 200, name: 'HVAC', type: 'IfcDistributionSystem' },
+        { id: 201, name: 'Fire Compartment 1', type: 'IfcZone' },
+      ] },
+    ]);
+    const result = evaluateAutoColorLens({ source: 'group' }, provider);
+    expect(result.legend).toHaveLength(1);
+    expect(result.legend[0].name).toBe('Fire Compartment 1');
+  });
+
+  it('falls back to ObjectType (system type) when a group has no name', () => {
+    const provider = createGroupProvider([
+      { id: 1, groups: [{ id: 300, type: 'IfcDistributionSystem', objectType: 'AHU-01' }] },
+    ]);
+    const result = evaluateAutoColorLens({ source: 'group' }, provider);
+    expect(result.legend[0].name).toBe('IfcDistributionSystem: AHU-01');
+  });
+
+  it('ghosts elements with no group membership', () => {
+    const provider = createGroupProvider([
+      { id: 1, groups: [{ id: 400, name: 'Zone A', type: 'IfcZone' }] },
+      { id: 2, groups: [] },
+    ]);
+    const result = evaluateAutoColorLens({ source: 'group' }, provider);
+    expect(result.legend).toHaveLength(1);
+    expect(result.colorMap.get(2)).toEqual(GHOST_COLOR);
+  });
+});

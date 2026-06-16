@@ -113,7 +113,7 @@ export interface LensDataProvider {
    * source to colour or isolate by zone membership. Optional — the engine skips
    * group criteria when not implemented (#1075).
    */
-  getEntityGroups?(globalId: number): ReadonlyArray<{ id: number; name?: string; type: string }>;
+  getEntityGroups?(globalId: number): ReadonlyArray<{ id: number; name?: string; type: string; objectType?: string }>;
 }
 
 /** Property set returned by {@link LensDataProvider.getPropertySets} */

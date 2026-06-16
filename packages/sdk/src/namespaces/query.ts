@@ -105,6 +105,14 @@ export class QueryNamespace {
     return new QueryBuilder(this.backend);
   }
 
+  /**
+   * Entities matching the host's active advanced filter, or `null` when no
+   * filter is active. Use for "export only the current filtered view" flows.
+   */
+  matchingActiveFilter(): EntityData[] | null {
+    return this.backend.query.entitiesMatchingActiveFilter();
+  }
+
   /** Get a single entity by ref */
   entity(ref: EntityRef): EntityData | null {
     return this.backend.query.entityData(ref);

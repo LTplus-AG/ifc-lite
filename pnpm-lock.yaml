@@ -637,6 +637,9 @@ importers:
 
   packages/codegen:
     dependencies:
+      '@ifc-lite/data':
+        specifier: workspace:^
+        version: link:../data
       commander:
         specifier: ^15.0.0
         version: 15.0.0

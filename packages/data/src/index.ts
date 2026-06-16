@@ -34,6 +34,26 @@ export * from './types.js';
 export { IfcTypeEnum, PropertyValueType, QuantityType, RelationshipType, EntityFlags } from './types.js';
 export type { SpatialNode, SpatialHierarchy } from './types.js';
 export type { IfcStoreBase, IfcSourceHeader } from './data-store.js';
+// Schema-agnostic STEP serialization primitives — the single source of truth
+// re-exported by the per-schema serializer bundles (parser runtime + codegen).
+export {
+  isEntityRef,
+  isEnumValue,
+  ref,
+  enumVal,
+  serializeValue,
+  toStepLineWithRegistry,
+  generateHeader,
+  generateStepFileWithRegistry,
+  parseStepValue,
+} from './step-serializers.js';
+export type {
+  StepValue,
+  EntityRef,
+  EnumValue,
+  StepEntity,
+  StepSchemaRegistry,
+} from './step-serializers.js';
 export * from './spatial-types.js';
 export * from './epsg-types.js';
 export {

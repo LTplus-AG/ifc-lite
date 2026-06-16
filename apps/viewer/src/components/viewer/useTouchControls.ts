@@ -94,16 +94,26 @@ export function useTouchControls(params: UseTouchControlsParams): void {
         camera.setOrbitCenter(hit.intersection.point);
         return;
       }
+      // Anchor to the scene centre (stable) rather than the drifting camera
+      // target, projected onto the finger ray (issue #1107, item 3). Matches
+      // the mouse orbit fallback in useMouseControls.
       const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
-      const target = camera.getTarget();
-      const toTarget = {
-        x: target.x - ray.origin.x,
-        y: target.y - ray.origin.y,
-        z: target.z - ray.origin.z,
+      const bounds = camera.getSceneBounds();
+      const anchor = bounds
+        ? {
+            x: (bounds.min.x + bounds.max.x) / 2,
+            y: (bounds.min.y + bounds.max.y) / 2,
+            z: (bounds.min.z + bounds.max.z) / 2,
+          }
+        : camera.getTarget();
+      const toAnchor = {
+        x: anchor.x - ray.origin.x,
+        y: anchor.y - ray.origin.y,
+        z: anchor.z - ray.origin.z,
       };
       const d = Math.max(
         1,
-        toTarget.x * ray.direction.x + toTarget.y * ray.direction.y + toTarget.z * ray.direction.z,
+        toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z,
       );
       camera.setOrbitCenter({
         x: ray.origin.x + ray.direction.x * d,

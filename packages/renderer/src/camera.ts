@@ -450,6 +450,16 @@ export class Camera {
     this.updateMatrices();
   }
 
+  /**
+   * The cached scene bounds last set via {@link setSceneBounds} (null if never
+   * set). O(1) — does not recompute from geometry, so it is cheap enough to
+   * read on the orbit hot path (e.g. anchoring the orbit pivot to the scene
+   * centre on large models). Returns the live reference; callers must not mutate.
+   */
+  getSceneBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
+    return this.state.sceneBounds;
+  }
+
   private updateMatrices(): void {
     const dx = this.state.camera.position.x - this.state.camera.target.x;
     const dy = this.state.camera.position.y - this.state.camera.target.y;

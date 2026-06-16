@@ -519,16 +519,28 @@ export function useMouseControls(params: UseMouseControlsParams): void {
             camera.setOrbitCenter(null);
           }
         } else {
-          // No geometry hit or large model — project camera target onto the cursor ray.
-          // Places pivot at the model's depth but under the cursor.
+          // No geometry hit or large model — anchor the pivot to the scene
+          // centre (a stable point on the model) rather than the camera target,
+          // which drifts as you orbit/pan and made repeated rotation feel
+          // untethered (issue #1107, item 3). The anchor is projected onto the
+          // cursor ray so the pivot still sits under the pointer, at the scene's
+          // depth. getSceneBounds() is O(1) (cached), safe on the large-model
+          // path. Falls back to the camera target if bounds aren't known yet.
           const ray = camera.unprojectToRay(cx, cy, canvas.width, canvas.height);
-          const target = camera.getTarget();
-          const toTarget = {
-            x: target.x - ray.origin.x,
-            y: target.y - ray.origin.y,
-            z: target.z - ray.origin.z,
+          const bounds = camera.getSceneBounds();
+          const anchor = bounds
+            ? {
+                x: (bounds.min.x + bounds.max.x) / 2,
+                y: (bounds.min.y + bounds.max.y) / 2,
+                z: (bounds.min.z + bounds.max.z) / 2,
+              }
+            : camera.getTarget();
+          const toAnchor = {
+            x: anchor.x - ray.origin.x,
+            y: anchor.y - ray.origin.y,
+            z: anchor.z - ray.origin.z,
           };
-          const d = Math.max(1, toTarget.x * ray.direction.x + toTarget.y * ray.direction.y + toTarget.z * ray.direction.z);
+          const d = Math.max(1, toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z);
           camera.setOrbitCenter({
             x: ray.origin.x + ray.direction.x * d,
             y: ray.origin.y + ray.direction.y * d,

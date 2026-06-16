@@ -27,7 +27,8 @@ import {
 } from '@ifc-lite/geometry';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
-import { type GeometryData, FORMAT_VERSION } from '@ifc-lite/cache';
+import { buildGeometryCacheKey } from './geometryCacheKey.js';
+import { type GeometryData } from '@ifc-lite/cache';
 
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
@@ -564,12 +565,17 @@ export function useIfcLoader() {
       // Cache key uses filename + size + content fingerprint + format version
       // Fingerprint prevents collisions for different files with the same name and size
       const fingerprint = computeFastFingerprint(buffer);
-      // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so keep the
-      // persisted key filename-safe and independent of the original filename.
-      // Pin to the cache FORMAT_VERSION so a format bump invalidates stale
-      // entries (e.g. v5 added the geometryClass tag the Model/Types switch
-      // needs); a manual literal here silently kept serving incompatible data.
-      const cacheKey = `ifc-${buffer.byteLength}-${fingerprint}-v${FORMAT_VERSION}`;
+      // Snapshot the merge-layers flag *before* the cache lookup: it is a
+      // load-time WASM tessellation input (issue #540) and must discriminate
+      // the cache key, otherwise toggling it + reloading serves geometry built
+      // with the previous flag (issue #1107). Reused below for the
+      // GeometryProcessor so the key and the actual tessellation agree.
+      const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
+      // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
+      // stays filename-safe and independent of the original filename. Pinned
+      // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
+      // added the geometryClass tag the Model/Types switch needs).
+      const cacheKey = buildGeometryCacheKey(buffer.byteLength, fingerprint, mergeLayersAtLoad);
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).
@@ -621,7 +627,8 @@ export function useIfcLoader() {
       }
 
       // Initialize geometry processor first (WASM init is fast if already loaded)
-      const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
+      // Reuses the merge-layers snapshot taken above for the cache key so the
+      // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
         preferNative: false,

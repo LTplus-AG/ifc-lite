@@ -48,6 +48,15 @@ export interface TreeNode {
   storeyElevation?: number;
   /** Internal: ID offset for lazy visibility computation */
   _idOffset?: number;
+  /**
+   * For a decomposing assembly element (IfcElementAssembly, an IfcStair used as
+   * a container, …): the federated global IDs of every `IfcRelAggregates`
+   * descendant part. Present only when the element actually aggregates parts.
+   * `globalIds[0]` stays the assembly itself (so tree selection + hidden-state
+   * keep working); these parts carry the geometry and are used to highlight /
+   * frame / isolate the whole assembly at once (issue #1133).
+   */
+  assemblyChildGlobalIds?: number[];
 }
 
 /** Data for a storey from a single model */

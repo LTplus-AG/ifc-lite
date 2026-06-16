@@ -290,6 +290,7 @@ describe('VisibilitySlice', () => {
         spaces: false,
         spatialZones: false,
         openings: false,
+        virtualElements: false,
         site: true,
         ifcAnnotations: true,
         ifcGrid: true,

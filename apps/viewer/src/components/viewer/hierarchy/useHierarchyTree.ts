@@ -309,7 +309,11 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
         return [...node.globalIds, ...toGlobalIdsForModel(modelId, localIds)];
       }
     } else if (node.type === 'element') {
-      return node.globalIds;
+      // A decomposing assembly folds in its IfcRelAggregates parts so the eye
+      // toggle / isolate / basket act on the whole assembly at once (#1133).
+      return node.assemblyChildGlobalIds && node.assemblyChildGlobalIds.length > 0
+        ? [...node.globalIds, ...node.assemblyChildGlobalIds]
+        : node.globalIds;
     }
     // Spatial containers (Project, Site, Building) and top-level models don't have direct element visibility toggle
     return [];

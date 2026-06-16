@@ -157,12 +157,13 @@ export const UI_DEFAULTS = {
  * user can clear an individual preference without nuking the rest.
  */
 export const TYPE_VISIBILITY_STORAGE_KEYS = {
-  spaces:         'ifc-lite-ifc-spaces-visible',
-  spatialZones:   'ifc-lite-ifc-spatial-zones-visible',
-  openings:       'ifc-lite-ifc-openings-visible',
-  site:           'ifc-lite-ifc-site-visible',
-  ifcAnnotations: 'ifc-lite-ifc-annotations-visible',
-  ifcGrid:        'ifc-lite-ifc-grid-visible',
+  spaces:          'ifc-lite-ifc-spaces-visible',
+  spatialZones:    'ifc-lite-ifc-spatial-zones-visible',
+  openings:        'ifc-lite-ifc-openings-visible',
+  virtualElements: 'ifc-lite-ifc-virtual-elements-visible',
+  site:            'ifc-lite-ifc-site-visible',
+  ifcAnnotations:  'ifc-lite-ifc-annotations-visible',
+  ifcGrid:         'ifc-lite-ifc-grid-visible',
 } as const;
 
 /** Legacy alias — kept until external callers migrate. */
@@ -191,6 +192,9 @@ export const TYPE_VISIBILITY_SEMANTIC_DEFAULTS: TypeVisibility = {
   spaces: false,
   spatialZones: false,
   openings: false,
+  // IfcVirtualElement off — non-physical clearance/boundary volumes that
+  // obscure real geometry when present (issue #1133).
+  virtualElements: false,
   site: true,
   ifcAnnotations: true,
   ifcGrid: true,
@@ -209,10 +213,11 @@ export const TYPE_VISIBILITY_SEMANTIC_DEFAULTS: TypeVisibility = {
  */
 export function getPersistedTypeVisibility(): TypeVisibility {
   return {
-    spaces:         readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spaces, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.spaces),
-    spatialZones:   readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spatialZones, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.spatialZones),
-    openings:       readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.openings, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.openings),
-    site:           readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.site),
+    spaces:          readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spaces, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.spaces),
+    spatialZones:    readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.spatialZones, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.spatialZones),
+    openings:        readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.openings, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.openings),
+    virtualElements: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.virtualElements, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.virtualElements),
+    site:            readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.site, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.site),
     ifcAnnotations: readPersistedBool(TYPE_VISIBILITY_STORAGE_KEYS.ifcAnnotations, TYPE_VISIBILITY_SEMANTIC_DEFAULTS.ifcAnnotations),
     // Issue #862. Migration: if the new grid key isn't set yet, fall back to
     // the legacy combined `ifcAnnotations` preference so a user who turned

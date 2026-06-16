@@ -30,6 +30,7 @@ import {
   Info,
   Layers2,
   SquareX,
+  BoxSelect,
   Building2,
   Plus,
   PackagePlus,
@@ -344,6 +345,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     typeVisibility.spaces,
     typeVisibility.spatialZones,
     typeVisibility.openings,
+    typeVisibility.virtualElements,
     typeVisibility.site,
     typeVisibility.ifcAnnotations,
     typeVisibility.ifcGrid,
@@ -1373,6 +1375,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             description="Door & window voids"
             checked={typeVisibility.openings}
             onChange={() => toggleTypeVisibility('openings')}
+          />
+          <ClassVisibilityRow
+            icon={<BoxSelect className="h-4 w-4 shrink-0" style={{ color: '#9aa0a6' }} />}
+            label="Virtual Elements"
+            description="Non-physical boundaries & clearance volumes"
+            checked={typeVisibility.virtualElements}
+            onChange={() => toggleTypeVisibility('virtualElements')}
           />
           <ClassVisibilityRow
             icon={<Building2 className="h-4 w-4 shrink-0" style={{ color: '#66cc4d' }} />}

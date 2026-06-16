@@ -201,6 +201,13 @@ export interface TypeVisibility {
   spatialZones: boolean;
   /** IfcOpeningElement - off by default */
   openings: boolean;
+  /**
+   * IfcVirtualElement - off by default. Non-physical placeholders (space
+   * boundaries, "free space"/clearance volumes around stairs) that carry
+   * geometry in some exports but aren't real building elements; rendering them
+   * clutters the view with translucent boxes (issue #1133).
+   */
+  virtualElements: boolean;
   /** IfcSite - on by default (when has geometry) */
   site: boolean;
   /** IfcAnnotation (2D symbolic curves) - on by default when present */

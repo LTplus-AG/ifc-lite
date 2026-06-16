@@ -7,6 +7,7 @@ import type { StoreApi } from './types.js';
 import { getModelForRef, type ModelLike } from './model-compat.js';
 import { collectSpatialSubtreeElementsWithIfcSpace } from '../../store/basketVisibleSet.js';
 import { toGlobalIdForRef, toGlobalIdFromModels } from '../../store/globalId.js';
+import type { AggregationRelationships } from '../../utils/aggregation.js';
 import { isSpaceLikeSpatialTypeName, isSpatialStructureTypeName, type SpatialNode } from '@ifc-lite/data';
 
 function findDescendantNode(root: SpatialNode, expressId: number): SpatialNode | null {
@@ -41,7 +42,11 @@ function expandSpatialRef(ref: EntityRef, model: ModelLike): number[] {
   const startNode = findDescendantNode(hierarchy.project, ref.expressId);
   if (!startNode) return [ref.expressId];
 
-  const ids = collectSpatialSubtreeElementsWithIfcSpace(hierarchy, ref.expressId);
+  const ids = collectSpatialSubtreeElementsWithIfcSpace(
+    hierarchy,
+    ref.expressId,
+    dataStore.relationships as AggregationRelationships | undefined,
+  );
   return ids && ids.length > 0 ? ids : [ref.expressId];
 }
 

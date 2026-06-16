@@ -4,7 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
-import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import type { AggregationRelationships } from '../utils/aggregation.js';
 import {
   collectSpatialSubtreeElementsWithIfcSpace,
   getSmartBasketInputFromStore,
@@ -48,6 +49,44 @@ describe('collectSpatialSubtreeElementsWithIfcSpace', () => {
     };
 
     assert.deepEqual(collectSpatialSubtreeElementsWithIfcSpace(hierarchy, 2), [4]);
+  });
+
+  it('pulls aggregated assembly parts into a storey when relationships are supplied (issue #1133)', () => {
+    // Storey #4 contains an IfcStair #10 whose parts (#11, #12, #13) hang off it
+    // via IfcRelAggregates and are NOT directly contained in the storey.
+    const storeyNode = createNode(4, IfcTypeEnum.IfcBuildingStorey, [], [10]);
+    const buildingNode = createNode(3, IfcTypeEnum.IfcBuilding, [storeyNode], []);
+    const projectNode = createNode(1, IfcTypeEnum.IfcProject, [buildingNode], []);
+
+    const hierarchy: SpatialHierarchy = {
+      project: projectNode,
+      byStorey: new Map([[4, [10]]]),
+      byBuilding: new Map(),
+      bySite: new Map(),
+      bySpace: new Map(),
+      storeyElevations: new Map(),
+      storeyHeights: new Map(),
+      elementToStorey: new Map([[10, 4]]),
+      getStoreyElements: () => [],
+      getStoreyByElevation: () => null,
+      getContainingSpace: () => null,
+      getPath: () => [],
+    };
+
+    const relationships: AggregationRelationships = {
+      getRelated: (id, relType, direction) =>
+        relType === RelationshipType.Aggregates && direction === 'forward' && id === 10
+          ? [11, 12, 13]
+          : [],
+    };
+
+    // Without the graph (back-compat): only the stair, parts vanish.
+    assert.deepEqual(collectSpatialSubtreeElementsWithIfcSpace(hierarchy, 4), [10]);
+    // With the graph: the whole assembly travels with the storey.
+    assert.deepEqual(
+      collectSpatialSubtreeElementsWithIfcSpace(hierarchy, 4, relationships),
+      [10, 11, 12, 13],
+    );
   });
 
   it('keeps the selected container when the spatial subtree has no descendant elements', () => {

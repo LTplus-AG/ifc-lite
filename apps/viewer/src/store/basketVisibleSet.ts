@@ -15,6 +15,7 @@ import type { EntityRef } from './types.js';
 import { entityRefToString, stringToEntityRef } from './types.js';
 import { useViewerStore } from './index.js';
 import { toGlobalIdFromModels } from './globalId.js';
+import { collectAggregatedDescendants, type AggregationRelationships } from '../utils/aggregation.js';
 
 type ViewerStateSnapshot = ReturnType<typeof useViewerStore.getState>;
 
@@ -81,6 +82,7 @@ function visibilityFingerprint(state: ViewerStateSnapshot): string {
     digestNumberSet(state.selectedStoreys),
     tv.spaces ? 1 : 0,
     tv.openings ? 1 : 0,
+    tv.virtualElements ? 1 : 0,
     tv.site ? 1 : 0,
     state.models.size,
     modelParts.join(';'),
@@ -109,6 +111,7 @@ function matchesTypeVisibility(ifcType: string | undefined, typeVisibility: View
   if (ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
   if (ifcType === 'IfcSpatialZone' && !typeVisibility.spatialZones) return false;
   if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
+  if (ifcType === 'IfcVirtualElement' && !typeVisibility.virtualElements) return false;
   if (ifcType === 'IfcSite' && !typeVisibility.site) return false;
   return true;
 }
@@ -141,7 +144,11 @@ function findSpatialNode(root: SpatialNode, expressId: number): SpatialNode | nu
 }
 
 function getContainerElementIds(dataStore: IfcDataStore, containerExpressId: number): number[] {
-  return collectSpatialSubtreeElementsWithIfcSpace(dataStore.spatialHierarchy, containerExpressId) ?? [];
+  return collectSpatialSubtreeElementsWithIfcSpace(
+    dataStore.spatialHierarchy,
+    containerExpressId,
+    dataStore.relationships as AggregationRelationships | undefined
+  ) ?? [];
 }
 
 function expandRefToElements(state: ViewerStateSnapshot, ref: EntityRef): EntityRef[] {
@@ -265,15 +272,17 @@ function getExpandedSelectionRefs(state: ViewerStateSnapshot): EntityRef[] {
  */
 export function collectIfcBuildingStoreyElementsWithIfcSpace(
   hierarchy: SpatialHierarchy,
-  storeyId: number
+  storeyId: number,
+  relationships?: AggregationRelationships
 ): number[] | null {
   if (!hierarchy.byStorey.has(storeyId)) return null;
-  return collectSpatialSubtreeElementsWithIfcSpace(hierarchy, storeyId);
+  return collectSpatialSubtreeElementsWithIfcSpace(hierarchy, storeyId, relationships);
 }
 
 export function collectSpatialSubtreeElementsWithIfcSpace(
   hierarchy: SpatialHierarchy | undefined,
-  expressId: number
+  expressId: number,
+  relationships?: AggregationRelationships
 ): number[] | null {
   if (!hierarchy?.project) return null;
 
@@ -282,18 +291,29 @@ export function collectSpatialSubtreeElementsWithIfcSpace(
 
   const combined: number[] = [];
   const seen = new Set<number>();
+  const add = (id: number) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    combined.push(id);
+  };
   const stack: SpatialNode[] = [startNode];
 
   while (stack.length > 0) {
     const current = stack.pop()!;
-    if (current.type === IfcTypeEnum.IfcSpace && !seen.has(current.expressId)) {
-      seen.add(current.expressId);
-      combined.push(current.expressId);
+    if (current.type === IfcTypeEnum.IfcSpace) {
+      add(current.expressId);
     }
     for (const elementId of current.elements || []) {
-      if (seen.has(elementId)) continue;
-      seen.add(elementId);
-      combined.push(elementId);
+      add(elementId);
+      // A decomposing assembly (IfcElementAssembly, IfcStair-as-container, …)
+      // keeps its parts off the spatial tree, so without this they have no
+      // storey assignment and storey isolation would drop the stair flights /
+      // railings / landing slabs / virtual clearance volumes (#1133).
+      if (relationships) {
+        for (const descId of collectAggregatedDescendants(relationships, elementId)) {
+          add(descId);
+        }
+      }
     }
     for (const child of current.children || []) {
       stack.push(child);
@@ -312,10 +332,11 @@ function computeStoreyIsolation(state: ViewerStateSnapshot): Set<number> | null 
     for (const [, model] of state.models) {
       const hierarchy = model.ifcDataStore?.spatialHierarchy;
       if (!hierarchy) continue;
+      const relationships = model.ifcDataStore?.relationships as AggregationRelationships | undefined;
       const offset = model.idOffset ?? 0;
       for (const storeyId of state.selectedStoreys) {
         const localStoreyId = hierarchy.byStorey.has(storeyId) ? storeyId : storeyId - offset;
-        const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, localStoreyId);
+        const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, localStoreyId, relationships);
         if (!storeyElementIds) continue;
         for (const localId of storeyElementIds) {
           ids.add(toGlobalIdFromModels(state.models, model.id, localId));
@@ -324,8 +345,9 @@ function computeStoreyIsolation(state: ViewerStateSnapshot): Set<number> | null 
     }
   } else if (state.ifcDataStore?.spatialHierarchy) {
     const hierarchy = state.ifcDataStore.spatialHierarchy;
+    const relationships = state.ifcDataStore.relationships as AggregationRelationships | undefined;
     for (const storeyId of state.selectedStoreys) {
-      const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, storeyId);
+      const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, storeyId, relationships);
       if (!storeyElementIds) continue;
       for (const id of storeyElementIds) {
         ids.add(id);

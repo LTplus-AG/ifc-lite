@@ -21,6 +21,7 @@ import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
+import type { AggregationRelationships } from '@/utils/aggregation';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
@@ -592,6 +593,7 @@ export function ViewportContainer() {
       prevVis.spaces !== typeVisibility.spaces ||
       prevVis.spatialZones !== typeVisibility.spatialZones ||
       prevVis.openings !== typeVisibility.openings ||
+      prevVis.virtualElements !== typeVisibility.virtualElements ||
       prevVis.site !== typeVisibility.site ||
       filteredTypeModeRef.current !== effectiveViewMode;
     const sourceChanged = filteredSourceRef.current !== allMeshes;
@@ -603,7 +605,7 @@ export function ViewportContainer() {
       filteredTypeModeRef.current = effectiveViewMode;
     }
 
-    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.site;
+    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site;
     const prevCacheLen = cache.length;
 
     // Only process NEW meshes since last run — O(batch_size) not O(total)
@@ -627,6 +629,7 @@ export function ViewportContainer() {
         if (ifcType === 'IfcSpace' && !typeVisibility.spaces) continue;
         if (ifcType === 'IfcSpatialZone' && !typeVisibility.spatialZones) continue;
         if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) continue;
+        if (ifcType === 'IfcVirtualElement' && !typeVisibility.virtualElements) continue;
         if (ifcType === 'IfcSite' && !typeVisibility.site) continue;
       }
 
@@ -670,12 +673,16 @@ export function ViewportContainer() {
       for (const [, model] of storeModels) {
         const hierarchy = model.ifcDataStore?.spatialHierarchy;
         if (!hierarchy) continue;
+        // Pass the relationship graph so storey isolation pulls in the parts of
+        // any decomposing assembly (stair flights, railings, …) — they live off
+        // the spatial tree via IfcRelAggregates and would otherwise vanish (#1133).
+        const relationships = model.ifcDataStore?.relationships as AggregationRelationships | undefined;
 
         for (const storeyId of selectedStoreys) {
           const localStoreyId = hierarchy.byStorey.has(storeyId)
             ? storeyId
             : storeyId - (model.idOffset ?? 0);
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, localStoreyId);
+          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, localStoreyId, relationships);
           if (storeyElementIds) {
             for (const originalExpressId of storeyElementIds) {
               combinedGlobalIds.add(toGlobalIdFromModels(storeModels, model.id, originalExpressId));
@@ -687,8 +694,9 @@ export function ViewportContainer() {
       // Legacy single-model mode (offset = 0)
       if (ifcDataStore?.spatialHierarchy && storeModels.size === 0) {
         const hierarchy = ifcDataStore.spatialHierarchy;
+        const relationships = ifcDataStore.relationships as AggregationRelationships | undefined;
         for (const storeyId of selectedStoreys) {
-          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, storeyId);
+          const storeyElementIds = collectIfcBuildingStoreyElementsWithIfcSpace(hierarchy, storeyId, relationships);
           if (storeyElementIds) {
             for (const id of storeyElementIds) {
               combinedGlobalIds.add(id);

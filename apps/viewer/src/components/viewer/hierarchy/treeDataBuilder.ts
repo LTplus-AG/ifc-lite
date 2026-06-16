@@ -15,6 +15,11 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { buildMaterialUsageIndex } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import {
+  collectAggregatedDescendants,
+  getAggregatedChildren,
+  type AggregationRelationships,
+} from '@/utils/aggregation';
 import type { TreeNode, NodeType, StoreyData, UnifiedStorey } from './types';
 
 /** Helper to create elevation key (with 0.5m tolerance for matching) */
@@ -182,6 +187,74 @@ export function getUnifiedStoreyElements(
   return allElements;
 }
 
+/**
+ * Emit one element row and, if it decomposes via `IfcRelAggregates`, its parts
+ * nested underneath (recursively). A decomposing assembly — an
+ * `IfcElementAssembly`, or an `IfcStair`/`IfcRoof`/`IfcRamp` used as a container
+ * — appears in the spatial tree as a leaf contained in its storey, while its
+ * stair flights / railings / landing slabs / virtual clearance volumes hang off
+ * it via aggregation and hold the actual geometry. Without nesting, those parts
+ * were absent from the spatial panel and the assembly was unselectable
+ * (issue #1133).
+ *
+ * `ancestors` is the aggregation path from the storey-level element down to
+ * here, used to break malformed `IfcRelAggregates` cycles.
+ */
+function emitElementSubtree(
+  elementId: number,
+  modelId: string,
+  models: Map<string, FederatedModel>,
+  dataStore: IfcDataStore,
+  depth: number,
+  expandedNodes: Set<string>,
+  nodes: TreeNode[],
+  ancestors: Set<number>,
+): void {
+  const relationships = dataStore.relationships as AggregationRelationships | undefined;
+  const globalId = resolveTreeGlobalId(modelId, elementId, models);
+  const entityType = dataStore.entities?.getTypeName(elementId) || 'Unknown';
+  const entityName = dataStore.entities?.getName(elementId) || `${entityType} #${elementId}`;
+
+  // Direct decomposition children, minus anything already on the path (cycle guard).
+  const childIds = getAggregatedChildren(relationships, elementId)
+    .filter((id) => id !== elementId && !ancestors.has(id));
+  const hasChildren = childIds.length > 0;
+  const nodeId = `element-${modelId}-${elementId}`;
+  const isExpanded = hasChildren && expandedNodes.has(nodeId);
+
+  // All descendant parts carry the geometry — stash their global IDs so a click
+  // on the (geometry-less) assembly can highlight / frame / isolate the whole
+  // thing at once, even while the row is collapsed.
+  const assemblyChildGlobalIds = hasChildren
+    ? collectAggregatedDescendants(relationships, elementId).map((id) =>
+        resolveTreeGlobalId(modelId, id, models),
+      )
+    : undefined;
+
+  nodes.push({
+    id: nodeId,
+    expressIds: [elementId],
+    globalIds: [globalId],
+    modelIds: [modelId],
+    name: entityName,
+    type: 'element',
+    ifcType: entityType,
+    depth,
+    hasChildren,
+    isExpanded,
+    isVisible: true, // Computed lazily during render
+    elementCount: hasChildren ? childIds.length : undefined,
+    assemblyChildGlobalIds,
+  });
+
+  if (isExpanded) {
+    const nextAncestors = new Set(ancestors).add(elementId);
+    for (const childId of childIds) {
+      emitElementSubtree(childId, modelId, models, dataStore, depth + 1, expandedNodes, nodes, nextAncestors);
+    }
+  }
+}
+
 /** Recursively build spatial nodes (Project -> Site -> Building) */
 function buildSpatialNodes(
   spatialNode: SpatialNode,
@@ -259,26 +332,11 @@ function buildSpatialNodes(
       );
     }
 
-    // Add direct spatial children elements for expanded nodes.
+    // Add direct spatial children elements for expanded nodes — each may itself
+    // decompose into nested parts via IfcRelAggregates (issue #1133).
     if (hasDirectElements) {
       for (const elementId of elements) {
-        const globalId = resolveTreeGlobalId(modelId, elementId, models);
-        const entityType = dataStore.entities?.getTypeName(elementId) || 'Unknown';
-        const entityName = dataStore.entities?.getName(elementId) || `${entityType} #${elementId}`;
-
-        nodes.push({
-          id: `element-${modelId}-${elementId}`,
-          expressIds: [elementId],
-          globalIds: [globalId],
-          modelIds: [modelId],
-          name: entityName,
-          type: 'element',
-          ifcType: entityType,
-          depth: depth + 1,
-          hasChildren: false,
-          isExpanded: false,
-          isVisible: true, // Computed lazily during render
-        });
+        emitElementSubtree(elementId, modelId, models, dataStore, depth + 1, expandedNodes, nodes, new Set());
       }
     }
   }
@@ -343,27 +401,11 @@ export function buildTreeData(
             _idOffset: offset,
           });
 
-          // If contribution expanded, show elements
-          if (contribExpanded) {
-            const dataStore = model?.ifcDataStore;
+          // If contribution expanded, show elements (assemblies nest their
+          // IfcRelAggregates parts — issue #1133).
+          if (contribExpanded && model?.ifcDataStore) {
             for (const elementId of storey.elements) {
-              const globalId = resolveTreeGlobalId(storey.modelId, elementId, models);
-              const entityType = dataStore?.entities?.getTypeName(elementId) || 'Unknown';
-              const entityName = dataStore?.entities?.getName(elementId) || `${entityType} #${elementId}`;
-
-              nodes.push({
-                id: `element-${storey.modelId}-${elementId}`,
-                expressIds: [elementId],
-                globalIds: [globalId],
-                modelIds: [storey.modelId],
-                name: entityName,
-                type: 'element',
-                ifcType: entityType,
-                depth: 2,
-                hasChildren: false,
-                isExpanded: false,
-                isVisible: true, // Computed lazily during render
-              });
+              emitElementSubtree(elementId, storey.modelId, models, model.ifcDataStore, 2, expandedNodes, nodes, new Set());
             }
           }
         }

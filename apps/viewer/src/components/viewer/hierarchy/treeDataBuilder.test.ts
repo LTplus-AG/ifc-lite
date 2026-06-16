@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { IfcTypeEnum, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { buildTreeData, buildTypeTree, type AuthoredProduct } from './treeDataBuilder';
@@ -94,6 +94,55 @@ function createFacilityDataStore(): IfcDataStore {
       getTypeName: (id: number) => {
         if (id === 4) return 'IfcWall';
         return 'Unknown';
+      },
+    },
+  } as unknown as IfcDataStore;
+}
+
+/** Storey #4 contains an IfcStair #10 that decomposes (IfcRelAggregates) into a
+ *  stair flight #11 and a railing #12 — neither part is directly contained in
+ *  the storey. Mirrors the issue #1133 file. Legacy mode → globalId === expressId. */
+function createAssemblyDataStore(): IfcDataStore {
+  const storeyNode = createSpatialNode(4, IfcTypeEnum.IfcBuildingStorey, 'GROUND');
+  const buildingNode = createSpatialNode(3, IfcTypeEnum.IfcBuilding, 'MY_BUILDING', [storeyNode]);
+  const siteNode = createSpatialNode(2, IfcTypeEnum.IfcSite, 'MY_SITE', [buildingNode]);
+  const projectNode = createSpatialNode(1, IfcTypeEnum.IfcProject, 'MY_PROJECT', [siteNode]);
+
+  const spatialHierarchy: SpatialHierarchy = {
+    project: projectNode,
+    byStorey: new Map([[4, [10]]]), // only the stair is contained, not its parts
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map(),
+    storeyHeights: new Map(),
+    elementToStorey: new Map([[10, 4]]),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+
+  const names: Record<number, string> = {
+    10: 'Stair', 11: 'Flight', 12: 'Railing',
+  };
+  const types: Record<number, string> = {
+    10: 'IfcStair', 11: 'IfcStairFlight', 12: 'IfcRailing',
+  };
+
+  return {
+    spatialHierarchy,
+    entities: {
+      count: 0,
+      getName: (id: number) => names[id] ?? '',
+      getTypeName: (id: number) => types[id] ?? 'Unknown',
+    },
+    relationships: {
+      getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') => {
+        if (relType === RelationshipType.Aggregates && direction === 'forward' && id === 10) {
+          return [11, 12];
+        }
+        return [];
       },
     },
   } as unknown as IfcDataStore;
@@ -217,5 +266,38 @@ describe('buildTreeData', () => {
     assert.ok(barrierNode);
     assert.strictEqual(barrierNode.type, 'element');
     assert.strictEqual(barrierNode.ifcType, 'IfcWall');
+  });
+
+  it('nests an assembly stair under the storey and exposes its parts (issue #1133)', () => {
+    useViewerStore.setState({ models: new Map() });
+    const ds = createAssemblyDataStore();
+
+    // Storey expanded but the stair collapsed: it must still advertise children
+    // and carry its parts for one-click highlight/isolate.
+    const collapsed = buildTreeData(new Map(), ds, new Set(['root-1', 'root-1-2', 'root-1-2-3', 'root-1-2-3-4']), false, []);
+    const stair = collapsed.find((n) => n.id === 'element-legacy-10');
+    assert.ok(stair, 'stair appears under the storey');
+    assert.strictEqual(stair.ifcType, 'IfcStair');
+    assert.strictEqual(stair.hasChildren, true, 'assembly is expandable');
+    assert.strictEqual(stair.elementCount, 2, 'badge shows direct part count');
+    assert.deepStrictEqual(stair.assemblyChildGlobalIds, [11, 12], 'parts carried for highlight/isolate');
+    // Parts are hidden until the stair row itself is expanded.
+    assert.strictEqual(collapsed.some((n) => n.id === 'element-legacy-11'), false);
+
+    // Expand the stair → its parts become nested rows one level deeper.
+    const expanded = buildTreeData(
+      new Map(),
+      ds,
+      new Set(['root-1', 'root-1-2', 'root-1-2-3', 'root-1-2-3-4', 'element-legacy-10']),
+      false,
+      [],
+    );
+    const flight = expanded.find((n) => n.id === 'element-legacy-11');
+    const railing = expanded.find((n) => n.id === 'element-legacy-12');
+    assert.ok(flight && railing, 'both parts render when the assembly is expanded');
+    assert.strictEqual(flight.ifcType, 'IfcStairFlight');
+    assert.strictEqual(railing.ifcType, 'IfcRailing');
+    assert.strictEqual(flight.depth, stair.depth + 1, 'parts nest one level under the assembly');
+    assert.strictEqual(flight.hasChildren, false, 'leaf parts are not expandable');
   });
 });

@@ -446,6 +446,23 @@ export function HierarchyPanel() {
       const elementId = node.expressIds[0];
       const modelId = node.modelIds[0];
       const globalId = node.globalIds[0] ?? elementId;
+      const parts = node.assemblyChildGlobalIds;
+
+      if (parts && parts.length > 0) {
+        // A decomposing assembly (IfcElementAssembly, IfcStair-as-container, …)
+        // carries no geometry of its own — highlight + frame all its parts in
+        // one click. The assembly goes last so it becomes the primary selection
+        // (setSelectedEntityIds keys selectedEntityId off the final id), which
+        // keeps the assembly row highlighted in the tree (#1133).
+        setSelectedEntityIds([...parts, globalId]);
+        if (modelId !== 'legacy') {
+          setSelectedEntity({ modelId, expressId: elementId });
+          setActiveModel(modelId);
+        } else {
+          setSelectedEntity(resolveEntityRef(globalId));
+        }
+        return;
+      }
 
       // Clear multi-selection (e.g. from a prior type-group click) so only
       // this single element is highlighted, matching Viewport pick behavior
@@ -487,7 +504,14 @@ export function HierarchyPanel() {
     // Compute visibility inline - for elements check directly, for storeys use getNodeElements
     let nodeHidden = false;
     if (node.type === 'element') {
-      nodeHidden = hiddenEntities.has(node.globalIds[0] ?? node.expressIds[0]);
+      const parts = node.assemblyChildGlobalIds;
+      if (parts && parts.length > 0) {
+        // An assembly reads as hidden only when every part it owns is hidden
+        // (its own geometry-less id never enters hiddenEntities) (#1133).
+        nodeHidden = parts.every((id) => hiddenEntities.has(id));
+      } else {
+        nodeHidden = hiddenEntities.has(node.globalIds[0] ?? node.expressIds[0]);
+      }
     } else if (node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'unified-storey' ||
                node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
                (node.type === 'model-header' && node.id.startsWith('contrib-'))) {

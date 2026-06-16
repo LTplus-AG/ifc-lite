@@ -604,7 +604,12 @@ export function useIfcLoader() {
       // Only for IFC4 STEP files (server doesn't support IFCX). Native
       // file handles (Tauri) don't have an HTTP-uploadable body, so skip
       // the server path and fall through to the WASM loader.
-      if (target.kind === 'primary' && format === 'ifc' && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
+      // Also skip it when merge-layers is on: the server tessellates without
+      // the flag and its cache key ignores it, so a toggle+reload would still
+      // return non-merged geometry. The local WASM path honours the flag, so
+      // route through it instead (issue #1107). Merge-layers is opt-in, so the
+      // common (flag-off) load keeps the server fast path.
+      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {

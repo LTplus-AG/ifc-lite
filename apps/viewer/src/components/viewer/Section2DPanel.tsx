@@ -169,12 +169,18 @@ export function Section2DPanel({
   const [panelSize, setPanelSize] = useState({ width: 400, height: 300 });
   const [isNarrow, setIsNarrow] = useState(false);  // Track if panel is too narrow for all buttons
   const [isPinned, setIsPinned] = useState(true);  // Default ON: keep position on regenerate
+  // Panel position once the user drags it (null = default bottom-left anchor).
+  // Local-only, like panelSize — resets each session (issue #1107, item 8).
+  const [panelPosition, setPanelPosition] = useState<{ top: number; left: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const isResizing = useRef<'right' | 'top' | 'corner' | null>(null);
   const resizeStartPos = useRef({ x: 0, y: 0, width: 0, height: 0 });
   // Track resize event handlers for cleanup
   const resizeHandlersRef = useRef<{ move: ((e: MouseEvent) => void) | null; up: (() => void) | null }>({ move: null, up: null });
+  // Drag-to-move (header) state, mirroring the resize handler lifecycle.
+  const dragStartRef = useRef({ x: 0, y: 0, top: 0, left: 0 });
+  const dragHandlersRef = useRef<{ move: ((e: MouseEvent) => void) | null; up: (() => void) | null }>({ move: null, up: null });
   // Cache sheet drawing transform when pinned (to keep model fixed in place)
   const cachedSheetTransformRef = useRef<{ translateX: number; translateY: number; scaleFactor: number } | null>(null);
 
@@ -530,15 +536,65 @@ export function Section2DPanel({
   }, []);
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // DRAG-TO-MOVE HANDLING (header)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const handleHeaderDragStart = useCallback((e: React.MouseEvent) => {
+    if (isExpanded) return;  // No repositioning while full-screen
+    const el = panelRef.current;
+    if (!el) return;
+    e.preventDefault();
+
+    // Anchor to the panel's current rendered position (offset from its
+    // positioned ancestor) so switching from the bottom-left anchor to an
+    // explicit top/left doesn't make it jump.
+    dragStartRef.current = { x: e.clientX, y: e.clientY, top: el.offsetTop, left: el.offsetLeft };
+    setPanelPosition({ top: el.offsetTop, left: el.offsetLeft });
+
+    if (dragHandlersRef.current.move) window.removeEventListener('mousemove', dragHandlersRef.current.move);
+    if (dragHandlersRef.current.up) window.removeEventListener('mouseup', dragHandlersRef.current.up);
+
+    const parent = el.offsetParent as HTMLElement | null;
+    const maxLeft = Math.max(0, (parent?.clientWidth ?? window.innerWidth) - el.offsetWidth);
+    const maxTop = Math.max(0, (parent?.clientHeight ?? window.innerHeight) - el.offsetHeight);
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - dragStartRef.current.x;
+      const dy = ev.clientY - dragStartRef.current.y;
+      const left = Math.max(0, Math.min(maxLeft, dragStartRef.current.left + dx));
+      const top = Math.max(0, Math.min(maxTop, dragStartRef.current.top + dy));
+      setPanelPosition({ top, left });
+    };
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      dragHandlersRef.current = { move: null, up: null };
+    };
+
+    dragHandlersRef.current = { move: handleMouseMove, up: handleMouseUp };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [isExpanded]);
+
+  // Cleanup drag listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (dragHandlersRef.current.move) window.removeEventListener('mousemove', dragHandlersRef.current.move);
+      if (dragHandlersRef.current.up) window.removeEventListener('mouseup', dragHandlersRef.current.up);
+    };
+  }, []);
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // MEMOIZED STYLES
   // ═══════════════════════════════════════════════════════════════════════════
 
   // Memoize panel style to avoid creating new object on every render
   const panelStyle = useMemo(() => {
-    return isExpanded
-      ? {}  // Expanded uses CSS classes for full sizing
+    if (isExpanded) return {};  // Expanded uses CSS classes for full sizing
+    return panelPosition
+      ? { width: panelSize.width, height: panelSize.height, top: panelPosition.top, left: panelPosition.left }
       : { width: panelSize.width, height: panelSize.height };
-  }, [isExpanded, panelSize.width, panelSize.height]);
+  }, [isExpanded, panelSize.width, panelSize.height, panelPosition]);
 
   // Memoize progress bar style
   const progressBarStyle = useMemo(() => ({ width: `${progress}%` }), [progress]);
@@ -551,7 +607,9 @@ export function Section2DPanel({
 
   const panelClasses = isExpanded
     ? 'absolute inset-4 z-40'
-    : 'absolute bottom-4 left-4 z-40';
+    : panelPosition
+      ? 'absolute z-40'  // user-dragged: position comes from panelStyle top/left
+      : 'absolute bottom-4 left-4 z-40';
 
   return (
     <div
@@ -559,9 +617,16 @@ export function Section2DPanel({
       className={`${panelClasses} bg-background rounded-lg border shadow-xl flex flex-col overflow-hidden`}
       style={panelStyle}
     >
-      {/* Header */}
+      {/* Header (the title doubles as a drag handle — issue #1107, item 8) */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/50 rounded-t-lg min-w-0">
-        <h2 className="font-semibold text-xs shrink-0">2D Section</h2>
+        <h2
+          className={`font-semibold text-xs shrink-0 flex items-center gap-1 select-none ${isExpanded ? '' : 'cursor-move'}`}
+          onMouseDown={handleHeaderDragStart}
+          title={isExpanded ? undefined : 'Drag to move'}
+        >
+          {!isExpanded && <GripVertical className="h-3 w-3 text-muted-foreground" />}
+          2D Section
+        </h2>
 
         <div className="flex items-center gap-1 min-w-0">
           {/* When panel is wide enough, show all buttons */}

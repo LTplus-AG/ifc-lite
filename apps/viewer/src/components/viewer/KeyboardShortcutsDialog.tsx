@@ -284,6 +284,18 @@ function WhatsNewTab() {
 
   return (
     <div className="space-y-1">
+      {/* Anchor the current app version. The rows below carry each package's
+          own independent version (e.g. parser may be ahead of the viewer), so
+          without this the highest row reads as "the version" — issue #1107,
+          item 2. */}
+      <div className="flex items-baseline justify-between gap-2 border-b border-border/60 pb-2 mb-1">
+        <span className="text-sm font-semibold">
+          You&rsquo;re on viewer v{viewerVersion}
+        </span>
+        <span className="text-[11px] text-muted-foreground shrink-0">
+          rows below are per-package releases
+        </span>
+      </div>
       {timeline.map((release) => {
         const isExpanded = expandedVersions.has(release.version);
         const totalHighlights = release.entries.reduce((s, e) => s + e.highlights.length, 0);

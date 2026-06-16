@@ -208,7 +208,11 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
           size="sm"
           onClick={handleExport}
           disabled={isExporting}
-          className={className}
+          // Amber = unsaved-changes affordance (matches the app convention used
+          // by the Cesium placement editor / ExportDialog dirty marker). The
+          // button only renders while changes exist, so it should read as a
+          // standing "you have unexported edits" prompt (issue #1107, item 5).
+          className={`border-amber-500/60 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 ${className ?? ''}`}
         >
           {isExporting ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -220,7 +224,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
             <Download className="h-4 w-4 mr-2" />
           )}
           Export Changes
-          <Badge variant="secondary" className="ml-2 text-xs">
+          <Badge className="ml-2 text-xs bg-amber-500 text-white border-transparent hover:bg-amber-500">
             {mutationCount}
           </Badge>
         </Button>

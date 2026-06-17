@@ -92,6 +92,7 @@ pub mod profile;
 pub mod profile_extractor;
 pub mod profiles;
 pub mod projection_outline;
+pub mod rect_fast;
 pub mod router;
 pub mod tessellation;
 pub mod space_dcel;

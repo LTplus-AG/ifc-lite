@@ -9,7 +9,6 @@
  */
 
 import { type PropertyValue, PropertyValueType } from '@ifc-lite/data';
-import type { BsddClassProperty } from '@/services/bsdd';
 
 /** Map a bSDD dataType string to the viewer's PropertyValueType. */
 export function toPropertyValueType(bsddType: string | null): PropertyValueType {
@@ -22,18 +21,13 @@ export function toPropertyValueType(bsddType: string | null): PropertyValueType 
   return PropertyValueType.Label;
 }
 
-/** Default value used when a bSDD property is added without an inline choice. */
+/**
+ * Default value used when a bSDD property is added. The property is created
+ * with its correct {@link toPropertyValueType} type; Boolean gets a concrete
+ * `false` so the value is valid immediately, everything else starts empty for
+ * editing in the Properties tab.
+ */
 export function defaultValue(bsddType: string | null): PropertyValue {
-  // Boolean gets a concrete default (false) so the value is valid the moment
-  // it's added and the inline Switch has a state to toggle. Everything else
-  // starts empty for manual entry.
   if (toPropertyValueType(bsddType) === PropertyValueType.Boolean) return false;
   return '';
-}
-
-/** Which inline value control (if any) a bSDD property offers before "Add". */
-export function inlineControlKind(prop: BsddClassProperty): 'boolean' | 'enum' | null {
-  if (toPropertyValueType(prop.dataType) === PropertyValueType.Boolean) return 'boolean';
-  if (prop.allowedValues && prop.allowedValues.length > 0) return 'enum';
-  return null;
 }

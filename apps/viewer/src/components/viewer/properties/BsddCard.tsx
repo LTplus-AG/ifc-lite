@@ -15,17 +15,15 @@ import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useViewerStore } from '@/store';
-import { type PropertyValue, QuantityType } from '@ifc-lite/data';
+import { QuantityType } from '@ifc-lite/data';
 import {
   fetchClassInfo,
   bsddDataTypeLabel,
   type BsddClassInfo,
   type BsddClassProperty,
 } from '@/services/bsdd';
-import { toPropertyValueType, defaultValue, inlineControlKind } from './bsddInlineValue.js';
+import { toPropertyValueType, defaultValue } from './bsddInlineValue.js';
 
 // ---------------------------------------------------------------------------
 // Helpers for Qto_* (quantity set) detection and mapping
@@ -96,13 +94,6 @@ export function BsddCard({
   const [error, setError] = useState<string | null>(null);
   const [expandedPsets, setExpandedPsets] = useState<Set<string>>(new Set());
   const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
-  // Values the user sets inline (boolean/enum) before clicking Add, keyed by
-  // `${psetName}:${prop.name}` — issue #1107, item 10.
-  const [pendingValues, setPendingValues] = useState<Map<string, PropertyValue>>(new Map());
-
-  const setPendingValue = useCallback((key: string, value: PropertyValue) => {
-    setPendingValues((prev) => new Map(prev).set(key, value));
-  }, []);
 
   const setProperty = useViewerStore((s) => s.setProperty);
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
@@ -170,16 +161,15 @@ export function BsddCard({
   }, []);
 
   const handleAddProperty = useCallback(
-    (psetName: string, prop: BsddClassProperty, valueOverride?: PropertyValue) => {
+    (psetName: string, prop: BsddClassProperty) => {
       let normalizedModelId = modelId;
       if (modelId === 'legacy') normalizedModelId = '__legacy__';
 
       if (psetName === BSDD_ATTRIBUTES_GROUP) {
         // Route entity-level attributes (Name, Description, ObjectType, Tag,
-        // PredefinedType, etc.). Honour an inline-chosen value (e.g. an enum
-        // attribute like PredefinedType) — attributes are stored as strings
-        // (issue #1107, item 10 review follow-up).
-        storeSetAttribute(normalizedModelId, entityId, prop.name, valueOverride != null ? String(valueOverride) : '');
+        // PredefinedType, etc.). Created empty — the value is filled in
+        // afterwards in the Properties tab (issue #1107).
+        storeSetAttribute(normalizedModelId, entityId, prop.name, '');
       } else if (isQuantitySet(psetName)) {
         // Route Qto_* through quantity creation
         const qType = inferQuantityType(prop.units);
@@ -201,9 +191,10 @@ export function BsddCard({
           );
         }
       } else {
-        // Route Pset_* / other through property creation
+        // Route Pset_* / other through property creation, with the correct
+        // bSDD-derived value type so the inline editor shows the right control.
         const valueType = toPropertyValueType(prop.dataType);
-        const value = valueOverride !== undefined ? valueOverride : defaultValue(prop.dataType);
+        const value = defaultValue(prop.dataType);
         const psetExists = existingPsets.includes(psetName);
 
         if (!psetExists) {
@@ -460,34 +451,9 @@ export function BsddCard({
                           {prop.dataType && <p className="mt-0.5 text-sky-400">{bsddDataTypeLabel(prop.dataType)}</p>}
                         </TooltipContent>
                       </Tooltip>
-                      {/* Inline value control for boolean / enum so a value can
-                          be set before adding (issue #1107, item 10). */}
-                      {!alreadyExists && inlineControlKind(prop) === 'boolean' && (
-                        <Switch
-                          checked={pendingValues.get(addedKey) === true}
-                          onCheckedChange={(v) => setPendingValue(addedKey, v)}
-                          className="shrink-0"
-                          aria-label={`Set ${prop.name}`}
-                        />
-                      )}
-                      {!alreadyExists && inlineControlKind(prop) === 'enum' && (
-                        <Select
-                          value={typeof pendingValues.get(addedKey) === 'string' ? (pendingValues.get(addedKey) as string) : undefined}
-                          onValueChange={(v) => setPendingValue(addedKey, v)}
-                        >
-                          <SelectTrigger className="h-6 w-28 shrink-0 px-2 text-[11px]">
-                            <SelectValue placeholder="Value…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {prop.allowedValues!.filter((av) => av.value).map((av) => (
-                              <SelectItem key={av.value} value={av.value} className="text-xs">
-                                {av.value}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      {/* Add button - always visible on right */}
+                      {/* Add button - always visible on right. The property is
+                          created with its correct bSDD data type; the value is
+                          edited afterwards in the Properties tab (issue #1107). */}
                       {alreadyExists ? (
                         <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                       ) : (
@@ -497,7 +463,7 @@ export function BsddCard({
                               variant="ghost"
                               size="icon"
                               className="h-5 w-5 p-0 shrink-0 hover:bg-sky-200 dark:hover:bg-sky-800"
-                              onClick={() => handleAddProperty(psetName, prop, pendingValues.get(addedKey))}
+                              onClick={() => handleAddProperty(psetName, prop)}
                             >
                               <Plus className="h-3 w-3 text-sky-600 dark:text-sky-400" />
                             </Button>

@@ -5,19 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { toPropertyValueType, defaultValue, inlineControlKind } from './bsddInlineValue.js';
+import { toPropertyValueType, defaultValue } from './bsddInlineValue.js';
 import { PropertyValueType } from '@ifc-lite/data';
-import type { BsddClassProperty } from '@/services/bsdd';
-
-function prop(partial: Partial<BsddClassProperty>): BsddClassProperty {
-  return {
-    name: 'P',
-    dataType: null,
-    allowedValues: null,
-    propertySet: 'Pset_Test',
-    ...partial,
-  } as BsddClassProperty;
-}
 
 describe('toPropertyValueType', () => {
   it('maps bSDD dataType strings (case-insensitive)', () => {
@@ -42,30 +31,5 @@ describe('defaultValue', () => {
     assert.strictEqual(defaultValue('Real'), '');
     assert.strictEqual(defaultValue('Integer'), '');
     assert.strictEqual(defaultValue(null), '');
-  });
-});
-
-describe('inlineControlKind', () => {
-  it('offers a boolean control for a Boolean dataType', () => {
-    assert.strictEqual(inlineControlKind(prop({ dataType: 'Boolean' })), 'boolean');
-  });
-
-  it('offers an enum control when allowedValues are present', () => {
-    assert.strictEqual(
-      inlineControlKind(prop({ dataType: 'Character', allowedValues: [{ value: 'A' }, { value: 'B' }] })),
-      'enum',
-    );
-  });
-
-  it('prefers boolean over enum when both could apply', () => {
-    assert.strictEqual(
-      inlineControlKind(prop({ dataType: 'Boolean', allowedValues: [{ value: 'X' }] })),
-      'boolean',
-    );
-  });
-
-  it('returns null for a plain string property (no inline control, manual entry)', () => {
-    assert.strictEqual(inlineControlKind(prop({ dataType: 'Character', allowedValues: null })), null);
-    assert.strictEqual(inlineControlKind(prop({ dataType: 'Character', allowedValues: [] })), null);
   });
 });

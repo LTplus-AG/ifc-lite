@@ -2276,6 +2276,30 @@ pub fn note_planar_clip_fired() {
 }
 
 thread_local! {
+    /// Opt-in for the rectangular-opening BOX fast path
+    /// ([`ClippingProcessor::subtract_box_fast`]) in the void router. DEFAULT OFF
+    /// — including the WASM/production path — because on real f32-tessellated IFC
+    /// walls the f64 reveal rim can't be made to cancel to the watertight gate's
+    /// precision, so it either defers everything (no speedup) or, in the rare case
+    /// it closes, can still ship a visually wrong "flat-cap" cut. The exact kernel
+    /// remains the only opening cutter in production. Native tests/benchmarks opt
+    /// in per-thread via [`set_box_fast_enabled`]; the function itself stays for
+    /// R&D and is unit-tested directly.
+    static BOX_FAST_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Enable the box fast path on this thread (native testing only). Returns the
+/// previous setting.
+pub fn set_box_fast_enabled(v: bool) -> bool {
+    BOX_FAST_ENABLED.with(|c| c.replace(v))
+}
+
+/// Whether the box fast path may fire in the void router on this thread.
+pub fn box_fast_path_enabled() -> bool {
+    BOX_FAST_ENABLED.with(|c| c.get())
+}
+
+thread_local! {
     /// Per-thread adaptive give-up: planar fast-path attempts that reached the
     /// element-level fallback, how many of those FELL BACK to the exact kernel,
     /// and whether the fast path has given up on this thread.

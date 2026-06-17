@@ -1214,7 +1214,11 @@ impl GeometryRouter {
         // element-level fallback (`f64_fast_path_active`/`note_planar_clip_fired`):
         // if the cut cracks once scaled/placed into f32 world coords, the element
         // is re-processed on the exact kernel.
-        let boxfast_active = crate::csg::f64_fast_path_active();
+        // DEFAULT OFF in production (incl. WASM): the box fast path can't yet
+        // close on real f32-tessellated walls, so it never fires here and the
+        // exact kernel cuts every opening. Opt in per-thread for native R&D.
+        let boxfast_active =
+            crate::csg::box_fast_path_enabled() && crate::csg::f64_fast_path_active();
         let mut synth_rect: Vec<OpeningType> = Vec::new();
         let mut non_rect_openings: Vec<&OpeningType> = Vec::new();
         for opening in &ctx.merged_openings {
@@ -3581,9 +3585,11 @@ mod reveal_tests {
             merged_openings: vec![opening(())],
         };
 
+        let prev = crate::csg::set_box_fast_enabled(true); // opt in for this test
         let before = crate::csg::peek_planar_clip_fired();
         let result = router.apply_void_context(host, &ctx, 42);
         let fired = crate::csg::peek_planar_clip_fired().wrapping_sub(before);
+        crate::csg::set_box_fast_enabled(prev);
 
         assert!(
             fired >= 1,

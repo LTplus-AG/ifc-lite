@@ -68,11 +68,46 @@ const scrubProperties = (props: Record<string, unknown> | undefined): void => {
   }
 };
 
-// `before_send` shape: (event | null) => (event | null). Mutating properties in
-// place keeps PostHog's event intact; returning null would drop it entirely.
-// Generic so it satisfies posthog-js's BeforeSendFn (CaptureResult) signature.
-const scrubEvent = <T extends { properties?: Record<string, unknown> } | null>(event: T): T => {
-  if (event) scrubProperties(event.properties);
+// ── Noise filter ───────────────────────────────────────────────────────────
+// Cesium rejects failed tile / terrain / imagery / ion-asset requests with a
+// `RequestErrorEvent` — a plain `{ statusCode, response, responseHeaders }`
+// object, not an Error. During continuous globe rendering these fire from deep
+// inside Cesium's request scheduler (a tile 403/404/429/timeout), so the geo
+// call sites we own (all `try/catch`-wrapped) can't intercept them, and they
+// surface as unhandled rejections that PostHog's exception autocapture records.
+// They are unactionable third-party network failures, not ifc-lite bugs, so we
+// drop the `$exception` event entirely. Match on Cesium's stable property-name
+// shape (those three keys), NOT the minified class name (`D_`), which changes
+// every build. posthog-js stringifies a non-Error throwable as
+// "'<ctor>' captured as exception with keys: <comma-separated own keys>".
+const CESIUM_REQUEST_ERROR =
+  /captured as exception with keys:(?=[^]*\bstatusCode\b)(?=[^]*\bresponse\b)(?=[^]*\bresponseHeaders\b)/;
+
+const isUnactionableThirdPartyException = (
+  event: { event?: string; properties?: Record<string, unknown> },
+): boolean => {
+  if (event.event !== '$exception') return false;
+  const list = event.properties?.$exception_list;
+  if (!Array.isArray(list)) return false;
+  return list.some(
+    (e) =>
+      typeof (e as { value?: unknown })?.value === 'string' &&
+      CESIUM_REQUEST_ERROR.test((e as { value: string }).value),
+  );
+};
+
+// `before_send` shape: (event | null) => (event | null). Returning null drops
+// the event (noise filter above); otherwise we mutate properties in place,
+// which keeps PostHog's event intact. Generic so it satisfies posthog-js's
+// BeforeSendFn (CaptureResult) signature.
+const scrubEvent = <
+  T extends { event?: string; properties?: Record<string, unknown> } | null,
+>(
+  event: T,
+): T | null => {
+  if (!event) return event;
+  if (isUnactionableThirdPartyException(event)) return null;
+  scrubProperties(event.properties);
   return event;
 };
 

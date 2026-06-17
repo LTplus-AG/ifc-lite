@@ -6,10 +6,11 @@
  * Section plane controls panel
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Slice, ChevronDown, FileImage, FlipHorizontal2, MousePointerClick, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore, loadLastSectionMode } from '@/store';
+import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { AXIS_INFO } from './sectionConstants';
 import { SectionPlaneVisualization } from './SectionVisualization';
 import { SectionCapControls } from './SectionCapControls';
@@ -137,12 +138,16 @@ export function SectionOverlay() {
     setDrawingPanelVisible(true);
   }, [clearDrawing, setDrawingPanelVisible]);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const drag = useDraggablePanel(panelRef);
+
   return (
     <>
       {/* Compact Section Tool Panel - matches Measure tool style */}
-      <div className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg z-30">
-        {/* Header - always visible */}
-        <div className="flex items-center justify-between gap-2 p-2">
+      <div ref={panelRef} style={drag.style} className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg z-30">
+        {/* Header doubles as a drag handle — buttons/inputs are ignored by the
+            hook so they keep working (issue #1107). */}
+        <div onMouseDown={drag.onDragStart} title="Drag to move" className="flex items-center justify-between gap-2 p-2 cursor-move">
           <button
             onClick={togglePanel}
             className="flex items-center gap-2 hover:bg-accent/50 rounded px-2 py-1 transition-colors"

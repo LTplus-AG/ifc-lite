@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { useViewerStore, type Measurement } from '@/store';
 import { MeasurementOverlays } from './MeasurementVisuals';
 import { formatDistance } from './formatDistance';
+import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 
 export function MeasureOverlay() {
   const measurements = useViewerStore((s) => s.measurements);
@@ -85,15 +86,18 @@ export function MeasureOverlay() {
   // Calculate total distance
   const totalDistance = measurements.reduce((sum, m) => sum + m.distance, 0);
 
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const drag = useDraggablePanel(panelRef);
+
   return (
     <>
       {/* Hidden ref element for coordinate calculation */}
       <div ref={overlayRef} className="absolute top-0 left-0 w-0 h-0" />
 
       {/* Compact Measure Tool Panel */}
-      <div className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg z-30">
-        {/* Header - always visible */}
-        <div className="flex items-center justify-between gap-2 p-2">
+      <div ref={panelRef} style={drag.style} className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg z-30">
+        {/* Header doubles as a drag handle (issue #1107). */}
+        <div onMouseDown={drag.onDragStart} title="Drag to move" className="flex items-center justify-between gap-2 p-2 cursor-move">
           <button
             onClick={togglePanel}
             className="flex items-center gap-2 hover:bg-accent/50 rounded px-2 py-1 transition-colors"

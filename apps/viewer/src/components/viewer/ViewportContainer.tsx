@@ -1150,11 +1150,9 @@ export function ViewportContainer() {
         />
       )}
       {/* Sun & Sky panel — sky, lighting presets and the sun-path study.
-          Anchored below the ViewCube (60px cube at top-6 right-6, plus the
-          overflow of its rotating faces) so it never covers navigation. */}
-      <div className="absolute top-32 right-4 z-10 pointer-events-none flex flex-col items-end gap-2">
-        <SunSkyPanel />
-      </div>
+          Self-anchored below the ViewCube (top-6 right-6 cube) at top-32 right-4
+          so it never covers navigation; draggable from its header (#1107). */}
+      <SunSkyPanel />
       {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
         <CesiumPlacementEditor
           modelId={georef.sourceModelId}

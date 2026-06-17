@@ -18,9 +18,10 @@
  * (sweep animation lives in useSolarSweep at the viewport level).
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Play, Pause, ChevronDown, ChevronUp } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { cn } from '@/lib/utils';
 import type { CesiumDataSource } from '@/store/slices/cesiumSlice';
 import type { SolarSweepMode } from '@/store/slices/solarSlice';
@@ -85,14 +86,24 @@ export function SunSkyPanel() {
     ? `Site${sunInfo ? ` (UTC${offsetMin >= 0 ? '+' : '−'}${Math.abs(offsetMin / 60).toFixed(1)})` : ''}`
     : 'UTC';
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const drag = useDraggablePanel(panelRef);
+
   return (
-    <div className="pointer-events-auto w-60 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 text-xs">
-      {/* Header — click anywhere to collapse/expand */}
-      <button
-        type="button"
+    <div
+      ref={panelRef}
+      style={drag.style}
+      className="pointer-events-auto absolute top-32 right-4 z-10 w-60 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 text-xs"
+    >
+      {/* Header — drag to move (issue #1107); click toggles collapse. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onMouseDown={drag.onDragStart}
         onClick={() => setCollapsed(!collapsed)}
         aria-expanded={!collapsed}
-        className="flex items-center justify-between gap-2 text-left"
+        title="Drag to move"
+        className="flex items-center justify-between gap-2 text-left cursor-move select-none"
       >
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           Sun &amp; Sky
@@ -100,7 +111,7 @@ export function SunSkyPanel() {
         <span className="text-muted-foreground">
           {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
         </span>
-      </button>
+      </div>
 
       {!collapsed && (
         <>

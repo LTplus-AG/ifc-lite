@@ -1061,25 +1061,36 @@ impl IfcAPI {
         // diagnostic helper never runs for real-world files.
         let _ = super::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
 
-        // Layered-wall slicing diagnostics (#563): one line per batch listing,
-        // per sliceable element, whether it sliced (ok:sliced) or why it didn't
-        // (skip:not-single-unshifted-item / thin-layers-collapsed-to-1 /
-        // placement-unresolved / cut-produced-<2 / …). Silent when no sliceable
-        // element was in the batch.
+        // Layered-wall slicing diagnostics (#563): a quiet success summary, but a
+        // per-element warning (id + reason) when a sliceable wall fails to slice
+        // — so future regressions surface without spamming healthy loads. Reasons:
+        // not-single-unshifted-item / thin-layers-collapsed-to-1 /
+        // placement-unresolved / cut-produced-<2 / base-mesh-error.
         let layer_diag = router.take_layer_slice_diag();
         if !layer_diag.is_empty() {
             let sliced = layer_diag.iter().filter(|(_, r)| r.starts_with("ok:")).count();
-            let detail: Vec<String> =
-                layer_diag.iter().map(|(id, r)| format!("#{}={}", id, r)).collect();
-            web_sys::console::info_1(
-                &format!(
-                    "[ifc-lite layers] batch: {} sliced, {} not — {}",
-                    sliced,
-                    layer_diag.len() - sliced,
-                    detail.join(", ")
-                )
-                .into(),
-            );
+            let not_sliced = layer_diag.len() - sliced;
+            if not_sliced == 0 {
+                web_sys::console::info_1(
+                    &format!("[ifc-lite layers] batch: sliced {} wall(s) into layers", sliced)
+                        .into(),
+                );
+            } else {
+                let detail: Vec<String> = layer_diag
+                    .iter()
+                    .filter(|(_, r)| !r.starts_with("ok:"))
+                    .map(|(id, r)| format!("#{}={}", id, r))
+                    .collect();
+                web_sys::console::warn_1(
+                    &format!(
+                        "[ifc-lite layers] batch: sliced {}, {} NOT sliced — {}",
+                        sliced,
+                        not_sliced,
+                        detail.join(", ")
+                    )
+                    .into(),
+                );
+            }
         }
 
         mesh_collection

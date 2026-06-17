@@ -150,8 +150,9 @@ impl GeometryRouter {
             return Ok(None);
         }
 
-        // Build the interface planes in world-RTC coordinates. Returns None
-        // when we can't resolve the element's placement — fall back.
+        // Build the interface planes in the SAME frame as `base_mesh` (world −
+        // rtc − per-element local origin). Returns None when we can't resolve the
+        // element's placement — fall back.
         let planes = match self.build_layer_planes(
             element,
             decoder,
@@ -159,6 +160,7 @@ impl GeometryRouter {
             axis,
             direction_sense,
             offset,
+            base_mesh.origin,
         ) {
             Some(p) => p,
             None => {
@@ -193,6 +195,12 @@ impl GeometryRouter {
         axis: LayerAxis,
         direction_sense: f64,
         offset: f64,
+        // Per-element local-frame origin the base mesh was relativized by
+        // (#1114; `[0,0,0]` when local frame is off). The mesh stores vertices as
+        // `world - rtc - origin`, so the planes must subtract it too or they'd
+        // sit a whole building-placement away from the relativized mesh and slice
+        // nothing.
+        mesh_origin: [f64; 3],
     ) -> Option<Vec<Plane>> {
         // Use the same placement the mesh was built with: placement ×
         // scale_transform (scales translation only).
@@ -238,12 +246,13 @@ impl GeometryRouter {
             // Transform to world, then subtract RTC offset so the plane sits
             // in the same frame as the mesh (which already had RTC applied).
             let world_origin = placement.transform_point(&local_origin);
-            let rtc_origin = Point3::new(
-                world_origin.x - rtc.0,
-                world_origin.y - rtc.1,
-                world_origin.z - rtc.2,
+            // Match the mesh frame: world − rtc − per-element local origin.
+            let frame_origin = Point3::new(
+                world_origin.x - rtc.0 - mesh_origin[0],
+                world_origin.y - rtc.1 - mesh_origin[1],
+                world_origin.z - rtc.2 - mesh_origin[2],
             );
-            planes.push(Plane::new(rtc_origin, world_normal));
+            planes.push(Plane::new(frame_origin, world_normal));
         }
 
         Some(planes)

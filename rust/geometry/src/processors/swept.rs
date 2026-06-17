@@ -270,12 +270,26 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
             indices.push(end_base + j_next as u32);
         }
 
-        Ok(Mesh {
+        let mut mesh = Mesh {
             positions,
             normals: Vec::new(),
             indices,
-            rtc_applied: false, 
-            origin: [0.0; 3],        })
+            rtc_applied: false,
+            origin: [0.0; 3],
+        };
+
+        // Ship smooth per-vertex normals, computed here in the directrix-local
+        // frame where the coordinates are small (0..directrix-length) and so
+        // precise. Without this the swept-disk mesh carried empty normals and
+        // downstream consumers recomputed them from world-space f32 positions.
+        // At a georef-scale placement (national-grid rebar sits ~6 km from the
+        // origin) the edge differences `v1 - v0` cancel catastrophically — the
+        // tube renders as a field of specular sparkles. A round tube wants
+        // smooth (area-weighted) normals, unlike the crease-heavy revolved
+        // solid which is flat-shaded. (#1164)
+        crate::calculate_normals(&mut mesh);
+
+        Ok(mesh)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

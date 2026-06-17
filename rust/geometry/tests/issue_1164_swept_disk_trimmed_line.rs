@@ -110,3 +110,40 @@ fn reinforcing_bar_swept_disk_produces_a_tube() {
         "expected ≈0.029 m diameter, got {cross} m (span {span:?})",
     );
 }
+
+#[test]
+fn swept_disk_ships_unit_normals() {
+    // The swept-disk processor must ship per-vertex normals, computed in its
+    // directrix-local (small-coordinate) frame. If it ships empty normals,
+    // downstream consumers recompute them from world-space f32 positions — and
+    // at a georef-scale placement (rebar at national-grid coordinates ~6 km from
+    // origin) the edge differences cancel catastrophically into garbage normals,
+    // rendering the tube as a field of specular sparkles (#1164 follow-up).
+    let content = read_fixture();
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = EntityDecoder::with_index(&content, entity_index);
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+    let bar = decoder
+        .decode_by_id(50)
+        .expect("decode #50 IfcReinforcingBar");
+    let mesh = router
+        .process_element(&bar, &mut decoder)
+        .expect("process reinforcing bar");
+
+    assert_eq!(
+        mesh.normals.len(),
+        mesh.positions.len(),
+        "swept-disk mesh must ship one normal per position; got {} normal floats \
+         for {} position floats",
+        mesh.normals.len(),
+        mesh.positions.len(),
+    );
+    let mut bad = 0usize;
+    for n in mesh.normals.chunks_exact(3) {
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if !len.is_finite() || (len - 1.0).abs() > 1e-3 {
+            bad += 1;
+        }
+    }
+    assert_eq!(bad, 0, "{bad} non-unit / NaN normals on the swept-disk tube");
+}

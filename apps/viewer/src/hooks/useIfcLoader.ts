@@ -14,6 +14,7 @@ import { useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
+import { getGeomWorkerOverride } from '../store/constants.js';
 import { IfcParser, detectFormat, type IfcDataStore } from '@ifc-lite/parser';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
@@ -866,6 +867,11 @@ export function useIfcLoader() {
                   workerParserInstance.setEntityIndex(ids, starts, lengths);
                 }
               },
+              // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
+              // count heuristic so the host's thermal sweet spot can be measured.
+              // Still clamped to the memory budget by the engine. Geometry output
+              // is unaffected by the count (disjoint deterministic element slices).
+              workerCountOverride: getGeomWorkerOverride(),
             });
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;

@@ -27,7 +27,7 @@
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
-import { pickWorkerCount } from './worker-count.js';
+import { computeWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 
 /**
@@ -165,6 +165,15 @@ export interface ProcessParallelOptions {
    * requires a reload.
    */
   visibilityFilter?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
+  /**
+   * Explicit geometry-worker count for A/B tuning (the viewer's
+   * `?geomWorkers=N` knob). Overrides the cores-tier heuristic but stays
+   * clamped to the memory budget — see {@link computeWorkerCount}. `undefined`
+   * ⇒ use the heuristic. Lets a user measure their host's true thermal optimum
+   * (which is machine-specific). Geometry output is unaffected by the count
+   * (workers process disjoint, deterministic element slices).
+   */
+  workerCountOverride?: number;
 }
 
 export async function* processParallel(
@@ -380,15 +389,23 @@ export async function* processParallel(
     };
   };
 
-  // Pick worker count and pre-spawn them now. `pickWorkerCount` needs a
+  // Pick worker count and pre-spawn them now. `computeWorkerCount` needs a
   // totalJobs estimate; use file-size proxy. The memory-budget cap in
-  // `pickWorkerCount` keeps an over-estimate harmless.
+  // `computeWorkerCount` keeps an over-estimate harmless, and still bounds an
+  // explicit `workerCountOverride` so the A/B knob can't OOM the tab.
   const cores = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency ?? 2) : 2;
   const deviceMemoryGB = typeof navigator !== 'undefined'
     ? ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) : 8;
   const fileSizeMB = buffer.byteLength / (1024 * 1024);
   const estimatedJobs = Math.max(1, Math.ceil(fileSizeMB * 100));
-  const workerCount = pickWorkerCount({ fileSizeMB, cores, deviceMemoryGB, totalJobs: estimatedJobs });
+  const workerCountResult = computeWorkerCount({
+    fileSizeMB,
+    cores,
+    deviceMemoryGB,
+    totalJobs: estimatedJobs,
+    workerCountOverride: options?.workerCountOverride,
+  });
+  const workerCount = workerCountResult.count;
 
   const workers: Worker[] = [];
   for (let i = 0; i < workerCount; i++) {
@@ -589,7 +606,10 @@ export async function* processParallel(
   // Step-by-step timing so we can tell exactly where time goes.
   const t0 = performance.now();
   const elapsed = () => Math.round(performance.now() - t0);
-  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}`);
+  const overrideNote = options?.workerCountOverride != null
+    ? ` (override=${options.workerCountOverride}, bound=${workerCountResult.reason})`
+    : ` (cores=${cores}, bound=${workerCountResult.reason})`;
+  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}`);
 
   const prepassWorker = makePrepassWorker();
   // Wrap the rest of the pipeline so worker teardown runs not only on

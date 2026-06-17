@@ -26,6 +26,7 @@ pub mod mesh_bridge;
 pub mod predicates;
 pub mod rational;
 pub mod retriangulate;
+pub mod timing;
 pub mod tritri;
 
 /// Three-valued exact sign.

@@ -19,7 +19,9 @@ use super::{DropAxis, ImplicitPoint, Sign};
 /// escalate to the exact (BigRational) tier only on a straddle. Every tier
 /// returns the SAME sign — verified against the oracle in tests.
 pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &ImplicitPoint) -> Sign {
+    use crate::kernel::timing::{tier, Tier};
     use ImplicitPoint::{Explicit, Lpi, Tpi};
+    tier(Tier::PredCall);
     match (a, b, c, d) {
         (Explicit(a), Explicit(b), Explicit(c), Explicit(d)) => {
             Sign::from_f64(geometry_predicates::orient3d(*a, *b, *c, *d))
@@ -29,13 +31,19 @@ pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &Imp
                 crate::kernel::budget::note_escalation();
                 fixed::indirect_orient3d(a, *b, *c, *d)
             })
-            .unwrap_or_else(|| rational::lpi_orient3d(l, *b, *c, *d)),
+            .unwrap_or_else(|| {
+                tier(Tier::Rational);
+                rational::lpi_orient3d(l, *b, *c, *d)
+            }),
         (Tpi(t), Explicit(b), Explicit(c), Explicit(d)) => interval::tpi_orient3d(t, *b, *c, *d)
             .or_else(|| {
                 crate::kernel::budget::note_escalation();
                 fixed::indirect_orient3d(a, *b, *c, *d)
             })
-            .unwrap_or_else(|| rational::tpi_orient3d(t, *b, *c, *d)),
+            .unwrap_or_else(|| {
+                tier(Tier::Rational);
+                rational::tpi_orient3d(t, *b, *c, *d)
+            }),
         // By-construction unreachable: kernel callers only ever build the configurations above.
         _ => unimplemented!(
             "kernel::orient3d: implicit-point configuration never produced by the arrangement pipeline"
@@ -53,6 +61,7 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
         DropAxis::Y => (0, 2),
         DropAxis::Z => (0, 1),
     };
+    crate::kernel::timing::tier(crate::kernel::timing::Tier::PredCall);
     match (a, b, c) {
         (Explicit(a), Explicit(b), Explicit(c)) => {
             Sign::from_f64(geometry_predicates::orient2d([a[i], a[j]], [b[i], b[j]], [c[i], c[j]]))
@@ -62,13 +71,19 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
                 crate::kernel::budget::note_escalation();
                 fixed::indirect_orient2d(a, *b, *c, axis)
             })
-            .unwrap_or_else(|| rational::lpi_orient2d(l, *b, *c, axis)),
+            .unwrap_or_else(|| {
+                crate::kernel::timing::tier(crate::kernel::timing::Tier::Rational);
+                rational::lpi_orient2d(l, *b, *c, axis)
+            }),
         (Tpi(t), Explicit(b), Explicit(c)) => interval::tpi_orient2d(t, *b, *c, axis)
             .or_else(|| {
                 crate::kernel::budget::note_escalation();
                 fixed::indirect_orient2d(a, *b, *c, axis)
             })
-            .unwrap_or_else(|| rational::tpi_orient2d(t, *b, *c, axis)),
+            .unwrap_or_else(|| {
+                crate::kernel::timing::tier(crate::kernel::timing::Tier::Rational);
+                rational::tpi_orient2d(t, *b, *c, axis)
+            }),
         // By-construction unreachable: kernel callers only ever build the configurations above.
         _ => unimplemented!(
             "kernel::orient2d: implicit-point configuration never produced by the arrangement pipeline"
@@ -78,33 +93,48 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
 
 /// orient2d with two implicit points (a,b) + one explicit (c) — cascade.
 pub fn orient2d_2i(a: &ImplicitPoint, b: &ImplicitPoint, c: [f64; 3], axis: DropAxis) -> Sign {
+    use crate::kernel::timing::{tier, Tier};
+    tier(Tier::PredCall);
     // cascade: interval filter → fixed-width exact (fast) → BigRational (off-grid / overflow)
     interval::orient2d_2i(a, b, c, axis)
         .or_else(|| {
             crate::kernel::budget::note_escalation();
             fixed::orient2d_2i(a, b, c, axis)
         })
-        .unwrap_or_else(|| rational::orient2d_2i(a, b, c, axis))
+        .unwrap_or_else(|| {
+            tier(Tier::Rational);
+            rational::orient2d_2i(a, b, c, axis)
+        })
 }
 
 /// orient2d with three implicit points (a,b,c) — cascade.
 pub fn orient2d_3i(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Sign {
+    use crate::kernel::timing::{tier, Tier};
+    tier(Tier::PredCall);
     interval::orient2d_3i(a, b, c, axis)
         .or_else(|| {
             crate::kernel::budget::note_escalation();
             fixed::orient2d_3i(a, b, c, axis)
         })
-        .unwrap_or_else(|| rational::orient2d_3i(a, b, c, axis))
+        .unwrap_or_else(|| {
+            tier(Tier::Rational);
+            rational::orient2d_3i(a, b, c, axis)
+        })
 }
 
 /// Exact lexicographic total order on points — the interner's comparison (cascade).
 pub fn cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint) -> Sign {
+    use crate::kernel::timing::{tier, Tier};
+    tier(Tier::PredCall);
     interval::cmp_lex(a, b)
         .or_else(|| {
             crate::kernel::budget::note_escalation();
             fixed::cmp_lex(a, b)
         })
-        .unwrap_or_else(|| rational::cmp_lex(a, b))
+        .unwrap_or_else(|| {
+            tier(Tier::Rational);
+            rational::cmp_lex(a, b)
+        })
 }
 
 #[inline]

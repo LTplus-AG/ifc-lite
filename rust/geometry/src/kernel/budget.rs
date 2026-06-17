@@ -238,6 +238,7 @@ pub fn reset_peak() {
 /// expensive fixed-width / BigRational path.
 #[inline]
 pub fn note_escalation() {
+    crate::kernel::timing::tier(crate::kernel::timing::Tier::Escalation);
     COUNT.with(|c| c.set(c.get().saturating_add(1)));
     ELEM_COUNT.with(|c| c.set(c.get().saturating_add(1)));
 }

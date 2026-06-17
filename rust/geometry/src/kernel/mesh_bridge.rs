@@ -33,6 +33,7 @@ fn snap(c: f64) -> f64 {
 /// `BigRational::from_float` deep in the predicates (the two empirically-found
 /// reachable panic sites).
 pub fn mesh_to_tris(m: &Mesh) -> Vec<Tri> {
+    let _t = crate::kernel::timing::timer(crate::kernel::timing::Phase::MeshToTris);
     let vertex = |i: u32| -> Option<[f64; 3]> {
         let b = (i as usize) * 3;
         let c = [
@@ -69,6 +70,7 @@ fn face_normal(t: &Tri) -> [f32; 3] {
 
 /// The kernel's triangle list → a `Mesh` (per-face flat normals, f64 → f32).
 pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
+    let _t = crate::kernel::timing::timer(crate::kernel::timing::Phase::TrisToMesh);
     let mut m = Mesh::with_capacity(tris.len() * 3, tris.len() * 3);
     for t in tris {
         let n = face_normal(t);

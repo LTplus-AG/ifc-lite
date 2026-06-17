@@ -794,6 +794,7 @@ impl ClippingProcessor {
     /// Returns the input mesh unchanged if the consolidate fails or yields
     /// nothing — never worse than the raw kernel output.
     pub(crate) fn consolidate_coplanar(mesh: Mesh) -> Mesh {
+        let _t = crate::kernel::timing::timer(crate::kernel::timing::Phase::Consolidate);
         use crate::triangulation::{
             project_to_2d_with_basis, triangulate_polygon_with_holes_refined,
         };

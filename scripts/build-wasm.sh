@@ -63,12 +63,20 @@ if ! command -v wasm-pack &> /dev/null; then
   fi
 fi
 
-# Check if debug_geometry feature should be enabled
-FEATURES=""
+# Optional build features (combined into one comma list).
+FEATURE_LIST=""
 if [ "${DEBUG_GEOMETRY:-}" = "1" ]; then
-  FEATURES="--features debug_geometry"
+  FEATURE_LIST="debug_geometry"
   echo "🔍 Building with debug_geometry feature enabled"
 fi
+# KERNEL_TIMING=1 → log per-phase / per-predicate-tier CSG timing to the console
+# (perf/kernel-timing Step 0). Profiling builds only; never the default.
+if [ "${KERNEL_TIMING:-}" = "1" ]; then
+  FEATURE_LIST="${FEATURE_LIST:+$FEATURE_LIST,}kernel-timing"
+  echo "⏱  Building with kernel-timing feature enabled (profiling bundle)"
+fi
+FEATURES=""
+[ -n "$FEATURE_LIST" ] && FEATURES="--features $FEATURE_LIST"
 
 OUT_DIR="../../packages/wasm/pkg"
 echo "🟢 Building single-thread bundle → $OUT_DIR"

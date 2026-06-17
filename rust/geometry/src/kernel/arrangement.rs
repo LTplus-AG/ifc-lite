@@ -173,7 +173,11 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     let mut cop_b: Vec<Vec<Constraint>> = (0..b.len()).map(|_| Vec::new()).collect();
     let mut pt_a: Vec<Vec<ImplicitPoint>> = (0..a.len()).map(|_| Vec::new()).collect();
     let mut pt_b: Vec<Vec<ImplicitPoint>> = (0..b.len()).map(|_| Vec::new()).collect();
-    let pairs = super::broadphase::candidate_pairs(a, b);
+    let pairs = {
+        let _t = crate::kernel::timing::timer(crate::kernel::timing::Phase::Broadphase);
+        super::broadphase::candidate_pairs(a, b)
+    };
+    let _tt = crate::kernel::timing::timer(crate::kernel::timing::Phase::TriTri);
     for (i, j) in pairs {
         // Deterministic escalation guardrail (#1109): stop accumulating
         // intersections once this boolean has blown its BigRational budget. The
@@ -206,6 +210,7 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
             TriTri::None => {}
         }
     }
+    drop(_tt);
     // 2. seg×seg pre-pass on the segment constraints, then append the coplanar ones
     let build = |tris: &[Tri], raw: &[Vec<RawSeg>], cop: &mut [Vec<Constraint>]| -> Vec<Vec<Constraint>> {
         (0..tris.len())
@@ -220,15 +225,19 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
     // captured BEFORE `build` drains the coplanar-constraint accumulators.
     let cop_parent_a: Vec<bool> = cop_a.iter().map(|c| !c.is_empty()).collect();
     let cop_parent_b: Vec<bool> = cop_b.iter().map(|c| !c.is_empty()).collect();
-    let ca = build(a, &raw_a, &mut cop_a);
-    let cb = build(b, &raw_b, &mut cop_b);
+    let (ca, cb) = {
+        let _t = crate::kernel::timing::timer(crate::kernel::timing::Phase::SplitCrossings);
+        (build(a, &raw_a, &mut cop_a), build(b, &raw_b, &mut cop_b))
+    };
     // 3. re-triangulate each operand over the SHARED interner ⇒ conforming surfaces
     let mut interner = Interner::new();
     let mut unrecovered = 0usize;
+    let _tr = crate::kernel::timing::timer(crate::kernel::timing::Phase::Retriangulate);
     let (tris_a, coplanar_a) =
         retriangulate_each(a, &ca, &pt_a, &cop_parent_a, &mut interner, &mut unrecovered);
     let (tris_b, coplanar_b) =
         retriangulate_each(b, &cb, &pt_b, &cop_parent_b, &mut interner, &mut unrecovered);
+    drop(_tr);
     let n_pts = interner.len();
     Arrangement {
         interner,
@@ -997,6 +1006,7 @@ fn on_interface_keep(
 /// interface shares the unordered vertex set but has OPPOSITE winding, so it never
 /// collides; both its copies are dissolved by regime 2.)
 fn boolean_vids(arr: &Arrangement, a: &[Tri], b: &[Tri], op: BoolOp) -> Vec<[Vid; 3]> {
+    let _t = crate::kernel::timing::timer(crate::kernel::timing::Phase::Classify);
     boolean_vids_components(arr, a, &BComponents::new(&[b]), op)
 }
 

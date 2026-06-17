@@ -18,6 +18,10 @@ readme = "../../README.md"
 # (docs/architecture/geometry-pipeline.md).
 default = []
 debug_geometry = []
+# Step-0 kernel instrumentation: per-phase timers + per-predicate-tier
+# escalation counters (src/kernel/timing.rs). OFF in production (zero cost);
+# enable for a measured run (`--features kernel-timing`, incl. build-wasm.sh).
+kernel-timing = []
 
 [dependencies]
 

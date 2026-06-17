@@ -1011,7 +1011,34 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
+    // Step-0 kernel instrumentation (perf/kernel-timing): per-phase wall-clock +
+    // per-phase op counts + predicate-tier escalation counts. Empty unless built
+    // with `--features kernel-timing`, so production logs nothing.
+    #[cfg(feature = "kernel-timing")]
+    ifc_lite_geometry::kernel::timing::set_wasm_clock(perf_now);
+    let kt = ifc_lite_geometry::kernel::timing::take();
+    if !kt.is_empty() {
+        web_sys::console::info_1(&format!("[IFC-LITE] kernel-timing: {}", kt.format()).into());
+    }
+
     summary.into()
+}
+
+/// A millisecond wall-clock that works in both the window and worker scopes —
+/// injected into the geometry kernel's timing so wasm phase timing is real
+/// `performance.now()` deltas, not zeros.
+#[cfg(feature = "kernel-timing")]
+fn perf_now() -> f64 {
+    use wasm_bindgen::JsCast;
+    if let Ok(w) = js_sys::global().dyn_into::<web_sys::WorkerGlobalScope>() {
+        if let Some(p) = w.performance() {
+            return p.now();
+        }
+    }
+    web_sys::window()
+        .and_then(|w| w.performance())
+        .map(|p| p.now())
+        .unwrap_or(0.0)
 }
 
 /// Convert entity counts map to JavaScript object

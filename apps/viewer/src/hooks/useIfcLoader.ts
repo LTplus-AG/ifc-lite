@@ -574,6 +574,7 @@ export function useIfcLoader() {
       // toggle flipped served the stale opposite cache and the setting never took.
       const mergeLayersForKey = useViewerStore.getState().mergeLayers;
       const cacheKey = `ifc-${buffer.byteLength}-${fingerprint}-v${FORMAT_VERSION}${mergeLayersForKey ? '-merged' : ''}`;
+      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersForKey} cacheKey=${cacheKey}`);
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).
@@ -1046,7 +1047,11 @@ export function useIfcLoader() {
               // Finalize once the data model is ready (parses in parallel).
               finalizePromise = dataStorePromise.then(async dataStore => {
                 // Guard: skip if user loaded a new file since this load started
-                if (loadSessionRef.current !== currentSession) return;
+                if (loadSessionRef.current !== currentSession) {
+                  console.warn(`[useIfc] finalize ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — model will blank`);
+                  return;
+                }
+                console.log(`[useIfc] finalizing: session=${currentSession} meshes=${useViewerStore.getState().geometryResult?.meshes?.length ?? 0} dataStore=${!!dataStore}`);
 
                 if (target.kind === 'federated') {
                   // Build the model's geometryResult from the accumulated meshes —
@@ -1148,7 +1153,10 @@ export function useIfcLoader() {
         return;
       }
 
-      if (loadSessionRef.current !== currentSession) return;
+      if (loadSessionRef.current !== currentSession) {
+        console.warn(`[useIfc] post-stream ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current})`);
+        return;
+      }
 
       // Federated adds register the model inside finalizePromise (georef align
       // → id offset → spatial index → addModel). Await it so loadFile resolves
@@ -1186,6 +1194,7 @@ export function useIfcLoader() {
       setLoading(false);
       setGeometryStreamingActive(false);
     } catch (err) {
+      console.error(`[useIfc] loadFile THREW (session=${currentSession}, current=${loadSessionRef.current}):`, err);
       if (loadSessionRef.current !== currentSession) return;
       updateModel(modelId, {
         loadState: 'error',

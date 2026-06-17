@@ -539,13 +539,31 @@ export function ViewportContainer() {
   // viewer has no boot-time auto-restore, which read as "nothing loads".
   const handleMergeLayersReload = useCallback(async () => {
     const recents = getRecentFiles();
+    const mergeNow = useViewerStore.getState().mergeLayers;
+    console.log('[merge-reload] start: mergeLayers=', mergeNow, 'recents=', recents.map((r) => r.name));
     const cached = recents.length > 0 ? await getCachedFile(recents[0]) : null;
+    console.log('[merge-reload] cached blob:', cached ? `${cached.name} (${cached.size}B)` : 'NULL');
     useViewerStore.getState().clearMergeLayersPendingReload();
     if (cached) {
-      await loadFile(cached);
+      try {
+        console.log('[merge-reload] calling loadFile(cached)…');
+        await loadFile(cached);
+        const st = useViewerStore.getState();
+        console.log(
+          '[merge-reload] loadFile resolved: meshes=',
+          st.geometryResult?.meshes?.length ?? 0,
+          'models=',
+          st.models?.size ?? 0,
+          'hasDataStore=',
+          !!st.ifcDataStore,
+        );
+      } catch (err) {
+        console.error('[merge-reload] loadFile threw:', err);
+      }
     } else if (typeof window !== 'undefined') {
       // No cached blob to re-load in place — fall back to a full reload (the
       // toggle is persisted, so the user just re-opens the file).
+      console.warn('[merge-reload] no cached blob — falling back to window.location.reload()');
       window.location.reload();
     }
   }, [loadFile]);

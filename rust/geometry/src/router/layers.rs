@@ -57,13 +57,30 @@ impl GeometryRouter {
         }
         let empty: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
         let voids = void_index.unwrap_or(&empty);
-        let collection = self
-            .process_element_with_material_layers(element, decoder, buildup, voids)
-            .ok()
-            .flatten()?;
+        let collection = match self.process_element_with_material_layers(element, decoder, buildup, voids) {
+            Ok(Some(c)) => c,
+            Ok(None) => return None,
+            Err(_e) => {
+                // Native-path diagnostic (#563/#874): a sliceable wall whose
+                // slicing errored falls back to a single solid. (No-op in wasm;
+                // the browser sees the per-load index summary instead.)
+                eprintln!("[material-layers] #{}: sliceable but slicing errored", element.id);
+                return None;
+            }
+        };
         if collection.sub_meshes.len() < 2 {
+            eprintln!(
+                "[material-layers] #{}: sliceable but produced {} sub-mesh(es) (<2) — keeping single solid",
+                element.id,
+                collection.sub_meshes.len()
+            );
             return None;
         }
+        eprintln!(
+            "[material-layers] #{}: sliced into {} layer sub-meshes",
+            element.id,
+            collection.sub_meshes.len()
+        );
         // Mesh hygiene: slicing the base mesh by layer-interface planes can
         // introduce zero-area/collinear slivers at the cut, and this layered
         // path early-returns to its callers (process_element_with_submeshes /

@@ -20,6 +20,7 @@ import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@ifc-lite/renderer';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
+import { projectToCssScreen } from '../../utils/projectScreen.js';
 
 export interface UseAnimationLoopParams {
   canvasRef: RefObject<HTMLCanvasElement | null>;
@@ -269,7 +270,10 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         if (cameraChanged) {
           lastCameraStateRef.current = currentCameraState;
           updateMeasurementScreenCoords((worldPos) => {
-            return camera.projectToScreen(worldPos, canvas.width, canvas.height);
+            // CSS-space coords so the measure line/labels track the geometry
+            // under the cursor (buffer width is alignToWebGPU-rounded down from
+            // the CSS width; raw buffer coords drift left — issue #1107).
+            return projectToCssScreen(camera, canvas, worldPos);
           });
         }
       }

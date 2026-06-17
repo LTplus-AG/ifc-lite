@@ -7,11 +7,12 @@
  * Pure functions that operate on a MouseHandlerContext — no React dependency.
  */
 
-import type { SnapTarget, MagneticSnapResult } from '@ifc-lite/renderer';
+import type { SnapTarget } from '@ifc-lite/renderer';
 import type { MeasurePoint, SnapVisualization } from '@/store';
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
 import type { MouseHandlerContext, Camera } from './mouseHandlerTypes.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
+import { projectToCssScreen } from '../../utils/projectScreen.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
 /**
@@ -116,7 +117,7 @@ export function updateSnapViz(
 
   // For face snaps: show plane indicator (still screen-space since it's just an indicator)
   if ((snapTarget.type === 'face' || snapTarget.type === 'face_center') && snapTarget.normal) {
-    const pos = ctx.camera.projectToScreen(snapTarget.position, ctx.canvas.width, ctx.canvas.height);
+    const pos = projectToCssScreen(ctx.camera, ctx.canvas, snapTarget.position);
     if (pos) {
       viz.planeIndicator = {
         x: pos.x,
@@ -141,80 +142,6 @@ export function getApproximateWorldPosition(
   _canvasHeight: number,
 ): { x: number; y: number; z: number } {
   return getEntityCenter(geom, entityId) || { x: 0, y: 0, z: 0 };
-}
-
-/**
- * Pixel-distance test for the screen-space snap gate. Exported for unit tests.
- * Returns true when the projected snap point is within `radiusPx` of the cursor
- * (keep it). A null projection (snap behind the camera) returns true so the
- * detector's choice is not second-guessed from a missing projection.
- */
-export function isSnapWithinScreenRadius(
-  projected: { x: number; y: number } | null,
-  cursorX: number,
-  cursorY: number,
-  radiusPx: number,
-): boolean {
-  if (!projected) return true;
-  const dx = projected.x - cursorX;
-  const dy = projected.y - cursorY;
-  return dx * dx + dy * dy <= radiusPx * radiusPx;
-}
-
-/**
- * Screen-space trust gate for 3D measurement snapping (issue #1107, item 7).
- *
- * The magnetic snap detector chooses the geometry feature closest to the
- * raycast hit in WORLD space, with the search radius enlarged 3x (edges) / 6x
- * (corners). That radius is sized at the hit's depth, but the chosen feature
- * can sit at a different depth, so the snap indicator can land far from the
- * cursor on screen — "the snap point appeared away from the cursor and was hard
- * to trust". The 2D section tool filters purely in screen space, which is why
- * it feels more reliable.
- *
- * This re-checks the detector's pick in screen space: if it projects further
- * than the requested `screenRadiusPx` from the cursor, it is demoted to the raw
- * surface hit (and any pending lock is released), so the measurement point
- * lands under the cursor instead. The gate is skipped while an edge lock is
- * already active so magnetic edge sliding is preserved; because fresh (unlocked)
- * acquisitions are gated, a far feature can never become a lock in the first
- * place.
- *
- * `cursorX/cursorY` are canvas-relative CSS pixels (clientX - rect.left); they
- * are converted to the canvas pixel space that `projectToScreen` returns.
- */
-export function gateSnapToScreen(
-  ctx: MouseHandlerContext,
-  result: MagneticSnapResult,
-  cursorX: number,
-  cursorY: number,
-  screenRadiusPx: number,
-): void {
-  if (!result.snapTarget || screenRadiusPx <= 0) return;
-  // Preserve active magnetic edge sliding; only gate fresh acquisitions.
-  if (ctx.edgeLockStateRef.current.edge) return;
-
-  const { canvas, camera } = ctx;
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) return;
-
-  const cursorCanvasX = cursorX * (canvas.width / rect.width);
-  const cursorCanvasY = cursorY * (canvas.height / rect.height);
-  const projected = camera.projectToScreen(result.snapTarget.position, canvas.width, canvas.height);
-
-  if (isSnapWithinScreenRadius(projected, cursorCanvasX, cursorCanvasY, screenRadiusPx)) return;
-
-  // Too far from the cursor on screen — fall back to the raw surface hit.
-  result.snapTarget = null;
-  result.edgeLock = {
-    edge: null,
-    meshExpressId: null,
-    edgeT: 0,
-    shouldLock: false,
-    shouldRelease: true,
-    isCorner: false,
-    cornerValence: 0,
-  };
 }
 
 /**
@@ -254,16 +181,13 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
     },
   });
 
-  // Reject snaps that land far from the cursor on screen (issue #1107 item 7).
-  gateSnapToScreen(ctx, result, x, y, 60);
-
   if (result.intersection || result.snapTarget) {
     const snapPoint = result.snapTarget || result.intersection;
     const pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
 
     if (pos) {
       // Project snapped 3D position to screen - measurement starts from indicator, not cursor
-      const screenPos = camera.projectToScreen(pos, canvas.width, canvas.height);
+      const screenPos = projectToCssScreen(camera, canvas, pos);
       const measurePoint: MeasurePoint = {
         x: pos.x,
         y: pos.y,
@@ -376,10 +300,6 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
       // Track raycast duration for adaptive throttling
       ctx.lastMeasureRaycastDurationRef.current = performance.now() - raycastStart;
 
-      // Reject snaps that land far from the cursor on screen (issue #1107 item 7).
-      // Skipped automatically while an edge lock is active so sliding is kept.
-      gateSnapToScreen(ctx, result, x, y, snapOn ? (reduceComplexity ? 40 : 60) : (useOrthogonalConstraint ? 40 : 0));
-
       if (result.intersection || result.snapTarget) {
         const snapPoint = result.snapTarget || result.intersection;
         let pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
@@ -400,7 +320,7 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
           }
 
           // Project snapped 3D position to screen - indicator position, not raw cursor
-          const screenPos = camera.projectToScreen(pos, canvas.width, canvas.height);
+          const screenPos = projectToCssScreen(camera, canvas, pos);
           const measurePoint: MeasurePoint = {
             x: pos.x,
             y: pos.y,
@@ -501,9 +421,6 @@ export function handleMeasureHover(ctx: MouseHandlerContext, x: number, y: numbe
         },
       });
 
-      // Reject snaps that land far from the cursor on screen (issue #1107 item 7).
-      gateSnapToScreen(ctx, result, x, y, 40);
-
       // Update snap target for visual feedback
       if (result.snapTarget) {
         ctx.setSnapTarget(result.snapTarget);
@@ -585,9 +502,6 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
     },
   });
 
-  // Reject snaps that land far from the cursor on screen (issue #1107 item 7).
-  gateSnapToScreen(ctx, result, mx, my, ctx.snapEnabledRef.current && !useOrthogonalConstraint ? 60 : useOrthogonalConstraint ? 40 : 0);
-
   // Update measurement with final position before finalizing
   if (result.intersection || result.snapTarget) {
     const snapPoint = result.snapTarget || result.intersection;
@@ -602,7 +516,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
         pos = projected.projectedPos;
       }
 
-      const screenPos = camera.projectToScreen(pos, canvas.width, canvas.height);
+      const screenPos = projectToCssScreen(camera, canvas, pos);
       const measurePoint: MeasurePoint = {
         x: pos.x,
         y: pos.y,
@@ -629,7 +543,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
 export function updateMeasureScreenCoords(ctx: MouseHandlerContext): void {
   const { canvas, camera } = ctx;
   ctx.updateMeasurementScreenCoords((worldPos) => {
-    return camera.projectToScreen(worldPos, canvas.width, canvas.height);
+    return projectToCssScreen(camera, canvas, worldPos);
   });
   // Update camera state tracking to prevent duplicate update in animation loop
   const cameraPos = camera.getPosition();

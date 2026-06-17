@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
@@ -104,6 +104,7 @@ export function BsddCard({
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
   const setEditEnabled = useViewerStore((s) => s.setEditEnabled);
   const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
+  const setPendingPropertyFocus = useViewerStore((s) => s.setPendingPropertyFocus);
 
   // Fetch class info from bSDD when entity type changes
   useEffect(() => {
@@ -136,6 +137,15 @@ export function BsddCard({
       cancelled = true;
     };
   }, [entityType]);
+
+  // `addedKeys` tracks what was added to THIS element, so it must reset when the
+  // selection moves to a different element — even one of the same IfcType, which
+  // leaves `entityType` (and the fetch above) unchanged. Without this the "N
+  // added · Edit in Properties" bar and the per-row check marks leak onto the
+  // next element (issue #1107 review).
+  useEffect(() => {
+    setAddedKeys(new Set());
+  }, [entityId, modelId]);
 
   // Group properties by property set name
   const groupedProps = useMemo(() => {
@@ -219,14 +229,20 @@ export function BsddCard({
       bumpMutationVersion();
       setAddedKeys((prev) => new Set(prev).add(`${psetName}:${prop.name}`));
 
-      // Take the user to the added property and make it immediately editable:
-      // switch to the Properties tab and turn on edit mode so the value can be
-      // set without first hunting for the toolbar edit button (issue #1107).
-      setPropertiesActiveTab('properties');
-      setEditEnabled(true);
-      toast.success(`Added "${prop.name}" — set its value in Properties`);
+      // Stay in the bSDD card — the user may want to add more (issue #1107).
+      // Don't yank them to the Properties tab or flip edit mode here. Instead
+      // ARM a one-shot focus on the new row; the card's "Edit in Properties"
+      // bar is the deliberate jump, and only THEN do we enter edit mode and
+      // scroll/highlight the row. Pset_* properties are the only inline-
+      // editable target, so attributes and Qto_* quantities just confirm.
+      if (psetName !== BSDD_ATTRIBUTES_GROUP && !isQuantitySet(psetName)) {
+        setPendingPropertyFocus({ modelId, entityId, psetName, propName: prop.name });
+        toast.success(`Added "${prop.name}" — open Properties to set its value`);
+      } else {
+        toast.success(`Added "${prop.name}"`);
+      }
     },
-    [modelId, entityId, existingPsets, existingQsets, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPropertiesActiveTab, setEditEnabled],
+    [modelId, entityId, existingPsets, existingQsets, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus],
   );
 
   const handleAddAllInPset = useCallback(
@@ -322,14 +338,37 @@ export function BsddCard({
         return next;
       });
 
-      // Same as single-add: surface the new properties and make them editable.
-      setPropertiesActiveTab('properties');
-      setEditEnabled(true);
-      if (toAdd.length > 0) {
-        toast.success(`Added ${toAdd.length} ${psetName} ${toAdd.length === 1 ? 'property' : 'properties'} — set values in Properties`);
+      // Same as single-add: stay put, arm a one-shot focus on the first new
+      // property (Pset_* only — attributes/quantities aren't inline-editable).
+      const isEditableProps = !isAttrGroup && !isQuantitySet(psetName);
+      if (isEditableProps) {
+        setPendingPropertyFocus({ modelId, entityId, psetName, propName: toAdd[0].name });
       }
+      toast.success(
+        `Added ${toAdd.length} ${psetName} ${toAdd.length === 1 ? 'property' : 'properties'}` +
+          (isEditableProps ? ' — open Properties to set values' : ''),
+      );
     },
-    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPropertiesActiveTab, setEditEnabled],
+    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus],
+  );
+
+  // The deliberate "take me to what I just added" action behind the card's
+  // "Edit in Properties" bar. Switching to the Properties tab + entering edit
+  // mode is what "go edit" means; the Properties panel then consumes any armed
+  // pendingPropertyFocus to scroll to and highlight the exact row.
+  const goToProperties = useCallback(() => {
+    setPropertiesActiveTab('properties');
+    setEditEnabled(true);
+  }, [setPropertiesActiveTab, setEditEnabled]);
+
+  // The "Edit in Properties" bar only makes sense for things that ARE editable
+  // on the Properties tab: Pset_* properties and entity attributes. Qto_*
+  // quantities render read-only on a different tab, so a quantity-only add must
+  // not surface the bar (it would dump the user on the wrong tab). Keys begin
+  // with their set name, so a `Qto_` prefix flags a quantity (issue #1107).
+  const editableAddedCount = useMemo(
+    () => Array.from(addedKeys).filter((k) => !k.startsWith('Qto_')).length,
+    [addedKeys],
   );
 
   // Loading state
@@ -368,6 +407,23 @@ export function BsddCard({
         <div className="px-1 pb-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
           {classInfo.definition}
         </div>
+      )}
+
+      {/* "Go edit" bar — the deliberate jump to the Properties tab. Appears
+          once anything has been added this session so the user can keep adding
+          here, then cross over to set values when ready (issue #1107). Kept out
+          of the scroll body's sticky region (Radix ScrollArea breaks sticky)
+          and pinned at the top where attention returns after an add. */}
+      {editableAddedCount > 0 && (
+        <button
+          type="button"
+          onClick={goToProperties}
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border-2 border-emerald-300/70 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+        >
+          <Check className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{editableAddedCount} added · Edit in Properties</span>
+          <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+        </button>
       )}
 
       {/* Property sets from bSDD */}

@@ -299,6 +299,10 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // UI
       activeTool: UI_DEFAULTS.ACTIVE_TOOL,
       editEnabled: false,
+      // Drop any one-shot bSDD "jump to property" focus armed before the load —
+      // a new file reuses ids ('legacy' + reassigned expressIds) so a stale
+      // focus could otherwise match an unrelated entity (issue #1107).
+      pendingPropertyFocus: null,
       visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
       edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
       edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,

@@ -8160,7 +8160,7 @@ snapshots:
       '@posthog/core': 1.32.1
       '@posthog/types': 1.386.1
       core-js: 3.49.0
-      dompurify: 3.4.8
+      dompurify: 3.4.11
       fflate: 0.4.8
       preact: 10.29.2
       query-selector-shadow-dom: 1.0.1

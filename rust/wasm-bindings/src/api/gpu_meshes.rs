@@ -815,6 +815,14 @@ impl IfcAPI {
             router.enable_content_dedup_shared(cache);
         }
 
+        // Attach the per-content material-layer index so single-solid walls and
+        // slabs carrying an IfcMaterialLayerSetUsage slice into one coloured
+        // sub-mesh per layer (#563). Built once per load and Arc-shared across
+        // batches; #874 dropped this wiring, silently disabling layered-wall
+        // rendering for the entire browser stream. Cheap on files with no layer
+        // set (substring bail-out inside the index builder).
+        router.set_material_layer_index(self.get_or_build_material_layer_index(content, &mut decoder));
+
         // Set RTC offset if needed
         if needs_shift {
             router.set_rtc_offset((rtc_x, rtc_y, rtc_z));

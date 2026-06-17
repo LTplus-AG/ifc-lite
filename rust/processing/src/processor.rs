@@ -1347,6 +1347,14 @@ pub fn process_geometry_streaming_filtered_with_options(
     );
     let mut router = GeometryRouter::with_scale(unit_scales.length_unit_scale);
     router.set_tessellation_quality(options.tessellation_quality);
+    // Slice single-solid walls/slabs with an IfcMaterialLayerSetUsage into one
+    // coloured sub-mesh per layer (#563); #874 dropped this wiring across every
+    // pipeline. The native pass processes the file once, so build the index
+    // directly here (the wasm batch path caches it on the IfcAPI). Cheap on
+    // files with no layer set (substring bail-out inside the builder).
+    router.set_material_layer_index(Arc::new(
+        ifc_lite_geometry::MaterialLayerIndex::from_content(content, &mut decoder),
+    ));
 
     // Resolve IfcSite and IfcBuilding placement transforms.
     let site_transform: Option<Vec<f64>> = site_entity_pos.and_then(|(start, end)| {

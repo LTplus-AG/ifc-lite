@@ -194,6 +194,46 @@ fn process_element_with_material_layers_splits_wall_by_material() {
     }
 }
 
+/// Regression for #874: slicing fires only when the router's `MaterialLayerIndex`
+/// is set. The slicing kernel stayed intact, but #874 dropped the
+/// `set_material_layer_index` wiring from every pipeline, so the DEFAULT
+/// sub-mesh path (`process_element_with_submeshes`, which `produce_element_meshes`
+/// runs) silently stopped slicing — layered walls rendered as a plain single
+/// solid. With the index attached (as every pipeline does again) the same path
+/// slices; without it, the wall stays one solid.
+#[test]
+fn router_layer_index_drives_submesh_slicing() {
+    let content = three_layer_wall_single_solid_ifc();
+
+    // No index attached — the #874-broken behaviour: one solid, no slices.
+    let without = {
+        let mut decoder = EntityDecoder::new(&content);
+        let router = GeometryRouter::with_units(&content, &mut decoder);
+        let wall = decoder.decode_by_id(100).expect("decode wall");
+        router
+            .process_element_with_submeshes(&wall, &mut decoder)
+            .expect("submesh path")
+            .sub_meshes
+            .len()
+    };
+    assert_eq!(without, 1, "without a layer index the wall must stay a single solid");
+
+    // Index attached — what `set_material_layer_index` now does in production.
+    let with = {
+        let mut decoder = EntityDecoder::new(&content);
+        let mut router = GeometryRouter::with_units(&content, &mut decoder);
+        let index = MaterialLayerIndex::from_content(&content, &mut decoder);
+        router.set_material_layer_index(std::sync::Arc::new(index));
+        let wall = decoder.decode_by_id(100).expect("decode wall");
+        router
+            .process_element_with_submeshes(&wall, &mut decoder)
+            .expect("submesh path")
+            .sub_meshes
+            .len()
+    };
+    assert_eq!(with, 3, "router with a layer index must slice into one sub-mesh per layer");
+}
+
 fn three_layer_wall_with_opening_ifc() -> String {
     // Same three-layer wall as above but with one IfcOpeningElement
     // (1m × 0.5m × 1.5m window) cutting the full thickness via

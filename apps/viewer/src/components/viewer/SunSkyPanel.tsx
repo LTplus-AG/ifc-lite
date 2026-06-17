@@ -19,7 +19,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { Play, Pause, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Pause, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { cn } from '@/lib/utils';
@@ -96,22 +96,29 @@ export function SunSkyPanel() {
       style={drag.style}
       className="pointer-events-auto absolute top-32 right-4 z-10 w-60 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 text-xs"
     >
-      {/* Header — drag to move (issue #1107); click toggles collapse. */}
-      <div
-        role="button"
-        tabIndex={0}
-        onMouseDown={drag.onDragStart}
-        onClick={() => setCollapsed(!collapsed)}
-        aria-expanded={!collapsed}
-        title="Drag to move"
-        className="flex items-center justify-between gap-2 text-left cursor-move select-none"
-      >
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Sun &amp; Sky
+      {/* Header: the grip drags (issue #1107); the rest toggles collapse —
+          kept separate so the two affordances don't collide. */}
+      <div className="flex items-center gap-1.5">
+        <span
+          onMouseDown={drag.onDragStart}
+          title="Drag to move"
+          className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
         </span>
-        <span className="text-muted-foreground">
-          {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
-        </span>
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          className="flex-1 flex items-center justify-between gap-2 text-left"
+        >
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Sun &amp; Sky
+          </span>
+          <span className="text-muted-foreground">
+            {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+          </span>
+        </button>
       </div>
 
       {!collapsed && (

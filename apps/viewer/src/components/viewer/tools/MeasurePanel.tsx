@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useState, useEffect } from 'react';
-import { X, Trash2, Ruler, ChevronDown } from 'lucide-react';
+import { X, Trash2, Ruler, ChevronDown, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore, type Measurement } from '@/store';
 import { MeasurementOverlays } from './MeasurementVisuals';
@@ -96,19 +96,28 @@ export function MeasureOverlay() {
 
       {/* Compact Measure Tool Panel */}
       <div ref={panelRef} style={drag.style} className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg z-30">
-        {/* Header doubles as a drag handle (issue #1107). */}
-        <div onMouseDown={drag.onDragStart} title="Drag to move" className="flex items-center justify-between gap-2 p-2 cursor-move">
-          <button
-            onClick={togglePanel}
-            className="flex items-center gap-2 hover:bg-accent/50 rounded px-2 py-1 transition-colors"
-          >
-            <Ruler className="h-4 w-4 text-primary" />
-            <span className="font-medium text-sm">Measure</span>
-            {measurements.length > 0 && !isPanelCollapsed && (
-              <span className="text-xs text-muted-foreground">({measurements.length})</span>
-            )}
-            <ChevronDown className={`h-3 w-3 transition-transform ${isPanelCollapsed ? '-rotate-90' : ''}`} />
-          </button>
+        {/* Header: grip drags (issue #1107), title button collapses. */}
+        <div className="flex items-center justify-between gap-2 p-2">
+          <div className="flex items-center gap-1 min-w-0">
+            <span
+              onMouseDown={drag.onDragStart}
+              title="Drag to move"
+              className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </span>
+            <button
+              onClick={togglePanel}
+              className="flex items-center gap-2 hover:bg-accent/50 rounded px-2 py-1 transition-colors min-w-0"
+            >
+              <Ruler className="h-4 w-4 text-primary" />
+              <span className="font-medium text-sm">Measure</span>
+              {measurements.length > 0 && !isPanelCollapsed && (
+                <span className="text-xs text-muted-foreground">({measurements.length})</span>
+              )}
+              <ChevronDown className={`h-3 w-3 transition-transform ${isPanelCollapsed ? '-rotate-90' : ''}`} />
+            </button>
+          </div>
           <div className="flex items-center gap-1">
             {measurements.length > 0 && (
               <Button variant="ghost" size="icon-sm" onClick={handleClear} title="Clear all">

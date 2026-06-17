@@ -110,7 +110,18 @@ export function useDraggablePanel(
   const reset = useCallback(() => setPosition(null), []);
 
   const style: React.CSSProperties = position
-    ? { top: position.top, left: position.left, right: 'auto', bottom: 'auto', transform: 'none' }
+    ? {
+        top: position.top,
+        left: position.left,
+        right: 'auto',
+        bottom: 'auto',
+        // Clear any centering offset. Tailwind v4's `-translate-x-1/2` uses the
+        // CSS `translate` property (not `transform`), so we must zero `translate`
+        // too — otherwise the panel stays shifted half its width left of the
+        // cursor after a drag begins.
+        transform: 'none',
+        translate: 'none',
+      }
     : {};
 
   return { position, style, onDragStart, isDragging, reset };

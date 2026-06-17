@@ -77,6 +77,10 @@ export function SunSkyPanel() {
   const setSweepMode = useViewerStore((s) => s.setSolarSweepMode);
 
   const [collapsed, setCollapsed] = useState(false);
+  // Hooks must run unconditionally — keep these ABOVE the `!open` early return
+  // (a conditional hook is React error #310).
+  const panelRef = useRef<HTMLDivElement>(null);
+  const drag = useDraggablePanel(panelRef);
 
   if (!open) return null;
 
@@ -85,9 +89,6 @@ export function SunSkyPanel() {
   const tzLabel = useLocalTime
     ? `Site${sunInfo ? ` (UTC${offsetMin >= 0 ? '+' : '−'}${Math.abs(offsetMin / 60).toFixed(1)})` : ''}`
     : 'UTC';
-
-  const panelRef = useRef<HTMLDivElement>(null);
-  const drag = useDraggablePanel(panelRef);
 
   return (
     <div

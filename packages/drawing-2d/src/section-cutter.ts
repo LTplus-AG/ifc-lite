@@ -115,7 +115,7 @@ export class SectionCutter {
    */
   cutSingleMesh(mesh: MeshData): MeshCutResult {
     const segments: CutSegment[] = [];
-    const { positions, indices, expressId, ifcType, modelIndex, origin } = mesh;
+    const { positions, indices, expressId, ifcType, modelIndex, origin, color } = mesh;
 
     const triangleCount = indices.length / 3;
     let intersectedCount = 0;
@@ -168,6 +168,9 @@ export class SectionCutter {
           entityId: expressId,
           ifcType: ifcType || 'Unknown',
           modelIndex: modelIndex || 0,
+          // Per-sub-mesh colour so material-layer walls/slabs split per layer
+          // in the polygon builder. One MeshData == one layer == one colour.
+          color,
         });
       }
     }

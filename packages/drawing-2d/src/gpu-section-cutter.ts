@@ -396,7 +396,7 @@ export class GPUSectionCutter {
   private collectTriangles(meshes: MeshData[]): {
     buffer: Float32Array;
     count: number;
-    entityMap: Map<number, { entityId: number; ifcType: string; modelIndex: number }>;
+    entityMap: Map<number, { entityId: number; ifcType: string; modelIndex: number; color?: [number, number, number, number] }>;
   } {
     // Count total triangles
     let totalTriangles = 0;
@@ -408,7 +408,7 @@ export class GPUSectionCutter {
     // each vec3<f32> is 16-byte aligned, so v0=0..2, v1=4..6, v2=8..10, with
     // floats 3 and 7 as vec3 alignment padding and entityId (u32) in float 11.
     const buffer = new Float32Array(totalTriangles * 12);
-    const entityMap = new Map<number, { entityId: number; ifcType: string; modelIndex: number }>();
+    const entityMap = new Map<number, { entityId: number; ifcType: string; modelIndex: number; color?: [number, number, number, number] }>();
 
     let triIdx = 0;
     let entityCounter = 0;
@@ -424,11 +424,14 @@ export class GPUSectionCutter {
       const oy = origin ? origin[1] : 0;
       const oz = origin ? origin[2] : 0;
 
-      // Map entity counter to mesh info
+      // Map entity counter to mesh info. `color` is per sub-mesh, so material-
+      // layer walls/slabs (one MeshData per layer) carry each layer's colour
+      // through to the polygon builder for per-layer section fills.
       entityMap.set(entityCounter, {
         entityId: expressId,
         ifcType: ifcType || 'Unknown',
         modelIndex: modelIndex || 0,
+        color: mesh.color,
       });
 
       for (let t = 0; t < triangleCount; t++) {
@@ -502,7 +505,7 @@ export class GPUSectionCutter {
   private parseSegments(
     data: Float32Array,
     count: number,
-    entityMap: Map<number, { entityId: number; ifcType: string; modelIndex: number }>
+    entityMap: Map<number, { entityId: number; ifcType: string; modelIndex: number; color?: [number, number, number, number] }>
   ): CutSegment[] {
     const segments: CutSegment[] = [];
 
@@ -527,6 +530,7 @@ export class GPUSectionCutter {
         entityId: entityInfo.entityId,
         ifcType: entityInfo.ifcType,
         modelIndex: entityInfo.modelIndex,
+        color: entityInfo.color,
       });
     }
 

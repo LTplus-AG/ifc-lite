@@ -636,7 +636,11 @@ export function Drawing2DCanvas({
           let opacity = 1;
 
           if (useIfcMaterials) {
-            const materialColor = entityColorMap.get(polygon.entityId);
+            // Per-layer fill (material-layer wall/slab) wins over the per-entity
+          // colour, so each sliced layer paints with its own IfcMaterial colour
+          // instead of one colour for the whole element. Falls back to the
+          // per-entity map for ordinary single-material elements.
+          const materialColor = polygon.color ?? entityColorMap.get(polygon.entityId);
             if (materialColor) {
               const r = Math.round(materialColor[0] * 255);
               const g = Math.round(materialColor[1] * 255);
@@ -934,7 +938,11 @@ export function Drawing2DCanvas({
 
         // Use actual IFC material colors from the mesh data
         if (useIfcMaterials) {
-          const materialColor = entityColorMap.get(polygon.entityId);
+          // Per-layer fill (material-layer wall/slab) wins over the per-entity
+          // colour, so each sliced layer paints with its own IfcMaterial colour
+          // instead of one colour for the whole element. Falls back to the
+          // per-entity map for ordinary single-material elements.
+          const materialColor = polygon.color ?? entityColorMap.get(polygon.entityId);
           if (materialColor) {
             // Convert RGBA [0-1] to hex color
             const r = Math.round(materialColor[0] * 255);

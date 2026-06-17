@@ -13,7 +13,7 @@
  */
 
 import type { Point2D, Polygon2D, CutSegment, DrawingPolygon, EntityKey } from './types.js';
-import { makeEntityKey } from './types.js';
+import { makeEntityKey, colorKey } from './types.js';
 import {
   EPSILON,
   point2DDistance,
@@ -78,11 +78,49 @@ export class PolygonBuilder {
   }
 
   /**
-   * Build polygons for a single entity
+   * Build polygons for a single entity.
+   *
+   * Sub-groups the entity's segments by material colour so an
+   * `IfcMaterialLayerSet` wall/slab — sliced into one sub-mesh (hence one
+   * colour) per layer — reconstructs as one polygon set per layer, each
+   * carrying that layer's colour. A single-material entity yields exactly one
+   * colour group and is built identically to before, with no colour stamped
+   * (so renderers keep their per-`ifcType` / per-entity fill for it).
    */
   private buildEntityPolygons(segments: CutSegment[]): DrawingPolygon[] {
     if (segments.length === 0) return [];
 
+    const byColor = new Map<string, CutSegment[]>();
+    for (const seg of segments) {
+      const key = colorKey(seg.color);
+      let bucket = byColor.get(key);
+      if (!bucket) {
+        bucket = [];
+        byColor.set(key, bucket);
+      }
+      bucket.push(seg);
+    }
+
+    // Only a genuinely multi-material cut (≥2 colours) gets per-layer fills;
+    // ordinary elements stay colourless so existing fill rules apply.
+    const multiMaterial = byColor.size > 1;
+
+    const out: DrawingPolygon[] = [];
+    for (const groupSegments of byColor.values()) {
+      const groupColor = multiMaterial ? groupSegments[0].color : undefined;
+      out.push(...this.buildColorGroupPolygons(groupSegments, groupColor));
+    }
+    return out;
+  }
+
+  /**
+   * Reconstruct closed polygons from one colour group's segments, stamping the
+   * given fill colour (when present) on each result.
+   */
+  private buildColorGroupPolygons(
+    segments: CutSegment[],
+    color: [number, number, number, number] | undefined,
+  ): DrawingPolygon[] {
     const first = segments[0];
     const { entityId, ifcType, modelIndex } = first;
 
@@ -111,6 +149,7 @@ export class PolygonBuilder {
       ifcType,
       modelIndex,
       isCut: true,
+      ...(color ? { color } : {}),
     }));
   }
 

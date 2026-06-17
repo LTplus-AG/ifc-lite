@@ -60,6 +60,7 @@ export function HierarchyPanel() {
   const addFilterRule = useViewerStore((s) => s.addFilterRule);
   const updateFilterRule = useViewerStore((s) => s.updateFilterRule);
   const removeFilterRule = useViewerStore((s) => s.removeFilterRule);
+  const setSearchFilterAutoRunPending = useViewerStore((s) => s.setSearchFilterAutoRunPending);
   const clearClassFilter = useViewerStore((s) => s.clearClassFilter);
   const clearAllFilters = useViewerStore((s) => s.clearAllFilters);
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
@@ -250,14 +251,19 @@ export function HierarchyPanel() {
       const rules = useViewerStore.getState().searchFilter.rules;
       const idx = rules.findIndex(matches);
       if (rule === null) {
-        if (idx >= 0) removeFilterRule(idx);
+        if (idx < 0) return; // nothing to clear — don't arm an empty run
+        removeFilterRule(idx);
       } else if (idx >= 0) {
         updateFilterRule(idx, rule);
       } else {
         addFilterRule(rule);
       }
+      // Arm the Filter to run itself: a hierarchy click shouldn't make the
+      // user open the modal and press Run to see what it matched. The Filter
+      // panel only mounts when the modal is open, so the flag waits there.
+      setSearchFilterAutoRunPending(true);
     },
-    [addFilterRule, updateFilterRule, removeFilterRule],
+    [addFilterRule, updateFilterRule, removeFilterRule, setSearchFilterAutoRunPending],
   );
 
   // Handle node click - for selection/isolation or expand/collapse

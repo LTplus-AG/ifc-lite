@@ -131,6 +131,13 @@ export interface SearchSlice {
   searchFilterError: string | null;
   /** Filter rule state — chip rules, combinator, limit. */
   searchFilter: SearchFilterStateValue;
+  /**
+   * Set when a rule is pushed into the Filter from outside the modal
+   * (e.g. clicking a Hierarchy node). The Filter panel watches this and
+   * runs automatically on its next mount/render so the user sees results
+   * without pressing Run. Cleared by the panel once it kicks off a run.
+   */
+  searchFilterAutoRunPending: boolean;
   /** Per-model filter-schema cache (lazy). */
   searchFilterSchema: Map<string, FilterSchemaCacheEntry>;
 
@@ -176,6 +183,8 @@ export interface SearchSlice {
   // ── Filter-rule actions ───────────────────────────────────────────
   /** Replace the whole filter state — used by Reset and preset loading. */
   setSearchFilter: (state: SearchFilterStateValue) => void;
+  /** Arm/disarm the "auto-run on next Filter render" flag. */
+  setSearchFilterAutoRunPending: (pending: boolean) => void;
   setFilterCombinator: (combinator: Combinator) => void;
   setFilterLimit: (limit: number) => void;
   addFilterRule: (rule: FilterRule) => void;
@@ -205,6 +214,7 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   searchFilterRunning: false,
   searchFilterError: null,
   searchFilter: emptyFilterState(),
+  searchFilterAutoRunPending: false,
   searchFilterSchema: new Map(),
 
   // Typing or programmatically changing the query breaks out of vim cycle —
@@ -289,6 +299,9 @@ export const createSearchSlice: StateCreator<SearchSlice, [], [], SearchSlice> =
   setSearchFilterError: (searchFilterError) => set({ searchFilterError }),
 
   setSearchFilter: (searchFilter) => set({ searchFilter }),
+
+  setSearchFilterAutoRunPending: (searchFilterAutoRunPending) =>
+    set({ searchFilterAutoRunPending }),
 
   setFilterCombinator: (combinator) =>
     set((state) => ({ searchFilter: { ...state.searchFilter, combinator } })),

@@ -69,6 +69,8 @@ export function SearchModalFilter() {
     setPendingListDraft,
     setListPanelVisible,
     setSearchModalOpen,
+    autoRunPending,
+    setAutoRunPending,
   } = useViewerStore(
     useShallow((s) => ({
       searchFilter: s.searchFilter,
@@ -88,6 +90,8 @@ export function SearchModalFilter() {
       setPendingListDraft: s.setPendingListDraft,
       setListPanelVisible: s.setListPanelVisible,
       setSearchModalOpen: s.setSearchModalOpen,
+      autoRunPending: s.searchFilterAutoRunPending,
+      setAutoRunPending: s.setSearchFilterAutoRunPending,
     })),
   );
 
@@ -213,6 +217,30 @@ export function SearchModalFilter() {
   const cancelFilter = useCallback(() => {
     runController.current?.abort();
   }, []);
+
+  // Auto-run when the Filter was populated from outside the modal (a
+  // Hierarchy node click arms `searchFilterAutoRunPending`). Because the
+  // panel only mounts when the modal is open, the flag survives a closed
+  // modal and fires on the next open — so the user sees results without
+  // pressing Run. Clear the flag first so a slow run can't re-trigger.
+  useEffect(() => {
+    if (!autoRunPending) return;
+    setAutoRunPending(false);
+    if (searchFilter.rules.length === 0) {
+      // Hierarchy cleared the last rule — drop the stale table rather than
+      // run an empty filter (which the runner rejects anyway).
+      setSearchFilterResult(null);
+    } else if (!searchFilterRunning) {
+      void runFilter();
+    }
+  }, [
+    autoRunPending,
+    searchFilter.rules.length,
+    searchFilterRunning,
+    setAutoRunPending,
+    setSearchFilterResult,
+    runFilter,
+  ]);
 
   // Cancel any in-flight run when the modal unmounts so background
   // chunked work doesn't keep ticking after close.

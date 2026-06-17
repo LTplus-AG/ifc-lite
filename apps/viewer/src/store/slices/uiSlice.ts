@@ -64,6 +64,9 @@ export interface UISlice {
    * rather than per-panel toggles.
    */
   editEnabled: boolean;
+  /** Active tab in the Properties panel. Controlled so in-app flows (e.g.
+   *  adding a bSDD property) can jump back to "properties" — issue #1107. */
+  propertiesActiveTab: 'properties' | 'quantities' | 'bsdd' | 'raw-step';
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
@@ -93,6 +96,7 @@ export interface UISlice {
   setActiveTool: (tool: string) => void;
   setEditEnabled: (enabled: boolean) => void;
   toggleEditEnabled: () => void;
+  setPropertiesActiveTab: (tab: 'properties' | 'quantities' | 'bsdd' | 'raw-step') => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
@@ -139,6 +143,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   rightPanelCollapsed: false,
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
   editEnabled: false,
+  propertiesActiveTab: 'properties',
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
@@ -199,6 +204,8 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   toggleEditEnabled: () => {
     get().setEditEnabled(!get().editEnabled);
   },
+
+  setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),
 
   setTheme: (theme) => {
     applyThemeClasses(theme);

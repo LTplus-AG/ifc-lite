@@ -214,6 +214,8 @@ export function PropertiesPanel() {
   // geometry manipulators, georeference placement, add-element draw
   // tools — behind a single switch.
   const editMode = useViewerStore((s) => s.editEnabled);
+  const propertiesActiveTab = useViewerStore((s) => s.propertiesActiveTab);
+  const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
@@ -1403,7 +1405,11 @@ export function PropertiesPanel() {
       )}
 
       {/* Tabs */}
-      <Tabs defaultValue="properties" className="flex-1 flex flex-col overflow-hidden">
+      <Tabs
+        value={propertiesActiveTab}
+        onValueChange={(v) => setPropertiesActiveTab(v as 'properties' | 'quantities' | 'bsdd' | 'raw-step')}
+        className="flex-1 flex flex-col overflow-hidden"
+      >
         <TabsList className="properties-tabs-list w-full shrink-0">
           <TabsTrigger
             value="properties"

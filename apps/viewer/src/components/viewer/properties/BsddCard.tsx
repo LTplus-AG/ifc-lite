@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
+import { toast } from '@/components/ui/toast';
 import { QuantityType } from '@ifc-lite/data';
 import {
   fetchClassInfo,
@@ -101,6 +102,8 @@ export function BsddCard({
   const createQuantitySet = useViewerStore((s) => s.createQuantitySet);
   const storeSetAttribute = useViewerStore((s) => s.setAttribute);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
+  const setEditEnabled = useViewerStore((s) => s.setEditEnabled);
+  const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
 
   // Fetch class info from bSDD when entity type changes
   useEffect(() => {
@@ -215,8 +218,15 @@ export function BsddCard({
 
       bumpMutationVersion();
       setAddedKeys((prev) => new Set(prev).add(`${psetName}:${prop.name}`));
+
+      // Take the user to the added property and make it immediately editable:
+      // switch to the Properties tab and turn on edit mode so the value can be
+      // set without first hunting for the toolbar edit button (issue #1107).
+      setPropertiesActiveTab('properties');
+      setEditEnabled(true);
+      toast.success(`Added "${prop.name}" — set its value in Properties`);
     },
-    [modelId, entityId, existingPsets, existingQsets, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion],
+    [modelId, entityId, existingPsets, existingQsets, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPropertiesActiveTab, setEditEnabled],
   );
 
   const handleAddAllInPset = useCallback(
@@ -311,8 +321,15 @@ export function BsddCard({
         for (const p of toAdd) next.add(`${psetName}:${p.name}`);
         return next;
       });
+
+      // Same as single-add: surface the new properties and make them editable.
+      setPropertiesActiveTab('properties');
+      setEditEnabled(true);
+      if (toAdd.length > 0) {
+        toast.success(`Added ${toAdd.length} ${psetName} ${toAdd.length === 1 ? 'property' : 'properties'} — set values in Properties`);
+      }
     },
-    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion],
+    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPropertiesActiveTab, setEditEnabled],
   );
 
   // Loading state

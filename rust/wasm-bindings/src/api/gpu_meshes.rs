@@ -821,7 +821,16 @@ impl IfcAPI {
         // batches; #874 dropped this wiring, silently disabling layered-wall
         // rendering for the entire browser stream. Cheap on files with no layer
         // set (substring bail-out inside the index builder).
-        router.set_material_layer_index(self.get_or_build_material_layer_index(content, &mut decoder));
+        //
+        // "Merge Multilayer Walls" (the merge_layers toggle, #540) means exactly
+        // "render walls as ONE solid": NOT attaching the index leaves each wall as
+        // its single swept solid (no per-layer slice). So gate the index on the
+        // flag — off (default) ⇒ slice into layers; on ⇒ one solid. The separate
+        // part-skip path below keeps its own index, so IfcBuildingElementPart
+        // merging is unaffected.
+        if !self.merge_layers() {
+            router.set_material_layer_index(self.get_or_build_material_layer_index(content, &mut decoder));
+        }
 
         // Set RTC offset if needed
         if needs_shift {

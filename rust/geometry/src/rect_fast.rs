@@ -52,6 +52,47 @@ pub struct RectFastStats {
     pub defer_no_openings: u64,
 }
 
+/// Escape hatch: `IFC_LITE_RECT_FAST=0` forces every opening back through the
+/// exact kernel (parity debugging / bisection). Default ON — the path is a pure
+/// optimization that defers on any precondition miss.
+pub fn enabled() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var("IFC_LITE_RECT_FAST").as_deref() != Ok("0"))
+}
+
+mod telemetry {
+    use super::RectFastStats;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static C: [AtomicU64; 7] = [const { AtomicU64::new(0) }; 7];
+    pub fn record(s: &RectFastStats) {
+        for (a, v) in C.iter().zip([
+            s.fired, s.openings_cut, s.defer_host_not_box, s.defer_not_through,
+            s.defer_off_face, s.defer_near_edge, s.defer_no_openings,
+        ]) {
+            a.fetch_add(v, Ordering::Relaxed);
+        }
+    }
+    pub fn take() -> RectFastStats {
+        let g = |i: usize| C[i].swap(0, Ordering::Relaxed);
+        RectFastStats {
+            fired: g(0), openings_cut: g(1), defer_host_not_box: g(2),
+            defer_not_through: g(3), defer_off_face: g(4), defer_near_edge: g(5),
+            defer_no_openings: g(6),
+        }
+    }
+}
+
+/// Accumulate per-cut stats into the process-global counters (for fire-rate
+/// measurement); `take_global_stats` drains them.
+pub fn record_global(stats: &RectFastStats) {
+    telemetry::record(stats);
+}
+/// Read + reset the global fire/defer counters.
+pub fn take_global_stats() -> RectFastStats {
+    telemetry::take()
+}
+
 /// An axis-aligned box AABB extracted from a host mesh, plus a check that every
 /// face is axis-aligned (the precondition for the world-coord cut).
 struct AlignedBox {

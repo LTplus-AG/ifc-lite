@@ -9,8 +9,8 @@
 //! - `ifc_lite_parse_ex`: parse with configurable opening filter
 //! - `ifc_lite_free`: free a buffer previously returned by parse functions
 //!
-//! Build: `cargo build --release -p ifc-lite-ffi`
-//! Output: `target/release/ifc_lite_ffi.dll`
+//! Build: `cargo build --profile server-release -p ifc-lite-ffi`
+//! Output: `target/server-release/ifc_lite_ffi.dll`
 
 use ifc_lite_processing::{
     process_geometry, process_geometry_filtered, OpeningFilterMode, ParseResponse, ProcessingResult,

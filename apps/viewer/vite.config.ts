@@ -1,8 +1,7 @@
-import { defineConfig, normalizePath } from 'vite';
+import { defineConfig, type PluginOption } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -212,30 +211,89 @@ const rootPkg = JSON.parse(
 );
 const appVersion = viewerPkg.version || rootPkg.version;
 
+// CesiumJS loads its prebuilt Workers / Assets / Widgets / ThirdParty at
+// runtime from CESIUM_BASE_URL (= '/cesium', set in `define` below), so they
+// must sit at  dist/cesium/<Subdir>/…  and be served at  /cesium/<Subdir>/…
+// in dev.
+//
+// We copy them ourselves rather than via vite-plugin-static-copy: in its v4
+// line the plugin rebuilds each destination from the file's path *relative to
+// the Vite root*, so an absolute node_modules source lands every file under
+//   dist/cesium/node_modules/.pnpm/cesium@<v>/node_modules/cesium/Build/Cesium/…
+// instead of dist/cesium/…  → every /cesium/Assets|Workers/… request 404'd in
+// production and the Cesium globe never rendered (#1139). Its stripBase escape
+// hatch is static and would flatten Cesium's nested Assets/Textures tree. A
+// plain recursive copy is deterministic and package-manager-agnostic.
+const CESIUM_SUBDIRS = ['Workers', 'ThirdParty', 'Assets', 'Widgets'] as const;
+const CESIUM_DEV_MIME: Record<string, string> = {
+  '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
+  '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.svg': 'image/svg+xml', '.xml': 'application/xml',
+};
+
+function cesiumStaticAssets(): PluginOption {
+  const cesiumBuild = path.join(
+    path.dirname(require.resolve('cesium/package.json')),
+    'Build',
+    'Cesium',
+  );
+  // Fail loud at config time if the prebuilt assets aren't where we expect —
+  // a silent miss here is exactly how #1139 shipped a broken map.
+  for (const sub of CESIUM_SUBDIRS) {
+    if (!fs.existsSync(path.join(cesiumBuild, sub))) {
+      throw new Error(`[cesium-assets] missing ${sub} under ${cesiumBuild}`);
+    }
+  }
+  let outDir = 'dist';
+  return {
+    name: 'ifc-lite:cesium-static-assets',
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    // Build: recursive-copy the subdirs flat under <outDir>/cesium.
+    async closeBundle() {
+      const dest = path.resolve(__dirname, outDir, 'cesium');
+      await Promise.all(
+        CESIUM_SUBDIRS.map((sub) =>
+          fs.promises.cp(path.join(cesiumBuild, sub), path.join(dest, sub), {
+            recursive: true,
+          }),
+        ),
+      );
+    },
+    // Dev: serve /cesium/* straight from the Cesium package (connect strips the
+    // '/cesium' mount prefix, so req.url is already the in-package path).
+    configureServer(server) {
+      server.middlewares.use('/cesium', (req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+        const rel = decodeURIComponent((req.url ?? '/').split('?')[0]);
+        const filePath = path.normalize(path.join(cesiumBuild, rel));
+        if (
+          !filePath.startsWith(cesiumBuild) || // contain to the build dir
+          !fs.existsSync(filePath) ||
+          !fs.statSync(filePath).isFile()
+        ) {
+          return next();
+        }
+        res.setHeader(
+          'Content-Type',
+          CESIUM_DEV_MIME[path.extname(filePath).toLowerCase()] ??
+            'application/octet-stream',
+        );
+        if (req.method === 'HEAD') return res.end();
+        fs.createReadStream(filePath).pipe(res);
+      });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
     wasm(),
     topLevelAwait(),
-    // Copy Cesium static assets (Workers, ThirdParty, Assets) to public path
-    // so CesiumJS can load them at runtime via CESIUM_BASE_URL.
-    // Use require.resolve to handle pnpm's .pnpm store structure.
-    (() => {
-      const cesiumPkg = path.dirname(require.resolve('cesium/package.json'));
-      const cesiumBuild = path.join(cesiumPkg, 'Build', 'Cesium');
-      // vite-plugin-static-copy globs `src` with tinyglobby, which treats `\` as
-      // an escape char — so the raw Windows paths from path.join match nothing
-      // ("No file was found to copy"). normalizePath -> forward slashes fixes it
-      // cross-platform (no-op on POSIX).
-      return viteStaticCopy({
-        targets: [
-          { src: normalizePath(path.join(cesiumBuild, 'Workers')), dest: 'cesium' },
-          { src: normalizePath(path.join(cesiumBuild, 'ThirdParty')), dest: 'cesium' },
-          { src: normalizePath(path.join(cesiumBuild, 'Assets')), dest: 'cesium' },
-          { src: normalizePath(path.join(cesiumBuild, 'Widgets')), dest: 'cesium' },
-        ],
-      });
-    })(),
+    cesiumStaticAssets(),
   ],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),

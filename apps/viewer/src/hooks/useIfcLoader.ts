@@ -492,7 +492,7 @@ export function useIfcLoader() {
           pointCloudHandleId: ingest.rendererHandle.id,
         });
         setProgress({ phase: 'Complete', percent: 100 });
-        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud' });
+        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
         setLoading(false);
         return;
       }
@@ -511,7 +511,7 @@ export function useIfcLoader() {
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm' });
+          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -553,7 +553,7 @@ export function useIfcLoader() {
           );
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm' });
+          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -598,7 +598,7 @@ export function useIfcLoader() {
               cacheState: 'hit',
             });
             console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-            posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache' });
+            posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
             setLoading(false);
             return;
           }
@@ -621,7 +621,7 @@ export function useIfcLoader() {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-          posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server' });
+          posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
           setLoading(false);
           return;
         }
@@ -1209,6 +1209,17 @@ export function useIfcLoader() {
         load_path: 'wasm',
         mesh_count: allMeshes.length,
         total_elapsed_ms: Math.round(totalElapsedMs),
+        // Field perf telemetry: vertices/triangles size the model, and the
+        // milestones (read → metadata → first batch → first paint → stream
+        // done) let us spot where real-world loads regress. CSG itself runs
+        // in the geometry workers, so the stream window is its best proxy.
+        total_vertices: totalVertices,
+        total_triangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
+        file_read_ms: Math.round(fileReadMs),
+        metadata_complete_ms: metadataCompleteMs != null ? Math.round(metadataCompleteMs) : undefined,
+        first_geometry_batch_ms: firstAppendGeometryBatchMs != null ? Math.round(firstAppendGeometryBatchMs) : undefined,
+        first_visible_geometry_ms: firstVisibleGeometryMs != null ? Math.round(firstVisibleGeometryMs) : undefined,
+        stream_complete_ms: streamCompleteMs != null ? Math.round(streamCompleteMs) : undefined,
       });
       setLoading(false);
       setGeometryStreamingActive(false);

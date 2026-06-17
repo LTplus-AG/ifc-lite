@@ -22,6 +22,60 @@ const enabled = Boolean(key && host) && typeof posthogClient?.init === 'function
 // narrow type is what keeps keyless/Node environments crash-free.
 type AnalyticsClient = Pick<typeof posthogClient, 'capture' | 'captureException'>;
 
+// ── Privacy guard ──────────────────────────────────────────────────────────
+// ifc-lite opens confidential client building models, so the rule that keeps
+// file / pset / property names out of git applies to analytics too: NO event
+// may carry a file name, model name, BCF title, free text, or a filesystem
+// path — even accidentally from a future call site. `scrubEvent` runs on every
+// captured event (including PostHog's own $pageleave / $exception) as a safety
+// net on top of the deliberately lean explicit properties.
+
+// Keys whose values tend to be PII / free text / confidential identifiers.
+// Matches whole `_`-delimited words, so analytics keys like `data_source`,
+// `auto_color_source`, `template_id` or `field` are deliberately left intact.
+const SENSITIVE_KEY =
+  /(?:^|_)(?:name|filename|model|title|label|path|url|uri|href|email|author|comment|description|message|content|query|sql|expression|psetname|propertyname)(?:$|_)/i;
+
+// PostHog auto-properties that are URLs — keep the route, drop query + hash
+// (a share link can encode a model id or token).
+const URL_KEYS = new Set<string>([
+  '$current_url', '$referrer', '$referring_domain', '$pathname',
+  '$initial_current_url', '$initial_referrer', '$initial_referring_domain',
+  '$prev_pageview_pathname',
+]);
+
+// String values that look like a filesystem path or a building-model file name.
+const PATHISH =
+  /[\\/][^\\/]*\.(?:ifc|ifcx|ifczip|bcf|bcfzip|glb|gltf|obj|csv|xlsx|pdf|json|step|stp|las|laz)\b|^(?:file|blob):|^[A-Za-z]:\\|\/Users\/|\/home\//i;
+
+const stripQueryAndHash = (value: string): string => {
+  const cut = value.search(/[?#]/);
+  return cut === -1 ? value : value.slice(0, cut);
+};
+
+const scrubProperties = (props: Record<string, unknown> | undefined): void => {
+  if (!props) return;
+  for (const k of Object.keys(props)) {
+    if (SENSITIVE_KEY.test(k)) {
+      delete props[k];
+      continue;
+    }
+    const v = props[k];
+    if (typeof v === 'string') {
+      if (URL_KEYS.has(k)) props[k] = stripQueryAndHash(v);
+      else if (PATHISH.test(v)) props[k] = '[redacted]';
+    }
+  }
+};
+
+// `before_send` shape: (event | null) => (event | null). Mutating properties in
+// place keeps PostHog's event intact; returning null would drop it entirely.
+// Generic so it satisfies posthog-js's BeforeSendFn (CaptureResult) signature.
+const scrubEvent = <T extends { properties?: Record<string, unknown> } | null>(event: T): T => {
+  if (event) scrubProperties(event.properties);
+  return event;
+};
+
 let client: AnalyticsClient | null = null;
 if (enabled) {
   try {
@@ -34,6 +88,9 @@ if (enabled) {
       capture_pageview: false,
       capture_pageleave: true,
       autocapture: false,
+      // Strip any file name / model name / path / free text from every event
+      // (current + future) before it leaves the browser. See scrubEvent above.
+      before_send: scrubEvent,
     });
     client = posthogClient;
   } catch (err) {

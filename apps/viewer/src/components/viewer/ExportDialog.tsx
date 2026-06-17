@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { toast } from '@/components/ui/toast';
@@ -327,6 +328,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     setExportResult(null);
     setExportProgress(null);
 
+    // Set per success branch; captured once in `finally` so a thrown export
+    // never counts. Format reflects what was actually written (the IFC5 vs
+    // STEP vs changes-JSON branch), not just the schema-derived extension.
+    let exportedFormat: string | null = null;
     try {
       // Handle merged export of all models (STEP only, not IFC5)
       if (!isIfc5 && exportScope === 'merged' && !changesOnly) {
@@ -392,6 +397,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`;
         setExportResult({ success: true, message: msg });
         toast.success(msg);
+        exportedFormat = 'ifc';
         return;
       }
 
@@ -465,6 +471,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         const ifcxMsg = `Exported IFCX: ${result.stats.nodeCount} nodes, ${result.stats.meshCount} meshes, ${result.stats.propertyCount} properties`;
         setExportResult({ success: true, message: ifcxMsg });
         toast.success(ifcxMsg);
+        exportedFormat = 'ifcx';
 
       // ── Changes only (pre-IFC5) → JSON ───────────────────────────────
       } else if (changesOnly) {
@@ -490,6 +497,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         const jsonMsg = `Exported ${mutations.length} changes as JSON`;
         setExportResult({ success: true, message: jsonMsg });
         toast.success(jsonMsg);
+        exportedFormat = 'json';
 
       // ── Pre-IFC5 full export → STEP ──────────────────────────────────
       } else {
@@ -555,6 +563,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
         setExportResult({ success: true, message: stepMsg });
         toast.success(stepMsg);
+        exportedFormat = 'ifc';
       }
     } catch (error) {
       console.error('Export failed:', error);
@@ -563,6 +572,15 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
       toast.error(errMsg);
     } finally {
       setIsExporting(false);
+      if (exportedFormat) {
+        posthog.capture('export_completed', {
+          format: exportedFormat,
+          scope: exportScope,
+          changes_only: changesOnly,
+          visible_only: visibleOnly,
+          include_geometry: includeGeometry,
+        });
+      }
     }
   }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo]);
 

@@ -11,9 +11,15 @@
 //!
 //! Build: `cargo build --profile server-release -p ifc-lite-ffi`
 //! Output: `target/server-release/ifc_lite_ffi.dll`
+//!
+//! The `server-release` profile is mandatory, not a convenience: the workspace
+//! default `release` profile sets `panic = 'abort'`, which turns the
+//! `catch_unwind` guards below into no-ops. Built that way, a parser panic
+//! aborts the entire host CAD process instead of returning error code `3`.
+//! `server-release` inherits `release` but restores `panic = "unwind"`.
 
 use ifc_lite_processing::{
-    process_geometry, process_geometry_filtered, OpeningFilterMode, ParseResponse, ProcessingResult,
+    process_geometry_filtered, OpeningFilterMode, ParseResponse, ProcessingResult,
 };
 use std::backtrace::Backtrace;
 use std::cell::RefCell;
@@ -86,36 +92,46 @@ fn ensure_panic_logging() {
     });
 }
 
-/// Threshold in meters. If a mesh's first vertex exceeds this magnitude,
-/// the mesh is still in world-space and needs the site translation subtracted.
-/// Meshes already in site-local space will have coordinates well below this.
+/// Threshold in meters below which a site translation is treated as identity
+/// (origin-anchored) and there is nothing to subtract.
 const LARGE_COORD_THRESHOLD: f64 = 1000.0;
 
-/// Post-process meshes to ensure all positions are in uniform site-local coordinates.
-///
-/// With the site-translation-as-RTC approach, most meshes are already site-local
-/// after `transform_mesh`. This catches any stragglers whose placement/vertices
-/// didn't trigger the RTC path (e.g. meshes with small local coords and identity
-/// placement that were already site-local in the IFC file).
-fn normalize_to_site_local(result: &mut ProcessingResult) {
-    let site_tx: f64;
-    let site_ty: f64;
-    let site_tz: f64;
+/// Coordinate-space tags emitted by the processing pipeline in
+/// `ProcessingResult::mesh_coordinate_space` (see `ParseResponse` docs). The
+/// pipeline keeps these private, so the FFI layer mirrors the serialized
+/// string contract here.
+const SITE_LOCAL_MESH_COORDINATE_SPACE: &str = "site_local";
+const RAW_IFC_MESH_COORDINATE_SPACE: &str = "raw_ifc";
 
-    if let Some(ref st) = result.site_transform {
-        if st.len() >= 16 {
-            // Column-major 4x4: translation at indices 12, 13, 14
-            site_tx = st[12];
-            site_ty = st[13];
-            site_tz = st[14];
-        } else {
-            return;
-        }
-    } else {
+/// Post-process meshes so all positions end up in uniform site-local coordinates.
+///
+/// The decision is driven by the coordinate-space tier the pipeline already
+/// computed (`result.mesh_coordinate_space`), not by sniffing vertex magnitudes:
+/// - `raw_ifc`: no RTC anchor was applied, so vertices are still in world space.
+///   Subtract the `IfcSite` translation from *every* mesh and relabel the result
+///   as `site_local`.
+/// - `site_local` / `model_rtc`: already anchored upstream — leave untouched.
+///   (`model_rtc`'s anchor is not the site translation, so subtracting it here
+///   would double-offset the geometry.)
+/// - unknown / absent: do nothing (conservative).
+///
+/// Keying off the tier instead of a per-mesh `first vertex > 1 km` heuristic
+/// fixes two failure modes: large/campus sites whose site-local meshes legitimately
+/// start far from the local origin (no longer wrongly shifted), and world-space
+/// meshes that happen to start near the origin (no longer wrongly skipped).
+fn normalize_to_site_local(result: &mut ProcessingResult) {
+    // Only `raw_ifc` meshes are still in world space and need shifting.
+    if result.mesh_coordinate_space.as_deref() != Some(RAW_IFC_MESH_COORDINATE_SPACE) {
         return;
     }
 
-    // If site translation is near zero, nothing to normalize
+    let (site_tx, site_ty, site_tz) = match result.site_transform {
+        // Column-major 4x4: translation at indices 12, 13, 14.
+        Some(ref st) if st.len() >= 16 => (st[12], st[13], st[14]),
+        _ => return,
+    };
+
+    // If the site sits at (near) the origin there is nothing to subtract.
     if site_tx.abs() < LARGE_COORD_THRESHOLD
         && site_ty.abs() < LARGE_COORD_THRESHOLD
         && site_tz.abs() < LARGE_COORD_THRESHOLD
@@ -124,80 +140,42 @@ fn normalize_to_site_local(result: &mut ProcessingResult) {
     }
 
     for mesh in &mut result.meshes {
-        if mesh.positions.len() < 3 {
-            continue;
-        }
-
-        // Check first vertex to detect coordinate space
-        let vx = mesh.positions[0].abs() as f64;
-        let vy = mesh.positions[1].abs() as f64;
-        let vz = mesh.positions[2].abs() as f64;
-        let mag = vx.max(vy).max(vz);
-
-        if mag <= LARGE_COORD_THRESHOLD {
-            // Already in site-local space (RTC was applied by upstream pipeline)
-            continue;
-        }
-
-        // Still in world-space — subtract site translation with f64 precision
+        // Subtract the site translation with f64 precision, then store as f32.
         for chunk in mesh.positions.chunks_exact_mut(3) {
             chunk[0] = (chunk[0] as f64 - site_tx) as f32;
             chunk[1] = (chunk[1] as f64 - site_ty) as f32;
             chunk[2] = (chunk[2] as f64 - site_tz) as f32;
         }
     }
+
+    // The meshes are now anchored to the site; advertise that to the caller so
+    // it isn't told `raw_ifc` for data we just relocated.
+    result.mesh_coordinate_space = Some(SITE_LOCAL_MESH_COORDINATE_SPACE.to_string());
 }
 
-/// Parse an IFC file and return JSON bytes.
+/// Shared body of both parse entry points: read the file, run geometry
+/// processing inside the large-stack pool under `catch_unwind`, normalize mesh
+/// coordinates, and serialize the response to JSON bytes.
 ///
-/// # Arguments
-/// - `path_ptr` / `path_len`: UTF-8 encoded file path
-/// - `out_ptr`: receives pointer to allocated JSON bytes
-/// - `out_len`: receives length of allocated JSON bytes
-///
-/// # Returns
-/// - `0` on success
-/// - `1` if the path is invalid UTF-8
-/// - `2` if the file cannot be read
-/// - `3` if geometry processing fails
-/// - `4` if JSON serialization fails
-///
-/// # Safety
-/// Caller must free the returned buffer with `ifc_lite_free`.
-#[no_mangle]
-pub unsafe extern "C" fn ifc_lite_parse(
-    path_ptr: *const u8,
-    path_len: usize,
-    out_ptr: *mut *mut u8,
-    out_len: *mut usize,
-) -> i32 {
-    ensure_panic_logging();
-
-    let path_bytes = slice::from_raw_parts(path_ptr, path_len);
-    let path_str = match std::str::from_utf8(path_bytes) {
-        Ok(s) => s,
-        Err(_) => return 1,
-    };
-
-    let content = match std::fs::read_to_string(path_str) {
-        Ok(c) => c,
-        Err(_) => return 2,
-    };
+/// Returns the JSON buffer on success, or one of the FFI error codes on failure
+/// (`2` read, `3` processing panic, `4` serialization) — `0`/`1` are decided by
+/// the wrappers, which own pointer validation.
+fn parse_impl(path_str: &str, mode: OpeningFilterMode) -> Result<Vec<u8>, i32> {
+    let content = std::fs::read_to_string(path_str).map_err(|_| 2)?;
 
     CURRENT_IFC_PATH.with(|p| *p.borrow_mut() = path_str.to_string());
 
     let result = parse_pool().install(|| {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| process_geometry(&content)))
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            process_geometry_filtered(&content, mode)
+        }))
     });
 
     CURRENT_IFC_PATH.with(|p| p.borrow_mut().clear());
 
-    let mut result = match result {
-        Ok(r) => r,
-        Err(_) => return 3,
-    };
+    let mut result = result.map_err(|_| 3)?;
 
-    // Normalize all meshes to uniform site-local coordinates
+    // Normalize all meshes to uniform site-local coordinates.
     normalize_to_site_local(&mut result);
 
     let response = ParseResponse {
@@ -214,9 +192,39 @@ pub unsafe extern "C" fn ifc_lite_parse(
         symbolic_data: Default::default(),
     };
 
-    let json_bytes = match serde_json::to_vec(&response) {
+    serde_json::to_vec(&response).map_err(|_| 4)
+}
+
+/// Validate the path bytes and out-pointers, run [`parse_impl`], and write the
+/// resulting buffer through the out-parameters. Shared by both exported
+/// functions so the null checks and contract live in exactly one place.
+///
+/// # Safety
+/// `out_ptr`/`out_len` (when non-null) must be valid for writes.
+unsafe fn run_parse(
+    path_ptr: *const u8,
+    path_len: usize,
+    mode: OpeningFilterMode,
+    out_ptr: *mut *mut u8,
+    out_len: *mut usize,
+) -> i32 {
+    ensure_panic_logging();
+
+    // Defensive null checks: a C#/P-Invoke marshalling slip would otherwise be
+    // undefined behavior in `from_raw_parts` / the out-pointer writes below.
+    if path_ptr.is_null() || out_ptr.is_null() || out_len.is_null() {
+        return 1;
+    }
+
+    let path_bytes = slice::from_raw_parts(path_ptr, path_len);
+    let path_str = match std::str::from_utf8(path_bytes) {
+        Ok(s) => s,
+        Err(_) => return 1,
+    };
+
+    let json_bytes = match parse_impl(path_str, mode) {
         Ok(b) => b,
-        Err(_) => return 4,
+        Err(code) => return code,
     };
 
     let len = json_bytes.len();
@@ -226,6 +234,32 @@ pub unsafe extern "C" fn ifc_lite_parse(
     *out_len = len;
 
     0
+}
+
+/// Parse an IFC file and return JSON bytes.
+///
+/// # Arguments
+/// - `path_ptr` / `path_len`: UTF-8 encoded file path
+/// - `out_ptr`: receives pointer to allocated JSON bytes
+/// - `out_len`: receives length of allocated JSON bytes
+///
+/// # Returns
+/// - `0` on success
+/// - `1` if a pointer is null or the path is invalid UTF-8
+/// - `2` if the file cannot be read
+/// - `3` if geometry processing fails
+/// - `4` if JSON serialization fails
+///
+/// # Safety
+/// Caller must free the returned buffer with `ifc_lite_free`.
+#[no_mangle]
+pub unsafe extern "C" fn ifc_lite_parse(
+    path_ptr: *const u8,
+    path_len: usize,
+    out_ptr: *mut *mut u8,
+    out_len: *mut usize,
+) -> i32 {
+    run_parse(path_ptr, path_len, OpeningFilterMode::Default, out_ptr, out_len)
 }
 
 /// Parse an IFC file with a configurable opening filter and return JSON bytes.
@@ -249,67 +283,13 @@ pub unsafe extern "C" fn ifc_lite_parse_ex(
     out_ptr: *mut *mut u8,
     out_len: *mut usize,
 ) -> i32 {
-    ensure_panic_logging();
-
-    let path_bytes = slice::from_raw_parts(path_ptr, path_len);
-    let path_str = match std::str::from_utf8(path_bytes) {
-        Ok(s) => s,
-        Err(_) => return 1,
-    };
-
-    let content = match std::fs::read_to_string(path_str) {
-        Ok(c) => c,
-        Err(_) => return 2,
-    };
-
     let mode = match opening_filter_mode {
         1 => OpeningFilterMode::IgnoreAll,
         2 => OpeningFilterMode::IgnoreOpaque,
         _ => OpeningFilterMode::Default,
     };
 
-    CURRENT_IFC_PATH.with(|p| *p.borrow_mut() = path_str.to_string());
-
-    let result = parse_pool().install(|| {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            process_geometry_filtered(&content, mode)
-        }))
-    });
-
-    CURRENT_IFC_PATH.with(|p| p.borrow_mut().clear());
-
-    let mut result = match result {
-        Ok(r) => r,
-        Err(_) => return 3,
-    };
-
-    // Normalize all meshes to uniform site-local coordinates
-    normalize_to_site_local(&mut result);
-
-    let response = ParseResponse {
-        cache_key: String::new(),
-        meshes: result.meshes,
-        mesh_coordinate_space: result.mesh_coordinate_space,
-        site_transform: result.site_transform,
-        building_transform: result.building_transform,
-        metadata: result.metadata,
-        stats: result.stats,
-        // See `ifc_lite_parse`: geometry-only path, emit empty symbol data.
-        symbolic_data: Default::default(),
-    };
-
-    let json_bytes = match serde_json::to_vec(&response) {
-        Ok(b) => b,
-        Err(_) => return 4,
-    };
-
-    let len = json_bytes.len();
-    let ptr = Box::into_raw(json_bytes.into_boxed_slice()) as *mut u8;
-
-    *out_ptr = ptr;
-    *out_len = len;
-
-    0
+    run_parse(path_ptr, path_len, mode, out_ptr, out_len)
 }
 
 /// Free a buffer previously returned by `ifc_lite_parse` or `ifc_lite_parse_ex`.

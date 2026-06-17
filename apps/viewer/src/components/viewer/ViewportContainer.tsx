@@ -531,39 +531,42 @@ export function ViewportContainer() {
     setActiveTool('addElement');
   }, [webgpu.supported, loadFile, setActiveTool]);
 
-  // Issue #540 "Merge Multilayer Walls" reload. The setting changes the
-  // produced geometry, so it only takes on a re-load. Re-load the active model
-  // IN PLACE from the recent-files blob cache (loadFile reads `mergeLayers` from
-  // the store and now keys the geometry cache on it) — the banner's default
-  // `window.location.reload()` instead dropped the model entirely, because the
-  // viewer has no boot-time auto-restore, which read as "nothing loads".
+  // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
+  // geometry, so it only takes on a re-load. Re-load the active model IN PLACE
+  // from the File the store ALREADY retains on the model record
+  // (`getActiveModel().sourceFile`, set by upsertModel at load time) — loadFile
+  // re-snapshots `mergeLayers` from the store, so the toggle re-tessellates.
+  // The earlier recent-files-blob-cache source was unreliable (its 150 MB cap
+  // skips real models + a fire-and-forget write races the reload), so it fell to
+  // window.location.reload() which DROPPED the model — the "nothing loads" blank.
   const handleMergeLayersReload = useCallback(async () => {
-    const recents = getRecentFiles();
-    const mergeNow = useViewerStore.getState().mergeLayers;
-    console.log('[merge-reload] start: mergeLayers=', mergeNow, 'recents=', recents.map((r) => r.name));
-    const cached = recents.length > 0 ? await getCachedFile(recents[0]) : null;
-    console.log('[merge-reload] cached blob:', cached ? `${cached.name} (${cached.size}B)` : 'NULL');
-    useViewerStore.getState().clearMergeLayersPendingReload();
-    if (cached) {
+    const st = useViewerStore.getState();
+    const file = st.getActiveModel()?.sourceFile;
+    console.log(
+      '[merge-reload] start: mergeLayers=',
+      st.mergeLayers,
+      'activeModel.sourceFile=',
+      file ? `${file.name} (${file.size}B)` : 'NONE',
+    );
+    st.clearMergeLayersPendingReload();
+    if (file) {
       try {
-        console.log('[merge-reload] calling loadFile(cached)…');
-        await loadFile(cached);
-        const st = useViewerStore.getState();
+        console.log('[merge-reload] re-loading active model in place…');
+        await loadFile(file);
+        const after = useViewerStore.getState();
         console.log(
           '[merge-reload] loadFile resolved: meshes=',
-          st.geometryResult?.meshes?.length ?? 0,
+          after.geometryResult?.meshes?.length ?? 0,
           'models=',
-          st.models?.size ?? 0,
-          'hasDataStore=',
-          !!st.ifcDataStore,
+          after.models?.size ?? 0,
         );
       } catch (err) {
         console.error('[merge-reload] loadFile threw:', err);
       }
     } else if (typeof window !== 'undefined') {
-      // No cached blob to re-load in place — fall back to a full reload (the
-      // toggle is persisted, so the user just re-opens the file).
-      console.warn('[merge-reload] no cached blob — falling back to window.location.reload()');
+      // No retained File (e.g. blank/new model) — fall back to a full reload
+      // (the toggle is persisted, so the user re-opens the file).
+      console.warn('[merge-reload] no active sourceFile — falling back to window.location.reload()');
       window.location.reload();
     }
   }, [loadFile]);

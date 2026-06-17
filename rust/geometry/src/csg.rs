@@ -194,6 +194,25 @@ pub fn take_boxfast_stats() -> BoxFastStats {
     }
 }
 
+/// TEMP DIAGNOSTIC (PR #1153): the first few box-fast deferrals' actual box vs
+/// host bounds + per-axis classification, so we can see WHY real openings don't
+/// match the clean-transversal model. Capped so it can't grow unbounded.
+static BOXFAST_SAMPLES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+fn boxfast_sample(s: String) {
+    if let Ok(mut g) = BOXFAST_SAMPLES.lock() {
+        if g.len() < 12 {
+            g.push(s);
+        }
+    }
+}
+/// Drain the box-fast diagnostic samples.
+pub fn take_boxfast_samples() -> Vec<String> {
+    BOXFAST_SAMPLES
+        .lock()
+        .map(|mut g| std::mem::take(&mut *g))
+        .unwrap_or_default()
+}
+
 /// CSG Clipping Processor
 pub struct ClippingProcessor {
     /// Epsilon for floating point comparisons
@@ -728,6 +747,15 @@ impl ClippingProcessor {
             }
         }
 
+        // TEMP DIAGNOSTIC: compact box-vs-host bounds for the sample log.
+        let bounds_str = || {
+            format!(
+                "box=({:.3},{:.3},{:.3})..({:.3},{:.3},{:.3}) host=({:.3},{:.3},{:.3})..({:.3},{:.3},{:.3}) tol={:.4}",
+                bmin[0], bmin[1], bmin[2], bmax[0], bmax[1], bmax[2],
+                hmin[0], hmin[1], hmin[2], hmax[0], hmax[1], hmax[2], tol,
+            )
+        };
+
         // Classify each axis. A clean transversal cut spans the host on exactly
         // one axis and lies strictly interior on the other two.
         let mut through: Option<usize> = None;
@@ -746,18 +774,23 @@ impl ClippingProcessor {
             } else {
                 // Box flush-with or partially past the host on this axis (a door
                 // flush with the floor, an edge window, a blind pocket) → not a
-                // clean transversal box; defer to the exact kernel. (This is the
-                // dominant deferral on real models — see BOXFAST_DEFER_GATE.)
+                // clean transversal box; defer to the exact kernel.
                 BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
+                boxfast_sample(format!(
+                    "GATE flush axis={k} spans={spans} interior={interior} {}",
+                    bounds_str()
+                ));
                 return Ok(None);
             }
         }
         let Some(t_axis) = through else {
             BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
+            boxfast_sample(format!("GATE no-through {}", bounds_str()));
             return Ok(None);
         };
         if lateral.len() != 2 {
             BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
+            boxfast_sample(format!("GATE lateral={} {}", lateral.len(), bounds_str()));
             return Ok(None);
         }
         let (la, lb) = (lateral[0], lateral[1]);
@@ -889,6 +922,13 @@ impl ClippingProcessor {
             // Need at least the two corners on each face to span the reveal.
             if front.len() < 2 || back.len() < 2 {
                 BOXFAST_DEFER_RIM.fetch_add(1, Ordering::Relaxed);
+                boxfast_sample(format!(
+                    "RIM t_axis={t_axis} fixed_axis={fixed_axis} front={} back={} rim_pts={} {}",
+                    front.len(),
+                    back.len(),
+                    rim_pts.len(),
+                    bounds_str()
+                ));
                 return Ok(None);
             }
             // The reveal face is the strip between the front chain (at t_front)

@@ -1008,6 +1008,9 @@ pub(super) fn drain_and_log_csg_diagnostics(
             .into(),
         );
     }
+    for s in ifc_lite_geometry::csg::take_boxfast_samples() {
+        web_sys::console::info_1(&format!("[IFC-LITE]   boxfast-sample: {s}").into());
+    }
 
     summary.into()
 }

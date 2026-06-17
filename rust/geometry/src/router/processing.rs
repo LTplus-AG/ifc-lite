@@ -875,6 +875,15 @@ impl GeometryRouter {
     /// must distinguish them (#976).
     fn item_dedup_key(&self, item: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<u128> {
         self.item_dedup_cache.as_ref()?;
+        // Only dedup types with a CHEAP structural hash. `item_signature` walks
+        // IfcFacetedBrep through the cached byte fast paths (no decode_by_id per
+        // point); every other type still falls back to the slow recursive decode,
+        // where the hash costs more than the meshing it skips (#1177). Gating here
+        // keeps dedup a net win on brep-heavy (Tekla steel) models without
+        // regressing the procedural-geometry models that motivated turning it off.
+        if !matches!(item.ifc_type, IfcType::IfcFacetedBrep) {
+            return None;
+        }
         let structural = {
             let mut memo = self.content_sig_memo.borrow_mut();
             super::content_hash::item_signature(decoder, item.id, &mut memo)

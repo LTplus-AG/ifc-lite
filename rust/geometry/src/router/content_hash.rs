@@ -41,6 +41,12 @@ const MAX_DEPTH: u32 = 256;
 /// (malformed) cycle resolves to a fixed value instead of recursing forever.
 const CYCLE_SENTINEL: u128 = 0xC1C1_C1C1_C1C1_C1C1_C1C1_C1C1_C1C1_C1C1;
 
+/// Seed for the cheap byte-level `IfcFacetedBrep` signature (see
+/// [`try_faceted_brep_signature`]). Distinct from the generic `0x5EED_5EED` type
+/// seed so a brep hashed via the fast path and one hashed via the recursive
+/// fallback occupy disjoint key space and never false-merge.
+const FACETED_BREP_TAG: u64 = 0xFACE_7B16_5160_0001;
+
 #[inline]
 fn mix64(mut x: u64) -> u64 {
     // splitmix64 finalizer — strong avalanche, same as `geom_hash::mix64`.
@@ -77,6 +83,122 @@ fn fold_bytes(mut state: u128, bytes: &[u8]) -> u128 {
     state
 }
 
+/// Whether the raw STEP record `bytes` (`#<id>=IFCTYPE(...)`, possibly with a
+/// leading id or whitespace) names IFC type `name`, compared case-insensitively
+/// up to the opening `(`. Cheap: a byte-prefix scan, no attribute decode.
+#[inline]
+fn type_token_is(bytes: &[u8], name: &[u8]) -> bool {
+    let len = bytes.len();
+    let mut i = 0;
+    while i < len && matches!(bytes[i], b' ' | b'\r' | b'\n' | b'\t') {
+        i += 1;
+    }
+    // Skip an optional leading "#<digits>" entity id and its '=' separator.
+    if i < len && bytes[i] == b'#' {
+        i += 1;
+        while i < len && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        while i < len && bytes[i] != b'=' && bytes[i] != b'(' {
+            i += 1;
+        }
+        if i < len && bytes[i] == b'=' {
+            i += 1;
+        }
+        while i < len && matches!(bytes[i], b' ' | b'\r' | b'\n' | b'\t') {
+            i += 1;
+        }
+    }
+    let ty = &bytes[i..];
+    ty.len() >= name.len()
+        && ty[..name.len()].eq_ignore_ascii_case(name)
+        // The type token must END here (next byte is '(' or whitespace), so
+        // "IFCFACETEDBREP" never matches a longer "IFCFACETEDBREPX".
+        && ty.get(name.len()).map_or(true, |&c| matches!(c, b'(' | b' ' | b'\r' | b'\n' | b'\t'))
+}
+
+/// Parse the first `#<digits>` entity reference inside a STEP record's attribute
+/// list — e.g. the single shell ref of `#5=IFCFACETEDBREP(#137924)`. Skips past
+/// the opening `(` first so the record's own `#id` prefix is never matched.
+#[inline]
+fn parse_first_ref(bytes: &[u8]) -> Option<u32> {
+    let len = bytes.len();
+    let mut i = 0;
+    while i < len && bytes[i] != b'(' {
+        i += 1;
+    }
+    while i < len && bytes[i] != b'#' {
+        i += 1;
+    }
+    if i >= len {
+        return None;
+    }
+    i += 1; // skip '#'
+    let start = i;
+    let mut id = 0u32;
+    while i < len && bytes[i].is_ascii_digit() {
+        id = id.wrapping_mul(10).wrapping_add((bytes[i] - b'0') as u32);
+        i += 1;
+    }
+    if i > start {
+        Some(id)
+    } else {
+        None
+    }
+}
+
+/// `true` when the entity at `id` is an `IfcFacetedBrep`, peeked from its raw STEP
+/// bytes without decoding attributes.
+#[inline]
+fn is_faceted_brep(decoder: &mut EntityDecoder, id: u32) -> bool {
+    decoder
+        .get_raw_bytes(id)
+        .is_some_and(|b| type_token_is(b, b"IFCFACETEDBREP"))
+}
+
+/// Cheap byte-level structural signature of an `IfcFacetedBrep`, mirroring the
+/// mesher's traversal (shell → faces → bounds → loops → point coords) through the
+/// SAME fast byte paths it uses — zero `decode_by_id`, so no per-point
+/// `AttributeValue` allocation (the ~8 s/model hot path on Tekla steel). Every bit
+/// the mesh depends on is folded in: face/bound counts, each bound's orientation
+/// and outer flag, and every loop's point coordinates in order. Two breps share a
+/// signature iff they mesh identically; any difference diverges the hash.
+///
+/// Returns `None` on any structural surprise (missing ref, malformed loop) so the
+/// caller falls back to the generic recursive signature — correctness preserved,
+/// only the fast dedup is skipped for that one item.
+fn try_faceted_brep_signature(decoder: &mut EntityDecoder, brep_id: u32) -> Option<u128> {
+    // IfcFacetedBrep(#shell): a SINGLE bare ref, not a `((...))` list — so
+    // `get_entity_ref_list_fast` (which expects a nested list) can't read it.
+    // Parse the one shell ref straight from the brep's bytes. The shell, faces,
+    // and bounds below ARE ref lists, so the fast list reader handles them.
+    let shell_id = {
+        let bytes = decoder.get_raw_bytes(brep_id)?;
+        parse_first_ref(bytes)?
+    };
+    let face_ids = decoder.get_entity_ref_list_fast(shell_id)?;
+
+    let mut acc = fold(0, FACETED_BREP_TAG);
+    acc = fold(acc, face_ids.len() as u64);
+    for face_id in face_ids {
+        let bound_ids = decoder.get_entity_ref_list_fast(face_id)?;
+        acc = fold(acc, bound_ids.len() as u64);
+        for bound_id in bound_ids {
+            let (loop_id, orientation, is_outer) = decoder.get_face_bound_fast(bound_id)?;
+            acc = fold(acc, orientation as u64);
+            acc = fold(acc, is_outer as u64);
+            let coords = decoder.get_polyloop_coords_cached(loop_id)?;
+            acc = fold(acc, coords.len() as u64);
+            for (x, y, z) in coords {
+                acc = fold(acc, x.to_bits());
+                acc = fold(acc, y.to_bits());
+                acc = fold(acc, z.to_bits());
+            }
+        }
+    }
+    Some(acc)
+}
+
 /// 128-bit structural hash of the representation item rooted at `root_id`. `memo`
 /// caches per-entity hashes so shared sub-entities (a profile reused by many
 /// solids, the representation context) are visited once; it keys on entity ids,
@@ -111,6 +233,18 @@ fn sig_entity(decoder: &mut EntityDecoder, id: u32, memo: &mut FxHashMap<u32, u1
         // never false-merge, which matters far more than deduping a pathological
         // boolean chain.
         return fold(0xDEAD_BEEF_DEAD_BEEF, id as u64);
+    }
+    // Cheap byte-level fast path for the dominant geometry type: Tekla and other
+    // steel detailers export thousands of IfcFacetedBrep, and the generic
+    // recursive walk below `decode_by_id`s every IfcCartesianPoint (hundreds per
+    // part) — that is the measured ~8 s hash cost that made dedup a net loss. The
+    // fast path mirrors the mesher's traversal with no decode; on any structural
+    // surprise it falls through to the generic walk (correctness preserved).
+    if is_faceted_brep(decoder, id) {
+        if let Some(s) = try_faceted_brep_signature(decoder, id) {
+            memo.insert(id, s);
+            return s;
+        }
     }
     memo.insert(id, CYCLE_SENTINEL); // break cycles (DAG ⇒ unreachable in practice)
     let entity = match decoder.decode_by_id(id) {

@@ -90,12 +90,23 @@ fn slices_correctly_under_per_element_local_frame() {
         .expect("layered path ok")
         .expect("Some(SubMeshCollection)");
 
-    // Three layers → three sub-meshes. Before the relativization fix the planes
-    // sat ~100 m off the local-framed mesh and everything collapsed into one
-    // slab (cut-produced-<2).
+    // Three layers → three sub-meshes. Before the plane-relativization fix the
+    // planes sat ~100 m off the local-framed mesh and everything collapsed into
+    // one slab (cut-produced-<2).
     assert_eq!(
         collection.sub_meshes.len(),
         3,
         "a wall placed 100 m from the origin must still slice into 3 layers with the local frame on"
     );
+
+    // Every slab must carry the element's local-frame origin (~y=100) forward —
+    // `clip_mesh` builds a fresh mesh with origin [0,0,0], so without restoring
+    // it each sliced wall would render at the world origin (misplaced).
+    for sub in &collection.sub_meshes {
+        assert!(
+            (sub.mesh.origin[1] - 100.0).abs() < 1.0,
+            "sliced sub-mesh must keep the local-frame origin (~y=100), got {:?}",
+            sub.mesh.origin
+        );
+    }
 }

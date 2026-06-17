@@ -544,6 +544,12 @@ fn slice_mesh_into_layers(
             }
         }
 
+        // `clip_mesh` builds a fresh `Mesh` (origin [0,0,0]), dropping the local
+        // frame: the input mesh and the cut planes are both relative to
+        // `mesh.origin` (#1114), so the clipped slab is too — carry the origin
+        // forward or every sliced wall renders at the world origin (misplaced).
+        slab.origin = mesh.origin;
+
         if !slab.is_empty() {
             out.sub_meshes.push(SubMesh::new(layer.material_id, slab));
         }

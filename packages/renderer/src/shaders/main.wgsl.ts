@@ -322,7 +322,13 @@ export const mainShaderSource = `
 
           // Saturation boost - stronger for colored surfaces, less for whites
           let gray = dot(color, vec3<f32>(0.299, 0.587, 0.114));
-          let satBoost = mix(1.4, 1.1, isWhiteish);  // More saturation for colored surfaces
+          // More saturation for colored surfaces. isWhiteish is derived from
+          // the base material colour, so for a SELECTED object it would leak a
+          // material dependence into the highlight (breaking the no-bleed-
+          // through contract). The selection blue is a fully-saturated colour,
+          // so force the colored-surface boost (1.4) when selected — keeping
+          // the highlight identical regardless of the underlying material.
+          let satBoost = select(mix(1.4, 1.1, isWhiteish), 1.4, isSelected);
           color = mix(vec3<f32>(gray), color, satBoost);
 
           // ACES filmic tone mapping

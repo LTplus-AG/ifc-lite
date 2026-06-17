@@ -569,7 +569,11 @@ export function useIfcLoader() {
       // Pin to the cache FORMAT_VERSION so a format bump invalidates stale
       // entries (e.g. v5 added the geometryClass tag the Model/Types switch
       // needs); a manual literal here silently kept serving incompatible data.
-      const cacheKey = `ifc-${buffer.byteLength}-${fingerprint}-v${FORMAT_VERSION}`;
+      // "Merge Multilayer Walls" changes the produced geometry (parts skipped,
+      // parent drawn), so it MUST be in the key — otherwise a reload with the
+      // toggle flipped served the stale opposite cache and the setting never took.
+      const mergeLayersForKey = useViewerStore.getState().mergeLayers;
+      const cacheKey = `ifc-${buffer.byteLength}-${fingerprint}-v${FORMAT_VERSION}${mergeLayersForKey ? '-merged' : ''}`;
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).

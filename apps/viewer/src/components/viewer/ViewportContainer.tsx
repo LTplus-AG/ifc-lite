@@ -531,6 +531,25 @@ export function ViewportContainer() {
     setActiveTool('addElement');
   }, [webgpu.supported, loadFile, setActiveTool]);
 
+  // Issue #540 "Merge Multilayer Walls" reload. The setting changes the
+  // produced geometry, so it only takes on a re-load. Re-load the active model
+  // IN PLACE from the recent-files blob cache (loadFile reads `mergeLayers` from
+  // the store and now keys the geometry cache on it) — the banner's default
+  // `window.location.reload()` instead dropped the model entirely, because the
+  // viewer has no boot-time auto-restore, which read as "nothing loads".
+  const handleMergeLayersReload = useCallback(async () => {
+    const recents = getRecentFiles();
+    const cached = recents.length > 0 ? await getCachedFile(recents[0]) : null;
+    useViewerStore.getState().clearMergeLayersPendingReload();
+    if (cached) {
+      await loadFile(cached);
+    } else if (typeof window !== 'undefined') {
+      // No cached blob to re-load in place — fall back to a full reload (the
+      // toggle is persisted, so the user just re-opens the file).
+      window.location.reload();
+    }
+  }, [loadFile]);
+
   const hasGeometry = mergedGeometryResult?.meshes && mergedGeometryResult.meshes.length > 0;
 
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
@@ -1187,8 +1206,9 @@ export function ViewportContainer() {
       <ViewportOverlays />
       {/* Issue #540: non-modal "reload to apply" banner anchored to the
           top of the canvas. Only renders when the user has flipped the
-          merge-layers toggle while a model is in scope. */}
-      <MergeLayersBanner />
+          merge-layers toggle while a model is in scope. `onReload` re-loads the
+          model in place (full page reload would drop it — no boot auto-restore). */}
+      <MergeLayersBanner onReload={handleMergeLayersReload} />
       <LevelDisplayIndicator />
       <ToolOverlays />
       <BasketPresentationDock />

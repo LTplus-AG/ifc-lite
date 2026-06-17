@@ -1,0 +1,20 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+[package]
+name = "ifc-lite-ffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "C FFI bindings for ifc-lite — native DLL for in-process IFC parsing"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ifc-lite-processing = { path = "../processing" }
+rayon = "1.10"
+serde_json = "1.0"

@@ -1478,6 +1478,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-ffi"
+version = "4.1.0"
+dependencies = [
+ "ifc-lite-processing",
+ "rayon",
+ "serde_json",
+]
+
+[[package]]
 name = "ifc-lite-geometry"
 version = "4.1.0"
 dependencies = [

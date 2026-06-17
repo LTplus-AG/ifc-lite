@@ -501,6 +501,24 @@ impl ClippingProcessor {
         let d1 = plane.signed_distance(&triangle.v1);
         let d2 = plane.signed_distance(&triangle.v2);
 
+        // Edge intersection parameter, clamped to the segment. Vertices are
+        // classified front/back with an epsilon band (`d >= -epsilon`), so a
+        // "front" vertex can sit slightly behind the plane (d in [-epsilon, 0)).
+        // Feeding that raw distance into `d_front / (d_front - d_back)` yields a
+        // t outside [0, 1] — and when the plane is nearly coincident with a host
+        // face the denominator collapses, extrapolating the cut vertex far off
+        // the edge (issue #1155: a clipped column flew ~97 m). Clamping keeps the
+        // intersection on the edge; the near-zero guard avoids a NaN from a
+        // degenerate (in-plane) edge.
+        let edge_t = |d_front: f64, d_back: f64| -> f64 {
+            let denom = d_front - d_back;
+            if denom.abs() < 1.0e-12 {
+                0.0
+            } else {
+                (d_front / denom).clamp(0.0, 1.0)
+            }
+        };
+
         // Count vertices in front of plane
         let mut front_count = 0;
         if d0 >= -self.epsilon {
@@ -553,8 +571,8 @@ impl ClippingProcessor {
                     d1
                 };
 
-                let t1 = d_front / (d_front - d_back1);
-                let t2 = d_front / (d_front - d_back2);
+                let t1 = edge_t(d_front, d_back1);
+                let t2 = edge_t(d_front, d_back2);
 
                 let p1 = front + (back1 - front) * t1;
                 let p2 = front + (back2 - front) * t2;
@@ -595,8 +613,8 @@ impl ClippingProcessor {
                     d1
                 };
 
-                let t1 = d_front1 / (d_front1 - d_back);
-                let t2 = d_front2 / (d_front2 - d_back);
+                let t1 = edge_t(d_front1, d_back);
+                let t2 = edge_t(d_front2, d_back);
 
                 let p1 = front1 + (back - front1) * t1;
                 let p2 = front2 + (back - front2) * t2;

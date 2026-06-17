@@ -24,6 +24,7 @@ import {
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
+import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { GraphicOverrideEngine } from '@ifc-lite/drawing-2d';
 import { type GeometryResult } from '@ifc-lite/geometry';
 import { DrawingSettingsPanel } from './DrawingSettingsPanel';
@@ -171,7 +172,10 @@ export function Section2DPanel({
   const [isPinned, setIsPinned] = useState(true);  // Default ON: keep position on regenerate
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const isResizing = useRef<'right' | 'top' | 'corner' | null>(null);
+  // Drag-to-move by the header grip (issue #1107). Disabled while expanded —
+  // that mode is full-screen (inset-4), so a free position makes no sense.
+  const drag = useDraggablePanel(panelRef, { disabled: isExpanded });
+  const isResizing = useRef<'right' | 'top' | 'bottom' | 'corner-top' | 'corner-bottom' | null>(null);
   const resizeStartPos = useRef({ x: 0, y: 0, width: 0, height: 0 });
   // Track resize event handlers for cleanup
   const resizeHandlersRef = useRef<{ move: ((e: MouseEvent) => void) | null; up: (() => void) | null }>({ move: null, up: null });
@@ -462,7 +466,7 @@ export function Section2DPanel({
   // RESIZE HANDLING
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const handleResizeStart = useCallback((edge: 'right' | 'top' | 'corner') => (e: React.MouseEvent) => {
+  const handleResizeStart = useCallback((edge: 'right' | 'top' | 'bottom' | 'corner-top' | 'corner-bottom') => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     isResizing.current = edge;
@@ -491,12 +495,17 @@ export function Section2DPanel({
         let newWidth = prev.width;
         let newHeight = prev.height;
 
-        if (isResizing.current === 'right' || isResizing.current === 'corner') {
+        if (isResizing.current === 'right' || isResizing.current === 'corner-top' || isResizing.current === 'corner-bottom') {
           newWidth = Math.max(300, Math.min(1200, resizeStartPos.current.width + dx));
         }
-        // Top resize: dragging up (negative dy) increases height
-        if (isResizing.current === 'top' || isResizing.current === 'corner') {
+        // While docked (bottom-anchored) the panel grows upward, so dragging the
+        // TOP edge up (negative dy) adds height. Once moved (top-anchored) it
+        // grows downward, so the BOTTOM edge does the resizing (positive dy).
+        if (isResizing.current === 'top' || isResizing.current === 'corner-top') {
           newHeight = Math.max(200, Math.min(800, resizeStartPos.current.height - dy));
+        }
+        if (isResizing.current === 'bottom' || isResizing.current === 'corner-bottom') {
+          newHeight = Math.max(200, Math.min(800, resizeStartPos.current.height + dy));
         }
 
         return { width: newWidth, height: newHeight };
@@ -557,11 +566,22 @@ export function Section2DPanel({
     <div
       ref={panelRef}
       className={`${panelClasses} bg-background rounded-lg border shadow-xl flex flex-col overflow-hidden`}
-      style={panelStyle}
+      style={{ ...panelStyle, ...(isExpanded ? {} : drag.style) }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b bg-muted/50 rounded-t-lg min-w-0">
-        <h2 className="font-semibold text-xs shrink-0">2D Section</h2>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {!isExpanded && (
+            <span
+              onMouseDown={drag.onDragStart}
+              title="Drag to move"
+              className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </span>
+          )}
+          <h2 className="font-semibold text-xs shrink-0">2D Section</h2>
+        </div>
 
         <div className="flex items-center gap-1 min-w-0">
           {/* When panel is wide enough, show all buttons */}
@@ -1033,23 +1053,40 @@ export function Section2DPanel({
       {/* Resize handles - only show when not expanded */}
       {!isExpanded && (
         <>
-          {/* Right edge */}
+          {/* Right edge (width) — works in either anchor. */}
           <div
             className="absolute top-0 right-0 w-2 h-full cursor-ew-resize hover:bg-primary/20 transition-colors"
             onMouseDown={handleResizeStart('right')}
           />
-          {/* Top edge */}
-          <div
-            className="absolute top-0 left-0 w-full h-2 cursor-ns-resize hover:bg-primary/20 transition-colors"
-            onMouseDown={handleResizeStart('top')}
-          />
-          {/* Top-right corner */}
-          <div
-            className="absolute top-0 right-0 w-4 h-4 cursor-nesw-resize flex items-center justify-center hover:bg-primary/20 transition-colors"
-            onMouseDown={handleResizeStart('corner')}
-          >
-            <GripVertical className="h-3 w-3 text-muted-foreground rotate-[45deg]" />
-          </div>
+          {/* Height handle follows the anchor: docked → top edge (grows up),
+              moved → bottom edge (grows down). The move grip now lives next to
+              the title; the corner icon that read as a drag handle is gone
+              (issue #1107). */}
+          {drag.position === null ? (
+            <>
+              <div
+                className="absolute top-0 left-0 w-full h-2 cursor-ns-resize hover:bg-primary/20 transition-colors"
+                onMouseDown={handleResizeStart('top')}
+              />
+              <div
+                className="absolute top-0 right-0 w-4 h-4 cursor-nesw-resize hover:bg-primary/20 transition-colors"
+                onMouseDown={handleResizeStart('corner-top')}
+                title="Resize"
+              />
+            </>
+          ) : (
+            <>
+              <div
+                className="absolute bottom-0 left-0 w-full h-2 cursor-ns-resize hover:bg-primary/20 transition-colors"
+                onMouseDown={handleResizeStart('bottom')}
+              />
+              <div
+                className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize hover:bg-primary/20 transition-colors"
+                onMouseDown={handleResizeStart('corner-bottom')}
+                title="Resize"
+              />
+            </>
+          )}
         </>
       )}
 

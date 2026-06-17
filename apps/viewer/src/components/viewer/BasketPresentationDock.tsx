@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
   Equal,
   Eye,
   EyeOff,
+  GripVertical,
   Minus,
   Pencil,
   Play,
@@ -23,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import {
   executeBasketSet,
   executeBasketAdd,
@@ -40,6 +42,39 @@ export function BasketPresentationDock() {
   const stripRef = useRef<HTMLDivElement>(null);
   const stopPlayRef = useRef(false);
   const loopPlayRef = useRef(false);
+
+  // Drag-to-move + width resize for the presentation dock (issue #1107).
+  const panelRef = useRef<HTMLDivElement>(null);
+  const drag = useDraggablePanel(panelRef);
+  const [panelWidth, setPanelWidth] = useState<number | null>(null);
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const handleResizeStart = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeRef.current = { startX: e.clientX, startWidth: panelRef.current?.offsetWidth ?? 980 };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return;
+      // While still centred (no drag yet), the panel grows from both edges, so
+      // the right edge tracks the cursor at half speed — double the delta so it
+      // follows. Once moved (top/left anchored) it grows rightward 1:1.
+      const factor = drag.position === null ? 2 : 1;
+      const dx = (ev.clientX - resizeRef.current.startX) * factor;
+      // Clamp against the offset parent (the viewport panel, ~58% of the window),
+      // not the window — otherwise dragging past the visual cap keeps inflating
+      // width invisibly and you have to drag back through the overshoot to shrink.
+      const parentW = (panelRef.current?.offsetParent as HTMLElement | null)?.clientWidth ?? window.innerWidth;
+      const next = Math.max(480, Math.min(parentW - 32, resizeRef.current.startWidth + dx));
+      setPanelWidth(next);
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [drag.position]);
 
   const pinboardEntities = useViewerStore((s) => s.pinboardEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
@@ -188,10 +223,21 @@ export function BasketPresentationDock() {
   }
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-[min(980px,calc(100%-2rem))] pointer-events-none">
-      <div className="pointer-events-auto rounded-xl border bg-background/90 backdrop-blur-sm shadow-lg p-3 space-y-3">
+    <div
+      ref={panelRef}
+      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-[min(980px,calc(100%-2rem))] pointer-events-none"
+      style={{ ...drag.style, ...(panelWidth != null ? { width: panelWidth, maxWidth: 'calc(100% - 2rem)' } : {}) }}
+    >
+      <div className="relative pointer-events-auto rounded-xl border bg-background/90 backdrop-blur-sm shadow-lg p-3 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
+            <span
+              onMouseDown={drag.onDragStart}
+              title="Drag to move"
+              className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+            >
+              <GripVertical className="h-4 w-4" />
+            </span>
             <div className="text-sm font-semibold">Presentation</div>
             <span className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground">
               {pinboardEntities.size} in basket
@@ -423,6 +469,13 @@ export function BasketPresentationDock() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
+
+        {/* Width resize handle on the right edge (issue #1107). */}
+        <div
+          className="absolute top-0 right-0 h-full w-2 cursor-ew-resize rounded-r-xl hover:bg-primary/20 transition-colors"
+          onMouseDown={handleResizeStart}
+          title="Drag to resize width"
+        />
       </div>
     </div>
   );

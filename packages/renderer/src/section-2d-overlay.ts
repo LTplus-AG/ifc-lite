@@ -11,6 +11,7 @@
  */
 
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { earClip, joinHoles, type Pt } from './symbolic-overlay-pipelines.js';
 
 export interface Section2DOverlayCapStyle {
   fillColor:         [number, number, number, number];
@@ -55,6 +56,11 @@ export interface CutPolygon2D {
   };
   ifcType: string;
   expressId: number;
+  /** Optional per-polygon RGBA (0–1). When present, this cap polygon fills with
+   *  this colour (an `IfcMaterialLayerSet` wall/slab layer, or a frame+glass
+   *  window part) instead of the uniform cap fill. Absent ⇒ uniform cap style +
+   *  per-`ifcType` fallback, unchanged. */
+  color?: [number, number, number, number];
 }
 
 export interface DrawingLine2D {
@@ -163,12 +169,13 @@ export class Section2DOverlayRenderer {
     });
 
     // Shader for filled polygons. Applies the user-defined cap style
-    // (single fill colour + screen-space hatch) on top of the EXACT
-    // 2D section polygons produced by SectionCutter. Per-vertex colour
-    // is still supplied by the vertex buffer (unused here, kept for
-    // future multi-material support) but ignored — all fills render
-    // with the uniform cap style so the cut surface reads as a single
-    // architectural section rather than a rainbow of per-IFC-type tints.
+    // (fill colour + screen-space hatch) on top of the EXACT 2D section
+    // polygons produced by SectionCutter. Per-vertex colour now DRIVES the
+    // fill when a polygon opts in (alpha ≥ 0): a material-layer wall/slab
+    // fills each layer with its own IfcMaterial colour, matching the 3D
+    // build-up. Polygons that pass the sentinel alpha −1 fall back to the
+    // uniform cap style, so single-material cuts read as one architectural
+    // section exactly as before. Hatch + stroke apply over either base.
     const fillShader = this.device.createShaderModule({
       code: `
         struct Uniforms {
@@ -268,8 +275,15 @@ export class Section2DOverlayRenderer {
           let angle2    = uniforms.params2.x;
 
           let h = hatchIntensity(input.position.xy, patternId, spacing, angle, width, angle2);
-          let rgb = mix(uniforms.capFillColor.rgb, uniforms.capStrokeColor.rgb, h * uniforms.capStrokeColor.a);
-          let a   = max(uniforms.capFillColor.a, h * uniforms.capStrokeColor.a);
+          // Per-polygon colour (a material-layer slab fills with its own
+          // IfcMaterial RGBA) overrides the uniform cap fill when present.
+          // Polygons without a colour carry the sentinel alpha −1 and fall back
+          // to the user's cap style, byte-identically. Hatch + stroke apply over
+          // whichever base is chosen, so the architectural hatch still works.
+          let useVertex = input.color.a >= 0.0;
+          let baseFill = select(uniforms.capFillColor, input.color, useVertex);
+          let rgb = mix(baseFill.rgb, uniforms.capStrokeColor.rgb, h * uniforms.capStrokeColor.a);
+          let a   = max(baseFill.a, h * uniforms.capStrokeColor.a);
 
           var out: FragOut;
           out.color    = vec4<f32>(rgb, a);
@@ -567,30 +581,38 @@ export class Section2DOverlayRenderer {
     let vertexOffset = 0;
 
     for (const polygon of polygons) {
-      const color = getFillColor(polygon.ifcType);
       const outer = polygon.polygon.outer;
-
       if (outer.length < 3) continue;
 
-      // KNOWN LIMITATION: Simple fan triangulation for convex polygons only.
-      // This produces correct results for most architectural elements (walls, slabs, etc.)
-      // but may render incorrectly for:
-      // - Concave polygons (e.g., L-shaped openings)
-      // - Polygons with holes (e.g., windows in walls)
-      // For production use with complex geometry, consider implementing ear clipping
-      // (e.g., using earcut library) or constrained Delaunay triangulation.
-      // Note: The 2D canvas/SVG rendering in Section2DPanel handles holes correctly.
-      const baseVertex = vertexOffset;
+      // Per-polygon fill colour. A material-layer wall/slab delivers one polygon
+      // per layer, each carrying its IfcMaterial RGBA (window frame/glass parts
+      // likewise). Polygons WITHOUT a colour use the sentinel alpha −1 so the
+      // fill shader falls back to the uniform cap style (architectural fill +
+      // hatch) byte-identically — see fs_main.
+      const color: [number, number, number, number] = polygon.color ?? [0, 0, 0, -1];
 
-      for (const point of outer) {
-        const [x3d, y3d, z3d] = this.transform2Dto3D(point.x, point.y, axis, planePosition, flipped, customPlane);
+      // Hole-aware ear-clipping (reused from the IfcAnnotationFillArea fill path)
+      // replaces the old convex fan. The fan ignored holes and inverted on the
+      // CONCAVE cross-sections that arbitrary IFC profiles (and material-layer
+      // slabs) cut into, leaving the cut face uncovered — it read as a hollow
+      // shell. Section 2D points are (x, y); the triangulator works in (x, z),
+      // so y maps to z.
+      const outerRing: Pt[] = outer.map((p) => ({ x: p.x, z: p.y }));
+      const holeRings: Pt[][] = polygon.polygon.holes
+        .filter((h) => h.length >= 3)
+        .map((h) => h.map((p) => ({ x: p.x, z: p.y })));
+      const stitched = holeRings.length > 0 ? joinHoles(outerRing, holeRings) : outerRing;
+      const tris = earClip(stitched);
+      if (tris.length === 0) continue;
+
+      const baseVertex = vertexOffset;
+      for (const pt of stitched) {
+        const [x3d, y3d, z3d] = this.transform2Dto3D(pt.x, pt.z, axis, planePosition, flipped, customPlane);
         fillVertices.push(x3d, y3d, z3d, color[0], color[1], color[2], color[3]);
         vertexOffset++;
       }
-
-      // Fan triangulation from first vertex
-      for (let i = 1; i < outer.length - 1; i++) {
-        fillIndices.push(baseVertex, baseVertex + i, baseVertex + i + 1);
+      for (const [a, b, c] of tris) {
+        fillIndices.push(baseVertex + a, baseVertex + b, baseVertex + c);
       }
     }
 

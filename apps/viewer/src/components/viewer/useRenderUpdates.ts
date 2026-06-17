@@ -92,6 +92,10 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
         polygon: cp.polygon,
         ifcType: cp.ifcType,
         expressId: cp.entityId,
+        // Per-layer material colour (material-layer walls/slabs) so the 3D
+        // section cap fills each layer with its own colour, matching the 3D
+        // build-up. Undefined for single-material polygons → uniform cap style.
+        color: cp.color,
       }));
 
       const lines: DrawingLine2D[] = drawing2D.lines

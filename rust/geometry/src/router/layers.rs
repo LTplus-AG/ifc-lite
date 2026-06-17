@@ -61,9 +61,9 @@ impl GeometryRouter {
             Ok(Some(c)) => c,
             Ok(None) => return None,
             Err(_e) => {
-                // Native-path diagnostic (#563/#874): a sliceable wall whose
-                // slicing errored falls back to a single solid. (No-op in wasm;
-                // the browser sees the per-load index summary instead.)
+                // A sliceable wall whose base-mesh build errored falls back to a
+                // single solid. Record for the browser; eprintln for native.
+                self.push_layer_slice_diag(element.id, "skip:base-mesh-error");
                 eprintln!("[material-layers] #{}: sliceable but slicing errored", element.id);
                 return None;
             }
@@ -120,6 +120,7 @@ impl GeometryRouter {
         };
 
         if layers.len() < 2 {
+            self.push_layer_slice_diag(element.id, "skip:fewer-than-2-layers");
             return Ok(None);
         }
 
@@ -128,6 +129,7 @@ impl GeometryRouter {
         // only) would be in a different frame than the mesh. Callers fall
         // through to the unsliced path in that case.
         if !element_is_single_unshifted_item(element, decoder) {
+            self.push_layer_slice_diag(element.id, "skip:not-single-unshifted-item");
             return Ok(None);
         }
 
@@ -137,12 +139,14 @@ impl GeometryRouter {
         // is nothing to slice.
         let visual_layers = merge_thin_layers(&layers, self.unit_scale);
         if visual_layers.len() < 2 {
+            self.push_layer_slice_diag(element.id, "skip:thin-layers-collapsed-to-1");
             return Ok(None);
         }
 
         // Void subtraction happens on the merged mesh (cheap + topology-safe).
         let base_mesh = self.process_element_with_voids(element, decoder, void_index)?;
         if base_mesh.is_empty() {
+            self.push_layer_slice_diag(element.id, "skip:empty-base-mesh");
             return Ok(None);
         }
 
@@ -157,17 +161,22 @@ impl GeometryRouter {
             offset,
         ) {
             Some(p) => p,
-            None => return Ok(None),
+            None => {
+                self.push_layer_slice_diag(element.id, "skip:placement-unresolved");
+                return Ok(None);
+            }
         };
         if planes.is_empty() {
+            self.push_layer_slice_diag(element.id, "skip:no-interface-planes");
             return Ok(None);
         }
 
-        Ok(Some(slice_mesh_into_layers(
-            &base_mesh,
-            &visual_layers,
-            &planes,
-        )))
+        let collection = slice_mesh_into_layers(&base_mesh, &visual_layers, &planes);
+        self.push_layer_slice_diag(
+            element.id,
+            if collection.sub_meshes.len() >= 2 { "ok:sliced" } else { "skip:cut-produced-<2" },
+        );
+        Ok(Some(collection))
     }
 
     /// Convert layer thicknesses + axis/offset into N-1 world-space planes

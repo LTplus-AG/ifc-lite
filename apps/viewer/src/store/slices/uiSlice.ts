@@ -16,6 +16,21 @@ import type { CesiumPlacementDraft } from './cesiumSlice.js';
 export type ThemeMode = 'light' | 'dark' | 'colorful';
 
 /**
+ * One-shot target for "jump to a property and edit it" flows (issue #1107).
+ * Armed when a property is added from the bSDD card, consumed by the
+ * Properties panel once the user arrives on the Properties tab — it scrolls
+ * the row into view, highlights it and enters edit mode, then clears itself.
+ * Identified by the same (raw) modelId + expressId the selection carries, so
+ * a stale focus left over from a different entity is simply never matched.
+ */
+export interface PropertyFocusTarget {
+  modelId: string;
+  entityId: number;
+  psetName: string;
+  propName: string;
+}
+
+/**
  * Tools that require edit mode to function. Entering one of them
  * flips `editEnabled` on; leaving edit mode forces these tools
  * back to `'select'`. Keep the list in sync — duplicating the
@@ -64,6 +79,12 @@ export interface UISlice {
    * rather than per-panel toggles.
    */
   editEnabled: boolean;
+  /** Active tab in the Properties panel. Controlled so in-app flows (e.g.
+   *  adding a bSDD property) can jump back to "properties" — issue #1107. */
+  propertiesActiveTab: 'properties' | 'quantities' | 'bsdd' | 'raw-step';
+  /** One-shot "scroll to + highlight + edit this property" request, armed by
+   *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
+  pendingPropertyFocus: PropertyFocusTarget | null;
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
@@ -93,6 +114,9 @@ export interface UISlice {
   setActiveTool: (tool: string) => void;
   setEditEnabled: (enabled: boolean) => void;
   toggleEditEnabled: () => void;
+  setPropertiesActiveTab: (tab: 'properties' | 'quantities' | 'bsdd' | 'raw-step') => void;
+  /** Arm (or clear, with null) the one-shot property-focus request. */
+  setPendingPropertyFocus: (focus: PropertyFocusTarget | null) => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
@@ -139,6 +163,8 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   rightPanelCollapsed: false,
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
   editEnabled: false,
+  propertiesActiveTab: 'properties',
+  pendingPropertyFocus: null,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
@@ -199,6 +225,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   toggleEditEnabled: () => {
     get().setEditEnabled(!get().editEnabled);
   },
+
+  setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),
+
+  setPendingPropertyFocus: (pendingPropertyFocus) => set({ pendingPropertyFocus }),
 
   setTheme: (theme) => {
     applyThemeClasses(theme);

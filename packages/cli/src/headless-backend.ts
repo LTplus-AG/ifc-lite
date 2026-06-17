@@ -346,6 +346,9 @@ export class HeadlessBackend implements BimBackend {
 
         return filtered;
       },
+      // Headless contexts have no interactive viewer filter, so there is never
+      // an "active filter" to report (issue #1107).
+      entitiesMatchingActiveFilter: () => null,
       entityData: getEntityData,
       attributes(ref: EntityRef): EntityAttributeData[] {
         return extractAllEntityAttributes(store, ref.expressId);

@@ -10,7 +10,7 @@ import {
   PersonStanding,
   Ruler,
   Scissors,
-  MapPin,
+  StickyNote,
   Eye,
   EyeOff,
   Equal,
@@ -1162,7 +1162,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       <ToolButton tool="section" icon={Scissors} label="Section" shortcut="X" activeTool={activeTool} onToolChange={setActiveTool} />
       <ToolButton
         tool="annotate"
-        icon={MapPin}
+        icon={StickyNote}
         label="Annotate"
         shortcut="P"
         activeTool={activeTool}

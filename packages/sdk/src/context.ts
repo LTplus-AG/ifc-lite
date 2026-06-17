@@ -104,6 +104,14 @@ export class BimContext {
   }
 
   /**
+   * Entities matching the host's active advanced filter, or `null` when no
+   * filter is active. Use for "export only the current filtered view" flows.
+   */
+  matchingActiveFilter(): EntityData[] | null {
+    return this._queryNamespace.matchingActiveFilter();
+  }
+
+  /**
    * Get a single entity by reference.
    */
   entity(ref: EntityRef): EntityData | null {

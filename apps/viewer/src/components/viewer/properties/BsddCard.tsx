@@ -11,18 +11,20 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react';
+import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
-import { type PropertyValue, PropertyValueType, QuantityType } from '@ifc-lite/data';
+import { toast } from '@/components/ui/toast';
+import { QuantityType } from '@ifc-lite/data';
 import {
   fetchClassInfo,
   bsddDataTypeLabel,
   type BsddClassInfo,
   type BsddClassProperty,
 } from '@/services/bsdd';
+import { toPropertyValueType, defaultValue } from './bsddInlineValue.js';
 
 // ---------------------------------------------------------------------------
 // Helpers for Qto_* (quantity set) detection and mapping
@@ -45,24 +47,8 @@ function inferQuantityType(units: string[] | null): QuantityType {
   return QuantityType.Count;
 }
 
-// ---------------------------------------------------------------------------
-// bSDD data type → PropertyValueType mapping
-// ---------------------------------------------------------------------------
-
-function toPropertyValueType(bsddType: string | null): PropertyValueType {
-  if (!bsddType) return PropertyValueType.String;
-  const lower = bsddType.toLowerCase();
-  if (lower === 'boolean') return PropertyValueType.Boolean;
-  if (lower === 'real' || lower === 'number') return PropertyValueType.Real;
-  if (lower === 'integer') return PropertyValueType.Integer;
-  if (lower === 'character' || lower === 'string') return PropertyValueType.String;
-  return PropertyValueType.Label;
-}
-
-function defaultValue(_bsddType: string | null): PropertyValue {
-  // Always return empty string – user fills in values manually
-  return '';
-}
+// Inline-value decision logic lives in ./bsddInlineValue.ts so it can be
+// unit-tested without the component's React/store/Radix dependency graph.
 
 /** bSDD properties with null propertySet are IFC entity-level attributes */
 const BSDD_ATTRIBUTES_GROUP = 'Attributes';
@@ -116,6 +102,9 @@ export function BsddCard({
   const createQuantitySet = useViewerStore((s) => s.createQuantitySet);
   const storeSetAttribute = useViewerStore((s) => s.setAttribute);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
+  const setEditEnabled = useViewerStore((s) => s.setEditEnabled);
+  const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
+  const setPendingPropertyFocus = useViewerStore((s) => s.setPendingPropertyFocus);
 
   // Fetch class info from bSDD when entity type changes
   useEffect(() => {
@@ -149,6 +138,15 @@ export function BsddCard({
     };
   }, [entityType]);
 
+  // `addedKeys` tracks what was added to THIS element, so it must reset when the
+  // selection moves to a different element — even one of the same IfcType, which
+  // leaves `entityType` (and the fetch above) unchanged. Without this the "N
+  // added · Edit in Properties" bar and the per-row check marks leak onto the
+  // next element (issue #1107 review).
+  useEffect(() => {
+    setAddedKeys(new Set());
+  }, [entityId, modelId]);
+
   // Group properties by property set name
   const groupedProps = useMemo(() => {
     if (!classInfo) return new Map<string, BsddClassProperty[]>();
@@ -181,7 +179,9 @@ export function BsddCard({
       if (modelId === 'legacy') normalizedModelId = '__legacy__';
 
       if (psetName === BSDD_ATTRIBUTES_GROUP) {
-        // Route entity-level attributes (Name, Description, ObjectType, Tag, etc.)
+        // Route entity-level attributes (Name, Description, ObjectType, Tag,
+        // PredefinedType, etc.). Created empty — the value is filled in
+        // afterwards in the Properties tab (issue #1107).
         storeSetAttribute(normalizedModelId, entityId, prop.name, '');
       } else if (isQuantitySet(psetName)) {
         // Route Qto_* through quantity creation
@@ -204,7 +204,8 @@ export function BsddCard({
           );
         }
       } else {
-        // Route Pset_* / other through property creation
+        // Route Pset_* / other through property creation, with the correct
+        // bSDD-derived value type so the inline editor shows the right control.
         const valueType = toPropertyValueType(prop.dataType);
         const value = defaultValue(prop.dataType);
         const psetExists = existingPsets.includes(psetName);
@@ -227,8 +228,21 @@ export function BsddCard({
 
       bumpMutationVersion();
       setAddedKeys((prev) => new Set(prev).add(`${psetName}:${prop.name}`));
+
+      // Stay in the bSDD card — the user may want to add more (issue #1107).
+      // Don't yank them to the Properties tab or flip edit mode here. Instead
+      // ARM a one-shot focus on the new row; the card's "Edit in Properties"
+      // bar is the deliberate jump, and only THEN do we enter edit mode and
+      // scroll/highlight the row. Pset_* properties are the only inline-
+      // editable target, so attributes and Qto_* quantities just confirm.
+      if (psetName !== BSDD_ATTRIBUTES_GROUP && !isQuantitySet(psetName)) {
+        setPendingPropertyFocus({ modelId, entityId, psetName, propName: prop.name });
+        toast.success(`Added "${prop.name}" — open Properties to set its value`);
+      } else {
+        toast.success(`Added "${prop.name}"`);
+      }
     },
-    [modelId, entityId, existingPsets, existingQsets, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion],
+    [modelId, entityId, existingPsets, existingQsets, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus],
   );
 
   const handleAddAllInPset = useCallback(
@@ -323,8 +337,38 @@ export function BsddCard({
         for (const p of toAdd) next.add(`${psetName}:${p.name}`);
         return next;
       });
+
+      // Same as single-add: stay put, arm a one-shot focus on the first new
+      // property (Pset_* only — attributes/quantities aren't inline-editable).
+      const isEditableProps = !isAttrGroup && !isQuantitySet(psetName);
+      if (isEditableProps) {
+        setPendingPropertyFocus({ modelId, entityId, psetName, propName: toAdd[0].name });
+      }
+      toast.success(
+        `Added ${toAdd.length} ${psetName} ${toAdd.length === 1 ? 'property' : 'properties'}` +
+          (isEditableProps ? ' — open Properties to set values' : ''),
+      );
     },
-    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion],
+    [modelId, entityId, existingPsets, existingQsets, existingProps, existingQuants, existingAttributes, addedKeys, setProperty, createPropertySet, setQuantity, createQuantitySet, storeSetAttribute, bumpMutationVersion, setPendingPropertyFocus],
+  );
+
+  // The deliberate "take me to what I just added" action behind the card's
+  // "Edit in Properties" bar. Switching to the Properties tab + entering edit
+  // mode is what "go edit" means; the Properties panel then consumes any armed
+  // pendingPropertyFocus to scroll to and highlight the exact row.
+  const goToProperties = useCallback(() => {
+    setPropertiesActiveTab('properties');
+    setEditEnabled(true);
+  }, [setPropertiesActiveTab, setEditEnabled]);
+
+  // The "Edit in Properties" bar only makes sense for things that ARE editable
+  // on the Properties tab: Pset_* properties and entity attributes. Qto_*
+  // quantities render read-only on a different tab, so a quantity-only add must
+  // not surface the bar (it would dump the user on the wrong tab). Keys begin
+  // with their set name, so a `Qto_` prefix flags a quantity (issue #1107).
+  const editableAddedCount = useMemo(
+    () => Array.from(addedKeys).filter((k) => !k.startsWith('Qto_')).length,
+    [addedKeys],
   );
 
   // Loading state
@@ -363,6 +407,23 @@ export function BsddCard({
         <div className="px-1 pb-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
           {classInfo.definition}
         </div>
+      )}
+
+      {/* "Go edit" bar — the deliberate jump to the Properties tab. Appears
+          once anything has been added this session so the user can keep adding
+          here, then cross over to set values when ready (issue #1107). Kept out
+          of the scroll body's sticky region (Radix ScrollArea breaks sticky)
+          and pinned at the top where attention returns after an add. */}
+      {editableAddedCount > 0 && (
+        <button
+          type="button"
+          onClick={goToProperties}
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border-2 border-emerald-300/70 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+        >
+          <Check className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{editableAddedCount} added · Edit in Properties</span>
+          <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+        </button>
       )}
 
       {/* Property sets from bSDD */}
@@ -463,7 +524,9 @@ export function BsddCard({
                           {prop.dataType && <p className="mt-0.5 text-sky-400">{bsddDataTypeLabel(prop.dataType)}</p>}
                         </TooltipContent>
                       </Tooltip>
-                      {/* Add button - always visible on right */}
+                      {/* Add button - always visible on right. The property is
+                          created with its correct bSDD data type; the value is
+                          edited afterwards in the Properties tab (issue #1107). */}
                       {alreadyExists ? (
                         <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                       ) : (

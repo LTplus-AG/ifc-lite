@@ -29,6 +29,7 @@ import {
   extractRelationshipsOnDemand,
 } from '@ifc-lite/parser';
 import { applyAttributeMutationsToEntityData, mergeAttributeMutations } from './mutation-view.js';
+import { evaluateFilterRules } from '../../lib/search/filter-evaluate.js';
 
 /** Map IFC relationship entity names to internal RelationshipType enum.
  * Keys use proper IFC schema names (e.g. IfcRelAggregates, not "Aggregates"). */
@@ -313,8 +314,52 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
     return filtered;
   }
 
+  /**
+   * Entities matching the viewer's *active advanced filter* (the chip rules in
+   * the Search modal's Filter tab), or `null` when no filter is active. Lets
+   * scripted exports (e.g. the CSV quantity take-off) honour the current
+   * filtered view instead of always exporting everything (issue #1107, item 11).
+   *
+   * Re-evaluates `searchFilter.rules` per model with the synchronous evaluator —
+   * the same logic that backs the modal — with no row cap, so the export covers
+   * the full filtered set rather than the modal's display limit. Hidden/isolated
+   * visibility is intentionally NOT consulted: the chosen semantics are
+   * "active search/filter only".
+   */
+  function entitiesMatchingActiveFilter(): EntityData[] | null {
+    const state = store.getState();
+    const filter = state.searchFilter;
+    if (!filter || filter.rules.length === 0) return null;
+
+    const results: EntityData[] = [];
+    for (const [modelId, model] of getAllModelEntries(state)) {
+      if (!model?.ifcDataStore) continue;
+      const matched = evaluateFilterRules(
+        modelId,
+        model.ifcDataStore,
+        filter.rules,
+        filter.combinator,
+        { limit: Number.MAX_SAFE_INTEGER },
+      );
+      for (const m of matched) {
+        if (m.expressId === 0) continue;
+        const node = new EntityNode(model.ifcDataStore, m.expressId);
+        results.push(applyAttributeMutationsToEntityData(store, modelId, m.expressId, {
+          ref: { modelId, expressId: m.expressId },
+          globalId: node.globalId,
+          name: node.name,
+          type: node.type,
+          description: node.description,
+          objectType: node.objectType,
+        }));
+      }
+    }
+    return results;
+  }
+
   return {
     entities: queryEntities,
+    entitiesMatchingActiveFilter,
     entityData: getEntityData,
     attributes: getAttributes,
     properties: getProperties,

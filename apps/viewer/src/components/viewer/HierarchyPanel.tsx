@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
+import { Rule, type FilterRule } from '@/lib/search/filter-rules';
+import { toast } from '@/components/ui/toast';
 
 import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
@@ -55,6 +57,10 @@ export function HierarchyPanel() {
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
   const classFilter = useViewerStore((s) => s.classFilter);
   const setClassFilter = useViewerStore((s) => s.setClassFilter);
+  const addFilterRule = useViewerStore((s) => s.addFilterRule);
+  const updateFilterRule = useViewerStore((s) => s.updateFilterRule);
+  const removeFilterRule = useViewerStore((s) => s.removeFilterRule);
+  const setSearchFilterAutoRunPending = useViewerStore((s) => s.setSearchFilterAutoRunPending);
   const clearClassFilter = useViewerStore((s) => s.clearClassFilter);
   const clearAllFilters = useViewerStore((s) => s.clearAllFilters);
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
@@ -235,6 +241,31 @@ export function HierarchyPanel() {
     if (hasChildren) toggleExpand(nodeId);
   }, [setSelectedModelId, toggleExpand]);
 
+  // Mirror a hierarchy selection into the advanced filter as ONE rule per
+  // dimension (issue #1107). Upsert (not append): replace the existing rule of
+  // this kind so the filter tracks the current selection — appending singletons
+  // both leaves stale values behind and, under the default AND combinator,
+  // makes two ifcType rules match nothing. Pass `null` to clear the dimension.
+  const upsertSearchRule = useCallback(
+    (matches: (r: FilterRule) => boolean, rule: FilterRule | null) => {
+      const rules = useViewerStore.getState().searchFilter.rules;
+      const idx = rules.findIndex(matches);
+      if (rule === null) {
+        if (idx < 0) return; // nothing to clear — don't arm an empty run
+        removeFilterRule(idx);
+      } else if (idx >= 0) {
+        updateFilterRule(idx, rule);
+      } else {
+        addFilterRule(rule);
+      }
+      // Arm the Filter to run itself: a hierarchy click shouldn't make the
+      // user open the modal and press Run to see what it matched. The Filter
+      // panel only mounts when the modal is open, so the flag waits there.
+      setSearchFilterAutoRunPending(true);
+    },
+    [addFilterRule, updateFilterRule, removeFilterRule, setSearchFilterAutoRunPending],
+  );
+
   // Handle node click - for selection/isolation or expand/collapse
   const handleNodeClick = useCallback((node: TreeNode, e: React.MouseEvent) => {
     if (node.type === 'model-header' && node.id !== 'models-header') {
@@ -264,8 +295,15 @@ export function HierarchyPanel() {
         setSelectedEntityIds([]);
         setSelectedEntity(resolveEntityRef(elements[0]));
         if (groupingMode === 'type') {
+          const className = node.ifcType || node.name;
           // Class tab → class filter (combinable with storey + type isolation)
-          setClassFilter(elements, node.ifcType || node.name);
+          setClassFilter(elements, className);
+          // Mirror to the advanced filter: sync the single ifcType rule to the
+          // current class (issue #1107). Replace, don't accumulate — the class
+          // tab is single-select, so the rule should be exactly the clicked
+          // class, not a pile-up of earlier clicks.
+          upsertSearchRule((r) => r.kind === 'ifcType' && r.op === 'in', Rule.ifcType([className], 'in'));
+          toast.success(`Filter → ${className}`);
         } else {
           // Type tab → type isolation (combinable with storey + class filter)
           isolateEntities(elements);
@@ -299,6 +337,9 @@ export function HierarchyPanel() {
       if (elements.length > 0) {
         isolateEntities(elements);
       }
+      // Mirror to the advanced filter (issue #1107).
+      upsertSearchRule((r) => r.kind === 'material', Rule.material('eq', node.name));
+      toast.success(`Filter → material ${node.name}`);
       return;
     }
 
@@ -403,6 +444,11 @@ export function HierarchyPanel() {
       if (e.ctrlKey || e.metaKey) {
         // Add to storey filter selection
         setStoreysSelection([...Array.from(selectedStoreys), ...storeyIds]);
+        // Mirror to the advanced filter — accumulate the storey name (issue #1107).
+        const cur = useViewerStore.getState().searchFilter.rules.find((r) => r.kind === 'storey' && r.op === 'in');
+        const names = cur && cur.kind === 'storey' ? Array.from(new Set([...cur.values, node.name])) : [node.name];
+        upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey(names, 'in'));
+        toast.success(`Filter → storey ${node.name}`);
       } else {
         // Single selection - toggle if already selected
         const allAlreadySelected = storeyIds.length > 0 &&
@@ -414,12 +460,17 @@ export function HierarchyPanel() {
           // (useLevelDisplayEffect) drops Solo → Stacked when no storey is
           // isolated, so the mode flag follows.
           clearStoreySelection();
+          // Clear the mirrored storey rule too (issue #1107).
+          upsertSearchRule((r) => r.kind === 'storey', null);
         } else {
           // Select this storey (replaces any existing selection). Isolating a
           // single storey IS Solo, so reflect that in the level-display mode —
           // keeps the storey-tab control + in-viewport chip in sync.
           setStoreysSelection(storeyIds);
           setLevelDisplayMode('solo');
+          // Mirror to the advanced filter: one storey rule = this storey (issue #1107).
+          upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey([node.name], 'in'));
+          toast.success(`Filter → storey ${node.name}`);
         }
       }
     } else if (node.type === 'IfcSpace') {
@@ -477,7 +528,7 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter]);
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule]);
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {

@@ -67,7 +67,7 @@ const MATERIAL_DEF_TYPES = new Set([
   'IFCMATERIALLIST',
 ]);
 
-type DisplayProperty = { name: string; value: unknown; isMutated: boolean };
+type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number };
 type DisplayPropertySet = {
   name: string;
   properties: DisplayProperty[];
@@ -214,6 +214,68 @@ export function PropertiesPanel() {
   // geometry manipulators, georeference placement, add-element draw
   // tools — behind a single switch.
   const editMode = useViewerStore((s) => s.editEnabled);
+  const propertiesActiveTab = useViewerStore((s) => s.propertiesActiveTab);
+  const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
+  const setEditEnabled = useViewerStore((s) => s.setEditEnabled);
+  const pendingPropertyFocus = useViewerStore((s) => s.pendingPropertyFocus);
+  const setPendingPropertyFocus = useViewerStore((s) => s.setPendingPropertyFocus);
+
+  // One-shot "jump to the property I just added in bSDD" focus (issue #1107).
+  // The bSDD card arms `pendingPropertyFocus` and the user crosses over via its
+  // "Edit in Properties" bar. When we land on the Properties tab for the same
+  // entity, enter edit mode, remember which row to highlight, and consume the
+  // request so it fires exactly once.
+  const [focusedPropKey, setFocusedPropKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (propertiesActiveTab !== 'properties') return;
+    const focus = pendingPropertyFocus;
+    if (!focus || !selectedEntity) return;
+    // Match on the same raw modelId + expressId the selection carries; a stale
+    // focus for a different entity is left untouched (never consumed here).
+    if (focus.modelId !== selectedEntity.modelId || focus.entityId !== selectedEntity.expressId) return;
+    setEditEnabled(true);
+    // entityId-qualified key so it can only ever highlight the occurrence row
+    // (not an inherited type pset that happens to share the name).
+    setFocusedPropKey(`${focus.entityId}:${focus.psetName}:${focus.propName}`);
+    setPendingPropertyFocus(null);
+  }, [propertiesActiveTab, pendingPropertyFocus, selectedEntity, setEditEnabled, setPendingPropertyFocus]);
+
+  // A new selection abandons the arm-then-cross-over gesture: it was tied to the
+  // previous element, so drop any armed focus and clear the transient highlight
+  // rather than let them resurrect on a later, unrelated entity (issue #1107).
+  // Arm + cross-over both happen on the SAME selection (bSDD tab → Properties
+  // tab), so this never fires mid-gesture.
+  useEffect(() => {
+    setFocusedPropKey(null);
+    setPendingPropertyFocus(null);
+  }, [selectedEntity?.modelId, selectedEntity?.expressId, setPendingPropertyFocus]);
+
+  // Once the focused row is painted (after the edit-mode re-render), scroll it
+  // into view and let the highlight fade after a beat. Match the attribute by
+  // value rather than building a selector to stay injection-safe on odd names.
+  useEffect(() => {
+    if (!focusedPropKey) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        let el: Element | null = null;
+        document.querySelectorAll('[data-prop-key]').forEach((node) => {
+          if (node.getAttribute('data-prop-key') === focusedPropKey) el = node;
+        });
+        if (el) {
+          const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          (el as Element).scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+        }
+      });
+    });
+    const fade = window.setTimeout(() => setFocusedPropKey(null), 2400);
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+      window.clearTimeout(fade);
+    };
+  }, [focusedPropKey]);
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
@@ -507,6 +569,9 @@ export function PropertiesPanel() {
             name: p.name,
             value: p.value,
             isMutated: mutatedKeys.has(`${pset.name}:${p.name}`),
+            // Carry the value type so the editor can render the right control
+            // even when the value is null/unset (e.g. a fresh bSDD Boolean).
+            type: p.type,
           })),
           isNewPset: newPsetNames.has(pset.name),
         }));
@@ -1403,7 +1468,11 @@ export function PropertiesPanel() {
       )}
 
       {/* Tabs */}
-      <Tabs defaultValue="properties" className="flex-1 flex flex-col overflow-hidden">
+      <Tabs
+        value={propertiesActiveTab}
+        onValueChange={(v) => setPropertiesActiveTab(v as 'properties' | 'quantities' | 'bsdd' | 'raw-step')}
+        className="flex-1 flex flex-col overflow-hidden"
+      >
         <TabsList className="properties-tabs-list w-full shrink-0">
           <TabsTrigger
             value="properties"
@@ -1505,6 +1574,7 @@ export function PropertiesPanel() {
                         enableEditing={editMode}
                         isTypeProperty={renderedIsTypeEntity}
                         typeEditScope={renderedIsTypeEntity ? renderedTypeEditImpact ?? undefined : undefined}
+                        focusedPropKey={focusedPropKey}
                       />
                     ))}
                   </>
@@ -1529,6 +1599,7 @@ export function PropertiesPanel() {
                         enableEditing={editMode}
                         isTypeProperty
                         typeEditScope={renderedTypeEditImpact?.mode === 'inherited' ? renderedTypeEditImpact : undefined}
+                        focusedPropKey={focusedPropKey}
                       />
                     ))}
                   </>

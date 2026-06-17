@@ -1169,6 +1169,15 @@ impl GeometryRouter {
         // subdivision (that workaround is only for the exact kernel).
         if crate::rect_fast::enabled() {
             if let Some(fast) = self.try_rect_fast(&result, ctx) {
+                // Same per-host cut-effect snapshot the exact path records below,
+                // so fast-path hosts aren't missing from the diagnostics.
+                self.record_host_cut_effect(
+                    element_id,
+                    tris_before,
+                    fast.triangle_count(),
+                    ctx.merged_openings.len(),
+                    host_bounds_capture,
+                );
                 return fast;
             }
         }

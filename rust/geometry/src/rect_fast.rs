@@ -264,7 +264,12 @@ pub fn subtract_rect_openings(
 /// than `near_eps` (an f32-collapse risk → defer). Identical snapped values
 /// (e.g. a door edge coinciding with the host edge) collapse to one line.
 fn dedup_axis(mut edges: Vec<f64>, near_eps: f64) -> Option<Vec<f64>> {
-    edges.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // A non-finite coord (NaN/Inf from a corrupt mesh) would panic the sort under
+    // `panic=abort` and crash the whole batch — defer to the exact kernel instead.
+    if edges.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    edges.sort_by(|a, b| a.total_cmp(b));
     let mut out: Vec<f64> = Vec::with_capacity(edges.len());
     for c in edges {
         match out.last() {

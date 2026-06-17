@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Badge } from '@/components/ui/badge';
 import { decodeIfcString, parsePropertyValue } from './encodingUtils';
 import type { PropertySet } from './encodingUtils';
+import { PropertyValueType } from '@ifc-lite/data';
 
 export interface PropertySetCardProps {
   pset: PropertySet;
@@ -95,7 +96,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
-          {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean }) => {
+          {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number }) => {
             const parsed = parsePropertyValue(prop.value);
             const decodedName = decodeIfcString(prop.name);
             const isMutated = prop.isMutated;
@@ -152,6 +153,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                       psetName={pset.name}
                       propName={prop.name}
                       currentValue={prop.value}
+                      currentType={prop.type as PropertyValueType | undefined}
                       editScope={typeEditScope}
                     />
                   ) : (

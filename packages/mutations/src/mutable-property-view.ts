@@ -331,6 +331,16 @@ export class MutablePropertyView {
     // Get old value for undo
     const oldValue = this.getPropertyValue(entityId, psetName, propName);
 
+    // Whether the property already existed BEFORE this call — decided up front
+    // because the block below may insert it into `newPsets`. A null value does
+    // NOT mean absent (an unset Boolean is present-but-empty), so existence is
+    // "had a value OR already an in-session property" (issue #1107). This drives
+    // the CREATE vs UPDATE classification so undo reverts an unset edit instead
+    // of deleting the whole property.
+    const propExistedBefore =
+      oldValue !== null ||
+      !!this.newPsets.get(entityId)?.get(psetName)?.properties.some(p => p.name === propName);
+
     // Check if this pset exists in base
     const basePsets = this.getBasePropertiesForEntity(entityId);
     const psetExistsInBase = basePsets.some(p => p.name === psetName);
@@ -387,7 +397,7 @@ export class MutablePropertyView {
 
     const mutation: Mutation = {
       id: generateMutationId(),
-      type: oldValue === null ? 'CREATE_PROPERTY' : 'UPDATE_PROPERTY',
+      type: propExistedBefore ? 'UPDATE_PROPERTY' : 'CREATE_PROPERTY',
       timestamp: Date.now(),
       modelId: this.modelId,
       entityId,
@@ -412,7 +422,12 @@ export class MutablePropertyView {
     const key = propertyKey(entityId, psetName, propName);
     const oldValue = this.getPropertyValue(entityId, psetName, propName);
 
-    if (oldValue === null) {
+    // A property can legitimately exist with a null value — an unset Boolean
+    // added from bSDD lives in `newPsets` with value=null (issue #1107). So
+    // "absent" means "no value AND not an in-session property"; keying delete
+    // purely on `oldValue === null` made the trash button a silent no-op.
+    const inNewPset = !!this.newPsets.get(entityId)?.get(psetName)?.properties.some(p => p.name === propName);
+    if (oldValue === null && !inNewPset) {
       return null; // Property doesn't exist
     }
 

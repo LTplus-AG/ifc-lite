@@ -2461,7 +2461,11 @@ export const createMutationSlice: StateCreator<
 
     // Apply inverse mutation (skipHistory=true to avoid polluting mutation history)
     if (mutation.type === 'UPDATE_PROPERTY' || mutation.type === 'CREATE_PROPERTY') {
-      if (mutation.oldValue === null && mutation.psetName && mutation.propName) {
+      // Decide by mutation TYPE, not by `oldValue === null`: a property can have
+      // a null (unset) value yet still have existed before the edit (an unset
+      // Boolean). Undoing a CREATE removes the property; undoing an UPDATE
+      // restores its prior value — which may legitimately be null/unset (#1107).
+      if (mutation.type === 'CREATE_PROPERTY' && mutation.psetName && mutation.propName) {
         view.deleteProperty(mutation.entityId, mutation.psetName, mutation.propName, true);
       } else if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
         view.setProperty(

@@ -21,9 +21,11 @@ describe('toPropertyValueType', () => {
 });
 
 describe('defaultValue', () => {
-  it('returns false for boolean so the value is valid the moment it is added', () => {
-    assert.strictEqual(defaultValue('Boolean'), false);
-    assert.strictEqual(defaultValue('boolean'), false);
+  it('returns null (unset) for boolean — never picks a value for the user', () => {
+    // An IFC boolean property is legitimately optional; a fresh bSDD add must
+    // start empty, not default to `false` (issue #1107).
+    assert.strictEqual(defaultValue('Boolean'), null);
+    assert.strictEqual(defaultValue('boolean'), null);
   });
 
   it('returns empty string for every other type (manual entry)', () => {

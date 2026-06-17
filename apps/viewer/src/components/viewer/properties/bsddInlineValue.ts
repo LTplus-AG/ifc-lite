@@ -23,11 +23,13 @@ export function toPropertyValueType(bsddType: string | null): PropertyValueType 
 
 /**
  * Default value used when a bSDD property is added. The property is created
- * with its correct {@link toPropertyValueType} type; Boolean gets a concrete
- * `false` so the value is valid immediately, everything else starts empty for
- * editing in the Properties tab.
+ * with its correct {@link toPropertyValueType} type but NO value — we never
+ * decide a value on the user's behalf (issue #1107). An IFC property value is
+ * legitimately optional, so a fresh Boolean is `null` (unset / `$`), not a
+ * concrete `false`; everything else starts as an empty string. The user sets
+ * the value (or leaves it empty) in the Properties tab.
  */
 export function defaultValue(bsddType: string | null): PropertyValue {
-  if (toPropertyValueType(bsddType) === PropertyValueType.Boolean) return false;
+  if (toPropertyValueType(bsddType) === PropertyValueType.Boolean) return null;
   return '';
 }

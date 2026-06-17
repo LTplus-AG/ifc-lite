@@ -209,12 +209,32 @@ export function PropertyEditor({
       {/* Value input */}
       <div className="flex items-center gap-2">
         {valueType === PropertyValueType.Boolean || valueType === PropertyValueType.Logical ? (
-          <div className="flex items-center gap-2 flex-1">
-            <Switch
-              checked={value === 'true'}
-              onCheckedChange={(checked) => setValue(checked ? 'true' : 'false')}
-            />
-            <span className="text-xs text-zinc-500">{value === 'true' ? 'True' : 'False'}</span>
+          // Tri-state: a boolean property value is optional in IFC, so "Unset"
+          // is a first-class choice — we never silently coerce to false. An
+          // empty `value` ('') means unset (issue #1107).
+          <div className="flex items-center gap-1 flex-1" role="radiogroup" aria-label="Boolean value">
+            {([['', 'Unset'], ['true', 'True'], ['false', 'False']] as const).map(([v, label]) => {
+              const active = value === v;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => {
+                    setValue(v);
+                    if (showScopeConfirm) setShowScopeConfirm(false);
+                  }}
+                  className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                    active
+                      ? 'bg-purple-600 text-white border-purple-600'
+                      : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                  } ${v === '' ? 'italic' : ''}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         ) : (
           <Input
@@ -1455,6 +1475,9 @@ function parseValue(value: string, type: PropertyValueType): PropertyValue {
       return parseInt(value, 10) || 0;
     case PropertyValueType.Boolean:
     case PropertyValueType.Logical:
+      // Empty = unset → null (encodes to the table's 255 sentinel, serialises
+      // to `$`). Only an explicit choice writes a concrete boolean.
+      if (value === '') return null;
       return value.toLowerCase() === 'true';
     default:
       return value;

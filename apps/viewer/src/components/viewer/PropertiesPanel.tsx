@@ -67,7 +67,7 @@ const MATERIAL_DEF_TYPES = new Set([
   'IFCMATERIALLIST',
 ]);
 
-type DisplayProperty = { name: string; value: unknown; isMutated: boolean };
+type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number };
 type DisplayPropertySet = {
   name: string;
   properties: DisplayProperty[];
@@ -569,6 +569,9 @@ export function PropertiesPanel() {
             name: p.name,
             value: p.value,
             isMutated: mutatedKeys.has(`${pset.name}:${p.name}`),
+            // Carry the value type so the editor can render the right control
+            // even when the value is null/unset (e.g. a fresh bSDD Boolean).
+            type: p.type,
           })),
           isNewPset: newPsetNames.has(pset.name),
         }));

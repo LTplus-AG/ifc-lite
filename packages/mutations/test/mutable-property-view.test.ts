@@ -44,6 +44,35 @@ describe('MutablePropertyView', () => {
     expect(view.getForEntity(7)).toEqual([]);
   });
 
+  it('treats a null/unset property as present, not absent (issue #1107)', () => {
+    // A bSDD Boolean is added unset (value null) so we never pick a value for
+    // the user. Such a property still EXISTS — null must not be read as absent.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+
+    const created = view.setProperty(9, 'Pset_WallCommon', 'Combustible', null, PropertyValueType.Boolean);
+    expect(created.type).toBe('CREATE_PROPERTY');
+    expect(view.getForEntity(9)).toMatchObject([
+      {
+        name: 'Pset_WallCommon',
+        properties: [{ name: 'Combustible', type: PropertyValueType.Boolean, value: null }],
+      },
+    ]);
+
+    // Editing an existing-but-unset property is an UPDATE (not a CREATE), so a
+    // later undo restores the prior unset state instead of deleting the property.
+    const edited = view.setProperty(9, 'Pset_WallCommon', 'Combustible', true, PropertyValueType.Boolean);
+    expect(edited.type).toBe('UPDATE_PROPERTY');
+    expect(edited.oldValue).toBeNull();
+
+    // The unset property is still deletable — the trash button is not a no-op.
+    const fresh = new MutablePropertyView(null, 'model-1');
+    fresh.setOnDemandExtractor(() => []);
+    fresh.setProperty(9, 'Pset_WallCommon', 'Combustible', null, PropertyValueType.Boolean);
+    expect(fresh.deleteProperty(9, 'Pset_WallCommon', 'Combustible')).not.toBeNull();
+    expect(fresh.getForEntity(9)).toEqual([]);
+  });
+
   describe('entity aliases (duplicate flow)', () => {
     it('routes base property reads to the source entity when aliased', () => {
       const view = new MutablePropertyView(null, 'model-1');

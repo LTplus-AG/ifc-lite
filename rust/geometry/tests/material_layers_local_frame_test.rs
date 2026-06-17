@@ -109,4 +109,37 @@ fn slices_correctly_under_per_element_local_frame() {
             sub.mesh.origin
         );
     }
+
+    // Every slab must be a CLOSED solid (the cut faces capped) — otherwise the
+    // layers read as hollow shell bands in 3D and a section finds no filled
+    // region. Watertight ⇒ every edge shared by exactly two triangles; checked
+    // by welded position (the mesh is flat-shaded, so vertex indices aren't
+    // shared across faces).
+    for sub in &collection.sub_meshes {
+        assert_eq!(boundary_edge_count(&sub.mesh), 0, "each sliced layer must be a closed, capped solid");
+    }
+}
+
+/// Count edges used by exactly one triangle (open boundary), welding vertices by
+/// rounded world position so flat-shaded duplicates don't read as gaps.
+fn boundary_edge_count(mesh: &ifc_lite_geometry::Mesh) -> usize {
+    use std::collections::HashMap;
+    let key = |i: usize| -> (i64, i64, i64) {
+        let q = |v: f32| (v as f64 * 1.0e4).round() as i64;
+        (
+            q(mesh.positions[i * 3]),
+            q(mesh.positions[i * 3 + 1]),
+            q(mesh.positions[i * 3 + 2]),
+        )
+    };
+    let mut edges: HashMap<[(i64, i64, i64); 2], u32> = HashMap::new();
+    for tri in mesh.indices.chunks_exact(3) {
+        let v = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
+        for &(a, b) in &[(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
+            let (ka, kb) = (key(a), key(b));
+            let e = if ka <= kb { [ka, kb] } else { [kb, ka] };
+            *edges.entry(e).or_insert(0) += 1;
+        }
+    }
+    edges.values().filter(|&&c| c == 1).count()
 }

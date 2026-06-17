@@ -1204,7 +1204,7 @@ fn plane_is_coincident_with_host_face(
 /// the kept `+clip_normal` material). If the boundary is non-manifold or does
 /// not close (a non-watertight host), we bail and leave the mesh unchanged —
 /// never worse than the uncapped output.
-fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, clip_normal: Vector3<f64>) {
+pub(crate) fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, clip_normal: Vector3<f64>) {
     use crate::triangulation::{project_to_2d, triangulate_polygon_with_holes_refined};
     use std::collections::{HashMap, HashSet};
 

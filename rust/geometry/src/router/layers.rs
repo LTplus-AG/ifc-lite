@@ -21,6 +21,7 @@
 
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, Plane};
+use crate::processors::cap_half_space_clip;
 use crate::material_layer_index::{LayerAxis, LayerBuildup, LayerInfo};
 use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Mesh, Point3, Result, Vector3};
@@ -532,14 +533,21 @@ fn slice_mesh_into_layers(
 
         let mut slab = mesh.clone();
 
+        // Each interface clip is CAPPED so the slab is a closed solid — a real
+        // material layer with faces at both interfaces — not just the wall's
+        // outer shell sliced into bands. Without the cap the layers read as
+        // hollow in 3D (colour on the exterior only) and a section finds no
+        // filled per-layer regions to draw.
         if let Some(plane) = after_prev {
-            if let Ok(clipped) = clipper.clip_mesh(&slab, plane) {
+            if let Ok(mut clipped) = clipper.clip_mesh(&slab, plane) {
+                cap_half_space_clip(&mut clipped, plane.point, plane.normal);
                 slab = clipped;
             }
         }
         if let Some(plane) = before_next {
             let flipped = Plane::new(plane.point, -plane.normal);
-            if let Ok(clipped) = clipper.clip_mesh(&slab, &flipped) {
+            if let Ok(mut clipped) = clipper.clip_mesh(&slab, &flipped) {
+                cap_half_space_clip(&mut clipped, flipped.point, flipped.normal);
                 slab = clipped;
             }
         }

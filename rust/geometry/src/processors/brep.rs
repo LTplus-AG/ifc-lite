@@ -14,6 +14,15 @@ use super::advanced_face::process_advanced_face;
 use super::helpers::{extract_loop_points_by_id, FaceData, FaceResult};
 use crate::router::GeometryProcessor;
 
+/// Minimum face count at which parallel (rayon) triangulation pays off. Below
+/// this, the fork-join dispatch overhead exceeds the work — real-world BReps are
+/// overwhelmingly tiny (6–50 faces of trivial tri/quad/convex fast-path geometry),
+/// so dispatching each tiny shell through rayon costs far more than it saves
+/// (worse under the per-element worker pool, where this is nested parallelism).
+/// The serial and parallel paths produce byte-identical output: `collect`
+/// preserves index order and each face's f32 result is computed identically.
+const PAR_FACE_THRESHOLD: usize = 64;
+
 // ---------- FacetedBrepProcessor ----------
 
 /// FacetedBrep processor
@@ -316,10 +325,18 @@ impl FacetedBrepProcessor {
             }
         }
 
-        let face_results: Vec<FaceResult> = face_data_list
-            .par_iter()
-            .map(|face| Self::triangulate_face(face, rtc))
-            .collect();
+        // Serial for small shells (avoids rayon fork-join overhead); byte-identical.
+        let face_results: Vec<FaceResult> = if face_data_list.len() < PAR_FACE_THRESHOLD {
+            face_data_list
+                .iter()
+                .map(|face| Self::triangulate_face(face, rtc))
+                .collect()
+        } else {
+            face_data_list
+                .par_iter()
+                .map(|face| Self::triangulate_face(face, rtc))
+                .collect()
+        };
 
         let total_positions: usize = face_results.iter().map(|r| r.positions.len()).sum();
         let total_indices: usize = face_results.iter().map(|r| r.indices.len()).sum();
@@ -425,10 +442,17 @@ impl GeometryProcessor for FacetedBrepProcessor {
         // Standard processor path uses no RTC (0,0,0) — the router applies RTC
         // via transform_mesh. For full-precision infra models, the router calls
         // process_with_rtc instead which passes the actual offset.
-        let face_results: Vec<FaceResult> = face_data_list
-            .par_iter()
-            .map(|face| Self::triangulate_face(face, (0.0, 0.0, 0.0)))
-            .collect();
+        let face_results: Vec<FaceResult> = if face_data_list.len() < PAR_FACE_THRESHOLD {
+            face_data_list
+                .iter()
+                .map(|face| Self::triangulate_face(face, (0.0, 0.0, 0.0)))
+                .collect()
+        } else {
+            face_data_list
+                .par_iter()
+                .map(|face| Self::triangulate_face(face, (0.0, 0.0, 0.0)))
+                .collect()
+        };
 
         // PHASE 3: Sequential - Merge all face results into final mesh
         // Pre-calculate total sizes for efficient allocation

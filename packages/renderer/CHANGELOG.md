@@ -1,5 +1,20 @@
 # @ifc-lite/renderer
 
+## 1.28.2
+
+### Patch Changes
+
+- [#1148](https://github.com/LTplus-AG/ifc-lite/pull/1148) [`81a6cdf`](https://github.com/LTplus-AG/ifc-lite/commit/81a6cdf93aa0af2e306f3697c2912f56405e8856) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.getSceneBounds()` — an O(1) accessor for the cached scene bounds (the value last passed to `setSceneBounds`). The viewer uses it to anchor the orbit pivot to the scene centre on a raycast miss / large model, instead of the drifting camera target which made repeated rotation feel untethered (issue [#1107](https://github.com/LTplus-AG/ifc-lite/issues/1107)).
+
+- [#1161](https://github.com/LTplus-AG/ifc-lite/pull/1161) [`ef8343b`](https://github.com/LTplus-AG/ifc-lite/commit/ef8343baeb50f6de00c3ca3c31ab15849ebb2528) Thanks [@louistrue](https://github.com/louistrue)! - Keep internal edges/facets visible on selected objects.
+
+  The selection highlight painted every fragment a single flat blue (`color = vec3(0.3, 0.6, 1.0)`), discarding all lighting. Because the viewer's "internal lines" are really the per-face shading step of flat-shaded facets, that flat fill collapsed a selected object into one featureless silhouette — creases and bends disappeared the moment it was highlighted (the faint screen-space edge line alone could not stand in for the lost face-shading cue).
+
+  The highlight now re-lights a selection-blue albedo with the scene's own lighting term instead of overwriting it. The base material colour never enters the result (no green-site / red-roof bleed-through, the reason the flat override existed), but the per-face brightness variation is preserved, so internal edges read on the highlight exactly as they do unselected. A multiplicative gain on the lighting luminance keeps sunlit faces at full selection-blue, with a floor/ceiling clamp so shadowed faces only dim and bright scenes never wash out.
+
+- Updated dependencies [[`69e5425`](https://github.com/LTplus-AG/ifc-lite/commit/69e5425e3d7586fcc2d44a33465806adc0ed53f8), [`bd585c7`](https://github.com/LTplus-AG/ifc-lite/commit/bd585c73de1f39db3c9aac168174012b98b79855), [`200681b`](https://github.com/LTplus-AG/ifc-lite/commit/200681ba17f162aaafaabf56c0723ddba693faf8)]:
+  - @ifc-lite/geometry@2.7.3
+
 ## 1.28.1
 
 ### Patch Changes

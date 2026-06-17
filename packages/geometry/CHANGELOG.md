@@ -1,5 +1,55 @@
 # @ifc-lite/geometry
 
+## 2.7.3
+
+### Patch Changes
+
+- [#1137](https://github.com/LTplus-AG/ifc-lite/pull/1137) [`69e5425`](https://github.com/LTplus-AG/ifc-lite/commit/69e5425e3d7586fcc2d44a33465806adc0ed53f8) Thanks [@louistrue](https://github.com/louistrue)! - Cap the cut face of unbounded `IfcHalfSpaceSolid` differences (gable roof-trims, mono-pitch eaves, Revit top-trims).
+
+  The pure-Rust kernel consolidation ([#1024](https://github.com/LTplus-AG/ifc-lite/issues/1024)) deleted the in-tree BSP kernel along with the polygon cap that closed the cross-section left by the fast plane-clip path, but kept that path for unbounded `IfcHalfSpaceSolid` operands. With no cap, every such clip produced an **open, inverted shell** (negative signed volume, dozens of open boundary edges) instead of a watertight solid — the roof-clipped wall rendered as a broken/spiky surface.
+
+  The clip now re-closes the section: it chains the on-plane open boundary into loops, classifies them into outer rings and holes, triangulates each region with the kernel CDT, and winds the cap to face the removed side. If the boundary is non-manifold or does not close (a non-watertight host), it bails and leaves the output unchanged — never worse than before.
+
+  On AC20-FZK-Haus the two roof-clipped upper walls go from `14 tris / −8.4 m³ / 16 open edges` to `20 tris / +2.06 m³ / 0 open edges`; void-cut walls are untouched.
+
+- [#1135](https://github.com/LTplus-AG/ifc-lite/pull/1135) [`bd585c7`](https://github.com/LTplus-AG/ifc-lite/commit/bd585c73de1f39db3c9aac168174012b98b79855) Thanks [@louistrue](https://github.com/louistrue)! - Speed up the exact CSG kernel ~42% on boolean-heavy models (Tekla 170_KM: 22.0s → 12.8s of serial geometry), byte-identical — the sign / boolean / retriangulation determinism manifests and full geometry suite are unchanged. Four profile- and literature-driven optimizations (Attene "Indirect Predicates" §5.4, Shewchuk):
+
+  - **BVH boolean classification** — `boolean_vids` scanned the _entire_ opposite operand per arrangement triangle (an exact ray-cast + an exact coincident-face probe). A median-split AABB BVH (conservative ray + band-radius point queries) prunes each to O(log N + hits); the parity/any-match results are order-independent, so the verdict is unchanged.
+  - **Memoize `to_f64_pt`** — classification and the output map materialize the same heavily-shared conforming vertices many times; each interned point's f64 value is now computed once per arrangement.
+  - **Cache interval lambdas in the seg×seg pre-pass** — the O(n²) crossing loop re-derived each endpoint's degree-4/7 LPI/TPI interval lambda on every `orient2d`; compute it once and run the crossing test straight from it, falling to the exact cascade only on a straddle.
+  - **Materialize f64 from the cached lambda** — reuse the interner's already-cached I512 lambda instead of re-deriving it at I1024.
+
+  The remaining cost is the conforming retriangulation (constrained Delaunay) and the exact predicate arithmetic itself — the genuine exact-CSG floor. The win grows with operand size and applies to every boolean-heavy model.
+
+- [#1163](https://github.com/LTplus-AG/ifc-lite/pull/1163) [`200681b`](https://github.com/LTplus-AG/ifc-lite/commit/200681ba17f162aaafaabf56c0723ddba693faf8) Thanks [@louistrue](https://github.com/louistrue)! - Add an analytic fast path for rectangular openings, skipping the exact CSG kernel
+  for the common case.
+
+  The pure-Rust exact CSG kernel is at its single-threaded, memory-bandwidth-bound
+  floor (it won't parallelise — adding geometry workers gives no speedup), and
+  void-cutting is ~85-90% of load. The only remaining lever is doing _less_ exact
+  CSG. `rect_fast` cuts axis-aligned rectangular openings through an axis-aligned
+  box host (the dominant case: windows/doors in a straight wall) with a 3D cellular
+  decomposition instead of the mesh-arrangement kernel: split the host box by every
+  opening plane on all three axes, mark each cell solid/void, and emit the exposed
+  faces. Watertight by construction (shared snapped grid vertices on the kernel's
+  own `SNAP_GRID`), deterministic (FMA-free f64 → byte-identical native==wasm), and
+  handles windows, doors (flush to an edge), recesses, notches, and overlapping
+  openings uniformly.
+
+  It is a pure optimization: any case it can't prove safe — non-box host (multi-
+  layer / chamfered / diagonal walls), non-rectangular opening, or a near-edge
+  feature whose grid lines would collapse at the host's f32 magnitude — defers to
+  the exact kernel unchanged. `IFC_LITE_RECT_FAST=0` forces everything back to the
+  exact path.
+
+  Measured (dental_clinic, a box-wall-dominated building): ~94% of openings cut
+  analytically, void-cut geometry time ~0.95 s → ~0.32 s (~3×), with 2% _fewer_
+  triangles (no bloat). Models with more multi-layer or diagonal walls fire less
+  (those correctly defer).
+
+- Updated dependencies [[`bfd9004`](https://github.com/LTplus-AG/ifc-lite/commit/bfd9004daa17f481a7b33b5c3c11f620e6cd894d), [`248f2c0`](https://github.com/LTplus-AG/ifc-lite/commit/248f2c09a4d61fa27dfeaba5511a2a641d4cd278), [`ddae2b0`](https://github.com/LTplus-AG/ifc-lite/commit/ddae2b0024f071d00f9e6e4b77e0be3965412ec3)]:
+  - @ifc-lite/data@2.1.0
+
 ## 2.7.2
 
 ### Patch Changes

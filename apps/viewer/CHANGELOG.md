@@ -1,5 +1,34 @@
 # @ifc-lite/viewer
 
+## 1.30.1
+
+### Patch Changes
+
+- [#1136](https://github.com/LTplus-AG/ifc-lite/pull/1136) [`98457b8`](https://github.com/LTplus-AG/ifc-lite/commit/98457b8aea6663806303abc8feb6598d841d1de3) Thanks [@louistrue](https://github.com/louistrue)! - Show IfcElementAssembly / IfcStair parts in the spatial tree and make assemblies
+  selectable ([#1133](https://github.com/LTplus-AG/ifc-lite/issues/1133)). A decomposing assembly carries no geometry of its own — its
+  stair flights, railings, landing slabs and virtual clearance volumes hang off it
+  via `IfcRelAggregates` and hold the meshes — so the spatial panel previously
+  listed the assembly as a childless leaf, the parts were unreachable, and
+  clicking the assembly highlighted nothing. The hierarchy now nests an
+  assembly's aggregated parts beneath it (recursively, cycle-guarded), clicking
+  the assembly highlights and frames the whole thing, soloing a storey keeps the
+  parts (they inherit the storey through the assembly), and `IfcVirtualElement`
+  clearance volumes are hidden by default with a new "Virtual Elements"
+  visibility toggle.
+- Updated dependencies [[`61bad47`](https://github.com/LTplus-AG/ifc-lite/commit/61bad47257196b766fb0b8a17c56e53b763ca34a), [`bfd9004`](https://github.com/LTplus-AG/ifc-lite/commit/bfd9004daa17f481a7b33b5c3c11f620e6cd894d), [`69e5425`](https://github.com/LTplus-AG/ifc-lite/commit/69e5425e3d7586fcc2d44a33465806adc0ed53f8), [`81a6cdf`](https://github.com/LTplus-AG/ifc-lite/commit/81a6cdf93aa0af2e306f3697c2912f56405e8856), [`ca8a856`](https://github.com/LTplus-AG/ifc-lite/commit/ca8a856308e5a6df1bb84d0c28f0c1e5059da19a), [`bd585c7`](https://github.com/LTplus-AG/ifc-lite/commit/bd585c73de1f39db3c9aac168174012b98b79855), [`248f2c0`](https://github.com/LTplus-AG/ifc-lite/commit/248f2c09a4d61fa27dfeaba5511a2a641d4cd278), [`200681b`](https://github.com/LTplus-AG/ifc-lite/commit/200681ba17f162aaafaabf56c0723ddba693faf8), [`ef8343b`](https://github.com/LTplus-AG/ifc-lite/commit/ef8343baeb50f6de00c3ca3c31ab15849ebb2528), [`ddae2b0`](https://github.com/LTplus-AG/ifc-lite/commit/ddae2b0024f071d00f9e6e4b77e0be3965412ec3)]:
+  - @ifc-lite/mutations@1.15.5
+  - @ifc-lite/data@2.1.0
+  - @ifc-lite/parser@3.3.0
+  - @ifc-lite/geometry@2.7.3
+  - @ifc-lite/renderer@1.28.2
+  - @ifc-lite/sdk@1.19.0
+  - @ifc-lite/sandbox@1.16.0
+  - @ifc-lite/export@1.20.0
+  - @ifc-lite/lens@1.15.3
+  - @ifc-lite/lists@1.15.4
+  - @ifc-lite/cache@2.0.4
+  - @ifc-lite/ids@1.15.12
+
 ## 1.30.0
 
 ### Minor Changes

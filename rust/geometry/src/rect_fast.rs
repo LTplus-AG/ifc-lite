@@ -212,17 +212,35 @@ pub fn subtract_rect_openings(
     // Clamp every opening to the host shell (a cutter extended through the wall
     // pokes past) and keep only those that overlap on all 3 axes. A
     // non-overlapping opening is a no-op (the SILENT NO-OP case) — drop it.
+    let smin = [snap(bx.min[0]), snap(bx.min[1]), snap(bx.min[2])];
+    let smax = [snap(bx.max[0]), snap(bx.max[1]), snap(bx.max[2])];
     let mut clamped: Vec<[[f64; 3]; 2]> = Vec::with_capacity(openings.len());
     for (omn, omx) in openings {
         let mut cmn = [0.0; 3];
         let mut cmx = [0.0; 3];
         let mut overlaps = true;
+        let mut covers_full = true;
         for k in 0..3 {
             cmn[k] = snap(omn[k].max(bx.min[k]));
             cmx[k] = snap(omx[k].min(bx.max[k]));
             if cmx[k] - cmn[k] <= near_eps {
                 overlaps = false;
             }
+            // Does the clamped opening reach the host edge-to-edge on this axis?
+            if cmn[k] > smin[k] + near_eps || cmx[k] < smax[k] - near_eps {
+                covers_full = false;
+            }
+        }
+        // An opening that CONTAINS the whole host on all three axes is a
+        // degenerate / double-encoded redundant void: the void is already baked
+        // into the wall profile and re-added as an opening element (#964). The
+        // exact kernel treats it as a no-op (coplanar cutter faces → host left
+        // unchanged), so the fast path MUST NOT cut it — doing so erases the
+        // entire wall and leaves the window floating in a giant void (#1167).
+        // Defer the whole host to the exact path to match its behaviour.
+        if covers_full {
+            stats.defer_off_face += 1;
+            return None;
         }
         if overlaps {
             clamped.push([cmn, cmx]);
@@ -661,5 +679,45 @@ mod tests {
         let b = subtract_rect_openings(&wall(base), &ops, &mut s2).unwrap();
         assert_eq!(a.positions, b.positions);
         assert_eq!(a.indices, b.indices);
+    }
+
+    #[test]
+    fn redundant_whole_wall_opening_defers() {
+        // #1167: a double-encoded void (#964) whose box CONTAINS the whole wall
+        // — full width × full height, through the thickness. The exact kernel
+        // treats this as a no-op (coplanar cutter → host unchanged), so the fast
+        // path MUST defer; cutting it would erase the entire wall and leave the
+        // window floating in a giant void.
+        let base = [10.0, 5.0, 2.0];
+        let whole = opening(base, 0.0, 4.0, 0.0, 3.0); // spans the full 4 m × 3 m face
+        let mut st = RectFastStats::default();
+        assert!(
+            subtract_rect_openings(&wall(base), &[whole], &mut st).is_none(),
+            "opening that contains the whole host must defer, not erase the wall"
+        );
+        assert_eq!(st.defer_off_face, 1);
+
+        // A whole-wall opening MIXED with a genuine window still defers the host
+        // (the redundant void poisons the batch → hand the whole element to the
+        // exact path, which cuts the real window and no-ops the redundant one).
+        let mut st_mix = RectFastStats::default();
+        assert!(
+            subtract_rect_openings(
+                &wall(base),
+                &[whole, opening(base, 0.5, 1.5, 0.4, 2.6)],
+                &mut st_mix
+            )
+            .is_none(),
+            "a redundant whole-wall opening must defer the whole host"
+        );
+
+        // Sanity: a genuine interior window (margin on every in-face axis) still
+        // fires the fast path — the guard is not over-broad.
+        let mut st_ok = RectFastStats::default();
+        assert!(
+            subtract_rect_openings(&wall(base), &[opening(base, 0.5, 3.5, 0.4, 2.6)], &mut st_ok)
+                .is_some(),
+            "an interior window must still fire the fast path"
+        );
     }
 }

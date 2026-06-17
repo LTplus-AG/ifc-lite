@@ -329,7 +329,11 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
         // 0: SweptArea (IfcProfileDef) - 2D profile in xy plane of Position
         // 1: Position (IfcAxis2Placement3D) - solid's local coord system
         // 2: Axis (IfcAxis1Placement) - revolution axis in xy plane of Position
-        // 3: Angle (IfcPlaneAngleMeasure) - revolution angle in radians
+        // 3: Angle (IfcPlaneAngleMeasure) - revolution angle in the project's
+        //    PLANEANGLEUNIT (radians for SI files, degrees for files that
+        //    declare a DEGREE conversion-based unit). Scaled to radians below
+        //    via decoder.plane_angle_to_radians() — see issue #820 for the
+        //    same class of bug on IfcTrimmedCurve parameters.
 
         let profile_attr = entity
             .get(0)
@@ -363,7 +367,8 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
 
         let angle = entity
             .get_float(3)
-            .ok_or_else(|| Error::geometry("RevolvedAreaSolid missing Angle".to_string()))?;
+            .ok_or_else(|| Error::geometry("RevolvedAreaSolid missing Angle".to_string()))?
+            * decoder.plane_angle_to_radians();
 
         let profile_2d = self.profile_processor.process(&profile, decoder, quality)?;
         if profile_2d.outer.is_empty() {

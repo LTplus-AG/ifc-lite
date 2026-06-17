@@ -6,10 +6,11 @@
  * Section plane controls panel
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { X, Slice, ChevronDown, FileImage, FlipHorizontal2, MousePointerClick, RotateCcw } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { X, Slice, ChevronDown, FileImage, FlipHorizontal2, MousePointerClick, RotateCcw, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore, loadLastSectionMode } from '@/store';
+import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { AXIS_INFO } from './sectionConstants';
 import { SectionPlaneVisualization } from './SectionVisualization';
 import { SectionCapControls } from './SectionCapControls';
@@ -137,16 +138,28 @@ export function SectionOverlay() {
     setDrawingPanelVisible(true);
   }, [clearDrawing, setDrawingPanelVisible]);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const drag = useDraggablePanel(panelRef);
+
   return (
     <>
       {/* Compact Section Tool Panel - matches Measure tool style */}
-      <div className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg z-30">
-        {/* Header - always visible */}
+      <div ref={panelRef} style={drag.style} className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg z-30">
+        {/* Header doubles as a drag handle — buttons/inputs are ignored by the
+            hook so they keep working (issue #1107). */}
         <div className="flex items-center justify-between gap-2 p-2">
-          <button
-            onClick={togglePanel}
-            className="flex items-center gap-2 hover:bg-accent/50 rounded px-2 py-1 transition-colors"
-          >
+          <div className="flex items-center gap-1 min-w-0">
+            <span
+              onMouseDown={drag.onDragStart}
+              title="Drag to move"
+              className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </span>
+            <button
+              onClick={togglePanel}
+              className="flex items-center gap-2 hover:bg-accent/50 rounded px-2 py-1 transition-colors min-w-0"
+            >
             <Slice className="h-4 w-4 text-primary" />
             <span className="font-medium text-sm">Section</span>
             {sectionPlane.enabled && (
@@ -158,7 +171,8 @@ export function SectionOverlay() {
               </span>
             )}
             <ChevronDown className={`h-3 w-3 transition-transform ${isPanelCollapsed ? '-rotate-90' : ''}`} />
-          </button>
+            </button>
+          </div>
           <div className="flex items-center gap-1">
             {/* Only show 2D button when panel is closed */}
             {!drawingPanelVisible && (

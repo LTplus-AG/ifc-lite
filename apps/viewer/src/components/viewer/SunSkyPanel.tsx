@@ -18,13 +18,15 @@
  * (sweep animation lives in useSolarSweep at the viewport level).
  */
 
-import { useState } from 'react';
-import { Play, Pause, ChevronDown, ChevronUp } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Play, Pause, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { useViewerStore } from '@/store';
+import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { cn } from '@/lib/utils';
 import type { CesiumDataSource } from '@/store/slices/cesiumSlice';
 import type { SolarSweepMode } from '@/store/slices/solarSlice';
 import { LIGHTING_PRESETS, LIGHTING_PRESET_ORDER, isLightingPresetId } from '@/lib/lighting-presets';
+import { posthog } from '@/lib/analytics';
 import {
   solarDisplayOffsetMinutes,
   toSolarDateInputValue,
@@ -76,6 +78,10 @@ export function SunSkyPanel() {
   const setSweepMode = useViewerStore((s) => s.setSolarSweepMode);
 
   const [collapsed, setCollapsed] = useState(false);
+  // Hooks must run unconditionally — keep these ABOVE the `!open` early return
+  // (a conditional hook is React error #310).
+  const panelRef = useRef<HTMLDivElement>(null);
+  const drag = useDraggablePanel(panelRef);
 
   if (!open) return null;
 
@@ -86,21 +92,35 @@ export function SunSkyPanel() {
     : 'UTC';
 
   return (
-    <div className="pointer-events-auto w-60 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 text-xs">
-      {/* Header — click anywhere to collapse/expand */}
-      <button
-        type="button"
-        onClick={() => setCollapsed(!collapsed)}
-        aria-expanded={!collapsed}
-        className="flex items-center justify-between gap-2 text-left"
-      >
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Sun &amp; Sky
+    <div
+      ref={panelRef}
+      style={drag.style}
+      className="pointer-events-auto absolute top-32 right-4 z-10 w-60 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg p-2 flex flex-col gap-2 text-xs"
+    >
+      {/* Header: the grip drags (issue #1107); the rest toggles collapse —
+          kept separate so the two affordances don't collide. */}
+      <div className="flex items-center gap-1.5">
+        <span
+          onMouseDown={drag.onDragStart}
+          title="Drag to move"
+          className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
         </span>
-        <span className="text-muted-foreground">
-          {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
-        </span>
-      </button>
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          className="flex-1 flex items-center justify-between gap-2 text-left"
+        >
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Sun &amp; Sky
+          </span>
+          <span className="text-muted-foreground">
+            {collapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+          </span>
+        </button>
+      </div>
 
       {!collapsed && (
         <>
@@ -175,7 +195,19 @@ export function SunSkyPanel() {
                 <button
                   type="button"
                   aria-pressed={solarEnabled}
-                  onClick={() => setSolarEnabled(!solarEnabled)}
+                  onClick={() => {
+                    const next = !solarEnabled;
+                    setSolarEnabled(next);
+                    // Fire only on enable — the sun study is a live analysis,
+                    // so "turned on" is the run signal (no discrete compute step).
+                    if (next) {
+                      posthog.capture('solar_analysis_run', {
+                        sweep_mode: sweepMode,
+                        use_local_time: useLocalTime,
+                        data_source: dataSource,
+                      });
+                    }
+                  }}
                   className={cn(
                     'px-2 py-0.5 rounded text-[10px] font-semibold uppercase transition-colors',
                     solarEnabled ? 'bg-amber-500 text-zinc-950' : 'text-muted-foreground hover:bg-muted hover:text-foreground',

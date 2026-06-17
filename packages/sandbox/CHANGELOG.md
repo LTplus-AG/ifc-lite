@@ -1,5 +1,16 @@
 # @ifc-lite/sandbox
 
+## 1.16.0
+
+### Minor Changes
+
+- [#1152](https://github.com/LTplus-AG/ifc-lite/pull/1152) [`ca8a856`](https://github.com/LTplus-AG/ifc-lite/commit/ca8a856308e5a6df1bb84d0c28f0c1e5059da19a) Thanks [@louistrue](https://github.com/louistrue)! - Add `bim.query.matchingActiveFilter()` — returns the entities matching the host's active advanced filter (or `null` when no filter is set). Backed by a new `QueryBackendMethods.entitiesMatchingActiveFilter()`. Lets scripted exports (e.g. the CSV quantity take-off) honour the current filtered view instead of always exporting the whole model (issue [#1107](https://github.com/LTplus-AG/ifc-lite/issues/1107)).
+
+### Patch Changes
+
+- Updated dependencies [[`ca8a856`](https://github.com/LTplus-AG/ifc-lite/commit/ca8a856308e5a6df1bb84d0c28f0c1e5059da19a)]:
+  - @ifc-lite/sdk@1.19.0
+
 ## 1.15.2
 
 ### Patch Changes

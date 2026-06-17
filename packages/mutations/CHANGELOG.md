@@ -1,5 +1,17 @@
 # @ifc-lite/mutations
 
+## 1.15.5
+
+### Patch Changes
+
+- [#1149](https://github.com/LTplus-AG/ifc-lite/pull/1149) [`61bad47`](https://github.com/LTplus-AG/ifc-lite/commit/61bad47257196b766fb0b8a17c56e53b763ca34a) Thanks [@louistrue](https://github.com/louistrue)! - Treat a null/unset property value as present, not absent. A property may legitimately exist with no value (e.g. an IFC boolean added from bSDD, which now starts unset rather than defaulting to `false`), so `MutablePropertyView` no longer reads `value === null` as "property does not exist":
+
+  - `deleteProperty` keys absence off existence (in-session pset membership), so an unset property is still deletable instead of the trash button being a silent no-op.
+  - `setProperty` classifies a write as `UPDATE_PROPERTY` vs `CREATE_PROPERTY` by whether the property already existed (not by null value), so undoing an edit to an unset property restores its prior unset state instead of deleting the whole property.
+
+- Updated dependencies [[`bfd9004`](https://github.com/LTplus-AG/ifc-lite/commit/bfd9004daa17f481a7b33b5c3c11f620e6cd894d), [`248f2c0`](https://github.com/LTplus-AG/ifc-lite/commit/248f2c09a4d61fa27dfeaba5511a2a641d4cd278), [`ddae2b0`](https://github.com/LTplus-AG/ifc-lite/commit/ddae2b0024f071d00f9e6e4b77e0be3965412ec3)]:
+  - @ifc-lite/data@2.1.0
+
 ## 1.15.4
 
 ### Patch Changes

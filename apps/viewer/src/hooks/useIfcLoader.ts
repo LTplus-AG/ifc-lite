@@ -14,6 +14,7 @@ import { useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
+import { getGeomWorkerOverride } from '../store/constants.js';
 import { IfcParser, detectFormat, type IfcDataStore } from '@ifc-lite/parser';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
@@ -27,7 +28,8 @@ import {
 } from '@ifc-lite/geometry';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
-import { type GeometryData, FORMAT_VERSION } from '@ifc-lite/cache';
+import { buildGeometryCacheKey } from './geometryCacheKey.js';
+import { type GeometryData } from '@ifc-lite/cache';
 
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
@@ -50,6 +52,7 @@ import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIng
 import { getGlobalRenderer } from './useBCF.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { toast } from '../components/ui/toast.js';
+import { posthog } from '../lib/analytics.js';
 
 /**
  * Where a {@link useIfcLoader.loadFile} call should land the model.
@@ -489,6 +492,7 @@ export function useIfcLoader() {
           pointCloudHandleId: ingest.rendererHandle.id,
         });
         setProgress({ phase: 'Complete', percent: 100 });
+        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
         setLoading(false);
         return;
       }
@@ -507,6 +511,7 @@ export function useIfcLoader() {
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
 
           setProgress({ phase: 'Complete', percent: 100 });
+          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -548,7 +553,7 @@ export function useIfcLoader() {
           );
 
           setProgress({ phase: 'Complete', percent: 100 });
-
+          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -564,17 +569,18 @@ export function useIfcLoader() {
       // Cache key uses filename + size + content fingerprint + format version
       // Fingerprint prevents collisions for different files with the same name and size
       const fingerprint = computeFastFingerprint(buffer);
-      // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so keep the
-      // persisted key filename-safe and independent of the original filename.
-      // Pin to the cache FORMAT_VERSION so a format bump invalidates stale
-      // entries (e.g. v5 added the geometryClass tag the Model/Types switch
-      // needs); a manual literal here silently kept serving incompatible data.
-      // "Merge Multilayer Walls" changes the produced geometry (parts skipped,
-      // parent drawn), so it MUST be in the key — otherwise a reload with the
-      // toggle flipped served the stale opposite cache and the setting never took.
-      const mergeLayersForKey = useViewerStore.getState().mergeLayers;
-      const cacheKey = `ifc-${buffer.byteLength}-${fingerprint}-v${FORMAT_VERSION}${mergeLayersForKey ? '-merged' : ''}`;
-      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersForKey} cacheKey=${cacheKey}`);
+      // Snapshot the merge-layers flag *before* the cache lookup: it is a
+      // load-time WASM tessellation input (issue #540) and must discriminate
+      // the cache key, otherwise toggling it + reloading serves geometry built
+      // with the previous flag (issue #1107). Reused below for the
+      // GeometryProcessor so the key and the actual tessellation agree.
+      const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
+      // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
+      // stays filename-safe and independent of the original filename. Pinned
+      // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
+      // added the geometryClass tag the Model/Types switch needs).
+      const cacheKey = buildGeometryCacheKey(buffer.byteLength, fingerprint, mergeLayersAtLoad);
+      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} cacheKey=${cacheKey}`);
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).
@@ -593,6 +599,7 @@ export function useIfcLoader() {
               cacheState: 'hit',
             });
             console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
+            posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
             setLoading(false);
             return;
           }
@@ -603,13 +610,19 @@ export function useIfcLoader() {
       // Only for IFC4 STEP files (server doesn't support IFCX). Native
       // file handles (Tauri) don't have an HTTP-uploadable body, so skip
       // the server path and fall through to the WASM loader.
-      if (target.kind === 'primary' && format === 'ifc' && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
+      // Also skip it when merge-layers is on: the server tessellates without
+      // the flag and its cache key ignores it, so a toggle+reload would still
+      // return non-merged geometry. The local WASM path honours the flag, so
+      // route through it instead (issue #1107). Merge-layers is opt-in, so the
+      // common (flag-off) load keeps the server fast path.
+      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
+          posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
           setLoading(false);
           return;
         }
@@ -626,7 +639,8 @@ export function useIfcLoader() {
       }
 
       // Initialize geometry processor first (WASM init is fast if already loaded)
-      const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
+      // Reuses the merge-layers snapshot taken above for the cache key so the
+      // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
         preferNative: false,
@@ -871,6 +885,11 @@ export function useIfcLoader() {
                   workerParserInstance.setEntityIndex(ids, starts, lengths);
                 }
               },
+              // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
+              // count heuristic so the host's thermal sweet spot can be measured.
+              // Still clamped to the memory budget by the engine. Geometry output
+              // is unaffected by the count (disjoint deterministic element slices).
+              workerCountOverride: getGeomWorkerOverride(),
             });
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;
@@ -1191,6 +1210,25 @@ export function useIfcLoader() {
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
+      posthog.capture('ifc_model_loaded', {
+        format,
+        file_size_mb: Math.round(fileSizeMB * 100) / 100,
+        load_target: target.kind,
+        load_path: 'wasm',
+        mesh_count: allMeshes.length,
+        total_elapsed_ms: Math.round(totalElapsedMs),
+        // Field perf telemetry: vertices/triangles size the model, and the
+        // milestones (read → metadata → first batch → first paint → stream
+        // done) let us spot where real-world loads regress. CSG itself runs
+        // in the geometry workers, so the stream window is its best proxy.
+        total_vertices: totalVertices,
+        total_triangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
+        file_read_ms: Math.round(fileReadMs),
+        metadata_complete_ms: metadataCompleteMs != null ? Math.round(metadataCompleteMs) : undefined,
+        first_geometry_batch_ms: firstAppendGeometryBatchMs != null ? Math.round(firstAppendGeometryBatchMs) : undefined,
+        first_visible_geometry_ms: firstVisibleGeometryMs != null ? Math.round(firstVisibleGeometryMs) : undefined,
+        stream_complete_ms: streamCompleteMs != null ? Math.round(streamCompleteMs) : undefined,
+      });
       setLoading(false);
       setGeometryStreamingActive(false);
     } catch (err) {
@@ -1201,6 +1239,7 @@ export function useIfcLoader() {
         loadError: err instanceof Error ? err.message : String(err),
       });
       setError(err instanceof Error ? err.message : 'Unknown error');
+      posthog.captureException(err, { additional_properties: { context: 'ifc_model_load' } });
       setLoading(false);
       setGeometryStreamingActive(false);
     }

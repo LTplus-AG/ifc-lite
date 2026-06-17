@@ -51,6 +51,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn, formatDuration } from '@/lib/utils';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { useSandbox } from '@/hooks/useSandbox';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { CodeEditor } from './CodeEditor';
@@ -212,9 +213,16 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
     if (executionState === 'running') return;
     const startedAt = performance.now();
     await execute(editorContent);
+    const durationMs = Math.round(performance.now() - startedAt);
     extensionHost?.emitAction('script.execute', {
       templateId: activeScriptId ?? undefined,
-      durationMs: Math.round(performance.now() - startedAt),
+      durationMs,
+    });
+    posthog.capture('script_run', {
+      from_template: activeScriptId != null,
+      template_id: activeScriptId ?? undefined,
+      duration_ms: durationMs,
+      success: useViewerStore.getState().scriptLastError == null,
     });
   }, [execute, editorContent, executionState, extensionHost, activeScriptId]);
 

@@ -40,6 +40,7 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { GLTFExporter } from '@ifc-lite/export';
 
@@ -232,6 +233,13 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       const msg = `Exported GLB (${(blob.size / 1024).toFixed(0)} KB)`;
       setExportResult({ success: true, message: msg });
       toast.success(msg);
+      posthog.capture('export_completed', {
+        format: 'glb',
+        visible_only: visibleOnly,
+        include_metadata: includeMetadata,
+        color_source: colorSource,
+        size_kb: Math.round(blob.size / 1024),
+      });
     } catch (err) {
       console.error('Export failed:', err);
       const errMsg = `GLB export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;

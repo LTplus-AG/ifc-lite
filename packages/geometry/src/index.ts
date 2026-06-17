@@ -711,6 +711,13 @@ export class GeometryProcessor {
      * Vite + webpack 5 consumers leave this undefined.
      */
     wasmUrls?: { wasm?: string },
+    /**
+     * Explicit geometry-worker count for A/B tuning (the viewer's
+     * `?geomWorkers=N` knob). Overrides the cores-tier heuristic but stays
+     * clamped to the memory budget. Geometry output is unaffected (workers
+     * process disjoint, deterministic element slices). Undefined ⇒ heuristic.
+     */
+    workerCountOverride?: number,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -730,6 +737,7 @@ export class GeometryProcessor {
       // IfcAPI tessellates at the same density as the main-thread paths.
       tessellationQuality: this.tessellationQuality,
       wasmUrls,
+      workerCountOverride,
     });
   }
 
@@ -769,6 +777,12 @@ export class GeometryProcessor {
        * See `processParallel(...).wasmUrls` for rationale.
        */
       wasmUrls?: { wasm?: string };
+      /**
+       * Explicit geometry-worker count for A/B tuning (viewer `?geomWorkers=N`).
+       * Forwarded to the parallel path; clamped to the memory budget there.
+       * Geometry output is unaffected by the count.
+       */
+      workerCountOverride?: number;
     } = {}
   ): AsyncGenerator<StreamingGeometryEvent> {
     const sizeThreshold = options.sizeThreshold ?? 2 * 1024 * 1024; // Default 2MB
@@ -842,6 +856,7 @@ export class GeometryProcessor {
           options.existingSab,
           options.onEntityIndex,
           options.wasmUrls,
+          options.workerCountOverride,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);

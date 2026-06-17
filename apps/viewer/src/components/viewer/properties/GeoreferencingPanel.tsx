@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Badge } from '@/components/ui/badge';
 import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { EpsgLookupDialog, type EpsgResult } from './EpsgLookupDialog';
 import { FederationAlignmentControls } from './FederationAlignmentControls';
@@ -467,6 +468,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       ? mergedCRS?.[field as keyof ProjectedCRS]
       : mergedConversion?.[field as keyof MapConversion];
     setGeorefField(modelId, entity, field, value, oldValue as string | number | undefined);
+    posthog.capture('georeference_set', { method: 'crs_field', entity, field });
     requestAlignmentReload();
   }, [modelId, setGeorefField, mergedCRS, mergedConversion, requestAlignmentReload]);
 
@@ -477,6 +479,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       { field: 'xAxisAbscissa', value: abscissa, oldValue: mergedConversion?.xAxisAbscissa },
       { field: 'xAxisOrdinate', value: ordinate, oldValue: mergedConversion?.xAxisOrdinate },
     ]);
+    posthog.capture('georeference_set', { method: 'true_north' });
     requestAlignmentReload();
   }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
 
@@ -498,6 +501,10 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       });
     }
     setGeorefFields(modelId, 'mapConversion', fields);
+    posthog.capture('georeference_set', {
+      method: 'map_pick',
+      has_terrain_height: position.terrainHeight !== null,
+    });
     setConversionOpen(true);
     requestAlignmentReload();
   }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload, oHeightForBaseAltitude]);

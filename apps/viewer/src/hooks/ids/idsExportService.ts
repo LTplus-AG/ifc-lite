@@ -10,6 +10,7 @@
  */
 
 import type { IDSValidationReport, SupportedLocale } from '@ifc-lite/ids';
+import { posthog } from '../../lib/analytics';
 
 // ============================================================================
 // JSON Export
@@ -65,6 +66,7 @@ export function downloadReportJSON(report: IDSValidationReport): void {
   a.download = `ids-report-${new Date().toISOString().split('T')[0]}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  posthog.capture('ids_report_exported', { format: 'json', total_specifications: report.summary.totalSpecifications });
 }
 
 // ============================================================================
@@ -441,4 +443,5 @@ export function downloadReportHTML(report: IDSValidationReport, locale: Supporte
   a.download = `ids-report-${new Date().toISOString().split('T')[0]}.html`;
   a.click();
   URL.revokeObjectURL(url);
+  posthog.capture('ids_report_exported', { format: 'html', locale, total_specifications: report.summary.totalSpecifications });
 }

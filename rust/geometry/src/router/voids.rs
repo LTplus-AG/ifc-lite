@@ -1094,6 +1094,42 @@ impl GeometryRouter {
         result
     }
 
+    /// Try the analytic rectangular-opening fast path. Returns the watertight
+    /// cut mesh iff EVERY merged opening is an axis-aligned `Rectangular`
+    /// through-cut and the host is a clean axis-aligned box; otherwise `None`
+    /// (→ the exact kernel handles it). A mixed opening set defers the whole
+    /// host rather than composing analytic + exact cuts.
+    fn try_rect_fast(&self, host: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
+        let (wmn, wmx) = host.bounds();
+        let wall_min = Point3::new(wmn.x as f64, wmn.y as f64, wmn.z as f64);
+        let wall_max = Point3::new(wmx.x as f64, wmx.y as f64, wmx.z as f64);
+        let mut boxes: Vec<([f64; 3], [f64; 3])> =
+            Vec::with_capacity(ctx.merged_openings.len());
+        for op in &ctx.merged_openings {
+            match op {
+                OpeningType::Rectangular(omn, omx, dir) => {
+                    let (fmn, fmx) = match dir {
+                        Some(d) => self.extend_opening_along_direction(
+                            *omn, *omx, wall_min, wall_max, *d,
+                        ),
+                        None => (*omn, *omx),
+                    };
+                    boxes.push(([fmn.x, fmn.y, fmn.z], [fmx.x, fmx.y, fmx.z]));
+                }
+                _ => return None,
+            }
+        }
+        let mut stats = crate::rect_fast::RectFastStats::default();
+        let out = crate::rect_fast::subtract_rect_openings(host, &boxes, &mut stats);
+        crate::rect_fast::record_global(&stats);
+        // The cellular cut conformingly splits EVERY face by ALL grid lines (so
+        // adjacent cells share edges → watertight), which over-fragments faces an
+        // opening doesn't reach. Run the result through the SAME coplanar merge
+        // the exact path uses (i_overlay union per plane) to collapse those back
+        // to minimal triangles — keeps it watertight and un-bloated.
+        out.map(crate::csg::ClippingProcessor::consolidate_coplanar)
+    }
+
     fn apply_void_context_inner(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // Capture the input triangle count + bounds so the per-host
         // diagnostic can flag the "cuts attempted but produced no
@@ -1122,6 +1158,29 @@ impl GeometryRouter {
         // gone) with a clean opening hole. Deterministic + watertight + grid-
         // snapped; a no-op for already-planar extrusion hosts.
         let mut result = crate::facet_weld::weld_near_coplanar_facets(&mesh);
+
+        // ANALYTIC FAST PATH: an axis-aligned box host whose openings are ALL
+        // axis-aligned rectangular through-cuts is subtracted analytically
+        // (`rect_fast`), skipping the exact mesh-arrangement kernel — the
+        // ~80 s memory-bandwidth-bound void-cut window's dominant cost. Pure
+        // optimization: any precondition miss (non-box host, mixed/non-rect
+        // openings, near-edge feature) returns `None` and the host falls through
+        // to the exact path below unchanged. Fired BEFORE the dense-host
+        // subdivision (that workaround is only for the exact kernel).
+        if crate::rect_fast::enabled() {
+            if let Some(fast) = self.try_rect_fast(&result, ctx) {
+                // Same per-host cut-effect snapshot the exact path records below,
+                // so fast-path hosts aren't missing from the diagnostics.
+                self.record_host_cut_effect(
+                    element_id,
+                    tris_before,
+                    fast.triangle_count(),
+                    ctx.merged_openings.len(),
+                    host_bounds_capture,
+                );
+                return fast;
+            }
+        }
 
         // OPENING-DENSE HOST REFINEMENT: when many openings target the same host
         // (a window wall is usually 2 big face-triangles per side), every cut's

@@ -47,6 +47,7 @@ import {
 } from './ids/idsColorSystem';
 import type { ColorTuple } from './ids/idsColorSystem';
 import { downloadReportJSON, downloadReportHTML } from './ids/idsExportService';
+import { posthog } from '../lib/analytics';
 
 // ============================================================================
 // Types
@@ -469,6 +470,14 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
 
       setIdsValidationReport(validationReport);
 
+      posthog.capture('ids_validation_completed', {
+        total_specifications: validationReport.summary.totalSpecifications,
+        passed_specifications: validationReport.summary.passedSpecifications,
+        failed_specifications: validationReport.summary.failedSpecifications,
+        total_entities_checked: validationReport.summary.totalEntitiesChecked,
+        overall_pass_rate: validationReport.summary.overallPassRate,
+      });
+
       console.info(
         `[IDS] Validation: ${validationReport.summary.passedSpecifications}/${validationReport.summary.totalSpecifications} specs, ` +
         `${validationReport.summary.totalEntitiesPassed}/${validationReport.summary.totalEntitiesChecked} entities (${validationReport.summary.overallPassRate}%)`
@@ -478,6 +487,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Validation failed';
       setIdsError(message);
+      posthog.captureException(err, { additional_properties: { context: 'ids_validation' } });
       console.error('[IDS] Validation error:', err);
       return null;
     } finally {

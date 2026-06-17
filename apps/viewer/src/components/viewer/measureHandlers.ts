@@ -12,6 +12,7 @@ import type { MeasurePoint, SnapVisualization } from '@/store';
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
 import type { MouseHandlerContext, Camera } from './mouseHandlerTypes.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
+import { projectToCssScreen } from '../../utils/projectScreen.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
 /**
@@ -116,7 +117,7 @@ export function updateSnapViz(
 
   // For face snaps: show plane indicator (still screen-space since it's just an indicator)
   if ((snapTarget.type === 'face' || snapTarget.type === 'face_center') && snapTarget.normal) {
-    const pos = ctx.camera.projectToScreen(snapTarget.position, ctx.canvas.width, ctx.canvas.height);
+    const pos = projectToCssScreen(ctx.camera, ctx.canvas, snapTarget.position);
     if (pos) {
       viz.planeIndicator = {
         x: pos.x,
@@ -186,7 +187,7 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
 
     if (pos) {
       // Project snapped 3D position to screen - measurement starts from indicator, not cursor
-      const screenPos = camera.projectToScreen(pos, canvas.width, canvas.height);
+      const screenPos = projectToCssScreen(camera, canvas, pos);
       const measurePoint: MeasurePoint = {
         x: pos.x,
         y: pos.y,
@@ -319,7 +320,7 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
           }
 
           // Project snapped 3D position to screen - indicator position, not raw cursor
-          const screenPos = camera.projectToScreen(pos, canvas.width, canvas.height);
+          const screenPos = projectToCssScreen(camera, canvas, pos);
           const measurePoint: MeasurePoint = {
             x: pos.x,
             y: pos.y,
@@ -515,7 +516,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
         pos = projected.projectedPos;
       }
 
-      const screenPos = camera.projectToScreen(pos, canvas.width, canvas.height);
+      const screenPos = projectToCssScreen(camera, canvas, pos);
       const measurePoint: MeasurePoint = {
         x: pos.x,
         y: pos.y,
@@ -542,7 +543,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
 export function updateMeasureScreenCoords(ctx: MouseHandlerContext): void {
   const { canvas, camera } = ctx;
   ctx.updateMeasurementScreenCoords((worldPos) => {
-    return camera.projectToScreen(worldPos, canvas.width, canvas.height);
+    return projectToCssScreen(camera, canvas, worldPos);
   });
   // Update camera state tracking to prevent duplicate update in animation loop
   const cameraPos = camera.getPosition();

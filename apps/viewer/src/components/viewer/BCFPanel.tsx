@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
 import {
   readBCF,
@@ -196,6 +197,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
     } catch (error) {
       console.error('Failed to export BCF:', error);
       setBcfError(error instanceof Error ? error.message : 'Failed to export BCF file');
@@ -217,6 +219,11 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
         priority: data.priority,
       });
       addTopic(topic);
+      posthog.capture('bcf_topic_created', {
+        topic_type: topic.topicType,
+        priority: topic.priority,
+        has_description: Boolean(topic.description),
+      });
       setShowCreateForm(false);
     },
     [ensureProject, bcfAuthor, addTopic]

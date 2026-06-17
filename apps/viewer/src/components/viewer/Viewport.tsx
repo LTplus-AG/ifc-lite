@@ -26,6 +26,7 @@ import {
 } from '../../hooks/useViewerSelectors.js';
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
+import { projectToCssScreen } from '../../utils/projectScreen.js';
 import {
   getEntityBounds,
   getThemeClearColor,
@@ -753,10 +754,14 @@ export function Viewport({
           calculateScale();
         },
         projectToScreen: (worldPos: { x: number; y: number; z: number }) => {
-          // Project 3D world position to 2D screen coordinates
+          // Project 3D world position to 2D CSS-pixel screen coordinates.
+          // projectToCssScreen rescales the drawing-buffer result (buffer width
+          // is alignToWebGPU-rounded *down* from the CSS width) so DOM overlays
+          // — gizmos, section visuals, the measure/snap indicator — sit under
+          // the cursor instead of drifting left (issue #1107).
           const c = canvasRef.current;
           if (!c) return null;
-          return camera.projectToScreen(worldPos, c.width, c.height);
+          return projectToCssScreen(camera, c, worldPos);
         },
         unprojectToFloor: (clientX, clientY, worldY) => {
           // Inverse of projectToScreen, but only against a horizontal

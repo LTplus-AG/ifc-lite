@@ -43,11 +43,13 @@ describe('computeWorkerCount', () => {
     expect(r.reason === 'memory' || r.reason === 'cores').toBe(true);
   });
 
-  it('M-series Pro/Max (10 cores, 16 GB), 1 GB file → 3 workers', () => {
-    // 10+ cores indicates active cooling (Pro/Max tier), so 3 workers
-    // on huge files is safe. Memory budget allows it: 16 GB - 4 GB
-    // headroom - 2.5 GB main = 9.5 GB / 1.5 GB per worker ≈ 6, capped
-    // by the 3-worker cores ceiling for files > 512 MB.
+  it('M-series Pro/Max (10 cores, 16 GB), 1 GB file → 3 workers (bandwidth ceiling)', () => {
+    // 10+ cores indicates active cooling (Pro/Max tier), but a `?geomWorkers`
+    // A/B sweep on a 722 MB georef model showed geometry wall-time is bound by
+    // memory bandwidth, not cores: 3→4→5 workers gave NO geometry speedup and
+    // progressively starved the co-running parser. So the >512 MB cap stays 3
+    // (the memory budget would allow ~6, but more workers only inflate peak
+    // memory and bus contention here).
     const r = computeWorkerCount({
       fileSizeMB: 1024, cores: 10, deviceMemoryGB: 16, totalJobs: 100_000,
     });
@@ -57,7 +59,7 @@ describe('computeWorkerCount', () => {
 
   it('M-series Max (12 cores), 986 MB file → 4 workers', () => {
     // 12+ cores indicates M3/M4 Pro 12-core or Max — sustained 4 workers
-    // safe with active cooling.
+    // safe with active cooling; same bandwidth ceiling holds above that.
     const r = computeWorkerCount({
       fileSizeMB: 986, cores: 12, deviceMemoryGB: 8, totalJobs: 141_178,
     });
@@ -69,12 +71,72 @@ describe('computeWorkerCount', () => {
     // Real-world case: navigator.deviceMemory is capped at 8 GB by
     // browsers as anti-fingerprinting, but a 10-core M-series Pro
     // ships with 16+ GB. The cores >= 10 branch lifts the memory
-    // floor so we're not pinned to 2 workers on huge files.
+    // floor so we're not pinned to 2 workers on huge files; the 3-worker
+    // bandwidth-ceiling cap binds.
     const r = computeWorkerCount({
       fileSizeMB: 986, cores: 10, deviceMemoryGB: 8, totalJobs: 141_178,
     });
     expect(r.count).toBe(3);
     expect(r.reason).toBe('cores');
+  });
+
+  it('fanless 8-core (8 GB), 722 MB file → 2 workers', () => {
+    // The fanless MBA tier holds at 2 for >512 MB (throttles hard at 4+).
+    const r = computeWorkerCount({
+      fileSizeMB: 722, cores: 8, deviceMemoryGB: 8, totalJobs: 70_000,
+    });
+    expect(r.count).toBe(2);
+    expect(r.reason).toBe('cores');
+  });
+
+  it('override forces an explicit worker count, bypassing the cores tier', () => {
+    // Same 10-core/722 MB host the heuristic caps at 3 — the A/B knob can dial
+    // it up (memory budget here allows ~9) or down, for per-host measurement.
+    const up = computeWorkerCount({
+      fileSizeMB: 722, cores: 10, deviceMemoryGB: 16, totalJobs: 70_000,
+      workerCountOverride: 7,
+    });
+    expect(up.count).toBe(7);
+    const down = computeWorkerCount({
+      fileSizeMB: 722, cores: 10, deviceMemoryGB: 16, totalJobs: 70_000,
+      workerCountOverride: 2,
+    });
+    expect(down.count).toBe(2);
+  });
+
+  it('override is still clamped by the memory budget (cannot OOM)', () => {
+    // 8 GB fanless host, 722 MB file: memoryCap ≈ 4. An override of 12 is
+    // clipped to the memory bound, not honoured blindly.
+    const r = computeWorkerCount({
+      fileSizeMB: 722, cores: 8, deviceMemoryGB: 8, totalJobs: 70_000,
+      workerCountOverride: 12,
+    });
+    expect(r.count).toBeLessThanOrEqual(4);
+    expect(r.reason).toBe('memory');
+  });
+
+  it('override is also clamped by totalJobs and maxWorkers', () => {
+    const fewJobs = computeWorkerCount({
+      fileSizeMB: 50, cores: 16, deviceMemoryGB: 32, totalJobs: 3,
+      workerCountOverride: 8,
+    });
+    expect(fewJobs.count).toBe(3);
+    expect(fewJobs.reason).toBe('jobs');
+    const capped = computeWorkerCount({
+      fileSizeMB: 50, cores: 16, deviceMemoryGB: 32, totalJobs: 1000,
+      workerCountOverride: 10, maxWorkers: 6,
+    });
+    expect(capped.count).toBe(6);
+    expect(capped.reason).toBe('max');
+  });
+
+  it('undefined override leaves the heuristic untouched', () => {
+    const withUndef = computeWorkerCount({
+      fileSizeMB: 1024, cores: 10, deviceMemoryGB: 16, totalJobs: 100_000,
+      workerCountOverride: undefined,
+    });
+    expect(withUndef.count).toBe(3);
+    expect(withUndef.reason).toBe('cores');
   });
 
   it('M-series Pro/Max (12 cores, 16 GB), 400 MB file → 5 workers', () => {

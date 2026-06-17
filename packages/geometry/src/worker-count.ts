@@ -38,6 +38,15 @@ export interface WorkerCountInputs {
    * the previous hard cap.
    */
   maxWorkers?: number;
+  /**
+   * Explicit worker count requested by the host (e.g. the viewer's
+   * `?geomWorkers=N` A/B knob). When set, it overrides the cores-tier
+   * heuristic — but is STILL clamped to the memory budget, job count, and
+   * `maxWorkers`, because OOM is never a valid tuning outcome. Undefined ⇒
+   * use the heuristic. Lets a user measure their host's true thermal optimum,
+   * which is machine-specific and can't be hard-coded.
+   */
+  workerCountOverride?: number;
 }
 
 export interface WorkerCountResult {
@@ -81,13 +90,18 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
     coresCap = Math.min(maxWorkers, Math.floor(cores / 2));
   } else if (cores >= 12 && deviceMemoryGB >= 8) {
     // 12+ cores indicates M-series Pro 12-core or M-series Max with active
-    // cooling — sustained 4 workers on huge files. The memoryCap below
-    // still gates if RAM isn't there. Memory floor lifted to 16 (see top)
-    // to bypass the browser's deviceMemory cap.
+    // cooling. The >512 MB cap stays 4: a `?geomWorkers` A/B sweep on a large
+    // georef model showed geometry wall-time is bound by MEMORY BANDWIDTH, not
+    // cores — each worker streams a ~1.5×-file WASM heap + per-mesh copy-out
+    // over the same unified-memory bus, so a 5th/6th grinder yields no speedup
+    // (flat wall-time, higher peak memory) and starves the co-running parser.
+    // This cap is a bandwidth ceiling, not a core-count proxy.
     coresCap = fileSizeMB > 512 ? 4 : 5;
   } else if (cores >= 10 && deviceMemoryGB >= 8) {
-    // 10+ cores indicates M-series Pro/Max or similar with active cooling
-    // — they can sustain 3 workers on huge files without throttling.
+    // 10+ cores indicates M-series Pro/Max with active cooling. Same bandwidth
+    // ceiling as the 12-core tier (measured: 3→4→5 workers gave no geometry
+    // speedup on a 722 MB model and progressively starved the parser), so the
+    // >512 MB cap stays 3. Users can override per-host via `?geomWorkers=N`.
     coresCap = fileSizeMB > 512 ? 3 : 4;
   } else if (cores >= 8 && deviceMemoryGB >= 8) {
     // Fanless laptops (MBA M-series, 8 cores) throttle hard at 4+ workers.
@@ -107,6 +121,38 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   const memoryCap = remaining > 0
     ? Math.max(1, Math.floor(remaining / perWorkerMB))
     : 1;
+
+  // Explicit host override (A/B tuning). Honour the requested count but never
+  // above the memory budget / job count / hard cap — OOM is not a tuning
+  // outcome, so memoryCap stays the safety bound even when overridden. The
+  // `reason` reports which bound (if any) clipped the request, so a silently
+  // reduced override is visible in the dispatch log.
+  if (
+    inputs.workerCountOverride != null &&
+    Number.isFinite(inputs.workerCountOverride)
+  ) {
+    let count = Math.max(1, Math.floor(inputs.workerCountOverride));
+    let reason: WorkerCountResult['reason'] = 'cores'; // honouring the override
+    if (memoryCap < count) {
+      count = memoryCap;
+      reason = 'memory';
+    }
+    if (totalJobs < count) {
+      count = totalJobs;
+      reason = 'jobs';
+    }
+    if (maxWorkers < count) {
+      count = maxWorkers;
+      reason = 'max';
+    }
+    if (minWorkers > count) {
+      // Mirror the heuristic path's floor: never return below minWorkers, and
+      // report it as the binding constraint (consistent `reason` in the log).
+      count = minWorkers;
+      reason = 'min';
+    }
+    return { count, reason };
+  }
 
   // Final pick: tightest of the three ceilings, then clamp.
   const candidates: Array<{ value: number; reason: WorkerCountResult['reason'] }> = [

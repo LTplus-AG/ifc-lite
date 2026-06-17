@@ -14,6 +14,7 @@ import './disable-react-dev-perf-track';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
+import './lib/analytics';
 import './index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 // Wire the placement-edit helpers' parser-backed source reader. Pure

@@ -19,6 +19,10 @@ interface ImportMetaEnv {
   readonly VITE_LLM_FILE_ATTACHMENT_MODELS?: string;
   /** Build-time default Cesium ion access token */
   readonly VITE_CESIUM_ION_TOKEN?: string;
+  /** PostHog project API key — analytics are disabled when unset */
+  readonly VITE_POSTHOG_KEY?: string;
+  /** PostHog ingestion host — analytics are disabled when unset */
+  readonly VITE_POSTHOG_HOST?: string;
 }
 
 interface ImportMeta {

@@ -1790,10 +1790,23 @@ export class Renderer {
                     pass.drawIndexed(batch.indexCount);
                 };
 
-                // Render opaque batches first with opaque pipeline
+                // Render opaque batches first with opaque pipeline. Material-layer
+                // slices (isLayer) draw separately with the BACKFACE-CULLING
+                // pipeline — their thin coincident interior caps would otherwise
+                // z-fight into a hollow shimmer; culling drops them (winding is
+                // reliable) so the build-up reads as a clean solid.
                 pass.setPipeline(this.pipeline.getPipeline());
                 for (const batch of opaqueBatches) {
+                    if (batch.isLayer) continue;
                     renderBatch(batch);
+                }
+                const layerOpaqueBatches = opaqueBatches.filter((b) => b.isLayer);
+                if (layerOpaqueBatches.length > 0) {
+                    pass.setPipeline(this.pipeline.getCulledPipeline());
+                    for (const batch of layerOpaqueBatches) {
+                        renderBatch(batch);
+                    }
+                    pass.setPipeline(this.pipeline.getPipeline());
                 }
 
                 // #961: textured meshes — dedicated sub-pass right after opaque
@@ -1875,6 +1888,12 @@ export class Renderer {
                             );
                             if (isTransparent) {
                                 pass.setPipeline(this.pipeline.getTransparentPipeline());
+                            } else if (subBatch.isLayer) {
+                                // Material-layer slice sub-batch: backface-cull so
+                                // the thin coincident caps don't z-fight (see the
+                                // full-batch path above).
+                                pass.setPipeline(this.pipeline.getCulledPipeline());
+                                opaqueSubBatches.push(subBatch);
                             } else {
                                 pass.setPipeline(this.pipeline.getPipeline());
                                 opaqueSubBatches.push(subBatch);

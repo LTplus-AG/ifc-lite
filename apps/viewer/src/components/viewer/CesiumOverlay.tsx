@@ -54,11 +54,7 @@ function loadCesium() {
  * This is MUCH faster than GLTFExporter (which creates one glTF node per IFC mesh).
  * For a 42K mesh model: GLTFExporter takes seconds, this takes ~100ms.
  */
-function buildMergedGLB(meshesIn: import('@ifc-lite/geometry').MeshData[]): Uint8Array {
-  // Drop class 3 (the section-only per-layer slices of a material-layer wall) —
-  // its render solid (class 4) occupies the same space, so keeping both would
-  // export duplicate, overlapping geometry.
-  const meshes = meshesIn.filter((m) => (m.geometryClass ?? 0) !== 3);
+function buildMergedGLB(meshes: import('@ifc-lite/geometry').MeshData[]): Uint8Array {
   // Pass 1: calculate total sizes
   let totalVerts = 0;
   let totalIdxs = 0;

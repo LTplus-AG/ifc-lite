@@ -1032,6 +1032,29 @@ impl ClippingProcessor {
             BOXFAST_DEFER_OPEN.fetch_add(1, Ordering::Relaxed);
             return Ok(None);
         }
+
+        // ── Volume-conservation guard. The watertight gate proves the result is
+        // CLOSED, but not that it has the right VOLUME — an inside-out reveal
+        // would be closed yet wrong (volume ADDED, not removed). Require the
+        // removed volume to be sane: ≥ 0 (we cut, never add) and ≤ the box∩host
+        // region (can't remove more than the box covers). This makes a
+        // watertight-but-wrong result impossible to ship; it defers instead.
+        let host_vol = mesh_signed_volume(host).abs();
+        let res_vol = mesh_signed_volume(&result).abs();
+        let removed = host_vol - res_vol;
+        let boxhost_vol: f64 = (0..3)
+            .map(|k| (bmax[k].min(hmax[k]) - bmin[k].max(hmin[k])).max(0.0))
+            .product();
+        let vtol = boxhost_vol * 0.05 + (host_vol * 1.0e-4).max(1.0e-12);
+        if removed < -vtol || removed > boxhost_vol + vtol {
+            BOXFAST_DEFER_OPEN.fetch_add(1, Ordering::Relaxed);
+            boxfast_sample(format!(
+                "VOL removed={removed:.5} boxhost={boxhost_vol:.5} host={host_vol:.5} {}",
+                bounds_str()
+            ));
+            return Ok(None);
+        }
+
         BOXFAST_FIRED.fetch_add(1, Ordering::Relaxed);
         Ok(Some(result))
     }

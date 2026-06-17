@@ -33,8 +33,17 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * a restored model would still show "Group #<id>" and omit zones/systems from
  * lists/lens. The bump invalidates pre-#1075 caches so they re-parse and resolve
  * the names.
+ *
+ * v8/v9: material-layer walls tag their per-layer slices `geometryClass` 3, and
+ * the renderer draws that class BACKFACE-CULLED so the thin coincident-faced
+ * slabs show the build-up without z-fighting into a hollow shell (v8 briefly
+ * emitted a separate class-4 solid instead; v9 dropped it for the cull). The
+ * byte format is unchanged (a geometryClass uint8), but a pre-v9 cache has the
+ * old class-0 (or class-4) layer geometry, so a restored wall would render the
+ * old glitchy stack. The bump invalidates those caches so layered walls re-mesh
+ * with the class-3 slices the cull path expects.
  */
-export const FORMAT_VERSION = 7;
+export const FORMAT_VERSION = 9;
 
 /** Section types in the binary format */
 export enum SectionType {

@@ -83,6 +83,16 @@ pub struct IfcAPI {
     /// flag value).
     cached_parts_to_skip: std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
 
+    /// Lazily-built per-content `MaterialLayerIndex` (#563). Single-solid walls
+    /// and slabs carrying an `IfcMaterialLayerSetUsage` are sliced into one
+    /// sub-mesh per layer (geometry_id = the layer's `IfcMaterial`) so the
+    /// build-up is visible in 3D. Built once per load and attached to EVERY
+    /// batch router via `set_material_layer_index` so `try_layered_sub_meshes`
+    /// can fire — #874 dropped that wiring and silently disabled slicing for
+    /// the whole browser stream. Cleared by `clearPrePassCache` between loads.
+    cached_material_layer_index:
+        std::sync::Mutex<Option<std::sync::Arc<ifc_lite_geometry::MaterialLayerIndex>>>,
+
     /// Lazily-built set of `IfcRepresentationMap` ids that an `IfcMappedItem`
     /// instantiates (issue #957). `processGeometryBatch` uses it to decide which
     /// of a type's RepresentationMaps are orphan and should be rendered directly
@@ -189,6 +199,7 @@ impl IfcAPI {
             cached_item_dedup: std::sync::Mutex::new(None),
             merge_layers: std::sync::atomic::AtomicBool::new(false),
             cached_parts_to_skip: std::sync::Mutex::new(None),
+            cached_material_layer_index: std::sync::Mutex::new(None),
             cached_referenced_repmaps: std::sync::Mutex::new(None),
             cached_instantiated_type_ids: std::sync::Mutex::new(None),
             cached_texture_index: std::sync::Mutex::new(None),
@@ -232,6 +243,11 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
         parts_slot.take();
+        // The material-layer index is keyed off the previous load's content.
+        self.cached_material_layer_index
+            .lock()
+            .expect("ifc-lite cached_material_layer_index Mutex poisoned")
+            .take();
         // The referenced-RepresentationMap set is keyed off the previous load's
         // content; drop it so the next file rebuilds against fresh content.
         let mut repmap_slot = self
@@ -325,6 +341,10 @@ impl IfcAPI {
         self.cached_parts_to_skip
             .lock()
             .expect("ifc-lite cached_parts_to_skip Mutex poisoned")
+            .take();
+        self.cached_material_layer_index
+            .lock()
+            .expect("ifc-lite cached_material_layer_index Mutex poisoned")
             .take();
         self.cached_referenced_repmaps
             .lock()
@@ -521,6 +541,66 @@ impl IfcAPI {
             .cached_parts_to_skip
             .lock()
             .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+        *slot = Some(std::sync::Arc::clone(&arc));
+        arc
+    }
+
+    /// Get or lazily build the per-content [`MaterialLayerIndex`] (#563) used to
+    /// slice single-solid walls/slabs with an `IfcMaterialLayerSetUsage` into one
+    /// sub-mesh per layer. Built once per load (one IFCRELASSOCIATESMATERIAL
+    /// decode scan, with a cheap substring bail-out on files that carry no layer
+    /// set) and `Arc`-shared with every batch router so `try_layered_sub_meshes`
+    /// fires. Subsequent batches are an `Arc::clone`.
+    pub(crate) fn get_or_build_material_layer_index(
+        &self,
+        content: &[u8],
+        decoder: &mut ifc_lite_core::EntityDecoder,
+    ) -> std::sync::Arc<ifc_lite_geometry::MaterialLayerIndex> {
+        {
+            let slot = self
+                .cached_material_layer_index
+                .lock()
+                .expect("ifc-lite cached_material_layer_index Mutex poisoned");
+            if let Some(existing) = slot.as_ref() {
+                return std::sync::Arc::clone(existing);
+            }
+        }
+
+        // Most models carry no IfcMaterialLayerSet. A cheap raw-byte substring
+        // probe (no entity decode) lets us cache an EMPTY index without the
+        // per-`IfcRelAssociatesMaterial` decode scan `from_content` runs — the
+        // cost the streaming pre-pass deliberately avoided. Only layered files
+        // pay the full build; non-layered files behave identically (an absent
+        // entry and a `NotSliceable` entry both mean "don't slice").
+        const LAYER_SET_KW: &[u8] = b"IFCMATERIALLAYERSET";
+        let has_layer_set = content.len() >= LAYER_SET_KW.len()
+            && content.windows(LAYER_SET_KW.len()).any(|w| w == LAYER_SET_KW);
+        let index = if has_layer_set {
+            ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder)
+        } else {
+            ifc_lite_geometry::MaterialLayerIndex::new()
+        };
+        // Diagnostic (#563/#874): stay silent for the ~99% of models with no
+        // sliceable buildup (every load otherwise logged a line). Only speak up
+        // when there's something to slice — or when the layer-set keyword is
+        // present but NOTHING resolved as sliceable (e.g. an IfcMaterialLayerSet
+        // associated without a LayerSetUsage), which is the case worth flagging.
+        // The per-batch "sliced N wall(s)" line already reports success.
+        let sliceable = index.sliceable_count();
+        if sliceable > 0 {
+            web_sys::console::info_1(
+                &format!("[ifc-lite layers] {sliceable} sliceable buildup(s) of {} association(s)", index.len()).into(),
+            );
+        } else if has_layer_set {
+            web_sys::console::warn_1(
+                &"[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)".into(),
+            );
+        }
+        let arc = std::sync::Arc::new(index);
+        let mut slot = self
+            .cached_material_layer_index
+            .lock()
+            .expect("ifc-lite cached_material_layer_index Mutex poisoned");
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -981,6 +1061,34 @@ pub(super) fn drain_and_log_csg_diagnostics(
                 .into(),
             );
         }
+    }
+
+    // rect_fast (analytic rectangular-opening fast path) engagement for this
+    // batch: fire-rate + why it deferred, so the optimization is VISIBLE in the
+    // console. Absence of this line on a build that has it means nothing fired
+    // AND nothing deferred (no rect-opening hosts in the batch); presence with
+    // fired=0 + high host_not_box means the walls aren't clean axis-aligned
+    // boxes (multi-layer / non-box) and correctly fell back to the exact kernel.
+    let rf = ifc_lite_geometry::rect_fast::take_global_stats();
+    if rf.fired > 0
+        || rf.defer_host_not_box > 0
+        || rf.defer_not_through > 0
+        || rf.defer_off_face > 0
+        || rf.defer_near_edge > 0
+    {
+        web_sys::console::info_1(
+            &format!(
+                "[IFC-LITE] rect_fast: fired={} (cut {} openings) | deferred: \
+                 host_not_box={} not_through={} off_face={} near_edge={}",
+                rf.fired,
+                rf.openings_cut,
+                rf.defer_host_not_box,
+                rf.defer_not_through,
+                rf.defer_off_face,
+                rf.defer_near_edge,
+            )
+            .into(),
+        );
     }
 
     summary.into()

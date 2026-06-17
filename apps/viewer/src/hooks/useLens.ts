@@ -26,6 +26,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { evaluateLens, evaluateAutoColorLens, rgbaToHex, isGhostColor } from '@ifc-lite/lens';
 import type { AutoColorEvaluationResult } from '@ifc-lite/lens';
 import { useViewerStore } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { createLensDataProvider } from '@/lib/lens';
 import { useLensDiscovery } from './useLensDiscovery';
 
@@ -109,6 +110,14 @@ export function useLens() {
     if (colorMap.size > 0) {
       useViewerStore.getState().setPendingColorUpdates(colorMap);
     }
+
+    posthog.capture('lens_applied', {
+      mode: isAutoColor ? 'auto_color' : 'rules',
+      rule_count: activeLens.rules.length,
+      auto_color_source: isAutoColor ? activeLens.autoColor?.source : undefined,
+      matched_entity_count: colorMap.size,
+      hidden_entity_count: hiddenIds.size,
+    });
   }, [activeLensId, activeLens]);
 
   return {

@@ -1,13 +1,10 @@
-import { defineConfig, normalizePath } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
-import { viteStaticCopy } from 'vite-plugin-static-copy';
-import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
-
-const require = createRequire(import.meta.url);
+import { cesiumStaticAssets } from './vite-plugins/cesium-assets';
 
 // --- Build-time changelog parser ---
 
@@ -217,25 +214,7 @@ export default defineConfig({
     react(),
     wasm(),
     topLevelAwait(),
-    // Copy Cesium static assets (Workers, ThirdParty, Assets) to public path
-    // so CesiumJS can load them at runtime via CESIUM_BASE_URL.
-    // Use require.resolve to handle pnpm's .pnpm store structure.
-    (() => {
-      const cesiumPkg = path.dirname(require.resolve('cesium/package.json'));
-      const cesiumBuild = path.join(cesiumPkg, 'Build', 'Cesium');
-      // vite-plugin-static-copy globs `src` with tinyglobby, which treats `\` as
-      // an escape char — so the raw Windows paths from path.join match nothing
-      // ("No file was found to copy"). normalizePath -> forward slashes fixes it
-      // cross-platform (no-op on POSIX).
-      return viteStaticCopy({
-        targets: [
-          { src: normalizePath(path.join(cesiumBuild, 'Workers')), dest: 'cesium' },
-          { src: normalizePath(path.join(cesiumBuild, 'ThirdParty')), dest: 'cesium' },
-          { src: normalizePath(path.join(cesiumBuild, 'Assets')), dest: 'cesium' },
-          { src: normalizePath(path.join(cesiumBuild, 'Widgets')), dest: 'cesium' },
-        ],
-      });
-    })(),
+    cesiumStaticAssets(),
   ],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),

@@ -59,7 +59,9 @@
         "VITE_USE_SERVER",
         "VITE_LLM_FREE_MODELS",
         "VITE_LLM_IMAGE_MODELS",
-        "VITE_LLM_FILE_ATTACHMENT_MODELS"
+        "VITE_LLM_FILE_ATTACHMENT_MODELS",
+        "VITE_POSTHOG_KEY",
+        "VITE_POSTHOG_HOST"
       ]
     },
     "typecheck": {

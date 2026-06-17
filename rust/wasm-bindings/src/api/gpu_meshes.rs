@@ -815,6 +815,23 @@ impl IfcAPI {
             router.enable_content_dedup_shared(cache);
         }
 
+        // Attach the per-content material-layer index so single-solid walls and
+        // slabs carrying an IfcMaterialLayerSetUsage slice into one coloured
+        // sub-mesh per layer (#563). Built once per load and Arc-shared across
+        // batches; #874 dropped this wiring, silently disabling layered-wall
+        // rendering for the entire browser stream. Cheap on files with no layer
+        // set (substring bail-out inside the index builder).
+        //
+        // "Merge Multilayer Walls" (the merge_layers toggle, #540) means exactly
+        // "render walls as ONE solid": NOT attaching the index leaves each wall as
+        // its single swept solid (no per-layer slice). So gate the index on the
+        // flag — off (default) ⇒ slice into layers; on ⇒ one solid. The separate
+        // part-skip path below keeps its own index, so IfcBuildingElementPart
+        // merging is unaffected.
+        if !self.merge_layers() {
+            router.set_material_layer_index(self.get_or_build_material_layer_index(content, &mut decoder));
+        }
+
         // Set RTC offset if needed
         if needs_shift {
             router.set_rtc_offset((rtc_x, rtc_y, rtc_z));
@@ -1052,6 +1069,38 @@ impl IfcAPI {
         // `processGeometryBatch`, so the log has to fire here or the
         // diagnostic helper never runs for real-world files.
         let _ = super::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
+
+        // Layered-wall slicing diagnostics (#563): a quiet success summary, but a
+        // per-element warning (id + reason) when a sliceable wall fails to slice
+        // — so future regressions surface without spamming healthy loads. Reasons:
+        // not-single-unshifted-item / thin-layers-collapsed-to-1 /
+        // placement-unresolved / cut-produced-<2 / base-mesh-error.
+        let layer_diag = router.take_layer_slice_diag();
+        if !layer_diag.is_empty() {
+            let sliced = layer_diag.iter().filter(|(_, r)| r.starts_with("ok:")).count();
+            let not_sliced = layer_diag.len() - sliced;
+            if not_sliced == 0 {
+                web_sys::console::info_1(
+                    &format!("[ifc-lite layers] batch: sliced {} wall(s) into layers", sliced)
+                        .into(),
+                );
+            } else {
+                let detail: Vec<String> = layer_diag
+                    .iter()
+                    .filter(|(_, r)| !r.starts_with("ok:"))
+                    .map(|(id, r)| format!("#{}={}", id, r))
+                    .collect();
+                web_sys::console::warn_1(
+                    &format!(
+                        "[ifc-lite layers] batch: sliced {}, {} NOT sliced — {}",
+                        sliced,
+                        not_sliced,
+                        detail.join(", ")
+                    )
+                    .into(),
+                );
+            }
+        }
 
         mesh_collection
     }

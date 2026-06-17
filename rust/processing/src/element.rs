@@ -252,6 +252,19 @@ fn produce_inner(
         .get(&job.id)
         .is_some_and(|openings| !openings.is_empty());
 
+    // Material-layer wall: its per-layer slices are thin coincident-faced solids
+    // that z-fight into a hollow-looking shell when drawn double-sided. They have
+    // verified-correct outward winding, though, so we tag them GEOM_CLASS_LAYER_SLICE
+    // and the renderer draws them BACKFACE-CULLED — the build-up stays visible on
+    // the faces/edges, but the interior coincident caps (which would z-fight) are
+    // never rasterised, so the wall reads as a clean solid. The 2D/section cut
+    // (which never culls) consumes the same class for its per-layer fills.
+    let layer_class = if router.is_material_layer_sliceable(job.id) {
+        GEOM_CLASS_LAYER_SLICE
+    } else {
+        0
+    };
+
     if has_openings {
         // Voided elements: submesh-aware cut FIRST, so per-part colours
         // survive the void subtraction (a voided window keeps frame/glass
@@ -260,7 +273,8 @@ fn produce_inner(
             router.process_element_with_submeshes_and_voids(job.entity, decoder, ctx.void_index)
         {
             if !sub_meshes.is_empty() {
-                let out = emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher);
+                let out =
+                    emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, layer_class);
                 if !out.is_empty() {
                     return out;
                 }
@@ -274,7 +288,8 @@ fn produce_inner(
         // happens per item inside `emit_sub_meshes`.
         if let Ok(sub_meshes) = router.process_element_with_submeshes(job.entity, decoder) {
             if !sub_meshes.is_empty() {
-                let out = emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher);
+                let out =
+                    emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, layer_class);
                 if !out.is_empty() {
                     return out;
                 }
@@ -363,6 +378,11 @@ fn emit_sub_meshes(
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
     hasher: &mut Option<GeometryHasher>,
+    // geometry_class stamped on every emitted sub-mesh. 0 for normal occurrence
+    // geometry; GEOM_CLASS_LAYER_SLICE (3) when these are the per-layer slices of
+    // a material-layer wall — a section-only detail the 3D renderer skips (the
+    // wall renders as one solid) but the 2D/section cut consumes.
+    slice_class: u8,
 ) -> Vec<MeshData> {
     let mut out: Vec<MeshData> = Vec::with_capacity(sub_meshes.len());
     // Material colours for this element, used when a sub-mesh has no direct
@@ -417,7 +437,7 @@ fn emit_sub_meshes(
                         rgba.to_array(),
                         None,
                         Some(sub.geometry_id),
-                        0,
+                        slice_class,
                         ctx,
                     ));
                 }
@@ -431,12 +451,20 @@ fn emit_sub_meshes(
             color,
             material_name,
             Some(sub.geometry_id),
-            0,
+            slice_class,
             ctx,
         ));
     }
     out
 }
+
+/// geometry_class for the per-layer slices of a material-layer wall. The wall's
+/// slices have verified outward winding, so the 3D renderer draws THIS class
+/// BACKFACE-CULLED — the build-up shows on the faces/edges but the interior
+/// coincident caps never rasterise, so the thin stacked solids don't z-fight
+/// into a hollow shell. The 2D/section cut consumes the same class (never
+/// culled) for its per-layer fills.
+pub const GEOM_CLASS_LAYER_SLICE: u8 = 3;
 
 /// Render a type-product's planned RepresentationMaps (#957), texture-aware
 /// (#961), each mesh tagged with its planned geometry_class.

@@ -146,10 +146,15 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         //     each segment contributes 1.0 to the parameter.
         //   - IfcPolyline: point-index based, each segment between consecutive points
         //     contributes 1.0 to the parameter.
-        // Other directrix types (IfcLine, IfcCircle, IfcTrimmedCurve, IfcBSplineCurve)
-        // have length-, angle-, or knot-based parameterisations and fall back to the
-        // full sampler. Files using those with explicit StartParam/EndParam will still
-        // render the full curve — flagged as a known limitation.
+        //   - IfcLine: linearly parameterised P(u) = Pnt + u·V, so StartParam/EndParam
+        //     map straight onto the segment endpoints.
+        // Other directrix types (IfcCircle, IfcBSplineCurve) have angle-/knot-based
+        // parameterisations and fall back to the full sampler. An IfcTrimmedCurve
+        // directrix is sampled over its own Trim1/Trim2 by get_curve_points (a
+        // trimmed IfcLine retains full 3D); a file's redundant solid-level
+        // StartParam/EndParam are then a no-op. Files using a raw circle/spline
+        // directrix with explicit StartParam/EndParam still render the full curve —
+        // flagged as a known limitation.
         // The lower-level trimmed samplers below don't take a `quality`
         // argument; set it on the profile processor so any arcs they sample
         // honour the requested detail level.
@@ -168,6 +173,17 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         } else if has_trim && directrix.ifc_type == IfcType::IfcPolyline {
             self.profile_processor
                 .get_polyline_points_trimmed(&directrix, decoder, start_param, end_param)?
+        } else if has_trim && directrix.ifc_type == IfcType::IfcLine {
+            // A bare IfcLine directrix is parameterised as P(u) = Pnt + u·V, so the
+            // solid's StartParam/EndParam map straight onto the segment endpoints.
+            // Without this the line samples over its unit range [0,1] only and the
+            // swept extent collapses to the (tool-emitted) vector magnitude.
+            self.profile_processor.get_line_points_3d(
+                &directrix,
+                decoder,
+                start_param.unwrap_or(0.0),
+                end_param.unwrap_or(1.0),
+            )?
         } else {
             self.profile_processor
                 .get_curve_points(&directrix, decoder, quality)?
@@ -254,12 +270,26 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
             indices.push(end_base + j_next as u32);
         }
 
-        Ok(Mesh {
+        let mut mesh = Mesh {
             positions,
             normals: Vec::new(),
             indices,
-            rtc_applied: false, 
-            origin: [0.0; 3],        })
+            rtc_applied: false,
+            origin: [0.0; 3],
+        };
+
+        // Ship smooth per-vertex normals, computed here in the directrix-local
+        // frame where the coordinates are small (0..directrix-length) and so
+        // precise. Without this the swept-disk mesh carried empty normals and
+        // downstream consumers recomputed them from world-space f32 positions.
+        // At a georef-scale placement (national-grid rebar sits ~6 km from the
+        // origin) the edge differences `v1 - v0` cancel catastrophically — the
+        // tube renders as a field of specular sparkles. A round tube wants
+        // smooth (area-weighted) normals, unlike the crease-heavy revolved
+        // solid which is flat-shaded. (#1164)
+        crate::calculate_normals(&mut mesh);
+
+        Ok(mesh)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -299,7 +329,11 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
         // 0: SweptArea (IfcProfileDef) - 2D profile in xy plane of Position
         // 1: Position (IfcAxis2Placement3D) - solid's local coord system
         // 2: Axis (IfcAxis1Placement) - revolution axis in xy plane of Position
-        // 3: Angle (IfcPlaneAngleMeasure) - revolution angle in radians
+        // 3: Angle (IfcPlaneAngleMeasure) - revolution angle in the project's
+        //    PLANEANGLEUNIT (radians for SI files, degrees for files that
+        //    declare a DEGREE conversion-based unit). Scaled to radians below
+        //    via decoder.plane_angle_to_radians() — see issue #820 for the
+        //    same class of bug on IfcTrimmedCurve parameters.
 
         let profile_attr = entity
             .get(0)
@@ -333,7 +367,8 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
 
         let angle = entity
             .get_float(3)
-            .ok_or_else(|| Error::geometry("RevolvedAreaSolid missing Angle".to_string()))?;
+            .ok_or_else(|| Error::geometry("RevolvedAreaSolid missing Angle".to_string()))?
+            * decoder.plane_angle_to_radians();
 
         let profile_2d = self.profile_processor.process(&profile, decoder, quality)?;
         if profile_2d.outer.is_empty() {

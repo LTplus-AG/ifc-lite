@@ -1,5 +1,128 @@
 # @ifc-lite/geometry
 
+## 2.7.6
+
+### Patch Changes
+
+- [#1160](https://github.com/LTplus-AG/ifc-lite/pull/1160) [`631511e`](https://github.com/LTplus-AG/ifc-lite/commit/631511eedb135ea8bfc7caf640edea8862b86a59) Thanks [@louistrue](https://github.com/louistrue)! - Restore per-layer slicing of single-solid walls/slabs with an `IfcMaterialLayerSetUsage`. Slicing turns one solid into one coloured sub-mesh per material layer (geometry_id = the layer's `IfcMaterial`) so the build-up is visible in 3D. The "Merge Multilayer Walls" toggle now does what its label promises for these walls too — "render walls as one solid": with the toggle on, the layer index is not attached, so each wall stays a single swept solid instead of slicing into layers (off, the default, shows the layered build-up).
+
+  The slicing kernel stayed intact, but [#874](https://github.com/LTplus-AG/ifc-lite/issues/874) (mesh-production unification) dropped the `set_material_layer_index` wiring from every pipeline, so the router's index was always `None` and `try_layered_sub_meshes` never fired — layered walls silently rendered as a plain single solid in the browser, native, and server paths. Re-wire it: build the `MaterialLayerIndex` once per load (cached on the IfcAPI for the streaming path, with a cheap substring bail-out so files with no layer set pay nothing) and attach it to every batch router. This also restores the "Merge Multilayer Walls" toggle for models whose sliceable walls carry their geometry as `IfcBuildingElementPart`s — the merged parent now actually draws its sliced solid instead of leaving a gap.
+
+  2D section now shows the layers too. The section cutter carries each sub-mesh's colour onto its cut segments (CPU and GPU paths), and the polygon builder splits one entity's cut into a polygon per material colour — single-material elements still produce one colourless polygon, so their existing per-`ifcType` / per-entity fill is unchanged. When the viewer shows IFC materials, each sliced layer fills with its own `IfcMaterial` colour instead of one colour for the whole wall, and the layer divisions are drawn as outlines — matching the 3D build-up.
+
+  Two follow-on robustness fixes:
+
+  - **3D layer glitch (z-fighting).** Adjacent layer slabs share the parent wall's `expressId`, so the renderer's per-entity depth nudge (keyed on `entityId`) gave their coincident interior interface caps the SAME depth — under `cullMode: 'none'` + MSAA that z-fought into a flickering comb that read as "see inside / not solid". The shader now folds the per-draw `baseColor` into the depth-nudge hash; batches are keyed by colour, so abutting layers (distinct colours) land on distinct depths. Constant per draw, so flat faces stay flat and curved surfaces are unaffected.
+
+  - **Cap watertightness on irregular profiles.** A layer slab's innermost cut is built by two successive plane clips; on a non-convex `IfcArbitraryClosedProfileDef` the two passes deposit geometrically-coincident section vertices that differ by ~1 ULP. `cap_half_space_clip` welded by exact f32 bits, so those twins stayed separate, the boundary chain dead-ended and a cap sub-loop was silently dropped — leaving open edges (a hole you could see through and a section with no fill there). The cap now welds on a spatial grid tied to its on-plane tolerance, collapsing the twins so the loop closes. Single-plane callers (opening cuts) have no such twins and are unaffected.
+
+  - **3D section cut read hollow.** The live 3D section cap (`Section2DOverlayRenderer`) filled each cut polygon with a naive convex fan over the outer ring only, ignoring holes — a long-standing KNOWN LIMITATION. On the concave cross-sections that arbitrary IFC profiles (and material-layer slabs) cut into, the fan inverts and leaves the cut face uncovered, so a sectioned wall read as a hollow shell. The fill now uses the renderer's existing hole-aware ear-clipping (the same one the annotation-fill path uses), so the cut face is solid. The cap also now honours a per-polygon colour: a material-layer wall fills each layer of its 3D section cut with that layer's `IfcMaterial` colour (matching the 3D solids and the 2D section), while single-material cuts keep the uniform cap style + hatch unchanged via a sentinel.
+
+  - **Solid layered 3D walls via backface culling.** Rendering a material-layer wall as N thin coincident-faced layer solids made it shimmer / read as a hollow shell — adjacent layers' interface caps z-fight under the viewer's double-sided rendering (culling is globally off because general IFC winding is unreliable), and same-material adjacent layers can't be depth-separated. The layer slices DO have reliable outward winding, though, so they're now tagged `geometryClass` 3 and the renderer draws that class with a dedicated **backface-culling** pipeline: the build-up stays visible on the wall's faces and edges, but the interior coincident caps never rasterise, so the wall reads as a clean solid (and a section cut through it shows the interior material surface rather than a hollow shell). The 2D/section cut consumes the same class — it never culls — for its per-layer fills. Cache `FORMAT_VERSION` → 9 so stale caches re-mesh with the class-3 slices.
+
+## 2.7.5
+
+### Patch Changes
+
+- [#1159](https://github.com/LTplus-AG/ifc-lite/pull/1159) [`39e0f82`](https://github.com/LTplus-AG/ifc-lite/commit/39e0f82558ec65dd574b6b4bfb2430f7abba346b) Thanks [@louistrue](https://github.com/louistrue)! - Add a `?geomWorkers=N` override for the geometry worker pool, and document the
+  per-tier worker caps as a memory-bandwidth ceiling.
+
+  The parallel geometry pool picks a worker count from a cores/memory heuristic.
+  A `?geomWorkers=N` A/B sweep on a large (722 MB) georef model showed that, with
+  the pure-Rust exact CSG kernel, geometry wall-time is bound by **memory
+  bandwidth**, not CPU cores: 3→4→5 workers gave no geometry speedup (flat
+  wall-time, higher peak memory) and progressively starved the co-running parser.
+  So the existing caps are correct for this class of file and are left unchanged —
+  only their rationale is updated in comments.
+
+  The override (`?geomWorkers=N`, persisted to localStorage so it survives the
+  reload a re-measure needs; `?geomWorkers=0`/`auto` clears it) lets a user measure
+  their own host's optimum, since the bandwidth ceiling is hardware-specific. It is
+  threaded to `computeWorkerCount`, which honours it but still clamps to the memory
+  budget, so the knob can never OOM the tab. Geometry output is byte-identical
+  across worker counts (verified in the wild: identical mesh count at 3 and 4
+  workers) — the count only repartitions which worker meshes which disjoint,
+  deterministic element slice.
+
+- [#1169](https://github.com/LTplus-AG/ifc-lite/pull/1169) [`2556677`](https://github.com/LTplus-AG/ifc-lite/commit/25566773498f4761bb073e17b874e638208b7d13) Thanks [@louistrue](https://github.com/louistrue)! - Fix the rectangular-opening fast path erasing whole walls on redundant voids.
+
+  Some authoring tools bake an opening into the wall profile AND re-add it as a
+  separate opening element whose box spans the entire wall (a double-encoded /
+  redundant void). The exact CSG kernel treats such a cutter as a no-op (its faces
+  are coplanar with the host, so the host is returned unchanged), but the analytic
+  `rect_fast` path was cutting it literally — removing the entire wall and leaving
+  the window floating in a giant void ([#1167](https://github.com/LTplus-AG/ifc-lite/issues/1167)).
+
+  `rect_fast` now detects any opening whose clamped box contains the whole host on
+  all three axes and defers the element to the exact kernel, matching its
+  behaviour. Genuine interior openings (a margin on any in-face axis) are
+  unaffected and still cut analytically. Verified against ~1,500 void elements
+  across 13 architectural models: the only fast-vs-exact divergence was this
+  whole-wall case, now gone; every normal window already removed identical volume
+  on both paths.
+
+## 2.7.4
+
+### Patch Changes
+
+- [#1165](https://github.com/LTplus-AG/ifc-lite/pull/1165) [`9d9bd66`](https://github.com/LTplus-AG/ifc-lite/commit/9d9bd6646db8c40c797fe22d6eb4d60ee963c38c) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcSweptDiskSolid` elements whose directrix is an `IfcTrimmedCurve` (or bare `IfcLine`) — straight reinforcing bars, rods, and similar steel (issue [#1164](https://github.com/LTplus-AG/ifc-lite/issues/1164)).
+
+  The 3D curve sampler had no `IfcLine` arm, so resolving a trimmed-line directrix returned "Unsupported curve type: IfcLine" and the swept-disk mesh collapsed to an empty mesh — the element silently failed to load. This is the common Tekla/IfcOpenShell encoding for a straight bar: `IfcSweptDiskSolid(IfcTrimmedCurve(IfcLine, 0., L, .PARAMETER.), r)`.
+
+  The sampler now handles `IfcLine` directly and a trimmed `IfcLine` in full 3D, honoring Trim1/Trim2 (parameter or cartesian bounds) and SenseAgreement, so the directrix samples to its true `[start, end]` segment instead of erroring. The swept-disk processor also applies a solid's own `StartParam`/`EndParam` to a bare `IfcLine` directrix. The 2D curve path no longer errors on `IfcLine` either.
+
+  The swept-disk mesh now also ships smooth per-vertex normals (computed in its small-coordinate directrix-local frame). It previously shipped empty normals, leaving consumers to recompute them from world-space f32 positions — which at a georef-scale placement (rebar at national-grid coordinates ~6 km from origin) cancel catastrophically into garbage normals, rendering the tube as a field of specular sparkles.
+
+## 2.7.3
+
+### Patch Changes
+
+- [#1137](https://github.com/LTplus-AG/ifc-lite/pull/1137) [`69e5425`](https://github.com/LTplus-AG/ifc-lite/commit/69e5425e3d7586fcc2d44a33465806adc0ed53f8) Thanks [@louistrue](https://github.com/louistrue)! - Cap the cut face of unbounded `IfcHalfSpaceSolid` differences (gable roof-trims, mono-pitch eaves, Revit top-trims).
+
+  The pure-Rust kernel consolidation ([#1024](https://github.com/LTplus-AG/ifc-lite/issues/1024)) deleted the in-tree BSP kernel along with the polygon cap that closed the cross-section left by the fast plane-clip path, but kept that path for unbounded `IfcHalfSpaceSolid` operands. With no cap, every such clip produced an **open, inverted shell** (negative signed volume, dozens of open boundary edges) instead of a watertight solid — the roof-clipped wall rendered as a broken/spiky surface.
+
+  The clip now re-closes the section: it chains the on-plane open boundary into loops, classifies them into outer rings and holes, triangulates each region with the kernel CDT, and winds the cap to face the removed side. If the boundary is non-manifold or does not close (a non-watertight host), it bails and leaves the output unchanged — never worse than before.
+
+  On AC20-FZK-Haus the two roof-clipped upper walls go from `14 tris / −8.4 m³ / 16 open edges` to `20 tris / +2.06 m³ / 0 open edges`; void-cut walls are untouched.
+
+- [#1135](https://github.com/LTplus-AG/ifc-lite/pull/1135) [`bd585c7`](https://github.com/LTplus-AG/ifc-lite/commit/bd585c73de1f39db3c9aac168174012b98b79855) Thanks [@louistrue](https://github.com/louistrue)! - Speed up the exact CSG kernel ~42% on boolean-heavy models (Tekla 170_KM: 22.0s → 12.8s of serial geometry), byte-identical — the sign / boolean / retriangulation determinism manifests and full geometry suite are unchanged. Four profile- and literature-driven optimizations (Attene "Indirect Predicates" §5.4, Shewchuk):
+
+  - **BVH boolean classification** — `boolean_vids` scanned the _entire_ opposite operand per arrangement triangle (an exact ray-cast + an exact coincident-face probe). A median-split AABB BVH (conservative ray + band-radius point queries) prunes each to O(log N + hits); the parity/any-match results are order-independent, so the verdict is unchanged.
+  - **Memoize `to_f64_pt`** — classification and the output map materialize the same heavily-shared conforming vertices many times; each interned point's f64 value is now computed once per arrangement.
+  - **Cache interval lambdas in the seg×seg pre-pass** — the O(n²) crossing loop re-derived each endpoint's degree-4/7 LPI/TPI interval lambda on every `orient2d`; compute it once and run the crossing test straight from it, falling to the exact cascade only on a straddle.
+  - **Materialize f64 from the cached lambda** — reuse the interner's already-cached I512 lambda instead of re-deriving it at I1024.
+
+  The remaining cost is the conforming retriangulation (constrained Delaunay) and the exact predicate arithmetic itself — the genuine exact-CSG floor. The win grows with operand size and applies to every boolean-heavy model.
+
+- [#1163](https://github.com/LTplus-AG/ifc-lite/pull/1163) [`200681b`](https://github.com/LTplus-AG/ifc-lite/commit/200681ba17f162aaafaabf56c0723ddba693faf8) Thanks [@louistrue](https://github.com/louistrue)! - Add an analytic fast path for rectangular openings, skipping the exact CSG kernel
+  for the common case.
+
+  The pure-Rust exact CSG kernel is at its single-threaded, memory-bandwidth-bound
+  floor (it won't parallelise — adding geometry workers gives no speedup), and
+  void-cutting is ~85-90% of load. The only remaining lever is doing _less_ exact
+  CSG. `rect_fast` cuts axis-aligned rectangular openings through an axis-aligned
+  box host (the dominant case: windows/doors in a straight wall) with a 3D cellular
+  decomposition instead of the mesh-arrangement kernel: split the host box by every
+  opening plane on all three axes, mark each cell solid/void, and emit the exposed
+  faces. Watertight by construction (shared snapped grid vertices on the kernel's
+  own `SNAP_GRID`), deterministic (FMA-free f64 → byte-identical native==wasm), and
+  handles windows, doors (flush to an edge), recesses, notches, and overlapping
+  openings uniformly.
+
+  It is a pure optimization: any case it can't prove safe — non-box host (multi-
+  layer / chamfered / diagonal walls), non-rectangular opening, or a near-edge
+  feature whose grid lines would collapse at the host's f32 magnitude — defers to
+  the exact kernel unchanged. `IFC_LITE_RECT_FAST=0` forces everything back to the
+  exact path.
+
+  Measured (dental*clinic, a box-wall-dominated building): ~94% of openings cut
+  analytically, void-cut geometry time ~0.95 s → ~0.32 s (~3×), with 2% \_fewer*
+  triangles (no bloat). Models with more multi-layer or diagonal walls fire less
+  (those correctly defer).
+
+- Updated dependencies [[`bfd9004`](https://github.com/LTplus-AG/ifc-lite/commit/bfd9004daa17f481a7b33b5c3c11f620e6cd894d), [`248f2c0`](https://github.com/LTplus-AG/ifc-lite/commit/248f2c09a4d61fa27dfeaba5511a2a641d4cd278), [`ddae2b0`](https://github.com/LTplus-AG/ifc-lite/commit/ddae2b0024f071d00f9e6e4b77e0be3965412ec3)]:
+  - @ifc-lite/data@2.1.0
+
 ## 2.7.2
 
 ### Patch Changes

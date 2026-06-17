@@ -55,15 +55,31 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" || true
 # successful deploy) is the most accurate base, BUT it usually points at a
 # commit that ISN'T in Vercel's shallow clone — `git diff` then dies with
 # "fatal: bad object <sha>", the check fails, and we deploy every time
-# (never skipping). So only use it when it's actually present in the clone;
-# otherwise fall back to HEAD^, which the shallow clone does include.
-BASE="${VERCEL_GIT_PREVIOUS_SHA:-}"
-if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
-  BASE="HEAD^"
-fi
+# (never skipping). So only use it when it's actually present in the clone.
 HEAD_SHA="${VERCEL_GIT_COMMIT_SHA:-HEAD}"
 # Guard HEAD_SHA too: if Vercel's SHA isn't in the clone, use the literal HEAD.
 git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null || HEAD_SHA="HEAD"
+
+BASE="${VERCEL_GIT_PREVIOUS_SHA:-}"
+if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+  # No previous-deploy SHA in the shallow clone — typically a branch's FIRST
+  # deploy. The old fallback (`HEAD^`) diffs only the LAST commit, which falsely
+  # SKIPS a multi-commit branch whose final commit doesn't touch a relevant path
+  # (a changeset or docs commit sitting on top of real source changes — the exact
+  # case that skipped a geometry PR's viewer preview). Diff against the merge-base
+  # with the default branch instead, so the WHOLE branch's changes are considered.
+  DEFAULT_BRANCH="${VERCEL_GIT_REPO_DEFAULT_BRANCH:-main}"
+  git fetch --quiet --depth=200 origin "$DEFAULT_BRANCH" 2>/dev/null || true
+  BASE="$(git merge-base FETCH_HEAD "$HEAD_SHA" 2>/dev/null \
+        || git merge-base "origin/${DEFAULT_BRANCH}" "$HEAD_SHA" 2>/dev/null || true)"
+  if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+    # Couldn't establish a reliable base in the shallow clone — DEPLOY. A missed
+    # skip wastes one build; a wrong skip ships a stale deploy, so deploy wins.
+    echo "⚠️  No reliable diff base (no previous deploy, no merge-base) — deploying."
+    exit 1
+  fi
+  echo "   (first deploy — diffing against merge-base ${BASE})"
+fi
 
 # Shared inputs every Rust+WASM app (viewer, viewer-embed) depends on.
 # The landing page is static and depends on NONE of these.

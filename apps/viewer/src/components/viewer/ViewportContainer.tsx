@@ -531,6 +531,46 @@ export function ViewportContainer() {
     setActiveTool('addElement');
   }, [webgpu.supported, loadFile, setActiveTool]);
 
+  // Issue #540 "Merge Multilayer Walls" reload. The setting changes the produced
+  // geometry, so it only takes on a re-load. Re-load the active model IN PLACE
+  // from the File the store ALREADY retains on the model record
+  // (`getActiveModel().sourceFile`, set by upsertModel at load time) — loadFile
+  // re-snapshots `mergeLayers` from the store, so the toggle re-tessellates.
+  // The earlier recent-files-blob-cache source was unreliable (its 150 MB cap
+  // skips real models + a fire-and-forget write races the reload), so it fell to
+  // window.location.reload() which DROPPED the model — the "nothing loads" blank.
+  const handleMergeLayersReload = useCallback(async () => {
+    const st = useViewerStore.getState();
+    const file = st.getActiveModel()?.sourceFile;
+    console.log(
+      '[merge-reload] start: mergeLayers=',
+      st.mergeLayers,
+      'activeModel.sourceFile=',
+      file ? `${file.name} (${file.size}B)` : 'NONE',
+    );
+    st.clearMergeLayersPendingReload();
+    if (file) {
+      try {
+        console.log('[merge-reload] re-loading active model in place…');
+        await loadFile(file);
+        const after = useViewerStore.getState();
+        console.log(
+          '[merge-reload] loadFile resolved: meshes=',
+          after.geometryResult?.meshes?.length ?? 0,
+          'models=',
+          after.models?.size ?? 0,
+        );
+      } catch (err) {
+        console.error('[merge-reload] loadFile threw:', err);
+      }
+    } else if (typeof window !== 'undefined') {
+      // No retained File (e.g. blank/new model) — fall back to a full reload
+      // (the toggle is persisted, so the user re-opens the file).
+      console.warn('[merge-reload] no active sourceFile — falling back to window.location.reload()');
+      window.location.reload();
+    }
+  }, [loadFile]);
+
   const hasGeometry = mergedGeometryResult?.meshes && mergedGeometryResult.meshes.length > 0;
 
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
@@ -638,8 +678,12 @@ export function ViewportContainer() {
       // (else the AC20 duplicate boxes at the MappingOrigin reappear); in 'types'
       // mode hide occurrences (class 0) so only the type library shows.
       const geometryClass = mesh.geometryClass ?? 0;
+      // Class 3 = a material-layer slice. It IS rendered in 3D (the renderer
+      // draws it backface-culled so the build-up shows without the thin slabs
+      // z-fighting into a hollow shell), so it's treated like an occurrence
+      // (class 0) for the Model/Types switch.
       if (effectiveViewMode === 'types') {
-        if (geometryClass === 0) continue;
+        if (geometryClass === 0 || geometryClass === 3) continue;
       } else if (geometryClass === 2) {
         continue;
       }
@@ -1181,8 +1225,9 @@ export function ViewportContainer() {
       <ViewportOverlays />
       {/* Issue #540: non-modal "reload to apply" banner anchored to the
           top of the canvas. Only renders when the user has flipped the
-          merge-layers toggle while a model is in scope. */}
-      <MergeLayersBanner />
+          merge-layers toggle while a model is in scope. `onReload` re-loads the
+          model in place (full page reload would drop it — no boot auto-restore). */}
+      <MergeLayersBanner onReload={handleMergeLayersReload} />
       <LevelDisplayIndicator />
       <ToolOverlays />
       <BasketPresentationDock />

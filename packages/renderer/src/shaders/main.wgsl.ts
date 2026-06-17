@@ -57,11 +57,22 @@ export const mainShaderSource = `
           var output: VertexOutput;
           let worldPos = uniforms.model * vec4<f32>(input.position, 1.0);
           output.position = uniforms.viewProj * worldPos;
-          // Anti z-fighting: deterministic depth nudge per entity.
-          // Knuth multiplicative hash spreads sequential IDs across 0-255
-          // so coplanar faces from different entities always get distinct depths.
-          // At 1e-6 per step the max world-space offset is <3mm at 10m — invisible.
-          let zHash = (input.entityId * 2654435761u) & 255u;
+          // Anti z-fighting: deterministic depth nudge.
+          // Knuth multiplicative hash spreads sequential IDs across 0-255 so
+          // coplanar faces from different entities always get distinct depths.
+          // We also fold in the per-draw baseColor: a material-layer wall slices
+          // into one closed solid per layer, all sharing the PARENT wall's
+          // expressId, so adjacent layers' coincident interface caps would get
+          // the same entity nudge and z-fight into a flickering comb (you appear
+          // to "see inside" the wall). Batches are keyed by colour, so baseColor
+          // is constant per draw and distinct per layer — XOR-ing it in pushes
+          // abutting layers onto different depths. Constant per draw, so flat
+          // faces stay flat and curved surfaces are unaffected. At 1e-6 per step
+          // the max world-space offset is <3mm at 10m — invisible.
+          let colorSalt = (u32(uniforms.baseColor.r * 255.0) * 73856093u)
+                        ^ (u32(uniforms.baseColor.g * 255.0) * 19349663u)
+                        ^ (u32(uniforms.baseColor.b * 255.0) * 83492791u);
+          let zHash = ((input.entityId ^ colorSalt) * 2654435761u) & 255u;
           output.position.z *= 1.0 + f32(zHash) * 1e-6;
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(input.normal, 0.0)).xyz);
@@ -229,8 +240,11 @@ export const mainShaderSource = `
           // Darken whites/grays more to reduce washed-out appearance
           baseColor = mix(baseColor, baseColor * 0.7, isWhiteish * 0.4);
 
-          // Combine all lighting
-          var color = baseColor * (ambient + env.sunColor * diffuseSun + vec3<f32>(diffuseFill + rim));
+          // Combine all lighting. Keep the lighting term separate so the
+          // selection highlight can reuse it (re-light a blue albedo) without
+          // the base material colour bleeding through.
+          let lightTerm = ambient + env.sunColor * diffuseSun + vec3<f32>(diffuseFill + rim);
+          var color = baseColor * lightTerm;
 
           // flags.x is a bitfield:
           //   bit 0 (value 1) = isSelected  → selection-highlight + force opaque
@@ -244,17 +258,34 @@ export const mainShaderSource = `
           let isSelected = (uniforms.flags.x & 1u) == 1u;
           let isOverlay = (uniforms.flags.x & 2u) == 2u;
 
-          // Selection highlight — a single FLAT selection colour.
+          // Selection highlight — a blue albedo RE-LIT by the scene lighting.
           //
-          // No lighting-dependent (luminance) or view-dependent (fresnel)
-          // term: the selected object must read as one uniform colour, not
-          // a shaded/gradient surface. The previous fresnel-glow mix left
-          // 80 % of the lit object colour visible at face centres (the
-          // green-site / red-roof bleed-through). A constant colour here
-          // also stays flat through the downstream tone-mapping, since
-          // those are per-pixel functions of a now-constant input.
+          // We override the material albedo with selection-blue and re-light
+          // it with the SAME lightTerm used for unselected surfaces, then
+          // discard the view-dependent (fresnel) term below. Two requirements
+          // are in tension and this satisfies both:
+          //
+          //   * No base-material bleed-through. The old fresnel-glow mix left
+          //     ~80 % of the lit object colour visible at face centres (the
+          //     green-site / red-roof wash-out). Here the base colour never
+          //     enters the result — only lightTerm (geometry/light, colour-
+          //     independent) modulates the constant blue albedo.
+          //   * Facet/crease structure must survive. A single FLAT colour
+          //     (the previous fix) collapsed every face to the same blue, so
+          //     internal edges — which read as the per-face shading STEP, not
+          //     just the faint screen-space edge line — disappeared on
+          //     selection. Re-lighting keeps that per-face brightness step, so
+          //     creases read on the highlight exactly as they do unselected.
+          //
+          // The luminance of lightTerm is remapped by a multiplicative gain
+          // (which preserves the per-face brightness RATIOS, so creases read
+          // as strongly as on the unselected surface) calibrated so a sunlit
+          // face hits full selection-blue, with a floor/ceiling clamp so
+          // shadowed faces only dim and bright scenes never wash out.
           if (isSelected) {
-            color = vec3<f32>(0.3, 0.6, 1.0);
+            let shadeLum = dot(lightTerm, vec3<f32>(0.299, 0.587, 0.114));
+            let shade = clamp(shadeLum * 1.55, 0.45, 1.2);
+            color = vec3<f32>(0.3, 0.6, 1.0) * shade;
           }
 
           // Beautiful fresnel effect for transparent materials (glass)
@@ -302,7 +333,13 @@ export const mainShaderSource = `
 
           // Saturation boost - stronger for colored surfaces, less for whites
           let gray = dot(color, vec3<f32>(0.299, 0.587, 0.114));
-          let satBoost = mix(1.4, 1.1, isWhiteish);  // More saturation for colored surfaces
+          // More saturation for colored surfaces. isWhiteish is derived from
+          // the base material colour, so for a SELECTED object it would leak a
+          // material dependence into the highlight (breaking the no-bleed-
+          // through contract). The selection blue is a fully-saturated colour,
+          // so force the colored-surface boost (1.4) when selected — keeping
+          // the highlight identical regardless of the underlying material.
+          let satBoost = select(mix(1.4, 1.1, isWhiteish), 1.4, isSelected);
           color = mix(vec3<f32>(gray), color, satBoost);
 
           // ACES filmic tone mapping

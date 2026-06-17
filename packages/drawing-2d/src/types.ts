@@ -177,6 +177,14 @@ export interface DrawingPolygon {
   modelIndex: number;
   /** True if from section cut, false if projection */
   isCut: boolean;
+  /** Per-sub-mesh RGBA fill (0–1), present only when the source entity cut
+   *  into >1 distinct material — i.e. an `IfcMaterialLayerSet` wall/slab whose
+   *  layers each carry their `IfcMaterial`'s surface-style colour, or a
+   *  frame+glass window. Renderers showing IFC materials use this so each
+   *  layer fills with its own colour instead of one colour for the whole
+   *  element; absent for single-material elements (keep the existing
+   *  per-`ifcType` / per-entity fill). */
+  color?: [number, number, number, number];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -201,6 +209,10 @@ export interface CutSegment {
   ifcType: string;
   /** Model index */
   modelIndex: number;
+  /** Source sub-mesh RGBA colour (0–1) — the cut triangle's `MeshData.color`.
+   *  Carried so the polygon builder can split one entity's cut into per-material
+   *  loops (material-layer walls/slabs). Absent when the cutter has no colour. */
+  color?: [number, number, number, number];
 }
 
 /**
@@ -384,6 +396,18 @@ export function parseEntityKey(key: EntityKey): { modelIndex: number; entityId: 
     throw new Error(`Invalid entity key values: "${key}". Both modelIndex and entityId must be valid numbers`);
   }
   return { modelIndex, entityId };
+}
+
+/**
+ * Stable string key for an RGBA colour (0–1), quantised to 8-bit so
+ * floating-point noise from the cut never splits one material into two groups.
+ * `null`/`undefined` colours collapse to a single `"none"` bucket so an entity
+ * with no colour data still groups as one polygon (the pre-colour behaviour).
+ */
+export function colorKey(color?: [number, number, number, number] | null): string {
+  if (!color) return 'none';
+  const q = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255)));
+  return `${q(color[0])},${q(color[1])},${q(color[2])},${q(color[3])}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

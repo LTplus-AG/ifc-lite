@@ -23,6 +23,7 @@ import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import type { ListResult, ListRow, ColumnDefinition, ListGrouping } from '@ifc-lite/lists';
 import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
+import { posthog } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
 import { columnToAutoColor } from '@/lib/lists/columnToAutoColor';
 import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
@@ -206,6 +207,13 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
       generatedAt: new Date().toLocaleString(),
     });
     void exportList(format, model);
+    // Counts only — never the list title or column/property names (confidential).
+    posthog.capture('export_completed', {
+      format,
+      surface: 'list_results',
+      row_count: sortedRows.length,
+      column_count: columns.length,
+    });
   }, [listName, columns, sortedRows, grouping, numericCols, columnWidths]);
 
   const handleRowClick = useCallback((row: ListRow) => {

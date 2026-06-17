@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import type { CesiumDataSource } from '@/store/slices/cesiumSlice';
 import type { SolarSweepMode } from '@/store/slices/solarSlice';
 import { LIGHTING_PRESETS, LIGHTING_PRESET_ORDER, isLightingPresetId } from '@/lib/lighting-presets';
+import { posthog } from '@/lib/analytics';
 import {
   solarDisplayOffsetMinutes,
   toSolarDateInputValue,
@@ -194,7 +195,19 @@ export function SunSkyPanel() {
                 <button
                   type="button"
                   aria-pressed={solarEnabled}
-                  onClick={() => setSolarEnabled(!solarEnabled)}
+                  onClick={() => {
+                    const next = !solarEnabled;
+                    setSolarEnabled(next);
+                    // Fire only on enable — the sun study is a live analysis,
+                    // so "turned on" is the run signal (no discrete compute step).
+                    if (next) {
+                      posthog.capture('solar_analysis_run', {
+                        sweep_mode: sweepMode,
+                        use_local_time: useLocalTime,
+                        data_source: dataSource,
+                      });
+                    }
+                  }}
                   className={cn(
                     'px-2 py-0.5 rounded text-[10px] font-semibold uppercase transition-colors',
                     solarEnabled ? 'bg-amber-500 text-zinc-950' : 'text-muted-foreground hover:bg-muted hover:text-foreground',

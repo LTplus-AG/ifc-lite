@@ -29,6 +29,7 @@ import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { posthog } from '@/lib/analytics';
 
 interface SelectionRef {
   modelId: string;
@@ -154,9 +155,15 @@ export function useClash() {
         // its own dimension separately. Radius is the user's cluster epsilon.
         state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
         state.setClashSelectedId(null);
+        posthog.capture('clash_detection_run', {
+          clash_count: res.clashes.length,
+          rule_count: rules.length,
+          mode: state.clashMode,
+        });
       } catch (err) {
         console.error('[clash] detection run failed', err);
         state.setClashError(err instanceof Error ? err.message : String(err));
+        posthog.captureException(err, { additional_properties: { context: 'clash_detection' } });
       } finally {
         state.setClashRunning(false);
         state.setClashProgress(null);

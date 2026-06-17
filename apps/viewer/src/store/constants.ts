@@ -109,6 +109,48 @@ function getInitialMergeLayers(): boolean {
   }
 }
 
+/**
+ * localStorage key for the geometry-worker-count A/B override.
+ */
+export const GEOM_WORKERS_STORAGE_KEY = 'ifc-lite-geom-workers';
+
+/**
+ * Resolve an explicit geometry-worker count override for A/B tuning, or
+ * `undefined` to use the engine's cores/memory heuristic.
+ *
+ * The optimal worker count is hardware-specific (thermal throttle on fanless
+ * laptops vs sustained throughput on actively-cooled Pro/Max machines), so the
+ * only honest way to find a host's sweet spot is to measure it. `?geomWorkers=N`
+ * in the URL sets the override AND persists it to localStorage, so it survives
+ * the reload that re-measuring a model requires (and a shared link carries it).
+ * `?geomWorkers=0` (or `auto`) clears the override. The engine still clamps the
+ * value to the memory budget — see `computeWorkerCount` — so this can't OOM.
+ *
+ * Sanity-bounded to [1, 16]; anything outside is ignored.
+ */
+export function getGeomWorkerOverride(): number | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const param = new URLSearchParams(window.location.search).get('geomWorkers');
+    if (param != null) {
+      if (param === '0' || param === 'auto') {
+        localStorage.removeItem(GEOM_WORKERS_STORAGE_KEY);
+        return undefined;
+      }
+      const n = Number.parseInt(param, 10);
+      if (Number.isFinite(n) && n >= 1 && n <= 16) {
+        localStorage.setItem(GEOM_WORKERS_STORAGE_KEY, String(n));
+        return n;
+      }
+    }
+    const stored = Number.parseInt(localStorage.getItem(GEOM_WORKERS_STORAGE_KEY) ?? '', 10);
+    if (Number.isFinite(stored) && stored >= 1 && stored <= 16) return stored;
+  } catch {
+    /* SSR / blocked storage — fall through to the heuristic */
+  }
+  return undefined;
+}
+
 export const UI_DEFAULTS = {
   /** Default active tool */
   ACTIVE_TOOL: 'select',

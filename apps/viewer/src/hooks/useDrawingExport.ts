@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useCallback } from 'react';
+import { posthog } from '@/lib/analytics';
 import {
   GraphicOverrideEngine,
   renderFrame,
@@ -637,6 +638,7 @@ function useDrawingExport({
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    posthog.capture('drawing_exported', { format: 'svg', axis: sectionPlane.axis, sheet_enabled: sheetEnabled });
   }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
 
   // Print handler

@@ -1,5 +1,53 @@
 # @ifc-lite/codegen
 
+## 1.15.4
+
+### Patch Changes
+
+- [#1151](https://github.com/LTplus-AG/ifc-lite/pull/1151) [`bfd9004`](https://github.com/LTplus-AG/ifc-lite/commit/bfd9004daa17f481a7b33b5c3c11f620e6cd894d) Thanks [@louistrue](https://github.com/louistrue)! - De-duplicate the STEP serializer into a single source of truth. The
+  schema-agnostic STEP serialization logic (`serializeValue`, `generateHeader`,
+  `parseStepValue`, `ref`/`enumVal`/`isEntityRef`/`isEnumValue`, and the
+  registry-injected `toStepLineWithRegistry` / `generateStepFileWithRegistry`)
+  previously existed as four hand-synced copies — the codegen template plus three
+  generated `serializers.ts` files — which had already silently drifted (the
+  runtime copy carried a `?? []` hardening the template lacked). It now lives once
+  in `@ifc-lite/data`; the per-schema bundles (parser runtime + codegen outputs)
+  are thin re-exports that only bind their own `SCHEMA_REGISTRY` to the
+  registry-coupled helpers, so the copies can never diverge again. A codegen test
+  asserts the generated bundle stays a thin re-export rather than re-inlining
+  logic.
+
+  Also fixes the broken `generate:ifc4` script (it pointed at a non-existent
+  `schemas/IFC4.exp`; the real file is `schemas/IFC4_ADD2_TC1.exp`). No public
+  behaviour change: `@ifc-lite/parser` re-exports the same serializer symbols as
+  before; `@ifc-lite/data` gains the shared primitives; `@ifc-lite/codegen` now
+  declares `@ifc-lite/data` as a dependency since the generated bundle imports it.
+
+- [#1143](https://github.com/LTplus-AG/ifc-lite/pull/1143) [`248f2c0`](https://github.com/LTplus-AG/ifc-lite/commit/248f2c09a4d61fa27dfeaba5511a2a641d4cd278) Thanks [@louistrue](https://github.com/louistrue)! - Preserve source IFC HEADER fields on round-trip export. Re-exporting an
+  imported file previously regenerated a fresh ifc-lite header, silently dropping
+  the source `FILE_DESCRIPTION` items (any `ViewDefinition [...]` label and vendor
+  identifier / coordinate-reference strings) and flattening the exact
+  `FILE_SCHEMA` token (e.g. `IFC4X3_ADD2` → `IFC4X3`, which some toolchains
+  reject).
+
+  The parser now captures the verbatim HEADER onto a new
+  `IfcDataStore.sourceHeader` (`IfcSourceHeader`, exported from `@ifc-lite/data`;
+  parser also exports `parseSourceHeader`), threaded through the worker transport.
+  `StepExporter` reproduces the source `FILE_DESCRIPTION` items and the exact
+  `FILE_SCHEMA` token when not converting schemas, falling back to parsing the
+  source bytes for cache-restored stores. Provenance stays honest:
+  `preprocessor_version` is set to `ifc-lite` while the source authoring tool is
+  kept as `originating_system`, and when mutations exist exactly one
+  `Re-exported by ifc-lite, N modification(s)` item is appended without removing
+  the source items. `generateHeader` now accepts description/author/organization
+  arrays plus a free-form schema token and STEP-escapes all fields; it also emits
+  a properly parenthesised `FILE_DESCRIPTION` list (the prior single-string form
+  was malformed STEP). Created-from-scratch (`IfcCreator`) and federated/merged
+  exports are unaffected — they keep their own provenance headers by design.
+
+- Updated dependencies [[`bfd9004`](https://github.com/LTplus-AG/ifc-lite/commit/bfd9004daa17f481a7b33b5c3c11f620e6cd894d), [`248f2c0`](https://github.com/LTplus-AG/ifc-lite/commit/248f2c09a4d61fa27dfeaba5511a2a641d4cd278), [`ddae2b0`](https://github.com/LTplus-AG/ifc-lite/commit/ddae2b0024f071d00f9e6e4b77e0be3965412ec3)]:
+  - @ifc-lite/data@2.1.0
+
 ## 1.15.3
 
 ### Patch Changes

@@ -123,6 +123,11 @@ pub struct GeometryRouter {
     /// get cut?" from a console log alone. Drainable via
     /// [`Self::take_host_opening_diagnostics`].
     host_opening_diagnostics: RefCell<FxHashMap<u32, HostOpeningDiagnostic>>,
+    /// Diagnostic (#563): per-element outcome of layered-wall slicing — why a
+    /// sliceable wall did or didn't split into per-layer sub-meshes. Drained by
+    /// the wasm layer per batch and logged to the browser console (the geometry
+    /// crate can't `web_sys`). Drainable via [`Self::take_layer_slice_diag`].
+    layer_slice_diag: RefCell<Vec<(u32, &'static str)>>,
     /// Tessellation detail level. Immutable per router instance and passed to
     /// every processor's `process`. Defaults to [`TessellationQuality::Medium`]
     /// (historical hardcoded behavior).
@@ -240,6 +245,7 @@ impl GeometryRouter {
             csg_failures: RefCell::new(FxHashMap::default()),
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
+            layer_slice_diag: RefCell::new(Vec::new()),
             tessellation_quality: TessellationQuality::Medium,
         };
 
@@ -476,6 +482,16 @@ impl GeometryRouter {
         self.material_layer_index.as_deref()
     }
 
+    /// True when `element_id` carries a sliceable `IfcMaterialLayerSetUsage`, i.e.
+    /// `process_element_with_submeshes` would split it into per-layer sub-meshes.
+    /// Lets the mesh producer render the wall as ONE solid in 3D while still
+    /// emitting the per-layer slices (tagged section-only) for the 2D cut.
+    #[inline]
+    pub fn is_material_layer_sliceable(&self, element_id: u32) -> bool {
+        self.material_layer_index()
+            .is_some_and(|idx| idx.is_sliceable(element_id))
+    }
+
     /// Scale mesh positions from file units to meters
     /// Only applies scaling if unit_scale != 1.0
     #[inline]
@@ -553,6 +569,18 @@ impl GeometryRouter {
                 .extend(pending);
         }
         std::mem::take(&mut *self.csg_failures.borrow_mut())
+    }
+
+    /// Record why a layered-wall slice attempt did/didn't produce per-layer
+    /// sub-meshes (#563 diagnostic). Bounded — only sliceable elements reach it.
+    pub(crate) fn push_layer_slice_diag(&self, element_id: u32, reason: &'static str) {
+        self.layer_slice_diag.borrow_mut().push((element_id, reason));
+    }
+
+    /// Drain the per-element layered-slice diagnostics gathered since the last
+    /// call (wasm logs them to the browser console after each batch).
+    pub fn take_layer_slice_diag(&self) -> Vec<(u32, &'static str)> {
+        std::mem::take(&mut *self.layer_slice_diag.borrow_mut())
     }
 
     /// Number of products with at least one recorded CSG failure.

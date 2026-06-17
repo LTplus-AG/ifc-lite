@@ -352,6 +352,19 @@ impl GeometryRouter {
         Arc::new(Mutex::new(FxHashMap::default()))
     }
 
+    /// Whether content-dedup is enabled on the PRODUCTION batch paths (native
+    /// rayon pool + wasm). Default OFF: `content_hash::item_signature` builds the
+    /// structural key by recursively `decode_by_id`-ing the ENTIRE item subtree
+    /// (every face/loop/point) with the slow general decoder — ~3.5x MORE work
+    /// than the mesher's cached decode of the same item. Measured on two large
+    /// real models the hash costs more than the meshing it skips, so dedup made
+    /// load 20-30% SLOWER (it was a net win only at near-100% duplicate hit-rate).
+    /// Flip back to `true` once `item_signature` walks via the cached fast paths.
+    /// The separate `IfcMappedItem` instancing cache is always on regardless.
+    pub fn content_dedup_enabled() -> bool {
+        false
+    }
+
     /// Inject a shared item-dedup cache (see [`Self::new_dedup_cache`]) into this
     /// router. All routers given the SAME `Arc` dedup against one cache, so
     /// byte-identical geometry is meshed once across the whole model regardless of

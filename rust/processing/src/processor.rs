@@ -1755,7 +1755,11 @@ fn process_entity_job(
 
     let mut local_router = GeometryRouter::with_scale_and_quality(unit_scale, tessellation_quality);
     local_router.set_rtc_offset(rtc_offset);
-    local_router.enable_content_dedup_shared(item_dedup_cache.clone());
+    // content-dedup default OFF: its structural hash costs more than the meshing
+    // it skips on real models (see GeometryRouter::content_dedup_enabled).
+    if GeometryRouter::content_dedup_enabled() {
+        local_router.enable_content_dedup_shared(item_dedup_cache.clone());
+    }
     let local_router = local_router;
 
     let metadata = crate::element::ElementMeshMetadata {

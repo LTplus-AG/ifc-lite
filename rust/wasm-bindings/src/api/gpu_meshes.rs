@@ -804,7 +804,9 @@ impl IfcAPI {
         // Arm content-dedup against the per-worker shared cache so byte-identical
         // geometry (e.g. Tekla parts the exporter failed to share via
         // IfcMappedItem) is meshed ONCE across batches, not once per batch.
-        {
+        // content-dedup default OFF: its structural hash costs more than the
+        // meshing it skips on real models (see GeometryRouter::content_dedup_enabled).
+        if GeometryRouter::content_dedup_enabled() {
             let mut slot = self
                 .cached_item_dedup
                 .lock()

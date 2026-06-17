@@ -638,8 +638,15 @@ export function ViewportContainer() {
       // (else the AC20 duplicate boxes at the MappingOrigin reappear); in 'types'
       // mode hide occurrences (class 0) so only the type library shows.
       const geometryClass = mesh.geometryClass ?? 0;
+      // Class 3 = the per-layer slices of a material-layer wall. They exist ONLY
+      // to drive the 2D/section cut (per-layer colours); the 3D view draws the
+      // wall as one solid (class 4) instead, so the thin coincident-faced slabs
+      // never z-fight into a hollow shell. Never upload them to the renderer.
+      if (geometryClass === 3) continue;
       if (effectiveViewMode === 'types') {
-        if (geometryClass === 0) continue;
+        // Class 4 (the material-layer wall's render solid) is occurrence
+        // geometry like class 0 — hide it in Types mode.
+        if (geometryClass === 0 || geometryClass === 4) continue;
       } else if (geometryClass === 2) {
         continue;
       }

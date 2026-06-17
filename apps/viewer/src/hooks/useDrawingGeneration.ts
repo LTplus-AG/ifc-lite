@@ -635,7 +635,13 @@ export function useDrawingGeneration({
       }
 
       // Filter meshes by visibility (respect 3D hiding/isolation)
-      let meshesToProcess = geometryResult.meshes;
+      // Drop class 4 = the single solid the 3D view draws for a material-layer
+      // wall. The section cut must use the per-layer slices (class 3) that sit at
+      // the same place, NOT the solid — otherwise the solid's outline overlaps
+      // the layered cut and the per-layer fills are lost.
+      let meshesToProcess = geometryResult.meshes.filter(
+        mesh => (mesh.geometryClass ?? 0) !== 4
+      );
 
       // Filter out hidden entities (using combined multi-model set)
       if (combinedHiddenIds.size > 0) {

@@ -252,6 +252,20 @@ fn produce_inner(
         .get(&job.id)
         .is_some_and(|openings| !openings.is_empty());
 
+    // Material-layer wall: a sliced wall is a stack of thin coincident-faced
+    // solids that z-fight into a hollow-looking shell when drawn double-sided.
+    // Render ONE solid instead (no coincident faces), and emit the per-layer
+    // slices as SECTION-ONLY geometry (class 3) so the 2D/section cut still
+    // shows the build-up. The solid is class 4 (rendered, skipped by the cut).
+    if router.is_material_layer_sliceable(job.id) {
+        if let Some(out) =
+            emit_layered_wall(job, has_openings, element_color, ctx, decoder, hasher, router)
+        {
+            return out;
+        }
+        // Slicing or the base solid failed → fall through to the generic paths.
+    }
+
     if has_openings {
         // Voided elements: submesh-aware cut FIRST, so per-part colours
         // survive the void subtraction (a voided window keeps frame/glass
@@ -260,7 +274,7 @@ fn produce_inner(
             router.process_element_with_submeshes_and_voids(job.entity, decoder, ctx.void_index)
         {
             if !sub_meshes.is_empty() {
-                let out = emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher);
+                let out = emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, 0);
                 if !out.is_empty() {
                     return out;
                 }
@@ -274,7 +288,7 @@ fn produce_inner(
         // happens per item inside `emit_sub_meshes`.
         if let Ok(sub_meshes) = router.process_element_with_submeshes(job.entity, decoder) {
             if !sub_meshes.is_empty() {
-                let out = emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher);
+                let out = emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, 0);
                 if !out.is_empty() {
                     return out;
                 }
@@ -353,6 +367,83 @@ fn produce_inner(
     vec![build_mesh_data(job, mesh, element_color, None, None, 0, ctx)]
 }
 
+/// Material-layer wall: emit ONE solid for the 3D render
+/// (`GEOM_CLASS_LAYERED_SOLID`) plus the per-layer slices as section-only
+/// geometry (`GEOM_CLASS_LAYER_SLICE`). The slice stack is N thin coincident-
+/// faced solids that z-fight into a hollow-looking shell when drawn double-sided
+/// in 3D; the single solid renders cleanly while the slices still drive the 2D
+/// cut. Returns `None` when the wall isn't actually sliced here (fewer than two
+/// slices, or the base solid couldn't be produced) so the caller falls back to
+/// the generic mesh paths.
+fn emit_layered_wall(
+    job: &ElementMeshJob<'_>,
+    has_openings: bool,
+    element_color: [f32; 4],
+    ctx: &MeshProductionContext<'_>,
+    decoder: &mut EntityDecoder,
+    hasher: &mut Option<GeometryHasher>,
+    router: &GeometryRouter,
+) -> Option<Vec<MeshData>> {
+    // The per-layer slices (the same call the generic submesh path uses).
+    let slices = if has_openings {
+        router.process_element_with_submeshes_and_voids(job.entity, decoder, ctx.void_index)
+    } else {
+        router.process_element_with_submeshes(job.entity, decoder)
+    }
+    .ok()?;
+    // <2 ⇒ slicing declined internally (thin layers collapsed / cut-produced-<2)
+    // and the generic fallback returned the single solid; let the caller render
+    // that normally instead of hiding it as section-only.
+    if slices.sub_meshes.len() < 2 {
+        return None;
+    }
+
+    // The single solid the 3D view draws in place of the slice stack.
+    let mut base = if has_openings {
+        router.process_element_with_voids(job.entity, decoder, ctx.void_index)
+    } else {
+        router.process_element(job.entity, decoder)
+    }
+    .ok()?;
+    if base.is_empty() {
+        return None;
+    }
+    if base.normals.len() != base.positions.len() {
+        calculate_normals(&mut base);
+    }
+
+    // Colour the solid with the OUTER layer's material so the wall shows its
+    // finish (slices[0] is the outer layer).
+    let outer = &slices.sub_meshes[0];
+    let solid_color = ctx
+        .geometry_style_index
+        .get(&outer.geometry_id)
+        .map(|s| s.color)
+        .or_else(|| find_geometry_item_color(outer.geometry_id, ctx.geometry_style_index, decoder))
+        .unwrap_or(element_color);
+
+    let mut out = Vec::with_capacity(slices.sub_meshes.len() + 1);
+    out.push(build_mesh_data(
+        job,
+        base,
+        solid_color,
+        None,
+        None,
+        GEOM_CLASS_LAYERED_SOLID,
+        ctx,
+    ));
+    out.extend(emit_sub_meshes(
+        job,
+        slices,
+        element_color,
+        ctx,
+        decoder,
+        hasher,
+        GEOM_CLASS_LAYER_SLICE,
+    ));
+    Some(out)
+}
+
 /// Emit a sub-mesh collection: per-item colour resolution through the
 /// canonical `resolve_submesh_color` precedence (#913 §4.2), material-name
 /// inference for window/door parts, and the #858 per-item palette split.
@@ -363,6 +454,11 @@ fn emit_sub_meshes(
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
     hasher: &mut Option<GeometryHasher>,
+    // geometry_class stamped on every emitted sub-mesh. 0 for normal occurrence
+    // geometry; GEOM_CLASS_LAYER_SLICE (3) when these are the per-layer slices of
+    // a material-layer wall — a section-only detail the 3D renderer skips (the
+    // wall renders as one solid) but the 2D/section cut consumes.
+    slice_class: u8,
 ) -> Vec<MeshData> {
     let mut out: Vec<MeshData> = Vec::with_capacity(sub_meshes.len());
     // Material colours for this element, used when a sub-mesh has no direct
@@ -417,7 +513,7 @@ fn emit_sub_meshes(
                         rgba.to_array(),
                         None,
                         Some(sub.geometry_id),
-                        0,
+                        slice_class,
                         ctx,
                     ));
                 }
@@ -431,12 +527,21 @@ fn emit_sub_meshes(
             color,
             material_name,
             Some(sub.geometry_id),
-            0,
+            slice_class,
             ctx,
         ));
     }
     out
 }
+
+/// geometry_class for the per-layer slices of a material-layer wall: a
+/// section-only detail. The 3D renderer SKIPS this class (the wall draws as one
+/// solid, class `GEOM_CLASS_LAYERED_SOLID`); the 2D/section cut consumes it.
+pub const GEOM_CLASS_LAYER_SLICE: u8 = 3;
+/// geometry_class for the single solid the 3D renderer draws in place of a
+/// sliced material-layer wall. Rendered in 3D; SKIPPED by the 2D/section cut
+/// (the per-layer slices carry the cut).
+pub const GEOM_CLASS_LAYERED_SOLID: u8 = 4;
 
 /// Render a type-product's planned RepresentationMaps (#957), texture-aware
 /// (#961), each mesh tagged with its planned geometry_class.

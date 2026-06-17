@@ -2,6 +2,7 @@
 "@ifc-lite/geometry": patch
 "@ifc-lite/drawing-2d": patch
 "@ifc-lite/renderer": patch
+"@ifc-lite/cache": patch
 ---
 
 Restore per-layer slicing of single-solid walls/slabs with an `IfcMaterialLayerSetUsage`. Slicing turns one solid into one coloured sub-mesh per material layer (geometry_id = the layer's `IfcMaterial`) so the build-up is visible in 3D.
@@ -17,3 +18,5 @@ Two follow-on robustness fixes:
 - **Cap watertightness on irregular profiles.** A layer slab's innermost cut is built by two successive plane clips; on a non-convex `IfcArbitraryClosedProfileDef` the two passes deposit geometrically-coincident section vertices that differ by ~1 ULP. `cap_half_space_clip` welded by exact f32 bits, so those twins stayed separate, the boundary chain dead-ended and a cap sub-loop was silently dropped — leaving open edges (a hole you could see through and a section with no fill there). The cap now welds on a spatial grid tied to its on-plane tolerance, collapsing the twins so the loop closes. Single-plane callers (opening cuts) have no such twins and are unaffected.
 
 - **3D section cut read hollow.** The live 3D section cap (`Section2DOverlayRenderer`) filled each cut polygon with a naive convex fan over the outer ring only, ignoring holes — a long-standing KNOWN LIMITATION. On the concave cross-sections that arbitrary IFC profiles (and material-layer slabs) cut into, the fan inverts and leaves the cut face uncovered, so a sectioned wall read as a hollow shell. The fill now uses the renderer's existing hole-aware ear-clipping (the same one the annotation-fill path uses), so the cut face is solid. The cap also now honours a per-polygon colour: a material-layer wall fills each layer of its 3D section cut with that layer's `IfcMaterial` colour (matching the 3D solids and the 2D section), while single-material cuts keep the uniform cap style + hatch unchanged via a sentinel.
+
+- **Solid 3D walls, layers at the cut (approach change).** Rendering a material-layer wall as N thin coincident-faced layer solids made it shimmer/read as a hollow shell in 3D — adjacent layers' interface caps z-fight under double-sided rendering, and same-material adjacent layers can't be depth-separated by colour. The wall now renders as ONE solid in 3D (its outer-layer colour) — no coincident faces, no z-fight — while the per-layer slices are emitted as section-only geometry (`geometryClass` 3) that drives the 2D/section cut's per-layer colours. The solid is `geometryClass` 4. The 3D renderer skips class 3; the section cut skips class 4; GLB export skips class 3 (the solid covers the same space). Cache `FORMAT_VERSION` 7 → 8 so stale caches (old class-0 layer stacks) re-mesh into the solid + section slices.

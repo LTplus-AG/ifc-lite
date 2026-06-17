@@ -482,6 +482,16 @@ impl GeometryRouter {
         self.material_layer_index.as_deref()
     }
 
+    /// True when `element_id` carries a sliceable `IfcMaterialLayerSetUsage`, i.e.
+    /// `process_element_with_submeshes` would split it into per-layer sub-meshes.
+    /// Lets the mesh producer render the wall as ONE solid in 3D while still
+    /// emitting the per-layer slices (tagged section-only) for the 2D cut.
+    #[inline]
+    pub fn is_material_layer_sliceable(&self, element_id: u32) -> bool {
+        self.material_layer_index()
+            .is_some_and(|idx| idx.is_sliceable(element_id))
+    }
+
     /// Scale mesh positions from file units to meters
     /// Only applies scaling if unit_scale != 1.0
     #[inline]

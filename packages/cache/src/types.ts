@@ -33,8 +33,16 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * a restored model would still show "Group #<id>" and omit zones/systems from
  * lists/lens. The bump invalidates pre-#1075 caches so they re-parse and resolve
  * the names.
+ *
+ * v8: material-layer walls now emit ONE solid for the 3D render (`geometryClass`
+ * 4) plus the per-layer slices as section-only geometry (`geometryClass` 3),
+ * instead of N coincident-faced layer solids the 3D view drew double-sided into
+ * a hollow-looking shell. The byte format is unchanged (still a geometryClass
+ * uint8), but a v7 cache has the old class-0 layer slices and no solid, so a
+ * restored wall would render the old glitchy stack. The bump invalidates pre-v8
+ * caches so layered walls re-mesh into the solid + section slices.
  */
-export const FORMAT_VERSION = 7;
+export const FORMAT_VERSION = 8;
 
 /** Section types in the binary format */
 export enum SectionType {

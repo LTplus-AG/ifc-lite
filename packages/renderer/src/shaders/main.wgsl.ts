@@ -57,11 +57,22 @@ export const mainShaderSource = `
           var output: VertexOutput;
           let worldPos = uniforms.model * vec4<f32>(input.position, 1.0);
           output.position = uniforms.viewProj * worldPos;
-          // Anti z-fighting: deterministic depth nudge per entity.
-          // Knuth multiplicative hash spreads sequential IDs across 0-255
-          // so coplanar faces from different entities always get distinct depths.
-          // At 1e-6 per step the max world-space offset is <3mm at 10m — invisible.
-          let zHash = (input.entityId * 2654435761u) & 255u;
+          // Anti z-fighting: deterministic depth nudge.
+          // Knuth multiplicative hash spreads sequential IDs across 0-255 so
+          // coplanar faces from different entities always get distinct depths.
+          // We also fold in the per-draw baseColor: a material-layer wall slices
+          // into one closed solid per layer, all sharing the PARENT wall's
+          // expressId, so adjacent layers' coincident interface caps would get
+          // the same entity nudge and z-fight into a flickering comb (you appear
+          // to "see inside" the wall). Batches are keyed by colour, so baseColor
+          // is constant per draw and distinct per layer — XOR-ing it in pushes
+          // abutting layers onto different depths. Constant per draw, so flat
+          // faces stay flat and curved surfaces are unaffected. At 1e-6 per step
+          // the max world-space offset is <3mm at 10m — invisible.
+          let colorSalt = (u32(uniforms.baseColor.r * 255.0) * 73856093u)
+                        ^ (u32(uniforms.baseColor.g * 255.0) * 19349663u)
+                        ^ (u32(uniforms.baseColor.b * 255.0) * 83492791u);
+          let zHash = ((input.entityId ^ colorSalt) * 2654435761u) & 255u;
           output.position.z *= 1.0 + f32(zHash) * 1e-6;
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(input.normal, 0.0)).xyz);

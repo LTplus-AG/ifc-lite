@@ -580,19 +580,22 @@ impl IfcAPI {
         } else {
             ifc_lite_geometry::MaterialLayerIndex::new()
         };
-        // Diagnostic (#563/#874): one line per load. `sliceable` is the number of
-        // walls/slabs that WILL split into per-layer sub-meshes. Zero with the
-        // keyword present means the buildups aren't recognised as sliceable
-        // (e.g. an IfcMaterialLayerSet associated without an LayerSetUsage).
-        web_sys::console::info_1(
-            &format!(
-                "[ifc-lite layers] index built: {} association(s), {} sliceable; IFCMATERIALLAYERSET present={}",
-                index.len(),
-                index.sliceable_count(),
-                has_layer_set,
-            )
-            .into(),
-        );
+        // Diagnostic (#563/#874): stay silent for the ~99% of models with no
+        // sliceable buildup (every load otherwise logged a line). Only speak up
+        // when there's something to slice — or when the layer-set keyword is
+        // present but NOTHING resolved as sliceable (e.g. an IfcMaterialLayerSet
+        // associated without a LayerSetUsage), which is the case worth flagging.
+        // The per-batch "sliced N wall(s)" line already reports success.
+        let sliceable = index.sliceable_count();
+        if sliceable > 0 {
+            web_sys::console::info_1(
+                &format!("[ifc-lite layers] {sliceable} sliceable buildup(s) of {} association(s)", index.len()).into(),
+            );
+        } else if has_layer_set {
+            web_sys::console::warn_1(
+                &"[ifc-lite layers] IfcMaterialLayerSet present but no sliceable buildup (LayerSetUsage missing?)".into(),
+            );
+        }
         let arc = std::sync::Arc::new(index);
         let mut slot = self
             .cached_material_layer_index

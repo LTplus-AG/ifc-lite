@@ -146,10 +146,15 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         //     each segment contributes 1.0 to the parameter.
         //   - IfcPolyline: point-index based, each segment between consecutive points
         //     contributes 1.0 to the parameter.
-        // Other directrix types (IfcLine, IfcCircle, IfcTrimmedCurve, IfcBSplineCurve)
-        // have length-, angle-, or knot-based parameterisations and fall back to the
-        // full sampler. Files using those with explicit StartParam/EndParam will still
-        // render the full curve — flagged as a known limitation.
+        //   - IfcLine: linearly parameterised P(u) = Pnt + u·V, so StartParam/EndParam
+        //     map straight onto the segment endpoints.
+        // Other directrix types (IfcCircle, IfcBSplineCurve) have angle-/knot-based
+        // parameterisations and fall back to the full sampler. An IfcTrimmedCurve
+        // directrix is sampled over its own Trim1/Trim2 by get_curve_points (a
+        // trimmed IfcLine retains full 3D); a file's redundant solid-level
+        // StartParam/EndParam are then a no-op. Files using a raw circle/spline
+        // directrix with explicit StartParam/EndParam still render the full curve —
+        // flagged as a known limitation.
         // The lower-level trimmed samplers below don't take a `quality`
         // argument; set it on the profile processor so any arcs they sample
         // honour the requested detail level.
@@ -168,6 +173,17 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
         } else if has_trim && directrix.ifc_type == IfcType::IfcPolyline {
             self.profile_processor
                 .get_polyline_points_trimmed(&directrix, decoder, start_param, end_param)?
+        } else if has_trim && directrix.ifc_type == IfcType::IfcLine {
+            // A bare IfcLine directrix is parameterised as P(u) = Pnt + u·V, so the
+            // solid's StartParam/EndParam map straight onto the segment endpoints.
+            // Without this the line samples over its unit range [0,1] only and the
+            // swept extent collapses to the (tool-emitted) vector magnitude.
+            self.profile_processor.get_line_points_3d(
+                &directrix,
+                decoder,
+                start_param.unwrap_or(0.0),
+                end_param.unwrap_or(1.0),
+            )?
         } else {
             self.profile_processor
                 .get_curve_points(&directrix, decoder, quality)?

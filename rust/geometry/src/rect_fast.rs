@@ -175,17 +175,14 @@ fn aligned_box(mesh: &Mesh) -> Option<AlignedBox> {
     }
 }
 
-/// One opening projected onto the host: the through-axis `w` it penetrates, and
-/// its hole rectangle `[lo,hi]` on the two in-face axes `(u, v)`.
-struct Hole {
-    u_lo: f64,
-    u_hi: f64,
-    v_lo: f64,
-    v_hi: f64,
-}
-
 /// Result of the cut: a watertight `Mesh`, or `None` to defer to the exact
-/// kernel. `openings` are world AABBs (min,max) of the rectangular cutters.
+/// kernel. `openings` are world AABBs (min,max) of axis-aligned rectangular
+/// cutters. Handles WINDOWS, DOORS (flush to an edge), recesses, and overlapping
+/// openings uniformly via a 3D CELLULAR decomposition: split the host box by
+/// every opening plane on all three axes, mark each cell solid (in the host,
+/// outside every opening) or void, and emit each cell face that borders a void
+/// cell or the grid boundary. Watertight by construction — adjacent cells share
+/// snapped grid vertices bit-identically, so no T-junctions and no cracks.
 pub fn subtract_rect_openings(
     host: &Mesh,
     openings: &[([f64; 3], [f64; 3])],
@@ -203,142 +200,91 @@ pub fn subtract_rect_openings(
         }
     };
 
-    // Pick the through-axis `w` = the host's thinnest axis (wall thickness); the
-    // in-face axes are the other two. Every opening must penetrate along the SAME
-    // axis (a corner window cutting two axes is rare → defer).
-    let extents = [bx.max[0] - bx.min[0], bx.max[1] - bx.min[1], bx.max[2] - bx.min[2]];
-    let w = (0..3).min_by(|&i, &j| extents[i].partial_cmp(&extents[j]).unwrap()).unwrap();
-    let (u, v) = match w {
-        0 => (1usize, 2usize),
-        1 => (0usize, 2usize),
-        _ => (0usize, 1usize),
-    };
-
     // Scale-aware near-edge epsilon: two grid lines closer than this would
     // collapse into one f32 at the host's world magnitude, cracking the cut.
-    // max(|coord|) · 2^-21 keeps ≥ 4 f32 ULP between distinct lines; floored at
-    // the snap grid so origin-scale hosts stay permissive.
-    let mag = bx.min[u].abs().max(bx.max[u].abs())
-        .max(bx.min[v].abs().max(bx.max[v].abs()))
-        .max(bx.min[w].abs().max(bx.max[w].abs()));
+    // max(|coord|)·2^-21 keeps >= 4 f32 ULP between distinct lines; floored at the
+    // snap grid so origin-scale hosts stay permissive.
+    let mag = (0..3)
+        .map(|k| bx.min[k].abs().max(bx.max[k].abs()))
+        .fold(0.0f64, f64::max);
     let near_eps = (mag * (1.0 / 2_097_152.0)).max(SNAP_GRID);
 
-    // Snapped host face extents on the in-face axes + through extent.
-    let su = [snap(bx.min[u]), snap(bx.max[u])];
-    let sv = [snap(bx.min[v]), snap(bx.max[v])];
-    let sw = [snap(bx.min[w]), snap(bx.max[w])];
-
-    // Project + validate every opening into a Hole in (u,v); defer on any miss.
-    let mut holes: Vec<Hole> = Vec::with_capacity(openings.len());
+    // Clamp every opening to the host shell (a cutter extended through the wall
+    // pokes past) and keep only those that overlap on all 3 axes. A
+    // non-overlapping opening is a no-op (the SILENT NO-OP case) — drop it.
+    let mut clamped: Vec<[[f64; 3]; 2]> = Vec::with_capacity(openings.len());
     for (omn, omx) in openings {
-        // Must penetrate the full thickness along w (a through-cut): the opening
-        // span on w must cover the host on w (caps poke past, the standard
-        // `extend_opening_along_direction` guarantee).
-        if !(omn[w] <= bx.min[w] + near_eps && omx[w] >= bx.max[w] - near_eps) {
-            stats.defer_not_through += 1;
-            return None;
+        let mut cmn = [0.0; 3];
+        let mut cmx = [0.0; 3];
+        let mut overlaps = true;
+        for k in 0..3 {
+            cmn[k] = snap(omn[k].max(bx.min[k]));
+            cmx[k] = snap(omx[k].min(bx.max[k]));
+            if cmx[k] - cmn[k] <= near_eps {
+                overlaps = false;
+            }
         }
-        // Hole rect on the face = opening span clamped to the host face.
-        let u_lo = snap(omn[u].max(bx.min[u]));
-        let u_hi = snap(omx[u].min(bx.max[u]));
-        let v_lo = snap(omn[v].max(bx.min[v]));
-        let v_hi = snap(omx[v].min(bx.max[v]));
-        // Must be a proper interior hole: strictly inside the face with a real
-        // reveal on every side (≥ near_eps), and non-degenerate.
-        if !(u_lo > su[0] + near_eps
-            && u_hi < su[1] - near_eps
-            && v_lo > sv[0] + near_eps
-            && v_hi < sv[1] - near_eps
-            && u_hi - u_lo > near_eps
-            && v_hi - v_lo > near_eps)
-        {
-            stats.defer_off_face += 1;
-            return None;
+        if overlaps {
+            clamped.push([cmn, cmx]);
         }
-        holes.push(Hole { u_lo, u_hi, v_lo, v_hi });
+    }
+    if clamped.is_empty() {
+        // Nothing actually cuts — defer the no-op to the exact path (it owns the
+        // SILENT NO-OP diagnostic) rather than returning an unchanged clone.
+        stats.defer_off_face += 1;
+        return None;
     }
 
-    // Holes must be pairwise non-overlapping on the face (merged openings are
-    // disjoint; touching/overlapping → defer to the exact kernel which composes
-    // them correctly).
-    for i in 0..holes.len() {
-        for j in (i + 1)..holes.len() {
-            let a = &holes[i];
-            let b = &holes[j];
-            let disjoint = a.u_hi <= b.u_lo + near_eps
-                || b.u_hi <= a.u_lo + near_eps
-                || a.v_hi <= b.v_lo + near_eps
-                || b.v_hi <= a.v_lo + near_eps;
-            if !disjoint {
-                stats.defer_off_face += 1;
+    // Per-axis grid lines: host bounds + every clamped opening edge, snapped,
+    // sorted, deduplicated; near-coincident-but-distinct lines (< near_eps) →
+    // defer (f32-collapse risk).
+    let mut grid: [Vec<f64>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    for k in 0..3 {
+        let mut edges = vec![snap(bx.min[k]), snap(bx.max[k])];
+        for c in &clamped {
+            edges.push(c[0][k]);
+            edges.push(c[1][k]);
+        }
+        match dedup_axis(edges, near_eps) {
+            Some(g) => grid[k] = g,
+            None => {
+                stats.defer_near_edge += 1;
                 return None;
             }
         }
     }
 
-    // Build the conforming grids: every distinct snapped edge on each in-face
-    // axis becomes a grid line. Near-coincident lines (< near_eps) would collapse
-    // at f32 → defer rather than emit a cracked/degenerate cut.
-    let u_lines = match grid_lines(su, holes.iter().flat_map(|h| [h.u_lo, h.u_hi]), near_eps) {
-        Some(g) => g,
-        None => {
-            stats.defer_near_edge += 1;
-            return None;
-        }
-    };
-    let v_lines = match grid_lines(sv, holes.iter().flat_map(|h| [h.v_lo, h.v_hi]), near_eps) {
-        Some(g) => g,
-        None => {
-            stats.defer_near_edge += 1;
-            return None;
-        }
-    };
-
-    let cut = build_cut(&bx, u, v, w, &sw, &u_lines, &v_lines, &holes);
+    let cut = build_cellular(&grid, &clamped);
     stats.fired += 1;
-    stats.openings_cut += holes.len() as u64;
+    stats.openings_cut += clamped.len() as u64;
     Some(cut)
 }
 
-/// Sorted, deduplicated grid lines on one in-face axis: the two host edges plus
-/// every hole edge. Returns `None` if any two distinct lines are closer than
-/// `near_eps` (would collapse at f32 → crack/degenerate).
-fn grid_lines(
-    host: [f64; 2],
-    hole_edges: impl Iterator<Item = f64>,
-    near_eps: f64,
-) -> Option<Vec<f64>> {
-    let mut lines: Vec<f64> = vec![host[0], host[1]];
-    lines.extend(hole_edges);
-    lines.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let mut out: Vec<f64> = Vec::with_capacity(lines.len());
-    for c in lines {
+/// Sort + dedup grid lines on one axis; `None` if two DISTINCT lines are closer
+/// than `near_eps` (an f32-collapse risk → defer). Identical snapped values
+/// (e.g. a door edge coinciding with the host edge) collapse to one line.
+fn dedup_axis(mut edges: Vec<f64>, near_eps: f64) -> Option<Vec<f64>> {
+    edges.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mut out: Vec<f64> = Vec::with_capacity(edges.len());
+    for c in edges {
         match out.last() {
-            Some(&last) if (c - last).abs() <= near_eps => {
-                // coincident within the snap → same line; but if they're
-                // distinct-but-too-close (between snap and near_eps) it's a
-                // near-edge collapse risk → defer.
-                if (c - last).abs() > 0.0 && (c - last).abs() < near_eps {
-                    return None;
+            Some(&last) => {
+                let d = (c - last).abs();
+                if d == 0.0 {
+                    // same line — keep one
+                } else if d < near_eps {
+                    return None; // distinct but too close → collapse risk
+                } else {
+                    out.push(c);
                 }
             }
-            _ => out.push(c),
+            None => out.push(c),
         }
     }
     if out.len() < 2 {
         return None;
     }
     Some(out)
-}
-
-/// Map an (u,v,w) coordinate triple (in axis order) back to a world [x,y,z].
-#[inline]
-fn world(u: usize, v: usize, w: usize, uc: f64, vc: f64, wc: f64) -> [f64; 3] {
-    let mut p = [0.0; 3];
-    p[u] = uc;
-    p[v] = vc;
-    p[w] = wc;
-    p
 }
 
 struct Builder {
@@ -378,147 +324,81 @@ impl Builder {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_cut(
-    bx: &AlignedBox,
-    u: usize,
-    v: usize,
-    w: usize,
-    sw: &[f64; 2],
-    u_lines: &[f64],
-    v_lines: &[f64],
-    holes: &[Hole],
-) -> Mesh {
+/// 3D cellular exposed-face extraction. `grid[axis]` is the sorted snapped grid
+/// lines on that axis. A cell is solid iff its centre lies outside every opening
+/// (it is always inside the host); emit every face of a solid cell that borders
+/// a void cell or the grid boundary, with the outward normal — skipping faces
+/// internal to the solid region. Watertight: a shared face between two solid
+/// cells is emitted by neither; every boundary face is emitted exactly once on
+/// the snapped grid, so reverse edges cancel bit-for-bit.
+fn build_cellular(grid: &[Vec<f64>; 3], openings: &[[[f64; 3]; 2]]) -> Mesh {
+    let nc = [grid[0].len() - 1, grid[1].len() - 1, grid[2].len() - 1];
+    let center = |axis: usize, i: usize| (grid[axis][i] + grid[axis][i + 1]) * 0.5;
+    let solid = |c: [usize; 3]| -> bool {
+        let p = [center(0, c[0]), center(1, c[1]), center(2, c[2])];
+        !openings
+            .iter()
+            .any(|o| (0..3).all(|a| p[a] > o[0][a] && p[a] < o[1][a]))
+    };
     let mut b = Builder {
         positions: Vec::new(),
         normals: Vec::new(),
         indices: Vec::new(),
     };
 
-    // outward unit normals along each axis
-    let nvec = |axis: usize, pos: bool| -> [f32; 3] {
-        let mut n = [0.0f32; 3];
-        n[axis] = if pos { 1.0 } else { -1.0 };
-        n
-    };
-
-    let cell_in_hole = |uc: f64, vc: f64| -> bool {
-        holes.iter().any(|h| uc > h.u_lo && uc < h.u_hi && vc > h.v_lo && vc < h.v_hi)
-    };
-
-    // --- Front (w = min, outward −w) and Back (w = max, outward +w): conforming
-    //     (u×v) grid, omit cells whose centre lies in a hole. ---
-    for (wi, front) in [(0usize, true), (1usize, false)] {
-        let wc = sw[wi];
-        let n = nvec(w, !front); // front face outward = −w
-        for i in 0..u_lines.len() - 1 {
-            for j in 0..v_lines.len() - 1 {
-                let (u0, u1) = (u_lines[i], u_lines[i + 1]);
-                let (v0, v1) = (v_lines[j], v_lines[j + 1]);
-                if cell_in_hole((u0 + u1) * 0.5, (v0 + v1) * 0.5) {
+    for i in 0..nc[0] {
+        for j in 0..nc[1] {
+            for k in 0..nc[2] {
+                let cell = [i, j, k];
+                if !solid(cell) {
                     continue;
                 }
-                let c00 = world(u, v, w, u0, v0, wc);
-                let c10 = world(u, v, w, u1, v0, wc);
-                let c11 = world(u, v, w, u1, v1, wc);
-                let c01 = world(u, v, w, u0, v1, wc);
-                if front {
-                    b.quad([c00, c01, c11, c10], n); // CCW seen from −w (outward)
-                } else {
-                    b.quad([c00, c10, c11, c01], n); // CCW seen from +w
+                for axis in 0..3 {
+                    let (a1, a2) = match axis {
+                        0 => (1usize, 2usize),
+                        1 => (0usize, 2usize),
+                        _ => (0usize, 1usize),
+                    };
+                    for &pos in &[false, true] {
+                        let exposed = if pos {
+                            cell[axis] == nc[axis] - 1 || !solid({
+                                let mut n = cell;
+                                n[axis] += 1;
+                                n
+                            })
+                        } else {
+                            cell[axis] == 0 || !solid({
+                                let mut n = cell;
+                                n[axis] -= 1;
+                                n
+                            })
+                        };
+                        if !exposed {
+                            continue;
+                        }
+                        let coord = grid[axis][cell[axis] + usize::from(pos)];
+                        let (lo1, hi1) = (grid[a1][cell[a1]], grid[a1][cell[a1] + 1]);
+                        let (lo2, hi2) = (grid[a2][cell[a2]], grid[a2][cell[a2] + 1]);
+                        let corner = |x1: f64, x2: f64| {
+                            let mut q = [0.0; 3];
+                            q[axis] = coord;
+                            q[a1] = x1;
+                            q[a2] = x2;
+                            q
+                        };
+                        let mut n = [0.0f32; 3];
+                        n[axis] = if pos { 1.0 } else { -1.0 };
+                        b.quad(
+                            [
+                                corner(lo1, lo2),
+                                corner(hi1, lo2),
+                                corner(hi1, hi2),
+                                corner(lo1, hi2),
+                            ],
+                            n,
+                        );
+                    }
                 }
-            }
-        }
-    }
-
-    // --- Reveal (jamb) faces: the 4 inner walls of every hole, spanning the
-    //     through-depth. CONFORMING-split along the crossing grid lines from
-    //     OTHER holes so the jamb's edge on the front/back face matches the
-    //     annulus sub-edge for sub-edge (no T-junctions). ---
-    // Grid lines strictly inside [lo,hi], plus the endpoints — the breakpoints a
-    // jamb edge must be split at to match the conforming annulus.
-    let sub = |lines: &[f64], lo: f64, hi: f64| -> Vec<f64> {
-        let mut s = vec![lo];
-        for &c in lines {
-            if c > lo && c < hi {
-                s.push(c);
-            }
-        }
-        s.push(hi);
-        s
-    };
-    let (w0, w1) = (sw[0], sw[1]);
-    for h in holes {
-        // low-u and high-u jambs: split along v.
-        let vbreaks = sub(v_lines, h.v_lo, h.v_hi);
-        for (uc, pos) in [(h.u_lo, true), (h.u_hi, false)] {
-            let n = nvec(u, pos);
-            for k in 0..vbreaks.len() - 1 {
-                let (va, vb) = (vbreaks[k], vbreaks[k + 1]);
-                b.quad(
-                    [
-                        world(u, v, w, uc, va, w0),
-                        world(u, v, w, uc, vb, w0),
-                        world(u, v, w, uc, vb, w1),
-                        world(u, v, w, uc, va, w1),
-                    ],
-                    n,
-                );
-            }
-        }
-        // sill and head jambs: split along u.
-        let ubreaks = sub(u_lines, h.u_lo, h.u_hi);
-        for (vc, pos) in [(h.v_lo, true), (h.v_hi, false)] {
-            let n = nvec(v, pos);
-            for k in 0..ubreaks.len() - 1 {
-                let (ua, ub) = (ubreaks[k], ubreaks[k + 1]);
-                b.quad(
-                    [
-                        world(u, v, w, ua, vc, w0),
-                        world(u, v, w, ub, vc, w0),
-                        world(u, v, w, ub, vc, w1),
-                        world(u, v, w, ua, vc, w1),
-                    ],
-                    n,
-                );
-            }
-        }
-    }
-
-    // --- The 4 unchanged side faces (u = min/max, v = min/max), CONFORMING-split
-    //     at the crossing grid lines so they match the annulus sub-edge for
-    //     sub-edge. Side faces at u=const span v×w; at v=const span u×w. ---
-    let su = [snap(bx.min[u]), snap(bx.max[u])];
-    let sv = [snap(bx.min[v]), snap(bx.max[v])];
-    // u = min (outward −u) and u = max (outward +u): split along v_lines.
-    for (uc, pos) in [(su[0], false), (su[1], true)] {
-        let n = nvec(u, pos);
-        for j in 0..v_lines.len() - 1 {
-            let (v0, v1) = (v_lines[j], v_lines[j + 1]);
-            let c0 = world(u, v, w, uc, v0, sw[0]);
-            let c1 = world(u, v, w, uc, v1, sw[0]);
-            let c2 = world(u, v, w, uc, v1, sw[1]);
-            let c3 = world(u, v, w, uc, v0, sw[1]);
-            if pos {
-                b.quad([c0, c1, c2, c3], n);
-            } else {
-                b.quad([c0, c3, c2, c1], n);
-            }
-        }
-    }
-    // v = min (outward −v) and v = max (outward +v): split along u_lines.
-    for (vc, pos) in [(sv[0], false), (sv[1], true)] {
-        let n = nvec(v, pos);
-        for i in 0..u_lines.len() - 1 {
-            let (u0, u1) = (u_lines[i], u_lines[i + 1]);
-            let c0 = world(u, v, w, u0, vc, sw[0]);
-            let c1 = world(u, v, w, u1, vc, sw[0]);
-            let c2 = world(u, v, w, u1, vc, sw[1]);
-            let c3 = world(u, v, w, u0, vc, sw[1]);
-            if pos {
-                b.quad([c0, c3, c2, c1], n);
-            } else {
-                b.quad([c0, c1, c2, c3], n);
             }
         }
     }
@@ -706,23 +586,52 @@ mod tests {
     }
 
     #[test]
-    fn defers_non_through_opening() {
-        // opening that does NOT span the full Y thickness (a recess, not a hole)
+    fn door_flush_to_floor_watertight() {
+        // DOOR: full thickness, z from BELOW the floor up to 2.0 → touches the
+        // wall's bottom edge (no sill reveal); the bottom face gets a hole. The
+        // case the face-based v1 deferred (off_face); cellular cuts it watertight.
         let base = [0.0, 0.0, 0.0];
-        let recess = ([1.5, 0.05, 0.5], [2.5, 0.15, 2.0]); // y inside the wall
-        let mut st = RectFastStats::default();
-        assert!(subtract_rect_openings(&wall(base), &[recess], &mut st).is_none());
-        assert_eq!(st.defer_not_through, 1);
+        let door = (
+            [base[0] + 1.5, base[1] - 0.1, base[2] - 0.5],
+            [base[0] + 2.5, base[1] + 0.3, base[2] + 2.0],
+        );
+        check_watertight(base, &[door], "door-flush-floor");
     }
 
     #[test]
-    fn defers_off_face_opening() {
-        // opening centred off the wall's X extent (touches/exceeds the edge)
+    fn edge_notch_watertight() {
+        // opening that exceeds the wall's X extent → a notch flush with the right
+        // edge (no right jamb). Was an off_face defer; cellular handles it.
         let base = [0.0, 0.0, 0.0];
-        let off = opening(base, 3.8, 4.5, 0.5, 2.0); // u_hi clamps to wall edge → no reveal
+        let notch = (
+            [base[0] + 3.8, base[1] - 0.1, base[2] + 0.5],
+            [base[0] + 4.5, base[1] + 0.3, base[2] + 2.0],
+        );
+        check_watertight(base, &[notch], "edge-notch");
+    }
+
+    #[test]
+    fn recess_cut_watertight() {
+        // RECESS: does NOT span the full thickness (a niche/pocket). Was a
+        // not_through defer; cellular cuts the pocket watertight.
+        let base = [0.0, 0.0, 0.0];
+        let recess = (
+            [base[0] + 1.5, base[1] + 0.05, base[2] + 0.5],
+            [base[0] + 2.5, base[1] + 0.15, base[2] + 2.0],
+        );
+        check_watertight(base, &[recess], "recess");
+    }
+
+    #[test]
+    fn opening_fully_outside_defers() {
+        // genuine no-op: opening entirely outside the host → no overlap → defer.
+        let base = [0.0, 0.0, 0.0];
+        let outside = (
+            [base[0] + 10.0, base[1] - 0.1, base[2] + 0.5],
+            [base[0] + 11.0, base[1] + 0.3, base[2] + 2.0],
+        );
         let mut st = RectFastStats::default();
-        assert!(subtract_rect_openings(&wall(base), &[off], &mut st).is_none());
-        assert_eq!(st.defer_off_face, 1);
+        assert!(subtract_rect_openings(&wall(base), &[outside], &mut st).is_none());
     }
 
     #[test]

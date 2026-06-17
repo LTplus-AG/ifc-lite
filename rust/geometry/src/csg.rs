@@ -756,72 +756,55 @@ impl ClippingProcessor {
             )
         };
 
-        // Classify each axis. A clean transversal cut spans the host on exactly
-        // one axis and lies strictly interior on the other two.
-        let mut through: Option<usize> = None;
-        let mut lateral: Vec<usize> = Vec::with_capacity(2);
+        // ── ACTIVE CUTTING PLANES. A box face is a cutting plane iff it lies
+        // strictly INTERIOR to the host on its axis; a face flush-with or past
+        // the host opens to the host boundary (no reveal there). This general
+        // model is what real IFC openings need — doors (floor-flush), openings at
+        // a wall end, partial-penetration boxes — not just clean transversal
+        // windows. Axes with NO active plane are fully spanned (the box pokes
+        // through, e.g. the wall thickness ⇒ no reveal on those faces).
+        struct ActivePlane {
+            axis: usize,
+            val: f64,
+            outward: f64, // -1 at the box MIN face, +1 at the box MAX face
+        }
+        let mut active: Vec<ActivePlane> = Vec::with_capacity(6);
         for k in 0..3 {
-            let spans = bmin[k] <= hmin[k] + tol && bmax[k] >= hmax[k] - tol;
-            let interior = bmin[k] > hmin[k] + tol && bmax[k] < hmax[k] - tol;
-            if spans {
-                if through.is_some() {
-                    BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
-                    return Ok(None); // >1 through-axis (slot / full cut) → defer
-                }
-                through = Some(k);
-            } else if interior {
-                lateral.push(k);
-            } else {
-                // Box flush-with or partially past the host on this axis (a door
-                // flush with the floor, an edge window, a blind pocket) → not a
-                // clean transversal box; defer to the exact kernel.
-                BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
-                boxfast_sample(format!(
-                    "GATE flush axis={k} spans={spans} interior={interior} {}",
-                    bounds_str()
-                ));
-                return Ok(None);
+            if bmin[k] > hmin[k] + tol {
+                active.push(ActivePlane { axis: k, val: bmin[k], outward: -1.0 });
+            }
+            if bmax[k] < hmax[k] - tol {
+                active.push(ActivePlane { axis: k, val: bmax[k], outward: 1.0 });
             }
         }
-        let Some(t_axis) = through else {
+        if active.is_empty() {
+            // The box covers the host on every axis (would remove everything) or
+            // is otherwise not a localizable cut — defer.
             BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
-            boxfast_sample(format!("GATE no-through {}", bounds_str()));
-            return Ok(None);
-        };
-        if lateral.len() != 2 {
-            BOXFAST_DEFER_GATE.fetch_add(1, Ordering::Relaxed);
-            boxfast_sample(format!("GATE lateral={} {}", lateral.len(), bounds_str()));
+            boxfast_sample(format!("GATE no-active {}", bounds_str()));
             return Ok(None);
         }
-        let (la, lb) = (lateral[0], lateral[1]);
-
-        // Host through-extent (slab assumption — the watertight gate below
-        // rejects any host whose surface isn't flat at these coords).
-        let t_front = hmin[t_axis];
-        let t_back = hmax[t_axis];
-
-        // The 4 lateral cutting planes, outward normals pointing INTO the host
-        // material (away from the window interior) ⇒ "front" = outside column.
         let axis_unit = |k: usize, s: f64| {
             let mut v = Vector3::zeros();
             v[k] = s;
             v
         };
-        let plane_on = |k: usize, val: f64, s: f64| {
-            let mut p = Point3::new(
-                (bmin[0] + bmax[0]) * 0.5,
-                (bmin[1] + bmax[1]) * 0.5,
-                (bmin[2] + bmax[2]) * 0.5,
-            );
-            p[k] = val;
-            Plane::new(p, axis_unit(k, s))
-        };
-        let planes = [
-            plane_on(la, bmin[la], -1.0),
-            plane_on(la, bmax[la], 1.0),
-            plane_on(lb, bmin[lb], -1.0),
-            plane_on(lb, bmax[lb], 1.0),
-        ];
+        let center = Point3::new(
+            (bmin[0] + bmax[0]) * 0.5,
+            (bmin[1] + bmax[1]) * 0.5,
+            (bmin[2] + bmax[2]) * 0.5,
+        );
+        // Outward-normal planes (front = outside the box). The removed region is
+        // the box interior = behind ALL active planes (axes with no active plane
+        // are fully covered by the box, so they don't constrain).
+        let planes: Vec<Plane> = active
+            .iter()
+            .map(|a| {
+                let mut p = center;
+                p[a.axis] = a.val;
+                Plane::new(p, axis_unit(a.axis, a.outward))
+            })
+            .collect();
 
         let mut result = Mesh::new();
         // Directed open-boundary edges keyed by quantized endpoints; the value is
@@ -887,91 +870,110 @@ impl ClippingProcessor {
             }
         }
 
-        // ── Synthesise the 4 reveal faces (inner walls of the hole). After the
-        // trim, `dir` holds exactly the open hole rim: a front loop (at t_front)
-        // and a back loop (at t_back), each carrying whatever subdivision points
-        // the host tessellation introduced (face diagonals, welds). Each reveal
-        // face is built FROM those rim points (not as a fixed rectangle) so its
-        // edges match the host rim exactly — no T-junctions. The face is the
-        // lateral-plane polygon: front rim points (ascending) then back rim
-        // points (descending), earcut-triangulated. Faces are wound consistently
-        // w.r.t. their into-void normals (a closed tube ⇒ the vertical seams
-        // cancel), then one global flip aligns the tube to the host winding.
+        // ── Synthesise one reveal face per ACTIVE cutting plane. Each reveal is
+        // the box face — a rectangle in the two non-fixed axes, clipped to
+        // box∩host — with the host's actual rim points (from the trim) inserted on
+        // its abutting edges so the tessellation matches (no T-junctions). A
+        // flush/past side has no active plane, hence no reveal: the cut simply
+        // opens to the host boundary there (doors, end-openings). The face is
+        // triangulated as a CENTROID FAN — the centre is interior, so EVERY
+        // boundary edge survives and no triangle is degenerate (the corner-fan
+        // pitfall). Faces are wound to their into-void normals; one global flip
+        // then aligns them to the host winding.
         let rim_pts: Vec<Point3<f64>> = dir.values().copied().collect();
         let mut reveal_tris: Vec<(Point3<f64>, Point3<f64>, Point3<f64>)> = Vec::new();
-        for &(fixed_axis, fixed_val) in &[
-            (la, bmin[la]),
-            (la, bmax[la]),
-            (lb, bmin[lb]),
-            (lb, bmax[lb]),
-        ] {
-            let var_axis = if fixed_axis == la { lb } else { la };
-            let on_plane = |p: &Point3<f64>| (p[fixed_axis] - fixed_val).abs() <= tol;
-            let collect_sorted = |t_val: f64| -> Vec<Point3<f64>> {
-                let mut v: Vec<Point3<f64>> = rim_pts
-                    .iter()
-                    .copied()
-                    .filter(|p| on_plane(p) && (p[t_axis] - t_val).abs() <= tol)
-                    .collect();
-                v.sort_by(|a, b| a[var_axis].partial_cmp(&b[var_axis]).unwrap());
-                v.dedup_by(|a, b| box_clip_key(a) == box_clip_key(b));
-                v
+        for ap in &active {
+            let k = ap.axis;
+            let (a, b) = match k {
+                0 => (1usize, 2usize),
+                1 => (0usize, 2usize),
+                _ => (0usize, 1usize),
             };
-            let front = collect_sorted(t_front);
-            let back = collect_sorted(t_back);
-            // Need at least the two corners on each face to span the reveal.
-            if front.len() < 2 || back.len() < 2 {
+            // Reveal rectangle = box face ∩ host, in the (a, b) plane.
+            let amin = bmin[a].max(hmin[a]);
+            let amax = bmax[a].min(hmax[a]);
+            let bmn = bmin[b].max(hmin[b]);
+            let bmx = bmax[b].min(hmax[b]);
+            if amax - amin <= tol || bmx - bmn <= tol {
                 BOXFAST_DEFER_RIM.fetch_add(1, Ordering::Relaxed);
-                boxfast_sample(format!(
-                    "RIM t_axis={t_axis} fixed_axis={fixed_axis} front={} back={} rim_pts={} {}",
-                    front.len(),
-                    back.len(),
-                    rim_pts.len(),
-                    bounds_str()
-                ));
+                boxfast_sample(format!("RIM degenerate-rect axis={k} {}", bounds_str()));
                 return Ok(None);
             }
-            // The reveal face is the strip between the front chain (at t_front)
-            // and the back chain (at t_back), both ascending in `var` and sharing
-            // the vmin/vmax box corners — but the two chains may carry DIFFERENT
-            // subdivision points (the host's front and back faces can be
-            // tessellated differently, especially after an earlier cut). A
-            // two-pointer merge triangulates the strip while keeping every front
-            // point on the front edge and every back point on the back edge (so
-            // each cancels its own host rim), with only internal diagonals
-            // bridging them. Every triangle spans front→back ⇒ non-degenerate.
-            let mut tris_face: Vec<(Point3<f64>, Point3<f64>, Point3<f64>)> = Vec::new();
-            let (nf, nb) = (front.len(), back.len());
-            let (mut i, mut j) = (0usize, 0usize);
-            while i + 1 < nf || j + 1 < nb {
-                let adv_front = if i + 1 >= nf {
-                    false
-                } else if j + 1 >= nb {
-                    true
-                } else {
-                    front[i + 1][var_axis] <= back[j + 1][var_axis]
-                };
-                if adv_front {
-                    tris_face.push((front[i], front[i + 1], back[j]));
-                    i += 1;
-                } else {
-                    tris_face.push((front[i], back[j + 1], back[j]));
-                    j += 1;
-                }
-            }
-            // Into-void normal: +axis if the face sits at the box minimum on its
-            // fixed axis (interior is toward +axis), else -axis. Wind the whole
-            // face uniformly so it aligns with that normal.
-            let mut n = Vector3::zeros();
-            n[fixed_axis] = if fixed_val <= (bmin[fixed_axis] + bmax[fixed_axis]) * 0.5 {
-                1.0
-            } else {
-                -1.0
+            let mk = |av: f64, bv: f64| {
+                let mut p = Point3::origin();
+                p[k] = ap.val;
+                p[a] = av;
+                p[b] = bv;
+                p
             };
+            // Rim points lying on this plane, and a helper to pull those on a
+            // given rectangle edge (sorted along it).
+            let on: Vec<Point3<f64>> = rim_pts
+                .iter()
+                .copied()
+                .filter(|p| (p[k] - ap.val).abs() <= tol)
+                .collect();
+            let edge_pts = |fixed: usize, fixed_val: f64, sort: usize, asc: bool| {
+                let mut v: Vec<Point3<f64>> = on
+                    .iter()
+                    .copied()
+                    .filter(|p| (p[fixed] - fixed_val).abs() <= tol)
+                    .collect();
+                v.sort_by(|x, y| {
+                    let o = x[sort].partial_cmp(&y[sort]).unwrap();
+                    if asc {
+                        o
+                    } else {
+                        o.reverse()
+                    }
+                });
+                v
+            };
+            // CCW boundary loop: corners + each edge's host rim points. Edges
+            // abutting a host face carry rim points (so they cancel that face's
+            // rim); seam edges (shared with an adjacent reveal) carry none.
+            let mut raw_loop: Vec<Point3<f64>> = Vec::new();
+            raw_loop.push(mk(amin, bmn));
+            raw_loop.extend(edge_pts(b, bmn, a, true)); // bottom, a ascending
+            raw_loop.push(mk(amax, bmn));
+            raw_loop.extend(edge_pts(a, amax, b, true)); // right, b ascending
+            raw_loop.push(mk(amax, bmx));
+            raw_loop.extend(edge_pts(b, bmx, a, false)); // top, a descending
+            raw_loop.push(mk(amin, bmx));
+            raw_loop.extend(edge_pts(a, amin, b, false)); // left, b descending
+            let mut loop_pts: Vec<Point3<f64>> = Vec::with_capacity(raw_loop.len());
+            for p in raw_loop {
+                if loop_pts
+                    .last()
+                    .map(|q| box_clip_key(q) == box_clip_key(&p))
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+                loop_pts.push(p);
+            }
+            if loop_pts.len() >= 2
+                && box_clip_key(&loop_pts[0]) == box_clip_key(loop_pts.last().unwrap())
+            {
+                loop_pts.pop();
+            }
+            if loop_pts.len() < 3 {
+                BOXFAST_DEFER_RIM.fetch_add(1, Ordering::Relaxed);
+                boxfast_sample(format!("RIM loop<3 axis={k} {}", bounds_str()));
+                return Ok(None);
+            }
+            // Centroid fan (centre interior ⇒ all boundary edges preserved).
+            let centroid = mk((amin + amax) * 0.5, (bmn + bmx) * 0.5);
+            let mut tris_face: Vec<(Point3<f64>, Point3<f64>, Point3<f64>)> = Vec::new();
+            for w in 0..loop_pts.len() {
+                tris_face.push((centroid, loop_pts[w], loop_pts[(w + 1) % loop_pts.len()]));
+            }
+            // Into-void normal: toward the box interior = -outward·e_k.
+            let n = axis_unit(k, -ap.outward);
             let face_flip = tris_face
                 .iter()
-                .find_map(|&(a, b, c)| {
-                    let raw = (b - a).cross(&(c - a));
+                .find_map(|&(a2, b2, c2)| {
+                    let raw = (b2 - a2).cross(&(c2 - a2));
                     if raw.norm() > 0.0 {
                         Some(raw.dot(&n) < 0.0)
                     } else {
@@ -979,11 +981,11 @@ impl ClippingProcessor {
                     }
                 })
                 .unwrap_or(false);
-            for (a, b, c) in tris_face {
+            for (a2, b2, c2) in tris_face {
                 if face_flip {
-                    reveal_tris.push((a, c, b));
+                    reveal_tris.push((a2, c2, b2));
                 } else {
-                    reveal_tris.push((a, b, c));
+                    reveal_tris.push((a2, b2, c2));
                 }
             }
         }

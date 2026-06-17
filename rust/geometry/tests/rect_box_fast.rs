@@ -178,26 +178,62 @@ fn two_disjoint_windows_sequentially() {
 }
 
 #[test]
-fn blind_pocket_defers() {
-    // Box recessed into the wall (does not penetrate the back face) ⇒ no clean
-    // through-axis ⇒ must defer to the exact kernel.
+fn blind_pocket_cuts_watertight() {
+    // Box recessed into the wall (penetrates the front face only, stops inside):
+    // a blind pocket. The general path handles it — front face opens, the other 5
+    // faces are reveals (incl. the pocket back). Watertight + volume-equal.
     let clip = ClippingProcessor::new();
     let host = wall(2);
-    let r = clip
-        .subtract_box_fast(&host, Point3::new(1.0, -0.1, 1.0), Point3::new(2.0, 0.1, 2.0))
-        .unwrap();
-    assert!(r.is_none(), "blind pocket should defer, got {:?}", r.is_some());
+    let (bmin, bmax) = (Point3::new(1.0, -0.1, 1.0), Point3::new(2.0, 0.1, 2.0));
+    let fast = clip
+        .subtract_box_fast(&host, bmin, bmax)
+        .unwrap()
+        .expect("blind pocket should now cut");
+    assert!(watertight(&fast), "blind pocket not watertight");
+    let cutter = box_mesh([1.0, -0.1, 1.0], [2.0, 0.1, 2.0], 1);
+    let exact = clip.subtract_mesh(&host, &cutter).unwrap();
+    // pocket X 1 × Y[0,0.1] × Z 1 = 0.1 removed ⇒ 2.3
+    assert!((volume(&fast) - 2.3).abs() < 1e-3, "pocket vol {}", volume(&fast));
+    assert!((volume(&fast) - volume(&exact)).abs() < 1e-3, "fast vs exact");
 }
 
 #[test]
-fn corner_cut_defers() {
-    // Box spans the host on TWO axes (an edge/corner removal) ⇒ defer.
+fn corner_cut_watertight() {
+    // Box spans the thickness (through) and pokes past the -X wall end: an
+    // end/corner notch. The general path handles it — the -X side opens to the
+    // wall end, X=2 / Z=1 / Z=2 are reveals.
     let clip = ClippingProcessor::new();
     let host = wall(2);
-    let r = clip
-        .subtract_box_fast(&host, Point3::new(-0.1, -0.1, 1.0), Point3::new(2.0, 0.3, 2.0))
-        .unwrap();
-    assert!(r.is_none(), "corner cut should defer");
+    let (bmin, bmax) = (Point3::new(-0.1, -0.1, 1.0), Point3::new(2.0, 0.3, 2.0));
+    let fast = clip
+        .subtract_box_fast(&host, bmin, bmax)
+        .unwrap()
+        .expect("corner notch should now cut");
+    assert!(watertight(&fast), "corner notch not watertight");
+    let cutter = box_mesh([-0.1, -0.1, 1.0], [2.0, 0.3, 2.0], 1);
+    let exact = clip.subtract_mesh(&host, &cutter).unwrap();
+    // removes X[0,2] × Y[0,0.2] × Z 1 = 0.4 ⇒ 2.0
+    assert!((volume(&fast) - 2.0).abs() < 1e-3, "notch vol {}", volume(&fast));
+    assert!((volume(&fast) - volume(&exact)).abs() < 1e-3, "fast vs exact");
+}
+
+#[test]
+fn floor_flush_door_watertight() {
+    // The dominant real-IFC case: a door flush with the floor — Z-min sits on the
+    // wall base (no bottom reveal; opens to the host edge), Z-max is the lintel.
+    let clip = ClippingProcessor::new();
+    let host = wall(2);
+    let (bmin, bmax) = (Point3::new(1.5, -0.1, 0.0), Point3::new(2.5, 0.3, 2.0));
+    let fast = clip
+        .subtract_box_fast(&host, bmin, bmax)
+        .unwrap()
+        .expect("floor-flush door should cut");
+    assert!(watertight(&fast), "door not watertight");
+    let cutter = box_mesh([1.5, -0.1, 0.0], [2.5, 0.3, 2.0], 1);
+    let exact = clip.subtract_mesh(&host, &cutter).unwrap();
+    // removes X 1 × Y 0.2 × Z[0,2] = 0.4 ⇒ 2.0
+    assert!((volume(&fast) - 2.0).abs() < 1e-3, "door vol {}", volume(&fast));
+    assert!((volume(&fast) - volume(&exact)).abs() < 1e-3, "fast vs exact");
 }
 
 #[test]

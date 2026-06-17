@@ -983,6 +983,34 @@ pub(super) fn drain_and_log_csg_diagnostics(
         }
     }
 
+    // rect_fast (analytic rectangular-opening fast path) engagement for this
+    // batch: fire-rate + why it deferred, so the optimization is VISIBLE in the
+    // console. Absence of this line on a build that has it means nothing fired
+    // AND nothing deferred (no rect-opening hosts in the batch); presence with
+    // fired=0 + high host_not_box means the walls aren't clean axis-aligned
+    // boxes (multi-layer / non-box) and correctly fell back to the exact kernel.
+    let rf = ifc_lite_geometry::rect_fast::take_global_stats();
+    if rf.fired > 0
+        || rf.defer_host_not_box > 0
+        || rf.defer_not_through > 0
+        || rf.defer_off_face > 0
+        || rf.defer_near_edge > 0
+    {
+        web_sys::console::info_1(
+            &format!(
+                "[IFC-LITE] rect_fast: fired={} (cut {} openings) | deferred: \
+                 host_not_box={} not_through={} off_face={} near_edge={}",
+                rf.fired,
+                rf.openings_cut,
+                rf.defer_host_not_box,
+                rf.defer_not_through,
+                rf.defer_off_face,
+                rf.defer_near_edge,
+            )
+            .into(),
+        );
+    }
+
     summary.into()
 }
 

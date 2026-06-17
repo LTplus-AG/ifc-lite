@@ -1122,7 +1122,12 @@ impl GeometryRouter {
         let mut stats = crate::rect_fast::RectFastStats::default();
         let out = crate::rect_fast::subtract_rect_openings(host, &boxes, &mut stats);
         crate::rect_fast::record_global(&stats);
-        out
+        // The cellular cut conformingly splits EVERY face by ALL grid lines (so
+        // adjacent cells share edges → watertight), which over-fragments faces an
+        // opening doesn't reach. Run the result through the SAME coplanar merge
+        // the exact path uses (i_overlay union per plane) to collapse those back
+        // to minimal triangles — keeps it watertight and un-bloated.
+        out.map(crate::csg::ClippingProcessor::consolidate_coplanar)
     }
 
     fn apply_void_context_inner(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {

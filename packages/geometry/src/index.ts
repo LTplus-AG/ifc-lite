@@ -26,6 +26,9 @@ export {
   type MetadataBootstrapSpatialNode,
 } from './platform-bridge.js';
 
+// WebSocket native backend bridge (plain web app + localhost helper).
+export { WebSocketBridge, type WebSocketBridgeOptions } from './websocket-bridge.js';
+
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler } from './coordinate-handler.js';
@@ -77,6 +80,15 @@ interface ByteStreamingPrePassResult {
 export interface GeometryProcessorOptions {
   quality?: GeometryQuality; // Default: Balanced
   preferNative?: boolean; // Default: true in Tauri
+  /**
+   * URL of a localhost native geometry backend (`ifc-lite-desktop-server`),
+   * e.g. `wss://<id>.local.ifc-lite.app:8443` or `ws://127.0.0.1:8082`. When
+   * set (and not running under Tauri), geometry is processed natively over a
+   * WebSocket instead of WASM — native-speed parsing/meshing for a plain web
+   * app. If the helper is unreachable at `init()`, the processor transparently
+   * falls back to the in-browser WASM pipeline, so a bare tab still works.
+   */
+  nativeBackendUrl?: string;
   /**
    * When true, the underlying IFC-Lite WASM API merges Revit-style
    * multilayer walls — `IfcBuildingElementPart` meshes whose parent
@@ -171,6 +183,7 @@ export class GeometryProcessor {
   private bufferBuilder: BufferBuilder;
   private coordinateHandler: CoordinateHandler;
   private isNative: boolean = false;
+  private nativeBackendUrl: string | null = null;
   private lastNativeStats: PlatformGeometryStats | null = null;
   private mergeLayers: boolean;
   private tessellationQuality: TessellationQuality | null;
@@ -178,22 +191,28 @@ export class GeometryProcessor {
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
     this.coordinateHandler = new CoordinateHandler();
-    this.isNative = options.preferNative !== false && isTauri();
+    this.nativeBackendUrl = options.nativeBackendUrl ?? null;
+    // Native = Tauri (in-process) OR a configured WebSocket backend. The WS
+    // backend is only reachable once `init()` probes it; if the probe fails we
+    // revert `isNative` to false there and build the WASM bridge instead.
+    this.isNative = options.preferNative !== false && (isTauri() || !!this.nativeBackendUrl);
     this.mergeLayers = options.mergeLayers === true;
     this.tessellationQuality = options.tessellationQuality ?? null;
     // Note: options accepted for API compatibility
     void options.quality;
 
     if (!this.isNative) {
-      this.bridge = new IfcLiteBridge();
-      // Cache the merge-layers flag on the bridge eagerly — if init()
-      // hasn't run yet the bridge stores the value and replays it on
-      // the freshly-built IfcAPI. Existing call sites can opt in
-      // simply by passing { mergeLayers: true } into the constructor.
-      this.bridge.setMergeLayers(this.mergeLayers);
-      // Same eager cache-and-replay for the tessellation level (#976).
-      this.bridge.setTessellationQuality(this.tessellationQuality);
+      this.buildWasmBridge();
     }
+  }
+
+  /** Build the WASM bridge and eagerly cache its mode flags (replayed onto the
+   *  IfcAPI at `init()`). Idempotent so the native→WASM fallback can call it. */
+  private buildWasmBridge(): void {
+    if (this.bridge) return;
+    this.bridge = new IfcLiteBridge();
+    this.bridge.setMergeLayers(this.mergeLayers);
+    this.bridge.setTessellationQuality(this.tessellationQuality);
   }
 
   /**
@@ -203,15 +222,35 @@ export class GeometryProcessor {
    */
   async init(): Promise<void> {
     if (this.isNative) {
-      // Create platform bridge for native processing
-      this.platformBridge = await createPlatformBridge();
-      await this.platformBridge.init();
-      console.log('[GeometryProcessor] Native bridge initialized');
+      if (this.nativeBackendUrl && !isTauri()) {
+        // WebSocket native backend (plain web app + localhost helper). Probe it;
+        // if unreachable, fall back to WASM so a bare tab still works.
+        try {
+          const { WebSocketBridge } = await import('./websocket-bridge.js');
+          const wsBridge = new WebSocketBridge(this.nativeBackendUrl);
+          await wsBridge.init();
+          this.platformBridge = wsBridge;
+          console.log('[GeometryProcessor] Native WebSocket backend connected:', this.nativeBackendUrl);
+        } catch (err) {
+          console.warn(
+            '[GeometryProcessor] Native backend unavailable, falling back to WASM:',
+            err instanceof Error ? err.message : err,
+          );
+          this.isNative = false;
+          this.platformBridge = null;
+          this.buildWasmBridge();
+          await this.bridge!.init();
+        }
+      } else {
+        // Tauri in-process native bridge.
+        this.platformBridge = await createPlatformBridge();
+        await this.platformBridge.init();
+        console.log('[GeometryProcessor] Native bridge initialized');
+      }
     } else {
       // WASM path
-      if (this.bridge) {
-        await this.bridge.init();
-      }
+      this.buildWasmBridge();
+      await this.bridge!.init();
     }
   }
 
@@ -842,8 +881,15 @@ export class GeometryProcessor {
       };
 
       yield { type: 'complete', totalMeshes: allMeshes.length, coordinateInfo };
+    } else if (this.isNative && this.platformBridge) {
+      // Large files, native backend (Tauri or WebSocket): the WASM worker pool
+      // (`processParallel`) is WASM-only and ignores `isNative`, so route native
+      // large files through `processStreaming`, whose native branch delegates to
+      // the platform bridge's streaming API.
+      yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
     } else {
-      // Large files: parallel or streaming
+      // Large files, WASM: parallel worker pool when SAB+Workers+multicore are
+      // available, else single-threaded byte streaming.
       const useParallel = typeof SharedArrayBuffer !== 'undefined'
         && typeof Worker !== 'undefined'
         && typeof navigator !== 'undefined'

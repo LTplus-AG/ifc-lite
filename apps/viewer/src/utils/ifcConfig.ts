@@ -32,6 +32,18 @@ export const SERVER_URL = import.meta.env.VITE_IFC_SERVER_URL || import.meta.env
  */
 export const USE_SERVER = SERVER_URL !== '' && import.meta.env.VITE_USE_SERVER === 'true';
 
+/**
+ * URL of a localhost native geometry backend (`ifc-lite-desktop-server`) — the
+ * "Dropbox-style" local helper. When set, geometry is processed natively over a
+ * WebSocket (native-speed parsing/meshing for a plain web app, no WASM); if the
+ * helper is unreachable at init, the viewer transparently falls back to the
+ * in-browser WASM pipeline, so a bare tab still works.
+ *
+ *   Dev:  VITE_NATIVE_BACKEND_URL=ws://127.0.0.1:8082
+ *   Prod: VITE_NATIVE_BACKEND_URL=wss://<id>.local.ifc-lite.app:8443
+ */
+export const NATIVE_BACKEND_URL = import.meta.env.VITE_NATIVE_BACKEND_URL || '';
+
 // ============================================================================
 // File Size Thresholds (in bytes unless noted)
 // ============================================================================

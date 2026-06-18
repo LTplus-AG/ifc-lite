@@ -50,9 +50,13 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(health))
         .route("/geometry", get(ws_handler))
-        // The browser frontend runs on a different origin (the Vite dev server),
-        // so allow cross-origin for the health check and the WS upgrade.
-        .layer(CorsLayer::permissive());
+        // The browser frontend runs on a different origin (the production viewer
+        // on https://…, the dev server on localhost), so allow cross-origin for
+        // the health check and the WS upgrade. `allow_private_network` answers
+        // Chrome's Private Network Access preflight (a public/https page → a
+        // loopback target needs `Access-Control-Allow-Private-Network: true`) —
+        // the production "local helper" topology.
+        .layer(CorsLayer::permissive().allow_private_network(true));
 
     // Loopback only: this is a local accelerator, never a public endpoint.
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -68,7 +72,14 @@ async fn health() -> &'static str {
 }
 
 async fn ws_handler(ws: WebSocketUpgrade) -> Response {
-    ws.on_upgrade(handle_socket)
+    // tungstenite defaults cap a WS message at 64 MiB / a frame at 16 MiB. The
+    // IFC file arrives as one binary frame, so a model larger than 64 MiB — the
+    // whole reason this native backend exists — is silently rejected (the client
+    // sees a 1006 close). Raise both limits past the largest models we target.
+    const MAX_UPLOAD: usize = 2 * 1024 * 1024 * 1024; // 2 GiB
+    ws.max_message_size(MAX_UPLOAD)
+        .max_frame_size(MAX_UPLOAD)
+        .on_upgrade(handle_socket)
 }
 
 /// One IFC file per connection: receive the bytes, stream the geometry back.

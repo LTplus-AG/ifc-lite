@@ -31,7 +31,7 @@ import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/lo
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { type GeometryData } from '@ifc-lite/cache';
 
-import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
+import { SERVER_URL, USE_SERVER, NATIVE_BACKEND_URL, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
   createCoordinateInfo,
@@ -644,7 +644,12 @@ export function useIfcLoader() {
       // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
-        preferNative: false,
+        // When a native localhost helper is configured (VITE_NATIVE_BACKEND_URL),
+        // geometry is processed natively over a WebSocket; the processor falls
+        // back to WASM automatically if the helper is unreachable. With no URL
+        // set (and outside Tauri) this stays the in-browser WASM path — the
+        // unchanged default for users without the helper.
+        nativeBackendUrl: NATIVE_BACKEND_URL || undefined,
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
         mergeLayers: mergeLayersAtLoad,

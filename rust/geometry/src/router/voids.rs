@@ -512,6 +512,83 @@ fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Opt
     })
 }
 
+/// Build a clean 12-triangle box from oriented `lo`/`hi` extents along the
+/// orthonormal right-handed `axes` (`[cross_a, cross_b, depth]`). Mirrors
+/// [`GeometryRouter::make_box_mesh`] — identical corner indexing and outward
+/// winding — but the faces are oriented to the frame, so the normals are
+/// `±axes[k]` instead of the world axes.
+fn make_oriented_box_mesh(lo: [f64; 3], hi: [f64; 3], axes: [Vector3<f64>; 3]) -> Mesh {
+    let corner = |i: usize, j: usize, k: usize| -> Point3<f64> {
+        let x = if i == 1 { hi[0] } else { lo[0] };
+        let y = if j == 1 { hi[1] } else { lo[1] };
+        let z = if k == 1 { hi[2] } else { lo[2] };
+        Point3::from(axes[0] * x + axes[1] * y + axes[2] * z)
+    };
+    let corners = [
+        corner(0, 0, 0),
+        corner(1, 0, 0),
+        corner(1, 1, 0),
+        corner(0, 1, 0),
+        corner(0, 0, 1),
+        corner(1, 0, 1),
+        corner(1, 1, 1),
+        corner(0, 1, 1),
+    ];
+    let (ax, ay, az) = (axes[0], axes[1], axes[2]);
+    let faces: [(Vector3<f64>, [usize; 4]); 6] = [
+        (-az, [0, 3, 2, 1]),
+        (az, [4, 5, 6, 7]),
+        (-ay, [0, 1, 5, 4]),
+        (ay, [2, 3, 7, 6]),
+        (-ax, [0, 4, 7, 3]),
+        (ax, [1, 2, 6, 5]),
+    ];
+    let mut m = Mesh::with_capacity(24, 36);
+    for (n, idx) in &faces {
+        let b = m.vertex_count() as u32;
+        m.add_vertex(corners[idx[0]], *n);
+        m.add_vertex(corners[idx[1]], *n);
+        m.add_vertex(corners[idx[2]], *n);
+        m.add_vertex(corners[idx[3]], *n);
+        m.add_triangle(b, b + 1, b + 2);
+        m.add_triangle(b, b + 2, b + 3);
+    }
+    m
+}
+
+/// Replace a tilted rectangular-opening mesh with the minimal clean box that
+/// is its oriented bounding box in `frame`. Returns `None` (caller keeps the
+/// raw mesh) if the projected extents are degenerate.
+///
+/// Issue #1167: once the axis-alignment tolerance tightened, rotated window /
+/// door boxes correctly route to the exact oriented subtract instead of the
+/// oversized world-AABB cut. But the raw `IfcOpeningElement` mesh often carries
+/// tessellation noise — extra collinear edge vertices (Revit/ArchiCAD segment
+/// their profiles) or f32-jittered, slightly-non-orthogonal faces. On a tilted
+/// plane the exact subtract's coplanar re-triangulation turns that noise into
+/// rim slivers and hairline cracks (the "fragmented holes" regression). The
+/// axis-aligned path never sees this because it always cuts with a pristine
+/// `make_box_mesh`; this gives the tilted path the same pristine cutter.
+fn oriented_box_cutter(mesh: &Mesh, frame: &OpeningFrame) -> Option<Mesh> {
+    let axes = [frame.cross_a, frame.cross_b, frame.depth];
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    for c in mesh.positions.chunks_exact(3) {
+        let p = Vector3::new(c[0] as f64, c[1] as f64, c[2] as f64);
+        for k in 0..3 {
+            let d = p.dot(&axes[k]);
+            lo[k] = lo[k].min(d);
+            hi[k] = hi[k].max(d);
+        }
+    }
+    let finite = lo.iter().chain(hi.iter()).all(|v| v.is_finite());
+    if finite && (0..3).all(|k| hi[k] - lo[k] > NORMALIZE_EPSILON) {
+        Some(make_oriented_box_mesh(lo, hi, axes))
+    } else {
+        None
+    }
+}
+
 /// Reusable buffers for triangle clipping operations
 ///
 /// This struct eliminates per-triangle allocations in clip_triangle_against_box
@@ -2027,8 +2104,14 @@ impl GeometryRouter {
                                         OpeningKindDiag::Diagonal,
                                         false,
                                     );
+                                    // Cut with the opening's clean oriented
+                                    // bounding box, not the raw (possibly
+                                    // tessellated / jittered) mesh — see
+                                    // `oriented_box_cutter` (issue #1167).
+                                    let cutter = oriented_box_cutter(&item_mesh, &frame)
+                                        .unwrap_or(item_mesh);
                                     openings.push(OpeningType::DiagonalRectangular(
-                                        item_mesh, frame,
+                                        cutter, frame,
                                     ));
                                 } else {
                                     bump(

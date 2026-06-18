@@ -18,5 +18,17 @@ The axis-aligned tolerance is now `cos(1°)`, so any meaningfully rotated wall i
 cut with its true oriented opening box (the exact-mesh path), which removes
 exactly the opening volume. Genuinely axis-aligned walls — whose direction
 cosines are exact up to f32 mesh-normal noise — stay on the fast path with a
-~1000× margin. Adds regression test `rotated_wall_opening_is_not_overcut`
-(a 15°-rotated wall over-cut 0.66 m³ before, exactly 0.54 m³ after).
+~1000× margin.
+
+That oriented cut is then fed the opening's clean oriented bounding box rather
+than the raw `IfcOpeningElement` mesh. Real exporters segment opening profiles
+(extra collinear vertices) and emit slightly non-orthogonal, f32-jittered faces;
+on a tilted cut plane the exact subtract's coplanar re-triangulation turned that
+noise into rim slivers and hairline cracks (fragmented holes). Cutting with the
+minimal clean box — the same pristine-cutter property the axis-aligned path
+already relied on — makes a tessellated rotated opening cut just as cleanly
+(watertight, no needles) as a pristine one.
+
+Adds regression tests `rotated_wall_opening_is_not_overcut` (a 15°-rotated wall
+over-cut 0.66 m³ before, exactly 0.54 m³ after) and
+`rotated_tessellated_opening_does_not_fragment` (watertight, no slivers).

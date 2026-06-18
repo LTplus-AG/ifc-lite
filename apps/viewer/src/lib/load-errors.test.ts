@@ -32,6 +32,50 @@ describe('classifyLoadError', () => {
     assert.equal(classifyLoadError(new Error('Cannot enlarge memory arrays')), 'out_of_memory');
   });
 
+  it('classifies the main-thread RangeError OOM (issue #1215)', () => {
+    // The exact message captured in PostHog issue 019edcc2 (Chrome/Windows).
+    assert.equal(classifyLoadError(new RangeError('Array buffer allocation failed')), 'out_of_memory');
+  });
+
+  it('classifies a hard geometry-worker crash (issue #1203)', () => {
+    // worker.onerror with an empty ErrorEvent used to read "undefined"; it now
+    // synthesises a message, and either form must bucket as a worker crash.
+    assert.equal(classifyLoadError(new Error('Geometry worker failed: undefined')), 'geometry_worker_crash');
+    assert.equal(
+      classifyLoadError(new Error('Geometry worker failed: worker terminated unexpectedly')),
+      'geometry_worker_crash',
+    );
+  });
+
+  it('classifies a wasm runtime trap surfaced through the worker (issue #1196)', () => {
+    // The exact message captured in PostHog issue 019eda71.
+    assert.equal(classifyLoadError(new Error('unreachable')), 'geometry_worker_crash');
+    assert.equal(classifyLoadError(new Error('Geometry worker error: unreachable')), 'geometry_worker_crash');
+  });
+
+  it('prefers out_of_memory over worker_crash when the worker died with a clear OOM', () => {
+    assert.equal(
+      classifyLoadError(new Error('Geometry worker error: Cannot enlarge memory arrays')),
+      'out_of_memory',
+    );
+  });
+
+  it('classifies the geometry stream watchdog timeout (issues #1194/#1204)', () => {
+    assert.equal(
+      classifyLoadError(new Error('Geometry stream stalled after 40000ms. Last rendered meshes: 0.')),
+      'geometry_stream_stalled',
+    );
+  });
+
+  it('does not depend on a file name in the stall message (privacy)', () => {
+    // The watchdog Error must never carry the model name; classification keys
+    // only on the stable prefix.
+    assert.equal(
+      classifyLoadError(new Error('Geometry stream stalled after 90000ms. Last rendered meshes: 3473.')),
+      'geometry_stream_stalled',
+    );
+  });
+
   it('classifies cancellation', () => {
     assert.equal(classifyLoadError(new Error('The operation was aborted')), 'cancelled');
     assert.equal(classifyLoadError('cancelled'), 'cancelled');
@@ -57,6 +101,22 @@ describe('formatLoadError', () => {
     assert.match(msg, /reload/i);
     // The cryptic raw message must NOT leak to the user for known failures.
     assert.doesNotMatch(msg, /HTTP status code is not ok/);
+  });
+
+  it('gives actionable memory guidance for a worker crash without leaking the raw message', () => {
+    const msg = formatLoadError(new Error('Geometry worker failed: undefined'), 'tower.ifc');
+    assert.match(msg, /"tower\.ifc"/);
+    assert.match(msg, /memory/i);
+    assert.doesNotMatch(msg, /undefined/);
+  });
+
+  it('gives actionable guidance for a stream stall and re-attaches the file name for the user', () => {
+    const msg = formatLoadError(
+      new Error('Geometry stream stalled after 40000ms. Last rendered meshes: 0.'),
+      'tower.ifc',
+    );
+    assert.match(msg, /"tower\.ifc"/);
+    assert.match(msg, /stalled/i);
   });
 
   it('preserves the raw message for unknown failures', () => {

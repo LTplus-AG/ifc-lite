@@ -914,8 +914,12 @@ export function useIfcLoader() {
             geometryIterator.next(),
             new Promise<never>((_, reject) => {
               watchdogId = globalThis.setTimeout(() => {
+                // Do NOT embed `file.name` here — this Error is captured by
+                // error tracking (and auto-filed as a public GitHub issue), so
+                // a confidential model name would leak. The file name is added
+                // back for the user only, via formatLoadError(err, file.name).
                 reject(new Error(
-                  `Geometry stream stalled after ${watchdogMs}ms while loading ${file.name}. ` +
+                  `Geometry stream stalled after ${watchdogMs}ms. ` +
                   `Last rendered meshes: ${lastTotalMeshes}.`
                 ));
               }, watchdogMs);

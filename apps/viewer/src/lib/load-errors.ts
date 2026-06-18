@@ -22,6 +22,21 @@ export type LoadErrorKind =
   | 'wasm_engine_load'
   /** Out-of-memory / WASM heap exhaustion during processing. */
   | 'out_of_memory'
+  /**
+   * A geometry worker (or the wasm mesher running in it) stopped unexpectedly
+   * — a hard worker crash (`worker.onerror`, no message) or a wasm runtime
+   * trap (`unreachable`, `RuntimeError`) surfaced during processing. On heavy
+   * models this is almost always memory pressure that didn't reach the JS heap
+   * as a clean OOM, so it is grouped separately from `out_of_memory` only for
+   * triage — the user guidance is the same.
+   */
+  | 'geometry_worker_crash'
+  /**
+   * The geometry stream watchdog fired: no batch arrived within the grace
+   * window. A derived symptom — usually downstream of a worker crash/OOM, or a
+   * genuinely too-large/complex model that never streams on this device.
+   */
+  | 'geometry_stream_stalled'
   /** The user (or a superseding load) cancelled the operation. */
   | 'cancelled'
   /** Anything else. */
@@ -59,6 +74,31 @@ function isOutOfMemoryError(message: string): boolean {
   );
 }
 
+/**
+ * The geometry stream watchdog timed out (see `useIfcLoader`'s `Promise.race`).
+ * Matched on the stable prefix only — the message must NOT carry the file name
+ * (it would leak a confidential model name into error tracking), so we never
+ * rely on anything past "stalled".
+ */
+function isStreamStalledError(message: string): boolean {
+  return /geometry stream stalled/i.test(message);
+}
+
+/**
+ * A geometry worker died or the wasm mesher trapped during processing. Covers:
+ *  - `worker.onerror` wrapped as "Geometry worker failed: …" (an empty
+ *    `ErrorEvent` from a hard crash — classic OOM kill of the worker thread),
+ *  - "Geometry worker error: …" (the worker posted a `{type:'error'}` message),
+ *  - a raw wasm runtime trap (`unreachable`, `RuntimeError`) that escaped as an
+ *    uncaught exception in the worker-message handler.
+ */
+function isGeometryWorkerCrashError(message: string): boolean {
+  return (
+    /geometry worker (?:failed|error|crashed|terminated)/i.test(message) ||
+    /\bunreachable\b|runtimeerror|wasm trap|trap: |rust_begin_unwind/i.test(message)
+  );
+}
+
 function isCancelledError(message: string): boolean {
   return /\bcancel(?:led|ed)?\b|aborterror|the operation was aborted/i.test(message);
 }
@@ -67,7 +107,11 @@ function isCancelledError(message: string): boolean {
 export function classifyLoadError(err: unknown): LoadErrorKind {
   const message = messageOf(err);
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
+  // Explicit memory-exhaustion signals win over the worker-crash bucket so a
+  // worker that died with a clear OOM message is grouped as out_of_memory.
   if (isOutOfMemoryError(message)) return 'out_of_memory';
+  if (isStreamStalledError(message)) return 'geometry_stream_stalled';
+  if (isGeometryWorkerCrashError(message)) return 'geometry_worker_crash';
   if (isCancelledError(message)) return 'cancelled';
   return 'unknown';
 }
@@ -92,6 +136,18 @@ export function formatLoadError(err: unknown, fileName?: string): string {
     case 'out_of_memory':
       return (
         `Ran out of memory while processing ${subject}. ` +
+        `Try closing other tabs, or load fewer/smaller models at once.`
+      );
+    case 'geometry_worker_crash':
+      return (
+        `A geometry worker stopped unexpectedly while processing ${subject}. ` +
+        `This usually means the model is too large for this device's available memory. ` +
+        `Try closing other tabs, or load fewer/smaller models at once.`
+      );
+    case 'geometry_stream_stalled':
+      return (
+        `Processing ${subject} stalled and was stopped. ` +
+        `The model may be too large or complex for this device. ` +
         `Try closing other tabs, or load fewer/smaller models at once.`
       );
     case 'cancelled':

@@ -382,7 +382,17 @@ export async function* processParallel(
       }
     };
     worker.onerror = (err) => {
-      workerError = new Error(`Geometry worker failed: ${err.message}`);
+      // A hard worker crash (e.g. the wasm thread aborting under memory
+      // pressure) fires an ErrorEvent with an empty `message`. Emitting the
+      // literal "undefined" produced a cryptic, unclassifiable error in tracking
+      // ("Geometry worker failed: undefined"). Synthesise a meaningful message
+      // from whatever the ErrorEvent carries, defaulting to the most common
+      // cause so the error classifier can bucket it.
+      const detail =
+        (err?.message && String(err.message)) ||
+        (err?.filename ? `at ${err.filename}:${err.lineno ?? 0}` : '') ||
+        'worker terminated unexpectedly';
+      workerError = new Error(`Geometry worker failed: ${detail}`);
       workersCompleted++;
       worker.terminate();
       wake();

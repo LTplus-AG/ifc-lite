@@ -47,10 +47,15 @@ describe('classifyLoadError', () => {
     );
   });
 
-  it('classifies a wasm runtime trap surfaced through the worker (issue #1196)', () => {
-    // The exact message captured in PostHog issue 019eda71.
-    assert.equal(classifyLoadError(new Error('unreachable')), 'geometry_worker_crash');
+  it('classifies a wasm trap only when the worker marker is present (issue #1196)', () => {
+    // The worker pool wraps its failures, so a real geometry trap arrives with
+    // the "Geometry worker error:" prefix and is attributable.
     assert.equal(classifyLoadError(new Error('Geometry worker error: unreachable')), 'geometry_worker_crash');
+    // A BARE wasm trap is NOT attributed to geometry — other viewer wasm
+    // (space-plate, parquet) can trap too, so it stays unknown and surfaces on
+    // its own instead of being mis-bucketed/suppressed as the geometry family.
+    assert.equal(classifyLoadError(new Error('unreachable')), 'unknown');
+    assert.equal(classifyLoadError(new Error('RuntimeError: unreachable executed')), 'unknown');
   });
 
   it('prefers out_of_memory over worker_crash when the worker died with a clear OOM', () => {

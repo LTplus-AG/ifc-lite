@@ -22,9 +22,14 @@ const exceptionEvent = (value: string, extraProps: Record<string, unknown> = {})
 });
 
 describe('scrubEvent — error_kind tagging', () => {
-  it('tags a raw wasm "unreachable" trap (autocaptured, issue #1196)', () => {
-    const out = scrubEvent(exceptionEvent('unreachable'));
-    assert.equal(out?.properties?.error_kind, 'geometry_worker_crash');
+  it('tags a wrapped worker trap but NOT a bare one (issue #1196)', () => {
+    // The worker pool wraps failures, so the attributable form is tagged…
+    const wrapped = scrubEvent(exceptionEvent('Geometry worker error: unreachable'));
+    assert.equal(wrapped?.properties?.error_kind, 'geometry_worker_crash');
+    // …but a bare wasm trap stays untagged (could be any viewer wasm, not just
+    // geometry), so it is neither mislabelled nor suppressed as the family.
+    const bare = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(bare?.properties?.error_kind, undefined);
   });
 
   it('tags the main-thread RangeError OOM (issue #1215)', () => {
@@ -79,6 +84,22 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.equal(out?.properties?.file_name, undefined);
     assert.equal(out?.properties?.detail, '[redacted]');
     assert.equal(out?.properties?.count, 3);
+  });
+
+  it('strips query + hash from URL auto-properties instead of deleting them', () => {
+    // Regression: `$current_url` matches SENSITIVE_KEY's `url` word, so without
+    // URL_KEYS being checked first it would be deleted outright, losing the
+    // route. We keep the route, drop the query/hash (which can encode a model
+    // id or token).
+    const out = scrubEvent({
+      event: '$pageview',
+      properties: {
+        $current_url: 'https://app.example.com/viewer?model=secret#section',
+        $referrer: 'https://other.com/page?utm_source=x',
+      },
+    } as CaptureEvent);
+    assert.equal(out?.properties?.$current_url, 'https://app.example.com/viewer');
+    assert.equal(out?.properties?.$referrer, 'https://other.com/page');
   });
 
   it('passes a null event through untouched', () => {

@@ -85,18 +85,23 @@ function isStreamStalledError(message: string): boolean {
 }
 
 /**
- * A geometry worker died or the wasm mesher trapped during processing. Covers:
+ * A geometry worker explicitly reported a failure. Covers the messages the
+ * worker pool produces:
  *  - `worker.onerror` wrapped as "Geometry worker failed: …" (an empty
  *    `ErrorEvent` from a hard crash — classic OOM kill of the worker thread),
- *  - "Geometry worker error: …" (the worker posted a `{type:'error'}` message),
- *  - a raw wasm runtime trap (`unreachable`, `RuntimeError`) that escaped as an
- *    uncaught exception in the worker-message handler.
+ *  - "Geometry worker error: …" (the worker posted a `{type:'error'}` message,
+ *    e.g. "Geometry worker error: unreachable").
+ *
+ * Deliberately keyed on the "geometry worker" marker only. A *bare* wasm trap
+ * (`unreachable`, `RuntimeError`) is NOT attributed here: the viewer runs other
+ * wasm (space-plate, parquet) whose traps would otherwise be mis-bucketed as the
+ * geometry family and wrongly suppressed. Those stay `unknown` and surface on
+ * their own. (The worker pool always wraps its failures with the marker, so a
+ * genuine geometry-worker trap still lands here via the "Geometry worker …"
+ * prefix.)
  */
 function isGeometryWorkerCrashError(message: string): boolean {
-  return (
-    /geometry worker (?:failed|error|crashed|terminated)/i.test(message) ||
-    /\bunreachable\b|runtimeerror|wasm trap|trap: |rust_begin_unwind/i.test(message)
-  );
+  return /geometry worker (?:failed|error|crashed|terminated)/i.test(message);
 }
 
 function isCancelledError(message: string): boolean {

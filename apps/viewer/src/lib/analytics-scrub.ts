@@ -43,15 +43,20 @@ const stripQueryAndHash = (value: string): string => {
 const scrubProperties = (props: Record<string, unknown> | undefined): void => {
   if (!props) return;
   for (const k of Object.keys(props)) {
+    const v = props[k];
+    // URL_KEYS must be checked BEFORE SENSITIVE_KEY: keys like `$current_url`
+    // match SENSITIVE_KEY's `url` word, so without this they'd be deleted
+    // outright instead of having their query/hash stripped — losing the route
+    // we intend to keep (see the URL_KEYS comment above).
+    if (URL_KEYS.has(k)) {
+      if (typeof v === 'string') props[k] = stripQueryAndHash(v);
+      continue;
+    }
     if (SENSITIVE_KEY.test(k)) {
       delete props[k];
       continue;
     }
-    const v = props[k];
-    if (typeof v === 'string') {
-      if (URL_KEYS.has(k)) props[k] = stripQueryAndHash(v);
-      else if (PATHISH.test(v)) props[k] = '[redacted]';
-    }
+    if (typeof v === 'string' && PATHISH.test(v)) props[k] = '[redacted]';
   }
 };
 
@@ -85,14 +90,15 @@ const isUnactionableThirdPartyException = (
 
 // ── Error-family tagging ─────────────────────────────────────────────────────
 // The geometry pipeline surfaces a recurring family of resource-exhaustion
-// failures on heavy models (WASM OOM, worker crashes, the stream watchdog) plus
-// transient engine-load failures. Most reach error tracking RAW — either as
-// uncaught exceptions PostHog autocaptures (e.g. a wasm "unreachable" trap in
-// the worker-message handler) or via explicit captureException — so each new
-// minified message spawns its own one-off error group (and a public GitHub
-// issue). Stamping a stable `error_kind` from the exception's message lets these
-// be filtered, grouped, and suppressed centrally instead of triaged one by one.
-// See ./load-errors.ts for the taxonomy.
+// failures on heavy models (WASM OOM, the worker pool's "Geometry worker …"
+// crashes, the stream watchdog) plus transient engine-load failures. Many reach
+// error tracking RAW — either as uncaught exceptions PostHog autocaptures or via
+// explicit captureException — so each new minified message spawns its own
+// one-off error group (and a public GitHub issue). Stamping a stable
+// `error_kind` from the exception's message lets the *recognised* family be
+// filtered, grouped, and suppressed centrally instead of triaged one by one.
+// Unrecognised exceptions (`unknown`) are left untagged so an unrelated app
+// failure is never mislabelled as a geometry/load error. See ./load-errors.ts.
 const exceptionMessage = (
   props: Record<string, unknown> | undefined,
 ): string | undefined => {
@@ -117,7 +123,11 @@ const tagErrorKind = (
   if (typeof event.properties.error_kind === 'string') return;
   const message = exceptionMessage(event.properties);
   if (message === undefined) return;
-  event.properties.error_kind = classifyLoadError(message);
+  const kind = classifyLoadError(message);
+  // Only tag recognised families — never stamp `unknown` onto an unrelated
+  // exception (that would mislabel it as a triaged load error).
+  if (kind === 'unknown') return;
+  event.properties.error_kind = kind;
 };
 
 // `before_send` shape: (event | null) => (event | null). Returning null drops

@@ -140,11 +140,14 @@ export class WebSocketBridge implements IPlatformBridge {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.healthTimeoutMs);
     try {
-      // `targetAddressSpace` is not yet in lib.dom's RequestInit.
+      // `targetAddressSpace` is not yet in lib.dom's RequestInit. Use 'loopback'
+      // for 127.0.0.1/::1 — Chrome distinguishes 'loopback' from 'local' (RFC1918
+      // private) and HARD-REJECTS a mismatch ("target IP address space of `local`
+      // yet the resource is in address space `loopback`"). Firefox is lenient.
       const probeInit: RequestInit & { targetAddressSpace?: string } = {
         signal: controller.signal,
         cache: 'no-store',
-        targetAddressSpace: 'local',
+        targetAddressSpace: 'loopback',
       };
       const res = await fetch(this.healthUrl, probeInit);
       if (!res.ok) throw new Error(`native backend health check failed: HTTP ${res.status}`);

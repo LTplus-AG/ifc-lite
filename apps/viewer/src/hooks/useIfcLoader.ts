@@ -753,14 +753,19 @@ export function useIfcLoader() {
       // walked the file and built the same index.
       let workerParserInstance: WorkerParser | null = null;
 
-      // The geometry pre-pass only emits `entity-index` on the parallel
+      // The geometry pre-pass only emits `entity-index` on the WASM parallel
       // streaming path inside `processAdaptive`. Files smaller than the
-      // sync threshold (2 MB) and the desktop-stable path don't fire it
-      // — gate `waitForEntityIndex` so the parser doesn't hang.
+      // sync threshold (2 MB), and the NATIVE backend path (which streams from
+      // the helper via `processStreaming` and never emits `onEntityIndex`),
+      // don't fire it — gate `waitForEntityIndex` so the parser doesn't hang
+      // for its full 60 s timeout waiting for an index that never comes.
+      // `isNativeBackend` is settled post-init: false if a WS backend was
+      // configured but unreachable (fell back to WASM, which DOES emit it).
       const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
       const geometryWillEmitEntityIndex =
         useParserWorker
-        && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB;
+        && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB
+        && !geometryProcessor.isNativeBackend;
 
       const startDataModelParsing = () => {
         metadataStartMs = performance.now() - totalStartTime;

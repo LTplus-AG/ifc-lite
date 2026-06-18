@@ -216,6 +216,19 @@ export class GeometryProcessor {
   }
 
   /**
+   * True when geometry is served by a native backend (Tauri or the WebSocket
+   * helper). Settled after `init()` — it reverts to false if a configured
+   * WebSocket backend was unreachable and the processor fell back to WASM.
+   *
+   * Consumers use this to gate the WASM-only entity-index handoff: the native
+   * streaming path does NOT emit `onEntityIndex`, so a peer parser worker must
+   * not block waiting for one (it would hit its 60s timeout). See useIfcLoader.
+   */
+  get isNativeBackend(): boolean {
+    return this.isNative;
+  }
+
+  /**
    * Initialize the geometry processor
    * In Tauri: Creates platform bridge for native Rust processing
    * In browser: Loads WASM

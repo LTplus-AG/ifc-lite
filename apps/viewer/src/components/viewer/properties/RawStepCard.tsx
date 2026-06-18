@@ -298,7 +298,9 @@ export function RawStepCard({
       {/* Rows */}
       <div className="divide-y-0">
         {tokens.map((token, idx) => {
-          const name = attributeNames[idx] || `Arg ${idx}`;
+          // Fallback name uses the 1-based position so it stays aligned with
+          // the bracketed index shown in each row (which is also 1-based).
+          const name = attributeNames[idx] || `Arg ${idx + 1}`;
           return (
             <RawStepRow
               key={idx}

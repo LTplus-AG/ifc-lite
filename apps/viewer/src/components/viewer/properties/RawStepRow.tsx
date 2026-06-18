@@ -111,12 +111,14 @@ export function RawStepRow({
         isMutated ? 'bg-purple-50/40 dark:bg-purple-950/15' : ''
       }`}
     >
-      {/* Positional index */}
+      {/* Positional index — displayed 1-based to match the buildingSMART
+       *  IFC attribute tables and STEP documentation (GlobalId = #1).
+       *  The `index` prop stays 0-based for store/overlay addressing. */}
       <span
         className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 tabular-nums tracking-wide"
-        aria-label={`positional index ${index}`}
+        aria-label={`positional index ${index + 1}`}
       >
-        [{index}]
+        [{index + 1}]
       </span>
 
       {/* Schema attribute name */}

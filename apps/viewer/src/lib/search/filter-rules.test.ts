@@ -16,6 +16,26 @@ import {
   Rule,
 } from './filter-rules.js';
 
+describe('op helpers tolerate an undefined candidate (#1195)', () => {
+  // getTypeName / property accessors are typed `string` but return undefined
+  // for untyped entities at runtime; the helpers must not throw on it.
+  const undef = undefined as unknown as string;
+  it('setOpMatches treats undefined as "not one of the values"', () => {
+    assert.doesNotThrow(() => setOpMatches('in', undef, ['IfcWall']));
+    assert.strictEqual(setOpMatches('in', undef, ['IfcWall']), false);
+    assert.strictEqual(setOpMatches('notIn', undef, ['IfcWall']), true);
+  });
+  it('stringOpMatches does not throw on an undefined candidate', () => {
+    assert.doesNotThrow(() => stringOpMatches('contains', undef, 'wall'));
+    assert.strictEqual(stringOpMatches('contains', undef, 'wall'), false);
+  });
+  it('valueOpMatches treats undefined as not set', () => {
+    assert.strictEqual(valueOpMatches('isNotSet', undef, ''), true);
+    assert.strictEqual(valueOpMatches('isSet', undef, ''), false);
+    assert.doesNotThrow(() => valueOpMatches('eq', undef, 'x'));
+  });
+});
+
 describe('setOpMatches', () => {
   it('matches case-insensitively for "in"', () => {
     assert.strictEqual(setOpMatches('in', 'IfcWall', ['ifcwall', 'IfcDoor']), true);

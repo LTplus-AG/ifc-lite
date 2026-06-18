@@ -132,14 +132,22 @@ export type FilterRule =
 
 // ── Pure op helpers (ported verbatim from filter.rs) ──────────────────────────
 
+/** Lower-case a candidate that may be undefined at runtime (e.g. an untyped
+ *  entity's `getTypeName`) — calling `.toLowerCase()` on that crashed filtering
+ *  by type/name (#1195). Coercing nullish to '' is a no-op for real strings. */
+function lower(s: string | null | undefined): string {
+  return (s ?? '').toLowerCase();
+}
+
 export function setOpMatches(op: SetOp, candidate: string, values: readonly string[]): boolean {
-  const hit = values.some((v) => v.toLowerCase() === candidate.toLowerCase());
+  const c = lower(candidate);
+  const hit = values.some((v) => lower(v) === c);
   return op === 'in' ? hit : !hit;
 }
 
 export function stringOpMatches(op: StringOp, candidate: string, value: string): boolean {
-  const a = candidate.toLowerCase();
-  const b = value.toLowerCase();
+  const a = lower(candidate);
+  const b = lower(value);
   switch (op) {
     case 'eq':          return a === b;
     case 'ne':          return a !== b;
@@ -199,12 +207,12 @@ export function numericOpMatches(op: NumericOp, candidate: number, value: number
  */
 export function valueOpMatches(op: ValueOp, psetVal: string, ruleVal: string): boolean {
   switch (op) {
-    case 'isSet':       return psetVal.length > 0;
-    case 'isNotSet':    return psetVal.length === 0;
-    case 'eq':          return psetVal.toLowerCase() === ruleVal.toLowerCase();
-    case 'ne':          return psetVal.toLowerCase() !== ruleVal.toLowerCase();
-    case 'contains':    return psetVal.toLowerCase().includes(ruleVal.toLowerCase());
-    case 'notContains': return !psetVal.toLowerCase().includes(ruleVal.toLowerCase());
+    case 'isSet':       return (psetVal ?? '').length > 0;
+    case 'isNotSet':    return (psetVal ?? '').length === 0;
+    case 'eq':          return lower(psetVal) === lower(ruleVal);
+    case 'ne':          return lower(psetVal) !== lower(ruleVal);
+    case 'contains':    return lower(psetVal).includes(lower(ruleVal));
+    case 'notContains': return !lower(psetVal).includes(lower(ruleVal));
     case 'gt':
     case 'gte':
     case 'lt':

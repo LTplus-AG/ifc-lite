@@ -9,22 +9,21 @@
  * `useCompareOverlay`) and listed here. Row click selects + frames the element.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { GitCompareArrows, Loader2, Play, X, Trash2, Download, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useCompare } from '@/hooks/useCompare';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
-import { useBCF } from '@/hooks/useBCF';
 import { posthog } from '@/lib/analytics';
-import { createBCFProject, createBCFTopic, type BCFTopic, type BCFViewpoint } from '@ifc-lite/bcf';
 import { COMPARE_COLORS } from '@/lib/compare/overlay';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 import { describeChange, type ChangeDetail } from '@/lib/compare/describeChange';
 import { downloadCompareReport } from '@/lib/compare/exportReport';
 import { ChangeDetailView } from './compare/ChangeDetailView';
 import { BcfFromChange } from './compare/BcfFromChange';
+import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
 import type { CompareRow } from './compare/changeRow';
 import type { DiffScope, DiffState, DiffEntry } from '@ifc-lite/diff';
@@ -64,18 +63,11 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const bcfAuthor = useViewerStore((s) => s.bcfAuthor);
 
   const { running, result, error, runComparison } = useCompare();
-  const { createViewpointFromState } = useBCF();
-
-  const [bcfFormOpen, setBcfFormOpen] = useState(false);
-  const [bcfCreatedTitle, setBcfCreatedTitle] = useState<string | null>(null);
-  // Viewpoint (camera + snapshot + selection) previewed in the create form and
-  // attached to the topic on submit.
-  const [bcfViewpoint, setBcfViewpoint] = useState<BCFViewpoint | null>(null);
-  const [capturingSnapshot, setCapturingSnapshot] = useState(false);
-  // Guards the non-idempotent BCF create against a double-submit (#1208 review).
-  const bcfSubmitInFlight = useRef(false);
 
   const modelList = useMemo(() => Array.from(models.values()), [models]);
+
+  // BCF-from-change flow (form state, viewpoint capture, topic creation).
+  const bcf = useBcfFromChange(modelList, selectedKey);
 
   // Default the A/B selection to the first two loaded models, and repair the
   // selection if a chosen model was removed.
@@ -165,99 +157,10 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     });
   };
 
-  // Reset the BCF affordance whenever the focused change changes.
-  useEffect(() => {
-    setBcfFormOpen(false);
-    setBcfCreatedTitle(null);
-  }, [selectedKey]);
-
-  // Capture the framed element's viewpoint (camera + snapshot + selection) for
-  // the create form's preview and the eventual topic attachment.
-  const captureViewpoint = useCallback(async () => {
-    setCapturingSnapshot(true);
-    try {
-      const vp = await createViewpointFromState({
-        includeSnapshot: true,
-        includeSelection: true,
-        includeHidden: false,
-      });
-      setBcfViewpoint(vp);
-    } catch (err) {
-      console.error('[compare] failed to capture viewpoint for BCF', err);
-    } finally {
-      setCapturingSnapshot(false);
-    }
-  }, [createViewpointFromState]);
-
-  // Grab a viewpoint when the create form opens (so the snapshot preview is
-  // ready); drop it when the form closes.
-  useEffect(() => {
-    if (bcfFormOpen) {
-      void captureViewpoint();
-    } else {
-      setBcfViewpoint(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bcfFormOpen]);
-
-  // Raise a BCF issue from the focused change (#1199): create a topic in the
-  // BCF project (pre-filled from the change), capture a viewpoint of the
-  // currently-framed element, and stay in the compare view. Priority / type are
-  // set in the form; status / author / GlobalId come along automatically.
-  const submitBcfFromChange = async (
-    data: Partial<BCFTopic>,
-    options?: { includeSnapshot: boolean },
-  ) => {
-    if (bcfSubmitInFlight.current) return;
-    bcfSubmitInFlight.current = true;
-    try {
-      const state = useViewerStore.getState();
-      if (!state.bcfProject) {
-        const first = modelList[0]?.name?.replace(/\.(ifc|ifczip)$/i, '') || 'Comparison';
-        state.setBcfProject(createBCFProject({ name: `${first}_Issues` }));
-      }
-      const topic = createBCFTopic({
-        title: data.title || 'Untitled',
-        description: data.description,
-        author: state.bcfAuthor,
-        topicType: data.topicType,
-        topicStatus: data.topicStatus ?? 'Open',
-        priority: data.priority,
-        assignedTo: data.assignedTo,
-        dueDate: data.dueDate,
-        labels: data.labels,
-      });
-      useViewerStore.getState().addTopic(topic);
-      // Attach the previewed viewpoint unless the user opted out; fall back to a
-      // fresh capture if the preview never resolved.
-      let viewpoint = options?.includeSnapshot === false ? null : bcfViewpoint;
-      if (options?.includeSnapshot !== false && !viewpoint) {
-        viewpoint = await createViewpointFromState({
-          includeSnapshot: true,
-          includeSelection: true,
-          includeHidden: false,
-        });
-      }
-      if (viewpoint) useViewerStore.getState().addViewpoint(topic.guid, viewpoint);
-      posthog.capture('bcf_topic_created', {
-        source: 'compare',
-        topic_type: topic.topicType,
-        priority: topic.priority,
-        has_viewpoint: Boolean(viewpoint),
-      });
-      setBcfFormOpen(false);
-      setBcfCreatedTitle(topic.title);
-    } catch (error) {
-      console.error('[compare] failed to create BCF issue from change', error);
-    } finally {
-      bcfSubmitInFlight.current = false;
-    }
-  };
-
   // Composing a BCF issue: collapse the diff chrome so the form owns the panel.
   // Gate on the selected row too, so a vanished selection can never leave the
   // panel empty (chrome hidden but no form to show).
-  const bcfComposing = bcfFormOpen && !!selectedRow;
+  const bcfComposing = bcf.formOpen && !!selectedRow;
 
   return (
     <div className="h-full flex flex-col bg-background text-foreground overflow-hidden min-w-0">
@@ -408,7 +311,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
             <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs shrink-0">
               <button
                 type="button"
-                onClick={() => setBcfFormOpen(false)}
+                onClick={() => bcf.setFormOpen(false)}
                 className="flex items-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
                 title="Back to changes"
               >
@@ -428,15 +331,15 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
               row={selectedRow}
               detail={detail}
               author={bcfAuthor}
-              open={bcfFormOpen}
-              createdTitle={bcfCreatedTitle}
-              onStart={() => { setBcfCreatedTitle(null); setBcfFormOpen(true); }}
-              onCancel={() => setBcfFormOpen(false)}
-              onSubmit={submitBcfFromChange}
+              open={bcf.formOpen}
+              createdTitle={bcf.createdTitle}
+              onStart={() => { bcf.setCreatedTitle(null); bcf.setFormOpen(true); }}
+              onCancel={() => bcf.setFormOpen(false)}
+              onSubmit={bcf.submit}
               onOpenBcfPanel={() => useViewerStore.getState().openWorkspacePanel('bcf')}
-              snapshot={bcfViewpoint?.snapshot ?? null}
-              onCaptureSnapshot={() => void captureViewpoint()}
-              capturingSnapshot={capturingSnapshot}
+              snapshot={bcf.viewpoint?.snapshot ?? null}
+              onCaptureSnapshot={() => void bcf.captureViewpoint()}
+              capturingSnapshot={bcf.capturingSnapshot}
             />
           )}
         </>

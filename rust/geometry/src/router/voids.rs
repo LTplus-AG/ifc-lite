@@ -996,10 +996,18 @@ impl GeometryRouter {
                 continue;
             }
             if let Ok(items) = decoder.resolve_ref_list(sr.get(3)?) {
-                if let Some(first) = items.into_iter().next() {
-                    item = Some(first);
-                    break;
+                // A clean rectangular extrusion is ONE item. A multi-solid body
+                // (the probe would otherwise read only the first) must defer so the
+                // exact kernel cuts all of it.
+                let mut iter = items.into_iter();
+                let Some(first) = iter.next() else {
+                    continue;
+                };
+                if iter.next().is_some() {
+                    return None;
                 }
+                item = Some(first);
+                break;
             }
         }
 
@@ -1073,10 +1081,18 @@ impl GeometryRouter {
         // positions; a uniform scale leaves the orthonormal frame R unchanged and scales
         // the center + half-extents. Without this the box is off by the unit factor
         // (e.g. 1000x on a millimetre IFC2X3 Revit model).
+        // Match the mesh frame: the mesh/bounds path scales by `unit_scale` AND subtracts
+        // the RTC offset (georef re-basing). The center must do BOTH or it is framed
+        // around a different origin than the host vertices → spurious defers / wrong cut.
         let s = self.unit_scale;
+        let (rx, ry, rz) = self.rtc_offset;
         Some(RectParam {
             r: Matrix3::from_columns(&[uu, vv, ww]),
-            center: Point3::new(center_native.x * s, center_native.y * s, center_native.z * s),
+            center: Point3::new(
+                center_native.x * s - rx,
+                center_native.y * s - ry,
+                center_native.z * s - rz,
+            ),
             half: [x_dim * 0.5 * s, y_dim * 0.5 * s, depth * 0.5 * s],
         })
     }
@@ -1556,7 +1572,17 @@ impl GeometryRouter {
         let rt = host.r.transpose();
 
         // Host expressed in F (small coords) + reconciliation against the real mesh.
-        let host_f = rotate_mesh_into_frame(mesh, &rt, &host.center);
+        // ORIGIN-AWARE: the mesh may already be in a per-element local frame (wasm
+        // defaults `local_frame_enabled()` ON), where positions are relative to
+        // `mesh.origin` (world = origin + position). Frame the cut around
+        // `center - origin` so host_f = Rᵀ·(world_vertex - center) either way.
+        let o = mesh.origin;
+        let eff_center = Point3::new(
+            host.center.x - o[0],
+            host.center.y - o[1],
+            host.center.z - o[2],
+        );
+        let host_f = rotate_mesh_into_frame(mesh, &rt, &eff_center);
         if host_f.positions.is_empty() {
             return None;
         }
@@ -1587,7 +1613,13 @@ impl GeometryRouter {
                 op.center.y - host.center.y,
                 op.center.z - host.center.z,
             );
-            let pen = (0..3).find(|&i| map[i].0 == 2).unwrap_or(thin_axis(&host.half));
+            // The opening must penetrate along the wall's THIN (thickness) axis. If its
+            // extrude axis maps to a length/height axis, extending it across the host
+            // would wipe out a full slab — defer that case to the exact kernel.
+            let pen = (0..3).find(|&i| map[i].0 == 2)?;
+            if host.half[pen] > host.half[thin_axis(&host.half)] * 1.05 {
+                return None;
+            }
             let mut half_f = [0.0f64; 3];
             for i in 0..3 {
                 half_f[i] = op.half[map[i].0];
@@ -1649,10 +1681,12 @@ impl GeometryRouter {
         ctx: &VoidContext,
         element_id: u32,
     ) -> Mesh {
-        // PARAMETRIC fast path (flag-gated): runs on the WORLD mesh (origin 0). The
-        // per-element local frame (origin != 0) defers — the parametric path builds its
-        // own frame and does not need it.
-        if mesh.origin == [0.0, 0.0, 0.0] && crate::rect_fast::param_enabled() {
+        // PARAMETRIC fast path (flag-gated). ORIGIN-AWARE: it handles both the world
+        // mesh (origin 0, native default) AND a per-element local-frame mesh (origin != 0,
+        // the wasm default — the precision-critical case this path is FOR), since it
+        // builds its own frame from the parametrics. Any miss falls through to the exact
+        // kernel below unchanged.
+        if crate::rect_fast::param_enabled() {
             if let Some(fast) = self.try_param_rect_cut(&mesh, ctx) {
                 return fast;
             }

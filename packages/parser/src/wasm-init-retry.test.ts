@@ -17,16 +17,20 @@ describe('isTransientWasmLoadError', () => {
     ).toBe(true);
   });
 
-  it('flags streaming compile/instantiate failures and failed fetches', () => {
-    for (const verb of ['compile', 'compileStreaming', 'instantiate', 'instantiateStreaming']) {
-      expect(isTransientWasmLoadError(`Failed to execute '${verb}' on 'WebAssembly': x`)).toBe(true);
-    }
-    expect(isTransientWasmLoadError('Failed to fetch')).toBe(true);
-    expect(isTransientWasmLoadError('NetworkError when attempting to fetch resource')).toBe(true);
+  it('flags transport/network failures (cross-browser)', () => {
+    expect(isTransientWasmLoadError('Failed to fetch')).toBe(true); // Chromium
+    expect(isTransientWasmLoadError('NetworkError when attempting to fetch resource')).toBe(true); // Firefox
+    expect(isTransientWasmLoadError('Load failed')).toBe(true); // Safari
   });
 
-  it('does NOT flag genuine compile/validation errors', () => {
+  it('does NOT flag genuine compile/validation errors (bad bytes never recover on retry)', () => {
     expect(isTransientWasmLoadError('CompileError: invalid value type')).toBe(false);
+    expect(
+      isTransientWasmLoadError(
+        'CompileError: WebAssembly.instantiateStreaming(): expected magic word 00 61 73 6d',
+      ),
+    ).toBe(false);
+    expect(isTransientWasmLoadError('wasm validation error: at offset 0')).toBe(false);
     expect(isTransientWasmLoadError('unreachable executed')).toBe(false);
   });
 });

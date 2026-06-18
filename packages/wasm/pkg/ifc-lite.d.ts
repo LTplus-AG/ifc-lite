@@ -221,6 +221,18 @@ export class IfcAPI {
    */
   clearPrePassCache(): void;
   /**
+   * Enable or disable the PARAMETRIC rectangular-opening fast path (the
+   * placement-frame, ground-truth-exact analytic cut) for `processGeometryBatch`.
+   *
+   * DEFAULT OFF. This is the wasm-side toggle that lets native and wasm flip the
+   * flag in LOCKSTEP — the byte-identical native==wasm contract requires both
+   * targets take the same path, and wasm has no env to read `IFC_LITE_RECT_PARAM`.
+   * The path subtracts rectangular openings as exact parametric boxes in the host's
+   * own placement frame (rotated walls included), deferring any non-clean case to
+   * the exact kernel. Pass `true` before `processGeometryBatch`.
+   */
+  setRectParamFastPath(enabled: boolean): void;
+  /**
    * Select the tessellation detail level applied by every subsequent
    * `processGeometryBatch` call (issue #976, step 4).
    *
@@ -929,6 +941,7 @@ export interface InitOutput {
   readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
   readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_setMergeLayers: (a: number, b: number) => void;
+  readonly ifcapi_setRectParamFastPath: (a: number, b: number) => void;
   readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;

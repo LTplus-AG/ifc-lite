@@ -521,62 +521,46 @@ impl IfcAPI {
         // after the decoder is created.
         let index_for_export = entity_index_arc.clone();
 
-        // ── Geometry-hash affinity + job emission (post-scan) ──
-        // The entity index is COMPLETE now, so tag every buffered job with the
-        // exact 128-bit hash of its representation subtree (`geometry_routing_key`)
-        // and stream the jobs in chunks. The host routes all jobs of a key to ONE
-        // worker, so each unique geometry is meshed once per model — the per-worker
-        // dedup cache turns the rest into cheap hits — instead of every worker
-        // re-meshing the full unique set. Cheap: ~tens of ms for a 25 k-element
-        // model (decode is index-cached, the hash is integer folds). On decode
-        // failure the key falls back to the element id (its own bucket).
+        // ── FAST FIRST GEOMETRY ──
+        // Workers gate on three post-scan events: entity-index, styles, and the
+        // first jobs chunk. Previously all three waited behind a whole-model
+        // per-job affinity hash (geometry_routing_key over every job, ~4 s), and
+        // the entity-index event was emitted LAST of all — so workers idled until
+        // ~the end of the pre-pass. Now we ship entity-index + styles + a SMALL
+        // first job wave right here (the index is already complete), then run the
+        // affinity pass only over the REST. Only the first wave routes by id; the
+        // bulk keeps exact geometry-hash affinity, so dedup distribution is intact.
+
+        // (A) Entity-index — workers re-scan the whole file (~5 s) without it, so
+        // it must reach them as early as possible. Built from the complete index.
         {
-            let mut akey_decoder =
-                EntityDecoder::with_arc_index(content, entity_index_arc.clone());
-            // The routing key is a STRUCTURAL hash (`item_signature`) — it neither
-            // tessellates nor scales, so the router's unit scale is irrelevant here
-            // and we skip seeding it.
-            let akey_router = GeometryRouter::new();
-            let mut affinity: Vec<u32> = Vec::with_capacity(buffered_jobs.len());
-            for &(id, _s, _e, _t) in &buffered_jobs {
-                let key = match akey_decoder.decode_by_id(id) {
-                    Ok(ent) => akey_router
-                        .geometry_routing_key(&ent, &mut akey_decoder)
-                        .map(fold_u128_to_u32)
-                        .unwrap_or(id),
-                    Err(_) => id,
-                };
-                affinity.push(key);
+            let n = index_for_export.len();
+            let ids_arr = js_sys::Uint32Array::new_with_length(n as u32);
+            let starts_arr = js_sys::Uint32Array::new_with_length(n as u32);
+            let lengths_arr = js_sys::Uint32Array::new_with_length(n as u32);
+            let mut i = 0u32;
+            for (&id, &(start, end)) in index_for_export.iter() {
+                ids_arr.set_index(i, id);
+                starts_arr.set_index(i, start as u32);
+                lengths_arr.set_index(i, (end - start) as u32);
+                i += 1;
             }
-            for (jobs_chunk, aff_chunk) in buffered_jobs
-                .chunks(chunk_size)
-                .zip(affinity.chunks(chunk_size))
-            {
-                emit_jobs_chunk(on_event, jobs_chunk, aff_chunk)?;
-            }
+            let index_event = js_sys::Object::new();
+            super::set_js_prop(&index_event, "type", &"entity-index".into());
+            super::set_js_prop(&index_event, "ids", &ids_arr);
+            super::set_js_prop(&index_event, "starts", &starts_arr);
+            super::set_js_prop(&index_event, "lengths", &lengths_arr);
+            on_event.call1(&JsValue::NULL, &index_event.into())?;
         }
-        buffered_jobs.clear();
 
-        // ── Style + void resolution (post-scan) ──
-        // The streaming scan stashed entity spans for IfcStyledItem,
-        // material entities, and void rels. Now that the entity index is
-        // complete we decode them in one pass — the same logic
-        // `combined_pre_pass` runs inline, but split into a post-phase so
-        // we don't block streaming jobs on style decoding.
-        //
-        // We deliberately SKIP `MaterialLayerIndex::from_content` here — it
-        // does its own full file scan and would add seconds to the streaming
-        // pre-pass for a visual refinement (layered material rendering).
-        // Aggregate void propagation, by contrast, IS included below: the
-        // scan already stashed the IfcRelAggregates spans, so the shared
-        // BFS kernel runs without any extra file pass — keeping streaming
-        // loads void-parity with `buildPrePassOnce` and the server.
-        let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc);
+        // (B) Styles + voids — workers also gate on this. Resolve once (the same
+        // shared resolver the native pipeline and buildPrePassOnce run) and emit.
+        // `decoder` stays in scope below for the orphan type-geometry pass.
+        // MaterialLayerIndex::from_content is deliberately skipped (its own full
+        // scan); aggregate void propagation IS included via the stashed
+        // IfcRelAggregates spans, keeping void-parity with the server.
+        let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc.clone());
         decoder.seed_unit_scales(1.0, plane_angle_to_radians);
-
-        // Shared post-scan resolution — the exact resolver the native
-        // pipeline and `buildPrePassOnce` run. Full per-triangle palettes
-        // (#858) stay per-worker rebuilds; the wire carries dominants only.
         let resolved = ifc_lite_processing::prepass::resolve_prepass(
             &prepass_spans,
             &mut decoder,
@@ -585,10 +569,6 @@ impl IfcAPI {
                 defer_attached_styles: false,
             },
         );
-
-        // Serialise styles + voids + material colour lists and post a `styles`
-        // event before `complete` so the host can dispatch them to all
-        // process workers and emit a colorUpdate for already-rendered meshes.
         let (style_ids_vec, style_colors_vec) =
             ifc_lite_processing::prepass::flat_styles_rgba8(&resolved, &mut decoder);
         let (void_keys_vec, void_counts_vec, void_values_vec) =
@@ -597,7 +577,6 @@ impl IfcAPI {
             ifc_lite_processing::prepass::flat_material_colors(
                 &resolved.element_material_colors,
             );
-
         let styles_event = js_sys::Object::new();
         super::set_js_prop(&styles_event, "type", &"styles".into());
         super::set_js_prop(
@@ -625,8 +604,6 @@ impl IfcAPI {
             "voidValues",
             &js_sys::Uint32Array::from(void_values_vec.as_slice()),
         );
-        // #407/#913 §2.3: per-element material colour lists so the batch path
-        // can run the transparent/opaque sub-mesh alternation.
         super::set_js_prop(
             &styles_event,
             "materialElementIds",
@@ -644,34 +621,50 @@ impl IfcAPI {
         );
         on_event.call1(&JsValue::NULL, &styles_event.into())?;
 
-        // Export the entity_index as 3 column arrays so process workers
-        // can install it via `setEntityIndex` (skipping the ~5 s file
-        // re-scan they'd otherwise pay on the first processGeometryBatch
-        // call). The arrays are filled directly from the Arc'd HashMap;
-        // the Arc shares with `cached_entity_index` so we don't clone the
-        // map data — only walk it once to fill the output arrays.
-        //
-        // Output shape mirrors `setEntityIndex`'s input contract:
-        //   ids[i]     → entity ID (u32)
-        //   starts[i]  → byte offset of entity start
-        //   lengths[i] → byte length of entity (NOT end offset)
-        let n = index_for_export.len();
-        let ids_arr = js_sys::Uint32Array::new_with_length(n as u32);
-        let starts_arr = js_sys::Uint32Array::new_with_length(n as u32);
-        let lengths_arr = js_sys::Uint32Array::new_with_length(n as u32);
-        let mut i = 0u32;
-        for (&id, &(start, end)) in index_for_export.iter() {
-            ids_arr.set_index(i, id);
-            starts_arr.set_index(i, start as u32);
-            lengths_arr.set_index(i, (end - start) as u32);
-            i += 1;
+        // (C) First wave — a small chunk routed by element id (no affinity hash)
+        // so workers get a quick, cheap first batch the instant the gate opens.
+        // Small enough to mesh in a fraction of a second across the pool; the
+        // dedup it forgoes on these few elements is negligible.
+        const FIRST_WAVE_JOBS: usize = 1024;
+        let first_n = buffered_jobs.len().min(FIRST_WAVE_JOBS);
+        if first_n > 0 {
+            let first_aff: Vec<u32> =
+                buffered_jobs[..first_n].iter().map(|&(id, ..)| id).collect();
+            emit_jobs_chunk(on_event, &buffered_jobs[..first_n], &first_aff)?;
         }
-        let index_event = js_sys::Object::new();
-        super::set_js_prop(&index_event, "type", &"entity-index".into());
-        super::set_js_prop(&index_event, "ids", &ids_arr);
-        super::set_js_prop(&index_event, "starts", &starts_arr);
-        super::set_js_prop(&index_event, "lengths", &lengths_arr);
-        on_event.call1(&JsValue::NULL, &index_event.into())?;
+
+        // (D) Affinity-route the REST + stream the bulk. The host routes all jobs
+        // of a key to ONE worker so each unique geometry is meshed once per model;
+        // the per-worker dedup cache turns the rest into cheap hits. On decode
+        // failure the key falls back to the element id (its own bucket).
+        {
+            let mut akey_decoder =
+                EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+            let akey_router = GeometryRouter::new();
+            let rest = &buffered_jobs[first_n..];
+            let mut affinity: Vec<u32> = Vec::with_capacity(rest.len());
+            for &(id, _s, _e, _t) in rest {
+                let key = match akey_decoder.decode_by_id(id) {
+                    Ok(ent) => akey_router
+                        .geometry_routing_key(&ent, &mut akey_decoder)
+                        .map(fold_u128_to_u32)
+                        .unwrap_or(id),
+                    Err(_) => id,
+                };
+                affinity.push(key);
+            }
+            for (jobs_chunk, aff_chunk) in
+                rest.chunks(chunk_size).zip(affinity.chunks(chunk_size))
+            {
+                emit_jobs_chunk(on_event, jobs_chunk, aff_chunk)?;
+            }
+        }
+        buffered_jobs.clear();
+
+        // (Style + void resolution and the entity-index export now run ABOVE,
+        // before the affinity bulk, so workers receive them as early as possible —
+        // see the FAST FIRST GEOMETRY block. `decoder` from there stays in scope
+        // for the orphan type-geometry pass below.)
 
         // #957: emit orphan IfcTypeProduct geometry as a final jobs chunk so the
         // browser renders annex-E type-only "tessellated shape with style" files

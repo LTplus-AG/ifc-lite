@@ -9,17 +9,22 @@
  * `useCompareOverlay`) and listed here. Row click selects + frames the element.
  */
 
-import { useEffect, useMemo } from 'react';
-import { GitCompareArrows, Plus, Minus, PencilLine, Loader2, Play, X, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { GitCompareArrows, Plus, Minus, PencilLine, Loader2, Play, X, Trash2, Download, MessageSquarePlus, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { useCompare } from '@/hooks/useCompare';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
+import { useBCF } from '@/hooks/useBCF';
+import { posthog } from '@/lib/analytics';
+import { createBCFProject, createBCFTopic, type BCFTopic } from '@ifc-lite/bcf';
 import { COMPARE_COLORS, type RGBA } from '@/lib/compare/overlay';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 import { describeChange, type ChangeDetail, type FieldDelta, type GeometrySummary } from '@/lib/compare/describeChange';
+import { downloadCompareReport } from '@/lib/compare/exportReport';
+import { BCFCreateTopicForm } from './bcf/BCFCreateTopicForm';
 import type { DiffScope, DiffState, DiffEntry } from '@ifc-lite/diff';
 
 interface ComparePanelProps {
@@ -50,6 +55,7 @@ interface CompareRow {
   key: string;
   ifcType: string;
   name: string;
+  state: DiffState;
   changeKinds: string[];
   ref: CompareRef;
 }
@@ -57,6 +63,39 @@ interface CompareRow {
 /** The side actually drawn for an entry: base for deletions, head otherwise. */
 function renderRef(entry: DiffEntry<CompareRef>): CompareRef | undefined {
   return (entry.state === 'deleted' ? entry.base?.ref : entry.head?.ref) ?? entry.base?.ref;
+}
+
+/** A short human change label for a row (added / deleted / the change kinds). */
+function changeLabel(row: CompareRow): string {
+  if (row.state === 'added') return 'added';
+  if (row.state === 'deleted') return 'deleted';
+  return row.changeKinds.length ? row.changeKinds.join(' + ') : 'changed';
+}
+
+/** Pre-fill a BCF topic title + description from a detected change (#1199). */
+function bcfTextFromChange(row: CompareRow, detail: ChangeDetail | null): { title: string; description: string } {
+  const typeLabel = row.ifcType.replace(/^Ifc/, '');
+  const name = row.name || typeLabel;
+  const title = `${typeLabel} "${name}" - ${changeLabel(row)}`;
+  const lines: string[] = [
+    `Detected in model comparison: ${changeLabel(row)}.`,
+    row.key.startsWith('missing:') ? '' : `GlobalId: ${row.key}`,
+  ];
+  if (detail?.geometry) {
+    if (detail.geometry.movedDistance > 0) lines.push(`Moved ${detail.geometry.movedDistance.toFixed(3)} m.`);
+    if (detail.geometry.reshaped) lines.push('Bounding box reshaped.');
+  }
+  if (detail?.data?.length) {
+    lines.push('', 'Data changes:');
+    for (const d of detail.data.slice(0, 20)) {
+      const where = d.group ? `${d.group} / ${d.name}` : d.name;
+      if (d.kind === 'changed') lines.push(`- ${where}: ${d.before ?? '-'} -> ${d.after ?? '-'}`);
+      else if (d.kind === 'added') lines.push(`- ${where}: added ${d.after ?? ''}`.trimEnd());
+      else lines.push(`- ${where}: removed`);
+    }
+    if (detail.data.length > 20) lines.push(`- ... and ${detail.data.length - 20} more`);
+  }
+  return { title, description: lines.filter((l, i) => l !== '' || i > 0).join('\n') };
 }
 
 export function ComparePanel({ onClose }: ComparePanelProps) {
@@ -73,8 +112,13 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const setScope = useViewerStore((s) => s.setCompareScope);
   const setShowUnchanged = useViewerStore((s) => s.setCompareShowUnchanged);
   const clearCompare = useViewerStore((s) => s.clearCompare);
+  const bcfAuthor = useViewerStore((s) => s.bcfAuthor);
 
   const { running, result, error, runComparison } = useCompare();
+  const { createViewpointFromState } = useBCF();
+
+  const [bcfFormOpen, setBcfFormOpen] = useState(false);
+  const [bcfCreatedTitle, setBcfCreatedTitle] = useState<string | null>(null);
 
   const modelList = useMemo(() => Array.from(models.values()), [models]);
 
@@ -121,7 +165,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
       const store = models.get(ref.modelId)?.ifcDataStore;
       const name = store?.entities.getName(ref.localId) || '';
       const ifcType = (entry.head ?? entry.base)?.ifcType ?? 'IfcProduct';
-      bucket.rows.push({ key: entry.key, ifcType, name, changeKinds: entry.changeKinds, ref });
+      bucket.rows.push({ key: entry.key, ifcType, name, state: entry.state, changeKinds: entry.changeKinds, ref });
     }
     return out;
   }, [result, models]);
@@ -153,6 +197,58 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     state.addEntitiesToSelection([{ modelId: row.ref.modelId, expressId: row.ref.localId }]);
     state.setCompareSelectedKey(row.key);
     requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+  };
+
+  const downloadReport = (format: 'csv' | 'json') => {
+    if (!result) return;
+    downloadCompareReport(format, result, models);
+    const c = result.diff.counts;
+    posthog.capture('model_compare_export', {
+      format,
+      scope: result.scope,
+      row_count: c.added + c.modified + c.deleted,
+    });
+  };
+
+  // Reset the BCF affordance whenever the focused change changes.
+  useEffect(() => {
+    setBcfFormOpen(false);
+    setBcfCreatedTitle(null);
+  }, [selectedKey]);
+
+  // Raise a BCF issue from the focused change (#1199): create a topic in the
+  // BCF project (pre-filled from the change), capture a viewpoint of the
+  // currently-framed element, and stay in the compare view. Priority / type are
+  // set in the form; status / author / GlobalId come along automatically.
+  const submitBcfFromChange = async (data: Partial<BCFTopic>) => {
+    const state = useViewerStore.getState();
+    if (!state.bcfProject) {
+      const first = modelList[0]?.name?.replace(/\.(ifc|ifczip)$/i, '') || 'Comparison';
+      state.setBcfProject(createBCFProject({ name: `${first}_Issues` }));
+    }
+    const topic = createBCFTopic({
+      title: data.title || 'Untitled',
+      description: data.description,
+      author: state.bcfAuthor,
+      topicType: data.topicType,
+      topicStatus: 'Open',
+      priority: data.priority,
+    });
+    useViewerStore.getState().addTopic(topic);
+    const viewpoint = await createViewpointFromState({
+      includeSnapshot: true,
+      includeSelection: true,
+      includeHidden: false,
+    });
+    if (viewpoint) useViewerStore.getState().addViewpoint(topic.guid, viewpoint);
+    posthog.capture('bcf_topic_created', {
+      source: 'compare',
+      topic_type: topic.topicType,
+      priority: topic.priority,
+      has_viewpoint: Boolean(viewpoint),
+    });
+    setBcfFormOpen(false);
+    setBcfCreatedTitle(topic.title);
   };
 
   return (
@@ -262,6 +358,22 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
             </div>
           )}
 
+          {/* Export the full change report (#1202) */}
+          {result && counts && counts.added + counts.modified + counts.deleted > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs">
+              <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground">Download report</span>
+              <div className="ml-auto flex items-center gap-1">
+                <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('csv')}>
+                  CSV
+                </Button>
+                <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('json')}>
+                  JSON
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Results list */}
           <ScrollArea className="flex-1 min-h-0">
             {!result ? (
@@ -324,8 +436,83 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
           {/* What-changed detail for the selected element */}
           {detail && selectedRow && <ChangeDetailView row={selectedRow} detail={detail} />}
+
+          {/* Raise a BCF issue from the focused change (#1199) */}
+          {selectedRow && (
+            <BcfFromChange
+              row={selectedRow}
+              detail={detail}
+              author={bcfAuthor}
+              open={bcfFormOpen}
+              createdTitle={bcfCreatedTitle}
+              onStart={() => { setBcfCreatedTitle(null); setBcfFormOpen(true); }}
+              onCancel={() => setBcfFormOpen(false)}
+              onSubmit={submitBcfFromChange}
+              onOpenBcfPanel={() => useViewerStore.getState().openWorkspacePanel('bcf')}
+            />
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+/** "Create BCF issue" affordance shown under the focused change (#1199). */
+function BcfFromChange({
+  row,
+  detail,
+  author,
+  open,
+  createdTitle,
+  onStart,
+  onCancel,
+  onSubmit,
+  onOpenBcfPanel,
+}: {
+  row: CompareRow;
+  detail: ChangeDetail | null;
+  author: string;
+  open: boolean;
+  createdTitle: string | null;
+  onStart: () => void;
+  onCancel: () => void;
+  onSubmit: (topic: Partial<BCFTopic>) => void;
+  onOpenBcfPanel: () => void;
+}) {
+  const prefill = useMemo(() => bcfTextFromChange(row, detail), [row, detail]);
+
+  if (createdTitle) {
+    return (
+      <div className="border-t border-border shrink-0 px-3 py-2.5 flex items-center gap-2 text-xs">
+        <CheckCircle2 className="h-4 w-4 text-[#9ece6a] shrink-0" />
+        <span className="min-w-0 truncate">BCF issue created: “{createdTitle}”</span>
+        <Button variant="outline" size="sm" className="ml-auto h-7 px-2 text-xs shrink-0" onClick={onOpenBcfPanel}>
+          Open BCF
+        </Button>
+      </div>
+    );
+  }
+
+  if (open) {
+    return (
+      <div className="border-t border-border shrink-0 max-h-[60%] overflow-auto">
+        <BCFCreateTopicForm
+          author={author}
+          initialTitle={prefill.title}
+          initialDescription={prefill.description}
+          onSubmit={onSubmit}
+          onCancel={onCancel}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-border shrink-0 px-3 py-2.5">
+      <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" onClick={onStart}>
+        <MessageSquarePlus className="h-3.5 w-3.5" />
+        Create BCF issue
+      </Button>
     </div>
   );
 }
@@ -368,8 +555,9 @@ function ChangeDetailView({ row, detail }: { row: CompareRow; detail: ChangeDeta
 }
 
 function GeometryDetail({ summary }: { summary: GeometrySummary }) {
-  const moved = summary.movedDistance >= 1e-3;
-  const fmt = (n: number) => (Math.abs(n) < 1e-3 ? '0' : n.toFixed(n >= 1 ? 2 : 3));
+  const moved = summary.movedDistance > 0;
+  const fmt = (n: number) => (Math.abs(n) < 1e-3 ? '0' : n.toFixed(Math.abs(n) >= 1 ? 2 : 3));
+  const signed = (n: number) => (n > 0 ? `+${fmt(n)}` : fmt(n));
   const headline = summary.reshaped ? (moved ? 'Reshaped + moved' : 'Reshaped') : moved ? 'Moved' : 'Geometry changed';
   return (
     <div className="rounded border border-border/60 px-2 py-1.5 space-y-0.5">
@@ -380,6 +568,19 @@ function GeometryDetail({ summary }: { summary: GeometrySummary }) {
           <span className="text-muted-foreground/70">
             {' '}(Δx {fmt(summary.delta.x)}, Δy {fmt(summary.delta.y)}, Δz {fmt(summary.delta.z)})
           </span>
+        </div>
+      )}
+      {summary.reshaped && (
+        <div className="text-muted-foreground tabular-nums">
+          size{' '}
+          <span className="text-muted-foreground/70">
+            (Δx {signed(summary.sizeDelta.x)}, Δy {signed(summary.sizeDelta.y)}, Δz {signed(summary.sizeDelta.z)}) m
+          </span>
+        </div>
+      )}
+      {!moved && !summary.reshaped && (
+        <div className="text-muted-foreground/70 text-[11px]">
+          Shape hash differs but the element’s position and size are unchanged.
         </div>
       )}
     </div>

@@ -28,6 +28,7 @@ import { RelationshipType } from '@ifc-lite/data';
 import {
   extractAllEntityAttributes,
   extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -140,9 +141,7 @@ function buildDataInput(
   // Data vs geometry: placement/coordinate data (elevation, level offsets, …)
   // is owned by the geometry hash, so strip it from the data fingerprint — a
   // pure move must read as a geometry change only, never "data · geometry"
-  // (see geometricData.ts). Quantities (Volume/Area/Length/…) are
-  // geometry-derived measurements and are excluded wholesale for the same
-  // reason: a reshape already shows up as a geometry change.
+  // (see geometricData.ts).
   const propertySets = extractPropertiesOnDemand(store, localId)
     .filter((set) => !isGeometricDataName(set.name))
     .map((set) => ({
@@ -152,6 +151,24 @@ function buildDataInput(
         .map((property) => ({ name: property.name, value: property.value })),
     }))
     .filter((set) => set.properties.length > 0);
+
+  // Quantities (Volume/Area/Length/…) ARE part of the data story: adding or
+  // removing a quantity set, or editing a quantity, is a real change a
+  // coordinator needs to see (#1198 — they were previously excluded wholesale
+  // and so never reported). They're geometry-*derived*, so a reshape also
+  // recomputes them and reads as "data · geometry" — that's correct, the
+  // numbers genuinely changed. A pure translation leaves Volume/Area/Length
+  // untouched, so it stays a geometry-only change. Values are rounded to the
+  // panel's display precision so re-export float noise can't fabricate a diff.
+  const quantitySets = extractQuantitiesOnDemand(store, localId)
+    .filter((set) => !isGeometricDataName(set.name))
+    .map((set) => ({
+      name: set.name,
+      quantities: set.quantities
+        .filter((quantity) => !isGeometricDataName(quantity.name))
+        .map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value) })),
+    }))
+    .filter((set) => set.quantities.length > 0);
 
   const typeAssignments = store.relationships
     .getRelated(localId, RelationshipType.DefinesByType, 'inverse')
@@ -168,6 +185,14 @@ function buildDataInput(
     objectType: store.entities.getObjectType(localId) || undefined,
     predefinedType: predefinedType != null ? String(predefinedType) : undefined,
     propertySets,
+    quantitySets,
     typeAssignments,
   };
+}
+
+/** Round a geometry-derived quantity to the compare panel's display precision
+ *  (4 dp) so re-exporting a model with sub-tolerance float jitter doesn't flip
+ *  the data hash on an otherwise-identical element. */
+function roundQuantity(value: number): number {
+  return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
 }

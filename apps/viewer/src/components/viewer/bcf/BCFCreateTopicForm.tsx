@@ -29,15 +29,25 @@ export interface BCFCreateTopicFormProps {
   onSubmit: (topic: Partial<BCFTopic>) => void;
   onCancel: () => void;
   author: string;
+  /** Pre-fill the title (e.g. when raising an issue from a detected change). */
+  initialTitle?: string;
+  /** Pre-fill the description. */
+  initialDescription?: string;
 }
 
 // ============================================================================
 // Component
 // ============================================================================
 
-export function BCFCreateTopicForm({ onSubmit, onCancel, author: _author }: BCFCreateTopicFormProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+export function BCFCreateTopicForm({
+  onSubmit,
+  onCancel,
+  author: _author,
+  initialTitle = '',
+  initialDescription = '',
+}: BCFCreateTopicFormProps) {
+  const [title, setTitle] = useState(initialTitle);
+  const [description, setDescription] = useState(initialDescription);
   const [topicType, setTopicType] = useState('Issue');
   const [priority, setPriority] = useState('Medium');
 

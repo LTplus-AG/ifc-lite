@@ -1,5 +1,21 @@
 # @ifc-lite/geometry
 
+## 2.7.8
+
+### Patch Changes
+
+- [#1181](https://github.com/LTplus-AG/ifc-lite/pull/1181) [`9d579cf`](https://github.com/LTplus-AG/ifc-lite/commit/9d579cfca7e5f3c8a37c57b494c7b944a296afc0) Thanks [@louistrue](https://github.com/louistrue)! - Skip rayon for small BReps — the fork-join overhead dwarfs the trivial triangulation.
+
+  `FacetedBrepProcessor` dispatched every shell's face triangulation through rayon `par_iter`, but real-world BReps are overwhelmingly tiny (6–50 faces of trivial tri/quad/convex fast-path geometry — e.g. Tekla steel detail parts), where the parallel fork-join dispatch costs far more than the work it parallelises. A serial path gated on a 64-face threshold avoids that overhead (and the nested-parallelism contention under the per-element worker pool); `par_iter` still runs for large shells. Output is byte-identical — `collect` preserves index order and each face's f32 result is unchanged.
+
+  Measured native, byte-identical (strict mesh hash unchanged): a 48k-BRep structural model −16.6% geometry time, an architectural BRep-heavy model −37%. Scales with how many small shells a model has; the win is larger in the browser where the nested parallelism is more expensive.
+
+- [#1184](https://github.com/LTplus-AG/ifc-lite/pull/1184) [`4a649b0`](https://github.com/LTplus-AG/ifc-lite/commit/4a649b0ced07331e3f2306f8462c5ee354b004c8) Thanks [@louistrue](https://github.com/louistrue)! - Re-enable content-dedup on the production geometry paths with a cheap structural hash — it's now a net speedup on steel-heavy models instead of the slowdown that forced it off.
+
+  Content-dedup (skip re-meshing structurally-identical representation items) was disabled in the previous release because its 128-bit structural key recursively decoded the _entire_ item subtree — every face, loop, and point — costing more than the meshing it saved. `item_signature` now hashes `IfcFacetedBrep` (the dominant type in Tekla steel exports, where thousands of geometrically identical plates and bolts each get their own representation) through the same cached byte-level fast paths the mesher uses, with zero `decode_by_id` per point. On a ~50k-part steel model the brep hash dropped from ~8 s to ~2 s — below the ~5 s of meshing it skips — flipping dedup from a 0.9× loss to a 1.3× win, with byte-identical geometry (0 fingerprint mismatches over 50k elements).
+
+  Dedup is gated to the cheap (brep) types in `item_dedup_key`, so procedural-geometry models — the ones whose recursive hash cost more than it saved — skip the hash entirely and pay nothing. The separate `IfcMappedItem` instancing cache is unaffected.
+
 ## 2.7.7
 
 ### Patch Changes

@@ -64,11 +64,16 @@ pub fn enabled() -> bool {
 static PARAM_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 /// PARAMETRIC rectangular-opening fast path (placement-frame, ground-truth-exact cut).
-/// DEFAULT OFF — opt in with `IFC_LITE_RECT_PARAM=1` or `param_set_enabled_override`.
-/// Gated separately from [`enabled`] because it is a deliberate behaviour change: it
-/// emits the analytic box-minus-boxes solid, which is MORE correct than the exact kernel
-/// on engulfing-opening walls. Stays off until a parity CI gate + a wasm toggle land, so
-/// native==wasm holds trivially (both off) until the flag is flipped in lockstep.
+/// DEFAULT ON (set `IFC_LITE_RECT_PARAM=0` to force the exact kernel for bisection).
+/// LOCKSTEP native+wasm so the byte-identical contract holds: both targets take the same
+/// (deterministic, FMA-free) path. It emits the analytic box-minus-boxes solid — proven
+/// 100% vs ground truth + watertight on the firing subset, and MORE correct than the
+/// exact kernel on engulfing-opening walls (which it deliberately replaces). Any non-clean
+/// case defers to the exact kernel, so the change is confined to clean box-host /
+/// rectangular-prism-opening walls. NOTE: a firing element emits a local-frame mesh
+/// (small positions + `origin`); native server output is no longer pure absolute-coord for
+/// those elements (every origin consumer already folds it). The frozen determinism corpus
+/// is unaffected — no snapshot/regression model is a clean rect-opening box wall.
 pub fn param_enabled() -> bool {
     match PARAM_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
         0 => return false,
@@ -77,7 +82,7 @@ pub fn param_enabled() -> bool {
     }
     use std::sync::OnceLock;
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var("IFC_LITE_RECT_PARAM").as_deref() == Ok("1"))
+    *ON.get_or_init(|| std::env::var("IFC_LITE_RECT_PARAM").as_deref() != Ok("0"))
 }
 
 /// Test-only: force `param_enabled()` on/off (or `None` for the env default).

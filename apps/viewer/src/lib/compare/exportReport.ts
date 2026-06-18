@@ -160,9 +160,13 @@ export function buildCompareReport(
   };
 }
 
-/** Quote a CSV field per RFC 4180 (wrap + double interior quotes when needed). */
+/** Quote a CSV field per RFC 4180 (wrap + double interior quotes when needed)
+ *  and neutralise spreadsheet formula injection. A value led by `= + - @` or a
+ *  tab/CR is evaluated as a formula by Excel/Sheets; prefixing a single quote
+ *  forces it to be read as text (model/element names are attacker-influenced). */
 function csvField(value: string | number): string {
-  const s = String(value);
+  let s = String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

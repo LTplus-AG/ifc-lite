@@ -37,6 +37,17 @@ describe('reportToCsv (#1202)', () => {
     assert.ok(lines[3].endsWith('Moved,1.2345,Project01 v2'));
     assert.ok(lines[1].includes(',Added,,'), 'zero move distance is blank');
   });
+
+  it('neutralises spreadsheet formula injection in names', () => {
+    const danger: CompareReport = {
+      ...report,
+      rows: [{ globalId: 'g1', name: '=HYPERLINK("http://x")', ifcType: 'IfcWall', state: 'added', change: 'Added', movedDistance: 0, model: 'm' }],
+    };
+    const csv = reportToCsv(danger);
+    // The cell must be wrapped (it contains a quote) and start with a leading
+    // apostrophe so Excel/Sheets treat it as text, not a formula.
+    assert.ok(csv.includes('"\'=HYPERLINK('), `formula not neutralised: ${csv}`);
+  });
 });
 
 describe('reportToJson (#1202)', () => {

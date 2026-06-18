@@ -9,8 +9,8 @@
  * `useCompareOverlay`) and listed here. Row click selects + frames the element.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { GitCompareArrows, Loader2, Play, X, Trash2, Download } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GitCompareArrows, Loader2, Play, X, Trash2, Download, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -18,7 +18,7 @@ import { useCompare } from '@/hooks/useCompare';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
 import { useBCF } from '@/hooks/useBCF';
 import { posthog } from '@/lib/analytics';
-import { createBCFProject, createBCFTopic, type BCFTopic } from '@ifc-lite/bcf';
+import { createBCFProject, createBCFTopic, type BCFTopic, type BCFViewpoint } from '@ifc-lite/bcf';
 import { COMPARE_COLORS } from '@/lib/compare/overlay';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 import { describeChange, type ChangeDetail } from '@/lib/compare/describeChange';
@@ -68,6 +68,10 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
   const [bcfFormOpen, setBcfFormOpen] = useState(false);
   const [bcfCreatedTitle, setBcfCreatedTitle] = useState<string | null>(null);
+  // Viewpoint (camera + snapshot + selection) previewed in the create form and
+  // attached to the topic on submit.
+  const [bcfViewpoint, setBcfViewpoint] = useState<BCFViewpoint | null>(null);
+  const [capturingSnapshot, setCapturingSnapshot] = useState(false);
   // Guards the non-idempotent BCF create against a double-submit (#1208 review).
   const bcfSubmitInFlight = useRef(false);
 
@@ -167,11 +171,43 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     setBcfCreatedTitle(null);
   }, [selectedKey]);
 
+  // Capture the framed element's viewpoint (camera + snapshot + selection) for
+  // the create form's preview and the eventual topic attachment.
+  const captureViewpoint = useCallback(async () => {
+    setCapturingSnapshot(true);
+    try {
+      const vp = await createViewpointFromState({
+        includeSnapshot: true,
+        includeSelection: true,
+        includeHidden: false,
+      });
+      setBcfViewpoint(vp);
+    } catch (err) {
+      console.error('[compare] failed to capture viewpoint for BCF', err);
+    } finally {
+      setCapturingSnapshot(false);
+    }
+  }, [createViewpointFromState]);
+
+  // Grab a viewpoint when the create form opens (so the snapshot preview is
+  // ready); drop it when the form closes.
+  useEffect(() => {
+    if (bcfFormOpen) {
+      void captureViewpoint();
+    } else {
+      setBcfViewpoint(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bcfFormOpen]);
+
   // Raise a BCF issue from the focused change (#1199): create a topic in the
   // BCF project (pre-filled from the change), capture a viewpoint of the
   // currently-framed element, and stay in the compare view. Priority / type are
   // set in the form; status / author / GlobalId come along automatically.
-  const submitBcfFromChange = async (data: Partial<BCFTopic>) => {
+  const submitBcfFromChange = async (
+    data: Partial<BCFTopic>,
+    options?: { includeSnapshot: boolean },
+  ) => {
     if (bcfSubmitInFlight.current) return;
     bcfSubmitInFlight.current = true;
     try {
@@ -185,15 +221,23 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
         description: data.description,
         author: state.bcfAuthor,
         topicType: data.topicType,
-        topicStatus: 'Open',
+        topicStatus: data.topicStatus ?? 'Open',
         priority: data.priority,
+        assignedTo: data.assignedTo,
+        dueDate: data.dueDate,
+        labels: data.labels,
       });
       useViewerStore.getState().addTopic(topic);
-      const viewpoint = await createViewpointFromState({
-        includeSnapshot: true,
-        includeSelection: true,
-        includeHidden: false,
-      });
+      // Attach the previewed viewpoint unless the user opted out; fall back to a
+      // fresh capture if the preview never resolved.
+      let viewpoint = options?.includeSnapshot === false ? null : bcfViewpoint;
+      if (options?.includeSnapshot !== false && !viewpoint) {
+        viewpoint = await createViewpointFromState({
+          includeSnapshot: true,
+          includeSelection: true,
+          includeHidden: false,
+        });
+      }
       if (viewpoint) useViewerStore.getState().addViewpoint(topic.guid, viewpoint);
       posthog.capture('bcf_topic_created', {
         source: 'compare',
@@ -210,6 +254,11 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     }
   };
 
+  // Composing a BCF issue: collapse the diff chrome so the form owns the panel.
+  // Gate on the selected row too, so a vanished selection can never leave the
+  // panel empty (chrome hidden but no form to show).
+  const bcfComposing = bcfFormOpen && !!selectedRow;
+
   return (
     <div className="h-full flex flex-col bg-background text-foreground overflow-hidden min-w-0">
       {/* Header */}
@@ -217,7 +266,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
         <GitCompareArrows className="h-4 w-4 text-primary shrink-0" />
         <span className="text-sm font-semibold tracking-tight min-w-0">Compare models</span>
         <div className="ml-auto flex items-center gap-1 shrink-0">
-          {result && (
+          {result && !bcfComposing && (
             <Button variant="ghost" size="icon" className="h-7 w-7" title="Clear results" onClick={clearCompare}>
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -237,113 +286,141 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
         </div>
       ) : (
         <>
-          {/* Run controls */}
-          <div className="p-3 space-y-3 border-b border-border">
-            <div className="grid grid-cols-[1.25rem_1fr] items-center gap-x-2 gap-y-2 text-xs">
-              <span className="text-muted-foreground">A</span>
-              <select
-                value={baseModelId ?? ''}
-                onChange={(e) => setBaseModelId(e.target.value)}
-                className="w-full rounded border border-border bg-transparent px-2 py-1 text-foreground min-w-0"
-              >
-                {modelList.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-              <span className="text-muted-foreground">B</span>
-              <select
-                value={headModelId ?? ''}
-                onChange={(e) => setHeadModelId(e.target.value)}
-                className="w-full rounded border border-border bg-transparent px-2 py-1 text-foreground min-w-0"
-              >
-                {modelList.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {baseModelId === headModelId && (
-              <p className="text-xs text-[#e0af68]">Pick two different models.</p>
-            )}
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
-                {SCOPES.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => setScope(s.id)}
-                    className={cn(
-                      'px-2.5 py-1 transition-colors',
-                      scope === s.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                    )}
+          {/* Diff chrome (run controls, counts, report, results, detail) — hidden
+              while composing a BCF issue so the form owns the panel. The user has
+              committed to raising an issue and the change context is already in the
+              pre-filled form, so re-running / exports / browsing only get in the way. */}
+          {!bcfComposing && (
+            <>
+              {/* Run controls */}
+              <div className="p-3 space-y-3 border-b border-border">
+                <div className="grid grid-cols-[1.25rem_1fr] items-center gap-x-2 gap-y-2 text-xs">
+                  <span className="text-muted-foreground">A</span>
+                  <select
+                    value={baseModelId ?? ''}
+                    onChange={(e) => setBaseModelId(e.target.value)}
+                    className="w-full rounded border border-border bg-transparent px-2 py-1 text-foreground min-w-0"
                   >
-                    {s.label}
-                  </button>
-                ))}
+                    {modelList.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                  <span className="text-muted-foreground">B</span>
+                  <select
+                    value={headModelId ?? ''}
+                    onChange={(e) => setHeadModelId(e.target.value)}
+                    className="w-full rounded border border-border bg-transparent px-2 py-1 text-foreground min-w-0"
+                  >
+                    {modelList.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {baseModelId === headModelId && (
+                  <p className="text-xs text-[#e0af68]">Pick two different models.</p>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
+                    {SCOPES.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => setScope(s.id)}
+                        className={cn(
+                          'px-2.5 py-1 transition-colors',
+                          scope === s.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                        )}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showUnchanged}
+                      onChange={(e) => setShowUnchanged(e.target.checked)}
+                    />
+                    Show unchanged
+                  </label>
+                </div>
+
+                <Button size="sm" className="w-full gap-1.5" disabled={!canRun} onClick={() => void runComparison()}>
+                  {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  {running ? 'Comparing…' : 'Run comparison'}
+                </Button>
+
+                {error && <p className="text-xs text-[#f7768e]">{error}</p>}
+
+                {result?.geometryUnavailable && scope !== 'data' && (
+                  <p className="text-xs text-[#e0af68]">
+                    One model has no geometry fingerprints (loaded outside the WASM
+                    mesh path), so geometry changes can’t be detected. Data changes
+                    are still accurate — switch to the Data scope for reliable results.
+                  </p>
+                )}
               </div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={showUnchanged}
-                  onChange={(e) => setShowUnchanged(e.target.checked)}
-                />
-                Show unchanged
-              </label>
-            </div>
 
-            <Button size="sm" className="w-full gap-1.5" disabled={!canRun} onClick={() => void runComparison()}>
-              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {running ? 'Comparing…' : 'Run comparison'}
-            </Button>
+              {/* Counts */}
+              {counts && (
+                <div className="grid grid-cols-4 gap-1 p-3 border-b border-border text-center">
+                  <CountBadge label="Changed" value={counts.modified} color={COMPARE_COLORS.modified} />
+                  <CountBadge label="Added" value={counts.added} color={COMPARE_COLORS.added} />
+                  <CountBadge label="Deleted" value={counts.deleted} color={COMPARE_COLORS.deleted} />
+                  <CountBadge label="Unchanged" value={counts.unchanged} color={COMPARE_COLORS.unchanged} />
+                </div>
+              )}
 
-            {error && <p className="text-xs text-[#f7768e]">{error}</p>}
+              {/* Export the full change report (#1202) */}
+              {result && counts && counts.added + counts.modified + counts.deleted > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs">
+                  <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground">Download report</span>
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('csv')}>
+                      CSV
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('json')}>
+                      JSON
+                    </Button>
+                  </div>
+                </div>
+              )}
 
-            {result?.geometryUnavailable && scope !== 'data' && (
-              <p className="text-xs text-[#e0af68]">
-                One model has no geometry fingerprints (loaded outside the WASM
-                mesh path), so geometry changes can’t be detected. Data changes
-                are still accurate — switch to the Data scope for reliable results.
-              </p>
-            )}
-          </div>
+              {/* Results list */}
+              <CompareResultsList
+                result={result}
+                groups={groups}
+                counts={counts}
+                selectedKey={selectedKey}
+                onFocus={focusEntry}
+              />
 
-          {/* Counts */}
-          {counts && (
-            <div className="grid grid-cols-4 gap-1 p-3 border-b border-border text-center">
-              <CountBadge label="Changed" value={counts.modified} color={COMPARE_COLORS.modified} />
-              <CountBadge label="Added" value={counts.added} color={COMPARE_COLORS.added} />
-              <CountBadge label="Deleted" value={counts.deleted} color={COMPARE_COLORS.deleted} />
-              <CountBadge label="Unchanged" value={counts.unchanged} color={COMPARE_COLORS.unchanged} />
-            </div>
+              {/* What-changed detail for the selected element */}
+              {detail && selectedRow && <ChangeDetailView row={selectedRow} detail={detail} />}
+            </>
           )}
 
-          {/* Export the full change report (#1202) */}
-          {result && counts && counts.added + counts.modified + counts.deleted > 0 && (
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs">
-              <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground">Download report</span>
-              <div className="ml-auto flex items-center gap-1">
-                <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('csv')}>
-                  CSV
-                </Button>
-                <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => downloadReport('json')}>
-                  JSON
-                </Button>
-              </div>
+          {/* Compose context — slim strip naming the target element while the BCF
+              form is open, with a way back to the change list. */}
+          {bcfComposing && (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setBcfFormOpen(false)}
+                className="flex items-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                title="Back to changes"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-muted-foreground shrink-0">Issue for</span>
+              <span className="font-medium truncate min-w-0">{selectedRow.name || selectedRow.ifcType}</span>
+              <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
+                {selectedRow.ifcType.replace(/^Ifc/, '')}
+              </span>
             </div>
           )}
-
-          {/* Results list */}
-          <CompareResultsList
-            result={result}
-            groups={groups}
-            counts={counts}
-            selectedKey={selectedKey}
-            onFocus={focusEntry}
-          />
-
-          {/* What-changed detail for the selected element */}
-          {detail && selectedRow && <ChangeDetailView row={selectedRow} detail={detail} />}
 
           {/* Raise a BCF issue from the focused change (#1199) */}
           {selectedRow && (
@@ -357,6 +434,9 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
               onCancel={() => setBcfFormOpen(false)}
               onSubmit={submitBcfFromChange}
               onOpenBcfPanel={() => useViewerStore.getState().openWorkspacePanel('bcf')}
+              snapshot={bcfViewpoint?.snapshot ?? null}
+              onCaptureSnapshot={() => void captureViewpoint()}
+              capturingSnapshot={capturingSnapshot}
             />
           )}
         </>

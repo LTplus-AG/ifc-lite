@@ -24,8 +24,14 @@ interface BcfFromChangeProps {
   createdTitle: string | null;
   onStart: () => void;
   onCancel: () => void;
-  onSubmit: (topic: Partial<BCFTopic>) => void;
+  onSubmit: (topic: Partial<BCFTopic>, options?: { includeSnapshot: boolean }) => void;
   onOpenBcfPanel: () => void;
+  /** Live viewpoint snapshot preview (data URL) for the create form. */
+  snapshot?: string | null;
+  /** (Re)capture the snapshot from the current view. */
+  onCaptureSnapshot?: () => void;
+  /** True while a snapshot capture is in flight. */
+  capturingSnapshot?: boolean;
 }
 
 export function BcfFromChange({
@@ -38,6 +44,9 @@ export function BcfFromChange({
   onCancel,
   onSubmit,
   onOpenBcfPanel,
+  snapshot,
+  onCaptureSnapshot,
+  capturingSnapshot,
 }: BcfFromChangeProps) {
   const prefill = useMemo(() => bcfTextFromChange(row, detail), [row, detail]);
 
@@ -54,14 +63,20 @@ export function BcfFromChange({
   }
 
   if (open) {
+    // Composing a BCF issue: the diff chrome is collapsed (ComparePanel), so the
+    // form owns the remaining height and scrolls internally — its actions stay
+    // reachable instead of being clipped off the bottom of the panel.
     return (
-      <div className="border-t border-border shrink-0 max-h-[60%] overflow-auto">
+      <div className="flex-1 min-h-0 overflow-auto border-t border-border">
         <BCFCreateTopicForm
           author={author}
           initialTitle={prefill.title}
           initialDescription={prefill.description}
           onSubmit={onSubmit}
           onCancel={onCancel}
+          snapshot={snapshot}
+          onCaptureSnapshot={onCaptureSnapshot}
+          capturingSnapshot={capturingSnapshot}
         />
       </div>
     );

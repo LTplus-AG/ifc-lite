@@ -184,6 +184,7 @@ export class GeometryProcessor {
   private coordinateHandler: CoordinateHandler;
   private isNative: boolean = false;
   private nativeBackendUrl: string | null = null;
+  private nativeDataModelHandler: ((parquet: Uint8Array) => void) | undefined;
   private lastNativeStats: PlatformGeometryStats | null = null;
   private mergeLayers: boolean;
   private tessellationQuality: TessellationQuality | null;
@@ -226,6 +227,16 @@ export class GeometryProcessor {
    */
   get isNativeBackend(): boolean {
     return this.isNative;
+  }
+
+  /**
+   * Register a handler for a native-served data model (Parquet bytes). When set,
+   * the native streaming path asks the backend to stream the data model too, so
+   * the consumer can skip its own in-browser parse. No-op on the WASM path (no
+   * backend to serve it). Pass `undefined` to clear.
+   */
+  setNativeDataModelHandler(handler: ((parquet: Uint8Array) => void) | undefined): void {
+    this.nativeDataModelHandler = handler;
   }
 
   /**
@@ -626,6 +637,10 @@ export class GeometryProcessor {
           completed = true;
           wake();
         },
+        // When a handler is registered, the WS bridge asks the backend to also
+        // stream the data model (Parquet) so the viewer can skip its own parse.
+        // Fires off the geometry event stream, directly to the consumer.
+        onDataModel: this.nativeDataModelHandler,
       });
 
       try {

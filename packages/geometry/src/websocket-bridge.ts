@@ -196,6 +196,7 @@ export class WebSocketBridge implements IPlatformBridge {
     return new Promise<GeometryStats>((resolve, reject) => {
       let settled = false;
       let sequence = 0;
+      let expectingDataModel = false;
       let socket: WebSocket;
       try {
         socket = new WebSocket(this.geometryUrl);
@@ -235,7 +236,8 @@ export class WebSocketBridge implements IPlatformBridge {
               socket.send(bytes.slice(offset, Math.min(offset + CHUNK, bytes.byteLength)));
             }
             if (!settled && socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify({ type: 'eof' }));
+              // Opt into a streamed data model only if the caller wants one.
+              socket.send(JSON.stringify({ type: 'eof', dataModel: !!options.onDataModel }));
             }
           } catch (error) {
             fail(toError(error));
@@ -245,6 +247,13 @@ export class WebSocketBridge implements IPlatformBridge {
 
       socket.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
+          if (expectingDataModel) {
+            // The binary frame after a {"type":"dataModel"} marker is the
+            // Parquet data model, not a geometry shard.
+            expectingDataModel = false;
+            options.onDataModel?.(new Uint8Array(event.data));
+            return;
+          }
           try {
             options.onBatch?.(decodePackedGeometryCacheShard(event.data, Date.now(), sequence++));
           } catch (error) {
@@ -271,6 +280,9 @@ export class WebSocketBridge implements IPlatformBridge {
           const map = new Map<number, [number, number, number, number]>();
           for (const [id, color] of frame.updates) map.set(id, color);
           options.onColorUpdate(map);
+        } else if (frame.type === 'dataModel') {
+          // Next binary frame is the Parquet data model.
+          expectingDataModel = true;
         }
       };
 

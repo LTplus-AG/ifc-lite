@@ -112,6 +112,12 @@ export interface StreamingOptions {
   onComplete?: (stats: GeometryStats) => void;
   /** Callback for errors */
   onError?: (error: Error) => void;
+  /**
+   * Callback for a native-served data model (Parquet bytes) — the same wire
+   * format the HTTP server's `/data-model` endpoint returns. Setting this opts
+   * the connection into receiving it, so the browser can skip its own parse.
+   */
+  onDataModel?: (parquet: Uint8Array) => void;
 }
 
 /**

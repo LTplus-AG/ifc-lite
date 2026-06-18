@@ -252,7 +252,7 @@ fn rotate_mesh_into_frame(mesh: &Mesh, rt: &Matrix3<f64>, center: &Point3<f64>) 
         rtc_applied: mesh.rtc_applied,
         origin: [0.0; 3],
         positions,
-    }
+    instance_meta: None, }
 }
 
 /// Rotate a frame-F mesh into a LOCAL-FRAME world mesh: positions are `R·v_F` (small,
@@ -281,7 +281,7 @@ fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Point3<f64>) -
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
         origin: [center.x, center.y, center.z],
-    }
+    instance_meta: None, }
 }
 
 /// Signed volume of a (closed) triangle mesh via the divergence theorem. Used to
@@ -737,7 +737,7 @@ fn translate_cutter_mesh(mesh: &Mesh, origin: [f64; 3]) -> Mesh {
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
         origin: [0.0; 3],
-    }
+    instance_meta: None, }
 }
 
 impl OpeningType {

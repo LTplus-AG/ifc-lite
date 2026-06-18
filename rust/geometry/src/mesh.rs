@@ -49,6 +49,24 @@ impl CoordinateShift {
     }
 }
 
+/// Side-channel instancing metadata, attached only when GPU instancing is
+/// enabled (the `IFC_LITE_INSTANCING` flag). NEVER read by geometry processing
+/// and excluded from `compute_mesh_hash` / `meshes_equal`, so content-dedup and
+/// the default flat path are unaffected. The native helper collates occurrences
+/// into unique geometry + per-instance transforms. Reconstruction contract:
+/// `world = (transform . local_transform) * canonical_local_vertex - rtc_offset`.
+#[derive(Debug, Clone)]
+pub struct InstanceMeta {
+    /// Full world placement (parent . local, scaled), pre-RTC, row-major homogeneous.
+    pub transform: [f64; 16],
+    /// IfcMappedItem mapping_transform (scaled), composed after `transform`.
+    pub local_transform: Option<[f64; 16]>,
+    /// Representation-identity key: RepresentationMap id (mapped) or geometry hash (direct).
+    pub rep_identity: u128,
+    /// Whether this mesh is provably shareable (not void-cut / not site-rotated).
+    pub instanceable: bool,
+}
+
 /// Triangle mesh
 #[derive(Debug, Clone)]
 pub struct Mesh {
@@ -70,6 +88,8 @@ pub struct Mesh {
     /// metres) never collapse adjacent vertices to bit-identical f32. Default
     /// `[0, 0, 0]` means positions are already absolute (legacy/local meshes).
     pub origin: [f64; 3],
+    /// Instancing side-channel (see [`InstanceMeta`]); `None` on the flat path.
+    pub instance_meta: Option<InstanceMeta>,
 }
 
 /// A sub-mesh with its source geometry item ID.
@@ -143,8 +163,10 @@ impl Mesh {
             positions: Vec::new(),
             normals: Vec::new(),
             indices: Vec::new(),
-            rtc_applied: false, 
-            origin: [0.0; 3],        }
+            rtc_applied: false,
+            origin: [0.0; 3],
+            instance_meta: None,
+        }
     }
 
     /// Create a mesh with capacity
@@ -153,8 +175,10 @@ impl Mesh {
             positions: Vec::with_capacity(vertex_count * 3),
             normals: Vec::with_capacity(vertex_count * 3),
             indices: Vec::with_capacity(index_count),
-            rtc_applied: false, 
-            origin: [0.0; 3],        }
+            rtc_applied: false,
+            origin: [0.0; 3],
+            instance_meta: None,
+        }
     }
 
     /// Create a mesh from a single triangle
@@ -424,7 +448,7 @@ impl Mesh {
             indices,
             rtc_applied: self.rtc_applied,
             origin: self.origin,
-        }
+        instance_meta: None, }
     }
 
     /// Remove triangle indices that reference vertices beyond the positions array.
@@ -959,7 +983,7 @@ fn weld_impl(
         indices: new_indices,
         rtc_applied: mesh.rtc_applied,
         origin: mesh.origin,
-    }
+    instance_meta: None, }
 }
 
 #[cfg(test)]
@@ -1117,8 +1141,10 @@ mod tests {
                 0, 1, 5, // invalid: vertex 5 out of bounds
                 3, 4, 5, // invalid: all out of bounds
             ],
-            rtc_applied: false, 
-            origin: [0.0; 3],        };
+            rtc_applied: false,
+            origin: [0.0; 3],
+            instance_meta: None,
+        };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
     }
@@ -1129,8 +1155,10 @@ mod tests {
             positions: vec![],
             normals: vec![],
             indices: vec![0, 1, 2],
-            rtc_applied: false, 
-            origin: [0.0; 3],        };
+            rtc_applied: false,
+            origin: [0.0; 3],
+            instance_meta: None,
+        };
         mesh.validate_indices();
         assert!(mesh.indices.is_empty());
     }
@@ -1141,8 +1169,10 @@ mod tests {
             positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
             normals: vec![],
             indices: vec![0, 1, 2, 0, 1], // trailing incomplete triangle
-            rtc_applied: false, 
-            origin: [0.0; 3],        };
+            rtc_applied: false,
+            origin: [0.0; 3],
+            instance_meta: None,
+        };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
     }
@@ -1278,8 +1308,10 @@ mod tests {
             positions: vec![0.0; 12], // 4 vertices
             normals: vec![],
             indices: vec![0, 1, 2, 1, 2, 3],
-            rtc_applied: false, 
-            origin: [0.0; 3],        };
+            rtc_applied: false,
+            origin: [0.0; 3],
+            instance_meta: None,
+        };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2, 1, 2, 3]);
     }
@@ -1306,7 +1338,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        };
+        instance_meta: None, };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![3, 4, 5], "sliver dropped, real kept");
         // Positions/normals are never touched (orphan vertices are fine).
@@ -1322,7 +1354,7 @@ mod tests {
             indices: vec![0, 1, 2],
             rtc_applied: false,
             origin: [0.0; 3],
-        };
+        instance_meta: None, };
         mesh.drop_thin_triangles(GRID);
         assert!(mesh.indices.is_empty(), "coincident-pair needle dropped");
     }
@@ -1336,7 +1368,7 @@ mod tests {
             indices: vec![0, 1, 2],
             rtc_applied: false,
             origin: [0.0; 3],
-        };
+        instance_meta: None, };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![0, 1, 2], "above-grid triangle kept");
     }
@@ -1367,7 +1399,7 @@ mod tests {
             ],
             rtc_applied: false,
             origin: [0.0; 3],
-        };
+        instance_meta: None, };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(
             mesh.indices,
@@ -1388,7 +1420,7 @@ mod tests {
             ],
             rtc_applied: false,
             origin: [0.0; 3],
-        };
+        instance_meta: None, };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![0, 1, 2]);
     }
@@ -1404,7 +1436,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        };
+        instance_meta: None, };
         mesh.drop_thin_triangles(GRID);
         let once = mesh.indices.clone();
         mesh.drop_thin_triangles(GRID);
@@ -1424,7 +1456,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        };
+        instance_meta: None, };
         mesh.clean_degenerate();
         assert_eq!(mesh.indices, vec![3, 4, 5]);
     }

@@ -191,6 +191,7 @@ pub fn split_mesh_by_indexed_colour(
                 indices: group.indices,
                 rtc_applied,
                 origin,
+                instance_meta: None,
             };
             Some((map.colours[palette], mesh))
         })

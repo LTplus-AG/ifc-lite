@@ -13,7 +13,6 @@ use ifc_lite_processing::{
     process_geometry_filtered, process_geometry_streaming_filtered_with_options, OpeningFilterMode,
     ProcessingResult, ProcessingStats, StreamingOptions,
 };
-#[cfg(test)]
 use ifc_lite_processing::MeshData;
 
 use crate::convert::{prepare_wire_mesh, WireMesh};
@@ -126,11 +125,20 @@ pub fn stream_wire_batches(
         ..StreamingOptions::default()
     };
 
+    // Diagnostic (IFC_LITE_INSTANCING): tally how much GPU instancing would save
+    // on this model — distinct representations vs total instanceable occurrences,
+    // and the vertex-ingest reduction. Validates Phase-A capture on real files.
+    let instancing_diag = std::env::var("IFC_LITE_INSTANCING").is_ok();
+    let mut tally = InstancingTally::default();
+
     let result = process_geometry_streaming_filtered_with_options(
         content,
         OpeningFilterMode::Default,
         options,
         |meshes, processed, total| {
+            if instancing_diag {
+                tally.observe(meshes);
+            }
             let wire: Vec<WireMesh> = meshes.iter().map(prepare_wire_mesh).collect();
             on_batch(&wire, processed, total);
         },
@@ -138,7 +146,65 @@ pub fn stream_wire_batches(
         |_bootstrap| {},
     );
 
+    if instancing_diag {
+        tally.log();
+    }
+
     EngineStats::from_processing(&result.stats)
+}
+
+/// Streaming accumulator for the `IFC_LITE_INSTANCING` dedup diagnostic.
+#[derive(Default)]
+struct InstancingTally {
+    total_meshes: usize,
+    total_verts: usize,
+    instanceable_meshes: usize,
+    instanceable_verts: usize,
+    /// rep_identity -> (occurrences, verts of the first occurrence seen).
+    groups: std::collections::HashMap<u128, (usize, usize)>,
+}
+
+impl InstancingTally {
+    fn observe(&mut self, meshes: &[MeshData]) {
+        for m in meshes {
+            self.total_meshes += 1;
+            let verts = m.positions.len() / 3;
+            self.total_verts += verts;
+            if let Some(im) = &m.instance {
+                if im.instanceable {
+                    self.instanceable_meshes += 1;
+                    self.instanceable_verts += verts;
+                    let e = self.groups.entry(im.rep_identity).or_insert((0, verts));
+                    e.0 += 1;
+                }
+            }
+        }
+    }
+
+    fn log(&self) {
+        let distinct = self.groups.len();
+        // Unique verts = one copy per distinct rep (instanced) + every flat vert.
+        let unique_instanceable_verts: usize = self.groups.values().map(|(_, v)| *v).sum();
+        let flat_verts = self.total_verts.saturating_sub(self.instanceable_verts);
+        let unique_verts = unique_instanceable_verts + flat_verts;
+        let dedup = if distinct > 0 {
+            self.instanceable_meshes as f64 / distinct as f64
+        } else {
+            0.0
+        };
+        let vert_reduction = if self.total_verts > 0 {
+            100.0 * (1.0 - unique_verts as f64 / self.total_verts as f64)
+        } else {
+            0.0
+        };
+        let pct_instanceable =
+            100.0 * self.instanceable_meshes as f64 / self.total_meshes.max(1) as f64;
+        eprintln!(
+            "[IFC_LITE_INSTANCING] total_meshes={} instanceable={} ({pct_instanceable:.1}%) \
+             distinct_reps={distinct} dedup={dedup:.2}x | verts total={} unique={} reduction={vert_reduction:.1}%",
+            self.total_meshes, self.instanceable_meshes, self.total_verts, unique_verts,
+        );
+    }
 }
 
 /// Convenience wrapper over [`stream_wire_batches`] that emits each batch as a

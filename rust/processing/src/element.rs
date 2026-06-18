@@ -557,6 +557,14 @@ fn build_mesh_data(
         mesh.drop_degenerate_triangles();
     }
     let mesh_origin = mesh.origin;
+    // Instancing: capture before the fields are moved into MeshData. A site-local
+    // rotation (below) re-transforms positions/origin and would invalidate the
+    // captured transform, so drop instancing when one is active (rare; conservative).
+    let instance = if ctx.site_local_rotation.is_none() {
+        mesh.instance_meta.take()
+    } else {
+        None
+    };
     let mut mesh_data = MeshData::new(
         job.id,
         job.ifc_type.name().to_string(),
@@ -565,7 +573,8 @@ fn build_mesh_data(
         mesh.indices,
         color,
     )
-    .with_origin(mesh_origin);
+    .with_origin(mesh_origin)
+    .with_instance(instance);
     if let Some(meta) = job.metadata {
         mesh_data = mesh_data
             .with_element_metadata(

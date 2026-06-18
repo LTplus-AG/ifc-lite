@@ -8,6 +8,11 @@ use super::transforms::{instancing_enabled, mat4_to_row_major};
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
 
+/// High tag bit distinguishing direct-solid rep_identity (a 64-bit local-mesh
+/// content hash) from mapped-item rep_identity (a RepresentationMap entity id,
+/// always < 2^32), so the two id spaces can never collide in `collate_instances`.
+const DIRECT_SOLID_TAG: u128 = 1u128 << 96;
+
 /// Row-major 4x4 identity; placeholder `InstanceMeta::transform` before the
 /// element's world placement is folded in by `apply_placement`.
 const IDENTITY_ROW_MAJOR: [f64; 16] = [
@@ -868,7 +873,8 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
         // MappedItem has its own instancing cache (the source representation is
-        // already shared), so it never enters the structural-hash path.
+        // already shared), so it never enters the structural-hash path. It also
+        // sets its own instance_meta, so the direct-solid tagging below is skipped.
         if item.ifc_type == IfcType::IfcMappedItem {
             return self.process_mapped_item_cached(item, decoder);
         }
@@ -879,7 +885,7 @@ impl GeometryRouter {
         if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
             let hit = cache.lock().expect("dedup cache poisoned").get(&key).cloned();
             if let Some(mesh) = hit {
-                return Ok((*mesh).clone());
+                return Ok(self.tag_direct_instance((*mesh).clone()));
             }
         }
 
@@ -896,7 +902,28 @@ impl GeometryRouter {
             }
         }
 
-        Ok(mesh)
+        Ok(self.tag_direct_instance(mesh))
+    }
+
+    /// Instancing: tag a direct-solid item mesh with its local-geometry content
+    /// hash as `rep_identity`, so identical representations across the model
+    /// collate into a single template + per-occurrence transforms. The hash is of
+    /// the pre-placement local mesh (the same `compute_mesh_hash` the geometry
+    /// cache uses), so two occurrences differing only by `IfcObjectPlacement`
+    /// share an id. A high tag bit namespaces these apart from mapped-item ids
+    /// (RepresentationMap entity ids). No-op when the flag is off or the mesh
+    /// already carries metadata (mapped items) / is empty.
+    fn tag_direct_instance(&self, mut mesh: Mesh) -> Mesh {
+        if instancing_enabled() && mesh.instance_meta.is_none() && !mesh.positions.is_empty() {
+            let hash = Self::compute_mesh_hash(&mesh);
+            mesh.instance_meta = Some(InstanceMeta {
+                transform: IDENTITY_ROW_MAJOR,
+                local_transform: None,
+                rep_identity: (hash as u128) | DIRECT_SOLID_TAG,
+                instanceable: true,
+            });
+        }
+        mesh
     }
 
     /// Cache key for an item: its structural hash combined with the router params

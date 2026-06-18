@@ -216,10 +216,31 @@ export class WebSocketBridge implements IPlatformBridge {
       };
 
       socket.onopen = () => {
-        // One binary frame: the whole file. `slice()` detaches from any
-        // SharedArrayBuffer backing (WebSocket.send rejects SAB views) and
-        // copies exactly these bytes.
-        socket.send(bytes.slice());
+        // Stream the file in chunks, then an {"type":"eof"} marker, instead of
+        // one whole-file copy. The source is often SharedArrayBuffer-backed
+        // (WebSocket.send rejects SAB views), so each chunk is copied into a
+        // small regular ArrayBuffer — peak extra memory is one chunk + the
+        // socket's send buffer, not a full 2nd copy of the file. A single
+        // 722 MB `slice()` OOMs the tab on large models. Backpressure on
+        // `bufferedAmount` keeps the in-flight buffer bounded.
+        void (async () => {
+          const CHUNK = 16 * 1024 * 1024; // 16 MiB
+          const HIGH_WATER = 64 * 1024 * 1024; // pause if the send buffer grows past this
+          try {
+            for (let offset = 0; offset < bytes.byteLength; offset += CHUNK) {
+              while (socket.bufferedAmount > HIGH_WATER) {
+                await new Promise((r) => setTimeout(r, 4));
+              }
+              if (settled || socket.readyState !== WebSocket.OPEN) return;
+              socket.send(bytes.slice(offset, Math.min(offset + CHUNK, bytes.byteLength)));
+            }
+            if (!settled && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: 'eof' }));
+            }
+          } catch (error) {
+            fail(toError(error));
+          }
+        })();
       };
 
       socket.onmessage = (event) => {

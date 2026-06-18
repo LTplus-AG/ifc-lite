@@ -107,9 +107,15 @@ export function streamFromNativeBackend(
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
-      // One binary frame: the whole IFC file. Copy into a fresh buffer so we
-      // send exactly these bytes regardless of the view's backing store.
-      ws.send(bytes.slice());
+      // Upload in chunks, then an {"type":"eof"} marker (the server accumulates
+      // binary frames until eof). Chunking keeps peak memory low — a single
+      // whole-file copy OOMs the tab on large models. Each chunk is copied into
+      // a fresh buffer so it sends regardless of the view's backing store.
+      const CHUNK = 16 * 1024 * 1024;
+      for (let offset = 0; offset < bytes.byteLength; offset += CHUNK) {
+        ws.send(bytes.slice(offset, Math.min(offset + CHUNK, bytes.byteLength)));
+      }
+      ws.send(JSON.stringify({ type: 'eof' }));
     };
 
     ws.onmessage = (event) => {

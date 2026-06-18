@@ -84,15 +84,30 @@ async fn ws_handler(ws: WebSocketUpgrade) -> Response {
 
 /// One IFC file per connection: receive the bytes, stream the geometry back.
 async fn handle_socket(mut socket: WebSocket) {
-    // The first binary frame is the IFC file. Tolerate (ignore) any text/ping
-    // preamble; bail on close/error.
-    let content: Vec<u8> = loop {
+    // The client uploads the IFC file as one or more binary frames, then a
+    // `{"type":"eof"}` text frame. Chunked upload keeps the browser's peak
+    // memory low on large models: a single 722 MB frame forces the tab to hold
+    // a full-file copy (on top of its source buffer) just to call `send`, which
+    // OOMs the tab. Accumulate the frames; tolerate ping/pong; a graceful close
+    // after some data arrived is treated as an implicit eof; bail otherwise.
+    let mut content: Vec<u8> = Vec::new();
+    loop {
         match socket.recv().await {
-            Some(Ok(Message::Binary(bytes))) => break bytes.to_vec(),
-            Some(Ok(Message::Text(_) | Message::Ping(_) | Message::Pong(_))) => continue,
-            Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
+            Some(Ok(Message::Binary(bytes))) => content.extend_from_slice(&bytes),
+            Some(Ok(Message::Text(text))) => {
+                if text.as_str().contains("\"eof\"") {
+                    break;
+                }
+            }
+            Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
+            Some(Ok(Message::Close(_))) | None | Some(Err(_)) => {
+                if content.is_empty() {
+                    return;
+                }
+                break;
+            }
         }
-    };
+    }
 
     // The engine is blocking (Rayon); run it off the async runtime and funnel
     // its shards/colour updates through an unbounded channel to this task, which

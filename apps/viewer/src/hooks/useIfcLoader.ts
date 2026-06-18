@@ -30,6 +30,8 @@ import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuff
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
 import { type GeometryData } from '@ifc-lite/cache';
+import { decodeDataModel } from '@ifc-lite/server-client';
+import { convertServerDataModel, type ServerParseResult } from '../utils/serverDataModel.js';
 
 import { SERVER_URL, USE_SERVER, NATIVE_BACKEND_URL, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
@@ -821,12 +823,49 @@ export function useIfcLoader() {
       };
 
       // Start data model parsing IMMEDIATELY — runs in parallel with geometry.
-      setTimeout(startDataModelParsing, 0);
+      // On the native backend the helper streams the data model (consumed by the
+      // handler registered below), so the in-browser parse is skipped entirely —
+      // no second 12 M-entity scan, and the source buffer isn't needed for it.
+      if (!geometryProcessor.isNativeBackend) {
+        setTimeout(startDataModelParsing, 0);
+      }
 
       // Use adaptive processing: sync for small files, streaming for large files
       let estimatedTotal = 0;
       let totalMeshes = 0;
       const allMeshes: MeshData[] = []; // Collect all meshes for BVH building
+
+      // Native backend: consume the helper-streamed data model (Parquet) instead
+      // of re-parsing the whole file in-browser. Reuses the same
+      // convertServerDataModel path as the HTTP server. The data model arrives
+      // after geometry, so allMeshes is fully populated by the time it fires.
+      // Falls back to the in-browser parser if it fails to arrive/decode.
+      if (geometryProcessor.isNativeBackend) {
+        geometryProcessor.setNativeDataModelHandler((parquet) => {
+          if (loadSessionRef.current !== currentSession) return;
+          void (async () => {
+            try {
+              const ab = parquet.buffer.slice(
+                parquet.byteOffset,
+                parquet.byteOffset + parquet.byteLength,
+              ) as ArrayBuffer;
+              const dataModel = await decodeDataModel(ab);
+              const parseResult: ServerParseResult = {
+                cache_key: cacheKey,
+                // Schema isn't carried in the data-model Parquet yet; convert
+                // defaults to IFC4. TODO: thread schema_version from the helper.
+                metadata: { schema_version: '' },
+                stats: { total_time_ms: 0, parse_time_ms: 0, geometry_time_ms: 0, total_vertices: 0, total_triangles: 0 },
+              };
+              const dataStore = convertServerDataModel(dataModel, parseResult, { size: file.size }, allMeshes);
+              onFullDataStore(dataStore);
+            } catch (err) {
+              console.warn('[useIfc] native data model decode failed; falling back to in-browser parse:', err);
+              setTimeout(startDataModelParsing, 0);
+            }
+          })();
+        });
+      }
       let finalCoordinateInfo: CoordinateInfo | null = null;
       // Capture RTC offset from WASM for proper multi-model alignment
       let capturedRtcOffset: { x: number; y: number; z: number } | null = null;

@@ -36,7 +36,8 @@ import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
 import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
-import type { WorkspacePanelId } from '@/lib/panels/registry';
+import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
+import { WORKSPACE_PANELS, type WorkspacePanelId } from '@/lib/panels/registry';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -92,6 +93,7 @@ export type { PinboardSlice } from './slices/pinboardSlice.js';
 export type { LensSlice, Lens, LensRule, LensCriteria } from './slices/lensSlice.js';
 export type { CompareSlice, CompareResult } from './slices/compareSlice.js';
 export type { DockSlice, FloatingPanelState, SnapZone } from './slices/dockSlice.js';
+export type { SidebarSlice, SidebarMode, SidebarLayoutSnapshot } from './slices/sidebarSlice.js';
 
 // Re-export Script types
 export type { ScriptSlice } from './slices/scriptSlice.js';
@@ -140,6 +142,7 @@ export type ViewerState = LoadingSlice &
   ClashSlice &
   CompareSlice &
   DockSlice &
+  SidebarSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
@@ -165,15 +168,22 @@ export type ViewerState = LoadingSlice &
      * the right panel. Routed through by the toolbar, command palette, and the
      * BCF overlay so every entry point behaves identically.
      */
-    openWorkspacePanel: (panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions') => void;
+    openWorkspacePanel: (panel: Exclude<WorkspacePanelId, 'properties'>) => void;
     /**
-     * Show a workspace panel docked in the right slot, un-floating it first if
-     * it was popped out (#1200/#1201). Accepts `properties` (the Information
-     * fallback, shown by closing every analysis panel) on top of the analysis
-     * panels `openWorkspacePanel` handles. Shared by the panel switcher, the
-     * Alt+N shortcuts and the floating host's re-dock action.
+     * Show a workspace panel docked in the sidebar, un-floating / re-docking it
+     * first if it was popped out (#1200/#1201/#1208). Accepts `properties` (the
+     * Information fallback, shown by closing every other panel) on top of the
+     * analysis + tool panels `openWorkspacePanel` handles. Shared by the
+     * activity bar, the Alt+N shortcuts, the command palette and the
+     * floating / window hosts' re-dock action.
      */
     showWorkspacePanel: (panel: WorkspacePanelId) => void;
+    /**
+     * Toggle a sidebar panel: if it is the active docked panel, close it back
+     * to Information; otherwise open it. The single entry point the activity
+     * bar, toolbar and command palette use so a second click always closes.
+     */
+    toggleWorkspacePanel: (panel: WorkspacePanelId) => void;
   };
 
 /**
@@ -202,6 +212,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createClashSlice(...args),
   ...createCompareSlice(...args),
   ...createDockSlice(...args),
+  ...createSidebarSlice(...args),
   ...createScriptSlice(...args),
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),
@@ -495,10 +506,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
 
   openWorkspacePanel: (panel) => {
     const [set, get] = args;
-    // Docking into the right slot: if the panel was floating, stop floating it
-    // so the existing toolbar / command-palette entry points stay in sync with
-    // the float channel (#1200/#1201) instead of leaving an orphaned window.
+    // Docking into the sidebar: if the panel was floating or popped out, re-dock
+    // it so the toolbar / command-palette / activity-bar entry points stay in
+    // sync with the float + window channels (#1200/#1201/#1208) instead of
+    // leaving an orphaned window. The sidebar is single-tenant, so opening one
+    // panel clears every other panel flag (the subscription below enforces this
+    // for stragglers, but doing it here keeps the common path a single set()).
     get().closeFloatingPanel(panel);
+    get().setPanelPoppedOut(panel, false);
     set({
       bcfPanelVisible: panel === 'bcf',
       idsPanelVisible: panel === 'ids',
@@ -506,17 +521,22 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       clashPanelVisible: panel === 'clash',
       comparePanelVisible: panel === 'compare',
       extensionsPanelVisible: panel === 'extensions',
+      scriptPanelVisible: panel === 'script',
+      ganttPanelVisible: panel === 'gantt',
+      listPanelVisible: panel === 'lists',
       rightPanelCollapsed: false,
     });
+    if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
   },
 
   showWorkspacePanel: (panel) => {
     const [set, get] = args;
-    // If the panel was floating, bring it back to the docked slot.
+    // If the panel was floating / popped out, bring it back to the docked slot.
     get().closeFloatingPanel(panel);
+    get().setPanelPoppedOut(panel, false);
     if (panel === 'properties') {
-      // The Information panel is the right slot's fallback — reveal it by
-      // closing every analysis panel.
+      // The Information panel is the sidebar's fallback — reveal it by closing
+      // every other panel.
       set({
         bcfPanelVisible: false,
         idsPanelVisible: false,
@@ -524,11 +544,28 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         clashPanelVisible: false,
         comparePanelVisible: false,
         extensionsPanelVisible: false,
+        scriptPanelVisible: false,
+        ganttPanelVisible: false,
+        listPanelVisible: false,
         rightPanelCollapsed: false,
       });
+      get().setSidebarActivePanel('properties');
+      if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
     } else {
       get().openWorkspacePanel(panel);
     }
+  },
+
+  toggleWorkspacePanel: (panel) => {
+    const [, get] = args;
+    // "Active" means it owns the docked slot right now. A floating / popped-out
+    // panel reads as open too, so toggling it re-docks rather than no-ops.
+    const s = get();
+    const isActive = s.sidebarActivePanel === panel
+      && !s.floatingPanels.some((p) => p.id === panel)
+      && !s.poppedOutIds.includes(panel);
+    if (isActive) get().showWorkspacePanel('properties');
+    else get().showWorkspacePanel(panel);
   },
 }));
 
@@ -537,10 +574,79 @@ const globalStoreRegistry = globalThis as typeof globalThis & {
   [STORE_SINGLETON_KEY]?: ReturnType<typeof createViewerStore>;
 };
 
+/**
+ * The nine per-panel visibility flags that drive the single-tenant sidebar,
+ * paired with their registry id. `properties` has no flag — it is the
+ * fallback shown when none of these are on.
+ */
+const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspacePanelId]> = [
+  ['bcfPanelVisible', 'bcf'],
+  ['idsPanelVisible', 'ids'],
+  ['lensPanelVisible', 'lens'],
+  ['clashPanelVisible', 'clash'],
+  ['comparePanelVisible', 'compare'],
+  ['extensionsPanelVisible', 'extensions'],
+  ['scriptPanelVisible', 'script'],
+  ['ganttPanelVisible', 'gantt'],
+  ['listPanelVisible', 'lists'],
+];
+
+/**
+ * Enforce the "one docked panel at a time" invariant for the unified sidebar
+ * (#1208), without having to touch the ~15 call sites that flip a panel flag
+ * directly (ChatPanel, IdeasPanel, GenerateScheduleDialog, search-to-list, …).
+ *
+ * Whenever a panel flag transitions off→on we make it the sole active panel:
+ * clear every other flag and record it as `sidebarActivePanel`. When the
+ * active panel's flag goes on→off we re-resolve to the next open panel, or the
+ * Information fallback. This is the single writer of `sidebarActivePanel`.
+ */
+function registerSidebarExclusivity(store: ReturnType<typeof createViewerStore>): void {
+  store.subscribe((state, prev) => {
+    // Did any panel just open this tick? (first off→on wins)
+    let opened: WorkspacePanelId | null = null;
+    for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
+      if (state[flag] && !prev[flag]) { opened = id; break; }
+    }
+
+    if (opened) {
+      const patch: Record<string, boolean> = {};
+      for (const [flag, id] of SIDEBAR_PANEL_FLAGS) {
+        if (id !== opened && state[flag]) patch[flag] = false;
+      }
+      if (Object.keys(patch).length > 0) store.setState(patch as Partial<ViewerState>);
+      state.setSidebarActivePanel(opened);
+      // Opening a panel from anywhere (toolbar, command palette, chat, …) means
+      // the user wants to see it — reveal the sidebar if it was collapsed/hidden.
+      if (state.sidebarMode !== 'expanded') state.setSidebarMode('expanded');
+      return;
+    }
+
+    // Did the active panel just close? Re-resolve the docked slot.
+    const active = state.sidebarActivePanel;
+    if (active !== 'properties') {
+      const flag = SIDEBAR_PANEL_FLAGS.find(([, id]) => id === active)?.[0];
+      if (flag && !state[flag] && prev[flag]) {
+        const next = SIDEBAR_PANEL_FLAGS.find(([f]) => state[f]);
+        state.setSidebarActivePanel(next ? next[1] : 'properties');
+      }
+    }
+  });
+}
+
 export function getViewerStoreApi() {
-  return globalStoreRegistry[STORE_SINGLETON_KEY] ?? (
-    globalStoreRegistry[STORE_SINGLETON_KEY] = createViewerStore()
-  );
+  const existing = globalStoreRegistry[STORE_SINGLETON_KEY];
+  if (existing) return existing;
+  const store = createViewerStore();
+  globalStoreRegistry[STORE_SINGLETON_KEY] = store;
+  registerSidebarExclusivity(store);
+  // Initial reconcile: a persisted panel flag (e.g. scriptPanelVisible) can be
+  // true at load before any change fires the subscription, so seed the docked
+  // panel from the current flags rather than leaving it on the fallback.
+  const init = store.getState();
+  const initialActive = SIDEBAR_PANEL_FLAGS.find(([flag]) => init[flag])?.[1];
+  if (initialActive) init.setSidebarActivePanel(initialActive);
+  return store;
 }
 
 export const useViewerStore = getViewerStoreApi();

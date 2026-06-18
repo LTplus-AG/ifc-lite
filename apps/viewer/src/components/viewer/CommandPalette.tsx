@@ -66,6 +66,9 @@ import {
   Layers3,
   SquareStack,
   ChevronsUpDown,
+  PanelRight,
+  SlidersHorizontal,
+  ChevronsRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -201,64 +204,20 @@ function downloadBlob(data: BlobPart, name: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-/** Exclusively activate a right-panel content panel (BCF / IDS / Lens / Extensions).
- *  Closes all others first so the if-else chain in ViewerLayout renders it.
- *  If the target is already active, closes it (back to Properties). */
-
+/** Toggle a sidebar workspace panel (#1208). The store's `toggleWorkspacePanel`
+ *  owns the single-tenant + re-dock + detach semantics; a second activation
+ *  closes the panel back to the Information fallback. Closing any active
+ *  analysis extension first preserves the prior "panels win the slot" behavior.
+ *  Kept as two thin helpers so every existing command action keeps its call
+ *  site (the `'list'` legacy id maps to the registry's `'lists'`). */
 function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions') {
-  const s = useViewerStore.getState();
-  // "Open" means floating OR docked-visible, so toggling a popped-out panel
-  // closes it rather than silently flipping a hidden flag (#1200/#1201).
-  const floating = s.floatingPanels.some((p) => p.id === panel);
-  const isActive = floating || (
-    panel === 'bcf' ? s.bcfPanelVisible :
-    panel === 'ids' ? s.idsPanelVisible :
-    panel === 'clash' ? s.clashPanelVisible :
-    panel === 'compare' ? s.comparePanelVisible :
-    panel === 'extensions' ? s.extensionsPanelVisible :
-    s.lensPanelVisible
-  );
-
   closeActiveAnalysisExtension();
-
-  if (isActive) {
-    // Toggle off → close it (and the rest of the group + any float) → Properties.
-    s.closeFloatingPanel(panel);
-    s.setBcfPanelVisible(false);
-    s.setIdsPanelVisible(false);
-    s.setLensPanelVisible(false);
-    s.setClashPanelVisible(false);
-    s.setComparePanelVisible(false);
-    s.setExtensionsPanelVisible(false);
-  } else {
-    // Open exclusively (closes every sibling + un-floats) and un-collapse.
-    s.openWorkspacePanel(panel);
-  }
+  useViewerStore.getState().toggleWorkspacePanel(panel);
 }
 
-/** Exclusively activate a bottom panel (Script / List / Gantt).
- *  Closes the other first so the if-else chain in ViewerLayout renders it.
- *  If the target is already active, closes it. */
 function activateBottomPanel(panel: 'script' | 'list' | 'gantt') {
-  const s = useViewerStore.getState();
-  const isActive =
-    panel === 'script' ? s.scriptPanelVisible
-    : panel === 'list' ? s.listPanelVisible
-    : s.ganttPanelVisible;
-
   closeActiveAnalysisExtension();
-
-  // Close all bottom panels — only one slots into the bottom strip at a time.
-  s.setScriptPanelVisible(false);
-  s.setListPanelVisible(false);
-  s.setGanttPanelVisible(false);
-
-  if (!isActive) {
-    s.setRightPanelCollapsed(false);
-    if (panel === 'script') s.setScriptPanelVisible(true);
-    else if (panel === 'list') s.setListPanelVisible(true);
-    else s.setGanttPanelVisible(true);
-  }
+  useViewerStore.getState().toggleWorkspacePanel(panel === 'list' ? 'lists' : panel);
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -430,8 +389,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
     // ── Panels ──
     c.push(
-      { id: 'panel:properties', label: 'Inspector', keywords: 'properties attributes material classification schedule task panel right', category: 'Panels', icon: Layout,
-        action: () => { const s = useViewerStore.getState(); s.setRightPanelCollapsed(!s.rightPanelCollapsed); } },
+      { id: 'panel:properties', label: 'Inspector', keywords: 'properties attributes material classification schedule task panel right information', category: 'Panels', icon: Layout,
+        action: () => { useViewerStore.getState().showWorkspacePanel('properties'); } },
       { id: 'panel:tree', label: 'Spatial Tree', keywords: 'hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
         action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
       { id: 'panel:script', label: 'Script Editor', keywords: 'code automation console', category: 'Panels', icon: FileCode2,
@@ -471,6 +430,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => {
           useViewerStore.getState().setFlavorDialogRequested(true);
         } },
+      // ── Sidebar layout (#1208) ──
+      { id: 'sidebar:toggle', label: 'Toggle Sidebar', keywords: 'sidebar panels show hide off optional workspace', category: 'Panels', icon: PanelRight, shortcut: 'Alt+\\',
+        action: () => { useViewerStore.getState().toggleSidebar(); } },
+      { id: 'sidebar:collapse', label: 'Collapse Sidebar to Icons', keywords: 'sidebar collapse icons rail minimize', category: 'Panels', icon: ChevronsRight,
+        action: () => { useViewerStore.getState().setSidebarMode('collapsed'); } },
+      { id: 'sidebar:customize', label: 'Customize Sidebar…', keywords: 'sidebar customize reorder hide show panels edit arrange', category: 'Panels', icon: SlidersHorizontal,
+        action: () => { const s = useViewerStore.getState(); s.setSidebarMode('expanded'); s.setSidebarCustomizing(true); } },
+      { id: 'sidebar:reset', label: 'Reset Sidebar Layout', keywords: 'sidebar reset default order width restore', category: 'Panels', icon: RotateCcw,
+        action: () => { useViewerStore.getState().resetSidebarLayout(); } },
     );
 
     // ── Schedule / 4D (Tools) ─────────────────────────────

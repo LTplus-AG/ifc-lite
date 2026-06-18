@@ -10,30 +10,12 @@
  */
 
 import { useViewerStore } from '@/store';
-import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { getPanelDef } from '@/lib/panels/registry';
+import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { FloatingPanel } from './FloatingPanel';
-import { PropertiesPanel } from '../PropertiesPanel';
-import { ComparePanel } from '../ComparePanel';
-import { BCFPanel } from '../BCFPanel';
-import { IDSPanel } from '../IDSPanel';
-import { LensPanel } from '../LensPanel';
-import { ClashPanel } from '../ClashPanel';
-import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 
 const FLOAT_Z_BASE = 30;
-
-function renderPanelBody(id: WorkspacePanelId, onClose: () => void) {
-  switch (id) {
-    case 'properties': return <PropertiesPanel />;
-    case 'compare': return <ComparePanel onClose={onClose} />;
-    case 'bcf': return <BCFPanel onClose={onClose} />;
-    case 'ids': return <IDSPanel onClose={onClose} />;
-    case 'lens': return <LensPanel onClose={onClose} />;
-    case 'clash': return <ClashPanel onClose={onClose} />;
-    case 'extensions': return <ExtensionsPanel onClose={onClose} />;
-  }
-}
 
 export function FloatingPanelHost() {
   const floatingPanels = useViewerStore((s) => s.floatingPanels);

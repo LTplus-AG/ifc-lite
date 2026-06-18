@@ -108,16 +108,25 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       setActiveTool('annotate');
     }
 
-    // Alt+1..7 — jump to a workspace panel (#1200). Uses e.code so it works
-    // regardless of the Alt character a layout produces (Alt+1 = ¡ on macOS).
+    // Alt+1..9 / Alt+0 — jump to a workspace panel (#1200/#1208). Uses e.code so
+    // it works regardless of the Alt character a layout produces (Alt+1 = ¡ on
+    // macOS). 1-9 map to the first nine panels; 0 maps to the tenth.
     if (e.altKey && !ctrl) {
-      const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+      const digit = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
       if (digit) {
-        const panel = WORKSPACE_PANELS[Number(digit[1]) - 1];
+        const n = Number(digit[1]);
+        const index = n === 0 ? 9 : n - 1;
+        const panel = WORKSPACE_PANELS[index];
         if (panel) {
           e.preventDefault();
           useViewerStore.getState().showWorkspacePanel(panel.id);
         }
+        return;
+      }
+      // Alt+\\ — cycle the sidebar (expanded → icons → hidden).
+      if (e.code === 'Backslash') {
+        e.preventDefault();
+        useViewerStore.getState().cycleSidebarMode();
         return;
       }
     }
@@ -305,13 +314,12 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       lastEscapeRef.current = now;
 
       if (timeSinceLastEscape < DOUBLE_ESCAPE_MS) {
-        // Double-escape: close all panels, return to starting view
+        // Double-escape: close all panels, return to starting view.
         const state = useViewerStore.getState();
-        state.setBcfPanelVisible(false);
-        state.setIdsPanelVisible(false);
-        state.setLensPanelVisible(false);
-        state.setScriptPanelVisible(false);
-        state.setListPanelVisible(false);
+        // Clears every sidebar workspace panel flag through the choke point
+        // (bcf/ids/lens/clash/compare/extensions/script/gantt/lists) — replaces
+        // the old partial hand-written list that drifted as panels were added.
+        state.showWorkspacePanel('properties');
         state.setDrawing2DPanelVisible(false);
         state.setOverridesPanelVisible(false);
         state.setChatPanelVisible(false);
@@ -386,7 +394,8 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'F', description: 'Frame selection', category: 'Camera' },
   { key: '1-6', description: 'Preset views', category: 'Camera' },
   { key: 'T', description: 'Toggle theme', category: 'UI' },
-  { key: 'Alt+1…7', description: 'Switch workspace panel (Info, Compare, BCF, IDS, Lens, Clash, Extensions)', category: 'UI' },
+  { key: 'Alt+1…0', description: 'Switch workspace panel (Info, Compare, BCF, IDS, Lens, Clash, Extensions, Script, Schedule, Lists)', category: 'UI' },
+  { key: 'Alt+\\', description: 'Cycle sidebar (expanded → icons → hidden)', category: 'UI' },
   { key: 'Esc', description: 'Reset all (clear selection, basket, isolation)', category: 'Selection' },
   { key: 'Esc Esc', description: 'Close all panels (return to starting view)', category: 'UI' },
   { key: 'Ctrl+K', description: 'Command palette', category: 'UI' },

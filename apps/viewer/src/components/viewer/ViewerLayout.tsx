@@ -36,8 +36,9 @@ import { GanttPanel } from './schedule/GanttPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
-import { PanelSwitcher } from './PanelSwitcher';
+import { SidebarDock } from './sidebar/SidebarDock';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
+import { PanelWindowHost } from './dock/PanelWindowHost';
 import {
   closeActiveAnalysisExtension,
   getAnalysisExtensionById,
@@ -143,13 +144,10 @@ export function ViewerLayout() {
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
   const setGanttPanelVisible = useViewerStore((s) => s.setGanttPanelVisible);
-  // Floating workspace panels (#1201) — the docked right slot skips any panel
-  // that is currently rendered as a floating window instead.
-  const floatingPanels = useViewerStore((s) => s.floatingPanels);
-  const floatingPanelIds = useMemo(
-    () => new Set(floatingPanels.map((p) => p.id)),
-    [floatingPanels],
-  );
+  // Floating / popped-out / docked panels are now owned by the sidebar
+  // (#1208): SidebarPanelHost resolves which panel renders in the dock and
+  // skips any that is floating (#1201) or popped out. ViewerLayout no longer
+  // needs to track the float set here.
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
     getAnalysisExtensionsSnapshot,
@@ -163,24 +161,19 @@ export function ViewerLayout() {
     ? activeAnalysisExtension
     : null;
 
-  // Panel refs for programmatic collapse/expand (command palette, keyboard shortcuts)
+  // Panel refs for programmatic collapse/expand (command palette, keyboard shortcuts).
+  // The right region is now the unified sidebar (#1208), which owns its own
+  // collapse/hide state in `sidebarSlice`; only the left hierarchy pane is a
+  // react-resizable Panel here.
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
-  const rightPanelRef = useRef<PanelImperativeHandle>(null);
 
-  // Sync store state → Panel collapse/expand on desktop
+  // Sync store state → left Panel collapse/expand on desktop
   useEffect(() => {
     const panel = leftPanelRef.current;
     if (!panel) return;
     if (leftPanelCollapsed && !panel.isCollapsed()) panel.collapse();
     else if (!leftPanelCollapsed && panel.isCollapsed()) panel.expand();
   }, [leftPanelCollapsed]);
-
-  useEffect(() => {
-    const panel = rightPanelRef.current;
-    if (!panel) return;
-    if (rightPanelCollapsed && !panel.isCollapsed()) panel.collapse();
-    else if (!rightPanelCollapsed && panel.isCollapsed()) panel.expand();
-  }, [rightPanelCollapsed]);
 
   // Bottom panel resize state (pixel height, persisted in ref to avoid re-renders during drag)
   const [bottomHeight, setBottomHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
@@ -298,96 +291,52 @@ export function ViewerLayout() {
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (
           <div ref={containerRef} className="flex-1 min-h-0 flex flex-col relative">
-            {/* Top: horizontal split (hierarchy | viewport | properties) */}
-            <div className="flex-1 min-h-0">
-              <PanelGroup orientation="horizontal" className="h-full">
-                {/* Left Panel - Hierarchy */}
-                <Panel
-                  id="left-panel"
-                  defaultSize={20}
-                  minSize={10}
-                  collapsible
-                  collapsedSize={0}
-                  panelRef={leftPanelRef}
-                  onResize={() => {
-                    const collapsed = leftPanelRef.current?.isCollapsed() ?? false;
-                    if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
-                  }}
-                >
-                  <div className="h-full w-full overflow-hidden panel-container flex flex-col">
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <HierarchyPanel />
+            {/* Top: hierarchy | viewport split, with the unified sidebar (#1208)
+                pinned to the right edge (its own activity bar + docked pane). */}
+            <div className="flex-1 min-h-0 flex">
+              <div className="flex-1 min-w-0">
+                <PanelGroup orientation="horizontal" className="h-full">
+                  {/* Left Panel - Hierarchy */}
+                  <Panel
+                    id="left-panel"
+                    defaultSize={22}
+                    minSize={10}
+                    collapsible
+                    collapsedSize={0}
+                    panelRef={leftPanelRef}
+                    onResize={() => {
+                      const collapsed = leftPanelRef.current?.isCollapsed() ?? false;
+                      if (collapsed !== leftPanelCollapsed) setLeftPanelCollapsed(collapsed);
+                    }}
+                  >
+                    <div className="h-full w-full overflow-hidden panel-container flex flex-col">
+                      <div className="flex-1 min-h-0 overflow-hidden">
+                        <HierarchyPanel />
+                      </div>
+                      {/* Extension dock.left — collapses when no extension
+                          contributes. Sits beneath the hierarchy panel. */}
+                      <ExtensionDockHost slot="dock.left" className="max-h-[40%] border-t" />
                     </div>
-                    {/* Extension dock.left — collapses when no extension
-                        contributes. Sits beneath the hierarchy panel. */}
-                    <ExtensionDockHost slot="dock.left" className="max-h-[40%] border-t" />
-                  </div>
-                </Panel>
+                  </Panel>
 
-                <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
+                  <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
 
-                {/* Center - Viewport */}
-                <Panel id="viewport-panel" defaultSize={58} minSize={30}>
-                  <div className="h-full w-full overflow-hidden relative">
-                    <ViewportContainer />
-                    {/* Panel switcher rail on the viewport's right edge (#1200) */}
-                    <PanelSwitcher />
-                  </div>
-                </Panel>
+                  {/* Center - Viewport */}
+                  <Panel id="viewport-panel" defaultSize={78} minSize={30}>
+                    <div className="h-full w-full overflow-hidden relative">
+                      <ViewportContainer />
+                    </div>
+                  </Panel>
+                </PanelGroup>
+              </div>
 
-                <PanelResizeHandle className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-col-resize" />
-
-                {/* Right Panel - Properties, BCF, or IDS */}
-                <Panel
-                  id="right-panel"
-                  defaultSize={22}
-                  minSize={15}
-                  collapsible
-                  collapsedSize={0}
-                  panelRef={rightPanelRef}
-                  onResize={() => {
-                    const collapsed = rightPanelRef.current?.isCollapsed() ?? false;
-                    if (collapsed !== rightPanelCollapsed) setRightPanelCollapsed(collapsed);
-                  }}
-                >
-                  <div className="h-full w-full overflow-hidden panel-container">
-                    {activeRightAnalysisExtension ? (
-                      activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                    ) : activeTool === 'addElement' ? (
-                      <AddElementPanel onClose={() => setActiveTool('select')} />
-                    ) : lensPanelVisible && !floatingPanelIds.has('lens') ? (
-                      <LensPanel onClose={() => setLensPanelVisible(false)} />
-                    ) : clashPanelVisible && !floatingPanelIds.has('clash') ? (
-                      <ClashPanel onClose={() => setClashPanelVisible(false)} />
-                    ) : comparePanelVisible && !floatingPanelIds.has('compare') ? (
-                      <ComparePanel onClose={() => setComparePanelVisible(false)} />
-                    ) : idsPanelVisible && !floatingPanelIds.has('ids') ? (
-                      <IDSPanel onClose={() => setIdsPanelVisible(false)} />
-                    ) : bcfPanelVisible && !floatingPanelIds.has('bcf') ? (
-                      <BCFPanel onClose={() => setBcfPanelVisible(false)} />
-                    ) : extensionsPanelVisible && !floatingPanelIds.has('extensions') ? (
-                      <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
-                    ) : floatingPanelIds.has('properties') ? (
-                      // Information panel floated out (#1201) — leave the slot empty.
-                      <div className="h-full flex flex-col">
-                        <ExtensionDockHost slot="dock.right" className="max-h-[40%] border-t" />
-                      </div>
-                    ) : (
-                      <div className="h-full flex flex-col">
-                        <div className="flex-1 min-h-0 overflow-hidden">
-                          <PropertiesPanel />
-                        </div>
-                        {/* Extension dock.right — collapses when empty. */}
-                        <ExtensionDockHost slot="dock.right" className="max-h-[40%] border-t" />
-                      </div>
-                    )}
-                  </div>
-                </Panel>
-              </PanelGroup>
+              {/* Unified workspace sidebar: activity bar + docked panel host. */}
+              <SidebarDock />
             </div>
 
-            {/* Bottom Panel - Lists / Script / Gantt / analysis ext (custom resizable) */}
-            {(listPanelVisible || scriptPanelVisible || ganttPanelVisible || !!activeBottomAnalysisExtension) && (
+            {/* Bottom Panel - bottom-placed analysis extensions only. Script /
+                Lists / Gantt are now first-class sidebar panels (#1208). */}
+            {!!activeBottomAnalysisExtension && (
               <div style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
                 {/* Drag handle */}
                 <div
@@ -395,15 +344,7 @@ export function ViewerLayout() {
                   onMouseDown={handleResizeStart}
                 />
                 <div className="h-full w-full overflow-hidden border-t pt-1.5">
-                  {activeBottomAnalysisExtension ? (
-                    activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                  ) : ganttPanelVisible ? (
-                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
-                  ) : scriptPanelVisible ? (
-                    <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
-                  ) : (
-                    <ListPanel onClose={() => setListPanelVisible(false)} />
-                  )}
+                  {activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })}
                 </div>
               </div>
             )}
@@ -533,6 +474,10 @@ export function ViewerLayout() {
 
         {/* Status Bar — hidden on mobile to maximize viewport space */}
         {!isMobile && <StatusBar />}
+
+        {/* Panels popped out into OS / PiP windows (#1208) — portalled into the
+            child documents; live-synced via the shared store. */}
+        <PanelWindowHost />
       </div>
     </TooltipProvider>
   );

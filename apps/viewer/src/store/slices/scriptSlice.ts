@@ -136,13 +136,10 @@ for (const [type, count] of Object.entries(counts).sort((a, b) => b[1] - a[1])) 
 }
 `;
 
-function loadStoredScriptPanelVisible(): boolean {
-  try {
-    return localStorage.getItem(SCRIPT_PANEL_VISIBLE_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
+// Script panel visibility is no longer persisted: the unified sidebar (#1208)
+// owns the active-panel session state, so persisting this flag separately only
+// resurrected the Script editor on every reload regardless of the last-used
+// panel. Kept as session-only state.
 
 export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> = (set, get) => ({
   // Initial state
@@ -154,7 +151,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptLastResult: null,
   scriptLastError: null,
   scriptLastDiagnostics: [],
-  scriptPanelVisible: loadStoredScriptPanelVisible(),
+  scriptPanelVisible: false,
   scriptDeleteConfirmId: null,
   scriptEditorRevision: 0,
   scriptEditorSelection: { from: 0, to: 0 },
@@ -314,14 +311,11 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   setScriptDiagnostics: (scriptLastDiagnostics) => set({ scriptLastDiagnostics }),
 
   setScriptPanelVisible: (scriptPanelVisible) => {
-    try { localStorage.setItem(SCRIPT_PANEL_VISIBLE_STORAGE_KEY, String(scriptPanelVisible)); } catch { /* ignore */ }
     set({ scriptPanelVisible });
   },
 
   toggleScriptPanel: () => {
-    const next = !get().scriptPanelVisible;
-    try { localStorage.setItem(SCRIPT_PANEL_VISIBLE_STORAGE_KEY, String(next)); } catch { /* ignore */ }
-    set({ scriptPanelVisible: next });
+    set({ scriptPanelVisible: !get().scriptPanelVisible });
   },
 
   setScriptDeleteConfirmId: (scriptDeleteConfirmId) => set({ scriptDeleteConfirmId }),

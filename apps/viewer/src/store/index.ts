@@ -35,6 +35,8 @@ import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
 import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
+import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
+import type { WorkspacePanelId } from '@/lib/panels/registry';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -89,6 +91,7 @@ export type { PinboardSlice } from './slices/pinboardSlice.js';
 // Re-export Lens types
 export type { LensSlice, Lens, LensRule, LensCriteria } from './slices/lensSlice.js';
 export type { CompareSlice, CompareResult } from './slices/compareSlice.js';
+export type { DockSlice, FloatingPanelState, SnapZone } from './slices/dockSlice.js';
 
 // Re-export Script types
 export type { ScriptSlice } from './slices/scriptSlice.js';
@@ -136,6 +139,7 @@ export type ViewerState = LoadingSlice &
   LensSlice &
   ClashSlice &
   CompareSlice &
+  DockSlice &
   ScriptSlice &
   ChatSlice &
   CesiumSlice &
@@ -162,6 +166,14 @@ export type ViewerState = LoadingSlice &
      * BCF overlay so every entry point behaves identically.
      */
     openWorkspacePanel: (panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions') => void;
+    /**
+     * Show a workspace panel docked in the right slot, un-floating it first if
+     * it was popped out (#1200/#1201). Accepts `properties` (the Information
+     * fallback, shown by closing every analysis panel) on top of the analysis
+     * panels `openWorkspacePanel` handles. Shared by the panel switcher, the
+     * Alt+N shortcuts and the floating host's re-dock action.
+     */
+    showWorkspacePanel: (panel: WorkspacePanelId) => void;
   };
 
 /**
@@ -189,6 +201,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createLensSlice(...args),
   ...createClashSlice(...args),
   ...createCompareSlice(...args),
+  ...createDockSlice(...args),
   ...createScriptSlice(...args),
   ...createChatSlice(...args),
   ...createCesiumSlice(...args),
@@ -491,6 +504,27 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       extensionsPanelVisible: panel === 'extensions',
       rightPanelCollapsed: false,
     });
+  },
+
+  showWorkspacePanel: (panel) => {
+    const [set, get] = args;
+    // If the panel was floating, bring it back to the docked slot.
+    get().closeFloatingPanel(panel);
+    if (panel === 'properties') {
+      // The Information panel is the right slot's fallback — reveal it by
+      // closing every analysis panel.
+      set({
+        bcfPanelVisible: false,
+        idsPanelVisible: false,
+        lensPanelVisible: false,
+        clashPanelVisible: false,
+        comparePanelVisible: false,
+        extensionsPanelVisible: false,
+        rightPanelCollapsed: false,
+      });
+    } else {
+      get().openWorkspacePanel(panel);
+    }
   },
 }));
 

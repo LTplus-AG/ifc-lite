@@ -1,0 +1,215 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * A floating / edge-snapped workspace-panel window (issue #1201).
+ *
+ * Chrome around an arbitrary panel: a drag-by-header title bar, dock controls
+ * (snap left / right / bottom / free-float, re-dock into the right slot, close)
+ * and a resize affordance. Geometry lives in the dock slice so it persists and
+ * survives re-render; this component only translates pointer gestures into
+ * `setFloatingPanelRect` / `snapFloatingPanel` calls.
+ */
+
+import { useRef, type CSSProperties, type ReactNode } from 'react';
+import {
+  PanelLeft,
+  PanelRight,
+  PanelBottom,
+  Square,
+  Pin,
+  X,
+  GripVertical,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { FloatingPanelState, SnapZone } from '@/store';
+
+const MIN_W = 260;
+const MIN_H = 180;
+
+interface FloatingPanelProps {
+  panel: FloatingPanelState;
+  title: string;
+  zIndex: number;
+  children: ReactNode;
+  onRect: (rect: Partial<Pick<FloatingPanelState, 'x' | 'y' | 'w' | 'h'>>) => void;
+  onSnap: (snap: SnapZone) => void;
+  onFocus: () => void;
+  /** Re-dock into the right slot (stop floating, show docked). */
+  onDock: () => void;
+  onClose: () => void;
+}
+
+function styleFor(p: FloatingPanelState): CSSProperties {
+  switch (p.snap) {
+    case 'left':
+      return { left: 0, top: 0, bottom: 0, width: p.w };
+    case 'right':
+      return { right: 0, top: 0, bottom: 0, width: p.w };
+    case 'bottom':
+      return { left: 0, right: 0, bottom: 0, height: p.h };
+    default:
+      return { left: p.x, top: p.y, width: p.w, height: p.h };
+  }
+}
+
+export function FloatingPanel({
+  panel,
+  title,
+  zIndex,
+  children,
+  onRect,
+  onSnap,
+  onFocus,
+  onDock,
+  onClose,
+}: FloatingPanelProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Drag by the header: snapped windows convert to free-float at their current
+  // on-screen rect first, so they don't jump.
+  const onDragStart = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, input, select, textarea, a, [data-no-drag]')) return;
+    const el = ref.current;
+    if (!el) return;
+    e.preventDefault();
+    onFocus();
+
+    const rect = el.getBoundingClientRect();
+    const parent = (el.offsetParent as HTMLElement | null)?.getBoundingClientRect();
+    const startX = rect.left - (parent?.left ?? 0);
+    const startY = rect.top - (parent?.top ?? 0);
+    const w = rect.width;
+    const h = rect.height;
+    const maxX = Math.max(0, (el.offsetParent as HTMLElement | null ? (el.offsetParent as HTMLElement).clientWidth : window.innerWidth) - w);
+    const maxY = Math.max(0, (el.offsetParent as HTMLElement | null ? (el.offsetParent as HTMLElement).clientHeight : window.innerHeight) - h);
+    const px = e.clientX;
+    const py = e.clientY;
+    if (panel.snap !== 'free') onSnap('free');
+    onRect({ x: startX, y: startY, w, h });
+
+    const move = (ev: MouseEvent) => {
+      const x = Math.max(0, Math.min(maxX, startX + ev.clientX - px));
+      const y = Math.max(0, Math.min(maxY, startY + ev.clientY - py));
+      onRect({ x, y });
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  // Resize: free → bottom-right corner; left/right snap → inner edge (width);
+  // bottom snap → top edge (height).
+  const onResizeStart = (e: React.MouseEvent) => {
+    const el = ref.current;
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onFocus();
+    const rect = el.getBoundingClientRect();
+    const startW = rect.width;
+    const startH = rect.height;
+    const px = e.clientX;
+    const py = e.clientY;
+    const snap = panel.snap;
+
+    const move = (ev: MouseEvent) => {
+      const dx = ev.clientX - px;
+      const dy = ev.clientY - py;
+      if (snap === 'bottom') {
+        onRect({ h: Math.max(MIN_H, startH - dy) });
+      } else if (snap === 'right') {
+        onRect({ w: Math.max(MIN_W, startW - dx) });
+      } else if (snap === 'left') {
+        onRect({ w: Math.max(MIN_W, startW + dx) });
+      } else {
+        onRect({ w: Math.max(MIN_W, startW + dx), h: Math.max(MIN_H, startH + dy) });
+      }
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  const snapBtn = (zone: SnapZone, Icon: typeof PanelLeft, label: string) => (
+    <button
+      type="button"
+      data-no-drag
+      title={label}
+      onClick={() => onSnap(zone)}
+      className={cn(
+        'h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors',
+        panel.snap === zone && 'bg-muted text-primary',
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  );
+
+  return (
+    <div
+      ref={ref}
+      style={{ ...styleFor(panel), zIndex }}
+      onMouseDown={onFocus}
+      className="absolute pointer-events-auto flex flex-col rounded-lg border border-border bg-background shadow-2xl overflow-hidden"
+    >
+      {/* Title bar — drag handle + dock controls */}
+      <div
+        onMouseDown={onDragStart}
+        className="flex items-center gap-1 px-2 h-8 shrink-0 border-b border-border bg-muted/40 cursor-move select-none"
+      >
+        <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <span className="text-xs font-medium truncate min-w-0 flex-1">{title}</span>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {snapBtn('left', PanelLeft, 'Dock left')}
+          {snapBtn('bottom', PanelBottom, 'Dock bottom')}
+          {snapBtn('right', PanelRight, 'Dock right')}
+          {snapBtn('free', Square, 'Free float')}
+          <button
+            type="button"
+            data-no-drag
+            title="Dock into right panel"
+            onClick={onDock}
+            className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
+          >
+            <Pin className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            data-no-drag
+            title="Close"
+            onClick={onClose}
+            className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Panel content */}
+      <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
+
+      {/* Resize affordance */}
+      <div
+        onMouseDown={onResizeStart}
+        className={cn(
+          'absolute z-10',
+          panel.snap === 'bottom'
+            ? 'top-0 inset-x-0 h-1.5 cursor-row-resize'
+            : panel.snap === 'left'
+              ? 'right-0 inset-y-0 w-1.5 cursor-col-resize'
+              : panel.snap === 'right'
+                ? 'left-0 inset-y-0 w-1.5 cursor-col-resize'
+                : 'bottom-0 right-0 h-3 w-3 cursor-nwse-resize',
+        )}
+      />
+    </div>
+  );
+}

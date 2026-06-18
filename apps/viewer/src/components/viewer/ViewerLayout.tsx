@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -36,6 +36,8 @@ import { GanttPanel } from './schedule/GanttPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
+import { PanelSwitcher } from './PanelSwitcher';
+import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import {
   closeActiveAnalysisExtension,
   getAnalysisExtensionById,
@@ -141,6 +143,13 @@ export function ViewerLayout() {
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
   const setGanttPanelVisible = useViewerStore((s) => s.setGanttPanelVisible);
+  // Floating workspace panels (#1201) — the docked right slot skips any panel
+  // that is currently rendered as a floating window instead.
+  const floatingPanels = useViewerStore((s) => s.floatingPanels);
+  const floatingPanelIds = useMemo(
+    () => new Set(floatingPanels.map((p) => p.id)),
+    [floatingPanels],
+  );
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
     getAnalysisExtensionsSnapshot,
@@ -288,7 +297,7 @@ export function ViewerLayout() {
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (
-          <div ref={containerRef} className="flex-1 min-h-0 flex flex-col">
+          <div ref={containerRef} className="flex-1 min-h-0 flex flex-col relative">
             {/* Top: horizontal split (hierarchy | viewport | properties) */}
             <div className="flex-1 min-h-0">
               <PanelGroup orientation="horizontal" className="h-full">
@@ -319,8 +328,10 @@ export function ViewerLayout() {
 
                 {/* Center - Viewport */}
                 <Panel id="viewport-panel" defaultSize={58} minSize={30}>
-                  <div className="h-full w-full overflow-hidden">
+                  <div className="h-full w-full overflow-hidden relative">
                     <ViewportContainer />
+                    {/* Panel switcher rail on the viewport's right edge (#1200) */}
+                    <PanelSwitcher />
                   </div>
                 </Panel>
 
@@ -344,18 +355,23 @@ export function ViewerLayout() {
                       activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
                     ) : activeTool === 'addElement' ? (
                       <AddElementPanel onClose={() => setActiveTool('select')} />
-                    ) : lensPanelVisible ? (
+                    ) : lensPanelVisible && !floatingPanelIds.has('lens') ? (
                       <LensPanel onClose={() => setLensPanelVisible(false)} />
-                    ) : clashPanelVisible ? (
+                    ) : clashPanelVisible && !floatingPanelIds.has('clash') ? (
                       <ClashPanel onClose={() => setClashPanelVisible(false)} />
-                    ) : comparePanelVisible ? (
+                    ) : comparePanelVisible && !floatingPanelIds.has('compare') ? (
                       <ComparePanel onClose={() => setComparePanelVisible(false)} />
-                    ) : idsPanelVisible ? (
+                    ) : idsPanelVisible && !floatingPanelIds.has('ids') ? (
                       <IDSPanel onClose={() => setIdsPanelVisible(false)} />
-                    ) : bcfPanelVisible ? (
+                    ) : bcfPanelVisible && !floatingPanelIds.has('bcf') ? (
                       <BCFPanel onClose={() => setBcfPanelVisible(false)} />
-                    ) : extensionsPanelVisible ? (
+                    ) : extensionsPanelVisible && !floatingPanelIds.has('extensions') ? (
                       <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
+                    ) : floatingPanelIds.has('properties') ? (
+                      // Information panel floated out (#1201) — leave the slot empty.
+                      <div className="h-full flex flex-col">
+                        <ExtensionDockHost slot="dock.right" className="max-h-[40%] border-t" />
+                      </div>
                     ) : (
                       <div className="h-full flex flex-col">
                         <div className="flex-1 min-h-0 overflow-hidden">
@@ -391,6 +407,9 @@ export function ViewerLayout() {
                 </div>
               </div>
             )}
+
+            {/* Floating / docked workspace-panel windows (#1201) */}
+            <FloatingPanelHost />
           </div>
         )}
 

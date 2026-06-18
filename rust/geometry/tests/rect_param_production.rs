@@ -10,11 +10,83 @@
 //!
 //! Run: MEASURE_FIXTURE=<path> cargo test --test rect_param_production -- --ignored --nocapture
 
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
-use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
+use ifc_lite_core::{build_entity_index, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh, RectParam};
+use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
 
+/// Signed-permutation axis map of `m` (each row one entry ≈±1), or `None`.
+fn signed_perm(m: &Matrix3<f64>, tol: f64) -> Option<[usize; 3]> {
+    let mut out = [0usize; 3];
+    let mut used = [false; 3];
+    for i in 0..3 {
+        let (mut best, mut ba, mut second) = (0usize, 0.0, 0.0);
+        for j in 0..3 {
+            let a = m[(i, j)].abs();
+            if a > ba { second = ba; ba = a; best = j; } else if a > second { second = a; }
+        }
+        if ba < 1.0 - tol || second > tol || used[best] { return None; }
+        used[best] = true;
+        out[i] = best;
+    }
+    Some(out)
+}
+
+/// Analytic GROUND-TRUTH cut volume for a box host: host-box minus the union of opening
+/// boxes clamped to the host (openings are non-overlapping by the fire gate, so the union
+/// is the simple sum). Exact for box-minus-boxes; `None` if the host isn't a clean box.
+fn analytic_cut_volume(
+    router: &GeometryRouter,
+    host: &DecodedEntity,
+    opening_ids: &[u32],
+    decoder: &mut EntityDecoder,
+) -> Option<(f64, usize)> {
+    let hp: RectParam = router.parametric_rect_probe(host, decoder)?;
+    let rt = hp.r.transpose();
+    let host_vol = 8.0 * hp.half[0] * hp.half[1] * hp.half[2];
+    let mut opening_vol = 0.0;
+    let mut nb = 0usize;
+    for &oid in opening_ids {
+        let opening = decoder.decode_by_id(oid).ok()?;
+        if opening.ifc_type != IfcType::IfcOpeningElement {
+            continue;
+        }
+        let boxes = router.parametric_rect_probe_all(&opening, decoder)?;
+        nb += boxes.len();
+        for b in boxes {
+            let map = signed_perm(&(rt * b.r), 1.0e-3)?;
+            let cf = rt * (b.center - hp.center);
+            let cf = [cf.x, cf.y, cf.z];
+            let half_f = [b.half[map[0]], b.half[map[1]], b.half[map[2]]];
+            let mut v = 1.0;
+            for i in 0..3 {
+                let lo = (cf[i] - half_f[i]).max(-hp.half[i]);
+                let hi = (cf[i] + half_f[i]).min(hp.half[i]);
+                v *= (hi - lo).max(0.0);
+            }
+            opening_vol += v;
+        }
+    }
+    Some(((host_vol - opening_vol).abs(), nb))
+}
+
 const DEFAULT_FIXTURE: &str = "../../tests/models/buildingsmart/wall-with-opening-and-window.ifc";
+
+fn mesh_volume(mesh: &Mesh) -> f64 {
+    mesh.indices
+        .chunks_exact(3)
+        .map(|t| {
+            let v = |i: u32| {
+                let b = i as usize * 3;
+                [mesh.positions[b] as f64, mesh.positions[b + 1] as f64, mesh.positions[b + 2] as f64]
+            };
+            let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
+            a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2])
+                + a[2] * (b[0] * c[1] - b[1] * c[0])
+        })
+        .sum::<f64>()
+        / 6.0
+}
 
 fn watertight(mesh: &Mesh) -> bool {
     let key = |i: u32| -> (i64, i64, i64) {
@@ -81,6 +153,10 @@ fn param_fast_path_fires_in_production_and_is_watertight() {
     let mut fired_hosts = 0usize;
     let mut wt_bad = 0usize;
     let mut total_fires = 0u64;
+    let mut hist = [0usize; 5]; // param-vs-exact rel-delta: <0.5%, 0.5-2%, 2-5%, 5-20%, >20%
+    let mut worst = 0.0f64;
+    let mut worst_host = 0u32;
+    let mut dumped = 0usize;
 
     for host_id in host_ids {
         let Ok(host) = decoder.decode_by_id(host_id) else { continue };
@@ -108,6 +184,24 @@ fn param_fast_path_fires_in_production_and_is_watertight() {
                 eprintln!("  NON-WATERTIGHT production output: host {host_id}");
             }
         }
+        // GROUND TRUTH: param output volume vs the analytic box-minus-boxes (the exact
+        // kernel is an imperfect oracle that over-cuts; analytic is exact for box hosts).
+        let pv = mesh_volume(&result).abs();
+        if let Some((truth, nb)) =
+            analytic_cut_volume(&router, &host, &void_index[&host_id], &mut decoder)
+        {
+            let rel = (pv - truth).abs() / truth.max(1.0e-9);
+            hist[if rel < 0.005 { 0 } else if rel < 0.02 { 1 } else if rel < 0.05 { 2 }
+                else if rel < 0.20 { 3 } else { 4 }] += 1;
+            if rel > 0.05 && dumped < 10 {
+                dumped += 1;
+                eprintln!("  MISMATCH host {host_id}: param_vol={pv:.4} truth={truth:.4} rel={rel:.4} n_boxes={nb}");
+            }
+            if rel > worst {
+                worst = rel;
+                worst_host = host_id;
+            }
+        }
     }
 
     ifc_lite_geometry::rect_fast::param_set_enabled_override(None);
@@ -116,6 +210,11 @@ fn param_fast_path_fires_in_production_and_is_watertight() {
     eprintln!("fixture            : {fixture}");
     eprintln!("hosts that FIRED   : {fired_hosts}   (total fires {total_fires})");
     eprintln!("non-watertight     : {wt_bad}");
+    eprintln!("--- param-vs-GROUND-TRUTH (analytic) volume agreement (fired hosts) ---");
+    for (l, c) in ["<0.5%", "0.5-2%", "2-5%", "5-20%", ">20%"].iter().zip(hist.iter()) {
+        eprintln!("  {l:>7} : {c}");
+    }
+    eprintln!("worst rel-delta    : {worst:.4} (host {worst_host})");
     eprintln!("=================================================\n");
 
     assert!(
@@ -125,5 +224,10 @@ fn param_fast_path_fires_in_production_and_is_watertight() {
     assert_eq!(
         wt_bad, 0,
         "every fired host's production output must be watertight"
+    );
+    assert_eq!(
+        hist[3] + hist[4],
+        0,
+        "every fired cut must match the analytic ground truth within 5%"
     );
 }

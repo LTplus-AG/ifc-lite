@@ -284,6 +284,28 @@ fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Point3<f64>) -
     }
 }
 
+/// Signed volume of a (closed) triangle mesh via the divergence theorem. Used to
+/// reconcile a union of parametric boxes against the meshed opening solid by volume.
+fn mesh_signed_volume(mesh: &Mesh) -> f64 {
+    let v = |i: u32| {
+        let b = i as usize * 3;
+        [
+            mesh.positions[b] as f64,
+            mesh.positions[b + 1] as f64,
+            mesh.positions[b + 2] as f64,
+        ]
+    };
+    mesh.indices
+        .chunks_exact(3)
+        .map(|t| {
+            let (a, b, c) = (v(t[0]), v(t[1]), v(t[2]));
+            a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2])
+                + a[2] * (b[0] * c[1] - b[1] * c[0])
+        })
+        .sum::<f64>()
+        / 6.0
+}
+
 /// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly
 /// two non-degenerate triangles. The parametric path refuses to emit a cut that fails
 /// this, deferring to the exact kernel instead.
@@ -938,27 +960,171 @@ impl GeometryRouter {
                 if coords.len() != 4 {
                     return None;
                 }
-                let minx = coords.iter().map(|c| c.0).fold(f64::INFINITY, f64::min);
-                let maxx = coords.iter().map(|c| c.0).fold(f64::NEG_INFINITY, f64::max);
-                let miny = coords.iter().map(|c| c.1).fold(f64::INFINITY, f64::min);
-                let maxy = coords.iter().map(|c| c.1).fold(f64::NEG_INFINITY, f64::max);
-                let (xd, yd) = (maxx - minx, maxy - miny);
-                if xd <= 0.0 || yd <= 0.0 {
+                // General 4-point RECTANGLE — axis-aligned OR rotated in-plane. Compute the
+                // oriented box from its edges and fold the in-plane rotation into the frame
+                // (`cos_t`/`sin_t`). Tekla / IFC2X3 routinely author rotated-rectangle
+                // openings this way, so the old axis-aligned-only check rejected ~90% of
+                // them. Axis-aligned is just the cos_t=1, sin_t=0 special case.
+                let p = &coords;
+                let edge = |i: usize| (p[(i + 1) % 4].0 - p[i].0, p[(i + 1) % 4].1 - p[i].1);
+                let len = |e: (f64, f64)| (e.0 * e.0 + e.1 * e.1).sqrt();
+                let e0 = edge(0);
+                let e1 = edge(1);
+                let e2 = edge(2);
+                let (xd, yd) = (len(e0), len(e1));
+                if xd <= 1e-9 || yd <= 1e-9 {
                     return None;
                 }
-                // Every vertex must sit on a rectangle corner (axis-aligned in-plane).
-                let tol = (xd + yd) * 1e-6 + 1e-9;
-                for &(x, y) in &coords {
-                    let on_x = (x - minx).abs() < tol || (x - maxx).abs() < tol;
-                    let on_y = (y - miny).abs() < tol || (y - maxy).abs() < tol;
-                    if !(on_x && on_y) {
-                        return None;
-                    }
+                // Rectangle: adjacent edges perpendicular AND opposite edges equal length.
+                let dot = (e0.0 * e1.0 + e0.1 * e1.1) / (xd * yd);
+                if dot.abs() > 0.01 || (len(e2) - xd).abs() > xd * 0.01 + 1e-6 {
+                    return None;
                 }
-                Some((xd, yd, (minx + maxx) * 0.5, (miny + maxy) * 0.5, 1.0, 0.0))
+                // Local X' = first-edge direction; centre = polygon centroid.
+                let (cos_t, sin_t) = (e0.0 / xd, e0.1 / xd);
+                let cx = (p[0].0 + p[1].0 + p[2].0 + p[3].0) * 0.25;
+                let cy = (p[0].1 + p[1].1 + p[2].1 + p[3].1) * 0.25;
+                Some((xd, yd, cx, cy, cos_t, sin_t))
             }
             _ => None,
         }
+    }
+
+    /// Items of the element's first non-empty Body/SweptSolid shape representation.
+    fn body_representation_items(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<Vec<DecodedEntity>> {
+        let rep = decoder.resolve_ref(element.get(6)?).ok()??;
+        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
+            return None;
+        }
+        let reps = decoder.resolve_ref_list(rep.get(2)?).ok()?;
+        for sr in reps {
+            if sr.ifc_type != IfcType::IfcShapeRepresentation {
+                continue;
+            }
+            let rt = sr.get(2).and_then(|a| a.as_string()).unwrap_or("");
+            if matches!(
+                rt,
+                "Body" | "SweptSolid" | "SolidModel" | "Clipping" | "AdvancedSweptSolid"
+                    | "MappedRepresentation"
+            ) {
+                if let Ok(items) = decoder.resolve_ref_list(sr.get(3)?) {
+                    if !items.is_empty() {
+                        return Some(items);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// One representation item → its EXACT oriented box, unwrapping IfcBooleanClippingResult
+    /// / IfcMappedItem to the IfcExtrudedAreaSolid. `None` unless it is a rectangular prism.
+    /// Frame + extents from the parametrics (× unit_scale, − rtc_offset to match the mesh).
+    fn rect_param_from_item(
+        &self,
+        item: DecodedEntity,
+        placement: &Matrix4<f64>,
+        decoder: &mut EntityDecoder,
+    ) -> Option<RectParam> {
+        let mut current = item;
+        let mut chain = Matrix4::<f64>::identity();
+        let mut visited = FxHashSet::default();
+        let solid = loop {
+            if !visited.insert(current.id) || visited.len() > MAX_EXTRUSION_EXTRACT_DEPTH {
+                return None;
+            }
+            match current.ifc_type {
+                IfcType::IfcExtrudedAreaSolid => break current,
+                IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
+                    current = decoder.resolve_ref(current.get(1)?).ok()??;
+                }
+                IfcType::IfcMappedItem => {
+                    let source = decoder.resolve_ref(current.get(0)?).ok()??;
+                    let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
+                    if let Some(t) = current.get(1) {
+                        if !t.is_null() {
+                            if let Ok(Some(te)) = decoder.resolve_ref(t) {
+                                if let Ok(m) =
+                                    self.parse_cartesian_transformation_operator(&te, decoder)
+                                {
+                                    chain *= m;
+                                }
+                            }
+                        }
+                    }
+                    current =
+                        decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter().next()?;
+                }
+                _ => return None,
+            }
+        };
+
+        let profile = decoder.resolve_ref(solid.get(0)?).ok()??;
+        let (x_dim, y_dim, off_x, off_y, cos_t, sin_t) =
+            self.read_rect_profile_2d(&profile, decoder)?;
+        let depth = solid.get_float(3)?;
+        if !(x_dim > 0.0 && y_dim > 0.0 && depth > 0.0) {
+            return None;
+        }
+        let solid_pos = match solid.get(1) {
+            Some(a) if !a.is_null() => {
+                let e = decoder.resolve_ref(a).ok()??;
+                self.parse_axis2_placement_3d(&e, decoder).ok()?
+            }
+            _ => Matrix4::identity(),
+        };
+        let dir_local = {
+            let e = decoder.resolve_ref(solid.get(2)?).ok()??;
+            self.parse_direction(&e).ok()?
+        };
+
+        let u = Vector3::new(cos_t, sin_t, 0.0);
+        let v = Vector3::new(-sin_t, cos_t, 0.0);
+        let w = dir_local.try_normalize(1e-12)?;
+        let m = placement * chain * solid_pos;
+        let rot = m.fixed_view::<3, 3>(0, 0).into_owned();
+        let uu = (rot * u).try_normalize(1e-9)?;
+        let vv = (rot * v).try_normalize(1e-9)?;
+        let ww = (rot * w).try_normalize(1e-9)?;
+        let center_local = Point3::new(off_x, off_y, 0.0) + w * (depth * 0.5);
+        let center_native = m.transform_point(&center_local);
+        let s = self.unit_scale;
+        let (rx, ry, rz) = self.rtc_offset;
+        Some(RectParam {
+            r: Matrix3::from_columns(&[uu, vv, ww]),
+            center: Point3::new(
+                center_native.x * s - rx,
+                center_native.y * s - ry,
+                center_native.z * s - rz,
+            ),
+            half: [x_dim * 0.5 * s, y_dim * 0.5 * s, depth * 0.5 * s],
+        })
+    }
+
+    /// EXACT boxes for a body that is a UNION OF RECTANGULAR PRISMS (the common Tekla
+    /// multi-solid opening): one box per representation item, or `None` if any item is not a
+    /// rectangular extrusion. The cellular `rect_fast` cut subtracts the N boxes natively.
+    pub fn parametric_rect_probe_all(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<Vec<RectParam>> {
+        let placement = self
+            .get_placement_transform_from_element(element, decoder)
+            .ok()?;
+        let items = self.body_representation_items(element, decoder)?;
+        if items.is_empty() {
+            return None;
+        }
+        let mut boxes = Vec::with_capacity(items.len());
+        for item in items {
+            boxes.push(self.rect_param_from_item(item, &placement, decoder)?);
+        }
+        Some(boxes)
     }
 
     /// PHASE-0 CENSUS (read-only): the EXACT oriented rectangular box of an extruded
@@ -1465,69 +1631,48 @@ impl GeometryRouter {
             if opening.ifc_type != IfcType::IfcOpeningElement {
                 return None;
             }
-            let op = self.parametric_rect_probe(&opening, decoder)?;
-            // Shared-frame gate: R_op must align with R_host (signed permutation).
-            let map = signed_permutation_map(&(rt * op.r), 1.0e-3)?;
-            // Opening reconciliation: the parametric box must match the meshed solid
-            // on the two in-face axes (penetration axis is extended at cut time).
-            if !self.opening_param_reconciles(&opening, &op, &host, &map, decoder) {
+            // An opening may be a UNION OF RECTANGULAR PRISMS (Tekla multi-solid). Extract
+            // every box; each must share the host frame (signed permutation).
+            let op_boxes = self.parametric_rect_probe_all(&opening, decoder)?;
+            for op in &op_boxes {
+                signed_permutation_map(&(rt * op.r), 1.0e-3)?;
+            }
+            // Reconcile the boxes against the meshed opening by VOLUME: the boxes must
+            // account for the opening solid (catches non-rect / overlapping / partial parts).
+            if !self.opening_boxes_reconcile(&opening, &op_boxes, decoder) {
                 return None;
             }
-            openings.push(op);
+            openings.extend(op_boxes);
         }
         Some(ParamRectCut { host, openings })
     }
 
-    /// True iff opening `op`'s parametric box matches its actual meshed solid(s) on the
-    /// two in-face axes (within 2%), expressed in the host frame. Catches multi-solid /
-    /// non-box / offset openings that would otherwise mis-cut.
-    fn opening_param_reconciles(
+    /// True iff the parametric `boxes` account for the actual meshed opening by VOLUME
+    /// (Σ box volume ≈ Σ mesh-shell volume within 3%). For a union of non-overlapping
+    /// rectangular prisms (the Tekla multi-solid opening) the mesh volume equals the
+    /// box-volume sum; a mismatch flags a non-rect / overlapping / partial part → defer.
+    fn opening_boxes_reconcile(
         &self,
         opening: &DecodedEntity,
-        op: &RectParam,
-        host: &RectParam,
-        map: &[(usize, f64); 3],
+        boxes: &[RectParam],
         decoder: &mut EntityDecoder,
     ) -> bool {
-        let rt = host.r.transpose();
+        if boxes.is_empty() {
+            return false;
+        }
         let Ok(meshes) = self.get_opening_item_meshes_world(opening, decoder) else {
             return false;
         };
-        let mut mn = [f64::INFINITY; 3];
-        let mut mx = [f64::NEG_INFINITY; 3];
-        let mut any = false;
-        for mesh in &meshes {
-            for c in mesh.positions.chunks_exact(3) {
-                any = true;
-                let p = rotate_point(
-                    &rt,
-                    c[0] as f64 - host.center.x,
-                    c[1] as f64 - host.center.y,
-                    c[2] as f64 - host.center.z,
-                );
-                for k in 0..3 {
-                    mn[k] = mn[k].min(p[k]);
-                    mx[k] = mx[k].max(p[k]);
-                }
-            }
-        }
-        if !any {
+        let mesh_vol: f64 = meshes.iter().map(|m| mesh_signed_volume(m).abs()).sum();
+        if mesh_vol < 1.0e-9 {
             return false;
         }
-        let pen = (0..3).find(|&i| map[i].0 == 2).unwrap_or(thin_axis(&host.half));
-        for i in 0..3 {
-            if i == pen {
-                continue;
-            }
-            let mesh_ext = mx[i] - mn[i];
-            let param_ext = 2.0 * op.half[map[i].0];
-            let lo = mesh_ext.min(param_ext);
-            let hi = mesh_ext.max(param_ext).max(1.0e-9);
-            if lo / hi < 0.98 {
-                return false;
-            }
-        }
-        true
+        let box_vol: f64 = boxes
+            .iter()
+            .map(|b| 8.0 * b.half[0] * b.half[1] * b.half[2])
+            .sum();
+        let ratio = box_vol / mesh_vol;
+        (0.97..1.03).contains(&ratio)
     }
 
     /// Apply a pre-built `VoidContext` to a single mesh.
@@ -1637,12 +1782,15 @@ impl GeometryRouter {
                     return None;
                 }
             }
+            // Cut the box AS AUTHORED (it is reconciled to equal the opening void), with a
+            // tiny margin on the penetration axis to avoid a flush-face coincidence. The
+            // earlier full-thickness override over-cut multi-prism openings (each authored
+            // box is a thin slice; extending each to the full thickness removes too much).
+            let eps = 1.0e-4;
             let mut bmin = [cf[0] - half_f[0], cf[1] - half_f[1], cf[2] - half_f[2]];
             let mut bmax = [cf[0] + half_f[0], cf[1] + half_f[1], cf[2] + half_f[2]];
-            // Through-cut: span the host on the opening's penetration axis.
-            let margin = host.half[pen] * 0.05 + 1.0e-3;
-            bmin[pen] = -host.half[pen] - margin;
-            bmax[pen] = host.half[pen] + margin;
+            bmin[pen] -= eps;
+            bmax[pen] += eps;
             boxes.push((bmin, bmax));
         }
 

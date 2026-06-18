@@ -9,7 +9,7 @@ use crate::csg::{tri_is_needle, ClippingProcessor, Plane, Triangle, TriangleVec}
 use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Error, Mesh, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
-use nalgebra::Matrix4;
+use nalgebra::{Matrix3, Matrix4};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Epsilon for normalizing direction vectors (guards against zero-length).
@@ -181,6 +181,134 @@ impl OpeningFrame {
 fn is_axis_aligned_direction(dir: &Vector3<f64>) -> bool {
     const AXIS_THRESHOLD: f64 = 0.95;
     dir.x.abs().max(dir.y.abs()).max(dir.z.abs()) > AXIS_THRESHOLD
+}
+
+// ── Parametric placement-frame cut helpers (see `try_param_rect_cut`). ───────────
+
+/// Rotate `(x,y,z)` by the orthonormal 3×3 `r` with an explicit, non-FMA dot product
+/// so the result is bit-identical native==wasm (the byte-identity contract forbids the
+/// fused-multiply-add `nalgebra`'s matrix product may emit).
+#[inline]
+fn rotate_point(r: &Matrix3<f64>, x: f64, y: f64, z: f64) -> [f64; 3] {
+    [
+        r[(0, 0)] * x + r[(0, 1)] * y + r[(0, 2)] * z,
+        r[(1, 0)] * x + r[(1, 1)] * y + r[(1, 2)] * z,
+        r[(2, 0)] * x + r[(2, 1)] * y + r[(2, 2)] * z,
+    ]
+}
+
+/// Index of the smallest half-extent (the wall thickness / penetration axis).
+fn thin_axis(half: &[f64; 3]) -> usize {
+    (0..3)
+        .min_by(|&a, &b| half[a].partial_cmp(&half[b]).unwrap())
+        .unwrap()
+}
+
+/// If `m` is a signed permutation matrix (each row one entry ≈±1, the rest ≈0, with
+/// distinct dominant columns), return the per-row `(source-column, sign)` map; else
+/// `None`. Used to align an opening's axes with the host frame.
+fn signed_permutation_map(m: &Matrix3<f64>, tol: f64) -> Option<[(usize, f64); 3]> {
+    let mut out = [(0usize, 1.0f64); 3];
+    let mut used = [false; 3];
+    for i in 0..3 {
+        let (mut best, mut best_abs, mut second) = (0usize, 0.0, 0.0);
+        for j in 0..3 {
+            let a = m[(i, j)].abs();
+            if a > best_abs {
+                second = best_abs;
+                best_abs = a;
+                best = j;
+            } else if a > second {
+                second = a;
+            }
+        }
+        if best_abs < 1.0 - tol || second > tol || used[best] {
+            return None;
+        }
+        used[best] = true;
+        out[i] = (best, m[(i, best)].signum());
+    }
+    Some(out)
+}
+
+/// Rotate a world mesh into frame F (`v_F = Rᵀ(v − center)`); small coords. Normals are
+/// dropped (the cellular cut recomputes per-face flat normals).
+fn rotate_mesh_into_frame(mesh: &Mesh, rt: &Matrix3<f64>, center: &Point3<f64>) -> Mesh {
+    let mut positions = Vec::with_capacity(mesh.positions.len());
+    for c in mesh.positions.chunks_exact(3) {
+        let p = rotate_point(
+            rt,
+            c[0] as f64 - center.x,
+            c[1] as f64 - center.y,
+            c[2] as f64 - center.z,
+        );
+        positions.push(p[0] as f32);
+        positions.push(p[1] as f32);
+        positions.push(p[2] as f32);
+    }
+    Mesh {
+        normals: vec![0.0; positions.len()],
+        indices: mesh.indices.clone(),
+        rtc_applied: mesh.rtc_applied,
+        origin: [0.0; 3],
+        positions,
+    }
+}
+
+/// Rotate a frame-F mesh into a LOCAL-FRAME world mesh: positions are `R·v_F` (small,
+/// near origin — NOT shifted by `center`) and `origin = center`, so `world = origin +
+/// position` for the renderer. Keeping positions small is what makes the cut survive
+/// f32 storage + `clean_degenerate` at building/national-grid magnitude (a world-coord
+/// store there erodes opening seams into holes — see `Mesh::clean_degenerate`).
+fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Point3<f64>) -> Mesh {
+    let mut positions = Vec::with_capacity(mesh.positions.len());
+    for c in mesh.positions.chunks_exact(3) {
+        let p = rotate_point(r, c[0] as f64, c[1] as f64, c[2] as f64);
+        positions.push(p[0] as f32);
+        positions.push(p[1] as f32);
+        positions.push(p[2] as f32);
+    }
+    let mut normals = Vec::with_capacity(mesh.normals.len());
+    for c in mesh.normals.chunks_exact(3) {
+        let p = rotate_point(r, c[0] as f64, c[1] as f64, c[2] as f64);
+        normals.push(p[0] as f32);
+        normals.push(p[1] as f32);
+        normals.push(p[2] as f32);
+    }
+    Mesh {
+        positions,
+        normals,
+        indices: mesh.indices.clone(),
+        rtc_applied: mesh.rtc_applied,
+        origin: [center.x, center.y, center.z],
+    }
+}
+
+/// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly
+/// two non-degenerate triangles. The parametric path refuses to emit a cut that fails
+/// this, deferring to the exact kernel instead.
+fn param_cut_watertight(mesh: &Mesh) -> bool {
+    let key = |i: u32| -> (i64, i64, i64) {
+        let b = i as usize * 3;
+        let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
+        (
+            q(mesh.positions[b]),
+            q(mesh.positions[b + 1]),
+            q(mesh.positions[b + 2]),
+        )
+    };
+    let mut edges: FxHashMap<((i64, i64, i64), (i64, i64, i64)), i32> = FxHashMap::default();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (ka, kb, kc) = (key(tri[0]), key(tri[1]), key(tri[2]));
+        if ka == kb || kb == kc || kc == ka {
+            continue;
+        }
+        for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
+            let e = if x < y { (x, y) } else { (y, x) };
+            *edges.entry(e).or_insert(0) += 1;
+        }
+    }
+    !edges.is_empty() && edges.values().all(|&c| c == 2)
 }
 
 #[inline]
@@ -539,6 +667,10 @@ pub(super) struct VoidContext {
     /// Rectangular openings merged into larger boxes to prevent O(2^N)
     /// triangle growth when many adjacent openings tile a surface.
     merged_openings: Vec<OpeningType>,
+    /// Parametric placement-frame cut data (host + reconciled opening boxes),
+    /// captured only when `rect_fast::param_enabled()`. Drives the analytic fast
+    /// path in `apply_void_context`; `None` defers to the exact kernel.
+    param: Option<ParamRectCut>,
 }
 
 impl VoidContext {
@@ -559,6 +691,10 @@ impl VoidContext {
                 .iter()
                 .map(|o| o.translated(origin))
                 .collect(),
+            // The parametric path runs in the OUTER apply_void_context on the
+            // non-relativized world mesh (it makes its own frame), so the
+            // relativized context never uses `param` — drop it.
+            param: None,
         }
     }
 }
@@ -600,6 +736,26 @@ impl OpeningType {
             }
         }
     }
+}
+
+/// EXACT parametric oriented box of a rectangular extrusion, in WORLD space.
+/// `r` columns are the orthonormal world axes (profile-X', profile-Y', extrude);
+/// `half` are the half-extents along those axes (XDim/2, YDim/2, Depth/2).
+/// Produced by [`GeometryRouter::parametric_rect_probe`].
+#[derive(Clone, Copy)]
+pub struct RectParam {
+    pub r: Matrix3<f64>,
+    pub center: Point3<f64>,
+    pub half: [f64; 3],
+}
+
+/// Captured parametric boxes for a host + its openings (all reconciled to their
+/// meshes and sharing the host frame), enabling the analytic placement-frame cut.
+/// Built in [`GeometryRouter::build_void_context`] only when `param_enabled()`.
+#[derive(Clone)]
+struct ParamRectCut {
+    host: RectParam,
+    openings: Vec<RectParam>,
 }
 
 impl GeometryRouter {
@@ -709,6 +865,220 @@ impl GeometryRouter {
         }
 
         None
+    }
+
+    /// Read a rectangular swept area as `(x_dim, y_dim, off_x, off_y, cos, sin)` in the
+    /// profile plane. Handles `IfcRectangleProfileDef` (XDim/YDim + 2D Position rotation)
+    /// AND an `IfcArbitraryClosedProfileDef` whose outer curve is an axis-aligned 4-point
+    /// rectangle polyline (the common Tekla/structural authoring of a rectangular wall).
+    /// `None` for any non-rectangular profile → the caller defers to the exact kernel.
+    fn read_rect_profile_2d(
+        &self,
+        profile: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64, f64, f64, f64)> {
+        match profile.ifc_type {
+            IfcType::IfcRectangleProfileDef => {
+                let x_dim = profile.get_float(3)?;
+                let y_dim = profile.get_float(4)?;
+                // Position (attr 2 = IfcAxis2Placement2D): in-plane rotation + offset.
+                let (mut cos_t, mut sin_t, mut off_x, mut off_y) = (1.0, 0.0, 0.0, 0.0);
+                if let Some(pos_attr) = profile.get(2) {
+                    if !pos_attr.is_null() {
+                        if let Ok(Some(pos)) = decoder.resolve_ref(pos_attr) {
+                            if let Some(loc_attr) = pos.get(0) {
+                                if let Ok(Some(loc)) = decoder.resolve_ref(loc_attr) {
+                                    if let Some(c) = loc.get(0).and_then(|x| x.as_list()) {
+                                        off_x = c.first().and_then(|x| x.as_float()).unwrap_or(0.0);
+                                        off_y = c.get(1).and_then(|x| x.as_float()).unwrap_or(0.0);
+                                    }
+                                }
+                            }
+                            if let Some(rd_attr) = pos.get(1) {
+                                if !rd_attr.is_null() {
+                                    if let Ok(Some(rd)) = decoder.resolve_ref(rd_attr) {
+                                        if let Some(c) = rd.get(0).and_then(|x| x.as_list()) {
+                                            let dx =
+                                                c.first().and_then(|x| x.as_float()).unwrap_or(1.0);
+                                            let dy =
+                                                c.get(1).and_then(|x| x.as_float()).unwrap_or(0.0);
+                                            let n = (dx * dx + dy * dy).sqrt();
+                                            if n > 1e-12 {
+                                                cos_t = dx / n;
+                                                sin_t = dy / n;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Some((x_dim, y_dim, off_x, off_y, cos_t, sin_t))
+            }
+            IfcType::IfcArbitraryClosedProfileDef => {
+                // OuterCurve (attr 2) must be an axis-aligned rectangle polyline.
+                let curve = decoder.resolve_ref(profile.get(2)?).ok()??;
+                if curve.ifc_type != IfcType::IfcPolyline {
+                    return None;
+                }
+                let pts = decoder.resolve_ref_list(curve.get(0)?).ok()?;
+                let mut coords: Vec<(f64, f64)> = Vec::with_capacity(pts.len());
+                for p in &pts {
+                    let c = p.get(0).and_then(|x| x.as_list())?;
+                    coords.push((c.first()?.as_float()?, c.get(1)?.as_float()?));
+                }
+                // Drop a repeated closing vertex.
+                if coords.len() >= 2 {
+                    let (f, l) = (coords[0], coords[coords.len() - 1]);
+                    if (f.0 - l.0).abs() < 1e-9 && (f.1 - l.1).abs() < 1e-9 {
+                        coords.pop();
+                    }
+                }
+                if coords.len() != 4 {
+                    return None;
+                }
+                let minx = coords.iter().map(|c| c.0).fold(f64::INFINITY, f64::min);
+                let maxx = coords.iter().map(|c| c.0).fold(f64::NEG_INFINITY, f64::max);
+                let miny = coords.iter().map(|c| c.1).fold(f64::INFINITY, f64::min);
+                let maxy = coords.iter().map(|c| c.1).fold(f64::NEG_INFINITY, f64::max);
+                let (xd, yd) = (maxx - minx, maxy - miny);
+                if xd <= 0.0 || yd <= 0.0 {
+                    return None;
+                }
+                // Every vertex must sit on a rectangle corner (axis-aligned in-plane).
+                let tol = (xd + yd) * 1e-6 + 1e-9;
+                for &(x, y) in &coords {
+                    let on_x = (x - minx).abs() < tol || (x - maxx).abs() < tol;
+                    let on_y = (y - miny).abs() < tol || (y - maxy).abs() < tol;
+                    if !(on_x && on_y) {
+                        return None;
+                    }
+                }
+                Some((xd, yd, (minx + maxx) * 0.5, (miny + maxy) * 0.5, 1.0, 0.0))
+            }
+            _ => None,
+        }
+    }
+
+    /// PHASE-0 CENSUS (read-only): the EXACT oriented rectangular box of an extruded
+    /// element, read from the IFC parametrics (IfcRectangleProfileDef XDim/YDim/Depth +
+    /// composed placement axes), NOT inferred from the f32 mesh. Returns `None` unless the
+    /// element's body is a single clean IfcRectangleProfileDef extrusion (after unwrapping
+    /// IfcBooleanClippingResult / IfcMappedItem). This is the parametric frame + extents the
+    /// failed oriented attempt should have used instead of `infer_opening_frame` + mesh-AABB.
+    pub fn parametric_rect_probe(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<RectParam> {
+        let placement = self
+            .get_placement_transform_from_element(element, decoder)
+            .ok()?;
+
+        // element → IfcProductDefinitionShape → first Body/SweptSolid item.
+        let rep = decoder.resolve_ref(element.get(6)?).ok()??;
+        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
+            return None;
+        }
+        let reps = decoder.resolve_ref_list(rep.get(2)?).ok()?;
+        let mut item = None;
+        for sr in reps {
+            if sr.ifc_type != IfcType::IfcShapeRepresentation {
+                continue;
+            }
+            let rt = sr.get(2).and_then(|a| a.as_string()).unwrap_or("");
+            if !matches!(
+                rt,
+                "Body" | "SweptSolid" | "SolidModel" | "Clipping" | "AdvancedSweptSolid"
+                    | "MappedRepresentation"
+            ) {
+                continue;
+            }
+            if let Ok(items) = decoder.resolve_ref_list(sr.get(3)?) {
+                if let Some(first) = items.into_iter().next() {
+                    item = Some(first);
+                    break;
+                }
+            }
+        }
+
+        // Unwrap to the IfcExtrudedAreaSolid, accumulating the mapped/clip transform chain.
+        let mut current = item?;
+        let mut chain = Matrix4::<f64>::identity();
+        let mut visited = FxHashSet::default();
+        let solid = loop {
+            if !visited.insert(current.id) || visited.len() > MAX_EXTRUSION_EXTRACT_DEPTH {
+                return None;
+            }
+            match current.ifc_type {
+                IfcType::IfcExtrudedAreaSolid => break current,
+                IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
+                    current = decoder.resolve_ref(current.get(1)?).ok()??;
+                }
+                IfcType::IfcMappedItem => {
+                    let source = decoder.resolve_ref(current.get(0)?).ok()??;
+                    let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
+                    if let Some(t) = current.get(1) {
+                        if !t.is_null() {
+                            if let Ok(Some(te)) = decoder.resolve_ref(t) {
+                                if let Ok(m) =
+                                    self.parse_cartesian_transformation_operator(&te, decoder)
+                                {
+                                    chain *= m;
+                                }
+                            }
+                        }
+                    }
+                    current = decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter().next()?;
+                }
+                _ => return None,
+            }
+        };
+
+        // IfcExtrudedAreaSolid: 0 SweptArea, 1 Position, 2 ExtrudedDirection, 3 Depth.
+        let profile = decoder.resolve_ref(solid.get(0)?).ok()??;
+        let (x_dim, y_dim, off_x, off_y, cos_t, sin_t) =
+            self.read_rect_profile_2d(&profile, decoder)?;
+        let depth = solid.get_float(3)?;
+        if !(x_dim > 0.0 && y_dim > 0.0 && depth > 0.0) {
+            return None;
+        }
+        let solid_pos = match solid.get(1) {
+            Some(a) if !a.is_null() => {
+                let e = decoder.resolve_ref(a).ok()??;
+                self.parse_axis2_placement_3d(&e, decoder).ok()?
+            }
+            _ => Matrix4::identity(),
+        };
+        let dir_local = {
+            let e = decoder.resolve_ref(solid.get(2)?).ok()??;
+            self.parse_direction(&e).ok()?
+        };
+
+        // Box axes in the SOLID-local frame: profile X' / Y' (rotated by the 2D Position)
+        // and the extrude direction. Center = profile offset in the solid XY plane, then
+        // half the depth along the extrude axis.
+        let u = Vector3::new(cos_t, sin_t, 0.0);
+        let v = Vector3::new(-sin_t, cos_t, 0.0);
+        let w = dir_local.try_normalize(1e-12)?;
+        let m = placement * chain * solid_pos;
+        let rot = m.fixed_view::<3, 3>(0, 0).into_owned();
+        let uu = (rot * u).try_normalize(1e-9)?;
+        let vv = (rot * v).try_normalize(1e-9)?;
+        let ww = (rot * w).try_normalize(1e-9)?;
+        let center_local = Point3::new(off_x, off_y, 0.0) + w * (depth * 0.5);
+        let center_native = m.transform_point(&center_local);
+        // The whole pipeline applies the model length-unit scale uniformly to final
+        // positions; a uniform scale leaves the orthonormal frame R unchanged and scales
+        // the center + half-extents. Without this the box is off by the unit factor
+        // (e.g. 1000x on a millimetre IFC2X3 Revit model).
+        let s = self.unit_scale;
+        Some(RectParam {
+            r: Matrix3::from_columns(&[uu, vv, ww]),
+            center: Point3::new(center_native.x * s, center_native.y * s, center_native.z * s),
+            half: [x_dim * 0.5 * s, y_dim * 0.5 * s, depth * 0.5 * s],
+        })
     }
 
     /// Get per-item meshes for an opening element, transformed to world coordinates.
@@ -1042,10 +1412,106 @@ impl GeometryRouter {
         let openings = self.classify_openings(element, opening_ids, decoder);
         let merged_openings = Self::merge_rectangular_openings(&openings);
 
+        // PARAMETRIC fast-path capture (flag-gated, zero cost when off): probe the
+        // host + every opening for an exact rectangular box, reconcile each opening
+        // box against its mesh, and require all openings to share the host frame. Any
+        // miss -> `None` -> the host defers to the exact kernel.
+        let param = if crate::rect_fast::param_enabled() {
+            self.capture_param_rect(element, opening_ids, decoder)
+        } else {
+            None
+        };
+
         VoidContext {
             openings,
             merged_openings,
+            param,
         }
+    }
+
+    /// Build the parametric-cut data for a host + its openings, or `None` if any
+    /// precondition fails (host/opening not a clean rect extrusion, opening box
+    /// disagrees with its mesh, or an opening does not share the host frame).
+    fn capture_param_rect(
+        &self,
+        element: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+    ) -> Option<ParamRectCut> {
+        if opening_ids.is_empty() {
+            return None;
+        }
+        let host = self.parametric_rect_probe(element, decoder)?;
+        let rt = host.r.transpose();
+        let mut openings = Vec::with_capacity(opening_ids.len());
+        for &oid in opening_ids {
+            let opening = decoder.decode_by_id(oid).ok()?;
+            if opening.ifc_type != IfcType::IfcOpeningElement {
+                return None;
+            }
+            let op = self.parametric_rect_probe(&opening, decoder)?;
+            // Shared-frame gate: R_op must align with R_host (signed permutation).
+            let map = signed_permutation_map(&(rt * op.r), 1.0e-3)?;
+            // Opening reconciliation: the parametric box must match the meshed solid
+            // on the two in-face axes (penetration axis is extended at cut time).
+            if !self.opening_param_reconciles(&opening, &op, &host, &map, decoder) {
+                return None;
+            }
+            openings.push(op);
+        }
+        Some(ParamRectCut { host, openings })
+    }
+
+    /// True iff opening `op`'s parametric box matches its actual meshed solid(s) on the
+    /// two in-face axes (within 2%), expressed in the host frame. Catches multi-solid /
+    /// non-box / offset openings that would otherwise mis-cut.
+    fn opening_param_reconciles(
+        &self,
+        opening: &DecodedEntity,
+        op: &RectParam,
+        host: &RectParam,
+        map: &[(usize, f64); 3],
+        decoder: &mut EntityDecoder,
+    ) -> bool {
+        let rt = host.r.transpose();
+        let Ok(meshes) = self.get_opening_item_meshes_world(opening, decoder) else {
+            return false;
+        };
+        let mut mn = [f64::INFINITY; 3];
+        let mut mx = [f64::NEG_INFINITY; 3];
+        let mut any = false;
+        for mesh in &meshes {
+            for c in mesh.positions.chunks_exact(3) {
+                any = true;
+                let p = rotate_point(
+                    &rt,
+                    c[0] as f64 - host.center.x,
+                    c[1] as f64 - host.center.y,
+                    c[2] as f64 - host.center.z,
+                );
+                for k in 0..3 {
+                    mn[k] = mn[k].min(p[k]);
+                    mx[k] = mx[k].max(p[k]);
+                }
+            }
+        }
+        if !any {
+            return false;
+        }
+        let pen = (0..3).find(|&i| map[i].0 == 2).unwrap_or(thin_axis(&host.half));
+        for i in 0..3 {
+            if i == pen {
+                continue;
+            }
+            let mesh_ext = mx[i] - mn[i];
+            let param_ext = 2.0 * op.half[map[i].0];
+            let lo = mesh_ext.min(param_ext);
+            let hi = mesh_ext.max(param_ext).max(1.0e-9);
+            if lo / hi < 0.98 {
+                return false;
+            }
+        }
+        true
     }
 
     /// Apply a pre-built `VoidContext` to a single mesh.
@@ -1075,12 +1541,123 @@ impl GeometryRouter {
     /// frame with no origin-aware-merge surprises), relativizes the cutters by
     /// the same origin, runs the CSG, then re-stamps the origin on the result so
     /// `world = origin + position` holds for the renderer.
+    /// PARAMETRIC analytic fast path: subtract the openings as EXACT parametric boxes
+    /// in the host's own placement frame (where the rotated wall + windows are
+    /// axis-aligned), using the watertight cellular `rect_fast` cut, then rotate the
+    /// result back to world. Frame + extents come from the IFC parametrics (not the
+    /// mesh), so the cut is the analytic box-minus-boxes solid — ground-truth exact and
+    /// MORE correct than the exact kernel on engulfing-opening walls. Fires only on the
+    /// gated subset (`ctx.param` captured; host/opening reconciliation, shared-frame,
+    /// in-bounds, no-overlap, watertight self-check); any miss returns `None` → exact
+    /// kernel. Deterministic f64 → byte-identical native==wasm.
+    fn try_param_rect_cut(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
+        let param = ctx.param.as_ref()?;
+        let host = &param.host;
+        let rt = host.r.transpose();
+
+        // Host expressed in F (small coords) + reconciliation against the real mesh.
+        let host_f = rotate_mesh_into_frame(mesh, &rt, &host.center);
+        if host_f.positions.is_empty() {
+            return None;
+        }
+        let mut hmn = [f64::INFINITY; 3];
+        let mut hmx = [f64::NEG_INFINITY; 3];
+        for c in host_f.positions.chunks_exact(3) {
+            for k in 0..3 {
+                hmn[k] = hmn[k].min(c[k] as f64);
+                hmx[k] = hmx[k].max(c[k] as f64);
+            }
+        }
+        for k in 0..3 {
+            let ext = hmx[k] - hmn[k];
+            let lo = ext.min(2.0 * host.half[k]);
+            let hi = ext.max(2.0 * host.half[k]).max(1.0e-9);
+            if lo / hi < 0.99 {
+                return None;
+            }
+        }
+
+        // Opening boxes in F with the in-bounds + through-cut handling.
+        let mut boxes: Vec<([f64; 3], [f64; 3])> = Vec::with_capacity(param.openings.len());
+        for op in &param.openings {
+            let map = signed_permutation_map(&(rt * op.r), 1.0e-3)?;
+            let cf = rotate_point(
+                &rt,
+                op.center.x - host.center.x,
+                op.center.y - host.center.y,
+                op.center.z - host.center.z,
+            );
+            let pen = (0..3).find(|&i| map[i].0 == 2).unwrap_or(thin_axis(&host.half));
+            let mut half_f = [0.0f64; 3];
+            for i in 0..3 {
+                half_f[i] = op.half[map[i].0];
+            }
+            // In-bounds: the opening must lie within the wall on the in-face axes; an
+            // overrun is a partial intersection where box-clamp ≠ exact mesh-intersect.
+            for i in 0..3 {
+                if i == pen {
+                    continue;
+                }
+                let tol = host.half[i] * 0.01 + 1.0e-4;
+                if cf[i] - half_f[i] < -host.half[i] - tol
+                    || cf[i] + half_f[i] > host.half[i] + tol
+                {
+                    return None;
+                }
+            }
+            let mut bmin = [cf[0] - half_f[0], cf[1] - half_f[1], cf[2] - half_f[2]];
+            let mut bmax = [cf[0] + half_f[0], cf[1] + half_f[1], cf[2] + half_f[2]];
+            // Through-cut: span the host on the opening's penetration axis.
+            let margin = host.half[pen] * 0.05 + 1.0e-3;
+            bmin[pen] = -host.half[pen] - margin;
+            bmax[pen] = host.half[pen] + margin;
+            boxes.push((bmin, bmax));
+        }
+
+        // No-overlap: overlapping cutter boxes can diverge from the union-subtract.
+        for a in 0..boxes.len() {
+            for b in (a + 1)..boxes.len() {
+                let (amn, amx) = boxes[a];
+                let (bmn, bmx) = boxes[b];
+                if (0..3).all(|i| amn[i] < bmx[i] - 1.0e-4 && bmn[i] < amx[i] - 1.0e-4) {
+                    return None;
+                }
+            }
+        }
+
+        let mut stats = crate::rect_fast::RectFastStats::default();
+        let cut_f = crate::rect_fast::subtract_rect_openings(&host_f, &boxes, &mut stats)?;
+        crate::rect_fast::record_global(&stats);
+        let merged = crate::csg::ClippingProcessor::consolidate_coplanar(cut_f);
+        // Emit as a local-frame mesh (small positions + origin), then run the SAME
+        // hygiene the production output applies — in the small frame, where it is
+        // precise — so the self-check sees exactly what downstream will keep.
+        let mut out = rotate_mesh_from_frame(&merged, &host.r, &host.center);
+        out.clean_degenerate();
+
+        // Self-check: never emit a non-watertight cut; defer to the exact kernel.
+        if !param_cut_watertight(&out) {
+            return None;
+        }
+        crate::rect_fast::param_record_fire();
+        Some(out)
+    }
+
     pub(super) fn apply_void_context(
         &self,
         mut mesh: Mesh,
         ctx: &VoidContext,
         element_id: u32,
     ) -> Mesh {
+        // PARAMETRIC fast path (flag-gated): runs on the WORLD mesh (origin 0). The
+        // per-element local frame (origin != 0) defers — the parametric path builds its
+        // own frame and does not need it.
+        if mesh.origin == [0.0, 0.0, 0.0] && crate::rect_fast::param_enabled() {
+            if let Some(fast) = self.try_param_rect_cut(&mesh, ctx) {
+                return fast;
+            }
+        }
+
         let origin = mesh.origin;
         if origin == [0.0, 0.0, 0.0] {
             // Legacy/world frame: no relativization needed.
@@ -3545,4 +4122,74 @@ mod reveal_tests {
         assert_eq!(new_max, open_max, "-X-poke-out: extension must not change max");
     }
 
+    /// DETERMINISM (CI-safe, no fixture): the parametric cut on a rotated, building-scale
+    /// wall must FIRE, be watertight, emit a local-frame mesh (small positions + origin),
+    /// and produce BIT-IDENTICAL output across runs. Bit-identical-across-runs + the
+    /// FMA-free f64 arithmetic (`rotate_point`, snap grid) is the native==wasm contract:
+    /// every operation is a deterministic f64 op with a single f32 store, so the two
+    /// targets cannot diverge.
+    #[test]
+    fn param_cut_is_deterministic_watertight_and_local_framed() {
+        let router = GeometryRouter::new();
+        // 37° about Z, right-handed frame (cross_b = depth × cross_a).
+        let yaw = 37.0_f64.to_radians();
+        let (c, s) = (yaw.cos(), yaw.sin());
+        let cross_a = Vector3::new(c, s, 0.0); // wall length axis
+        let depth = Vector3::new(-s, c, 0.0); // wall thickness axis
+        let cross_b = depth.cross(&cross_a); // wall height axis
+        // The cut path sees RTC-rebased (small) coordinates — a national-grid model is
+        // re-based to near origin before meshing, so the host f32 mesh is precise. (An
+        // un-rebased building-scale mesh correctly FAILS host reconciliation and defers.)
+        let center = Point3::new(3.0, 2.0, 5.0);
+
+        // World rotated wall: 4 m (cross_a) × 3 m (cross_b) × 0.3 m thick (depth).
+        let host_world = make_framed_box_mesh(
+            center, depth, cross_a, cross_b, (-0.15, 0.15), (-2.0, 2.0), (-1.5, 1.5),
+        );
+        let host = RectParam {
+            r: Matrix3::from_columns(&[cross_a, cross_b, depth]),
+            center,
+            half: [2.0, 1.5, 0.15],
+        };
+        // A centred window, over-spanning the thickness (through-cut) and well within
+        // the wall in-face — fires all the gates.
+        let opening = RectParam {
+            r: host.r,
+            center,
+            half: [0.5, 0.5, 0.25],
+        };
+        let ctx = VoidContext {
+            openings: Vec::new(),
+            merged_openings: Vec::new(),
+            param: Some(ParamRectCut {
+                host,
+                openings: vec![opening],
+            }),
+        };
+
+        let out1 = router
+            .try_param_rect_cut(&host_world, &ctx)
+            .expect("parametric cut must fire on a clean rotated wall");
+        let out2 = router
+            .try_param_rect_cut(&host_world, &ctx)
+            .expect("parametric cut must fire on a clean rotated wall");
+
+        // Bit-identical across runs (⇒ native==wasm by the FMA-free construction).
+        assert_eq!(out1.positions, out2.positions, "positions must be deterministic");
+        assert_eq!(out1.indices, out2.indices, "indices must be deterministic");
+        assert_eq!(out1.normals, out2.normals, "normals must be deterministic");
+        assert_eq!(out1.origin, out2.origin, "origin must be deterministic");
+
+        // Local-frame output: origin = wall centre, positions stay SMALL (near 0) so the
+        // f32 store survives at national-grid magnitude.
+        assert_eq!(out1.origin, [center.x, center.y, center.z]);
+        let max_abs = out1
+            .positions
+            .iter()
+            .fold(0.0f32, |m, &v| m.max(v.abs()));
+        assert!(max_abs < 10.0, "local-frame positions must stay small (got {max_abs})");
+
+        assert!(param_cut_watertight(&out1), "cut must be watertight");
+        assert!(out1.triangle_count() > 12, "the opening must add faces");
+    }
 }

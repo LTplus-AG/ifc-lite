@@ -128,7 +128,7 @@ pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
 pub use router::{
     ClassificationStats, GeometryProcessor, GeometryRouter, HostOpeningDiagnostic, ItemDedupCache,
-    OpeningDiagnostic, OpeningKindDiag,
+    OpeningDiagnostic, OpeningKindDiag, RectParam,
 };
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{

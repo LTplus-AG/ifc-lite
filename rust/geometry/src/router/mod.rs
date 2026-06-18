@@ -15,6 +15,8 @@ mod transforms;
 mod voids;
 mod voids_2d;
 
+pub use voids::RectParam;
+
 #[cfg(test)]
 mod tests;
 

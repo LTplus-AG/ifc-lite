@@ -61,6 +61,48 @@ pub fn enabled() -> bool {
     *ON.get_or_init(|| std::env::var("IFC_LITE_RECT_FAST").as_deref() != Ok("0"))
 }
 
+static PARAM_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
+
+/// PARAMETRIC rectangular-opening fast path (placement-frame, ground-truth-exact cut).
+/// DEFAULT OFF — opt in with `IFC_LITE_RECT_PARAM=1` or `param_set_enabled_override`.
+/// Gated separately from [`enabled`] because it is a deliberate behaviour change: it
+/// emits the analytic box-minus-boxes solid, which is MORE correct than the exact kernel
+/// on engulfing-opening walls. Stays off until a parity CI gate + a wasm toggle land, so
+/// native==wasm holds trivially (both off) until the flag is flipped in lockstep.
+pub fn param_enabled() -> bool {
+    match PARAM_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => return false,
+        1 => return true,
+        _ => {}
+    }
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var("IFC_LITE_RECT_PARAM").as_deref() == Ok("1"))
+}
+
+/// Test-only: force `param_enabled()` on/off (or `None` for the env default).
+pub fn param_set_enabled_override(v: Option<bool>) {
+    PARAM_OVERRIDE.store(
+        match v {
+            None => -1,
+            Some(false) => 0,
+            Some(true) => 1,
+        },
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+static PARAM_FIRES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Count one parametric fast-path fire (the analytic cut was emitted).
+pub fn param_record_fire() {
+    PARAM_FIRES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+/// Read + reset the parametric fast-path fire counter.
+pub fn take_param_fires() -> u64 {
+    PARAM_FIRES.swap(0, std::sync::atomic::Ordering::Relaxed)
+}
+
 mod telemetry {
     use super::RectFastStats;
     use std::sync::atomic::{AtomicU64, Ordering};

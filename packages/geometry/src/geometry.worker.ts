@@ -233,6 +233,32 @@ let api: IfcAPI | null = null;
 let cachedWasmUrl: string | undefined = undefined;
 
 /**
+ * wasm-bindgen's streaming loader rethrows on a non-OK HTTP status or a failed
+ * fetch of `ifc-lite_bg.wasm` (it only falls back for the wrong-MIME case),
+ * surfacing as `TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP
+ * status code is not ok`. A transient blip — a cold CDN edge, a mid-deploy
+ * race, a flaky proxy — can produce a one-off failure that a second attempt
+ * recovers. Retry the init once on a fetch/HTTP-shaped failure before giving
+ * up; a genuine compile/validation error (corrupt module) propagates
+ * immediately so we don't mask real bugs. `__wbg_init` only short-circuits on
+ * `wasm !== undefined`, so a retry after a failed load safely re-fetches.
+ */
+async function initWasmWithRetry(url: string | undefined): Promise<void> {
+  try {
+    await init(url);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const looksTransient =
+      /HTTP status code is not ok|failed to fetch|networkerror|load failed|streaming/i.test(msg) ||
+      /'(?:compile|compileStreaming|instantiate|instantiateStreaming)' on 'WebAssembly'/i.test(msg);
+    if (!looksTransient) throw err;
+    console.warn(`[Worker] WASM engine load failed (${msg}); retrying once`);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await init(url);
+  }
+}
+
+/**
  * Idempotent wasm + IfcAPI initializer. Centralises the
  * `if (!api) { await init(); api = new IfcAPI(); ... }` boilerplate that
  * every message handler used to repeat. Honours `cachedWasmUrl` so the
@@ -242,7 +268,7 @@ let cachedWasmUrl: string | undefined = undefined;
  */
 async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
-  await init(cachedWasmUrl);
+  await initWasmWithRetry(cachedWasmUrl);
   api = new IfcAPI();
   mergeLayersApplied = false;
   applyMergeLayersToApi();

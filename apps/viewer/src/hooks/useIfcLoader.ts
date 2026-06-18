@@ -53,6 +53,7 @@ import { getGlobalRenderer } from './useBCF.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
+import { classifyLoadError, formatLoadError } from '../lib/load-errors.js';
 
 /**
  * Where a {@link useIfcLoader.loadFile} call should land the model.
@@ -1136,17 +1137,16 @@ export function useIfcLoader() {
               }).catch(err => {
                 // Data model parsing failed - spatial index and caching skipped
                 console.warn('[useIfc] Skipping spatial index/cache - data model unavailable:', err);
-                const message = err instanceof Error ? err.message : String(err);
                 if (target.kind === 'federated') {
                   // No placeholder model exists for a federated add (it is only
                   // registered on success via finalizeModel→addModel), so
                   // updateModel would no-op and the failure would vanish —
                   // addModel just returns null. Surface it to the user instead.
-                  toast.error(`Failed to load "${file.name}": ${message}`);
+                  toast.error(formatLoadError(err, file.name));
                 } else {
                   updateModel(modelId, {
                     loadState: 'error',
-                    loadError: message,
+                    loadError: formatLoadError(err, file.name),
                   });
                 }
               });
@@ -1166,7 +1166,14 @@ export function useIfcLoader() {
         void dataStorePromise.catch(() => {});
         if (loadSessionRef.current !== currentSession) return;
         console.error('[useIfc] Error in processing:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error during geometry processing');
+        // A WASM engine-load failure (e.g. the geometry binary 404'd) surfaces
+        // here as a cryptic `compile on 'WebAssembly'` TypeError — humanise it
+        // and tag the captured exception so it is filterable in error tracking.
+        const kind = classifyLoadError(err);
+        setError(formatLoadError(err, file.name));
+        posthog.captureException(err, {
+          additional_properties: { context: 'geometry_processing', error_kind: kind },
+        });
         setLoading(false);
         setGeometryStreamingActive(false);
         return;
@@ -1234,12 +1241,16 @@ export function useIfcLoader() {
     } catch (err) {
       console.error(`[useIfc] loadFile THREW (session=${currentSession}, current=${loadSessionRef.current}):`, err);
       if (loadSessionRef.current !== currentSession) return;
+      const kind = classifyLoadError(err);
+      const friendly = formatLoadError(err, file.name);
       updateModel(modelId, {
         loadState: 'error',
-        loadError: err instanceof Error ? err.message : String(err),
+        loadError: friendly,
       });
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      posthog.captureException(err, { additional_properties: { context: 'ifc_model_load' } });
+      setError(friendly);
+      posthog.captureException(err, {
+        additional_properties: { context: 'ifc_model_load', error_kind: kind },
+      });
       setLoading(false);
       setGeometryStreamingActive(false);
     }

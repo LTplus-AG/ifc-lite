@@ -671,7 +671,9 @@ export function useIfcLoader() {
       // available, AND TextDecoder accepts SAB-backed views (Firefox fails
       // the third check; we skip the worker path entirely there so the
       // SAB allocation isn't wasted).
-      const useParserWorker = WorkerParser.isSupported();
+      // The native backend serves the data model itself, so the in-browser
+      // parser is skipped — don't allocate (or copy the file into) a parser SAB.
+      const useParserWorker = WorkerParser.isSupported() && !geometryProcessor.isNativeBackend;
       let sharedSource: SharedArrayBuffer | null = null;
       if (useParserWorker) {
         if (acquired.isShared && acquired.buffer instanceof SharedArrayBuffer) {

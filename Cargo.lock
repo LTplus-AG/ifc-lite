@@ -1487,6 +1487,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-data-model"
+version = "4.1.0"
+dependencies = [
+ "arrow",
+ "ifc-lite-core",
+ "parquet",
+ "rayon",
+ "rustc-hash",
+ "serde",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "ifc-lite-desktop-engine"
 version = "4.1.0"
 dependencies = [
@@ -1573,6 +1587,7 @@ dependencies = [
  "futures",
  "hex",
  "ifc-lite-core",
+ "ifc-lite-data-model",
  "ifc-lite-geometry",
  "ifc-lite-processing",
  "num_cpus",

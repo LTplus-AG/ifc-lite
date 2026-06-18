@@ -30,6 +30,7 @@ ifc-lite-core = { path = "../../rust/core" }
 # docs/architecture/pure-rust-csg-kernel.md).
 ifc-lite-geometry = { path = "../../rust/geometry", default-features = false }
 ifc-lite-processing = { path = "../../rust/processing" }
+ifc-lite-data-model = { path = "../../rust/data-model" }
 
 # Parallelism
 rayon = "1.10"

@@ -4,7 +4,7 @@
 
 //! Parquet serialization for IFC data model (entities, properties, relationships, spatial hierarchy).
 
-use crate::services::data_model::{
+use crate::data_model::{
     ClassificationAssociation, DataModel, DocumentAssociation, EntityMetadata, MaterialAssociation,
     PropertySet, QuantitySet, Relationship, SpatialHierarchyData, SpatialNode,
 };
@@ -650,7 +650,7 @@ fn write_parquet_batch(batch: RecordBatch) -> Result<Vec<u8>, DataModelParquetEr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::data_model::DataModel;
+    use crate::data_model::DataModel;
     use arrow::array::Array;
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 

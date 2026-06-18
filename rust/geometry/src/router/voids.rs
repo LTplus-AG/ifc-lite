@@ -177,9 +177,30 @@ impl OpeningFrame {
     }
 }
 
+/// Whether `dir` is (essentially) parallel to a world axis.
+///
+/// This gates the opening-classification fork: an opening only takes the fast
+/// world-axis-aligned-AABB `Rectangular` cut path when its extrusion direction
+/// AND its inferred frame are axis-aligned; otherwise it is cut as its true
+/// oriented box (`DiagonalRectangular` / exact mesh). The AABB of a *rotated*
+/// opening box is strictly larger than the box itself, so cutting the AABB
+/// removes wall material outside the real opening — leaving a hole that is
+/// bigger than the window and skewed to the world grid instead of orthogonal
+/// to the wall.
+///
+/// The tolerance must therefore be TIGHT. The previous value (0.95, ≈ 18°) let
+/// a wall rotated in plan by up to ~18° — a façade a few degrees off the
+/// project grid, or an entire building rotated relative to the world axes —
+/// fall onto the AABB path and over-cut its openings by tens of centimetres
+/// (issue #1167, "weird wall hole cutting"). `cos(1°)` keeps genuinely
+/// axis-aligned walls — whose direction cosines are exact up to f32 mesh-normal
+/// noise (~1e-6 ≈ 0.0001°) — on the fast path with a ~1000× margin, while
+/// routing anything rotated by ≥ 1° to the exact oriented cut. At 1° the
+/// residual AABB over-cut would be sub-millimetre anyway.
 #[inline]
 fn is_axis_aligned_direction(dir: &Vector3<f64>) -> bool {
-    const AXIS_THRESHOLD: f64 = 0.95;
+    // cos(1°). Deliberately tight — see the doc comment (issue #1167).
+    const AXIS_THRESHOLD: f64 = 0.999_847_695;
     dir.x.abs().max(dir.y.abs()).max(dir.z.abs()) > AXIS_THRESHOLD
 }
 

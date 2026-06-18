@@ -139,9 +139,13 @@ jobs:
         run: pnpm build
 
       # Exchange the workflow's OIDC ID-token for a short-lived (30-minute)
-      # crates.io access token. Trusted Publisher must be configured on
-      # crates.io for each of ifc-lite-core, ifc-lite-geometry, ifc-lite-wasm
-      # pointing at this repo + this workflow before the first run.
+      # crates.io access token. A Trusted Publisher must be configured on
+      # crates.io for EACH published crate (ifc-lite-core, -geometry, -clash,
+      # -processing, -ffi, -wasm) pointing at this repo + this workflow
+      # before its first automated publish. A brand-new crate name (e.g.
+      # ifc-lite-ffi) must additionally be bootstrapped once with a personal
+      # API token — `cargo publish -p <crate> --token …` — to claim the name,
+      # since a Trusted Publisher can only be configured on an existing crate.
       - name: Authenticate to crates.io (OIDC)
         id: crates-auth
         uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4

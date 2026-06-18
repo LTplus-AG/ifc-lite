@@ -26,12 +26,14 @@ import { dirname, join } from 'path';
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Dependency order: geometry depends on core; clash is dependency-free;
-// processing depends on core+geometry; wasm depends on all four.
+// processing depends on core+geometry; ffi (cdylib C bindings) depends on
+// processing; wasm depends on core+geometry+clash+processing.
 const CRATES = [
   'ifc-lite-core',
   'ifc-lite-geometry',
   'ifc-lite-clash',
   'ifc-lite-processing',
+  'ifc-lite-ffi',
   'ifc-lite-wasm',
 ];
 

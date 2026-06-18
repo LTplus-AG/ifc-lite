@@ -15,6 +15,11 @@ description = "C FFI bindings for ifc-lite — native DLL for in-process IFC par
 crate-type = ["cdylib"]
 
 [dependencies]
-ifc-lite-processing = { path = "../processing" }
+# Carry an explicit `version` alongside `path` so the crate is publishable to
+# crates.io: `cargo publish` strips the path and keeps the version requirement.
+# A path-only dep fails publish ("dependency does not specify a version").
+# `scripts/sync-versions.js` keeps this literal aligned with the workspace
+# version on every `changeset version` bump.
+ifc-lite-processing = { version = "4.1.0", path = "../processing" }
 rayon = "1.10"
 serde_json = "1.0"

@@ -94,7 +94,7 @@ function syncVersions() {
   // path and keeps the version requirement on publish). Those literals
   // must track the workspace version or every workspace build breaks with
   // a version/path mismatch after a bump.
-  for (const member of ['core', 'geometry', 'processing', 'clash', 'wasm-bindings']) {
+  for (const member of ['core', 'geometry', 'processing', 'clash', 'ffi', 'wasm-bindings']) {
     const memberTomlPath = join(rootDir, 'rust', member, 'Cargo.toml');
     let memberToml;
     try {

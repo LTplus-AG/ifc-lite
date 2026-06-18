@@ -9,7 +9,9 @@
     "build:frontend": "tsc && vite build",
     "dev": "tauri dev",
     "build": "tauri build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "backend": "cargo run --release --manifest-path ../../Cargo.toml -p ifc-lite-desktop-server",
+    "web": "vite --port 3001 --strictPort"
   },
   "dependencies": {
     "@ifc-lite/geometry": "^2.7.9",

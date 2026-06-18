@@ -18,6 +18,19 @@ This page describes the extension points the packages expose and the host-side c
 
 A desktop shell reuses the same Rust crates (`ifc-lite-core`, `ifc-lite-geometry`) as the WASM build, but compiled natively with full multi-threading.
 
+## Native speed without a desktop install: the WebSocket backend
+
+You don't have to ship a desktop binary to get native parsing. [`ifc-lite-desktop-server`](https://github.com/LTplus-AG/ifc-lite/tree/main/rust/desktop-server) is a tiny localhost server (built on the same `ifc-lite-desktop-engine`) that a **plain browser tab** talks to over WebSocket: the page sends the IFC file, the server parses it with native Rayon, and streams the geometry back as binary **packed shards** (the exact format `packed-geometry-decoder.ts` reads).
+
+```text
+browser tab (any web viewer)
+  └─ WebSocket ws://127.0.0.1:8082/geometry
+       └─ ifc-lite-desktop-server   (loopback only)
+            └─ ifc-lite-desktop-engine → ifc-lite-processing (native Rayon)
+```
+
+This is the "local native accelerator → web viewer" deployment: native CPU/memory headroom, no WASM 4 GB cap, but no install ceremony beyond running one local binary. The `apps/desktop` reference frontend uses this path automatically when it is *not* running inside Tauri. Bind it to loopback only — it is a local accelerator, not a public service — and build it with `--profile server-release` so a parser panic becomes a per-connection error rather than a process abort.
+
 ## The geometry platform bridge
 
 `@ifc-lite/geometry` implements a **platform-bridge** pattern. In the browser, geometry runs through WebAssembly. When running inside a desktop host, it can instead route geometry generation to **native Rust over the host's IPC**:

@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/ffi", "rust/desktop", "rust/wasm-bindings", "apps/server"]
+members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/ffi", "rust/desktop", "rust/desktop-server", "rust/wasm-bindings", "apps/server"]
 resolver = "2"
 # The Tauri desktop reference shell (apps/desktop/src-tauri) is its own
 # standalone workspace: it pulls in `tauri` + GUI system libs (webkit2gtk) that

@@ -46,7 +46,11 @@ dependencies out of the monorepo's CI lanes. The reusable engine
 (`rust/desktop`) **is** a workspace member and is unit-tested by
 `cargo test --workspace`.
 
-## Build & run
+## Two ways to run
+
+The same frontend runs in two native-geometry modes, picked at runtime:
+
+### A) As a desktop app (Tauri, in-process native)
 
 Prerequisites: the [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/)
 (Rust toolchain + platform webview libs — e.g. `webkit2gtk` on Linux) and Node + pnpm.
@@ -58,7 +62,30 @@ pnpm dev          # tauri dev — launches the window with hot-reload frontend
 pnpm build        # tauri build — produces a bundled installer
 ```
 
-Click **Open IFC…**, pick a file, and watch it stream in — processed natively.
+### B) As a plain web app (WebSocket native backend)
+
+No desktop install — a normal browser tab, but geometry is processed by native
+Rust on localhost via [`ifc-lite-desktop-server`](../../rust/desktop-server) and
+streamed back as packed shards. Run the two halves:
+
+```bash
+# 1. native backend (from the repo root, or `pnpm backend` from here)
+cargo run --release -p ifc-lite-desktop-server          # ws://127.0.0.1:8082/geometry
+
+# 2. the web frontend
+cd apps/desktop && pnpm install && pnpm web             # http://localhost:3001
+```
+
+Open the page, click **Open IFC…**, pick a file — it uploads to the local
+backend, is parsed natively, and streams in. Point the frontend at a different
+backend with `VITE_NATIVE_BACKEND_URL`.
+
+> Build the backend with `--profile server-release` in production so a parser
+> panic on a pathological element becomes a per-connection error instead of
+> aborting the server (the default `release` profile is `panic = "abort"`).
+
+In both modes: click **Open IFC…**, pick a file, watch it stream in — processed
+natively, no WASM.
 
 ## Host command contract
 

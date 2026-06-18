@@ -1,0 +1,37 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+[package]
+name = "ifc-lite-desktop-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Localhost WebSocket backend that streams native ifc-lite geometry (packed shards) to a browser — native-speed parsing for a plain web app, no desktop install."
+keywords = ["ifc", "bim", "geometry", "websocket", "server"]
+categories = ["web-programming", "parsing"]
+
+[[bin]]
+name = "ifc-lite-desktop-server"
+path = "src/main.rs"
+
+[dependencies]
+# Same web stack as apps/server (axum 0.8 has built-in WebSocket support).
+axum = { version = "0.8", features = ["ws", "tokio"] }
+tower-http = { version = "0.6", features = ["cors"] }
+tokio = { version = "1", features = ["full"] }
+bytes = "1.5"
+
+# The native geometry engine — the only ifc-lite crate this needs; everything
+# else (parse, CSG, colour, units) is transitive through it.
+ifc-lite-desktop-engine = { path = "../desktop" }
+
+# Large-stack worker pool for deep-CSG crash isolation (mirrors ifc-lite-ffi).
+rayon = "1.10"
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

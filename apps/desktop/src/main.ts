@@ -3,35 +3,35 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * IFC-Lite Desktop reference frontend.
+ * IFC-Lite Desktop / native-backend reference frontend.
  *
- * The whole point of this file: it is an ordinary web app, yet geometry is
- * processed by NATIVE Rust. `GeometryProcessor({ preferNative: true })` detects
- * the Tauri host (`isTauri()`) and routes every parse through the `NativeBridge`
- * → the `get_geometry_streaming` Rust command (this repo's
- * `apps/desktop/src-tauri`) → `ifc-lite-desktop-engine`. No WASM is loaded; the
- * meshes arrive already in WebGL Y-up, so they drop straight into three.js.
+ * The same UI runs in two native-geometry modes, chosen at runtime:
+ *
+ * - **Tauri desktop** (`isTauri()`): `GeometryProcessor({ preferNative: true })`
+ *   routes geometry through the `NativeBridge` → in-process Rust commands.
+ * - **Plain web app**: connects to `ifc-lite-desktop-server` over WebSocket and
+ *   streams packed shards from native Rust on localhost (see `ws-backend.ts`).
+ *
+ * Either way geometry is processed **natively** (no WASM) and arrives in WebGL
+ * Y-up, ready for three.js.
  */
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GeometryProcessor } from '@ifc-lite/geometry';
-import { invoke } from '@tauri-apps/api/core';
-import { readFile } from '@tauri-apps/plugin-fs';
+import { streamFromNativeBackend, type DecodedMesh } from './ws-backend.js';
 
-interface FileInfo {
-  path: string;
-  name: string;
-  size: number;
-}
+const NATIVE_BACKEND_URL =
+  (import.meta.env.VITE_NATIVE_BACKEND_URL as string | undefined) ?? 'ws://127.0.0.1:8082/geometry';
+
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 const statusEl = document.getElementById('status') as HTMLSpanElement;
 const openBtn = document.getElementById('open') as HTMLButtonElement;
 const canvas = document.getElementById('viewport') as HTMLCanvasElement;
 
-function setStatus(text: string): void {
+const setStatus = (text: string): void => {
   statusEl.textContent = text;
-}
+};
 
 // ── three.js scene ──
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -95,21 +95,7 @@ function clearModel(): void {
   }
 }
 
-// ── Native geometry engine ──
-const processor = new GeometryProcessor({ preferNative: true });
-let ready: Promise<void> | null = null;
-
-function ensureReady(): Promise<void> {
-  if (!ready) ready = processor.init();
-  return ready;
-}
-
-function addMesh(mesh: {
-  positions: Float32Array;
-  normals: Float32Array;
-  indices: Uint32Array;
-  color: [number, number, number, number];
-}): void {
+function addMesh(mesh: DecodedMesh): void {
   if (mesh.positions.length === 0 || mesh.indices.length === 0) return;
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
@@ -130,30 +116,87 @@ function addMesh(mesh: {
   modelGroup.add(new THREE.Mesh(geometry, material));
 }
 
-async function loadFile(info: FileInfo): Promise<void> {
-  openBtn.disabled = true;
-  clearModel();
-  setStatus(`Loading ${info.name} (${(info.size / 1e6).toFixed(1)} MB) natively…`);
+// ── File picking (native dialog in Tauri, <input> on the web) ──
+interface PickedFile {
+  name: string;
+  size: number;
+  bytes: Uint8Array;
+}
 
-  try {
-    await ensureReady();
+async function pickFile(): Promise<PickedFile | null> {
+  if (isTauri) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const { readFile } = await import('@tauri-apps/plugin-fs');
+    const info = await invoke<{ path: string; name: string; size: number } | null>('open_ifc_file');
+    if (!info) return null;
     const bytes = await readFile(info.path);
+    return { name: info.name, size: info.size, bytes };
+  }
 
-    let meshCount = 0;
-    const started = performance.now();
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.ifc,.ifczip,.ifcxml';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return resolve(null);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      resolve({ name: file.name, size: file.size, bytes });
+    };
+    input.click();
+  });
+}
+
+// ── Geometry processing (in-process native in Tauri, WS backend on the web) ──
+async function processNatively(
+  bytes: Uint8Array,
+  onMesh: (mesh: DecodedMesh) => void,
+  onProgress: (count: number) => void,
+): Promise<void> {
+  let count = 0;
+  if (isTauri) {
+    const { GeometryProcessor } = await import('@ifc-lite/geometry');
+    const processor = new GeometryProcessor({ preferNative: true });
+    await processor.init();
     for await (const event of processor.processStreaming(bytes)) {
       if (event.type === 'batch') {
         for (const mesh of event.meshes) {
-          addMesh(mesh);
-          meshCount += 1;
+          onMesh(mesh as unknown as DecodedMesh);
+          count += 1;
         }
-        setStatus(`Streaming… ${meshCount} meshes`);
+        onProgress(count);
       }
     }
+    return;
+  }
 
+  await streamFromNativeBackend(NATIVE_BACKEND_URL, bytes, {
+    onBatch: (batch) => {
+      for (const mesh of batch.meshes) {
+        onMesh(mesh);
+        count += 1;
+      }
+      onProgress(count);
+    },
+  });
+}
+
+async function loadFile(file: PickedFile): Promise<void> {
+  openBtn.disabled = true;
+  clearModel();
+  setStatus(`Loading ${file.name} (${(file.size / 1e6).toFixed(1)} MB) natively…`);
+
+  try {
+    const started = performance.now();
+    await processNatively(
+      file.bytes,
+      addMesh,
+      (count) => setStatus(`Streaming… ${count} meshes`),
+    );
     fitCameraToModel();
     const seconds = ((performance.now() - started) / 1000).toFixed(2);
-    setStatus(`${info.name} — ${meshCount} meshes in ${seconds}s (native)`);
+    const mode = isTauri ? 'native, in-process' : 'native, ws backend';
+    setStatus(`${file.name} — ${modelGroup.children.length} meshes in ${seconds}s (${mode})`);
   } catch (err) {
     console.error(err);
     setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -164,10 +207,12 @@ async function loadFile(info: FileInfo): Promise<void> {
 
 openBtn.addEventListener('click', async () => {
   try {
-    const info = await invoke<FileInfo | null>('open_ifc_file');
-    if (info) await loadFile(info);
+    const file = await pickFile();
+    if (file) await loadFile(file);
   } catch (err) {
     console.error(err);
     setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
   }
 });
+
+setStatus(isTauri ? 'Native engine ready (in-process).' : `Web mode — backend: ${NATIVE_BACKEND_URL}`);

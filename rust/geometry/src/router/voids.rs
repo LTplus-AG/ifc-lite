@@ -1545,6 +1545,10 @@ impl GeometryRouter {
         // Clean slivers the CSG cut can introduce at opening seams — same
         // hygiene as the tessellation chokepoints (Mesh::clean_degenerate).
         voided.clean_degenerate();
+        // Instancing: a void-cut mesh no longer reproduces its representation's
+        // canonical geometry, so it can never be shared. Drop any metadata that
+        // rode along from the (pre-cut) mapped item.
+        voided.instance_meta = None;
         Ok(voided)
     }
 

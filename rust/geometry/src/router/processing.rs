@@ -4,8 +4,18 @@
 
 //! Core element processing: resolving representations, processing items, and caching.
 
+use super::transforms::{instancing_enabled, mat4_to_row_major};
 use super::GeometryRouter;
-use crate::{Error, Mesh, Result, SubMeshCollection};
+use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
+
+/// Row-major 4x4 identity; placeholder `InstanceMeta::transform` before the
+/// element's world placement is folded in by `apply_placement`.
+const IDENTITY_ROW_MAJOR: [f64; 16] = [
+    1.0, 0.0, 0.0, 0.0, //
+    0.0, 1.0, 0.0, 0.0, //
+    0.0, 0.0, 1.0, 0.0, //
+    0.0, 0.0, 0.0, 1.0, //
+];
 use ifc_lite_core::{
     has_geometry_by_name, DecodedEntity, EntityDecoder, GeometryCategory, IfcType,
 };
@@ -441,6 +451,14 @@ impl GeometryRouter {
         // Process all representations and merge meshes
         let mut combined_mesh = Mesh::new();
 
+        // Instancing: an element is cleanly shareable only when its whole body is
+        // exactly ONE representation item that itself carried instance metadata
+        // (a mapped item). `Mesh::merge` does not propagate the side-channel, so we
+        // capture the single item's metadata here and re-attach it below; any second
+        // item disqualifies the element (left as None -> rendered flat).
+        let mut single_instance_meta: Option<InstanceMeta> = None;
+        let mut instanceable_item_count: usize = 0;
+
         // First pass: check if we have any direct geometry representations
         // This prevents duplication when both direct and MappedRepresentation exist
         let has_direct_geometry = representations.iter().any(|rep| {
@@ -517,8 +535,22 @@ impl GeometryRouter {
             // Process each representation item
             for item in items {
                 let mesh = self.process_representation_item(&item, decoder)?;
+                if instancing_enabled() && !mesh.positions.is_empty() {
+                    instanceable_item_count += 1;
+                    single_instance_meta = if instanceable_item_count == 1 {
+                        mesh.instance_meta.clone()
+                    } else {
+                        None
+                    };
+                }
                 combined_mesh.merge(&mesh);
             }
+        }
+
+        // Re-attach single-item instance metadata so apply_placement can fold the
+        // element's world placement into `transform`.
+        if instancing_enabled() {
+            combined_mesh.instance_meta = single_instance_meta;
         }
 
         // Mesh hygiene before placement (rigid transform preserves geometry, so
@@ -1038,9 +1070,25 @@ impl GeometryRouter {
             let cache = self.mapped_item_cache.borrow();
             if let Some(cached_mesh) = cache.get(&source_id) {
                 let mut mesh = cached_mesh.as_ref().clone();
+                let mut local_rm = None;
                 if let Some(mut transform) = mapping_transform {
                     self.scale_transform(&mut transform);
+                    if instancing_enabled() {
+                        local_rm = Some(mat4_to_row_major(&transform));
+                    }
                     self.transform_mesh_local(&mut mesh, &transform);
+                }
+                // Instancing: all occurrences of this RepresentationMap share the
+                // cached source-coords geometry; `local_transform` is the mapping
+                // (canonical -> element-local), `transform` is filled later by the
+                // element's apply_placement (element-local -> world).
+                if instancing_enabled() {
+                    mesh.instance_meta = Some(InstanceMeta {
+                        transform: IDENTITY_ROW_MAJOR,
+                        local_transform: local_rm,
+                        rep_identity: source_id as u128,
+                        instanceable: true,
+                    });
                 }
                 return Ok(mesh);
             }
@@ -1092,9 +1140,21 @@ impl GeometryRouter {
         }
 
         // Apply MappingTarget transformation to this instance
+        let mut local_rm = None;
         if let Some(mut transform) = mapping_transform {
             self.scale_transform(&mut transform);
+            if instancing_enabled() {
+                local_rm = Some(mat4_to_row_major(&transform));
+            }
             self.transform_mesh_local(&mut mesh, &transform);
+        }
+        if instancing_enabled() {
+            mesh.instance_meta = Some(InstanceMeta {
+                transform: IDENTITY_ROW_MAJOR,
+                local_transform: local_rm,
+                rep_identity: source_id as u128,
+                instanceable: true,
+            });
         }
 
         Ok(mesh)

@@ -33,6 +33,10 @@
         {
           "key": "Cross-Origin-Embedder-Policy",
           "value": "credentialless"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "loopback-network=(self), local-network=(self), local-network-access=(self)"
         }
       ]
     },

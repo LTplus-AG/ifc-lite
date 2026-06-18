@@ -33,8 +33,10 @@ export interface WebSocketBridgeOptions {
   url: string;
   /** Override the health-probe URL. Derived from `url` (→ http(s) `/health`) otherwise. */
   healthUrl?: string;
-  /** Health-probe timeout (ms). Kept short so a bare tab without the helper
-   *  falls back to WASM quickly. Default 1500. */
+  /** Health-probe timeout (ms). Generous by default (20s) because the probe can
+   *  surface a Local Network Access permission prompt the user must answer; an
+   *  absent helper still fails fast (connection refused), so the long ceiling
+   *  only bounds an ignored prompt. Default 20000. */
   healthTimeoutMs?: number;
 }
 
@@ -102,19 +104,49 @@ export class WebSocketBridge implements IPlatformBridge {
     const opts = typeof options === 'string' ? { url: options } : options;
     this.geometryUrl = normalizeGeometryUrl(opts.url);
     this.healthUrl = opts.healthUrl ?? deriveHealthUrl(this.geometryUrl);
-    this.healthTimeoutMs = opts.healthTimeoutMs ?? 1500;
+    this.healthTimeoutMs = opts.healthTimeoutMs ?? 20000;
   }
 
   /**
    * Probe `/health`. A reachable, healthy helper marks the bridge initialized;
-   * anything else throws so `GeometryProcessor` can fall back to WASM. The short
-   * timeout keeps the no-helper path fast.
+   * anything else throws so `GeometryProcessor` can fall back to WASM.
+   *
+   * A public-origin page reaching a loopback target is gated by the browser's
+   * Local Network Access permission (Chrome 142+ for fetch, 147+ for WebSocket;
+   * Firefox rolling out). `targetAddressSpace: 'local'` on the probe is what
+   * triggers that permission prompt; once the user grants it for this origin,
+   * the WebSocket handshake to 127.0.0.1 is allowed too (the grant is per-origin,
+   * and it also relaxes mixed-content for the local target). Requires the page to
+   * carry `Permissions-Policy: loopback-network=(self)` (see vercel.json). The
+   * server-side `Access-Control-Allow-Private-Network` header is the legacy PNA
+   * mechanism and is NOT what unblocks this.
    */
   async init(): Promise<void> {
+    // Short-circuit if the user has already denied the permission for this origin
+    // (avoids re-prompting / hanging). Unknown permission name on other browsers
+    // (Safari, older Chrome) throws — ignore and let the probe itself decide.
+    try {
+      const perm = await (navigator as Navigator & {
+        permissions?: { query?: (d: { name: string }) => Promise<{ state: string }> };
+      }).permissions?.query?.({ name: 'loopback-network' });
+      if (perm?.state === 'denied') {
+        throw new Error('native backend blocked: local-network permission denied');
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('native backend blocked')) throw err;
+      /* permission name unsupported here — proceed; the probe will surface the result */
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.healthTimeoutMs);
     try {
-      const res = await fetch(this.healthUrl, { signal: controller.signal, cache: 'no-store' });
+      // `targetAddressSpace` is not yet in lib.dom's RequestInit.
+      const probeInit: RequestInit & { targetAddressSpace?: string } = {
+        signal: controller.signal,
+        cache: 'no-store',
+        targetAddressSpace: 'local',
+      };
+      const res = await fetch(this.healthUrl, probeInit);
       if (!res.ok) throw new Error(`native backend health check failed: HTTP ${res.status}`);
     } finally {
       clearTimeout(timer);

@@ -27,6 +27,7 @@ bytes = "1.5"
 # The native geometry engine — the only ifc-lite crate this needs; everything
 # else (parse, CSG, colour, units) is transitive through it.
 ifc-lite-desktop-engine = { path = "../desktop" }
+ifc-lite-data-model = { path = "../data-model" }
 
 # Large-stack worker pool for deep-CSG crash isolation (mirrors ifc-lite-ffi).
 rayon = "1.10"

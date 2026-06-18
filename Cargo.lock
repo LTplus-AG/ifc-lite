@@ -1513,6 +1513,7 @@ version = "4.1.0"
 dependencies = [
  "axum",
  "bytes",
+ "ifc-lite-data-model",
  "ifc-lite-desktop-engine",
  "rayon",
  "serde",

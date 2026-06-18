@@ -91,11 +91,16 @@ async fn handle_socket(mut socket: WebSocket) {
     // OOMs the tab. Accumulate the frames; tolerate ping/pong; a graceful close
     // after some data arrived is treated as an implicit eof; bail otherwise.
     let mut content: Vec<u8> = Vec::new();
+    let mut want_data_model = false;
     loop {
         match socket.recv().await {
             Some(Ok(Message::Binary(bytes))) => content.extend_from_slice(&bytes),
             Some(Ok(Message::Text(text))) => {
                 if text.as_str().contains("\"eof\"") {
+                    // The client opts into a streamed data model (so the browser
+                    // can skip its own parse + free the source) by putting
+                    // `"dataModel":true` on the eof frame. Old clients omit it.
+                    want_data_model = text.as_str().contains("\"dataModel\":true");
                     break;
                 }
             }
@@ -113,10 +118,14 @@ async fn handle_socket(mut socket: WebSocket) {
     // its shards/colour updates through an unbounded channel to this task, which
     // forwards them to the socket in order. The blocking task's sender is the
     // only one kept alive, so the channel closes exactly when processing ends.
+    // Shared between the geometry task and the optional data-model task without
+    // copying the (possibly 700 MB+) file.
+    let content = std::sync::Arc::new(content);
     let (tx, mut rx) = unbounded_channel::<OutMessage>();
+    let geom_content = std::sync::Arc::clone(&content);
     let task = tokio::task::spawn_blocking(move || {
         pool::run_on_large_stack(move || {
-            protocol::stream_geometry(&content, |msg| {
+            protocol::stream_geometry(&geom_content, |msg| {
                 // Receiver only goes away if the client disconnected; dropping
                 // the message then is correct.
                 let _ = tx.send(msg);
@@ -137,7 +146,34 @@ async fn handle_socket(mut socket: WebSocket) {
 
     // Channel drained ⇒ the engine finished. Report stats (or an error if the
     // blocking task panicked — only possible under the unwinding profile).
-    let closing = match task.await {
+    let geom_result = task.await;
+
+    // Optional: stream the data model (entities/properties/quantities/spatial/
+    // units) as a Parquet payload so the browser can skip its own 12 M-entity
+    // parse and free the source buffer. Sent as a `{"type":"dataModel"}` marker
+    // then one binary frame, before `done`. Non-fatal on failure — the client
+    // falls back to parsing locally.
+    if want_data_model && geom_result.is_ok() {
+        let dm_content = std::sync::Arc::clone(&content);
+        let parquet = tokio::task::spawn_blocking(move || {
+            pool::run_on_large_stack(move || {
+                let model = ifc_lite_data_model::extract_data_model(dm_content.as_ref());
+                ifc_lite_data_model::serialize_data_model_to_parquet(&model)
+            })
+        })
+        .await;
+        match parquet {
+            Ok(Ok(bytes)) => {
+                let _ = socket
+                    .send(Message::Text("{\"type\":\"dataModel\"}".to_string().into()))
+                    .await;
+                let _ = socket.send(Message::Binary(Bytes::from(bytes))).await;
+            }
+            _ => tracing::warn!("data model extract/serialize failed; client parses locally"),
+        }
+    }
+
+    let closing = match geom_result {
         Ok(stats) => protocol::done_json(&stats),
         Err(_) => protocol::error_json("geometry processing failed"),
     };

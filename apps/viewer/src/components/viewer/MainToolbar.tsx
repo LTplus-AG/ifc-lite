@@ -575,6 +575,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setClashPanelVisible(nextClashVisible);
     setComparePanelVisible(nextCompareVisible);
     setExtensionsPanelVisible(nextExtensionsVisible);
+    // Keep the float channel in sync (#1200/#1201): toggling a workspace panel
+    // from the toolbar re-docks it if it was popped out (toggle-on) or closes
+    // its window (toggle-off), instead of leaving an orphaned floating panel.
+    if (panel !== 'addElement') useViewerStore.getState().closeFloatingPanel(panel);
 
     if (panel === 'addElement') {
       setActiveTool(nextAddElementActive ? 'addElement' : 'select');

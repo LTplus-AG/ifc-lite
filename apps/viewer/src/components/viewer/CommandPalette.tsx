@@ -207,18 +207,23 @@ function downloadBlob(data: BlobPart, name: string, mime: string) {
 
 function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions') {
   const s = useViewerStore.getState();
-  const isActive =
+  // "Open" means floating OR docked-visible, so toggling a popped-out panel
+  // closes it rather than silently flipping a hidden flag (#1200/#1201).
+  const floating = s.floatingPanels.some((p) => p.id === panel);
+  const isActive = floating || (
     panel === 'bcf' ? s.bcfPanelVisible :
     panel === 'ids' ? s.idsPanelVisible :
     panel === 'clash' ? s.clashPanelVisible :
     panel === 'compare' ? s.comparePanelVisible :
     panel === 'extensions' ? s.extensionsPanelVisible :
-    s.lensPanelVisible;
+    s.lensPanelVisible
+  );
 
   closeActiveAnalysisExtension();
 
   if (isActive) {
-    // Toggle off → close it (and the rest of the group) → falls back to Properties.
+    // Toggle off → close it (and the rest of the group + any float) → Properties.
+    s.closeFloatingPanel(panel);
     s.setBcfPanelVisible(false);
     s.setIdsPanelVisible(false);
     s.setLensPanelVisible(false);
@@ -226,7 +231,7 @@ function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' 
     s.setComparePanelVisible(false);
     s.setExtensionsPanelVisible(false);
   } else {
-    // Open exclusively (closes every sibling, including clash) and un-collapse.
+    // Open exclusively (closes every sibling + un-floats) and un-collapse.
     s.openWorkspacePanel(panel);
   }
 }

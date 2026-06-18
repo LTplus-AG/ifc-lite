@@ -494,7 +494,11 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   },
 
   openWorkspacePanel: (panel) => {
-    const [set] = args;
+    const [set, get] = args;
+    // Docking into the right slot: if the panel was floating, stop floating it
+    // so the existing toolbar / command-palette entry points stay in sync with
+    // the float channel (#1200/#1201) instead of leaving an orphaned window.
+    get().closeFloatingPanel(panel);
     set({
       bcfPanelVisible: panel === 'bcf',
       idsPanelVisible: panel === 'ids',

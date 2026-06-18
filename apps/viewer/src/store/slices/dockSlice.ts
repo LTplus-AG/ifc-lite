@@ -52,7 +52,8 @@ function loadPersisted(): FloatingPanelState[] {
       (p): p is FloatingPanelState =>
         p && typeof p.id === 'string' && typeof p.x === 'number' && typeof p.w === 'number',
     );
-  } catch {
+  } catch (error) {
+    console.warn('[dock] ignoring malformed persisted panel layout:', error);
     return [];
   }
 }
@@ -61,8 +62,9 @@ function persist(panels: FloatingPanelState[]): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(panels));
-  } catch {
-    /* quota / private mode — layout just won't persist */
+  } catch (error) {
+    // Quota / private mode — the layout just won't persist this session.
+    console.warn('[dock] failed to persist panel layout:', error);
   }
 }
 

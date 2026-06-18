@@ -1,5 +1,23 @@
 # @ifc-lite/geometry
 
+## 2.7.9
+
+### Patch Changes
+
+- [#1185](https://github.com/LTplus-AG/ifc-lite/pull/1185) [`23a36a6`](https://github.com/LTplus-AG/ifc-lite/commit/23a36a66dfcfbd9bef2b988094c003b17d400d76) Thanks [@louistrue](https://github.com/louistrue)! - Cut time-to-first-geometry roughly in half on large models by reordering the streaming pre-pass.
+
+  Content-affinity routing had deferred all job emission to the very end of the pre-pass — the per-job geometry-hash pass, plus the entity-index event being emitted last, left the geometry workers idle until the whole pre-pass finished. The pre-pass now ships the events workers gate on (entity-index + styles) and a small first job wave right after the scan, then runs affinity routing over the rest. On a ~50k-part model first-visible-geometry dropped from ~22s to ~12s with no change to total load time or geometry — the bulk keeps exact geometry-hash affinity; only the small first wave routes by element id.
+
+- [#1190](https://github.com/LTplus-AG/ifc-lite/pull/1190) [`d5aa38d`](https://github.com/LTplus-AG/ifc-lite/commit/d5aa38db57e90ecd69512cfad426a902a0eccebf) Thanks [@louistrue](https://github.com/louistrue)! - Recover from transient WASM engine-load failures and humanise the error.
+
+  When the `ifc-lite_bg.wasm` binary fails to download (non-OK HTTP status, a cold
+  CDN edge, a mid-deploy race, or a blocking proxy/antivirus), wasm-bindgen's
+  streaming loader rethrows a cryptic `Failed to execute 'compile' on
+'WebAssembly': HTTP status code is not ok`. The geometry and parser workers now
+  retry `init()` once on such fetch/HTTP-shaped failures, and the viewer maps the
+  failure to actionable guidance ("reload the page") instead of surfacing the raw
+  TypeError. Captured exceptions are tagged with a stable `error_kind` for triage.
+
 ## 2.7.8
 
 ### Patch Changes

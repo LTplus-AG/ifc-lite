@@ -512,6 +512,101 @@ fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Opt
     })
 }
 
+/// A guaranteed **right-handed** orthonormal basis `[a, b, d]` for a diagonal
+/// opening frame: `d` is the depth (penetration) axis; `a` and `b` span the
+/// opening face with `a × b = d`. `b` is recomputed as `d × a` rather than
+/// trusting `frame.cross_b`, because `infer_opening_frame` may flip `cross_b`
+/// to match the source profile and hand back a *left-handed* frame — building
+/// a box from a left-handed basis inverts its winding (the inside-out cutter
+/// that sheeted faces across the windows). Right-handedness (det +1) means the
+/// rotation back to world preserves winding.
+fn right_handed_frame_axes(frame: &OpeningFrame) -> Option<[Vector3<f64>; 3]> {
+    let d = frame.depth.try_normalize(NORMALIZE_EPSILON)?;
+    let a = (frame.cross_a - d * frame.cross_a.dot(&d)).try_normalize(NORMALIZE_EPSILON)?;
+    let b = d.cross(&a).try_normalize(NORMALIZE_EPSILON)?; // a × b = d ⇒ right-handed
+    Some([a, b, d])
+}
+
+/// Express `mesh` in the orthonormal frame `axes = [a, b, d]` about `pivot`:
+/// `p' = [ (p−pivot)·a, (p−pivot)·b, (p−pivot)·d ]`. A box oriented to this
+/// frame becomes axis-aligned (its depth `d` maps to local +Z), so the exact
+/// box subtract runs in the numerically-clean axis-aligned regime.
+/// [`mesh_from_frame`] is the exact inverse (the basis is orthonormal, so the
+/// round-trip is identity up to the f32 store).
+fn mesh_to_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], pivot: Vector3<f64>) -> Mesh {
+    let mut positions = Vec::with_capacity(mesh.positions.len());
+    for c in mesh.positions.chunks_exact(3) {
+        let p = Vector3::new(c[0] as f64, c[1] as f64, c[2] as f64) - pivot;
+        positions.push(p.dot(&axes[0]) as f32);
+        positions.push(p.dot(&axes[1]) as f32);
+        positions.push(p.dot(&axes[2]) as f32);
+    }
+    let mut normals = Vec::with_capacity(mesh.normals.len());
+    for c in mesh.normals.chunks_exact(3) {
+        let n = Vector3::new(c[0] as f64, c[1] as f64, c[2] as f64);
+        normals.push(n.dot(&axes[0]) as f32);
+        normals.push(n.dot(&axes[1]) as f32);
+        normals.push(n.dot(&axes[2]) as f32);
+    }
+    Mesh {
+        positions,
+        normals,
+        indices: mesh.indices.clone(),
+        rtc_applied: mesh.rtc_applied,
+        origin: mesh.origin,
+    }
+}
+
+/// Inverse of [`mesh_to_frame`]: `p = pivot + x·a + y·b + z·d`.
+fn mesh_from_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], pivot: Vector3<f64>) -> Mesh {
+    let mut positions = Vec::with_capacity(mesh.positions.len());
+    for c in mesh.positions.chunks_exact(3) {
+        let q = pivot
+            + axes[0] * c[0] as f64
+            + axes[1] * c[1] as f64
+            + axes[2] * c[2] as f64;
+        positions.push(q.x as f32);
+        positions.push(q.y as f32);
+        positions.push(q.z as f32);
+    }
+    let mut normals = Vec::with_capacity(mesh.normals.len());
+    for c in mesh.normals.chunks_exact(3) {
+        let m = axes[0] * c[0] as f64 + axes[1] * c[1] as f64 + axes[2] * c[2] as f64;
+        normals.push(m.x as f32);
+        normals.push(m.y as f32);
+        normals.push(m.z as f32);
+    }
+    Mesh {
+        positions,
+        normals,
+        indices: mesh.indices.clone(),
+        rtc_applied: mesh.rtc_applied,
+        origin: mesh.origin,
+    }
+}
+
+/// Axis-aligned bounds of `mesh` expressed in the frame `axes` about `pivot`
+/// (i.e. the opening's extents along `a`, `b`, `d`). `None` if empty.
+fn project_aabb_in_frame(
+    mesh: &Mesh,
+    axes: &[Vector3<f64>; 3],
+    pivot: Vector3<f64>,
+) -> Option<(Point3<f64>, Point3<f64>)> {
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    for c in mesh.positions.chunks_exact(3) {
+        let p = Vector3::new(c[0] as f64, c[1] as f64, c[2] as f64) - pivot;
+        for k in 0..3 {
+            let d = p.dot(&axes[k]);
+            lo[k] = lo[k].min(d);
+            hi[k] = hi[k].max(d);
+        }
+    }
+    lo.iter()
+        .all(|v| v.is_finite())
+        .then(|| (Point3::new(lo[0], lo[1], lo[2]), Point3::new(hi[0], hi[1], hi[2])))
+}
+
 /// Reusable buffers for triangle clipping operations
 ///
 /// This struct eliminates per-triangle allocations in clip_triangle_against_box
@@ -1151,6 +1246,105 @@ impl GeometryRouter {
         out.map(crate::csg::ClippingProcessor::consolidate_coplanar)
     }
 
+    /// Cut a uniformly-rotated wall's openings in their shared axis-aligned
+    /// frame, reusing the (clean) straight-wall cut path.
+    ///
+    /// Returns `Some(cut)` only when EVERY opening is a tilted rectangular box,
+    /// the openings share one orientation, and their depth (penetration) axis is
+    /// ~horizontal — a vertical wall rotated in plan, the issue #1167 case. Any
+    /// rectangular / non-rectangular / curved opening, a mixed orientation, a
+    /// non-horizontal depth (roof/floor/sloped), or a degenerate frame returns
+    /// `None`, deferring the whole host to the world-space path (so the delicate
+    /// roof/floor cases — #1007, #960 — are untouched).
+    ///
+    /// It rotates the host into the shared right-handed frame (about the host
+    /// centre, so coordinates stay small for the f32 store), reclassifies every
+    /// opening as an *axis-aligned* `Rectangular` box in that frame, and recurses
+    /// into [`Self::apply_void_context_inner`]. There the openings are
+    /// world-axis-aligned, so they take the exact same numerically-clean path a
+    /// straight wall does — `weld_near_coplanar_facets` flattens the f32 rotation
+    /// jitter and the watertight-by-construction `rect_fast` cellular cut runs —
+    /// instead of the tilted-plane arrangement that leaves rim slivers. The
+    /// result is rotated back; the orthonormal round-trip is identity for
+    /// untouched geometry.
+    fn try_cut_diagonal_local_frame(
+        &self,
+        host: &Mesh,
+        ctx: &VoidContext,
+        element_id: u32,
+    ) -> Option<Mesh> {
+        // A wall's thickness axis is horizontal; a roof/floor/sloped opening's
+        // is not. 0.2 ≈ 11.5° off horizontal — generous for modelling noise,
+        // well clear of any real roof pitch.
+        const MAX_WALL_DEPTH_Z: f64 = 0.2;
+        // Shared-orientation tolerance (≈ 2.5°): all openings on the wall must
+        // share one frame so a single rotation axis-aligns them together.
+        const FRAME_MATCH_DOT: f64 = 0.999;
+
+        if ctx.merged_openings.is_empty() {
+            return None;
+        }
+        let mut frames: Vec<[Vector3<f64>; 3]> = Vec::with_capacity(ctx.merged_openings.len());
+        let mut op_meshes: Vec<&Mesh> = Vec::with_capacity(ctx.merged_openings.len());
+        for op in &ctx.merged_openings {
+            match op {
+                OpeningType::DiagonalRectangular(mesh, frame) => {
+                    let axes = right_handed_frame_axes(frame)?;
+                    if axes[2].z.abs() > MAX_WALL_DEPTH_Z {
+                        return None; // sloped/roof/floor opening — leave to world path
+                    }
+                    frames.push(axes);
+                    op_meshes.push(mesh);
+                }
+                _ => return None, // rectangular / curved / mixed — world path
+            }
+        }
+
+        // Every opening must share the wall's orientation: the depth axes
+        // parallel, and the face plane the same (the in-face axes may be
+        // swapped / sign-flipped between openings, hence the `||`).
+        let axes = frames[0];
+        for f in &frames[1..] {
+            let depth_ok = f[2].dot(&axes[2]).abs() > FRAME_MATCH_DOT;
+            let face_ok = f[0].dot(&axes[0]).abs() > FRAME_MATCH_DOT
+                || f[0].dot(&axes[1]).abs() > FRAME_MATCH_DOT;
+            if !(depth_ok && face_ok) {
+                return None;
+            }
+        }
+
+        let (hmn, hmx) = host.bounds();
+        let pivot = Vector3::new(
+            ((hmn.x + hmx.x) * 0.5) as f64,
+            ((hmn.y + hmx.y) * 0.5) as f64,
+            ((hmn.z + hmx.z) * 0.5) as f64,
+        );
+
+        // Reclassify every opening as an axis-aligned `Rectangular` box in the
+        // shared frame (its depth maps to local +Z), then cut on the rotated
+        // host via the straight-wall path.
+        let rects: Vec<OpeningType> = op_meshes
+            .iter()
+            .filter_map(|m| {
+                project_aabb_in_frame(m, &axes, pivot)
+                    .map(|(mn, mx)| OpeningType::Rectangular(mn, mx, Some(Vector3::new(0.0, 0.0, 1.0))))
+            })
+            .collect();
+        if rects.is_empty() {
+            return None;
+        }
+        let frame_ctx = VoidContext {
+            merged_openings: Self::merge_rectangular_openings(&rects),
+            openings: rects,
+        };
+
+        let host_f = mesh_to_frame(host, &axes, pivot);
+        // Recurses, but `frame_ctx` is all-`Rectangular`, so this guard returns
+        // `None` on the inner call — no infinite recursion.
+        let cut_f = self.apply_void_context_inner(host_f, &frame_ctx, element_id);
+        Some(mesh_from_frame(&cut_f, &axes, pivot))
+    }
+
     fn apply_void_context_inner(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // Capture the input triangle count + bounds so the per-host
         // diagnostic can flag the "cuts attempted but produced no
@@ -1179,6 +1373,19 @@ impl GeometryRouter {
         // gone) with a clean opening hole. Deterministic + watertight + grid-
         // snapped; a no-op for already-planar extrusion hosts.
         let mut result = crate::facet_weld::weld_near_coplanar_facets(&mesh);
+
+        // LOCAL-FRAME CUT (issue #1167): when every opening is a tilted
+        // rectangular box on a vertical wall rotated in plan, cut in the
+        // openings' own axis-aligned frame — where the exact box subtract is
+        // numerically clean — and rotate the result back, instead of the
+        // world-space tilted cut that leaves rim slivers (or, with a
+        // synthesized world box, an inside-out cutter). Tightly scoped: a
+        // mixed / curved / non-horizontal-depth opening set defers the whole
+        // host to the world-space path below, so roof/floor/sloped openings
+        // (#1007, #960) are untouched.
+        if let Some(cut) = self.try_cut_diagonal_local_frame(&result, ctx, element_id) {
+            return cut;
+        }
 
         // ANALYTIC FAST PATH: an axis-aligned box host whose openings are ALL
         // axis-aligned rectangular through-cuts is subtracted analytically

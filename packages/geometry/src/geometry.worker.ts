@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
+import { initWasmWithRetry } from './wasm-init-retry.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import {
   DEFAULT_BATCH_SIZING,
@@ -233,42 +234,21 @@ let api: IfcAPI | null = null;
 let cachedWasmUrl: string | undefined = undefined;
 
 /**
- * wasm-bindgen's streaming loader rethrows on a non-OK HTTP status or a failed
- * fetch of `ifc-lite_bg.wasm` (it only falls back for the wrong-MIME case),
- * surfacing as `TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP
- * status code is not ok`. A transient blip — a cold CDN edge, a mid-deploy
- * race, a flaky proxy — can produce a one-off failure that a second attempt
- * recovers. Retry the init once on a fetch/HTTP-shaped failure before giving
- * up; a genuine compile/validation error (corrupt module) propagates
- * immediately so we don't mask real bugs. `__wbg_init` only short-circuits on
- * `wasm !== undefined`, so a retry after a failed load safely re-fetches.
- */
-async function initWasmWithRetry(url: string | undefined): Promise<void> {
-  try {
-    await init(url);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const looksTransient =
-      /HTTP status code is not ok|failed to fetch|networkerror|load failed|streaming/i.test(msg) ||
-      /'(?:compile|compileStreaming|instantiate|instantiateStreaming)' on 'WebAssembly'/i.test(msg);
-    if (!looksTransient) throw err;
-    console.warn(`[Worker] WASM engine load failed (${msg}); retrying once`);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await init(url);
-  }
-}
-
-/**
  * Idempotent wasm + IfcAPI initializer. Centralises the
  * `if (!api) { await init(); api = new IfcAPI(); ... }` boilerplate that
  * every message handler used to repeat. Honours `cachedWasmUrl` so the
  * explicit-URL plumbing only has to set state in one place. Returns the
  * `IfcAPI` so call sites can use the value directly without a non-null
  * assertion on the module-level `api`.
+ *
+ * `init` is wrapped in {@link initWasmWithRetry} so a transient engine-binary
+ * download failure (a cold CDN edge, mid-deploy race, or flaky proxy) is
+ * retried once before failing. `__wbg_init` only short-circuits on
+ * `wasm !== undefined`, so a retry after a failed load safely re-fetches.
  */
 async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
-  await initWasmWithRetry(cachedWasmUrl);
+  await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
   api = new IfcAPI();
   mergeLayersApplied = false;
   applyMergeLayersToApi();

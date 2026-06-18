@@ -16,6 +16,7 @@
  */
 
 import init, { IfcAPI } from '@ifc-lite/wasm';
+import { initWasmWithRetry } from './wasm-init-retry.js';
 import { IfcParser } from './index.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import type { WasmScanApi } from './entity-scanner.js';
@@ -125,33 +126,18 @@ function postOutput(message: ParserWorkerOutputMessage, transfers?: Transferable
 let cachedFullScanApi: Pick<WasmScanApi, 'scanEntitiesFastBytes'> | null = null;
 let initPromise: Promise<void> | null = null;
 
-/**
- * wasm-bindgen's streaming loader rethrows on a non-OK HTTP status or a failed
- * fetch of `ifc-lite_bg.wasm` (it only falls back for the wrong-MIME case),
- * surfacing as `TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP
- * status code is not ok`. A transient blip — a cold CDN edge, a mid-deploy
- * race, a flaky proxy — can produce a one-off failure that a second attempt
- * recovers. Retry the init once on a fetch/HTTP-shaped failure; a genuine
- * compile/validation error propagates immediately so we don't mask real bugs.
- */
-async function initWasmWithRetry(): Promise<void> {
-  try {
-    await init();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const looksTransient =
-      /HTTP status code is not ok|failed to fetch|networkerror|load failed|streaming/i.test(msg) ||
-      /'(?:compile|compileStreaming|instantiate|instantiateStreaming)' on 'WebAssembly'/i.test(msg);
-    if (!looksTransient) throw err;
-    console.warn(`[parser.worker] WASM engine load failed (${msg}); retrying once`);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await init();
-  }
-}
-
 async function ensureWasmScanApi(): Promise<Pick<WasmScanApi, 'scanEntitiesFastBytes'>> {
   if (cachedFullScanApi) return cachedFullScanApi;
-  if (!initPromise) initPromise = initWasmWithRetry();
+  // `init` is wrapped in `initWasmWithRetry` so a transient engine-binary
+  // download failure is retried once before failing. Clear `initPromise` on
+  // failure so a later call can recover (e.g. the network came back) instead
+  // of memoising the rejection forever.
+  if (!initPromise) {
+    initPromise = initWasmWithRetry(() => init(), { label: 'parser.worker' }).catch((err) => {
+      initPromise = null;
+      throw err;
+    });
+  }
   await initPromise;
   const api = new IfcAPI();
   cachedFullScanApi = {

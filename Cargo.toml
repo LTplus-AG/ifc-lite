@@ -1,6 +1,11 @@
 [workspace]
-members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/ffi", "rust/wasm-bindings", "apps/server"]
+members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/ffi", "rust/desktop", "rust/wasm-bindings", "apps/server"]
 resolver = "2"
+# The Tauri desktop reference shell (apps/desktop/src-tauri) is its own
+# standalone workspace: it pulls in `tauri` + GUI system libs (webkit2gtk) that
+# the headless `cargo test --workspace` CI lanes don't provide. Its *engine*
+# (rust/desktop) is a normal member and is fully unit-tested here.
+exclude = ["apps/desktop/src-tauri"]
 
 [workspace.package]
 version = "4.1.0"

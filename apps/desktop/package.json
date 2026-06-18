@@ -1,0 +1,27 @@
+{
+  "name": "ifc-lite-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tauri v2 reference desktop shell for ifc-lite — native geometry engine streaming to the web viewer. Standalone project; not part of the ifc-lite pnpm workspace.",
+  "scripts": {
+    "dev:frontend": "vite --port 3001 --strictPort",
+    "build:frontend": "tsc && vite build",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@ifc-lite/geometry": "^2.7.9",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-fs": "^2",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/three": "^0.184.0",
+    "typescript": "^6.0.3",
+    "vite": "^6.0.0"
+  }
+}

@@ -2,6 +2,12 @@ packages:
   - 'packages/*'
   - 'apps/*'
   - 'examples/*'
+  # The Tauri desktop reference app is a STANDALONE project, not a monorepo
+  # member: it consumes the *published* @ifc-lite/* packages (like any third
+  # party building their own desktop shell — see docs/guide/desktop.md) and
+  # carries Tauri/three deps + its own lockfile. Keeping it out of the workspace
+  # leaves the root lockfile and the turbo/typecheck lanes untouched.
+  - '!apps/desktop'
 
 onlyBuiltDependencies:
   - '@clerk/shared'

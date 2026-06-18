@@ -1,6 +1,8 @@
 # Building for Desktop
 
-IFClite itself ships a **web viewer** (and the headless CLI/MCP/server) — it does **not** ship a desktop application. However, the published `@ifc-lite/*` packages are designed so you can build **your own** native desktop app (e.g. with [Tauri v2](https://v2.tauri.app/)) on top of them, including an optional **native-Rust geometry fast path** that bypasses WebAssembly for multi-threaded performance on very large models.
+IFClite's primary product is the **web viewer** (plus the headless CLI/MCP/server). On top of the published `@ifc-lite/*` packages you can also build a native desktop app (e.g. with [Tauri v2](https://v2.tauri.app/)) with a **native-Rust geometry fast path** that bypasses WebAssembly for multi-threaded performance on very large models.
+
+A working **reference implementation** lives in [`apps/desktop`](https://github.com/LTplus-AG/ifc-lite/tree/main/apps/desktop): a Tauri v2 shell whose `#[tauri::command]` layer drives the [`ifc-lite-desktop-engine`](https://github.com/LTplus-AG/ifc-lite/tree/main/rust/desktop) crate (a thin wrapper over the shared `ifc-lite-processing` pipeline). It is a standalone project — not part of the monorepo workspace — so it doubles as a copy-paste starting point for your own shell.
 
 This page describes the extension points the packages expose and the host-side contract your desktop shell needs to implement.
 
@@ -50,6 +52,8 @@ If you use the bundled `NativeBridge`, your Tauri shell must register these Rust
 | `get_native_geometry_cache_packed_shard` | Fetch a packed geometry shard from the cache |
 | `get_native_geometry_cache_stream_status` | Report cache streaming status |
 
+The `apps/desktop` reference shell implements the first three (`get_geometry`, `get_geometry_from_path`, `get_geometry_streaming`) plus a native file picker — enough to drive the `NativeBridge` `processGeometry` / `processGeometryPath` / `processGeometryStreaming` paths end-to-end. The `get_native_geometry_cache_*` / `get_geometry_streaming_from_path` commands back the optional on-disk cache (see below) and are left to production shells.
+
 **Events (`listen`):**
 
 | Event | Payload |
@@ -57,7 +61,7 @@ If you use the bundled `NativeBridge`, your Tauri shell must register these Rust
 | `geometry-packed-batch` | A packed batch of mesh data |
 | `geometry-color-update` | Per-element color updates |
 
-The native commands wrap the `ifc-lite-core` / `ifc-lite-geometry` Rust crates directly (no WASM overhead). Your shell is also free to add its own commands for native file dialogs, filesystem access, preferences, and on-disk caching.
+The native commands wrap the shared `ifc-lite-processing` pipeline (via `ifc-lite-desktop-engine`) — the exact crate the HTTP server and the C FFI use, so colour/coordinate/geometry resolution can't drift from the web build. They add only the IFC Z-up → WebGL Y-up boundary swap (mirroring the WASM path's `zero_copy.rs`) so meshes arrive renderer-ready. Your shell is also free to add its own commands for native file dialogs, filesystem access, preferences, and on-disk caching.
 
 ## Binary caching (optional)
 
@@ -66,6 +70,8 @@ A typical desktop shell stores parsed results on disk so reopening a previously 
 1. Hash the source file.
 2. Check the cache for a matching key (`get_native_geometry_cache_manifest`).
 3. If present, stream the cached geometry shards back (`get_native_geometry_cache_packed_shard`); if not, parse natively and write the result for next time.
+
+`ifc-lite-desktop-engine::encode_shard` already produces the exact binary packed-shard layout that `@ifc-lite/geometry`'s `packed-geometry-decoder.ts` reads, so the only work left for the cache is writing those buffers to disk and serving them through these commands.
 
 ## Frontend reuse
 

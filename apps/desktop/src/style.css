@@ -1,0 +1,60 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  background: #1e1e22;
+  color: #e6e6e6;
+}
+
+#toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: #2a2a30;
+  border-bottom: 1px solid #3a3a42;
+  z-index: 10;
+}
+
+#toolbar button {
+  background: #4c6ef5;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+#toolbar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#status {
+  font-size: 12px;
+  color: #a8a8b3;
+}
+
+#viewport {
+  position: fixed;
+  inset: 44px 0 0 0;
+  width: 100%;
+  height: calc(100% - 44px);
+  display: block;
+}

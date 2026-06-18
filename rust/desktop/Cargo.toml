@@ -1,0 +1,20 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+[package]
+name = "ifc-lite-desktop-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Native desktop geometry engine for ifc-lite: wraps the shared processing pipeline and emits viewer-ready (WebGL Y-up) packed geometry shards for the @ifc-lite/geometry NativeBridge."
+keywords = ["ifc", "bim", "geometry", "desktop", "tauri"]
+categories = ["parsing", "algorithms"]
+readme = "../../README.md"
+
+[dependencies]
+# The engine is a thin wrapper over the canonical processing pipeline — it does
+# NOT re-fork colour/coordinate/style resolution (AGENTS.md "Don't re-fork it").
+ifc-lite-processing = { version = "4.1.0", path = "../processing" }

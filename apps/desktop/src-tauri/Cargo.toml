@@ -1,0 +1,48 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+[package]
+name = "ifc-lite-desktop"
+version = "0.1.0"
+description = "IFC-Lite Desktop — Tauri v2 reference shell wiring the native geometry engine to the web viewer"
+authors = ["IFC-Lite Contributors"]
+license = "MPL-2.0"
+repository = "https://github.com/LTplus-AG/ifc-lite"
+edition = "2021"
+
+# Standalone workspace: the root `cargo test --workspace` excludes this crate
+# (see the root Cargo.toml `exclude`) because `tauri` needs GUI system libraries
+# (webkit2gtk on Linux) the headless CI lanes don't install. The reusable engine
+# it depends on (`ifc-lite-desktop-engine`) IS a root member and is tested there.
+[workspace]
+
+[lib]
+name = "ifc_lite_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+
+# The native geometry engine — wraps the shared ifc-lite processing pipeline and
+# produces viewer-ready (WebGL Y-up) geometry. This is the only ifc-lite crate
+# the shell needs; everything else (parse, CSG, colour, units) is transitive.
+ifc-lite-desktop-engine = { path = "../../../rust/desktop" }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Large-stack worker pool for crash isolation on deeply-recursive CSG, mirroring
+# `ifc-lite-ffi`. Without it, a wall with hundreds of openings can overflow the
+# default ~1 MiB worker stack and abort the whole app with no recoverable panic.
+rayon = "1.10"
+tokio = { version = "1", features = ["fs"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

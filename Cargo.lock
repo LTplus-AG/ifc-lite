@@ -1478,6 +1478,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-desktop-engine"
+version = "4.1.0"
+dependencies = [
+ "ifc-lite-processing",
+]
+
+[[package]]
 name = "ifc-lite-ffi"
 version = "4.1.0"
 dependencies = [

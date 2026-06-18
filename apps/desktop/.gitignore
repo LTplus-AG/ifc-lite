@@ -1,0 +1,9 @@
+# Standalone project build artifacts (this app is outside the monorepo workspace).
+node_modules/
+dist/
+pnpm-lock.yaml
+package-lock.json
+
+# Rust / Tauri build output + generated files.
+src-tauri/target/
+src-tauri/gen/

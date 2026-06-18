@@ -281,6 +281,24 @@ describe('auditIDSDocument — IFC schema cross-checks', () => {
     const r = await auditIDSDocument(xml);
     expect(codes(r.issues)).toContain('E_IFC_PARTOF_RELATION');
   });
+
+  it('accepts the merged voids/fills partOf relation (issue #1205)', async () => {
+    // The IDS XSD enumerates voids + fills as one space-separated token.
+    // It must not be flagged as an invalid relation on import.
+    const xml = wrap(`<specification name="Window in wall" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWINDOW</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <partOf relation="IFCRELVOIDSELEMENT IFCRELFILLSELEMENT"><entity><name><simpleValue>IFCWALL</simpleValue></name></entity></partOf>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    // Neither the relation token nor the window→wall owner/member subtype
+    // check should flag — a window IS validly part of a wall via the chain.
+    expect(codes(r.issues)).not.toContain('E_IFC_PARTOF_RELATION');
+    expect(codes(r.issues)).not.toContain('E_IFC_PARTOF_ENTITY');
+  });
 });
 
 describe('auditIDSDocument — coherence checks', () => {

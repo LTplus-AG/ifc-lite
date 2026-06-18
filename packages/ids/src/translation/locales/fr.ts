@@ -43,6 +43,7 @@ export const fr = {
     IfcRelNests: 'imbriqué dans',
     IfcRelVoidsElement: 'perçant',
     IfcRelFillsElement: 'remplissant',
+    'IfcRelVoidsElement IfcRelFillsElement': 'relié via une ouverture à',
   },
 
   // ============================================================================

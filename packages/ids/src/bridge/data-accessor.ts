@@ -32,13 +32,25 @@ import { narrowSchemaVersion } from './schema-version.js';
 // graph keys on. Passing strings here was a long-standing silent bug:
 // `getRelated` matched nothing → every partOf check looked like
 // "no parent" → fail-when-required, pass-when-prohibited.
-const PARTOF_REL_MAP: Record<PartOfRelation, RelationshipType | undefined> = {
-  IfcRelAggregates: RelationshipType.Aggregates,
-  IfcRelAssignsToGroup: RelationshipType.AssignsToGroup,
-  IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
-  IfcRelNests: RelationshipType.Aggregates,
-  IfcRelVoidsElement: RelationshipType.VoidsElement,
-  IfcRelFillsElement: RelationshipType.FillsElement,
+//
+// Each relation maps to a LIST of edge types the ancestor walk follows.
+// All but the merged voids/fills token map to a single type; the IDS XSD
+// merged voids + fills into one enumeration value
+// (`IFCRELVOIDSELEMENT IFCRELFILLSELEMENT`) that links an element to its
+// host building element through an opening — a window fills an opening
+// (`FillsElement`) that voids a wall (`VoidsElement`). Walking both edge
+// types inverse-direction reaches the opening and the wall in turn.
+const PARTOF_REL_MAP: Record<PartOfRelation, readonly RelationshipType[]> = {
+  IfcRelAggregates: [RelationshipType.Aggregates],
+  IfcRelAssignsToGroup: [RelationshipType.AssignsToGroup],
+  IfcRelContainedInSpatialStructure: [RelationshipType.ContainsElements],
+  IfcRelNests: [RelationshipType.Aggregates],
+  IfcRelVoidsElement: [RelationshipType.VoidsElement],
+  IfcRelFillsElement: [RelationshipType.FillsElement],
+  'IfcRelVoidsElement IfcRelFillsElement': [
+    RelationshipType.FillsElement,
+    RelationshipType.VoidsElement,
+  ],
 };
 
 /**
@@ -220,26 +232,29 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
     ): ParentInfo[] {
       const relationships = store.relationships;
       if (!relationships?.getRelated) return [];
-      const relType = PARTOF_REL_MAP[relationType];
-      if (relType === undefined) return [];
+      const relTypes = PARTOF_REL_MAP[relationType];
+      if (!relTypes || relTypes.length === 0) return [];
 
       // BFS up the graph — IDS partOf is transitive, so any reachable
-      // ancestor counts.
+      // ancestor counts. The merged voids/fills relation walks two edge
+      // types per node, so the queue follows each mapped type in turn.
       const out: ParentInfo[] = [];
       const seen = new Set<number>([expressId]);
       const queue = [expressId];
       while (queue.length > 0) {
         const id = queue.shift()!;
-        const parents = relationships.getRelated(id, relType, 'inverse');
-        for (const parentId of parents || []) {
-          if (seen.has(parentId)) continue;
-          seen.add(parentId);
-          out.push({
-            expressId: parentId,
-            entityType: accessor.getEntityType(parentId) || 'Unknown',
-            predefinedType: accessor.getObjectType(parentId),
-          });
-          queue.push(parentId);
+        for (const relType of relTypes) {
+          const parents = relationships.getRelated(id, relType, 'inverse');
+          for (const parentId of parents || []) {
+            if (seen.has(parentId)) continue;
+            seen.add(parentId);
+            out.push({
+              expressId: parentId,
+              entityType: accessor.getEntityType(parentId) || 'Unknown',
+              predefinedType: accessor.getObjectType(parentId),
+            });
+            queue.push(parentId);
+          }
         }
       }
       return out;

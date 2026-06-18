@@ -199,7 +199,13 @@ export type PartOfRelation =
   | 'IfcRelContainedInSpatialStructure'
   | 'IfcRelNests'
   | 'IfcRelVoidsElement'
-  | 'IfcRelFillsElement';
+  | 'IfcRelFillsElement'
+  // The IDS XSD enumerates voids+fills as a SINGLE space-separated token
+  // (`IFCRELVOIDSELEMENT IFCRELFILLSELEMENT`). It models the chained
+  // relationship that links an element to its host building element
+  // *through an opening* — e.g. a window fills an opening that voids a
+  // wall. See https://github.com/buildingSMART/IDS/issues/278.
+  | 'IfcRelVoidsElement IfcRelFillsElement';
 
 // ============================================================================
 // Constraint Types

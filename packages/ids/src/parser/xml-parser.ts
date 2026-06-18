@@ -460,6 +460,7 @@ function isRecognisedPartOfRelation(relation: string): boolean {
     case 'IfcRelVoidsElement':
     case 'IfcRelFillsElement':
     case 'IfcRelAssignsToGroup':
+    case 'IfcRelVoidsElement IfcRelFillsElement':
       return true;
     default:
       return false;
@@ -477,6 +478,13 @@ function normalizePartOfRelation(relation: string): PartOfRelation {
   if (upper.includes('CONTAINED') || upper.includes('SPATIAL'))
     return 'IfcRelContainedInSpatialStructure';
   if (upper.includes('NEST')) return 'IfcRelNests';
+  // The IDS XSD merged voids + fills into a single enumeration value
+  // (`IFCRELVOIDSELEMENT IFCRELFILLSELEMENT`). Detect that combined form
+  // BEFORE the individual checks below so it isn't silently collapsed to
+  // voids-only (which would both drop the fills traversal and trip the
+  // schema auditor — see issue #1205).
+  if (upper.includes('VOID') && upper.includes('FILL'))
+    return 'IfcRelVoidsElement IfcRelFillsElement';
   if (upper.includes('VOID')) return 'IfcRelVoidsElement';
   if (upper.includes('FILL')) return 'IfcRelFillsElement';
   return 'IfcRelContainedInSpatialStructure';

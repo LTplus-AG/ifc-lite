@@ -575,6 +575,21 @@ function parsePartOfRelations(): Record<IfcVersion, PartOfRelation[]> {
       });
     }
   }
+  // The upstream Xbim snapshot predates the IDS XSD merge of voids + fills
+  // into a single `IFCRELVOIDSELEMENT IFCRELFILLSELEMENT` enumeration value
+  // (issue #1205). Inject it for every version so the schema auditor accepts
+  // the combined token. `owner`/`member` are both `IFCELEMENT`: the reachable
+  // "whole" is the voided building element (an IfcElement, e.g. a wall) and
+  // the "part" is any element on the chain (a window/door, or the opening —
+  // IfcOpeningElement is itself an IfcElement subtype).
+  for (const version of Object.keys(out) as IfcVersion[]) {
+    if (out[version].length === 0) continue;
+    out[version].push({
+      relation: 'IFCRELVOIDSELEMENT IFCRELFILLSELEMENT',
+      owner: 'IFCELEMENT',
+      member: 'IFCELEMENT',
+    });
+  }
   return out;
 }
 

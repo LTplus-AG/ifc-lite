@@ -43,6 +43,7 @@ export const en = {
     IfcRelNests: 'nested in',
     IfcRelVoidsElement: 'voiding',
     IfcRelFillsElement: 'filling',
+    'IfcRelVoidsElement IfcRelFillsElement': 'connected through an opening to',
   },
 
   // ============================================================================

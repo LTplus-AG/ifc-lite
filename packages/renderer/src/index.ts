@@ -114,6 +114,7 @@ import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion } from './overlay-routing.js';
+import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import { DeviationPipeline } from './deviation/deviation-pipeline.js';
@@ -895,7 +896,12 @@ export class Renderer {
                 }
                 encodedId = encodedId & MAX_ENCODED_ENTITY_ID;
             }
-            interleavedU32[base + 6] = encodedId;
+            // Stamp the SAME high-byte material-colour salt as the batch path
+            // (mergeGeometry) so this individual/selection mesh computes the
+            // identical depth nudge as its source batch — otherwise the highlight
+            // (selection pipeline, reverse-Z 'greater-equal') would z-fight or drop
+            // out against the salted base depth. Low 24 bits stay the picking id.
+            interleavedU32[base + 6] = packEntityLane(encodedId, colorSaltByte(meshData.color));
         }
 
         const vertexBuffer = device.createBuffer({

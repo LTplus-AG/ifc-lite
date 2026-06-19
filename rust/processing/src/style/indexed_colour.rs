@@ -216,8 +216,10 @@ mod tests {
             positions,
             normals: Vec::new(),
             indices: vec![0, 1, 2, 3, 4, 5, 0, 1, 99],
-            rtc_applied: false, 
-            origin: [0.0; 3],        };
+            rtc_applied: false,
+            origin: [0.0; 3],
+            instance_meta: None,
+        };
         let map = FullIndexedColourMap {
             geometry_id: 1,
             colours: vec![Rgba::new(1.0, 0.0, 0.0, 1.0), Rgba::new(0.0, 1.0, 0.0, 1.0)],

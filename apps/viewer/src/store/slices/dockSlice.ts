@@ -34,6 +34,9 @@ export interface FloatingPanelState {
 
 const STORAGE_KEY = 'ifc-lite:dock-layout-v1';
 
+/** Valid snap zones — used to reject malformed persisted entries on load. */
+const SNAP_ZONES: ReadonlySet<string> = new Set<SnapZone>(['free', 'left', 'right', 'bottom']);
+
 /** Default geometry for a newly floated panel, fanned out so successive
  *  pop-outs don't stack exactly on top of each other. */
 function defaultRect(index: number): { x: number; y: number; w: number; h: number } {
@@ -50,7 +53,11 @@ function loadPersisted(): FloatingPanelState[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (p): p is FloatingPanelState =>
-        p && typeof p.id === 'string' && typeof p.x === 'number' && typeof p.w === 'number',
+        !!p && typeof p === 'object'
+        && typeof p.id === 'string'
+        && SNAP_ZONES.has(p.snap)
+        && Number.isFinite(p.x) && Number.isFinite(p.y)
+        && Number.isFinite(p.w) && Number.isFinite(p.h),
     );
   } catch (error) {
     console.warn('[dock] ignoring malformed persisted panel layout:', error);
@@ -58,7 +65,19 @@ function loadPersisted(): FloatingPanelState[] {
   }
 }
 
+// localStorage writes are coalesced on the drag / resize hot path (#1208). An
+// explicit write (float / close / snap / reset) cancels any pending debounced
+// rect write first, so a stale coalesced write can never clobber a later state.
+let rectPersistTimer: ReturnType<typeof setTimeout> | null = null;
+function cancelPendingPersist(): void {
+  if (rectPersistTimer !== null) {
+    clearTimeout(rectPersistTimer);
+    rectPersistTimer = null;
+  }
+}
+
 function persist(panels: FloatingPanelState[]): void {
+  cancelPendingPersist();
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(panels));
@@ -66,6 +85,18 @@ function persist(panels: FloatingPanelState[]): void {
     // Quota / private mode — the layout just won't persist this session.
     console.warn('[dock] failed to persist panel layout:', error);
   }
+}
+
+/** Coalesced persist for pointer-move updates: state still changes every tick
+ *  (live render), but localStorage is written at most once per idle window so
+ *  rapid drag / resize doesn't jank the main thread. */
+function persistRectDebounced(panels: FloatingPanelState[]): void {
+  if (typeof window === 'undefined') return;
+  cancelPendingPersist();
+  rectPersistTimer = setTimeout(() => {
+    rectPersistTimer = null;
+    persist(panels);
+  }, 250);
 }
 
 export interface DockSlice {
@@ -113,7 +144,7 @@ export const createDockSlice: StateCreator<DockSlice, [], [], DockSlice> = (set,
 
   setFloatingPanelRect: (id, rect) => {
     const next = get().floatingPanels.map((p) => (p.id === id ? { ...p, ...rect } : p));
-    persist(next);
+    persistRectDebounced(next);
     set({ floatingPanels: next });
   },
 

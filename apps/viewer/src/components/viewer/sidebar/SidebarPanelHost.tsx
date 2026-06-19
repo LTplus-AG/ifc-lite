@@ -48,10 +48,11 @@ function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
+        {/* Pointer-only drag affordance — not a button (it has no keyboard
+            action and wraps the real collapse <button>). Keyboard users reach
+            panels via the activity bar / Alt+N (#1208). */}
         <div
           onPointerDown={onPointerDown}
-          role="button"
-          aria-label="Drag to detach this panel"
           className="flex items-center gap-1 h-6 shrink-0 px-1.5 border-b border-border/50 bg-muted/10 select-none touch-none cursor-grab active:cursor-grabbing"
         >
           <Grip className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />

@@ -37,7 +37,7 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
     restoreFocusRef.current = (document.activeElement as HTMLElement) ?? null;
     ref.current?.focus();
     return () => {
-      try { restoreFocusRef.current?.focus?.(); } catch { /* element gone */ }
+      try { restoreFocusRef.current?.focus?.(); } catch (err) { console.debug('[sidebar] focus restore skipped:', err); }
     };
   }, []);
 

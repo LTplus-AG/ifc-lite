@@ -544,6 +544,19 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
     // If the panel was floating / popped out, bring it back to the docked slot.
     get().closeFloatingPanel(panel);
     get().setPanelPoppedOut(panel, false);
+    // Script / Schedule / Lists live in the BOTTOM strip, not the single-tenant
+    // side slot. A popped-out one re-docks here (the OS window's dock button
+    // routes through this fn with the panel id), so it must land in its home
+    // region instead of flipping side-panel flags it doesn't own (#1208).
+    if (isBottomPanel(panel)) {
+      set({
+        scriptPanelVisible: panel === 'script',
+        ganttPanelVisible: panel === 'gantt',
+        listPanelVisible: panel === 'lists',
+        rightPanelCollapsed: false,
+      });
+      return;
+    }
     if (panel === 'properties') {
       // The Information panel is the sidebar's fallback — reveal it by closing
       // every other panel.

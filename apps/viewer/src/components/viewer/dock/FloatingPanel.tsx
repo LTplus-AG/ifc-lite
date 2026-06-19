@@ -12,7 +12,7 @@
  * `setFloatingPanelRect` / `snapFloatingPanel` calls.
  */
 
-import { useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import {
   PanelLeft,
   PanelRight,
@@ -27,6 +27,10 @@ import type { FloatingPanelState, SnapZone } from '@/store';
 
 const MIN_W = 260;
 const MIN_H = 180;
+// Keep the opposite edge / header reachable when resizing against the viewport.
+const RESIZE_EDGE_MARGIN = 40;
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 interface FloatingPanelProps {
   panel: FloatingPanelState;
@@ -66,6 +70,11 @@ export function FloatingPanel({
   onClose,
 }: FloatingPanelProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // Tear down any in-flight drag / resize listeners if the panel unmounts mid-
+  // gesture (closed / docked while dragging) so stale window listeners don't
+  // keep firing onRect for a panel that no longer exists (#1208).
+  const gestureCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => gestureCleanupRef.current?.(), []);
 
   // Drag by the header: snapped windows convert to free-float at their current
   // on-screen rect first, so they don't jump.
@@ -97,7 +106,9 @@ export function FloatingPanel({
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      gestureCleanupRef.current = null;
     };
+    gestureCleanupRef.current = up;
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
   };
@@ -116,24 +127,30 @@ export function FloatingPanel({
     const px = e.clientX;
     const py = e.clientY;
     const snap = panel.snap;
+    // Clamp growth to the viewport so a snapped panel can't be dragged past the
+    // edge (header / inner edge becoming unreachable) (#1208).
+    const maxW = Math.max(MIN_W, window.innerWidth - RESIZE_EDGE_MARGIN);
+    const maxH = Math.max(MIN_H, window.innerHeight - RESIZE_EDGE_MARGIN);
 
     const move = (ev: MouseEvent) => {
       const dx = ev.clientX - px;
       const dy = ev.clientY - py;
       if (snap === 'bottom') {
-        onRect({ h: Math.max(MIN_H, startH - dy) });
+        onRect({ h: clamp(startH - dy, MIN_H, maxH) });
       } else if (snap === 'right') {
-        onRect({ w: Math.max(MIN_W, startW - dx) });
+        onRect({ w: clamp(startW - dx, MIN_W, maxW) });
       } else if (snap === 'left') {
-        onRect({ w: Math.max(MIN_W, startW + dx) });
+        onRect({ w: clamp(startW + dx, MIN_W, maxW) });
       } else {
-        onRect({ w: Math.max(MIN_W, startW + dx), h: Math.max(MIN_H, startH + dy) });
+        onRect({ w: clamp(startW + dx, MIN_W, maxW), h: clamp(startH + dy, MIN_H, maxH) });
       }
     };
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      gestureCleanupRef.current = null;
     };
+    gestureCleanupRef.current = up;
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
   };

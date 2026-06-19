@@ -102,6 +102,21 @@ export function isWorkspacePanelId(id: string): id is WorkspacePanelId {
   return PANEL_BY_ID.has(id as WorkspacePanelId);
 }
 
+/**
+ * Map an Alt+digit shortcut's `KeyboardEvent.code` to the workspace panel it
+ * opens (#1200/#1208). Digit/Numpad 1-9 select the first nine panels; 0 selects
+ * the tenth. Keyed off `code` (not `key`) so it stays layout-independent — on
+ * macOS Alt+1 yields the character "¡" but the code is still "Digit1". Returns
+ * undefined for non-digit codes (so other Alt combos fall through) or a digit
+ * past the registry length.
+ */
+export function workspacePanelForShortcutCode(code: string): WorkspacePanelId | undefined {
+  const m = /^(?:Digit|Numpad)([0-9])$/.exec(code);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  return WORKSPACE_PANELS[n === 0 ? 9 : n - 1]?.id;
+}
+
 /** The analysis / tool panels that toggle in the sidebar (everything except
  *  the Information fallback, which shows when no other panel is open). */
 export type AnalysisPanelId = Exclude<WorkspacePanelId, 'properties'>;

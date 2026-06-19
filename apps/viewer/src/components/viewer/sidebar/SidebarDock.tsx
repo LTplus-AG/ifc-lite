@@ -35,6 +35,10 @@ export function SidebarDock() {
   const rootRef = useRef<HTMLDivElement>(null);
   const [rowWidth, setRowWidth] = useState(0);
   const [dragPct, setDragPct] = useState<number | null>(null);
+  // Teardown for an in-flight resize, so a mid-drag unmount (viewport mode
+  // switch) doesn't leak document listeners + a stuck body userSelect (#1208).
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => resizeCleanupRef.current?.(), []);
 
   // Measure the parent row so we can turn the persisted % into a pixel width
   // without a circular width dependency.
@@ -62,16 +66,21 @@ export function SidebarDock() {
         const pct = (contentPx / rect.width) * 100;
         setDragPct(Math.max(MIN_WIDTH_PCT, Math.min(MAX_WIDTH_PCT, pct)));
       };
-      const up = () => {
+      const teardown = () => {
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        resizeCleanupRef.current = null;
+      };
+      const up = () => {
+        teardown();
         setDragPct((pct) => {
           if (pct !== null) setSidebarWidthPct(pct);
           return null;
         });
       };
+      resizeCleanupRef.current = teardown;
       document.addEventListener('mousemove', move);
       document.addEventListener('mouseup', up);
       document.body.style.cursor = 'col-resize';

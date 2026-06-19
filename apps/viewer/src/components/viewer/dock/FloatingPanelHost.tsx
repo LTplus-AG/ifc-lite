@@ -27,7 +27,11 @@ export function FloatingPanelHost() {
   if (floatingPanels.length === 0) return null;
 
   return (
-    <div className="absolute inset-0 z-30 pointer-events-none">
+    // Fixed viewport overlay: FloatingPanelState.x/y are documented as viewport
+    // coordinates and seeded from getBoundingClientRect() on detach. An
+    // `absolute` host would add ViewerLayout's content-container offset (it sits
+    // below the toolbar), making freshly detached panels jump (#1208).
+    <div className="fixed inset-0 z-30 pointer-events-none">
       {floatingPanels.map((panel, i) => {
         const def = getPanelDef(panel.id);
         return (

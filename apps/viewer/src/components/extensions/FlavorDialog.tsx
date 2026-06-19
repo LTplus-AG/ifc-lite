@@ -175,6 +175,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         // Capture the workspace-sidebar layout (#1208) into the reserved opaque
         // layout slot so it travels with the flavor (order / visible set / mode / width).
         layout: {
+          // Preserve any other layout fields an imported / future flavor carries;
+          // only the sidebar entry of `state` is being (re)captured here (#1208).
+          ...target.layout,
           state: {
             ...target.layout?.state,
             sidebar: useViewerStore.getState().serializeSidebarLayout() as unknown as (typeof target.layout)['state'][string],

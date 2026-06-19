@@ -97,7 +97,7 @@ describe('sidebarSlice (#1208)', () => {
       order: ['bcf', 'not-a-panel', 'bcf'],
       hiddenIds: ['properties', 'lens'],
     });
-    assert.ok(['expanded', 'collapsed', 'hidden'].includes(s.getState().sidebarMode));
+    assert.ok(['expanded', 'collapsed'].includes(s.getState().sidebarMode));
     assert.ok(Number.isFinite(s.getState().sidebarWidthPct));
     // order: bcf first, no dupes / unknowns, every registry panel present.
     assert.strictEqual(s.getState().sidebarOrder[0], 'bcf');

@@ -9,7 +9,8 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
-import { WORKSPACE_PANELS } from '@/lib/panels/registry';
+import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
+import { closeAllPanelWindows } from '@/services/panel-windows';
 import {
   executeBasketIsolate,
   executeBasketSet,
@@ -112,14 +113,10 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     // Uses e.code so it works regardless of the Alt character a layout produces
     // (Alt+1 = ¡ on macOS). 1-9 map to the first nine; 0 maps to the tenth.
     if (e.altKey && !ctrl) {
-      const digit = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
-      if (digit) {
-        const n = Number(digit[1]);
-        const panel = WORKSPACE_PANELS[n === 0 ? 9 : n - 1];
-        if (panel) {
-          e.preventDefault();
-          useViewerStore.getState().openPanelInHome(panel.id);
-        }
+      const shortcutPanel = workspacePanelForShortcutCode(e.code);
+      if (shortcutPanel) {
+        e.preventDefault();
+        useViewerStore.getState().openPanelInHome(shortcutPanel);
         return;
       }
       // Alt+\\ — toggle the sidebar (expand ⇄ collapse to icons; the rail stays).
@@ -319,6 +316,11 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
         // clash/compare/extensions → Information). Bottom panels + overlays
         // are closed explicitly.
         state.showWorkspacePanel('properties');
+        // Floats + popped-out OS windows are their own channel; the choke point
+        // above only re-docks `properties`, so drop every float and close every
+        // torn-off window so "close all" truly closes all (#1208).
+        state.resetDockLayout();
+        closeAllPanelWindows();
         state.setScriptPanelVisible(false);
         state.setListPanelVisible(false);
         state.setGanttPanelVisible(false);

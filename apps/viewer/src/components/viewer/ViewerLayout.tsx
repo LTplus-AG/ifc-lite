@@ -55,11 +55,11 @@ const BOTTOM_PANEL_MAX_RATIO = 0.7; // max 70% of container
  *  or drag onto another screen to pop it out (#1208). */
 function BottomPanelGrip({ id }: { id: 'gantt' | 'script' | 'lists' }) {
   const onPointerDown = usePanelDetachDrag(id);
+  // Pointer-only drag affordance — not a real button (no keyboard action);
+  // keyboard users dock / float via the sidebar rail / Alt+N (#1208).
   return (
     <div
       onPointerDown={onPointerDown}
-      role="button"
-      aria-label="Drag to detach this panel"
       title="Drag to float · drag onto another screen to pop out"
       className="flex items-center justify-center h-5 shrink-0 cursor-grab active:cursor-grabbing select-none touch-none border-b border-border/40 bg-muted/10"
     >

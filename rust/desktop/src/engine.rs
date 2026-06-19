@@ -283,6 +283,69 @@ pub fn process_mesh_array(content: &[u8]) -> (Vec<WireMesh>, EngineStats) {
     (wire, stats)
 }
 
+/// Process IFC bytes into a single INSTANCED ("IFNS") shard — unique template
+/// geometry once + a per-occurrence instance table (transform, entity id,
+/// colour), the format `decodeInstancedShard` reads.
+///
+/// This is the COLLECT-ALL emit path: collation needs the whole mesh set, so —
+/// unlike [`stream_packed_shards`] — it is non-streaming. The shard is in the
+/// IFC frame (same as [`MeshData`], positions relative to per-mesh origin); the
+/// renderer applies the same Z-up→Y-up boundary swap [`prepare_wire_mesh`] does
+/// to baked meshes, now to the template + instance transforms.
+///
+/// Requires `IFC_LITE_INSTANCING` (instance-metadata capture). With
+/// `IFC_LITE_RIGID_INSTANCING` also set, the rotation-normalized tier is folded
+/// in (rep_identity regrouped + per-occurrence canonical transform recovered).
+/// Falls back to one singleton template per mesh when capture is off.
+pub fn process_instanced_shard(content: &[u8]) -> (Vec<u8>, EngineStats) {
+    let mut result = process_geometry_filtered(content, OpeningFilterMode::Default);
+    normalize_to_site_local(&mut result);
+    apply_rigid_map(&mut result.meshes);
+    let stats = EngineStats::from_processing(&result.stats);
+    let bytes = encode_instanced_shard(&result.meshes);
+    (bytes, stats)
+}
+
+/// Fold the rotation-normalized rigid tier into the mesh instance metadata: run
+/// the post-pass over the captured pre-placement local meshes, then for each mesh
+/// remap rep_identity to its rigid template id + attach the recovered canonical
+/// transform. No-op unless `IFC_LITE_RIGID_INSTANCING` is on.
+fn apply_rigid_map(meshes: &mut [MeshData]) {
+    if !ifc_lite_geometry::congruence::rigid_enabled() {
+        return;
+    }
+    let locals = ifc_lite_geometry::congruence::take_locals();
+    let map = ifc_lite_geometry::congruence::build_rigid_map(&locals);
+    for m in meshes.iter_mut() {
+        if let Some(im) = m.instance.as_mut() {
+            if let Some(cls) = map.get(&im.rep_identity) {
+                im.rep_identity = cls.rigid_id;
+                im.canonical_transform = cls.canonical_transform;
+            }
+        }
+    }
+}
+
+/// Collate `MeshData` into an instanced shard (IFC frame), borrowing each mesh's
+/// geometry — no clone. Entity id = `express_id`; colour = the resolved mesh
+/// colour. Meshes without instance metadata become singleton templates, so every
+/// mesh is represented.
+pub fn encode_instanced_shard(meshes: &[MeshData]) -> Vec<u8> {
+    let refs: Vec<ifc_lite_geometry::InstanceMeshRef> = meshes
+        .iter()
+        .map(|m| ifc_lite_geometry::InstanceMeshRef {
+            positions: &m.positions,
+            normals: &m.normals,
+            indices: &m.indices,
+            origin: m.origin,
+            instance_meta: m.instance.as_ref(),
+            entity_id: m.express_id,
+            color: m.color,
+        })
+        .collect();
+    ifc_lite_geometry::collate_and_encode(&refs, 2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,6 +382,73 @@ mod tests {
         normalize_to_site_local(&mut result);
         assert_eq!(result.meshes[0].positions, before);
         assert_eq!(result.meshes[0].origin, [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn encode_instanced_shard_from_meshdata_roundtrips_and_expands() {
+        use ifc_lite_geometry::{decode_instanced, InstanceMeta};
+        // Row-major translation mat4.
+        let tr = |tx: f64, ty: f64, tz: f64| {
+            [1.0, 0.0, 0.0, tx, 0.0, 1.0, 0.0, ty, 0.0, 0.0, 1.0, tz, 0.0, 0.0, 0.0, 1.0]
+        };
+        let canon = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let baked = |tx: f32, ty: f32, tz: f32| -> Vec<f32> {
+            canon
+                .chunks_exact(3)
+                .flat_map(|c| [c[0] + tx, c[1] + ty, c[2] + tz])
+                .collect()
+        };
+        let mk = |id: u32, pos: Vec<f32>, m: [f64; 16], rep: u128| {
+            let n = pos.len() / 3;
+            MeshData::new(id, "IfcBeam".into(), pos, vec![0.0; n * 3], (0..n as u32).collect(), [0.5; 4])
+                .with_instance(Some(InstanceMeta {
+                    transform: m,
+                    local_transform: None,
+                    canonical_transform: None,
+                    rep_identity: rep,
+                    instanceable: true,
+                }))
+        };
+        // m0,m1 share rep 50 (same local geometry, different placement); m2 singleton.
+        let meshes = vec![
+            mk(1001, baked(1.0, 0.0, 0.0), tr(1.0, 0.0, 0.0), 50),
+            mk(1002, baked(0.0, 2.0, 0.0), tr(0.0, 2.0, 0.0), 50),
+            mk(1003, baked(5.0, 5.0, 5.0), tr(5.0, 5.0, 5.0), 60),
+        ];
+        let bytes = encode_instanced_shard(&meshes);
+        let dec = decode_instanced(&bytes).expect("decodes");
+        assert_eq!(dec.templates.len(), 2, "rep50 shared template + rep60 singleton");
+        assert_eq!(dec.instances.len(), 3, "every mesh represented");
+        let ids: Vec<u32> = dec.instances.iter().map(|i| i.entity_id).collect();
+        assert!(ids.contains(&1001) && ids.contains(&1002) && ids.contains(&1003));
+
+        // expand-to-flat: applying each instance transform to its template (IFC
+        // frame, origin folded) reproduces the original MeshData's baked positions.
+        let apply = |m: &[f32; 16], x: f32, y: f32, z: f32| {
+            [
+                m[0] * x + m[1] * y + m[2] * z + m[3],
+                m[4] * x + m[5] * y + m[6] * z + m[7],
+                m[8] * x + m[9] * y + m[10] * z + m[11],
+            ]
+        };
+        for inst in &dec.instances {
+            let tmpl = &dec.templates[inst.template_index as usize];
+            let orig = meshes.iter().find(|m| m.express_id == inst.entity_id).unwrap();
+            let t: [f32; 16] = inst.transform.as_slice().try_into().unwrap();
+            let n = tmpl.positions.len() / 3;
+            for v in 0..n {
+                let w = apply(
+                    &t,
+                    tmpl.origin[0] as f32 + tmpl.positions[v * 3],
+                    tmpl.origin[1] as f32 + tmpl.positions[v * 3 + 1],
+                    tmpl.origin[2] as f32 + tmpl.positions[v * 3 + 2],
+                );
+                let gx = orig.origin[0] as f32 + orig.positions[v * 3];
+                let gy = orig.origin[1] as f32 + orig.positions[v * 3 + 1];
+                let gz = orig.origin[2] as f32 + orig.positions[v * 3 + 2];
+                assert!((w[0] - gx).abs() < 1e-4 && (w[1] - gy).abs() < 1e-4 && (w[2] - gz).abs() < 1e-4);
+            }
+        }
     }
 
     #[test]

@@ -922,9 +922,10 @@ impl GeometryRouter {
             // so a sampled-hash collision (#833 family) would silently group
             // non-identical geometry. The 128-bit content hash makes that ~2^-127.
             let exact_rep = Self::compute_mesh_hash_full(&mesh) | DIRECT_SOLID_TAG;
-            // Phase-0 rigid-congruence measurement: stash the PRE-PLACEMENT local
-            // mesh (the exact state this hash saw) for the offline analysis.
-            if crate::congruence::analysis_enabled() {
+            // Stash the PRE-PLACEMENT local mesh (the exact state this hash saw)
+            // for the rigid post-pass (build_rigid_map) — needed by both the
+            // offline analysis and the production rigid emit.
+            if crate::congruence::analysis_enabled() || crate::congruence::rigid_enabled() {
                 crate::congruence::record_local(exact_rep, &mesh);
             }
             // NOTE: the rotation-normalized rigid tier (RigidCache) is NOT run here.

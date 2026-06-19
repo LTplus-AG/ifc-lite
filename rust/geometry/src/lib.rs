@@ -80,6 +80,7 @@ pub mod csg;
 pub mod facet_weld;
 pub mod diagnostics;
 pub mod error;
+pub mod congruence;
 pub mod geom_hash;
 pub mod extrusion;
 pub mod instancing;

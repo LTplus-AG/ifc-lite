@@ -150,6 +150,23 @@ pub fn stream_wire_batches(
         tally.log();
     }
 
+    // Phase-0 rigid-congruence dedup measurement (IFC_LITE_INSTANCING_ANALYSIS):
+    // drain the retained pre-placement local meshes and report how much SAFE
+    // rotation-normalized dedup is available beyond the exact-bit tier.
+    if ifc_lite_geometry::congruence::analysis_enabled() {
+        let locals = ifc_lite_geometry::congruence::take_locals();
+        let occ_counts: std::collections::HashMap<u128, usize> =
+            tally.groups.iter().map(|(&k, &(c, _))| (k, c)).collect();
+        let t0 = std::time::Instant::now();
+        let report =
+            ifc_lite_geometry::congruence::analyze_rigid_dedup(locals, &occ_counts, 0);
+        let report = ifc_lite_geometry::congruence::RigidDedupReport {
+            wall_ms: t0.elapsed().as_millis(),
+            ..report
+        };
+        eprintln!("{report}");
+    }
+
     EngineStats::from_processing(&result.stats)
 }
 

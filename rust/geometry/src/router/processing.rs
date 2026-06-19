@@ -916,10 +916,16 @@ impl GeometryRouter {
     fn tag_direct_instance(&self, mut mesh: Mesh) -> Mesh {
         if instancing_enabled() && mesh.instance_meta.is_none() && !mesh.positions.is_empty() {
             let hash = Self::compute_mesh_hash(&mesh);
+            let rep_identity = (hash as u128) | DIRECT_SOLID_TAG;
+            // Phase-0 rigid-congruence measurement: stash the PRE-PLACEMENT local
+            // mesh (the exact state this hash saw) for the offline analysis.
+            if crate::congruence::analysis_enabled() {
+                crate::congruence::record_local(rep_identity, &mesh);
+            }
             mesh.instance_meta = Some(InstanceMeta {
                 transform: IDENTITY_ROW_MAJOR,
                 local_transform: None,
-                rep_identity: (hash as u128) | DIRECT_SOLID_TAG,
+                rep_identity,
                 instanceable: true,
             });
         }

@@ -18,3 +18,5 @@ readme = "../../README.md"
 # The engine is a thin wrapper over the canonical processing pipeline — it does
 # NOT re-fork colour/coordinate/style resolution (AGENTS.md "Don't re-fork it").
 ifc-lite-processing = { version = "4.1.0", path = "../processing" }
+# Direct dep for the Phase-0 rigid-congruence instancing analysis (geometry::congruence).
+ifc-lite-geometry = { version = "4.1.0", path = "../geometry", default-features = false }

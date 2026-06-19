@@ -39,10 +39,12 @@ export function usePanelDetachDrag(id: WorkspacePanelId): (e: ReactPointerEvent<
       e.preventDefault();
       const root = (e.currentTarget as HTMLElement).closest('[data-detach-root]') as HTMLElement | null;
       const rect = root?.getBoundingClientRect();
+      // Cap the lifted float to a sane window size — the bottom strip spans the
+      // whole viewport width, which would otherwise make a huge full-width float.
+      const w = rect ? Math.min(Math.round(rect.width), 720) : 360;
+      const h = rect ? Math.min(Math.round(rect.height), 600) : 460;
       const baseX = rect ? rect.left : e.clientX - 40;
       const baseY = rect ? rect.top : e.clientY - 10;
-      const w = rect ? Math.round(rect.width) : 360;
-      const h = rect ? Math.min(Math.round(rect.height), 600) : 460;
       const startX = e.clientX;
       const startY = e.clientY;
       const pid = e.pointerId;

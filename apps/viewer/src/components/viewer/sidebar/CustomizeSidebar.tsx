@@ -41,10 +41,22 @@ export function CustomizeSidebar({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // Close on outside click / Escape.
+  // Close on outside click / Escape. The customize toggle button is excluded —
+  // otherwise its own click would close the popover here (mousedown) and then
+  // immediately reopen it (the button's click handler), so it could never close.
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      const target = e.target as HTMLElement;
+      // Exclude the whole activity bar: its icons (drag-reorder / hide-toggle)
+      // and the customize toggle are part of the same customize surface, so
+      // interacting with them must not dismiss the popover.
+      if (
+        ref.current &&
+        !ref.current.contains(target) &&
+        !target.closest('[data-activity-bar]')
+      ) {
+        onClose();
+      }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();

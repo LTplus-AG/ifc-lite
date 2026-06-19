@@ -76,14 +76,23 @@ export function usePanelControls(): PanelControls {
   );
   const poppedIds = useMemo(() => new Set<WorkspacePanelId>(poppedOutIds), [poppedOutIds]);
 
+  // The side panel actually shown in the right pane — mirrors SidebarPanelHost:
+  // the active panel, unless it's detached, in which case the pane falls back to
+  // Information. Used so the rail highlights what is really on screen.
+  const sideDocked = useMemo<WorkspacePanelId | null>(() => {
+    if (!floatingIds.has(activePanel) && !poppedIds.has(activePanel)) return activePanel;
+    if (!floatingIds.has('properties') && !poppedIds.has('properties')) return 'properties';
+    return null;
+  }, [activePanel, floatingIds, poppedIds]);
+
   const isDockedInHome = useCallback(
     (id: WorkspacePanelId): boolean => {
       if (id === 'script') return scriptVisible;
       if (id === 'gantt') return ganttVisible;
       if (id === 'lists') return listVisible;
-      return activePanel === id; // side panels
+      return id === sideDocked; // side panels: the panel actually shown in the pane
     },
-    [activePanel, scriptVisible, ganttVisible, listVisible],
+    [sideDocked, scriptVisible, ganttVisible, listVisible],
   );
 
   const panelLocation = useCallback(

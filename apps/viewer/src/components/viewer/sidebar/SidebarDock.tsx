@@ -23,6 +23,9 @@ import { ActivityBar } from './ActivityBar';
 import { SidebarPanelHost } from './SidebarPanelHost';
 
 const ACTIVITY_BAR_PX = 48; // w-12
+// Mirrors the clamp in sidebarSlice so the live drag matches what is persisted.
+const MIN_WIDTH_PCT = 14;
+const MAX_WIDTH_PCT = 60;
 
 export function SidebarDock() {
   const mode = useViewerStore((s) => s.sidebarMode);
@@ -53,9 +56,11 @@ export function SidebarDock() {
       const rect = parent.getBoundingClientRect();
       const move = (ev: MouseEvent) => {
         // The content pane's right edge is fixed against the activity bar;
-        // dragging its left edge sets the width.
+        // dragging its left edge sets the width. Clamp live to the same range
+        // the store enforces so the pane doesn't rubber-band past the limits.
         const contentPx = rect.right - ACTIVITY_BAR_PX - ev.clientX;
-        setDragPct(Math.max(0, Math.min(100, (contentPx / rect.width) * 100)));
+        const pct = (contentPx / rect.width) * 100;
+        setDragPct(Math.max(MIN_WIDTH_PCT, Math.min(MAX_WIDTH_PCT, pct)));
       };
       const up = () => {
         document.removeEventListener('mousemove', move);

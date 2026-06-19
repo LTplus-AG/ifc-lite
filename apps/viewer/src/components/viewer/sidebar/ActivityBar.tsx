@@ -83,7 +83,7 @@ export function ActivityBar() {
   let prevGroup: string | null = null;
 
   return (
-    <div className="relative flex flex-col items-center w-12 shrink-0 h-full border-l border-border bg-background">
+    <div data-activity-bar className="relative flex flex-col items-center w-12 shrink-0 h-full border-l border-border bg-background">
       {/* Panels */}
       <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden py-1.5 flex flex-col items-center gap-0.5">
         {visibleIds.map((id) => {
@@ -178,13 +178,24 @@ export function ActivityBar() {
 
       {/* Footer controls */}
       <div className="w-full shrink-0 border-t border-border py-1.5 flex flex-col items-center gap-0.5">
-        <FooterButton
-          label={customizing ? 'Done customizing' : 'Customize sidebar'}
-          active={customizing}
-          onClick={() => setSidebarCustomizing(!customizing)}
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-        </FooterButton>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              data-sidebar-customize-toggle
+              aria-label={customizing ? 'Done customizing' : 'Customize sidebar'}
+              aria-pressed={customizing}
+              onClick={() => setSidebarCustomizing(!customizing)}
+              className={cn(
+                'h-9 w-9 inline-flex items-center justify-center rounded-md transition-colors',
+                customizing ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="left">{customizing ? 'Done customizing' : 'Customize sidebar'}</TooltipContent>
+        </Tooltip>
 
         <FooterButton
           label={mode === 'collapsed' ? 'Expand sidebar' : 'Collapse to icons'}

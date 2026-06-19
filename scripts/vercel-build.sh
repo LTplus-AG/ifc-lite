@@ -71,6 +71,22 @@ echo "   RUSTUP_HOME=${RUSTUP_HOME:-<unset>}"
 echo "   CARGO_HOME=${CARGO_HOME:-<unset>}"
 echo "   PATH=$PATH"
 
+# Cap the from-source WASM compile's PEAK MEMORY so it doesn't OOM the Vercel
+# build container. The release profile uses fat LTO (lto=true) + codegen-units=1,
+# which hold the whole-program IR in memory during the final link — multi-GB for
+# the geometry/CSG/nalgebra wasm crate. Stacked with turbo's parallel package
+# builds, that SIGKILLs a process and silently drops the static SPA output
+# (apps/viewer/dist → the deploy ships only the api/chat function → 404 at root).
+#
+# Thin LTO + parallel codegen-units cut the peak dramatically for ~negligible
+# runtime cost. These are ENV OVERRIDES scoped to THIS (Vercel) build only:
+# main's prebuilt-WASM fast path never compiles, and the npm-published bundle is
+# built by the release workflow, so neither is affected. Revisit if Enhanced
+# Build Machines (more RAM) get enabled and you want fat-LTO wasm on Vercel.
+export CARGO_PROFILE_RELEASE_LTO="thin"
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS="16"
+echo "🧠 wasm build memory guard: LTO=thin, codegen-units=16 (prevents OOM)"
+
 # Filter passed by caller (defaults to the main viewer app). Each Vercel
 # project supplies its own filter so the same script powers both
 # apps/viewer and apps/viewer-embed.

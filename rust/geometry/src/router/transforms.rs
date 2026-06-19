@@ -37,15 +37,18 @@ pub(crate) fn local_frame_enabled() -> bool {
     })
 }
 
-/// Whether GPU-instancing capture is enabled. When ON, the pipeline attaches
+/// GPU-instancing capture is ALWAYS ON (no flag). The pipeline attaches
 /// [`crate::mesh::InstanceMeta`] (rep-identity + per-occurrence world transform)
-/// to instanceable meshes so the native helper can collate occurrences into
-/// unique geometry + instances. Default OFF everywhere (incl. wasm) so the flat
-/// path + determinism snapshots stay byte-identical; the helper opts in with
-/// `IFC_LITE_INSTANCING=1`. Read once and cached.
+/// to every instanceable mesh so the collator can group occurrences into unique
+/// templates + per-instance transforms. This adds only metadata + an O(verts)
+/// content hash — the flat geometry output (positions/normals/indices) is
+/// unchanged, so determinism snapshots (which hash geometry, not `instance_meta`)
+/// stay byte-identical, and the instancing renderer path is data-driven, not
+/// toggled. (The old env flag never fired in wasm — `std::env` is empty there —
+/// which is exactly the browser path that needs it.)
+#[inline]
 pub(crate) fn instancing_enabled() -> bool {
-    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| std::env::var("IFC_LITE_INSTANCING").is_ok())
+    true
 }
 
 /// Flatten a column-major nalgebra `Matrix4<f64>` into a row-major `[f64; 16]`

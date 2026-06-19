@@ -1,5 +1,20 @@
 # @ifc-lite/geometry
 
+## 2.7.10
+
+### Patch Changes
+
+- [#1216](https://github.com/LTplus-AG/ifc-lite/pull/1216) [`744f9f8`](https://github.com/LTplus-AG/ifc-lite/commit/744f9f8796a6e8cdcdfb586c47e9019ea7813208) Thanks [@louistrue](https://github.com/louistrue)! - Emit a meaningful message when a geometry worker crashes. A hard worker crash
+  (e.g. the wasm thread aborting under memory pressure) fires an `ErrorEvent`
+  with an empty `message`, so the pool reported the cryptic, unclassifiable
+  "Geometry worker failed: undefined". It now synthesises a message from
+  whatever the `ErrorEvent` carries (`filename:lineno`, or
+  "worker terminated unexpectedly"), so the failure is human-readable and the
+  viewer's load-error classifier can bucket it instead of filing it as a raw
+  one-off error.
+- Updated dependencies [[`249761a`](https://github.com/LTplus-AG/ifc-lite/commit/249761ab7f1d51ce46b3058b595a6fad7c26db7e)]:
+  - @ifc-lite/data@2.1.1
+
 ## 2.7.9
 
 ### Patch Changes

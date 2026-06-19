@@ -24,6 +24,8 @@ export type LoadErrorKind =
   | 'out_of_memory'
   /** The user (or a superseding load) cancelled the operation. */
   | 'cancelled'
+  /** Native-only geometry: the localhost helper backend was unreachable. */
+  | 'native_helper_unreachable'
   /** Anything else. */
   | 'unknown';
 
@@ -66,6 +68,8 @@ function isCancelledError(message: string): boolean {
 /** Classify a load failure into a stable analytics bucket. */
 export function classifyLoadError(err: unknown): LoadErrorKind {
   const message = messageOf(err);
+  // Check first: the wrapped inner error may itself mention wasm/network.
+  if (/NATIVE_HELPER_UNREACHABLE/.test(message)) return 'native_helper_unreachable';
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
   if (isOutOfMemoryError(message)) return 'out_of_memory';
   if (isCancelledError(message)) return 'cancelled';
@@ -96,6 +100,12 @@ export function formatLoadError(err: unknown, fileName?: string): string {
       );
     case 'cancelled':
       return `Loading ${subject} was cancelled.`;
+    case 'native_helper_unreachable':
+      return (
+        `Geometry needs the ifc-lite native helper, which isn’t running. Start the helper on ` +
+        `your machine and reload to load ${subject}. (Geometry runs natively for speed — the ` +
+        `in-browser engine is disabled.)`
+      );
     default:
       return `Failed to load ${subject}: ${messageOf(err)}`;
   }

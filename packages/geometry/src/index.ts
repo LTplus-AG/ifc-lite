@@ -95,9 +95,18 @@ export interface GeometryProcessorOptions {
    * set (and not running under Tauri), geometry is processed natively over a
    * WebSocket instead of WASM — native-speed parsing/meshing for a plain web
    * app. If the helper is unreachable at `init()`, the processor transparently
-   * falls back to the in-browser WASM pipeline, so a bare tab still works.
+   * falls back to the in-browser WASM pipeline (unless {@link requireNative}),
+   * so a bare tab still works.
    */
   nativeBackendUrl?: string;
+  /**
+   * Require the native backend: do NOT fall back to WASM if the configured
+   * `nativeBackendUrl` helper is unreachable — `init()` throws instead, so the
+   * app can prompt the user to start the helper. Used by the native-only viewer.
+   * The WASM bridge stays in the bundle (dormant), so this is reversible by
+   * flipping the flag back off. Default false (transparent WASM fallback).
+   */
+  requireNative?: boolean;
   /**
    * When true, the underlying IFC-Lite WASM API merges Revit-style
    * multilayer walls — `IfcBuildingElementPart` meshes whose parent
@@ -193,6 +202,7 @@ export class GeometryProcessor {
   private coordinateHandler: CoordinateHandler;
   private isNative: boolean = false;
   private nativeBackendUrl: string | null = null;
+  private requireNative: boolean = false;
   private nativeDataModelHandler: ((parquet: Uint8Array) => void) | undefined;
   private lastNativeStats: PlatformGeometryStats | null = null;
   private mergeLayers: boolean;
@@ -202,15 +212,20 @@ export class GeometryProcessor {
     this.bufferBuilder = new BufferBuilder();
     this.coordinateHandler = new CoordinateHandler();
     this.nativeBackendUrl = options.nativeBackendUrl ?? null;
+    this.requireNative = options.requireNative === true;
     // Native = Tauri (in-process) OR a configured WebSocket backend. The WS
     // backend is only reachable once `init()` probes it; if the probe fails we
-    // revert `isNative` to false there and build the WASM bridge instead.
+    // revert `isNative` to false there and build the WASM bridge instead —
+    // UNLESS requireNative, in which case init() throws (no fallback).
     this.isNative = options.preferNative !== false && (isTauri() || !!this.nativeBackendUrl);
     this.mergeLayers = options.mergeLayers === true;
     this.tessellationQuality = options.tessellationQuality ?? null;
     // Note: options accepted for API compatibility
     void options.quality;
 
+    // Build the WASM bridge eagerly only when it's the active path. Under
+    // requireNative we never fall back, so skip it (kept available for the
+    // non-required fallback path / reversibility).
     if (!this.isNative) {
       this.buildWasmBridge();
     }
@@ -265,6 +280,12 @@ export class GeometryProcessor {
           this.platformBridge = wsBridge;
           console.log('[GeometryProcessor] Native WebSocket backend connected:', this.nativeBackendUrl);
         } catch (err) {
+          if (this.requireNative) {
+            // Native-only: no WASM fallback. Surface a typed error so the app can
+            // prompt the user to start the helper instead of loading nothing.
+            const msg = err instanceof Error ? err.message : String(err);
+            throw new Error(`NATIVE_HELPER_UNREACHABLE: ${this.nativeBackendUrl} (${msg})`);
+          }
           console.warn(
             '[GeometryProcessor] Native backend unavailable, falling back to WASM:',
             err instanceof Error ? err.message : err,

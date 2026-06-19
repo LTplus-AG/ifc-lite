@@ -33,7 +33,7 @@ import { type GeometryData } from '@ifc-lite/cache';
 import { decodeDataModel } from '@ifc-lite/server-client';
 import { convertServerDataModel, type ServerParseResult } from '../utils/serverDataModel.js';
 
-import { SERVER_URL, USE_SERVER, NATIVE_BACKEND_URL, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
+import { SERVER_URL, USE_SERVER, NATIVE_BACKEND_URL, REQUIRE_NATIVE_GEOMETRY, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
   calculateMeshBounds,
   createCoordinateInfo,
@@ -646,16 +646,21 @@ export function useIfcLoader() {
       // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
-        // When a native localhost helper is configured (VITE_NATIVE_BACKEND_URL),
-        // geometry is processed natively over a WebSocket; the processor falls
-        // back to WASM automatically if the helper is unreachable. With no URL
-        // set (and outside Tauri) this stays the in-browser WASM path — the
-        // unchanged default for users without the helper.
+        // Native-only geometry (REQUIRE_NATIVE_GEOMETRY): always process over the
+        // localhost helper's WebSocket — no in-browser WASM fallback. NATIVE_BACKEND_URL
+        // defaults to ws://127.0.0.1:8082 so the deployed site targets the helper
+        // too. If it's unreachable, init() throws NATIVE_HELPER_UNREACHABLE and we
+        // prompt the user to start the helper (WASM path stays dormant/reversible).
         nativeBackendUrl: NATIVE_BACKEND_URL || undefined,
+        requireNative: REQUIRE_NATIVE_GEOMETRY,
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
         mergeLayers: mergeLayersAtLoad,
       });
+      // Native-only: if the helper is unreachable, init() throws
+      // NATIVE_HELPER_UNREACHABLE; the outer catch classifies it
+      // (classifyLoadError → formatLoadError) into a "start the helper" message
+      // and runs the standard load-failure cleanup. No WASM fallback.
       await geometryProcessor.init();
       // Issue #924: enable RTC-invariant per-entity geometry fingerprints so
       // the model-compare feature can detect geometry changes. The hash rides

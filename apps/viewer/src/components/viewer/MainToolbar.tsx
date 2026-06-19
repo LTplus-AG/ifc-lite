@@ -92,6 +92,7 @@ import {
   openAnalysisExtension,
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
+import { closePanelWindow } from '@/services/panel-windows';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
 type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'addElement' | string;
@@ -575,10 +576,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setClashPanelVisible(nextClashVisible);
     setComparePanelVisible(nextCompareVisible);
     setExtensionsPanelVisible(nextExtensionsVisible);
-    // Keep the float channel in sync (#1200/#1201): toggling a workspace panel
-    // from the toolbar re-docks it if it was popped out (toggle-on) or closes
-    // its window (toggle-off), instead of leaving an orphaned floating panel.
-    if (panel !== 'addElement') useViewerStore.getState().closeFloatingPanel(panel);
+    // Keep the float + window channels in sync (#1200/#1201/#1208): toggling a
+    // workspace panel from the toolbar re-docks it if it was floating or popped
+    // out, instead of leaving an orphaned floating panel or OS window.
+    if (panel !== 'addElement') {
+      useViewerStore.getState().closeFloatingPanel(panel);
+      closePanelWindow(panel);
+    }
 
     if (panel === 'addElement') {
       setActiveTool(nextAddElementActive ? 'addElement' : 'select');

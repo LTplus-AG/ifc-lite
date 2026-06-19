@@ -449,6 +449,19 @@ export class ExtensionHostService {
     } catch (err) {
       console.warn('[ext-host] clash restore on switch failed:', err);
     }
+    // Restore the captured workspace-sidebar layout (#1208) from the opaque
+    // layout.state.sidebar blob. localStorage remains the per-browser default;
+    // this lets a layout travel with a shared / imported flavor. Malformed
+    // blobs are tolerated by applySidebarLayout (it clamps + normalizes).
+    try {
+      const sidebar = (target.layout?.state as Record<string, unknown> | undefined)?.sidebar;
+      if (sidebar) {
+        const { useViewerStore } = await import('@/store');
+        useViewerStore.getState().applySidebarLayout(sidebar);
+      }
+    } catch (err) {
+      console.warn('[ext-host] sidebar layout restore on switch failed:', err);
+    }
     this.emit();
   }
 

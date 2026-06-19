@@ -3,13 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Workspace-panel registry (issues #1200 / #1201).
+ * Workspace-panel registry (issues #1200 / #1201 / #1208).
  *
- * Single source of truth for the right-slot panels the user switches between
- * and can float: their id, label, icon and switch hotkey. The panel switcher,
- * the keyboard shortcuts and the floating-panel host all read this — the actual
- * panel components live in `ViewerLayout` / `FloatingPanelHost`, which map an id
- * to its rendered component, so this module stays free of heavy imports.
+ * Single source of truth for the panels the unified sidebar switches
+ * between, floats, and pops out. Each entry carries its id, labels, icon,
+ * an activity-bar `group` (for divider clustering) and a `prefersWide`
+ * hint (code/table/timeline panels want a wider sidebar + bigger pop-out).
+ *
+ * The panel switcher, the activity bar, the keyboard shortcuts (Alt+N by
+ * array index — DO NOT reorder the first seven, that mapping shipped in
+ * #1200), the floating-panel host and the pop-out windows all read this.
+ * The actual panel components are mapped from an id by `renderPanelBody`,
+ * which keeps this module free of heavy imports.
  */
 
 import {
@@ -20,11 +25,16 @@ import {
   Palette,
   Crosshair,
   Puzzle,
+  Terminal,
+  CalendarRange,
+  Table2,
   type LucideIcon,
 } from 'lucide-react';
 
-/** Right-slot panels that participate in switching + floating. `properties` is
- *  the Information panel (the right slot's default fallback). */
+/** Every panel reachable from the unified sidebar rail. `properties` is the
+ *  Information panel (the right pane's default fallback). Each panel opens in
+ *  its home {@link WorkspacePanelDef.region} — `side` panels in the right pane,
+ *  `bottom` panels (Script / Schedule / Lists) in the bottom strip. */
 export type WorkspacePanelId =
   | 'properties'
   | 'compare'
@@ -32,26 +42,54 @@ export type WorkspacePanelId =
   | 'ids'
   | 'lens'
   | 'clash'
-  | 'extensions';
+  | 'extensions'
+  | 'script'
+  | 'gantt'
+  | 'lists';
+
+/** Activity-bar clustering — a divider is drawn whenever the group changes. */
+export type PanelGroup = 'inspect' | 'review' | 'author' | 'work';
+
+/** Where a panel docks when opened from the rail. */
+export type PanelRegion = 'side' | 'bottom';
 
 export interface WorkspacePanelDef {
   id: WorkspacePanelId;
-  /** Full label (tooltip / floating-window title). */
+  /** Full label (tooltip / floating-window title / sidebar header). */
   title: string;
-  /** Short label for the switcher dropdown. */
+  /** Short label for menus / the switcher dropdown. */
   short: string;
   Icon: LucideIcon;
+  /** Activity-bar group used to cluster icons with dividers. */
+  group: PanelGroup;
+  /** Home dock: the right pane (`side`) or the bottom strip (`bottom`). */
+  region: PanelRegion;
+  /** Wider default pop-out / float size for content-heavy panels. */
+  prefersWide?: boolean;
 }
 
 export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
-  { id: 'properties', title: 'Information', short: 'Info', Icon: Info },
-  { id: 'compare', title: 'Compare models', short: 'Compare', Icon: GitCompareArrows },
-  { id: 'bcf', title: 'BCF issues', short: 'BCF', Icon: MessageSquare },
-  { id: 'ids', title: 'IDS validation', short: 'IDS', Icon: ClipboardCheck },
-  { id: 'lens', title: 'Lens rules', short: 'Lens', Icon: Palette },
-  { id: 'clash', title: 'Clash detection', short: 'Clash', Icon: Crosshair },
-  { id: 'extensions', title: 'Extensions', short: 'Extensions', Icon: Puzzle },
+  // Alt+1..9 / Alt+0 — order frozen since #1200 for the first seven.
+  { id: 'properties', title: 'Information', short: 'Info', Icon: Info, group: 'inspect', region: 'side' },
+  { id: 'compare', title: 'Compare models', short: 'Compare', Icon: GitCompareArrows, group: 'inspect', region: 'side' },
+  { id: 'bcf', title: 'BCF issues', short: 'BCF', Icon: MessageSquare, group: 'review', region: 'side' },
+  { id: 'ids', title: 'IDS validation', short: 'IDS', Icon: ClipboardCheck, group: 'review', region: 'side' },
+  { id: 'lens', title: 'Lens rules', short: 'Lens', Icon: Palette, group: 'review', region: 'side' },
+  { id: 'clash', title: 'Clash detection', short: 'Clash', Icon: Crosshair, group: 'review', region: 'side' },
+  { id: 'extensions', title: 'Extensions', short: 'Extensions', Icon: Puzzle, group: 'author', region: 'side' },
+  // Bottom-strip panels — launched from the rail, open at the bottom by default.
+  { id: 'script', title: 'Script editor', short: 'Script', Icon: Terminal, group: 'work', region: 'bottom', prefersWide: true },
+  { id: 'gantt', title: 'Construction schedule', short: 'Schedule', Icon: CalendarRange, group: 'work', region: 'bottom', prefersWide: true },
+  { id: 'lists', title: 'Entity lists', short: 'Lists', Icon: Table2, group: 'work', region: 'bottom', prefersWide: true },
 ];
+
+/** The bottom-strip panel ids, mapped to their store visibility flag + setter
+ *  names — these stay independent of the single-tenant right pane. */
+export type BottomPanelId = Extract<WorkspacePanelId, 'script' | 'gantt' | 'lists'>;
+
+export function isBottomPanel(id: WorkspacePanelId): id is BottomPanelId {
+  return id === 'script' || id === 'gantt' || id === 'lists';
+}
 
 const PANEL_BY_ID = new Map<WorkspacePanelId, WorkspacePanelDef>(WORKSPACE_PANELS.map((p) => [p.id, p]));
 
@@ -59,10 +97,20 @@ export function getPanelDef(id: WorkspacePanelId): WorkspacePanelDef | undefined
   return PANEL_BY_ID.get(id);
 }
 
-/** The analysis panels that `openWorkspacePanel` toggles (everything except the
- *  Information fallback, which shows when no analysis panel is open). */
+/** Type guard for narrowing arbitrary strings to a known panel id. */
+export function isWorkspacePanelId(id: string): id is WorkspacePanelId {
+  return PANEL_BY_ID.has(id as WorkspacePanelId);
+}
+
+/** The analysis / tool panels that toggle in the sidebar (everything except
+ *  the Information fallback, which shows when no other panel is open). */
 export type AnalysisPanelId = Exclude<WorkspacePanelId, 'properties'>;
 
 export function isAnalysisPanel(id: WorkspacePanelId): id is AnalysisPanelId {
   return id !== 'properties';
 }
+
+/** Default docked-sidebar width as a % of the viewport, and the wider default
+ *  used when a `prefersWide` panel (Script / Gantt / Lists) is active. */
+export const SIDEBAR_DEFAULT_WIDTH_PCT = 22;
+export const SIDEBAR_WIDE_WIDTH_PCT = 40;

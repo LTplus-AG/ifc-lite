@@ -172,10 +172,18 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         ...target,
         lenses,
         settings: { ...target.settings, clash: captureClashConfig() } as typeof target.settings,
+        // Capture the workspace-sidebar layout (#1208) into the reserved opaque
+        // layout slot so it travels with the flavor (order / visible set / mode / width).
+        layout: {
+          state: {
+            ...target.layout?.state,
+            sidebar: useViewerStore.getState().serializeSidebarLayout() as unknown as (typeof target.layout)['state'][string],
+          },
+        },
         updatedAt: new Date().toISOString(),
       };
       await host.flavors.put(next, 'capture current state');
-      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} + clash rules into ${target.name}`);
+      toast.success(`Captured ${lenses.length} lens${lenses.length === 1 ? '' : 'es'} + clash rules + sidebar layout into ${target.name}`);
     } catch (err) {
       toast.error(toastText.failed('Capture', err));
     } finally {
@@ -216,7 +224,11 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         lenses,
         savedQueries: [],
         keybindings: [],
-        layout: { state: {} },
+        layout: {
+          state: opts.snapshot
+            ? { sidebar: useViewerStore.getState().serializeSidebarLayout() }
+            : {},
+        } as unknown as Flavor['layout'],
         settings: (opts.snapshot ? { clash: captureClashConfig() } : {}) as Flavor['settings'],
       };
       await host.flavors.put(flavor, opts.snapshot ? 'created from current state' : 'created empty');

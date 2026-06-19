@@ -21,12 +21,13 @@
  *   right-placed analysis extension → Add Element tool → active panel → Information.
  */
 
-import { useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
+import { useSyncExternalStore } from 'react';
 import { Grip, ChevronRight } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { type WorkspacePanelId } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
+import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { AddElementPanel } from '../AddElementPanel';
@@ -37,71 +38,12 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 
-const DRAG_THRESHOLD = 5;
-
-function isPointerOutsideWindow(x: number, y: number): boolean {
-  return x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight;
-}
-
 /** Slim grab bar: drag the grip to lift the panel into a live floating window
  *  (release past the window edge to pop out to another screen); the chevron
  *  collapses the pane to the rail. Title-less + close-less — the body owns those. */
 function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
-  const { floatPanel, popOutPanel } = usePanelControls();
   const setSidebarMode = useViewerStore((s) => s.setSidebarMode);
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest('[data-chrome-btn]')) return; // the chevron
-    e.preventDefault();
-    const pane = e.currentTarget.parentElement; // the .panel-container
-    const rect = pane?.getBoundingClientRect();
-    const baseX = rect ? rect.left : e.clientX - 40;
-    const baseY = rect ? rect.top : e.clientY - 10;
-    const w = rect ? Math.round(rect.width) : 360;
-    const h = rect ? Math.min(Math.round(rect.height), 600) : 460;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const pid = e.pointerId;
-    let started = false;
-
-    const place = (cx: number, cy: number) => {
-      useViewerStore.getState().setFloatingPanelRect(detachId, {
-        x: baseX + (cx - startX),
-        y: baseY + (cy - startY),
-        w,
-        h,
-      });
-    };
-
-    const onMove = (ev: PointerEvent) => {
-      if (!started) {
-        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) <= DRAG_THRESHOLD) return;
-        started = true;
-        floatPanel(detachId); // lift into a live float, same tick as positioning
-        place(ev.clientX, ev.clientY);
-        document.body.style.cursor = 'grabbing';
-        try { document.body.setPointerCapture(pid); } catch { /* keeps tracking outside the window */ }
-      } else {
-        place(ev.clientX, ev.clientY);
-      }
-    };
-    const onUp = (ev: PointerEvent) => {
-      window.removeEventListener('pointermove', onMove, true);
-      window.removeEventListener('pointerup', onUp, true);
-      window.removeEventListener('pointercancel', onUp, true);
-      document.body.style.cursor = '';
-      try { document.body.releasePointerCapture(pid); } catch { /* noop */ }
-      if (started && isPointerOutsideWindow(ev.clientX, ev.clientY)) {
-        // Dragged off the window (onto another screen) → hand off to an OS / PiP window.
-        useViewerStore.getState().closeFloatingPanel(detachId);
-        popOutPanel(detachId);
-      }
-    };
-    window.addEventListener('pointermove', onMove, true);
-    window.addEventListener('pointerup', onUp, true);
-    window.addEventListener('pointercancel', onUp, true);
-  };
+  const onPointerDown = usePanelDetachDrag(detachId);
 
   return (
     <Tooltip>
@@ -156,14 +98,14 @@ export function SidebarPanelHost() {
   // Right-placed analysis extension / Add Element carry their own chrome.
   if (rightExtension) {
     return (
-      <div className="h-full flex flex-col panel-container">
+      <div data-detach-root className="h-full flex flex-col panel-container">
         {rightExtension.renderPanel({ onClose: closeActiveAnalysisExtension })}
       </div>
     );
   }
   if (activeTool === 'addElement') {
     return (
-      <div className="h-full flex flex-col panel-container">
+      <div data-detach-root className="h-full flex flex-col panel-container">
         <AddElementPanel onClose={() => setActiveTool('select')} />
       </div>
     );
@@ -172,7 +114,7 @@ export function SidebarPanelHost() {
   // Information fallback (or empty when Information is detached).
   if (shown === null || shown === 'properties') {
     return (
-      <div className="h-full flex flex-col panel-container">
+      <div data-detach-root className="h-full flex flex-col panel-container">
         {shown === 'properties' && <PanelChromeBar detachId="properties" />}
         <div className="flex-1 min-h-0 overflow-hidden">
           {shown === 'properties' && renderPanelBody('properties', () => {})}

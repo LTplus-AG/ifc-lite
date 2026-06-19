@@ -37,7 +37,7 @@ import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
-import { type WorkspacePanelId } from '@/lib/panels/registry';
+import { isBottomPanel, type WorkspacePanelId, type BottomPanelId } from '@/lib/panels/registry';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -184,6 +184,19 @@ export type ViewerState = LoadingSlice &
      * bar, toolbar and command palette use so a second click always closes.
      */
     toggleWorkspacePanel: (panel: WorkspacePanelId) => void;
+    /**
+     * Toggle a bottom-strip panel (Script / Schedule / Lists). These are
+     * launched from the same sidebar rail but open in the BOTTOM panel —
+     * mutually exclusive among themselves, independent of the single-tenant
+     * right pane (so a side panel + a bottom panel can be open at once).
+     */
+    toggleBottomPanel: (panel: BottomPanelId) => void;
+    /**
+     * Open a panel in its home region: side panels dock in the right pane,
+     * Script / Schedule / Lists open in the bottom strip. The rail and Alt+N
+     * route through here so each panel lands where it belongs.
+     */
+    openPanelInHome: (panel: WorkspacePanelId) => void;
   };
 
 /**
@@ -560,6 +573,43 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       && !s.poppedOutIds.includes(panel);
     if (isActive) get().showWorkspacePanel('properties');
     else get().showWorkspacePanel(panel);
+  },
+
+  toggleBottomPanel: (panel) => {
+    const [set, get] = args;
+    const s = get();
+    const flagActive = panel === 'script' ? s.scriptPanelVisible : panel === 'gantt' ? s.ganttPanelVisible : s.listPanelVisible;
+    const detached = s.floatingPanels.some((p) => p.id === panel) || s.poppedOutIds.includes(panel);
+    // Re-dock any float / OS window for it first.
+    get().closeFloatingPanel(panel);
+    get().setPanelPoppedOut(panel, false);
+    if (flagActive && !detached) {
+      // Toggle off (only one bottom panel shows at a time).
+      set({ scriptPanelVisible: false, ganttPanelVisible: false, listPanelVisible: false });
+    } else {
+      set({
+        scriptPanelVisible: panel === 'script',
+        ganttPanelVisible: panel === 'gantt',
+        listPanelVisible: panel === 'lists',
+        rightPanelCollapsed: false,
+      });
+    }
+  },
+
+  openPanelInHome: (panel) => {
+    const [set, get] = args;
+    if (isBottomPanel(panel)) {
+      get().closeFloatingPanel(panel);
+      get().setPanelPoppedOut(panel, false);
+      set({
+        scriptPanelVisible: panel === 'script',
+        ganttPanelVisible: panel === 'gantt',
+        listPanelVisible: panel === 'lists',
+        rightPanelCollapsed: false,
+      });
+    } else {
+      get().showWorkspacePanel(panel);
+    }
   },
 }));
 

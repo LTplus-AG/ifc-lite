@@ -25,13 +25,16 @@ import {
   Palette,
   Crosshair,
   Puzzle,
+  Terminal,
+  CalendarRange,
+  Table2,
   type LucideIcon,
 } from 'lucide-react';
 
-/** Panels that participate in the sidebar / switching / floating / pop-out.
- *  `properties` is the Information panel (the sidebar's default fallback).
- *  NOTE: Script / Schedule (Gantt) / Lists intentionally live in the BOTTOM
- *  panel (not the sidebar) — they need width and pair with the viewport. */
+/** Every panel reachable from the unified sidebar rail. `properties` is the
+ *  Information panel (the right pane's default fallback). Each panel opens in
+ *  its home {@link WorkspacePanelDef.region} — `side` panels in the right pane,
+ *  `bottom` panels (Script / Schedule / Lists) in the bottom strip. */
 export type WorkspacePanelId =
   | 'properties'
   | 'compare'
@@ -39,10 +42,16 @@ export type WorkspacePanelId =
   | 'ids'
   | 'lens'
   | 'clash'
-  | 'extensions';
+  | 'extensions'
+  | 'script'
+  | 'gantt'
+  | 'lists';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
-export type PanelGroup = 'inspect' | 'review' | 'author';
+export type PanelGroup = 'inspect' | 'review' | 'author' | 'work';
+
+/** Where a panel docks when opened from the rail. */
+export type PanelRegion = 'side' | 'bottom';
 
 export interface WorkspacePanelDef {
   id: WorkspacePanelId;
@@ -53,20 +62,34 @@ export interface WorkspacePanelDef {
   Icon: LucideIcon;
   /** Activity-bar group used to cluster icons with dividers. */
   group: PanelGroup;
+  /** Home dock: the right pane (`side`) or the bottom strip (`bottom`). */
+  region: PanelRegion;
   /** Wider default pop-out / float size for content-heavy panels. */
   prefersWide?: boolean;
 }
 
 export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
-  // Alt+1..7 — order frozen since #1200.
-  { id: 'properties', title: 'Information', short: 'Info', Icon: Info, group: 'inspect' },
-  { id: 'compare', title: 'Compare models', short: 'Compare', Icon: GitCompareArrows, group: 'inspect' },
-  { id: 'bcf', title: 'BCF issues', short: 'BCF', Icon: MessageSquare, group: 'review' },
-  { id: 'ids', title: 'IDS validation', short: 'IDS', Icon: ClipboardCheck, group: 'review' },
-  { id: 'lens', title: 'Lens rules', short: 'Lens', Icon: Palette, group: 'review' },
-  { id: 'clash', title: 'Clash detection', short: 'Clash', Icon: Crosshair, group: 'review' },
-  { id: 'extensions', title: 'Extensions', short: 'Extensions', Icon: Puzzle, group: 'author' },
+  // Alt+1..9 / Alt+0 — order frozen since #1200 for the first seven.
+  { id: 'properties', title: 'Information', short: 'Info', Icon: Info, group: 'inspect', region: 'side' },
+  { id: 'compare', title: 'Compare models', short: 'Compare', Icon: GitCompareArrows, group: 'inspect', region: 'side' },
+  { id: 'bcf', title: 'BCF issues', short: 'BCF', Icon: MessageSquare, group: 'review', region: 'side' },
+  { id: 'ids', title: 'IDS validation', short: 'IDS', Icon: ClipboardCheck, group: 'review', region: 'side' },
+  { id: 'lens', title: 'Lens rules', short: 'Lens', Icon: Palette, group: 'review', region: 'side' },
+  { id: 'clash', title: 'Clash detection', short: 'Clash', Icon: Crosshair, group: 'review', region: 'side' },
+  { id: 'extensions', title: 'Extensions', short: 'Extensions', Icon: Puzzle, group: 'author', region: 'side' },
+  // Bottom-strip panels — launched from the rail, open at the bottom by default.
+  { id: 'script', title: 'Script editor', short: 'Script', Icon: Terminal, group: 'work', region: 'bottom', prefersWide: true },
+  { id: 'gantt', title: 'Construction schedule', short: 'Schedule', Icon: CalendarRange, group: 'work', region: 'bottom', prefersWide: true },
+  { id: 'lists', title: 'Entity lists', short: 'Lists', Icon: Table2, group: 'work', region: 'bottom', prefersWide: true },
 ];
+
+/** The bottom-strip panel ids, mapped to their store visibility flag + setter
+ *  names — these stay independent of the single-tenant right pane. */
+export type BottomPanelId = Extract<WorkspacePanelId, 'script' | 'gantt' | 'lists'>;
+
+export function isBottomPanel(id: WorkspacePanelId): id is BottomPanelId {
+  return id === 'script' || id === 'gantt' || id === 'lists';
+}
 
 const PANEL_BY_ID = new Map<WorkspacePanelId, WorkspacePanelDef>(WORKSPACE_PANELS.map((p) => [p.id, p]));
 

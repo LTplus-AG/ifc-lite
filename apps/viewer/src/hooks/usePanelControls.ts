@@ -3,47 +3,46 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Coordinates the three places a workspace panel can live — the docked
- * sidebar, an in-app floating window (#1201) and a torn-off OS / PiP window
- * (#1208) — so the activity bar, the floating host, the window host, the
- * keyboard shortcuts and the command palette all open / float / pop-out /
- * close / re-dock panels identically.
+ * Coordinates the places a workspace panel can live — its home dock (the right
+ * pane for `side` panels, the bottom strip for `bottom` panels), an in-app
+ * floating window (#1201) and a torn-off OS / PiP window (#1208) — so the
+ * activity bar, the floating host, the window host, the keyboard shortcuts and
+ * the command palette all open / float / pop-out / close / re-dock identically.
  *
- * A panel is in exactly one of: `docked` (the single active sidebar panel),
- * `floating`, `popped` (OS window) or `closed`. The docked slot is driven by
- * the per-panel visibility flags, kept single-tenant by the store
- * subscription and surfaced as `sidebarActivePanel`.
+ * A panel is in exactly one of: `docked` (shown in its home region),
+ * `floating`, `popped` (OS window) or `closed`.
  */
 
 import { useCallback, useMemo } from 'react';
 import { useViewerStore } from '@/store';
-import { isAnalysisPanel, type WorkspacePanelId, type AnalysisPanelId } from '@/lib/panels/registry';
+import {
+  isAnalysisPanel,
+  isBottomPanel,
+  type WorkspacePanelId,
+  type AnalysisPanelId,
+} from '@/lib/panels/registry';
 import { openPanelWindow, closePanelWindow } from '@/services/panel-windows';
 
 export type PanelLocation = 'docked' | 'floating' | 'popped' | 'closed';
 
 export interface PanelControls {
-  /** Ids currently in an in-app floating window. */
   floatingIds: Set<WorkspacePanelId>;
-  /** Ids currently torn off into an OS / PiP window. */
   poppedIds: Set<WorkspacePanelId>;
-  /** The panel that owns the docked sidebar slot right now. */
+  /** The side panel that owns the right pane right now. */
   activePanel: WorkspacePanelId;
-  /** Is the panel visible anywhere (docked / floating / popped)? */
   isOpen: (id: WorkspacePanelId) => boolean;
-  /** Where the panel currently lives. */
   panelLocation: (id: WorkspacePanelId) => PanelLocation;
-  /** Open the panel docked in the sidebar (re-docks it if detached). */
-  openDocked: (id: WorkspacePanelId) => void;
-  /** Toggle a panel's docked visibility (second activation closes it). */
-  toggleDocked: (id: WorkspacePanelId) => void;
+  /** Open a panel in its home region (right pane or bottom strip). */
+  openInHome: (id: WorkspacePanelId) => void;
+  /** Toggle a panel in its home region (second activation closes it). */
+  toggle: (id: WorkspacePanelId) => void;
   /** Pop the panel into an in-app floating window. */
   floatPanel: (id: WorkspacePanelId) => void;
-  /** Tear the panel off into an OS / PiP window (another screen / tab). */
+  /** Tear the panel off into an OS / PiP window (another screen). */
   popOutPanel: (id: WorkspacePanelId) => void;
-  /** Fully close a panel (stop floating, close its window, clear docked). */
+  /** Fully close a panel (stop floating, close its window, clear its dock flag). */
   closePanel: (id: WorkspacePanelId) => void;
-  /** Re-dock a detached panel into the sidebar. */
+  /** Re-dock a detached panel into its home region. */
   dockPanel: (id: WorkspacePanelId) => void;
 }
 
@@ -56,6 +55,9 @@ function setDockedVisible(id: AnalysisPanelId, visible: boolean): void {
     case 'lens': s.setLensPanelVisible(visible); break;
     case 'clash': s.setClashPanelVisible(visible); break;
     case 'extensions': s.setExtensionsPanelVisible(visible); break;
+    case 'script': s.setScriptPanelVisible(visible); break;
+    case 'gantt': s.setGanttPanelVisible(visible); break;
+    case 'lists': s.setListPanelVisible(visible); break;
   }
 }
 
@@ -63,6 +65,10 @@ export function usePanelControls(): PanelControls {
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
   const poppedOutIds = useViewerStore((s) => s.poppedOutIds);
   const activePanel = useViewerStore((s) => s.sidebarActivePanel);
+  // Bottom-strip visibility flags (their "docked" state).
+  const scriptVisible = useViewerStore((s) => s.scriptPanelVisible);
+  const ganttVisible = useViewerStore((s) => s.ganttPanelVisible);
+  const listVisible = useViewerStore((s) => s.listPanelVisible);
 
   const floatingIds = useMemo(
     () => new Set<WorkspacePanelId>(floatingPanels.map((p) => p.id)),
@@ -70,41 +76,46 @@ export function usePanelControls(): PanelControls {
   );
   const poppedIds = useMemo(() => new Set<WorkspacePanelId>(poppedOutIds), [poppedOutIds]);
 
-  const isOpen = useCallback(
-    (id: WorkspacePanelId): boolean => floatingIds.has(id) || poppedIds.has(id) || activePanel === id,
-    [floatingIds, poppedIds, activePanel],
+  const isDockedInHome = useCallback(
+    (id: WorkspacePanelId): boolean => {
+      if (id === 'script') return scriptVisible;
+      if (id === 'gantt') return ganttVisible;
+      if (id === 'lists') return listVisible;
+      return activePanel === id; // side panels
+    },
+    [activePanel, scriptVisible, ganttVisible, listVisible],
   );
 
   const panelLocation = useCallback(
     (id: WorkspacePanelId): PanelLocation => {
       if (floatingIds.has(id)) return 'floating';
       if (poppedIds.has(id)) return 'popped';
-      if (activePanel === id) return 'docked';
-      return 'closed';
+      return isDockedInHome(id) ? 'docked' : 'closed';
     },
-    [floatingIds, poppedIds, activePanel],
+    [floatingIds, poppedIds, isDockedInHome],
   );
 
-  const openDocked = useCallback((id: WorkspacePanelId) => {
-    useViewerStore.getState().showWorkspacePanel(id);
+  const isOpen = useCallback(
+    (id: WorkspacePanelId): boolean => floatingIds.has(id) || poppedIds.has(id) || isDockedInHome(id),
+    [floatingIds, poppedIds, isDockedInHome],
+  );
+
+  const openInHome = useCallback((id: WorkspacePanelId) => {
+    useViewerStore.getState().openPanelInHome(id);
   }, []);
 
-  const toggleDocked = useCallback((id: WorkspacePanelId) => {
-    useViewerStore.getState().toggleWorkspacePanel(id);
+  const toggle = useCallback((id: WorkspacePanelId) => {
+    if (isBottomPanel(id)) useViewerStore.getState().toggleBottomPanel(id);
+    else useViewerStore.getState().toggleWorkspacePanel(id);
   }, []);
 
   const floatPanel = useCallback((id: WorkspacePanelId) => {
-    // Leave the docked flag alone — the sidebar host guards on `floatingIds`,
-    // so the panel just moves from the slot to the floating window. Close any
-    // OS window first so a panel is never floating AND popped at once.
     closePanelWindow(id);
     useViewerStore.getState().floatPanel(id);
     useViewerStore.getState().setRightPanelCollapsed(false);
   }, []);
 
   const popOutPanel = useCallback((id: WorkspacePanelId) => {
-    // Must run synchronously in the click handler to keep the user-activation
-    // that `documentPictureInPicture.requestWindow` / `window.open` require.
     void openPanelWindow(id);
   }, []);
 
@@ -114,7 +125,7 @@ export function usePanelControls(): PanelControls {
     if (isAnalysisPanel(id)) setDockedVisible(id, false);
   }, []);
 
-  const dockPanel = useCallback((id: WorkspacePanelId) => openDocked(id), [openDocked]);
+  const dockPanel = useCallback((id: WorkspacePanelId) => openInHome(id), [openInHome]);
 
   return {
     floatingIds,
@@ -122,8 +133,8 @@ export function usePanelControls(): PanelControls {
     activePanel,
     isOpen,
     panelLocation,
-    openDocked,
-    toggleDocked,
+    openInHome,
+    toggle,
     floatPanel,
     popOutPanel,
     closePanel,

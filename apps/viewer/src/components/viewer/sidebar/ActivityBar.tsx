@@ -56,7 +56,7 @@ export function ActivityBar() {
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
   const resetLayout = useViewerStore((s) => s.resetSidebarLayout);
 
-  const { isOpen, panelLocation, toggleDocked, openDocked, floatPanel, popOutPanel, activePanel } = usePanelControls();
+  const { isOpen, panelLocation, toggle, openInHome, floatPanel, popOutPanel, activePanel } = usePanelControls();
 
   const hidden = new Set(hiddenIds);
   const [dragId, setDragId] = useState<WorkspacePanelId | null>(null);
@@ -65,13 +65,19 @@ export function ActivityBar() {
   const visibleIds = order.filter((id) => customizing || !hidden.has(id) || id === 'properties');
 
   const onIconClick = (id: WorkspacePanelId) => {
-    if (mode === 'collapsed') {
-      // Collapsed icons open + expand; they never toggle off (that's the close button's job).
-      setSidebarMode('expanded');
-      openDocked(id);
+    // Bottom-region panels (Script / Schedule / Lists) open in the bottom strip
+    // — their own region — without touching the right-pane sidebar mode.
+    if (getPanelDef(id)?.region === 'bottom') {
+      toggle(id);
       return;
     }
-    toggleDocked(id);
+    if (mode === 'collapsed') {
+      // Collapsed icons open + expand the right pane; they never toggle off.
+      setSidebarMode('expanded');
+      openInHome(id);
+      return;
+    }
+    toggle(id);
   };
 
   let prevGroup: string | null = null;

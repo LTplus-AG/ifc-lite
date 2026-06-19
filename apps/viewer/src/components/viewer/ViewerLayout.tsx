@@ -18,7 +18,8 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, Grip } from 'lucide-react';
+import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
@@ -49,6 +50,23 @@ import {
 const BOTTOM_PANEL_MIN_HEIGHT = 120;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
 const BOTTOM_PANEL_MAX_RATIO = 0.7; // max 70% of container
+
+/** Slim grip atop a bottom-strip panel — drag to lift it into a floating window,
+ *  or drag onto another screen to pop it out (#1208). */
+function BottomPanelGrip({ id }: { id: 'gantt' | 'script' | 'lists' }) {
+  const onPointerDown = usePanelDetachDrag(id);
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      role="button"
+      aria-label="Drag to detach this panel"
+      title="Drag to float · drag onto another screen to pop out"
+      className="flex items-center justify-center h-5 shrink-0 cursor-grab active:cursor-grabbing select-none touch-none border-b border-border/40 bg-muted/10"
+    >
+      <Grip className="h-3.5 w-3.5 text-muted-foreground/50" />
+    </div>
+  );
+}
 
 export function ViewerLayout() {
   // Initialize keyboard shortcuts
@@ -144,10 +162,18 @@ export function ViewerLayout() {
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
   const setGanttPanelVisible = useViewerStore((s) => s.setGanttPanelVisible);
-  // Floating / popped-out / docked panels are now owned by the sidebar
-  // (#1208): SidebarPanelHost resolves which panel renders in the dock and
-  // skips any that is floating (#1201) or popped out. ViewerLayout no longer
-  // needs to track the float set here.
+  // The right pane is owned by the sidebar (#1208); here we only need to know
+  // which BOTTOM panel (Script / Schedule / Lists) is docked vs detached, so the
+  // bottom strip doesn't render a panel that is floating (#1201) or popped out.
+  const floatingPanels = useViewerStore((s) => s.floatingPanels);
+  const poppedOutIds = useViewerStore((s) => s.poppedOutIds);
+  const detachedIds = useMemo(
+    () => new Set<string>([...floatingPanels.map((p) => p.id), ...poppedOutIds]),
+    [floatingPanels, poppedOutIds],
+  );
+  const ganttDocked = ganttPanelVisible && !detachedIds.has('gantt');
+  const scriptDocked = scriptPanelVisible && !detachedIds.has('script');
+  const listDocked = listPanelVisible && !detachedIds.has('lists');
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
     getAnalysisExtensionsSnapshot,
@@ -335,25 +361,32 @@ export function ViewerLayout() {
             </div>
 
             {/* Bottom Panel - Lists / Script / Gantt / analysis ext (custom resizable).
-                These panels intentionally live here (not the sidebar): they need
-                width and pair with the viewport. */}
-            {(listPanelVisible || scriptPanelVisible || ganttPanelVisible || !!activeBottomAnalysisExtension) && (
-              <div style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
-                {/* Drag handle */}
+                Launched from the sidebar rail but docked here (their home region).
+                A panel that's been dragged out to float / another screen is skipped. */}
+            {(listDocked || scriptDocked || ganttDocked || !!activeBottomAnalysisExtension) && (
+              <div data-detach-root style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
+                {/* Drag handle (resize height) */}
                 <div
                   className="absolute inset-x-0 top-0 h-1.5 bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors cursor-row-resize z-10"
                   onMouseDown={handleResizeStart}
                 />
-                <div className="h-full w-full overflow-hidden border-t pt-1.5">
-                  {activeBottomAnalysisExtension ? (
-                    activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                  ) : ganttPanelVisible ? (
-                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
-                  ) : scriptPanelVisible ? (
-                    <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
-                  ) : (
-                    <ListPanel onClose={() => setListPanelVisible(false)} />
+                <div className="h-full w-full overflow-hidden border-t pt-1.5 flex flex-col">
+                  {/* Detach grip — drag to float / pop the bottom panel onto another
+                      screen (hidden for analysis extensions, which own their chrome). */}
+                  {!activeBottomAnalysisExtension && (
+                    <BottomPanelGrip id={ganttDocked ? 'gantt' : scriptDocked ? 'script' : 'lists'} />
                   )}
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {activeBottomAnalysisExtension ? (
+                      activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                    ) : ganttDocked ? (
+                      <GanttPanel onClose={() => setGanttPanelVisible(false)} />
+                    ) : scriptDocked ? (
+                      <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
+                    ) : (
+                      <ListPanel onClose={() => setListPanelVisible(false)} />
+                    )}
+                  </div>
                 </div>
               </div>
             )}

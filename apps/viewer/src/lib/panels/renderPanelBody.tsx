@@ -20,6 +20,9 @@ import { IDSPanel } from '@/components/viewer/IDSPanel';
 import { LensPanel } from '@/components/viewer/LensPanel';
 import { ClashPanel } from '@/components/viewer/ClashPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
+import { ScriptPanel } from '@/components/viewer/ScriptPanel';
+import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
+import { ListPanel } from '@/components/viewer/lists/ListPanel';
 
 /**
  * Render the body for a workspace panel. `onClose` is the host's "close this
@@ -35,5 +38,8 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'lens': return <LensPanel onClose={onClose} />;
     case 'clash': return <ClashPanel onClose={onClose} />;
     case 'extensions': return <ExtensionsPanel onClose={onClose} />;
+    case 'script': return <ScriptPanel onClose={onClose} />;
+    case 'gantt': return <GanttPanel onClose={onClose} />;
+    case 'lists': return <ListPanel onClose={onClose} />;
   }
 }

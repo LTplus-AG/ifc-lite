@@ -61,6 +61,11 @@ pub struct InstanceMeta {
     pub transform: [f64; 16],
     /// IfcMappedItem mapping_transform (scaled), composed after `transform`.
     pub local_transform: Option<[f64; 16]>,
+    /// Rigid-congruence canonical→local transform `C_k` (row-major), set by the
+    /// rotation-normalized tier (`IFC_LITE_RIGID_INSTANCING`) when this mesh was
+    /// grouped to a congruent-but-not-identical template. `None` ⇒ identity (the
+    /// exact-bit tier). Composed innermost: world = transform · local · canonical.
+    pub canonical_transform: Option<[f64; 16]>,
     /// Representation-identity key: RepresentationMap id (mapped) or geometry hash (direct).
     pub rep_identity: u128,
     /// Whether this mesh is provably shareable (not void-cut / not site-rotated).

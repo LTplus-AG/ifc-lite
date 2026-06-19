@@ -34,7 +34,11 @@ const IDENTITY16: [f64; 16] = [
 fn compose_world(meta: &InstanceMeta) -> Matrix4<f64> {
     let t = Matrix4::from_row_slice(&meta.transform);
     let l = Matrix4::from_row_slice(meta.local_transform.as_ref().unwrap_or(&IDENTITY16));
-    t * l
+    // Rigid tier: canonical->local transform, composed innermost. For occurrences
+    // grouped by congruence (not bit-identity) this carries the recovered rotation
+    // so the shared template reproduces this occurrence's baked geometry.
+    let c = Matrix4::from_row_slice(meta.canonical_transform.as_ref().unwrap_or(&IDENTITY16));
+    t * l * c
 }
 
 /// Flatten a column-major nalgebra matrix into a row-major `[f32; 16]`.
@@ -130,13 +134,23 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
         };
         let (vlen, ilen) = (template.positions.len(), template.indices.len());
 
+        // A rigid-tier group (rotation-normalized) holds occurrences that are
+        // congruent but NOT bit-identical, so their raw vertex counts can differ —
+        // the renderer substitutes the template's geometry at each occurrence's
+        // pose (rel_k is pose-only). The exact-bit tier keeps the defensive
+        // same-count check (a mismatch there means something is wrong).
+        let is_rigid = members.iter().any(|&i| {
+            meshes[i]
+                .instance_meta
+                .as_ref()
+                .and_then(|m| m.canonical_transform)
+                .is_some()
+        });
         let mut occurrences = Vec::with_capacity(members.len());
         let mut shapes_match = true;
         for &i in members {
             let mesh = &meshes[i];
-            // Defensive: occurrences of the same rep share the cached canonical,
-            // so counts must match. If they don't (unexpected), fall to flat.
-            if mesh.positions.len() != vlen || mesh.indices.len() != ilen {
+            if !is_rigid && (mesh.positions.len() != vlen || mesh.indices.len() != ilen) {
                 shapes_match = false;
                 break;
             }
@@ -254,6 +268,7 @@ mod tests {
                     InstanceMeta {
                         transform: mat_rm(m),
                         local_transform: None,
+                        canonical_transform: None,
                         rep_identity: 42,
                         instanceable: true,
                     },
@@ -306,6 +321,7 @@ mod tests {
                     InstanceMeta {
                         transform: mat_rm(p),
                         local_transform: Some(mat_rm(&mapping)),
+                        canonical_transform: None,
                         rep_identity: 7,
                         instanceable: true,
                     },
@@ -321,11 +337,51 @@ mod tests {
     }
 
     #[test]
+    fn rigid_canonical_transform_recomposes() {
+        // Rigid tier: two occurrences of one canonical shape, the second rotated
+        // (canonical_transform = C_B ≠ identity). collate must reproduce both
+        // baked meshes from the shared template.
+        let c_b = Matrix4::from_euler_angles(0.3, 0.9, 0.2)
+            * Matrix4::new_translation(&nalgebra::Vector3::new(0.4, -0.2, 0.1));
+        let m_a = Matrix4::new_translation(&nalgebra::Vector3::new(5.0, 0.0, 0.0));
+        let m_b = Matrix4::from_euler_angles(0.0, 0.0, 1.2)
+            * Matrix4::new_translation(&nalgebra::Vector3::new(-3.0, 8.0, 2.0));
+        let meshes = vec![
+            mesh_from(
+                baked(&CANON, &m_a),
+                InstanceMeta {
+                    transform: mat_rm(&m_a),
+                    local_transform: None,
+                    canonical_transform: None, // template
+                    rep_identity: 99,
+                    instanceable: true,
+                },
+            ),
+            mesh_from(
+                baked(&CANON, &(m_b * c_b)),
+                InstanceMeta {
+                    transform: mat_rm(&m_b),
+                    local_transform: None,
+                    canonical_transform: Some(mat_rm(&c_b)),
+                    rep_identity: 99,
+                    instanceable: true,
+                },
+            ),
+        ];
+        let collated = collate_instances(&meshes, 2);
+        assert_eq!(collated.templates.len(), 1, "one rigid template");
+        assert_eq!(collated.templates[0].occurrences.len(), 2);
+        let err = verify_recomposition(&meshes, &collated);
+        assert!(err < 1e-4, "rigid canonical_transform recompose error {err}");
+    }
+
+    #[test]
     fn singletons_and_non_instanceable_go_flat() {
         let p = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 2.0, 3.0));
         let meta = |rep, inst| InstanceMeta {
             transform: mat_rm(&p),
             local_transform: None,
+                        canonical_transform: None,
             rep_identity: rep,
             instanceable: inst,
         };

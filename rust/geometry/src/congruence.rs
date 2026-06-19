@@ -78,6 +78,116 @@ pub fn take_locals() -> Vec<(u128, Mesh)> {
 }
 
 // ----------------------------------------------------------------------------
+// Production rigid tier (IFC_LITE_RIGID_INSTANCING): a shared cache that groups
+// congruent-but-not-bit-identical local meshes onto one template + a recovered
+// canonical->local transform, layered ON TOP of the exact-bit tier.
+// ----------------------------------------------------------------------------
+
+/// Whether the rotation-normalized rigid instancing tier is enabled.
+pub fn rigid_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("IFC_LITE_RIGID_INSTANCING").is_ok())
+}
+
+/// Result of classifying a local mesh into the rigid tier.
+pub struct RigidClass {
+    /// The rigid template's rep_identity (shared by all congruent occurrences).
+    pub rigid_id: u128,
+    /// Canonical(template-local) -> this(local) transform `C_k`, row-major. `None`
+    /// when this mesh IS the template (identity).
+    pub canonical_transform: Option<[f64; 16]>,
+}
+
+struct RigidTemplate {
+    welded: Welded,
+    rigid_id: u128,
+    centroid: Vector3<f64>,
+}
+
+/// A reusable rigid-template cache: classify pre-placement local meshes into
+/// congruence groups, recovering each occurrence's canonical→local transform.
+///
+/// Holds no global state, so the production integration runs it as a rayon
+/// POST-PASS over the finished mesh slice (sharded by signature, or merged) — NOT
+/// inline on the parallel streaming hot path, where a shared lock serialises the
+/// geometry workers (measured: stalls the 986MB stream).
+#[derive(Default)]
+pub struct RigidCache {
+    templates: Vec<RigidTemplate>,
+    buckets: FxHashMap<u64, Vec<usize>>,
+}
+
+/// Row-major canonical->local transform `C = translate(c_cand) · R · translate(-c_tmpl)`.
+fn canonical_transform_row_major(
+    r: &Matrix3<f64>,
+    c_tmpl: &Vector3<f64>,
+    c_cand: &Vector3<f64>,
+) -> [f64; 16] {
+    let t = c_cand - r * c_tmpl; // translation column
+    [
+        r[(0, 0)], r[(0, 1)], r[(0, 2)], t.x,
+        r[(1, 0)], r[(1, 1)], r[(1, 2)], t.y,
+        r[(2, 0)], r[(2, 1)], r[(2, 2)], t.z,
+        0.0, 0.0, 0.0, 1.0,
+    ]
+}
+
+impl RigidCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Classify a pre-placement LOCAL mesh: find a congruent template (exactly
+    /// verified — bucket proposes, [`verify`] decides) or register this as a new
+    /// one. `exact_rep` is the mesh's exact-bit rep_identity, reused as the rigid
+    /// id when registering. Returns None if the mesh can't be welded (too
+    /// tiny/large) — caller keeps the exact tier.
+    pub fn classify(&mut self, mesh: &Mesh, exact_rep: u128) -> Option<RigidClass> {
+        let w = build_welded(mesh)?;
+        let keys = signature_keys(&w);
+        // Search every bucket this mesh hashes into for a congruent template.
+        let mut seen: rustc_hash::FxHashSet<usize> = rustc_hash::FxHashSet::default();
+        for k in &keys {
+            if let Some(bucket) = self.buckets.get(k) {
+                for &idx in bucket {
+                    if !seen.insert(idx) {
+                        continue;
+                    }
+                    let tmpl = &self.templates[idx];
+                    let out = verify(&tmpl.welded, &w);
+                    if out.corresponded && out.connectivity_ok && out.max_dev <= SAFE_TOL {
+                        let c = canonical_transform_row_major(
+                            &out.rotation,
+                            &tmpl.centroid,
+                            &w.centroid,
+                        );
+                        return Some(RigidClass {
+                            rigid_id: tmpl.rigid_id,
+                            canonical_transform: Some(c),
+                        });
+                    }
+                }
+            }
+        }
+        // No congruent template: register this mesh as a new template (identity C).
+        let idx = self.templates.len();
+        let centroid = w.centroid;
+        self.templates.push(RigidTemplate {
+            welded: w,
+            rigid_id: exact_rep,
+            centroid,
+        });
+        for k in keys {
+            self.buckets.entry(k).or_default().push(idx);
+        }
+        Some(RigidClass {
+            rigid_id: exact_rep,
+            canonical_transform: None,
+        })
+    }
+}
+
+// ----------------------------------------------------------------------------
 // Welded local representation + rotation-invariant signature
 // ----------------------------------------------------------------------------
 
@@ -91,6 +201,9 @@ struct Welded {
     desc: Vec<i64>,
     /// Minimum inter-vertex spacing (for the ambiguous-correspondence exclusion).
     min_spacing: f64,
+    /// Centroid of the welded vertices in LOCAL coords (subtracted from `verts`).
+    /// Needed to compose the canonical→local transform `C_k` for the renderer.
+    centroid: Vector3<f64>,
 }
 
 fn build_welded(mesh: &Mesh) -> Option<Welded> {
@@ -131,6 +244,7 @@ fn build_welded(mesh: &Mesh) -> Option<Welded> {
         tris,
         desc,
         min_spacing,
+        centroid: c,
     })
 }
 
@@ -229,6 +343,9 @@ struct VerifyOutcome {
     connectivity_ok: bool,
     /// Reflection was the only fit (rejected — chiral pair).
     reflection_only: bool,
+    /// Recovered proper rotation R (template-centred -> candidate-centred) for the
+    /// connectivity-ok match; identity when not corresponded.
+    rotation: Matrix3<f64>,
 }
 
 impl VerifyOutcome {
@@ -237,6 +354,7 @@ impl VerifyOutcome {
         max_dev: f64::INFINITY,
         connectivity_ok: false,
         reflection_only: false,
+        rotation: Matrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
     };
 }
 
@@ -387,12 +505,12 @@ fn permutations(items: &[usize]) -> Vec<Vec<usize>> {
 /// Evaluate one correspondence (`map[i]` = candidate vertex for template vertex i):
 /// Kabsch -> proper rotation, max per-vertex deviation, triangle-set connectivity.
 /// Returns (max_dev, connectivity_ok, is_reflection).
-fn eval_correspondence(t: &Welded, c: &Welded, map: &[usize]) -> Option<(f64, bool, bool)> {
+fn eval_correspondence(t: &Welded, c: &Welded, map: &[usize]) -> Option<(f64, bool, bool, Matrix3<f64>)> {
     let a: Vec<Vector3<f64>> = t.verts.clone();
     let b: Vec<Vector3<f64>> = map.iter().map(|&j| c.verts[j]).collect();
     let (r, d) = kabsch(&a, &b)?;
     if d < 0.0 {
-        return Some((f64::INFINITY, false, true)); // reflection
+        return Some((f64::INFINITY, false, true, r)); // reflection
     }
     let mut max_dev = 0.0f64;
     for (i, bi) in b.iter().enumerate() {
@@ -402,7 +520,7 @@ fn eval_correspondence(t: &Welded, c: &Welded, map: &[usize]) -> Option<(f64, bo
         }
     }
     let conn = connectivity_matches(&t.tris, &c.tris, map);
-    Some((max_dev, conn, false))
+    Some((max_dev, conn, false, r))
 }
 
 /// Verify whether `t` (template) and `c` (candidate) are rigid-congruent. Builds
@@ -504,30 +622,31 @@ fn verify(t: &Welded, c: &Welded) -> VerifyOutcome {
     // low-deviation correspondences whose triangulation does NOT match (a symmetry
     // the triangulation doesn't respect); we must pick the connectivity-preserving
     // one, not merely the smallest residual, or true instances fail to merge.
-    let mut best_valid: Option<f64> = None; // min dev among connectivity-ok candidates
+    let mut best_valid: Option<(f64, Matrix3<f64>)> = None; // (dev, R) among connectivity-ok
     let mut best_any: Option<f64> = None; // min dev among any corresponded candidate
     let mut reflection_seen = false;
     for map in &maps {
         if map.iter().any(|&x| x == usize::MAX) {
             continue;
         }
-        if let Some((dev, conn, refl)) = eval_correspondence(t, c, map) {
+        if let Some((dev, conn, refl, r)) = eval_correspondence(t, c, map) {
             if refl {
                 reflection_seen = true;
                 continue;
             }
             best_any = Some(best_any.map_or(dev, |d: f64| d.min(dev)));
-            if conn {
-                best_valid = Some(best_valid.map_or(dev, |d: f64| d.min(dev)));
+            if conn && best_valid.map_or(true, |(d, _)| dev < d) {
+                best_valid = Some((dev, r));
             }
         }
     }
-    if let Some(dev) = best_valid {
+    if let Some((dev, r)) = best_valid {
         VerifyOutcome {
             corresponded: true,
             max_dev: dev,
             connectivity_ok: true,
             reflection_only: false,
+            rotation: r,
         }
     } else if let Some(dev) = best_any {
         VerifyOutcome {
@@ -535,6 +654,7 @@ fn verify(t: &Welded, c: &Welded) -> VerifyOutcome {
             max_dev: dev,
             connectivity_ok: false,
             reflection_only: false,
+            ..VerifyOutcome::FAIL
         }
     } else {
         VerifyOutcome {
@@ -1004,6 +1124,28 @@ mod tests {
         dense.positions[3] = 1.0e-7; // nudge corner 1 to near-coincide with corner 0 axis
         let other = box_mesh(2.0, 2.0, 2.0);
         assert!(!safe_merge(&dense, &other), "different shapes must not merge");
+    }
+
+    #[test]
+    fn rigid_cache_groups_congruent_and_separates_different() {
+        let mut cache = RigidCache::new();
+        // First tetra registers as a template (identity C).
+        let t0 = cache.classify(&tetra(), 100).unwrap();
+        assert_eq!(t0.rigid_id, 100);
+        assert!(t0.canonical_transform.is_none(), "template has identity C");
+        // A rotated copy must join the SAME template (rigid_id 100, not 200) with a
+        // non-identity canonical transform.
+        let rot = rotate(&tetra(), Vector3::new(0.4, 1.0, 0.2), 1.3);
+        let t1 = cache.classify(&rot, 200).unwrap();
+        assert_eq!(t1.rigid_id, 100, "rotated copy joins the template");
+        assert!(t1.canonical_transform.is_some(), "rotated copy has a recovered C");
+        // A scaled (non-congruent) tetra must register as a NEW template.
+        let mut scaled = tetra();
+        for v in scaled.positions.iter_mut() {
+            *v *= 1.7;
+        }
+        let t2 = cache.classify(&scaled, 300).unwrap();
+        assert_eq!(t2.rigid_id, 300, "non-congruent shape is a new template");
     }
 
     #[test]

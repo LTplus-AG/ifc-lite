@@ -916,16 +916,22 @@ impl GeometryRouter {
     fn tag_direct_instance(&self, mut mesh: Mesh) -> Mesh {
         if instancing_enabled() && mesh.instance_meta.is_none() && !mesh.positions.is_empty() {
             let hash = Self::compute_mesh_hash(&mesh);
-            let rep_identity = (hash as u128) | DIRECT_SOLID_TAG;
+            let exact_rep = (hash as u128) | DIRECT_SOLID_TAG;
             // Phase-0 rigid-congruence measurement: stash the PRE-PLACEMENT local
             // mesh (the exact state this hash saw) for the offline analysis.
             if crate::congruence::analysis_enabled() {
-                crate::congruence::record_local(rep_identity, &mesh);
+                crate::congruence::record_local(exact_rep, &mesh);
             }
+            // NOTE: the rotation-normalized rigid tier (RigidCache) is NOT run here.
+            // Verify-on-insert with a shared cache serialises the parallel geometry
+            // workers and stalls large streams (measured). Production integration is
+            // a rayon POST-PASS on captured local meshes in a collect-all path
+            // (coupled with the instanced wire format); the exact-bit tier ships now.
             mesh.instance_meta = Some(InstanceMeta {
                 transform: IDENTITY_ROW_MAJOR,
                 local_transform: None,
-                rep_identity,
+                canonical_transform: None,
+                rep_identity: exact_rep,
                 instanceable: true,
             });
         }
@@ -1119,6 +1125,7 @@ impl GeometryRouter {
                     mesh.instance_meta = Some(InstanceMeta {
                         transform: IDENTITY_ROW_MAJOR,
                         local_transform: local_rm,
+                        canonical_transform: None,
                         rep_identity: source_id as u128,
                         instanceable: true,
                     });
@@ -1185,6 +1192,7 @@ impl GeometryRouter {
             mesh.instance_meta = Some(InstanceMeta {
                 transform: IDENTITY_ROW_MAJOR,
                 local_transform: local_rm,
+                        canonical_transform: None,
                 rep_identity: source_id as u128,
                 instanceable: true,
             });

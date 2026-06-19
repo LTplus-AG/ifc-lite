@@ -78,14 +78,17 @@ echo "   PATH=$PATH"
 # builds, that SIGKILLs a process and silently drops the static SPA output
 # (apps/viewer/dist → the deploy ships only the api/chat function → 404 at root).
 #
-# Thin LTO + parallel codegen-units cut the peak dramatically for ~negligible
-# runtime cost. These are ENV OVERRIDES scoped to THIS (Vercel) build only:
-# main's prebuilt-WASM fast path never compiles, and the npm-published bundle is
-# built by the release workflow, so neither is affected. Revisit if Enhanced
-# Build Machines (more RAM) get enabled and you want fat-LTO wasm on Vercel.
+# The OOM is the FAT-LTO whole-program LINK; THIN LTO removes it (per-module
+# summaries) at ~negligible runtime cost. We deliberately do NOT also raise
+# codegen-units — the profile's codegen-units=1 is kept, because lowering
+# optimization there measurably slowed the exact-CSG WASM hot path and tipped a
+# dense brep/CSG batch past the viewer's 40s stream watchdog on heavy models
+# (e.g. Østraadt). thin-LTO + codegen-units=1 ≈ fat-LTO runtime, OOM-safe.
+# ENV OVERRIDE scoped to THIS (Vercel) build only: main's prebuilt-WASM fast path
+# never compiles and the npm-published bundle is built by the release workflow,
+# so neither is affected.
 export CARGO_PROFILE_RELEASE_LTO="thin"
-export CARGO_PROFILE_RELEASE_CODEGEN_UNITS="16"
-echo "🧠 wasm build memory guard: LTO=thin, codegen-units=16 (prevents OOM)"
+echo "🧠 wasm build memory guard: LTO=thin (codegen-units=1 kept for runtime; prevents the fat-LTO OOM)"
 
 # Filter passed by caller (defaults to the main viewer app). Each Vercel
 # project supplies its own filter so the same script powers both

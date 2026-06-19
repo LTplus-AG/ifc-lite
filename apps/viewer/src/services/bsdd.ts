@@ -293,111 +293,78 @@ export async function searchRelatedClasses(
     }>(
       `${BSDD_API}/api/Class/Search/v1?SearchText=${encodeURIComponent(ifcType)}&RelatedIfcEntities=${encodeURIComponent(ifcType)}`,
     );
-    return (raw.classes ?? []).map((c) => ({
-      uri: String(c.uri ?? ''),
-      code: String(c.code ?? c.referenceCode ?? c.name ?? ''),
-      name: String(c.name ?? ''),
-      definition: c.definition ? String(c.definition) : null,
-      dictionaryUri: String(c.dictionaryUri ?? ''),
-      dictionaryName: String(c.dictionaryName ?? c.dictionaryUri ?? ''),
-    }));
+    return (raw.classes ?? []).map(mapSearchResult);
   } catch {
     return [];
   }
 }
 
-/**
- * Discover which dictionaries hold classes related to an IFC entity type.
- *
- * The IFC dictionary is always offered first (it is the implicit default and
- * the only one addressed by class name). The rest are derived from the
- * RelatedIfcEntities search — these are the "other bSDDs" (Uniclass, ETIM, a
- * company's own published dictionary, …) a user can switch the card to.
- *
- * Returned dictionaries are de-duplicated by URI and sorted by name, IFC first.
- */
-export async function discoverDictionaries(
-  ifcType: string,
-): Promise<BsddDictionary[]> {
-  const related = await searchRelatedClasses(ifcType);
-  const byUri = new Map<string, BsddDictionary>();
-  for (const c of related) {
-    if (!c.dictionaryUri || c.dictionaryUri === IFC_DICTIONARY_URI) continue;
-    if (!byUri.has(c.dictionaryUri)) {
-      byUri.set(c.dictionaryUri, {
-        uri: c.dictionaryUri,
-        name: c.dictionaryName || c.dictionaryUri,
-      });
-    }
-  }
-  const others = Array.from(byUri.values()).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-  return [IFC_DICTIONARY, ...others];
+function mapSearchResult(c: Record<string, unknown>): BsddSearchResult {
+  return {
+    uri: String(c.uri ?? ''),
+    code: String(c.code ?? c.referenceCode ?? c.name ?? ''),
+    name: String(c.name ?? ''),
+    definition: c.definition ? String(c.definition) : null,
+    dictionaryUri: String(c.dictionaryUri ?? ''),
+    dictionaryName: String(c.dictionaryName ?? c.dictionaryUri ?? ''),
+  };
 }
 
 /**
- * Fetch class info for an IFC entity type from a chosen dictionary.
+ * Search a single dictionary's classes by free text.
  *
- * For the IFC dictionary this is the standard {@link fetchClassInfo} path.
- * For any other dictionary, the entity type has no class-by-name URI, so we
- * find the dictionary's class(es) that declare `RelatedIfcEntities = ifcType`,
- * fetch each one's properties, and merge them into a single result (a
- * dictionary may map several of its classes onto the same IFC entity).
- *
- * Returns null when the dictionary has no related class for this type, or
- * when none of the related classes carry any properties.
+ * Backs the bSDD card's class picker for non-IFC dictionaries: rather than
+ * guessing a class from the IFC entity type (which dead-ends on property-less
+ * classification entries), the user searches the dictionary directly and picks
+ * the class whose properties they want. An empty query returns the
+ * dictionary's first page of classes (issue #1219).
  */
-export async function fetchClassInfoForDictionary(
-  ifcType: string,
+export async function searchDictionaryClasses(
   dictionaryUri: string,
-): Promise<BsddClassInfo | null> {
-  if (!dictionaryUri || dictionaryUri === IFC_DICTIONARY_URI) {
-    return fetchClassInfo(ifcType);
+  query: string,
+): Promise<BsddSearchResult[]> {
+  try {
+    const raw = await fetchJson<{ classes?: Array<Record<string, unknown>> }>(
+      `${BSDD_API}/api/Class/Search/v1?SearchText=${encodeURIComponent(query)}&DictionaryUris=${encodeURIComponent(dictionaryUri)}`,
+    );
+    return (raw.classes ?? []).map(mapSearchResult);
+  } catch {
+    return [];
   }
+}
 
-  const cacheKey = `${dictionaryUri}::${ifcType}`;
-  const cached = getCached(cacheKey);
-  if (cached) return cached;
+// Session cache for the dictionary catalogue — it changes rarely and a full
+// fetch is ~400 entries, so we keep it for the lifetime of the page.
+let dictionaryCatalogue: BsddDictionary[] | null = null;
 
-  const related = await searchRelatedClasses(ifcType);
-  const inDict = related.filter((c) => c.dictionaryUri === dictionaryUri && c.uri);
-  if (inDict.length === 0) return null;
-
-  const details = await Promise.all(
-    inDict.map((c) => fetchClassByUri(c.uri, false)),
-  );
-
-  // Merge every related class's properties into one view, de-duplicating by
-  // "propertySet:name" so a property shared across the dictionary's classes
-  // is only offered once.
-  const seen = new Set<string>();
-  const merged: BsddClassProperty[] = [];
-  for (const detail of details) {
-    if (!detail) continue;
-    for (const prop of detail.classProperties) {
-      const key = `${prop.propertySet ?? ''}:${prop.name}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(prop);
+/**
+ * Fetch the full catalogue of bSDD dictionaries for the source-dictionary
+ * picker. IFC 4.3 is pinned first; the rest follow sorted by display name
+ * (name + version, so multiple versions of one dictionary stay distinct).
+ * Falls back to just the IFC dictionary if the catalogue can't be loaded.
+ */
+export async function fetchAllDictionaries(): Promise<BsddDictionary[]> {
+  if (dictionaryCatalogue) return dictionaryCatalogue;
+  try {
+    const raw = await fetchJson<{ dictionaries?: Array<Record<string, unknown>> }>(
+      `${BSDD_API}/api/Dictionary/v1?Limit=1000`,
+    );
+    const seen = new Set<string>([IFC_DICTIONARY_URI]);
+    const others: BsddDictionary[] = [];
+    for (const d of raw.dictionaries ?? []) {
+      const uri = String(d.uri ?? '');
+      if (!uri || seen.has(uri)) continue;
+      seen.add(uri);
+      const name = String(d.name ?? uri);
+      const version = d.version ? String(d.version) : '';
+      others.push({ uri, name: version ? `${name} ${version}` : name });
     }
+    others.sort((a, b) => a.name.localeCompare(b.name));
+    dictionaryCatalogue = [IFC_DICTIONARY, ...others];
+    return dictionaryCatalogue;
+  } catch {
+    return [IFC_DICTIONARY];
   }
-
-  if (merged.length === 0) return null;
-
-  const primary = inDict[0];
-  const info: BsddClassInfo = {
-    uri: primary.uri,
-    code: primary.code,
-    name: primary.name,
-    definition: details.find((d) => d?.definition)?.definition ?? primary.definition,
-    parentClassUri: null,
-    classProperties: merged,
-    relatedIfcEntityNames: [ifcType],
-  };
-
-  setCache(cacheKey, info);
-  return info;
 }
 
 // ---------------------------------------------------------------------------

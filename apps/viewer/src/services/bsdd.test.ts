@@ -6,9 +6,10 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  discoverDictionaries,
-  fetchClassInfoForDictionary,
+  fetchAllDictionaries,
+  searchDictionaryClasses,
   searchRelatedClasses,
+  fetchClassByUri,
   IFC_DICTIONARY,
 } from './bsdd.js';
 
@@ -45,33 +46,23 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-function searchRoute(ifcType: string, classes: Array<Record<string, unknown>>): Route {
-  return {
-    match: (url) => url.includes('/Class/Search/v1') && url.includes(`RelatedIfcEntities=${ifcType}`),
-    body: { classes },
-  };
-}
-
-function classRoute(classUri: string, classProperties: Array<Record<string, unknown>>): Route {
-  const needle = encodeURIComponent(classUri);
-  return {
-    match: (url) => url.includes('/Class/v1?') && url.includes(needle),
-    body: { uri: classUri, name: classUri, classProperties },
-  };
-}
-
 describe('searchRelatedClasses', () => {
-  it('maps the dictionaryName field from the API', async () => {
+  it('maps the dictionaryName + reference code from the API', async () => {
     routes = [
-      searchRoute('IfcWallS', [
-        {
-          uri: 'https://x/uri/myco/d/1/class/W',
-          name: 'Wall',
-          referenceCode: 'W',
-          dictionaryUri: 'https://x/uri/myco/d/1',
-          dictionaryName: 'MyCo Dictionary',
+      {
+        match: (url) => url.includes('/Class/Search/v1') && url.includes('RelatedIfcEntities=IfcWallS'),
+        body: {
+          classes: [
+            {
+              uri: 'https://x/uri/myco/d/1/class/W',
+              name: 'Wall',
+              referenceCode: 'W',
+              dictionaryUri: 'https://x/uri/myco/d/1',
+              dictionaryName: 'MyCo Dictionary',
+            },
+          ],
         },
-      ]),
+      },
     ];
     const results = await searchRelatedClasses('IfcWallS');
     assert.strictEqual(results.length, 1);
@@ -80,85 +71,85 @@ describe('searchRelatedClasses', () => {
   });
 });
 
-describe('discoverDictionaries', () => {
-  it('lists IFC first, drops the IFC dict from related results, dedups + sorts the rest', async () => {
-    const myco = 'https://x/uri/myco/d/1';
-    const uni = 'https://x/uri/nbs/uniclass2015/1';
+describe('searchDictionaryClasses', () => {
+  it('free-text searches within a single dictionary and maps results', async () => {
+    const dict = 'https://x/uri/etim/etim/10.1';
     routes = [
-      searchRoute('IfcWallD', [
-        // IFC dict entry must be filtered out (IFC is the implicit default)
-        { uri: `${IFC_DICTIONARY.uri}/class/IfcWallD`, dictionaryUri: IFC_DICTIONARY.uri, dictionaryName: 'IFC' },
-        { uri: `${uni}/class/EF_25`, dictionaryUri: uni, dictionaryName: 'Uniclass 2015' },
-        // MyCo appears twice — must dedup to a single option
-        { uri: `${myco}/class/A`, dictionaryUri: myco, dictionaryName: 'MyCo Dictionary' },
-        { uri: `${myco}/class/B`, dictionaryUri: myco, dictionaryName: 'MyCo Dictionary' },
-      ]),
+      {
+        // Must scope to the dictionary and carry the query text
+        match: (url) =>
+          url.includes('/Class/Search/v1') &&
+          url.includes(`DictionaryUris=${encodeURIComponent(dict)}`) &&
+          url.includes('SearchText=cable'),
+        body: {
+          classes: [
+            {
+              uri: `${dict}/class/EC000019`,
+              referenceCode: 'EC000019',
+              name: 'Coaxial cable',
+              dictionaryUri: dict,
+              dictionaryName: 'ETIM 10.1',
+            },
+          ],
+        },
+      },
     ];
-
-    const dicts = await discoverDictionaries('IfcWallD');
-    assert.deepStrictEqual(
-      dicts.map((d) => d.name),
-      [IFC_DICTIONARY.name, 'MyCo Dictionary', 'Uniclass 2015'],
-    );
-    assert.strictEqual(dicts[0].uri, IFC_DICTIONARY.uri);
+    const res = await searchDictionaryClasses(dict, 'cable');
+    assert.strictEqual(res.length, 1);
+    assert.strictEqual(res[0].code, 'EC000019');
+    assert.strictEqual(res[0].name, 'Coaxial cable');
   });
 
-  it('always returns at least the IFC dictionary', async () => {
-    routes = [searchRoute('IfcWallE', [])];
-    const dicts = await discoverDictionaries('IfcWallE');
-    assert.deepStrictEqual(dicts, [IFC_DICTIONARY]);
+  it('returns [] on API failure', async () => {
+    routes = []; // every request 404s
+    const res = await searchDictionaryClasses('https://x/uri/none/1', 'q');
+    assert.deepStrictEqual(res, []);
   });
 });
 
-describe('fetchClassInfoForDictionary', () => {
-  it('merges properties across a dictionary\'s related classes, deduped by pset:name', async () => {
-    const myco = 'https://x/uri/myco/dM/1';
-    const classA = `${myco}/class/A`;
-    const classB = `${myco}/class/B`;
+describe('fetchAllDictionaries', () => {
+  it('pins IFC first, drops a duplicate IFC entry, and sorts the rest by name+version', async () => {
     routes = [
-      searchRoute('IfcWallM', [
-        { uri: classA, dictionaryUri: myco, dictionaryName: 'MyCo' },
-        { uri: classB, dictionaryUri: myco, dictionaryName: 'MyCo' },
-      ]),
-      classRoute(classA, [
-        { name: 'P1', propertySet: 'Pset_X', dataType: 'String' },
-        { name: 'P2', propertySet: 'Pset_X', dataType: 'Real' },
-      ]),
-      classRoute(classB, [
-        // P1/Pset_X duplicates classA — must collapse to one
-        { name: 'P1', propertySet: 'Pset_X', dataType: 'String' },
-        { name: 'P3', propertySet: 'Pset_Y', dataType: 'Boolean' },
-      ]),
+      {
+        match: (url) => url.includes('/Dictionary/v1'),
+        body: {
+          dictionaries: [
+            // duplicate of the pinned IFC dictionary — must be dropped
+            { uri: IFC_DICTIONARY.uri, name: 'IFC', version: '4.3' },
+            { uri: 'https://x/uri/nbs/uniclass2015/1', name: 'Uniclass 2015' },
+            { uri: 'https://x/uri/etim/etim/10.1', name: 'ETIM', version: '10.1' },
+          ],
+        },
+      },
     ];
-
-    const info = await fetchClassInfoForDictionary('IfcWallM', myco);
-    assert.ok(info, 'expected merged class info');
+    const dicts = await fetchAllDictionaries();
+    assert.strictEqual(dicts[0].uri, IFC_DICTIONARY.uri);
     assert.deepStrictEqual(
-      info!.classProperties.map((p) => `${p.propertySet}:${p.name}`),
-      ['Pset_X:P1', 'Pset_X:P2', 'Pset_Y:P3'],
+      dicts.map((d) => d.name),
+      [IFC_DICTIONARY.name, 'ETIM 10.1', 'Uniclass 2015'],
     );
-    // Non-IFC properties must not be flagged as IFC-standard.
-    assert.ok(info!.classProperties.every((p) => p.isIfcStandard === false));
   });
+});
 
-  it('returns null when the dictionary has no related class for the type', async () => {
-    routes = [searchRoute('IfcWallN', [])];
-    const info = await fetchClassInfoForDictionary('IfcWallN', 'https://x/uri/empty/d/1');
-    assert.strictEqual(info, null);
-  });
-
-  it('delegates to the IFC name path when the IFC dictionary is selected', async () => {
-    const ifcUri = `${IFC_DICTIONARY.uri}/class/IfcWallI`;
+describe('fetchClassByUri', () => {
+  it('maps a non-IFC class\'s properties (not flagged IFC-standard)', async () => {
+    const uri = 'https://x/uri/etim/etim/10.1/class/EC000770';
     routes = [
-      classRoute(ifcUri, [
-        { name: 'IsExternal', propertySet: 'Pset_WallCommon', dataType: 'Boolean' },
-      ]),
+      {
+        match: (url) => url.includes('/Class/v1?') && url.includes(encodeURIComponent(uri)),
+        body: {
+          uri,
+          name: 'Separation plate',
+          classProperties: [
+            { name: 'Material', propertySet: 'Material', dataType: 'String' },
+            { name: 'Height', propertySet: 'Measurements', dataType: 'Real' },
+          ],
+        },
+      },
     ];
-    const info = await fetchClassInfoForDictionary('IfcWallI', IFC_DICTIONARY.uri);
-    assert.ok(info, 'expected IFC class info');
-    assert.strictEqual(info!.classProperties.length, 1);
-    assert.strictEqual(info!.classProperties[0].name, 'IsExternal');
-    // IFC-path properties are flagged as standard.
-    assert.strictEqual(info!.classProperties[0].isIfcStandard, true);
+    const info = await fetchClassByUri(uri);
+    assert.ok(info, 'expected class info');
+    assert.strictEqual(info!.classProperties.length, 2);
+    assert.ok(info!.classProperties.every((p) => p.isIfcStandard === false));
   });
 });

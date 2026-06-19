@@ -27,6 +27,13 @@ export interface ComboInputProps {
   className?: string;
   /** Cap rendered suggestions (filtering still scans all options). */
   maxRendered?: number;
+  /**
+   * Skip the built-in substring filtering and render `options` as-is. Use when
+   * the options are already filtered upstream (e.g. a server-side search keyed
+   * on the typed value), so results whose label doesn't literally contain the
+   * query aren't hidden.
+   */
+  disableFilter?: boolean;
   'aria-label'?: string;
 }
 
@@ -39,6 +46,7 @@ export function ComboInput({
   placeholder,
   className,
   maxRendered = 50,
+  disableFilter = false,
   'aria-label': ariaLabel,
 }: ComboInputProps) {
   const [open, setOpen] = useState(false);
@@ -48,10 +56,11 @@ export function ComboInput({
   const listRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => {
+    if (disableFilter) return options.slice(0, maxRendered);
     const q = value.trim().toLowerCase();
     const matches = q ? options.filter((o) => o.toLowerCase().includes(q)) : options;
     return matches.slice(0, maxRendered);
-  }, [options, value, maxRendered]);
+  }, [options, value, maxRendered, disableFilter]);
 
   useEffect(() => { setHighlight(0); }, [filtered]);
 

@@ -17,7 +17,7 @@ import {
   raycastBoundingBoxes,
   raycastTriangles,
 } from './scene-raycaster.js';
-import { mergeGeometry, splitMeshDataForBufferLimit } from './scene-geometry.js';
+import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
@@ -1782,6 +1782,10 @@ export class Scene {
     const f = new Float32Array(interleaved);
     const u = new Uint32Array(interleaved);
     const entityIds = meshData.entityIds;
+    // Match mergeGeometry's entityId-lane packing so an overlay (lens/IDS/...)
+    // drawn over a textured mesh computes the same z-nudge → depthCompare:'equal'
+    // matches. High 8 bits = colour salt, low 24 = picking id.
+    const saltByte = colorSaltByte(meshData.color);
     for (let i = 0; i < vertexCount; i++) {
       const o = i * 9;
       f[o] = positions[i * 3];
@@ -1790,7 +1794,7 @@ export class Scene {
       f[o + 3] = normals[i * 3] ?? 0;
       f[o + 4] = normals[i * 3 + 1] ?? 0;
       f[o + 5] = normals[i * 3 + 2] ?? 0;
-      u[o + 6] = entityIds ? entityIds[i] : meshData.expressId;
+      u[o + 6] = packEntityLane(entityIds ? entityIds[i] : meshData.expressId, saltByte);
       f[o + 7] = uvs[i * 2] ?? 0;
       f[o + 8] = uvs[i * 2 + 1] ?? 0;
     }

@@ -16,6 +16,40 @@ const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
 
 /**
+ * Per-vertex z-nudge salt (issue: lens/overlay colouring).
+ *
+ * The anti-z-fight depth nudge in `main.wgsl.ts` must produce the SAME depth for
+ * a given surface in BOTH the base opaque pass and the lens/IDS/compare/4D
+ * OVERLAY pass (the overlay pipeline uses `depthCompare: 'equal'`, so any depth
+ * difference rejects every overlay fragment — colour silently fails to paint).
+ *
+ * Material-layer slices share their parent's expressId, so the nudge can't
+ * separate their coincident coplanar caps from the id alone — it needs the
+ * material colour. We bake an 8-bit hash of `MeshData.color` into the HIGH 8
+ * bits of the per-vertex entityId lane (the low 24 bits stay the picking id;
+ * `encodeId24` masks the salt off). Because the salt comes from the geometry's
+ * OWN colour — not the per-draw `baseColor` uniform — the base and overlay
+ * passes compute an identical nudge, while distinct layers still separate.
+ *
+ * Returns a byte in [0,255]. Stamp it as `(id & 0x00FFFFFF) | (salt << 24)`.
+ */
+export function colorSaltByte(color?: readonly number[] | null): number {
+  if (!color) return 0;
+  const r = (Math.round((color[0] ?? 0) * 255) & 0xFF) >>> 0;
+  const g = (Math.round((color[1] ?? 0) * 255) & 0xFF) >>> 0;
+  const b = (Math.round((color[2] ?? 0) * 255) & 0xFF) >>> 0;
+  // Same Knuth-style mix #1160 used (folded to 8 bits — the zHash is `& 255`
+  // anyway, so a byte carries all the entropy that survives downstream).
+  const h = (Math.imul(r, 73856093) ^ Math.imul(g, 19349663) ^ Math.imul(b, 83492791)) >>> 0;
+  return h & 0xFF;
+}
+
+/** Stamp the colour salt into the high 8 bits, picking id into the low 24. */
+export function packEntityLane(rawId: number, saltByte: number): number {
+  return (((rawId >>> 0) & 0x00FFFFFF) | ((saltByte & 0xFF) << 24)) >>> 0;
+}
+
+/**
  * Merge multiple mesh geometries into single interleaved vertex/index buffers.
  *
  * Layout per vertex: position (3f) + normal (3f) + entityId (1u32) = 7 × 4 bytes.
@@ -105,6 +139,10 @@ export function mergeGeometry(
       }
       entityId = entityId & MAX_ENCODED_ENTITY_ID;
     }
+    // High-8-bit material-colour salt → identical nudge in base & overlay passes
+    // (so the lens/IDS/compare/4D overlay's depthCompare:'equal' matches). See
+    // colorSaltByte() above.
+    const saltByte = colorSaltByte(mesh.color);
     const hasNormals = normals.length > 0;
     for (let i = 0; i < vertexCount; i++) {
       const srcIdx = i * 3;
@@ -114,7 +152,7 @@ export function mergeGeometry(
       vertexData[outIdx++] = hasNormals ? normals[srcIdx] : 0;
       vertexData[outIdx++] = hasNormals ? normals[srcIdx + 1] : 0;
       vertexData[outIdx++] = hasNormals ? normals[srcIdx + 2] : 0;
-      vertexDataU32[outIdx++] = perVertexEntityIds ? (perVertexEntityIds[i] >>> 0) : entityId;
+      vertexDataU32[outIdx++] = packEntityLane(perVertexEntityIds ? perVertexEntityIds[i] : entityId, saltByte);
     }
 
     // Copy indices with vertex base offset

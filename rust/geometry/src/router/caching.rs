@@ -68,6 +68,39 @@ impl GeometryRouter {
         hasher.finish()
     }
 
+    /// FULL (non-sampling) **128-bit** content hash of a mesh's local geometry.
+    /// Used for the instancing `rep_identity`, which — unlike `get_or_cache_by_hash`
+    /// — has no downstream `meshes_equal` guard at the source AND must be consistent
+    /// across rayon workers (so a per-worker equality registry can't cover it). The
+    /// 64-bit SAMPLED `compute_mesh_hash` shipped a real wrong-geometry collision
+    /// (#833, mirrored slabs). This hashes EVERY position + index into two
+    /// independent FxHasher streams (different seeds) → a 128-bit key whose
+    /// collision probability (~2^-127, content-addressing grade) makes a
+    /// different-content collision effectively impossible. O(verts) once per item,
+    /// only on the opt-in instancing path.
+    #[inline]
+    pub(super) fn compute_mesh_hash_full(mesh: &Mesh) -> u128 {
+        use rustc_hash::FxHasher;
+        let mut a = FxHasher::default();
+        let mut b = FxHasher::default();
+        // Decorrelate stream b with a salt prefix (portable; no with_seed dep).
+        0x9e37_79b9_7f4a_7c15u64.hash(&mut b);
+        mesh.positions.len().hash(&mut a);
+        mesh.indices.len().hash(&mut a);
+        mesh.positions.len().hash(&mut b);
+        mesh.indices.len().hash(&mut b);
+        for pos in &mesh.positions {
+            let bits = pos.to_bits();
+            bits.hash(&mut a);
+            bits.hash(&mut b);
+        }
+        for idx in &mesh.indices {
+            idx.hash(&mut a);
+            idx.hash(&mut b);
+        }
+        ((a.finish() as u128) << 64) | (b.finish() as u128)
+    }
+
     /// Try to get a cached mesh by hash, or cache the provided one.
     /// Returns `Arc<Mesh>` — either the previously cached identical mesh
     /// or a fresh `Arc` wrapping the provided mesh.
@@ -202,6 +235,33 @@ mod tests {
         assert!(
             Arc::ptr_eq(&first, &second),
             "two identical meshes did not share the cached Arc",
+        );
+    }
+
+    /// The instancing rep_identity uses compute_mesh_hash_FULL precisely because
+    /// the sampled compute_mesh_hash has a blind spot (the #833 family). This forges
+    /// the blind spot: a 129-vertex mesh and a copy differing only at position index
+    /// 2 — which the sampled hash (step 3 + last 3) never reads — so the SAMPLED
+    /// hashes collide while the FULL hash distinguishes them.
+    #[test]
+    fn full_hash_sees_what_the_sampled_hash_misses() {
+        let n = 387usize; // 129 verts; sampled step = 387/128 = 3 → reads multiples of 3 + last 3
+        let mut a = Mesh::new();
+        a.positions = (0..n).map(|i| i as f32).collect();
+        a.indices = (0..(n / 3) as u32).collect();
+        a.normals = vec![0.0; n];
+        let mut b = a.clone();
+        b.positions[2] = 999.0; // index 2: not a sample point, not in the last 3
+
+        assert_eq!(
+            GeometryRouter::compute_mesh_hash(&a),
+            GeometryRouter::compute_mesh_hash(&b),
+            "sampled hash is intentionally blind to index 2 (this is the gap rep_identity must avoid)",
+        );
+        assert_ne!(
+            GeometryRouter::compute_mesh_hash_full(&a),
+            GeometryRouter::compute_mesh_hash_full(&b),
+            "FULL hash must distinguish meshes differing outside the sample stride",
         );
     }
 }

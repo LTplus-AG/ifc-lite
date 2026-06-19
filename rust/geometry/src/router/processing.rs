@@ -8,10 +8,12 @@ use super::transforms::{instancing_enabled, mat4_to_row_major};
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
 
-/// High tag bit distinguishing direct-solid rep_identity (a 64-bit local-mesh
+/// High tag bit distinguishing direct-solid rep_identity (a 128-bit local-mesh
 /// content hash) from mapped-item rep_identity (a RepresentationMap entity id,
 /// always < 2^32), so the two id spaces can never collide in `collate_instances`.
-const DIRECT_SOLID_TAG: u128 = 1u128 << 96;
+/// Bit 127 is set on direct-solid ids and clear on mapped ids; it costs one hash
+/// bit (127 effective), still content-addressing grade.
+const DIRECT_SOLID_TAG: u128 = 1u128 << 127;
 
 /// Row-major 4x4 identity; placeholder `InstanceMeta::transform` before the
 /// element's world placement is folded in by `apply_placement`.
@@ -915,8 +917,11 @@ impl GeometryRouter {
     /// already carries metadata (mapped items) / is empty.
     fn tag_direct_instance(&self, mut mesh: Mesh) -> Mesh {
         if instancing_enabled() && mesh.instance_meta.is_none() && !mesh.positions.is_empty() {
-            let hash = Self::compute_mesh_hash(&mesh);
-            let exact_rep = (hash as u128) | DIRECT_SOLID_TAG;
+            // FULL 128-bit (non-sampling) hash: rep_identity has no downstream
+            // meshes_equal guard at the source and must be cross-worker consistent,
+            // so a sampled-hash collision (#833 family) would silently group
+            // non-identical geometry. The 128-bit content hash makes that ~2^-127.
+            let exact_rep = Self::compute_mesh_hash_full(&mesh) | DIRECT_SOLID_TAG;
             // Phase-0 rigid-congruence measurement: stash the PRE-PLACEMENT local
             // mesh (the exact state this hash saw) for the offline analysis.
             if crate::congruence::analysis_enabled() {

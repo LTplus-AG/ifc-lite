@@ -132,7 +132,6 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
             out.flat_indices.extend_from_slice(members);
             continue;
         };
-        let (vlen, ilen) = (template.positions.len(), template.indices.len());
 
         // A rigid-tier group (rotation-normalized) holds occurrences that are
         // congruent but NOT bit-identical, so their raw vertex counts can differ —
@@ -146,10 +145,18 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
                 .and_then(|m| m.canonical_transform)
                 .is_some()
         });
+        let (vlen, ilen) = (template.positions.len(), template.indices.len());
         let mut occurrences = Vec::with_capacity(members.len());
         let mut shapes_match = true;
         for &i in members {
             let mesh = &meshes[i];
+            // Exact-tier occurrences share the SAME local geometry (so same counts),
+            // differing only by placement — we can't byte-compare their BAKED
+            // positions (those legitimately differ). Content-equality is instead
+            // guaranteed upstream: rep_identity is a FULL 128-bit content hash
+            // (compute_mesh_hash_full | tag), so a same-counts/different-content
+            // collision is ~2^-127. The count check stays as a cheap guard.
+            // Rigid-tier occurrences are intentionally non-identical (verified).
             if !is_rigid && (mesh.positions.len() != vlen || mesh.indices.len() != ilen) {
                 shapes_match = false;
                 break;
@@ -299,6 +306,20 @@ pub fn encode_instanced(
     let positions_len: usize = tspecs.iter().map(|t| meshes[t.mesh_idx].positions.len()).sum();
     let normals_len: usize = tspecs.iter().map(|t| meshes[t.mesh_idx].normals.len()).sum();
     let indices_len: usize = tspecs.iter().map(|t| meshes[t.mesh_idx].indices.len()).sum();
+
+    // Wire offsets/lengths are u32 (header + template records). A pool exceeding
+    // u32::MAX elements (>16GB of positions in ONE shard) would wrap SILENTLY and
+    // corrupt template lookups. Fail loudly instead — the caller must chunk shards
+    // below this (real instanced shards are <<1GB; this is an impossible-scale
+    // backstop, not a normal limit).
+    assert!(
+        positions_len <= u32::MAX as usize
+            && normals_len <= u32::MAX as usize
+            && indices_len <= u32::MAX as usize
+            && template_count <= u32::MAX as usize
+            && instance_count <= u32::MAX as usize,
+        "instanced shard exceeds u32 wire limits (pos={positions_len} idx={indices_len}); chunk it"
+    );
 
     let mut buf: Vec<u8> = Vec::with_capacity(
         32 + template_count * 48 + instance_count * 88 + (positions_len + normals_len + indices_len) * 4,
@@ -693,6 +714,33 @@ mod tests {
         println!("INSTANCED_FIXTURE_HEX_BEGIN");
         println!("{hex}");
         println!("INSTANCED_FIXTURE_HEX_END");
+    }
+
+    #[test]
+    fn collate_count_guard_drops_mismatched_group_to_flat() {
+        // A rep_identity grouping with mismatched vertex/index counts (e.g. a
+        // hash collision that survived the count differing) must NOT instance —
+        // the cheap count guard falls the whole group to flat. (Same-count content
+        // collisions are prevented upstream by the 128-bit rep_identity hash.)
+        let p = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+        let meta = |rep| InstanceMeta {
+            transform: mat_rm(&p),
+            local_transform: None,
+            canonical_transform: None,
+            rep_identity: rep,
+            instanceable: true,
+        };
+        // canon_b has 5 vertices vs CANON's 4 → different counts.
+        let canon_b: [f32; 15] = [
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0,
+        ];
+        let meshes = vec![
+            mesh_from(baked(&CANON, &p), meta(777)),
+            mesh_from(baked(&canon_b, &p), meta(777)), // same rep, different counts
+        ];
+        let collated = collate_instances(&meshes, 2);
+        assert_eq!(collated.templates.len(), 0, "count mismatch must NOT form a template");
+        assert_eq!(collated.flat_indices.len(), 2, "both fall to flat");
     }
 
     #[test]

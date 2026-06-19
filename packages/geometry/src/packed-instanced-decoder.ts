@@ -124,6 +124,16 @@ export function decodeInstancedShard(payload: unknown): DecodedInstancedShard {
       view.getFloat64(base + 32, true),
       view.getFloat64(base + 40, true),
     ];
+    // Validate each template's pool ranges before subarray — a malformed/wrapped
+    // offset would otherwise silently clip (subarray saturates), yielding
+    // truncated geometry indistinguishable from a real occurrence.
+    if (
+      posOff + posLen > positionsLen ||
+      nrmOff + nrmLen > normalsLen ||
+      idxOff + idxLen > indicesLen
+    ) {
+      throw new Error(`Instanced shard template ${t} pool offset out of bounds`);
+    }
     templates.push({
       positions: positions.subarray(posOff, posOff + posLen),
       normals: normals.subarray(nrmOff, nrmOff + nrmLen),

@@ -133,9 +133,19 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize) -> Collated {
     // First-seen order keeps output deterministic regardless of hash iteration.
     let mut order: Vec<u128> = Vec::new();
     let mut groups: FxHashMap<u128, Vec<usize>> = FxHashMap::default();
+    // Non-instanceable meshes (void-cut walls, multi-item merges, site-rotated
+    // elements — anything carrying no usable InstanceMeta) still must be DRAWN, so
+    // they're routed to flat_indices and emitted as flat singleton templates.
+    // Dropping them here would silently lose geometry now that capture is always-on
+    // and real models feed the collator — the unit fixtures were all instanceable,
+    // which hid this. Empty meshes carry nothing to draw and are the only skip.
+    let mut flat: Vec<usize> = Vec::new();
     for (i, m) in meshes.iter().enumerate() {
+        if m.positions.is_empty() {
+            continue;
+        }
         match m.instance_meta {
-            Some(im) if im.instanceable && !m.positions.is_empty() => {
+            Some(im) if im.instanceable => {
                 groups
                     .entry(im.rep_identity)
                     .or_insert_with(|| {
@@ -144,11 +154,14 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize) -> Collated {
                     })
                     .push(i);
             }
-            _ => {}
+            _ => flat.push(i),
         }
     }
 
-    let mut out = Collated::default();
+    let mut out = Collated {
+        flat_indices: flat,
+        ..Collated::default()
+    };
     for rep in order {
         let members = &groups[&rep];
         if members.len() < min_group.max(1) {
@@ -864,8 +877,14 @@ mod tests {
             mesh_from(baked(&CANON, &p), meta(2, false)), // not instanceable
         ];
         let collated = collate_instances(&meshes, 2);
+        // BOTH meshes must be represented. The instanceable singleton has no repeat
+        // so it goes flat; the non-instanceable mesh must STILL be drawn (emitted as
+        // a flat singleton), not dropped — dropping it silently loses geometry on
+        // real models (void-cut walls / multi-item merges carry instance: None).
         assert_eq!(collated.templates.len(), 0);
-        assert_eq!(collated.flat_indices, vec![0], "singleton -> flat; non-inst skipped");
-        assert_eq!(collated.unique_geometry_count(), 1);
+        let mut flat = collated.flat_indices.clone();
+        flat.sort_unstable();
+        assert_eq!(flat, vec![0, 1], "singleton + non-instanceable both emitted flat");
+        assert_eq!(collated.unique_geometry_count(), 2);
     }
 }

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 import {
   fetchAllDictionaries,
+  listDictionaryClasses,
   searchDictionaryClasses,
   searchRelatedClasses,
   fetchClassByUri,
@@ -104,6 +105,40 @@ describe('searchDictionaryClasses', () => {
     routes = []; // every request 404s
     const res = await searchDictionaryClasses('https://x/uri/none/1', 'q');
     assert.deepStrictEqual(res, []);
+  });
+});
+
+describe('listDictionaryClasses', () => {
+  it('paginates a dictionary\'s classes and reports the total', async () => {
+    const dict = 'https://x/uri/etim/etim/10.1';
+    routes = [
+      {
+        match: (url) =>
+          url.includes('/Dictionary/v1/Classes') &&
+          url.includes(`Uri=${encodeURIComponent(dict)}`) &&
+          url.includes('Offset=50'),
+        body: {
+          // the list endpoint omits dictionaryUri per class — service folds it in
+          classes: [
+            { uri: `${dict}/class/EC000051`, code: 'EC000051', name: 'Cable tray' },
+          ],
+          classesTotalCount: 5799,
+          classesOffset: 50,
+        },
+      },
+    ];
+    const page = await listDictionaryClasses(dict, 50, 50);
+    assert.strictEqual(page.total, 5799);
+    assert.strictEqual(page.offset, 50);
+    assert.strictEqual(page.classes.length, 1);
+    assert.strictEqual(page.classes[0].code, 'EC000051');
+    assert.strictEqual(page.classes[0].dictionaryUri, dict);
+  });
+
+  it('returns an empty page on API failure', async () => {
+    routes = [];
+    const page = await listDictionaryClasses('https://x/uri/none/1', 0, 50);
+    assert.deepStrictEqual(page, { classes: [], total: 0, offset: 0 });
   });
 });
 

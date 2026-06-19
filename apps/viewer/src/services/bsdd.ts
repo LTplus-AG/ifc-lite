@@ -310,14 +310,56 @@ function mapSearchResult(c: Record<string, unknown>): BsddSearchResult {
   };
 }
 
+/** One page of a dictionary's class list. */
+export interface BsddClassPage {
+  classes: BsddSearchResult[];
+  /** Total number of classes in the dictionary (for the whole list). */
+  total: number;
+  /** Offset this page started at. */
+  offset: number;
+}
+
+/**
+ * List a dictionary's classes, paginated, for browsing (issue #1219).
+ *
+ * Uses `/api/Dictionary/v1/Classes`, which — unlike the free-text search
+ * endpoint — accepts `Offset`/`Limit` and reports `classesTotalCount`. This
+ * lets the bSDD card show a scrollable list the user pages through (a single
+ * dictionary can hold thousands of classes, so we never fetch them all at
+ * once). For text filtering use {@link searchDictionaryClasses} instead.
+ */
+export async function listDictionaryClasses(
+  dictionaryUri: string,
+  offset: number,
+  limit: number,
+): Promise<BsddClassPage> {
+  try {
+    const raw = await fetchJson<{
+      classes?: Array<Record<string, unknown>>;
+      classesTotalCount?: number;
+      classesOffset?: number;
+    }>(
+      `${BSDD_API}/api/Dictionary/v1/Classes?Uri=${encodeURIComponent(dictionaryUri)}&Offset=${offset}&Limit=${limit}`,
+    );
+    return {
+      // The list endpoint omits dictionaryUri on each class; fold it back in.
+      classes: (raw.classes ?? []).map((c) => mapSearchResult({ dictionaryUri, ...c })),
+      total: Number(raw.classesTotalCount ?? 0),
+      offset: Number(raw.classesOffset ?? offset),
+    };
+  } catch {
+    return { classes: [], total: 0, offset };
+  }
+}
+
 /**
  * Search a single dictionary's classes by free text.
  *
- * Backs the bSDD card's class picker for non-IFC dictionaries: rather than
- * guessing a class from the IFC entity type (which dead-ends on property-less
- * classification entries), the user searches the dictionary directly and picks
- * the class whose properties they want. An empty query returns the
- * dictionary's first page of classes (issue #1219).
+ * Backs the bSDD card's class filter for non-IFC dictionaries: the user types
+ * to narrow the browsable list to matching classes. The free-text search
+ * endpoint does not honour `Offset`/`Limit`, so this returns the API's single
+ * (large) result page; browsing the full unfiltered list is paginated via
+ * {@link listDictionaryClasses} (issue #1219).
  */
 export async function searchDictionaryClasses(
   dictionaryUri: string,

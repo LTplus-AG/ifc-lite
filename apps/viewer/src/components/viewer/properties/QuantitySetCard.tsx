@@ -58,7 +58,9 @@ export function QuantitySetCard({ qset }: { qset: QuantitySet }) {
                       </span>
                     </TooltipTrigger>
                     <TooltipContent side="top" className="text-[10px]">
-                      <span className="text-zinc-400">{typeName}</span>
+                      {/* bg-primary tooltip: derive from primary-foreground so it
+                          reads on the blue/purple surface and in dark mode (#1218) */}
+                      <span className="text-primary-foreground/80">{typeName}</span>
                     </TooltipContent>
                   </Tooltip>
                 ) : (

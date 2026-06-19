@@ -136,7 +136,9 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="text-[10px]">
-                          <span className="text-zinc-400">{parsed.ifcType}</span>
+                          {/* bg-primary tooltip: derive from primary-foreground so it
+                              reads on the blue/purple surface and in dark mode (#1218) */}
+                          <span className="text-primary-foreground/80">{parsed.ifcType}</span>
                         </TooltipContent>
                       </Tooltip>
                     ) : (

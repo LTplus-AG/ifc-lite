@@ -7,7 +7,7 @@
  * to keep it under the module-size house rule (AGENTS.md).
  */
 
-import { Plus, Minus, PencilLine } from 'lucide-react';
+import { Plus, Minus, PencilLine, MousePointerClick } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { COMPARE_COLORS, type RGBA } from '@/lib/compare/overlay';
@@ -48,9 +48,11 @@ interface CompareResultsListProps {
   counts: CompareResult['diff']['counts'] | undefined;
   selectedKey: string | null;
   onFocus: (row: CompareRow) => void;
+  /** Select every element in a state bucket at once (section-header click). */
+  onFocusGroup: (state: DiffState) => void;
 }
 
-export function CompareResultsList({ result, groups, counts, selectedKey, onFocus }: CompareResultsListProps) {
+export function CompareResultsList({ result, groups, counts, selectedKey, onFocus, onFocusGroup }: CompareResultsListProps) {
   return (
     <ScrollArea className="flex-1 min-h-0">
       {!result ? (
@@ -64,11 +66,17 @@ export function CompareResultsList({ result, groups, counts, selectedKey, onFocu
             if (!bucket || bucket.rows.length === 0) return null;
             return (
               <div key={state}>
-                <div className="flex items-center gap-1.5 px-1 py-1 text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => onFocusGroup(state)}
+                  title={`Select all ${label.toLowerCase()} in 3D`}
+                  className="group w-full flex items-center gap-1.5 px-1 py-1 text-xs font-medium rounded hover:bg-muted transition-colors"
+                >
                   <Icon className="h-3.5 w-3.5" style={{ color: rgbaCss(color) }} />
                   <span>{label}</span>
                   <span className="text-muted-foreground">({bucket.rows.length + bucket.truncated})</span>
-                </div>
+                  <MousePointerClick className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-60 transition-opacity" />
+                </button>
                 <div className="space-y-0.5">
                   {bucket.rows.map((row) => (
                     <button

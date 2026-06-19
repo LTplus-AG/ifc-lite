@@ -90,6 +90,7 @@ pub fn rigid_enabled() -> bool {
 }
 
 /// Result of classifying a local mesh into the rigid tier.
+#[derive(Clone, Copy)]
 pub struct RigidClass {
     /// The rigid template's rep_identity (shared by all congruent occurrences).
     pub rigid_id: u128,
@@ -185,6 +186,28 @@ impl RigidCache {
             canonical_transform: None,
         })
     }
+}
+
+/// Production POST-PASS entry point: classify the DISTINCT pre-placement local
+/// meshes (one per exact-bit rep_identity — occurrences of one exact rep share
+/// bit-identical local geometry, so they share a rigid group + canonical
+/// transform) into an `exact_rep -> RigidClass` map. The caller applies it to
+/// every occurrence's `InstanceMeta` (rep_identity := rigid_id, canonical_transform
+/// := C), then collates by the rigid id.
+///
+/// Runs over the ~distinct set (tens of thousands), NOT every occurrence, and off
+/// the streaming hot path — the architecture the inline attempt got wrong. A
+/// future optimisation shards `locals` by primary signature for rayon parallelism
+/// (congruent meshes share a signature bucket, so shards are independent).
+pub fn build_rigid_map(locals: &[(u128, Mesh)]) -> std::collections::HashMap<u128, RigidClass> {
+    let mut cache = RigidCache::new();
+    let mut map = std::collections::HashMap::with_capacity(locals.len());
+    for (exact_rep, mesh) in locals {
+        if let Some(cls) = cache.classify(mesh, *exact_rep) {
+            map.insert(*exact_rep, cls);
+        }
+    }
+    map
 }
 
 // ----------------------------------------------------------------------------
@@ -1146,6 +1169,23 @@ mod tests {
         }
         let t2 = cache.classify(&scaled, 300).unwrap();
         assert_eq!(t2.rigid_id, 300, "non-congruent shape is a new template");
+    }
+
+    #[test]
+    fn build_rigid_map_groups_distinct_locals() {
+        let rot = rotate(&tetra(), Vector3::new(0.4, 1.0, 0.2), 1.3);
+        let mut scaled = tetra();
+        for v in scaled.positions.iter_mut() {
+            *v *= 1.7;
+        }
+        let locals = vec![(100u128, tetra()), (200u128, rot), (300u128, scaled)];
+        let map = build_rigid_map(&locals);
+        // 100 and 200 are congruent -> same rigid id; 300 is its own.
+        assert_eq!(map[&100].rigid_id, map[&200].rigid_id);
+        assert_ne!(map[&100].rigid_id, map[&300].rigid_id);
+        let distinct: std::collections::HashSet<u128> =
+            map.values().map(|c| c.rigid_id).collect();
+        assert_eq!(distinct.len(), 2, "3 exact locals -> 2 rigid templates");
     }
 
     #[test]

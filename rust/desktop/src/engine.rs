@@ -157,6 +157,33 @@ pub fn stream_wire_batches(
         let locals = ifc_lite_geometry::congruence::take_locals();
         let occ_counts: std::collections::HashMap<u128, usize> =
             tally.groups.iter().map(|(&k, &(c, _))| (k, c)).collect();
+        // Production POST-PASS validation: build the exact->rigid map over the
+        // DISTINCT locals (the integration the inline attempt stalled on). Confirms
+        // it is fast (off the parallel hot path) and yields the same grouping.
+        let tmap = std::time::Instant::now();
+        let rigid_map = ifc_lite_geometry::congruence::build_rigid_map(&locals);
+        let distinct_rigid: std::collections::HashSet<u128> =
+            rigid_map.values().map(|c| c.rigid_id).collect();
+        let unmapped = locals.len() - rigid_map.len(); // un-weldable -> stay distinct
+        let occ_after: usize = {
+            // occurrences regrouped by rigid id (+ unmapped exact reps as-is)
+            let mut by_rigid: std::collections::HashMap<u128, usize> =
+                std::collections::HashMap::new();
+            for (exact, &cnt) in &occ_counts {
+                let rid = rigid_map.get(exact).map(|c| c.rigid_id).unwrap_or(*exact);
+                *by_rigid.entry(rid).or_insert(0) += cnt;
+            }
+            by_rigid.len()
+        };
+        eprintln!(
+            "[POST-PASS] exact_locals={} -> rigid_templates={} (+{} unmapped) | distinct reps {} -> {} | build {}ms",
+            locals.len(),
+            distinct_rigid.len(),
+            unmapped,
+            occ_counts.len(),
+            occ_after,
+            tmap.elapsed().as_millis(),
+        );
         let t0 = std::time::Instant::now();
         let report =
             ifc_lite_geometry::congruence::analyze_rigid_dedup(locals, &occ_counts, 0);

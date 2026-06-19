@@ -11,18 +11,28 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
+import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Library } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { QuantityType } from '@ifc-lite/data';
 import {
-  fetchClassInfo,
+  fetchClassInfoForDictionary,
+  discoverDictionaries,
   bsddDataTypeLabel,
+  IFC_DICTIONARY,
   type BsddClassInfo,
   type BsddClassProperty,
+  type BsddDictionary,
 } from '@/services/bsdd';
 import { toPropertyValueType, defaultValue } from './bsddInlineValue.js';
 
@@ -95,7 +105,12 @@ export function BsddCard({
   const [error, setError] = useState<string | null>(null);
   const [expandedPsets, setExpandedPsets] = useState<Set<string>>(new Set());
   const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
+  // Dictionaries that hold classes related to this IFC type (IFC first), used
+  // to populate the source-dictionary picker (issue #1219).
+  const [dictionaries, setDictionaries] = useState<BsddDictionary[]>([IFC_DICTIONARY]);
 
+  const bsddDictionary = useViewerStore((s) => s.bsddDictionary);
+  const setBsddDictionary = useViewerStore((s) => s.setBsddDictionary);
   const setProperty = useViewerStore((s) => s.setProperty);
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const setQuantity = useViewerStore((s) => s.setQuantity);
@@ -106,7 +121,31 @@ export function BsddCard({
   const setPropertiesActiveTab = useViewerStore((s) => s.setPropertiesActiveTab);
   const setPendingPropertyFocus = useViewerStore((s) => s.setPendingPropertyFocus);
 
-  // Fetch class info from bSDD when entity type changes
+  // Discover which dictionaries have classes related to this IFC type, so the
+  // picker can offer non-IFC bSDDs (Uniclass, ETIM, a company's own, …). Always
+  // keeps IFC as the first option even if discovery fails (issue #1219).
+  useEffect(() => {
+    let cancelled = false;
+    setDictionaries([IFC_DICTIONARY]);
+    if (!entityType) return;
+
+    discoverDictionaries(entityType).then(
+      (dicts) => {
+        if (cancelled) return;
+        setDictionaries(dicts.length > 0 ? dicts : [IFC_DICTIONARY]);
+      },
+      () => {
+        if (!cancelled) setDictionaries([IFC_DICTIONARY]);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [entityType]);
+
+  // Fetch class info from the selected dictionary when the entity type or the
+  // chosen dictionary changes.
   useEffect(() => {
     let cancelled = false;
     setClassInfo(null);
@@ -116,7 +155,7 @@ export function BsddCard({
     if (!entityType) return;
 
     setLoading(true);
-    fetchClassInfo(entityType).then(
+    fetchClassInfoForDictionary(entityType, bsddDictionary.uri).then(
       (info) => {
         if (cancelled) return;
         setLoading(false);
@@ -136,7 +175,7 @@ export function BsddCard({
     return () => {
       cancelled = true;
     };
-  }, [entityType]);
+  }, [entityType, bsddDictionary.uri]);
 
   // `addedKeys` tracks what was added to THIS element, so it must reset when the
   // selection moves to a different element — even one of the same IfcType, which
@@ -371,12 +410,56 @@ export function BsddCard({
     [addedKeys],
   );
 
+  const isIfcDict = bsddDictionary.uri === IFC_DICTIONARY.uri;
+
+  // The picker offers every discovered dictionary, plus the currently-selected
+  // one if it isn't related to *this* entity type (so the dropdown still shows
+  // the active choice rather than silently snapping to IFC).
+  const dictionaryOptions = useMemo(() => {
+    const opts = [...dictionaries];
+    if (!opts.some((d) => d.uri === bsddDictionary.uri)) {
+      opts.push(bsddDictionary);
+    }
+    return opts;
+  }, [dictionaries, bsddDictionary]);
+
+  const handleDictChange = useCallback(
+    (uri: string) => {
+      const next = dictionaryOptions.find((d) => d.uri === uri);
+      if (next) setBsddDictionary(next);
+    },
+    [dictionaryOptions, setBsddDictionary],
+  );
+
+  // Source-dictionary picker — always rendered above the body so users can
+  // switch bSDDs in any state (loading / error / empty / populated). Issue #1219.
+  const dictionarySelector = (
+    <div className="flex items-center gap-1.5 px-1 pb-2">
+      <Library className="h-3.5 w-3.5 text-sky-500 shrink-0" />
+      <Select value={bsddDictionary.uri} onValueChange={handleDictChange}>
+        <SelectTrigger className="h-7 text-xs flex-1 min-w-0" aria-label="bSDD source dictionary">
+          <SelectValue placeholder="Select dictionary" />
+        </SelectTrigger>
+        <SelectContent>
+          {dictionaryOptions.map((d) => (
+            <SelectItem key={d.uri} value={d.uri} className="text-xs">
+              {d.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
   // Loading state
   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-3 py-6 text-xs text-zinc-400">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        <span>Loading bSDD data for {entityType}...</span>
+      <div className="w-full min-w-0 overflow-hidden">
+        {dictionarySelector}
+        <div className="flex items-center gap-2 px-3 py-6 text-xs text-zinc-400">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span>Loading {bsddDictionary.name} data for {entityType}...</span>
+        </div>
       </div>
     );
   }
@@ -384,8 +467,11 @@ export function BsddCard({
   // Error state
   if (error) {
     return (
-      <div className="px-3 py-4 text-xs text-red-500/70">
-        <p>Could not load bSDD data: {error}</p>
+      <div className="w-full min-w-0 overflow-hidden">
+        {dictionarySelector}
+        <div className="px-3 py-4 text-xs text-red-500/70">
+          <p>Could not load bSDD data: {error}</p>
+        </div>
       </div>
     );
   }
@@ -393,15 +479,31 @@ export function BsddCard({
   // No data
   if (!classInfo || groupedProps.size === 0) {
     return (
-      <div className="flex flex-col items-center justify-center text-center px-4 py-8 text-xs text-zinc-400 gap-2">
-        <BookOpen className="h-6 w-6 text-zinc-300 dark:text-zinc-600" />
-        <p>No bSDD data available for <span className="font-mono font-medium">{entityType}</span></p>
+      <div className="w-full min-w-0 overflow-hidden">
+        {dictionarySelector}
+        <div className="flex flex-col items-center justify-center text-center px-4 py-8 text-xs text-zinc-400 gap-2">
+          <BookOpen className="h-6 w-6 text-zinc-300 dark:text-zinc-600" />
+          <p>
+            No <span className="font-medium">{bsddDictionary.name}</span> properties for{' '}
+            <span className="font-mono font-medium">{entityType}</span>
+          </p>
+          {!isIfcDict && (
+            <button
+              type="button"
+              onClick={() => setBsddDictionary(IFC_DICTIONARY)}
+              className="mt-1 text-sky-500 hover:text-sky-600 underline underline-offset-2"
+            >
+              Back to {IFC_DICTIONARY.name}
+            </button>
+          )}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-2 w-full min-w-0 overflow-hidden">
+      {dictionarySelector}
       {/* Header with class description */}
       {classInfo.definition && (
         <div className="px-1 pb-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
@@ -553,10 +655,19 @@ export function BsddCard({
         );
       })}
 
-      {/* Footer link */}
+      {/* Footer link — browse the active class on bSDD. For IFC we can build
+          the URL from the entity name; other dictionaries reuse the resolved
+          class URI (identifier → search host). */}
       <div className="flex items-center justify-center pt-1 pb-1">
         <a
-          href={`https://search.bsdd.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/${entityType}`}
+          href={
+            isIfcDict
+              ? `https://search.bsdd.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/${entityType}`
+              : classInfo.uri.replace(
+                  'identifier.buildingsmart.org',
+                  'search.bsdd.buildingsmart.org',
+                )
+          }
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1 text-[10px] text-sky-500/70 hover:text-sky-600 transition-colors"

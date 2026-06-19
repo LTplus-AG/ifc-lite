@@ -7,7 +7,8 @@
  */
 
 import type { StateCreator } from 'zustand';
-import { MERGE_LAYERS_STORAGE_KEY, UI_DEFAULTS } from '../constants.js';
+import { BSDD_DICTIONARY_STORAGE_KEY, MERGE_LAYERS_STORAGE_KEY, UI_DEFAULTS } from '../constants.js';
+import type { BsddDictionary } from '../../services/bsdd.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel } from '../types.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -85,6 +86,10 @@ export interface UISlice {
   /** One-shot "scroll to + highlight + edit this property" request, armed by
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;
+  /** The bSDD source dictionary the Properties → bSDD card reads property
+   *  definitions from. Lets users work against a non-IFC / their own bSDD.
+   *  Persisted to localStorage; default IFC 4.3 (issue #1219). */
+  bsddDictionary: BsddDictionary;
   theme: ThemeMode;
   isMobile: boolean;
   hoverTooltipsEnabled: boolean;
@@ -117,6 +122,8 @@ export interface UISlice {
   setPropertiesActiveTab: (tab: 'properties' | 'quantities' | 'bsdd' | 'raw-step') => void;
   /** Arm (or clear, with null) the one-shot property-focus request. */
   setPendingPropertyFocus: (focus: PropertyFocusTarget | null) => void;
+  /** Choose the bSDD source dictionary; persisted to localStorage. */
+  setBsddDictionary: (dict: BsddDictionary) => void;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
   /** Shift+click secret: toggle colorful mode on/off */
@@ -165,6 +172,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   editEnabled: false,
   propertiesActiveTab: 'properties',
   pendingPropertyFocus: null,
+  bsddDictionary: UI_DEFAULTS.BSDD_DICTIONARY,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
   hoverTooltipsEnabled: UI_DEFAULTS.HOVER_TOOLTIPS_ENABLED,
@@ -229,6 +237,18 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),
 
   setPendingPropertyFocus: (pendingPropertyFocus) => set({ pendingPropertyFocus }),
+
+  setBsddDictionary: (bsddDictionary) => {
+    // Persist eagerly so the choice (and its display name) survives a reload
+    // via `getInitialBsddDictionary` (constants.ts). Wrap in try/catch —
+    // Safari private mode / locked storage throws.
+    try {
+      localStorage.setItem(BSDD_DICTIONARY_STORAGE_KEY, JSON.stringify(bsddDictionary));
+    } catch {
+      /* storage unavailable — accept the in-memory choice silently */
+    }
+    set({ bsddDictionary });
+  },
 
   setTheme: (theme) => {
     applyThemeClasses(theme);

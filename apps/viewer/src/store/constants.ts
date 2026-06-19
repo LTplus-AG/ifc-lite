@@ -7,6 +7,7 @@
  */
 
 import type { TypeVisibility } from './types.js';
+import { IFC_DICTIONARY, type BsddDictionary } from '../services/bsdd.js';
 
 // ============================================================================
 // Camera Defaults
@@ -151,6 +152,34 @@ export function getGeomWorkerOverride(): number | undefined {
   return undefined;
 }
 
+/**
+ * localStorage key for the bSDD source-dictionary preference (issue #1219).
+ * Stores a JSON `{ uri, name }` so the friendly dictionary name survives a
+ * reload without re-querying the bSDD API. The chosen dictionary is the one
+ * the Properties → bSDD card reads property definitions from; default IFC 4.3.
+ */
+export const BSDD_DICTIONARY_STORAGE_KEY = 'ifc-lite-bsdd-dictionary';
+
+/**
+ * Resolve the persisted bSDD source dictionary, defaulting to IFC 4.3.
+ * A malformed or partial stored value falls back to the IFC default rather
+ * than throwing — the preference is non-critical UI state.
+ */
+function getInitialBsddDictionary(): BsddDictionary {
+  if (typeof window === 'undefined') return IFC_DICTIONARY;
+  try {
+    const raw = localStorage.getItem(BSDD_DICTIONARY_STORAGE_KEY);
+    if (!raw) return IFC_DICTIONARY;
+    const parsed = JSON.parse(raw) as Partial<BsddDictionary>;
+    if (parsed && typeof parsed.uri === 'string' && parsed.uri) {
+      return { uri: parsed.uri, name: parsed.name || parsed.uri };
+    }
+  } catch {
+    /* SSR / blocked storage / malformed JSON — use the IFC default */
+  }
+  return IFC_DICTIONARY;
+}
+
 export const UI_DEFAULTS = {
   /** Default active tool */
   ACTIVE_TOOL: 'select',
@@ -185,6 +214,12 @@ export const UI_DEFAULTS = {
    * reloads. Default `false` keeps existing per-layer rendering.
    */
   MERGE_LAYERS: getInitialMergeLayers(),
+  /**
+   * Issue #1219: the bSDD source dictionary the Properties → bSDD card reads
+   * property definitions from. Persisted so a user who works against their own
+   * (or a non-IFC) dictionary keeps that choice between sessions.
+   */
+  BSDD_DICTIONARY: getInitialBsddDictionary(),
 } as const;
 
 // ============================================================================

@@ -19,6 +19,17 @@ const BSDD_API = '/api/bsdd';
 const IFC_DICTIONARY_URI =
   'https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3';
 
+/**
+ * The buildingSMART IFC 4.3 dictionary — the default source the bSDD card
+ * reads property templates (Pset_* / Qto_*) and entity attributes from.
+ * Other dictionaries (Uniclass, ETIM, a company's own published bSDD, …)
+ * are discovered per entity type via {@link discoverDictionaries}.
+ */
+export const IFC_DICTIONARY: BsddDictionary = {
+  uri: IFC_DICTIONARY_URI,
+  name: 'IFC 4.3',
+};
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -65,6 +76,17 @@ export interface BsddSearchResult {
   name: string;
   definition: string | null;
   dictionaryUri: string;
+  /** Human-readable name of the dictionary this class belongs to */
+  dictionaryName: string;
+}
+
+/**
+ * A bSDD dictionary the user can read property definitions from.
+ * `uri` is the canonical dictionary identifier; `name` is for display.
+ */
+export interface BsddDictionary {
+  uri: string;
+  name: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,12 +190,12 @@ export async function fetchClassInfo(
   if (cached) return cached;
 
   try {
-    // Parameter names must be PascalCase per the bSDD OpenAPI spec
-    let raw: Record<string, unknown>;
+    // The IFC dictionary is keyed by class name, so we can address the class
+    // directly by URI. If that 404s (e.g. an unusual subtype name) fall back
+    // to a name search that resolves the canonical class URI.
+    let info: BsddClassInfo;
     try {
-      raw = await fetchJson<Record<string, unknown>>(
-        `${BSDD_API}/api/Class/v1?Uri=${encodeURIComponent(uri)}&IncludeClassProperties=true&IncludeClassRelations=true`,
-      );
+      info = await fetchClassDetail(uri, true);
     } catch {
       const fallbackUri = await resolveFallbackClassUri(ifcType);
       if (!fallbackUri || fallbackUri === uri) {
@@ -182,44 +204,7 @@ export async function fetchClassInfo(
       uri = fallbackUri;
       const fallbackCached = getCached(uri);
       if (fallbackCached) return fallbackCached;
-      raw = await fetchJson<Record<string, unknown>>(
-        `${BSDD_API}/api/Class/v1?Uri=${encodeURIComponent(uri)}&IncludeClassProperties=true&IncludeClassRelations=true`,
-      );
-    }
-
-    let info = mapClassResponse(raw, true);
-
-    // Fallback: if inline classProperties came back empty, try the
-    // dedicated paginated properties endpoint
-    if (info.classProperties.length === 0) {
-      const propsRaw = await fetchJson<Record<string, unknown>>(
-        `${BSDD_API}/api/Class/Properties/v1?ClassUri=${encodeURIComponent(uri)}`,
-      ).catch(() => null);
-
-      if (propsRaw) {
-        const propsList = propsRaw.classProperties as Array<Record<string, unknown>> | undefined;
-        if (propsList && propsList.length > 0) {
-          info = {
-            ...info,
-            classProperties: propsList.map((p) => ({
-              name: String(p.name ?? p.propertyCode ?? ''),
-              uri: String(p.propertyUri ?? p.uri ?? ''),
-              description: p.description ? String(p.description) : null,
-              dataType: p.dataType ? String(p.dataType) : null,
-              propertySet: p.propertySet ? String(p.propertySet) : null,
-              allowedValues: Array.isArray(p.allowedValues)
-                ? p.allowedValues.map((v: Record<string, unknown>) => ({
-                    uri: v.uri ? String(v.uri) : undefined,
-                    value: String(v.value ?? ''),
-                    description: v.description ? String(v.description) : undefined,
-                  }))
-                : null,
-              units: Array.isArray(p.units) ? (p.units as string[]) : null,
-              isIfcStandard: true,
-            })),
-          };
-        }
-      }
+      info = await fetchClassDetail(uri, true);
     }
 
     setCache(uri, info);
@@ -231,11 +216,72 @@ export async function fetchClassInfo(
 }
 
 /**
+ * Fetch a single class (with its properties) by full bSDD URI, regardless of
+ * which dictionary it belongs to. Throws on HTTP failure so callers can
+ * distinguish "missing" from "errored".
+ *
+ * `isIfcStandard` flags the resulting properties as coming from the IFC
+ * standard dictionary (drives the badge in the UI).
+ */
+async function fetchClassDetail(
+  uri: string,
+  isIfcStandard: boolean,
+): Promise<BsddClassInfo> {
+  // Parameter names must be PascalCase per the bSDD OpenAPI spec
+  const raw = await fetchJson<Record<string, unknown>>(
+    `${BSDD_API}/api/Class/v1?Uri=${encodeURIComponent(uri)}&IncludeClassProperties=true&IncludeClassRelations=true`,
+  );
+
+  let info = mapClassResponse(raw, isIfcStandard);
+
+  // Fallback: if inline classProperties came back empty, try the dedicated
+  // paginated properties endpoint. Network failures here are non-fatal — the
+  // primary call already succeeded, so keep the (property-less) result.
+  if (info.classProperties.length === 0) {
+    const propsRaw = await fetchJson<Record<string, unknown>>(
+      `${BSDD_API}/api/Class/Properties/v1?ClassUri=${encodeURIComponent(uri)}`,
+    ).catch(() => null);
+
+    if (propsRaw) {
+      const propsList = propsRaw.classProperties as Array<Record<string, unknown>> | undefined;
+      if (propsList && propsList.length > 0) {
+        info = {
+          ...info,
+          classProperties: propsList.map((p) => mapProperty(p, isIfcStandard)),
+        };
+      }
+    }
+  }
+
+  return info;
+}
+
+/**
+ * Fetch full class info (including properties) by full bSDD class URI.
+ * Used for non-IFC dictionaries (Uniclass, ETIM, a company's own bSDD, …)
+ * where classes are addressed by URI rather than by IFC type name.
+ */
+export async function fetchClassByUri(
+  classUri: string,
+  isIfcStandard = false,
+): Promise<BsddClassInfo | null> {
+  const cached = getCached(classUri);
+  if (cached) return cached;
+  try {
+    const info = await fetchClassDetail(classUri, isIfcStandard);
+    setCache(classUri, info);
+    return info;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Search bSDD for classes related to a given IFC entity type across all
  * dictionaries (not just the IFC dictionary).
  *
  * Uses `/api/Class/Search/v1` with a RelatedIfcEntities filter.
- * Returns lightweight results. Call `fetchClassInfo` on a specific result
+ * Returns lightweight results. Call `fetchClassByUri` on a specific result
  * to get full properties.
  */
 export async function searchRelatedClasses(
@@ -249,19 +295,136 @@ export async function searchRelatedClasses(
     );
     return (raw.classes ?? []).map((c) => ({
       uri: String(c.uri ?? ''),
-      code: String(c.code ?? c.name ?? ''),
+      code: String(c.code ?? c.referenceCode ?? c.name ?? ''),
       name: String(c.name ?? ''),
       definition: c.definition ? String(c.definition) : null,
       dictionaryUri: String(c.dictionaryUri ?? ''),
+      dictionaryName: String(c.dictionaryName ?? c.dictionaryUri ?? ''),
     }));
   } catch {
     return [];
   }
 }
 
+/**
+ * Discover which dictionaries hold classes related to an IFC entity type.
+ *
+ * The IFC dictionary is always offered first (it is the implicit default and
+ * the only one addressed by class name). The rest are derived from the
+ * RelatedIfcEntities search — these are the "other bSDDs" (Uniclass, ETIM, a
+ * company's own published dictionary, …) a user can switch the card to.
+ *
+ * Returned dictionaries are de-duplicated by URI and sorted by name, IFC first.
+ */
+export async function discoverDictionaries(
+  ifcType: string,
+): Promise<BsddDictionary[]> {
+  const related = await searchRelatedClasses(ifcType);
+  const byUri = new Map<string, BsddDictionary>();
+  for (const c of related) {
+    if (!c.dictionaryUri || c.dictionaryUri === IFC_DICTIONARY_URI) continue;
+    if (!byUri.has(c.dictionaryUri)) {
+      byUri.set(c.dictionaryUri, {
+        uri: c.dictionaryUri,
+        name: c.dictionaryName || c.dictionaryUri,
+      });
+    }
+  }
+  const others = Array.from(byUri.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  return [IFC_DICTIONARY, ...others];
+}
+
+/**
+ * Fetch class info for an IFC entity type from a chosen dictionary.
+ *
+ * For the IFC dictionary this is the standard {@link fetchClassInfo} path.
+ * For any other dictionary, the entity type has no class-by-name URI, so we
+ * find the dictionary's class(es) that declare `RelatedIfcEntities = ifcType`,
+ * fetch each one's properties, and merge them into a single result (a
+ * dictionary may map several of its classes onto the same IFC entity).
+ *
+ * Returns null when the dictionary has no related class for this type, or
+ * when none of the related classes carry any properties.
+ */
+export async function fetchClassInfoForDictionary(
+  ifcType: string,
+  dictionaryUri: string,
+): Promise<BsddClassInfo | null> {
+  if (!dictionaryUri || dictionaryUri === IFC_DICTIONARY_URI) {
+    return fetchClassInfo(ifcType);
+  }
+
+  const cacheKey = `${dictionaryUri}::${ifcType}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  const related = await searchRelatedClasses(ifcType);
+  const inDict = related.filter((c) => c.dictionaryUri === dictionaryUri && c.uri);
+  if (inDict.length === 0) return null;
+
+  const details = await Promise.all(
+    inDict.map((c) => fetchClassByUri(c.uri, false)),
+  );
+
+  // Merge every related class's properties into one view, de-duplicating by
+  // "propertySet:name" so a property shared across the dictionary's classes
+  // is only offered once.
+  const seen = new Set<string>();
+  const merged: BsddClassProperty[] = [];
+  for (const detail of details) {
+    if (!detail) continue;
+    for (const prop of detail.classProperties) {
+      const key = `${prop.propertySet ?? ''}:${prop.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(prop);
+    }
+  }
+
+  if (merged.length === 0) return null;
+
+  const primary = inDict[0];
+  const info: BsddClassInfo = {
+    uri: primary.uri,
+    code: primary.code,
+    name: primary.name,
+    definition: details.find((d) => d?.definition)?.definition ?? primary.definition,
+    parentClassUri: null,
+    classProperties: merged,
+    relatedIfcEntityNames: [ifcType],
+  };
+
+  setCache(cacheKey, info);
+  return info;
+}
+
 // ---------------------------------------------------------------------------
 // Response mapping
 // ---------------------------------------------------------------------------
+
+function mapProperty(
+  p: Record<string, unknown>,
+  isIfcStandard: boolean,
+): BsddClassProperty {
+  return {
+    name: String(p.name ?? p.propertyCode ?? ''),
+    uri: String(p.propertyUri ?? p.uri ?? ''),
+    description: p.description ? String(p.description) : null,
+    dataType: p.dataType ? String(p.dataType) : null,
+    propertySet: p.propertySet ? String(p.propertySet) : null,
+    allowedValues: Array.isArray(p.allowedValues)
+      ? p.allowedValues.map((v: Record<string, unknown>) => ({
+          uri: v.uri ? String(v.uri) : undefined,
+          value: String(v.value ?? ''),
+          description: v.description ? String(v.description) : undefined,
+        }))
+      : null,
+    units: Array.isArray(p.units) ? (p.units as string[]) : null,
+    isIfcStandard,
+  };
+}
 
 function mapClassResponse(
   raw: Record<string, unknown>,
@@ -278,22 +441,7 @@ function mapClassResponse(
       ? String((raw.parentClassReference as Record<string, unknown>).uri ?? '')
       : null,
     relatedIfcEntityNames: raw.relatedIfcEntityNames as string[] | null,
-    classProperties: (props ?? []).map((p) => ({
-      name: String(p.name ?? p.propertyCode ?? ''),
-      uri: String(p.propertyUri ?? p.uri ?? ''),
-      description: p.description ? String(p.description) : null,
-      dataType: p.dataType ? String(p.dataType) : null,
-      propertySet: p.propertySet ? String(p.propertySet) : null,
-      allowedValues: Array.isArray(p.allowedValues)
-        ? p.allowedValues.map((v: Record<string, unknown>) => ({
-            uri: v.uri ? String(v.uri) : undefined,
-            value: String(v.value ?? ''),
-            description: v.description ? String(v.description) : undefined,
-          }))
-        : null,
-      units: Array.isArray(p.units) ? (p.units as string[]) : null,
-      isIfcStandard,
-    })),
+    classProperties: (props ?? []).map((p) => mapProperty(p, isIfcStandard)),
   };
 }
 

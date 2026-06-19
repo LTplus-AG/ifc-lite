@@ -35,6 +35,15 @@ export { CoordinateHandler } from './coordinate-handler.js';
 export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
+export {
+  decodeInstancedShard,
+  isInstancedShard,
+  INSTANCED_SHARD_MAGIC,
+  INSTANCED_SHARD_VERSION,
+  type DecodedInstancedShard,
+  type DecodedInstancedTemplate,
+  type DecodedInstance,
+} from './packed-instanced-decoder.js';
 
 export * from './types.js';
 

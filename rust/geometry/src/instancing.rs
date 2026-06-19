@@ -661,6 +661,40 @@ mod tests {
         }
     }
 
+    /// Dumps a deterministic instanced-shard fixture as hex for the cross-language
+    /// TS conformance test (packed-instanced-decoder.test.ts). Run on demand:
+    /// `cargo test -p ifc-lite-geometry --lib dump_instanced_fixture -- --ignored --nocapture`
+    /// then paste the hex into the TS fixture. Pure-translation transforms keep
+    /// the expected world geometry trivially checkable on both sides.
+    #[test]
+    #[ignore]
+    fn dump_instanced_fixture() {
+        let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+        let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+        let m2 = Matrix4::new_translation(&nalgebra::Vector3::new(5.0, 5.0, 5.0));
+        let mk = |m: &Matrix4<f64>, rep: u128| {
+            mesh_from(
+                baked(&CANON, m),
+                InstanceMeta {
+                    transform: mat_rm(m),
+                    local_transform: None,
+                    canonical_transform: None,
+                    rep_identity: rep,
+                    instanceable: true,
+                },
+            )
+        };
+        let meshes = vec![mk(&m0, 50), mk(&m1, 50), mk(&m2, 60)];
+        let collated = collate_instances(&meshes, 2);
+        let bytes = encode_instanced(&meshes, &collated, |i| (1000 + i) as u32, |i| {
+            [i as f32 * 0.1, 0.2, 0.3, 1.0]
+        });
+        let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        println!("INSTANCED_FIXTURE_HEX_BEGIN");
+        println!("{hex}");
+        println!("INSTANCED_FIXTURE_HEX_END");
+    }
+
     #[test]
     fn decode_rejects_bad_magic() {
         assert!(decode_instanced(&[0u8; 32]).is_none());

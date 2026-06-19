@@ -4,6 +4,7 @@
 
 //! Mesh data types for serialization.
 
+use ifc_lite_geometry::InstanceMeta;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -79,6 +80,13 @@ pub struct MeshData {
     /// and local meshes serialize byte-identically.
     #[serde(default, skip_serializing_if = "origin_is_zero")]
     pub origin: [f64; 3],
+    /// GPU-instancing metadata (rep-identity + per-occurrence world transform),
+    /// attached only when `IFC_LITE_INSTANCING` is on and the element is a clean
+    /// single-item mapped instance. Purely in-memory for the native streaming
+    /// path — `#[serde(skip)]` because instancing is recomputed fresh each load
+    /// and never round-trips through the JSON/disk cache.
+    #[serde(skip)]
+    pub instance: Option<InstanceMeta>,
 }
 
 fn geometry_class_is_occurrence(class: &u8) -> bool {
@@ -116,7 +124,14 @@ impl MeshData {
             texture: None,
             geometry_class: 0,
             origin: [0.0; 3],
+            instance: None,
         }
+    }
+
+    /// Attach GPU-instancing metadata (see the `instance` field).
+    pub fn with_instance(mut self, instance: Option<InstanceMeta>) -> Self {
+        self.instance = instance;
+        self
     }
 
     /// Tag the geometry's provenance for the Model/Types view switch (#957).

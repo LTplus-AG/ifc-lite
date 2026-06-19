@@ -1,0 +1,167 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * GPU-instancing render prep — CPU side.
+ *
+ * Turns a decoded IFNS shard (one per geometry batch — see
+ * `processGeometryBatchInstanced` / `decodeInstancedShard`) into render-ready
+ * templates: each unique geometry is uploaded ONCE as a vertex/index buffer, and
+ * its occurrences become a per-instance buffer (`stepMode: 'instance'`) of
+ * transform + entityId + colour, drawn with `drawIndexed(indexCount,
+ * instanceCount)`.
+ *
+ * FRAME: the shard is in the producer-native IFC Z-up frame (templates carry a
+ * local origin; per-instance transforms are native `rel_k`). The renderer draws
+ * WebGL Y-up world space. We fold the SAME constant Z-up→Y-up swap that
+ * `MeshDataJs::new` bakes into the flat path into each per-instance matrix:
+ *
+ *     instMat = SWAP · rel_k · T(origin_t)
+ *
+ * applied to the template's LOCAL vertex `p_t` (stored relative to `origin_t`),
+ * so `instMat · p_t = swap(rel_k · (origin_t + p_t)) = swap(origin_k + p_k)` —
+ * exactly the world coordinate the flat path produces for occurrence k. Because
+ * the swap is linear and the native-frame recomposition is already verified in
+ * Rust (`verify_recomposition`), this lands instanced + flat geometry in one
+ * frame. (See instanced-render.test.ts for the GPU-free proof.)
+ *
+ * PRECISION: the per-instance matrix is f32, so its translation jitters at
+ * national-grid magnitudes (the f32-collapse the local-frame work targets). Fine
+ * for building-local models; an IFNS v2 with an f64 per-instance origin is the
+ * path for georef-scale.
+ */
+
+import { MathUtils } from './math.js';
+import type { Mat4 } from './types.js';
+import type { DecodedInstancedShard, DecodedInstance } from '@ifc-lite/geometry';
+
+/**
+ * Constant IFC Z-up → WebGL Y-up swap `(x, y, z) → (x, z, -y)`, column-major
+ * (MathUtils / WGSL convention). Identical to the swap `MeshDataJs::new` applies
+ * to the flat path, so instanced geometry shares the flat frame exactly.
+ */
+export const SWAP_ZUP_TO_YUP: Mat4 = {
+  // column c, row r at index c*4+r:
+  //   out.x = x, out.y = z, out.z = -y
+  m: new Float32Array([
+    1, 0, 0, 0, // col0 → (x, 0, 0)
+    0, 0, -1, 0, // col1 → (0, 0, -y)
+    0, 1, 0, 0, // col2 → (0, z, 0)
+    0, 0, 0, 1, // col3 (translation)
+  ]),
+};
+
+/** Bytes per instance in the GPU instance buffer: mat4 (64) + entityId (4) + rgba (16). */
+export const INSTANCE_STRIDE_BYTES = 84;
+
+/** Transpose a row-major mat4 (the IFNS / `DecodedInstance.transform` convention)
+ *  into a column-major `Mat4` (MathUtils / WGSL convention). */
+function rowMajorToColMajor(rm: Float32Array): Mat4 {
+  const m = new Float32Array(16);
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      m[c * 4 + r] = rm[r * 4 + c];
+    }
+  }
+  return { m };
+}
+
+/**
+ * Compose the per-occurrence render matrix `SWAP · rel_k · T(origin)` that maps a
+ * template's LOCAL vertex (relative to `origin`, native IFC frame) into WebGL
+ * Y-up world space. Returns a column-major 16-float array; the renderer feeds its
+ * four columns as vec4 vertex attributes (@location 3..6) and the shader computes
+ * `worldPos = instMat * vec4(position, 1.0)`.
+ */
+export function composeInstanceMatrix(
+  transformRowMajor: Float32Array,
+  origin: readonly [number, number, number],
+): Float32Array {
+  const relK = rowMajorToColMajor(transformRowMajor);
+  const t = MathUtils.identity();
+  t.m[12] = origin[0];
+  t.m[13] = origin[1];
+  t.m[14] = origin[2];
+  // SWAP · (rel_k · T(origin))
+  const instMat = MathUtils.multiply(SWAP_ZUP_TO_YUP, MathUtils.multiply(relK, t));
+  return instMat.m;
+}
+
+/** A unique template + the interleaved per-instance buffer for its occurrences. */
+export interface InstancedRenderTemplate {
+  /** Index of this template within its source shard (diagnostic only). */
+  templateIndex: number;
+  /** Template geometry, LOCAL to `origin`, native IFC frame (uploaded once). */
+  positions: Float32Array;
+  normals: Float32Array;
+  indices: Uint32Array;
+  /** Template local origin (f64), folded into each instance matrix. */
+  origin: [number, number, number];
+  /** Interleaved instance data: per occurrence mat4(64B) + entityId(4B) + rgba(16B). */
+  instanceBuffer: ArrayBuffer;
+  /** Number of occurrences (the `instanceCount` for drawIndexed). */
+  instanceCount: number;
+}
+
+/**
+ * Write one occurrence's interleaved record (mat4 column-major + entityId + rgba)
+ * into `dv` at `byteOffset`. Little-endian to match the GPU buffer + the IFNS
+ * decoder. Exposed for the unit test.
+ */
+export function writeInstanceRecord(
+  dv: DataView,
+  byteOffset: number,
+  instanceMatrix: Float32Array,
+  entityId: number,
+  color: readonly [number, number, number, number],
+): void {
+  for (let j = 0; j < 16; j++) {
+    dv.setFloat32(byteOffset + j * 4, instanceMatrix[j], true);
+  }
+  dv.setUint32(byteOffset + 64, entityId >>> 0, true);
+  for (let j = 0; j < 4; j++) {
+    dv.setFloat32(byteOffset + 68 + j * 4, color[j], true);
+  }
+}
+
+/**
+ * Turn a decoded IFNS shard into render-ready templates. Each template's
+ * occurrences are grouped and their `SWAP · rel_k · T(origin)` matrices +
+ * entityId + colour packed into one interleaved instance buffer. Templates with
+ * zero occurrences are skipped (encode always emits ≥1, but be defensive).
+ */
+export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedRenderTemplate[] {
+  const byTemplate: DecodedInstance[][] = shard.templates.map(() => []);
+  for (const inst of shard.instances) {
+    const bucket = byTemplate[inst.templateIndex];
+    // Defensive: a corrupt templateIndex would otherwise throw; drop it loudly-safe.
+    if (bucket) bucket.push(inst);
+  }
+
+  const out: InstancedRenderTemplate[] = [];
+  for (let t = 0; t < shard.templates.length; t++) {
+    const tmpl = shard.templates[t];
+    const insts = byTemplate[t];
+    if (!insts || insts.length === 0) continue;
+
+    const buffer = new ArrayBuffer(insts.length * INSTANCE_STRIDE_BYTES);
+    const dv = new DataView(buffer);
+    for (let i = 0; i < insts.length; i++) {
+      const inst = insts[i];
+      const mat = composeInstanceMatrix(inst.transform, tmpl.origin);
+      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color);
+    }
+
+    out.push({
+      templateIndex: t,
+      positions: tmpl.positions,
+      normals: tmpl.normals,
+      indices: tmpl.indices,
+      origin: tmpl.origin,
+      instanceBuffer: buffer,
+      instanceCount: insts.length,
+    });
+  }
+  return out;
+}

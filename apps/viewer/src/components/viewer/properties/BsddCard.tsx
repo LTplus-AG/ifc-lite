@@ -10,7 +10,7 @@
  * properties to the element in one click.
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef, type UIEvent } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, type UIEvent } from 'react';
 import { BookOpen, Plus, Check, Loader2, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Library, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -126,6 +126,12 @@ export function BsddCard({
   // Monotonic token: every reset/filter bumps it so a slow in-flight page that
   // resolves after the dictionary/filter changed is discarded, not appended.
   const classReqRef = useRef(0);
+  // The class list grows to fill the panel's remaining height (the Radix
+  // ScrollArea wraps content in a `display:table` div, so flexbox can't size it
+  // — we measure instead). Browse mode only; a picked class uses a compact list
+  // so its properties get room below.
+  const classListRef = useRef<HTMLDivElement | null>(null);
+  const [classListMaxH, setClassListMaxH] = useState<number | undefined>(undefined);
 
   const bsddDictionary = useViewerStore((s) => s.bsddDictionary);
   const setBsddDictionary = useViewerStore((s) => s.setBsddDictionary);
@@ -286,6 +292,33 @@ export function BsddCard({
   useEffect(() => () => {
     if (classSearchTimer.current) clearTimeout(classSearchTimer.current);
   }, []);
+
+  // Size the browse list to the space between its top and the bottom of the
+  // scroll viewport (falling back to the window), so it fills the panel instead
+  // of being a short fixed box. Re-measures on panel/window resize.
+  useLayoutEffect(() => {
+    if (isIfcDict || selectedClass) {
+      setClassListMaxH(undefined);
+      return;
+    }
+    const el = classListRef.current;
+    if (!el) return;
+    const viewport = el.closest('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+    const measure = () => {
+      const top = el.getBoundingClientRect().top;
+      const bottom = viewport ? viewport.getBoundingClientRect().bottom : window.innerHeight;
+      // Leave room for the "Showing N of M" status line + a little breathing room.
+      setClassListMaxH(Math.max(160, Math.floor(bottom - top - 28)));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (viewport) ro.observe(viewport);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [isIfcDict, selectedClass]);
 
   // `addedKeys` tracks what was added to THIS element, so it must reset when the
   // selection moves to a different element — even one of the same IfcType, which
@@ -576,8 +609,12 @@ export function BsddCard({
         />
       </div>
       <div
+        ref={classListRef}
         onScroll={onClassListScroll}
-        className="max-h-52 overflow-y-auto rounded-md border border-sky-200/60 dark:border-sky-800/40 divide-y divide-sky-100/70 dark:divide-sky-900/30"
+        style={selectedClass ? undefined : { maxHeight: classListMaxH }}
+        className={`overflow-y-auto rounded-md border border-sky-200/60 dark:border-sky-800/40 divide-y divide-sky-100/70 dark:divide-sky-900/30 ${
+          selectedClass ? 'max-h-44' : ''
+        }`}
       >
         {classItems.map((c) => {
           const isSel = selectedClass?.uri === c.uri;

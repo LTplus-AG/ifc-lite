@@ -25,14 +25,13 @@ import {
   Palette,
   Crosshair,
   Puzzle,
-  Terminal,
-  CalendarRange,
-  Table2,
   type LucideIcon,
 } from 'lucide-react';
 
 /** Panels that participate in the sidebar / switching / floating / pop-out.
- *  `properties` is the Information panel (the sidebar's default fallback). */
+ *  `properties` is the Information panel (the sidebar's default fallback).
+ *  NOTE: Script / Schedule (Gantt) / Lists intentionally live in the BOTTOM
+ *  panel (not the sidebar) — they need width and pair with the viewport. */
 export type WorkspacePanelId =
   | 'properties'
   | 'compare'
@@ -40,10 +39,7 @@ export type WorkspacePanelId =
   | 'ids'
   | 'lens'
   | 'clash'
-  | 'extensions'
-  | 'script'
-  | 'gantt'
-  | 'lists';
+  | 'extensions';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'inspect' | 'review' | 'author';
@@ -57,7 +53,7 @@ export interface WorkspacePanelDef {
   Icon: LucideIcon;
   /** Activity-bar group used to cluster icons with dividers. */
   group: PanelGroup;
-  /** Code / table / timeline panels want a wider dock + bigger pop-out. */
+  /** Wider default pop-out / float size for content-heavy panels. */
   prefersWide?: boolean;
 }
 
@@ -70,10 +66,6 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   { id: 'lens', title: 'Lens rules', short: 'Lens', Icon: Palette, group: 'review' },
   { id: 'clash', title: 'Clash detection', short: 'Clash', Icon: Crosshair, group: 'review' },
   { id: 'extensions', title: 'Extensions', short: 'Extensions', Icon: Puzzle, group: 'author' },
-  // Alt+8..10 — formerly bottom-strip only, now first-class sidebar panels (#1208 follow-up).
-  { id: 'script', title: 'Script editor', short: 'Script', Icon: Terminal, group: 'author', prefersWide: true },
-  { id: 'gantt', title: 'Construction schedule', short: 'Schedule', Icon: CalendarRange, group: 'author', prefersWide: true },
-  { id: 'lists', title: 'Entity lists', short: 'Lists', Icon: Table2, group: 'author', prefersWide: true },
 ];
 
 const PANEL_BY_ID = new Map<WorkspacePanelId, WorkspacePanelDef>(WORKSPACE_PANELS.map((p) => [p.id, p]));

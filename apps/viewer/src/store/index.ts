@@ -37,7 +37,7 @@ import { createClashSlice, type ClashSlice } from './slices/clashSlice.js';
 import { createCompareSlice, type CompareSlice } from './slices/compareSlice.js';
 import { createDockSlice, type DockSlice } from './slices/dockSlice.js';
 import { createSidebarSlice, type SidebarSlice } from './slices/sidebarSlice.js';
-import { WORKSPACE_PANELS, type WorkspacePanelId } from '@/lib/panels/registry';
+import { type WorkspacePanelId } from '@/lib/panels/registry';
 import { createScriptSlice, type ScriptSlice } from './slices/scriptSlice.js';
 import { createChatSlice, type ChatSlice } from './slices/chatSlice.js';
 import { createCesiumSlice, type CesiumSlice } from './slices/cesiumSlice.js';
@@ -521,9 +521,6 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       clashPanelVisible: panel === 'clash',
       comparePanelVisible: panel === 'compare',
       extensionsPanelVisible: panel === 'extensions',
-      scriptPanelVisible: panel === 'script',
-      ganttPanelVisible: panel === 'gantt',
-      listPanelVisible: panel === 'lists',
       rightPanelCollapsed: false,
     });
     if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
@@ -544,9 +541,6 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         clashPanelVisible: false,
         comparePanelVisible: false,
         extensionsPanelVisible: false,
-        scriptPanelVisible: false,
-        ganttPanelVisible: false,
-        listPanelVisible: false,
         rightPanelCollapsed: false,
       });
       get().setSidebarActivePanel('properties');
@@ -575,9 +569,10 @@ const globalStoreRegistry = globalThis as typeof globalThis & {
 };
 
 /**
- * The nine per-panel visibility flags that drive the single-tenant sidebar,
+ * The six per-panel visibility flags that drive the single-tenant sidebar,
  * paired with their registry id. `properties` has no flag — it is the
- * fallback shown when none of these are on.
+ * fallback shown when none of these are on. (Script / Schedule / Lists are
+ * NOT here: they live in the bottom panel and stay independent.)
  */
 const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspacePanelId]> = [
   ['bcfPanelVisible', 'bcf'],
@@ -586,9 +581,6 @@ const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspaceP
   ['clashPanelVisible', 'clash'],
   ['comparePanelVisible', 'compare'],
   ['extensionsPanelVisible', 'extensions'],
-  ['scriptPanelVisible', 'script'],
-  ['ganttPanelVisible', 'gantt'],
-  ['listPanelVisible', 'lists'],
 ];
 
 /**

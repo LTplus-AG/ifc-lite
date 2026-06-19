@@ -534,9 +534,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeAnalysisExtension?.placement === 'bottom') {
       closeActiveAnalysisExtension();
     }
-    // Re-dock / close any popped-out OS window for this panel so the toolbar
-    // checkbox and the window channel never disagree (#1208).
-    closePanelWindow(panel === 'list' ? 'lists' : panel);
     const nextScriptVisible = panel === 'script' ? !scriptPanelVisible : false;
     const nextListVisible = panel === 'list' ? !listPanelVisible : false;
     const nextGanttVisible = panel === 'gantt' ? !ganttPanelVisible : false;

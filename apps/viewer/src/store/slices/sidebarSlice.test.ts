@@ -66,10 +66,10 @@ describe('sidebarSlice (#1208)', () => {
 
   it('tracks popped-out panels idempotently', () => {
     const s = make();
-    s.getState().setPanelPoppedOut('script', true);
-    s.getState().setPanelPoppedOut('script', true);
-    assert.deepStrictEqual(s.getState().poppedOutIds, ['script']);
-    s.getState().setPanelPoppedOut('script', false);
+    s.getState().setPanelPoppedOut('clash', true);
+    s.getState().setPanelPoppedOut('clash', true);
+    assert.deepStrictEqual(s.getState().poppedOutIds, ['clash']);
+    s.getState().setPanelPoppedOut('clash', false);
     assert.deepStrictEqual(s.getState().poppedOutIds, []);
   });
 
@@ -78,7 +78,7 @@ describe('sidebarSlice (#1208)', () => {
     s.getState().setSidebarMode('collapsed');
     s.getState().setSidebarWidthPct(33);
     s.getState().setPanelShownInSidebar('ids', false);
-    s.getState().reorderSidebarPanel('lists', 0);
+    s.getState().reorderSidebarPanel('extensions', 0);
     const snap = s.getState().serializeSidebarLayout();
 
     const s2 = make();
@@ -86,7 +86,7 @@ describe('sidebarSlice (#1208)', () => {
     assert.strictEqual(s2.getState().sidebarMode, 'collapsed');
     assert.strictEqual(Math.round(s2.getState().sidebarWidthPct), 33);
     assert.ok(s2.getState().sidebarHiddenIds.includes('ids'));
-    assert.strictEqual(s2.getState().sidebarOrder[0], 'lists');
+    assert.strictEqual(s2.getState().sidebarOrder[0], 'extensions');
   });
 
   it('applySidebarLayout tolerates garbage: bad mode/width fall back, order is normalized', () => {
@@ -111,7 +111,7 @@ describe('sidebarSlice (#1208)', () => {
     const s = make();
     s.getState().setSidebarMode('collapsed');
     s.getState().setPanelShownInSidebar('bcf', false);
-    s.getState().reorderSidebarPanel('lists', 0);
+    s.getState().reorderSidebarPanel('extensions', 0);
     s.getState().resetSidebarLayout();
     assert.strictEqual(s.getState().sidebarMode, 'expanded');
     assert.deepStrictEqual(s.getState().sidebarHiddenIds, []);

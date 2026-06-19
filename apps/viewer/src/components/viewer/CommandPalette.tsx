@@ -215,9 +215,26 @@ function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' 
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
 
+/** Bottom panel (Script / List / Gantt) — mutually exclusive in the bottom
+ *  strip, independent of the sidebar. Toggling the active one closes it. */
 function activateBottomPanel(panel: 'script' | 'list' | 'gantt') {
+  const s = useViewerStore.getState();
+  const isActive =
+    panel === 'script' ? s.scriptPanelVisible
+    : panel === 'list' ? s.listPanelVisible
+    : s.ganttPanelVisible;
+
   closeActiveAnalysisExtension();
-  useViewerStore.getState().toggleWorkspacePanel(panel === 'list' ? 'lists' : panel);
+  s.setScriptPanelVisible(false);
+  s.setListPanelVisible(false);
+  s.setGanttPanelVisible(false);
+
+  if (!isActive) {
+    s.setRightPanelCollapsed(false);
+    if (panel === 'script') s.setScriptPanelVisible(true);
+    else if (panel === 'list') s.setListPanelVisible(true);
+    else s.setGanttPanelVisible(true);
+  }
 }
 
 // ── Component ──────────────────────────────────────────────────────────

@@ -334,9 +334,10 @@ export function ViewerLayout() {
               <SidebarDock />
             </div>
 
-            {/* Bottom Panel - bottom-placed analysis extensions only. Script /
-                Lists / Gantt are now first-class sidebar panels (#1208). */}
-            {!!activeBottomAnalysisExtension && (
+            {/* Bottom Panel - Lists / Script / Gantt / analysis ext (custom resizable).
+                These panels intentionally live here (not the sidebar): they need
+                width and pair with the viewport. */}
+            {(listPanelVisible || scriptPanelVisible || ganttPanelVisible || !!activeBottomAnalysisExtension) && (
               <div style={{ height: bottomHeight, flexShrink: 0 }} className="relative">
                 {/* Drag handle */}
                 <div
@@ -344,7 +345,15 @@ export function ViewerLayout() {
                   onMouseDown={handleResizeStart}
                 />
                 <div className="h-full w-full overflow-hidden border-t pt-1.5">
-                  {activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })}
+                  {activeBottomAnalysisExtension ? (
+                    activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
+                  ) : ganttPanelVisible ? (
+                    <GanttPanel onClose={() => setGanttPanelVisible(false)} />
+                  ) : scriptPanelVisible ? (
+                    <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
+                  ) : (
+                    <ListPanel onClose={() => setListPanelVisible(false)} />
+                  )}
                 </div>
               </div>
             )}

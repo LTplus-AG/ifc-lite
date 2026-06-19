@@ -56,9 +56,6 @@ function setDockedVisible(id: AnalysisPanelId, visible: boolean): void {
     case 'lens': s.setLensPanelVisible(visible); break;
     case 'clash': s.setClashPanelVisible(visible); break;
     case 'extensions': s.setExtensionsPanelVisible(visible); break;
-    case 'script': s.setScriptPanelVisible(visible); break;
-    case 'gantt': s.setGanttPanelVisible(visible); break;
-    case 'lists': s.setListPanelVisible(visible); break;
   }
 }
 

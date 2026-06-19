@@ -6,18 +6,18 @@
  * The viewer's right region (#1208): a VS Code-style activity bar + a
  * resizable docked content pane.
  *
- * Three modes (persisted in `sidebarSlice`):
+ * Two modes (persisted in `sidebarSlice`):
  *   - `expanded`  — content pane + activity bar (the content pane is resizable).
  *   - `collapsed` — activity bar only (icons); clicking an icon re-expands.
- *   - `hidden`    — the whole region is gone; a slim reveal tab brings it back.
  *
- * The content pane width is stored as a % of the main row so it survives
- * reloads and travels with a Flavor; while dragging we hold a local % to avoid
- * writing localStorage on every mouse move.
+ * The activity-bar rail is ALWAYS visible — it is the always-available entry
+ * point to every panel, so there is no "fully hidden" state. The content pane
+ * width is stored as a % of the main row so it survives reloads and travels
+ * with a Flavor; while dragging we hold a local % to avoid writing localStorage
+ * on every mouse move.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PanelLeftOpen } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { ActivityBar } from './ActivityBar';
 import { SidebarPanelHost } from './SidebarPanelHost';
@@ -28,7 +28,6 @@ export function SidebarDock() {
   const mode = useViewerStore((s) => s.sidebarMode);
   const widthPct = useViewerStore((s) => s.sidebarWidthPct);
   const setSidebarWidthPct = useViewerStore((s) => s.setSidebarWidthPct);
-  const setSidebarMode = useViewerStore((s) => s.setSidebarMode);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const [rowWidth, setRowWidth] = useState(0);
@@ -75,24 +74,6 @@ export function SidebarDock() {
     },
     [setSidebarWidthPct],
   );
-
-  // Hidden — render only a slim reveal tab pinned to the right edge.
-  if (mode === 'hidden') {
-    return (
-      <button
-        type="button"
-        onClick={() => setSidebarMode('expanded')}
-        title="Show sidebar"
-        aria-label="Show sidebar"
-        className="group shrink-0 h-full w-6 flex flex-col items-center justify-center gap-2 border-l border-border bg-background hover:bg-muted transition-colors"
-      >
-        <PanelLeftOpen className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
-        <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground [writing-mode:vertical-rl] rotate-180">
-          Panels
-        </span>
-      </button>
-    );
-  }
 
   const effectivePct = dragPct ?? widthPct;
   const contentPx = rowWidth > 0 ? Math.round((rowWidth * effectivePct) / 100) : undefined;

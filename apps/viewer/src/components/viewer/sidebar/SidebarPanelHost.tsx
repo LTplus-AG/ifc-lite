@@ -5,20 +5,24 @@
 /**
  * The docked sidebar's content pane (#1208).
  *
- * Renders the single active workspace panel. Each panel already ships its own
- * header (title + close), so the sidebar adds only a slim, title-less
- * "detach controls" strip (float / pop-out / collapse) above panels that can
- * detach — no duplicate titles or close buttons. The render precedence
- * preserves the pre-existing right-slot behavior:
+ * Renders the single active workspace panel. Each panel ships its own header
+ * (title + close), so the sidebar adds only a slim **grab bar**: a dot-grid
+ * grip you drag to detach the panel — release inside to float it (#1201),
+ * release past the window edge to pop it onto another screen (#1208) — plus a
+ * chevron that collapses the pane to the rail. (Keyboard-accessible
+ * Float / Pop-out live in the activity-bar ⋯ menu, since drag is mouse-only.)
+ *
+ * Render precedence preserves the pre-existing right-slot behavior:
  *   right-placed analysis extension → Add Element tool → active panel → Information.
- * A panel that is currently floating (#1201) or popped out (#1208) is skipped
- * here so it isn't rendered twice.
+ * A panel that is floating (#1201) or popped out (#1208) is skipped here so it
+ * isn't rendered twice.
  */
 
-import { useSyncExternalStore } from 'react';
-import { PanelRightClose, SquareArrowOutUpRight, MonitorUp } from 'lucide-react';
+import { useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { Grip, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
-import type { WorkspacePanelId } from '@/lib/panels/registry';
+import { type WorkspacePanelId } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -30,54 +34,101 @@ import {
   getAnalysisExtensionsSnapshot,
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
+import { useSyncExternalStore } from 'react';
 
-function ChromeButton({
-  title,
-  onClick,
-  children,
-}: {
-  title: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={title}
-          onClick={onClick}
-          className="h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        >
-          {children}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{title}</TooltipContent>
-    </Tooltip>
-  );
+const DRAG_THRESHOLD = 6;
+
+function isPointerOutsideWindow(x: number, y: number): boolean {
+  return x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight;
 }
 
 /**
- * Slim detach-controls strip. Intentionally title-less + close-less: the panel
- * body owns its own title bar and close button, so this only adds the new
- * sidebar affordances (collapse-to-icons, float, pop-out). Rendered only for
- * panels that can detach.
+ * Slim grab bar: drag the grip to detach (float, or pop out past the edge);
+ * chevron collapses the pane to the rail. Intentionally title-less + close-less
+ * — the panel body owns those.
  */
-function DetachStrip({ detachId }: { detachId: WorkspacePanelId }) {
+function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
   const { floatPanel, popOutPanel } = usePanelControls();
   const setSidebarMode = useViewerStore((s) => s.setSidebarMode);
+  const [drag, setDrag] = useState<{ active: boolean; outside: boolean }>({ active: false, outside: false });
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('[data-chrome-btn]')) return; // the chevron
+    e.preventDefault();
+    const node = e.currentTarget;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let moved = false;
+    try { node.setPointerCapture(e.pointerId); } catch { /* noop */ }
+
+    const onMove = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > DRAG_THRESHOLD) {
+        moved = true;
+        setDrag({ active: true, outside: isPointerOutsideWindow(ev.clientX, ev.clientY) });
+      } else if (moved) {
+        setDrag({ active: true, outside: isPointerOutsideWindow(ev.clientX, ev.clientY) });
+      }
+    };
+    const onUp = (ev: PointerEvent) => {
+      node.removeEventListener('pointermove', onMove);
+      node.removeEventListener('pointerup', onUp);
+      node.removeEventListener('pointercancel', onUp);
+      setDrag({ active: false, outside: false });
+      if (!moved) return;
+      if (isPointerOutsideWindow(ev.clientX, ev.clientY)) {
+        popOutPanel(detachId); // dragged onto another screen → OS / PiP window
+      } else {
+        floatPanel(detachId); // released inside → in-app floating window
+        const x = Math.max(0, Math.min(window.innerWidth - 80, ev.clientX - 40));
+        const y = Math.max(0, Math.min(window.innerHeight - 40, ev.clientY - 10));
+        useViewerStore.getState().setFloatingPanelRect(detachId, { x, y });
+      }
+    };
+    node.addEventListener('pointermove', onMove);
+    node.addEventListener('pointerup', onUp);
+    node.addEventListener('pointercancel', onUp);
+  };
+
   return (
-    <div className="flex items-center justify-end gap-0.5 h-7 shrink-0 px-1.5 border-b border-border/60 bg-muted/20 select-none">
-      <ChromeButton title="Float as movable window" onClick={() => floatPanel(detachId)}>
-        <SquareArrowOutUpRight className="h-3.5 w-3.5" />
-      </ChromeButton>
-      <ChromeButton title="Pop out to another screen" onClick={() => popOutPanel(detachId)}>
-        <MonitorUp className="h-3.5 w-3.5" />
-      </ChromeButton>
-      <ChromeButton title="Collapse sidebar to icons" onClick={() => setSidebarMode('collapsed')}>
-        <PanelRightClose className="h-3.5 w-3.5" />
-      </ChromeButton>
-    </div>
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            onPointerDown={onPointerDown}
+            role="button"
+            aria-label="Drag to detach this panel"
+            className={cn(
+              'flex items-center gap-1 h-6 shrink-0 px-1.5 border-b border-border/50 bg-muted/10 select-none touch-none cursor-grab active:cursor-grabbing',
+              drag.active && 'bg-primary/10',
+            )}
+          >
+            <Grip className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+            <span className="flex-1" />
+            <button
+              type="button"
+              data-chrome-btn
+              aria-label="Collapse sidebar to icons"
+              title="Collapse to icons"
+              onClick={() => setSidebarMode('collapsed')}
+              className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          Drag to float · drag onto another screen to pop out
+        </TooltipContent>
+      </Tooltip>
+      {drag.active && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center pt-10">
+          <div className="rounded-md border border-primary/40 bg-background/90 px-3 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
+            {drag.outside ? 'Release to open on another screen' : 'Release to float · drag past the edge for another screen'}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -97,16 +148,13 @@ export function SidebarPanelHost() {
     ? activeAnalysisExtension
     : null;
 
-  // A detached panel doesn't render in the dock — fall back to Information,
-  // or to an empty slot if Information itself is detached.
   let shown: WorkspacePanelId | null = activePanel;
   if (floatingIds.has(shown) || poppedIds.has(shown)) shown = 'properties';
   if (shown === 'properties' && (floatingIds.has('properties') || poppedIds.has('properties'))) {
     shown = null;
   }
 
-  // ── Highest precedence: a right-placed analysis extension owns the slot.
-  // Extensions carry their own chrome, so no detach strip. ──
+  // Right-placed analysis extension / Add Element carry their own chrome.
   if (rightExtension) {
     return (
       <div className="h-full flex flex-col panel-container">
@@ -114,8 +162,6 @@ export function SidebarPanelHost() {
       </div>
     );
   }
-
-  // ── Then the Add Element authoring tool (own chrome). ──
   if (activeTool === 'addElement') {
     return (
       <div className="h-full flex flex-col panel-container">
@@ -124,11 +170,11 @@ export function SidebarPanelHost() {
     );
   }
 
-  // ── Information fallback (or empty when Information is detached). ──
+  // Information fallback (or empty when Information is detached).
   if (shown === null || shown === 'properties') {
     return (
-      <div className="h-full flex flex-col panel-container">
-        {shown === 'properties' && <DetachStrip detachId="properties" />}
+      <div className="relative h-full flex flex-col panel-container">
+        {shown === 'properties' && <PanelChromeBar detachId="properties" />}
         <div className="flex-1 min-h-0 overflow-hidden">
           {shown === 'properties' && renderPanelBody('properties', () => {})}
         </div>
@@ -137,10 +183,10 @@ export function SidebarPanelHost() {
     );
   }
 
-  // ── A docked analysis / tool panel — slim detach strip + the panel's own body. ──
+  // A docked analysis / tool panel — grab bar + the panel's own body.
   return (
-    <div className="h-full flex flex-col panel-container">
-      <DetachStrip detachId={shown} />
+    <div className="relative h-full flex flex-col panel-container">
+      <PanelChromeBar detachId={shown} />
       <div className="flex-1 min-h-0 overflow-hidden">{renderPanelBody(shown, () => closePanel(shown))}</div>
     </div>
   );

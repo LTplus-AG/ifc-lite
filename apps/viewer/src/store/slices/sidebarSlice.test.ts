@@ -20,22 +20,22 @@ describe('sidebarSlice (#1208)', () => {
     assert.deepStrictEqual(s.poppedOutIds, []);
   });
 
-  it('cycles mode expanded → collapsed → hidden → expanded', () => {
+  it('toggles / cycles between expanded and collapsed (rail always visible)', () => {
     const s = make();
     s.getState().cycleSidebarMode();
     assert.strictEqual(s.getState().sidebarMode, 'collapsed');
     s.getState().cycleSidebarMode();
-    assert.strictEqual(s.getState().sidebarMode, 'hidden');
-    s.getState().cycleSidebarMode();
+    assert.strictEqual(s.getState().sidebarMode, 'expanded');
+    s.getState().toggleSidebar();
+    assert.strictEqual(s.getState().sidebarMode, 'collapsed');
+    s.getState().toggleSidebar();
     assert.strictEqual(s.getState().sidebarMode, 'expanded');
   });
 
-  it('toggleSidebar flips hidden ⇄ expanded', () => {
+  it('migrates a persisted/captured "hidden" mode to collapsed (rail never hides)', () => {
     const s = make();
-    s.getState().toggleSidebar();
-    assert.strictEqual(s.getState().sidebarMode, 'hidden');
-    s.getState().toggleSidebar();
-    assert.strictEqual(s.getState().sidebarMode, 'expanded');
+    s.getState().applySidebarLayout({ mode: 'hidden' });
+    assert.strictEqual(s.getState().sidebarMode, 'collapsed');
   });
 
   it('clamps the width to a sane range', () => {
@@ -109,7 +109,7 @@ describe('sidebarSlice (#1208)', () => {
 
   it('resetSidebarLayout restores defaults', () => {
     const s = make();
-    s.getState().setSidebarMode('hidden');
+    s.getState().setSidebarMode('collapsed');
     s.getState().setPanelShownInSidebar('bcf', false);
     s.getState().reorderSidebarPanel('lists', 0);
     s.getState().resetSidebarLayout();

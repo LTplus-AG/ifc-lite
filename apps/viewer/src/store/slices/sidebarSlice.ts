@@ -28,8 +28,10 @@ import {
   type WorkspacePanelId,
 } from '@/lib/panels/registry';
 
-/** Expanded = rail + content pane; collapsed = icon-only rail; hidden = off. */
-export type SidebarMode = 'expanded' | 'collapsed' | 'hidden';
+/** Expanded = rail + content pane; collapsed = icon-only rail. The activity-bar
+ *  rail is always visible — there is intentionally no "fully off" mode (the
+ *  rail is the always-available entry point to every panel). */
+export type SidebarMode = 'expanded' | 'collapsed';
 
 /** The portable shape captured into a Flavor's `layout.state.sidebar`. */
 export interface SidebarLayoutSnapshot {
@@ -84,7 +86,15 @@ function normalizeHidden(hidden: unknown): WorkspacePanelId[] {
 }
 
 function isMode(m: unknown): m is SidebarMode {
-  return m === 'expanded' || m === 'collapsed' || m === 'hidden';
+  return m === 'expanded' || m === 'collapsed';
+}
+
+/** Coerce a persisted / captured mode, migrating the retired `hidden` value to
+ *  `collapsed` so the rail stays visible. */
+function coerceMode(m: unknown, fallback: SidebarMode): SidebarMode {
+  if (isMode(m)) return m;
+  if (m === 'hidden') return 'collapsed';
+  return fallback;
 }
 
 function loadPersisted(): SidebarLayoutSnapshot {
@@ -100,7 +110,7 @@ function loadPersisted(): SidebarLayoutSnapshot {
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<SidebarLayoutSnapshot>;
     return {
-      mode: isMode(parsed?.mode) ? parsed.mode : 'expanded',
+      mode: coerceMode(parsed?.mode, 'expanded'),
       widthPct: clampWidth(typeof parsed?.widthPct === 'number' ? parsed.widthPct : SIDEBAR_DEFAULT_WIDTH_PCT),
       order: normalizeOrder(parsed?.order),
       hiddenIds: normalizeHidden(parsed?.hiddenIds),
@@ -194,16 +204,11 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
     },
 
     toggleSidebar: () => {
-      get().setSidebarMode(get().sidebarMode === 'hidden' ? 'expanded' : 'hidden');
+      get().setSidebarMode(get().sidebarMode === 'expanded' ? 'collapsed' : 'expanded');
     },
 
     cycleSidebarMode: () => {
-      const next: Record<SidebarMode, SidebarMode> = {
-        expanded: 'collapsed',
-        collapsed: 'hidden',
-        hidden: 'expanded',
-      };
-      get().setSidebarMode(next[get().sidebarMode]);
+      get().setSidebarMode(get().sidebarMode === 'expanded' ? 'collapsed' : 'expanded');
     },
 
     setSidebarWidthPct: (pct) => {
@@ -276,7 +281,7 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
     applySidebarLayout: (snap) => {
       const obj = (snap ?? {}) as Partial<SidebarLayoutSnapshot>;
       const next: SidebarLayoutSnapshot = {
-        mode: isMode(obj.mode) ? obj.mode : get().sidebarMode,
+        mode: coerceMode(obj.mode, get().sidebarMode),
         widthPct: clampWidth(typeof obj.widthPct === 'number' ? obj.widthPct : get().sidebarWidthPct),
         order: normalizeOrder(obj.order),
         hiddenIds: normalizeHidden(obj.hiddenIds),

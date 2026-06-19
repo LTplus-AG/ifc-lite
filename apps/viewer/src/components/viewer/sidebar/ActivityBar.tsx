@@ -23,7 +23,8 @@ import {
   RotateCcw,
   EyeOff,
   Eye,
-  ChevronsRight,
+  SquareArrowOutUpRight,
+  MonitorUp,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -55,7 +56,7 @@ export function ActivityBar() {
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
   const resetLayout = useViewerStore((s) => s.resetSidebarLayout);
 
-  const { isOpen, panelLocation, toggleDocked, openDocked } = usePanelControls();
+  const { isOpen, panelLocation, toggleDocked, openDocked, floatPanel, popOutPanel, activePanel } = usePanelControls();
 
   const hidden = new Set(hiddenIds);
   const [dragId, setDragId] = useState<WorkspacePanelId | null>(null);
@@ -220,9 +221,14 @@ export function ActivityBar() {
               Reset layout
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setSidebarMode('hidden')} className="gap-2">
-              <ChevronsRight className="h-4 w-4 text-muted-foreground" />
-              Hide sidebar
+            {/* Keyboard-accessible detach (the grip drag is mouse-only). */}
+            <DropdownMenuItem onSelect={() => floatPanel(activePanel)} className="gap-2">
+              <SquareArrowOutUpRight className="h-4 w-4 text-muted-foreground" />
+              Float current panel
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => popOutPanel(activePanel)} className="gap-2">
+              <MonitorUp className="h-4 w-4 text-muted-foreground" />
+              Pop out to another screen
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

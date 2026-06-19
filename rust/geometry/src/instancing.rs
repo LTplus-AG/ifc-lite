@@ -96,15 +96,45 @@ impl Collated {
     }
 }
 
+/// A borrowed view of a mesh for collation/encoding — lets callers feed geometry
+/// from any owner (geometry's `Mesh`, processing's `MeshData`) WITHOUT cloning the
+/// vertex data (cloning 219k meshes' geometry risks the build-container OOM).
+pub struct InstanceMeshRef<'a> {
+    pub positions: &'a [f32],
+    pub normals: &'a [f32],
+    pub indices: &'a [u32],
+    pub origin: [f64; 3],
+    pub instance_meta: Option<&'a InstanceMeta>,
+    /// Per-occurrence entity id (used only by the encoder).
+    pub entity_id: u32,
+    /// Per-occurrence RGBA (used only by the encoder).
+    pub color: [f32; 4],
+}
+
+impl<'a> InstanceMeshRef<'a> {
+    /// Build a view over a geometry `Mesh` (encoder id/colour default to 0).
+    pub fn from_mesh(m: &'a Mesh) -> Self {
+        InstanceMeshRef {
+            positions: &m.positions,
+            normals: &m.normals,
+            indices: &m.indices,
+            origin: m.origin,
+            instance_meta: m.instance_meta.as_ref(),
+            entity_id: 0,
+            color: [0.0; 4],
+        }
+    }
+}
+
 /// Group instanceable meshes by representation identity into templates +
 /// per-instance transforms. `min_group` is the smallest occurrence count worth
 /// instancing (groups below it are emitted flat); use 2 to instance any repeat.
-pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
+pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize) -> Collated {
     // First-seen order keeps output deterministic regardless of hash iteration.
     let mut order: Vec<u128> = Vec::new();
     let mut groups: FxHashMap<u128, Vec<usize>> = FxHashMap::default();
     for (i, m) in meshes.iter().enumerate() {
-        match &m.instance_meta {
+        match m.instance_meta {
             Some(im) if im.instanceable && !m.positions.is_empty() => {
                 groups
                     .entry(im.rep_identity)
@@ -127,7 +157,7 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
         }
         let t_idx = members[0];
         let template = &meshes[t_idx];
-        let m_ref = compose_world(template.instance_meta.as_ref().unwrap());
+        let m_ref = compose_world(template.instance_meta.unwrap());
         let Some(m_ref_inv) = m_ref.try_inverse() else {
             out.flat_indices.extend_from_slice(members);
             continue;
@@ -138,13 +168,9 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
         // the renderer substitutes the template's geometry at each occurrence's
         // pose (rel_k is pose-only). The exact-bit tier keeps the defensive
         // same-count check (a mismatch there means something is wrong).
-        let is_rigid = members.iter().any(|&i| {
-            meshes[i]
-                .instance_meta
-                .as_ref()
-                .and_then(|m| m.canonical_transform)
-                .is_some()
-        });
+        let is_rigid = members
+            .iter()
+            .any(|&i| meshes[i].instance_meta.and_then(|m| m.canonical_transform).is_some());
         let (vlen, ilen) = (template.positions.len(), template.indices.len());
         let mut occurrences = Vec::with_capacity(members.len());
         let mut shapes_match = true;
@@ -161,7 +187,7 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
                 shapes_match = false;
                 break;
             }
-            let m_k = compose_world(mesh.instance_meta.as_ref().unwrap());
+            let m_k = compose_world(mesh.instance_meta.unwrap());
             let rel = m_k * m_ref_inv;
             occurrences.push(InstanceOccurrence {
                 mesh_index: i,
@@ -180,6 +206,12 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
         }
     }
     out
+}
+
+/// `collate_refs` over geometry `Mesh` values (thin wrapper, no geometry clone).
+pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    collate_refs(&refs, min_group)
 }
 
 /// Maximum per-vertex world-space error (in mesh units) when each occurrence is
@@ -274,14 +306,9 @@ pub struct DecodedInstanced {
     pub instances: Vec<DecodedInstance>,
 }
 
-/// Encode a [`Collated`] result + its source meshes into an instanced shard.
-/// `entity_id` / `color` map an input-mesh index to its per-occurrence id/colour.
-pub fn encode_instanced(
-    meshes: &[Mesh],
-    collated: &Collated,
-    entity_id: impl Fn(usize) -> u32,
-    color: impl Fn(usize) -> [f32; 4],
-) -> Vec<u8> {
+/// Encode a [`Collated`] result + its source mesh views into an instanced shard.
+/// Per-occurrence entity id + colour come from each `InstanceMeshRef`.
+pub fn encode_refs(meshes: &[InstanceMeshRef], collated: &Collated) -> Vec<u8> {
     // (template mesh index, [(occurrence mesh index, rel transform)]).
     struct TSpec {
         mesh_idx: usize,
@@ -360,8 +387,8 @@ pub fn encode_instanced(
     for (ti, t) in tspecs.iter().enumerate() {
         for (occ_idx, transform) in &t.instances {
             pu32(&mut buf, ti as u32);
-            pu32(&mut buf, entity_id(*occ_idx));
-            for c in color(*occ_idx) {
+            pu32(&mut buf, meshes[*occ_idx].entity_id);
+            for c in meshes[*occ_idx].color {
                 pf32(&mut buf, c);
             }
             for v in transform {
@@ -372,21 +399,50 @@ pub fn encode_instanced(
 
     // Data pools.
     for t in &tspecs {
-        for &p in &meshes[t.mesh_idx].positions {
+        for &p in meshes[t.mesh_idx].positions {
             pf32(&mut buf, p);
         }
     }
     for t in &tspecs {
-        for &n in &meshes[t.mesh_idx].normals {
+        for &n in meshes[t.mesh_idx].normals {
             pf32(&mut buf, n);
         }
     }
     for t in &tspecs {
-        for &i in &meshes[t.mesh_idx].indices {
+        for &i in meshes[t.mesh_idx].indices {
             pu32(&mut buf, i);
         }
     }
     buf
+}
+
+/// `encode_refs` over geometry `Mesh` values, with id/colour accessor closures
+/// (thin wrapper, no geometry clone).
+pub fn encode_instanced(
+    meshes: &[Mesh],
+    collated: &Collated,
+    entity_id: impl Fn(usize) -> u32,
+    color: impl Fn(usize) -> [f32; 4],
+) -> Vec<u8> {
+    let refs: Vec<InstanceMeshRef> = meshes
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let mut r = InstanceMeshRef::from_mesh(m);
+            r.entity_id = entity_id(i);
+            r.color = color(i);
+            r
+        })
+        .collect();
+    encode_refs(&refs, collated)
+}
+
+/// One-shot producer: collate the mesh views into templates + instances and
+/// encode them as an instanced shard. The caller (e.g. the native helper) builds
+/// `InstanceMeshRef`s borrowing its own mesh storage — no geometry is cloned.
+pub fn collate_and_encode(meshes: &[InstanceMeshRef], min_group: usize) -> Vec<u8> {
+    let collated = collate_refs(meshes, min_group);
+    encode_refs(meshes, &collated)
 }
 
 /// Decode an instanced shard. Returns None on a bad magic/version or truncation.
@@ -741,6 +797,50 @@ mod tests {
         let collated = collate_instances(&meshes, 2);
         assert_eq!(collated.templates.len(), 0, "count mismatch must NOT form a template");
         assert_eq!(collated.flat_indices.len(), 2, "both fall to flat");
+    }
+
+    #[test]
+    fn collate_and_encode_matches_mesh_path() {
+        // The zero-copy ref one-shot must produce byte-identical output to the
+        // Mesh-based collate + encode (the engine emit uses the ref path).
+        let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+        let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+        let m2 = Matrix4::new_translation(&nalgebra::Vector3::new(5.0, 5.0, 5.0));
+        let mk = |m: &Matrix4<f64>, rep: u128| {
+            mesh_from(
+                baked(&CANON, m),
+                InstanceMeta {
+                    transform: mat_rm(m),
+                    local_transform: None,
+                    canonical_transform: None,
+                    rep_identity: rep,
+                    instanceable: true,
+                },
+            )
+        };
+        let meshes = vec![mk(&m0, 50), mk(&m1, 50), mk(&m2, 60)];
+        let col = |i: usize| [i as f32 * 0.1, 0.2, 0.3, 1.0];
+
+        let collated = collate_instances(&meshes, 2);
+        let bytes_mesh = encode_instanced(&meshes, &collated, |i| i as u32, col);
+
+        let refs: Vec<InstanceMeshRef> = meshes
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                let mut r = InstanceMeshRef::from_mesh(m);
+                r.entity_id = i as u32;
+                r.color = col(i);
+                r
+            })
+            .collect();
+        let bytes_ref = collate_and_encode(&refs, 2);
+
+        assert_eq!(bytes_mesh, bytes_ref, "ref one-shot must match the Mesh path byte-for-byte");
+        // And it must still decode + expand.
+        let dec = decode_instanced(&bytes_ref).expect("decodes");
+        assert_eq!(dec.templates.len(), 2);
+        assert_eq!(dec.instances.len(), 3);
     }
 
     #[test]

@@ -116,9 +116,10 @@ pub use error::{Error, Result};
 pub use geom_hash::{hash_mesh_world, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE};
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use instancing::{
-    collate_instances, decode_instanced, encode_instanced, verify_recomposition, Collated,
-    DecodedInstance, DecodedInstanced, DecodedTemplate, InstanceOccurrence, InstanceTemplate,
-    INSTANCED_MAGIC, INSTANCED_VERSION,
+    collate_and_encode, collate_instances, collate_refs, decode_instanced, encode_instanced,
+    encode_refs, verify_recomposition, Collated, DecodedInstance, DecodedInstanced,
+    DecodedTemplate, InstanceMeshRef, InstanceOccurrence, InstanceTemplate, INSTANCED_MAGIC,
+    INSTANCED_VERSION,
 };
 pub use material_layer_index::{LayerAxis, LayerBuildup, LayerInfo, MaterialLayerIndex};
 pub use mesh::{CoordinateShift, InstanceMeta, Mesh, SubMesh, SubMeshCollection};

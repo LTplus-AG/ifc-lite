@@ -19,7 +19,13 @@ import {
 } from './scene-raycaster.js';
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
-import { prepareInstancedRender, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
+import {
+  prepareInstancedRender,
+  INSTANCE_STRIDE_BYTES,
+  INSTANCE_COLOR_OFFSET,
+  INSTANCE_FLAGS_OFFSET,
+  INSTANCE_FLAG_SELECTED,
+} from './instanced-render.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
@@ -81,6 +87,14 @@ export interface InstancedTemplateGPU {
 /** Shared empty result for getInstancedTemplates() when the instanced pass is hidden. */
 const EMPTY_INSTANCED_TEMPLATES: readonly InstancedTemplateGPU[] = [];
 
+/** One occurrence's location in the instanced buffers, for per-instance selection
+ *  + colour-override patching. originalColor restores after a lens/IDS overlay clears. */
+interface InstancedOccurrence {
+  templateIndex: number;
+  byteOffset: number;
+  originalColor: [number, number, number, number];
+}
+
 export class Scene {
   private meshes: Mesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
@@ -92,6 +106,10 @@ export class Scene {
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
   private instancedTemplates: InstancedTemplateGPU[] = [];          // GPU-instancing: unique templates + per-occurrence buffers (fed by addInstancedShard)
   private instancedVisible = true;                                  // GPU-instancing: hidden in Types view mode (instanced geometry is class-0 occurrences)
+  private instancedEntityMap: Map<number, InstancedOccurrence[]> = new Map(); // express_id -> occurrences, for per-instance selection/overlay patching
+  private instancedDevice?: GPUDevice;                              // cached for per-instance flag/colour writeBuffer updates
+  private instancedSelected: Set<number> = new Set();              // currently flag-selected instanced express_ids
+  private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
 
   // Buffer-size-aware bucket splitting: when a single color group's geometry
   // would exceed the GPU maxBufferSize, overflow is directed to a new
@@ -1812,6 +1830,7 @@ export class Scene {
    * GPU upload.
    */
   addInstancedShard(device: GPUDevice, shard: DecodedInstancedShard): void {
+    this.instancedDevice = device; // cached for per-instance selection/overlay writeBuffer
     const prepared = prepareInstancedRender(shard);
     for (const t of prepared) {
       const vcount = Math.floor(t.positions.length / 3);
@@ -1863,6 +1882,7 @@ export class Scene {
       );
       instanceBuffer.unmap();
 
+      const templateIndex = this.instancedTemplates.length;
       this.instancedTemplates.push({
         vertexBuffer,
         indexBuffer,
@@ -1870,6 +1890,98 @@ export class Scene {
         instanceBuffer,
         instanceCount: t.instanceCount,
       });
+
+      // Map each occurrence's express_id -> (template, byte offset, original
+      // colour) so selection (flag byte) + lens/IDS overlays (colour bytes) can
+      // patch individual occurrences via writeBuffer without a re-upload.
+      const cdv = new DataView(t.instanceBuffer);
+      for (let i = 0; i < t.instanceCount; i++) {
+        const byteOffset = i * INSTANCE_STRIDE_BYTES;
+        const eid = t.entityIds[i];
+        const originalColor: [number, number, number, number] = [
+          cdv.getFloat32(byteOffset + INSTANCE_COLOR_OFFSET, true),
+          cdv.getFloat32(byteOffset + INSTANCE_COLOR_OFFSET + 4, true),
+          cdv.getFloat32(byteOffset + INSTANCE_COLOR_OFFSET + 8, true),
+          cdv.getFloat32(byteOffset + INSTANCE_COLOR_OFFSET + 12, true),
+        ];
+        let arr = this.instancedEntityMap.get(eid);
+        if (!arr) {
+          arr = [];
+          this.instancedEntityMap.set(eid, arr);
+        }
+        arr.push({ templateIndex, byteOffset, originalColor });
+      }
+    }
+  }
+
+  /**
+   * Per-instance SELECTION: highlight the occurrences of `expressIds` by setting
+   * their flag byte (bit 0) and clearing the previously-selected ones. The shader
+   * (vs_instanced -> fs_main) applies the blue highlight per occurrence, so no
+   * re-draw is needed. No-op until a shard has been uploaded.
+   */
+  setInstancedSelection(expressIds: ReadonlySet<number>): void {
+    const device = this.instancedDevice;
+    if (!device || this.instancedTemplates.length === 0) return;
+    for (const eid of this.instancedSelected) {
+      if (!expressIds.has(eid)) this.writeInstanceFlag(device, eid, 0);
+    }
+    for (const eid of expressIds) {
+      if (!this.instancedSelected.has(eid)) this.writeInstanceFlag(device, eid, INSTANCE_FLAG_SELECTED);
+    }
+    this.instancedSelected = new Set(expressIds);
+  }
+
+  /**
+   * Per-instance COLOUR OVERRIDE (lens / IDS / compare / 4D): patch the colour
+   * bytes of the affected occurrences in place; occurrences dropped from the map
+   * are restored to their original colour. Pass null/empty to clear all.
+   */
+  setInstancedColorOverrides(
+    overrides: ReadonlyMap<number, readonly [number, number, number, number]> | null,
+  ): void {
+    const device = this.instancedDevice;
+    if (!device || this.instancedTemplates.length === 0) return;
+    const next = overrides ?? new Map<number, readonly [number, number, number, number]>();
+    for (const eid of this.instancedOverridden) {
+      if (!next.has(eid)) this.restoreInstanceColor(device, eid);
+    }
+    for (const [eid, rgba] of next) {
+      this.writeInstanceColor(device, eid, rgba);
+    }
+    this.instancedOverridden = new Set(next.keys());
+  }
+
+  private writeInstanceFlag(device: GPUDevice, eid: number, flag: number): void {
+    const locs = this.instancedEntityMap.get(eid);
+    if (!locs) return;
+    const data = new Uint32Array([flag >>> 0]);
+    for (const loc of locs) {
+      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
+      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, data);
+    }
+  }
+
+  private writeInstanceColor(
+    device: GPUDevice,
+    eid: number,
+    rgba: readonly [number, number, number, number],
+  ): void {
+    const locs = this.instancedEntityMap.get(eid);
+    if (!locs) return;
+    const data = new Float32Array([rgba[0], rgba[1], rgba[2], rgba[3]]);
+    for (const loc of locs) {
+      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
+      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, data);
+    }
+  }
+
+  private restoreInstanceColor(device: GPUDevice, eid: number): void {
+    const locs = this.instancedEntityMap.get(eid);
+    if (!locs) return;
+    for (const loc of locs) {
+      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
+      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, new Float32Array(loc.originalColor));
     }
   }
 
@@ -1993,6 +2105,10 @@ export class Scene {
       it.instanceBuffer.destroy();
     }
     this.instancedTemplates = [];
+    this.instancedEntityMap.clear();
+    this.instancedSelected.clear();
+    this.instancedOverridden.clear();
+    this.instancedDevice = undefined;
     // Clear partial batch cache
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     // Destroy streaming fragments (already included in batchedMeshes, but tracked separately)

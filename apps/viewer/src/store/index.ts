@@ -285,6 +285,9 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       error: null,
       pendingColorUpdates: null,
       pendingMeshColorUpdates: null,
+      // Drop any undrained GPU-instancing shards from the previous model so they
+      // can't be uploaded into the new scene under a rapid model switch.
+      pendingInstancedShards: null,
 
       // Compare (#924): drop any stale diff result — it references models by
       // id and the loaded set is changing. Keep panel visibility + A/B/scope

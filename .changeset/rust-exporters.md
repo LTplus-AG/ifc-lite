@@ -16,7 +16,9 @@ reachable from TypeScript through `GeometryProcessor.export*` and
 emits it as a node translation, keeping f32 vertex precision at georef scale).
 
 STEP export also supports schema conversion (`IFC2X3`/`IFC4`/`IFC4X3`/`IFC5` entity-type
-renames + attribute trimming) and a root-attribute mutation bridge. New Rust exporters:
+renames + attribute trimming) and a mutation bridge — `exportStep` takes a `mutations_json`
+payload (`MutablePropertyView` attribute edits + property-set synthesis: new
+`IfcPropertySingleValue`/`IfcPropertySet`/`IfcRelDefinesByProperties` entities). New Rust exporters:
 **IFC5/IFCX** (`exportIfcx` — USD-style node graph: spatial hierarchy + classes + known
 IFC5 properties) and **Merged** (`exportMerged` — combine several models into one STEP,
 id-offset + project unification).
@@ -37,9 +39,9 @@ holds (`GeometryProcessor.exportGlbFromMeshes`, wasm `exportGlbFromMeshes`) inst
 TypeScript GLTFExporter — no re-meshing, and the per-element RTC origin rides a glTF node
 translation so georef-scale models keep vertex precision.
 
-**BREAKING (`@ifc-lite/export`):** `GLTFExporter` / `GLTFExportOptions` and `JSONLDExporter` /
-`JSONLDExportOptions` are removed — glTF/GLB and JSON-LD are now produced in Rust. Use
-`GeometryProcessor.exportGlb(bytes, …)` / `exportGlbFromMeshes(meshes, …)` and
-`GeometryProcessor.exportJsonld(bytes, …)`. All in-repo GLTFExporter callers (viewer GLB /
-command-palette / mobile / location-map exports, LOD1 generator) are migrated; JSONLDExporter
-had no in-repo callers.
+**BREAKING (`@ifc-lite/export`):** `GLTFExporter`, `JSONLDExporter`, and `CSVExporter`
+(+ their option types) are removed — glTF/GLB, JSON-LD, and CSV are now produced in Rust. Use
+`GeometryProcessor.exportGlb` / `exportGlbFromMeshes`, `exportJsonld`, and
+`exportCsv(bytes, mode, …)` (mode ∈ `entities`|`properties`|`quantities`|`spatial`). All in-repo
+callers (viewer GLB / command-palette / mobile / location-map / main-toolbar CSV exports, LOD1
+generator) are migrated; the Rust CSV gained the spatial-hierarchy mode to match.

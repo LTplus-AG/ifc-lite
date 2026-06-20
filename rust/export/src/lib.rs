@@ -132,7 +132,28 @@ mod tests {
         assert!(stats.doors > 0, "expected doors, got {}", stats.doors);
         // P5: shared interior walls are paired as Surface adjacencies.
         assert!(stats.interior_adjacencies > 0, "expected interior adjacencies, got {}", stats.interior_adjacencies);
+        // P4: material layer sets become opaque constructions assigned to faces.
+        assert!(stats.constructions > 0, "expected constructions, got {}", stats.constructions);
         let v: Value = serde_json::from_str(&json).expect("valid JSON");
+
+        // Energy + adjacency surface through the schema (materials, constructions, Surface BCs).
+        let energy = &v["properties"]["energy"];
+        assert_eq!(energy["type"], "ModelEnergyProperties");
+        assert!(!energy["materials"].as_array().unwrap().is_empty());
+        assert!(!energy["constructions"].as_array().unwrap().is_empty());
+        let surface_faces = v["rooms"].as_array().unwrap().iter()
+            .flat_map(|r| r["faces"].as_array().unwrap())
+            .filter(|f| f["boundary_condition"]["type"] == "Surface")
+            .count();
+        assert!(surface_faces > 0, "expected Surface (interior) faces");
+        // Every interior face references an adjacent [face, room].
+        for r in v["rooms"].as_array().unwrap() {
+            for f in r["faces"].as_array().unwrap() {
+                if f["boundary_condition"]["type"] == "Surface" {
+                    assert_eq!(f["boundary_condition"]["boundary_condition_objects"].as_array().unwrap().len(), 2);
+                }
+            }
+        }
 
         assert_eq!(v["type"], "Model");
         assert_eq!(v["units"], "Meters");

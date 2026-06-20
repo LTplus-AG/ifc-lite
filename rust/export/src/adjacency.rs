@@ -11,7 +11,7 @@
 //! are left exterior (they would need face splitting).
 
 use crate::hbjson::Room;
-use crate::rooms::{center, dot, newell_normal, polygon_area};
+use crate::geom::{center, dot, newell_normal, polygon_area};
 
 /// Max plane separation to treat as a shared wall (a generous wall thickness), metres.
 const MAX_GAP: f64 = 0.6;

@@ -24,6 +24,7 @@ impl IfcAPI {
         let mode = match mode.as_str() {
             "properties" => CsvMode::Properties,
             "quantities" => CsvMode::Quantities,
+            "spatial" => CsvMode::SpatialHierarchy,
             _ => CsvMode::Entities,
         };
         let opts = CsvOptions {

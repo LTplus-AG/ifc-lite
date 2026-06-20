@@ -68,7 +68,8 @@ fn prim_name(name: &str, fallback_type: &str, id: u32) -> String {
 }
 
 /// Spatial parent→children edges from IfcRelAggregates + IfcRelContainedInSpatialStructure.
-fn spatial_children(content: &[u8]) -> (HashMap<u32, Vec<u32>>, Option<u32>) {
+/// Returns the edge map and the first `IfcProject` id. Shared with the CSV spatial export.
+pub(crate) fn spatial_children(content: &[u8]) -> (HashMap<u32, Vec<u32>>, Option<u32>) {
     let index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, index);
     let mut children: HashMap<u32, Vec<u32>> = HashMap::new();

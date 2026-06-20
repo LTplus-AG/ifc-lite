@@ -342,7 +342,7 @@ export class IfcLiteBridge {
    */
   exportCsv(
     content: string,
-    mode: 'entities' | 'properties' | 'quantities' = 'entities',
+    mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
     delimiter = ',',
     includeProperties = false,
   ): string {

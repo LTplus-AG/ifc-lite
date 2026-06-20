@@ -1060,7 +1060,7 @@ export class GeometryProcessor {
 
   exportCsv(
     buffer: Uint8Array,
-    mode: 'entities' | 'properties' | 'quantities' = 'entities',
+    mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
     delimiter = ',',
     includeProperties = false,
   ): string | null {

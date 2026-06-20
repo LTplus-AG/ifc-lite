@@ -3,7 +3,9 @@
 //! property, and one-row-per-quantity. Ports `packages/export/src/csv-exporter.ts`,
 //! including the spreadsheet formula-injection guard (CWE-1236) and RFC-4180 quoting.
 
-use crate::model::{build_export_model, fmt_num, ExportModel};
+use std::collections::{HashMap, HashSet};
+
+use crate::model::{build_export_model, fmt_num, EntityRow, ExportModel};
 
 /// Which CSV view to emit.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -14,6 +16,8 @@ pub enum CsvMode {
     Properties,
     /// One row per quantity value.
     Quantities,
+    /// One row per spatial node (project → sites → buildings → storeys → elements).
+    SpatialHierarchy,
 }
 
 /// Options for CSV export.
@@ -56,7 +60,73 @@ pub fn export_csv(content: &[u8], mode: CsvMode, opts: &CsvOptions) -> String {
         CsvMode::Entities => entities_csv(&model, opts),
         CsvMode::Properties => properties_csv(&model, opts),
         CsvMode::Quantities => quantities_csv(&model, opts),
+        CsvMode::SpatialHierarchy => spatial_csv(content, &model, opts),
     }
+}
+
+/// One row per spatial node, depth-first from the project root.
+fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String {
+    let d = &opts.delimiter;
+    let by_id: HashMap<u32, &EntityRow> = model.entities.iter().map(|e| (e.express_id, e)).collect();
+    let (children, project) = crate::ifc5::spatial_children(content);
+
+    // The project node isn't an IfcProduct, so decode its GlobalId + Name directly.
+    let (mut proj_gid, mut proj_name) = (String::new(), String::new());
+    if let Some(pid) = project {
+        let index = ifc_lite_core::build_entity_index(content);
+        let mut dec = ifc_lite_core::EntityDecoder::with_index(content, index);
+        if let Ok(e) = dec.decode_by_id(pid) {
+            proj_gid = e.get(0).and_then(|a| a.as_string()).unwrap_or("").to_string();
+            proj_name = e.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
+        }
+    }
+
+    let info = |id: u32| -> (String, String, String) {
+        if Some(id) == project {
+            (proj_gid.clone(), proj_name.clone(), "IfcProject".to_string())
+        } else if let Some(e) = by_id.get(&id) {
+            (
+                e.global_id.clone().unwrap_or_default(),
+                e.name.clone().unwrap_or_default(),
+                e.ifc_type.clone(),
+            )
+        } else {
+            (String::new(), String::new(), String::new())
+        }
+    };
+
+    let headers = ["expressId", "globalId", "name", "type", "parentId", "level"];
+    let mut lines = vec![join(&headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(), d)];
+
+    let mut visited = HashSet::new();
+    let mut stack: Vec<(u32, Option<u32>, usize)> = Vec::new();
+    if let Some(pid) = project {
+        stack.push((pid, None, 0));
+    }
+    while let Some((id, parent, level)) = stack.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        let (gid, name, ty) = info(id);
+        let row = vec![
+            escape(&id.to_string(), d),
+            escape(&gid, d),
+            escape(&name, d),
+            escape(&ty, d),
+            escape(&parent.map(|p| p.to_string()).unwrap_or_default(), d),
+            escape(&level.to_string(), d),
+        ];
+        lines.push(join(&row, d));
+        if let Some(kids) = children.get(&id) {
+            // Push reversed so siblings emit in source order.
+            for &k in kids.iter().rev() {
+                if !visited.contains(&k) {
+                    stack.push((k, Some(id), level + 1));
+                }
+            }
+        }
+    }
+    lines.join("\n")
 }
 
 fn entities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
@@ -203,6 +273,23 @@ mod tests {
             "entityId,globalId,entityName,entityType,psetName,propName,value,type"
         );
         assert!(csv.lines().count() > 1, "expected property rows");
+    }
+
+    #[test]
+    fn spatial_hierarchy_csv() {
+        let csv = export_csv(
+            &fixture("ara3d/duplex.ifc"),
+            CsvMode::SpatialHierarchy,
+            &CsvOptions::default(),
+        );
+        assert_eq!(csv.lines().next().unwrap(), "expressId,globalId,name,type,parentId,level");
+        assert!(csv.contains(",IfcProject,"), "project row present");
+        assert!(csv.lines().count() > 3, "expected spatial nodes");
+        // Exactly one root at level 0 (the project, with an empty parentId).
+        let level0 = csv.lines().skip(1).filter(|l| l.ends_with(",0")).count();
+        assert_eq!(level0, 1, "single root at level 0");
+        // Storeys/spaces appear deeper in the tree.
+        assert!(csv.contains("IfcBuildingStorey"), "storeys present in the hierarchy");
     }
 
     #[test]

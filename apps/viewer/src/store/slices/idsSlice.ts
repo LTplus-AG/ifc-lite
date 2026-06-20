@@ -38,6 +38,13 @@ export interface IDSDisplayOptions {
 /** IDS filter mode */
 export type IDSFilterMode = 'all' | 'failed' | 'passed';
 
+/**
+ * Scope for the isolate/color controls.
+ * - 'ids': act on the whole validation report (every specification combined)
+ * - 'spec': act on the currently active specification only
+ */
+export type IDSIsolationScope = 'ids' | 'spec';
+
 export interface IDSSliceState {
   /** Loaded IDS document */
   idsDocument: IDSDocument | null;
@@ -70,6 +77,13 @@ export interface IDSSliceState {
   idsDisplayOptions: IDSDisplayOptions;
   /** Filter mode (show all, failed only, passed only) */
   idsFilterMode: IDSFilterMode;
+  /**
+   * Whether the isolate/color controls act on the whole report ('ids',
+   * default) or on the active specification only ('spec'). In 'spec' mode,
+   * selecting a specification isolates its involved elements (passed green,
+   * failed red) so they can be reviewed in context — per issue #1236.
+   */
+  idsIsolationScope: IDSIsolationScope;
   /** Cached set of failed entity IDs for efficient lookup */
   idsFailedEntityIds: Set<string>; // "modelId:expressId" format
   /** Cached set of passed entity IDs */
@@ -102,6 +116,7 @@ export interface IDSSlice extends IDSSliceState {
   setIdsLocale: (locale: SupportedLocale) => void;
   setIdsDisplayOptions: (options: Partial<IDSDisplayOptions>) => void;
   setIdsFilterMode: (mode: IDSFilterMode) => void;
+  setIdsIsolationScope: (scope: IDSIsolationScope) => void;
 
   // Utility getters
   getActiveSpecificationResult: () => IDSSpecificationResult | null;
@@ -184,6 +199,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   idsLocale: getDefaultLocale(),
   idsDisplayOptions: DEFAULT_DISPLAY_OPTIONS,
   idsFilterMode: 'all',
+  idsIsolationScope: 'ids',
   idsFailedEntityIds: new Set(),
   idsPassedEntityIds: new Set(),
 
@@ -235,6 +251,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsValidationReport: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
+      idsIsolationScope: 'ids',
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
     }),
@@ -272,6 +289,8 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
     })),
 
   setIdsFilterMode: (idsFilterMode) => set({ idsFilterMode }),
+
+  setIdsIsolationScope: (idsIsolationScope) => set({ idsIsolationScope }),
 
   // Utility getters
   getActiveSpecificationResult: () => {

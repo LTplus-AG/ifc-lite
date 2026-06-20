@@ -29,6 +29,8 @@ import {
   Focus,
   EyeOff,
   Eye,
+  Boxes,
+  Layers,
   FileText,
   Loader2,
   Building2,
@@ -460,6 +462,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     error,
     activeSpecificationId,
     filterMode,
+    isolationScope,
 
     // Actions
     loadIDSFile,
@@ -469,9 +472,11 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     setActiveSpecification,
     selectEntity,
     setFilterMode,
+    setIsolationScope,
     applyColors,
     isolateFailed,
     isolatePassed,
+    isolateInvolved,
     clearIsolation,
     exportReportJSON,
     exportReportHTML,
@@ -654,6 +659,12 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   const renderResults = () => {
     if (!report) return null;
 
+    // In 'spec' scope the isolate/color actions target the active
+    // specification; disable them until one is selected.
+    const specScope = isolationScope === 'spec';
+    const noActiveSpec = specScope && !activeSpecificationId;
+    const scopeSuffix = specScope ? ' (this spec)' : ' (whole IDS)';
+
     return (
       <>
         {/* Audit summary stays visible above the validation report so
@@ -690,7 +701,9 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
             <PassRateBar passRate={report.summary.overallPassRate} />
           </div>
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            💡 Click any entity to select and zoom to it in the 3D view
+            {specScope
+              ? '💡 Select a specification to isolate its elements — passed green, failed red'
+              : '💡 Click any entity to select and zoom to it in the 3D view'}
           </p>
         </div>
 
@@ -708,24 +721,47 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
             </SelectContent>
           </Select>
 
+          {/* Isolate scope: whole report vs. the active specification (#1236).
+              'Per Spec' isolates the selected specification's elements
+              (passed green, failed red). */}
+          <Select value={isolationScope} onValueChange={(v) => setIsolationScope(v as 'ids' | 'spec')}>
+            <SelectTrigger className="h-8 w-[112px]" aria-label="Isolate scope">
+              <Layers className="h-3 w-3 mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ids">Whole IDS</SelectItem>
+              <SelectItem value="spec">Per Spec</SelectItem>
+            </SelectContent>
+          </Select>
+
           <div className="flex-1 min-w-2" />
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={isolateFailed}>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={isolateFailed} disabled={noActiveSpec}>
                 <EyeOff className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Isolate Failed</TooltipContent>
+            <TooltipContent>Isolate failed{scopeSuffix}</TooltipContent>
           </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={isolatePassed}>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={isolatePassed} disabled={noActiveSpec}>
                 <Eye className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Isolate Passed</TooltipContent>
+            <TooltipContent>Isolate passed{scopeSuffix}</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => isolateInvolved()} disabled={noActiveSpec}>
+                <Boxes className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Isolate involved{scopeSuffix} — passed green + failed red</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -734,7 +770,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 <Focus className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Clear Isolation</TooltipContent>
+            <TooltipContent>Clear isolation</TooltipContent>
           </Tooltip>
 
           <Tooltip>

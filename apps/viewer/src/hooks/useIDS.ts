@@ -93,6 +93,8 @@ export interface UseIDSResult {
   activeEntityId: { modelId: string; expressId: number } | null;
   /** Filter mode */
   filterMode: 'all' | 'failed' | 'passed';
+  /** Isolation/color scope: whole report ('ids') or active spec only ('spec') */
+  isolationScope: 'ids' | 'spec';
   /** Display options */
   displayOptions: {
     highlightFailed: boolean;
@@ -132,6 +134,8 @@ export interface UseIDSResult {
   setLocale: (locale: SupportedLocale) => void;
   /** Set filter mode */
   setFilterMode: (mode: 'all' | 'failed' | 'passed') => void;
+  /** Set the isolation/color scope (whole report vs active spec) */
+  setIsolationScope: (scope: 'ids' | 'spec') => void;
   /** Update display options */
   setDisplayOptions: (options: Partial<UseIDSResult['displayOptions']>) => void;
 
@@ -142,11 +146,17 @@ export interface UseIDSResult {
   clearColors: () => void;
 
   // Isolation actions
-  /** Isolate failed entities */
+  /** Isolate failed entities (whole report, or active spec when scope = 'spec') */
   isolateFailed: () => void;
-  /** Isolate passed entities */
+  /** Isolate passed entities (whole report, or active spec when scope = 'spec') */
   isolatePassed: () => void;
-  /** Clear isolation */
+  /**
+   * Isolate the involved entities (passed ∪ failed) and color them
+   * (passed green, failed red). Targets the given spec, else the active spec
+   * when scope = 'spec', else the whole report.
+   */
+  isolateInvolved: (specId?: string) => void;
+  /** Clear isolation (and restore whole-report colors) */
   clearIsolation: () => void;
 
   // Utility getters
@@ -201,6 +211,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const activeSpecificationId = useViewerStore((s) => s.idsActiveSpecificationId);
   const activeEntityId = useViewerStore((s) => s.idsActiveEntityId);
   const filterMode = useViewerStore((s) => s.idsFilterMode);
+  const isolationScope = useViewerStore((s) => s.idsIsolationScope);
   const displayOptions = useViewerStore((s) => s.idsDisplayOptions);
 
   // IDS store actions
@@ -219,9 +230,12 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const setIdsError = useViewerStore((s) => s.setIdsError);
   const setIdsLocale = useViewerStore((s) => s.setIdsLocale);
   const setIdsFilterMode = useViewerStore((s) => s.setIdsFilterMode);
+  const setIdsIsolationScope = useViewerStore((s) => s.setIdsIsolationScope);
   const setIdsDisplayOptions = useViewerStore((s) => s.setIdsDisplayOptions);
   const idsFailedEntityIds = useViewerStore((s) => s.idsFailedEntityIds);
   const idsPassedEntityIds = useViewerStore((s) => s.idsPassedEntityIds);
+  const getFailedEntitiesForSpec = useViewerStore((s) => s.getFailedEntitiesForSpec);
+  const getPassedEntitiesForSpec = useViewerStore((s) => s.getPassedEntitiesForSpec);
 
   // Viewer state
   const models = useViewerStore((s) => s.models);
@@ -514,10 +528,6 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Selection Actions
   // ============================================================================
 
-  const setActiveSpecification = useCallback((specId: string | null) => {
-    setIdsActiveSpecification(specId);
-  }, [setIdsActiveSpecification]);
-
   const selectEntity = useCallback((modelId: string, expressId: number, zoomToEntity = true) => {
 
     // Update IDS state
@@ -582,23 +592,50 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Color Actions
   // ============================================================================
 
+  // Build the color-override map for the whole report (or a single spec when
+  // `specId` is given). `bothHighlights` forces passed+failed coloring
+  // regardless of the user's display toggles — used when isolating a spec's
+  // involved elements so both green and red show.
+  const buildColors = useCallback(
+    (specId?: string, bothHighlights = false): Map<number, ColorTuple> => {
+      if (!report) return new Map<number, ColorTuple>();
+      const opts = bothHighlights
+        ? { ...displayOptions, highlightFailed: true, highlightPassed: true }
+        : displayOptions;
+      return buildValidationColorUpdates(
+        report,
+        models,
+        opts,
+        defaultFailedColor,
+        defaultPassedColor,
+        geometryResultRef.current,
+        originalColorsRef.current,
+        specId ? { specId } : undefined
+      );
+    },
+    [report, models, displayOptions, defaultFailedColor, defaultPassedColor]
+  );
+
   const applyColors = useCallback(() => {
-    if (!report) return;
-
-    const colorUpdates = buildValidationColorUpdates(
-      report,
-      models,
-      displayOptions,
-      defaultFailedColor,
-      defaultPassedColor,
-      geometryResultRef.current,
-      originalColorsRef.current
-    );
-
+    const colorUpdates = buildColors();
     if (colorUpdates.size > 0) {
       setPendingColorUpdates(colorUpdates);
     }
-  }, [report, models, displayOptions, defaultFailedColor, defaultPassedColor, setPendingColorUpdates]);
+  }, [buildColors, setPendingColorUpdates]);
+
+  // Replace the overlay with a single spec's colors (passed green + failed
+  // red). Per-spec coloring is what makes the active spec's verdict correct
+  // even for entities that pass in another specification.
+  const setSpecColors = useCallback((specId: string) => {
+    setPendingColorUpdates(buildColors(specId, true));
+  }, [buildColors, setPendingColorUpdates]);
+
+  // Restore the default whole-report coloring, replacing any per-spec colors.
+  // An empty map clears the overlay when there's nothing to highlight.
+  const restoreReportColors = useCallback(() => {
+    if (!report) return;
+    setPendingColorUpdates(buildColors());
+  }, [report, buildColors, setPendingColorUpdates]);
 
   const clearColors = useCallback(() => {
     // Empty map signals overlay clear immediately.
@@ -622,43 +659,146 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Isolation Actions
   // ============================================================================
 
+  // Parse a cached "modelId:expressId" key into a renderer global id.
+  const keyToGlobalId = useCallback((key: string): number | undefined => {
+    const lastColonIndex = key.lastIndexOf(':');
+    const modelId = key.substring(0, lastColonIndex);
+    const expressId = parseInt(key.substring(lastColonIndex + 1), 10);
+    return toViewerGlobalId(modelId, expressId);
+  }, [toViewerGlobalId]);
+
+  // Resolve a list of entity refs to a set of renderer global ids.
+  const refsToGlobalIds = useCallback(
+    (refs: Array<{ modelId: string; expressId: number }>): Set<number> => {
+      const ids = new Set<number>();
+      for (const { modelId, expressId } of refs) {
+        const globalId = toViewerGlobalId(modelId, expressId);
+        if (globalId != null) ids.add(globalId);
+      }
+      return ids;
+    },
+    [toViewerGlobalId]
+  );
+
+  // Collect global ids from a cached "modelId:expressId" key set.
+  const keySetToGlobalIds = useCallback((keys: Set<string>): Set<number> => {
+    const ids = new Set<number>();
+    for (const key of keys) {
+      const globalId = keyToGlobalId(key);
+      if (globalId != null) ids.add(globalId);
+    }
+    return ids;
+  }, [keyToGlobalId]);
+
   const isolateFailed = useCallback(() => {
-    const failedIds = new Set<number>();
-
-    for (const key of idsFailedEntityIds) {
-      const lastColonIndex = key.lastIndexOf(':');
-      const modelId = key.substring(0, lastColonIndex);
-      const expressIdStr = key.substring(lastColonIndex + 1);
-      const expressId = parseInt(expressIdStr, 10);
-      const globalId = toViewerGlobalId(modelId, expressId);
-      if (globalId != null) failedIds.add(globalId);
+    if (isolationScope === 'spec') {
+      if (!activeSpecificationId) return;
+      const ids = refsToGlobalIds(getFailedEntitiesForSpec(activeSpecificationId));
+      if (ids.size > 0) {
+        setIsolatedEntities(ids);
+        setSpecColors(activeSpecificationId);
+      }
+      return;
     }
-
-    if (failedIds.size > 0) {
-      setIsolatedEntities(failedIds);
-    }
-  }, [idsFailedEntityIds, setIsolatedEntities, toViewerGlobalId]);
+    const failedIds = keySetToGlobalIds(idsFailedEntityIds);
+    if (failedIds.size > 0) setIsolatedEntities(failedIds);
+  }, [
+    isolationScope,
+    activeSpecificationId,
+    getFailedEntitiesForSpec,
+    refsToGlobalIds,
+    keySetToGlobalIds,
+    idsFailedEntityIds,
+    setIsolatedEntities,
+    setSpecColors,
+  ]);
 
   const isolatePassed = useCallback(() => {
-    const passedIds = new Set<number>();
-
-    for (const key of idsPassedEntityIds) {
-      const lastColonIndex = key.lastIndexOf(':');
-      const modelId = key.substring(0, lastColonIndex);
-      const expressIdStr = key.substring(lastColonIndex + 1);
-      const expressId = parseInt(expressIdStr, 10);
-      const globalId = toViewerGlobalId(modelId, expressId);
-      if (globalId != null) passedIds.add(globalId);
+    if (isolationScope === 'spec') {
+      if (!activeSpecificationId) return;
+      const ids = refsToGlobalIds(getPassedEntitiesForSpec(activeSpecificationId));
+      if (ids.size > 0) {
+        setIsolatedEntities(ids);
+        setSpecColors(activeSpecificationId);
+      }
+      return;
     }
+    const passedIds = keySetToGlobalIds(idsPassedEntityIds);
+    if (passedIds.size > 0) setIsolatedEntities(passedIds);
+  }, [
+    isolationScope,
+    activeSpecificationId,
+    getPassedEntitiesForSpec,
+    refsToGlobalIds,
+    keySetToGlobalIds,
+    idsPassedEntityIds,
+    setIsolatedEntities,
+    setSpecColors,
+  ]);
 
-    if (passedIds.size > 0) {
-      setIsolatedEntities(passedIds);
+  const isolateInvolved = useCallback((specId?: string) => {
+    const targetSpec = specId ?? (isolationScope === 'spec' ? activeSpecificationId : null);
+    if (targetSpec) {
+      const ids = refsToGlobalIds([
+        ...getFailedEntitiesForSpec(targetSpec),
+        ...getPassedEntitiesForSpec(targetSpec),
+      ]);
+      if (ids.size > 0) {
+        setIsolatedEntities(ids);
+        setSpecColors(targetSpec);
+      }
+      return;
     }
-  }, [idsPassedEntityIds, setIsolatedEntities, toViewerGlobalId]);
+    // Whole report: every applicable entity (passed ∪ failed), colored
+    // green/red regardless of the user's display toggles.
+    const ids = keySetToGlobalIds(idsFailedEntityIds);
+    for (const globalId of keySetToGlobalIds(idsPassedEntityIds)) ids.add(globalId);
+    if (ids.size > 0) {
+      setIsolatedEntities(ids);
+      setPendingColorUpdates(buildColors(undefined, true));
+    }
+  }, [
+    isolationScope,
+    activeSpecificationId,
+    getFailedEntitiesForSpec,
+    getPassedEntitiesForSpec,
+    refsToGlobalIds,
+    keySetToGlobalIds,
+    idsFailedEntityIds,
+    idsPassedEntityIds,
+    setIsolatedEntities,
+    setSpecColors,
+    setPendingColorUpdates,
+    buildColors,
+  ]);
 
   const clearIsolation = useCallback(() => {
     setIsolatedEntities(null);
-  }, [setIsolatedEntities]);
+    // Returning to "show all" restores the default whole-report coloring,
+    // replacing any per-spec green/red applied while isolated.
+    restoreReportColors();
+  }, [setIsolatedEntities, restoreReportColors]);
+
+  const setActiveSpecification = useCallback((specId: string | null) => {
+    setIdsActiveSpecification(specId);
+    // In per-spec scope, selecting a spec immediately isolates its involved
+    // elements (passed green, failed red); deselecting clears isolation.
+    if (isolationScope === 'spec') {
+      if (specId) isolateInvolved(specId);
+      else clearIsolation();
+    }
+  }, [setIdsActiveSpecification, isolationScope, isolateInvolved, clearIsolation]);
+
+  const setIsolationScope = useCallback((scope: 'ids' | 'spec') => {
+    setIdsIsolationScope(scope);
+    if (scope === 'spec') {
+      // Entering per-spec scope isolates the active spec (if one is selected).
+      if (activeSpecificationId) isolateInvolved(activeSpecificationId);
+    } else {
+      // Back to whole-IDS scope: drop per-spec isolation and restore colors.
+      clearIsolation();
+    }
+  }, [setIdsIsolationScope, activeSpecificationId, isolateInvolved, clearIsolation]);
 
   // ============================================================================
   // Utility Getters
@@ -993,6 +1133,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     activeSpecificationId,
     activeEntityId,
     filterMode,
+    isolationScope,
     displayOptions,
 
     // Document actions
@@ -1014,6 +1155,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     togglePanel,
     setLocale,
     setFilterMode: setFilterModeAction,
+    setIsolationScope,
     setDisplayOptions: setDisplayOptionsAction,
 
     // Color actions
@@ -1023,6 +1165,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     // Isolation actions
     isolateFailed,
     isolatePassed,
+    isolateInvolved,
     clearIsolation,
 
     // Utility getters

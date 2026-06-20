@@ -200,14 +200,34 @@ const exportObj: Tool = {
 
 const exportIfcx: Tool = {
   name: 'export_ifcx',
-  description: 'Save to .ifcx (IFC5). Planned for v0.2.',
+  description: 'Save to .ifcx (IFC5 / USD-style node graph) via the Rust exporter: spatial hierarchy + classes + known IFC5 properties.',
   scope: 'export',
-  inputSchema: { type: 'object', properties: { model_id: { type: 'string' }, file_path: { type: 'string' } }, additionalProperties: false },
-  handler() {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'export_ifcx is planned for v0.2.',
-    });
+  inputSchema: {
+    type: 'object',
+    properties: {
+      model_id: { type: 'string' },
+      file_path: { type: 'string' },
+      all_properties: { type: 'boolean', description: 'Include properties without an IFC5 schema too (default: known-only).' },
+    },
+    required: ['file_path'],
+    additionalProperties: false,
+  },
+  async handler(input, ctx) {
+    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+    const bytes = await resolveIfcBytes(m);
+    const gp = new GeometryProcessor();
+    await gp.init();
+    try {
+      const ifcx = gp.exportIfcx(bytes, input.all_properties !== true, true);
+      if (ifcx == null) {
+        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
+      }
+      await writeFile(filePath, ifcx, 'utf-8');
+      return okResult(`Wrote ${ifcx.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
+    } finally {
+      gp.dispose();
+    }
   },
 };
 

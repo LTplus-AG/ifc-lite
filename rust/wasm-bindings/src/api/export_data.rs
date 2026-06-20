@@ -5,7 +5,7 @@
 //! WASM API: tabular / semantic data exporters — CSV, JSON, JSON-LD.
 
 use super::IfcAPI;
-use ifc_lite_export::{CsvMode, CsvOptions, JsonLdOptions, JsonOptions};
+use ifc_lite_export::{CsvMode, CsvOptions, Ifc5Options, JsonLdOptions, JsonOptions};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -62,5 +62,18 @@ impl IfcAPI {
             opts.context = context;
         }
         ifc_lite_export::export_jsonld(content.as_bytes(), &opts)
+    }
+
+    /// Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
+    /// only properties with an official IFC5 schema.
+    #[wasm_bindgen(js_name = exportIfcx)]
+    pub fn export_ifcx(
+        &self,
+        content: String,
+        only_known_properties: bool,
+        pretty: bool,
+    ) -> String {
+        let opts = Ifc5Options { only_known_properties, pretty, ..Default::default() };
+        ifc_lite_export::export_ifc5(content.as_bytes(), &opts)
     }
 }

@@ -164,7 +164,7 @@ export async function exportCommand(args: string[]): Promise<void> {
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
 
-  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--out file]');
+  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--out file]');
 
   // B9/F6: Auto-prefix Ifc
   if (type) {
@@ -268,6 +268,7 @@ export async function exportCommand(args: string[]): Promise<void> {
     case 'gltf':
     case 'glb':
     case 'jsonld':
+    case 'ifcx':
     case 'step': {
       const filterActive = !!(type || propFilter || storeyFilter || limit);
       const isolated = filterActive
@@ -275,7 +276,11 @@ export async function exportCommand(args: string[]): Promise<void> {
         : new Uint32Array();
       const { bytes, gp } = await rustExportContext(store, filePath);
       try {
-        if (format === 'step') {
+        if (format === 'ifcx') {
+          const out = gp.exportIfcx(bytes);
+          if (out == null) fatal('IFCX export failed (geometry pipeline not initialized)');
+          await writeOutput(out as string, outPath);
+        } else if (format === 'step') {
           // Rust faithful re-serialization (+ reference-closed subset when filtered).
           const schema = getFlag(args, '--schema') ?? '';
           const out = gp.exportStep(bytes, schema, isolated);
@@ -303,6 +308,6 @@ export async function exportCommand(args: string[]): Promise<void> {
       break;
     }
     default:
-      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step`);
+      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx`);
   }
 }

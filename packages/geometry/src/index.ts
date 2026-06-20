@@ -1094,6 +1094,11 @@ export class GeometryProcessor {
     return this.bridge.exportStep(safeUtf8Decode(buffer), schema, included);
   }
 
+  exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportIfcx(safeUtf8Decode(buffer), onlyKnownProperties, pretty);
+  }
+
   /**
    * Assemble a GLB from already-produced meshes (no re-meshing) — the viewer path.
    * Flattens `MeshData[]` into the wasm binding's parallel arrays. The caller passes

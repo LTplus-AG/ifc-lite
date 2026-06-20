@@ -372,6 +372,13 @@ export class IfcLiteBridge {
     return this.runExport('exportStep', content, (api) => api.exportStep(content, schema, included));
   }
 
+  /** Export IFC5/IFCX (USD-style node graph). */
+  exportIfcx(content: string, onlyKnownProperties = true, pretty = false): string {
+    return this.runExport('exportIfcx', content, (api) =>
+      api.exportIfcx(content, onlyKnownProperties, pretty),
+    );
+  }
+
   /** Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL. */
   exportJsonld(
     content: string,

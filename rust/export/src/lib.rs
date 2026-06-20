@@ -12,6 +12,7 @@
 mod csv;
 mod gltf;
 mod hbjson;
+mod ifc5;
 mod json;
 mod jsonld;
 mod model;
@@ -30,6 +31,7 @@ pub use gltf::{
     export_glb, export_glb_from_meshes, export_glb_with_stats, GltfOptions, GltfStats,
 };
 pub use hbjson::Model;
+pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
 pub use model::{

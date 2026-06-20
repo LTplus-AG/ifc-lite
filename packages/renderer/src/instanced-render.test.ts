@@ -188,4 +188,28 @@ describe('prepareInstancedRender — grouping + buffer assembly', () => {
     const p: [number, number, number] = [0.25, 0.5, 0.75];
     assertClose(applyColMajor(mat, p), swap([origin0[0] + p[0], origin0[1] + p[1], origin0[2] + p[2]]), 'template0 inst0');
   });
+
+  it('excludes transparent instances (alpha < 0.99) so glass renders via the flat path', () => {
+    const origin: [number, number, number] = [0, 0, 0];
+    const shard = {
+      templates: [
+        { positions: new Float32Array([0, 0, 0]), normals: new Float32Array([0, 1, 0]), indices: new Uint32Array([0]), origin },
+        // template 1: ONLY transparent occurrences → should be dropped entirely.
+        { positions: new Float32Array([1, 1, 1]), normals: new Float32Array([0, 0, 1]), indices: new Uint32Array([0]), origin },
+      ],
+      instances: [
+        { templateIndex: 0, entityId: 1, color: [1, 0, 0, 1] as [number, number, number, number], transform: rowMajorIdentity() }, // opaque → kept
+        { templateIndex: 0, entityId: 2, color: [0.6, 0.8, 0.9, 0.3] as [number, number, number, number], transform: rowMajorIdentity() }, // glass → dropped
+        { templateIndex: 1, entityId: 3, color: [0.6, 0.8, 0.9, 0.5] as [number, number, number, number], transform: rowMajorIdentity() }, // glass → dropped
+      ],
+    };
+
+    const out = prepareInstancedRender(shard);
+    assert.strictEqual(out.length, 1, 'only the template with an opaque occurrence survives');
+    const t0 = out[0];
+    assert.strictEqual(t0.templateIndex, 0);
+    assert.strictEqual(t0.instanceCount, 1, 'the transparent occurrence of template 0 is excluded');
+    const dv = new DataView(t0.instanceBuffer);
+    assert.strictEqual(dv.getUint32(64, true), 1, 'the kept instance is the opaque one (entityId 1)');
+  });
 });

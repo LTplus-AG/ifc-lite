@@ -25,7 +25,7 @@
 
 export type RGBAOverrideMap = ReadonlyMap<number, readonly [number, number, number, number]>;
 
-const OPAQUE_ALPHA_CUTOFF = 0.99;
+export const OPAQUE_ALPHA_CUTOFF = 0.99;
 
 /**
  * Minimum override alpha that triggers opaque-pipeline promotion.

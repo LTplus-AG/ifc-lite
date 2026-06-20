@@ -33,6 +33,7 @@
  */
 
 import { MathUtils } from './math.js';
+import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { Mat4 } from './types.js';
 import type { DecodedInstancedShard, DecodedInstance } from '@ifc-lite/geometry';
 
@@ -130,10 +131,19 @@ export function writeInstanceRecord(
  * occurrences are grouped and their `SWAP · rel_k · T(origin)` matrices +
  * entityId + colour packed into one interleaved instance buffer. Templates with
  * zero occurrences are skipped (encode always emits ≥1, but be defensive).
+ *
+ * TRANSPARENT instances (colour alpha < OPAQUE_ALPHA_CUTOFF — glass, IfcSpace,
+ * openings) are EXCLUDED: the instanced pipeline is the opaque clone (no alpha
+ * blend, depth-write on), so drawing glass here renders it opaque (and fs_main's
+ * glass-fresnel tints it near-white). They render correctly via the flat
+ * transparent pipeline instead — which the emit-both path still produces. Uses
+ * the SAME 0.99 cutoff as the flat opaque/transparent split (overlay-routing.ts).
  */
 export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedRenderTemplate[] {
   const byTemplate: DecodedInstance[][] = shard.templates.map(() => []);
   for (const inst of shard.instances) {
+    // Glass/transparent → flat transparent pipeline, not the opaque instanced one.
+    if (inst.color[3] < OPAQUE_ALPHA_CUTOFF) continue;
     const bucket = byTemplate[inst.templateIndex];
     // Defensive: a corrupt templateIndex would otherwise throw; drop it loudly-safe.
     if (bucket) bucket.push(inst);

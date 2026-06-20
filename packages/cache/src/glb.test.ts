@@ -257,4 +257,44 @@ describe('parseGLBToMeshData — node translation folding', () => {
       10, 20, 30, 11, 20, 30, 10, 21, 30,
     ]);
   });
+
+  it('folds translation for a mesh node not reachable from the scene root', () => {
+    // node 0 is the scene root (no mesh); the mesh lives on node 1 which is NOT a
+    // child of node 0 (disconnected). Extraction must still fold node 1's own
+    // translation rather than emit local-space vertices.
+    const bin = new Uint8Array(84);
+    const fv = new Float32Array(bin.buffer);
+    fv.set([0, 0, 0, 1, 0, 0, 0, 1, 0], 0);
+    fv.set([0, 0, 1, 0, 0, 1, 0, 0, 1], 9);
+    new Uint32Array(bin.buffer, 72, 3).set([0, 1, 2]);
+
+    const meshes = parseGLBToMeshData(
+      {
+        asset: { version: '2.0' },
+        scene: 0,
+        scenes: [{ nodes: [0] }], // only node 0 is in the scene; node 1 is orphaned
+        nodes: [
+          { translation: [100, 0, 0] }, // root, no mesh, not a parent of node 1
+          { mesh: 0, translation: [5, 6, 7], extras: { expressId: 7 } },
+        ],
+        meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
+        accessors: [
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+        ],
+        bufferViews: [
+          { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
+          { buffer: 0, byteOffset: 36, byteLength: 36, byteStride: 12, target: 34962 },
+          { buffer: 0, byteOffset: 72, byteLength: 12, target: 34963 },
+        ],
+        buffers: [{ byteLength: 84 }],
+      },
+      bin,
+    );
+
+    expect(meshes).toHaveLength(1);
+    // node 1's own translation [5,6,7] is applied (NOT node 0's [100,0,0]).
+    expect(Array.from(meshes[0].positions)).toEqual([5, 6, 7, 6, 6, 7, 5, 7, 7]);
+  });
 });

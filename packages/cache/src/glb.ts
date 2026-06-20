@@ -371,6 +371,12 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
       for (const c of nd.children ?? []) walk(c, x, y, z);
     };
     for (const r of roots) walk(r, 0, 0, 0);
+    // Extraction below iterates ALL nodes, not just scene-reachable ones. Walk any
+    // node the scene roots didn't reach (disconnected components) as its own root so
+    // every mesh node gets a composed transform — never silently emitted in local space.
+    for (let i = 0; i < gltf.nodes.length; i++) {
+      if (!seen.has(i)) walk(i, 0, 0, 0);
+    }
   }
 
   const DEFAULT_COLOR: [number, number, number, number] = [0.8, 0.8, 0.8, 1.0];

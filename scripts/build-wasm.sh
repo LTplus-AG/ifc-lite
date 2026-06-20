@@ -120,5 +120,59 @@ else
   echo "   ⚠️  Over $TARGET_LABEL target ($(($WASM_SIZE / 1024))KB)"
 fi
 
+# --- Optional second bundle: threaded (atomics + shared memory) -------------
+# Off by default. Enable with `BUILD_THREADED=1 ./scripts/build-wasm.sh`.
+# This is a SEPARATE bundle selected at runtime via wasm-feature-detect +
+# crossOriginIsolated (Safari lacks credentialless threads → it loads the
+# single-thread bundle above). See docs/architecture/csg-threading-design.md.
+if [ "${BUILD_THREADED:-}" = "1" ]; then
+  THREADED_OUT="../../packages/wasm/pkg-threaded"
+  echo ""
+  echo "🧵 Building threaded bundle → $THREADED_OUT (atomics/shared-memory + wasm-bindgen-rayon)"
+
+  # The exact flag set validated on spike/path-b-respike (8fcaff96). RUSTFLAGS
+  # fully replaces .cargo/config.toml's target rustflags, so the base flags
+  # (max-memory, stack-size, simd128) are repeated here. build-std stays in
+  # .cargo/config.toml [unstable] and rebuilds std WITH atomics.
+  RUSTFLAGS="-C link-arg=--max-memory=4294967296 -C link-arg=-zstack-size=8388608 -C target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base" \
+  rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+    --target web \
+    --out-dir "$THREADED_OUT" \
+    --out-name ifc-lite \
+    --release \
+    -- --features threads
+
+  # Patch wasm-bindgen-rayon's worker bootstrap: it does `import('../../..')`
+  # (the package DIRECTORY), which only resolves under a bundler. Vite resolves
+  # it, but on a raw static server the helper worker dies silently and
+  # initThreadPool hangs forever. Point at the explicit module file so the
+  # bundle also works unbundled. (Harmless under Vite.)
+  THREADED_REL="$(echo "$THREADED_OUT" | sed 's|^../../||')"
+  WH="$(ls "$THREADED_REL"/snippets/wasm-bindgen-rayon-*/src/workerHelpers.js 2>/dev/null || true)"
+  if [ -n "$WH" ] && [ -f "$WH" ]; then
+    perl -0pi -e "s#await import\('\.\./\.\./\.\.'\)#await import('../../../ifc-lite.js')#" "$WH"
+    echo "🧵 patched wasm-bindgen-rayon directory import in $WH"
+  else
+    echo "⚠️  threaded build: workerHelpers.js not found to patch (check $THREADED_REL/snippets)"
+  fi
+
+  # Strip platform-variant trampoline indices from the threaded .d.ts too.
+  THREADED_DTS="$THREADED_REL/ifc-lite.d.ts"
+  if [ -f "$THREADED_DTS" ]; then
+    grep -v '__wasm_bindgen_func_elem_' "$THREADED_DTS" > "$THREADED_DTS.tmp" && mv "$THREADED_DTS.tmp" "$THREADED_DTS"
+  fi
+
+  # Verify it really imports shared memory (the litmus test).
+  THREADED_WASM="$THREADED_REL/ifc-lite_bg.wasm"
+  if command -v wasm-objdump >/dev/null 2>&1; then
+    if wasm-objdump -j Import -x "$THREADED_WASM" 2>/dev/null | grep -qi 'memory.*shared'; then
+      echo "🧵 ✅ threaded bundle imports shared memory"
+    else
+      echo "🧵 ❌ threaded bundle does NOT import shared memory — build flags wrong"
+    fi
+  fi
+  ls -lh "$THREADED_WASM" | awk '{print "   Threaded WASM: " $5 " (no budget — not the default bundle)"}'
+fi
+
 echo ""
 echo "✨ Build complete!"

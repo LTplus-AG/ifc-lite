@@ -59,6 +59,18 @@ packages/wasm/pkg/ifc-lite_bg.wasm
 packages/wasm/pkg/ifc-lite_bg.wasm.d.ts
 packages/wasm/pkg/ifc-lite.js
 
+# Threaded WASM bundle (build-wasm.sh BUILD_THREADED=1) — build artifact, like pkg/.
+packages/wasm/pkg-threaded/
+
+# csg-thread-bench: rung-2 measurement artifacts (wasm-pack output, copied IFC
+# fixtures, generated corpus blobs). Source (Cargo.toml, src/, web/index.html,
+# web/serve.mjs) IS committed; these regenerate via the crate header instructions.
+rust/csg-thread-bench/web/pkg-plain/
+rust/csg-thread-bench/web/pkg-threaded/
+rust/csg-thread-bench/web/models/
+rust/csg-thread-bench/web/corpus/
+rust/csg-thread-bench/Cargo.lock
+
 # Tauri/Claude temp files
 tmpclaude*
 nul

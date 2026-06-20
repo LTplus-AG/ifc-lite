@@ -1,0 +1,161 @@
+//! CSG corpus capture — measurement-only, behind the off-by-default
+//! `csg_capture` feature (zero cost in production: the hooks compile to
+//! nothing when the feature is absent).
+//!
+//! Every real void cut funnels through exactly one of
+//! [`crate::kernel::mesh_bridge::subtract`] / `subtract_many`, so recording at
+//! that boundary captures the complete, dedup-by-construction CSG work corpus
+//! the pipeline actually performed on a model. The replay harness
+//! (`rust/processing/examples/csg_scaling_bench.rs`) drives the native pipeline
+//! once to populate this, then re-runs the captured jobs under scoped rayon
+//! pools to measure whether across-element exact CSG scales with cores.
+//!
+//! This exists to settle "rung 1" of the in-WASM shared-memory threading
+//! question (see `project_wasm_csg_speed_is_worker_throttle` memory): does the
+//! pure-Rust exact kernel scale with cores at all on native, before paying for
+//! a threaded wasm build to measure the wasm-specific taxes.
+
+use crate::mesh::Mesh;
+use std::sync::Mutex;
+
+/// One real CSG invocation captured from the pipeline. Holds owned copies of
+/// the exact inputs the kernel received, so the replay is faithful.
+#[derive(Clone)]
+pub enum CapturedCsgJob {
+    /// A single `host − cutter` (a single-opening element, or one step of a
+    /// sequential per-cutter fallback).
+    Single { host: Mesh, cutter: Mesh },
+    /// A batched `host − (∪ cutters)` (the disjoint-opening fast group).
+    Many { host: Mesh, cutters: Vec<Mesh> },
+}
+
+static CAPTURED: Mutex<Vec<CapturedCsgJob>> = Mutex::new(Vec::new());
+
+/// Record a single-pair subtract. Called from the kernel boundary.
+pub fn record_single(host: &Mesh, cutter: &Mesh) {
+    if let Ok(mut v) = CAPTURED.lock() {
+        v.push(CapturedCsgJob::Single { host: host.clone(), cutter: cutter.clone() });
+    }
+}
+
+/// Record a batched subtract. Called from the kernel boundary.
+pub fn record_many(host: &Mesh, cutters: &[&Mesh]) {
+    if let Ok(mut v) = CAPTURED.lock() {
+        v.push(CapturedCsgJob::Many {
+            host: host.clone(),
+            cutters: cutters.iter().map(|m| (*m).clone()).collect(),
+        });
+    }
+}
+
+/// Take everything captured so far, clearing the buffer.
+pub fn drain() -> Vec<CapturedCsgJob> {
+    CAPTURED.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default()
+}
+
+// --- Manual little-endian (de)serialization (Mesh has no serde) ---------------
+// Shared by the native dumper and the wasm replay harness so the format can't
+// drift. Format: u32 job_count, then per job: u8 tag (0=Single,1=Many),
+// mesh(host), [mesh(cutter) | u32 n + n×mesh(cutter)]. mesh = u32 pos_len +
+// f32×, u32 norm_len + f32×, u32 idx_len + u32×, u8 rtc_applied, f64×3 origin.
+
+fn push_mesh(out: &mut Vec<u8>, m: &Mesh) {
+    out.extend_from_slice(&(m.positions.len() as u32).to_le_bytes());
+    for v in &m.positions {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    out.extend_from_slice(&(m.normals.len() as u32).to_le_bytes());
+    for v in &m.normals {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    out.extend_from_slice(&(m.indices.len() as u32).to_le_bytes());
+    for v in &m.indices {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    out.push(m.rtc_applied as u8);
+    for v in &m.origin {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+}
+
+/// Serialize a captured corpus to a self-describing little-endian blob.
+pub fn serialize(jobs: &[CapturedCsgJob]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(&(jobs.len() as u32).to_le_bytes());
+    for j in jobs {
+        match j {
+            CapturedCsgJob::Single { host, cutter } => {
+                out.push(0);
+                push_mesh(&mut out, host);
+                push_mesh(&mut out, cutter);
+            }
+            CapturedCsgJob::Many { host, cutters } => {
+                out.push(1);
+                push_mesh(&mut out, host);
+                out.extend_from_slice(&(cutters.len() as u32).to_le_bytes());
+                for c in cutters {
+                    push_mesh(&mut out, c);
+                }
+            }
+        }
+    }
+    out
+}
+
+struct Reader<'a> {
+    b: &'a [u8],
+    p: usize,
+}
+impl<'a> Reader<'a> {
+    fn u32(&mut self) -> u32 {
+        let v = u32::from_le_bytes(self.b[self.p..self.p + 4].try_into().unwrap());
+        self.p += 4;
+        v
+    }
+    fn f32(&mut self) -> f32 {
+        let v = f32::from_le_bytes(self.b[self.p..self.p + 4].try_into().unwrap());
+        self.p += 4;
+        v
+    }
+    fn f64(&mut self) -> f64 {
+        let v = f64::from_le_bytes(self.b[self.p..self.p + 8].try_into().unwrap());
+        self.p += 8;
+        v
+    }
+    fn u8(&mut self) -> u8 {
+        let v = self.b[self.p];
+        self.p += 1;
+        v
+    }
+    fn mesh(&mut self) -> Mesh {
+        let n = self.u32() as usize;
+        let positions: Vec<f32> = (0..n).map(|_| self.f32()).collect();
+        let n = self.u32() as usize;
+        let normals: Vec<f32> = (0..n).map(|_| self.f32()).collect();
+        let n = self.u32() as usize;
+        let indices: Vec<u32> = (0..n).map(|_| self.u32()).collect();
+        let rtc_applied = self.u8() != 0;
+        let origin = [self.f64(), self.f64(), self.f64()];
+        Mesh { positions, normals, indices, rtc_applied, origin }
+    }
+}
+
+/// Deserialize a blob produced by [`serialize`].
+pub fn deserialize(blob: &[u8]) -> Vec<CapturedCsgJob> {
+    let mut r = Reader { b: blob, p: 0 };
+    let n = r.u32() as usize;
+    let mut jobs = Vec::with_capacity(n);
+    for _ in 0..n {
+        let tag = r.u8();
+        let host = r.mesh();
+        if tag == 0 {
+            let cutter = r.mesh();
+            jobs.push(CapturedCsgJob::Single { host, cutter });
+        } else {
+            let nc = r.u32() as usize;
+            let cutters: Vec<Mesh> = (0..nc).map(|_| r.mesh()).collect();
+            jobs.push(CapturedCsgJob::Many { host, cutters });
+        }
+    }
+    jobs
+}

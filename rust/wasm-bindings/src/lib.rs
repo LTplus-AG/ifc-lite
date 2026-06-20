@@ -51,6 +51,14 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "console_error_panic_hook")]
 pub use console_error_panic_hook::set_once as set_panic_hook;
 
+// Threaded build (off by default): exposes `initThreadPool(n)` to JS and makes
+// the geometry crate's `par_iter` element loops parallel in WASM. Built as a
+// SEPARATE bundle (atomics/shared-memory flags) via `build-wasm.sh BUILD_THREADED=1`;
+// requires cross-origin isolation at runtime. See
+// docs/architecture/csg-threading-design.md.
+#[cfg(feature = "threads")]
+pub use wasm_bindgen_rayon::init_thread_pool;
+
 mod api;
 mod utils;
 mod zero_copy;

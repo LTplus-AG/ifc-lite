@@ -14,6 +14,16 @@ keywords = ["ifc", "bim", "geometry", "pipeline", "aec"]
 categories = ["parsing", "algorithms"]
 readme = "../../README.md"
 
+[features]
+# Measurement-only: enable the geometry crate's CSG corpus capture so the
+# `csg_scaling_bench` example can replay real void-cut jobs. See
+# rust/processing/examples/csg_scaling_bench.rs.
+csg-capture = ["ifc-lite-geometry/csg_capture"]
+
+[[example]]
+name = "csg_scaling_bench"
+required-features = ["csg-capture"]
+
 [dependencies]
 ifc-lite-core = { version = "4.1.0", path = "../core" }
 # CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry on every

@@ -74,6 +74,9 @@ pub mod bool2d;
 /// min-angle refinement. Backs the quality triangulators in `triangulation`.
 mod cdt;
 pub mod csg;
+/// Measurement-only CSG corpus capture (off-by-default `csg_capture` feature).
+#[cfg(feature = "csg_capture")]
+pub mod csg_capture;
 /// Deterministic near-coplanar facet weld for faceted-BREP host meshes.
 /// Corrects f32 import jitter (~0.09°) so authored-coplanar roof slope facets
 /// are EXACTLY coplanar before the exact-kernel opening cut (issue #1007).

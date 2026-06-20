@@ -18,6 +18,10 @@ readme = "../../README.md"
 # (docs/architecture/geometry-pipeline.md).
 default = []
 debug_geometry = []
+# Measurement-only: record the (host, cutters) of every kernel subtract into a
+# global buffer so a bench can replay the real CSG corpus under varying thread
+# counts. Zero cost when absent. See src/csg_capture.rs.
+csg_capture = []
 
 [dependencies]
 

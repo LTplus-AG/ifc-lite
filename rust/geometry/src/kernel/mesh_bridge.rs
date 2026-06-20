@@ -344,6 +344,8 @@ fn exact_on_plane_weld(v: [f64; 3], t0: [f64; 3], t1: [f64; 3], t2: [f64; 3]) ->
 
 /// `host − cutter` as a `Mesh`.
 pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
+    #[cfg(feature = "csg_capture")]
+    crate::csg_capture::record_single(host, cutter);
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
     promote_cutter_verts_onto_host_faces(&mut c, &h);
@@ -365,6 +367,8 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
 /// constraint — see [`difference_all`]); the caller must fall back to
 /// sequential per-cutter subtraction.
 pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
+    #[cfg(feature = "csg_capture")]
+    crate::csg_capture::record_many(host, cutters);
     let h = orient_outward(mesh_to_tris(host));
     let comp_tris: Vec<Vec<Tri>> = cutters
         .iter()

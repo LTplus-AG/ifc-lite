@@ -11,6 +11,10 @@
 // geometry/dataStore props don't blow its recursive prop-diff to a RangeError/OOM
 // (the load "stops halfway" stall). See disable-react-dev-perf-track.ts.
 import './disable-react-dev-perf-track';
+// Must run before react-dom: guards Node.removeChild/insertBefore so a browser
+// translation extension mutating the DOM can't crash the reconciler. See
+// harden-dom-mutations.ts (PostHog issues #1229/#1230/#1232).
+import './harden-dom-mutations';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';

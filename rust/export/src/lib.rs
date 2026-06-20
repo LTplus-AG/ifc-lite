@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Domain-format exporters for ifc-lite.
 //!
-//! Phase 1: **HBJSON** (Honeybee energy-model) room export — the analytic, watertight
-//! IFC→Ladybug bridge. Apertures/doors/shades and a glTF migration follow.
+//! This is the Rust source of truth for domain-format export; CLI / SDK / wasm become
+//! thin callers (mirroring how geometry already flows through `ifc-lite-wasm`).
 //!
-//! This is the Rust source of truth; CLI / SDK / wasm become thin callers (mirroring how
-//! geometry already flows through `ifc-lite-wasm`).
+//! Formats:
+//! - **HBJSON** (Honeybee energy-model): analytic, watertight `IfcSpace` → room export.
+//! - **OBJ** (Wavefront): triangulated render geometry, origin-folded world coords.
 
 mod hbjson;
+mod obj;
 mod rooms;
 
 pub use hbjson::Model;
+pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 
 use ifc_lite_geometry::extract_profiles;
 

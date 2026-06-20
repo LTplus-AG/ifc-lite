@@ -368,8 +368,15 @@ export class IfcLiteBridge {
    * re-serialization + reference-closed subset). Empty `schema` ⇒ preserve source;
    * empty `included` ⇒ whole model.
    */
-  exportStep(content: string, schema = '', included: Uint32Array = new Uint32Array()): string {
-    return this.runExport('exportStep', content, (api) => api.exportStep(content, schema, included));
+  exportStep(
+    content: string,
+    schema = '',
+    included: Uint32Array = new Uint32Array(),
+    mutationsJson = '',
+  ): string {
+    return this.runExport('exportStep', content, (api) =>
+      api.exportStep(content, schema, included, mutationsJson),
+    );
   }
 
   /** Merge several IFC models into one STEP/IFC string (flat bytes + per-model lengths). */

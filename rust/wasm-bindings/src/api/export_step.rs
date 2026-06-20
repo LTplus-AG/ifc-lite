@@ -14,14 +14,22 @@ impl IfcAPI {
     /// `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
     /// `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
     /// `#`-reference closure is added so the subset never dangles a reference.
+    /// `mutations_json` carries `MutablePropertyView` edits (attribute updates +
+    /// property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
     #[wasm_bindgen(js_name = exportStep)]
-    pub fn export_step(&self, content: String, schema: String, included: &[u32]) -> String {
-        let opts = ifc_lite_export::StepOptions {
-            schema: if schema.is_empty() { None } else { Some(schema) },
-            included: if included.is_empty() { None } else { Some(included.to_vec()) },
-            ..Default::default()
-        };
-        ifc_lite_export::export_step(content.as_bytes(), &opts)
+    pub fn export_step(
+        &self,
+        content: String,
+        schema: String,
+        included: &[u32],
+        mutations_json: String,
+    ) -> String {
+        ifc_lite_export::export_step_json(
+            content.as_bytes(),
+            if schema.is_empty() { None } else { Some(schema) },
+            if included.is_empty() { None } else { Some(included.to_vec()) },
+            &mutations_json,
+        )
     }
 
     /// Merge several IFC models into one STEP/IFC string. `concatenated` is every model's

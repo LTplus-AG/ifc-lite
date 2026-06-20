@@ -119,8 +119,8 @@ pub fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> String {
 }
 
 /// Deterministic 22-char IFC-GUID-shaped placeholder derived from an express id
-/// (used only for proxy fallbacks; avoids needing a clock/RNG in wasm).
-fn placeholder_guid(id: u32) -> String {
+/// (used for proxy fallbacks + synthesized pset/rel entities; avoids a clock/RNG in wasm).
+pub(crate) fn placeholder_guid(id: u32) -> String {
     const A: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
     let mut n = id as u64 + 0x1000_0000;
     let mut s = [b'0'; 22];

@@ -25,7 +25,10 @@ mod schema_convert;
 mod step;
 
 pub use csv::{export_csv, CsvMode, CsvOptions};
-pub use step::{export_step, export_step_with_stats, StepOptions, StepStats};
+pub use step::{
+    export_step, export_step_json, export_step_with_stats, AttrMutation, PropMutation, StepOptions,
+    StepStats,
+};
 #[cfg(feature = "parquet-bos")]
 pub use parquet_bos::{export_bos, ParquetBosOptions};
 pub use gltf::{

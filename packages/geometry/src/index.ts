@@ -1089,9 +1089,14 @@ export class GeometryProcessor {
     return this.bridge.exportJsonld(safeUtf8Decode(buffer), context, includeProperties, includeQuantities, pretty);
   }
 
-  exportStep(buffer: Uint8Array, schema = '', included: Uint32Array = new Uint32Array()): string | null {
+  exportStep(
+    buffer: Uint8Array,
+    schema = '',
+    included: Uint32Array = new Uint32Array(),
+    mutationsJson = '',
+  ): string | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportStep(safeUtf8Decode(buffer), schema, included);
+    return this.bridge.exportStep(safeUtf8Decode(buffer), schema, included, mutationsJson);
   }
 
   exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): string | null {

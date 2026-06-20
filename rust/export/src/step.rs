@@ -11,6 +11,7 @@
 use std::collections::{HashMap, HashSet};
 
 use ifc_lite_core::EntityScanner;
+use serde::Deserialize;
 
 /// A single root-attribute edit: replace the top-level attribute at `index` of entity
 /// `express_id` with `value` (already STEP-serialized, e.g. `'New Name'` or `$`).
@@ -18,6 +19,18 @@ use ifc_lite_core::EntityScanner;
 pub struct AttrMutation {
     pub express_id: u32,
     pub index: usize,
+    pub value: String,
+}
+
+/// A property create/update: attach (or overwrite) `prop_name` in `pset_name` on
+/// `express_id` with `value` — the STEP-serialized nominal value, e.g. `IFCLABEL('2HR')`
+/// or `IFCREAL(42.)`. The wasm-bridge form of a `MutablePropertyView` CREATE/UPDATE_PROPERTY.
+/// Synthesizes fresh `IfcPropertySingleValue` / `IfcPropertySet` / `IfcRelDefinesByProperties`
+/// entities appended to DATA (new psets; merge-into-existing is a follow-on).
+pub struct PropMutation {
+    pub express_id: u32,
+    pub pset_name: String,
+    pub prop_name: String,
     pub value: String,
 }
 
@@ -30,8 +43,9 @@ pub struct StepOptions {
     /// reference closure is added so every emitted `#ref` resolves.
     pub included: Option<Vec<u32>>,
     /// Root-attribute edits to apply during serialization (P3 mutation bridge).
-    /// Property-set / quantity synthesis is the remaining mutation work.
     pub attribute_mutations: Vec<AttrMutation>,
+    /// Property create/update edits — synthesized as new pset entities appended to DATA.
+    pub property_mutations: Vec<PropMutation>,
     pub description: String,
     pub author: String,
     pub organization: String,
@@ -44,6 +58,7 @@ impl Default for StepOptions {
             schema: None,
             included: None,
             attribute_mutations: Vec::new(),
+            property_mutations: Vec::new(),
             description: "ViewDefinition [CoordinationView]".to_string(),
             author: "".to_string(),
             organization: "".to_string(),
@@ -193,6 +208,74 @@ fn apply_attr_mutations(line: &str, muts: &[(usize, String)]) -> String {
     format!("{prefix}{type_name}({});", args.join(","))
 }
 
+// ── Mutation JSON bridge (the wasm-facing contract) ─────────────────────────
+
+#[derive(Deserialize)]
+struct AttrMutJson {
+    #[serde(rename = "expressId")]
+    express_id: u32,
+    index: usize,
+    value: String,
+}
+
+#[derive(Deserialize)]
+struct PropMutJson {
+    #[serde(rename = "expressId")]
+    express_id: u32,
+    #[serde(rename = "psetName")]
+    pset_name: String,
+    #[serde(rename = "propName")]
+    prop_name: String,
+    value: String,
+}
+
+#[derive(Deserialize, Default)]
+struct MutationsJson {
+    #[serde(default, rename = "attributeUpdates")]
+    attribute_updates: Vec<AttrMutJson>,
+    #[serde(default, rename = "propertyMutations")]
+    property_mutations: Vec<PropMutJson>,
+}
+
+/// Export STEP from raw bytes + a JSON mutation payload (the wasm bridge form of a
+/// `MutablePropertyView` diff). `mutations_json` shape:
+/// `{ "attributeUpdates": [{expressId,index,value}], "propertyMutations":
+/// [{expressId,psetName,propName,value}] }` where `value` is already STEP-serialized
+/// (`'Name'`, `IFCLABEL('x')`, `IFCREAL(1.)`). Empty/invalid JSON ⇒ no mutations.
+pub fn export_step_json(
+    content: &[u8],
+    schema: Option<String>,
+    included: Option<Vec<u32>>,
+    mutations_json: &str,
+) -> String {
+    let muts: MutationsJson = if mutations_json.trim().is_empty() {
+        MutationsJson::default()
+    } else {
+        serde_json::from_str(mutations_json).unwrap_or_default()
+    };
+    let opts = StepOptions {
+        schema,
+        included,
+        attribute_mutations: muts
+            .attribute_updates
+            .into_iter()
+            .map(|a| AttrMutation { express_id: a.express_id, index: a.index, value: a.value })
+            .collect(),
+        property_mutations: muts
+            .property_mutations
+            .into_iter()
+            .map(|p| PropMutation {
+                express_id: p.express_id,
+                pset_name: p.pset_name,
+                prop_name: p.prop_name,
+                value: p.value,
+            })
+            .collect(),
+        ..StepOptions::default()
+    };
+    export_step(content, &opts)
+}
+
 /// Export the parsed model in `content` as a STEP/IFC string.
 pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
     export_step_with_stats(content, opts).0
@@ -203,8 +286,10 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     // 1. Index every entity line (preserve source order).
     let mut order: Vec<u32> = Vec::new();
     let mut line_of: HashMap<u32, (usize, usize)> = HashMap::new();
+    let mut max_id = 0u32;
     let mut scanner = EntityScanner::new(content);
     while let Some((id, _type, start, end)) = scanner.next_entity() {
+        max_id = max_id.max(id);
         if line_of.insert(id, (start, end)).is_none() {
             order.push(id);
         }
@@ -285,6 +370,58 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             }
         }
     }
+
+    // 4. Synthesize new property sets from property mutations (fresh ids past max_id).
+    if !opts.property_mutations.is_empty() {
+        // Group props by (entity, pset) preserving first-seen order.
+        let mut groups: Vec<((u32, String), Vec<(&str, &str)>)> = Vec::new();
+        let mut index_of: HashMap<(u32, String), usize> = HashMap::new();
+        for m in &opts.property_mutations {
+            // Only attach to entities actually present in the export.
+            if !included.contains(&m.express_id) {
+                continue;
+            }
+            let key = (m.express_id, m.pset_name.clone());
+            let idx = *index_of.entry(key.clone()).or_insert_with(|| {
+                groups.push((key.clone(), Vec::new()));
+                groups.len() - 1
+            });
+            groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
+        }
+
+        let mut next = max_id + 1;
+        for ((express_id, pset_name), props) in &groups {
+            let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
+            for (pname, value) in props {
+                out.push_str(&format!(
+                    "#{next}=IFCPROPERTYSINGLEVALUE('{}',$,{},$);\n",
+                    escape(pname),
+                    value
+                ));
+                prop_refs.push(next);
+                next += 1;
+                written += 1;
+            }
+            let psid = next;
+            next += 1;
+            let refs_str = prop_refs.iter().map(|r| format!("#{r}")).collect::<Vec<_>>().join(",");
+            out.push_str(&format!(
+                "#{psid}=IFCPROPERTYSET('{}',$,'{}',$,({}));\n",
+                crate::schema_convert::placeholder_guid(psid),
+                escape(pset_name),
+                refs_str
+            ));
+            written += 1;
+            let rid = next;
+            next += 1;
+            out.push_str(&format!(
+                "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});\n",
+                crate::schema_convert::placeholder_guid(rid),
+            ));
+            written += 1;
+        }
+    }
+
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
 
     (out, StepStats { total: order.len(), written })
@@ -396,6 +533,52 @@ mod tests {
             total += 1;
         }
         assert_eq!(reparsed, total, "no entities dropped by the edit");
+    }
+
+    #[test]
+    fn property_synthesis_attaches_new_pset() {
+        let src = fixture("ara3d/duplex.ifc");
+        let mut scanner = EntityScanner::new(&src[..]);
+        let mut wall = None;
+        while let Some((id, t, _s, _e)) = scanner.next_entity() {
+            if t.eq_ignore_ascii_case("IFCWALLSTANDARDCASE") {
+                wall = Some(id);
+                break;
+            }
+        }
+        let wall = wall.expect("a wall");
+
+        let (step, stats) = export_step_with_stats(
+            &src,
+            &StepOptions {
+                property_mutations: vec![PropMutation {
+                    express_id: wall,
+                    pset_name: "Pset_Test".to_string(),
+                    prop_name: "MyProp".to_string(),
+                    value: "IFCLABEL('hello')".to_string(),
+                }],
+                ..StepOptions::default()
+            },
+        );
+
+        // The three synthesized entities are present.
+        assert!(
+            step.contains("=IFCPROPERTYSINGLEVALUE('MyProp',$,IFCLABEL('hello'),$);"),
+            "single value synthesized"
+        );
+        assert!(step.contains("'Pset_Test'"), "pset name present");
+        // The synthesized rel ($-owner/name/desc) relates the wall to the new pset —
+        // distinct from duplex's original rels which carry a real OwnerHistory ref.
+        let synth_rel = format!(",$,$,$,(#{wall}),#");
+        assert!(
+            step.lines().any(|l| l.contains("=IFCRELDEFINESBYPROPERTIES(") && l.contains(&synth_rel)),
+            "synthesized rel targeting the wall not found"
+        );
+
+        // Re-parses, and the synthesized entities are counted (written = original + 3).
+        let (reparsed, _ids, _schema) = parse_back(&step);
+        assert_eq!(reparsed, stats.written, "every written entity re-parses");
+        assert_eq!(stats.written, stats.total + 3, "added 1 prop + 1 pset + 1 rel");
     }
 
     #[test]

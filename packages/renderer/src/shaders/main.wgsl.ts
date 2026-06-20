@@ -57,6 +57,11 @@ export const mainShaderSource = `
           // buffer). For the flat path this is identical to reading
           // uniforms.baseColor directly (the value is constant across the draw).
           @location(4) color: vec4<f32>,
+          // Per-occurrence selection flag for the instanced path (bit 0 = selected).
+          // vs_main writes 0 (the flat path selects via uniforms.flags.x instead);
+          // vs_instanced writes the per-instance flag from the instance buffer, so a
+          // single selected occurrence highlights without re-drawing.
+          @location(5) @interpolate(flat) instSelected: u32,
         }
 
         // Per-instance vertex-buffer inputs (slot 1, stepMode 'instance') used by
@@ -77,6 +82,7 @@ export const mainShaderSource = `
           @location(6) m3: vec4<f32>,
           @location(7) instEntityId: u32,
           @location(8) instColor: vec4<f32>,
+          @location(9) instSelected: u32,
         }
 
         @vertex
@@ -107,6 +113,7 @@ export const mainShaderSource = `
           output.normal = normalize((uniforms.model * vec4<f32>(input.normal, 0.0)).xyz);
           output.entityId = input.entityId;
           output.color = uniforms.baseColor;
+          output.instSelected = 0u;  // flat path selects via uniforms.flags.x
           // Store view-space position for edge detection
           output.viewPos = (uniforms.viewProj * worldPos).xyz;
           return output;
@@ -133,6 +140,7 @@ export const mainShaderSource = `
           output.normal = normalize((instMat * vec4<f32>(input.normal, 0.0)).xyz);
           output.entityId = inst.instEntityId;
           output.color = inst.instColor;
+          output.instSelected = inst.instSelected;
           output.viewPos = (uniforms.viewProj * worldPos).xyz;
           return output;
         }
@@ -310,7 +318,9 @@ export const mainShaderSource = `
           //                                    ghost tints don't pick up the
           //                                    near-white reflection tint meant
           //                                    for real glass materials.
-          let isSelected = (uniforms.flags.x & 1u) == 1u;
+          // Selected via the per-draw flag (flat path) OR the per-occurrence flag
+          // (instanced path — vs_instanced reads it from the instance buffer).
+          let isSelected = ((uniforms.flags.x & 1u) == 1u) || ((input.instSelected & 1u) == 1u);
           let isOverlay = (uniforms.flags.x & 2u) == 2u;
 
           // Selection highlight — a blue albedo RE-LIT by the scene lighting.

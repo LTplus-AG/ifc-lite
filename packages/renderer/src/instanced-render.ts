@@ -53,8 +53,21 @@ export const SWAP_ZUP_TO_YUP: Mat4 = {
   ]),
 };
 
-/** Bytes per instance in the GPU instance buffer: mat4 (64) + entityId (4) + rgba (16). */
-export const INSTANCE_STRIDE_BYTES = 84;
+/**
+ * Bytes per instance in the GPU instance buffer:
+ *   [0..63]  mat4 (16 f32, column-major)
+ *   [64..67] entityId (u32)
+ *   [68..83] rgba (4 f32)
+ *   [84..87] flags (u32 — bit 0 = selected; per-instance selection highlight)
+ */
+export const INSTANCE_STRIDE_BYTES = 88;
+
+/** Byte offset of the rgba colour within an instance record (patched by lens/IDS overlays). */
+export const INSTANCE_COLOR_OFFSET = 68;
+/** Byte offset of the flags u32 within an instance record (patched by selection). */
+export const INSTANCE_FLAGS_OFFSET = 84;
+/** flags bit 0 — this occurrence is selected (blue highlight in the shader). */
+export const INSTANCE_FLAG_SELECTED = 1;
 
 /** Transpose a row-major mat4 (the IFNS / `DecodedInstance.transform` convention)
  *  into a column-major `Mat4` (MathUtils / WGSL convention). */
@@ -99,10 +112,14 @@ export interface InstancedRenderTemplate {
   indices: Uint32Array;
   /** Template local origin (f64), folded into each instance matrix. */
   origin: [number, number, number];
-  /** Interleaved instance data: per occurrence mat4(64B) + entityId(4B) + rgba(16B). */
+  /** Interleaved instance data: per occurrence mat4(64B) + entityId(4B) + rgba(16B) + flags(4B). */
   instanceBuffer: ArrayBuffer;
   /** Number of occurrences (the `instanceCount` for drawIndexed). */
   instanceCount: number;
+  /** Per-occurrence express ids, in buffer order (occurrence i is at byte i*stride).
+   *  Lets the Scene build an express_id → occurrence map for per-instance
+   *  selection-flag + colour-override patching. */
+  entityIds: Uint32Array;
 }
 
 /**
@@ -116,14 +133,16 @@ export function writeInstanceRecord(
   instanceMatrix: Float32Array,
   entityId: number,
   color: readonly [number, number, number, number],
+  flags = 0,
 ): void {
   for (let j = 0; j < 16; j++) {
     dv.setFloat32(byteOffset + j * 4, instanceMatrix[j], true);
   }
   dv.setUint32(byteOffset + 64, entityId >>> 0, true);
   for (let j = 0; j < 4; j++) {
-    dv.setFloat32(byteOffset + 68 + j * 4, color[j], true);
+    dv.setFloat32(byteOffset + INSTANCE_COLOR_OFFSET + j * 4, color[j], true);
   }
+  dv.setUint32(byteOffset + INSTANCE_FLAGS_OFFSET, flags >>> 0, true);
 }
 
 /**
@@ -157,10 +176,13 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
 
     const buffer = new ArrayBuffer(insts.length * INSTANCE_STRIDE_BYTES);
     const dv = new DataView(buffer);
+    const entityIds = new Uint32Array(insts.length);
     for (let i = 0; i < insts.length; i++) {
       const inst = insts[i];
       const mat = composeInstanceMatrix(inst.transform, tmpl.origin);
-      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color);
+      // flags = 0: every occurrence starts unselected.
+      writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, 0);
+      entityIds[i] = inst.entityId >>> 0;
     }
 
     out.push({
@@ -171,6 +193,7 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
       origin: tmpl.origin,
       instanceBuffer: buffer,
       instanceCount: insts.length,
+      entityIds,
     });
   }
   return out;

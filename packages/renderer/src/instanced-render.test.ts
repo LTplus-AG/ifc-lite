@@ -9,6 +9,8 @@ import {
   writeInstanceRecord,
   prepareInstancedRender,
   INSTANCE_STRIDE_BYTES,
+  INSTANCE_FLAGS_OFFSET,
+  INSTANCE_FLAG_SELECTED,
 } from './instanced-render.js';
 
 // --- frame helpers (independent re-derivation of the expected world coord) ---
@@ -136,9 +138,9 @@ describe('writeInstanceRecord — GPU buffer byte layout', () => {
     const dv = new DataView(buf);
     const mat = new Float32Array(16);
     for (let i = 0; i < 16; i++) mat[i] = i + 0.5;
-    writeInstanceRecord(dv, 0, mat, 4242, [0.1, 0.2, 0.3, 0.4]);
+    writeInstanceRecord(dv, 0, mat, 4242, [0.1, 0.2, 0.3, 0.4], INSTANCE_FLAG_SELECTED);
 
-    assert.strictEqual(INSTANCE_STRIDE_BYTES, 84);
+    assert.strictEqual(INSTANCE_STRIDE_BYTES, 88);
     for (let i = 0; i < 16; i++) {
       assert.ok(Math.abs(dv.getFloat32(i * 4, true) - (i + 0.5)) < 1e-6, `mat[${i}]`);
     }
@@ -150,6 +152,14 @@ describe('writeInstanceRecord — GPU buffer byte layout', () => {
         `color[${j}]`,
       );
     }
+    assert.strictEqual(dv.getUint32(INSTANCE_FLAGS_OFFSET, true), INSTANCE_FLAG_SELECTED, 'flags');
+  });
+
+  it('defaults flags to 0 (unselected) when omitted', () => {
+    const buf = new ArrayBuffer(INSTANCE_STRIDE_BYTES);
+    const dv = new DataView(buf);
+    writeInstanceRecord(dv, 0, new Float32Array(16), 7, [1, 1, 1, 1]);
+    assert.strictEqual(dv.getUint32(INSTANCE_FLAGS_OFFSET, true), 0, 'flags default 0');
   });
 });
 
@@ -175,6 +185,7 @@ describe('prepareInstancedRender — grouping + buffer assembly', () => {
     const t0 = out.find((t) => t.templateIndex === 0)!;
     const t1 = out.find((t) => t.templateIndex === 1)!;
     assert.strictEqual(t0.instanceCount, 2, 'template 0 has 2 occurrences');
+    assert.deepStrictEqual(Array.from(t0.entityIds), [11, 33], 'template 0 entityIds in buffer order');
     assert.strictEqual(t1.instanceCount, 1, 'template 1 has 1 occurrence');
     assert.strictEqual(t0.instanceBuffer.byteLength, 2 * INSTANCE_STRIDE_BYTES);
     assert.strictEqual(t1.instanceBuffer.byteLength, 1 * INSTANCE_STRIDE_BYTES);

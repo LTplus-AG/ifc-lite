@@ -218,7 +218,7 @@ export class RenderPipeline {
                         ],
                     },
                     {
-                        arrayStride: 84, // mat4(64) + entityId(4) + rgba(16) — INSTANCE_STRIDE_BYTES
+                        arrayStride: 88, // mat4(64) + entityId(4) + rgba(16) + flags(4) — INSTANCE_STRIDE_BYTES
                         stepMode: 'instance',
                         attributes: [
                             { shaderLocation: 3, offset: 0, format: 'float32x4' }, // instMat col0
@@ -227,6 +227,7 @@ export class RenderPipeline {
                             { shaderLocation: 6, offset: 48, format: 'float32x4' }, // col3
                             { shaderLocation: 7, offset: 64, format: 'uint32' }, // entityId
                             { shaderLocation: 8, offset: 68, format: 'float32x4' }, // rgba
+                            { shaderLocation: 9, offset: 84, format: 'uint32' }, // flags (bit 0 = selected)
                         ],
                     },
                 ],
@@ -440,11 +441,11 @@ export class RenderPipeline {
                             { shaderLocation: 0, offset: 0, format: 'float32x3' },
                             { shaderLocation: 1, offset: 12, format: 'float32x3' },
                             { shaderLocation: 2, offset: 24, format: 'uint32' },
-                            // uv at @location(9): main.wgsl's vs_instanced/InstanceInput
-                            // occupy vertex-input @location 3..8 in this derived module,
+                            // uv at @location(10): main.wgsl's vs_instanced/InstanceInput
+                            // occupy vertex-input @location 3..9 in this derived module,
                             // so the textured uv lane moves clear of them (see
                             // textured.wgsl.ts). Byte offset (28) is unchanged.
-                            { shaderLocation: 9, offset: 28, format: 'float32x2' },
+                            { shaderLocation: 10, offset: 28, format: 'float32x2' },
                         ],
                     },
                 ],

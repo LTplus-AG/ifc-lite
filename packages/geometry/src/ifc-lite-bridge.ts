@@ -363,6 +363,15 @@ export class IfcLiteBridge {
     );
   }
 
+  /**
+   * Re-serialize the model in `content` to a STEP/IFC string (P1: base
+   * re-serialization + reference-closed subset). Empty `schema` ⇒ preserve source;
+   * empty `included` ⇒ whole model.
+   */
+  exportStep(content: string, schema = '', included: Uint32Array = new Uint32Array()): string {
+    return this.runExport('exportStep', content, (api) => api.exportStep(content, schema, included));
+  }
+
   /** Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL. */
   exportJsonld(
     content: string,

@@ -164,7 +164,7 @@ export async function exportCommand(args: string[]): Promise<void> {
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
 
-  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--out file]');
+  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--out file]');
 
   // B9/F6: Auto-prefix Ifc
   if (type) {
@@ -267,14 +267,21 @@ export async function exportCommand(args: string[]): Promise<void> {
     case 'obj':
     case 'gltf':
     case 'glb':
-    case 'jsonld': {
+    case 'jsonld':
+    case 'step': {
       const filterActive = !!(type || propFilter || storeyFilter || limit);
       const isolated = filterActive
         ? new Uint32Array(refs.map((r: any) => r.expressId))
         : new Uint32Array();
       const { bytes, gp } = await rustExportContext(store, filePath);
       try {
-        if (format === 'jsonld') {
+        if (format === 'step') {
+          // Rust faithful re-serialization (+ reference-closed subset when filtered).
+          const schema = getFlag(args, '--schema') ?? '';
+          const out = gp.exportStep(bytes, schema, isolated);
+          if (out == null) fatal('STEP export failed (geometry pipeline not initialized)');
+          await writeOutput(out as string, outPath);
+        } else if (format === 'jsonld') {
           const out = gp.exportJsonld(bytes);
           if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
           await writeOutput(out as string, outPath);
@@ -296,6 +303,6 @@ export async function exportCommand(args: string[]): Promise<void> {
       break;
     }
     default:
-      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld`);
+      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step`);
   }
 }

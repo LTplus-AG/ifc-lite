@@ -170,6 +170,14 @@ export class IfcAPI {
    */
   exportJsonld(content: string, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean): string;
   /**
+   * Re-serialize the model in `content` to a STEP/IFC string.
+   *
+   * `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
+   * `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
+   * `#`-reference closure is added so the subset never dangles a reference.
+   */
+  exportStep(content: string, schema: string, included: Uint32Array): string;
+  /**
    * Export the `IfcSpace` volumes in `content` as a Honeybee **HBJSON** string.
    *
    * Rooms are built analytically from extruded-area profiles (watertight by construction);
@@ -980,6 +988,7 @@ export interface InitOutput {
   readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+  readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
   readonly ifcapi_getMemory: (a: number) => number;
   readonly ifcapi_is_ready: (a: number) => number;

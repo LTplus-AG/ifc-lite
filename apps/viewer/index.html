@@ -17,22 +17,34 @@
 
   <script>
     // Vercel Skew Protection: pin this browser session to the deployment that
-    // served it. Lazily-fetched, content-hashed assets — notably the geometry
-    // WASM, only fetched when a model is opened — otherwise 404 after a new
-    // production deploy ships fresh hashes ("Failed to execute 'compile' on
+    // served THIS document, so lazily-fetched content-hashed assets — notably
+    // the geometry WASM, only fetched when a model is opened — don't 404 after a
+    // newer deploy ships fresh hashes ("Failed to execute 'compile' on
     // 'WebAssembly': HTTP status code is not ok"). The __vdpl cookie makes
-    // Vercel's edge route all subsequent same-origin requests to the matching
-    // deployment. The token below is replaced with the live VERCEL_DEPLOYMENT_ID
-    // at deploy time by scripts/vercel-build.sh, and ONLY when the project's
-    // Skew Protection toggle is on; otherwise it stays as the literal token and
-    // the `dpl_` guard makes this a no-op (localhost, previews, toggle off).
+    // Vercel's edge route subsequent same-origin requests to the matching
+    // deployment. The token is replaced with the live VERCEL_DEPLOYMENT_ID at
+    // deploy time by scripts/vercel-build.sh, and ONLY when the project's Skew
+    // Protection toggle is on; otherwise it stays as the literal token and the
+    // `dpl_` guard below makes this a no-op (localhost, previews, toggle off).
     (function () {
       try {
         var id = '__VDPL_DEPLOYMENT_ID__';
-        if (id.indexOf('dpl_') === 0 && document.cookie.indexOf('__vdpl=') === -1) {
+        if (id.indexOf('dpl_') !== 0) return;
+        // Always reconcile the cookie to THIS page's deployment. Setting it only
+        // when absent would leave a stale __vdpl from an earlier deployment in
+        // place — e.g. a SameSite=Strict cross-site navigation doesn't send the
+        // cookie, so Vercel serves the current deployment while the browser
+        // still holds the old pin — and the next same-origin WASM fetch would
+        // route to the wrong (possibly deleted) deployment and 404.
+        var m = document.cookie.match(/(?:^|;\s*)__vdpl=([^;]*)/);
+        if (!m || m[1] !== id) {
           document.cookie = '__vdpl=' + id + '; path=/; SameSite=Strict; Secure';
         }
-      } catch (e) { /* cookies disabled — skew protection simply won't apply */ }
+      } catch (e) {
+        // House rule: don't swallow — a silently disabled skew fix is hard to
+        // diagnose against the very WASM 404 it is meant to prevent.
+        if (typeof console !== 'undefined') console.warn('[skew-protection] could not set __vdpl cookie', e);
+      }
     })();
   </script>
 

@@ -12,7 +12,7 @@
  * `setFloatingPanelRect` / `snapFloatingPanel` calls.
  */
 
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import {
   PanelLeft,
   PanelRight,
@@ -24,6 +24,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { FloatingPanelState, SnapZone } from '@/store';
+import { computeFloatingPanelStyle, type SnapBounds } from './floating-panel-geometry';
+
+export type { SnapBounds };
 
 const MIN_W = 260;
 const MIN_H = 180;
@@ -31,25 +34,6 @@ const MIN_H = 180;
 const RESIZE_EDGE_MARGIN = 40;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-
-/**
- * The region an edge-snapped panel docks into, in window coordinates. Snapping
- * to this region (the 3D viewport) rather than the whole window keeps the
- * toolbar, hierarchy, sidebar and status bar visible — and, crucially, keeps a
- * docked panel's own title bar (close / un-dock controls) out from under the
- * z-50 toolbar so it can always be closed (#1245).
- */
-export interface SnapBounds {
-  /** px from the window's top / left edge to the region's top / left edge. */
-  top: number;
-  left: number;
-  /** px from the window's right / bottom edge to the region's edge (CSS right/bottom). */
-  right: number;
-  bottom: number;
-  /** Region extent, used to clamp a snapped panel so it can't outgrow the region. */
-  width: number;
-  height: number;
-}
 
 interface FloatingPanelProps {
   panel: FloatingPanelState;
@@ -64,21 +48,6 @@ interface FloatingPanelProps {
   /** Re-dock into the right slot (stop floating, show docked). */
   onDock: () => void;
   onClose: () => void;
-}
-
-function styleFor(p: FloatingPanelState, bounds: SnapBounds | null): CSSProperties {
-  if (p.snap === 'free') return { left: p.x, top: p.y, width: p.w, height: p.h };
-  // Edge snaps confine to the viewport region so a docked panel never hides
-  // under the toolbar (taking its own close control with it) or over the
-  // hierarchy / sidebar. Until the region is measured, fall back to the window
-  // edges (one frame at most — the host measures in a layout effect).
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
-  const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
-  const b = bounds ?? { top: 0, left: 0, right: 0, bottom: 0, width: vw, height: vh };
-  if (p.snap === 'left') return { left: b.left, top: b.top, bottom: b.bottom, width: Math.min(p.w, b.width) };
-  if (p.snap === 'bottom') return { left: b.left, right: b.right, bottom: b.bottom, height: Math.min(p.h, b.height) };
-  // 'right'
-  return { right: b.right, top: b.top, bottom: b.bottom, width: Math.min(p.w, b.width) };
 }
 
 export function FloatingPanel({
@@ -202,7 +171,7 @@ export function FloatingPanel({
   return (
     <div
       ref={ref}
-      style={{ ...styleFor(panel, bounds), zIndex }}
+      style={{ ...computeFloatingPanelStyle(panel, bounds), zIndex }}
       onMouseDown={onFocus}
       className="absolute pointer-events-auto flex flex-col rounded-lg border border-border bg-background shadow-2xl overflow-hidden"
     >

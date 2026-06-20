@@ -95,8 +95,9 @@ async function runTests() {
   // Load required modules
   const { IfcParser } = await import('../packages/parser/src/index.js');
   const { QuantityExtractor } = await import('../packages/parser/src/quantity-extractor.js');
-  const { CSVExporter } = await import('../packages/export/src/csv-exporter.js');
-  const { JSONLDExporter } = await import('../packages/export/src/jsonld-exporter.js');
+  // CSV and JSON-LD export moved to Rust (ifc-lite-export); the TS exporters
+  // were retired. Their output is covered by the crate's own tests
+  // (rust/export/src/{csv,jsonld}.rs) and exercised via GeometryProcessor.
 
   // Parse the IFC file
   console.log('\n📖 Parsing IFC file...');
@@ -158,119 +159,6 @@ async function runTests() {
     assert(typeof sum === 'number', 'sumByType should return number');
     // Sum should be >= 0
     assert(sum >= 0, 'Sum should be non-negative');
-  });
-
-  // ═══════════════════════════════════════════════════════════════
-  // CSV EXPORT TESTS
-  // ═══════════════════════════════════════════════════════════════
-
-  console.log('\n📄 CSV Export Tests');
-  console.log('─'.repeat(40));
-
-  await test('CSVExporter.exportEntities produces valid CSV', () => {
-    const exporter = new CSVExporter(store);
-    const csv = exporter.exportEntities();
-
-    assert(typeof csv === 'string', 'CSV should be string');
-    assert(csv.length > 0, 'CSV should not be empty');
-
-    const lines = csv.split('\n');
-    assert(lines.length > 1, 'CSV should have header and data');
-
-    const header = lines[0];
-    assert(header.includes('expressId'), 'CSV should have expressId column');
-    assert(header.includes('type'), 'CSV should have type column');
-  });
-
-  await test('CSVExporter.exportEntities with flattened properties', () => {
-    const exporter = new CSVExporter(store);
-
-    // Export first 10 entities with properties
-    const entityIds = Array.from(store.entities.expressId).slice(0, 10);
-    const csv = exporter.exportEntities(entityIds, {
-      includeProperties: true,
-      flattenProperties: true,
-    });
-
-    assert(typeof csv === 'string', 'CSV should be string');
-    const lines = csv.split('\n');
-    // Should have header row
-    assert(lines.length >= 1, 'Should have at least header');
-  });
-
-  await test('CSVExporter.exportProperties produces valid CSV', () => {
-    const exporter = new CSVExporter(store);
-    const csv = exporter.exportProperties();
-
-    assert(typeof csv === 'string', 'CSV should be string');
-
-    const lines = csv.split('\n');
-    if (store.properties.count > 0) {
-      assert(lines.length > 1, 'CSV should have data if properties exist');
-    }
-
-    const header = lines[0];
-    assert(header.includes('entityId'), 'CSV should have entityId column');
-    assert(header.includes('psetName'), 'CSV should have psetName column');
-    assert(header.includes('propName'), 'CSV should have propName column');
-  });
-
-  await test('CSVExporter.exportQuantities produces valid CSV', () => {
-    const exporter = new CSVExporter(store);
-    const csv = exporter.exportQuantities();
-
-    assert(typeof csv === 'string', 'CSV should be string');
-
-    const lines = csv.split('\n');
-    const header = lines[0];
-    assert(header.includes('entityId'), 'CSV should have entityId column');
-    assert(header.includes('qsetName'), 'CSV should have qsetName column');
-  });
-
-  // ═══════════════════════════════════════════════════════════════
-  // JSON-LD EXPORT TESTS
-  // ═══════════════════════════════════════════════════════════════
-
-  console.log('\n🔗 JSON-LD Export Tests');
-  console.log('─'.repeat(40));
-
-  await test('JSONLDExporter.export produces valid JSON-LD', () => {
-    const exporter = new JSONLDExporter(store);
-    // Export only first 100 entities to keep test fast
-    const entityIds = Array.from(store.entities.expressId).slice(0, 100);
-    const jsonld = exporter.export({ entityIds });
-
-    assert(typeof jsonld === 'object', 'JSON-LD should be object');
-    assert('@context' in jsonld, 'JSON-LD should have @context');
-    assert('@graph' in jsonld, 'JSON-LD should have @graph');
-
-    const graph = (jsonld as any)['@graph'];
-    assert(Array.isArray(graph), '@graph should be array');
-  });
-
-  await test('JSONLDExporter includes properties when requested', () => {
-    const exporter = new JSONLDExporter(store);
-    const jsonld = exporter.export({ includeProperties: true });
-
-    const graph = (jsonld as any)['@graph'];
-    // Find an entity with properties
-    const entityWithProps = graph.find((node: any) => node['ifc:hasPropertySets']);
-
-    if (store.properties.count > 0) {
-      // Should have at least one entity with properties
-      // (might not if properties aren't linked to entities)
-    }
-  });
-
-  await test('JSONLDExporter filters by entityIds', () => {
-    const exporter = new JSONLDExporter(store);
-
-    // Export only first 5 entities
-    const entityIds = Array.from(store.entities.expressId).slice(0, 5);
-    const jsonld = exporter.export({ entityIds });
-
-    const graph = (jsonld as any)['@graph'];
-    assertEqual(graph.length, Math.min(5, store.entities.count), 'Should only export requested entities');
   });
 
   // ═══════════════════════════════════════════════════════════════

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { parseIfcx, createSyntheticDataStore, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
+import { parseIfcx, createSyntheticDataStore, attachDataStoreAccessors, type IfcDataStore, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
@@ -103,7 +103,14 @@ export async function parseIfcxViewerModel(
     bounds.max.z = Math.max(bounds.max.z, max[2]);
   }
   return {
-    dataStore: {
+    // Attach the lazy data-store accessors (getQuantities/getProperties/
+    // getEntity) the query + selection path calls. IFCX carries real data
+    // tables, so unlike the GLB path we can't route through
+    // createSyntheticDataStore (it builds empty tables) — we attach the
+    // accessors to the populated store instead. Without this, selecting an
+    // entity in an IFCX-imported model threw
+    // "this.store.getQuantities is not a function".
+    dataStore: attachDataStoreAccessors({
       fileSize: ifcxResult.fileSize,
       schemaVersion: 'IFC5' as const,
       entityCount: ifcxResult.entityCount,
@@ -116,7 +123,7 @@ export async function parseIfcxViewerModel(
       quantities: ifcxResult.quantities,
       relationships: ifcxResult.relationships,
       spatialHierarchy: ifcxResult.spatialHierarchy,
-    } as unknown as IfcDataStore,
+    } as unknown as IfcStoreData),
     geometryResult: {
       meshes,
       pointClouds,

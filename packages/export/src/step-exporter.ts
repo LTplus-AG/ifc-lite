@@ -26,6 +26,7 @@ import { safeUtf8Decode } from '@ifc-lite/data';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import { retypeStepLine, retypeArgTokens } from './retype.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import {
   escapeStepString,
@@ -588,9 +589,34 @@ export class StepExporter {
           entityRef.byteOffset,
           entityRef.byteOffset + entityRef.byteLength
         );
-        let nextEntityText = modifiedAttributes.has(expressId)
-          ? this.applyAttributeMutations(entityText, entityType, modifiedAttributes.get(expressId)!)
-          : entityText;
+        let nextEntityText = entityText;
+
+        // Entity retype (reassign class) runs FIRST so attribute mutations
+        // below resolve against the TARGET class's attribute names. The
+        // expressId is unchanged, so geometry / placement / representation and
+        // every IfcRel* reference (keyed by #id) carry over untouched.
+        const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
+          ? this.mutationView!.getEntityTypeMutation(expressId)
+          : null;
+        let workingType = entityType;
+        if (typeMutation) {
+          nextEntityText = retypeStepLine(
+            nextEntityText,
+            entityRef.type,
+            typeMutation.newType,
+            typeMutation.predefinedType ?? null,
+            sourceSchema,
+          );
+          workingType = typeMutation.newType.toUpperCase();
+          if (!modifiedEntities.has(expressId)) {
+            modifiedEntities.add(expressId);
+            modifiedEntityCount++;
+          }
+        }
+
+        if (modifiedAttributes.has(expressId)) {
+          nextEntityText = this.applyAttributeMutations(nextEntityText, workingType, modifiedAttributes.get(expressId)!);
+        }
 
         const positional = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
           ? this.mutationView!.getPositionalMutationsForEntity(expressId)
@@ -680,10 +706,14 @@ export class StepExporter {
       && (options.applyMutations !== false)
       && typeof this.mutationView.getNewEntities === 'function'
     ) {
+      const getTypeMut = typeof this.mutationView.getEntityTypeMutation === 'function'
+        ? this.mutationView.getEntityTypeMutation.bind(this.mutationView)
+        : null;
       for (const entity of this.mutationView.getNewEntities()) {
         // STEP requires UPPERCASE entity type tokens. `NewEntity.type` is
         // stored in canonical PascalCase per the public API contract; the
-        // upper-case happens here at the file-format boundary.
+        // upper-case happens here at the file-format boundary. A retyped
+        // overlay entity already carries its new type on `entity.type`.
         const upperType = entity.type.toUpperCase();
         if (options.includeGeometry === false && this.isGeometryEntity(upperType)) {
           continue;
@@ -691,7 +721,24 @@ export class StepExporter {
         if (allowedEntityIds !== null && !allowedEntityIds.has(entity.expressId)) {
           continue;
         }
-        const line = `#${entity.expressId}=${upperType}(${serializeStepArgs(entity.attributes)});`;
+        // If retyped to a class with a different attribute layout, re-lay-out
+        // the authored attributes by name (identity for compatible layouts).
+        const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
+        let argsText: string;
+        if (typeMut && typeMut.oldType && typeMut.oldType.toUpperCase() !== upperType) {
+          const srcTokens = entity.attributes.map(serializeStepValue);
+          const { tokens } = retypeArgTokens(
+            srcTokens,
+            typeMut.oldType,
+            entity.type,
+            typeMut.predefinedType ?? null,
+            sourceSchema,
+          );
+          argsText = tokens.join(',');
+        } else {
+          argsText = serializeStepArgs(entity.attributes);
+        }
+        const line = `#${entity.expressId}=${upperType}(${argsText});`;
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema);
           if (converted !== null) {

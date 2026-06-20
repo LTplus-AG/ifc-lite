@@ -14,7 +14,7 @@
 
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
-import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, Mutation, NewEntity } from './types.js';
+import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, AttributeMutation, EntityTypeMutation, Mutation, NewEntity } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
 
 /**
@@ -53,6 +53,7 @@ export class MutablePropertyView {
   private newQsets: Map<number, Map<string, QuantitySet>> = new Map(); // entityId -> qsetName -> QuantitySet
   private attributeMutations: Map<string, AttributeMutation> = new Map(); // `${entityId}:attr:${attrName}`
   private positionalAttrMutations: Map<number, Map<number, IfcAttributeValue>> = new Map(); // entityId -> argIndex -> value
+  private typeMutations: Map<number, EntityTypeMutation> = new Map(); // entityId -> retype intent
   private newEntities: Map<number, NewEntity> = new Map();
   private tombstones: Set<number> = new Set();
   /**
@@ -866,6 +867,95 @@ export class MutablePropertyView {
   }
 
   // ---------------------------------------------------------------------------
+  // Entity-type mutations (retype / reassign class)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Change an entity's IFC class in place ("retype" / reassign class).
+   *
+   * The entity keeps its expressId, so its geometry, placement, representation
+   * and every `IfcRel*` reference (all keyed by `#id`) carry over unchanged.
+   * At export the exporter re-lays-out the entity's attributes BY NAME against
+   * the target class's declared attribute list — attributes the target class
+   * doesn't have are dropped, missing ones become `$`. This mirrors
+   * IfcOpenShell's `ifcopenshell.util.schema.reassign_class`.
+   *
+   * Intended for compatible reassignments — e.g. the building-element subtypes
+   * (`IfcBuildingElementProxy` → `IfcColumn` / `IfcBeam` / `IfcMember` /
+   * `IfcPlate` / `IfcWall`) that share the IfcElement attribute layout. For
+   * such retypes only the class keyword changes (and an optional PredefinedType).
+   *
+   * @param newType Target IFC class (canonical PascalCase, e.g. "IfcColumn").
+   * @param predefinedType Optional PredefinedType for the target class. Unknown
+   *   values fall back to USERDEFINED + ObjectType at export.
+   */
+  setEntityType(
+    entityId: number,
+    newType: string,
+    predefinedType?: string | null,
+    oldType?: string,
+    skipHistory: boolean = false,
+  ): Mutation {
+    if (!newType || typeof newType !== 'string') {
+      throw new Error('setEntityType: newType is required');
+    }
+    const trimmed = newType.trim();
+    if (trimmed.length === 0) {
+      throw new Error('setEntityType: newType cannot be empty');
+    }
+
+    // A new overlay entity is retyped in place — there's no source line to
+    // rewrite, so the recorded NewEntity.type is the single source of truth.
+    const newEntity = this.newEntities.get(entityId);
+    const resolvedOld = oldType ?? newEntity?.type;
+    if (newEntity) {
+      newEntity.type = trimmed;
+    }
+
+    this.typeMutations.set(entityId, {
+      newType: trimmed,
+      oldType: resolvedOld,
+      predefinedType: predefinedType ?? null,
+    });
+
+    const mutation: Mutation = {
+      id: generateMutationId(),
+      type: 'UPDATE_ENTITY_TYPE',
+      timestamp: Date.now(),
+      modelId: this.modelId,
+      entityId,
+      entityType: trimmed,
+      predefinedType: predefinedType ?? null,
+      newValue: trimmed,
+      oldValue: resolvedOld ?? null,
+    };
+
+    if (!skipHistory) {
+      this.mutationHistory.push(mutation);
+    }
+    return mutation;
+  }
+
+  /** Get the retype intent for an entity, or null if it hasn't been retyped. */
+  getEntityTypeMutation(entityId: number): EntityTypeMutation | null {
+    return this.typeMutations.get(entityId) ?? null;
+  }
+
+  /** All retype intents, keyed by expressId. */
+  getTypeMutations(): Map<number, EntityTypeMutation> {
+    return this.typeMutations;
+  }
+
+  /**
+   * Drop a retype intent. Used by undo to roll a setEntityType back to "no
+   * override". Restoring a retyped NewEntity's original type is the caller's
+   * responsibility (the original type is carried on the mutation's oldValue).
+   */
+  removeTypeMutation(entityId: number): void {
+    this.typeMutations.delete(entityId);
+  }
+
+  // ---------------------------------------------------------------------------
   // Entity-level mutations (create / delete)
   // ---------------------------------------------------------------------------
 
@@ -1117,6 +1207,7 @@ export class MutablePropertyView {
     this.newPsets.clear();
     this.newQsets.clear();
     this.positionalAttrMutations.clear();
+    this.typeMutations.clear();
     this.newEntities.clear();
     this.tombstones.clear();
     this.entityAliases.clear();
@@ -1187,6 +1278,18 @@ export class MutablePropertyView {
             mutation.entityId,
             index,
             mutation.newValue as IfcAttributeValue,
+          );
+          break;
+        }
+
+        case 'UPDATE_ENTITY_TYPE': {
+          const newType = mutation.entityType ?? (typeof mutation.newValue === 'string' ? mutation.newValue : undefined);
+          if (!newType) break;
+          this.setEntityType(
+            mutation.entityId,
+            newType,
+            mutation.predefinedType ?? null,
+            mutation.oldValue == null ? undefined : String(mutation.oldValue),
           );
           break;
         }

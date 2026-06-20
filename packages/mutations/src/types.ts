@@ -40,6 +40,7 @@ export type MutationType =
   | 'DELETE_QUANTITY'
   | 'UPDATE_ATTRIBUTE'
   | 'UPDATE_POSITIONAL_ATTRIBUTE'
+  | 'UPDATE_ENTITY_TYPE'
   | 'CREATE_ENTITY'
   | 'DELETE_ENTITY';
 
@@ -77,6 +78,16 @@ export interface Mutation {
   // Attribute specific fields
   /** Attribute name (IFC entity attributes like Name, Description, ObjectType, Tag, etc.) */
   attributeName?: string;
+
+  // Entity-type (retype) specific fields
+  /** New IFC class keyword for UPDATE_ENTITY_TYPE (canonical PascalCase, e.g. "IfcColumn"). */
+  entityType?: string;
+  /**
+   * Optional PredefinedType to set on the retyped entity. Validated against the
+   * target class's enum domain at export; an unknown value falls back to
+   * USERDEFINED + ObjectType (mirrors IfcOpenShell's reassign_class).
+   */
+  predefinedType?: string | null;
 }
 
 /**
@@ -133,6 +144,24 @@ export interface AttributeMutation {
   value: string;
   /** Previous value (for undo) */
   oldValue?: string;
+}
+
+/**
+ * Entity-type (retype) mutation for overlay tracking.
+ *
+ * Records an intent to change an entity's IFC class in place, materialized by
+ * the STEP exporter. The entity keeps its expressId, so geometry / placement /
+ * representation and every `IfcRel*` reference (all keyed by `#id`) carry over
+ * unchanged. Attribute values are re-laid-out by NAME against the target
+ * class's declared attribute list at export.
+ */
+export interface EntityTypeMutation {
+  /** Target IFC class (canonical PascalCase, e.g. "IfcColumn"). */
+  newType: string;
+  /** Source IFC class at the time of the edit (for undo / display). */
+  oldType?: string;
+  /** Optional PredefinedType to apply to the target class. */
+  predefinedType?: string | null;
 }
 
 /**

@@ -1992,6 +1992,7 @@
     "CsvParseOptions: interface",
     "CsvRow: interface",
     "DataMapping: interface",
+    "EntityTypeMutation: interface",
     "EntityTypeNormalizer: type",
     "FilterOperator: type",
     "IfcAttributeValue: type",

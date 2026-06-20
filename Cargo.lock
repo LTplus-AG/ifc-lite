@@ -1481,6 +1481,7 @@ dependencies = [
 name = "ifc-lite-export"
 version = "4.1.0"
 dependencies = [
+ "ifc-lite-core",
  "ifc-lite-geometry",
  "serde",
  "serde_json",

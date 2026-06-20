@@ -34,6 +34,90 @@ pub struct TypedProps {
     pub ty: &'static str,
 }
 
+/// A Honeybee energy material (one opaque layer). Thicknesses come from the IFC material
+/// layer set; thermal properties are defaulted by material-name keyword (IFC rarely carries
+/// conductivity/density), so U-values are a sensible starting point, not authoritative.
+#[derive(Serialize, Clone)]
+pub struct EnergyMaterial {
+    #[serde(rename = "type")]
+    pub ty: &'static str, // "EnergyMaterial"
+    pub identifier: String,
+    pub roughness: &'static str, // "MediumRough"
+    pub thickness: f64,
+    pub conductivity: f64,
+    pub density: f64,
+    pub specific_heat: f64,
+    pub thermal_absorptance: f64,
+    pub solar_absorptance: f64,
+    pub visible_absorptance: f64,
+}
+
+impl EnergyMaterial {
+    pub fn new(identifier: String, thickness: f64, conductivity: f64, density: f64, specific_heat: f64) -> Self {
+        Self {
+            ty: "EnergyMaterial",
+            identifier,
+            roughness: "MediumRough",
+            thickness,
+            conductivity,
+            density,
+            specific_heat,
+            thermal_absorptance: 0.9,
+            solar_absorptance: 0.7,
+            visible_absorptance: 0.7,
+        }
+    }
+}
+
+/// An opaque construction referencing its materials (outside → inside) by identifier.
+#[derive(Serialize, Clone)]
+pub struct OpaqueConstruction {
+    #[serde(rename = "type")]
+    pub ty: &'static str, // "OpaqueConstructionAbridged"
+    pub identifier: String,
+    pub materials: Vec<String>,
+}
+
+impl OpaqueConstruction {
+    pub fn new(identifier: String, materials: Vec<String>) -> Self {
+        Self { ty: "OpaqueConstructionAbridged", identifier, materials }
+    }
+}
+
+/// Per-face energy properties carrying an optional construction reference.
+#[derive(Serialize)]
+pub struct FaceEnergy {
+    #[serde(rename = "type")]
+    pub ty: &'static str, // "FaceEnergyPropertiesAbridged"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub construction: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct FaceProperties {
+    #[serde(rename = "type")]
+    pub ty: &'static str, // "FacePropertiesAbridged"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub energy: Option<FaceEnergy>,
+}
+
+/// Model-level energy properties: the material + construction libraries.
+#[derive(Serialize)]
+pub struct ModelEnergy {
+    #[serde(rename = "type")]
+    pub ty: &'static str, // "ModelEnergyProperties"
+    pub materials: Vec<EnergyMaterial>,
+    pub constructions: Vec<OpaqueConstruction>,
+}
+
+#[derive(Serialize)]
+pub struct ModelProperties {
+    #[serde(rename = "type")]
+    pub ty: &'static str, // "ModelProperties"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub energy: Option<ModelEnergy>,
+}
+
 /// A window — a planar sub-face of a parent wall Face, coplanar and within its boundary.
 #[derive(Serialize)]
 pub struct Aperture {
@@ -130,7 +214,7 @@ pub struct Face {
     pub ty: &'static str, // "Face"
     pub identifier: String,
     pub display_name: String,
-    pub properties: TypedProps,
+    pub properties: FaceProperties,
     pub geometry: Face3D,
     pub face_type: &'static str,
     pub boundary_condition: BoundaryCondition,
@@ -147,13 +231,21 @@ impl Face {
             ty: "Face",
             identifier,
             display_name,
-            properties: TypedProps { ty: "FacePropertiesAbridged" },
+            properties: FaceProperties { ty: "FacePropertiesAbridged", energy: None },
             geometry,
             face_type,
             boundary_condition: BoundaryCondition { ty: bc },
             apertures: Vec::new(),
             doors: Vec::new(),
         }
+    }
+
+    /// Assign an opaque construction (by identifier) to this face's energy properties.
+    pub fn set_construction(&mut self, construction: String) {
+        self.properties.energy = Some(FaceEnergy {
+            ty: "FaceEnergyPropertiesAbridged",
+            construction: Some(construction),
+        });
     }
 }
 
@@ -189,7 +281,7 @@ pub struct Model {
     pub identifier: String,
     pub display_name: String,
     pub units: &'static str, // "Meters"
-    pub properties: TypedProps,
+    pub properties: ModelProperties,
     pub rooms: Vec<Room>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub shade_meshes: Vec<ShadeMesh>,
@@ -199,13 +291,19 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn new(identifier: &str, rooms: Vec<Room>, shade_meshes: Vec<ShadeMesh>, tolerance: f64) -> Self {
+    pub fn new(
+        identifier: &str,
+        rooms: Vec<Room>,
+        shade_meshes: Vec<ShadeMesh>,
+        energy: Option<ModelEnergy>,
+        tolerance: f64,
+    ) -> Self {
         Self {
             ty: "Model",
             identifier: identifier.to_string(),
             display_name: identifier.to_string(),
             units: "Meters",
-            properties: TypedProps { ty: "ModelProperties" },
+            properties: ModelProperties { ty: "ModelProperties", energy },
             rooms,
             shade_meshes,
             tolerance,

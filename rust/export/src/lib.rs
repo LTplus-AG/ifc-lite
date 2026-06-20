@@ -7,6 +7,7 @@
 //! This is the Rust source of truth; CLI / SDK / wasm become thin callers (mirroring how
 //! geometry already flows through `ifc-lite-wasm`).
 
+mod constructions;
 mod hbjson;
 mod openings;
 mod rooms;
@@ -44,6 +45,8 @@ pub struct HbjsonStats {
     pub doors: usize,
     /// Railing / context shade meshes emitted.
     pub shades: usize,
+    /// Opaque constructions derived from the IFC material layer sets.
+    pub constructions: usize,
 }
 
 /// Export the `IfcSpace` volumes in `content` (raw IFC/STEP bytes) as an HBJSON string.
@@ -64,12 +67,29 @@ pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String
     openings::attach_openings(&profiles, &mut rooms, origin);
     let shade_meshes = shades::build_shades(&profiles, origin);
 
+    // Assign representative opaque constructions (from the IFC material layer sets) by face type.
+    let cons = constructions::build_constructions(content, &profiles);
+    for room in &mut rooms {
+        for f in &mut room.faces {
+            let id = match f.face_type {
+                "Wall" => cons.wall.clone(),
+                "Floor" => cons.floor.clone(),
+                "RoofCeiling" => cons.roof.clone(),
+                _ => None,
+            };
+            if let Some(id) = id {
+                f.set_construction(id);
+            }
+        }
+    }
+
     let apertures = rooms.iter().flat_map(|r| &r.faces).map(|f| f.apertures.len()).sum();
     let doors = rooms.iter().flat_map(|r| &r.faces).map(|f| f.doors.len()).sum();
     let shades = shade_meshes.len();
-    let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped, apertures, doors, shades };
+    let n_constructions = cons.energy.as_ref().map_or(0, |e| e.constructions.len());
+    let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped, apertures, doors, shades, constructions: n_constructions };
 
-    let model = Model::new(&opts.name, rooms, shade_meshes, opts.tolerance);
+    let model = Model::new(&opts.name, rooms, shade_meshes, cons.energy, opts.tolerance);
     let json = serde_json::to_string(&model).expect("HBJSON model serializes");
     (json, stats)
 }

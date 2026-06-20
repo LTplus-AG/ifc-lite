@@ -68,6 +68,74 @@ export function getMaxExpressId(dataStore: IfcDataStore, meshes: MeshData[]): nu
   return Math.max(maxExpressIdFromMeshes, maxExpressIdFromEntities);
 }
 
+/**
+ * The slice of an IFCX parse result the data store is built from. `spatialHierarchy`
+ * is only carried into the store (never read here), so it is optional — which keeps
+ * the regression test from having to fabricate a full hierarchy.
+ */
+type IfcxParse = Awaited<ReturnType<typeof parseIfcx>>;
+type IfcxStoreInput = Pick<
+  IfcxParse,
+  'fileSize' | 'entityCount' | 'parseTime' | 'strings' | 'entities' | 'properties' | 'quantities' | 'relationships'
+> & { spatialHierarchy?: IfcxParse['spatialHierarchy'] };
+
+/**
+ * Build the `IfcDataStore` for an IFCX import. Exported for regression coverage of
+ * the selection-time accessor path (see viewerModelIngest.test.ts).
+ *
+ * IFCX carries real data tables, so unlike the GLB path we can't route through
+ * `createSyntheticDataStore` (it builds empty tables) — we attach the accessors to
+ * the populated store instead. Without this, selecting an entity in an IFCX-imported
+ * model threw "this.store.getQuantities is not a function".
+ *
+ * `attachDataStoreAccessors` then wires `getEntity`/`getEntitiesByType` through the
+ * STEP `BufferEntitySource`, which cannot read an IFCX store (the source is IFCX JSON
+ * and the byte index is empty) and would return null/[] for every entity. We override
+ * both to serve the `IfcEntity` contract from the populated IFCX entity table. (Raw
+ * STEP attribute lists don't exist for IFCX, so `attributes` is empty — identity rides
+ * `type`, and name/GlobalId come from the entity table via the store's other accessors.)
+ */
+export function buildIfcxDataStore(ifcxResult: IfcxStoreInput, buffer: ArrayBuffer): IfcDataStore {
+  const dataStore = attachDataStoreAccessors({
+    fileSize: ifcxResult.fileSize,
+    schemaVersion: 'IFC5' as const,
+    entityCount: ifcxResult.entityCount,
+    parseTime: ifcxResult.parseTime,
+    source: new Uint8Array(buffer),
+    entityIndex: { byId: new Map(), byType: new Map() },
+    strings: ifcxResult.strings,
+    entities: ifcxResult.entities,
+    properties: ifcxResult.properties,
+    quantities: ifcxResult.quantities,
+    relationships: ifcxResult.relationships,
+    spatialHierarchy: ifcxResult.spatialHierarchy,
+  } as unknown as IfcStoreData);
+
+  const entityTable = ifcxResult.entities;
+  const idsByType = new Map<string, number[]>();
+  const knownIds = new Set<number>();
+  for (const id of entityTable.expressId) {
+    if (!id) continue;
+    knownIds.add(id);
+    const key = entityTable.getTypeName(id).toUpperCase();
+    const bucket = idsByType.get(key);
+    if (bucket) bucket.push(id);
+    else idsByType.set(key, [id]);
+  }
+  dataStore.getEntity = (expressId) =>
+    knownIds.has(expressId)
+      ? { expressId, type: entityTable.getTypeName(expressId), attributes: [] }
+      : null;
+  dataStore.getEntitiesByType = (typeName) =>
+    (idsByType.get(typeName.toUpperCase()) ?? []).map((expressId) => ({
+      expressId,
+      type: entityTable.getTypeName(expressId),
+      attributes: [],
+    }));
+
+  return dataStore;
+}
+
 export async function parseIfcxViewerModel(
   buffer: ArrayBuffer,
   onProgress?: (progress: { phase: string; percent: number }) => void,
@@ -102,58 +170,8 @@ export async function parseIfcxViewerModel(
     bounds.max.y = Math.max(bounds.max.y, max[1]);
     bounds.max.z = Math.max(bounds.max.z, max[2]);
   }
-  // Attach the lazy data-store accessors (getQuantities/getProperties/getEntity)
-  // the query + selection path calls. IFCX carries real data tables, so unlike the
-  // GLB path we can't route through createSyntheticDataStore (it builds empty
-  // tables) — we attach the accessors to the populated store instead. Without this,
-  // selecting an entity in an IFCX-imported model threw
-  // "this.store.getQuantities is not a function".
-  const dataStore = attachDataStoreAccessors({
-    fileSize: ifcxResult.fileSize,
-    schemaVersion: 'IFC5' as const,
-    entityCount: ifcxResult.entityCount,
-    parseTime: ifcxResult.parseTime,
-    source: new Uint8Array(buffer),
-    entityIndex: { byId: new Map(), byType: new Map() },
-    strings: ifcxResult.strings,
-    entities: ifcxResult.entities,
-    properties: ifcxResult.properties,
-    quantities: ifcxResult.quantities,
-    relationships: ifcxResult.relationships,
-    spatialHierarchy: ifcxResult.spatialHierarchy,
-  } as unknown as IfcStoreData);
-
-  // attachDataStoreAccessors wires getEntity/getEntitiesByType through the STEP
-  // BufferEntitySource, which cannot read an IFCX store (the source is IFCX JSON and
-  // the byte index is empty) and would return null/[] for every entity. Serve the
-  // IfcEntity contract from the populated IFCX entity table instead so the
-  // query/selection path keeps full entity data on IFCX models. (Raw STEP attribute
-  // lists don't exist for IFCX, so `attributes` is empty — identity rides `type`,
-  // and name/GlobalId come from the entity table via the store's other accessors.)
-  const entityTable = ifcxResult.entities;
-  const idsByType = new Map<string, number[]>();
-  const knownIds = new Set<number>();
-  for (const id of entityTable.expressId) {
-    if (!id) continue;
-    knownIds.add(id);
-    const key = entityTable.getTypeName(id).toUpperCase();
-    const bucket = idsByType.get(key);
-    if (bucket) bucket.push(id);
-    else idsByType.set(key, [id]);
-  }
-  dataStore.getEntity = (expressId) =>
-    knownIds.has(expressId)
-      ? { expressId, type: entityTable.getTypeName(expressId), attributes: [] }
-      : null;
-  dataStore.getEntitiesByType = (typeName) =>
-    (idsByType.get(typeName.toUpperCase()) ?? []).map((expressId) => ({
-      expressId,
-      type: entityTable.getTypeName(expressId),
-      attributes: [],
-    }));
-
   return {
-    dataStore,
+    dataStore: buildIfcxDataStore(ifcxResult, buffer),
     geometryResult: {
       meshes,
       pointClouds,

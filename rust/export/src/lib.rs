@@ -7,11 +7,14 @@
 //! Formats:
 //! - **HBJSON** (Honeybee energy-model): analytic, watertight `IfcSpace` → room export.
 //! - **OBJ** (Wavefront): triangulated render geometry, origin-folded world coords.
+//! - **glTF/GLB**: binary glTF container with RGBA-deduped unlit materials.
 
+mod gltf;
 mod hbjson;
 mod obj;
 mod rooms;
 
+pub use gltf::{export_glb, export_glb_with_stats, GltfOptions, GltfStats};
 pub use hbjson::Model;
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 

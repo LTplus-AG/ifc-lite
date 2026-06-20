@@ -8,6 +8,7 @@
 
 mod alignment_lines;
 mod clash;
+mod export_glb;
 mod export_hbjson;
 mod export_obj;
 mod extract_profiles;

@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/ffi", "rust/wasm-bindings", "apps/server"]
+members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/ffi", "rust/export", "rust/wasm-bindings", "apps/server"]
 resolver = "2"
 
 [workspace.package]
@@ -14,6 +14,7 @@ ifc-lite-core = { version = "4.1.0", path = "rust/core" }
 ifc-lite-geometry = { version = "4.1.0", path = "rust/geometry" }
 ifc-lite-processing = { version = "4.1.0", path = "rust/processing" }
 ifc-lite-clash = { version = "4.1.0", path = "rust/clash" }
+ifc-lite-export = { version = "4.1.0", path = "rust/export" }
 ifc-lite-wasm = { version = "4.1.0", path = "rust/wasm-bindings" }
 
 [profile.release]

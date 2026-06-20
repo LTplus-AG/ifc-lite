@@ -1029,6 +1029,20 @@ export class GeometryProcessor {
   }
 
   /**
+   * Export the `IfcSpace` volumes in `buffer` as a Honeybee HBJSON string
+   * (Ladybug Tools energy/daylight model). Returns null if not initialized.
+   * @param buffer IFC file buffer
+   * @param name Model identifier / display name
+   */
+  exportHbjson(buffer: Uint8Array, name: string): string | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    const content = safeUtf8Decode(buffer);
+    return this.bridge.exportHbjson(content, name);
+  }
+
+  /**
    * Cleanup resources
    */
   dispose(): void {

@@ -10,9 +10,12 @@
  * and schema conversion on export.
  */
 
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { createHeadlessContext } from '../loader.js';
+import { ensureWasmForNode } from '../wasm-node-init.js';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import type { ComparisonOp } from '@ifc-lite/sdk';
 
 /**
@@ -144,7 +147,7 @@ export async function exportCommand(args: string[]): Promise<void> {
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
 
-  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--out file]');
+  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|hbjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
 
   // B9/F6: Auto-prefix Ifc
   if (type) {
@@ -241,7 +244,21 @@ export async function exportCommand(args: string[]): Promise<void> {
       process.stderr.write(`Written to ${outPath}\n`);
       break;
     }
+    case 'hbjson': {
+      // Honeybee/Ladybug energy-model export: analytic IfcSpace room volumes.
+      // Needs the wasm geometry engine (not the data-only `bim` path).
+      await ensureWasmForNode();
+      const processor = new GeometryProcessor();
+      await processor.init();
+      const buffer = await readFile(filePath);
+      const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.ifc$/i, '');
+      const hbjson = processor.exportHbjson(bytes, name);
+      if (hbjson === null) fatal('Geometry engine unavailable for HBJSON export');
+      await writeOutput(hbjson, outPath);
+      break;
+    }
     default:
-      fatal(`Unknown format: ${format}. Supported: csv, json, ifc`);
+      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, hbjson`);
   }
 }

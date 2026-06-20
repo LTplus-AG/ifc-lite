@@ -274,6 +274,32 @@ export class IfcLiteBridge {
   }
 
   /**
+   * Export the `IfcSpace` volumes in `content` as a Honeybee HBJSON string
+   * (Ladybug Tools energy/daylight model). Rooms are built analytically from
+   * extruded-area profiles (watertight by construction).
+   *
+   * @param content Raw IFC file text.
+   * @param name    Model identifier / display name.
+   */
+  exportHbjson(content: string, name: string): string {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportHbjson(content, name);
+    } catch (error) {
+      log.error('Failed to export HBJSON', error, {
+        operation: 'exportHbjson',
+        data: { contentLength: content.length },
+      });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Get IFC-Lite API instance
    */
   getApi(): IfcAPI {

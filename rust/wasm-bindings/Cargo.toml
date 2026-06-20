@@ -35,6 +35,8 @@ ifc-lite-geometry = { version = "4.1.0", path = "../geometry", default-features 
 ifc-lite-processing = { version = "4.1.0", path = "../processing" }
 # Pure-geometry clash kernel (BVH broad phase + exact triangle narrow phase).
 ifc-lite-clash = { version = "4.1.0", path = "../clash" }
+# Domain-format exporters (HBJSON / Honeybee energy model).
+ifc-lite-export = { version = "4.1.0", path = "../export" }
 js-sys = "=0.3.83"
 rayon = "1.10"
 # `ifc-lite-geometry` uses rayon `par_iter` (e.g. FacetedBrep

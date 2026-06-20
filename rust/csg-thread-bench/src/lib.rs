@@ -48,10 +48,15 @@ fn replay_one(job: &CapturedCsgJob) -> usize {
 /// Load the captured corpus blob. Returns the job count.
 #[wasm_bindgen]
 pub fn load_corpus(blob: &[u8]) -> usize {
-    let jobs = deserialize(blob);
-    let n = jobs.len();
-    let _ = CORPUS.set(jobs);
-    n
+    match deserialize(blob) {
+        Ok(jobs) => {
+            let n = jobs.len();
+            let _ = CORPUS.set(jobs);
+            n
+        }
+        // Controlled failure (returns 0) instead of trapping on a bad blob.
+        Err(_) => 0,
+    }
 }
 
 /// Replay the whole corpus once. `parallel=true` uses the rayon pool (threaded

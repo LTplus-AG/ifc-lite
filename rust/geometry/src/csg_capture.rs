@@ -139,55 +139,56 @@ struct Reader<'a> {
     p: usize,
 }
 impl<'a> Reader<'a> {
-    fn u32(&mut self) -> u32 {
-        let v = u32::from_le_bytes(self.b[self.p..self.p + 4].try_into().unwrap());
-        self.p += 4;
-        v
+    /// Bounds-checked slice advance; `None` on underflow (truncated blob).
+    fn take(&mut self, n: usize) -> Option<&'a [u8]> {
+        let s = self.b.get(self.p..self.p.checked_add(n)?)?;
+        self.p += n;
+        Some(s)
     }
-    fn f32(&mut self) -> f32 {
-        let v = f32::from_le_bytes(self.b[self.p..self.p + 4].try_into().unwrap());
-        self.p += 4;
-        v
+    fn u32(&mut self) -> Option<u32> {
+        Some(u32::from_le_bytes(self.take(4)?.try_into().ok()?))
     }
-    fn f64(&mut self) -> f64 {
-        let v = f64::from_le_bytes(self.b[self.p..self.p + 8].try_into().unwrap());
-        self.p += 8;
-        v
+    fn f32(&mut self) -> Option<f32> {
+        Some(f32::from_le_bytes(self.take(4)?.try_into().ok()?))
     }
-    fn u8(&mut self) -> u8 {
-        let v = self.b[self.p];
-        self.p += 1;
-        v
+    fn f64(&mut self) -> Option<f64> {
+        Some(f64::from_le_bytes(self.take(8)?.try_into().ok()?))
     }
-    fn mesh(&mut self) -> Mesh {
-        let n = self.u32() as usize;
-        let positions: Vec<f32> = (0..n).map(|_| self.f32()).collect();
-        let n = self.u32() as usize;
-        let normals: Vec<f32> = (0..n).map(|_| self.f32()).collect();
-        let n = self.u32() as usize;
-        let indices: Vec<u32> = (0..n).map(|_| self.u32()).collect();
-        let rtc_applied = self.u8() != 0;
-        let origin = [self.f64(), self.f64(), self.f64()];
-        Mesh { positions, normals, indices, rtc_applied, origin }
+    fn u8(&mut self) -> Option<u8> {
+        Some(self.take(1)?[0])
+    }
+    fn mesh(&mut self) -> Option<Mesh> {
+        let n = self.u32()? as usize;
+        let positions: Vec<f32> = (0..n).map(|_| self.f32()).collect::<Option<_>>()?;
+        let n = self.u32()? as usize;
+        let normals: Vec<f32> = (0..n).map(|_| self.f32()).collect::<Option<_>>()?;
+        let n = self.u32()? as usize;
+        let indices: Vec<u32> = (0..n).map(|_| self.u32()).collect::<Option<_>>()?;
+        let rtc_applied = self.u8()? != 0;
+        let origin = [self.f64()?, self.f64()?, self.f64()?];
+        Some(Mesh { positions, normals, indices, rtc_applied, origin })
     }
 }
 
-/// Deserialize a blob produced by [`serialize`].
-pub fn deserialize(blob: &[u8]) -> Vec<CapturedCsgJob> {
+/// Deserialize a blob produced by [`serialize`]. Returns `Err` on a truncated or
+/// malformed blob instead of panicking — the wasm bench path must not trap.
+pub fn deserialize(blob: &[u8]) -> Result<Vec<CapturedCsgJob>, &'static str> {
     let mut r = Reader { b: blob, p: 0 };
-    let n = r.u32() as usize;
-    let mut jobs = Vec::with_capacity(n);
+    let n = r.u32().ok_or("truncated blob: missing job count")? as usize;
+    // Cap the pre-allocation: a malformed count must not request gigabytes.
+    let mut jobs = Vec::with_capacity(n.min(blob.len()));
     for _ in 0..n {
-        let tag = r.u8();
-        let host = r.mesh();
+        let tag = r.u8().ok_or("truncated blob: missing tag")?;
+        let host = r.mesh().ok_or("truncated blob: bad host mesh")?;
         if tag == 0 {
-            let cutter = r.mesh();
+            let cutter = r.mesh().ok_or("truncated blob: bad cutter mesh")?;
             jobs.push(CapturedCsgJob::Single { host, cutter });
         } else {
-            let nc = r.u32() as usize;
-            let cutters: Vec<Mesh> = (0..nc).map(|_| r.mesh()).collect();
+            let nc = r.u32().ok_or("truncated blob: missing cutter count")? as usize;
+            let cutters: Vec<Mesh> =
+                (0..nc).map(|_| r.mesh()).collect::<Option<_>>().ok_or("truncated blob: bad cutter mesh")?;
             jobs.push(CapturedCsgJob::Many { host, cutters });
         }
     }
-    jobs
+    Ok(jobs)
 }

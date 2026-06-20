@@ -1,3 +1,8 @@
+<!--
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at https://mozilla.org/MPL/2.0/.
+-->
 <!doctype html>
 <html>
 <head><meta charset="utf-8"><title>CSG rung-2 bench</title></head>
@@ -5,9 +10,11 @@
 <pre id="status">starting…</pre>
 <script type="module">
 const q = new URLSearchParams(location.search);
-const pkg = q.get('pkg') || 'plain';            // plain | threaded
-const mode = q.get('mode') || 'csg';            // csg (replay corpus) | pipeline (full process_geometry)
-const model = q.get('model') || 'ISSUE_068_ARK_NUS_skolebygg';
+// Whitelist pkg/mode (they index a dynamic import path) and sanitize the model
+// to a bare fixture basename — prevents `../`-style path traversal via the query.
+const pkg = q.get('pkg') === 'threaded' ? 'threaded' : 'plain';
+const mode = q.get('mode') === 'pipeline' ? 'pipeline' : 'csg';
+const model = (q.get('model') || 'ISSUE_068_ARK_NUS_skolebygg').replace(/[^A-Za-z0-9_-]/g, '');
 const parallel = q.get('parallel') === '1';
 const threads = parseInt(q.get('threads') || '1', 10);
 const iters = parseInt(q.get('iters') || (mode === 'pipeline' ? '2' : '5'), 10);

@@ -169,6 +169,8 @@ if [ "${BUILD_THREADED:-}" = "1" ]; then
       echo "🧵 ✅ threaded bundle imports shared memory"
     else
       echo "🧵 ❌ threaded bundle does NOT import shared memory — build flags wrong"
+      echo "   Refusing to ship a non-functional threaded bundle."
+      exit 1
     fi
   fi
   ls -lh "$THREADED_WASM" | awk '{print "   Threaded WASM: " $5 " (no budget — not the default bundle)"}'

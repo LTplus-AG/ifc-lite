@@ -37,8 +37,9 @@ holds (`GeometryProcessor.exportGlbFromMeshes`, wasm `exportGlbFromMeshes`) inst
 TypeScript GLTFExporter — no re-meshing, and the per-element RTC origin rides a glTF node
 translation so georef-scale models keep vertex precision.
 
-**BREAKING (`@ifc-lite/export`):** `GLTFExporter` / `GLTFExportOptions` are removed — glTF/GLB
-is now produced in Rust. Use `GeometryProcessor.exportGlb(bytes, …)` (mesh from bytes) or
-`GeometryProcessor.exportGlbFromMeshes(meshes, …)` (assemble from already-produced meshes).
-All in-repo callers (viewer GLB/command-palette/mobile/location-map dialogs, LOD1 generator)
-are migrated.
+**BREAKING (`@ifc-lite/export`):** `GLTFExporter` / `GLTFExportOptions` and `JSONLDExporter` /
+`JSONLDExportOptions` are removed — glTF/GLB and JSON-LD are now produced in Rust. Use
+`GeometryProcessor.exportGlb(bytes, …)` / `exportGlbFromMeshes(meshes, …)` and
+`GeometryProcessor.exportJsonld(bytes, …)`. All in-repo GLTFExporter callers (viewer GLB /
+command-palette / mobile / location-map exports, LOD1 generator) are migrated; JSONLDExporter
+had no in-repo callers.

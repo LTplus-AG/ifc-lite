@@ -10,7 +10,8 @@
 // Use GeometryProcessor.exportGlb (from bytes) / exportGlbFromMeshes (from meshes).
 export { ParquetExporter, type ParquetExportOptions } from './parquet-exporter.js';
 export { CSVExporter, type CSVExportOptions } from './csv-exporter.js';
-export { JSONLDExporter, type JSONLDExportOptions } from './jsonld-exporter.js';
+// JSONLDExporter removed — JSON-LD is now produced in Rust (ifc-lite-export).
+// Use GeometryProcessor.exportJsonld(bytes, …).
 export { StepExporter, exportToStep, type StepExportOptions, type StepExportResult, type StepExportProgress } from './step-exporter.js';
 export { MergedExporter, type MergeModelInput, type MergeExportOptions, type MergeExportResult, type ExportProgress } from './merged-exporter.js';
 export { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';

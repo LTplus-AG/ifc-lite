@@ -12,14 +12,26 @@ use std::collections::{HashMap, HashSet};
 
 use ifc_lite_core::EntityScanner;
 
+/// A single root-attribute edit: replace the top-level attribute at `index` of entity
+/// `express_id` with `value` (already STEP-serialized, e.g. `'New Name'` or `$`).
+/// This is the wasm-bridge form of a `MutablePropertyView` UPDATE_ATTRIBUTE mutation.
+pub struct AttrMutation {
+    pub express_id: u32,
+    pub index: usize,
+    pub value: String,
+}
+
 /// Options for STEP export.
 pub struct StepOptions {
     /// FILE_SCHEMA label to write (e.g. `IFC4`). `None` ⇒ preserve the source schema.
-    /// Note: this only rewrites the header label; entity-type conversion is P2.
+    /// When `Some` and the target differs, entity types/attributes are converted (P2).
     pub schema: Option<String>,
     /// Express ids to include. `None` ⇒ the whole model. When set, the forward
     /// reference closure is added so every emitted `#ref` resolves.
     pub included: Option<Vec<u32>>,
+    /// Root-attribute edits to apply during serialization (P3 mutation bridge).
+    /// Property-set / quantity synthesis is the remaining mutation work.
+    pub attribute_mutations: Vec<AttrMutation>,
     pub description: String,
     pub author: String,
     pub organization: String,
@@ -31,6 +43,7 @@ impl Default for StepOptions {
         Self {
             schema: None,
             included: None,
+            attribute_mutations: Vec::new(),
             description: "ViewDefinition [CoordinationView]".to_string(),
             author: "".to_string(),
             organization: "".to_string(),
@@ -111,6 +124,75 @@ fn refs_in_line(line: &[u8], out: &mut Vec<u32>) {
     }
 }
 
+/// Split a STEP attribute list into its top-level arguments (parens/strings aware).
+fn split_top_level_args(attrs: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut current = String::new();
+    let bytes = attrs.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let ch = bytes[i] as char;
+        if ch == '\'' && !in_string {
+            in_string = true;
+            current.push(ch);
+        } else if ch == '\'' && in_string {
+            if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                current.push_str("''");
+                i += 2;
+                continue;
+            }
+            in_string = false;
+            current.push(ch);
+        } else if in_string {
+            current.push(ch);
+        } else if ch == '(' {
+            depth += 1;
+            current.push(ch);
+        } else if ch == ')' {
+            depth -= 1;
+            current.push(ch);
+        } else if ch == ',' && depth == 0 {
+            out.push(std::mem::take(&mut current));
+        } else {
+            current.push(ch);
+        }
+        i += 1;
+    }
+    out.push(current);
+    out
+}
+
+/// Apply root-attribute edits to a `#id=TYPE(attrs);` line. Returns the line unchanged
+/// when it cannot be parsed.
+fn apply_attr_mutations(line: &str, muts: &[(usize, String)]) -> String {
+    let trimmed = line.trim_end();
+    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
+    let eq = match body.find('=') {
+        Some(e) => e,
+        None => return line.to_string(),
+    };
+    let after = &body[eq + 1..];
+    let popen = match after.find('(') {
+        Some(p) => p,
+        None => return line.to_string(),
+    };
+    let aclose = match after.rfind(')') {
+        Some(c) if c > popen => c,
+        _ => return line.to_string(),
+    };
+    let prefix = &body[..=eq];
+    let type_name = &after[..popen];
+    let mut args = split_top_level_args(&after[popen + 1..aclose]);
+    for (idx, val) in muts {
+        if *idx < args.len() {
+            args[*idx] = val.clone();
+        }
+    }
+    format!("{prefix}{type_name}({});", args.join(","))
+}
+
 /// Export the parsed model in `content` as a STEP/IFC string.
 pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
     export_step_with_stats(content, opts).0
@@ -159,6 +241,12 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     let converting = opts.schema.is_some()
         && crate::schema_convert::needs_conversion(&source_schema, &schema);
 
+    // Root-attribute edits, grouped by entity id.
+    let mut muts_by_id: HashMap<u32, Vec<(usize, String)>> = HashMap::new();
+    for m in &opts.attribute_mutations {
+        muts_by_id.entry(m.express_id).or_default().push((m.index, m.value.clone()));
+    }
+
     // 3. Emit header + filtered entities (source order) + footer.
     let mut out = String::new();
     out.push_str("ISO-10303-21;\nHEADER;\n");
@@ -177,15 +265,20 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
         if included.contains(id) {
             if let Some(&(s, e)) = line_of.get(id) {
                 let raw = String::from_utf8_lossy(&content[s..e]);
+                // Apply root-attribute edits first (original-schema positions), then convert.
+                let edited = match muts_by_id.get(id) {
+                    Some(muts) => apply_attr_mutations(&raw, muts),
+                    None => raw.into_owned(),
+                };
                 if converting {
                     out.push_str(&crate::schema_convert::convert_step_line(
-                        &raw,
+                        &edited,
                         &source_schema,
                         &schema,
                         *id,
                     ));
                 } else {
-                    out.push_str(&raw);
+                    out.push_str(&edited);
                 }
                 out.push('\n');
                 written += 1;
@@ -263,6 +356,55 @@ mod tests {
                 assert!(ids.contains(&r), "dangling reference #{r} in subset export");
             }
         }
+    }
+
+    #[test]
+    fn attribute_mutation_renames_entity() {
+        let src = fixture("ara3d/duplex.ifc");
+        // Find a wall to rename (attribute index 2 = Name on IfcRoot products).
+        let mut scanner = EntityScanner::new(&src[..]);
+        let mut wall_id = None;
+        while let Some((id, t, _s, _e)) = scanner.next_entity() {
+            if t.eq_ignore_ascii_case("IFCWALLSTANDARDCASE") {
+                wall_id = Some(id);
+                break;
+            }
+        }
+        let wall_id = wall_id.expect("a wall");
+
+        let step = export_step(
+            &src,
+            &StepOptions {
+                attribute_mutations: vec![AttrMutation {
+                    express_id: wall_id,
+                    index: 2,
+                    value: "'RENAMED_BY_TEST'".to_string(),
+                }],
+                ..StepOptions::default()
+            },
+        );
+        // The mutated wall line carries the new name; the model still re-parses fully.
+        let line = step
+            .lines()
+            .find(|l| l.starts_with(&format!("#{wall_id}=")))
+            .expect("wall line present");
+        assert!(line.contains("'RENAMED_BY_TEST'"), "name replaced: {line}");
+        let (reparsed, _ids, _schema) = parse_back(&step);
+        let mut sc = EntityScanner::new(&src[..]);
+        let mut total = 0usize;
+        while sc.next_entity().is_some() {
+            total += 1;
+        }
+        assert_eq!(reparsed, total, "no entities dropped by the edit");
+    }
+
+    #[test]
+    fn split_top_level_args_respects_nesting() {
+        let args = "'a',$,(#1,#2,#3),IFCBOOLEAN(.T.),#9";
+        let parts = split_top_level_args(args);
+        assert_eq!(parts.len(), 5);
+        assert_eq!(parts[2], "(#1,#2,#3)");
+        assert_eq!(parts[3], "IFCBOOLEAN(.T.)");
     }
 
     #[test]

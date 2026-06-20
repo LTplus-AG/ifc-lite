@@ -206,10 +206,28 @@ pub fn export_glb(content: &[u8], opts: &GltfOptions) -> Vec<u8> {
     export_glb_with_stats(content, opts).0
 }
 
-/// Like [`export_glb`] but also returns coverage stats.
-pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
-    let result = process_geometry(content);
+/// A minimal borrowed view of one renderable mesh for glTF assembly — lets the
+/// from-bytes path (`process_geometry`) and the from-meshes path (the viewer's already
+/// produced MeshData) share one assembler.
+pub struct MeshView<'a> {
+    pub express_id: u32,
+    pub ifc_type: &'a str,
+    pub positions: &'a [f32],
+    pub normals: &'a [f32],
+    pub indices: &'a [u32],
+    pub color: [f32; 4],
+    pub origin: [f64; 3],
+}
 
+fn view_ok(v: &MeshView) -> bool {
+    !v.indices.is_empty()
+        && v.positions.len() >= 9
+        && v.positions.len() % 3 == 0
+        && v.normals.len() == v.positions.len()
+}
+
+/// Core glTF/GLB assembler over pre-filtered mesh views.
+fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfStats) {
     // Binary blobs, concatenated as [positions | normals | indices].
     let mut positions: Vec<u8> = Vec::new();
     let mut normals: Vec<u8> = Vec::new();
@@ -225,8 +243,8 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
 
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
 
-    for mesh in &result.meshes {
-        if !mesh_visible(mesh, opts) {
+    for mesh in views {
+        if !view_ok(mesh) {
             continue;
         }
         let nverts = (mesh.positions.len() / 3) as u32;
@@ -248,13 +266,13 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
         let pos_off = positions.len() as u32;
         let norm_off = normals.len() as u32;
         let idx_off = indices.len() as u32;
-        for &p in &mesh.positions {
+        for &p in mesh.positions {
             positions.extend_from_slice(&p.to_le_bytes());
         }
-        for &n in &mesh.normals {
+        for &n in mesh.normals {
             normals.extend_from_slice(&n.to_le_bytes());
         }
-        for &i in &mesh.indices {
+        for &i in mesh.indices {
             indices.extend_from_slice(&i.to_le_bytes());
         }
 
@@ -320,7 +338,7 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
         } else {
             None
         };
-        let extras = if opts.include_metadata {
+        let extras = if include_metadata {
             Some(json!({ "expressId": mesh.express_id, "ifcType": mesh.ifc_type }))
         } else {
             None
@@ -369,7 +387,7 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
     bin.extend_from_slice(&normals);
     bin.extend_from_slice(&indices);
 
-    let asset_extras = if opts.include_metadata {
+    let asset_extras = if include_metadata {
         Some(json!({
             "meshCount": stats.meshes,
             "vertexCount": stats.vertices,
@@ -398,6 +416,86 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
 
     let json_bytes = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
     (pack_glb(&json_bytes, &bin), stats)
+}
+
+/// Like [`export_glb`] but also returns coverage stats. Meshes the model from bytes.
+pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
+    let result = process_geometry(content);
+    let views: Vec<MeshView> = result
+        .meshes
+        .iter()
+        .filter(|m| mesh_visible(m, opts))
+        .map(|m| MeshView {
+            express_id: m.express_id,
+            ifc_type: &m.ifc_type,
+            positions: &m.positions,
+            normals: &m.normals,
+            indices: &m.indices,
+            color: m.color,
+            origin: m.origin,
+        })
+        .collect();
+    assemble_glb(&views, opts.include_metadata)
+}
+
+/// Assemble a GLB from already-produced meshes (the viewer's MeshData — **no re-meshing**).
+/// Per mesh `i`: `vertex_counts[i]` vertices + `index_counts[i]` indices, taken in order
+/// from the concatenated `positions`/`normals`/`indices`; `colors` is RGBA per mesh,
+/// `origins` is xyz per mesh, `express_ids` labels each mesh. Indices are per-mesh LOCAL.
+/// Callers pass exactly the meshes they want emitted (visibility filtering is theirs).
+#[allow(clippy::too_many_arguments)]
+pub fn export_glb_from_meshes(
+    positions: &[f32],
+    normals: &[f32],
+    indices: &[u32],
+    vertex_counts: &[u32],
+    index_counts: &[u32],
+    colors: &[f32],
+    origins: &[f64],
+    express_ids: &[u32],
+    include_metadata: bool,
+) -> (Vec<u8>, GltfStats) {
+    let n = vertex_counts.len();
+    let mut views: Vec<MeshView> = Vec::with_capacity(n);
+    let mut vbase = 0usize; // running vertex offset
+    let mut ibase = 0usize; // running index offset
+    for i in 0..n {
+        let vc = vertex_counts[i] as usize;
+        let ic = index_counts.get(i).copied().unwrap_or(0) as usize;
+        if (vbase + vc) * 3 > positions.len() || ibase + ic > indices.len() {
+            break; // malformed counts — stop rather than panic
+        }
+        let pslice = &positions[vbase * 3..(vbase + vc) * 3];
+        let nslice: &[f32] = if normals.len() >= (vbase + vc) * 3 {
+            &normals[vbase * 3..(vbase + vc) * 3]
+        } else {
+            &[]
+        };
+        let islice = &indices[ibase..ibase + ic];
+        let color = [
+            colors.get(i * 4).copied().unwrap_or(0.8),
+            colors.get(i * 4 + 1).copied().unwrap_or(0.8),
+            colors.get(i * 4 + 2).copied().unwrap_or(0.8),
+            colors.get(i * 4 + 3).copied().unwrap_or(1.0),
+        ];
+        let origin = [
+            origins.get(i * 3).copied().unwrap_or(0.0),
+            origins.get(i * 3 + 1).copied().unwrap_or(0.0),
+            origins.get(i * 3 + 2).copied().unwrap_or(0.0),
+        ];
+        views.push(MeshView {
+            express_id: express_ids.get(i).copied().unwrap_or(0),
+            ifc_type: "",
+            positions: pslice,
+            normals: nslice,
+            indices: islice,
+            color,
+            origin,
+        });
+        vbase += vc;
+        ibase += ic;
+    }
+    assemble_glb(&views, include_metadata)
 }
 
 /// Pack a glTF JSON document and binary buffer into a GLB container (little-endian).
@@ -500,6 +598,45 @@ mod tests {
         }
 
         // Binary buffer length matches the declared buffer.
+        assert_eq!(bin.len(), json["buffers"][0]["byteLength"].as_u64().unwrap() as usize);
+    }
+
+    #[test]
+    fn from_meshes_assembles_valid_glb() {
+        // Two meshes (a quad each) supplied as already-produced buffers — no re-meshing.
+        // Mesh 0: unit quad at origin; Mesh 1: same quad with a non-zero RTC origin.
+        let positions: Vec<f32> = vec![
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // mesh 0
+            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // mesh 1
+        ];
+        let normals: Vec<f32> = std::iter::repeat([0.0f32, 0.0, 1.0]).take(8).flatten().collect();
+        let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3, 0, 1, 2, 0, 2, 3];
+        let vertex_counts = vec![4u32, 4];
+        let index_counts = vec![6u32, 6];
+        let colors = vec![1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.5]; // red opaque, green translucent
+        let origins = vec![0.0, 0.0, 0.0, 1000.0, 2000.0, 3000.0]; // mesh 1 has RTC offset
+        let express_ids = vec![10u32, 20];
+
+        let (glb, stats) = export_glb_from_meshes(
+            &positions, &normals, &indices, &vertex_counts, &index_counts, &colors, &origins,
+            &express_ids, true,
+        );
+        assert_eq!(stats.meshes, 2);
+        assert_eq!(stats.triangles, 4);
+        assert_eq!(stats.materials, 2, "two distinct colors → two materials");
+
+        let (json, bin) = parse_glb(&glb);
+        assert_eq!(json["asset"]["generator"], "IFC-Lite");
+        assert_eq!(json["nodes"].as_array().unwrap().len(), 2);
+        // Mesh 1's RTC origin must ride a node translation (positions stay local).
+        let has_translation = json["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n["translation"] == serde_json::json!([1000.0, 2000.0, 3000.0]));
+        assert!(has_translation, "RTC origin emitted as node translation");
+        // Translucent material → BLEND.
+        assert!(json["materials"].as_array().unwrap().iter().any(|m| m["alphaMode"] == "BLEND"));
         assert_eq!(bin.len(), json["buffers"][0]["byteLength"].as_u64().unwrap() as usize);
     }
 

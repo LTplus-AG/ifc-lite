@@ -386,6 +386,37 @@ export class IfcLiteBridge {
   }
 
   /**
+   * Assemble a GLB from already-produced meshes (flattened parallel arrays) — no
+   * re-meshing. Used by the viewer, which already holds the meshes on the GPU.
+   */
+  exportGlbFromMeshes(
+    positions: Float32Array,
+    normals: Float32Array,
+    indices: Uint32Array,
+    vertexCounts: Uint32Array,
+    indexCounts: Uint32Array,
+    colors: Float32Array,
+    origins: Float64Array,
+    expressIds: Uint32Array,
+    includeMetadata: boolean,
+  ): Uint8Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportGlbFromMeshes(
+        positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata,
+      );
+    } catch (error) {
+      log.error('Failed to exportGlbFromMeshes', error, { operation: 'exportGlbFromMeshes' });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Shared wrapper for the domain-format exporters: init guard + structured error
    * logging + fatal-wasm-error marking, mirroring the other bridge entry points.
    */

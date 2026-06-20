@@ -3,6 +3,7 @@
 "@ifc-lite/wasm": minor
 "@ifc-lite/cli": minor
 "@ifc-lite/mcp": minor
+"@ifc-lite/viewer": minor
 ---
 
 Add Rust-backed domain-format exporters. The new `ifc-lite-export` crate is the
@@ -23,3 +24,8 @@ Also makes the wasm geometry engine usable under Node: `IfcLiteBridge.init()` no
 the `.wasm` bytes itself when running in Node (whose `fetch()` cannot load `file://`),
 strictly Node-gated so the browser/worker path is unchanged. This additionally fixes
 headless `clash`/geometry commands that previously failed to initialize wasm in Node.
+
+The viewer's GLB export now assembles the binary in Rust over the meshes it already
+holds (`GeometryProcessor.exportGlbFromMeshes`, wasm `exportGlbFromMeshes`) instead of the
+TypeScript GLTFExporter — no re-meshing, and the per-element RTC origin rides a glTF node
+translation so georef-scale models keep vertex precision.

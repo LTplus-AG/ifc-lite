@@ -1095,6 +1095,49 @@ export class GeometryProcessor {
   }
 
   /**
+   * Assemble a GLB from already-produced meshes (no re-meshing) — the viewer path.
+   * Flattens `MeshData[]` into the wasm binding's parallel arrays. The caller passes
+   * exactly the meshes it wants emitted (its own visibility filtering).
+   */
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    let totalV = 0;
+    let totalI = 0;
+    for (const m of meshes) {
+      totalV += m.positions.length;
+      totalI += m.indices.length;
+    }
+    const positions = new Float32Array(totalV);
+    const normals = new Float32Array(totalV);
+    const indices = new Uint32Array(totalI);
+    const vertexCounts = new Uint32Array(meshes.length);
+    const indexCounts = new Uint32Array(meshes.length);
+    const colors = new Float32Array(meshes.length * 4);
+    const origins = new Float64Array(meshes.length * 3);
+    const expressIds = new Uint32Array(meshes.length);
+    let vo = 0;
+    let io = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const m = meshes[i];
+      positions.set(m.positions, vo);
+      if (m.normals && m.normals.length === m.positions.length) normals.set(m.normals, vo);
+      indices.set(m.indices, io);
+      vertexCounts[i] = m.positions.length / 3;
+      indexCounts[i] = m.indices.length;
+      const c = m.color ?? [0.8, 0.8, 0.8, 1];
+      colors[i * 4] = c[0]; colors[i * 4 + 1] = c[1]; colors[i * 4 + 2] = c[2]; colors[i * 4 + 3] = c[3];
+      const o = m.origin ?? [0, 0, 0];
+      origins[i * 3] = o[0]; origins[i * 3 + 1] = o[1]; origins[i * 3 + 2] = o[2];
+      expressIds[i] = m.expressId ?? 0;
+      vo += m.positions.length;
+      io += m.indices.length;
+    }
+    return this.bridge.exportGlbFromMeshes(
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata,
+    );
+  }
+
+  /**
    * Cleanup resources
    */
   dispose(): void {

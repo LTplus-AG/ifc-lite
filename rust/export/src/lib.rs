@@ -25,7 +25,9 @@ pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use step::{export_step, export_step_with_stats, StepOptions, StepStats};
 #[cfg(feature = "parquet-bos")]
 pub use parquet_bos::{export_bos, ParquetBosOptions};
-pub use gltf::{export_glb, export_glb_with_stats, GltfOptions, GltfStats};
+pub use gltf::{
+    export_glb, export_glb_from_meshes, export_glb_with_stats, GltfOptions, GltfStats,
+};
 pub use hbjson::Model;
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};

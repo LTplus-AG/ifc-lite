@@ -42,7 +42,7 @@ import {
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
-import { GLTFExporter } from '@ifc-lite/export';
+import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 
 type ColorSource = 'rendering' | 'shading';
 
@@ -197,26 +197,45 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     return out.size > 0 ? out : null;
   }, [models, isolatedEntities, isolatedEntitiesByModel]);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     if (!selectedModel?.geometryResult) return;
 
     setIsExporting(true);
     setExportResult(null);
 
     try {
-      const exporter = new GLTFExporter(selectedModel.geometryResult);
+      // Assemble the GLB in Rust over the meshes the viewer already holds (no
+      // re-meshing). Visibility + colour-source selection is applied here because
+      // the Rust path emits exactly the meshes it is handed — this mirrors the
+      // previous GLTFExporter `isMeshVisible` / `pickColor` semantics.
       const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
       const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
       const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
+      const hasIsolation = !!globalIsolated && globalIsolated.size > 0;
 
-      const glb = exporter.exportGLB({
-        includeMetadata,
-        colorSource,
-        visibleOnly,
-        hiddenEntityIds: globalHidden,
-        isolatedEntityIds: globalIsolated,
-        hiddenIfcTypes,
-      });
+      const meshes = (selectedModel.geometryResult.meshes as MeshData[])
+        .filter((m) => {
+          if (!visibleOnly) return true;
+          if (hiddenIfcTypes && m.ifcType && hiddenIfcTypes.has(m.ifcType)) return false;
+          if (hasIsolation && !globalIsolated!.has(m.expressId)) return false;
+          if (globalHidden && globalHidden.has(m.expressId)) return false;
+          return true;
+        })
+        .map((m) =>
+          colorSource === 'shading' && m.shadingColor
+            ? ({ ...m, color: m.shadingColor } as MeshData)
+            : m,
+        );
+
+      const gp = new GeometryProcessor();
+      await gp.init();
+      let glb: Uint8Array | null;
+      try {
+        glb = gp.exportGlbFromMeshes(meshes, includeMetadata);
+      } finally {
+        gp.dispose();
+      }
+      if (!glb) throw new Error('GLB assembly returned no data');
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       const url = URL.createObjectURL(blob);

@@ -37,4 +37,37 @@ impl IfcAPI {
         };
         ifc_lite_export::export_glb(content.as_bytes(), &opts)
     }
+
+    /// Assemble a **GLB** from already-produced meshes (the viewer's `MeshData`, flattened)
+    /// — no re-meshing. Per mesh `i`: `vertex_counts[i]` verts + `index_counts[i]` indices
+    /// taken in order from the concatenated `positions`/`normals`/`indices`; `colors` is
+    /// RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
+    /// per-mesh local). The caller passes exactly the meshes it wants emitted.
+    #[wasm_bindgen(js_name = exportGlbFromMeshes)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_glb_from_meshes(
+        &self,
+        positions: &[f32],
+        normals: &[f32],
+        indices: &[u32],
+        vertex_counts: &[u32],
+        index_counts: &[u32],
+        colors: &[f32],
+        origins: &[f64],
+        express_ids: &[u32],
+        include_metadata: bool,
+    ) -> Vec<u8> {
+        ifc_lite_export::export_glb_from_meshes(
+            positions,
+            normals,
+            indices,
+            vertex_counts,
+            index_counts,
+            colors,
+            origins,
+            express_ids,
+            include_metadata,
+        )
+        .0
+    }
 }

@@ -92,6 +92,14 @@ export class IfcAPI {
    */
   exportGlb(content: string, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string): Uint8Array;
   /**
+   * Assemble a **GLB** from already-produced meshes (the viewer's `MeshData`, flattened)
+   * — no re-meshing. Per mesh `i`: `vertex_counts[i]` verts + `index_counts[i]` indices
+   * taken in order from the concatenated `positions`/`normals`/`indices`; `colors` is
+   * RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
+   * per-mesh local). The caller passes exactly the meshes it wants emitted.
+   */
+  exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean): Uint8Array;
+  /**
    * Export the render geometry in `content` as a Wavefront **OBJ** string.
    *
    * `hidden` / `isolated` are express-id filters mirroring the viewer's visibility
@@ -984,6 +992,7 @@ export interface InitOutput {
   readonly ifcapi_clearPrePassCache: (a: number) => void;
   readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
+  readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number) => void;
   readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;

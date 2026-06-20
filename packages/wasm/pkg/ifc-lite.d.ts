@@ -188,8 +188,10 @@ export class IfcAPI {
    * `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
    * `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
    * `#`-reference closure is added so the subset never dangles a reference.
+   * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
+   * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
    */
-  exportStep(content: string, schema: string, included: Uint32Array): string;
+  exportStep(content: string, schema: string, included: Uint32Array, mutations_json: string): string;
   /**
    * Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
    * bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
@@ -1010,7 +1012,7 @@ export interface InitOutput {
   readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
   readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
-  readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+  readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
   readonly ifcapi_getMemory: (a: number) => number;
   readonly ifcapi_is_ready: (a: number) => number;

@@ -626,8 +626,15 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
           session.materialElementIds, session.materialColorCounts, session.materialColors,
         );
         if (shard && shard.byteLength > 0) {
-          // wasm-bindgen Vec<u8> => a fresh Uint8Array over its own buffer.
-          session.pendingInstancedShards.push(shard.buffer as ArrayBuffer);
+          // wasm-bindgen Vec<u8> returns a fresh standalone Uint8Array (offset 0,
+          // exact length), so .buffer is safe to transfer. Guard defensively: if
+          // it is ever a view into a larger buffer, copy out the exact bytes
+          // instead of transferring (and detaching) the parent buffer.
+          const exact =
+            shard.byteOffset === 0 && shard.byteLength === shard.buffer.byteLength
+              ? (shard.buffer as ArrayBuffer)
+              : (shard.slice().buffer as ArrayBuffer);
+          session.pendingInstancedShards.push(exact);
         }
       }
     } catch (e) {

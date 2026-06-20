@@ -15,4 +15,6 @@ profiles (not the render mesh), so they are watertight by construction and wasm-
 `IfcRailing` occurrences are emitted as shading `ShadeMesh` geometry, and `IfcMaterialLayerSet`
 build-ups become Honeybee opaque constructions (real layer names + thicknesses; thermal
 properties defaulted by material-name keyword, since IFC rarely carries them) assigned by face
-type. Backed by a new pure-Rust `ifc-lite-export` crate (source of truth for CLI / SDK / wasm).
+type. Shared interior walls are paired as `Surface` adjacencies so multi-zone energy models
+don't lose heat to ambient. Backed by a new pure-Rust `ifc-lite-export` crate (source of truth
+for CLI / SDK / wasm). Available in the viewer's export menu as "Export HBJSON (Energy Model)".

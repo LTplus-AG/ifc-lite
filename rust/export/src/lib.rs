@@ -7,6 +7,7 @@
 //! This is the Rust source of truth; CLI / SDK / wasm become thin callers (mirroring how
 //! geometry already flows through `ifc-lite-wasm`).
 
+mod adjacency;
 mod constructions;
 mod hbjson;
 mod openings;
@@ -47,6 +48,8 @@ pub struct HbjsonStats {
     pub shades: usize,
     /// Opaque constructions derived from the IFC material layer sets.
     pub constructions: usize,
+    /// Interior faces paired as `Surface` adjacencies (2 per shared wall).
+    pub interior_adjacencies: usize,
 }
 
 /// Export the `IfcSpace` volumes in `content` (raw IFC/STEP bytes) as an HBJSON string.
@@ -65,6 +68,8 @@ pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String
     let spaces = profiles.iter().filter(|p| p.ifc_type == "IfcSpace").count();
     let (mut rooms, origin, skipped) = rooms::build_rooms(&profiles, opts.tolerance);
     openings::attach_openings(&profiles, &mut rooms, origin);
+    // Pair shared interior walls as Surface adjacencies (drops their exterior openings).
+    let interior_adjacencies = adjacency::solve_adjacency(&mut rooms);
     let shade_meshes = shades::build_shades(&profiles, origin);
 
     // Assign representative opaque constructions (from the IFC material layer sets) by face type.
@@ -87,7 +92,7 @@ pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String
     let doors = rooms.iter().flat_map(|r| &r.faces).map(|f| f.doors.len()).sum();
     let shades = shade_meshes.len();
     let n_constructions = cons.energy.as_ref().map_or(0, |e| e.constructions.len());
-    let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped, apertures, doors, shades, constructions: n_constructions };
+    let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped, apertures, doors, shades, constructions: n_constructions, interior_adjacencies };
 
     let model = Model::new(&opts.name, rooms, shade_meshes, cons.energy, opts.tolerance);
     let json = serde_json::to_string(&model).expect("HBJSON model serializes");
@@ -115,6 +120,8 @@ mod tests {
         // P2: windows and doors are placed on exterior walls.
         assert!(stats.apertures > 0, "expected windows, got {}", stats.apertures);
         assert!(stats.doors > 0, "expected doors, got {}", stats.doors);
+        // P5: shared interior walls are paired as Surface adjacencies.
+        assert!(stats.interior_adjacencies > 0, "expected interior adjacencies, got {}", stats.interior_adjacencies);
         let v: Value = serde_json::from_str(&json).expect("valid JSON");
 
         assert_eq!(v["type"], "Model");

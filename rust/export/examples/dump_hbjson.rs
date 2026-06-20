@@ -7,8 +7,8 @@ fn main() {
     let (json, stats) =
         ifc_lite_export::export_hbjson_with_stats(&bytes, &ifc_lite_export::HbjsonOptions { name, tolerance: 0.01 });
     eprintln!(
-        "IfcSpace: {} | rooms: {} | skipped: {} | windows: {} | doors: {} | shades: {} | constructions: {}",
-        stats.spaces, stats.rooms, stats.skipped, stats.apertures, stats.doors, stats.shades, stats.constructions
+        "IfcSpace: {} | rooms: {} | skipped: {} | windows: {} | doors: {} | shades: {} | constructions: {} | interior-adj: {}",
+        stats.spaces, stats.rooms, stats.skipped, stats.apertures, stats.doors, stats.shades, stats.constructions, stats.interior_adjacencies
     );
     print!("{json}");
 }

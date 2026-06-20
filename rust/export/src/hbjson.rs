@@ -21,11 +21,24 @@ impl Face3D {
     }
 }
 
-/// A boundary condition — minimal form (`{"type": "Outdoors"}` etc.), which Honeybee accepts.
+/// A boundary condition. `Outdoors`/`Ground` are the bare form; `Surface` (interior adjacency)
+/// also carries the adjacent face + room identifiers.
 #[derive(Serialize)]
 pub struct BoundaryCondition {
     #[serde(rename = "type")]
     pub ty: &'static str, // "Outdoors" | "Ground" | "Surface" | "Adiabatic"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boundary_condition_objects: Option<Vec<String>>,
+}
+
+impl BoundaryCondition {
+    pub fn new(ty: &'static str) -> Self {
+        Self { ty, boundary_condition_objects: None }
+    }
+    /// A `Surface` boundary condition pointing at the adjacent `[face, room]`.
+    pub fn surface(adjacent_face: String, adjacent_room: String) -> Self {
+        Self { ty: "Surface", boundary_condition_objects: Some(vec![adjacent_face, adjacent_room]) }
+    }
 }
 
 #[derive(Serialize)]
@@ -141,7 +154,7 @@ impl Aperture {
             properties: TypedProps { ty: "AperturePropertiesAbridged" },
             geometry,
             is_operable,
-            boundary_condition: BoundaryCondition { ty: "Outdoors" },
+            boundary_condition: BoundaryCondition::new("Outdoors"),
         }
     }
 }
@@ -169,7 +182,7 @@ impl Door {
             properties: TypedProps { ty: "DoorPropertiesAbridged" },
             geometry,
             is_glass,
-            boundary_condition: BoundaryCondition { ty: "Outdoors" },
+            boundary_condition: BoundaryCondition::new("Outdoors"),
         }
     }
 }
@@ -234,7 +247,7 @@ impl Face {
             properties: FaceProperties { ty: "FacePropertiesAbridged", energy: None },
             geometry,
             face_type,
-            boundary_condition: BoundaryCondition { ty: bc },
+            boundary_condition: BoundaryCondition::new(bc),
             apertures: Vec::new(),
             doors: Vec::new(),
         }
@@ -246,6 +259,15 @@ impl Face {
             ty: "FaceEnergyPropertiesAbridged",
             construction: Some(construction),
         });
+    }
+
+    /// Make this face an interior `Surface` adjacency to `(adj_face, adj_room)`. Drops any
+    /// apertures/doors — they were placed as exterior openings; interior openings need a
+    /// matched pair on the other side (out of scope here).
+    pub fn set_surface_bc(&mut self, adj_face: String, adj_room: String) {
+        self.boundary_condition = BoundaryCondition::surface(adj_face, adj_room);
+        self.apertures.clear();
+        self.doors.clear();
     }
 }
 

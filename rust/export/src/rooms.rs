@@ -71,7 +71,7 @@ pub(crate) fn newell_normal(b: &[[f64; 3]]) -> [f64; 3] {
 }
 
 /// Planar polygon area (`|Newell| / 2`).
-fn polygon_area(b: &[[f64; 3]]) -> f64 {
+pub(crate) fn polygon_area(b: &[[f64; 3]]) -> f64 {
     let n = newell_raw(b);
     0.5 * (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt()
 }

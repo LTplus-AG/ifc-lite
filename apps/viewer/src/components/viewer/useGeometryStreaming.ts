@@ -601,13 +601,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     clearPendingMeshRemovals();
   }, [pendingMeshRemovals, isInitialized, clearPendingMeshRemovals]);
 
-  // ─── GPU-instancing shards (emit-both verification) ──────────────────
+  // ─── GPU-instancing shards ───────────────────────────────────────────
   // The geometry worker collates each batch into an IFNS shard; the loader
   // pushes the raw bytes into pendingInstancedShards. Drain here: decode +
-  // upload each as instanced templates the renderer overlays on the flat
-  // geometry (coincident — the frame math guarantees it). Additive + inert
-  // until the wasm exposes processGeometryBatchInstanced; once it does, a
-  // model load shows instanced repeats over the flat path for visual check.
+  // upload each as instanced templates (repeated opaque occurrences render
+  // ONLY via these). Runs on the default path now.
   useEffect(() => {
     if (pendingInstancedShards === null || !isInitialized) return;
     const renderer = rendererRef.current;
@@ -618,8 +616,19 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     if (pendingInstancedShards.length > 0) {
       for (const bytes of pendingInstancedShards) {
-        const shard = decodeInstancedShard(new Uint8Array(bytes));
-        if (shard) scene.addInstancedShard(device, shard);
+        // CRITICAL: never let a shard decode/upload throw OUT of this effect.
+        // addInstancedShard creates GPU buffers (mappedAtCreation); on a degraded
+        // backend whose device is being lost (e.g. CI's SwiftShader), createBuffer
+        // throws — and an uncaught throw in a React effect tears down the Viewport
+        // subtree via the error boundary, unmounting the <canvas> entirely. Instanced
+        // overlays are non-essential, so swallow per-shard failures: the flat geometry
+        // still renders.
+        try {
+          const shard = decodeInstancedShard(new Uint8Array(bytes));
+          if (shard) scene.addInstancedShard(device, shard);
+        } catch (err) {
+          console.warn('[useGeometryStreaming] instanced shard upload failed (device lost?), skipping:', err);
+        }
       }
       renderer.requestRender();
     }

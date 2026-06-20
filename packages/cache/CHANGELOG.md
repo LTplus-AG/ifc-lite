@@ -1,5 +1,23 @@
 # @ifc-lite/cache
 
+## 2.0.7
+
+### Patch Changes
+
+- [#1253](https://github.com/LTplus-AG/ifc-lite/pull/1253) [`cd6f6a5`](https://github.com/LTplus-AG/ifc-lite/commit/cd6f6a524050000990b78c5e420958d1872813e4) Thanks [@louistrue](https://github.com/louistrue)! - GLB export/import placement fixes.
+
+  The GLB importer (`parseGLBToMeshData` / `loadGLBToMeshData`) now composes node-
+  hierarchy translation into world vertex positions. The Rust exporter places all
+  element geometry under a single translated root node (vertices stored relative to
+  one scene centre for f32 precision); a parser that read accessors alone landed the
+  whole model at that centre ("all centre aligned"). It now walks the scene roots,
+  accumulates translation, and bakes it into each mesh node's vertices so re-imported
+  GLBs — and any GLB with node transforms — land at their true world position.
+
+  Paired with the Rust `ifc-lite-export` GLB/OBJ fixes (self-contained, scene-centre-
+  baked geometry + IFC Z-up→WebGL Y-up conversion on the from-bytes path + double-
+  sided materials).
+
 ## 2.0.6
 
 ### Patch Changes

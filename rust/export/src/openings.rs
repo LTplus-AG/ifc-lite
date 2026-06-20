@@ -127,8 +127,13 @@ pub fn attach_openings(profiles: &[ExtractedProfile], rooms: &mut [Room], origin
     }
 
     let walls = collect_exterior_walls(rooms);
+    // Stable id order — HashMap iteration is randomized, which would make the aperture/door
+    // order (and thus the HBJSON bytes) vary between runs.
+    let mut ids: Vec<u32> = by.keys().copied().collect();
+    ids.sort_unstable();
     let mut pending: Vec<(usize, usize, Pending)> = Vec::new();
-    for (id, (is_window, ps)) in &by {
+    for id in &ids {
+        let (is_window, ps) = &by[id];
         let pts = occurrence_points(ps, origin);
         if let Some((ri, fi, geo)) = project(&pts, &walls) {
             pending.push((ri, fi, if *is_window { Pending::Window(*id, geo) } else { Pending::Door(*id, geo) }));

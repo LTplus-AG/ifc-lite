@@ -88,7 +88,10 @@ fn build_one(
     constructions: &mut Vec<OpaqueConstruction>,
     seen_mat: &mut HashSet<String>,
 ) -> Option<String> {
-    let (_, layers) = bucket.values().max_by_key(|(count, _)| *count)?;
+    // Most common build-up; tie-break by signature so the choice is deterministic across runs.
+    let (_, (_, layers)) = bucket
+        .iter()
+        .max_by(|x, y| x.1 .0.cmp(&y.1 .0).then_with(|| x.0.cmp(y.0)))?;
     if layers.is_empty() {
         return None;
     }

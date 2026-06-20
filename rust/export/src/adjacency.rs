@@ -27,7 +27,7 @@ fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
 }
 
-struct WallFace {
+struct AdjFace {
     ri: usize,
     fi: usize,
     c: [f64; 3],
@@ -37,20 +37,21 @@ struct WallFace {
     room_id: String,
 }
 
-/// Pair up shared interior walls and set reciprocal `Surface` boundary conditions.
-/// Returns the number of interior faces created (2 per matched pair).
+/// Pair up shared interior faces (walls between side-by-side rooms AND floors/ceilings
+/// between stacked rooms) and set reciprocal `Surface` boundary conditions. Returns the
+/// number of interior faces created (2 per matched pair).
 pub fn solve_adjacency(rooms: &mut [Room]) -> usize {
-    let mut faces: Vec<WallFace> = Vec::new();
+    // Every planar face is a candidate: anti-parallel normals naturally pick wall↔wall
+    // (horizontal normals) and floor↔roof (vertical normals) pairs; same-storey floors
+    // (parallel down-normals) and exterior faces never match.
+    let mut faces: Vec<AdjFace> = Vec::new();
     for (ri, room) in rooms.iter().enumerate() {
         for (fi, f) in room.faces.iter().enumerate() {
-            if f.face_type != "Wall" {
-                continue;
-            }
             let b = &f.geometry.boundary;
             if b.len() < 3 {
                 continue;
             }
-            faces.push(WallFace {
+            faces.push(AdjFace {
                 ri,
                 fi,
                 c: center(b),
@@ -68,6 +69,9 @@ pub fn solve_adjacency(rooms: &mut [Room]) -> usize {
         if used[i] {
             continue;
         }
+        // Pick the BEST (closest) valid partner, not just the first — multiple anti-parallel
+        // same-area faces can fall inside MAX_GAP and first-match could pair the wrong rooms.
+        let mut best: Option<(f64, usize)> = None;
         for j in (i + 1)..faces.len() {
             if used[j] {
                 continue;
@@ -76,24 +80,29 @@ pub fn solve_adjacency(rooms: &mut [Room]) -> usize {
             if a.ri == b.ri || dot(a.n, b.n) > -0.95 {
                 continue; // same room, or not anti-parallel
             }
-            // Plane separation along a's normal.
-            if dot(sub(a.c, b.c), a.n).abs() > MAX_GAP {
+            let gap = dot(sub(a.c, b.c), a.n).abs();
+            if gap > MAX_GAP {
                 continue;
             }
             // b's centroid projected onto a's plane must sit on top of a's centroid.
             let off = dot(sub(b.c, a.c), a.n);
             let b_proj = [b.c[0] - a.n[0] * off, b.c[1] - a.n[1] * off, b.c[2] - a.n[2] * off];
-            if dist(a.c, b_proj) > MAX_LATERAL {
+            let lateral = dist(a.c, b_proj);
+            if lateral > MAX_LATERAL {
                 continue;
             }
-            // Full-wall match only (near-equal area → Honeybee's matching-areas check passes).
+            // Full-face match only (near-equal area → Honeybee's matching-areas check passes).
             if (a.area - b.area).abs() / a.area.max(b.area).max(1e-9) > MAX_AREA_DIFF {
                 continue;
             }
+            if best.map_or(true, |(bg, _)| gap < bg) {
+                best = Some((gap, j));
+            }
+        }
+        if let Some((_, j)) = best {
             pairs.push((i, j));
             used[i] = true;
             used[j] = true;
-            break;
         }
     }
 

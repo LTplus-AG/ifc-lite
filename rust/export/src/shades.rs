@@ -22,8 +22,14 @@ pub fn build_shades(profiles: &[ExtractedProfile], origin: [f64; 3]) -> Vec<Shad
         }
     }
 
+    // Emit in a stable id order — HashMap iteration is randomized, which would make the
+    // exported HBJSON byte-unstable across runs (breaks caching / diffing).
+    let mut ids: Vec<u32> = by.keys().copied().collect();
+    ids.sort_unstable();
+
     let mut shades = Vec::new();
-    for (id, ps) in &by {
+    for id in &ids {
+        let ps = &by[id];
         let mut verts: Vec<[f64; 3]> = Vec::new();
         let mut faces: Vec<[usize; 3]> = Vec::new();
         for p in ps {

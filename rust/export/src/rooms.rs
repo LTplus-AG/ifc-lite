@@ -148,19 +148,42 @@ fn is_simple_polygon(ring: &[[f64; 3]], tol: f64) -> bool {
                 return false;
             }
         }
-        // Reject edge crossings.
+        // Reject edge crossings AND collinear partial overlaps (a polygon that doubles back
+        // along an edge is topologically watertight but geometrically self-overlapping).
         let a1 = p[i];
         let a2 = p[(i + 1) % m];
         for j in (i + 1)..m {
             if (j + 1) % m == i || (i + 1) % m == j {
                 continue;
             }
-            if segments_cross(a1, a2, p[j], p[(j + 1) % m]) {
+            let (b1, b2) = (p[j], p[(j + 1) % m]);
+            if segments_cross(a1, a2, b1, b2) || collinear_overlap(a1, a2, b1, b2, tol) {
                 return false;
             }
         }
     }
     true
+}
+
+/// True when edges `a1a2` and `b1b2` are collinear (within `tol`) and overlap by more than
+/// `tol` along their shared line — i.e. the polygon doubles back over itself.
+fn collinear_overlap(a1: (f64, f64), a2: (f64, f64), b1: (f64, f64), b2: (f64, f64), tol: f64) -> bool {
+    let dx = a2.0 - a1.0;
+    let dy = a2.1 - a1.1;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 1e-9 {
+        return false;
+    }
+    let dev = tol * len; // |orient2d| ≤ dev ⇔ point within `tol` of the line a1a2
+    if orient2d(a1, a2, b1).abs() > dev || orient2d(a1, a2, b2).abs() > dev {
+        return false;
+    }
+    let t = |p: (f64, f64)| ((p.0 - a1.0) * dx + (p.1 - a1.1) * dy) / (len * len);
+    let (tb1, tb2) = (t(b1), t(b2));
+    let (blo, bhi) = if tb1 <= tb2 { (tb1, tb2) } else { (tb2, tb1) };
+    let lo = 0.0_f64.max(blo);
+    let hi = 1.0_f64.min(bhi);
+    (hi - lo) * len > tol
 }
 
 /// True when the faces form a closed 2-manifold: every undirected edge (vertices snapped

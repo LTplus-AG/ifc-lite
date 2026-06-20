@@ -1514,7 +1514,6 @@ version = "4.1.0"
 dependencies = [
  "arrow",
  "ifc-lite-core",
- "ifc-lite-geometry",
  "ifc-lite-processing",
  "parquet",
  "serde",

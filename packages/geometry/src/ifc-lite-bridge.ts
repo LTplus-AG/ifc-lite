@@ -297,15 +297,6 @@ export class IfcLiteBridge {
   }
 
   /**
-   * Export the `IfcSpace` volumes in `content` as a Honeybee HBJSON string
-   * (Ladybug Tools energy/daylight model). Rooms are built analytically from
-   * extruded-area profiles (watertight by construction).
-   */
-  exportHbjson(content: string, name: string): string {
-    return this.runExport('exportHbjson', content, (api) => api.exportHbjson(content, name));
-  }
-
-  /**
    * Export the render geometry in `content` as a Wavefront OBJ string.
    * `hidden` / `isolated` are express-id visibility filters (empty `isolated` ⇒ all).
    */

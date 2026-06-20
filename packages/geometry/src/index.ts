@@ -1032,10 +1032,6 @@ export class GeometryProcessor {
    * Domain-format exporters (Rust source of truth in `ifc-lite-export`). Each takes
    * the raw IFC buffer and returns the serialized format, or null if not initialized.
    */
-  exportHbjson(buffer: Uint8Array, name: string): string | null {
-    if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportHbjson(safeUtf8Decode(buffer), name);
-  }
 
   exportObj(
     buffer: Uint8Array,

@@ -18,6 +18,8 @@ import {
   raycastTriangles,
 } from './scene-raycaster.js';
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
+import type { DecodedInstancedShard } from '@ifc-lite/geometry';
+import { prepareInstancedRender, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
@@ -62,6 +64,20 @@ function destroyGpuResources(
   if (m.uniformBuffer) m.uniformBuffer.destroy();
 }
 
+/**
+ * One GPU-uploaded instanced template: unique geometry (slot-0 vertex + index
+ * buffers, 28-byte pos+norm+entityId vertex matching the flat layout) drawn once
+ * per occurrence via a per-instance buffer at slot 1 and
+ * `drawIndexed(indexCount, instanceCount)`. Buffers are Scene-owned, freed in clear().
+ */
+export interface InstancedTemplateGPU {
+  vertexBuffer: GPUBuffer;
+  indexBuffer: GPUBuffer;
+  indexCount: number;
+  instanceBuffer: GPUBuffer;
+  instanceCount: number;
+}
+
 export class Scene {
   private meshes: Mesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
@@ -71,6 +87,7 @@ export class Scene {
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
+  private instancedTemplates: InstancedTemplateGPU[] = [];          // GPU-instancing: unique templates + per-occurrence buffers (fed by addInstancedShard)
 
   // Buffer-size-aware bucket splitting: when a single color group's geometry
   // would exceed the GPU maxBufferSize, overflow is directed to a new
@@ -1757,6 +1774,89 @@ export class Scene {
     return this.texturedMeshes;
   }
 
+  /** GPU-instancing templates for the renderer's instanced draw pass. */
+  getInstancedTemplates(): readonly InstancedTemplateGPU[] {
+    return this.instancedTemplates;
+  }
+
+  /**
+   * Decode a per-batch IFNS instancing shard (`processGeometryBatchInstanced`)
+   * and upload its templates for GPU-instanced drawing. Each unique geometry
+   * becomes a slot-0 vertex buffer (28-byte pos+norm+entityId, matching the flat
+   * layout — the per-vertex entityId is a 0 placeholder; vs_instanced reads the
+   * per-occurrence id) + index buffer, plus a slot-1 per-instance buffer (mat4 +
+   * entityId + rgba) already composed in the WebGL Y-up frame
+   * (`prepareInstancedRender` folds the Z-up→Y-up swap). No-op on a non-shard or
+   * empty payload. Idempotent only in the sense of "append" — call clear() to
+   * reset on a new model.
+   *
+   * Takes an ALREADY-DECODED shard (the worker/main layer that receives the raw
+   * IFNS bytes owns `decodeInstancedShard`), so this module keeps only a
+   * type-only dependency on @ifc-lite/geometry and the Scene stays focused on
+   * GPU upload.
+   */
+  addInstancedShard(device: GPUDevice, shard: DecodedInstancedShard): void {
+    const prepared = prepareInstancedRender(shard);
+    for (const t of prepared) {
+      const vcount = Math.floor(t.positions.length / 3);
+      if (vcount === 0 || t.indices.length === 0 || t.instanceCount === 0) continue;
+
+      // Interleave the template's local positions + normals into the 28-byte
+      // (pos3f + norm3f + entityId u32) vertex layout the instanced pipeline's
+      // slot 0 expects. entityId is a 0 placeholder (vs_instanced ignores it).
+      const vtx = new ArrayBuffer(vcount * 28);
+      const vf = new Float32Array(vtx);
+      for (let i = 0; i < vcount; i++) {
+        const o = i * 7;
+        vf[o + 0] = t.positions[i * 3 + 0];
+        vf[o + 1] = t.positions[i * 3 + 1];
+        vf[o + 2] = t.positions[i * 3 + 2];
+        // normals may be shorter/absent on degenerate meshes — default to 0.
+        vf[o + 3] = i * 3 + 0 < t.normals.length ? t.normals[i * 3 + 0] : 0;
+        vf[o + 4] = i * 3 + 1 < t.normals.length ? t.normals[i * 3 + 1] : 0;
+        vf[o + 5] = i * 3 + 2 < t.normals.length ? t.normals[i * 3 + 2] : 0;
+        // vf[o + 6] (entityId lane) stays 0.
+      }
+
+      const vertexBuffer = device.createBuffer({
+        size: vtx.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: true,
+      });
+      new Uint8Array(vertexBuffer.getMappedRange()).set(new Uint8Array(vtx));
+      vertexBuffer.unmap();
+
+      const indexBuffer = device.createBuffer({
+        size: t.indices.byteLength,
+        usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: true,
+      });
+      new Uint32Array(indexBuffer.getMappedRange()).set(t.indices);
+      indexBuffer.unmap();
+
+      // instanceBuffer is already the interleaved mat4 + entityId + rgba block
+      // (INSTANCE_STRIDE_BYTES per occurrence) from prepareInstancedRender.
+      const instSize = t.instanceCount * INSTANCE_STRIDE_BYTES;
+      const instanceBuffer = device.createBuffer({
+        size: instSize,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: true,
+      });
+      new Uint8Array(instanceBuffer.getMappedRange()).set(
+        new Uint8Array(t.instanceBuffer, 0, instSize),
+      );
+      instanceBuffer.unmap();
+
+      this.instancedTemplates.push({
+        vertexBuffer,
+        indexBuffer,
+        indexCount: t.indices.length,
+        instanceBuffer,
+        instanceCount: t.instanceCount,
+      });
+    }
+  }
+
   /**
    * Build a textured mesh (#961): interleave position+normal+entityId+uv into one
    * vertex buffer, upload the decoded RGBA8 texture, create a sampler honouring
@@ -1870,6 +1970,13 @@ export class Scene {
       tm.texture.destroy();
     }
     this.texturedMeshes = [];
+    // GPU-instancing templates own their vertex/index/instance buffers.
+    for (const it of this.instancedTemplates) {
+      it.vertexBuffer.destroy();
+      it.indexBuffer.destroy();
+      it.instanceBuffer.destroy();
+    }
+    this.instancedTemplates = [];
     // Clear partial batch cache
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     // Destroy streaming fragments (already included in batchedMeshes, but tracked separately)

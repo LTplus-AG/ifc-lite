@@ -50,6 +50,33 @@ export const mainShaderSource = `
           @location(1) normal: vec3<f32>,
           @location(2) @interpolate(flat) entityId: u32,
           @location(3) viewPos: vec3<f32>,  // For edge detection
+          // Per-draw albedo carried from the vertex stage so the fragment shader
+          // is shared by the flat path (vs_main writes uniforms.baseColor — the
+          // per-batch / overlay-override colour) AND the instanced path
+          // (vs_instanced writes the per-occurrence colour from the instance
+          // buffer). For the flat path this is identical to reading
+          // uniforms.baseColor directly (the value is constant across the draw).
+          @location(4) color: vec4<f32>,
+        }
+
+        // Per-instance vertex-buffer inputs (slot 1, stepMode 'instance') used by
+        // vs_instanced. The mat4 arrives as four COLUMN vec4s (WGSL mat4x4 is
+        // column-major), matching composeInstanceMatrix's column-major output +
+        // the pipeline's slot-1 attribute offsets (0/16/32/48).
+        //
+        // Location namespaces: vertex-INPUT @location (this struct + VertexInput)
+        // and inter-stage @location (VertexOutput) are INDEPENDENT in WGSL, so
+        // InstanceInput.m1 @location(4) does NOT collide with VertexOutput.color
+        // @location(4) — exactly as VertexInput.entityId and VertexOutput.entityId
+        // already BOTH use @location(2). Within the INPUT namespace the per-vertex
+        // inputs (0..2) and per-instance inputs (3..8) stay distinct.
+        struct InstanceInput {
+          @location(3) m0: vec4<f32>,
+          @location(4) m1: vec4<f32>,
+          @location(5) m2: vec4<f32>,
+          @location(6) m3: vec4<f32>,
+          @location(7) instEntityId: u32,
+          @location(8) instColor: vec4<f32>,
         }
 
         @vertex
@@ -79,7 +106,33 @@ export const mainShaderSource = `
           output.worldPos = worldPos.xyz;
           output.normal = normalize((uniforms.model * vec4<f32>(input.normal, 0.0)).xyz);
           output.entityId = input.entityId;
+          output.color = uniforms.baseColor;
           // Store view-space position for edge detection
+          output.viewPos = (uniforms.viewProj * worldPos).xyz;
+          return output;
+        }
+
+        // Instanced vertex entry — one template's geometry drawn once per
+        // occurrence. The per-instance mat4 already folds SWAP * rel_k * T(origin)
+        // (composed CPU-side, see instanced-render.ts), so it maps the template's
+        // LOCAL vertex straight to WebGL Y-up world space — no uniforms.model.
+        // rel_k and SWAP are rigid (no scale), so the same matrix transforms
+        // normals. entityId + colour come per-occurrence from the instance buffer.
+        @vertex
+        fn vs_instanced(input: VertexInput, inst: InstanceInput) -> VertexOutput {
+          var output: VertexOutput;
+          let instMat = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
+          let worldPos = instMat * vec4<f32>(input.position, 1.0);
+          output.position = uniforms.viewProj * worldPos;
+          // Same per-entity depth nudge as vs_main. No colour salt here: the
+          // instanced path has no base-vs-overlay coincident redraw (yet), so the
+          // raw picking id is enough to separate coplanar entities.
+          let zHash = ((inst.instEntityId & 0x00FFFFFFu) * 2654435761u) & 255u;
+          output.position.z *= 1.0 + f32(zHash) * 1e-6;
+          output.worldPos = worldPos.xyz;
+          output.normal = normalize((instMat * vec4<f32>(input.normal, 0.0)).xyz);
+          output.entityId = inst.instEntityId;
+          output.color = inst.instColor;
           output.viewPos = (uniforms.viewProj * worldPos).xyz;
           return output;
         }
@@ -232,7 +285,7 @@ export const mainShaderSource = `
           let NdotRim = max(dot(N, rimLight), 0.0);
           let rim = pow(NdotRim, 4.0) * env.rimIntensity;
 
-          var baseColor = uniforms.baseColor.rgb;
+          var baseColor = input.color.rgb;
 
           // Detect if the color is close to white/gray (low saturation)
           let baseGray = dot(baseColor, vec3<f32>(0.299, 0.587, 0.114));
@@ -295,7 +348,7 @@ export const mainShaderSource = `
           // blue highlight, making it appear white instead of blue.
           // Also force alpha to 1.0 for selected objects so the highlight is
           // fully opaque (the selection pipeline has no alpha blending).
-          var finalAlpha = select(uniforms.baseColor.a, 1.0, isSelected);
+          var finalAlpha = select(input.color.a, 1.0, isSelected);
           if (finalAlpha < 0.99 && !isSelected && !isOverlay) {
             // Calculate view direction for fresnel
             let V = normalize(-input.worldPos);

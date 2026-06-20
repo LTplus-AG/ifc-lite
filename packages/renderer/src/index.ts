@@ -1815,6 +1815,29 @@ export class Renderer {
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
 
+                // GPU-instancing pass — repeated geometry collated by the producer
+                // into one template + a per-occurrence instance buffer (mat4 +
+                // entityId + rgba), drawn with the instanced pipeline as
+                // drawIndexed(indexCount, instanceCount). INERT until the worker
+                // feeds shards (getInstancedTemplates() empty ⇒ no draws ⇒ the flat
+                // path is unchanged). The per-instance matrix already folds the
+                // IFC Z-up→WebGL Y-up swap, so the uniform's model is unused here;
+                // we reuse the frame's viewProj + section + flags from `tpl`.
+                const instancedTemplates = this.scene.getInstancedTemplates();
+                if (instancedTemplates.length > 0) {
+                    this.pipeline.writeRawUniforms(tpl);
+                    pass.setPipeline(this.pipeline.getInstancedPipeline());
+                    pass.setBindGroup(0, this.pipeline.getBindGroup());
+                    pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+                    for (const it of instancedTemplates) {
+                        pass.setVertexBuffer(0, it.vertexBuffer);
+                        pass.setVertexBuffer(1, it.instanceBuffer);
+                        pass.setIndexBuffer(it.indexBuffer, 'uint32');
+                        pass.drawIndexed(it.indexCount, it.instanceCount);
+                    }
+                    pass.setPipeline(this.pipeline.getPipeline());
+                }
+
                 // #961: textured meshes — dedicated sub-pass right after opaque
                 // batches (writes depth + object-id, so overlay/section/picking
                 // all behave like normal opaque geometry). Each mesh has its own

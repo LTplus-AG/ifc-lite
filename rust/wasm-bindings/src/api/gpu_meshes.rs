@@ -1203,8 +1203,18 @@ impl IfcAPI {
             outputs.into_iter().flat_map(|o| o.meshes).collect();
         // `refs` borrows the geometry in `meshes`; both live to the end of this
         // method and collate_and_encode consumes them synchronously below.
+        //
+        // ONLY ordinary occurrences (geometry_class == 0) are instanced. Type-
+        // product geometry — orphan type maps (class 1) and instanced type maps
+        // (class 2) — is left to the flat path, which the viewer's Model/Types
+        // view-mode filter gates (ViewportContainer drops class 2 in Model mode,
+        // class 0 in Types mode). The instanced path has no view-mode filter, so
+        // including class 1/2 here would render type geometry unconditionally
+        // (the opaque type-template shapes drawing over the real occurrences —
+        // the "blue windows/roof" + type geometry showing in Model mode).
         let refs: Vec<ifc_lite_geometry::InstanceMeshRef> = meshes
             .iter()
+            .filter(|m| m.geometry_class == 0)
             .map(|m| ifc_lite_geometry::InstanceMeshRef {
                 positions: &m.positions,
                 normals: &m.normals,

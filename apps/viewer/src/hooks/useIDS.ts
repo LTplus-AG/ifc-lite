@@ -95,6 +95,10 @@ export interface UseIDSResult {
   filterMode: 'all' | 'failed' | 'passed';
   /** Isolation/color scope: whole report ('ids') or active spec only ('spec') */
   isolationScope: 'ids' | 'spec';
+  /** Which isolate action is currently applied by IDS (null = none) */
+  isolateMode: 'failed' | 'passed' | 'involved' | null;
+  /** True when any entity isolation is currently active in the 3D view */
+  isolationActive: boolean;
   /** Display options */
   displayOptions: {
     highlightFailed: boolean;
@@ -212,6 +216,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const activeEntityId = useViewerStore((s) => s.idsActiveEntityId);
   const filterMode = useViewerStore((s) => s.idsFilterMode);
   const isolationScope = useViewerStore((s) => s.idsIsolationScope);
+  const isolateMode = useViewerStore((s) => s.idsIsolateMode);
   const displayOptions = useViewerStore((s) => s.idsDisplayOptions);
 
   // IDS store actions
@@ -231,6 +236,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const setIdsLocale = useViewerStore((s) => s.setIdsLocale);
   const setIdsFilterMode = useViewerStore((s) => s.setIdsFilterMode);
   const setIdsIsolationScope = useViewerStore((s) => s.setIdsIsolationScope);
+  const setIdsIsolateMode = useViewerStore((s) => s.setIdsIsolateMode);
   const setIdsDisplayOptions = useViewerStore((s) => s.setIdsDisplayOptions);
   const idsFailedEntityIds = useViewerStore((s) => s.idsFailedEntityIds);
   const idsPassedEntityIds = useViewerStore((s) => s.idsPassedEntityIds);
@@ -245,6 +251,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
   const setIsolatedEntities = useViewerStore((s) => s.setIsolatedEntities);
+  const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const toGlobalId = useViewerStore((s) => s.toGlobalId);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const geometryResult = useViewerStore((s) => s.geometryResult);
@@ -697,11 +704,15 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       if (ids.size > 0) {
         setIsolatedEntities(ids);
         setSpecColors(activeSpecificationId);
+        setIdsIsolateMode('failed');
       }
       return;
     }
     const failedIds = keySetToGlobalIds(idsFailedEntityIds);
-    if (failedIds.size > 0) setIsolatedEntities(failedIds);
+    if (failedIds.size > 0) {
+      setIsolatedEntities(failedIds);
+      setIdsIsolateMode('failed');
+    }
   }, [
     isolationScope,
     activeSpecificationId,
@@ -711,6 +722,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     idsFailedEntityIds,
     setIsolatedEntities,
     setSpecColors,
+    setIdsIsolateMode,
   ]);
 
   const isolatePassed = useCallback(() => {
@@ -720,11 +732,15 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       if (ids.size > 0) {
         setIsolatedEntities(ids);
         setSpecColors(activeSpecificationId);
+        setIdsIsolateMode('passed');
       }
       return;
     }
     const passedIds = keySetToGlobalIds(idsPassedEntityIds);
-    if (passedIds.size > 0) setIsolatedEntities(passedIds);
+    if (passedIds.size > 0) {
+      setIsolatedEntities(passedIds);
+      setIdsIsolateMode('passed');
+    }
   }, [
     isolationScope,
     activeSpecificationId,
@@ -734,6 +750,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     idsPassedEntityIds,
     setIsolatedEntities,
     setSpecColors,
+    setIdsIsolateMode,
   ]);
 
   const isolateInvolved = useCallback((specId?: string) => {
@@ -746,6 +763,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       if (ids.size > 0) {
         setIsolatedEntities(ids);
         setSpecColors(targetSpec);
+        setIdsIsolateMode('involved');
       } else {
         // The spec has no applicable entities (not_applicable). There's
         // nothing to isolate, so drop any stale isolation/overlay left by a
@@ -753,6 +771,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         // the panel points at this (empty) spec.
         setIsolatedEntities(null);
         restoreReportColors();
+        setIdsIsolateMode(null);
       }
       return;
     }
@@ -763,6 +782,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     if (ids.size > 0) {
       setIsolatedEntities(ids);
       setPendingColorUpdates(buildColors(undefined, true));
+      setIdsIsolateMode('involved');
     }
   }, [
     isolationScope,
@@ -777,6 +797,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     setSpecColors,
     restoreReportColors,
     setPendingColorUpdates,
+    setIdsIsolateMode,
     buildColors,
   ]);
 
@@ -785,7 +806,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     // Returning to "show all" restores the default whole-report coloring,
     // replacing any per-spec green/red applied while isolated.
     restoreReportColors();
-  }, [setIsolatedEntities, restoreReportColors]);
+    setIdsIsolateMode(null);
+  }, [setIsolatedEntities, restoreReportColors, setIdsIsolateMode]);
 
   const setActiveSpecification = useCallback((specId: string | null) => {
     setIdsActiveSpecification(specId);
@@ -800,8 +822,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const setIsolationScope = useCallback((scope: 'ids' | 'spec') => {
     setIdsIsolationScope(scope);
     if (scope === 'spec') {
-      // Entering per-spec scope isolates the active spec (if one is selected).
+      // Entering per-spec scope isolates the active spec, or clears any stale
+      // whole-IDS isolation so the user starts from a clean "pick a spec" slate.
       if (activeSpecificationId) isolateInvolved(activeSpecificationId);
+      else clearIsolation();
     } else {
       // Back to whole-IDS scope: drop per-spec isolation and restore colors.
       clearIsolation();
@@ -1142,6 +1166,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     activeEntityId,
     filterMode,
     isolationScope,
+    isolateMode,
+    isolationActive: isolatedEntities != null,
     displayOptions,
 
     // Document actions

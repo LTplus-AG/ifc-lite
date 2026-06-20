@@ -45,6 +45,13 @@ export type IDSFilterMode = 'all' | 'failed' | 'passed';
  */
 export type IDSIsolationScope = 'ids' | 'spec';
 
+/**
+ * Which IDS isolate action is currently applied, so the panel can show the
+ * active button as pressed and toggle it off on a second click. `null` when
+ * IDS is not isolating.
+ */
+export type IDSIsolateMode = 'failed' | 'passed' | 'involved' | null;
+
 export interface IDSSliceState {
   /** Loaded IDS document */
   idsDocument: IDSDocument | null;
@@ -84,6 +91,8 @@ export interface IDSSliceState {
    * failed red) so they can be reviewed in context — per issue #1236.
    */
   idsIsolationScope: IDSIsolationScope;
+  /** Which isolate action is currently applied (drives toggle + active state) */
+  idsIsolateMode: IDSIsolateMode;
   /** Cached set of failed entity IDs for efficient lookup */
   idsFailedEntityIds: Set<string>; // "modelId:expressId" format
   /** Cached set of passed entity IDs */
@@ -117,6 +126,7 @@ export interface IDSSlice extends IDSSliceState {
   setIdsDisplayOptions: (options: Partial<IDSDisplayOptions>) => void;
   setIdsFilterMode: (mode: IDSFilterMode) => void;
   setIdsIsolationScope: (scope: IDSIsolationScope) => void;
+  setIdsIsolateMode: (mode: IDSIsolateMode) => void;
 
   // Utility getters
   getActiveSpecificationResult: () => IDSSpecificationResult | null;
@@ -200,6 +210,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   idsDisplayOptions: DEFAULT_DISPLAY_OPTIONS,
   idsFilterMode: 'all',
   idsIsolationScope: 'ids',
+  idsIsolateMode: null,
   idsFailedEntityIds: new Set(),
   idsPassedEntityIds: new Set(),
 
@@ -241,6 +252,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsValidationReport: report,
       idsFailedEntityIds: failed,
       idsPassedEntityIds: passed,
+      idsIsolateMode: null,
       idsError: null,
       idsProgress: null,
     });
@@ -252,6 +264,7 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
       idsIsolationScope: 'ids',
+      idsIsolateMode: null,
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
     }),
@@ -291,6 +304,8 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   setIdsFilterMode: (idsFilterMode) => set({ idsFilterMode }),
 
   setIdsIsolationScope: (idsIsolationScope) => set({ idsIsolationScope }),
+
+  setIdsIsolateMode: (idsIsolateMode) => set({ idsIsolateMode }),
 
   // Utility getters
   getActiveSpecificationResult: () => {

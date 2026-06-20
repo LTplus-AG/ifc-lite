@@ -45,7 +45,31 @@ export class RaycastEngine {
     /**
      * Collect all visible mesh data from the scene, applying visibility filters.
      */
-    private collectVisibleMeshData(options?: PickOptions): MeshData[] {
+    /** Slab ray-AABB test, used to cull instanced occurrences before materializing
+     *  their (lazy) triangles. */
+    private rayHitsBounds(ray: Ray, b: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): boolean {
+        const o = [ray.origin.x, ray.origin.y, ray.origin.z];
+        const d = [ray.direction.x, ray.direction.y, ray.direction.z];
+        const mn = [b.min.x, b.min.y, b.min.z];
+        const mx = [b.max.x, b.max.y, b.max.z];
+        let tmin = -Infinity, tmax = Infinity;
+        for (let i = 0; i < 3; i++) {
+            if (Math.abs(d[i]) < 1e-12) {
+                if (o[i] < mn[i] || o[i] > mx[i]) return false;
+            } else {
+                const inv = 1 / d[i];
+                let t1 = (mn[i] - o[i]) * inv;
+                let t2 = (mx[i] - o[i]) * inv;
+                if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+                if (t1 > tmin) tmin = t1;
+                if (t2 < tmax) tmax = t2;
+                if (tmin > tmax) return false;
+            }
+        }
+        return tmax >= Math.max(tmin, 0);
+    }
+
+    private collectVisibleMeshData(options?: PickOptions, ray?: Ray): MeshData[] {
         const allMeshData: MeshData[] = [];
         const meshes = this.scene.getMeshes();
         const batchedMeshes = this.scene.getBatchedMeshes();
@@ -83,6 +107,34 @@ export class RaycastEngine {
         for (const batch of batchedMeshes) {
             for (const expressId of batch.expressIds) {
                 pushVisiblePieces(expressId);
+            }
+        }
+
+        // GPU-instanced occurrences live only in the shard, not meshDataMap. Materialize
+        // their per-occurrence triangles ON DEMAND so measure-snap / section-face-pick
+        // work over them — but only for occurrences whose world AABB the ray actually
+        // hits, so we never expand the whole instanced population per ray. When no ray
+        // is supplied (defensive) we skip instanced rather than expand everything.
+        if (ray) {
+            for (const eid of this.scene.getInstancedEntityIds()) {
+                if (options?.hiddenIds?.has(eid)) continue;
+                if (
+                    options?.isolatedIds !== null &&
+                    options?.isolatedIds !== undefined &&
+                    !options.isolatedIds.has(eid)
+                ) {
+                    continue;
+                }
+                const bounds = this.scene.getInstancedEntityBounds(eid);
+                if (!bounds || !this.rayHitsBounds(ray, bounds)) continue;
+                const pieces = this.scene.getInstancedMeshDataPieces(eid);
+                if (!pieces) continue;
+                for (const piece of pieces) {
+                    const key = `${piece.expressId}:inst:${piece.positions.length}:${piece.indices.length}`;
+                    if (seenKeys.has(key)) continue;
+                    seenKeys.add(key);
+                    allMeshData.push(piece);
+                }
             }
         }
 
@@ -156,7 +208,7 @@ export class RaycastEngine {
             const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
 
             // Get all mesh data from scene
-            const allMeshData = this.collectVisibleMeshData(options);
+            const allMeshData = this.collectVisibleMeshData(options, ray);
 
             if (allMeshData.length === 0) {
                 return null;
@@ -236,7 +288,7 @@ export class RaycastEngine {
             const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
 
             // Get all mesh data from scene
-            const allMeshData = this.collectVisibleMeshData(options);
+            const allMeshData = this.collectVisibleMeshData(options, ray);
 
             if (allMeshData.length === 0) {
                 return {

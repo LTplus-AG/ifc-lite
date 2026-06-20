@@ -43,6 +43,7 @@ import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { GLTFExporter } from '@ifc-lite/export';
+import { withInstancedMeshes } from '../../utils/instancedExport.js';
 
 type ColorSource = 'rendering' | 'shading';
 
@@ -204,7 +205,13 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     setExportResult(null);
 
     try {
-      const exporter = new GLTFExporter(selectedModel.geometryResult);
+      // Include GPU-instanced occurrences (absent from geometryResult.meshes) for
+      // the primary model so the GLB isn't missing repeated geometry.
+      const exportGeometry = withInstancedMeshes(
+        selectedModel.geometryResult,
+        selectedModelId === '__legacy__',
+      );
+      const exporter = new GLTFExporter(exportGeometry);
       const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
       const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
       const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;

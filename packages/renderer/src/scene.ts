@@ -2029,6 +2029,25 @@ export class Scene {
     return this.instancedEntityMap.has(expressId);
   }
 
+  /** All instanced occurrence express_ids (for CPU consumers that enumerate geometry,
+   *  e.g. the raycast-engine and exporters). */
+  getInstancedEntityIds(): IterableIterator<number> {
+    return this.instancedEntityMap.keys();
+  }
+
+  /** Materialize EVERY instanced occurrence as world-space MeshData. Transient + not
+   *  retained — for one-shot full-geometry consumers (glTF / IFC5 export) that must
+   *  include the instanced occurrences absent from geometryResult.meshes. Returns []
+   *  when no instanced data is loaded or after geometry release (templates freed). */
+  getAllInstancedMeshData(): MeshData[] {
+    const out: MeshData[] = [];
+    for (const eid of this.instancedEntityMap.keys()) {
+      const pieces = this.getInstancedMeshDataPieces(eid);
+      if (pieces) out.push(...pieces);
+    }
+    return out;
+  }
+
   /** World-space AABB for an instanced occurrence (union over its occurrences),
    *  or null if not instanced. Populated at upload time, so this is O(1). */
   getInstancedEntityBounds(expressId: number): BoundingBox | null {

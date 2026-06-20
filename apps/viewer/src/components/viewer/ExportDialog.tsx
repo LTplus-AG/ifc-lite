@@ -56,6 +56,7 @@ import { configureMutationView } from '@/utils/configureMutationView';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { StepExporter, MergedExporter, Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type MergeModelInput, type ExportProgress, type StepExportProgress } from '@ifc-lite/export';
+import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
@@ -416,9 +417,15 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         const federatedModel = models.get(selectedModelId);
         const idOffset = federatedModel?.idOffset ?? 0;
 
+        // Include GPU-instanced occurrences (absent from geometryResult.meshes) for
+        // the primary model (idOffset 0) so the USD/IFC5 export isn't missing them.
+        const exportGeometry = selectedModel.geometryResult
+          ? withInstancedMeshes(selectedModel.geometryResult, idOffset === 0)
+          : selectedModel.geometryResult;
+
         const exporter = new Ifc5Exporter(
           selectedModel.ifcDataStore,
-          selectedModel.geometryResult,
+          exportGeometry,
           mutationView || undefined,
           idOffset,
         );

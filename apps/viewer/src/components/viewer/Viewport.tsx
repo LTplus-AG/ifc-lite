@@ -740,8 +740,11 @@ export function Viewport({
           }
           let min: { x: number; y: number; z: number } | null = null;
           let max: { x: number; y: number; z: number } | null = null;
+          const scene = rendererRef.current?.getScene();
           for (const id of ids) {
-            const b = getEntityBounds(geom, id);
+            // GPU-instanced occurrences aren't in geometryResult.meshes; fall back to
+            // the renderer's per-occurrence world AABB so framing them still works.
+            const b = getEntityBounds(geom, id) ?? scene?.getInstancedEntityBounds(id) ?? null;
             if (!b) continue;
             if (!min || !max) {
               min = { x: b.min.x, y: b.min.y, z: b.min.z };

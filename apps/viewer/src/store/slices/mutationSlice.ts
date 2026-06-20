@@ -712,6 +712,20 @@ function generateChangeSetId(): string {
  * (the data store comes from `models`, the view from PropertiesPanel's
  * lazy-init effect). Returns null if either is missing.
  */
+/**
+ * Push the overlay's effective class for an entity into the model's
+ * EntityTable as an additive display override, so a UI retype reflects
+ * immediately in the inspector, hover, and the (mutationVersion-rebuilt)
+ * hierarchy tree. Reads the current overlay, so it also clears the override
+ * on undo (removeTypeMutation → null) and re-applies it on redo.
+ */
+function syncTypeOverride(get: () => ViewerState, modelId: string, entityId: number): void {
+  const view = get().mutationViews.get(modelId);
+  const newType = view?.getEntityTypeMutation?.(entityId)?.newType ?? null;
+  const dataStore = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
+  dataStore?.entities?.setTypeOverride?.(entityId, newType);
+}
+
 function getOrCreateStoreEditor(
   get: () => ViewerState,
   // Editors are cached in-place on the (non-reactive) `storeEditors`
@@ -1368,6 +1382,9 @@ export const createMutationSlice: StateCreator<
       // The dialog validates before calling, so this only guards stray callers.
       return null;
     }
+
+    // Reflect the new class live (inspector, hover, tree on rebuild).
+    syncTypeOverride(get, modelId, entityId);
 
     set((state) => {
       const newUndoStacks = new Map(state.undoStacks);
@@ -2631,6 +2648,7 @@ export const createMutationSlice: StateCreator<
       } else {
         view.removeTypeMutation(mutation.entityId);
       }
+      syncTypeOverride(get, modelId, mutation.entityId);
     }
 
     set((s) => {
@@ -2803,6 +2821,7 @@ export const createMutationSlice: StateCreator<
       if (newType) {
         view.setEntityType(mutation.entityId, newType, mutation.predefinedType ?? undefined, undefined, true);
       }
+      syncTypeOverride(get, modelId, mutation.entityId);
     }
 
     set((s) => {

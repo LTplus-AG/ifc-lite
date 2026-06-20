@@ -327,6 +327,9 @@ function buildEntityTable(
 
   const indexOfId = (id: number): number => idToIndex.get(id) ?? -1;
 
+  // Additive display-class overrides (UI retype). See entity-table.ts.
+  const typeOverrides = new Map<number, string>();
+
   const entities: EntityTable = {
     count: entityCount,
     expressId,
@@ -357,6 +360,8 @@ function buildEntityTable(
       return i >= 0 ? strings.get(objectTypeArr[i]) : '';
     },
     getTypeName: (id) => {
+      const override = typeOverrides.get(id);
+      if (override !== undefined) return override;
       const i = indexOfId(id);
       return i >= 0 ? IfcTypeEnumToString(typeEnumArr[i]) : 'Unknown';
     },
@@ -371,8 +376,14 @@ function buildEntityTable(
       return indices.map(idx => expressId[idx]);
     },
     getTypeEnum: (id) => {
+      const override = typeOverrides.get(id);
+      if (override !== undefined) return IfcTypeEnumFromString(override);
       const i = indexOfId(id);
       return i >= 0 ? typeEnumArr[i] as IfcTypeEnum : IfcTypeEnum.Unknown;
+    },
+    setTypeOverride: (id, typeName) => {
+      if (typeName === null) typeOverrides.delete(id);
+      else typeOverrides.set(id, typeName);
     },
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;

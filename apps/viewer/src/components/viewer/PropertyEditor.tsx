@@ -1405,7 +1405,8 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
           )}
 
           <p className="text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">
-            Applies to the exported IFC and this panel. The model tree, colors and type filters refresh on reload.
+            Updates immediately here, in the model tree and lists, and is written to the
+            exported IFC. Class-based 3D colors refresh on reload.
           </p>
         </div>
 

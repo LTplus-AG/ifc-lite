@@ -1,9 +1,16 @@
 ---
 "@ifc-lite/mutations": minor
 "@ifc-lite/export": minor
+"@ifc-lite/data": minor
+"@ifc-lite/cache": patch
 ---
 
 Add entity retype (reassign class) to the mutation overlay.
+
+`EntityTable` gains an additive `setTypeOverride(expressId, typeName | null)` so
+a host (the viewer) can reflect a pending retype live in `getTypeName` /
+`getTypeEnum` without rebuilding the table; the original columnar type is left
+intact.
 
 `StoreEditor.setEntityType(expressId, newType, { predefinedType? })` and
 `MutablePropertyView.setEntityType(...)` change an entity's IFC class in place,

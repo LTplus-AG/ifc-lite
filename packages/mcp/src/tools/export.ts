@@ -6,16 +6,28 @@
  * Export tools (spec §7.9).
  *
  * `export_ifc` writes a STEP file (with any pending mutations applied),
- * `export_csv` and `export_json` produce tabular dumps, `export_glb` and
- * `export_pdf_report` are stubbed pending the WASM geometry & PDF stack.
+ * `export_csv` and `export_json` produce tabular dumps, and `export_glb` /
+ * `export_obj` export geometry via the Rust mesh pipeline (wasm, headless).
+ * `export_ifcx` and `export_pdf_report` remain stubbed pending the IFC5 / PDF stack.
  */
 
-import { writeFile } from 'node:fs/promises';
+import { writeFile, readFile } from 'node:fs/promises';
 import type { EntityRef } from '@ifc-lite/sdk';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
+
+/** Raw IFC bytes for the wasm exporters: prefer in-memory source, fall back to disk. */
+async function resolveIfcBytes(m: ReturnType<typeof resolveModel>): Promise<Uint8Array> {
+  if (m.store.source && m.store.source.byteLength > 0) return m.store.source;
+  if (m.filePath) return readFile(m.filePath);
+  throw new ToolExecutionError({
+    code: ToolErrorCode.UNSUPPORTED_OPERATION,
+    message: 'Model has no in-memory source bytes and no file path to re-read for export.',
+  });
+}
 
 const exportIfc: Tool = {
   name: 'export_ifc',
@@ -114,14 +126,75 @@ const exportJson: Tool = {
 
 const exportGlb: Tool = {
   name: 'export_glb',
-  description: 'Geometry-only glTF binary export. Requires the WASM geometry pipeline.',
+  description: 'Geometry-only glTF binary (GLB) export via the Rust mesh pipeline. Optional `type` filter isolates one IFC class.',
   scope: 'export',
-  inputSchema: { type: 'object', properties: { model_id: { type: 'string' }, file_path: { type: 'string' } }, additionalProperties: false },
-  handler() {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'export_glb requires the WASM geometry pipeline (planned for v0.2).',
-    });
+  inputSchema: {
+    type: 'object',
+    properties: {
+      model_id: { type: 'string' },
+      file_path: { type: 'string' },
+      type: { type: 'string', description: 'Optional IFC type to isolate (e.g. IfcWall).' },
+    },
+    required: ['file_path'],
+    additionalProperties: false,
+  },
+  async handler(input, ctx) {
+    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+    const filterType = input.type as string | undefined;
+    const isolated = filterType
+      ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
+      : new Uint32Array();
+    const bytes = await resolveIfcBytes(m);
+    const gp = new GeometryProcessor();
+    await gp.init();
+    try {
+      const glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+      if (glb == null) {
+        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
+      }
+      await writeFile(filePath, glb);
+      return okResult(`Wrote ${glb.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: glb.length });
+    } finally {
+      gp.dispose();
+    }
+  },
+};
+
+const exportObj: Tool = {
+  name: 'export_obj',
+  description: 'Geometry-only Wavefront OBJ export via the Rust mesh pipeline. Optional `type` filter isolates one IFC class.',
+  scope: 'export',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      model_id: { type: 'string' },
+      file_path: { type: 'string' },
+      type: { type: 'string', description: 'Optional IFC type to isolate (e.g. IfcWall).' },
+    },
+    required: ['file_path'],
+    additionalProperties: false,
+  },
+  async handler(input, ctx) {
+    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+    const filterType = input.type as string | undefined;
+    const isolated = filterType
+      ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
+      : new Uint32Array();
+    const bytes = await resolveIfcBytes(m);
+    const gp = new GeometryProcessor();
+    await gp.init();
+    try {
+      const obj = gp.exportObj(bytes, true, new Uint32Array(), isolated);
+      if (obj == null) {
+        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
+      }
+      await writeFile(filePath, obj, 'utf-8');
+      return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });
+    } finally {
+      gp.dispose();
+    }
   },
 };
 
@@ -151,4 +224,4 @@ const exportPdfReport: Tool = {
   },
 };
 
-export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportIfcx, exportPdfReport];
+export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportPdfReport];

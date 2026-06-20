@@ -29,6 +29,13 @@ export interface ExportStepOptions {
   visibleOnly?: boolean;
 }
 
+export interface ExportHbjsonOptions {
+  /** Honeybee model identifier / display name (defaults to the model name). */
+  name?: string;
+  /** When set, also trigger a download with this filename. */
+  filename?: string;
+}
+
 /** bim.export — Data export in multiple formats */
 export class ExportNamespace {
   constructor(private backend: BimBackend) {}
@@ -182,6 +189,26 @@ export class ExportNamespace {
     const content = this.backend.export.ifc(refs, options);
     if (options.filename) {
       this.backend.export.download(content, options.filename, 'application/x-step;charset=utf-8;');
+    }
+    return content;
+  }
+
+  /**
+   * Export the model as a Honeybee HBJSON energy/daylight model — `IfcSpace` volumes become
+   * watertight rooms, windows/doors become apertures/doors, railings become shades, material
+   * layer sets become opaque constructions, and shared interior walls are paired as `Surface`
+   * adjacencies. Loads directly in Honeybee / Ladybug Tools / Pollination.
+   *
+   * Requires a geometry-capable backend (the CLI and browser carry the wasm engine); the
+   * data-only SDK never meshes, so this throws on a backend that does not provide it.
+   */
+  async hbjson(options: ExportHbjsonOptions = {}): Promise<string> {
+    if (!this.backend.export.hbjson) {
+      throw new Error('HBJSON export requires a geometry-capable backend; the active backend does not provide it.');
+    }
+    const content = await this.backend.export.hbjson(options.name);
+    if (options.filename) {
+      this.backend.export.download(content, options.filename, 'application/json');
     }
     return content;
   }

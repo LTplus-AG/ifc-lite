@@ -41,6 +41,7 @@ import type {
 } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import {
   addBeamToStore,
   addColumnToStore,
@@ -529,6 +530,7 @@ export class HeadlessBackend implements BimBackend {
 
   private createExportAdapter(): ExportBackendMethods {
     const store = this.dataStore;
+    const modelName = this.modelName;
     const queryAdapter = this.query;
 
     function escapeCsv(value: string, sep: string): string {
@@ -632,6 +634,22 @@ export class HeadlessBackend implements BimBackend {
           return new TextDecoder().decode(result.content);
         }
         return exportToStep(store, exportOpts);
+      },
+      hbjson: async (name?: string): Promise<string> => {
+        // HBJSON is rebuilt analytically from the source IFC bytes (rooms/openings/
+        // shades/constructions/adjacency) via the wasm geometry engine.
+        const bytes = store.source;
+        if (!bytes || bytes.length === 0) {
+          throw new Error('HBJSON export needs the source IFC bytes, which this store did not retain.');
+        }
+        const processor = new GeometryProcessor();
+        await processor.init();
+        const baseName = (name ?? modelName).replace(/\.[^.]+$/, '');
+        const result = processor.exportHbjson(bytes, baseName);
+        if (result === null) {
+          throw new Error('Geometry engine unavailable for HBJSON export.');
+        }
+        return result;
       },
       download(_content: string, _filename: string, _mimeType: string): void {
         /* no-op — CLI writes to stdout/file directly */

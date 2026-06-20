@@ -6,10 +6,11 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Domain-format exporters for ifc-lite (OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP/IFC, IFC5/IFCX, Merged, Parquet/.bos)."
+description = "Domain-format exporters for ifc-lite (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP/IFC, IFC5/IFCX, Merged, Parquet/.bos)."
 
 [dependencies]
 ifc-lite-core = { workspace = true }
+ifc-lite-geometry = { workspace = true }
 ifc-lite-processing = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

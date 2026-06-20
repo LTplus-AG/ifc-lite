@@ -7,7 +7,7 @@
  */
 
 import type { EntityTable, StringTable } from '@ifc-lite/data';
-import { IfcTypeEnum, IfcTypeEnumToString } from '@ifc-lite/data';
+import { IfcTypeEnum, IfcTypeEnumToString, IfcTypeEnumFromString } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
@@ -121,6 +121,9 @@ export function readEntities(reader: BufferReader, strings: StringTable): Entity
     }
   }
 
+  // Additive display-class overrides (UI retype). See entity-table.ts.
+  const typeOverrides = new Map<number, string>();
+
   return {
     count,
     expressId,
@@ -152,6 +155,8 @@ export function readEntities(reader: BufferReader, strings: StringTable): Entity
       return idx >= 0 ? strings.get(objectType[idx]) : '';
     },
     getTypeName: (id) => {
+      const override = typeOverrides.get(id);
+      if (override !== undefined) return override;
       const idx = indexOfId(id);
       return idx >= 0 ? IfcTypeEnumToString(typeEnum[idx]) : 'Unknown';
     },
@@ -169,8 +174,14 @@ export function readEntities(reader: BufferReader, strings: StringTable): Entity
       return ids;
     },
     getTypeEnum: (id) => {
+      const override = typeOverrides.get(id);
+      if (override !== undefined) return IfcTypeEnumFromString(override);
       const idx = indexOfId(id);
       return idx >= 0 ? typeEnum[idx] as IfcTypeEnum : IfcTypeEnum.Unknown;
+    },
+    setTypeOverride: (id, typeName) => {
+      if (typeName === null) typeOverrides.delete(id);
+      else typeOverrides.set(id, typeName);
     },
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;

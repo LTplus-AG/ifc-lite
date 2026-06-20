@@ -199,6 +199,19 @@ export class IfcAPI {
    */
   exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema: string): string;
   /**
+   * Export the `IfcSpace` volumes in `content` as a Honeybee **HBJSON** string.
+   *
+   * Rooms are built analytically from extruded-area profiles (watertight by construction);
+   * faces are typed Floor / RoofCeiling / Wall with outward normals. The result loads via
+   * `honeybee.model.Model.from_hbjson` and is ready for Ladybug Tools / Pollination.
+   *
+   * ```javascript
+   * const api = new IfcAPI();
+   * const hbjson = api.exportHbjson(ifcContent, "my_model");
+   * ```
+   */
+  exportHbjson(content: string, name: string): string;
+  /**
    * Parse the file and return every `IfcAlignment` directrix as a flat
    * `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
    * the renderer's Y-up world space (RTC-subtracted, metres). Consecutive
@@ -993,6 +1006,7 @@ export interface InitOutput {
   readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
   readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number) => void;
+  readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;

@@ -84,6 +84,13 @@ export type BulkAction =
       type: 'SET_ATTRIBUTE';
       attribute: 'name' | 'description' | 'objectType';
       value: string;
+    }
+  | {
+      type: 'SET_ENTITY_TYPE';
+      /** Target IFC class (PascalCase, e.g. "IfcColumn"). */
+      entityType: string;
+      /** Optional PredefinedType to set on the target class. */
+      predefinedType?: string | null;
     };
 
 /**
@@ -328,6 +335,13 @@ export class BulkQueryEngine {
         // Attribute mutations would need to be implemented
         // For now, we'll skip these
         return null;
+
+      case 'SET_ENTITY_TYPE':
+        return this.mutationView.setEntityType(
+          entityId,
+          action.entityType,
+          action.predefinedType ?? null,
+        );
 
       default:
         return null;

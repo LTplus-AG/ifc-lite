@@ -11,6 +11,7 @@
  */
 
 import { writeFile, readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
@@ -164,7 +165,7 @@ export async function exportCommand(args: string[]): Promise<void> {
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
 
-  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--out file]');
+  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|hbjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
 
   // B9/F6: Auto-prefix Ifc
   if (type) {
@@ -307,7 +308,15 @@ export async function exportCommand(args: string[]): Promise<void> {
       }
       break;
     }
+    case 'hbjson': {
+      // Honeybee/Ladybug energy-model export via the SDK (the headless backend meshes
+      // analytically through the wasm engine; the data-only SDK delegates to it).
+      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.ifc$/i, '');
+      const hbjson = await bim.export.hbjson({ name });
+      await writeOutput(hbjson, outPath);
+      break;
+    }
     default:
-      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx`);
+      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx, hbjson`);
   }
 }

@@ -26,6 +26,7 @@ import { safeUtf8Decode } from '@ifc-lite/data';
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import { retypeStepLine, retypeArgTokens } from './retype.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import {
   escapeStepString,
@@ -588,9 +589,40 @@ export class StepExporter {
           entityRef.byteOffset,
           entityRef.byteOffset + entityRef.byteLength
         );
-        let nextEntityText = modifiedAttributes.has(expressId)
-          ? this.applyAttributeMutations(entityText, entityType, modifiedAttributes.get(expressId)!)
-          : entityText;
+        let nextEntityText = entityText;
+
+        // Entity retype (reassign class) runs FIRST so attribute mutations
+        // below resolve against the TARGET class's attribute names. The
+        // expressId is unchanged, so geometry / placement / representation and
+        // every IfcRel* reference (keyed by #id) carry over untouched.
+        //
+        // This materializes inside the source-iteration loop, which `deltaOnly`
+        // skips — so, like in-place attribute/positional edits to existing
+        // entities, an existing-entity retype is only emitted by a full export
+        // (the common `applyMutations` path). Retyped OVERLAY-created entities
+        // are emitted under `deltaOnly` via the new-entities pass below.
+        const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
+          ? this.mutationView!.getEntityTypeMutation(expressId)
+          : null;
+        let workingType = entityType;
+        if (typeMutation) {
+          nextEntityText = retypeStepLine(
+            nextEntityText,
+            entityRef.type,
+            typeMutation.newType,
+            typeMutation.predefinedType ?? null,
+            sourceSchema,
+          );
+          workingType = typeMutation.newType.toUpperCase();
+          if (!modifiedEntities.has(expressId)) {
+            modifiedEntities.add(expressId);
+            modifiedEntityCount++;
+          }
+        }
+
+        if (modifiedAttributes.has(expressId)) {
+          nextEntityText = this.applyAttributeMutations(nextEntityText, workingType, modifiedAttributes.get(expressId)!);
+        }
 
         const positional = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
           ? this.mutationView!.getPositionalMutationsForEntity(expressId)
@@ -680,18 +712,44 @@ export class StepExporter {
       && (options.applyMutations !== false)
       && typeof this.mutationView.getNewEntities === 'function'
     ) {
+      const getTypeMut = typeof this.mutationView.getEntityTypeMutation === 'function'
+        ? this.mutationView.getEntityTypeMutation.bind(this.mutationView)
+        : null;
       for (const entity of this.mutationView.getNewEntities()) {
-        // STEP requires UPPERCASE entity type tokens. `NewEntity.type` is
-        // stored in canonical PascalCase per the public API contract; the
-        // upper-case happens here at the file-format boundary.
-        const upperType = entity.type.toUpperCase();
+        // A retyped overlay entity keeps its AUTHORED type on `entity.type`
+        // (the overlay typeMutation is the source of truth for the effective
+        // class). Resolve the effective class, then re-lay-out the authored
+        // attributes from the authored layout up to it.
+        const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
+        const effectiveType = typeMut?.newType ?? entity.type;
+        // STEP requires UPPERCASE entity type tokens; the upper-case happens
+        // here at the file-format boundary.
+        const upperType = effectiveType.toUpperCase();
         if (options.includeGeometry === false && this.isGeometryEntity(upperType)) {
           continue;
         }
         if (allowedEntityIds !== null && !allowedEntityIds.has(entity.expressId)) {
           continue;
         }
-        const line = `#${entity.expressId}=${upperType}(${serializeStepArgs(entity.attributes)});`;
+        // Re-lay-out by name against the effective class (identity for
+        // compatible layouts). Runs whenever a retype intent exists — even a
+        // same-class retype, which carries a PredefinedType override
+        // (e.g. setEntityType(id, 'IfcColumn', 'PILASTER')).
+        let argsText: string;
+        if (typeMut) {
+          const srcTokens = entity.attributes.map(serializeStepValue);
+          const { tokens } = retypeArgTokens(
+            srcTokens,
+            entity.type,
+            effectiveType,
+            typeMut.predefinedType ?? null,
+            sourceSchema,
+          );
+          argsText = tokens.join(',');
+        } else {
+          argsText = serializeStepArgs(entity.attributes);
+        }
+        const line = `#${entity.expressId}=${upperType}(${argsText});`;
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema);
           if (converted !== null) {

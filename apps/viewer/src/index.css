@@ -309,13 +309,6 @@ body {
   .panel-compact-text {
     display: none;
   }
-
-  .panel-action-button {
-    width: 1.75rem;
-    padding-left: 0;
-    padding-right: 0;
-    justify-content: center;
-  }
 }
 
 @container (max-width: 240px) {

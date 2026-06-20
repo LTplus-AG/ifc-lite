@@ -1084,6 +1084,13 @@ export class Renderer {
         }
         const hasSelected = selectedExpressIds.size > 0;
 
+        // Keep the GPU-instanced occurrences' per-instance selected flag in sync.
+        // The Scene diff makes this a no-op (no writeBuffer) when the set is
+        // unchanged, so calling it every frame is cheap; it no-ops entirely when
+        // no instanced data is loaded. The flat path handles selection inline
+        // below via `selectedExpressIds`.
+        this.scene.setInstancedSelection(selectedExpressIds);
+
         // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
         // Snapshot the caller's map so mid-frame mutation can't desync classification
         // and uniform-write decisions for the same batch/mesh.

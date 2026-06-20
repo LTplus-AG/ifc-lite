@@ -1702,11 +1702,13 @@ export class Scene {
     if (this.geometryReleased) {
       console.warn('[Scene] setColorOverrides called after geometry data was released — skipping.');
       this.colorOverrides = null;
+      this.setInstancedColorOverrides(null);
       return;
     }
 
     if (overrides.size === 0) {
       this.colorOverrides = null;
+      this.setInstancedColorOverrides(null);
       return;
     }
 
@@ -1715,6 +1717,11 @@ export class Scene {
     // frozen by the readonly type — we don't deep-clone the inner arrays
     // because they're treated as immutable by every consumer.
     this.colorOverrides = new Map(overrides);
+
+    // Mirror the overlay onto the GPU-instanced occurrences: patch their colour
+    // bytes in place (no separate overlay pass — the instanced records carry the
+    // override colour directly). No-op when no instanced data is loaded.
+    this.setInstancedColorOverrides(overrides);
 
     // Group expressIds by override color
     const colorGroups = new Map<string, { color: [number, number, number, number]; meshData: MeshData[] }>();
@@ -1752,6 +1759,7 @@ export class Scene {
   clearColorOverrides(): void {
     this.destroyOverrideBatches();
     this.colorOverrides = null;
+    this.setInstancedColorOverrides(null);
   }
 
   /** Get overlay batches for rendering */

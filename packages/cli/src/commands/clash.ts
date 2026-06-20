@@ -15,6 +15,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { createHeadlessContext } from '../loader.js';
+import { ensureWasmForNode } from '../wasm-node-init.js';
 import { getFlag, hasFlag, fatal, printJson } from '../output.js';
 import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -46,6 +47,8 @@ let sharedProcessor: GeometryProcessor | undefined;
 
 async function getProcessor(): Promise<GeometryProcessor> {
   if (!sharedProcessor) {
+    // `--target web` wasm can't fetch(file://) under Node; pre-init from disk.
+    await ensureWasmForNode();
     const processor = new GeometryProcessor();
     await processor.init();
     sharedProcessor = processor;

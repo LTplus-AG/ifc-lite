@@ -22,7 +22,7 @@ export class RenderPipeline {
     private pipeline: GPURenderPipeline;
     private culledPipeline!: GPURenderPipeline;  // Opaque pipeline with backface culling — material-layer slices only (their winding is reliable)
     private instancedPipeline!: GPURenderPipeline;  // GPU-instancing: template (slot 0) + per-instance buffer (slot 1)
-    private instancedTransparentPipeline!: GPURenderPipeline;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays)
+    private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); null if the backend rejected it
     private selectionPipeline: GPURenderPipeline;  // Pipeline for selected meshes (renders on top)
     private transparentPipeline: GPURenderPipeline;  // Pipeline for transparent meshes with alpha blending
     private overlayPipeline: GPURenderPipeline;  // Pipeline for color overlays (lens) - renders at exact same depth
@@ -358,10 +358,23 @@ export class RenderPipeline {
         // instanced sub-pass that draws occurrences whose per-instance alpha dropped
         // below the cutoff (lens-ghost / x-ray / compare overlays) — the opaque
         // instanced pipeline ignores alpha, so without this they'd render solid.
-        this.instancedTransparentPipeline = this.device.createRenderPipeline({
-            ...transparentPipelineDescriptor,
-            vertex: instancedVertexStage,
-        } as GPURenderPipelineDescriptor);
+        //
+        // NON-FATAL: this pipeline is only exercised when an overlay makes some
+        // instanced occurrence translucent (never on a plain load). Some degraded
+        // WebGPU backends (e.g. CI's SwiftShader Vulkan) can reject the extra
+        // blended pipeline; a failure here must NOT abort init and blank the canvas.
+        // On failure we leave it null and the renderer skips the transparent
+        // instanced sub-pass (instanced overlays fall back to opaque — acceptable
+        // on a backend that can't render them anyway).
+        try {
+            this.instancedTransparentPipeline = this.device.createRenderPipeline({
+                ...transparentPipelineDescriptor,
+                vertex: instancedVertexStage,
+            } as GPURenderPipelineDescriptor);
+        } catch (err) {
+            console.warn('[RenderPipeline] transparent instanced pipeline unavailable; instanced overlays will not blend:', err);
+            this.instancedTransparentPipeline = null;
+        }
 
         // Create overlay pipeline for lens color overrides
         // Uses depthCompare 'equal' so it ONLY renders where original geometry already wrote depth.
@@ -664,7 +677,7 @@ export class RenderPipeline {
         return this.instancedPipeline;
     }
 
-    getInstancedTransparentPipeline(): GPURenderPipeline {
+    getInstancedTransparentPipeline(): GPURenderPipeline | null {
         return this.instancedTransparentPipeline;
     }
 

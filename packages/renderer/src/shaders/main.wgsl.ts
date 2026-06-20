@@ -203,8 +203,10 @@ export const mainShaderSource = `
           if ((uniforms.flags.x & 4u) != 0u) {
             let occOpaque = input.color.a >= 0.99 || (input.instSelected & 1u) != 0u;
             let transparentPass = (uniforms.flags.x & 8u) != 0u;
-            if (transparentPass == occOpaque) {
-              discard;
+            if (transparentPass) {
+              if (occOpaque) { discard; }
+            } else {
+              if (!occOpaque) { discard; }
             }
           }
           // Section plane clipping - discard fragments ABOVE the plane.

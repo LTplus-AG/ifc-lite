@@ -2035,9 +2035,14 @@ export class Renderer {
                 // occurrence translucent (otherwise zero cost). flags.x bit 3 flips the
                 // shader's opacity routing so only translucent occurrences draw here.
                 const instancedTransparent = this.scene.getInstancedTemplates();
-                if (instancedTransparent.length > 0 && this.scene.hasTransparentInstances()) {
+                const instancedTransparentPipeline = this.pipeline.getInstancedTransparentPipeline();
+                if (
+                    instancedTransparent.length > 0 &&
+                    this.scene.hasTransparentInstances() &&
+                    instancedTransparentPipeline !== null
+                ) {
                     this.pipeline.writeRawUniforms(tpl, 0x4 | 0x8);
-                    pass.setPipeline(this.pipeline.getInstancedTransparentPipeline());
+                    pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
                     for (const it of instancedTransparent) {

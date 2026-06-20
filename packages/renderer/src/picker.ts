@@ -53,8 +53,8 @@ export class Picker {
   private device: GPUDevice;
   private webgpuDevice: WebGPUDevice;
   private pipeline: GPURenderPipeline;
-  private instancedPickPipeline!: GPURenderPipeline;  // GPU-instancing: pick pass for instanced occurrences
-  private instancedPickBindGroup!: GPUBindGroup;
+  private instancedPickPipeline: GPURenderPipeline | null = null;  // GPU-instancing: pick pass for instanced occurrences; null if the backend rejected it
+  private instancedPickBindGroup: GPUBindGroup | null = null;
   private depthTexture: GPUTexture;
   private colorTexture: GPUTexture;
   private uniformBuffer: GPUBuffer;
@@ -228,37 +228,48 @@ export class Picker {
         }
       `,
     });
-    this.instancedPickPipeline = this.device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: instancedPickModule,
-        entryPoint: 'vs_main',
-        buffers: [
-          // slot 0: template vertex (28B pos+norm+entityId) — only position read.
-          { arrayStride: 28, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] },
-          // slot 1: per-instance (88B) — mat4 + entityId + flags (colour ignored here).
-          {
-            arrayStride: 88,
-            stepMode: 'instance',
-            attributes: [
-              { shaderLocation: 3, offset: 0, format: 'float32x4' },
-              { shaderLocation: 4, offset: 16, format: 'float32x4' },
-              { shaderLocation: 5, offset: 32, format: 'float32x4' },
-              { shaderLocation: 6, offset: 48, format: 'float32x4' },
-              { shaderLocation: 7, offset: 64, format: 'uint32' },
-              { shaderLocation: 8, offset: 84, format: 'uint32' },
-            ],
-          },
-        ],
-      },
-      fragment: { module: instancedPickModule, entryPoint: 'fs_main', targets: [{ format: 'r32uint' }] },
-      primitive: { topology: 'triangle-list', cullMode: 'none' },
-      depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
-    });
-    this.instancedPickBindGroup = this.device.createBindGroup({
-      layout: this.instancedPickPipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
-    });
+    // NON-FATAL: the instanced pick pipeline is an add-on (instanced occurrences are
+    // also resolvable via the GPU/CPU flat paths). A degraded WebGPU backend (e.g.
+    // CI's SwiftShader) rejecting it must NOT abort the Picker — and therefore the
+    // whole renderer init — and blank the canvas. On failure we leave it null and
+    // renderPickPass skips the instanced pick draw.
+    try {
+      this.instancedPickPipeline = this.device.createRenderPipeline({
+        layout: 'auto',
+        vertex: {
+          module: instancedPickModule,
+          entryPoint: 'vs_main',
+          buffers: [
+            // slot 0: template vertex (28B pos+norm+entityId) — only position read.
+            { arrayStride: 28, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] },
+            // slot 1: per-instance (88B) — mat4 + entityId + flags (colour ignored here).
+            {
+              arrayStride: 88,
+              stepMode: 'instance',
+              attributes: [
+                { shaderLocation: 3, offset: 0, format: 'float32x4' },
+                { shaderLocation: 4, offset: 16, format: 'float32x4' },
+                { shaderLocation: 5, offset: 32, format: 'float32x4' },
+                { shaderLocation: 6, offset: 48, format: 'float32x4' },
+                { shaderLocation: 7, offset: 64, format: 'uint32' },
+                { shaderLocation: 8, offset: 84, format: 'uint32' },
+              ],
+            },
+          ],
+        },
+        fragment: { module: instancedPickModule, entryPoint: 'fs_main', targets: [{ format: 'r32uint' }] },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+        depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
+      });
+      this.instancedPickBindGroup = this.device.createBindGroup({
+        layout: this.instancedPickPipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
+      });
+    } catch (err) {
+      console.warn('[Picker] instanced pick pipeline unavailable; instanced occurrences fall back to other pick paths:', err);
+      this.instancedPickPipeline = null;
+      this.instancedPickBindGroup = null;
+    }
   }
 
   /**
@@ -547,7 +558,7 @@ export class Picker {
     // GPU-instanced occurrences — drawn into the SAME r32uint + depth target so
     // occlusion is shared with flat meshes/points. The shader writes
     // (bit30 | express id) per occurrence; the decoder returns the entity.
-    if (instancedTemplates && instancedTemplates.length > 0) {
+    if (instancedTemplates && instancedTemplates.length > 0 && this.instancedPickPipeline && this.instancedPickBindGroup) {
       pass.setPipeline(this.instancedPickPipeline);
       pass.setBindGroup(0, this.instancedPickBindGroup);
       for (const it of instancedTemplates) {

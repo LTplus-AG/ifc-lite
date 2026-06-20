@@ -104,6 +104,16 @@ test.describe('Viewer functional smoke (AC20-FZK-Haus)', () => {
     // Escape, section plane) — asserted at the end of the test.
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(String(err)));
+    // TEMP DIAGNOSTIC (remove): surface the browser console in the CI job log so we
+    // can see why the canvas fails to mount under the runner's SwiftShader WebGPU.
+    page.on('console', (msg) => {
+      const t = msg.text();
+      if (msg.type() === 'error' || /Renderer init failed|WebGPU|pipeline|shader|createRenderPipeline|createBuffer/i.test(t)) {
+        // eslint-disable-next-line no-console
+        console.log(`[browser:${msg.type()}] ${t}`);
+      }
+    });
+    page.on('pageerror', (err) => console.log(`[browser:pageerror] ${String(err)}`));
 
     const viewer = new ViewerBenchmarkPage(page);
     await viewer.setup();

@@ -144,6 +144,10 @@ export type StreamingGeometryEvent =
       totalSoFar: number;
       coordinateInfo?: import('./types.js').CoordinateInfo;
       nativeTelemetry?: import('./platform-bridge.js').NativeBatchTelemetry;
+      /** Emit-both GPU-instancing: per-batch IFNS shards (transferable). The
+       *  consumer decodes + uploads them as instanced overlays; present only
+       *  once the wasm exposes processGeometryBatchInstanced. */
+      instancedShards?: ArrayBuffer[];
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }

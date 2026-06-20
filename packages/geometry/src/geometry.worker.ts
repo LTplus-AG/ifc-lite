@@ -188,6 +188,11 @@ export interface GeometryWorkerBatchMessage {
      *  A `bigint` survives the structured-clone `postMessage`. */
     geometryHash?: bigint;
   }[];
+  /** Emit-both GPU-instancing: per-batch IFNS shards (transferable ArrayBuffers).
+   *  Present only once the wasm exposes processGeometryBatchInstanced; the
+   *  renderer decodes + draws them as instanced overlays alongside the flat
+   *  meshes. */
+  instancedShards?: ArrayBuffer[];
 }
 
 export interface GeometryWorkerProgressMessage {
@@ -391,6 +396,9 @@ interface ProcessingSession {
   materialColors: Uint8Array | undefined;
   pendingMeshes: GeometryWorkerBatchMessage['meshes'];
   pendingTransfers: ArrayBuffer[];
+  /** Emit-both GPU-instancing: per-batch IFNS shard bytes, flushed with the
+   *  batch message (additive overlay for visual verification). */
+  pendingInstancedShards: ArrayBuffer[];
   totalMeshesEmitted: number;
   cumulativeMeshBytes: number;
 }
@@ -447,21 +455,28 @@ function startSession(input: {
     materialColors: input.materialColors,
     pendingMeshes: [],
     pendingTransfers: [],
+    pendingInstancedShards: [],
     totalMeshesEmitted: 0,
     cumulativeMeshBytes: 0,
   };
 }
 
 function flushPending(session: ProcessingSession): void {
-  if (session.pendingMeshes.length === 0) return;
+  const instancedShards = session.pendingInstancedShards;
+  session.pendingInstancedShards = [];
+  if (session.pendingMeshes.length === 0 && instancedShards.length === 0) return;
   const meshes = session.pendingMeshes;
   const transfers = session.pendingTransfers;
   session.pendingMeshes = [];
   session.pendingTransfers = [];
   session.totalMeshesEmitted += meshes.length;
   (self as unknown as Worker).postMessage(
-    { type: 'batch', meshes } as GeometryWorkerBatchMessage,
-    transfers,
+    {
+      type: 'batch',
+      meshes,
+      ...(instancedShards.length > 0 ? { instancedShards } : {}),
+    } as GeometryWorkerBatchMessage,
+    [...transfers, ...instancedShards],
   );
 }
 
@@ -592,6 +607,32 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       session.materialElementIds, session.materialColorCounts, session.materialColors,
     );
     collectMeshes(session, collection);
+    // Emit-both (GPU-instancing verification): ALSO collate this batch into an
+    // IFNS shard, emitted alongside the flat meshes so the renderer overlays
+    // instanced geometry for visual confirmation. Wrapped so a failure — INCLUDING
+    // the binding being absent before a wasm rebuild — never disturbs the flat
+    // path. TEMPORARY 2× geometry cost; removed once instanced elements are taken
+    // off the flat path.
+    try {
+      const instancedFn = (ifcApi as unknown as {
+        processGeometryBatchInstanced?: (...args: unknown[]) => Uint8Array;
+      }).processGeometryBatchInstanced;
+      if (typeof instancedFn === 'function') {
+        const shard = instancedFn.call(
+          ifcApi, session.localBytes, jobs, session.unitScale,
+          session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+          session.voidKeys, session.voidCounts, session.voidValues,
+          session.styleIds, session.styleColors, session.planeAngleToRadians,
+          session.materialElementIds, session.materialColorCounts, session.materialColors,
+        );
+        if (shard && shard.byteLength > 0) {
+          // wasm-bindgen Vec<u8> => a fresh Uint8Array over its own buffer.
+          session.pendingInstancedShards.push(shard.buffer as ArrayBuffer);
+        }
+      }
+    } catch (e) {
+      console.warn('[Worker] instanced collation skipped (flat path unaffected):', (e as Error).message);
+    }
   } catch (err) {
     const msg = (err as Error).message;
     // The recovery below issues more synchronous WASM work — a SAB-fallback

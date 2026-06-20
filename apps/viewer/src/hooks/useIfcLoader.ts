@@ -152,6 +152,7 @@ export function useIfcLoader() {
     setGeometryResult,
     setBoundedGeometryMode,
     appendGeometryBatch,
+    appendInstancedShards,
     updateMeshColors,
     updateCoordinateInfo,
     upsertModel,
@@ -168,6 +169,7 @@ export function useIfcLoader() {
     setGeometryResult: s.setGeometryResult,
     setBoundedGeometryMode: s.setBoundedGeometryMode,
     appendGeometryBatch: s.appendGeometryBatch,
+    appendInstancedShards: s.appendInstancedShards,
     updateMeshColors: s.updateMeshColors,
     updateCoordinateInfo: s.updateCoordinateInfo,
     upsertModel: s.upsertModel,
@@ -989,6 +991,12 @@ export function useIfcLoader() {
               lastTotalMeshes = event.totalSoFar;
 
               if (target.kind === 'primary') {
+                // Emit-both GPU-instancing: hand the batch's IFNS shards to the
+                // store so useGeometryStreaming uploads them as instanced overlays.
+                // Empty/absent until the wasm exposes processGeometryBatchInstanced.
+                if (event.instancedShards && event.instancedShards.length > 0) {
+                  appendInstancedShards(event.instancedShards);
+                }
                 // Accumulate meshes for batched rendering
                 for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
 
@@ -1258,7 +1266,7 @@ export function useIfcLoader() {
       setLoading(false);
       setGeometryStreamingActive(false);
     }
-  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer]);
+  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, appendInstancedShards, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer]);
 
   return { loadFile };
 }

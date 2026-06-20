@@ -342,19 +342,26 @@ export async function* processParallel(
           // renderer reconstructs world via a per-batch model-matrix translate.
           ...(m.origin ? { origin: m.origin } : {}),
         }));
-        if (meshes.length > 0) {
+        // Emit-both GPU-instancing: per-batch IFNS shards ride alongside the
+        // flat meshes (additive overlay). Present only once the wasm exposes
+        // processGeometryBatchInstanced.
+        const instancedShards = (msg as { instancedShards?: ArrayBuffer[] }).instancedShards;
+        if (meshes.length > 0 || (instancedShards && instancedShards.length > 0)) {
           // Update totalMeshes per batch so consumers see a live
           // running count via `totalSoFar`. The `complete` event
           // below used to be the only updater, leaving streamed
           // batches reporting a stale total until the worker exited.
-          totalMeshes += meshes.length;
-          coordinator.processMeshesIncremental(meshes);
+          if (meshes.length > 0) {
+            totalMeshes += meshes.length;
+            coordinator.processMeshesIncremental(meshes);
+          }
           const coordinateInfo = coordinator.getCurrentCoordinateInfo();
           eventQueue.push({
             type: 'batch',
             meshes,
             totalSoFar: totalMeshes,
             coordinateInfo: coordinateInfo || undefined,
+            ...(instancedShards && instancedShards.length > 0 ? { instancedShards } : {}),
           });
           wake();
         }

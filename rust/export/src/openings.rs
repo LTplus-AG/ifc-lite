@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use ifc_lite_geometry::ExtractedProfile;
 
 use crate::hbjson::{Aperture, Door, Face3D, Room};
-use crate::rooms::{center, dot, newell_normal, xf, zup};
+use crate::geom::{center, dot, newell_normal, xf, zup};
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
 fn norm(a: [f64; 3]) -> [f64; 3] {

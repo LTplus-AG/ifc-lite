@@ -9,6 +9,7 @@
 
 mod adjacency;
 mod constructions;
+mod geom;
 mod hbjson;
 mod openings;
 mod rooms;

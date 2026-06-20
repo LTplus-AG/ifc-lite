@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use ifc_lite_geometry::ExtractedProfile;
 
 use crate::hbjson::ShadeMesh;
-use crate::rooms::{clean_ring, xf, zup};
+use crate::geom::{clean_ring, xf, zup};
 
 /// Build one `ShadeMesh` per `IfcRailing` occurrence from its extruded profile prisms.
 pub fn build_shades(profiles: &[ExtractedProfile], origin: [f64; 3]) -> Vec<ShadeMesh> {

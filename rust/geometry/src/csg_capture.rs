@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! CSG corpus capture — measurement-only, behind the off-by-default
 //! `csg_capture` feature (zero cost in production: the hooks compile to
 //! nothing when the feature is absent).
@@ -16,6 +20,7 @@
 //! a threaded wasm build to measure the wasm-specific taxes.
 
 use crate::mesh::Mesh;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 /// One real CSG invocation captured from the pipeline. Holds owned copies of
@@ -31,15 +36,42 @@ pub enum CapturedCsgJob {
 
 static CAPTURED: Mutex<Vec<CapturedCsgJob>> = Mutex::new(Vec::new());
 
-/// Record a single-pair subtract. Called from the kernel boundary.
+/// Recording is OFF unless a capture run explicitly enables it. CRITICAL for
+/// measurement validity: the kernel `subtract`/`subtract_many` hooks ALSO fire
+/// when a bench replays the captured corpus — without this gate, every replayed
+/// cut would lock `CAPTURED` and clone its meshes, serializing rayon threads on
+/// one Mutex and distorting the very scaling numbers the bench measures. So the
+/// capture run wraps the pipeline in `set_enabled(true)`; replay leaves it off.
+static CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Turn recording on/off. Call `set_enabled(true)` only around the pipeline pass
+/// that should populate the corpus, then `set_enabled(false)` before replaying.
+pub fn set_enabled(on: bool) {
+    CAPTURE_ENABLED.store(on, Ordering::Relaxed);
+}
+
+#[inline]
+fn enabled() -> bool {
+    CAPTURE_ENABLED.load(Ordering::Relaxed)
+}
+
+/// Record a single-pair subtract. Called from the kernel boundary. No-op (one
+/// relaxed atomic load) unless a capture run is active.
 pub fn record_single(host: &Mesh, cutter: &Mesh) {
+    if !enabled() {
+        return;
+    }
     if let Ok(mut v) = CAPTURED.lock() {
         v.push(CapturedCsgJob::Single { host: host.clone(), cutter: cutter.clone() });
     }
 }
 
-/// Record a batched subtract. Called from the kernel boundary.
+/// Record a batched subtract. Called from the kernel boundary. No-op unless a
+/// capture run is active.
 pub fn record_many(host: &Mesh, cutters: &[&Mesh]) {
+    if !enabled() {
+        return;
+    }
     if let Ok(mut v) = CAPTURED.lock() {
         v.push(CapturedCsgJob::Many {
             host: host.clone(),

@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Rung-2: does the pure-Rust exact CSG kernel scale with cores in a THREADED
 //! WASM bundle (shared memory + atomics), net of the imported-memory per-load
 //! tax and dlmalloc single-lock contention that are invisible on native?

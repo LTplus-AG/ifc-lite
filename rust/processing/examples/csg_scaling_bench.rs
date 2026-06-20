@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Rung-1 native CSG core-scaling microbench.
 //!
 //! Question it answers: does across-element exact CSG (void cutting) scale with
@@ -77,7 +81,9 @@ fn main() {
     // --- Phase 1: capture the real CSG corpus (untimed) ---
     println!("\n[capture] driving native pipeline once to record real void-cut jobs…");
     let cap_t = Instant::now();
+    ifc_lite_geometry::csg_capture::set_enabled(true);
     let _ = process_geometry(&content);
+    ifc_lite_geometry::csg_capture::set_enabled(false);
     let cap_ms = cap_t.elapsed().as_millis();
     let jobs = drain();
 

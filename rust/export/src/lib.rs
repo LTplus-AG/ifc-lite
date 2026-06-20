@@ -19,6 +19,7 @@ mod obj;
 #[cfg(feature = "parquet-bos")]
 mod parquet_bos;
 mod rooms;
+mod schema_convert;
 mod step;
 
 pub use csv::{export_csv, CsvMode, CsvOptions};

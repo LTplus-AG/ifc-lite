@@ -153,7 +153,11 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
         }
     };
 
-    let schema = opts.schema.clone().unwrap_or_else(|| detect_schema(content));
+    let source_schema = detect_schema(content);
+    let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
+    // Only convert entity types/attributes when an explicit target differs from source.
+    let converting = opts.schema.is_some()
+        && crate::schema_convert::needs_conversion(&source_schema, &schema);
 
     // 3. Emit header + filtered entities (source order) + footer.
     let mut out = String::new();
@@ -172,7 +176,17 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     for id in &order {
         if included.contains(id) {
             if let Some(&(s, e)) = line_of.get(id) {
-                out.push_str(&String::from_utf8_lossy(&content[s..e]));
+                let raw = String::from_utf8_lossy(&content[s..e]);
+                if converting {
+                    out.push_str(&crate::schema_convert::convert_step_line(
+                        &raw,
+                        &source_schema,
+                        &schema,
+                        *id,
+                    ));
+                } else {
+                    out.push_str(&raw);
+                }
                 out.push('\n');
                 written += 1;
             }
@@ -252,12 +266,18 @@ mod tests {
     }
 
     #[test]
-    fn schema_label_override() {
+    fn schema_conversion_to_ifc4_keeps_model_parseable() {
         let src = fixture("ara3d/duplex.ifc");
-        let step = export_step(
+        let (step, stats) = export_step_with_stats(
             &src,
             &StepOptions { schema: Some("IFC4".to_string()), ..StepOptions::default() },
         );
         assert!(step.contains("FILE_SCHEMA(('IFC4'))"));
+        // Conversion preserves every express id (renames type, never drops entities).
+        let (reparsed, _ids, schema) = parse_back(&step);
+        assert_eq!(reparsed, stats.total, "no entities lost in conversion");
+        assert_eq!(schema, "IFC4");
+        // The converted file must still re-parse as a coherent entity set.
+        assert!(step.lines().filter(|l| l.starts_with('#')).count() == stats.written);
     }
 }

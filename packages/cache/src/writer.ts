@@ -28,6 +28,7 @@ import { writeProperties } from './sections/properties.js';
 import { writeQuantities } from './sections/quantities.js';
 import { writeRelationships } from './sections/relationships.js';
 import { writeGeometry } from './sections/geometry.js';
+import { writeInstancedShards } from './sections/instanced-shards.js';
 import { writeEntityIndex } from './sections/entity-index.js';
 
 export interface GeometryData {
@@ -35,6 +36,10 @@ export interface GeometryData {
   totalVertices: number;
   totalTriangles: number;
   coordinateInfo: CoordinateInfo;
+  /** Raw IFNS GPU-instancing shard bytes (opaque repeated occurrences). Persisted so
+   *  a cache reload re-uploads them via the instanced path; the flat `meshes` above
+   *  deliberately excludes these occurrences. Empty/absent for non-instanced models. */
+  instancedShards?: ArrayBuffer[];
 }
 
 export class BinaryCacheWriter {
@@ -131,6 +136,17 @@ export class BinaryCacheWriter {
       sectionBuffers.push({ type: SectionType.Geometry, buffer: geometryBuffer });
       totalVertices = geometry.totalVertices;
       totalTriangles = geometry.totalTriangles;
+
+      // InstancedShards section (optional) — GPU-instanced occurrences live here, not
+      // in the flat geometry section, so persist them or a reload drops them.
+      if (geometry.instancedShards && geometry.instancedShards.length > 0) {
+        const shardsBuffer = this.writeSection(() => {
+          const writer = new BufferWriter();
+          writeInstancedShards(writer, geometry.instancedShards!);
+          return writer.build();
+        });
+        sectionBuffers.push({ type: SectionType.InstancedShards, buffer: shardsBuffer });
+      }
     }
 
     // Calculate offsets

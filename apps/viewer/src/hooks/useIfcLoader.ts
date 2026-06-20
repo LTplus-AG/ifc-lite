@@ -819,6 +819,7 @@ export function useIfcLoader() {
       let estimatedTotal = 0;
       let totalMeshes = 0;
       const allMeshes: MeshData[] = []; // Collect all meshes for BVH building
+      const allInstancedShards: ArrayBuffer[] = []; // Raw IFNS shard bytes, retained for the cache write
       let finalCoordinateInfo: CoordinateInfo | null = null;
       // Capture RTC offset from WASM for proper multi-model alignment
       let capturedRtcOffset: { x: number; y: number; z: number } | null = null;
@@ -991,11 +992,17 @@ export function useIfcLoader() {
               lastTotalMeshes = event.totalSoFar;
 
               if (target.kind === 'primary') {
-                // Emit-both GPU-instancing: hand the batch's IFNS shards to the
-                // store so useGeometryStreaming uploads them as instanced overlays.
-                // Empty/absent until the wasm exposes processGeometryBatchInstanced.
+                // GPU-instancing: hand the batch's IFNS shards to the store so
+                // useGeometryStreaming decodes + uploads them via the instanced path.
+                // Also retain the raw bytes so they're written into the cache (the
+                // decode/upload only reads them, never detaches) — otherwise a cache
+                // reload would drop every instanced occurrence. Empty for non-
+                // instanced models / older wasm.
                 if (event.instancedShards && event.instancedShards.length > 0) {
                   appendInstancedShards(event.instancedShards);
+                  for (let i = 0; i < event.instancedShards.length; i++) {
+                    allInstancedShards.push(event.instancedShards[i]);
+                  }
                 }
                 // Accumulate meshes for batched rendering
                 for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
@@ -1133,6 +1140,9 @@ export function useIfcLoader() {
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                     totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                     coordinateInfo: finalCoordinateInfo,
+                    // Persist the GPU-instancing shards too, else a cache reload would
+                    // restore the flat meshes only and drop all instanced occurrences.
+                    ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
                   };
                   await saveToCache(cacheKey, dataStore, geometryData, buffer, file.name);
                 }

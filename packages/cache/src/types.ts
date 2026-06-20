@@ -43,7 +43,14 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * old glitchy stack. The bump invalidates those caches so layered walls re-mesh
  * with the class-3 slices the cull path expects.
  */
-export const FORMAT_VERSION = 9;
+/**
+ * v9→v10: GPU instancing. Opaque repeated occurrences are partitioned off the flat
+ * geometry section into IFNS instancing shards (rendered from compact templates).
+ * A v9 cache predates the shard section, so a v9 hit would restore the flat meshes
+ * only and silently drop all instanced occurrences — the bump invalidates those so
+ * the model re-meshes (and re-writes a complete v10 cache with the shards).
+ */
+export const FORMAT_VERSION = 10;
 
 /** Section types in the binary format */
 export enum SectionType {
@@ -56,6 +63,7 @@ export enum SectionType {
   Spatial = 7,
   Bounds = 8,
   EntityIndex = 9,
+  InstancedShards = 10,
 }
 
 /** IFC schema version */
@@ -191,6 +199,10 @@ export interface CacheReadResult {
     totalVertices: number;
     totalTriangles: number;
     coordinateInfo: CoordinateInfo;
+    /** Raw IFNS GPU-instancing shard bytes (opaque repeated occurrences), persisted
+     *  so a cache reload re-uploads them via the instanced path instead of dropping
+     *  the instanced geometry. Empty/absent for non-instanced models. */
+    instancedShards?: ArrayBuffer[];
   };
 }
 

@@ -215,6 +215,73 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     expect(result.geometry!.totalTriangles).toBe(1);
   });
 
+  it('should preserve GPU-instancing shards through round-trip', async () => {
+    // Opaque repeated occurrences are partitioned into IFNS shards that are NOT in
+    // the flat meshes; without persisting them, a cache reload silently drops all
+    // instanced geometry. Round-trip the raw shard bytes byte-for-byte.
+    const shardA = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    const shardB = new Uint8Array([255, 0, 128, 42]);
+    const geometry = {
+      meshes: [
+        {
+          expressId: 7,
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0]),
+          normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+          indices: new Uint32Array([0, 1, 2]),
+          color: [0.5, 0.5, 0.5, 1.0] as [number, number, number, number],
+        },
+      ],
+      totalVertices: 3,
+      totalTriangles: 1,
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+        hasLargeCoordinates: false,
+      } as CoordinateInfo,
+      instancedShards: [shardA.buffer.slice(0) as ArrayBuffer, shardB.buffer.slice(0) as ArrayBuffer],
+    };
+
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, geometry, sourceBuffer);
+    const reader = new BinaryCacheReader();
+    const result = await reader.read(cacheBuffer);
+
+    expect(result.geometry?.instancedShards).toBeTruthy();
+    expect(result.geometry!.instancedShards!.length).toBe(2);
+    expect(Array.from(new Uint8Array(result.geometry!.instancedShards![0]))).toEqual(Array.from(shardA));
+    expect(Array.from(new Uint8Array(result.geometry!.instancedShards![1]))).toEqual(Array.from(shardB));
+    // The flat meshes still round-trip alongside the shards.
+    expect(result.geometry!.meshes.length).toBe(1);
+  });
+
+  it('should omit the shard section when there are no instanced shards', async () => {
+    const geometry = {
+      meshes: [
+        {
+          expressId: 9,
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0]),
+          normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+          indices: new Uint32Array([0, 1, 2]),
+          color: [0.5, 0.5, 0.5, 1.0] as [number, number, number, number],
+        },
+      ],
+      totalVertices: 3,
+      totalTriangles: 1,
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+        hasLargeCoordinates: false,
+      } as CoordinateInfo,
+    };
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, geometry, sourceBuffer);
+    const result = await new BinaryCacheReader().read(cacheBuffer);
+    expect(result.geometry).toBeTruthy();
+    expect(result.geometry!.instancedShards).toBeUndefined();
+  });
+
   it('should validate cache against source', async () => {
     const writer = new BinaryCacheWriter();
     const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {

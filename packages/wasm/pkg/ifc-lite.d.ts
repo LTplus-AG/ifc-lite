@@ -169,6 +169,11 @@ export class IfcAPI {
    */
   exportCsv(content: string, mode: string, delimiter: string, include_properties: boolean): string;
   /**
+   * Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
+   * only properties with an official IFC5 schema.
+   */
+  exportIfcx(content: string, only_known_properties: boolean, pretty: boolean): string;
+  /**
    * Export structured **JSON** (array of entity objects with typed property values).
    */
   exportJson(content: string, pretty: boolean, include_properties: boolean, include_quantities: boolean): string;
@@ -185,6 +190,12 @@ export class IfcAPI {
    * `#`-reference closure is added so the subset never dangles a reference.
    */
   exportStep(content: string, schema: string, included: Uint32Array): string;
+  /**
+   * Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
+   * bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
+   * keeps its ids; later models are id-offset and their project unified to the first.
+   */
+  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema: string): string;
   /**
    * Export the `IfcSpace` volumes in `content` as a Honeybee **HBJSON** string.
    *
@@ -994,8 +1005,10 @@ export interface InitOutput {
   readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
   readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number) => void;
   readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+  readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+  readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
   readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;

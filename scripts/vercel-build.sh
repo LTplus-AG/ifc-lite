@@ -59,17 +59,18 @@ else
   echo "   Set TURBO_TEAM + TURBO_TOKEN in the Vercel project env to enable."
 fi
 
-# WASM build memory: the release profile uses FAT LTO, which holds the whole
-# program in memory when wasm-pack compiles ifc-lite-wasm from source. On a
-# rust-touching branch (no Turbo cache hit) that OOMs Vercel's build container,
-# which silently drops the static SPA → the deploy is READY but every route 404s.
-# Thin LTO is per-codegen-unit (far lower peak memory) at negligible runtime cost,
-# and more codegen units shrink each unit further. Vercel-only: this script does
-# NOT run for main's prebuilt-WASM path or the npm bundle, and local/CI builds
-# don't source it. `:-` defaults so an explicit Vercel project env can override.
+# WASM build memory: the release profile uses FAT LTO (whole-program link held
+# in memory) when wasm-pack compiles ifc-lite-wasm from source. On a rust-touching
+# branch (no Turbo cache hit) that OOMs Vercel's 8 GB build container, which
+# silently drops the static SPA → the deploy is READY but every route 404s.
+# THIN LTO removes the whole-program link and fixes the OOM on its own; do NOT
+# also raise codegen-units (it measurably slows the exact-CSG hot path — less
+# cross-unit inlining — enough to trip the viewer's 40s geometry-stream watchdog
+# on heavy models, see 29954270). Keep the profile's codegen-units=1. Vercel-only:
+# this script doesn't run for main's prebuilt-WASM path, the npm bundle, or local/
+# CI builds. `:-` so an explicit Vercel project env can still override.
 export CARGO_PROFILE_RELEASE_LTO="${CARGO_PROFILE_RELEASE_LTO:-thin}"
-export CARGO_PROFILE_RELEASE_CODEGEN_UNITS="${CARGO_PROFILE_RELEASE_CODEGEN_UNITS:-16}"
-echo "🦀 Vercel WASM build: LTO=$CARGO_PROFILE_RELEASE_LTO CODEGEN_UNITS=$CARGO_PROFILE_RELEASE_CODEGEN_UNITS (avoid build-container OOM → 404)"
+echo "🦀 Vercel WASM build: LTO=$CARGO_PROFILE_RELEASE_LTO codegen-units=1 (thin-LTO fixes the build-container OOM; codegen-units stays 1 for runtime CSG speed)"
 
 echo "🏗️  Vercel build phase"
 echo "   HOME=$HOME  PWD=$PWD"

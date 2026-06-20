@@ -529,6 +529,12 @@ export class PartitionedBatch {
    * Moves out — call once.
    */
   takeMeshes(): MeshCollection | undefined;
+  /**
+   * Number of occurrences routed into the instanced shard this batch. The viewer
+   * folds this into its total mesh count so the count reflects ALL rendered
+   * geometry (flat + instanced), not just the flat MeshCollection.
+   */
+  readonly instancedOccurrences: number;
 }
 
 export class ProfileCollection {
@@ -1031,6 +1037,7 @@ export interface InitOutput {
   readonly meshoutlinejs_axisMin: (a: number) => number;
   readonly meshoutlinejs_contour: (a: number, b: number) => number;
   readonly meshoutlinejs_contourCount: (a: number) => number;
+  readonly partitionedbatch_instancedOccurrences: (a: number) => number;
   readonly partitionedbatch_takeMeshes: (a: number) => number;
   readonly partitionedbatch_takeShard: (a: number, b: number) => void;
   readonly profilecollection_get: (a: number, b: number) => number;

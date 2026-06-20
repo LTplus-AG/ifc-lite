@@ -188,11 +188,13 @@ export interface GeometryWorkerBatchMessage {
      *  A `bigint` survives the structured-clone `postMessage`. */
     geometryHash?: bigint;
   }[];
-  /** Emit-both GPU-instancing: per-batch IFNS shards (transferable ArrayBuffers).
-   *  Present only once the wasm exposes processGeometryBatchInstanced; the
-   *  renderer decodes + draws them as instanced overlays alongside the flat
-   *  meshes. */
+  /** GPU-instancing: per-batch IFNS shards (transferable ArrayBuffers). The
+   *  renderer decodes + GPU-instances them. Opaque repeated occurrences render
+   *  ONLY via these (they were taken off the flat `meshes` array). */
   instancedShards?: ArrayBuffer[];
+  /** Occurrence count carried by `instancedShards` this batch — folded into the
+   *  pool's running mesh total so it counts flat + instanced geometry. */
+  instancedOccurrences?: number;
 }
 
 export interface GeometryWorkerProgressMessage {
@@ -396,9 +398,10 @@ interface ProcessingSession {
   materialColors: Uint8Array | undefined;
   pendingMeshes: GeometryWorkerBatchMessage['meshes'];
   pendingTransfers: ArrayBuffer[];
-  /** Emit-both GPU-instancing: per-batch IFNS shard bytes, flushed with the
-   *  batch message (additive overlay for visual verification). */
+  /** GPU-instancing: per-batch IFNS shard bytes, flushed with the batch message. */
   pendingInstancedShards: ArrayBuffer[];
+  /** Occurrence count accumulated in pendingInstancedShards since the last flush. */
+  pendingInstancedOccurrences: number;
   totalMeshesEmitted: number;
   cumulativeMeshBytes: number;
 }
@@ -456,6 +459,7 @@ function startSession(input: {
     pendingMeshes: [],
     pendingTransfers: [],
     pendingInstancedShards: [],
+    pendingInstancedOccurrences: 0,
     totalMeshesEmitted: 0,
     cumulativeMeshBytes: 0,
   };
@@ -464,17 +468,22 @@ function startSession(input: {
 function flushPending(session: ProcessingSession): void {
   const instancedShards = session.pendingInstancedShards;
   session.pendingInstancedShards = [];
+  const instancedOccurrences = session.pendingInstancedOccurrences;
+  session.pendingInstancedOccurrences = 0;
   if (session.pendingMeshes.length === 0 && instancedShards.length === 0) return;
   const meshes = session.pendingMeshes;
   const transfers = session.pendingTransfers;
   session.pendingMeshes = [];
   session.pendingTransfers = [];
-  session.totalMeshesEmitted += meshes.length;
+  // Total counts both routes: flat meshes + instanced occurrences (the latter
+  // left the flat array but are still rendered geometry).
+  session.totalMeshesEmitted += meshes.length + instancedOccurrences;
   (self as unknown as Worker).postMessage(
     {
       type: 'batch',
       meshes,
       ...(instancedShards.length > 0 ? { instancedShards } : {}),
+      ...(instancedOccurrences > 0 ? { instancedOccurrences } : {}),
     } as GeometryWorkerBatchMessage,
     [...transfers, ...instancedShards],
   );
@@ -612,6 +621,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       processGeometryBatchPartitioned?: (...args: unknown[]) => {
         takeMeshes(): ReturnType<IfcAPI['processGeometryBatch']> | undefined;
         takeShard(): Uint8Array;
+        readonly instancedOccurrences: number;
         free?(): void;
       };
     }).processGeometryBatchPartitioned;
@@ -641,6 +651,10 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
               : (shard.slice().buffer as ArrayBuffer);
           session.pendingInstancedShards.push(exact);
         }
+        // Fold the instanced occurrence count into the streamed mesh total so the
+        // viewer's "N meshes" reflects ALL rendered geometry (flat + instanced),
+        // not just the flat MeshCollection (these occurrences left the flat path).
+        session.pendingInstancedOccurrences += partitioned.instancedOccurrences ?? 0;
       } finally {
         // Free the now-empty PartitionedBatch wrapper (its contents were moved out).
         partitioned.free?.();

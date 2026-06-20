@@ -342,10 +342,13 @@ export async function* processParallel(
           // renderer reconstructs world via a per-batch model-matrix translate.
           ...(m.origin ? { origin: m.origin } : {}),
         }));
-        // Emit-both GPU-instancing: per-batch IFNS shards ride alongside the
-        // flat meshes (additive overlay). Present only once the wasm exposes
-        // processGeometryBatchInstanced.
+        // GPU-instancing: per-batch IFNS shards ride alongside the flat meshes.
+        // Opaque repeated occurrences render ONLY via these shards (taken off the
+        // flat `meshes` array), so their count must be folded into the running
+        // total for an accurate `totalSoFar`.
         const instancedShards = (msg as { instancedShards?: ArrayBuffer[] }).instancedShards;
+        const instancedOccurrences =
+          (msg as { instancedOccurrences?: number }).instancedOccurrences ?? 0;
         if (meshes.length > 0 || (instancedShards && instancedShards.length > 0)) {
           // Update totalMeshes per batch so consumers see a live
           // running count via `totalSoFar`. The `complete` event
@@ -355,6 +358,9 @@ export async function* processParallel(
             totalMeshes += meshes.length;
             coordinator.processMeshesIncremental(meshes);
           }
+          // Instanced occurrences left the flat array but are still rendered
+          // geometry — count them so totalSoFar reflects the full model.
+          totalMeshes += instancedOccurrences;
           const coordinateInfo = coordinator.getCurrentCoordinateInfo();
           eventQueue.push({
             type: 'batch',

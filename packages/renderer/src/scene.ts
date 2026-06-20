@@ -1931,6 +1931,20 @@ export class Scene {
   setInstancedSelection(expressIds: ReadonlySet<number>): void {
     const device = this.instancedDevice;
     if (!device || this.instancedTemplates.length === 0) return;
+    // Called every render frame from the renderer. Fast-path an UNCHANGED selection
+    // (the common orbit case, especially the empty set) so we skip both the per-frame
+    // writeBuffer loops AND the `new Set(...)` allocation — equal sizes + full
+    // containment ⇒ set equality.
+    let changed = expressIds.size !== this.instancedSelected.size;
+    if (!changed) {
+      for (const eid of expressIds) {
+        if (!this.instancedSelected.has(eid)) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) return;
     for (const eid of this.instancedSelected) {
       if (!expressIds.has(eid)) this.writeInstanceFlag(device, eid, 0);
     }

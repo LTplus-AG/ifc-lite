@@ -23,4 +23,25 @@ impl IfcAPI {
         };
         ifc_lite_export::export_step(content.as_bytes(), &opts)
     }
+
+    /// Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
+    /// bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
+    /// keeps its ids; later models are id-offset and their project unified to the first.
+    #[wasm_bindgen(js_name = exportMerged)]
+    pub fn export_merged(&self, concatenated: &[u8], lengths: &[u32], schema: String) -> String {
+        let mut models: Vec<&[u8]> = Vec::with_capacity(lengths.len());
+        let mut off = 0usize;
+        for &len in lengths {
+            let end = off + len as usize;
+            if end <= concatenated.len() {
+                models.push(&concatenated[off..end]);
+            }
+            off = end;
+        }
+        let opts = ifc_lite_export::MergedOptions {
+            schema: if schema.is_empty() { None } else { Some(schema) },
+            ..Default::default()
+        };
+        ifc_lite_export::export_merged(&models, &opts)
+    }
 }

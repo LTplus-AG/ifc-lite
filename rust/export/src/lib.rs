@@ -15,6 +15,7 @@ mod hbjson;
 mod ifc5;
 mod json;
 mod jsonld;
+mod merged;
 mod model;
 mod obj;
 #[cfg(feature = "parquet-bos")]
@@ -34,6 +35,7 @@ pub use hbjson::Model;
 pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
+pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use model::{
     build_export_model, EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue,
 };

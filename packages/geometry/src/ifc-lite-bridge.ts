@@ -372,6 +372,22 @@ export class IfcLiteBridge {
     return this.runExport('exportStep', content, (api) => api.exportStep(content, schema, included));
   }
 
+  /** Merge several IFC models into one STEP/IFC string (flat bytes + per-model lengths). */
+  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema = ''): string {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportMerged(concatenated, lengths, schema);
+    } catch (error) {
+      log.error('Failed to exportMerged', error, { operation: 'exportMerged' });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
   /** Export IFC5/IFCX (USD-style node graph). */
   exportIfcx(content: string, onlyKnownProperties = true, pretty = false): string {
     return this.runExport('exportIfcx', content, (api) =>

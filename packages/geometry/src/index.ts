@@ -1099,6 +1099,22 @@ export class GeometryProcessor {
     return this.bridge.exportIfcx(safeUtf8Decode(buffer), onlyKnownProperties, pretty);
   }
 
+  /** Merge several IFC models (raw byte buffers) into one STEP/IFC string. */
+  exportMerged(buffers: Uint8Array[], schema = ''): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    let total = 0;
+    for (const b of buffers) total += b.byteLength;
+    const concatenated = new Uint8Array(total);
+    const lengths = new Uint32Array(buffers.length);
+    let off = 0;
+    for (let i = 0; i < buffers.length; i++) {
+      concatenated.set(buffers[i], off);
+      lengths[i] = buffers[i].byteLength;
+      off += buffers[i].byteLength;
+    }
+    return this.bridge.exportMerged(concatenated, lengths, schema);
+  }
+
   /**
    * Assemble a GLB from already-produced meshes (no re-meshing) — the viewer path.
    * Flattens `MeshData[]` into the wasm binding's parallel arrays. The caller passes

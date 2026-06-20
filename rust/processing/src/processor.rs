@@ -22,6 +22,31 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+/// Wall-clock timer for diagnostic `ProcessingStats`. On wasm32
+/// `std::time::Instant::now()` traps ("time not implemented on this platform"),
+/// so the non-streaming `process_geometry*` entry points (used by the in-browser
+/// Rust exporters via `ifc-lite-export`) would panic. Timing is purely diagnostic,
+/// so on wasm32 this is a zero-duration no-op; on native it IS `std::time::Instant`
+/// (identical behaviour, no overhead).
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant as Clock;
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Copy)]
+struct Clock;
+
+#[cfg(target_arch = "wasm32")]
+impl Clock {
+    #[inline]
+    fn now() -> Self {
+        Clock
+    }
+    #[inline]
+    fn elapsed(&self) -> std::time::Duration {
+        std::time::Duration::ZERO
+    }
+}
+
 /// Controls how IfcWindow / IfcDoor openings are exported.
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -859,9 +884,9 @@ pub fn process_geometry_streaming_filtered_with_options(
     mut on_color_update: impl FnMut(&[(u32, [f32; 4])]),
     mut on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
 ) -> ProcessingResult {
-    let total_start = std::time::Instant::now();
-    let parse_start = std::time::Instant::now();
-    let entity_scan_start = std::time::Instant::now();
+    let total_start = Clock::now();
+    let parse_start = Clock::now();
+    let entity_scan_start = Clock::now();
 
     tracing::info!(
         content_size = content.len(),
@@ -1198,7 +1223,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     let entity_scan_time = entity_scan_start.elapsed();
 
-    let lookup_start = std::time::Instant::now();
+    let lookup_start = Clock::now();
     if options.include_properties {
         assign_space_zone_properties(
             &mut entity_jobs,
@@ -1334,7 +1359,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     }
 
     // Preprocess complex geometry
-    let preprocess_start = std::time::Instant::now();
+    let preprocess_start = Clock::now();
     // Resolve BOTH unit scales once via the shared resolver (the scan recorded
     // IFCPROJECT's id, so this is an O(1) decode — no more full-file hunts:
     // the historic `with_units` + `plane_angle_to_radians` pair each re-walked
@@ -1413,7 +1438,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     );
 
     // PARALLEL GEOMETRY PROCESSING
-    let geometry_start = std::time::Instant::now();
+    let geometry_start = Clock::now();
     let entity_index_arc = entity_index; // Already Arc from above
     let unit_scale = router.unit_scale();
     let rtc_offset = router.rtc_offset();

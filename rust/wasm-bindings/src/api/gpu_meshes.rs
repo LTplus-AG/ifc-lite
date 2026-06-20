@@ -1228,6 +1228,118 @@ impl IfcAPI {
         // min_group = 2: instance any repeat; singletons + non-instanceable flat.
         ifc_lite_geometry::collate_and_encode(&refs, 2)
     }
+
+    /// Produce a batch ONCE and PARTITION it (the instanced-ONLY path): opaque
+    /// ordinary occurrences (colour alpha >= 0.99 AND geometry_class == 0) are
+    /// collated into the instanced shard; everything else (transparent glass,
+    /// type-product geometry) goes to the flat MeshCollection. Each mesh takes
+    /// exactly ONE route, so produce_batch runs once (no emit-both 2× meshing)
+    /// and the renderer draws opaque occurrences via instancing instead of flat.
+    /// Partition mirrors the renderer gates: INSTANCED_ALPHA_CUTOFF (0.99 =
+    /// OPAQUE_ALPHA_CUTOFF) for transparency, geometry_class for the Model/Types
+    /// split.
+    ///
+    /// NOTE: the renderer must be instanced-feature-complete (picking / selection
+    /// / lens overlays on instanced geometry) before the worker calls this in
+    /// place of processGeometryBatch — otherwise those features break for the
+    /// opaque bulk. See the instanced-only follow-ups.
+    #[wasm_bindgen(js_name = processGeometryBatchPartitioned)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn process_geometry_batch_partitioned(
+        &self,
+        data: &[u8],
+        jobs_flat: &[u32],
+        unit_scale: f64,
+        rtc_x: f64,
+        rtc_y: f64,
+        rtc_z: f64,
+        needs_shift: bool,
+        void_keys: &[u32],
+        void_counts: &[u32],
+        void_values: &[u32],
+        style_ids: &[u32],
+        style_colors: &[u8],
+        plane_angle_to_radians: Option<f64>,
+        material_element_ids: Option<Vec<u32>>,
+        material_color_counts: Option<Vec<u32>>,
+        material_colors_rgba: Option<Vec<u8>>,
+    ) -> PartitionedBatch {
+        let num_jobs = jobs_flat.len() / 3;
+        let outputs = self.produce_batch(
+            data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
+            void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
+            material_element_ids, material_color_counts, material_colors_rgba,
+        );
+        let mut mesh_collection = MeshCollection::with_capacity(num_jobs);
+        if needs_shift {
+            mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
+        }
+        // Opaque ordinary occurrences → instanced; transparent + type → flat.
+        let mut instanced: Vec<ifc_lite_processing::MeshData> = Vec::new();
+        for out in outputs {
+            for mesh_data in out.meshes {
+                let opaque = mesh_data.color[3] >= INSTANCED_ALPHA_CUTOFF;
+                if opaque && mesh_data.geometry_class == 0 {
+                    instanced.push(mesh_data);
+                } else {
+                    mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));
+                }
+            }
+            // The element-level geometry-diff hash is path-independent metadata;
+            // keep it on the collection regardless of which path the meshes took.
+            if let Some(hash) = out.geometry_hash {
+                mesh_collection.push_geometry_hash(out.id, hash);
+            }
+        }
+        let refs: Vec<ifc_lite_geometry::InstanceMeshRef> = instanced
+            .iter()
+            .map(|m| ifc_lite_geometry::InstanceMeshRef {
+                positions: &m.positions,
+                normals: &m.normals,
+                indices: &m.indices,
+                origin: m.origin,
+                instance_meta: m.instance.as_ref(),
+                entity_id: m.express_id,
+                color: m.color,
+            })
+            .collect();
+        let shard = ifc_lite_geometry::collate_and_encode(&refs, 2);
+        PartitionedBatch {
+            meshes: Some(mesh_collection),
+            shard,
+        }
+    }
+}
+
+/// Opaque-alpha cutoff for the instanced-only partition. Mirrors the renderer's
+/// `OPAQUE_ALPHA_CUTOFF` (overlay-routing.ts) so the wasm partition and the
+/// renderer's flat opaque/transparent split agree: alpha >= this is opaque.
+const INSTANCED_ALPHA_CUTOFF: f32 = 0.99;
+
+/// Result of [`IfcAPI::process_geometry_batch_partitioned`]: the flat
+/// MeshCollection (transparent + type geometry) and the instanced IFNS shard
+/// (opaque ordinary occurrences) from ONE produce_batch. Take-once accessors so
+/// the JS side moves each out without a clone.
+#[wasm_bindgen]
+pub struct PartitionedBatch {
+    meshes: Option<MeshCollection>,
+    shard: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl PartitionedBatch {
+    /// The flat MeshCollection (transparent glass + type-product geometry).
+    /// Moves out — call once.
+    #[wasm_bindgen(js_name = takeMeshes)]
+    pub fn take_meshes(&mut self) -> Option<MeshCollection> {
+        self.meshes.take()
+    }
+
+    /// The instanced IFNS shard bytes (opaque ordinary occurrences). Moves out.
+    #[wasm_bindgen(js_name = takeShard)]
+    pub fn take_shard(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.shard)
+    }
 }
 
 #[cfg(test)]

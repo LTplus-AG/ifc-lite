@@ -119,6 +119,12 @@ export interface ProcessParallelOptions {
    */
   mergeLayers?: boolean;
   /**
+   * GPU-instancing partition toggle (default true). Set false for FEDERATED loads:
+   * the instanced render path is primary-model only, so a federated model must keep
+   * all geometry on the flat path or its opaque repeated occurrences are dropped.
+   */
+  enableInstancing?: boolean;
+  /**
    * Issue #924 — per-entity geometry-hash tolerance in metres. When a
    * positive value is given, each geometry worker's IfcAPI receives
    * `setComputeGeometryHashes(tol)` before the first stream-chunk, so the
@@ -458,6 +464,12 @@ export async function* processParallel(
     worker.postMessage({
       type: 'set-merge-layers',
       enabled: options?.mergeLayers === true,
+    });
+    // GPU-instancing partition toggle — default ON; the host sets false for federated
+    // loads so a federated model's geometry stays flat (instancing is primary-only).
+    worker.postMessage({
+      type: 'set-instancing-enabled',
+      enabled: options?.enableInstancing !== false,
     });
     // Issue #924: forward the geometry-hash tolerance the same way — always
     // sent so the controller path stays uniform; null is a cheap no-op.

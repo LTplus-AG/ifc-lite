@@ -135,6 +135,17 @@ export interface GeometryWorkerSetMergeLayersMessage {
 }
 
 /**
+ * Toggle the GPU-instancing partition for this worker (default on). Send AFTER `init`
+ * and BEFORE the first `stream-start`, mirroring `set-merge-layers`. The host disables
+ * it for federated loads so a federated model's geometry stays on the flat path
+ * (instancing is primary-model only).
+ */
+export interface GeometryWorkerSetInstancingMessage {
+  type: 'set-instancing-enabled';
+  enabled: boolean;
+}
+
+/**
  * Forward the model-diff "compute geometry hashes" toggle (issue #924) down
  * to this worker's IfcAPI. Send AFTER `init` and BEFORE the first
  * `stream-start`, mirroring `set-merge-layers`. A positive `tolerance`
@@ -166,6 +177,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetStylesMessage
   | GeometryWorkerSetEntityIndexMessage
   | GeometryWorkerSetMergeLayersMessage
+  | GeometryWorkerSetInstancingMessage
   | GeometryWorkerSetComputeGeometryHashesMessage
   | GeometryWorkerSetTessellationQualityMessage
   | GeometryWorkerPrePassMessage;
@@ -277,6 +289,15 @@ async function ensureInit(): Promise<IfcAPI> {
  */
 let mergeLayersFlag: boolean = false;
 let mergeLayersApplied: boolean = false;
+
+/**
+ * GPU-instancing partition toggle (default on). The host disables it for FEDERATED
+ * loads: the instanced render path + entity map are primary-model only (single global
+ * scene, primary id space), so a federated model must receive ALL its geometry as flat
+ * meshes. With this off, processBatch uses plain processGeometryBatch (no shards), so
+ * opaque repeated occurrences stay in the flat stream instead of being dropped.
+ */
+let instancingEnabled: boolean = true;
 
 /** Narrow typed wrapper for the optional `setMergeLayers` extension. */
 type IfcAPIWithMerge = IfcAPI & {
@@ -626,7 +647,7 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       };
     }).processGeometryBatchPartitioned;
 
-    if (typeof partitionedFn === 'function') {
+    if (typeof partitionedFn === 'function' && instancingEnabled) {
       const partitioned = partitionedFn.call(
         ifcApi, session.localBytes, jobs, session.unitScale,
         session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
@@ -902,6 +923,12 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       mergeLayersFlag = e.data.enabled === true;
       mergeLayersApplied = false;
       applyMergeLayersToApi();
+      return;
+    }
+    if (e.data.type === 'set-instancing-enabled') {
+      // Default on; the host disables it for federated loads so their geometry stays
+      // on the flat path (processBatch falls back to plain processGeometryBatch).
+      instancingEnabled = e.data.enabled === true;
       return;
     }
 

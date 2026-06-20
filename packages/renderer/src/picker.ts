@@ -457,6 +457,10 @@ export class Picker {
         if (decoded.kind === 'none') continue;
         if (decoded.kind === 'point') {
           ids.add(decoded.pointExpressId);
+        } else if (decoded.kind === 'instanced') {
+          // Instanced samples carry the express id directly (meshIndexPlusOne === 0),
+          // so rect/shift-drag select must read it here too — not just single-click.
+          ids.add(decoded.instanceExpressId);
         } else {
           const mesh = meshes[decoded.meshIndexPlusOne - 1];
           if (mesh) ids.add(mesh.expressId);

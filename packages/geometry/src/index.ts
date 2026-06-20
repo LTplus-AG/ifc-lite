@@ -94,6 +94,12 @@ export interface GeometryProcessorOptions {
    */
   mergeLayers?: boolean;
   /**
+   * GPU-instancing partition toggle (default true). Set false for FEDERATED loads:
+   * the renderer's instanced path is primary-model only, so a federated model must
+   * keep all geometry on the flat path or its opaque repeated occurrences are dropped.
+   */
+  enableInstancing?: boolean;
+  /**
    * Tessellation detail level for curved geometry (issue #976):
    * `'lowest' | 'low' | 'medium' | 'high' | 'highest'`. Unset/`'medium'`
    * reproduces the engine's historical densities byte-for-byte. Lower
@@ -186,6 +192,7 @@ export class GeometryProcessor {
   private isNative: boolean = false;
   private lastNativeStats: PlatformGeometryStats | null = null;
   private mergeLayers: boolean;
+  private enableInstancing: boolean;
   private tessellationQuality: TessellationQuality | null;
 
   constructor(options: GeometryProcessorOptions = {}) {
@@ -193,6 +200,7 @@ export class GeometryProcessor {
     this.coordinateHandler = new CoordinateHandler();
     this.isNative = options.preferNative !== false && isTauri();
     this.mergeLayers = options.mergeLayers === true;
+    this.enableInstancing = options.enableInstancing !== false;
     this.tessellationQuality = options.tessellationQuality ?? null;
     // Note: options accepted for API compatibility
     void options.quality;
@@ -743,6 +751,8 @@ export class GeometryProcessor {
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
       mergeLayers: this.mergeLayers,
+      // Federated loads disable instancing (primary-only render path).
+      enableInstancing: this.enableInstancing,
       // Issue #924: forward the geometry-hash tolerance the host enabled via
       // `enableGeometryHashes()` so the worker pool fingerprints too.
       geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,

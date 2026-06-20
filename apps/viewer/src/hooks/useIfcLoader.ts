@@ -650,6 +650,11 @@ export function useIfcLoader() {
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
         mergeLayers: mergeLayersAtLoad,
+        // GPU instancing is primary-model only (single global scene, primary id
+        // space). A federated load must keep all geometry flat, else its opaque
+        // repeated occurrences would be partitioned into shards the federated path
+        // doesn't consume and silently dropped.
+        enableInstancing: target.kind === 'primary',
       });
       await geometryProcessor.init();
       // Issue #924: enable RTC-invariant per-entity geometry fingerprints so

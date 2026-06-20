@@ -165,7 +165,7 @@ export { MutateNamespace } from './namespaces/mutate.js';
 export { StoreNamespace } from './namespaces/store.js';
 export { LensNamespace } from './namespaces/lens.js';
 export { ExportNamespace } from './namespaces/export.js';
-export type { ExportCsvOptions, ExportGltfOptions, ExportStepOptions } from './namespaces/export.js';
+export type { ExportCsvOptions, ExportGltfOptions, ExportStepOptions, ExportHbjsonOptions } from './namespaces/export.js';
 
 // IDS — full validation, facets, constraints, translation
 export { IDSNamespace } from './namespaces/ids.js';

@@ -1,5 +1,15 @@
 # @ifc-lite/viewer-embed
 
+## 1.14.7
+
+### Patch Changes
+
+- Updated dependencies [[`fec82b9`](https://github.com/LTplus-AG/ifc-lite/commit/fec82b9f3eea3655f92413fce82387ddce2f9722), [`0a0a922`](https://github.com/LTplus-AG/ifc-lite/commit/0a0a922adba1dabc56e97cc5ce0c553ab7356b3e)]:
+  - @ifc-lite/geometry@2.9.0
+  - @ifc-lite/wasm@2.11.0
+  - @ifc-lite/export@2.0.0
+  - @ifc-lite/sdk@1.20.1
+
 ## 1.14.6
 
 ### Patch Changes

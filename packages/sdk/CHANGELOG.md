@@ -1,5 +1,12 @@
 # @ifc-lite/sdk
 
+## 1.20.1
+
+### Patch Changes
+
+- Updated dependencies [[`fec82b9`](https://github.com/LTplus-AG/ifc-lite/commit/fec82b9f3eea3655f92413fce82387ddce2f9722)]:
+  - @ifc-lite/export@2.0.0
+
 ## 1.20.0
 
 ### Minor Changes

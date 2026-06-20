@@ -1,5 +1,70 @@
 # @ifc-lite/viewer
 
+## 1.31.0
+
+### Minor Changes
+
+- [#1242](https://github.com/LTplus-AG/ifc-lite/pull/1242) [`fec82b9`](https://github.com/LTplus-AG/ifc-lite/commit/fec82b9f3eea3655f92413fce82387ddce2f9722) Thanks [@louistrue](https://github.com/louistrue)! - Add Rust-backed domain-format exporters. The new `ifc-lite-export` crate is the
+  source of truth for Wavefront OBJ, glTF/GLB, CSV, JSON and JSON-LD (plus a
+  native-only ara3d BOS/Parquet path). They are exposed via wasm
+  (`exportObj`/`exportGlb`/`exportCsv`/`exportJson`/`exportJsonld`) and
+  reachable from TypeScript through `GeometryProcessor.export*` and
+  `IfcLiteBridge.export*`. Geometry exporters fold per-mesh RTC origin correctly (glTF
+  emits it as a node translation, keeping f32 vertex precision at georef scale).
+
+  STEP export also supports schema conversion (`IFC2X3`/`IFC4`/`IFC4X3`/`IFC5` entity-type
+  renames + attribute trimming) and a mutation bridge — `exportStep` takes a `mutations_json`
+  payload (`MutablePropertyView` attribute edits + property-set synthesis: new
+  `IfcPropertySingleValue`/`IfcPropertySet`/`IfcRelDefinesByProperties` entities). New Rust exporters:
+  **IFC5/IFCX** (`exportIfcx` — USD-style node graph: spatial hierarchy + classes + known
+  IFC5 properties) and **Merged** (`exportMerged` — combine several models into one STEP,
+  id-offset + project unification).
+
+  The CLI `export` command gains `--format obj|gltf|glb|jsonld|step|ifcx` (Rust-backed;
+  `--type`/`--storey`/`--where`/`--limit` act as the isolation set — for `step` the forward
+  `#`-reference closure is added so a filtered export never dangles a reference; `--schema`
+  converts entity types). The MCP `export_glb` tool is unstubbed, `export_ifcx` is unstubbed,
+  and a new `export_obj` tool is added (all honour an optional `type` filter).
+
+  Also makes the wasm geometry engine usable under Node: `IfcLiteBridge.init()` now reads
+  the `.wasm` bytes itself when running in Node (whose `fetch()` cannot load `file://`),
+  strictly Node-gated so the browser/worker path is unchanged. This additionally fixes
+  headless `clash`/geometry commands that previously failed to initialize wasm in Node.
+
+  The viewer's GLB export now assembles the binary in Rust over the meshes it already
+  holds (`GeometryProcessor.exportGlbFromMeshes`, wasm `exportGlbFromMeshes`) instead of the
+  TypeScript GLTFExporter — no re-meshing, and the per-element RTC origin rides a glTF node
+  translation so georef-scale models keep vertex precision.
+
+  **BREAKING (`@ifc-lite/export`):** `GLTFExporter`, `JSONLDExporter`, and `CSVExporter`
+  (+ their option types) are removed — glTF/GLB, JSON-LD, and CSV are now produced in Rust. Use
+  `GeometryProcessor.exportGlb` / `exportGlbFromMeshes`, `exportJsonld`, and
+  `exportCsv(bytes, mode, …)` (mode ∈ `entities`|`properties`|`quantities`|`spatial`). All in-repo
+  callers (viewer GLB / command-palette / mobile / location-map / main-toolbar CSV exports, LOD1
+  generator) are migrated; the Rust CSV gained the spatial-hierarchy mode to match.
+
+### Patch Changes
+
+- [#1244](https://github.com/LTplus-AG/ifc-lite/pull/1244) [`3006682`](https://github.com/LTplus-AG/ifc-lite/commit/30066825cea412cfe76dc69e3aadd286366e0b17) Thanks [@louistrue](https://github.com/louistrue)! - Fix `this.store.getQuantities is not a function` crash when selecting an
+  entity in an IFCX-imported model. The IFCX ingest built a populated data
+  store but never attached the lazy accessor methods
+  (`getQuantities`/`getProperties`/`getEntity`) the query/selection path
+  calls — it now routes the store through `attachDataStoreAccessors`.
+
+- [#1247](https://github.com/LTplus-AG/ifc-lite/pull/1247) [`0a0a922`](https://github.com/LTplus-AG/ifc-lite/commit/0a0a922adba1dabc56e97cc5ce0c553ab7356b3e) Thanks [@louistrue](https://github.com/louistrue)! - Move the KMZ (Google Earth) exporter to Rust. The `ifc-lite-export` crate now
+  assembles the KMZ archive (`doc.kml` + `model.glb`) and computes the IFC
+  grid-north → KML heading, exposed via the wasm `exportKmz` binding and
+  `GeometryProcessor.exportKmz`. The viewer's `buildKmz` is now a thin async caller
+  (matching the OBJ/glTF/CSV pattern); the GLB it packages is already produced by the
+  Rust GLB exporter. The archive uses a hand-rolled stored-ZIP writer so the wasm
+  bundle pulls in no zip/deflate dependency.
+- Updated dependencies [[`fec82b9`](https://github.com/LTplus-AG/ifc-lite/commit/fec82b9f3eea3655f92413fce82387ddce2f9722), [`0a0a922`](https://github.com/LTplus-AG/ifc-lite/commit/0a0a922adba1dabc56e97cc5ce0c553ab7356b3e)]:
+  - @ifc-lite/geometry@2.9.0
+  - @ifc-lite/wasm@2.11.0
+  - @ifc-lite/mcp@0.4.0
+  - @ifc-lite/export@2.0.0
+  - @ifc-lite/sdk@1.20.1
+
 ## 1.30.3
 
 ### Patch Changes

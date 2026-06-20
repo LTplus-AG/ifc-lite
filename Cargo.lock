@@ -1478,6 +1478,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-export"
+version = "4.1.0"
+dependencies = [
+ "ifc-lite-geometry",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ifc-lite-ffi"
 version = "4.1.0"
 dependencies = [
@@ -1567,6 +1576,7 @@ dependencies = [
  "futures-util",
  "ifc-lite-clash",
  "ifc-lite-core",
+ "ifc-lite-export",
  "ifc-lite-geometry",
  "ifc-lite-processing",
  "js-sys",

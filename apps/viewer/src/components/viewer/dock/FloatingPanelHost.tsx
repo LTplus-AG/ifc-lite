@@ -9,13 +9,17 @@
  * stays interactive in the gaps between windows.
  */
 
+import { useLayoutEffect, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { getPanelDef } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
-import { FloatingPanel } from './FloatingPanel';
+import { FloatingPanel, type SnapBounds } from './FloatingPanel';
 
 const FLOAT_Z_BASE = 30;
+
+/** ViewerLayout tags the 3D viewport with this so edge snaps confine to it. */
+const SNAP_BOUNDS_SELECTOR = '[data-floating-snap-bounds]';
 
 export function FloatingPanelHost() {
   const floatingPanels = useViewerStore((s) => s.floatingPanels);
@@ -23,6 +27,41 @@ export function FloatingPanelHost() {
   const snapFloatingPanel = useViewerStore((s) => s.snapFloatingPanel);
   const bringFloatingPanelToFront = useViewerStore((s) => s.bringFloatingPanelToFront);
   const { closePanel, dockPanel } = usePanelControls();
+
+  // The region edge-snapped panels dock into: the 3D viewport, in window
+  // coordinates. Tracked only while a panel is actually snapped so free-float /
+  // empty states stay observer-free. Kept in sync with sidebar / hierarchy
+  // resizes (and window resizes) so a dock never drifts under the toolbar or
+  // over the rail (#1245).
+  const hasSnapped = floatingPanels.some((p) => p.snap !== 'free');
+  const [snapBounds, setSnapBounds] = useState<SnapBounds | null>(null);
+  useLayoutEffect(() => {
+    if (!hasSnapped) {
+      setSnapBounds(null);
+      return;
+    }
+    const el = document.querySelector(SNAP_BOUNDS_SELECTOR) as HTMLElement | null;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setSnapBounds({
+        top: r.top,
+        left: r.left,
+        right: Math.max(0, window.innerWidth - r.right),
+        bottom: Math.max(0, window.innerHeight - r.bottom),
+        width: r.width,
+        height: r.height,
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [hasSnapped]);
 
   if (floatingPanels.length === 0) return null;
 
@@ -40,6 +79,7 @@ export function FloatingPanelHost() {
             panel={panel}
             title={def?.title ?? panel.id}
             zIndex={FLOAT_Z_BASE + i}
+            bounds={snapBounds}
             onRect={(rect) => setFloatingPanelRect(panel.id, rect)}
             onSnap={(snap) => snapFloatingPanel(panel.id, snap)}
             onFocus={() => bringFloatingPanelToFront(panel.id)}

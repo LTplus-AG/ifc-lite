@@ -349,7 +349,11 @@ export function ViewerLayout() {
 
                   {/* Center - Viewport */}
                   <Panel id="viewport-panel" defaultSize={78} minSize={30}>
-                    <div className="h-full w-full overflow-hidden relative">
+                    {/* data-floating-snap-bounds: edge-docked floating panels
+                        (#1201) snap to THIS region, not the whole window, so a
+                        dock never hides under the toolbar (its own close control
+                        with it) or over the hierarchy / sidebar (#1245). */}
+                    <div data-floating-snap-bounds className="h-full w-full overflow-hidden relative">
                       <ViewportContainer />
                     </div>
                   </Panel>

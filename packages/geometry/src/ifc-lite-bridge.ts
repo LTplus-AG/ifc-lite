@@ -274,6 +274,105 @@ export class IfcLiteBridge {
   }
 
   /**
+   * Export the `IfcSpace` volumes in `content` as a Honeybee HBJSON string
+   * (Ladybug Tools energy/daylight model). Rooms are built analytically from
+   * extruded-area profiles (watertight by construction).
+   */
+  exportHbjson(content: string, name: string): string {
+    return this.runExport('exportHbjson', content, (api) => api.exportHbjson(content, name));
+  }
+
+  /**
+   * Export the render geometry in `content` as a Wavefront OBJ string.
+   * `hidden` / `isolated` are express-id visibility filters (empty `isolated` ⇒ all).
+   */
+  exportObj(
+    content: string,
+    includeNormals = true,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+  ): string {
+    return this.runExport('exportObj', content, (api) =>
+      api.exportObj(content, includeNormals, hidden, isolated),
+    );
+  }
+
+  /**
+   * Export the render geometry in `content` as a binary glTF (GLB).
+   * `hiddenTypesCsv` is a comma-separated IFC-type visibility filter.
+   */
+  exportGlb(
+    content: string,
+    includeMetadata = false,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+    hiddenTypesCsv = '',
+  ): Uint8Array {
+    return this.runExport('exportGlb', content, (api) =>
+      api.exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv),
+    );
+  }
+
+  /**
+   * Export tabular CSV. `mode` ∈ {`'entities'`, `'properties'`, `'quantities'`};
+   * empty `delimiter` ⇒ `,`; `includeProperties` adds flattened `Pset_Prop` columns.
+   */
+  exportCsv(
+    content: string,
+    mode: 'entities' | 'properties' | 'quantities' = 'entities',
+    delimiter = ',',
+    includeProperties = false,
+  ): string {
+    return this.runExport('exportCsv', content, (api) =>
+      api.exportCsv(content, mode, delimiter, includeProperties),
+    );
+  }
+
+  /** Export structured JSON (array of entity objects with typed property values). */
+  exportJson(
+    content: string,
+    pretty = false,
+    includeProperties = true,
+    includeQuantities = true,
+  ): string {
+    return this.runExport('exportJson', content, (api) =>
+      api.exportJson(content, pretty, includeProperties, includeQuantities),
+    );
+  }
+
+  /** Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL. */
+  exportJsonld(
+    content: string,
+    context = '',
+    includeProperties = true,
+    includeQuantities = false,
+    pretty = false,
+  ): string {
+    return this.runExport('exportJsonld', content, (api) =>
+      api.exportJsonld(content, context, includeProperties, includeQuantities, pretty),
+    );
+  }
+
+  /**
+   * Shared wrapper for the domain-format exporters: init guard + structured error
+   * logging + fatal-wasm-error marking, mirroring the other bridge entry points.
+   */
+  private runExport<T>(op: string, content: string, run: (api: IfcAPI) => T): T {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return run(this.ifcApi);
+    } catch (error) {
+      log.error(`Failed to ${op}`, error, { operation: op, data: { contentLength: content.length } });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Get IFC-Lite API instance
    */
   getApi(): IfcAPI {

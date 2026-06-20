@@ -1029,6 +1029,67 @@ export class GeometryProcessor {
   }
 
   /**
+   * Domain-format exporters (Rust source of truth in `ifc-lite-export`). Each takes
+   * the raw IFC buffer and returns the serialized format, or null if not initialized.
+   */
+  exportHbjson(buffer: Uint8Array, name: string): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportHbjson(safeUtf8Decode(buffer), name);
+  }
+
+  exportObj(
+    buffer: Uint8Array,
+    includeNormals = true,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+  ): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportObj(safeUtf8Decode(buffer), includeNormals, hidden, isolated);
+  }
+
+  exportGlb(
+    buffer: Uint8Array,
+    includeMetadata = false,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+    hiddenTypesCsv = '',
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportGlb(safeUtf8Decode(buffer), includeMetadata, hidden, isolated, hiddenTypesCsv);
+  }
+
+  exportCsv(
+    buffer: Uint8Array,
+    mode: 'entities' | 'properties' | 'quantities' = 'entities',
+    delimiter = ',',
+    includeProperties = false,
+  ): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportCsv(safeUtf8Decode(buffer), mode, delimiter, includeProperties);
+  }
+
+  exportJson(
+    buffer: Uint8Array,
+    pretty = false,
+    includeProperties = true,
+    includeQuantities = true,
+  ): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportJson(safeUtf8Decode(buffer), pretty, includeProperties, includeQuantities);
+  }
+
+  exportJsonld(
+    buffer: Uint8Array,
+    context = '',
+    includeProperties = true,
+    includeQuantities = false,
+    pretty = false,
+  ): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportJsonld(safeUtf8Decode(buffer), context, includeProperties, includeQuantities, pretty);
+  }
+
+  /**
    * Cleanup resources
    */
   dispose(): void {

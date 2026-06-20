@@ -8,6 +8,7 @@
 //! geometry already flows through `ifc-lite-wasm`).
 
 mod hbjson;
+mod openings;
 mod rooms;
 
 pub use hbjson::Model;
@@ -36,6 +37,12 @@ pub struct HbjsonStats {
     pub rooms: usize,
     /// Spaces skipped as degenerate (malformed footprint / holes / non-extrusion — P5).
     pub skipped: usize,
+    /// Windows placed as Apertures on exterior wall faces.
+    pub apertures: usize,
+    /// Doors placed on exterior wall faces.
+    pub doors: usize,
+    /// Railing / context shade meshes emitted.
+    pub shades: usize,
 }
 
 /// Export the `IfcSpace` volumes in `content` (raw IFC/STEP bytes) as an HBJSON string.
@@ -52,9 +59,16 @@ pub fn export_hbjson(content: &[u8], opts: &HbjsonOptions) -> String {
 pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String, HbjsonStats) {
     let profiles = extract_profiles(content, 0);
     let spaces = profiles.iter().filter(|p| p.ifc_type == "IfcSpace").count();
-    let (rooms, skipped) = rooms::build_rooms(&profiles, opts.tolerance);
-    let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped };
-    let model = Model::new(&opts.name, rooms, opts.tolerance);
+    let (mut rooms, origin, skipped) = rooms::build_rooms(&profiles, opts.tolerance);
+    openings::attach_openings(&profiles, &mut rooms, origin);
+
+    let apertures = rooms.iter().flat_map(|r| &r.faces).map(|f| f.apertures.len()).sum();
+    let doors = rooms.iter().flat_map(|r| &r.faces).map(|f| f.doors.len()).sum();
+    // Shades (railings → ShadeMesh) need a wasm-safe per-element mesh and land in P3.
+    let shades = 0;
+    let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped, apertures, doors, shades };
+
+    let model = Model::new(&opts.name, rooms, Vec::new(), opts.tolerance);
     let json = serde_json::to_string(&model).expect("HBJSON model serializes");
     (json, stats)
 }
@@ -76,7 +90,10 @@ mod tests {
         let Some(bytes) = fixture("ara3d/duplex.ifc") else {
             return;
         };
-        let json = export_hbjson(&bytes, &HbjsonOptions::default());
+        let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
+        // P2: windows and doors are placed on exterior walls.
+        assert!(stats.apertures > 0, "expected windows, got {}", stats.apertures);
+        assert!(stats.doors > 0, "expected doors, got {}", stats.doors);
         let v: Value = serde_json::from_str(&json).expect("valid JSON");
 
         assert_eq!(v["type"], "Model");

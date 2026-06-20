@@ -42,7 +42,8 @@ import {
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
-import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
+import { type MeshData } from '@ifc-lite/geometry';
+import { exportGlbFromGeometry } from '@/lib/export/glb';
 
 type ColorSource = 'rendering' | 'shading';
 
@@ -227,15 +228,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
             : m,
         );
 
-      const gp = new GeometryProcessor();
-      await gp.init();
-      let glb: Uint8Array | null;
-      try {
-        glb = gp.exportGlbFromMeshes(meshes, includeMetadata);
-      } finally {
-        gp.dispose();
-      }
-      if (!glb) throw new Error('GLB assembly returned no data');
+      const glb = await exportGlbFromGeometry(selectedModel.geometryResult, { meshes, includeMetadata });
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       const url = URL.createObjectURL(blob);

@@ -89,7 +89,8 @@ import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import type { CommandContribution } from '@ifc-lite/extensions';
 import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
-import { GLTFExporter, CSVExporter } from '@ifc-lite/export';
+import { CSVExporter } from '@ifc-lite/export';
+import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { getRecentFiles, formatFileSize, getCachedFile } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
@@ -501,9 +502,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           catch (e) { console.error('Screenshot failed:', e); }
         } },
       { id: 'export:glb', label: 'Export GLB', keywords: '3d model gltf download', category: 'Export', icon: Download,
-        action: () => {
+        action: async () => {
           const gr = useViewerStore.getState().geometryResult; if (!gr) return;
-          try { const e = new GLTFExporter(gr); downloadBlob(new Uint8Array(e.exportGLB({ includeMetadata: true })), 'model.glb', 'model/gltf-binary'); }
+          try { downloadBlob(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
           catch (e) { console.error('GLB export failed:', e); }
         } },
       { id: 'export:csv-entities', label: 'Export CSV: Entities', keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,

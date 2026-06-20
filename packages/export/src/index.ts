@@ -6,7 +6,8 @@
  * @ifc-lite/export - Export formats
  */
 
-export { GLTFExporter, type GLTFExportOptions } from './gltf-exporter.js';
+// GLTFExporter removed — glTF/GLB is now assembled in Rust (ifc-lite-export).
+// Use GeometryProcessor.exportGlb (from bytes) / exportGlbFromMeshes (from meshes).
 export { ParquetExporter, type ParquetExportOptions } from './parquet-exporter.js';
 export { CSVExporter, type CSVExportOptions } from './csv-exporter.js';
 export { JSONLDExporter, type JSONLDExportOptions } from './jsonld-exporter.js';

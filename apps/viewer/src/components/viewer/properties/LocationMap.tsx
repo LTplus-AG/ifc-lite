@@ -22,7 +22,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { GLTFExporter } from '@ifc-lite/export';
+import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
 import { buildKmz, ifcAngleToKmlHeading } from '@/lib/geo/kmz-exporter';
 
@@ -449,11 +449,10 @@ export function LocationMap({
     return `https://www.openstreetmap.org/?mlat=${latLon.lat}&mlon=${latLon.lon}#map=17/${latLon.lat}/${latLon.lon}`;
   }, [latLon]);
 
-  const handleExportKmz = useCallback(() => {
+  const handleExportKmz = useCallback(async () => {
     if (!latLon || !geometryResult || !mapConversion) return;
     try {
-      const exporter = new GLTFExporter(geometryResult);
-      const glb = new Uint8Array(exporter.exportGLB({ includeMetadata: true }));
+      const glb = await exportGlbFromGeometry(geometryResult, { includeMetadata: true });
       const heading = ifcAngleToKmlHeading(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
       const kmz = buildKmz({
         latLon,

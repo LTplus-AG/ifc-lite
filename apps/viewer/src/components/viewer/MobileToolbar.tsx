@@ -43,7 +43,7 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { GLTFExporter } from '@ifc-lite/export';
+import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
 
@@ -133,8 +133,7 @@ export function MobileToolbar() {
   const handleExportGLB = useCallback(async () => {
     if (!geometryResult) return;
     try {
-      const exporter = new GLTFExporter(geometryResult);
-      const glb = exporter.exportGLB({ includeMetadata: true });
+      const glb = await exportGlbFromGeometry(geometryResult, { includeMetadata: true });
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

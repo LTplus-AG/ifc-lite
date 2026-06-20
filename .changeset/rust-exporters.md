@@ -4,6 +4,7 @@
 "@ifc-lite/cli": minor
 "@ifc-lite/mcp": minor
 "@ifc-lite/viewer": minor
+"@ifc-lite/export": major
 ---
 
 Add Rust-backed domain-format exporters. The new `ifc-lite-export` crate is the
@@ -35,3 +36,9 @@ The viewer's GLB export now assembles the binary in Rust over the meshes it alre
 holds (`GeometryProcessor.exportGlbFromMeshes`, wasm `exportGlbFromMeshes`) instead of the
 TypeScript GLTFExporter — no re-meshing, and the per-element RTC origin rides a glTF node
 translation so georef-scale models keep vertex precision.
+
+**BREAKING (`@ifc-lite/export`):** `GLTFExporter` / `GLTFExportOptions` are removed — glTF/GLB
+is now produced in Rust. Use `GeometryProcessor.exportGlb(bytes, …)` (mesh from bytes) or
+`GeometryProcessor.exportGlbFromMeshes(meshes, …)` (assemble from already-produced meshes).
+All in-repo callers (viewer GLB/command-palette/mobile/location-map dialogs, LOD1 generator)
+are migrated.

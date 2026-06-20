@@ -16,6 +16,8 @@ use std::fmt::Write as _;
 
 use ifc_lite_processing::{process_geometry, MeshData};
 
+use crate::frame::{yup_f32, yup_f64};
+
 /// Options for OBJ export.
 pub struct ObjOptions {
     /// Emit per-vertex normals (`vn` + `f a//na`). Most DCC tools expect them.
@@ -84,32 +86,41 @@ pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> (String, ObjS
         let _ = writeln!(out, "o {group}");
         let _ = writeln!(out, "g {group}");
 
-        // Vertices — fold the per-mesh f64 origin so georef-scale placements survive.
+        // Vertices — fold the per-mesh f64 origin so georef-scale placements survive,
+        // then convert the producer-native IFC Z-up world point to WebGL Y-up
+        // (`(x,y,z) -> (x,z,-y)`) so OBJ matches the header's declared frame and the
+        // GLB exporter (`process_geometry` itself is Z-up; the swap is normally done
+        // at the wasm FFI, which this path never crosses).
         let [ox, oy, oz] = mesh.origin;
         for i in 0..nverts {
-            let x = mesh.positions[i * 3] as f64 + ox;
-            let y = mesh.positions[i * 3 + 1] as f64 + oy;
-            let z = mesh.positions[i * 3 + 2] as f64 + oz;
+            let wx = mesh.positions[i * 3] as f64 + ox;
+            let wy = mesh.positions[i * 3 + 1] as f64 + oy;
+            let wz = mesh.positions[i * 3 + 2] as f64 + oz;
+            let [x, y, z] = yup_f64([wx, wy, wz]);
             let _ = writeln!(out, "v {x:.6} {y:.6} {z:.6}");
         }
         if has_normals {
             for i in 0..nverts {
-                let nx = mesh.normals[i * 3];
-                let ny = mesh.normals[i * 3 + 1];
-                let nz = mesh.normals[i * 3 + 2];
+                let [nx, ny, nz] = yup_f32([
+                    mesh.normals[i * 3],
+                    mesh.normals[i * 3 + 1],
+                    mesh.normals[i * 3 + 2],
+                ]);
                 let _ = writeln!(out, "vn {nx:.6} {ny:.6} {nz:.6}");
             }
         }
 
-        // Faces — OBJ indices are 1-based and global; offset by vert_base.
+        // Faces — OBJ indices are 1-based and global; offset by vert_base. Winding is
+        // reversed (2nd/3rd vertex swapped) to compensate the Z-up→Y-up handedness
+        // convention, matching the GLB exporter / `MeshDataJs::new`.
         for tri in mesh.indices.chunks_exact(3) {
             let a = vert_base + tri[0] as usize + 1;
             let b = vert_base + tri[1] as usize + 1;
             let c = vert_base + tri[2] as usize + 1;
             if has_normals {
-                let _ = writeln!(out, "f {a}//{a} {b}//{b} {c}//{c}");
+                let _ = writeln!(out, "f {a}//{a} {c}//{c} {b}//{b}");
             } else {
-                let _ = writeln!(out, "f {a} {b} {c}");
+                let _ = writeln!(out, "f {a} {c} {b}");
             }
             stats.triangles += 1;
         }

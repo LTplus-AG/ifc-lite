@@ -10,6 +10,7 @@
 mod adjacency;
 mod constructions;
 mod csv;
+mod frame;
 mod geom;
 mod gltf;
 mod hbjson;

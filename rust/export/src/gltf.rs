@@ -82,7 +82,10 @@ struct Scene {
 
 #[derive(Serialize)]
 struct Node {
-    mesh: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mesh: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    children: Option<Vec<u32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     translation: Option<[f64; 3]>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,6 +120,11 @@ struct Material {
     extensions: Extensions,
     #[serde(rename = "alphaMode", skip_serializing_if = "Option::is_none")]
     alpha_mode: Option<&'static str>,
+    // IFC face winding isn't reliably outward (the viewer renders cull-none /
+    // double-sided), so single-sided glTF consumers would cull inward-wound or
+    // coplanar faces → "missing geometry". Match the viewer: always double-sided.
+    #[serde(rename = "doubleSided")]
+    double_sided: bool,
 }
 
 #[derive(Serialize)]
@@ -227,7 +235,46 @@ fn view_ok(v: &MeshView) -> bool {
 }
 
 /// Core glTF/GLB assembler over pre-filtered mesh views.
+///
+/// Placement model (the fix for "all centre aligned"): each view's vertices are
+/// LOCAL to its per-element `origin` (`world = origin + position`). We compute one
+/// model-wide `scene_center`, bake `world - scene_center` into the f32 vertex
+/// buffer, and ride the single large `scene_center` on ONE root-node translation
+/// that parents every element node. This keeps vertices small (f32-precise even at
+/// georef scale) AND self-contained: a consumer that ignores node transforms sees
+/// the whole model uniformly offset, never each element collapsed onto the origin
+/// (the failure mode of per-element `node.translation`).
 fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfStats) {
+    // Pre-filter once so both passes (centre, then bake) see exactly the same set.
+    let visible: Vec<&MeshView> = views.iter().filter(|v| view_ok(v)).collect();
+
+    // ── Pass 1: one model-wide WORLD AABB → scene centre ────────────────────
+    let mut wmin = [f64::INFINITY; 3];
+    let mut wmax = [f64::NEG_INFINITY; 3];
+    for v in &visible {
+        let o = v.origin;
+        for p in v.positions.chunks_exact(3) {
+            for k in 0..3 {
+                let w = p[k] as f64 + o[k];
+                if w < wmin[k] {
+                    wmin[k] = w;
+                }
+                if w > wmax[k] {
+                    wmax[k] = w;
+                }
+            }
+        }
+    }
+    let scene_center = if visible.is_empty() {
+        [0.0, 0.0, 0.0]
+    } else {
+        [
+            (wmin[0] + wmax[0]) * 0.5,
+            (wmin[1] + wmax[1]) * 0.5,
+            (wmin[2] + wmax[2]) * 0.5,
+        ]
+    };
+
     // Binary blobs, concatenated as [positions | normals | indices].
     let mut positions: Vec<u8> = Vec::new();
     let mut normals: Vec<u8> = Vec::new();
@@ -239,35 +286,34 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfSta
     let mut accessors: Vec<Accessor> = Vec::new();
     let mut meshes: Vec<Mesh> = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
-    let mut node_indices: Vec<u32> = Vec::new();
+    let mut element_node_indices: Vec<u32> = Vec::new();
 
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
 
-    for mesh in views {
-        if !view_ok(mesh) {
-            continue;
-        }
+    // ── Pass 2: bake centre-relative positions + assemble accessors/nodes ───
+    for mesh in &visible {
         let nverts = (mesh.positions.len() / 3) as u32;
-
-        // Bounds from LOCAL positions (accessor space; the node translation is applied after).
-        let mut min = [mesh.positions[0], mesh.positions[1], mesh.positions[2]];
-        let mut max = min;
-        for v in mesh.positions.chunks_exact(3) {
-            for k in 0..3 {
-                if v[k] < min[k] {
-                    min[k] = v[k];
-                }
-                if v[k] > max[k] {
-                    max[k] = v[k];
-                }
-            }
-        }
+        let o = mesh.origin;
 
         let pos_off = positions.len() as u32;
         let norm_off = normals.len() as u32;
         let idx_off = indices.len() as u32;
-        for &p in mesh.positions {
-            positions.extend_from_slice(&p.to_le_bytes());
+
+        // Bake each vertex into the scene-centre-relative frame (f32). Bounds are
+        // taken on the baked coords — accessor space is exactly the buffer bytes.
+        let mut min = [f32::INFINITY; 3];
+        let mut max = [f32::NEG_INFINITY; 3];
+        for p in mesh.positions.chunks_exact(3) {
+            for k in 0..3 {
+                let baked = ((p[k] as f64 + o[k]) - scene_center[k]) as f32;
+                positions.extend_from_slice(&baked.to_le_bytes());
+                if baked < min[k] {
+                    min[k] = baked;
+                }
+                if baked > max[k] {
+                    max[k] = baked;
+                }
+            }
         }
         for &n in mesh.normals {
             normals.extend_from_slice(&n.to_le_bytes());
@@ -319,6 +365,7 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfSta
                 },
                 extensions: Extensions { khr_materials_unlit: EmptyObj {} },
                 alpha_mode: if mesh.color[3] < 1.0 { Some("BLEND") } else { None },
+                double_sided: true,
             });
             idx
         });
@@ -332,26 +379,37 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfSta
             }],
         });
 
-        // RTC: large offset rides the node translation, positions stay local f32.
-        let translation = if mesh.origin != [0.0, 0.0, 0.0] {
-            Some(mesh.origin)
-        } else {
-            None
-        };
         let extras = if include_metadata {
             Some(json!({ "expressId": mesh.express_id, "ifcType": mesh.ifc_type }))
         } else {
             None
         };
         let node_idx = nodes.len() as u32;
-        nodes.push(Node { mesh: mesh_idx, translation, extras });
-        node_indices.push(node_idx);
+        nodes.push(Node { mesh: Some(mesh_idx), children: None, translation: None, extras });
+        element_node_indices.push(node_idx);
 
         stats.meshes += 1;
         stats.vertices += nverts as usize;
         stats.triangles += mesh.indices.len() / 3;
     }
     stats.materials = materials.len();
+
+    // Single root node carries the model-wide centre (omitted when ~zero) and
+    // parents every element node, so the scene has exactly one top-level node.
+    let center_nonzero =
+        scene_center.iter().any(|c| c.abs() > f64::EPSILON);
+    let scene_nodes = if element_node_indices.is_empty() {
+        Vec::new()
+    } else {
+        let root_idx = nodes.len() as u32;
+        nodes.push(Node {
+            mesh: None,
+            children: Some(element_node_indices),
+            translation: if center_nonzero { Some(scene_center) } else { None },
+            extras: None,
+        });
+        vec![root_idx]
+    };
 
     // Buffer views over the single concatenated binary buffer.
     let pos_len = positions.len() as u32;
@@ -400,7 +458,7 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfSta
     let gltf = Gltf {
         asset: Asset { version: "2.0", generator: "IFC-Lite", extras: asset_extras },
         scene: 0,
-        scenes: vec![Scene { nodes: node_indices }],
+        scenes: vec![Scene { nodes: scene_nodes }],
         nodes,
         meshes,
         materials: if materials.is_empty() { None } else { Some(materials) },
@@ -421,18 +479,29 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfSta
 /// Like [`export_glb`] but also returns coverage stats. Meshes the model from bytes.
 pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
     let result = process_geometry(content);
-    let views: Vec<MeshView> = result
-        .meshes
+    // `process_geometry` emits the producer-native IFC **Z-up** frame (the Z-up→Y-up
+    // swap normally happens at the wasm FFI, which this path never crosses). glTF
+    // mandates +Y-up, so convert each visible mesh to Y-up — positions/normals
+    // swapped, winding reversed, origin swapped — matching the viewer/legacy output.
+    // The from-meshes path (`export_glb_from_meshes`) skips this: its `MeshData` is
+    // already Y-up.
+    let visible: Vec<&MeshData> =
+        result.meshes.iter().filter(|m| mesh_visible(m, opts)).collect();
+    let yup: Vec<crate::frame::YUpMesh> = visible
         .iter()
-        .filter(|m| mesh_visible(m, opts))
-        .map(|m| MeshView {
+        .map(|m| crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin))
+        .collect();
+    let views: Vec<MeshView> = visible
+        .iter()
+        .zip(yup.iter())
+        .map(|(m, y)| MeshView {
             express_id: m.express_id,
             ifc_type: &m.ifc_type,
-            positions: &m.positions,
-            normals: &m.normals,
-            indices: &m.indices,
+            positions: &y.positions,
+            normals: &y.normals,
+            indices: &y.indices,
             color: m.color,
-            origin: m.origin,
+            origin: y.origin,
         })
         .collect();
     assemble_glb(&views, opts.include_metadata)
@@ -571,12 +640,37 @@ mod tests {
 
         let nodes = json["nodes"].as_array().unwrap();
         let meshes = json["meshes"].as_array().unwrap();
-        assert_eq!(nodes.len(), stats.meshes);
+        // One mesh-node per element + a single root node that parents them all.
+        assert_eq!(nodes.len(), stats.meshes + 1);
         assert_eq!(meshes.len(), stats.meshes);
 
-        // Materials present + KHR_materials_unlit declared.
+        // Scene has exactly one top-level node: the root. It carries the placement
+        // translation and lists every element node as a child; element nodes
+        // themselves carry NO translation (placement is baked relative to centre).
+        let scene_nodes = json["scenes"][0]["nodes"].as_array().unwrap();
+        assert_eq!(scene_nodes.len(), 1, "single root node");
+        let root_idx = scene_nodes[0].as_u64().unwrap() as usize;
+        let root = &nodes[root_idx];
+        assert!(root.get("mesh").is_none(), "root is a transform node, no mesh");
+        assert_eq!(
+            root["children"].as_array().unwrap().len(),
+            stats.meshes,
+            "root parents every element node"
+        );
+        for (i, n) in nodes.iter().enumerate() {
+            if i != root_idx {
+                assert!(n.get("translation").is_none(), "element nodes carry no translation");
+                assert!(n["mesh"].is_number(), "element nodes reference a mesh");
+            }
+        }
+
+        // Materials present + KHR_materials_unlit declared + double-sided.
         assert!(json["materials"].as_array().unwrap().len() >= 1);
         assert_eq!(json["extensionsUsed"][0], "KHR_materials_unlit");
+        assert!(
+            json["materials"].as_array().unwrap().iter().all(|m| m["doubleSided"] == true),
+            "materials double-sided (IFC winding isn't reliably outward)"
+        );
 
         // Every accessor must fit inside its bufferView (validator-critical).
         let bvs = json["bufferViews"].as_array().unwrap();
@@ -627,14 +721,57 @@ mod tests {
 
         let (json, bin) = parse_glb(&glb);
         assert_eq!(json["asset"]["generator"], "IFC-Lite");
-        assert_eq!(json["nodes"].as_array().unwrap().len(), 2);
-        // Mesh 1's RTC origin must ride a node translation (positions stay local).
-        let has_translation = json["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|n| n["translation"] == serde_json::json!([1000.0, 2000.0, 3000.0]));
-        assert!(has_translation, "RTC origin emitted as node translation");
+        let nodes = json["nodes"].as_array().unwrap();
+        // 2 element nodes + 1 root.
+        assert_eq!(nodes.len(), 3);
+
+        // Exactly ONE node carries a translation — the single root. Per-element
+        // node.translation (the "all centre aligned" failure mode) is gone.
+        let translated: Vec<&Value> =
+            nodes.iter().filter(|n| n.get("translation").is_some()).collect();
+        assert_eq!(translated.len(), 1, "only the root node is translated");
+        let scene_nodes = json["scenes"][0]["nodes"].as_array().unwrap();
+        assert_eq!(scene_nodes.len(), 1);
+        let root = &nodes[scene_nodes[0].as_u64().unwrap() as usize];
+        let root_t = root["translation"].as_array().unwrap();
+        let center = [
+            root_t[0].as_f64().unwrap(),
+            root_t[1].as_f64().unwrap(),
+            root_t[2].as_f64().unwrap(),
+        ];
+
+        // SELF-CONTAINED placement: the two quads are ~3000 apart in mesh 1's farthest
+        // axis. Their baked (translation-dropped) accessor bounds must preserve that
+        // separation — i.e. dropping the root translation does NOT collapse them onto
+        // each other (which is exactly what per-element node.translation did wrong).
+        let accs = json["accessors"].as_array().unwrap();
+        let mut bmin = [f64::INFINITY; 3];
+        let mut bmax = [f64::NEG_INFINITY; 3];
+        for mesh in json["meshes"].as_array().unwrap() {
+            let pa = mesh["primitives"][0]["attributes"]["POSITION"].as_u64().unwrap() as usize;
+            for k in 0..3 {
+                let lo = accs[pa]["min"][k].as_f64().unwrap();
+                let hi = accs[pa]["max"][k].as_f64().unwrap();
+                if lo < bmin[k] { bmin[k] = lo; }
+                if hi > bmax[k] { bmax[k] = hi; }
+            }
+        }
+        assert!(
+            (bmax[2] - bmin[2]) > 2999.0,
+            "baked geometry retains the ~3000 element separation (no centre-collapse): got {}",
+            bmax[2] - bmin[2]
+        );
+
+        // World reconstruction: root.translation + baked bounds recover the true AABB
+        // (~[0,0,0]..[1001,2001,3000]).
+        for k in 0..3 {
+            let wmax = center[k] + bmax[k];
+            let wmin = center[k] + bmin[k];
+            assert!(wmin.abs() < 1.0, "world min ~0 on axis {k}: {wmin}");
+            let expect = [1001.0, 2001.0, 3000.0][k];
+            assert!((wmax - expect).abs() < 1.0, "world max ~{expect} on axis {k}: {wmax}");
+        }
+
         // Translucent material → BLEND.
         assert!(json["materials"].as_array().unwrap().iter().any(|m| m["alphaMode"] == "BLEND"));
         assert_eq!(bin.len(), json["buffers"][0]["byteLength"].as_u64().unwrap() as usize);

@@ -56,6 +56,9 @@ interface GLTFNode {
   name?: string;
   extras?: { expressId?: number };
   children?: number[];
+  /** Node-local translation (xyz). Our exporter places all geometry under a
+   *  single translated root node, so this must be composed down the hierarchy. */
+  translation?: number[];
 }
 
 interface GLTFMesh {
@@ -347,6 +350,29 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
     return meshes;
   }
 
+  // Compose node translations down the hierarchy. Our exporter parents every
+  // element node under one translated root (placement rides that root, vertices
+  // are centre-relative), so a parser that read accessors alone would land the
+  // whole model at the scene centre. Walk from the scene roots accumulating
+  // translation, then bake it into each mesh node's vertices → absolute world.
+  const nodeWorldT = new Map<number, [number, number, number]>();
+  {
+    const seen = new Set<number>();
+    const roots = gltf.scenes?.[gltf.scene ?? 0]?.nodes ?? gltf.nodes.map((_, i) => i);
+    const walk = (idx: number, px: number, py: number, pz: number): void => {
+      const nd = gltf.nodes?.[idx];
+      if (!nd || seen.has(idx)) return; // guard against malformed cycles
+      seen.add(idx);
+      const t = nd.translation;
+      const x = px + (t?.[0] ?? 0);
+      const y = py + (t?.[1] ?? 0);
+      const z = pz + (t?.[2] ?? 0);
+      nodeWorldT.set(idx, [x, y, z]);
+      for (const c of nd.children ?? []) walk(c, x, y, z);
+    };
+    for (const r of roots) walk(r, 0, 0, 0);
+  }
+
   const DEFAULT_COLOR: [number, number, number, number] = [0.8, 0.8, 0.8, 1.0];
 
   const resolveMaterialColor = (
@@ -392,9 +418,23 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
       if (posAccessorIdx === undefined) continue;
 
       // Read position data
-      const positions = readAccessorData(gltf, bin, posAccessorIdx);
+      let positions = readAccessorData(gltf, bin, posAccessorIdx);
       if (!(positions instanceof Float32Array)) {
         throw new Error('Position data must be Float32');
+      }
+
+      // Fold the node's composed world translation into the vertices (a fresh
+      // buffer — readAccessorData may alias the shared bin). Yields absolute
+      // world positions so bounds/render need no per-node transform handling.
+      const wt = nodeWorldT.get(nodeIdx);
+      if (wt && (wt[0] !== 0 || wt[1] !== 0 || wt[2] !== 0)) {
+        const placed = new Float32Array(positions.length);
+        for (let i = 0; i < positions.length; i += 3) {
+          placed[i] = positions[i] + wt[0];
+          placed[i + 1] = positions[i + 1] + wt[1];
+          placed[i + 2] = positions[i + 2] + wt[2];
+        }
+        positions = placed;
       }
 
       // Read normal data (optional, generate if missing)

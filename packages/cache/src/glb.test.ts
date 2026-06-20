@@ -211,3 +211,50 @@ describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip'
     expect(meshes[0].color).toEqual([0.8, 0.8, 0.8, 1.0]);
   });
 });
+
+describe('parseGLBToMeshData — node translation folding', () => {
+  // The exporter parents every element node under ONE translated root node (the
+  // placement rides that root; vertices are scene-centre-relative). A parser that
+  // ignored node transforms would land the whole model at the centre ("all centre
+  // aligned"). Verify the composed root translation is baked into world positions.
+  it('bakes a translated root node into child mesh world positions', () => {
+    const bin = new Uint8Array(84);
+    const fv = new Float32Array(bin.buffer);
+    fv.set([0, 0, 0, 1, 0, 0, 0, 1, 0], 0); // positions (centre-relative)
+    fv.set([0, 0, 1, 0, 0, 1, 0, 0, 1], 9); // normals
+    new Uint32Array(bin.buffer, 72, 3).set([0, 1, 2]); // indices
+
+    const meshes = parseGLBToMeshData(
+      {
+        asset: { version: '2.0' },
+        scene: 0,
+        scenes: [{ nodes: [0] }],
+        // node 0 = translated root parenting node 1; node 1 = the mesh.
+        nodes: [
+          { children: [1], translation: [10, 20, 30] },
+          { mesh: 0, extras: { expressId: 42 } },
+        ],
+        meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
+        accessors: [
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+        ],
+        bufferViews: [
+          { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
+          { buffer: 0, byteOffset: 36, byteLength: 36, byteStride: 12, target: 34962 },
+          { buffer: 0, byteOffset: 72, byteLength: 12, target: 34963 },
+        ],
+        buffers: [{ byteLength: 84 }],
+      },
+      bin,
+    );
+
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0].expressId).toBe(42);
+    // Each vertex must be offset by the root translation [10, 20, 30].
+    expect(Array.from(meshes[0].positions)).toEqual([
+      10, 20, 30, 11, 20, 30, 10, 21, 30,
+    ]);
+  });
+});

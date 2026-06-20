@@ -73,6 +73,18 @@ import {
   type QtoDefinition,
 } from '@/lib/ifc4-qto-definitions';
 
+// ── Edit-deck button styling ────────────────────────────────────────────────
+// Data-enrichment actions (Property / Quantity / Classification / Material)
+// live as quiet icon keys inside one segmented control — discoverable via
+// tooltip, compact enough to leave room for the headline action.
+const EDIT_TOOL_CLS =
+  'h-7 w-8 rounded-none border-0 bg-transparent text-zinc-500 shadow-none transition-colors hover:bg-indigo-500/10 hover:text-indigo-600 focus-visible:bg-indigo-500/10 dark:text-zinc-400 dark:hover:bg-indigo-400/15 dark:hover:text-indigo-300';
+
+// The structural "Reassign class" action is elevated as a distinct accent
+// affordance — it transforms the element rather than adding data to it.
+const RECLASS_TOOL_CLS =
+  'h-7 min-w-0 gap-1.5 rounded-md px-2.5 text-[11px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-300/70 bg-indigo-500/10 shadow-none transition-colors hover:bg-indigo-500/20 hover:text-indigo-800 dark:text-indigo-300 dark:ring-indigo-700/60 dark:bg-indigo-500/10 dark:hover:text-indigo-200';
+
 interface PropertyEditorProps {
   modelId: string;
   entityId: number;
@@ -492,9 +504,8 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" title="Property" className="panel-action-button h-7 min-w-0">
-          <Plus className="h-3 w-3 shrink-0 panel-compact-icon" />
-          <span className="panel-compact-text">Property</span>
+        <Button variant="ghost" size="icon" title="Add property" className={EDIT_TOOL_CLS}>
+          <Plus className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
@@ -750,9 +761,8 @@ export function AddClassificationDialog({ modelId, entityId, entityType }: AddCl
       if (!o) { setSystem(''); setCustomSystem(''); setIdentification(''); setName(''); }
     }}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" title="Classification" className="panel-action-button h-7 min-w-0">
-          <Tag className="h-3 w-3 shrink-0 panel-compact-icon" />
-          <span className="panel-compact-text">Classification</span>
+        <Button variant="ghost" size="icon" title="Add classification" className={EDIT_TOOL_CLS}>
+          <Tag className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
@@ -895,9 +905,8 @@ export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterial
       if (!o) { setMaterialName(''); setCategory(''); setDescription(''); }
     }}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" title="Material" className="panel-action-button h-7 min-w-0">
-          <Layers className="h-3 w-3 shrink-0 panel-compact-icon" />
-          <span className="panel-compact-text">Material</span>
+        <Button variant="ghost" size="icon" title="Add material" className={EDIT_TOOL_CLS}>
+          <Layers className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
@@ -1081,9 +1090,8 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" title="Quantity" className="panel-action-button h-7 min-w-0">
-          <Ruler className="h-3 w-3 shrink-0 panel-compact-icon" />
-          <span className="panel-compact-text">Quantity</span>
+        <Button variant="ghost" size="icon" title="Add quantity" className={EDIT_TOOL_CLS}>
+          <Ruler className="h-3.5 w-3.5" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
@@ -1320,9 +1328,9 @@ export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersi
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" title="Reassign IFC class" className="panel-action-button h-7 min-w-0">
-          <Replace className="h-3 w-3 shrink-0 panel-compact-icon" />
-          <span className="panel-compact-text">Reclass</span>
+        <Button variant="ghost" size="sm" title="Reassign IFC class" className={RECLASS_TOOL_CLS}>
+          <Replace className="h-3.5 w-3.5 shrink-0" />
+          <span>Reassign</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
@@ -1478,42 +1486,51 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
   // entities, spaces, or materials.
   const canReassign = isReassignableElement(resolveReassignSchema(schemaVersion), entityType);
   return (
-    <div className="panel-container flex flex-col gap-2 mb-3 pb-2 border-b border-purple-200 dark:border-purple-800 bg-purple-50/30 dark:bg-purple-950/20 -mx-3 -mt-3 px-3 pt-3">
+    <div className="panel-container relative -mx-3 -mt-3 mb-3 flex flex-col gap-2 border-b border-zinc-200 bg-gradient-to-b from-zinc-50/80 to-transparent px-3 pb-2.5 pt-3 dark:border-zinc-800 dark:from-zinc-900/50">
+      {/* live-edit accent hairline */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-400/50 to-transparent"
+      />
       <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <NewPropertyDialog
-          modelId={modelId}
-          entityId={entityId}
-          entityType={entityType}
-          existingPsets={existingPsets}
-          schemaVersion={schemaVersion}
-        />
-        <AddQuantityDialog
-          modelId={modelId}
-          entityId={entityId}
-          entityType={entityType}
-          existingQtos={existingQtos ?? []}
-        />
-        <AddClassificationDialog
-          modelId={modelId}
-          entityId={entityId}
-          entityType={entityType}
-        />
-        <AddMaterialDialog
-          modelId={modelId}
-          entityId={entityId}
-          entityType={entityType}
-        />
-        {canReassign && (
-          <ReassignClassDialog
-            modelId={modelId}
-            entityId={entityId}
-            entityType={entityType}
-            schemaVersion={schemaVersion}
-          />
-        )}
-      </div>
-      <UndoRedoButtons modelId={modelId} />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Data-enrichment cluster — one segmented control of icon keys */}
+          <div className="inline-flex items-center overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-zinc-200 divide-x divide-zinc-200 dark:bg-zinc-800/50 dark:ring-zinc-700 dark:divide-zinc-700">
+            <NewPropertyDialog
+              modelId={modelId}
+              entityId={entityId}
+              entityType={entityType}
+              existingPsets={existingPsets}
+              schemaVersion={schemaVersion}
+            />
+            <AddQuantityDialog
+              modelId={modelId}
+              entityId={entityId}
+              entityType={entityType}
+              existingQtos={existingQtos ?? []}
+            />
+            <AddClassificationDialog
+              modelId={modelId}
+              entityId={entityId}
+              entityType={entityType}
+            />
+            <AddMaterialDialog
+              modelId={modelId}
+              entityId={entityId}
+              entityType={entityType}
+            />
+          </div>
+          {/* Structural transform — elevated accent action */}
+          {canReassign && (
+            <ReassignClassDialog
+              modelId={modelId}
+              entityId={entityId}
+              entityType={entityType}
+              schemaVersion={schemaVersion}
+            />
+          )}
+        </div>
+        <UndoRedoButtons modelId={modelId} />
       </div>
       {canReassign && <ReassignBadge modelId={modelId} entityId={entityId} entityType={entityType} />}
     </div>

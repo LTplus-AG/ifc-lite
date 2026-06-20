@@ -33,6 +33,9 @@ pub struct KmzOptions {
 /// north: 0 = N, 90 = E, 180 = S, 270 = W). Returns `0` when either component is absent.
 pub fn ifc_angle_to_kml_heading(x_abscissa: Option<f64>, x_ordinate: Option<f64>) -> f64 {
     match (x_abscissa, x_ordinate) {
+        // A zero-length axis is degenerate (atan2(0,0) = 0 would otherwise map to 90);
+        // treat it like a missing axis → no rotation.
+        (Some(x), Some(y)) if x == 0.0 && y == 0.0 => 0.0,
         (Some(x), Some(y)) => {
             let angle_from_east_ccw = y.atan2(x).to_degrees();
             // heading = 90 - angle (CCW-from-east → CW-from-north), normalized to [0, 360).
@@ -205,6 +208,8 @@ mod tests {
     fn heading_matches_ifc_convention() {
         // No axes → 0.
         assert_eq!(ifc_angle_to_kml_heading(None, None), 0.0);
+        // Degenerate zero-length axis → 0 (not 90 from atan2(0,0)).
+        assert_eq!(ifc_angle_to_kml_heading(Some(0.0), Some(0.0)), 0.0);
         // X-axis along east (1,0): angle-from-east 0 → heading 90.
         assert!((ifc_angle_to_kml_heading(Some(1.0), Some(0.0)) - 90.0).abs() < 1e-9);
         // X-axis along north (0,1): angle-from-east 90 CCW → heading 0.

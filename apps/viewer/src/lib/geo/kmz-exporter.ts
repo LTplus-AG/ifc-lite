@@ -45,8 +45,8 @@ export async function buildKmz(
   createProcessor: () => KmzProcessor = () => new GeometryProcessor(),
 ): Promise<Uint8Array> {
   const gp = createProcessor();
-  await gp.init();
   try {
+    await gp.init();
     const kmz = gp.exportKmz(
       opts.glb,
       opts.latLon.lat,

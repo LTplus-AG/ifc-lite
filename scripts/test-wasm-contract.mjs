@@ -497,6 +497,36 @@ test('should handle truncated IFC content gracefully', () => {
   }
 });
 
+// ===== export boundary (Rust ifc-lite-export) =====
+console.log('\n📋 export (exportGlb / exportKmz)');
+
+// A real GLB from the column fixture — also the input the KMZ packer consumes.
+const glbBytes = api.exportGlb(columnContent, false, new Uint32Array(), new Uint32Array(), '');
+
+test('exportGlb returns a binary glTF (GLB magic "glTF")', () => {
+  assert.ok(glbBytes instanceof Uint8Array, 'GLB should be a Uint8Array');
+  assert.ok(glbBytes.length > 20, 'GLB should be non-trivial');
+  assert.deepEqual(Array.from(glbBytes.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
+});
+
+test('exportKmz packs a stored-zip KMZ (PK header, doc.kml + model.glb, axis-derived heading)', () => {
+  const kmz = api.exportKmz(glbBytes, 47.5, 8.5, 412, 1, 0, 'Contract Bldg');
+  assert.ok(kmz instanceof Uint8Array, 'KMZ should be a Uint8Array');
+  assert.deepEqual(Array.from(kmz.slice(0, 4)), [0x50, 0x4b, 0x03, 0x04]); // "PK\x03\x04"
+  const text = Buffer.from(kmz).toString('latin1');
+  assert.ok(text.includes('doc.kml'), 'archive names doc.kml');
+  assert.ok(text.includes('model.glb'), 'archive names model.glb');
+  assert.ok(text.includes('<heading>90</heading>'), 'heading derived from grid axis (1,0) → 90');
+  assert.ok(text.includes('Contract Bldg'), 'placemark name present');
+});
+
+test('exportKmz accepts undefined optional grid axes at the JS boundary (heading 0)', () => {
+  // Exercises the Rust Option<f64> params as `undefined` (the shim detail Codex flagged).
+  const kmz = api.exportKmz(glbBytes, 0, 0, 0, undefined, undefined, '');
+  assert.ok(kmz instanceof Uint8Array);
+  assert.ok(Buffer.from(kmz).toString('latin1').includes('<heading>0</heading>'), 'undefined axes → heading 0');
+});
+
 // Summary
 console.log('\n' + '═'.repeat(50));
 console.log(`📊 Results: ${passed} passed, ${failed} failed`);

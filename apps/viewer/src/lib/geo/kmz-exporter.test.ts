@@ -89,4 +89,25 @@ describe('buildKmz', () => {
     );
     assert.equal(calls.dispose, 1, 'dispose runs in finally even on failure');
   });
+
+  it('disposes even when init() throws (init is inside the try)', async () => {
+    let disposed = 0;
+    const gp: KmzProcessor = {
+      async init() {
+        throw new Error('wasm init failed');
+      },
+      exportKmz() {
+        throw new Error('should not reach exportKmz');
+      },
+      dispose() {
+        disposed++;
+      },
+    };
+
+    await assert.rejects(
+      () => buildKmz({ latLon: { lat: 0, lon: 0 }, altitude: 0, glb: GLB }, () => gp),
+      /wasm init failed/,
+    );
+    assert.equal(disposed, 1, 'dispose runs in finally when init throws');
+  });
 });

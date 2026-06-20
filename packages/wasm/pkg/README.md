@@ -158,20 +158,13 @@ console.log(view.getMutations()); // change history for undo / export
 ## Export
 
 ```typescript
-import { exportToStep, ParquetExporter, Ifc5Exporter } from '@ifc-lite/export';
-import { GeometryProcessor } from '@ifc-lite/geometry';
+import { exportToStep, GLTFExporter, ParquetExporter, Ifc5Exporter } from '@ifc-lite/export';
 
 // IFC STEP — applies any pending mutations
 const stepText = exportToStep(store, { schema: 'IFC4', applyMutations: true });
 
-// glTF / GLB, CSV and JSON-LD are assembled in Rust (ifc-lite-export) via the
-// GeometryProcessor — the standalone GLTFExporter/CSVExporter/JSONLDExporter
-// classes were retired.
-const gp = new GeometryProcessor();
-await gp.init();
-const glb = gp.exportGlbFromMeshes(result.meshes); // Uint8Array (no re-mesh)
-const csv = gp.exportCsv(buffer, 'entities', ',', /* includeProperties */ true);
-const jsonld = gp.exportJsonld(buffer);
+// glTF for the web
+const glb = await new GLTFExporter().export(parseResult, { format: 'glb' });
 
 // Parquet — columnar, ~20× smaller than JSON, queryable from DuckDB / Polars
 const parquet = await new ParquetExporter().exportEntities(parseResult);

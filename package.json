@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "dev": "pnpm build && pnpm --filter viewer dev",
-    "dev:api": "zsh -lc 'set -a; source \"apps/api/.env.local\"; set +a; PORT=3001 tsx scripts/dev-chat-api.ts'",
+    "dev:api": "zsh -lc 'set -a; source \"api/.env.local\"; set +a; PORT=3001 tsx scripts/dev-chat-api.ts'",
     "dev:embed": "pnpm build && pnpm --filter @ifc-lite/viewer-embed dev",
     "build": "turbo build",
     "build:embed": "pnpm --filter @ifc-lite/viewer-embed build",

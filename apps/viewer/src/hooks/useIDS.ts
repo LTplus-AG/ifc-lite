@@ -746,6 +746,13 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       if (ids.size > 0) {
         setIsolatedEntities(ids);
         setSpecColors(targetSpec);
+      } else {
+        // The spec has no applicable entities (not_applicable). There's
+        // nothing to isolate, so drop any stale isolation/overlay left by a
+        // previously selected spec rather than leaving it on screen while
+        // the panel points at this (empty) spec.
+        setIsolatedEntities(null);
+        restoreReportColors();
       }
       return;
     }
@@ -768,6 +775,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     idsPassedEntityIds,
     setIsolatedEntities,
     setSpecColors,
+    restoreReportColors,
     setPendingColorUpdates,
     buildColors,
   ]);

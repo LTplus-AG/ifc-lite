@@ -59,6 +59,18 @@ else
   echo "   Set TURBO_TEAM + TURBO_TOKEN in the Vercel project env to enable."
 fi
 
+# WASM build memory: the release profile uses FAT LTO, which holds the whole
+# program in memory when wasm-pack compiles ifc-lite-wasm from source. On a
+# rust-touching branch (no Turbo cache hit) that OOMs Vercel's build container,
+# which silently drops the static SPA → the deploy is READY but every route 404s.
+# Thin LTO is per-codegen-unit (far lower peak memory) at negligible runtime cost,
+# and more codegen units shrink each unit further. Vercel-only: this script does
+# NOT run for main's prebuilt-WASM path or the npm bundle, and local/CI builds
+# don't source it. `:-` defaults so an explicit Vercel project env can override.
+export CARGO_PROFILE_RELEASE_LTO="${CARGO_PROFILE_RELEASE_LTO:-thin}"
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS="${CARGO_PROFILE_RELEASE_CODEGEN_UNITS:-16}"
+echo "🦀 Vercel WASM build: LTO=$CARGO_PROFILE_RELEASE_LTO CODEGEN_UNITS=$CARGO_PROFILE_RELEASE_CODEGEN_UNITS (avoid build-container OOM → 404)"
+
 echo "🏗️  Vercel build phase"
 echo "   HOME=$HOME  PWD=$PWD"
 RUSTUP_BIN=$(command -v rustup 2>/dev/null || true)

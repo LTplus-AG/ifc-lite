@@ -440,7 +440,11 @@ export class RenderPipeline {
                             { shaderLocation: 0, offset: 0, format: 'float32x3' },
                             { shaderLocation: 1, offset: 12, format: 'float32x3' },
                             { shaderLocation: 2, offset: 24, format: 'uint32' },
-                            { shaderLocation: 3, offset: 28, format: 'float32x2' },
+                            // uv at @location(9): main.wgsl's vs_instanced/InstanceInput
+                            // occupy vertex-input @location 3..8 in this derived module,
+                            // so the textured uv lane moves clear of them (see
+                            // textured.wgsl.ts). Byte offset (28) is unchanged.
+                            { shaderLocation: 9, offset: 28, format: 'float32x2' },
                         ],
                     },
                 ],

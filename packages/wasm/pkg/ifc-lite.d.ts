@@ -92,6 +92,13 @@ export class IfcAPI {
    */
   exportGlb(content: string, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string): Uint8Array;
   /**
+   * Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
+   * for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
+   * `altitude`) + `model.glb`. `x_axis_abscissa`/`x_axis_ordinate` are the
+   * `IfcMapConversion` grid-north components; pass both as `undefined` for heading 0.
+   */
+  exportKmz(glb: Uint8Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string): Uint8Array;
+  /**
    * Assemble a **GLB** from already-produced meshes (the viewer's `MeshData`, flattened)
    * — no re-meshing. Per mesh `i`: `vertex_counts[i]` verts + `index_counts[i]` indices
    * taken in order from the concatenated `positions`/`normals`/`indices`; `colors` is
@@ -1011,6 +1018,7 @@ export interface InitOutput {
   readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
+  readonly ifcapi_exportKmz: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
   readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
   readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;

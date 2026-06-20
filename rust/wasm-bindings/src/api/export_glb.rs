@@ -70,4 +70,30 @@ impl IfcAPI {
         )
         .0
     }
+
+    /// Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
+    /// for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
+    /// `altitude`) + `model.glb`. `x_axis_abscissa`/`x_axis_ordinate` are the
+    /// `IfcMapConversion` grid-north components; pass both as `undefined` for heading 0.
+    #[wasm_bindgen(js_name = exportKmz)]
+    pub fn export_kmz(
+        &self,
+        glb: &[u8],
+        latitude: f64,
+        longitude: f64,
+        altitude: f64,
+        x_axis_abscissa: Option<f64>,
+        x_axis_ordinate: Option<f64>,
+        name: String,
+    ) -> Vec<u8> {
+        let opts = ifc_lite_export::KmzOptions {
+            latitude,
+            longitude,
+            altitude,
+            x_axis_abscissa,
+            x_axis_ordinate,
+            name: if name.is_empty() { None } else { Some(name) },
+        };
+        ifc_lite_export::export_kmz(glb, &opts)
+    }
 }

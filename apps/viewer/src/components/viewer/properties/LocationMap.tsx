@@ -24,7 +24,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
-import { buildKmz, ifcAngleToKmlHeading } from '@/lib/geo/kmz-exporter';
+import { buildKmz } from '@/lib/geo/kmz-exporter';
 
 // Lazy-load maplibre-gl to avoid bloating the initial bundle
 let maplibrePromise: Promise<typeof import('maplibre-gl')> | null = null;
@@ -453,11 +453,11 @@ export function LocationMap({
     if (!latLon || !geometryResult || !mapConversion) return;
     try {
       const glb = await exportGlbFromGeometry(geometryResult, { includeMetadata: true });
-      const heading = ifcAngleToKmlHeading(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
-      const kmz = buildKmz({
+      const kmz = await buildKmz({
         latLon,
         altitude: mapConversion.orthogonalHeight,
-        heading,
+        xAxisAbscissa: mapConversion.xAxisAbscissa,
+        xAxisOrdinate: mapConversion.xAxisOrdinate,
         glb,
         name: 'IFC Model',
       });

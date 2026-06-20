@@ -11,11 +11,15 @@
 
 mod gltf;
 mod hbjson;
+mod model;
 mod obj;
 mod rooms;
 
 pub use gltf::{export_glb, export_glb_with_stats, GltfOptions, GltfStats};
 pub use hbjson::Model;
+pub use model::{
+    build_export_model, EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue,
+};
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 
 use ifc_lite_geometry::extract_profiles;

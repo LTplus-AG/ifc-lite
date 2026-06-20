@@ -9,6 +9,7 @@ repository.workspace = true
 description = "Domain-format exporters for ifc-lite (HBJSON, Wavefront OBJ, glTF/GLB; CSV/JSON/Parquet/STEP to follow)."
 
 [dependencies]
+ifc-lite-core = { workspace = true }
 ifc-lite-geometry = { workspace = true }
 ifc-lite-processing = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }

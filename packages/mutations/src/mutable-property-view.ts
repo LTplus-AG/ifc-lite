@@ -912,21 +912,23 @@ export class MutablePropertyView {
       );
     }
 
-    // A new overlay entity is retyped in place — there's no source line to
-    // rewrite, so the recorded NewEntity.type is the single source of truth.
-    // Its `attributes` array never changes (only `type` does), so the ORIGINAL
-    // pre-retype type must stick across repeated retypes — otherwise the second
-    // retype would re-lay-out the export from the already-mutated layout.
+    // The overlay typeMutation is the single source of truth for the effective
+    // class — we deliberately do NOT mutate `NewEntity.type` in place. Its
+    // `attributes` stay in the AUTHORED layout, and the exporter re-lays-out
+    // from that original type up to the effective type. Keeping the record as
+    // the only writer makes `removeTypeMutation` a clean revert (no in-place
+    // state to roll back), which undo relies on.
     const newEntity = this.newEntities.get(entityId);
     const existing = this.typeMutations.get(entityId);
-    const resolvedOld = existing?.oldType ?? oldType ?? newEntity?.type;
-    if (newEntity) {
-      newEntity.type = trimmed;
-    }
+    // `baseType` is the ORIGINAL class before any retype (sticky; for display
+    // and the new-entity source layout). `prevEffective` is the class right
+    // before THIS retype (for granular undo).
+    const baseType = existing?.oldType ?? oldType ?? newEntity?.type;
+    const prevEffective = existing?.newType ?? baseType;
 
     this.typeMutations.set(entityId, {
       newType: trimmed,
-      oldType: resolvedOld,
+      oldType: baseType,
       predefinedType: predefinedType ?? null,
     });
 
@@ -939,7 +941,7 @@ export class MutablePropertyView {
       entityType: trimmed,
       predefinedType: predefinedType ?? null,
       newValue: trimmed,
-      oldValue: resolvedOld ?? null,
+      oldValue: prevEffective ?? null,
     };
 
     if (!skipHistory) {
@@ -959,9 +961,10 @@ export class MutablePropertyView {
   }
 
   /**
-   * Drop a retype intent. Used by undo to roll a setEntityType back to "no
-   * override". Restoring a retyped NewEntity's original type is the caller's
-   * responsibility (the original type is carried on the mutation's oldValue).
+   * Drop a retype intent, reverting the entity to its original class. Because
+   * `setEntityType` never mutates `NewEntity.type` in place, this is a complete
+   * revert for both source-buffer and overlay-created entities — nothing else
+   * to roll back.
    */
   removeTypeMutation(entityId: number): void {
     this.typeMutations.delete(entityId);

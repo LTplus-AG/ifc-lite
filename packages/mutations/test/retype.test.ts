@@ -97,15 +97,18 @@ describe('MutablePropertyView.setEntityType', () => {
     expect(history[0].entityType).toBe('IfcBeam');
   });
 
-  it('retypes a freshly-created overlay entity in place', () => {
+  it('retypes a freshly-created overlay entity via the overlay (authored type preserved)', () => {
     const view = new MutablePropertyView(null, 'm1');
     view.setExpressIdWatermark(10);
     const created = view.createEntity('IfcBuildingElementProxy', ['guid', '$', "'P'", '$', '$', '#1', '$', '$', '$']);
 
     view.setEntityType(created.expressId, 'IfcColumn');
 
-    // The stored NewEntity reflects the new type directly.
-    expect(view.getNewEntity(created.expressId)!.type).toBe('IfcColumn');
+    // The NewEntity keeps its AUTHORED type (attributes stay in that layout);
+    // the overlay typeMutation carries the effective class. This keeps undo a
+    // clean revert and lets the exporter re-lay-out from the authored layout.
+    expect(view.getNewEntity(created.expressId)!.type).toBe('IfcBuildingElementProxy');
+    expect(view.getEntityTypeMutation(created.expressId)!.newType).toBe('IfcColumn');
     expect(view.getEntityTypeMutation(created.expressId)!.oldType).toBe('IfcBuildingElementProxy');
   });
 

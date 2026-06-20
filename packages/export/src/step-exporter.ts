@@ -716,29 +716,32 @@ export class StepExporter {
         ? this.mutationView.getEntityTypeMutation.bind(this.mutationView)
         : null;
       for (const entity of this.mutationView.getNewEntities()) {
-        // STEP requires UPPERCASE entity type tokens. `NewEntity.type` is
-        // stored in canonical PascalCase per the public API contract; the
-        // upper-case happens here at the file-format boundary. A retyped
-        // overlay entity already carries its new type on `entity.type`.
-        const upperType = entity.type.toUpperCase();
+        // A retyped overlay entity keeps its AUTHORED type on `entity.type`
+        // (the overlay typeMutation is the source of truth for the effective
+        // class). Resolve the effective class, then re-lay-out the authored
+        // attributes from the authored layout up to it.
+        const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
+        const effectiveType = typeMut?.newType ?? entity.type;
+        // STEP requires UPPERCASE entity type tokens; the upper-case happens
+        // here at the file-format boundary.
+        const upperType = effectiveType.toUpperCase();
         if (options.includeGeometry === false && this.isGeometryEntity(upperType)) {
           continue;
         }
         if (allowedEntityIds !== null && !allowedEntityIds.has(entity.expressId)) {
           continue;
         }
-        // A retyped overlay entity is re-laid-out by name against the target
-        // class (identity for compatible layouts). Run this whenever a retype
-        // intent exists — even a same-class retype, which carries a
-        // PredefinedType override (e.g. setEntityType(id, 'IfcColumn', 'PILASTER')).
-        const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
+        // Re-lay-out by name against the effective class (identity for
+        // compatible layouts). Runs whenever a retype intent exists — even a
+        // same-class retype, which carries a PredefinedType override
+        // (e.g. setEntityType(id, 'IfcColumn', 'PILASTER')).
         let argsText: string;
         if (typeMut) {
           const srcTokens = entity.attributes.map(serializeStepValue);
           const { tokens } = retypeArgTokens(
             srcTokens,
-            typeMut.oldType ?? entity.type,
             entity.type,
+            effectiveType,
             typeMut.predefinedType ?? null,
             sourceSchema,
           );

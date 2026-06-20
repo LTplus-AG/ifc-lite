@@ -20,6 +20,8 @@ import {
   Tag,
   Layers,
   Ruler,
+  Replace,
+  ArrowRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +45,16 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import { ComboInput } from '@/components/ui/combo-input';
+import { cn } from '@/lib/utils';
+import {
+  resolveReassignSchema,
+  getReassignTargets,
+  getPredefinedTypes,
+  isKnownReassignTarget,
+  isReassignableElement,
+  COMMON_REASSIGN_TARGETS,
+} from '@/lib/ifc-class-reassign';
 import { useViewerStore } from '@/store';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/mutations';
@@ -1242,6 +1254,208 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
 }
 
 // ============================================================================
+// Reassign IFC Class (retype)
+// ============================================================================
+
+interface ReassignClassDialogProps {
+  modelId: string;
+  entityId: number;
+  /** The element's current IFC class, e.g. "IfcBuildingElementProxy". */
+  entityType: string;
+  schemaVersion?: string;
+}
+
+/**
+ * Reassign an entity's IFC class in place ("retype"). The expressId is
+ * unchanged, so geometry / placement / representation and every IfcRel*
+ * reference carry over; the new class materializes on STEP export. Mirrors
+ * IfcOpenShell's `reassign_class`. Best for the building-element subtypes
+ * (Proxy ↔ Column / Beam / Member / Plate / Wall) that share the IfcElement
+ * attribute layout.
+ */
+export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersion }: ReassignClassDialogProps) {
+  const setEntityType = useViewerStore((s) => s.setEntityType);
+  const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
+
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState('');
+  const [predefinedType, setPredefinedType] = useState('');
+
+  const schema = useMemo(() => resolveReassignSchema(schemaVersion), [schemaVersion]);
+  const targets = useMemo(() => getReassignTargets(schema), [schema]);
+  const predefinedOptions = useMemo(
+    () => (target.trim() ? getPredefinedTypes(schema, target.trim()) : []),
+    [schema, target],
+  );
+  const quickTargets = useMemo(
+    () => COMMON_REASSIGN_TARGETS.filter((t) => t.toUpperCase() !== entityType.toUpperCase()),
+    [entityType],
+  );
+
+  const trimmedTarget = target.trim();
+  const targetChanged = trimmedTarget.length > 0 && trimmedTarget.toUpperCase() !== entityType.toUpperCase();
+  const knownTarget = trimmedTarget.length > 0 && isKnownReassignTarget(schema, trimmedTarget);
+  const validKeyword = /^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(trimmedTarget);
+  // Allow apply when the class changes, or when only setting a predefined type
+  // on the same class (the retype API carries that too).
+  const canApply = validKeyword && (targetChanged || (trimmedTarget.length > 0 && predefinedType.length > 0));
+
+  const reset = useCallback(() => { setTarget(''); setPredefinedType(''); }, []);
+
+  // Drop a predefined type that the newly-chosen class doesn't define.
+  useEffect(() => {
+    if (predefinedType && !predefinedOptions.includes(predefinedType)) setPredefinedType('');
+  }, [predefinedOptions, predefinedType]);
+
+  const handleApply = useCallback(() => {
+    if (!canApply) return;
+    let normalizedModelId = modelId;
+    if (modelId === 'legacy') normalizedModelId = '__legacy__';
+    setEntityType(normalizedModelId, entityId, trimmedTarget, predefinedType || null);
+    bumpMutationVersion();
+    reset();
+    setOpen(false);
+  }, [canApply, modelId, entityId, trimmedTarget, predefinedType, setEntityType, bumpMutationVersion, reset]);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" title="Reassign IFC class" className="panel-action-button h-7 min-w-0">
+          <Replace className="h-3 w-3 shrink-0 panel-compact-icon" />
+          <span className="panel-compact-text">Reclass</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Replace className="h-4 w-4" />
+            Reassign IFC Class
+          </DialogTitle>
+          <DialogDescription>
+            Change this element&apos;s IFC class in place. It keeps its identity, geometry and
+            relationships — only the class (and an optional predefined type) change on export.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4">
+          {/* current → target */}
+          <div className="flex items-center gap-2 rounded-md border border-indigo-200/70 bg-indigo-50/40 px-3 py-2.5 dark:border-indigo-900/60 dark:bg-indigo-950/20">
+            <code className="flex-1 truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400" title={entityType}>{entityType}</code>
+            <ArrowRight className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+            <code
+              className={cn(
+                'flex-1 truncate text-right font-mono text-[11px] font-medium',
+                targetChanged ? 'text-indigo-600 dark:text-indigo-300' : 'text-zinc-400 dark:text-zinc-600',
+              )}
+              title={trimmedTarget || undefined}
+            >
+              {trimmedTarget || '—'}
+            </code>
+          </div>
+
+          {/* quick picks */}
+          {quickTargets.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Common</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {quickTargets.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTarget(t)}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 font-mono text-[11px] transition-colors',
+                      trimmedTarget === t
+                        ? 'border-indigo-400 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300'
+                        : 'border-zinc-200 text-zinc-600 hover:border-indigo-300 hover:bg-indigo-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-indigo-950/30',
+                    )}
+                  >
+                    {t.replace(/^Ifc/, '')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* searchable full list */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Target class</Label>
+            <ComboInput value={target} onChange={setTarget} options={targets} placeholder="Search element classes…" />
+            {trimmedTarget.length > 0 && !knownTarget && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                Not a standard {schema} element — it will export as a vendor/custom class.
+              </p>
+            )}
+          </div>
+
+          {/* predefined type */}
+          {predefinedOptions.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">
+                Predefined type <span className="font-normal text-zinc-400">(optional)</span>
+              </Label>
+              <Select value={predefinedType || '__none__'} onValueChange={(v) => setPredefinedType(v === '__none__' ? '' : v)}>
+                <SelectTrigger className="font-mono text-sm"><SelectValue placeholder="— none —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— none —</SelectItem>
+                  {predefinedOptions.map((p) => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <p className="text-[11px] leading-relaxed text-zinc-400 dark:text-zinc-500">
+            Applies to the exported IFC and this panel. The model tree, colors and type filters refresh on reload.
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => { reset(); setOpen(false); }}>Cancel</Button>
+          <Button size="sm" onClick={handleApply} disabled={!canApply}>
+            <Check className="mr-1 h-3.5 w-3.5" /> Reassign
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Inline chip surfacing a pending reassignment for the selected element. Reads
+ * the overlay (re-rendering on `mutationVersion`) so a retype is visible in the
+ * panel immediately, before the model is re-exported / reloaded.
+ */
+export function ReassignBadge({ modelId, entityId, entityType }: { modelId: string; entityId: number; entityType: string }) {
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const mutationViews = useViewerStore((s) => s.mutationViews);
+  const pending = useMemo(() => {
+    let mid = modelId;
+    if (mid === 'legacy') mid = '__legacy__';
+    const view = mutationViews.get(mid);
+    const m = view?.getEntityTypeMutation?.(entityId) ?? null;
+    if (!m) return null;
+    // A no-op (same class, no predefined type) isn't worth surfacing.
+    if (m.newType.toUpperCase() === entityType.toUpperCase() && !m.predefinedType) return null;
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, entityId, entityType, mutationViews, mutationVersion]);
+
+  if (!pending) return null;
+  return (
+    <div className="flex items-center gap-1.5 rounded-md border border-indigo-200/70 bg-indigo-50/50 px-2 py-1 text-[11px] dark:border-indigo-900/60 dark:bg-indigo-950/25">
+      <Replace className="h-3 w-3 shrink-0 text-indigo-500" />
+      <span className="text-zinc-500 dark:text-zinc-400">Reassigned</span>
+      <ArrowRight className="h-3 w-3 shrink-0 text-indigo-400" />
+      <code className="font-mono font-medium text-indigo-600 dark:text-indigo-300">{pending.newType}</code>
+      {pending.predefinedType && (
+        <code className="font-mono text-indigo-500/80 dark:text-indigo-300/70">· {pending.predefinedType}</code>
+      )}
+      <span className="ml-auto text-zinc-400 dark:text-zinc-500">on export</span>
+    </div>
+  );
+}
+
+// ============================================================================
 // Edit Toolbar (combines all add actions)
 // ============================================================================
 
@@ -1259,8 +1473,12 @@ interface EditToolbarProps {
  * Schema-aware: filters available property/quantity sets based on entity type.
  */
 export function EditToolbar({ modelId, entityId, entityType, existingPsets, existingQtos, schemaVersion }: EditToolbarProps) {
+  // Reassign is only meaningful for occurrence building elements — not type
+  // entities, spaces, or materials.
+  const canReassign = isReassignableElement(resolveReassignSchema(schemaVersion), entityType);
   return (
-    <div className="panel-container flex items-center justify-between gap-2 mb-3 pb-2 border-b border-purple-200 dark:border-purple-800 bg-purple-50/30 dark:bg-purple-950/20 -mx-3 -mt-3 px-3 pt-3">
+    <div className="panel-container flex flex-col gap-2 mb-3 pb-2 border-b border-purple-200 dark:border-purple-800 bg-purple-50/30 dark:bg-purple-950/20 -mx-3 -mt-3 px-3 pt-3">
+      <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-1.5 flex-wrap">
         <NewPropertyDialog
           modelId={modelId}
@@ -1285,8 +1503,18 @@ export function EditToolbar({ modelId, entityId, entityType, existingPsets, exis
           entityId={entityId}
           entityType={entityType}
         />
+        {canReassign && (
+          <ReassignClassDialog
+            modelId={modelId}
+            entityId={entityId}
+            entityType={entityType}
+            schemaVersion={schemaVersion}
+          />
+        )}
       </div>
       <UndoRedoButtons modelId={modelId} />
+      </div>
+      {canReassign && <ReassignBadge modelId={modelId} entityId={entityId} entityType={entityType} />}
     </div>
   );
 }

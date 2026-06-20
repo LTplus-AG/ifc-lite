@@ -337,6 +337,19 @@ export interface MutationSlice {
     oldValue?: string
   ) => Mutation | null;
 
+  /**
+   * Reassign an entity's IFC class in place ("retype"). The expressId is
+   * unchanged, so geometry / placement / representation and every IfcRel*
+   * reference carry over; the exporter re-lays-out attributes against the
+   * target class. Materializes on STEP export. Returns the recorded mutation.
+   */
+  setEntityType: (
+    modelId: string,
+    entityId: number,
+    newType: string,
+    predefinedType?: string | null
+  ) => Mutation | null;
+
   // Actions - Store-Level Mutations (raw STEP entity edits)
   /**
    * Edit a positional STEP argument by zero-based index. Used by the Raw
@@ -1324,6 +1337,42 @@ export const createMutationSlice: StateCreator<
       const newUndoStacks = new Map(state.undoStacks);
       const stack = newUndoStacks.get(modelId) || [];
       newUndoStacks.set(modelId, [...stack, mutation]);
+
+      const newRedoStacks = new Map(state.redoStacks);
+      newRedoStacks.set(modelId, []);
+
+      const newDirty = new Set(state.dirtyModels);
+      newDirty.add(modelId);
+
+      return {
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        dirtyModels: newDirty,
+        mutationVersion: state.mutationVersion + 1,
+      };
+    });
+
+    return mutation;
+  },
+
+  // Entity retype (reassign class)
+  setEntityType: (modelId, entityId, newType, predefinedType) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+
+    let mutation: Mutation | null = null;
+    try {
+      mutation = view.setEntityType(entityId, newType, predefinedType ?? null);
+    } catch {
+      // Invalid class keyword — surface nothing rather than crash the store.
+      // The dialog validates before calling, so this only guards stray callers.
+      return null;
+    }
+
+    set((state) => {
+      const newUndoStacks = new Map(state.undoStacks);
+      const stack = newUndoStacks.get(modelId) || [];
+      newUndoStacks.set(modelId, [...stack, mutation!]);
 
       const newRedoStacks = new Map(state.redoStacks);
       newRedoStacks.set(modelId, []);
@@ -2572,6 +2621,16 @@ export const createMutationSlice: StateCreator<
         const globalId = cross.toGlobalId(modelId, mutation.entityId);
         cross.showEntity(globalId);
       }
+    } else if (mutation.type === 'UPDATE_ENTITY_TYPE') {
+      // `oldValue` is the class right before this retype: restore it when an
+      // earlier retype is still on the stack, otherwise drop the intent to
+      // revert the entity to its original class entirely.
+      const prevType = mutation.oldValue;
+      if (prevType != null && prevType !== '') {
+        view.setEntityType(mutation.entityId, String(prevType), undefined, undefined, true);
+      } else {
+        view.removeTypeMutation(mutation.entityId);
+      }
     }
 
     set((s) => {
@@ -2738,6 +2797,11 @@ export const createMutationSlice: StateCreator<
       if (cross.toGlobalId && cross.hideEntity) {
         const globalId = cross.toGlobalId(modelId, mutation.entityId);
         cross.hideEntity(globalId);
+      }
+    } else if (mutation.type === 'UPDATE_ENTITY_TYPE') {
+      const newType = mutation.entityType ?? (typeof mutation.newValue === 'string' ? mutation.newValue : undefined);
+      if (newType) {
+        view.setEntityType(mutation.entityId, newType, mutation.predefinedType ?? undefined, undefined, true);
       }
     }
 

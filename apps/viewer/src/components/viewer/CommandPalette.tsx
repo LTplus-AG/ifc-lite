@@ -199,8 +199,12 @@ function recordUsage(id: string) {
 
 // ── Utilities ──────────────────────────────────────────────────────────
 
-function downloadBlob(data: BlobPart, name: string, mime: string) {
-  const url = URL.createObjectURL(new Blob([data], { type: mime }));
+function downloadBlob(data: BlobPart | Uint8Array, name: string, mime: string) {
+  // The Rust/wasm exporters return `Uint8Array<ArrayBufferLike>`, which TS 5.7
+  // no longer treats as a `BlobPart`. Copy into a fresh ArrayBuffer-backed view
+  // (same coercion as GLBExportDialog) so the Blob constructor accepts it.
+  const part: BlobPart = data instanceof Uint8Array ? new Uint8Array(data) : data;
+  const url = URL.createObjectURL(new Blob([part], { type: mime }));
   Object.assign(document.createElement('a'), { href: url, download: name }).click();
   URL.revokeObjectURL(url);
 }

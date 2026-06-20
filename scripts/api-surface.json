@@ -1184,11 +1184,7 @@
     "uuidToIfcGuid: function"
   ],
   "@ifc-lite/export": [
-    "CSVExportOptions: interface",
-    "CSVExporter: class",
     "ExportProgress: interface",
-    "GLTFExportOptions: interface",
-    "GLTFExporter: class",
     "GenerateLod1Options: type",
     "GenerateLod1Result: type",
     "IFC5_KNOWN_PROP_NAMES: const",
@@ -1196,8 +1192,6 @@
     "Ifc5ExportResult: interface",
     "Ifc5Exporter: class",
     "IfcSchemaVersion: type",
-    "JSONLDExportOptions: interface",
-    "JSONLDExporter: class",
     "Lod0Element: type",
     "Lod0Json: type",
     "Lod1MetaJson: type",

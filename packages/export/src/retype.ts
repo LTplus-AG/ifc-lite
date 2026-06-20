@@ -156,6 +156,14 @@ export function retypeArgTokens(
  * `entityText` is a single STEP record (`#123=IFCFOO(...);`, possibly with a
  * trailing newline). Returns the rewritten line, or the original unchanged if
  * it can't be parsed.
+ *
+ * `schema` is the schema the raw text is in (the source schema). When the
+ * exporter is ALSO converting to a different output schema, the retype runs
+ * first in the source schema and the converter runs after. A narrow edge
+ * follows from that ordering: if the target class gains a `PredefinedType`
+ * slot only in the OUTPUT schema (e.g. IFC2X3 `IfcColumn` → IFC4 `IfcColumn`),
+ * an explicit override has no slot to land in and is dropped. Retyping within
+ * a single schema (the common case) is unaffected.
  */
 export function retypeStepLine(
   entityText: string,

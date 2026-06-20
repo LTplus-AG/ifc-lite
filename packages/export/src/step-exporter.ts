@@ -595,6 +595,12 @@ export class StepExporter {
         // below resolve against the TARGET class's attribute names. The
         // expressId is unchanged, so geometry / placement / representation and
         // every IfcRel* reference (keyed by #id) carry over untouched.
+        //
+        // This materializes inside the source-iteration loop, which `deltaOnly`
+        // skips — so, like in-place attribute/positional edits to existing
+        // entities, an existing-entity retype is only emitted by a full export
+        // (the common `applyMutations` path). Retyped OVERLAY-created entities
+        // are emitted under `deltaOnly` via the new-entities pass below.
         const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
           ? this.mutationView!.getEntityTypeMutation(expressId)
           : null;
@@ -721,15 +727,17 @@ export class StepExporter {
         if (allowedEntityIds !== null && !allowedEntityIds.has(entity.expressId)) {
           continue;
         }
-        // If retyped to a class with a different attribute layout, re-lay-out
-        // the authored attributes by name (identity for compatible layouts).
+        // A retyped overlay entity is re-laid-out by name against the target
+        // class (identity for compatible layouts). Run this whenever a retype
+        // intent exists — even a same-class retype, which carries a
+        // PredefinedType override (e.g. setEntityType(id, 'IfcColumn', 'PILASTER')).
         const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
         let argsText: string;
-        if (typeMut && typeMut.oldType && typeMut.oldType.toUpperCase() !== upperType) {
+        if (typeMut) {
           const srcTokens = entity.attributes.map(serializeStepValue);
           const { tokens } = retypeArgTokens(
             srcTokens,
-            typeMut.oldType,
+            typeMut.oldType ?? entity.type,
             entity.type,
             typeMut.predefinedType ?? null,
             sourceSchema,

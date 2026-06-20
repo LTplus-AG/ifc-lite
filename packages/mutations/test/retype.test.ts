@@ -109,6 +109,37 @@ describe('MutablePropertyView.setEntityType', () => {
     expect(view.getEntityTypeMutation(created.expressId)!.oldType).toBe('IfcBuildingElementProxy');
   });
 
+  it('rejects an invalid type keyword at the view boundary (bulk path safety)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    expect(() => view.setEntityType(1, 'Column')).toThrow(/not a recognizable IFC entity name/);
+    expect(() => view.setEntityType(1, '')).toThrow(/is required/);
+    expect(() => view.setEntityType(1, '   ')).toThrow(/cannot be empty/);
+    expect(view.getEntityTypeMutation(1)).toBeNull();
+  });
+
+  it('preserves the original type across repeated retypes (sticky oldType)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(10);
+    const created = view.createEntity('IfcBuildingElementProxy', ['g', '$', "'P'", '$', '$', '$', '$', '$', '$']);
+
+    view.setEntityType(created.expressId, 'IfcColumn');
+    view.setEntityType(created.expressId, 'IfcBeam');
+
+    const mut = view.getEntityTypeMutation(created.expressId)!;
+    expect(mut.newType).toBe('IfcBeam');
+    // oldType must remain the ORIGINAL authored class, not the intermediate one,
+    // so export re-lays-out from the attributes' true layout.
+    expect(mut.oldType).toBe('IfcBuildingElementProxy');
+  });
+
+  it('getTypeMutations returns a defensive copy', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    view.setEntityType(3, 'IfcColumn');
+    const copy = view.getTypeMutations();
+    copy.delete(3);
+    expect(view.getEntityTypeMutation(3)).not.toBeNull();
+  });
+
   it('clear() drops retype intents', () => {
     const view = new MutablePropertyView(null, 'm1');
     view.setEntityType(3, 'IfcColumn');
@@ -146,5 +177,18 @@ describe('BulkAction SET_ENTITY_TYPE', () => {
     const mut = view.getEntityTypeMutation(42);
     expect(mut!.newType).toBe('IfcColumn');
     expect(mut!.predefinedType).toBe('COLUMN');
+  });
+
+  it('surfaces an invalid type keyword as an error instead of recording it', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const entities = { count: 1, expressId: [42] } as unknown as ConstructorParameters<typeof BulkQueryEngine>[0];
+    const engine = new BulkQueryEngine(entities, view);
+
+    const action: BulkAction = { type: 'SET_ENTITY_TYPE', entityType: 'Column' };
+    const result = engine.execute({ select: { expressIds: [42] }, action });
+
+    expect(result.success).toBe(false);
+    expect(result.affectedEntityCount).toBe(0);
+    expect(view.getEntityTypeMutation(42)).toBeNull();
   });
 });

@@ -903,11 +903,23 @@ export class MutablePropertyView {
     if (trimmed.length === 0) {
       throw new Error('setEntityType: newType cannot be empty');
     }
+    // Validate at the shared boundary — `BulkQueryEngine` calls this directly,
+    // bypassing `StoreEditor`'s regex/normalizer checks. Without this, a bulk
+    // action could record `Column` and later export `#id=COLUMN(...)`.
+    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(trimmed)) {
+      throw new Error(
+        `setEntityType: "${newType}" is not a recognizable IFC entity name (expected e.g. "IfcColumn")`,
+      );
+    }
 
     // A new overlay entity is retyped in place — there's no source line to
     // rewrite, so the recorded NewEntity.type is the single source of truth.
+    // Its `attributes` array never changes (only `type` does), so the ORIGINAL
+    // pre-retype type must stick across repeated retypes — otherwise the second
+    // retype would re-lay-out the export from the already-mutated layout.
     const newEntity = this.newEntities.get(entityId);
-    const resolvedOld = oldType ?? newEntity?.type;
+    const existing = this.typeMutations.get(entityId);
+    const resolvedOld = existing?.oldType ?? oldType ?? newEntity?.type;
     if (newEntity) {
       newEntity.type = trimmed;
     }
@@ -941,9 +953,9 @@ export class MutablePropertyView {
     return this.typeMutations.get(entityId) ?? null;
   }
 
-  /** All retype intents, keyed by expressId. */
+  /** All retype intents, keyed by expressId. Returns a defensive copy. */
   getTypeMutations(): Map<number, EntityTypeMutation> {
-    return this.typeMutations;
+    return new Map(this.typeMutations);
   }
 
   /**

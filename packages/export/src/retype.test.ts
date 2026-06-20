@@ -49,9 +49,11 @@ function buildMockDataStore(
   } as unknown as IfcDataStore;
 }
 
-/** Pull the single `#id=...;` line for an entity out of exported content. */
+/** Pull the single `#id=...;` record for an entity out of exported content.
+ *  Matches up to the STEP record terminator (`;`) rather than a line boundary,
+ *  so the slice is correct regardless of how the file is wrapped. */
 function lineFor(content: string, id: number): string {
-  const m = content.match(new RegExp(`#${id}=[^\\n]*`));
+  const m = content.match(new RegExp(`#${id}=[^;]*;`));
   return m ? m[0] : '';
 }
 
@@ -161,6 +163,24 @@ describe('StepExporter retype materialization', () => {
 
     expect(content).toContain(`#${created.expressId}=IFCMEMBER('newGUID00000000000000',$,'Created',$,$,$,$,$,.MULLION.);`);
     expect(content).not.toContain('IFCBUILDINGELEMENTPROXY');
+  });
+
+  it('applies a same-class PredefinedType override on a created entity', () => {
+    const store = buildMockDataStore([
+      [1, 'IfcProject', "#1=IFCPROJECT('projGUID0000000000000',$,'P',$,$,$,$,$,$);"],
+    ]);
+    const view = new MutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    const created = view.createEntity('IfcColumn', [
+      'colGUID000000000000000', '$', 'Col', '$', '$', '$', '$', '$', '$',
+    ]);
+    // Same class, but set PredefinedType via the retype API.
+    view.setEntityType(created.expressId, 'IfcColumn', 'PILASTER');
+
+    const exporter = new StepExporter(store, view);
+    const content = decode(exporter.export({ schema: 'IFC4', applyMutations: true }).content);
+
+    expect(content).toContain(`#${created.expressId}=IFCCOLUMN('colGUID000000000000000',$,'Col',$,$,$,$,$,.PILASTER.);`);
   });
 
   it('combines a retype with a name attribute edit on the same entity', () => {

@@ -1,6 +1,8 @@
 # @ifc-lite/export
 
-Export formats for IFClite. Writes glTF/GLB, Apache Parquet, Apache Arrow, IFC STEP (with mutations applied), IFC5 IFCX (JSON + USD geometry), and lightweight LOD0/LOD1 envelopes — all from a single parsed `IfcDataStore`.
+Export formats for IFClite. Writes Apache Parquet, Apache Arrow, IFC STEP (with mutations applied), IFC5 IFCX (JSON + USD geometry), and lightweight LOD0/LOD1 envelopes — all from a single parsed `IfcDataStore`.
+
+> **glTF/GLB, CSV and JSON-LD moved to Rust.** They are now assembled by the `ifc-lite-export` crate and reached through `GeometryProcessor` in [`@ifc-lite/geometry`](../geometry); the standalone `GLTFExporter`/`CSVExporter`/`JSONLDExporter` classes were retired.
 
 ## Installation
 
@@ -11,17 +13,18 @@ npm install @ifc-lite/export
 ## glTF / GLB — for the web
 
 ```typescript
-import { GLTFExporter } from '@ifc-lite/export';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 
-const exporter = new GLTFExporter();
-const glb = await exporter.export(parseResult, {
-  format: 'glb',          // 'glb' (binary) or 'gltf' (JSON + .bin)
-  includeMaterials: true,
-  includeMetadata: true,  // entity types and globalIds in glTF extras
-});
+const gp = new GeometryProcessor();
+await gp.init();
+
+// From already-produced meshes (no re-mesh) …
+const glb = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
+// … or straight from IFC bytes (meshes internally):
+//   gp.exportGlb(bytes, true, new Uint32Array(), new Uint32Array(), '')
 
 // Download
-const url = URL.createObjectURL(new Blob([glb], { type: 'model/gltf-binary' }));
+const url = URL.createObjectURL(new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' }));
 ```
 
 ## IFC STEP — with mutations

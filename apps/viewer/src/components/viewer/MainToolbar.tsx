@@ -74,10 +74,11 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { CSVExporter } from '@ifc-lite/export';
+import { exportCsvFromBytes } from '@/lib/export/csv';
 import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
+import { HbjsonExportDialog } from './HbjsonExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -724,31 +725,11 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     }
   }, []);
 
-  const handleExportCSV = useCallback((type: 'entities' | 'properties' | 'quantities' | 'spatial') => {
-    if (!ifcDataStore) return;
+  const handleExportCSV = useCallback(async (type: 'entities' | 'properties' | 'quantities' | 'spatial') => {
+    if (!ifcDataStore?.source) return;
     try {
-      const exporter = new CSVExporter(ifcDataStore);
-      let csv: string;
-      let filename: string;
-
-      switch (type) {
-        case 'entities':
-          csv = exporter.exportEntities(undefined, { includeProperties: true, flattenProperties: true });
-          filename = 'entities.csv';
-          break;
-        case 'properties':
-          csv = exporter.exportProperties();
-          filename = 'properties.csv';
-          break;
-        case 'quantities':
-          csv = exporter.exportQuantities();
-          filename = 'quantities.csv';
-          break;
-        case 'spatial':
-          csv = exporter.exportSpatialHierarchy();
-          filename = 'spatial-hierarchy.csv';
-          break;
-      }
+      const csv = await exportCsvFromBytes(ifcDataStore.source, type, { includeProperties: type === 'entities' });
+      const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;
 
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
@@ -879,6 +860,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                 <Download className="h-4 w-4 mr-2" />
                 Export GLB (3D Model)
+              </DropdownMenuItem>
+            }
+          />
+          <DropdownMenuSeparator />
+          <HbjsonExportDialog
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <Download className="h-4 w-4 mr-2" />
+                Export HBJSON (Energy Model)
               </DropdownMenuItem>
             }
           />

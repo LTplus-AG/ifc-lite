@@ -196,6 +196,64 @@ export class StoreEditor {
     this.view.setAttribute(expressId, attrName, value);
   }
 
+  /**
+   * Change an entity's IFC class in place ("retype" / reassign class).
+   *
+   * The entity keeps its expressId, so its geometry, placement, representation
+   * and every `IfcRel*` reference (all keyed by `#id`) carry over unchanged.
+   * The STEP exporter re-lays-out the entity's attributes BY NAME against the
+   * target class's declared layout — mirroring IfcOpenShell's
+   * `reassign_class`. Best suited to compatible reassignments such as the
+   * building-element subtypes (`IfcBuildingElementProxy` ↔ `IfcColumn` /
+   * `IfcBeam` / `IfcMember` / `IfcPlate` / `IfcWall`) which share the
+   * IfcElement attribute layout.
+   *
+   * Returns false if the id is not known to the store or the overlay.
+   *
+   * @param newType Target IFC class. PascalCase (`IfcColumn`) or the all-caps
+   *   STEP form (`IFCCOLUMN`) — both normalize to canonical PascalCase.
+   * @param options.predefinedType Optional PredefinedType for the target class.
+   */
+  setEntityType(
+    expressId: number,
+    newType: string,
+    options?: { predefinedType?: string | null },
+  ): boolean {
+    if (typeof newType !== 'string') {
+      throw new TypeError(`StoreEditor.setEntityType: newType must be a string, got ${typeof newType}`);
+    }
+    const trimmed = newType.trim();
+    if (trimmed.length === 0) {
+      throw new Error('StoreEditor.setEntityType: newType cannot be empty');
+    }
+    if (!/^[Ii][Ff][Cc][A-Za-z][A-Za-z0-9_]*$/.test(trimmed)) {
+      throw new Error(
+        `StoreEditor.setEntityType: newType "${newType}" is not a recognizable IFC entity name (expected e.g. "IfcColumn")`,
+      );
+    }
+
+    // Resolve to canonical PascalCase and reject typos when a schema-aware
+    // normaliser is wired (same contract as addEntity).
+    let canonical = trimmed;
+    if (configuredNormalizer) {
+      const resolved = configuredNormalizer(trimmed);
+      if (!resolved) {
+        throw new Error(
+          `StoreEditor.setEntityType: newType "${newType}" is not in the IFC schema registry (typo? vendor extension?)`,
+        );
+      }
+      canonical = resolved;
+    }
+
+    const newEntity = this.view.getNewEntity(expressId);
+    if (newEntity === null && !this.store.entityIndex.byId.has(expressId)) {
+      return false;
+    }
+    const oldType = newEntity?.type ?? this.store.entityIndex.byId.get(expressId)?.type;
+    this.view.setEntityType(expressId, canonical, options?.predefinedType ?? null, oldType);
+    return true;
+  }
+
   /** Look up the overlay record for a freshly-added entity. */
   getNewEntity(expressId: number): NewEntity | null {
     return this.view.getNewEntity(expressId);

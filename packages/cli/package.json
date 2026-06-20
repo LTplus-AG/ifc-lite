@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/cli",
-  "version": "0.11.3",
+  "version": "0.12.0",
   "description": "CLI toolkit for IFC files — query, validate, export, create, and script BIM data",
   "type": "module",
   "bin": {
@@ -40,7 +40,8 @@
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
-    "@ifc-lite/viewer-core": "workspace:^"
+    "@ifc-lite/viewer-core": "workspace:^",
+    "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",

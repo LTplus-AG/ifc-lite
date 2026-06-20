@@ -146,6 +146,24 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
   };
 
+  // Select every element in a state bucket at once (section-header click).
+  // Iterates the full diff entries — not the display-capped `groups` rows — so
+  // the selection matches the header count, including "+N more not shown" rows.
+  const focusGroup = (groupState: DiffState) => {
+    if (!result) return;
+    const refs = result.diff.entries
+      .filter((e) => e.state === groupState)
+      .map(renderRef)
+      .filter((r): r is CompareRef => !!r);
+    if (refs.length === 0) return;
+    const state = useViewerStore.getState();
+    state.clearEntitySelection();
+    state.setSelectedEntityIds(refs.map((r) => r.globalId));
+    state.addEntitiesToSelection(refs.map((r) => ({ modelId: r.modelId, expressId: r.localId })));
+    state.setCompareSelectedKey(null); // bulk select → no single-row "what changed" detail
+    requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+  };
+
   const downloadReport = (format: 'csv' | 'json') => {
     if (!result) return;
     downloadCompareReport(format, result, models);
@@ -298,6 +316,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 counts={counts}
                 selectedKey={selectedKey}
                 onFocus={focusEntry}
+                onFocusGroup={focusGroup}
               />
 
               {/* What-changed detail for the selected element */}

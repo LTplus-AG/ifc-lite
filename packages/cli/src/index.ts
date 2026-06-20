@@ -64,7 +64,7 @@ const HELP = `
     info      <file.ifc>                          Model summary (schema, entities, storeys)
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
     props     <file.ifc> --id <N>                 All properties for a single entity
-    export    <file.ifc> --format csv|json|ifc    Export data to file or stdout
+    export    <file.ifc> --format csv|json|ifc|hbjson  Export data / Honeybee energy model
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements

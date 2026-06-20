@@ -381,6 +381,25 @@ describe('ExportNamespace', () => {
     );
   });
 
+  it('hbjson() delegates to a geometry-capable backend', async () => {
+    const { backend } = createMockBackend();
+    const mock = vi.fn(async (_name?: string) => '{"type":"Model","rooms":[]}');
+    backend.export.hbjson = mock;
+    const bim = createBimContext({ backend });
+
+    const content = await bim.export.hbjson({ name: 'demo' });
+
+    expect(content).toContain('"type":"Model"');
+    expect(mock).toHaveBeenCalledWith('demo');
+  });
+
+  it('hbjson() throws when the backend has no geometry capability', async () => {
+    const { backend } = createMockBackend(); // data-only mock: no export.hbjson
+    const bim = createBimContext({ backend });
+
+    await expect(bim.export.hbjson()).rejects.toThrow(/geometry-capable backend/);
+  });
+
 });
 
 describe('FilesNamespace', () => {

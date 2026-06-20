@@ -83,6 +83,34 @@ export class IfcAPI {
   free(): void;
   [Symbol.dispose](): void;
   /**
+   * Export the render geometry in `content` as a binary **GLB** (`Uint8Array`).
+   *
+   * `hidden` / `isolated` are express-id visibility filters; `hidden_types_csv` is a
+   * comma-separated list of IFC type names whose class toggle is off (e.g.
+   * `"IfcOpeningElement,IfcSpace"`). `include_metadata` attaches counts + per-node
+   * `expressId`. Per-mesh RTC origin rides the node translation (precision-safe).
+   */
+  exportGlb(content: string, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string): Uint8Array;
+  /**
+   * Assemble a **GLB** from already-produced meshes (the viewer's `MeshData`, flattened)
+   * — no re-meshing. Per mesh `i`: `vertex_counts[i]` verts + `index_counts[i]` indices
+   * taken in order from the concatenated `positions`/`normals`/`indices`; `colors` is
+   * RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
+   * per-mesh local). The caller passes exactly the meshes it wants emitted.
+   */
+  exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean): Uint8Array;
+  /**
+   * Export the render geometry in `content` as a Wavefront **OBJ** string.
+   *
+   * `hidden` / `isolated` are express-id filters mirroring the viewer's visibility
+   * state (empty `isolated` ⇒ all visible). Instanced type-library shapes are skipped.
+   *
+   * ```javascript
+   * const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
+   * ```
+   */
+  exportObj(content: string, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): string;
+  /**
    * Run the pre-pass ONCE and return serialized results for worker distribution.
    * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
    */
@@ -167,6 +195,56 @@ export class IfcAPI {
    * clear the overlay cheaply.
    */
   parseGridLines(content: string): Float32Array;
+  /**
+   * Export tabular **CSV**. `mode` ∈ {`"entities"`, `"properties"`, `"quantities"`,
+   * `"spatial"`}. `delimiter` defaults to `,` when empty; `include_properties` adds
+   * flattened `Pset_Prop` columns to the entities view.
+   */
+  exportCsv(content: string, mode: string, delimiter: string, include_properties: boolean): string;
+  /**
+   * Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
+   * only properties with an official IFC5 schema.
+   */
+  exportIfcx(content: string, only_known_properties: boolean, pretty: boolean): string;
+  /**
+   * Export structured **JSON** (array of entity objects with typed property values).
+   */
+  exportJson(content: string, pretty: boolean, include_properties: boolean, include_quantities: boolean): string;
+  /**
+   * Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
+   * IFC4 OWL default. `included` is an express-id isolation filter mirroring the
+   * OBJ/glTF/STEP exporters (empty ⇒ all entities).
+   */
+  exportJsonld(content: string, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): string;
+  /**
+   * Re-serialize the model in `content` to a STEP/IFC string.
+   *
+   * `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
+   * `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
+   * `#`-reference closure is added so the subset never dangles a reference.
+   * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
+   * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
+   */
+  exportStep(content: string, schema: string, included: Uint32Array, mutations_json: string): string;
+  /**
+   * Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
+   * bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
+   * keeps its ids; later models are id-offset and their project unified to the first.
+   */
+  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema: string): string;
+  /**
+   * Export the `IfcSpace` volumes in `content` as a Honeybee **HBJSON** string.
+   *
+   * Rooms are built analytically from extruded-area profiles (watertight by construction);
+   * faces are typed Floor / RoofCeiling / Wall with outward normals. The result loads via
+   * `honeybee.model.Model.from_hbjson` and is ready for Ladybug Tools / Pollination.
+   *
+   * ```javascript
+   * const api = new IfcAPI();
+   * const hbjson = api.exportHbjson(ifcContent, "my_model");
+   * ```
+   */
+  exportHbjson(content: string, name: string): string;
   /**
    * Parse the file and return every `IfcAlignment` directrix as a flat
    * `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
@@ -981,6 +1059,16 @@ export interface InitOutput {
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
+  readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+  readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
+  readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number) => void;
+  readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+  readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+  readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
+  readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+  readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+  readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
   readonly ifcapi_getMemory: (a: number) => number;
   readonly ifcapi_is_ready: (a: number) => number;

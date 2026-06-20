@@ -8,6 +8,11 @@
 
 mod alignment_lines;
 mod clash;
+mod export_data;
+mod export_glb;
+mod export_hbjson;
+mod export_obj;
+mod export_step;
 mod extract_profiles;
 mod gpu_meshes;
 mod grid_lines;

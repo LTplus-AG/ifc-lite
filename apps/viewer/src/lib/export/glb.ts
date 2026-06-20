@@ -1,0 +1,43 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * GLB export helper — assembles the binary in Rust (`ifc-lite-export`) over the
+ * meshes the viewer already holds, with no re-meshing. Replaces the per-call-site
+ * `new GLTFExporter(...).exportGLB(...)` usage.
+ */
+
+import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
+
+export interface GlbFromGeometryOptions {
+  includeMetadata?: boolean;
+  /** Pre-filtered meshes to emit (visibility/colour selection already applied). */
+  meshes?: MeshData[];
+}
+
+/** The slice of `GeometryProcessor` this helper drives — a test seam (see glb.test.ts). */
+export type GlbProcessor = Pick<GeometryProcessor, 'init' | 'exportGlbFromMeshes' | 'dispose'>;
+
+/**
+ * Build a GLB from a `GeometryResult` (or a pre-filtered mesh list) via the Rust
+ * from-meshes assembler. Per-element RTC origin rides a glTF node translation.
+ *
+ * `createProcessor` defaults to the real wasm processor; tests inject a stub.
+ */
+export async function exportGlbFromGeometry(
+  geometryResult: GeometryResult,
+  opts: GlbFromGeometryOptions = {},
+  createProcessor: () => GlbProcessor = () => new GeometryProcessor(),
+): Promise<Uint8Array> {
+  const meshes = opts.meshes ?? (geometryResult.meshes as MeshData[]);
+  const gp = createProcessor();
+  await gp.init();
+  try {
+    const glb = gp.exportGlbFromMeshes(meshes, opts.includeMetadata ?? false);
+    if (!glb) throw new Error('GLB assembly returned no data');
+    return glb;
+  } finally {
+    gp.dispose();
+  }
+}

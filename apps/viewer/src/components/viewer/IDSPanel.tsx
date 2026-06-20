@@ -29,6 +29,8 @@ import {
   Focus,
   EyeOff,
   Eye,
+  Boxes,
+  Layers,
   FileText,
   Loader2,
   Building2,
@@ -460,6 +462,9 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     error,
     activeSpecificationId,
     filterMode,
+    isolationScope,
+    isolateMode,
+    isolationActive,
 
     // Actions
     loadIDSFile,
@@ -469,9 +474,11 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     setActiveSpecification,
     selectEntity,
     setFilterMode,
+    setIsolationScope,
     applyColors,
     isolateFailed,
     isolatePassed,
+    isolateInvolved,
     clearIsolation,
     exportReportJSON,
     exportReportHTML,
@@ -516,6 +523,29 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   const handleEntityClick = useCallback((modelId: string, expressId: number) => {
     selectEntity(modelId, expressId);
   }, [selectEntity]);
+
+  // Active state for the isolate toggle buttons. A button is "active" only
+  // when ITS mode is applied AND isolation is still live, so an externally
+  // cleared isolation self-heals the button back to inactive.
+  const failedActive = isolationActive && isolateMode === 'failed';
+  const passedActive = isolationActive && isolateMode === 'passed';
+  const involvedActive = isolationActive && isolateMode === 'involved';
+
+  // Clicking the active isolate button toggles it off (undo).
+  const handleIsolateFailed = useCallback(() => {
+    if (failedActive) clearIsolation();
+    else isolateFailed();
+  }, [failedActive, clearIsolation, isolateFailed]);
+
+  const handleIsolatePassed = useCallback(() => {
+    if (passedActive) clearIsolation();
+    else isolatePassed();
+  }, [passedActive, clearIsolation, isolatePassed]);
+
+  const handleIsolateInvolved = useCallback(() => {
+    if (involvedActive) clearIsolation();
+    else isolateInvolved();
+  }, [involvedActive, clearIsolation, isolateInvolved]);
 
   // Render validation progress
   const renderProgress = () => {
@@ -654,6 +684,12 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   const renderResults = () => {
     if (!report) return null;
 
+    // In 'spec' scope the isolate/color actions target the active
+    // specification; disable them until one is selected.
+    const specScope = isolationScope === 'spec';
+    const noActiveSpec = specScope && !activeSpecificationId;
+    const scopeSuffix = specScope ? ' (this spec)' : ' (whole IDS)';
+
     return (
       <>
         {/* Audit summary stays visible above the validation report so
@@ -690,7 +726,9 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
             <PassRateBar passRate={report.summary.overallPassRate} />
           </div>
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            💡 Click any entity to select and zoom to it in the 3D view
+            {specScope
+              ? '💡 Select a specification to isolate its elements — passed green, failed red'
+              : '💡 Click any entity to select and zoom to it in the 3D view'}
           </p>
         </div>
 
@@ -708,33 +746,91 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
             </SelectContent>
           </Select>
 
+          {/* Isolate scope: whole report vs. the active specification (#1236).
+              'Per Spec' isolates the selected specification's elements
+              (passed green, failed red). */}
+          <Select value={isolationScope} onValueChange={(v) => setIsolationScope(v as 'ids' | 'spec')}>
+            <SelectTrigger className="h-8 w-[112px]" aria-label="Isolate scope">
+              <Layers className="h-3 w-3 mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ids">Whole IDS</SelectItem>
+              <SelectItem value="spec">Per Spec</SelectItem>
+            </SelectContent>
+          </Select>
+
           <div className="flex-1 min-w-2" />
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={isolateFailed}>
+              <Button
+                variant={failedActive ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn('h-8 w-8 p-0', failedActive && 'text-red-600')}
+                aria-pressed={failedActive}
+                onClick={handleIsolateFailed}
+                disabled={noActiveSpec}
+              >
                 <EyeOff className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Isolate Failed</TooltipContent>
+            <TooltipContent>
+              {failedActive ? 'Show all (undo isolate failed)' : `Isolate failed${scopeSuffix}`}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={isolatePassed}>
+              <Button
+                variant={passedActive ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn('h-8 w-8 p-0', passedActive && 'text-green-600')}
+                aria-pressed={passedActive}
+                onClick={handleIsolatePassed}
+                disabled={noActiveSpec}
+              >
                 <Eye className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Isolate Passed</TooltipContent>
+            <TooltipContent>
+              {passedActive ? 'Show all (undo isolate passed)' : `Isolate passed${scopeSuffix}`}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={clearIsolation}>
+              <Button
+                variant={involvedActive ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 w-8 p-0"
+                aria-pressed={involvedActive}
+                onClick={handleIsolateInvolved}
+                disabled={noActiveSpec}
+              >
+                <Boxes className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {involvedActive
+                ? 'Show all (undo isolate involved)'
+                : `Isolate involved${scopeSuffix} — passed green + failed red`}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={clearIsolation}
+                disabled={!isolationActive}
+              >
                 <Focus className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Clear Isolation</TooltipContent>
+            <TooltipContent>Clear isolation (show all)</TooltipContent>
           </Tooltip>
 
           <Tooltip>

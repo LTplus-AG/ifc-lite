@@ -33,6 +33,16 @@ export interface ColorModelInfo {
   idOffset?: number;
 }
 
+/** Optional scoping for {@link buildValidationColorUpdates}. */
+export interface ColorScopeOptions {
+  /**
+   * Restrict colors to a single specification's results. An entity may pass
+   * one specification and fail another, so per-spec coloring (instead of the
+   * whole-report verdict) is what makes the active spec's green/red correct.
+   */
+  specId?: string;
+}
+
 /**
  * Build a map of color overrides from validation results.
  *
@@ -46,6 +56,7 @@ export interface ColorModelInfo {
  * @param defaultPassedColor - Fallback passed color
  * @param geometryResult - Current geometry for capturing original colors (may be null)
  * @param originalColors - Mutable map to store original colors into (only populated if empty)
+ * @param scope - Optional scoping (e.g. restrict to a single specification)
  * @returns Map of globalId to color tuple for updateMeshColors
  */
 export function buildValidationColorUpdates(
@@ -55,7 +66,8 @@ export function buildValidationColorUpdates(
   defaultFailedColor: ColorTuple,
   defaultPassedColor: ColorTuple,
   geometryResult: GeometryResult | null | undefined,
-  originalColors: Map<number, ColorTuple>
+  originalColors: Map<number, ColorTuple>,
+  scope?: ColorScopeOptions
 ): Map<number, ColorTuple> {
   const colorUpdates = new Map<number, ColorTuple>();
 
@@ -63,9 +75,14 @@ export function buildValidationColorUpdates(
   const failedClr = displayOptions.failedColor ?? defaultFailedColor;
   const passedClr = displayOptions.passedColor ?? defaultPassedColor;
 
+  // When scoped to a spec, only that spec's results drive the colors.
+  const specResults = scope?.specId
+    ? report.specificationResults.filter((s) => s.specification.id === scope.specId)
+    : report.specificationResults;
+
   // Build a set of globalIds we'll be updating
   const globalIdsToUpdate = new Set<number>();
-  for (const specResult of report.specificationResults) {
+  for (const specResult of specResults) {
     for (const entityResult of specResult.entityResults) {
       const globalId = toGlobalIdFromModels(models, entityResult.modelId, entityResult.expressId);
       globalIdsToUpdate.add(globalId);
@@ -81,8 +98,8 @@ export function buildValidationColorUpdates(
     }
   }
 
-  // Process all entity results
-  for (const specResult of report.specificationResults) {
+  // Process all entity results (within scope)
+  for (const specResult of specResults) {
     for (const entityResult of specResult.entityResults) {
       const globalId = toGlobalIdFromModels(models, entityResult.modelId, entityResult.expressId);
 

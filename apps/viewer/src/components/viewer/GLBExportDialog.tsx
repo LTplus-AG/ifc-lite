@@ -42,7 +42,8 @@ import {
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
-import { GLTFExporter } from '@ifc-lite/export';
+import { type MeshData } from '@ifc-lite/geometry';
+import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 
 type ColorSource = 'rendering' | 'shading';
@@ -198,32 +199,45 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     return out.size > 0 ? out : null;
   }, [models, isolatedEntities, isolatedEntitiesByModel]);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     if (!selectedModel?.geometryResult) return;
 
     setIsExporting(true);
     setExportResult(null);
 
     try {
-      // Include GPU-instanced occurrences (absent from geometryResult.meshes) for
-      // the primary model so the GLB isn't missing repeated geometry.
+      // Assemble the GLB in Rust over the meshes the viewer already holds (no
+      // re-meshing). Visibility + colour-source selection is applied here because
+      // the Rust path emits exactly the meshes it is handed — this mirrors the
+      // previous GLTFExporter `isMeshVisible` / `pickColor` semantics.
+      //
+      // Fold in GPU-instanced occurrences (absent from geometryResult.meshes — they
+      // live in shards) for the primary model so the GLB isn't missing repeated
+      // geometry; the same visibility/colour filter below applies to them.
       const exportGeometry = withInstancedMeshes(
         selectedModel.geometryResult,
         selectedModelId === '__legacy__',
       );
-      const exporter = new GLTFExporter(exportGeometry);
       const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
       const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
       const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
+      const hasIsolation = !!globalIsolated && globalIsolated.size > 0;
 
-      const glb = exporter.exportGLB({
-        includeMetadata,
-        colorSource,
-        visibleOnly,
-        hiddenEntityIds: globalHidden,
-        isolatedEntityIds: globalIsolated,
-        hiddenIfcTypes,
-      });
+      const meshes = (exportGeometry.meshes as MeshData[])
+        .filter((m) => {
+          if (!visibleOnly) return true;
+          if (hiddenIfcTypes && m.ifcType && hiddenIfcTypes.has(m.ifcType)) return false;
+          if (hasIsolation && !globalIsolated!.has(m.expressId)) return false;
+          if (globalHidden && globalHidden.has(m.expressId)) return false;
+          return true;
+        })
+        .map((m) =>
+          colorSource === 'shading' && m.shadingColor
+            ? ({ ...m, color: m.shadingColor } as MeshData)
+            : m,
+        );
+
+      const glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata });
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       const url = URL.createObjectURL(blob);
@@ -261,6 +275,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     includeMetadata,
     colorSource,
     visibleOnly,
+    typeVisibility,
     getGlobalHiddenIds,
     getGlobalIsolatedIds,
   ]);

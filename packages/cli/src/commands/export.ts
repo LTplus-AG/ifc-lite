@@ -10,10 +10,13 @@
  * and schema conversion on export.
  */
 
-import { writeFile } from 'node:fs/promises';
+import { writeFile, readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
+import type { IfcDataStore } from '@ifc-lite/parser';
 
 /**
  * Parse a --where filter string into psetName, propName, operator, value.
@@ -120,6 +123,24 @@ function columnValueToCsv(value: unknown): string {
   return String(value);
 }
 
+/**
+ * Resolve the raw IFC bytes (parsed store source, or re-read from disk) plus a
+ * one-shot wasm GeometryProcessor for the Rust-backed exporters (OBJ / glTF / JSON-LD).
+ */
+async function rustExportContext(
+  store: IfcDataStore,
+  filePath: string,
+): Promise<{ bytes: Uint8Array; gp: GeometryProcessor }> {
+  let bytes: Uint8Array | undefined = store.source;
+  if (!bytes || bytes.byteLength === 0) {
+    const buf = await readFile(filePath);
+    bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  }
+  const gp = new GeometryProcessor();
+  await gp.init();
+  return { bytes, gp };
+}
+
 function escapeCsv(value: string, sep: string): string {
   // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
   // formula trigger so Excel/Sheets treat the cell as text, not a formula.
@@ -144,14 +165,14 @@ export async function exportCommand(args: string[]): Promise<void> {
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
 
-  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--out file]');
+  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|hbjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
 
   // B9/F6: Auto-prefix Ifc
   if (type) {
     type = normalizeTypeName(type);
   }
 
-  const { bim } = await createHeadlessContext(filePath);
+  const { bim, store } = await createHeadlessContext(filePath);
 
   // Build entity query
   let q = bim.query();
@@ -241,7 +262,71 @@ export async function exportCommand(args: string[]): Promise<void> {
       process.stderr.write(`Written to ${outPath}\n`);
       break;
     }
+    // Rust-backed exporters (ifc-lite-export via wasm). OBJ/glTF mesh the model;
+    // when a --type/--storey/--where/--limit filter is active the matched express
+    // ids become the isolation set so the export contains only those elements.
+    case 'obj':
+    case 'gltf':
+    case 'glb':
+    case 'jsonld':
+    case 'ifcx':
+    case 'step': {
+      const filterActive = !!(type || propFilter || storeyFilter || limit);
+      const isolated = filterActive
+        ? new Uint32Array(refs.map((r: any) => r.expressId))
+        : new Uint32Array();
+      // An empty isolation set means "export everything" to the Rust exporters, so a
+      // filter that matched nothing would silently dump the whole model. Fail loudly
+      // instead — the user asked for a subset and got zero matches.
+      if (filterActive && isolated.length === 0) {
+        fatal('Filter matched 0 entities — nothing to export. Check --type/--storey/--where/--limit.');
+      }
+      // IFCX is a whole-model USD-style graph; it does not honor the isolation set.
+      if (filterActive && format === 'ifcx') {
+        process.stderr.write('Note: --type/--storey/--where/--limit do not apply to IFCX; exporting the whole model.\n');
+      }
+      const { bytes, gp } = await rustExportContext(store, filePath);
+      try {
+        if (format === 'ifcx') {
+          const out = gp.exportIfcx(bytes);
+          if (out == null) fatal('IFCX export failed (geometry pipeline not initialized)');
+          await writeOutput(out as string, outPath);
+        } else if (format === 'step') {
+          // Rust faithful re-serialization (+ reference-closed subset when filtered).
+          const schema = getFlag(args, '--schema') ?? '';
+          const out = gp.exportStep(bytes, schema, isolated);
+          if (out == null) fatal('STEP export failed (geometry pipeline not initialized)');
+          await writeOutput(out as string, outPath);
+        } else if (format === 'jsonld') {
+          const out = gp.exportJsonld(bytes, '', true, false, false, isolated);
+          if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
+          await writeOutput(out as string, outPath);
+        } else if (format === 'obj') {
+          const out = gp.exportObj(bytes, true, new Uint32Array(), isolated);
+          if (out == null) fatal('OBJ export failed (geometry pipeline not initialized)');
+          await writeOutput(out as string, outPath);
+        } else {
+          // gltf | glb → binary GLB
+          const out = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+          if (out == null) fatal('GLB export failed (geometry pipeline not initialized)');
+          if (!outPath) fatal('--out is required for GLB/glTF export (binary output)');
+          await writeFile(outPath, out as Uint8Array);
+          process.stderr.write(`Written to ${outPath}\n`);
+        }
+      } finally {
+        gp.dispose();
+      }
+      break;
+    }
+    case 'hbjson': {
+      // Honeybee/Ladybug energy-model export via the SDK (the headless backend meshes
+      // analytically through the wasm engine; the data-only SDK delegates to it).
+      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.ifc$/i, '');
+      const hbjson = await bim.export.hbjson({ name });
+      await writeOutput(hbjson, outPath);
+      break;
+    }
     default:
-      fatal(`Unknown format: ${format}. Supported: csv, json, ifc`);
+      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx, hbjson`);
   }
 }

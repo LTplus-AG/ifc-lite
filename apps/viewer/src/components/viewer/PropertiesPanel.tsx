@@ -1907,6 +1907,19 @@ function EntityDataSection({
     return query.entity(entityRef.expressId);
   }, [query, entityRef.expressId]);
 
+  // Overlay-aware display class: a pending retype (setEntityType) reassigns the
+  // class in place, so the header reflects the new class immediately — before
+  // the model is re-exported / reloaded. Re-evaluates on `mutationVersion`.
+  const headerMutationViews = useViewerStore((s) => s.mutationViews);
+  const headerMutationVersion = useViewerStore((s) => s.mutationVersion);
+  const displayType = useMemo(() => {
+    let mid = entityRef.modelId;
+    if (mid === 'legacy') mid = '__legacy__';
+    const pending = headerMutationViews.get(mid)?.getEntityTypeMutation?.(entityRef.expressId)?.newType;
+    return pending ?? entityNode?.type ?? '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headerMutationViews, headerMutationVersion, entityRef.modelId, entityRef.expressId, entityNode]);
+
   // Get properties and quantities
   const properties: PropertySet[] = useMemo(() => {
     if (!entityNode) return [];
@@ -1958,9 +1971,9 @@ function EntityDataSection({
           <Layers className="h-4 w-4 text-emerald-600" />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-sm truncate text-zinc-900 dark:text-zinc-100">
-              {entityNode.name || `${entityNode.type} #${entityRef.expressId}`}
+              {entityNode.name || `${displayType} #${entityRef.expressId}`}
             </h3>
-            <p className="text-xs font-mono text-zinc-500">{entityNode.type}</p>
+            <p className="text-xs font-mono text-zinc-500">{displayType}</p>
           </div>
           {elevationInfo !== null && (
             <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400">

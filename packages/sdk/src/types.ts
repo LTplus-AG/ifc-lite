@@ -587,6 +587,12 @@ export interface ExportBackendMethods {
   json(refs: unknown, columns: unknown): Record<string, unknown>[];
   ifc(refs: unknown, options: unknown): string | Uint8Array;
   download(content: string | Uint8Array, filename: string, mimeType: string): void;
+  /**
+   * Export the model's `IfcSpace` volumes as a Honeybee HBJSON energy/daylight model.
+   * Optional — present only on geometry-capable backends (CLI / browser, which carry the
+   * wasm engine); the data-only SDK never meshes, so it delegates here.
+   */
+  hbjson?(name?: string): Promise<string>;
 }
 
 export interface LensBackendMethods {

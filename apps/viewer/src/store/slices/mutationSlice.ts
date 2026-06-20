@@ -337,6 +337,19 @@ export interface MutationSlice {
     oldValue?: string
   ) => Mutation | null;
 
+  /**
+   * Reassign an entity's IFC class in place ("retype"). The expressId is
+   * unchanged, so geometry / placement / representation and every IfcRel*
+   * reference carry over; the exporter re-lays-out attributes against the
+   * target class. Materializes on STEP export. Returns the recorded mutation.
+   */
+  setEntityType: (
+    modelId: string,
+    entityId: number,
+    newType: string,
+    predefinedType?: string | null
+  ) => Mutation | null;
+
   // Actions - Store-Level Mutations (raw STEP entity edits)
   /**
    * Edit a positional STEP argument by zero-based index. Used by the Raw
@@ -699,6 +712,20 @@ function generateChangeSetId(): string {
  * (the data store comes from `models`, the view from PropertiesPanel's
  * lazy-init effect). Returns null if either is missing.
  */
+/**
+ * Push the overlay's effective class for an entity into the model's
+ * EntityTable as an additive display override, so a UI retype reflects
+ * immediately in the inspector, hover, and the (mutationVersion-rebuilt)
+ * hierarchy tree. Reads the current overlay, so it also clears the override
+ * on undo (removeTypeMutation → null) and re-applies it on redo.
+ */
+function syncTypeOverride(get: () => ViewerState, modelId: string, entityId: number): void {
+  const view = get().mutationViews.get(modelId);
+  const newType = view?.getEntityTypeMutation?.(entityId)?.newType ?? null;
+  const dataStore = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
+  dataStore?.entities?.setTypeOverride?.(entityId, newType);
+}
+
 function getOrCreateStoreEditor(
   get: () => ViewerState,
   // Editors are cached in-place on the (non-reactive) `storeEditors`
@@ -1324,6 +1351,47 @@ export const createMutationSlice: StateCreator<
       const newUndoStacks = new Map(state.undoStacks);
       const stack = newUndoStacks.get(modelId) || [];
       newUndoStacks.set(modelId, [...stack, mutation]);
+
+      const newRedoStacks = new Map(state.redoStacks);
+      newRedoStacks.set(modelId, []);
+
+      const newDirty = new Set(state.dirtyModels);
+      newDirty.add(modelId);
+
+      return {
+        undoStacks: newUndoStacks,
+        redoStacks: newRedoStacks,
+        dirtyModels: newDirty,
+        mutationVersion: state.mutationVersion + 1,
+      };
+    });
+
+    return mutation;
+  },
+
+  // Entity retype (reassign class)
+  setEntityType: (modelId, entityId, newType, predefinedType) => {
+    const view = get().mutationViews.get(modelId);
+    if (!view) return null;
+
+    let mutation: Mutation | null = null;
+    try {
+      mutation = view.setEntityType(entityId, newType, predefinedType ?? null);
+    } catch (err) {
+      // Invalid class keyword — surface nothing rather than crash the store.
+      // The dialog validates before calling, so this only guards stray callers;
+      // log it so a programmatic bad value isn't swallowed silently.
+      console.warn(`setEntityType(#${entityId} → "${newType}") rejected:`, err);
+      return null;
+    }
+
+    // Reflect the new class live (inspector, hover, tree on rebuild).
+    syncTypeOverride(get, modelId, entityId);
+
+    set((state) => {
+      const newUndoStacks = new Map(state.undoStacks);
+      const stack = newUndoStacks.get(modelId) || [];
+      newUndoStacks.set(modelId, [...stack, mutation!]);
 
       const newRedoStacks = new Map(state.redoStacks);
       newRedoStacks.set(modelId, []);
@@ -2572,6 +2640,17 @@ export const createMutationSlice: StateCreator<
         const globalId = cross.toGlobalId(modelId, mutation.entityId);
         cross.showEntity(globalId);
       }
+    } else if (mutation.type === 'UPDATE_ENTITY_TYPE') {
+      // `oldValue` is the class right before this retype: restore it when an
+      // earlier retype is still on the stack, otherwise drop the intent to
+      // revert the entity to its original class entirely.
+      const prevType = mutation.oldValue;
+      if (prevType != null && prevType !== '') {
+        view.setEntityType(mutation.entityId, String(prevType), undefined, undefined, true);
+      } else {
+        view.removeTypeMutation(mutation.entityId);
+      }
+      syncTypeOverride(get, modelId, mutation.entityId);
     }
 
     set((s) => {
@@ -2739,6 +2818,12 @@ export const createMutationSlice: StateCreator<
         const globalId = cross.toGlobalId(modelId, mutation.entityId);
         cross.hideEntity(globalId);
       }
+    } else if (mutation.type === 'UPDATE_ENTITY_TYPE') {
+      const newType = mutation.entityType ?? (typeof mutation.newValue === 'string' ? mutation.newValue : undefined);
+      if (newType) {
+        view.setEntityType(mutation.entityId, newType, mutation.predefinedType ?? undefined, undefined, true);
+      }
+      syncTypeOverride(get, modelId, mutation.entityId);
     }
 
     set((s) => {

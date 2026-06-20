@@ -97,9 +97,32 @@ export class IfcLiteBridge {
     }
 
     try {
-      // Initialize WASM module - wasm-bindgen automatically resolves the WASM URL
-      // from import.meta.url, no need to manually construct paths
-      await init();
+      // Initialize WASM module. In the browser/worker, wasm-bindgen resolves the
+      // .wasm URL from import.meta.url and fetch()es it. Node's fetch() cannot load
+      // file:// URLs, so when running under Node we read the bytes ourselves and
+      // pass them to init(). Strictly Node-gated — the browser path is untouched.
+      // (Node-only modules are imported via variable + `@vite-ignore` so the browser
+      // bundler never tries to resolve them, matching the xmldom gating in @ifc-lite/ids.)
+      // Browser-first package: no @types/node, so reach `process` via globalThis
+      // and keep the Node-only modules untyped (`any`) behind the runtime guard.
+      const proc = (globalThis as { process?: { versions?: { node?: string } } }).process;
+      const isNode = !!proc?.versions?.node && typeof window === 'undefined';
+      let wasmInitArg: BufferSource | undefined;
+      if (isNode) {
+        const moduleSpecifier = 'node:module';
+        const fsSpecifier = 'node:fs/promises';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nodeModule: any = await import(/* @vite-ignore */ moduleSpecifier);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nodeFs: any = await import(/* @vite-ignore */ fsSpecifier);
+        const requireFromHere = nodeModule.createRequire(import.meta.url);
+        const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
+        wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
+      }
+      // Browser: init() with no arg fetches from import.meta.url. Node: pass the
+      // bytes via the modern object form ({ module_or_path }) to avoid the
+      // deprecated positional-bytes signature.
+      await init(wasmInitArg ? { module_or_path: wasmInitArg } : undefined);
 
       // The WASM bundle has no in-WASM thread pool; rayon `par_iter()`
       // (e.g. FacetedBrep preprocessing) runs sequentially on the main
@@ -266,6 +289,180 @@ export class IfcLiteBridge {
         operation: 'extractProfiles',
         data: { contentLength: content.length },
       });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Export the render geometry in `content` as a Wavefront OBJ string.
+   * `hidden` / `isolated` are express-id visibility filters (empty `isolated` ⇒ all).
+   */
+  exportObj(
+    content: string,
+    includeNormals = true,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+  ): string {
+    return this.runExport('exportObj', content, (api) =>
+      api.exportObj(content, includeNormals, hidden, isolated),
+    );
+  }
+
+  /**
+   * Export the render geometry in `content` as a binary glTF (GLB).
+   * `hiddenTypesCsv` is a comma-separated IFC-type visibility filter.
+   */
+  exportGlb(
+    content: string,
+    includeMetadata = false,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+    hiddenTypesCsv = '',
+  ): Uint8Array {
+    return this.runExport('exportGlb', content, (api) =>
+      api.exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv),
+    );
+  }
+
+  /**
+   * Export tabular CSV. `mode` ∈ {`'entities'`, `'properties'`, `'quantities'`};
+   * empty `delimiter` ⇒ `,`; `includeProperties` adds flattened `Pset_Prop` columns.
+   */
+  exportCsv(
+    content: string,
+    mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
+    delimiter = ',',
+    includeProperties = false,
+  ): string {
+    return this.runExport('exportCsv', content, (api) =>
+      api.exportCsv(content, mode, delimiter, includeProperties),
+    );
+  }
+
+  /** Export structured JSON (array of entity objects with typed property values). */
+  exportJson(
+    content: string,
+    pretty = false,
+    includeProperties = true,
+    includeQuantities = true,
+  ): string {
+    return this.runExport('exportJson', content, (api) =>
+      api.exportJson(content, pretty, includeProperties, includeQuantities),
+    );
+  }
+
+  /**
+   * Re-serialize the model in `content` to a STEP/IFC string (P1: base
+   * re-serialization + reference-closed subset). Empty `schema` ⇒ preserve source;
+   * empty `included` ⇒ whole model.
+   */
+  exportStep(
+    content: string,
+    schema = '',
+    included: Uint32Array = new Uint32Array(),
+    mutationsJson = '',
+  ): string {
+    return this.runExport('exportStep', content, (api) =>
+      api.exportStep(content, schema, included, mutationsJson),
+    );
+  }
+
+  /** Merge several IFC models into one STEP/IFC string (flat bytes + per-model lengths). */
+  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema = ''): string {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportMerged(concatenated, lengths, schema);
+    } catch (error) {
+      log.error('Failed to exportMerged', error, { operation: 'exportMerged' });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /** Export IFC5/IFCX (USD-style node graph). */
+  exportIfcx(content: string, onlyKnownProperties = true, pretty = false): string {
+    return this.runExport('exportIfcx', content, (api) =>
+      api.exportIfcx(content, onlyKnownProperties, pretty),
+    );
+  }
+
+  /**
+   * Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL.
+   * `included` is an express-id isolation filter (empty ⇒ all entities), mirroring the
+   * OBJ/glTF/STEP exporters so `--type`/`--storey`/`--where`/`--limit` subsets apply.
+   */
+  exportJsonld(
+    content: string,
+    context = '',
+    includeProperties = true,
+    includeQuantities = false,
+    pretty = false,
+    included: Uint32Array = new Uint32Array(),
+  ): string {
+    return this.runExport('exportJsonld', content, (api) =>
+      api.exportJsonld(content, context, includeProperties, includeQuantities, pretty, included),
+    );
+  }
+
+  /**
+   * Assemble a GLB from already-produced meshes (flattened parallel arrays) — no
+   * re-meshing. Used by the viewer, which already holds the meshes on the GPU.
+   */
+  exportGlbFromMeshes(
+    positions: Float32Array,
+    normals: Float32Array,
+    indices: Uint32Array,
+    vertexCounts: Uint32Array,
+    indexCounts: Uint32Array,
+    colors: Float32Array,
+    origins: Float64Array,
+    expressIds: Uint32Array,
+    includeMetadata: boolean,
+  ): Uint8Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportGlbFromMeshes(
+        positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata,
+      );
+    } catch (error) {
+      log.error('Failed to exportGlbFromMeshes', error, { operation: 'exportGlbFromMeshes' });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Export the `IfcSpace` volumes in `content` as a Honeybee HBJSON string
+   * (Ladybug Tools energy/daylight model). Rooms are built analytically from
+   * extruded-area profiles (watertight by construction).
+   */
+  exportHbjson(content: string, name: string): string {
+    return this.runExport('exportHbjson', content, (api) => api.exportHbjson(content, name));
+  }
+
+  /**
+   * Shared wrapper for the domain-format exporters: init guard + structured error
+   * logging + fatal-wasm-error marking, mirroring the other bridge entry points.
+   */
+  private runExport<T>(op: string, content: string, run: (api: IfcAPI) => T): T {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return run(this.ifcApi);
+    } catch (error) {
+      log.error(`Failed to ${op}`, error, { operation: op, data: { contentLength: content.length } });
       if (this.isWasmRuntimeError(error)) {
         this.markFatalWasmRuntimeError();
       }

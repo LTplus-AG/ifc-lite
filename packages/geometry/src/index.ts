@@ -1052,6 +1052,152 @@ export class GeometryProcessor {
   }
 
   /**
+   * Domain-format exporters (Rust source of truth in `ifc-lite-export`). Each takes
+   * the raw IFC buffer and returns the serialized format, or null if not initialized.
+   */
+
+  exportObj(
+    buffer: Uint8Array,
+    includeNormals = true,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+  ): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportObj(safeUtf8Decode(buffer), includeNormals, hidden, isolated);
+  }
+
+  exportGlb(
+    buffer: Uint8Array,
+    includeMetadata = false,
+    hidden: Uint32Array = new Uint32Array(),
+    isolated: Uint32Array = new Uint32Array(),
+    hiddenTypesCsv = '',
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportGlb(safeUtf8Decode(buffer), includeMetadata, hidden, isolated, hiddenTypesCsv);
+  }
+
+  exportCsv(
+    buffer: Uint8Array,
+    mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
+    delimiter = ',',
+    includeProperties = false,
+  ): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportCsv(safeUtf8Decode(buffer), mode, delimiter, includeProperties);
+  }
+
+  exportJson(
+    buffer: Uint8Array,
+    pretty = false,
+    includeProperties = true,
+    includeQuantities = true,
+  ): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportJson(safeUtf8Decode(buffer), pretty, includeProperties, includeQuantities);
+  }
+
+  exportJsonld(
+    buffer: Uint8Array,
+    context = '',
+    includeProperties = true,
+    includeQuantities = false,
+    pretty = false,
+    included: Uint32Array = new Uint32Array(),
+  ): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportJsonld(safeUtf8Decode(buffer), context, includeProperties, includeQuantities, pretty, included);
+  }
+
+  exportStep(
+    buffer: Uint8Array,
+    schema = '',
+    included: Uint32Array = new Uint32Array(),
+    mutationsJson = '',
+  ): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportStep(safeUtf8Decode(buffer), schema, included, mutationsJson);
+  }
+
+  exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportIfcx(safeUtf8Decode(buffer), onlyKnownProperties, pretty);
+  }
+
+  /** Merge several IFC models (raw byte buffers) into one STEP/IFC string. */
+  exportMerged(buffers: Uint8Array[], schema = ''): string | null {
+    if (!this.bridge?.isInitialized()) return null;
+    let total = 0;
+    for (const b of buffers) total += b.byteLength;
+    const concatenated = new Uint8Array(total);
+    const lengths = new Uint32Array(buffers.length);
+    let off = 0;
+    for (let i = 0; i < buffers.length; i++) {
+      concatenated.set(buffers[i], off);
+      lengths[i] = buffers[i].byteLength;
+      off += buffers[i].byteLength;
+    }
+    return this.bridge.exportMerged(concatenated, lengths, schema);
+  }
+
+  /**
+   * Assemble a GLB from already-produced meshes (no re-meshing) — the viewer path.
+   * Flattens `MeshData[]` into the wasm binding's parallel arrays. The caller passes
+   * exactly the meshes it wants emitted (its own visibility filtering).
+   */
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    let totalV = 0;
+    let totalI = 0;
+    for (const m of meshes) {
+      totalV += m.positions.length;
+      totalI += m.indices.length;
+    }
+    const positions = new Float32Array(totalV);
+    const normals = new Float32Array(totalV);
+    const indices = new Uint32Array(totalI);
+    const vertexCounts = new Uint32Array(meshes.length);
+    const indexCounts = new Uint32Array(meshes.length);
+    const colors = new Float32Array(meshes.length * 4);
+    const origins = new Float64Array(meshes.length * 3);
+    const expressIds = new Uint32Array(meshes.length);
+    let vo = 0;
+    let io = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const m = meshes[i];
+      positions.set(m.positions, vo);
+      if (m.normals && m.normals.length === m.positions.length) normals.set(m.normals, vo);
+      indices.set(m.indices, io);
+      vertexCounts[i] = m.positions.length / 3;
+      indexCounts[i] = m.indices.length;
+      const c = m.color ?? [0.8, 0.8, 0.8, 1];
+      colors[i * 4] = c[0]; colors[i * 4 + 1] = c[1]; colors[i * 4 + 2] = c[2]; colors[i * 4 + 3] = c[3];
+      const o = m.origin ?? [0, 0, 0];
+      origins[i * 3] = o[0]; origins[i * 3 + 1] = o[1]; origins[i * 3 + 2] = o[2];
+      expressIds[i] = m.expressId ?? 0;
+      vo += m.positions.length;
+      io += m.indices.length;
+    }
+    return this.bridge.exportGlbFromMeshes(
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata,
+    );
+  }
+
+  /**
+   * Export the `IfcSpace` volumes in `buffer` as a Honeybee HBJSON string
+   * (Ladybug Tools energy/daylight model). Returns null if not initialized.
+   * @param buffer IFC file buffer
+   * @param name Model identifier / display name
+   */
+  exportHbjson(buffer: Uint8Array, name: string): string | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    const content = safeUtf8Decode(buffer);
+    return this.bridge.exportHbjson(content, name);
+  }
+
+  /**
    * Cleanup resources
    */
   dispose(): void {

@@ -403,6 +403,20 @@ export function Viewport({
     rendererRef.current?.requestRender();
   }, [environment]);
 
+  // GPU-instancing is class-0 occurrence geometry (the Model view). Hide the
+  // instanced pass in the Types view mode, where the flat path renders the
+  // class-1/2 type library instead — mirrors the flat path's geometry_class gate
+  // (ViewportContainer) so the two views never both render. effectiveViewMode
+  // falls back to 'model' when the model carries no type library.
+  const typeViewMode = useViewerStore((s) => s.typeViewMode);
+  const hasTypeGeometry = useViewerStore((s) => s.hasTypeGeometry);
+  useEffect(() => {
+    const scene = rendererRef.current?.getScene();
+    if (!scene) return;
+    scene.setInstancedVisible(!hasTypeGeometry || typeViewMode === 'model');
+    rendererRef.current?.requestRender();
+  }, [typeViewMode, hasTypeGeometry]);
+
   // Animation frame ref
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);

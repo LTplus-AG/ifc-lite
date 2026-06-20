@@ -78,6 +78,9 @@ export interface InstancedTemplateGPU {
   instanceCount: number;
 }
 
+/** Shared empty result for getInstancedTemplates() when the instanced pass is hidden. */
+const EMPTY_INSTANCED_TEMPLATES: readonly InstancedTemplateGPU[] = [];
+
 export class Scene {
   private meshes: Mesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
@@ -88,6 +91,7 @@ export class Scene {
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
   private instancedTemplates: InstancedTemplateGPU[] = [];          // GPU-instancing: unique templates + per-occurrence buffers (fed by addInstancedShard)
+  private instancedVisible = true;                                  // GPU-instancing: hidden in Types view mode (instanced geometry is class-0 occurrences)
 
   // Buffer-size-aware bucket splitting: when a single color group's geometry
   // would exceed the GPU maxBufferSize, overflow is directed to a new
@@ -1774,8 +1778,20 @@ export class Scene {
     return this.texturedMeshes;
   }
 
-  /** GPU-instancing templates for the renderer's instanced draw pass. */
+  /**
+   * Toggle the instanced draw pass. Instanced geometry is class-0 occurrences
+   * (the Model view); hide it in the Types view mode, where the flat path shows
+   * the class-1/2 type library instead. Buffers stay uploaded — just not drawn —
+   * so toggling back is free.
+   */
+  setInstancedVisible(visible: boolean): void {
+    this.instancedVisible = visible;
+  }
+
+  /** GPU-instancing templates for the renderer's instanced draw pass. Empty when
+   *  hidden (Types view mode) so the draw loop skips it. */
   getInstancedTemplates(): readonly InstancedTemplateGPU[] {
+    if (!this.instancedVisible) return EMPTY_INSTANCED_TEMPLATES;
     return this.instancedTemplates;
   }
 

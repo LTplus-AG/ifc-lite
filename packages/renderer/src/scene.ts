@@ -18,6 +18,7 @@ import {
   raycastTriangles,
 } from './scene-raycaster.js';
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
+import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import {
   prepareInstancedRender,
@@ -25,6 +26,7 @@ import {
   INSTANCE_COLOR_OFFSET,
   INSTANCE_FLAGS_OFFSET,
   INSTANCE_FLAG_SELECTED,
+  INSTANCE_FLAG_HIDDEN,
 } from './instanced-render.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
@@ -109,7 +111,12 @@ export class Scene {
   private instancedEntityMap: Map<number, InstancedOccurrence[]> = new Map(); // express_id -> occurrences, for per-instance selection/overlay patching
   private instancedDevice?: GPUDevice;                              // cached for per-instance flag/colour writeBuffer updates
   private instancedSelected: Set<number> = new Set();              // currently flag-selected instanced express_ids
+  private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
   private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
+  private instancedHasTransparent = false;                         // an override made some instanced occurrence translucent
+  private lastInstancedHiddenIds: ReadonlySet<number> | null = null;   // ref-equality guard for setInstancedVisibility
+  private lastInstancedIsolatedIds: ReadonlySet<number> | null = null;
+  private instancedVisibilityDirty = false;                       // set when a new shard adds occurrences → re-apply visibility
 
   // Buffer-size-aware bucket splitting: when a single color group's geometry
   // would exceed the GPU maxBufferSize, overflow is directed to a new
@@ -1920,6 +1927,10 @@ export class Scene {
         arr.push({ templateIndex, byteOffset, originalColor });
       }
     }
+    // New occurrences default to flags=0 (visible). Force the next setInstancedVisibility
+    // to recompute so an already-active isolate/hide also applies to geometry that
+    // streamed in after the visibility was set.
+    this.instancedVisibilityDirty = true;
   }
 
   /**
@@ -1945,13 +1956,75 @@ export class Scene {
       }
     }
     if (!changed) return;
-    for (const eid of this.instancedSelected) {
-      if (!expressIds.has(eid)) this.writeInstanceFlag(device, eid, 0);
+    // Re-derive the combined flag lane (selected | hidden) for every occurrence whose
+    // selected-membership flips, so we never clobber the hidden bit.
+    const prev = this.instancedSelected;
+    this.instancedSelected = new Set(expressIds);
+    for (const eid of prev) {
+      if (!expressIds.has(eid)) this.writeInstanceFlags(device, eid);
     }
     for (const eid of expressIds) {
-      if (!this.instancedSelected.has(eid)) this.writeInstanceFlag(device, eid, INSTANCE_FLAG_SELECTED);
+      if (!prev.has(eid)) this.writeInstanceFlags(device, eid);
     }
-    this.instancedSelected = new Set(expressIds);
+  }
+
+  /**
+   * Per-instance VISIBILITY (hide / isolate): set the hidden flag bit on occurrences
+   * that should not render, mirroring the flat path's hiddenIds/isolatedIds filter.
+   * The shader discards hidden occurrences in BOTH the render and pick passes, so they
+   * neither draw nor are pickable. `isolatedIds != null` means "show only these"; any
+   * occurrence not in the set is hidden. Diffed so an unchanged visibility set is a
+   * no-op (no writeBuffer). No-op until a shard has been uploaded.
+   */
+  setInstancedVisibility(
+    hiddenIds: ReadonlySet<number> | null | undefined,
+    isolatedIds: ReadonlySet<number> | null | undefined,
+  ): void {
+    const device = this.instancedDevice;
+    if (!device || this.instancedTemplates.length === 0) return;
+    // Called every render frame. The viewer passes stable Set references that only
+    // change when visibility changes, so a reference-equality guard skips the O(N)
+    // set rebuild + allocation during orbit (the common, unchanged case). The dirty
+    // flag forces a recompute after a new shard adds occurrences mid-stream, so an
+    // active isolate/hide also applies to geometry that streams in afterwards.
+    if (
+      !this.instancedVisibilityDirty &&
+      hiddenIds === this.lastInstancedHiddenIds &&
+      isolatedIds === this.lastInstancedIsolatedIds
+    ) {
+      return;
+    }
+    this.instancedVisibilityDirty = false;
+    this.lastInstancedHiddenIds = hiddenIds ?? null;
+    this.lastInstancedIsolatedIds = isolatedIds ?? null;
+    const isHidden = (eid: number): boolean =>
+      (hiddenIds != null && hiddenIds.has(eid)) ||
+      (isolatedIds != null && !isolatedIds.has(eid));
+    // Recompute the effective hidden set over all instanced occurrences and diff vs
+    // the current one; only flips touch the GPU buffer.
+    const next = new Set<number>();
+    for (const eid of this.instancedEntityMap.keys()) {
+      if (isHidden(eid)) next.add(eid);
+    }
+    // Fast-path: unchanged hidden set → nothing to write.
+    let changed = next.size !== this.instancedHidden.size;
+    if (!changed) {
+      for (const eid of next) {
+        if (!this.instancedHidden.has(eid)) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) return;
+    const prev = this.instancedHidden;
+    this.instancedHidden = next;
+    for (const eid of prev) {
+      if (!next.has(eid)) this.writeInstanceFlags(device, eid);
+    }
+    for (const eid of next) {
+      if (!prev.has(eid)) this.writeInstanceFlags(device, eid);
+    }
   }
 
   /**
@@ -1968,16 +2041,34 @@ export class Scene {
     for (const eid of this.instancedOverridden) {
       if (!next.has(eid)) this.restoreInstanceColor(device, eid);
     }
+    let hasTransparent = false;
     for (const [eid, rgba] of next) {
       this.writeInstanceColor(device, eid, rgba);
+      // Instanced occurrences are opaque by partition; only an override can drop alpha
+      // below the cutoff (lens-ghost / x-ray / compare). Track it so the renderer runs
+      // the transparent instanced sub-pass only when something is actually translucent.
+      if (rgba[3] < OPAQUE_ALPHA_CUTOFF) hasTransparent = true;
     }
     this.instancedOverridden = new Set(next.keys());
+    this.instancedHasTransparent = hasTransparent;
   }
 
-  private writeInstanceFlag(device: GPUDevice, eid: number, flag: number): void {
+  /** True when an active colour override made some instanced occurrence translucent,
+   *  so the renderer should run the transparent instanced sub-pass. */
+  hasTransparentInstances(): boolean {
+    return this.instancedHasTransparent;
+  }
+
+  /** Write the combined flag lane (selected | hidden) for every occurrence of `eid`.
+   *  Folding both bits here means selection and visibility updates never clobber each
+   *  other (they share the one u32 flags lane at INSTANCE_FLAGS_OFFSET). */
+  private writeInstanceFlags(device: GPUDevice, eid: number): void {
     const locs = this.instancedEntityMap.get(eid);
     if (!locs) return;
-    const data = new Uint32Array([flag >>> 0]);
+    const flags =
+      (this.instancedSelected.has(eid) ? INSTANCE_FLAG_SELECTED : 0) |
+      (this.instancedHidden.has(eid) ? INSTANCE_FLAG_HIDDEN : 0);
+    const data = new Uint32Array([flags >>> 0]);
     for (const loc of locs) {
       const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
       if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, data);
@@ -2129,7 +2220,12 @@ export class Scene {
     this.instancedTemplates = [];
     this.instancedEntityMap.clear();
     this.instancedSelected.clear();
+    this.instancedHidden.clear();
     this.instancedOverridden.clear();
+    this.instancedHasTransparent = false;
+    this.lastInstancedHiddenIds = null;
+    this.lastInstancedIsolatedIds = null;
+    this.instancedVisibilityDirty = false;
     this.instancedDevice = undefined;
     // Clear partial batch cache
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);

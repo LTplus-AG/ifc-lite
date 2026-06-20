@@ -200,10 +200,12 @@ export class Picker {
           @location(5) m2: vec4<f32>,
           @location(6) m3: vec4<f32>,
           @location(7) instEntityId: u32,
+          @location(8) instFlags: u32,
         }
         struct VertexOutput {
           @builtin(position) position: vec4<f32>,
           @location(0) @interpolate(flat) objectId: u32,
+          @location(1) @interpolate(flat) instFlags: u32,
         }
         @vertex
         fn vs_main(input: VertexInput, inst: InstanceInput) -> VertexOutput {
@@ -212,10 +214,16 @@ export class Picker {
           output.position = uniforms.viewProj * (m * vec4<f32>(input.position, 1.0));
           // bit 30 = instanced marker; express id in the low 30 bits.
           output.objectId = 0x40000000u | (inst.instEntityId & 0x3FFFFFFFu);
+          output.instFlags = inst.instFlags;
           return output;
         }
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) u32 {
+          // Hidden occurrences (flags bit 1) are not pickable — mirror the render-pass
+          // discard so a hidden instanced element can't be selected through the picker.
+          if ((input.instFlags & 2u) != 0u) {
+            discard;
+          }
           return input.objectId;
         }
       `,
@@ -228,7 +236,7 @@ export class Picker {
         buffers: [
           // slot 0: template vertex (28B pos+norm+entityId) — only position read.
           { arrayStride: 28, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] },
-          // slot 1: per-instance (88B) — mat4 + entityId (colour/flags ignored here).
+          // slot 1: per-instance (88B) — mat4 + entityId + flags (colour ignored here).
           {
             arrayStride: 88,
             stepMode: 'instance',
@@ -238,6 +246,7 @@ export class Picker {
               { shaderLocation: 5, offset: 32, format: 'float32x4' },
               { shaderLocation: 6, offset: 48, format: 'float32x4' },
               { shaderLocation: 7, offset: 64, format: 'uint32' },
+              { shaderLocation: 8, offset: 84, format: 'uint32' },
             ],
           },
         ],

@@ -188,6 +188,25 @@ export const mainShaderSource = `
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragmentOutput {
+          // Per-instance hide/isolate: bit 1 of the instance flags lane marks a hidden
+          // occurrence. Discard it so it neither draws nor writes depth (and the pick
+          // pass applies the same discard, so it isn't pickable). vs_main writes
+          // instSelected=0u for flat geometry, so this never affects the flat path.
+          if ((input.instSelected & 2u) != 0u) {
+            discard;
+          }
+          // Per-instance opacity routing (instanced passes only — flags.x bit 2). The
+          // opaque instanced pass draws fully-opaque (or selected) occurrences; the
+          // transparent instanced sub-pass (bit 3, alpha-blended) draws the rest. Discard
+          // the occurrences belonging to the OTHER pass so each is drawn exactly once.
+          // Lens-ghost / x-ray / compare write a low per-instance alpha into input.color.a.
+          if ((uniforms.flags.x & 4u) != 0u) {
+            let occOpaque = input.color.a >= 0.99 || (input.instSelected & 1u) != 0u;
+            let transparentPass = (uniforms.flags.x & 8u) != 0u;
+            if (transparentPass == occOpaque) {
+              discard;
+            }
+          }
           // Section plane clipping - discard fragments ABOVE the plane.
           // flags.y packs two bits: bit 0 = enabled, bit 1 = flipped.
           let sectionEnabled = (uniforms.flags.y & 1u) == 1u;

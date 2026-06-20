@@ -1090,6 +1090,11 @@ export class Renderer {
         // no instanced data is loaded. The flat path handles selection inline
         // below via `selectedExpressIds`.
         this.scene.setInstancedSelection(selectedExpressIds);
+        // Mirror hide/isolate onto the instanced occurrences (the flat path filters
+        // its mesh list by hiddenIds/isolatedIds below; the instanced pass can't, so
+        // it carries a per-instance hidden flag the shader discards on). Diffed → a
+        // no-op when visibility is unchanged.
+        this.scene.setInstancedVisibility(options.hiddenIds, options.isolatedIds);
 
         // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
         // Snapshot the caller's map so mid-frame mutation can't desync classification
@@ -1590,7 +1595,7 @@ export class Renderer {
             // #961: also enter this block when there are textured meshes but no
             // colour batches (e.g. a model that is only a textured type-geometry
             // boiler) — the textured sub-pass lives inside this block.
-            if (allBatchedMeshes.length > 0 || this.scene.getTexturedMeshes().length > 0) {
+            if (allBatchedMeshes.length > 0 || this.scene.getTexturedMeshes().length > 0 || this.scene.getInstancedTemplates().length > 0) {
                 // Frustum culling for batched meshes - skip entire batches outside the camera view
                 // This is the primary performance optimization for large models (200K+ meshes)
                 const frustum = FrustumUtils.fromViewProjMatrix(viewProj);
@@ -1832,7 +1837,11 @@ export class Renderer {
                 // we reuse the frame's viewProj + section + flags from `tpl`.
                 const instancedTemplates = this.scene.getInstancedTemplates();
                 if (instancedTemplates.length > 0) {
-                    this.pipeline.writeRawUniforms(tpl);
+                    // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
+                    // shader routes per-instance opacity: opaque (or selected) occurrences
+                    // draw here; translucent ones (lens/x-ray/compare overrides) are
+                    // discarded and drawn in the transparent sub-pass below.
+                    this.pipeline.writeRawUniforms(tpl, 0x4);
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
@@ -1843,6 +1852,9 @@ export class Renderer {
                         pass.drawIndexed(it.indexCount, it.instanceCount);
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
+                    // The TRANSPARENT instanced sub-pass is drawn later, alongside the
+                    // flat transparent batches, so it blends after ALL opaque geometry
+                    // (incl. the textured sub-pass below) has written depth.
                 }
 
                 // #961: textured meshes — dedicated sub-pass right after opaque
@@ -2016,6 +2028,26 @@ export class Renderer {
                         return true;
                     })
                     : [];
+
+                // Transparent instanced sub-pass — drawn here (after ALL opaque incl. the
+                // textured sub-pass) so ghosted/x-rayed instanced occurrences blend over
+                // a complete depth buffer. Only runs when an override actually made some
+                // occurrence translucent (otherwise zero cost). flags.x bit 3 flips the
+                // shader's opacity routing so only translucent occurrences draw here.
+                const instancedTransparent = this.scene.getInstancedTemplates();
+                if (instancedTransparent.length > 0 && this.scene.hasTransparentInstances()) {
+                    this.pipeline.writeRawUniforms(tpl, 0x4 | 0x8);
+                    pass.setPipeline(this.pipeline.getInstancedTransparentPipeline());
+                    pass.setBindGroup(0, this.pipeline.getBindGroup());
+                    pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+                    for (const it of instancedTransparent) {
+                        pass.setVertexBuffer(0, it.vertexBuffer);
+                        pass.setVertexBuffer(1, it.instanceBuffer);
+                        pass.setIndexBuffer(it.indexBuffer, 'uint32');
+                        pass.drawIndexed(it.indexCount, it.instanceCount);
+                    }
+                    pass.setPipeline(this.pipeline.getPipeline());
+                }
 
                 // Render transparent BATCHED meshes with transparent pipeline (after opaque batches and selections)
                 if (transparentBatches.length > 0) {

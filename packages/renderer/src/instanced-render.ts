@@ -58,16 +58,19 @@ export const SWAP_ZUP_TO_YUP: Mat4 = {
  *   [0..63]  mat4 (16 f32, column-major)
  *   [64..67] entityId (u32)
  *   [68..83] rgba (4 f32)
- *   [84..87] flags (u32 — bit 0 = selected; per-instance selection highlight)
+ *   [84..87] flags (u32 — bit 0 = selected; bit 1 = hidden)
  */
 export const INSTANCE_STRIDE_BYTES = 88;
 
 /** Byte offset of the rgba colour within an instance record (patched by lens/IDS overlays). */
 export const INSTANCE_COLOR_OFFSET = 68;
-/** Byte offset of the flags u32 within an instance record (patched by selection). */
+/** Byte offset of the flags u32 within an instance record (patched by selection/visibility). */
 export const INSTANCE_FLAGS_OFFSET = 84;
 /** flags bit 0 — this occurrence is selected (blue highlight in the shader). */
 export const INSTANCE_FLAG_SELECTED = 1;
+/** flags bit 1 — this occurrence is hidden (hide/isolate); the shader discards it
+ *  in both the render and pick passes so it neither draws nor is pickable. */
+export const INSTANCE_FLAG_HIDDEN = 2;
 
 /** Transpose a row-major mat4 (the IFNS / `DecodedInstance.transform` convention)
  *  into a column-major `Mat4` (MathUtils / WGSL convention). */

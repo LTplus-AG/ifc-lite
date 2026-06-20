@@ -1377,9 +1377,11 @@ export const createMutationSlice: StateCreator<
     let mutation: Mutation | null = null;
     try {
       mutation = view.setEntityType(entityId, newType, predefinedType ?? null);
-    } catch {
+    } catch (err) {
       // Invalid class keyword — surface nothing rather than crash the store.
-      // The dialog validates before calling, so this only guards stray callers.
+      // The dialog validates before calling, so this only guards stray callers;
+      // log it so a programmatic bad value isn't swallowed silently.
+      console.warn(`setEntityType(#${entityId} → "${newType}") rejected:`, err);
       return null;
     }
 

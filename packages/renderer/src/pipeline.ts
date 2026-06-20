@@ -22,7 +22,9 @@ export class RenderPipeline {
     private pipeline: GPURenderPipeline;
     private culledPipeline!: GPURenderPipeline;  // Opaque pipeline with backface culling — material-layer slices only (their winding is reliable)
     private instancedPipeline!: GPURenderPipeline;  // GPU-instancing: template (slot 0) + per-instance buffer (slot 1)
-    private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); null if the backend rejected it
+    private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); lazily built, null if unbuilt/rejected
+    private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
+    private instancedTransparentPipelineTried = false;  // built-or-failed once; don't retry a rejecting backend every frame
     private selectionPipeline: GPURenderPipeline;  // Pipeline for selected meshes (renders on top)
     private transparentPipeline: GPURenderPipeline;  // Pipeline for transparent meshes with alpha blending
     private overlayPipeline: GPURenderPipeline;  // Pipeline for color overlays (lens) - renders at exact same depth
@@ -354,27 +356,22 @@ export class RenderPipeline {
         this.transparentPipeline = this.device.createRenderPipeline(transparentPipelineDescriptor);
 
         // Transparent instanced pipeline: the transparent descriptor (src-alpha blend,
-        // no depth write) but with the instanced vertex stage. Used for the second
+        // no depth write) but with the instanced vertex stage. Drives the second
         // instanced sub-pass that draws occurrences whose per-instance alpha dropped
         // below the cutoff (lens-ghost / x-ray / compare overlays) — the opaque
         // instanced pipeline ignores alpha, so without this they'd render solid.
         //
-        // NON-FATAL: this pipeline is only exercised when an overlay makes some
-        // instanced occurrence translucent (never on a plain load). Some degraded
-        // WebGPU backends (e.g. CI's SwiftShader Vulkan) can reject the extra
-        // blended pipeline; a failure here must NOT abort init and blank the canvas.
-        // On failure we leave it null and the renderer skips the transparent
-        // instanced sub-pass (instanced overlays fall back to opaque — acceptable
-        // on a backend that can't render them anyway).
-        try {
-            this.instancedTransparentPipeline = this.device.createRenderPipeline({
+        // Created LAZILY on first use (never on a plain load), NOT at init. CI's
+        // SwiftShader-Vulkan WebGPU is fragile: an extra createRenderPipeline at init
+        // drops its error scope and loses the whole device, so the canvas never mounts.
+        // Deferring it keeps init at the minimal pipeline set that backend tolerates;
+        // real WebGPU builds it on demand when an overlay first needs it. A creation
+        // failure leaves it null and the renderer skips the transparent instanced pass.
+        this.makeInstancedTransparentPipeline = () =>
+            this.device.createRenderPipeline({
                 ...transparentPipelineDescriptor,
                 vertex: instancedVertexStage,
             } as GPURenderPipelineDescriptor);
-        } catch (err) {
-            console.warn('[RenderPipeline] transparent instanced pipeline unavailable; instanced overlays will not blend:', err);
-            this.instancedTransparentPipeline = null;
-        }
 
         // Create overlay pipeline for lens color overrides
         // Uses depthCompare 'equal' so it ONLY renders where original geometry already wrote depth.
@@ -678,6 +675,22 @@ export class RenderPipeline {
     }
 
     getInstancedTransparentPipeline(): GPURenderPipeline | null {
+        // Lazy build on first request (when an overlay first makes an instanced
+        // occurrence translucent). Kept off the init path so a fragile backend that
+        // can't build it doesn't lose the device at startup. Tried once.
+        if (
+            !this.instancedTransparentPipeline &&
+            !this.instancedTransparentPipelineTried &&
+            this.makeInstancedTransparentPipeline
+        ) {
+            this.instancedTransparentPipelineTried = true;
+            try {
+                this.instancedTransparentPipeline = this.makeInstancedTransparentPipeline();
+            } catch (err) {
+                console.warn('[RenderPipeline] transparent instanced pipeline unavailable; instanced overlays will not blend:', err);
+                this.instancedTransparentPipeline = null;
+            }
+        }
         return this.instancedTransparentPipeline;
     }
 

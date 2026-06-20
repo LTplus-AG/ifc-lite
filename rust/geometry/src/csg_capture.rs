@@ -175,20 +175,29 @@ impl<'a> Reader<'a> {
 pub fn deserialize(blob: &[u8]) -> Result<Vec<CapturedCsgJob>, &'static str> {
     let mut r = Reader { b: blob, p: 0 };
     let n = r.u32().ok_or("truncated blob: missing job count")? as usize;
-    // Cap the pre-allocation: a malformed count must not request gigabytes.
-    let mut jobs = Vec::with_capacity(n.min(blob.len()));
+    // Don't pre-size from the untrusted count (nor from blob.len(), which over-
+    // allocates ~30x since the smallest job is dozens of bytes) — just grow.
+    let mut jobs = Vec::new();
     for _ in 0..n {
         let tag = r.u8().ok_or("truncated blob: missing tag")?;
         let host = r.mesh().ok_or("truncated blob: bad host mesh")?;
-        if tag == 0 {
-            let cutter = r.mesh().ok_or("truncated blob: bad cutter mesh")?;
-            jobs.push(CapturedCsgJob::Single { host, cutter });
-        } else {
-            let nc = r.u32().ok_or("truncated blob: missing cutter count")? as usize;
-            let cutters: Vec<Mesh> =
-                (0..nc).map(|_| r.mesh()).collect::<Option<_>>().ok_or("truncated blob: bad cutter mesh")?;
-            jobs.push(CapturedCsgJob::Many { host, cutters });
+        match tag {
+            0 => {
+                let cutter = r.mesh().ok_or("truncated blob: bad cutter mesh")?;
+                jobs.push(CapturedCsgJob::Single { host, cutter });
+            }
+            1 => {
+                let nc = r.u32().ok_or("truncated blob: missing cutter count")? as usize;
+                let cutters: Vec<Mesh> =
+                    (0..nc).map(|_| r.mesh()).collect::<Option<_>>().ok_or("truncated blob: bad cutter mesh")?;
+                jobs.push(CapturedCsgJob::Many { host, cutters });
+            }
+            _ => return Err("invalid job tag"),
         }
+    }
+    // A well-formed blob is fully consumed; leftover bytes mean corruption.
+    if r.p != blob.len() {
+        return Err("trailing bytes after last job");
     }
     Ok(jobs)
 }

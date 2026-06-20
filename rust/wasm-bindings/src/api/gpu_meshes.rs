@@ -1274,12 +1274,16 @@ impl IfcAPI {
         if needs_shift {
             mesh_collection.set_rtc_offset(rtc_x, rtc_y, rtc_z);
         }
-        // Opaque ordinary occurrences → instanced; transparent + type → flat.
+        // Opaque, untextured ordinary occurrences → instanced; transparent, type,
+        // and textured meshes → flat. Textured meshes carry per-vertex UVs and an
+        // albedo map that the instanced pipeline (pos+normal+entityId, no UV slot)
+        // can't render, so they must stay on the flat textured pipeline.
         let mut instanced: Vec<ifc_lite_processing::MeshData> = Vec::new();
         for out in outputs {
             for mesh_data in out.meshes {
                 let opaque = mesh_data.color[3] >= INSTANCED_ALPHA_CUTOFF;
-                if opaque && mesh_data.geometry_class == 0 {
+                let untextured = mesh_data.texture.is_none();
+                if opaque && untextured && mesh_data.geometry_class == 0 {
                     instanced.push(mesh_data);
                 } else {
                     mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));

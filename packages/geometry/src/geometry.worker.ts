@@ -598,33 +598,38 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
 
   try {
     const ifcApi = await ensureInit();
-    const collection = ifcApi.processGeometryBatch(
-      session.localBytes, jobs, session.unitScale,
-      session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-      session.voidKeys, session.voidCounts, session.voidValues,
-      session.styleIds, session.styleColors,
-      session.planeAngleToRadians,
-      session.materialElementIds, session.materialColorCounts, session.materialColors,
-    );
-    collectMeshes(session, collection);
-    // Emit-both (GPU-instancing verification): ALSO collate this batch into an
-    // IFNS shard, emitted alongside the flat meshes so the renderer overlays
-    // instanced geometry for visual confirmation. Wrapped so a failure — INCLUDING
-    // the binding being absent before a wasm rebuild — never disturbs the flat
-    // path. TEMPORARY 2× geometry cost; removed once instanced elements are taken
-    // off the flat path.
-    try {
-      const instancedFn = (ifcApi as unknown as {
-        processGeometryBatchInstanced?: (...args: unknown[]) => Uint8Array;
-      }).processGeometryBatchInstanced;
-      if (typeof instancedFn === 'function') {
-        const shard = instancedFn.call(
-          ifcApi, session.localBytes, jobs, session.unitScale,
-          session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-          session.voidKeys, session.voidCounts, session.voidValues,
-          session.styleIds, session.styleColors, session.planeAngleToRadians,
-          session.materialElementIds, session.materialColorCounts, session.materialColors,
-        );
+    // Instanced-only path: produce geometry ONCE via processGeometryBatchPartitioned,
+    // which splits each batch into flat meshes (transparent + type-template +
+    // textured) and an IFNS instancing shard (opaque, untextured ordinary
+    // occurrences). This replaces the temporary emit-both stage (which meshed
+    // twice): the upload/memory/draw win is realised here because instanced
+    // occurrences are taken OFF the flat path entirely.
+    //
+    // Defensive fallback: if the loaded wasm predates the partitioned export,
+    // fall back to plain processGeometryBatch (flat-only, no instancing) so the
+    // viewer stays fully functional rather than throwing into binary-split recovery.
+    const partitionedFn = (ifcApi as unknown as {
+      processGeometryBatchPartitioned?: (...args: unknown[]) => {
+        takeMeshes(): ReturnType<IfcAPI['processGeometryBatch']> | undefined;
+        takeShard(): Uint8Array;
+        free?(): void;
+      };
+    }).processGeometryBatchPartitioned;
+
+    if (typeof partitionedFn === 'function') {
+      const partitioned = partitionedFn.call(
+        ifcApi, session.localBytes, jobs, session.unitScale,
+        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+        session.voidKeys, session.voidCounts, session.voidValues,
+        session.styleIds, session.styleColors, session.planeAngleToRadians,
+        session.materialElementIds, session.materialColorCounts, session.materialColors,
+      );
+      try {
+        // takeMeshes() MOVES the flat MeshCollection out (take-once); collectMeshes
+        // frees it. None only on a second take — we call it once.
+        const collection = partitioned.takeMeshes();
+        if (collection) collectMeshes(session, collection);
+        const shard = partitioned.takeShard();
         if (shard && shard.byteLength > 0) {
           // wasm-bindgen Vec<u8> returns a fresh standalone Uint8Array (offset 0,
           // exact length), so .buffer is safe to transfer. Guard defensively: if
@@ -636,9 +641,20 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
               : (shard.slice().buffer as ArrayBuffer);
           session.pendingInstancedShards.push(exact);
         }
+      } finally {
+        // Free the now-empty PartitionedBatch wrapper (its contents were moved out).
+        partitioned.free?.();
       }
-    } catch (e) {
-      console.warn('[Worker] instanced collation skipped (flat path unaffected):', (e as Error).message);
+    } else {
+      const collection = ifcApi.processGeometryBatch(
+        session.localBytes, jobs, session.unitScale,
+        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+        session.voidKeys, session.voidCounts, session.voidValues,
+        session.styleIds, session.styleColors,
+        session.planeAngleToRadians,
+        session.materialElementIds, session.materialColorCounts, session.materialColors,
+      );
+      collectMeshes(session, collection);
     }
   } catch (err) {
     const msg = (err as Error).message;

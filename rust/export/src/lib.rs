@@ -9,14 +9,20 @@
 //! - **OBJ** (Wavefront): triangulated render geometry, origin-folded world coords.
 //! - **glTF/GLB**: binary glTF container with RGBA-deduped unlit materials.
 
+mod csv;
 mod gltf;
 mod hbjson;
+mod json;
+mod jsonld;
 mod model;
 mod obj;
 mod rooms;
 
+pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use gltf::{export_glb, export_glb_with_stats, GltfOptions, GltfStats};
 pub use hbjson::Model;
+pub use json::{export_json, JsonOptions};
+pub use jsonld::{export_jsonld, JsonLdOptions};
 pub use model::{
     build_export_model, EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue,
 };

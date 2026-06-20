@@ -239,7 +239,8 @@ pub fn build_export_model(content: &[u8]) -> ExportModel {
         if !entity.ifc_type.is_subtype_of(IfcType::IfcProduct) {
             continue;
         }
-        let ifc_type = entity.ifc_type.as_str().to_string();
+        // PascalCase canonical name (IfcWall), not the STEP keyword (IFCWALL).
+        let ifc_type = entity.ifc_type.name().to_string();
         let global_id = opt_string(entity.get(0));
         let name = opt_string(entity.get(2));
         let description = opt_string(entity.get(3));

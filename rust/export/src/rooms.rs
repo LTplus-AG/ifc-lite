@@ -36,7 +36,7 @@ fn dist(a: &[f64; 3], b: &[f64; 3]) -> f64 {
 /// Merge vertices closer than `merge` (Euclidean), including a duplicate closing vertex.
 /// `merge` carries a margin above the model tolerance so no kept edge lands in Honeybee's
 /// degenerate band (which would collapse to a non-manifold edge).
-fn clean_ring(ring: Vec<[f64; 3]>, merge: f64) -> Vec<[f64; 3]> {
+pub(crate) fn clean_ring(ring: Vec<[f64; 3]>, merge: f64) -> Vec<[f64; 3]> {
     let mut out: Vec<[f64; 3]> = Vec::with_capacity(ring.len());
     for p in ring {
         if out.last().map_or(true, |q| dist(&p, q) > merge) {

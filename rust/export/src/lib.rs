@@ -10,6 +10,7 @@
 mod hbjson;
 mod openings;
 mod rooms;
+mod shades;
 
 pub use hbjson::Model;
 
@@ -61,14 +62,14 @@ pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String
     let spaces = profiles.iter().filter(|p| p.ifc_type == "IfcSpace").count();
     let (mut rooms, origin, skipped) = rooms::build_rooms(&profiles, opts.tolerance);
     openings::attach_openings(&profiles, &mut rooms, origin);
+    let shade_meshes = shades::build_shades(&profiles, origin);
 
     let apertures = rooms.iter().flat_map(|r| &r.faces).map(|f| f.apertures.len()).sum();
     let doors = rooms.iter().flat_map(|r| &r.faces).map(|f| f.doors.len()).sum();
-    // Shades (railings → ShadeMesh) need a wasm-safe per-element mesh and land in P3.
-    let shades = 0;
+    let shades = shade_meshes.len();
     let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped, apertures, doors, shades };
 
-    let model = Model::new(&opts.name, rooms, Vec::new(), opts.tolerance);
+    let model = Model::new(&opts.name, rooms, shade_meshes, opts.tolerance);
     let json = serde_json::to_string(&model).expect("HBJSON model serializes");
     (json, stats)
 }
@@ -132,7 +133,10 @@ mod tests {
         let Some(bytes) = fixture("various/rvt01.ifc") else {
             return;
         };
-        let json = export_hbjson(&bytes, &HbjsonOptions::default());
+        let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
+        // P2/P3: windows, doors and railing shades are all present on this Revit model.
+        assert!(stats.apertures > 0 && stats.doors > 0, "openings: {} win / {} door", stats.apertures, stats.doors);
+        assert!(stats.shades > 0, "expected railing shades, got {}", stats.shades);
         let v: Value = serde_json::from_str(&json).unwrap();
         let rooms = v["rooms"].as_array().unwrap();
         assert!(rooms.len() >= 30, "expected >=30 rooms, got {}", rooms.len());

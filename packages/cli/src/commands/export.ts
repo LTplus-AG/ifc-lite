@@ -10,10 +10,12 @@
  * and schema conversion on export.
  */
 
-import { writeFile } from 'node:fs/promises';
+import { writeFile, readFile } from 'node:fs/promises';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
+import type { IfcDataStore } from '@ifc-lite/parser';
 
 /**
  * Parse a --where filter string into psetName, propName, operator, value.
@@ -120,6 +122,24 @@ function columnValueToCsv(value: unknown): string {
   return String(value);
 }
 
+/**
+ * Resolve the raw IFC bytes (parsed store source, or re-read from disk) plus a
+ * one-shot wasm GeometryProcessor for the Rust-backed exporters (OBJ / glTF / JSON-LD).
+ */
+async function rustExportContext(
+  store: IfcDataStore,
+  filePath: string,
+): Promise<{ bytes: Uint8Array; gp: GeometryProcessor }> {
+  let bytes: Uint8Array | undefined = store.source;
+  if (!bytes || bytes.byteLength === 0) {
+    const buf = await readFile(filePath);
+    bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  }
+  const gp = new GeometryProcessor();
+  await gp.init();
+  return { bytes, gp };
+}
+
 function escapeCsv(value: string, sep: string): string {
   // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
   // formula trigger so Excel/Sheets treat the cell as text, not a formula.
@@ -144,14 +164,14 @@ export async function exportCommand(args: string[]): Promise<void> {
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
 
-  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--out file]');
+  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--out file]');
 
   // B9/F6: Auto-prefix Ifc
   if (type) {
     type = normalizeTypeName(type);
   }
 
-  const { bim } = await createHeadlessContext(filePath);
+  const { bim, store } = await createHeadlessContext(filePath);
 
   // Build entity query
   let q = bim.query();
@@ -241,7 +261,41 @@ export async function exportCommand(args: string[]): Promise<void> {
       process.stderr.write(`Written to ${outPath}\n`);
       break;
     }
+    // Rust-backed exporters (ifc-lite-export via wasm). OBJ/glTF mesh the model;
+    // when a --type/--storey/--where/--limit filter is active the matched express
+    // ids become the isolation set so the export contains only those elements.
+    case 'obj':
+    case 'gltf':
+    case 'glb':
+    case 'jsonld': {
+      const filterActive = !!(type || propFilter || storeyFilter || limit);
+      const isolated = filterActive
+        ? new Uint32Array(refs.map((r: any) => r.expressId))
+        : new Uint32Array();
+      const { bytes, gp } = await rustExportContext(store, filePath);
+      try {
+        if (format === 'jsonld') {
+          const out = gp.exportJsonld(bytes);
+          if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
+          await writeOutput(out as string, outPath);
+        } else if (format === 'obj') {
+          const out = gp.exportObj(bytes, true, new Uint32Array(), isolated);
+          if (out == null) fatal('OBJ export failed (geometry pipeline not initialized)');
+          await writeOutput(out as string, outPath);
+        } else {
+          // gltf | glb → binary GLB
+          const out = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+          if (out == null) fatal('GLB export failed (geometry pipeline not initialized)');
+          if (!outPath) fatal('--out is required for GLB/glTF export (binary output)');
+          await writeFile(outPath, out as Uint8Array);
+          process.stderr.write(`Written to ${outPath}\n`);
+        }
+      } finally {
+        gp.dispose();
+      }
+      break;
+    }
     default:
-      fatal(`Unknown format: ${format}. Supported: csv, json, ifc`);
+      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld`);
   }
 }

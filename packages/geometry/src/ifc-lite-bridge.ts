@@ -97,9 +97,32 @@ export class IfcLiteBridge {
     }
 
     try {
-      // Initialize WASM module - wasm-bindgen automatically resolves the WASM URL
-      // from import.meta.url, no need to manually construct paths
-      await init();
+      // Initialize WASM module. In the browser/worker, wasm-bindgen resolves the
+      // .wasm URL from import.meta.url and fetch()es it. Node's fetch() cannot load
+      // file:// URLs, so when running under Node we read the bytes ourselves and
+      // pass them to init(). Strictly Node-gated — the browser path is untouched.
+      // (Node-only modules are imported via variable + `@vite-ignore` so the browser
+      // bundler never tries to resolve them, matching the xmldom gating in @ifc-lite/ids.)
+      // Browser-first package: no @types/node, so reach `process` via globalThis
+      // and keep the Node-only modules untyped (`any`) behind the runtime guard.
+      const proc = (globalThis as { process?: { versions?: { node?: string } } }).process;
+      const isNode = !!proc?.versions?.node && typeof window === 'undefined';
+      let wasmInitArg: BufferSource | undefined;
+      if (isNode) {
+        const moduleSpecifier = 'node:module';
+        const fsSpecifier = 'node:fs/promises';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nodeModule: any = await import(/* @vite-ignore */ moduleSpecifier);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nodeFs: any = await import(/* @vite-ignore */ fsSpecifier);
+        const requireFromHere = nodeModule.createRequire(import.meta.url);
+        const wasmPath: string = requireFromHere.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm');
+        wasmInitArg = (await nodeFs.readFile(wasmPath)) as BufferSource;
+      }
+      // Browser: init() with no arg fetches from import.meta.url. Node: pass the
+      // bytes via the modern object form ({ module_or_path }) to avoid the
+      // deprecated positional-bytes signature.
+      await init(wasmInitArg ? { module_or_path: wasmInitArg } : undefined);
 
       // The WASM bundle has no in-WASM thread pool; rayon `par_iter()`
       // (e.g. FacetedBrep preprocessing) runs sequentially on the main

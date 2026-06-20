@@ -411,19 +411,19 @@ fn pack_glb(json_bytes: &[u8], bin: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(total);
 
     // GLB header
-    out.extend_from_slice(&0x4674_6C67u32.to_le_bytes()); // 'glTF'
+    out.extend_from_slice(b"glTF"); // magic 0x46546C67 little-endian
     out.extend_from_slice(&2u32.to_le_bytes()); // version
     out.extend_from_slice(&(total as u32).to_le_bytes());
 
     // JSON chunk (space-padded)
     out.extend_from_slice(&(padded_json as u32).to_le_bytes());
-    out.extend_from_slice(&0x4E4F_534Au32.to_le_bytes()); // 'JSON'
+    out.extend_from_slice(b"JSON");
     out.extend_from_slice(json_bytes);
     out.extend(std::iter::repeat(0x20).take(json_pad));
 
     // BIN chunk (zero-padded)
     out.extend_from_slice(&(padded_bin as u32).to_le_bytes());
-    out.extend_from_slice(&0x004E_4942u32.to_le_bytes()); // 'BIN\0'
+    out.extend_from_slice(b"BIN\0");
     out.extend_from_slice(bin);
     out.extend(std::iter::repeat(0x00).take(bin_pad));
 
@@ -441,19 +441,21 @@ mod tests {
 
     /// Parse a GLB and return (json: Value, bin: Vec<u8>).
     fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {
-        assert_eq!(&glb[0..4], &0x4674_6C67u32.to_le_bytes(), "glTF magic");
+        // Assert the literal magic bytes (not a derived constant) so a wrong magic
+        // constant in pack_glb can't pass the test self-consistently.
+        assert_eq!(&glb[0..4], b"glTF", "glTF magic");
         assert_eq!(u32::from_le_bytes(glb[4..8].try_into().unwrap()), 2, "version 2");
         let total = u32::from_le_bytes(glb[8..12].try_into().unwrap()) as usize;
         assert_eq!(total, glb.len(), "header total length matches");
 
         let json_len = u32::from_le_bytes(glb[12..16].try_into().unwrap()) as usize;
-        assert_eq!(&glb[16..20], &0x4E4F_534Au32.to_le_bytes(), "JSON chunk tag");
+        assert_eq!(&glb[16..20], b"JSON", "JSON chunk tag");
         let json_start = 20;
         let json_end = json_start + json_len;
         let json: Value = serde_json::from_slice(&glb[json_start..json_end]).expect("valid JSON");
 
         let bin_len = u32::from_le_bytes(glb[json_end..json_end + 4].try_into().unwrap()) as usize;
-        assert_eq!(&glb[json_end + 4..json_end + 8], &0x004E_4942u32.to_le_bytes(), "BIN tag");
+        assert_eq!(&glb[json_end + 4..json_end + 8], b"BIN\0", "BIN tag");
         let bin = glb[json_end + 8..json_end + 8 + bin_len].to_vec();
         (json, bin)
     }

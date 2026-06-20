@@ -239,6 +239,13 @@ pub fn build_rooms(profiles: &[ExtractedProfile], tol: f64) -> (Vec<Room>, [f64;
             skipped += 1;
             continue;
         }
+        // Spaces with inner rings (courtyard/atrium holes) would need the hole modelled in
+        // the floor/ceiling faces; building from the outer ring alone yields a wrong solid,
+        // so skip them rather than emit incorrect geometry (hole support is a follow-up).
+        if !s.hole_counts.is_empty() {
+            skipped += 1;
+            continue;
+        }
         // extrusion_dir is also Y-up → convert (linear, no translation).
         let dir = zup([s.extrusion_dir[0] as f64, s.extrusion_dir[1] as f64, s.extrusion_dir[2] as f64]);
         let depth = s.extrusion_depth as f64;

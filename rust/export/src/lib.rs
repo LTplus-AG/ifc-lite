@@ -18,6 +18,16 @@ pub use hbjson::Model;
 
 use ifc_lite_geometry::extract_profiles;
 
+/// Honeybee identifiers may not contain spaces or most special characters; map anything
+/// other than alphanumerics / `_` / `-` to `_`.
+fn sanitize_identifier(s: &str) -> String {
+    let out: String = s
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect();
+    if out.is_empty() { "model".to_string() } else { out }
+}
+
 /// Options for HBJSON export.
 pub struct HbjsonOptions {
     /// Model identifier / display name.
@@ -94,7 +104,7 @@ pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String
     let n_constructions = cons.energy.as_ref().map_or(0, |e| e.constructions.len());
     let stats = HbjsonStats { spaces, rooms: rooms.len(), skipped, apertures, doors, shades, constructions: n_constructions, interior_adjacencies };
 
-    let model = Model::new(&opts.name, rooms, shade_meshes, cons.energy, opts.tolerance);
+    let model = Model::new(&sanitize_identifier(&opts.name), rooms, shade_meshes, cons.energy, opts.tolerance);
     let json = serde_json::to_string(&model).expect("HBJSON model serializes");
     (json, stats)
 }

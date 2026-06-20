@@ -56,11 +56,12 @@ export function HbjsonExportDialog({ trigger }: HbjsonExportDialogProps) {
 
   // Only models that still carry their original IFC bytes can be exported —
   // HBJSON is rebuilt from the source, not the tessellated geometry. Cache-
-  // restored models have no `sourceFile` and are omitted.
+  // restored models (no `sourceFile`) and non-IFC sources (e.g. GLB / point clouds, which
+  // can also be loaded) are omitted — HBJSON is rebuilt from the IFC source.
   const modelList = useMemo(
     () =>
       Array.from(models.values())
-        .filter((m) => m.sourceFile)
+        .filter((m) => m.sourceFile && /\.(ifc|ifcx|ifczip)$/i.test(m.sourceFile.name))
         .map((m) => ({ id: m.id, name: m.name, sourceFile: m.sourceFile as File })),
     [models],
   );
@@ -105,14 +106,7 @@ export function HbjsonExportDialog({ trigger }: HbjsonExportDialogProps) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      const rooms = (() => {
-        try {
-          return (JSON.parse(hbjson).rooms?.length ?? 0) as number;
-        } catch {
-          return 0;
-        }
-      })();
-      const msg = `Exported HBJSON — ${rooms} rooms (${(blob.size / 1024).toFixed(0)} KB)`;
+      const msg = `Exported HBJSON (${(blob.size / 1024).toFixed(0)} KB)`;
       setExportResult({ success: true, message: msg });
       toast.success(msg);
     } catch (err) {

@@ -37,14 +37,23 @@ impl IfcAPI {
     /// keeps its ids; later models are id-offset and their project unified to the first.
     #[wasm_bindgen(js_name = exportMerged)]
     pub fn export_merged(&self, concatenated: &[u8], lengths: &[u32], schema: String) -> String {
+        // Strict segmentation: a malformed `lengths` (overflow, out-of-bounds, or not
+        // summing to the buffer) must surface an error rather than silently dropping a
+        // model and returning a partial merge.
         let mut models: Vec<&[u8]> = Vec::with_capacity(lengths.len());
         let mut off = 0usize;
         for &len in lengths {
-            let end = off + len as usize;
-            if end <= concatenated.len() {
-                models.push(&concatenated[off..end]);
+            let end = off.checked_add(len as usize).unwrap_or_else(|| {
+                wasm_bindgen::throw_str("exportMerged: segment length overflow")
+            });
+            if end > concatenated.len() {
+                wasm_bindgen::throw_str("exportMerged: segment lengths exceed concatenated buffer");
             }
+            models.push(&concatenated[off..end]);
             off = end;
+        }
+        if off != concatenated.len() {
+            wasm_bindgen::throw_str("exportMerged: segment lengths do not cover the whole buffer");
         }
         let opts = ifc_lite_export::MergedOptions {
             schema: if schema.is_empty() { None } else { Some(schema) },

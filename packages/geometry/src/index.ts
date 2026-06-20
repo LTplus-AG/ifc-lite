@@ -1080,9 +1080,10 @@ export class GeometryProcessor {
     includeProperties = true,
     includeQuantities = false,
     pretty = false,
+    included: Uint32Array = new Uint32Array(),
   ): string | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportJsonld(safeUtf8Decode(buffer), context, includeProperties, includeQuantities, pretty);
+    return this.bridge.exportJsonld(safeUtf8Decode(buffer), context, includeProperties, includeQuantities, pretty, included);
   }
 
   exportStep(

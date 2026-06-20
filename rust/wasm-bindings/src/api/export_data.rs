@@ -10,9 +10,9 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl IfcAPI {
-    /// Export tabular **CSV**. `mode` ∈ {`"entities"`, `"properties"`, `"quantities"`}.
-    /// `delimiter` defaults to `,` when empty; `include_properties` adds flattened
-    /// `Pset_Prop` columns to the entities view.
+    /// Export tabular **CSV**. `mode` ∈ {`"entities"`, `"properties"`, `"quantities"`,
+    /// `"spatial"`}. `delimiter` defaults to `,` when empty; `include_properties` adds
+    /// flattened `Pset_Prop` columns to the entities view.
     #[wasm_bindgen(js_name = exportCsv)]
     pub fn export_csv(
         &self,
@@ -48,7 +48,8 @@ impl IfcAPI {
     }
 
     /// Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
-    /// IFC4 OWL default.
+    /// IFC4 OWL default. `included` is an express-id isolation filter mirroring the
+    /// OBJ/glTF/STEP exporters (empty ⇒ all entities).
     #[wasm_bindgen(js_name = exportJsonld)]
     pub fn export_jsonld(
         &self,
@@ -57,8 +58,15 @@ impl IfcAPI {
         include_properties: bool,
         include_quantities: bool,
         pretty: bool,
+        included: &[u32],
     ) -> String {
-        let mut opts = JsonLdOptions { include_properties, include_quantities, pretty, ..Default::default() };
+        let mut opts = JsonLdOptions {
+            include_properties,
+            include_quantities,
+            pretty,
+            included: included.to_vec(),
+            ..Default::default()
+        };
         if !context.is_empty() {
             opts.context = context;
         }

@@ -16,16 +16,22 @@ export interface GlbFromGeometryOptions {
   meshes?: MeshData[];
 }
 
+/** The slice of `GeometryProcessor` this helper drives — a test seam (see glb.test.ts). */
+export type GlbProcessor = Pick<GeometryProcessor, 'init' | 'exportGlbFromMeshes' | 'dispose'>;
+
 /**
  * Build a GLB from a `GeometryResult` (or a pre-filtered mesh list) via the Rust
  * from-meshes assembler. Per-element RTC origin rides a glTF node translation.
+ *
+ * `createProcessor` defaults to the real wasm processor; tests inject a stub.
  */
 export async function exportGlbFromGeometry(
   geometryResult: GeometryResult,
   opts: GlbFromGeometryOptions = {},
+  createProcessor: () => GlbProcessor = () => new GeometryProcessor(),
 ): Promise<Uint8Array> {
   const meshes = opts.meshes ?? (geometryResult.meshes as MeshData[]);
-  const gp = new GeometryProcessor();
+  const gp = createProcessor();
   await gp.init();
   try {
     const glb = gp.exportGlbFromMeshes(meshes, opts.includeMetadata ?? false);

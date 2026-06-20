@@ -17,6 +17,9 @@ pub struct JsonLdOptions {
     pub include_properties: bool,
     pub include_quantities: bool,
     pub pretty: bool,
+    /// Express-id isolation filter (mirrors the OBJ/glTF/STEP exporters): when
+    /// non-empty, only these entities are emitted into `@graph`; empty ⇒ all.
+    pub included: Vec<u32>,
 }
 
 impl Default for JsonLdOptions {
@@ -26,6 +29,7 @@ impl Default for JsonLdOptions {
             include_properties: true,
             include_quantities: false,
             pretty: false,
+            included: Vec::new(),
         }
     }
 }
@@ -33,9 +37,19 @@ impl Default for JsonLdOptions {
 /// Export the model as a JSON-LD document string.
 pub fn export_jsonld(content: &[u8], opts: &JsonLdOptions) -> String {
     let model = build_export_model(content);
+    let filter: Option<std::collections::HashSet<u32>> = if opts.included.is_empty() {
+        None
+    } else {
+        Some(opts.included.iter().copied().collect())
+    };
     let mut graph: Vec<Value> = Vec::with_capacity(model.entities.len());
 
     for e in &model.entities {
+        if let Some(set) = &filter {
+            if !set.contains(&e.express_id) {
+                continue;
+            }
+        }
         let mut node = serde_json::Map::new();
         node.insert("@id".into(), json!(format!("ifc:{}", e.express_id)));
         node.insert("@type".into(), json!(format!("ifc:{}", e.ifc_type)));
@@ -128,5 +142,29 @@ mod tests {
         // At least one node carries property sets in the ifc: namespace.
         let has_psets = graph.iter().any(|n| n["ifc:hasPropertySets"].is_array());
         assert!(has_psets, "expected ifc:hasPropertySets somewhere");
+    }
+
+    #[test]
+    fn included_filter_restricts_the_graph() {
+        let bytes = fixture("ara3d/duplex.ifc");
+        // Full model graph → pick two express ids → re-export isolated to them.
+        let full: Value =
+            serde_json::from_str(&export_jsonld(&bytes, &JsonLdOptions::default())).unwrap();
+        let all = full["@graph"].as_array().unwrap();
+        assert!(all.len() > 2, "fixture should have many entities");
+        let pick: Vec<u32> = all
+            .iter()
+            .take(2)
+            .map(|n| n["ifc:expressId"].as_u64().unwrap() as u32)
+            .collect();
+
+        let opts = JsonLdOptions { included: pick.clone(), ..Default::default() };
+        let filtered: Value = serde_json::from_str(&export_jsonld(&bytes, &opts)).unwrap();
+        let graph = filtered["@graph"].as_array().unwrap();
+        assert_eq!(graph.len(), 2, "isolated export emits only the requested ids");
+        for n in graph {
+            let id = n["ifc:expressId"].as_u64().unwrap() as u32;
+            assert!(pick.contains(&id), "unexpected entity {id} in filtered graph");
+        }
     }
 }

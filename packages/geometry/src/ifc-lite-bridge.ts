@@ -393,16 +393,21 @@ export class IfcLiteBridge {
     );
   }
 
-  /** Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL. */
+  /**
+   * Export JSON-LD (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART IFC4 OWL.
+   * `included` is an express-id isolation filter (empty ⇒ all entities), mirroring the
+   * OBJ/glTF/STEP exporters so `--type`/`--storey`/`--where`/`--limit` subsets apply.
+   */
   exportJsonld(
     content: string,
     context = '',
     includeProperties = true,
     includeQuantities = false,
     pretty = false,
+    included: Uint32Array = new Uint32Array(),
   ): string {
     return this.runExport('exportJsonld', content, (api) =>
-      api.exportJsonld(content, context, includeProperties, includeQuantities, pretty),
+      api.exportJsonld(content, context, includeProperties, includeQuantities, pretty, included),
     );
   }
 

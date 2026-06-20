@@ -275,6 +275,16 @@ export async function exportCommand(args: string[]): Promise<void> {
       const isolated = filterActive
         ? new Uint32Array(refs.map((r: any) => r.expressId))
         : new Uint32Array();
+      // An empty isolation set means "export everything" to the Rust exporters, so a
+      // filter that matched nothing would silently dump the whole model. Fail loudly
+      // instead — the user asked for a subset and got zero matches.
+      if (filterActive && isolated.length === 0) {
+        fatal('Filter matched 0 entities — nothing to export. Check --type/--storey/--where/--limit.');
+      }
+      // IFCX is a whole-model USD-style graph; it does not honor the isolation set.
+      if (filterActive && format === 'ifcx') {
+        process.stderr.write('Note: --type/--storey/--where/--limit do not apply to IFCX; exporting the whole model.\n');
+      }
       const { bytes, gp } = await rustExportContext(store, filePath);
       try {
         if (format === 'ifcx') {
@@ -288,7 +298,7 @@ export async function exportCommand(args: string[]): Promise<void> {
           if (out == null) fatal('STEP export failed (geometry pipeline not initialized)');
           await writeOutput(out as string, outPath);
         } else if (format === 'jsonld') {
-          const out = gp.exportJsonld(bytes);
+          const out = gp.exportJsonld(bytes, '', true, false, false, isolated);
           if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
           await writeOutput(out as string, outPath);
         } else if (format === 'obj') {

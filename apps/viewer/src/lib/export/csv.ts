@@ -16,13 +16,21 @@ export interface CsvExportOptions {
   delimiter?: string;
 }
 
-/** Export a CSV view from raw IFC bytes via the Rust pipeline. */
+/** The slice of `GeometryProcessor` this helper drives — a test seam (see csv.test.ts). */
+export type CsvProcessor = Pick<GeometryProcessor, 'init' | 'exportCsv' | 'dispose'>;
+
+/**
+ * Export a CSV view from raw IFC bytes via the Rust pipeline.
+ *
+ * `createProcessor` defaults to the real wasm processor; tests inject a stub.
+ */
 export async function exportCsvFromBytes(
   bytes: Uint8Array,
   mode: CsvMode,
   opts: CsvExportOptions = {},
+  createProcessor: () => CsvProcessor = () => new GeometryProcessor(),
 ): Promise<string> {
-  const gp = new GeometryProcessor();
+  const gp = createProcessor();
   await gp.init();
   try {
     const csv = gp.exportCsv(bytes, mode, opts.delimiter ?? ',', opts.includeProperties ?? false);

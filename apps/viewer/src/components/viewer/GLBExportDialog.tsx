@@ -266,6 +266,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     includeMetadata,
     colorSource,
     visibleOnly,
+    typeVisibility,
     getGlobalHiddenIds,
     getGlobalIsolatedIds,
   ]);

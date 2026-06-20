@@ -19,7 +19,6 @@ Export IFC to GLB directly in the browser with zero setup:
 
     <script type="module">
         import { GeometryProcessor } from "https://cdn.jsdelivr.net/npm/@ifc-lite/geometry@1.2.1/+esm";
-        import { GLTFExporter } from "https://cdn.jsdelivr.net/npm/@ifc-lite/export@1.2.1/+esm";
         import initWasm from "https://cdn.jsdelivr.net/npm/@ifc-lite/wasm@1.2.1/+esm";
 
         // Initialize WASM with explicit path for CDN
@@ -37,8 +36,9 @@ Export IFC to GLB directly in the browser with zero setup:
                 const buffer = new Uint8Array(await file.arrayBuffer());
                 const result = await processor.process(buffer);
 
-                const exporter = new GLTFExporter(result);
-                const glb = exporter.exportGLB();
+                // GLB is assembled in Rust (ifc-lite-export) over the meshes the
+                // processor already produced — no re-meshing.
+                const glb = processor.exportGlbFromMeshes(result.meshes);
 
                 // Download the GLB file
                 const blob = new Blob([glb], { type: "model/gltf-binary" });
@@ -100,68 +100,48 @@ flowchart LR
     IFC --> CSV --> Spreadsheet
 ```
 
-## glTF Export
+## glTF / GLB Export
 
-Export geometry for use in standard 3D viewers:
+GLB is assembled in Rust (`ifc-lite-export`) and reached through `GeometryProcessor`
+in `@ifc-lite/geometry`. (The old `GLTFExporter` class was retired.)
 
 ```typescript
-import { GltfExporter } from '@ifc-lite/export';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 
-const exporter = new GltfExporter();
+const gp = new GeometryProcessor();
+await gp.init();
 
-// Export to glTF (JSON + binary)
-const gltf = await exporter.export(parseResult, {
-  format: 'gltf',
-  embedImages: true,
-  includeProperties: true
-});
-
-// Save files
-await saveFile('model.gltf', gltf.json);
-await saveFile('model.bin', gltf.binary);
-
-// Export to GLB (single binary file)
-const glb = await exporter.export(parseResult, {
-  format: 'glb'
-});
+// From IFC bytes (meshes internally):
+const glb = gp.exportGlb(
+  bytes,                 // Uint8Array of the .ifc
+  true,                  // includeMetadata → expressId/globalId/type in node extras
+  new Uint32Array(),     // hidden  express-ids (empty ⇒ none hidden)
+  new Uint32Array(),     // isolated express-ids (empty ⇒ all visible)
+  '',                    // hidden IFC-type CSV (e.g. 'IfcSpace,IfcOpeningElement')
+);
 await saveFile('model.glb', glb);
+
+// Or, if you already meshed the model, skip the re-mesh:
+const result = await gp.process(bytes);
+const glb2 = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
 ```
+
+`exportGlb` always emits a single binary **GLB** (`model/gltf-binary`). Per-element
+RTC origins ride a glTF node translation so large-coordinate models stay precise.
 
 ### glTF Options
 
-```typescript
-interface GltfExportOptions {
-  // Output format
-  format: 'gltf' | 'glb';
-
-  // Include IFC properties as extras
-  includeProperties?: boolean;
-
-  // Embed textures/images
-  embedImages?: boolean;
-
-  // Draco compression
-  useDraco?: boolean;
-  dracoOptions?: {
-    quantization?: number;
-    compressionLevel?: number;
-  };
-
-  // Filter entities
-  entityFilter?: (entity: Entity) => boolean;
-
-  // Coordinate system
-  yUp?: boolean; // Convert from Z-up to Y-up
-}
-```
+| Parameter | Meaning |
+|-----------|---------|
+| `includeMetadata` | Write `expressId` / `globalId` / `type` (and properties) into each node's `extras` |
+| `hidden` | Express-ids to omit (mirrors the viewer's hide set) |
+| `isolated` | Express-ids to keep; empty ⇒ all visible |
+| hidden-types CSV | IFC class names to drop wholesale, e.g. `IfcSpace,IfcOpeningElement` |
 
 ### glTF with Properties
 
 ```typescript
-const gltf = await exporter.export(parseResult, {
-  format: 'glb',
-  includeProperties: true
-});
+const glb = gp.exportGlb(bytes, /* includeMetadata */ true, new Uint32Array(), new Uint32Array(), '');
 
 // Properties are stored in node extras:
 // {
@@ -281,23 +261,24 @@ print(wall_areas)
 
 Export as linked data for semantic web applications:
 
+JSON-LD is produced in Rust (`ifc-lite-export`) via `GeometryProcessor`:
+
 ```typescript
-import { JsonLdExporter } from '@ifc-lite/export';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 
-const exporter = new JsonLdExporter();
+const gp = new GeometryProcessor();
+await gp.init();
 
-const jsonld = await exporter.export(parseResult, {
-  // Base URI for identifiers
-  baseUri: 'https://example.com/project/',
+const jsonld = gp.exportJsonld(
+  bytes,                 // Uint8Array of the .ifc
+  '',                    // ontology context ('' ⇒ buildingSMART IFC4 ADD2 OWL)
+  true,                  // includeProperties
+  false,                 // includeQuantities
+  true,                  // pretty
+  new Uint32Array(),     // express-id isolation filter (empty ⇒ all entities)
+);
 
-  // Include geometry as GeoJSON
-  includeGeometry: false,
-
-  // IFC ontology namespace
-  ontology: 'https://standards.buildingsmart.org/IFC/DEV/IFC4/ADD2/OWL'
-});
-
-await saveFile('model.jsonld', JSON.stringify(jsonld, null, 2));
+await saveFile('model.jsonld', jsonld);
 ```
 
 ### JSON-LD Structure
@@ -337,27 +318,29 @@ await saveFile('model.jsonld', JSON.stringify(jsonld, null, 2));
 
 Export tabular data for spreadsheet applications:
 
+CSV is produced in Rust (`ifc-lite-export`) via `GeometryProcessor`. The `mode`
+selects the table; `includeProperties` adds flattened `Pset_Prop` columns to the
+entities view:
+
 ```typescript
-import { CsvExporter } from '@ifc-lite/export';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 
-const exporter = new CsvExporter();
+const gp = new GeometryProcessor();
+await gp.init();
 
-// Export entity list
-const entitiesCsv = await exporter.exportEntities(parseResult, {
-  columns: ['expressId', 'type', 'globalId', 'name']
-});
+// mode ∈ 'entities' | 'properties' | 'quantities' | 'spatial'
+const entitiesCsv = gp.exportCsv(bytes, 'entities', ',', /* includeProperties */ true);
 await saveFile('entities.csv', entitiesCsv);
 
-// Export properties (pivoted)
-const propsCsv = await exporter.exportPropertiesPivot(parseResult, {
-  psetName: 'Pset_WallCommon',
-  entityTypes: ['IFCWALL', 'IFCWALLSTANDARDCASE']
-});
-await saveFile('wall_properties.csv', propsCsv);
+const propsCsv = gp.exportCsv(bytes, 'properties');
+await saveFile('properties.csv', propsCsv);
 
-// Export quantities
-const quantsCsv = await exporter.exportQuantities(parseResult);
+const quantsCsv = gp.exportCsv(bytes, 'quantities');
 await saveFile('quantities.csv', quantsCsv);
+
+// Spatial-hierarchy outline (expressId, globalId, name, type, parentId, level)
+const spatialCsv = gp.exportCsv(bytes, 'spatial');
+await saveFile('spatial.csv', spatialCsv);
 ```
 
 ### CSV Output Example
@@ -498,8 +481,11 @@ const custom = exporter.export(store, buffer);
 
 Export only specific entities:
 
+The Rust exporters take an express-id **isolation set** (`isolated`) — empty means
+"all visible". Build it from a query and pass it through:
+
 ```typescript
-import { GltfExporter } from '@ifc-lite/export';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { IfcQuery } from '@ifc-lite/query';
 
 // Filter entities with query
@@ -509,13 +495,15 @@ const externalWalls = query
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
   .toArray();
 
-// Export filtered set
-const exporter = new GltfExporter();
-const glb = await exporter.export(parseResult, {
-  format: 'glb',
-  entityFilter: (entity) =>
-    externalWalls.some(w => w.expressId === entity.expressId)
-});
+const isolated = new Uint32Array(externalWalls.map((w) => w.expressId));
+
+const gp = new GeometryProcessor();
+await gp.init();
+
+// GLB of just the matched walls …
+const glb = gp.exportGlb(bytes, true, new Uint32Array(), isolated, '');
+// … the same `isolated` set also filters OBJ, STEP and JSON-LD:
+const jsonld = gp.exportJsonld(bytes, '', true, false, true, isolated);
 ```
 
 ## Export Pipeline

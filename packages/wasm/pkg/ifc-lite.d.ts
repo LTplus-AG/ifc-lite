@@ -163,9 +163,9 @@ export class IfcAPI {
    */
   parseGridLines(content: string): Float32Array;
   /**
-   * Export tabular **CSV**. `mode` ∈ {`"entities"`, `"properties"`, `"quantities"`}.
-   * `delimiter` defaults to `,` when empty; `include_properties` adds flattened
-   * `Pset_Prop` columns to the entities view.
+   * Export tabular **CSV**. `mode` ∈ {`"entities"`, `"properties"`, `"quantities"`,
+   * `"spatial"`}. `delimiter` defaults to `,` when empty; `include_properties` adds
+   * flattened `Pset_Prop` columns to the entities view.
    */
   exportCsv(content: string, mode: string, delimiter: string, include_properties: boolean): string;
   /**
@@ -179,9 +179,10 @@ export class IfcAPI {
   exportJson(content: string, pretty: boolean, include_properties: boolean, include_quantities: boolean): string;
   /**
    * Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
-   * IFC4 OWL default.
+   * IFC4 OWL default. `included` is an express-id isolation filter mirroring the
+   * OBJ/glTF/STEP exporters (empty ⇒ all entities).
    */
-  exportJsonld(content: string, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean): string;
+  exportJsonld(content: string, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): string;
   /**
    * Re-serialize the model in `content` to a STEP/IFC string.
    *
@@ -1009,7 +1010,7 @@ export interface InitOutput {
   readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
-  readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+  readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
   readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
   readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;

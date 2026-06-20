@@ -629,6 +629,9 @@ importers:
       '@ifc-lite/viewer-core':
         specifier: workspace:^
         version: link:../viewer
+      '@ifc-lite/wasm':
+        specifier: workspace:^
+        version: link:../wasm
     devDependencies:
       '@types/node':
         specifier: ^25.9.3

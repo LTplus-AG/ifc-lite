@@ -16,9 +16,13 @@ mod json;
 mod jsonld;
 mod model;
 mod obj;
+#[cfg(feature = "parquet-bos")]
+mod parquet_bos;
 mod rooms;
 
 pub use csv::{export_csv, CsvMode, CsvOptions};
+#[cfg(feature = "parquet-bos")]
+pub use parquet_bos::{export_bos, ParquetBosOptions};
 pub use gltf::{export_glb, export_glb_with_stats, GltfOptions, GltfStats};
 pub use hbjson::Model;
 pub use json::{export_json, JsonOptions};

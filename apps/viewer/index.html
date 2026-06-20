@@ -14,7 +14,28 @@
       if (theme === 'colorful') document.documentElement.classList.add('colorful');
     })();
   </script>
-  
+
+  <script>
+    // Vercel Skew Protection: pin this browser session to the deployment that
+    // served it. Lazily-fetched, content-hashed assets — notably the geometry
+    // WASM, only fetched when a model is opened — otherwise 404 after a new
+    // production deploy ships fresh hashes ("Failed to execute 'compile' on
+    // 'WebAssembly': HTTP status code is not ok"). The __vdpl cookie makes
+    // Vercel's edge route all subsequent same-origin requests to the matching
+    // deployment. The token below is replaced with the live VERCEL_DEPLOYMENT_ID
+    // at deploy time by scripts/vercel-build.sh, and ONLY when the project's
+    // Skew Protection toggle is on; otherwise it stays as the literal token and
+    // the `dpl_` guard makes this a no-op (localhost, previews, toggle off).
+    (function () {
+      try {
+        var id = '__VDPL_DEPLOYMENT_ID__';
+        if (id.indexOf('dpl_') === 0 && document.cookie.indexOf('__vdpl=') === -1) {
+          document.cookie = '__vdpl=' + id + '; path=/; SameSite=Strict; Secure';
+        }
+      } catch (e) { /* cookies disabled — skew protection simply won't apply */ }
+    })();
+  </script>
+
   <!-- Legacy ICO favicon (for older browsers) -->
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">

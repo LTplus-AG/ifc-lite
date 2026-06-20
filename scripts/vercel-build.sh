@@ -76,4 +76,36 @@ echo "   PATH=$PATH"
 # apps/viewer and apps/viewer-embed.
 FILTER="${1:-@ifc-lite/viewer...}"
 echo "   filter:    $FILTER"
-exec npx turbo build --filter="$FILTER"
+
+npx turbo build --filter="$FILTER"
+build_status=$?
+
+# --- Vercel Skew Protection -------------------------------------------------
+# Pin each browser session to the deployment that served it so lazily-fetched,
+# content-hashed assets (notably the geometry WASM, fetched only when a model is
+# opened) don't 404 after a newer deploy ships fresh hashes — the cause of the
+# production "Failed to execute 'compile' on 'WebAssembly': HTTP status code is
+# not ok" error. apps/viewer/index.html ships a __VDPL_DEPLOYMENT_ID__ token; we
+# substitute the live deployment id here.
+#
+# This runs AFTER turbo (not as a turbo task) on purpose: the value is correct
+# even on a FULL TURBO cache hit, because the cached dist/index.html still holds
+# the literal token and we replace it outside turbo's cache. It only fires when
+# the project's Skew Protection toggle is on (VERCEL_SKEW_PROTECTION_ENABLED=1);
+# otherwise the token is left untouched and the in-page guard is a no-op.
+if [ "$build_status" -eq 0 ] && [ "${VERCEL_SKEW_PROTECTION_ENABLED:-}" = "1" ] && [ -n "${VERCEL_DEPLOYMENT_ID:-}" ]; then
+  injected=0
+  for html in apps/*/dist/index.html; do
+    [ -f "$html" ] || continue
+    if grep -q "__VDPL_DEPLOYMENT_ID__" "$html"; then
+      sed -i.bak "s/__VDPL_DEPLOYMENT_ID__/${VERCEL_DEPLOYMENT_ID}/g" "$html" && rm -f "$html.bak"
+      echo "🔒 Skew Protection: injected $VERCEL_DEPLOYMENT_ID into $html"
+      injected=1
+    fi
+  done
+  [ "$injected" -eq 0 ] && echo "ℹ️  Skew Protection enabled but no __VDPL_DEPLOYMENT_ID__ token found to inject."
+else
+  echo "ℹ️  Skew Protection: __VDPL_DEPLOYMENT_ID__ left unreplaced (toggle off or no deployment id)."
+fi
+
+exit $build_status

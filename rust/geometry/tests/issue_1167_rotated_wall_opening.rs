@@ -80,7 +80,17 @@ fn defects(m: &Mesh) -> (i64, usize) {
             (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]),
         ];
         let area = 0.5 * (cr[0] * cr[0] + cr[1] * cr[1] + cr[2] * cr[2]).sqrt();
-        if area > 1e-9 && maxe * maxe / (2.0 * area) > 50.0 {
+        let degenerate = if area > 1e-9 {
+            // Sliver: tall aspect ratio relative to its (non-zero) area.
+            maxe * maxe / (2.0 * area) > 50.0
+        } else {
+            // Exactly collapsed (collinear / zero-area): a degenerate triangle
+            // that can self-cancel in the edge map and otherwise hide a
+            // fragmented cut (#1259 review). A true point (maxe ~ 0) carries no
+            // surface, so flag only collapsed slivers with real extent.
+            maxe > 1.0e-6
+        };
+        if degenerate {
             needles += 1;
         }
     }

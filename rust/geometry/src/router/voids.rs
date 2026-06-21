@@ -755,8 +755,9 @@ fn project_aabb_in_frame(
             hi[k] = hi[k].max(v);
         }
     }
-    lo.iter()
-        .all(|v| v.is_finite())
+    // Validate BOTH bounds: a +inf projection lands only in `hi`, so checking
+    // `lo` alone could return a non-finite AABB into the cutter path (#1259).
+    (lo.iter().all(|v| v.is_finite()) && hi.iter().all(|v| v.is_finite()))
         .then(|| (Point3::new(lo[0], lo[1], lo[2]), Point3::new(hi[0], hi[1], hi[2])))
 }
 
@@ -2080,18 +2081,43 @@ impl GeometryRouter {
                 OpeningType::Rectangular(..) => return None,
             };
             let (lmn, lmx) = project_aabb_in_frame(cutter, &axes, center)?;
-            match op {
-                // A clean tilted box becomes an axis-aligned rectangular cut in
-                // the frame — the watertight `rect_fast` path.
-                OpeningType::DiagonalRectangular(..) => {
-                    local_openings.push(OpeningType::Rectangular(lmn, lmx, Some(z)));
+            let in_frame =
+                |v: Vector3<f64>| Vector3::new(v.dot(&axes[0]), v.dot(&axes[1]), v.dot(&axes[2]));
+            // The cutter's own penetration (depth) axis expressed in the wall
+            // frame. Drives both the alignment test and — for the exact fallback
+            // — the cap-extension direction, which MUST stay faithful to THIS
+            // cutter: hardcoding the wall normal would push a misaligned
+            // opening's flush/short cap along the wrong axis and carve the wrong
+            // prism (#1270 review).
+            let frame_depth = match op {
+                OpeningType::DiagonalRectangular(_, f) => Some(in_frame(f.depth)),
+                OpeningType::NonRectangular(_, _, _, d) => d.map(in_frame),
+                OpeningType::Rectangular(..) => None,
+            };
+            // Whether THIS opening's own oriented box is axis-aligned in the
+            // wall frame. The frame is seeded from the FIRST rotated opening
+            // (#1167); a second opening tilted differently *in plane* is NOT
+            // axis-aligned here, so projecting its frame AABB would over-cut it
+            // (#1259 review). Only a clean box whose full frame aligns with the
+            // wall frame may take the fast rectangular cut; everything else —
+            // brep/curved voids and frame-misaligned boxes alike — keeps its
+            // exact (un-rotated, centred) mesh for the subtract.
+            let frame_aligned = match op {
+                OpeningType::DiagonalRectangular(_, f) => {
+                    is_axis_aligned_direction(&in_frame(f.depth))
+                        && is_axis_aligned_direction(&in_frame(f.cross_a))
+                        && is_axis_aligned_direction(&in_frame(f.cross_b))
                 }
-                // Curved / brep openings keep their (now un-rotated, centred)
-                // mesh for the exact subtract.
-                _ => {
-                    let mesh_local = mesh_to_frame(cutter, &axes, center);
-                    local_openings.push(OpeningType::NonRectangular(mesh_local, lmn, lmx, Some(z)));
-                }
+                _ => false,
+            };
+            if frame_aligned {
+                local_openings.push(OpeningType::Rectangular(lmn, lmx, Some(z)));
+            } else {
+                let mesh_local = mesh_to_frame(cutter, &axes, center);
+                // Keep this cutter's true depth in the frame; fall back to the
+                // wall normal (+Z) only when the opening carried no direction.
+                let dir = frame_depth.unwrap_or(z);
+                local_openings.push(OpeningType::NonRectangular(mesh_local, lmn, lmx, Some(dir)));
             }
         }
         let local_ctx = VoidContext {

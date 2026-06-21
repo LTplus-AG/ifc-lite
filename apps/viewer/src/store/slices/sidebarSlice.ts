@@ -92,8 +92,14 @@ function normalizeOrder(order: unknown): WorkspacePanelId[] {
       }
     }
   }
+  // Surface registry panels the persisted list never knew about, in
+  // DEFAULT_ORDER order. Hierarchy (#1267) is special: its documented home is
+  // the TOP of the rail, so a first-time migration of an order saved BEFORE it
+  // existed prepends it instead of trailing it at the bottom.
   for (const id of DEFAULT_ORDER) {
-    if (!seen.has(id)) out.push(id);
+    if (seen.has(id)) continue;
+    if (id === 'hierarchy') out.unshift(id);
+    else out.push(id);
   }
   return out;
 }

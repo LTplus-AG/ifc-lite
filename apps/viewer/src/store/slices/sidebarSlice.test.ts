@@ -99,8 +99,10 @@ describe('sidebarSlice (#1208)', () => {
     });
     assert.ok(['expanded', 'collapsed'].includes(s.getState().sidebarMode));
     assert.ok(Number.isFinite(s.getState().sidebarWidthPct));
-    // order: bcf first, no dupes / unknowns, every registry panel present.
-    assert.strictEqual(s.getState().sidebarOrder[0], 'bcf');
+    // order: Hierarchy is migrated to the top (#1267), then the persisted bcf,
+    // no dupes / unknowns, every registry panel present.
+    assert.strictEqual(s.getState().sidebarOrder[0], 'hierarchy');
+    assert.strictEqual(s.getState().sidebarOrder[1], 'bcf');
     assert.strictEqual(new Set(s.getState().sidebarOrder).size, WORKSPACE_PANELS.length);
     // Information is never hidden; a valid id is.
     assert.ok(!s.getState().sidebarHiddenIds.includes('properties'));
@@ -134,6 +136,15 @@ describe('sidebarSlice ordering (#1267)', () => {
     const after = [...s.getState().sidebarOrder].sort();
     assert.deepStrictEqual(after, before);
     assert.strictEqual(s.getState().sidebarOrder.length, WORKSPACE_PANELS.length);
+  });
+
+  it('migrates a pre-#1267 saved order (no Hierarchy) by prepending it to the top', () => {
+    const s = make();
+    // An order persisted before Hierarchy existed in the registry.
+    s.getState().applySidebarLayout({ order: ['properties', 'compare', 'bcf'] });
+    assert.strictEqual(s.getState().sidebarOrder[0], 'hierarchy');
+    assert.strictEqual(s.getState().sidebarOrder[1], 'properties');
+    assert.strictEqual(new Set(s.getState().sidebarOrder).size, WORKSPACE_PANELS.length);
   });
 });
 

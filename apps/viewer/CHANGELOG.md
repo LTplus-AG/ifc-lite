@@ -1,5 +1,42 @@
 # @ifc-lite/viewer
 
+## 1.32.0
+
+### Minor Changes
+
+- [#1285](https://github.com/LTplus-AG/ifc-lite/pull/1285) [`593f02b`](https://github.com/LTplus-AG/ifc-lite/commit/593f02b471a894fd14d395edcfef575de7879738) Thanks [@louistrue](https://github.com/louistrue)! - Clash panel overhaul driven by user feedback ([#1271](https://github.com/LTplus-AG/ifc-lite/issues/1271)–[#1281](https://github.com/LTplus-AG/ifc-lite/issues/1281)):
+
+  - **Find duplicates** — one-click scan for duplicate / coincident objects, the
+    first check on a single discipline model ([#1280](https://github.com/LTplus-AG/ifc-lite/issues/1280)), plus single-model framing in
+    the empty state ([#1271](https://github.com/LTplus-AG/ifc-lite/issues/1271)).
+  - **Sort by severity / overlap depth / distance** and an info box explaining how
+    severity (element-type pair) and hard-vs-clearance / tol-vs-gap work ([#1272](https://github.com/LTplus-AG/ifc-lite/issues/1272),
+    [#1274](https://github.com/LTplus-AG/ifc-lite/issues/1274)).
+  - **Hide touching** toggle + a "touch" badge for ≈0 m contacts ([#1273](https://github.com/LTplus-AG/ifc-lite/issues/1273)).
+  - **Step through a pair** — expandable rows show each object with a plain-language
+    description and per-element select ([#1276](https://github.com/LTplus-AG/ifc-lite/issues/1276)).
+  - **Isolate** the clashing pair (per-row button + "isolate on select" toggle) so
+    a clash can be judged in isolation ([#1275](https://github.com/LTplus-AG/ifc-lite/issues/1275)); the "Highlight all" button is
+    relabelled and explained ([#1278](https://github.com/LTplus-AG/ifc-lite/issues/1278)).
+  - **Create a BCF topic** directly from a clash into the in-app issue tracker, no
+    download/re-import round-trip ([#1279](https://github.com/LTplus-AG/ifc-lite/issues/1279)).
+
+- [#1290](https://github.com/LTplus-AG/ifc-lite/pull/1290) [`07dedbc`](https://github.com/LTplus-AG/ifc-lite/commit/07dedbcaa4f970b26134ae68aef5105761754011) Thanks [@louistrue](https://github.com/louistrue)! - Clash review now has an **X-Ray "Ghost" context** mode ([#1275](https://github.com/LTplus-AG/ifc-lite/issues/1275)). The "On select"
+  control offers Highlight / Isolate / **Ghost**: Ghost keeps the clashing pair
+  solid and fades the rest of the model to translucent context, so a clash can be
+  judged in place without hiding its surroundings. Wires the renderer's
+  `ghostExceptIds` through a new `ghostExceptEntities` visibility channel.
+
+### Patch Changes
+
+- Updated dependencies [[`593f02b`](https://github.com/LTplus-AG/ifc-lite/commit/593f02b471a894fd14d395edcfef575de7879738), [`39400ee`](https://github.com/LTplus-AG/ifc-lite/commit/39400ee5bb48c1554656e1ac7aaf8a06ba2274cf), [`84c9f6e`](https://github.com/LTplus-AG/ifc-lite/commit/84c9f6e09eba2747b37da8f74aa7de23cb9f96d3), [`07dedbc`](https://github.com/LTplus-AG/ifc-lite/commit/07dedbcaa4f970b26134ae68aef5105761754011), [`df607ef`](https://github.com/LTplus-AG/ifc-lite/commit/df607effd3a4cf2e0fb2898e14cb385df6d8e8d0)]:
+  - @ifc-lite/clash@1.2.0
+  - @ifc-lite/renderer@1.29.0
+  - @ifc-lite/parser@3.3.2
+  - @ifc-lite/geometry@2.9.2
+  - @ifc-lite/wasm@2.11.1
+  - @ifc-lite/ids@1.15.16
+
 ## 1.31.0
 
 ### Minor Changes

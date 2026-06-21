@@ -1,5 +1,18 @@
 # @ifc-lite/wasm
 
+## 2.11.1
+
+### Patch Changes
+
+- [#1270](https://github.com/LTplus-AG/ifc-lite/pull/1270) [`df607ef`](https://github.com/LTplus-AG/ifc-lite/commit/df607effd3a4cf2e0fb2898e14cb385df6d8e8d0) Thanks [@louistrue](https://github.com/louistrue)! - Bump the wasm package for the rotated-wall void-overcut fix ([#1167](https://github.com/LTplus-AG/ifc-lite/issues/1167)). The fix is
+  Rust geometry code compiled into `@ifc-lite/wasm`, but its original changeset
+  bumped only `@ifc-lite/geometry` — so the package that actually carries the
+  compiled fix never got a release. This patch bumps `@ifc-lite/wasm` (and
+  cascade-patches `@ifc-lite/geometry`, which depends on it) so consumers pinning
+  the wasm package receive the corrected geometry. Also includes the [#1259](https://github.com/LTplus-AG/ifc-lite/issues/1259)/[#1270](https://github.com/LTplus-AG/ifc-lite/issues/1270)
+  review follow-ups: per-opening frame gating in the local-frame cut, faithful
+  per-cutter depth direction, and a both-bounds finiteness check.
+
 ## 2.11.0
 
 ### Minor Changes

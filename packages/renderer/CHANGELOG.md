@@ -1,5 +1,39 @@
 # @ifc-lite/renderer
 
+## 1.29.0
+
+### Minor Changes
+
+- [#1290](https://github.com/LTplus-AG/ifc-lite/pull/1290) [`07dedbc`](https://github.com/LTplus-AG/ifc-lite/commit/07dedbcaa4f970b26134ae68aef5105761754011) Thanks [@louistrue](https://github.com/louistrue)! - Add `ghostExceptIds` / `ghostAlpha` to `RenderOptions` — an X-Ray _context_ mode
+  that fades every non-selected mesh NOT in the set to a translucent alpha, while
+  the focused subset stays solid. It feeds the existing `transparencyOverrides`
+  alpha path (explicit per-id entries still win, selected meshes stay opaque), so
+  callers can ghost "the rest" of a model without building a Map over every
+  element. Same id space as `isolatedIds`.
+
+### Patch Changes
+
+- [#1291](https://github.com/LTplus-AG/ifc-lite/pull/1291) [`39400ee`](https://github.com/LTplus-AG/ifc-lite/commit/39400ee5bb48c1554656e1ac7aaf8a06ba2274cf) Thanks [@louistrue](https://github.com/louistrue)! - Fix Exploded level-display mode leaving geometry behind ([#1289](https://github.com/LTplus-AG/ifc-lite/issues/1289)).
+
+  Two independent defects made Exploded mode look broken:
+
+  - GPU-instanced occurrences (repeated geometry emitted via `IfcMappedItem`, e.g.
+    windows / mullions) were never lifted with their storey, because the per-entity
+    translate only touched the flat `meshDataMap` and not the instanced shard. They
+    stayed at their native elevation while the rest of the storey rose ("objects
+    left behind"). `Scene.translateInstancedEntity` now shifts each occurrence's
+    transform in both the CPU instance record and the GPU buffer, plus its cached
+    world AABB, so pick / measure / section / export stay correct. This also fixes
+    moving an instanced element with the gizmo.
+
+  - A storey whose `Elevation` attribute is null (common in Revit / ArchiCAD
+    exports) was dropped from the elevation map, so Exploded mode had a single
+    floor to order ("only one floor"). The spatial-hierarchy builder now falls back
+    to the storey's `ObjectPlacement` Z when the attribute is missing.
+
+- Updated dependencies [[`84c9f6e`](https://github.com/LTplus-AG/ifc-lite/commit/84c9f6e09eba2747b37da8f74aa7de23cb9f96d3)]:
+  - @ifc-lite/geometry@2.9.2
+
 ## 1.28.5
 
 ### Patch Changes

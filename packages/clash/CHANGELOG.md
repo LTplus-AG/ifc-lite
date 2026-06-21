@@ -1,5 +1,28 @@
 # @ifc-lite/clash
 
+## 1.2.0
+
+### Minor Changes
+
+- [#1285](https://github.com/LTplus-AG/ifc-lite/pull/1285) [`593f02b`](https://github.com/LTplus-AG/ifc-lite/commit/593f02b471a894fd14d395edcfef575de7879738) Thanks [@louistrue](https://github.com/louistrue)! - Add duplicate / overlapping-element detection and result-analysis helpers.
+
+  `findDuplicates(elements)` runs a cheap AABB + triangle-count pass (uniform hash
+  grid, no narrow phase) to flag accidentally duplicated or coincident objects —
+  the first thing reviewers look for in a single discipline model ([#1280](https://github.com/LTplus-AG/ifc-lite/issues/1280)). It
+  returns a normal `ClashResult` (rule id `duplicates`) so the panel, grouping and
+  BCF export render it with no special-casing.
+
+  New pure helpers in `analysis.ts`: `penetrationDepth`, `isTouching` (identify
+  zero-distance face/edge contacts, [#1273](https://github.com/LTplus-AG/ifc-lite/issues/1273)), `sortClashes` by severity / overlap
+  depth / signed distance ([#1274](https://github.com/LTplus-AG/ifc-lite/issues/1274)), and `SEVERITY_RANK`.
+
+### Patch Changes
+
+- Updated dependencies [[`39400ee`](https://github.com/LTplus-AG/ifc-lite/commit/39400ee5bb48c1554656e1ac7aaf8a06ba2274cf), [`84c9f6e`](https://github.com/LTplus-AG/ifc-lite/commit/84c9f6e09eba2747b37da8f74aa7de23cb9f96d3), [`df607ef`](https://github.com/LTplus-AG/ifc-lite/commit/df607effd3a4cf2e0fb2898e14cb385df6d8e8d0)]:
+  - @ifc-lite/parser@3.3.2
+  - @ifc-lite/geometry@2.9.2
+  - @ifc-lite/wasm@2.11.1
+
 ## 1.1.4
 
 ### Patch Changes

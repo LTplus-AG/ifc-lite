@@ -51,8 +51,14 @@ pub fn load_corpus(blob: &[u8]) -> usize {
     match deserialize(blob) {
         Ok(jobs) => {
             let n = jobs.len();
-            let _ = CORPUS.set(jobs);
-            n
+            // OnceLock: first load wins. If the corpus is already initialized
+            // (a second call in the same wasm instance), keep the existing one
+            // and report ITS length — so the returned count never disagrees
+            // with what `replay` actually iterates.
+            match CORPUS.set(jobs) {
+                Ok(()) => n,
+                Err(_) => CORPUS.get().map_or(0, Vec::len),
+            }
         }
         // Controlled failure (returns 0) instead of trapping on a bad blob.
         Err(_) => 0,

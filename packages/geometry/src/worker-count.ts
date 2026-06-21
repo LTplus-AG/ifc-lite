@@ -95,8 +95,18 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   // was a >512 MB georef result (#1159) — the opposite regime. Give small files
   // near-full parallelism; the memoryCap below still gates if RAM is tight, and
   // `?geomWorkers=N` still overrides per-host.
+  //
+  // Lower bound (MIN_PARALLEL_MB): the caller spawns workers from a file-size
+  // PROXY (`fileSizeMB × 100`) before the pre-pass reports real job counts, so
+  // the totalJobs ceiling below can't yet protect a *light* small model. Gating
+  // the bump to ≥8 MB keeps tiny/simple models (which load in a couple seconds
+  // on a few workers) off the fast path — so we don't pay extra WASM-init/heap
+  // for idle workers on a model with little parallel work — while the 8–64 MB
+  // band, where there's enough geometry to amortize the workers, still scales.
+  // (#1258 review P2.)
   const SMALL_FILE_MB = 64;
-  if (fileSizeMB <= SMALL_FILE_MB && cores >= 10) {
+  const MIN_PARALLEL_MB = 8;
+  if (fileSizeMB >= MIN_PARALLEL_MB && fileSizeMB <= SMALL_FILE_MB && cores >= 10) {
     coresCap = Math.min(maxWorkers, cores - 2);
   } else if (cores >= 16 && deviceMemoryGB >= 16) {
     coresCap = Math.min(maxWorkers, Math.floor(cores / 2));

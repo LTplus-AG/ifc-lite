@@ -152,6 +152,17 @@ describe('computeWorkerCount', () => {
     expect(r.reason).toBe('cores');
   });
 
+  it('tiny file (4 MB, 10 cores) stays on the conservative cap (4), not the bump', () => {
+    // Below MIN_PARALLEL_MB (8): a small/simple model loads fast on a few
+    // workers; the caller spawns from a file-size proxy before real job counts
+    // exist, so we must not pre-spawn workers that would sit idle. (#1258 P2)
+    const r = computeWorkerCount({
+      fileSizeMB: 4, cores: 10, deviceMemoryGB: 16, totalJobs: 400,
+    });
+    expect(r.count).toBe(4);
+    expect(r.reason).toBe('cores');
+  });
+
   it('big file on the same 10-core host still holds the bandwidth cap (3)', () => {
     // The small-file fast path must NOT lift the >512 MB bandwidth ceiling.
     const r = computeWorkerCount({

@@ -707,6 +707,8 @@ fn mesh_to_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vector3<f64>) ->
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
         origin: mesh.origin,
+        // Frame-transformed cut intermediate — not an instanceable occurrence.
+        instance_meta: None,
     }
 }
 
@@ -732,6 +734,8 @@ fn mesh_from_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vector3<f64>) 
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
         origin: mesh.origin,
+        // Frame-transformed cut intermediate — not an instanceable occurrence.
+        instance_meta: None,
     }
 }
 

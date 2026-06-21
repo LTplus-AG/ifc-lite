@@ -21,7 +21,6 @@ import {
   PanelRightOpen,
   EllipsisVertical,
   RotateCcw,
-  EyeOff,
   Eye,
   SquareArrowOutUpRight,
   MonitorUp,
@@ -64,7 +63,10 @@ export function ActivityBar() {
   const [dragId, setDragId] = useState<WorkspacePanelId | null>(null);
   const [overId, setOverId] = useState<WorkspacePanelId | null>(null);
 
-  const visibleIds = order.filter((id) => customizing || !hidden.has(id) || id === 'properties');
+  // Hidden panels are removed from the rail in every mode (#1263), including
+  // customize. Restoring a hidden panel happens in the Customize popover's
+  // dedicated Hidden section, not by an inline greyed icon here.
+  const visibleIds = order.filter((id) => !hidden.has(id) || id === 'properties');
 
   const onIconClick = (id: WorkspacePanelId) => {
     const region = getPanelDef(id)?.region;
@@ -102,15 +104,15 @@ export function ActivityBar() {
           const loc = panelLocation(id);
           const active = loc === 'docked';
           const open = isOpen(id);
-          const isHidden = hidden.has(id);
           const showDivider = prevGroup !== null && def.group !== prevGroup;
           prevGroup = def.group;
 
-          // Accessible name — the Radix tooltip is NOT the button's name, and
+          // Accessible name: the Radix tooltip is NOT the button's name, and
           // tooltips don't fire on touch / for many SR users, so set it
-          // explicitly. In customize mode it describes the show/hide action.
+          // explicitly. In customize mode the action is "hide" (only shown
+          // panels render here now, #1263).
           const ariaLabel = customizing
-            ? `${def.title}, ${isHidden ? 'hidden' : 'shown'} — activate to ${isHidden ? 'show' : 'hide'}`
+            ? `${def.title}, activate to hide from the sidebar`
             : `${def.title}${loc === 'floating' ? ' (floating)' : loc === 'popped' ? ' (popped out)' : ''}`;
 
           return (
@@ -121,7 +123,7 @@ export function ActivityBar() {
                   <button
                     type="button"
                     aria-label={ariaLabel}
-                    aria-pressed={customizing ? !isHidden : active}
+                    aria-pressed={active}
                     draggable={customizing && id !== 'properties'}
                     onDragStart={() => customizing && setDragId(id)}
                     onDragEnd={() => {
@@ -138,7 +140,7 @@ export function ActivityBar() {
                       setDragId(null);
                       setOverId(null);
                     }}
-                    onClick={() => (customizing ? setPanelShownInSidebar(id, isHidden) : onIconClick(id))}
+                    onClick={() => (customizing ? setPanelShownInSidebar(id, false) : onIconClick(id))}
                     className={cn(
                       'relative h-9 w-9 inline-flex items-center justify-center rounded-md transition-colors',
                       active
@@ -147,7 +149,6 @@ export function ActivityBar() {
                       customizing && 'cursor-grab active:cursor-grabbing',
                       dragId === id && 'opacity-40',
                       overId === id && dragId && dragId !== id && 'ring-1 ring-primary/60',
-                      customizing && isHidden && 'opacity-40',
                     )}
                   >
                     {/* Active accent bar (VS Code idiom) */}
@@ -165,17 +166,13 @@ export function ActivityBar() {
                         aria-hidden
                       />
                     )}
-                    {/* Customize-mode eye marker on hidden panels. */}
-                    {customizing && isHidden && (
-                      <EyeOff className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 text-muted-foreground" aria-hidden />
-                    )}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="left">
                   {def.title}
                   <span className="text-muted-foreground">
                     {customizing
-                      ? isHidden ? ' · hidden — click to show' : ' · click to hide'
+                      ? ' · click to hide'
                       : `${ALT_LABEL.get(id) ? ` · ${ALT_LABEL.get(id)}` : ''}${loc === 'floating' ? ' · floating' : loc === 'popped' ? ' · popped out' : ''}`}
                   </span>
                 </TooltipContent>

@@ -847,8 +847,31 @@ impl GeometryRouter {
                     // Apply MappedItem transform to newly added sub-meshes
                     if let Some(mut transform) = mapping_transform.clone() {
                         self.scale_transform(&mut transform);
+                        // The MappingTarget is baked into the vertices here, but
+                        // `rep_identity` was hashed from the canonical (pre-target)
+                        // geometry during the recursion. Two occurrences sharing a map
+                        // with DIFFERENT targets would therefore collate under one
+                        // template and reuse the reference's target offset/orientation.
+                        // When the target actually changes the geometry, re-hash the
+                        // post-target local geometry so rep_identity matches what is
+                        // baked. Identity targets (the common Revit case) leave the
+                        // geometry unchanged, so the canonical hash already matches —
+                        // skip the re-hash there to avoid the O(verts) cost.
+                        let nontrivial_target = !transform.is_identity(1e-9);
                         for sub in &mut sub_meshes.sub_meshes[count_before..] {
                             self.transform_mesh_local(&mut sub.mesh, &transform);
+                            if nontrivial_target
+                                && sub
+                                    .mesh
+                                    .instance_meta
+                                    .as_ref()
+                                    .is_some_and(|im| im.instanceable)
+                            {
+                                let h = Self::compute_mesh_hash_full(&sub.mesh) | DIRECT_SOLID_TAG;
+                                if let Some(im) = sub.mesh.instance_meta.as_mut() {
+                                    im.rep_identity = h;
+                                }
+                            }
                         }
                     }
                 }

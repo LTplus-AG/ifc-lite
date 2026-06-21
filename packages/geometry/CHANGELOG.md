@@ -1,5 +1,86 @@
 # @ifc-lite/geometry
 
+## 2.9.1
+
+### Patch Changes
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - GPU-instancing review follow-ups: reject truncated instanced-shard cache payloads
+  and instances referencing missing templates; carry geometry-diff hashes for
+  instanced-only entities so model compare still detects their changes; fix the
+  raycast BVH to rebuild on a same-count-different-members instanced set and the
+  instanced-piece dedup key collision; tombstone instanced-only entities on
+  delete/split; wire instanced occurrences into the CPU enumeration / raycast
+  paths; reset instancing metadata in Mesh::clear; guard verify_recomposition
+  against vertex-count mismatches; validate the transparent-instanced pipeline via
+  a GPU error scope.
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Add a decoder for the instanced ("IFNS") geometry shard format
+  (`decodeInstancedShard`, `isInstancedShard`). It mirrors the Rust
+  `encode_instanced`/`decode_instanced` codec and carries each unique template
+  geometry once plus a per-occurrence instance row (transform + entity id +
+  colour), so a future renderer path can upload a template once and GPU-instance
+  its occurrences. Additive and unused by the default path; verified against a
+  Rust-produced fixture (cross-language round-trip + expand-to-flat).
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Render genuinely-repeated opaque geometry via GPU instancing. The geometry worker
+  now produces each batch once via `processGeometryBatchPartitioned`, which routes
+  occurrences by per-batch repetition: a geometry whose `rep_identity` occurs at
+  least `INSTANCE_MIN_OCCURRENCES` (8) times in the batch collapses to one template
+
+  - per-occurrence transforms in a GPU-instancing shard; everything else
+    (singletons, low-count, non-instanceable, plus all transparent / textured /
+    type-template geometry) goes to the flat `MeshCollection` and is consolidated +
+    frustum-culled exactly as before. This keeps the instancing upload/memory win for
+    truly-repeated geometry (mullions, fasteners, identical parts) while keeping
+    unique geometry on the cheap consolidated draw path — instancing every singleton
+    as a 1-instance template would issue one draw call per mesh and tank orbit
+    framerate. The shard is posted as `instancedShards`, decoded, and GPU-instanced;
+    picking, selection highlight, and colour overlays (lens / IDS / compare / 4D) all
+    operate per-instance, so the instanced path is at feature parity with the flat
+    path. The streamed mesh total counts both routes. Falls back to the flat-only path
+    when the loaded wasm predates the partitioned export.
+
+- [#1259](https://github.com/LTplus-AG/ifc-lite/pull/1259) [`b125ae6`](https://github.com/LTplus-AG/ifc-lite/commit/b125ae60f0a7227ea42dfb0f95230e29c7f645ff) Thanks [@louistrue](https://github.com/louistrue)! - Fix oversized, fragmented openings cut from walls rotated in plan ([#1167](https://github.com/LTplus-AG/ifc-lite/issues/1167), "weird
+  wall hole cutting").
+
+  A vertical wall rotated in plan (a façade off the project grid, or a whole
+  building rotated relative to the world axes) had its windows and doors cut
+  wrong: the openings came out far larger than they should and the wall fragmented
+  into rim slivers and cracks. On a real reporter model the worst wall lost 86% of
+  its volume to five openings and came back with ~236 unpaired edges. Two causes,
+  both from cutting a _tilted_ opening box in _world_ space:
+
+  - The opening was routed onto the fast world-axis-aligned-AABB cut path whenever
+    its extrusion direction sat within ~18° of a world axis (the
+    `is_axis_aligned_direction` tolerance of 0.95). The AABB of a rotated box is
+    strictly larger than the box — an oversized, grid-aligned hole.
+  - Even via the exact mesh subtract, a tilted cut at large world coordinates
+    (≈150 m, where f32 ≈ 15 µm) over-cuts and fragments.
+
+  The tolerance is tightened to `cos(1°)`, and — the real fix — a plan-rotated
+  wall is now cut in its own axis-aligned, origin-centred frame: the host and its
+  openings are rotated into that frame (where they are world-axis-aligned and near
+  the origin, so the exact subtract is clean and f32-precise), cut there (clean
+  boxes take the watertight `rect_fast` path; brep/curved openings keep their
+  mesh), then the result is rotated back. A rotated wall now cuts like a straight
+  one — the right volume, watertight, no slivers — at any rotation angle. The path
+  is tightly scoped to plan-rotated walls, so axis-aligned walls and
+  roof/floor/sloped openings are untouched.
+
+  Adds regression tests: `rotated_wall_opening_is_not_overcut` and
+  `rotated_opening_cuts_clean_at_every_angle` (synthetic, 3–45°, clean and
+  tessellated profiles), plus `rotated_wall_openings_not_overcut_or_fragmented`,
+  pinned on a real `IfcWallStandardCase` isolated from the reporter's model (five
+  openings, full placement chain) — 22.5 m³ over-cut + 236 unpaired edges before,
+  ~13 m³ and watertight after.
+
+- [#1258](https://github.com/LTplus-AG/ifc-lite/pull/1258) [`7f5e543`](https://github.com/LTplus-AG/ifc-lite/commit/7f5e543fee7b8f92109bf1b581120f3571f1e445) Thanks [@louistrue](https://github.com/louistrue)! - Give small, compute-bound IFC files more geometry workers on active-cooled
+  (10+ core) machines. The per-core caps were tuned to a bandwidth ceiling
+  measured on a >512 MB georef result, but small models (e.g. a 20 MB
+  boolean-clipped steel file) are CPU-bound, not bandwidth-bound — the 3–4
+  worker cap left most cores idle. Files ≤64 MB now scale to `cores-2` workers
+  (memory budget and `?geomWorkers=N` override still apply).
+
 ## 2.9.0
 
 ### Minor Changes

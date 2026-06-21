@@ -1,5 +1,58 @@
 # @ifc-lite/renderer
 
+## 1.28.5
+
+### Patch Changes
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Bring GPU-instanced occurrences to full feature parity with the flat path so they
+  behave correctly across every consumer, not just the opaque render:
+
+  - **Hide / isolate**: a per-instance hidden flag (shader discard in both the render
+    and pick passes) driven by `Scene.setInstancedVisibility(hiddenIds, isolatedIds)`,
+    so hidden/isolated instanced elements neither draw nor are pickable.
+  - **Transparency**: a transparent instanced pipeline (alpha blend, no depth write) +
+    a second instanced sub-pass for occurrences a lens-ghost / x-ray / compare override
+    made translucent — previously they rendered solid. Zero-cost when nothing is ghosted.
+  - **CPU consumers**: a compact CPU view of the instanced templates (geometry +
+    per-occurrence matrices) yields per-occurrence world AABBs (folded into
+    `boundingBoxes`, so `getEntityBoundingBox` / bbox-raycast / BCF resolve instanced
+    ids) and lazy on-demand `getInstancedMeshDataPieces` for exact raycast — wired into
+    the raycast-engine (measure-snap, section-by-face) with a ray-AABB pre-cull. New
+    `getInstancedEntityBounds`, `getInstancedEntityIds`, `getAllInstancedMeshData`,
+    `isInstancedEntity` accessors. The memory win holds: geometry is materialized on
+    demand, never retained as N full copies.
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Add the WebGPU GPU-instancing draw path: a `vs_instanced` shader entry + parallel
+  instanced pipeline (template vertex buffer at slot 0, per-occurrence buffer at
+  slot 1 carrying mat4 + entityId + rgba) drawn as `drawIndexed(indexCount,
+instanceCount)`, plus `Scene.addInstancedShard` to upload a decoded IFNS shard.
+  The fragment shader now reads a `color` interstage varying (equivalent to the
+  prior `uniforms.baseColor` for the flat path; per-occurrence for the instanced
+  path). The pass is additive and **inert until a shard is fed** (no templates ⇒ no
+  draws ⇒ the flat path is byte-identical), so nothing renders through it yet — the
+  worker→main shard plumbing is a follow-up.
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - Add GPU-instancing render prep (`prepareInstancedRender`, `composeInstanceMatrix`)
+  that turns a decoded IFNS shard into render-ready templates: each unique geometry
+  once plus a per-instance buffer (mat4 + entityId + rgba) for `drawIndexed(.., instanceCount)`.
+  The per-instance matrix folds the constant IFC Z-up→WebGL Y-up swap into
+  `SWAP·rel_k·T(origin)`, so instanced occurrences land in the exact same world
+  frame the flat path produces (`swap(rel_k·(origin+p)) == swap(origin_k+p_k)`),
+  verified GPU-free against an independent re-derivation. Additive and unused by the
+  default draw path until the instanced pipeline is wired.
+
+- [#1238](https://github.com/LTplus-AG/ifc-lite/pull/1238) [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b) Thanks [@louistrue](https://github.com/louistrue)! - GPU-instancing review follow-ups: reject truncated instanced-shard cache payloads
+  and instances referencing missing templates; carry geometry-diff hashes for
+  instanced-only entities so model compare still detects their changes; fix the
+  raycast BVH to rebuild on a same-count-different-members instanced set and the
+  instanced-piece dedup key collision; tombstone instanced-only entities on
+  delete/split; wire instanced occurrences into the CPU enumeration / raycast
+  paths; reset instancing metadata in Mesh::clear; guard verify_recomposition
+  against vertex-count mismatches; validate the transparent-instanced pipeline via
+  a GPU error scope.
+- Updated dependencies [[`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b), [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b), [`e753e96`](https://github.com/LTplus-AG/ifc-lite/commit/e753e96f9b76cc406e52a7bd9c36b312dc14bf6b), [`b125ae6`](https://github.com/LTplus-AG/ifc-lite/commit/b125ae60f0a7227ea42dfb0f95230e29c7f645ff), [`7f5e543`](https://github.com/LTplus-AG/ifc-lite/commit/7f5e543fee7b8f92109bf1b581120f3571f1e445)]:
+  - @ifc-lite/geometry@2.9.1
+
 ## 1.28.4
 
 ### Patch Changes

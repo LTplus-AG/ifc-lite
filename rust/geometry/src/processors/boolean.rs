@@ -1092,6 +1092,15 @@ impl BooleanClippingProcessor {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
                 return Ok(mesh);
             }
+            // Preview-mode (Lowest/Low) small-cut skip: a cutter far smaller than
+            // its host (a steel cope/notch, a small detail recess) costs a full
+            // exact subtract — the dominant load-time cost on boolean-heavy steel —
+            // for a barely-visible change. In the preview tiers we drop it and
+            // render the host un-cut, recovering Manifold-class load times.
+            // Medium/High/Highest keep EVERY cut (byte-identical to before).
+            if quality_skips_small_cuts(quality) && cutter_below_skip_ratio(&mesh, &second_mesh) {
+                return Ok(mesh);
+            }
             let clipper = ClippingProcessor::new();
             let result = clipper.subtract_mesh(&mesh, &second_mesh);
             self.drain_clipper_failures(&clipper);
@@ -1133,6 +1142,44 @@ impl BooleanClippingProcessor {
         );
         Ok(mesh)
     }
+}
+
+/// Whether this tessellation tier drops sub-threshold boolean cuts (preview
+/// tiers only). `Medium` (the default) and finer keep every cut, so their
+/// geometry is byte-identical to before this optimization.
+fn quality_skips_small_cuts(quality: TessellationQuality) -> bool {
+    matches!(quality, TessellationQuality::Lowest | TessellationQuality::Low)
+}
+
+/// Skip ratio for preview-mode small-cut dropping: cutter max-dimension as a
+/// fraction of host max-dimension. Default 0.10 (≈ Manifold-era load times on
+/// the steel corpus with no visible change to members). Native callers can tune
+/// it via `IFC_LITE_FAST_CUT_RATIO`; in wasm (no env) the default applies.
+fn fast_cut_skip_ratio() -> f64 {
+    use std::sync::OnceLock;
+    static R: OnceLock<f64> = OnceLock::new();
+    *R.get_or_init(|| {
+        std::env::var("IFC_LITE_FAST_CUT_RATIO")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .unwrap_or(0.10)
+    })
+}
+
+/// True when `cutter`'s largest bounding-box dimension is below
+/// [`fast_cut_skip_ratio`] of `host`'s — i.e. a small local cut worth skipping in
+/// the preview tiers. Degenerate (zero-extent) hosts never skip.
+fn cutter_below_skip_ratio(host: &Mesh, cutter: &Mesh) -> bool {
+    let max_dim = |m: &Mesh| -> f64 {
+        let (mn, mx) = m.bounds();
+        (((mx.x - mn.x) as f64).max((mx.y - mn.y) as f64)).max((mx.z - mn.z) as f64)
+    };
+    let h = max_dim(host);
+    if h <= 0.0 {
+        return false;
+    }
+    max_dim(cutter) / h < fast_cut_skip_ratio()
 }
 
 /// Decide whether `plane` (point + outward normal) is coincident with one

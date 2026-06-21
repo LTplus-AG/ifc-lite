@@ -330,7 +330,9 @@ export function SidebarPanelHost() {
   // A docked analysis panel, optionally split with a second panel below.
   if (!secondaryActive) {
     return (
-      <div className="h-full flex flex-col panel-container">
+      // data-detach-root lets usePanelDetachDrag lift from the current docked
+      // bounds instead of falling back to default float geometry.
+      <div data-detach-root className="h-full flex flex-col panel-container">
         <PanelChromeBar detachId={shown} />
         <div className="flex-1 min-h-0 overflow-hidden">{renderPanelBody(shown, () => closePanel(shown))}</div>
       </div>

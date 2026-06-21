@@ -175,12 +175,15 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-output
-          # `packages/*/pkg` covers `wasm/pkg`, which downstream
-          # `pnpm build` calls require.
+          # `packages/*/pkg` covers `wasm/pkg`; `packages/*/pkg-threaded`
+          # covers `wasm/pkg-threaded` (the threaded WASM bundle, built by
+          # build-wasm.sh by default) — downstream viewer builds resolve
+          # `@ifc-lite/wasm/threaded` against it, so it must ride the artifact.
           path: |
             packages/*/dist
             packages/*/wasm
             packages/*/pkg
+            packages/*/pkg-threaded
           retention-days: 1
           if-no-files-found: error
 

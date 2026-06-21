@@ -1836,6 +1836,13 @@ export class Renderer {
                 // IFC Z-up→WebGL Y-up swap, so the uniform's model is unused here;
                 // we reuse the frame's viewProj + section + flags from `tpl`.
                 const instancedTemplates = this.scene.getInstancedTemplates();
+                // [INST-DBG] one-shot: does the opaque instanced draw actually run?
+                if (!(this as unknown as { _instDbg?: boolean })._instDbg) {
+                    (this as unknown as { _instDbg?: boolean })._instDbg = true;
+                    let n = 0; for (const it of instancedTemplates) n += it.instanceCount;
+                    // eslint-disable-next-line no-console
+                    console.log(`[INST-DBG] RENDER: getInstancedTemplates=${instancedTemplates.length} totalInstanceCount=${n} instancedVisible=${(this.scene as unknown as { instancedVisible?: boolean }).instancedVisible} hasTransparentInst=${this.scene.hasTransparentInstances?.()}`);
+                }
                 if (instancedTemplates.length > 0) {
                     // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
                     // shader routes per-instance opacity: opaque (or selected) occurrences

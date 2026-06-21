@@ -32,6 +32,38 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // itself so its overlay-path logic stays unit-testable.
 import './lib/placement-edit.boot';
 
+// Post-mount chunk recovery — complements the inline boot self-heal in
+// index.html. The boot watchdog handles the ENTRY failing to load; this handles
+// a LAZY chunk (exporters / ids / bcf / sandbox …) 404ing after a newer deploy
+// ships fresh hashes mid-session. Vite dispatches `vite:preloadError` for that;
+// reload once (sessionStorage-bounded) to pull the matching new chunks.
+window.addEventListener('vite:preloadError', (event) => {
+  const KEY = 'ifc-lite:chunk-reload';
+  let n = 0;
+  try {
+    n = Number(sessionStorage.getItem(KEY)) || 0;
+  } catch {
+    /* sessionStorage unavailable (private mode) — fall through, let it surface */
+  }
+  if (n >= 1) return; // already retried this session — let the error surface
+  try {
+    sessionStorage.setItem(KEY, String(n + 1));
+  } catch {
+    /* ignore */
+  }
+  // Stop Vite from re-throwing as an unhandled rejection; we own the recovery.
+  event.preventDefault();
+  window.location.reload();
+});
+
+// Reaching here means the entry executed and is about to mount, so any prior
+// boot/chunk reload succeeded — reset the chunk guard for a fresh budget.
+try {
+  sessionStorage.removeItem('ifc-lite:chunk-reload');
+} catch {
+  /* ignore */
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

@@ -853,10 +853,17 @@ impl GeometryRouter {
 
         let mesh = self.process_representation_item_uncached(item, decoder)?;
 
-        // Cache the freshly-meshed item under its structural hash. Empty meshes
-        // (unsupported/degenerate geometry) are never cached.
+        // Cache the freshly-meshed item under its structural hash. Two exclusions:
+        //  - empty meshes (unsupported/degenerate geometry);
+        //  - results produced once the per-element CSG budget has tripped. On a
+        //    trip the boolean bails and `subtract_mesh` returns the UNCUT host
+        //    (records `OperandTooLarge`); since the dedup key is budget-independent
+        //    (structure/quality/scale/RTC), caching that fallback would serve the
+        //    wrong (uncut) mesh to later identical booleans in a fresh-budget
+        //    element (`budget::begin_element()` resets per element). Correctness of
+        //    the cut wins over deduping a degraded result. (#1257 review P1.)
         if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
-            if !mesh.positions.is_empty() {
+            if !mesh.positions.is_empty() && !crate::kernel::budget::tripped() {
                 cache
                     .lock()
                     .expect("dedup cache poisoned")

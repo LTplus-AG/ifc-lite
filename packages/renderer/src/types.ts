@@ -207,6 +207,13 @@ export interface RenderOptions {
    * `null`/absent disables ghosting. Selected meshes (`selectedId`/`selectedIds`)
    * are always exempt, and explicit {@link transparencyOverrides} entries win
    * over the ghost alpha. Same id space as `isolatedIds` (federated global id).
+   *
+   * Mixed colour batches resolve to the minimum alpha among their non-selected
+   * entities (same as {@link transparencyOverrides}), so an excepted id that
+   * shares a batch with ghosted ids fades with the batch unless it is also in
+   * `selectedIds` — the selection highlight pass then repaints it opaque. To
+   * guarantee a focused entity stays fully solid, include it in `selectedIds`
+   * (the clash viewer co-selects the focused pair for exactly this reason).
    */
   ghostExceptIds?: Set<number> | null;
   /** Alpha (0..1) for ghosted meshes under {@link ghostExceptIds}. Default 0.12. */

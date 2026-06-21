@@ -197,7 +197,15 @@ export class SpatialHierarchyBuilder {
     // Extract elevation for storeys (apply unit scale to convert to meters)
     let elevation: number | undefined;
     if (typeEnum === IfcTypeEnum.IfcBuildingStorey) {
-      const rawElevation = this.extractElevation(expressId, source, entityIndex);
+      let rawElevation = this.extractElevation(expressId, source, entityIndex);
+      if (rawElevation === undefined) {
+        // The Elevation attribute is optional and is frequently left null (common
+        // in Revit / ArchiCAD exports). Fall back to the storey's Z from its
+        // ObjectPlacement so a storey without an explicit elevation still orders +
+        // lifts correctly in Exploded mode instead of being dropped from the sort,
+        // which made the model look like it had a single floor (#1289).
+        rawElevation = this.extractPlacementElevation(expressId, source, entityIndex);
+      }
       if (rawElevation !== undefined) {
         // Apply unit scale to convert to meters
         elevation = rawElevation * lengthUnitScale;
@@ -361,6 +369,61 @@ export class SpatialHierarchyBuilder {
       // Elevation extraction is optional - log for debugging but don't fail
       log.caught('Failed to extract elevation', error, {
         operation: 'extractElevation',
+        entityId: expressId,
+        entityType: 'IfcBuildingStorey',
+      });
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Resolve a storey's elevation from its ObjectPlacement, used as a fallback when
+   * the Elevation attribute is null. Walks
+   *   IfcBuildingStorey.ObjectPlacement (IfcLocalPlacement)
+   *     -> RelativePlacement (IfcAxis2Placement3D)
+   *       -> Location (IfcCartesianPoint).Coordinates[2]
+   * i.e. the storey's Z relative to its parent spatial container. That matches the
+   * semantics of the Elevation attribute (relative to the building), so it stays
+   * consistent with sibling storeys that DO carry the attribute, and it avoids
+   * folding in any site-level georeferencing Z. Returns the raw (unscaled) Z, or
+   * undefined when the placement chain can't be resolved.
+   */
+  private extractPlacementElevation(
+    expressId: number,
+    source: Uint8Array,
+    entityIndex: { byId: { get(expressId: number): EntityRef | undefined } }
+  ): number | undefined {
+    try {
+      const extractor = new EntityExtractor(source);
+      const readAttrs = (id: number): unknown[] | undefined => {
+        const ref = entityIndex.byId.get(id);
+        if (!ref) return undefined;
+        return extractor.extractEntity(ref)?.attributes ?? undefined;
+      };
+
+      // IfcBuildingStorey.ObjectPlacement is attribute index 5.
+      const placementId = readAttrs(expressId)?.[5];
+      if (typeof placementId !== 'number') return undefined;
+
+      // IfcLocalPlacement(PlacementRelTo, RelativePlacement) — RelativePlacement
+      // (index 1) is the IfcAxis2Placement3D carrying this storey's own offset.
+      const axisId = readAttrs(placementId)?.[1];
+      if (typeof axisId !== 'number') return undefined;
+
+      // IfcAxis2Placement3D(Location, Axis, RefDirection) — Location (index 0) is
+      // an IfcCartesianPoint.
+      const locationId = readAttrs(axisId)?.[0];
+      if (typeof locationId !== 'number') return undefined;
+
+      // IfcCartesianPoint.Coordinates (index 0) is a list [x, y, z].
+      const coords = readAttrs(locationId)?.[0];
+      if (Array.isArray(coords) && coords.length >= 3 && typeof coords[2] === 'number') {
+        return coords[2];
+      }
+    } catch (error) {
+      log.caught('Failed to extract placement elevation', error, {
+        operation: 'extractPlacementElevation',
         entityId: expressId,
         entityType: 'IfcBuildingStorey',
       });

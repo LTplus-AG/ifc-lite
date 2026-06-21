@@ -8,9 +8,9 @@
  * Chrome around an arbitrary panel: a drag-by-header title bar, float controls
  * and a resize affordance. The float controls are two distinct ideas, and the
  * labels keep them apart (#1264):
- *   - SNAP left / right / bottom / free — positions the *floating overlay*; it
+ *   - SNAP left / right / bottom / free: positions the *floating overlay*; it
  *     still sits ON TOP of the model (the 3D view stays full size behind it).
- *   - DOCK — re-docks the panel into the sidebar, which RESERVES space so the
+ *   - DOCK: re-docks the panel into the sidebar, which RESERVES space so the
  *     panel and the model sit side by side (and can be split, #1266).
  *
  * Geometry lives in the dock slice so it persists and survives re-render; this
@@ -189,18 +189,18 @@ export function FloatingPanel({
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-xs font-medium truncate min-w-0 flex-1">{title}</span>
         <div className="flex items-center gap-0.5 shrink-0">
-          {/* Float positioning — overlay; the model stays full size behind it. */}
+          {/* Float positioning (overlay); the model stays full size behind it. */}
           {snapBtn('left', PanelLeft, 'Snap left (overlay)')}
           {snapBtn('bottom', PanelBottom, 'Snap bottom (overlay)')}
           {snapBtn('right', PanelRight, 'Snap right (overlay)')}
           {snapBtn('free', Square, 'Free float')}
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
-          {/* Dock — reserves space (panel + model side by side). */}
+          {/* Dock reserves space (panel + model side by side). */}
           <button
             type="button"
             data-no-drag
             title="Dock into sidebar (reserves space)"
-            aria-label="Dock into sidebar — reserves space beside the model"
+            aria-label="Dock into sidebar (reserves space beside the model)"
             onClick={onDock}
             className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
           >

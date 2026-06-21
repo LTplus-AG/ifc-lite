@@ -40,7 +40,7 @@ import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { CustomizeSidebar } from './CustomizeSidebar';
 
-/** Alt+N hint per panel — by registry index (frozen since #1200): 1-9, then 0.
+/** Alt+N hint per panel, by registry index (frozen since #1200): 1-9, then 0.
  *  Only the first ten registry entries get a shortcut; later additions (e.g.
  *  Hierarchy, #1267) have none, so the map is limited to the first ten. */
 const ALT_LABEL = new Map<WorkspacePanelId, string>(
@@ -68,8 +68,8 @@ export function ActivityBar() {
 
   const onIconClick = (id: WorkspacePanelId) => {
     const region = getPanelDef(id)?.region;
-    // The left nav panel (Hierarchy, #1267) lives in its own slot — just toggle
-    // it; it never affects the right-pane sidebar mode.
+    // The left nav panel (Hierarchy, #1267) lives in its own slot, so just
+    // toggle it; it never affects the right-pane sidebar mode.
     if (region === 'left') {
       toggle(id);
       return;

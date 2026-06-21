@@ -72,7 +72,7 @@ export function usePanelControls(): PanelControls {
   const listVisible = useViewerStore((s) => s.listPanelVisible);
   // The Hierarchy panel (left region, #1267) is "docked" while its slot is open.
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
-  // The lower half of a docked split (#1266) — also docked/visible.
+  // The lower half of a docked split (#1266), also docked/visible.
   const secondaryPanel = useViewerStore((s) => s.sidebarSecondaryPanel);
 
   const floatingIds = useMemo(
@@ -90,7 +90,7 @@ export function usePanelControls(): PanelControls {
     return null;
   }, [activePanel, floatingIds, poppedIds]);
 
-  // The panel actually rendered in the lower split half — mirrors
+  // The panel actually rendered in the lower split half, mirroring
   // SidebarPanelHost's `secondaryActive`: set, inline (not floated / popped), and
   // distinct from the primary. So the rail reflects it as docked, not closed.
   const secondaryDocked = useMemo<WorkspacePanelId | null>(() => {
@@ -126,7 +126,7 @@ export function usePanelControls(): PanelControls {
   );
 
   const openInHome = useCallback((id: WorkspacePanelId) => {
-    // Hierarchy's home is the left slot — reveal it instead of routing through
+    // Hierarchy's home is the left slot, so reveal it instead of routing through
     // the right-pane / bottom-strip flags (#1267).
     if (isLeftPanel(id)) {
       useViewerStore.getState().setLeftPanelCollapsed(false);
@@ -141,9 +141,9 @@ export function usePanelControls(): PanelControls {
       s.setLeftPanelCollapsed(!s.leftPanelCollapsed);
       return;
     }
-    // If the panel is the lower split half it's already docked below — toggling
-    // its rail icon closes that half (clears the split) rather than promoting it
-    // to primary and collapsing the split out from under it (#1266).
+    // If the panel is the lower split half it's already docked below, so
+    // toggling its rail icon closes that half (clears the split) rather than
+    // promoting it to primary and collapsing the split out from under it (#1266).
     if (useViewerStore.getState().sidebarSecondaryPanel === id) {
       useViewerStore.getState().setSidebarSecondaryPanel(null);
       return;
@@ -153,7 +153,7 @@ export function usePanelControls(): PanelControls {
   }, []);
 
   const floatPanel = useCallback((id: WorkspacePanelId) => {
-    // The left nav panel stays docked on the left — never floats (#1267).
+    // The left nav panel stays docked on the left; it never floats (#1267).
     if (isLeftPanel(id)) {
       useViewerStore.getState().setLeftPanelCollapsed(false);
       return;

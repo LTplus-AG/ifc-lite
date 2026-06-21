@@ -472,7 +472,7 @@ export function HierarchyPanel() {
           setLevelDisplayMode('solo');
           // Mirror to the advanced filter: one storey rule = this storey (issue #1107).
           upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey([node.name], 'in'));
-          // Phrase it as Solo so the storey-row → Solo link is obvious (#1265).
+          // Phrase it as Solo so the storey-row to Solo link is obvious (#1265).
           toast.success(`Solo: showing only ${node.name}`);
         }
       }

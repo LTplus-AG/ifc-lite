@@ -5,28 +5,30 @@
 /**
  * The docked sidebar's content pane (#1208, split added in #1266).
  *
- * Renders the active workspace panel, and — when the user splits it — a SECOND
+ * Renders the active workspace panel, and, when the user splits it, a SECOND
  * panel stacked beneath it with a draggable divider (Blender-style). Both halves
  * reserve real layout space (the pane is a flex sibling of the viewport), so a
  * split is "model | Information / IDS", never an overlay. Floating (#1201) stays
  * a separate overlay channel.
  *
  * Each panel ships its own header (title + close), so the sidebar adds only a
- * slim **grab bar**: a dot-grid grip you drag to detach, a Split control, and a
- * chevron that collapses the pane to the rail.
+ * slim grab bar on top: a dot-grid grip you drag to detach, a Split control, and
+ * a chevron that collapses the pane to the rail. The two stacked panels read as
+ * a matched pair joined by one resize handle (which also carries the
+ * remove-split action), so neither half repeats a title.
  *
  * The detach drag is LIVE: on the first move the panel lifts straight out of the
  * dock into a floating window (#1201) positioned exactly where it was, then
- * tracks the cursor for the whole gesture. Release inside the viewport → it
- * stays floating; release past the window edge → it hands off to an OS / PiP
- * window.
+ * tracks the cursor for the whole gesture. Release inside the viewport keeps it
+ * floating; release past the window edge hands it off to an OS / PiP window.
  *
  * Render precedence preserves the pre-existing right-slot behavior:
- *   right-placed analysis extension → Add Element tool → active panel → Information.
+ *   right-placed analysis extension, then Add Element tool, then active panel,
+ *   then Information.
  */
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
-import { Grip, ChevronRight, Rows2, X, Check } from 'lucide-react';
+import { Grip, ChevronRight, Rows2, X, Check, GripHorizontal } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -79,17 +81,23 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
               data-chrome-btn
               data-no-drag
               aria-label="Split panel"
-              className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              aria-pressed={!!secondary}
+              className={
+                'h-5 w-5 inline-flex items-center justify-center rounded transition-colors '
+                + (secondary
+                  ? 'text-primary bg-primary/10'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground')
+              }
             >
               <Rows2 className="h-3.5 w-3.5" />
             </button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Split — stack a second panel below</TooltipContent>
+        <TooltipContent side="bottom">Split: stack a second panel below</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          {secondary ? 'Panel below' : 'Split — show below'}
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {secondary ? 'Panel below' : 'Split: show below'}
         </DropdownMenuLabel>
         {options.map((p) => (
           <DropdownMenuItem key={p.id} onSelect={() => pick(p.id)} className="gap-2">
@@ -112,9 +120,9 @@ function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
   );
 }
 
-/** Slim grab bar for the TOP / single panel: drag the grip to lift the panel
- *  into a live floating window, Split to stack a second panel below, chevron to
- *  collapse the pane to the rail. Title-less + close-less — the body owns those. */
+/** Slim grab bar atop the docked panel: drag the grip to lift it into a live
+ *  floating window, Split to stack a second panel below, chevron to collapse the
+ *  pane to the rail. Title-less and close-less: the panel body owns those. */
 function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
   const setSidebarMode = useViewerStore((s) => s.setSidebarMode);
   const onPointerDown = usePanelDetachDrag(detachId);
@@ -122,54 +130,55 @@ function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
   return (
     <div
       onPointerDown={onPointerDown}
-      className="flex items-center gap-1 h-6 shrink-0 px-1.5 border-b border-border/50 bg-muted/10 select-none touch-none cursor-grab active:cursor-grabbing"
+      className="flex items-center gap-1 h-6 shrink-0 px-1.5 border-b border-border/60 bg-muted/20 select-none touch-none cursor-grab active:cursor-grabbing"
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <Grip className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+          <Grip className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
         </TooltipTrigger>
-        <TooltipContent side="bottom">Drag to float · drag onto another screen to pop out</TooltipContent>
+        <TooltipContent side="bottom">Drag to float, or onto another screen to pop out</TooltipContent>
       </Tooltip>
       <span className="flex-1" />
       <SplitMenu primaryId={detachId} />
-      <button
-        type="button"
-        data-chrome-btn
-        data-no-drag
-        aria-label="Collapse sidebar to icons"
-        title="Collapse to icons"
-        onClick={() => setSidebarMode('collapsed')}
-        className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-      >
-        <ChevronRight className="h-3.5 w-3.5" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            data-chrome-btn
+            data-no-drag
+            aria-label="Collapse sidebar to icons"
+            onClick={() => setSidebarMode('collapsed')}
+            className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Collapse to icons</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
 
-/** Slim bar for the BOTTOM split panel: shows the panel name + a close-split
- *  control (the body keeps its own header). */
-function SecondaryChromeBar({ id }: { id: WorkspacePanelId }) {
-  const setSecondary = useViewerStore((s) => s.setSidebarSecondaryPanel);
-  const title = getPanelDef(id)?.title ?? id;
+/** The resize handle between the two split halves (#1266): a centered grip so
+ *  it reads as draggable. Removing the split lives on the lower panel's own
+ *  header close button (and the Split menu), so the divider stays clutter-free. */
+function SplitDivider({ onResizeStart }: { onResizeStart: (e: React.MouseEvent) => void }) {
   return (
-    <div className="flex items-center gap-1 h-6 shrink-0 px-1.5 border-b border-border/50 bg-muted/10 select-none">
-      <Rows2 className="h-3 w-3 text-muted-foreground/50 shrink-0" aria-hidden />
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground truncate flex-1">{title}</span>
-      <button
-        type="button"
-        aria-label="Remove split"
-        title="Remove split"
-        onClick={() => setSecondary(null)}
-        className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+    <div
+      onMouseDown={onResizeStart}
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Resize split"
+      className="group relative h-2.5 shrink-0 cursor-row-resize flex items-center justify-center border-y border-border/60 bg-muted/30 hover:bg-primary/10 transition-colors"
+    >
+      <GripHorizontal className="h-3 w-3 text-muted-foreground/50 group-hover:text-primary/70 transition-colors" />
     </div>
   );
 }
 
-/** Two stacked panels + a draggable divider; both halves reserve space (#1266). */
+/** Two stacked panels joined by one resize handle; both halves reserve space
+ *  (#1266). The body of each half owns its own header, so the split adds no
+ *  duplicate title chrome. */
 function SplitContainer({
   containerRef,
   ratio,
@@ -186,7 +195,7 @@ function SplitContainer({
   const setSecondary = useViewerStore((s) => s.setSidebarSecondaryPanel);
   return (
     <div ref={containerRef} className="h-full flex flex-col panel-container">
-      {/* Top half — flex-basis is the ratio; min-height stops it collapsing. */}
+      {/* Top half: flex-basis is the ratio; min-height stops it collapsing. */}
       <div
         data-detach-root
         className="flex flex-col min-h-[120px] overflow-hidden"
@@ -194,17 +203,10 @@ function SplitContainer({
       >
         {primary}
       </div>
-      {/* Divider */}
-      <div
-        onMouseDown={onDividerDown}
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize split"
-        className="h-1.5 shrink-0 cursor-row-resize bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors"
-      />
-      {/* Bottom half — fills the rest. */}
+      <SplitDivider onResizeStart={onDividerDown} />
+      {/* Bottom half fills the rest; the body's own header carries its title +
+          close (closing it clears the split). */}
       <div className="flex-1 min-h-[120px] flex flex-col overflow-hidden">
-        <SecondaryChromeBar id={secondaryId} />
         <div className="flex-1 min-h-0 overflow-hidden">
           {renderPanelBody(secondaryId, () => setSecondary(null))}
         </div>
@@ -296,7 +298,7 @@ export function SidebarPanelHost() {
 
   // Information fallback (or empty when Information is detached).
   if (shown === null || shown === 'properties') {
-    // Empty (Information detached) or no split → render single.
+    // Empty (Information detached) or no split: render single.
     if (shown === null || !secondaryActive) {
       return (
         <div data-detach-root className="h-full flex flex-col panel-container">
@@ -308,7 +310,7 @@ export function SidebarPanelHost() {
         </div>
       );
     }
-    // Information on top, a second panel below (the user's canonical example).
+    // Information on top, a second panel below (the canonical example).
     return (
       <SplitContainer
         containerRef={containerRef}
@@ -325,7 +327,7 @@ export function SidebarPanelHost() {
     );
   }
 
-  // A docked analysis panel — optionally split with a second panel below.
+  // A docked analysis panel, optionally split with a second panel below.
   if (!secondaryActive) {
     return (
       <div className="h-full flex flex-col panel-container">

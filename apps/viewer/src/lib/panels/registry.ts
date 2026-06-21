@@ -85,7 +85,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   { id: 'script', title: 'Script editor', short: 'Script', Icon: Terminal, group: 'work', region: 'bottom', prefersWide: true },
   { id: 'gantt', title: 'Construction schedule', short: 'Schedule', Icon: CalendarRange, group: 'work', region: 'bottom', prefersWide: true },
   { id: 'lists', title: 'Entity lists', short: 'Lists', Icon: Table2, group: 'work', region: 'bottom', prefersWide: true },
-  // Left-slot nav panel (#1267) — APPENDED so the frozen Alt+1..0 mapping above
+  // Left-slot nav panel (#1267), APPENDED so the frozen Alt+1..0 mapping above
   // is untouched (it gets no Alt shortcut). Its default *display* position is the
   // top of the rail (see DEFAULT_ORDER in sidebarSlice); the activity bar toggles
   // its left slot via `leftPanelCollapsed` rather than the right-pane flags.
@@ -100,7 +100,7 @@ export function isBottomPanel(id: WorkspacePanelId): id is BottomPanelId {
   return id === 'script' || id === 'gantt' || id === 'lists';
 }
 
-/** The left-slot nav panel (Hierarchy, #1267) — toggled via `leftPanelCollapsed`,
+/** The left-slot nav panel (Hierarchy, #1267): toggled via `leftPanelCollapsed`,
  *  never floated / popped / docked into the right pane. */
 export function isLeftPanel(id: WorkspacePanelId): id is 'hierarchy' {
   return id === 'hierarchy';

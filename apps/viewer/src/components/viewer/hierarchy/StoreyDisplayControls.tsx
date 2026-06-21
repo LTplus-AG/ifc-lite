@@ -3,19 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Storey display controls — relocated from the toolbar into the hierarchy's
+ * Storey display controls, relocated from the toolbar into the hierarchy's
  * Building Storeys section so every "level" concept lives where the user
  * already thinks about storeys.
  *
  * Grouping (#1269): Stacked and Solo are the closely-related "which storeys
  * are shown" pair (all vs one), so they sit together in a single segmented
- * toggle. Exploded does something different — it lifts the storeys apart for
- * a sectioned, drawing-like view — so it reads as a SEPARATE toggle button
+ * toggle. Exploded does something different: it lifts the storeys apart for
+ * a sectioned, drawing-like view, so it reads as a SEPARATE toggle button
  * next to the pair rather than a third equal option.
  *
  * The storey rows below are the Solo picker: clicking a storey solos it and
  * clicking it again returns to Stacked (#1265). The Floorplan button on the
- * right activates a top-down section view of the active storey — folding in
+ * right activates a top-down section view of the active storey, folding in
  * the old toolbar Quick-Floorplan dropdown so storey navigation + display sit
  * together.
  *
@@ -31,10 +31,10 @@ import { useFloorplanView } from '@/hooks/useFloorplanView';
 import { cn } from '@/lib/utils';
 import type { LevelDisplayMode } from '@/store/slices/levelDisplaySlice';
 
-/** The related "which storeys show" pair — a single Stacked⇄Solo toggle. */
+/** The related "which storeys show" pair: a single Stacked / Solo toggle. */
 const SHOW_MODES: Array<{ key: Extract<LevelDisplayMode, 'stacked' | 'solo'>; label: string; Icon: typeof Layers3; hint: string }> = [
   { key: 'stacked', label: 'Stacked', Icon: Layers3, hint: 'Show every storey at its real elevation (the default view)' },
-  { key: 'solo', label: 'Solo', Icon: SquareStack, hint: 'Show only one storey — click a storey below to pick it' },
+  { key: 'solo', label: 'Solo', Icon: SquareStack, hint: 'Show only one storey, click a storey below to pick it' },
 ];
 
 export function StoreyDisplayControls() {
@@ -70,7 +70,7 @@ export function StoreyDisplayControls() {
       <div className="flex items-center gap-1.5">
         {showModes && (
           <>
-            {/* Related pair: Stacked ⇄ Solo (which storeys are shown). */}
+            {/* Related pair: Stacked / Solo (which storeys are shown). */}
             <div className="inline-flex flex-1 rounded-md border border-zinc-200 dark:border-zinc-800 p-0.5">
               {SHOW_MODES.map(({ key, label, Icon, hint }) => {
                 // Solo is "active" whenever a storey is isolated; Stacked is the
@@ -102,7 +102,7 @@ export function StoreyDisplayControls() {
             </div>
 
             {/* Separate lens: Exploded lifts the storeys apart for a sectioned
-                view — distinct from "which storeys show", so it stands alone. */}
+                view, distinct from "which storeys show", so it stands alone. */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button

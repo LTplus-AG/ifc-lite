@@ -695,9 +695,9 @@ function registerSidebarExclusivity(store: ReturnType<typeof createViewerStore>)
 /**
  * Keep the Hierarchy left slot (#1267) in step with its rail visibility: hiding
  * the Hierarchy icon from the activity bar collapses its left slot, and showing
- * it again re-opens the slot — so "hide it" actually hides the panel, not just
- * its rail entry. One-way (hidden-set → collapse); collapsing via the left drag
- * handle keeps the rail icon so the panel can be re-opened from there.
+ * it again re-opens the slot, so "hide it" actually hides the panel, not just
+ * its rail entry. One-way (hidden-set drives collapse); collapsing via the left
+ * drag handle keeps the rail icon so the panel can be re-opened from there.
  */
 function registerHierarchyLeftSync(store: ReturnType<typeof createViewerStore>): void {
   store.subscribe((state, prev) => {

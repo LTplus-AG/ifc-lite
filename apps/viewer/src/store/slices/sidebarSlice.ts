@@ -37,7 +37,7 @@ function clampSplitRatio(r: number): number {
   return Math.max(MIN_SPLIT_RATIO, Math.min(MAX_SPLIT_RATIO, r));
 }
 
-/** Only right-pane (`side`) panels can share the docked split (#1266) — bottom
+/** Only right-pane (`side`) panels can share the docked split (#1266); bottom
  *  and left panels have their own regions. */
 function canShareSplit(id: WorkspacePanelId): boolean {
   return getPanelDef(id)?.region === 'side';
@@ -178,8 +178,8 @@ export interface SidebarSlice {
    *  pane isn't split (#1266). Side panels only; runtime-only (a within-session
    *  power feature, like the float layout's geometry). */
   sidebarSecondaryPanel: WorkspacePanelId | null;
-  /** Fraction (0.2–0.8) of the docked pane's height given to the TOP panel when
-   *  split. Runtime-only. */
+  /** Fraction (0.2 to 0.8) of the docked pane's height given to the TOP panel
+   *  when split. Runtime-only. */
   sidebarSplitRatio: number;
   /** Panels currently torn off into an OS / PiP window — runtime only
    *  (window handles can't persist, and pop-up blockers forbid auto-reopen). */
@@ -203,7 +203,7 @@ export interface SidebarSlice {
   /** Set / clear the lower-half split panel (#1266). Ignores non-side panels and
    *  a panel that already owns the top half. Un-floating is the caller's job. */
   setSidebarSecondaryPanel: (id: WorkspacePanelId | null) => void;
-  /** Resize the docked split (fraction for the top panel, clamped 0.2–0.8). */
+  /** Resize the docked split (fraction for the top panel, clamped 0.2 to 0.8). */
   setSidebarSplitRatio: (ratio: number) => void;
   /** Track a panel popped out into / re-docked from an OS window. */
   setPanelPoppedOut: (id: WorkspacePanelId, on: boolean) => void;
@@ -306,7 +306,7 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
     setSidebarActivePanel: (id) => {
       const patch: Partial<SidebarSlice> = {};
       if (get().sidebarActivePanel !== id) patch.sidebarActivePanel = id;
-      // The top half can't also be the bottom half — if the new primary is the
+      // The top half can't also be the bottom half: if the new primary is the
       // split secondary, collapse the split (#1266).
       if (get().sidebarSecondaryPanel === id) patch.sidebarSecondaryPanel = null;
       if (Object.keys(patch).length > 0) set(patch);

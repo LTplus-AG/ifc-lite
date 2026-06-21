@@ -332,6 +332,17 @@ export class IfcAPI {
    */
   setMergeLayers(enabled: boolean): void;
   /**
+   * Toggle the tier-independent small-cut skip (#1286). When `true`,
+   * `processGeometryBatch` drops `IfcBooleanResult` differences whose cutter is
+   * tiny relative to its host (steel copes/notches) while keeping the
+   * tessellation tier — so curves stay full-density. The viewer enables this for
+   * the on-screen load; exports/drawings leave it off so their geometry keeps
+   * every cut. Default off ⇒ byte-identical to before.
+   *
+   * Set BEFORE processing — meshes already emitted are not regenerated.
+   */
+  setSkipSmallCuts(on: boolean): void;
+  /**
    * Clear the cached entity index (call between loads when reusing
    * the same `IfcAPI` instance — e.g. the parser worker keeps one
    * `IfcAPI` alive across multiple `parse` requests).
@@ -1099,6 +1110,7 @@ export interface InitOutput {
   readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_setMergeLayers: (a: number, b: number) => void;
   readonly ifcapi_setRectParamFastPath: (a: number, b: number) => void;
+  readonly ifcapi_setSkipSmallCuts: (a: number, b: number) => void;
   readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;

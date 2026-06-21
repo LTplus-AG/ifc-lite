@@ -141,6 +141,13 @@ export interface ProcessParallelOptions {
    */
   tessellationQuality?: TessellationQuality | null;
   /**
+   * Issue #1286 — tier-independent small-cut skip. When true, each geometry
+   * worker's IfcAPI receives `setSkipSmallCuts(true)` before the first
+   * stream-chunk, dropping tiny `IfcBooleanResult` detail cuts while keeping the
+   * tessellation tier. `undefined`/`false` ⇒ every cut runs (default).
+   */
+  skipSmallCuts?: boolean;
+  /**
    * Explicit URL for the wasm-bindgen `.wasm` binary. When provided,
    * forwarded to the geometry workers' init messages so they call
    * `init(wasmUrl)` instead of relying on wasm-bindgen's default
@@ -500,6 +507,12 @@ export async function* processParallel(
     worker.postMessage({
       type: 'set-tessellation-quality',
       level: options?.tessellationQuality ?? null,
+    });
+    // Issue #1286: forward the small-cut skip the same way — always sent so a
+    // worker reused by a later export (which omits it) resets to false.
+    worker.postMessage({
+      type: 'set-skip-small-cuts',
+      enabled: options?.skipSmallCuts === true,
     });
   }
 

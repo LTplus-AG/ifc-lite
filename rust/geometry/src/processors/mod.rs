@@ -40,7 +40,7 @@ mod tests;
 // Re-export all processor types
 pub use advanced::{AdvancedBrepProcessor, BSplineSurfaceProcessor};
 pub use alignment::IfcAlignmentProcessor;
-pub use boolean::BooleanClippingProcessor;
+pub use boolean::{set_skip_small_cuts, BooleanClippingProcessor};
 pub use brep::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, ShellBasedSurfaceModelProcessor,
 };

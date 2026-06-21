@@ -56,6 +56,20 @@ import { posthog } from '../lib/analytics.js';
 import { classifyLoadError, formatLoadError } from '../lib/load-errors.js';
 
 /**
+ * The on-screen streaming load skips tiny detail boolean cuts (steel
+ * copes/notches, minor recesses) for fast first paint on boolean-heavy models
+ * (#1286) — the per-cut exact subtract dominates load time there. This is
+ * decoupled from the tessellation tier: the load stays at Medium, so CURVES KEEP
+ * FULL DENSITY; only the sub-threshold cuts drop.
+ *
+ * Display only: exports (GLB/CSV/KMZ/HBJSON), drawings and annotations build
+ * their own GeometryProcessor with the skip OFF, so their geometry keeps every
+ * cut. The cache key folds this flag in (see buildGeometryCacheKey) so a skipped
+ * display cache is never served where a full-fidelity build is expected.
+ */
+const STREAMING_SKIP_SMALL_CUTS = true;
+
+/**
  * Where a {@link useIfcLoader.loadFile} call should land the model.
  *
  * `primary` is the historical single-model load: it resets all viewer state,
@@ -608,7 +622,13 @@ export function useIfcLoader() {
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
       // added the geometryClass tag the Model/Types switch needs).
-      const cacheKey = buildGeometryCacheKey(buffer.byteLength, fingerprint, mergeLayersAtLoad);
+      const cacheKey = buildGeometryCacheKey(
+        buffer.byteLength,
+        fingerprint,
+        mergeLayersAtLoad,
+        undefined,
+        STREAMING_SKIP_SMALL_CUTS
+      );
       console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} cacheKey=${cacheKey}`);
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
@@ -672,6 +692,10 @@ export function useIfcLoader() {
       // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
+        // Skip tiny detail boolean cuts on the on-screen load for fast first
+        // paint (#1286) while keeping Medium tessellation (full-density curves).
+        // Must match the flag folded into `cacheKey` above (issues #540, #1107).
+        skipSmallCuts: STREAMING_SKIP_SMALL_CUTS,
         preferNative: false,
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.

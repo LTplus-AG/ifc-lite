@@ -118,6 +118,16 @@ export interface GeometryProcessorOptions {
    * and worker-pool); the native desktop path does not consume it yet.
    */
   tessellationQuality?: TessellationQuality;
+  /**
+   * Tier-independent small-cut skip (issue #1286). When true, the WASM mesh pass
+   * drops `IfcBooleanResult` differences whose cutter is tiny relative to its
+   * host (steel copes/notches, minor detail recesses) WITHOUT lowering the
+   * tessellation tier — so curves keep full density while the dominant
+   * boolean-heavy load cost is skipped. Default false ⇒ every cut runs
+   * (byte-identical to before). The viewer enables it for the on-screen load;
+   * exporters/drawings leave it off so their geometry stays full fidelity.
+   */
+  skipSmallCuts?: boolean;
 }
 
 let activeWasmStreamingOperation: string | null = null;
@@ -209,6 +219,7 @@ export class GeometryProcessor {
   private mergeLayers: boolean;
   private enableInstancing: boolean;
   private tessellationQuality: TessellationQuality | null;
+  private skipSmallCuts: boolean;
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
@@ -217,6 +228,7 @@ export class GeometryProcessor {
     this.mergeLayers = options.mergeLayers === true;
     this.enableInstancing = options.enableInstancing !== false;
     this.tessellationQuality = options.tessellationQuality ?? null;
+    this.skipSmallCuts = options.skipSmallCuts === true;
     // Note: options accepted for API compatibility
     void options.quality;
 
@@ -229,6 +241,8 @@ export class GeometryProcessor {
       this.bridge.setMergeLayers(this.mergeLayers);
       // Same eager cache-and-replay for the tessellation level (#976).
       this.bridge.setTessellationQuality(this.tessellationQuality);
+      // …and the tier-independent small-cut skip (#1286).
+      this.bridge.setSkipSmallCuts(this.skipSmallCuts);
     }
   }
 
@@ -782,6 +796,10 @@ export class GeometryProcessor {
       // Issue #976: forward the tessellation level so every pool worker's
       // IfcAPI tessellates at the same density as the main-thread paths.
       tessellationQuality: this.tessellationQuality,
+      // Issue #1286: forward the small-cut skip so every pool worker drops the
+      // same tiny detail cuts as the main-thread paths. Forwarded every run, so
+      // an export processor (default false) never inherits a prior load's skip.
+      skipSmallCuts: this.skipSmallCuts,
       wasmUrls,
       workerCountOverride,
     });

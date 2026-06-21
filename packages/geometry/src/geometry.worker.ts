@@ -169,6 +169,17 @@ export interface GeometryWorkerSetTessellationQualityMessage {
   level: TessellationQuality | null;
 }
 
+/**
+ * Forward the tier-independent small-cut skip (issue #1286) to this worker's
+ * IfcAPI. Sent AFTER `init` and BEFORE the first `stream-start`, mirroring
+ * `set-tessellation-quality`. `false` (the default) keeps every cut, so never
+ * sending the message changes nothing.
+ */
+export interface GeometryWorkerSetSkipSmallCutsMessage {
+  type: 'set-skip-small-cuts';
+  enabled: boolean;
+}
+
 export type GeometryWorkerRequest =
   | GeometryWorkerInitMessage
   | GeometryWorkerStreamStartMessage
@@ -180,6 +191,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetInstancingMessage
   | GeometryWorkerSetComputeGeometryHashesMessage
   | GeometryWorkerSetTessellationQualityMessage
+  | GeometryWorkerSetSkipSmallCutsMessage
   | GeometryWorkerPrePassMessage;
 
 export interface GeometryWorkerBatchMessage {
@@ -281,6 +293,8 @@ async function ensureInit(): Promise<IfcAPI> {
   applyComputeGeometryHashesToApi();
   tessellationQualityApplied = false;
   applyTessellationQualityToApi();
+  skipSmallCutsApplied = false;
+  applySkipSmallCutsToApi();
   entityIndexApplied = false;
   applyEntityIndexToApi();
   return api;
@@ -310,6 +324,7 @@ type IfcAPIWithMerge = IfcAPI & {
   setMergeLayers?: (enabled: boolean) => void;
   setComputeGeometryHashes?: (tolerance?: number | null) => void;
   setTessellationQuality?: (level?: string | null) => void;
+  setSkipSmallCuts?: (on: boolean) => void;
 };
 
 /**
@@ -361,6 +376,26 @@ function applyTessellationQualityToApi(): void {
     quality.setTessellationQuality(tessellationQuality);
   }
   tessellationQualityApplied = true;
+}
+
+/**
+ * Cached tier-independent small-cut skip for this worker (issue #1286), mirroring
+ * the merge-layers replay contract: the host posts the toggle before `init`, so
+ * remember it and re-apply once the IfcAPI exists. `false` (the default) keeps
+ * every cut. Always re-sent per run, so a worker reused by a later export resets
+ * to `false` and that export keeps full-fidelity geometry.
+ */
+let skipSmallCuts: boolean = false;
+let skipSmallCutsApplied: boolean = false;
+
+/** Push the cached small-cut skip onto the IfcAPI (once per API). */
+function applySkipSmallCutsToApi(): void {
+  if (!api || skipSmallCutsApplied) return;
+  const cutting = api as IfcAPIWithMerge;
+  if (typeof cutting.setSkipSmallCuts === 'function') {
+    cutting.setSkipSmallCuts(skipSmallCuts);
+  }
+  skipSmallCutsApplied = true;
 }
 
 /**
@@ -894,6 +929,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         applyComputeGeometryHashesToApi();
         tessellationQualityApplied = false;
         applyTessellationQualityToApi();
+        skipSmallCutsApplied = false;
+        applySkipSmallCutsToApi();
         entityIndexApplied = false;
         applyEntityIndexToApi();
       } else {
@@ -1002,6 +1039,14 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       tessellationQuality = e.data.level ?? null;
       tessellationQualityApplied = false;
       applyTessellationQualityToApi();
+      return;
+    }
+
+    if (e.data.type === 'set-skip-small-cuts') {
+      // Same cache-and-replay contract as set-merge-layers (issue #1286).
+      skipSmallCuts = e.data.enabled === true;
+      skipSmallCutsApplied = false;
+      applySkipSmallCutsToApi();
       return;
     }
 

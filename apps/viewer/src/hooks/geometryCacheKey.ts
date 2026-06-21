@@ -17,10 +17,14 @@ import { FORMAT_VERSION } from '@ifc-lite/cache';
  *     flag — the toggle silently no-op'd until the model was re-imported
  *     (issue #1107). Including it makes a toggle+reload a cache miss that
  *     re-tessellates with the new flag.
+ *   - `skipSmallCuts`: the on-screen load skips tiny detail boolean cuts
+ *     (#1286), so its cached geometry differs from a full-cut build. It must
+ *     discriminate the key or a skipped display cache would be served where a
+ *     full-fidelity build is expected (and vice versa).
  *
- * The `mergeLayers` discriminator is omitted when false so pre-existing
- * cache entries (the default is off) stay valid — only the opt-in `true`
- * path gets a distinct key.
+ * The `mergeLayers` and `skipSmallCuts` discriminators are omitted at their
+ * defaults (`false`) so pre-existing cache entries stay valid — only the opt-in
+ * paths get a distinct key.
  *
  * The desktop (Tauri) cache backend only accepts `[A-Za-z0-9_-]`, so the key
  * stays filename-safe and independent of the original filename.
@@ -29,7 +33,8 @@ export function buildGeometryCacheKey(
   byteLength: number,
   fingerprint: string,
   mergeLayers: boolean,
-  formatVersion: number | string = FORMAT_VERSION
+  formatVersion: number | string = FORMAT_VERSION,
+  skipSmallCuts?: boolean
 ): string {
-  return `ifc-${byteLength}-${fingerprint}-v${formatVersion}${mergeLayers ? '-ml' : ''}`;
+  return `ifc-${byteLength}-${fingerprint}-v${formatVersion}${mergeLayers ? '-ml' : ''}${skipSmallCuts ? '-sc' : ''}`;
 }

@@ -45,6 +45,7 @@ type IfcAPIWithMerge = IfcAPI & {
   setMergeLayers?: (enabled: boolean) => void;
   setComputeGeometryHashes?: (tolerance?: number | null) => void;
   setTessellationQuality?: (level?: string | null) => void;
+  setSkipSmallCuts?: (on: boolean) => void;
 };
 
 export class IfcLiteBridge {
@@ -76,6 +77,14 @@ export class IfcLiteBridge {
    * pattern.
    */
   private tessellationQuality: TessellationQuality | null = null;
+  /**
+   * Tier-independent small-cut skip (#1286). When true, the WASM mesh pass drops
+   * tiny `IfcBooleanResult` detail cuts (steel copes/notches) WITHOUT lowering
+   * the tessellation tier, so curves keep full density. Cached here and forwarded
+   * to the IfcAPI on `init` + every `setSkipSmallCuts` call, mirroring the
+   * `mergeLayers` replay pattern. Default false ⇒ every cut runs.
+   */
+  private skipSmallCuts: boolean = false;
 
   private isWasmRuntimeError(error: unknown): boolean {
     return error instanceof WebAssembly.RuntimeError;
@@ -139,6 +148,8 @@ export class IfcLiteBridge {
       this.applyComputeGeometryHashes();
       // …and for the tessellation-quality level (issue #976).
       this.applyTessellationQuality();
+      // …and for the tier-independent small-cut skip (issue #1286).
+      this.applySkipSmallCuts();
       this.initialized = true;
       log.info('WASM geometry engine initialized');
     } catch (error) {
@@ -642,5 +653,43 @@ export class IfcLiteBridge {
     log.debug(`tessellationQuality=${this.tessellationQuality ?? 'default'}`, {
       operation: 'setTessellationQuality',
     });
+  }
+
+  /**
+   * Toggle the tier-independent small-cut skip (issue #1286). Safe to call
+   * before `init()` — the value is cached and re-applied on the freshly
+   * constructed IfcAPI. Applies to meshes produced AFTER the call.
+   */
+  setSkipSmallCuts(on: boolean): void {
+    this.skipSmallCuts = on;
+    if (!this.ifcApi) return; // init() will apply on the new IfcAPI
+    this.applySkipSmallCuts();
+  }
+
+  /** Read back the active small-cut skip flag. */
+  getSkipSmallCuts(): boolean {
+    return this.skipSmallCuts;
+  }
+
+  /**
+   * Forward the cached small-cut skip flag to the underlying IfcAPI. Guards
+   * against an older WASM build that predates the binding so the flag degrades
+   * to a no-op (every cut runs) rather than throwing — same defensive shape as
+   * `applyTessellationQuality`.
+   */
+  private applySkipSmallCuts(): void {
+    if (!this.ifcApi) return;
+    const api = this.ifcApi as IfcAPIWithMerge;
+    if (typeof api.setSkipSmallCuts !== 'function') {
+      if (this.skipSmallCuts) {
+        log.warn('setSkipSmallCuts not present on WASM API — flag ignored until WASM is rebuilt', {
+          operation: 'setSkipSmallCuts',
+          data: { requested: this.skipSmallCuts },
+        });
+      }
+      return;
+    }
+    api.setSkipSmallCuts(this.skipSmallCuts);
+    log.debug(`skipSmallCuts=${this.skipSmallCuts}`, { operation: 'setSkipSmallCuts' });
   }
 }

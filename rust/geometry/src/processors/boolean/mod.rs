@@ -727,13 +727,19 @@ impl BooleanClippingProcessor {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
                 return Ok(mesh);
             }
-            // Preview-mode (Lowest/Low) small-cut skip: a cutter far smaller than
-            // its host (a steel cope/notch, a small detail recess) costs a full
-            // exact subtract — the dominant load-time cost on boolean-heavy steel —
-            // for a barely-visible change. In the preview tiers we drop it and
-            // render the host un-cut, recovering Manifold-class load times.
-            // Medium/High/Highest keep EVERY cut (byte-identical to before).
-            if quality_skips_small_cuts(quality) && cutter_below_skip_ratio(&mesh, &second_mesh) {
+            // Small-cut skip: a cutter far smaller than its host (a steel
+            // cope/notch, a small detail recess) costs a full exact subtract —
+            // the dominant load-time cost on boolean-heavy steel — for a
+            // barely-visible change. Dropping it renders the host un-cut and
+            // recovers Manifold-class load times. Enabled either by a preview
+            // tessellation tier (Lowest/Low) OR by the explicit `skip_small_cuts`
+            // flag, which the viewer turns on WITHOUT dropping to a preview tier
+            // so curves stay full-density while the tiny cuts are skipped (#1286).
+            // With neither set (the default), EVERY cut runs — byte-identical to
+            // before this optimization, on any tier.
+            if (quality_skips_small_cuts(quality) || skip_small_cuts_enabled())
+                && cutter_below_skip_ratio(&mesh, &second_mesh)
+            {
                 return Ok(mesh);
             }
             let clipper = ClippingProcessor::new();
@@ -784,6 +790,29 @@ impl BooleanClippingProcessor {
 /// geometry is byte-identical to before this optimization.
 fn quality_skips_small_cuts(quality: TessellationQuality) -> bool {
     matches!(quality, TessellationQuality::Lowest | TessellationQuality::Low)
+}
+
+/// Explicit, tier-independent small-cut skip switch. The viewer enables it for
+/// the on-screen load so tiny detail cuts (steel copes/notches) are skipped for
+/// fast first paint WHILE the tessellation tier stays at `Medium` — curves keep
+/// full density (decoupling the cut-skip from the curve LOD, #1286).
+///
+/// A process-wide flag mirroring [`fast_cut_skip_ratio`]: in wasm each worker is
+/// its own module instance so this is effectively per-worker, and the JS bridge
+/// sets it before every batch (exports/drawings leave it at the `false` default,
+/// so their geometry keeps every cut). Native callers (the server, tests) never
+/// set it, so native output is byte-identical to before. `Relaxed` is sufficient
+/// — the flag is set once before a batch, then only read.
+static SKIP_SMALL_CUTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Enable/disable the tier-independent small-cut skip (see [`SKIP_SMALL_CUTS`]).
+pub fn set_skip_small_cuts(on: bool) {
+    SKIP_SMALL_CUTS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[inline]
+fn skip_small_cuts_enabled() -> bool {
+    SKIP_SMALL_CUTS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Skip ratio for preview-mode small-cut dropping: cutter max-dimension as a

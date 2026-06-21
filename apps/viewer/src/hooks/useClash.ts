@@ -16,6 +16,7 @@ import {
   createClashEngine,
   rulesFromPresets,
   groupClashes,
+  findDuplicates,
   type Clash,
   type ClashElement,
   type ClashElementRef,
@@ -101,6 +102,8 @@ export function useClash() {
   const clashPresets = useViewerStore((s) => s.clashPresets);
   const selectedId = useViewerStore((s) => s.clashSelectedId);
   const panelVisible = useViewerStore((s) => s.clashPanelVisible);
+  /** Number of loaded models — drives the "checking a single model" framing (#1271). */
+  const modelCount = useViewerStore((s) => s.models.size);
 
   const setMode = useViewerStore((s) => s.setClashMode);
   const setTolerance = useViewerStore((s) => s.setClashTolerance);
@@ -216,13 +219,52 @@ export function useClash() {
     [run, mode, clearance, reportTouch],
   );
 
+  /**
+   * Scan the loaded geometry for duplicate / fully-overlapping elements (#1280).
+   * This is an AABB-only pass (no narrow-phase triangle work), so it's fast and
+   * doesn't go through the clash engine — but it produces the same `ClashResult`
+   * shape, so the panel, grouping and BCF export render it unchanged.
+   */
+  const runDuplicates = useCallback(async (): Promise<void> => {
+    const state = useViewerStore.getState();
+    state.setClashRunning(true);
+    state.setClashError(null);
+    state.setClashProgress({ phase: 'broad', rule: 'duplicates', done: 0, total: 0 });
+    try {
+      // Paint the running state before the (synchronous) scan blocks the thread.
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const { elements, exclusions } = gatherElements();
+      if (elements.length === 0) {
+        state.setClashError('No model geometry is loaded. Load an IFC model first.');
+        return;
+      }
+      const res = findDuplicates(elements, { exclusions });
+      state.setClashResult(res);
+      state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
+      state.setClashSelectedId(null);
+      posthog.capture('clash_duplicate_scan', { duplicate_count: res.clashes.length });
+    } catch (err) {
+      console.error('[clash] duplicate scan failed', err);
+      state.setClashError(err instanceof Error ? err.message : String(err));
+      posthog.captureException(err, { additional_properties: { context: 'clash_duplicates' } });
+    } finally {
+      state.setClashRunning(false);
+      state.setClashProgress(null);
+    }
+  }, [gatherElements]);
+
   const refOf = useCallback((ref: ClashElementRef): SelectionRef | null => {
     return useViewerStore.getState().fromGlobalId(ref.ref);
   }, []);
 
-  /** Select both elements of a clash, highlight them, and frame the camera. */
+  /**
+   * Select both elements of a clash, highlight them, and frame the camera. When
+   * `isolate` is set, also hide everything else so only the clashing pair is
+   * visible — the "isolate clashing objects" view (#1275). Otherwise any active
+   * isolation is cleared so the pair is highlighted in full context.
+   */
   const focusClash = useCallback(
-    (clash: Clash): void => {
+    (clash: Clash, isolate = false): void => {
       const state = useViewerStore.getState();
       const a = refOf(clash.a);
       const b = refOf(clash.b);
@@ -238,7 +280,29 @@ export function useClash() {
       state.clearEntitySelection();
       state.setSelectedEntityIds(globalIds); // highlight BOTH elements + frame target
       state.addEntitiesToSelection(refs); // model-aware context for the properties panel
+      if (isolate) state.setIsolatedEntities(new Set(globalIds));
+      else state.clearIsolation();
       state.setClashSelectedId(clash.id);
+      requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+    },
+    [refOf],
+  );
+
+  /**
+   * Focus a SINGLE element of a clash pair so the user can step through each side
+   * and read it in isolation (#1276). `isolate` hides everything else; otherwise
+   * the element is highlighted in context.
+   */
+  const selectElement = useCallback(
+    (el: ClashElementRef, isolate = false): void => {
+      const state = useViewerStore.getState();
+      const ref = refOf(el);
+      if (!ref) return;
+      state.clearEntitySelection();
+      state.setSelectedEntityIds([el.ref]);
+      state.addEntitiesToSelection([ref]);
+      if (isolate) state.setIsolatedEntities(new Set([el.ref]));
+      else state.clearIsolation();
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
     },
     [refOf],
@@ -268,7 +332,9 @@ export function useClash() {
   }, [refOf]);
 
   const clearHighlight = useCallback((): void => {
-    useViewerStore.getState().clearEntitySelection();
+    const state = useViewerStore.getState();
+    state.clearEntitySelection();
+    state.clearIsolation(); // drop any clash isolation so the full model returns
     setSelectedId(null);
   }, [setSelectedId]);
 
@@ -387,7 +453,9 @@ export function useClash() {
   );
 
   const clearAll = useCallback((): void => {
-    useViewerStore.getState().clearEntitySelection();
+    const state = useViewerStore.getState();
+    state.clearEntitySelection();
+    state.clearIsolation();
     clear();
   }, [clear]);
 
@@ -404,6 +472,7 @@ export function useClash() {
     groupBy,
     selectedId,
     panelVisible,
+    modelCount,
     // Only enabled presets show as run chips; the settings dialog manages the full set.
     presets: clashPresets.filter((p) => p.enabled),
     // settings
@@ -417,7 +486,9 @@ export function useClash() {
     runAll,
     runMatrix,
     runPreset,
+    runDuplicates,
     focusClash,
+    selectElement,
     highlightAll,
     clearHighlight,
     exportBcf,

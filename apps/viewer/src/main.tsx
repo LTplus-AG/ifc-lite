@@ -39,18 +39,26 @@ import './lib/placement-edit.boot';
 // reload once (sessionStorage-bounded) to pull the matching new chunks.
 window.addEventListener('vite:preloadError', (event) => {
   const KEY = 'ifc-lite:chunk-reload';
-  let n = 0;
+  // Bound the retry with sessionStorage. If storage is unavailable (private mode
+  // / sandboxed frame) we can't record the attempt, so we must NOT reload — that
+  // would loop forever on a permanently-missing chunk. In that case fall through
+  // and let Vite surface the error.
+  let attempt = 0;
   try {
-    n = Number(sessionStorage.getItem(KEY)) || 0;
-  } catch {
-    /* sessionStorage unavailable (private mode) — fall through, let it surface */
+    attempt = Number(sessionStorage.getItem(KEY)) || 0;
+  } catch (err) {
+    console.warn('[chunk-reload] sessionStorage unreadable; letting preload error surface', err);
+    return;
   }
-  if (n >= 1) return; // already retried this session — let the error surface
+  if (attempt >= 1) return; // already retried this session — let the error surface
+  let recorded = false;
   try {
-    sessionStorage.setItem(KEY, String(n + 1));
-  } catch {
-    /* ignore */
+    sessionStorage.setItem(KEY, String(attempt + 1));
+    recorded = (Number(sessionStorage.getItem(KEY)) || 0) > attempt;
+  } catch (err) {
+    console.warn('[chunk-reload] sessionStorage unwritable; letting preload error surface', err);
   }
+  if (!recorded) return; // couldn't bound the retry → don't suppress Vite's error or loop
   // Stop Vite from re-throwing as an unhandled rejection; we own the recovery.
   event.preventDefault();
   window.location.reload();
@@ -60,8 +68,9 @@ window.addEventListener('vite:preloadError', (event) => {
 // boot/chunk reload succeeded — reset the chunk guard for a fresh budget.
 try {
   sessionStorage.removeItem('ifc-lite:chunk-reload');
-} catch {
-  /* ignore */
+} catch (err) {
+  // Storage unavailable — nothing was persisted to clear; log per the no-silent-catch rule.
+  console.warn('[chunk-reload] could not clear retry guard', err);
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

@@ -70,23 +70,44 @@
       var ERROR_DEBOUNCE_MS = 800;
       var healed = false;
 
-      function attempts() { try { return Number(sessionStorage.getItem(KEY)) || 0; } catch (e) { return 0; } }
-      function setAttempts(n) { try { sessionStorage.setItem(KEY, String(n)); } catch (e) {} }
+      function warn(msg) { if (typeof console !== 'undefined') console.warn('[boot-self-heal] ' + msg); }
+      // Current attempt count, or -1 when sessionStorage is unreadable (sandboxed
+      // frame / storage disabled) — the signal that we cannot bound retries.
+      function attempts() {
+        try { return Number(sessionStorage.getItem(KEY)) || 0; }
+        catch (e) { warn('sessionStorage unreadable: ' + e); return -1; }
+      }
+      // Persist n and confirm it survives a read-back; returns false when storage
+      // is unavailable, so callers can refuse to reload rather than loop forever.
+      function recordAttempts(n) {
+        try {
+          sessionStorage.setItem(KEY, String(n));
+          return (Number(sessionStorage.getItem(KEY)) || 0) === n;
+        } catch (e) { warn('sessionStorage unwritable: ' + e); return false; }
+      }
       function mounted() {
         var r = document.getElementById('root');
         return !!(r && r.childElementCount > 0);
       }
       function heal(reason) {
         if (healed) return;
-        if (mounted()) { setAttempts(0); return; } // app is actually up — nothing to do
+        if (mounted()) { recordAttempts(0); return; } // app is actually up — nothing to do
         var n = attempts();
+        // Storage blocked: we can't enforce MAX, so reloading would loop forever.
+        // Give up and let the broken page surface (a manual reload still works).
+        if (n < 0) { warn('cannot bound retries without storage; skipping auto-reload (' + reason + ')'); return; }
         if (n >= MAX) return;                       // avoid reload loops on a real outage
-        healed = true;
         // On a retry, a stale __vdpl pin to a deleted deployment would keep us
         // broken; drop it so the reload falls back to the current live deploy.
-        if (n >= 1) { try { document.cookie = '__vdpl=; path=/; Max-Age=0; SameSite=Strict; Secure'; } catch (e) {} }
-        setAttempts(n + 1);
-        if (typeof console !== 'undefined') console.warn('[boot-self-heal] app failed to boot (' + reason + '); reloading to recover');
+        if (n >= 1) {
+          try { document.cookie = '__vdpl=; path=/; Max-Age=0; SameSite=Strict; Secure'; }
+          catch (e) { warn('could not clear __vdpl pin: ' + e); }
+        }
+        // Record the attempt BEFORE reloading and confirm it stuck; if it didn't,
+        // bail rather than risk reloading forever.
+        if (!recordAttempts(n + 1)) { warn('retry count did not persist; skipping auto-reload to avoid a loop (' + reason + ')'); return; }
+        healed = true;
+        warn('app failed to boot (' + reason + '); reloading to recover');
         location.reload();
       }
 
@@ -110,11 +131,11 @@
       // Clear the guard once the app mounts, so a later deploy in the same
       // session can self-heal again (and a recovered reload resets the counter).
       function watchMount() {
-        if (mounted()) { setAttempts(0); return; }
+        if (mounted()) { recordAttempts(0); return; }
         var root = document.getElementById('root');
         if (!root || typeof MutationObserver === 'undefined') return;
         var mo = new MutationObserver(function () {
-          if (mounted()) { setAttempts(0); mo.disconnect(); }
+          if (mounted()) { recordAttempts(0); mo.disconnect(); }
         });
         mo.observe(root, { childList: true });
       }

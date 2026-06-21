@@ -15,6 +15,22 @@ import { BVH } from './bvh.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions } from './types.js';
 
+/**
+ * Cheap order-sensitive 32-bit signature of a mesh set, used to detect when the
+ * raycast BVH must rebuild because the SET changed (not just its size). Mixes
+ * each mesh's express id + vertex count via a rolling hash — O(n) integer ops,
+ * no allocation. Different sets of the same length differ with high probability.
+ */
+function computeMeshSetSignature(meshData: readonly MeshData[]): number {
+    let sig = meshData.length | 0;
+    for (let i = 0; i < meshData.length; i++) {
+        const m = meshData[i];
+        sig = (Math.imul(sig, 31) + (m.expressId | 0)) | 0;
+        sig = (Math.imul(sig, 31) + (m.positions.length | 0)) | 0;
+    }
+    return sig;
+}
+
 export class RaycastEngine {
     private camera: Camera;
     private scene: Scene;
@@ -26,6 +42,11 @@ export class RaycastEngine {
     // BVH cache
     private bvhCache: {
         meshCount: number;
+        /** Cheap content signature of the built mesh set (#1238): catches a
+         *  same-COUNT but different-MEMBERS set — e.g. two rays materializing
+         *  different instanced pieces — which a count-only check would miss,
+         *  leaving the BVH stale and raycasts wrong. */
+        signature: number;
         meshData: MeshData[];
         isBuilt: boolean;
     } | null = null;
@@ -45,7 +66,31 @@ export class RaycastEngine {
     /**
      * Collect all visible mesh data from the scene, applying visibility filters.
      */
-    private collectVisibleMeshData(options?: PickOptions): MeshData[] {
+    /** Slab ray-AABB test, used to cull instanced occurrences before materializing
+     *  their (lazy) triangles. */
+    private rayHitsBounds(ray: Ray, b: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): boolean {
+        const o = [ray.origin.x, ray.origin.y, ray.origin.z];
+        const d = [ray.direction.x, ray.direction.y, ray.direction.z];
+        const mn = [b.min.x, b.min.y, b.min.z];
+        const mx = [b.max.x, b.max.y, b.max.z];
+        let tmin = -Infinity, tmax = Infinity;
+        for (let i = 0; i < 3; i++) {
+            if (Math.abs(d[i]) < 1e-12) {
+                if (o[i] < mn[i] || o[i] > mx[i]) return false;
+            } else {
+                const inv = 1 / d[i];
+                let t1 = (mn[i] - o[i]) * inv;
+                let t2 = (mx[i] - o[i]) * inv;
+                if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+                if (t1 > tmin) tmin = t1;
+                if (t2 < tmax) tmax = t2;
+                if (tmin > tmax) return false;
+            }
+        }
+        return tmax >= Math.max(tmin, 0);
+    }
+
+    private collectVisibleMeshData(options?: PickOptions, ray?: Ray): MeshData[] {
         const allMeshData: MeshData[] = [];
         const meshes = this.scene.getMeshes();
         const batchedMeshes = this.scene.getBatchedMeshes();
@@ -86,6 +131,39 @@ export class RaycastEngine {
             }
         }
 
+        // GPU-instanced occurrences live only in the shard, not meshDataMap. Materialize
+        // their per-occurrence triangles ON DEMAND so measure-snap / section-face-pick
+        // work over them — but only for occurrences whose world AABB the ray actually
+        // hits, so we never expand the whole instanced population per ray. When no ray
+        // is supplied (defensive) we skip instanced rather than expand everything.
+        if (ray) {
+            for (const eid of this.scene.getInstancedEntityIds()) {
+                if (options?.hiddenIds?.has(eid)) continue;
+                if (
+                    options?.isolatedIds !== null &&
+                    options?.isolatedIds !== undefined &&
+                    !options.isolatedIds.has(eid)
+                ) {
+                    continue;
+                }
+                const bounds = this.scene.getInstancedEntityBounds(eid);
+                if (!bounds || !this.rayHitsBounds(ray, bounds)) continue;
+                const pieces = this.scene.getInstancedMeshDataPieces(eid);
+                if (!pieces) continue;
+                // Key by piece INDEX, not buffer sizes: an entity can have several
+                // sub-pieces with identical position/index lengths, which a
+                // size-based key would collide → the later piece dropped → raycast
+                // / snap silently misses part of the instance. (#1238 review)
+                for (let p = 0; p < pieces.length; p++) {
+                    const piece = pieces[p];
+                    const key = `${piece.expressId}:inst:${p}`;
+                    if (seenKeys.has(key)) continue;
+                    seenKeys.add(key);
+                    allMeshData.push(piece);
+                }
+            }
+        }
+
         return allMeshData;
     }
 
@@ -98,17 +176,23 @@ export class RaycastEngine {
             return allMeshData;
         }
 
-        // Check if BVH needs rebuilding
+        // Check if BVH needs rebuilding. Compare a content signature, not just the
+        // count: instanced pieces are materialized per-ray (only AABB-hit
+        // occurrences), so two rays can yield the SAME count over DIFFERENT
+        // geometry — a count-only check would reuse a stale BVH. (#1238 review)
+        const signature = computeMeshSetSignature(allMeshData);
         const needsRebuild =
             !this.bvhCache ||
             !this.bvhCache.isBuilt ||
-            this.bvhCache.meshCount !== allMeshData.length;
+            this.bvhCache.meshCount !== allMeshData.length ||
+            this.bvhCache.signature !== signature;
 
         if (needsRebuild) {
             // Build BVH only when needed
             this.bvh.build(allMeshData);
             this.bvhCache = {
                 meshCount: allMeshData.length,
+                signature,
                 meshData: allMeshData,
                 isBuilt: true,
             };
@@ -156,7 +240,7 @@ export class RaycastEngine {
             const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
 
             // Get all mesh data from scene
-            const allMeshData = this.collectVisibleMeshData(options);
+            const allMeshData = this.collectVisibleMeshData(options, ray);
 
             if (allMeshData.length === 0) {
                 return null;
@@ -236,7 +320,7 @@ export class RaycastEngine {
             const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
 
             // Get all mesh data from scene
-            const allMeshData = this.collectVisibleMeshData(options);
+            const allMeshData = this.collectVisibleMeshData(options, ray);
 
             if (allMeshData.length === 0) {
                 return {

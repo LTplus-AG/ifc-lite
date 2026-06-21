@@ -8,6 +8,7 @@
 
 import { WebGPUDevice } from './device.js';
 import type { Mesh, PickResult } from './types.js';
+import type { InstancedTemplateGPU } from './scene.js';
 import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
 import { MathUtils } from './math.js';
 
@@ -52,6 +53,8 @@ export class Picker {
   private device: GPUDevice;
   private webgpuDevice: WebGPUDevice;
   private pipeline: GPURenderPipeline;
+  private instancedPickPipeline: GPURenderPipeline | null = null;  // GPU-instancing: pick pass for instanced occurrences; null if the backend rejected it
+  private instancedPickBindGroup: GPUBindGroup | null = null;
   private depthTexture: GPUTexture;
   private colorTexture: GPUTexture;
   private uniformBuffer: GPUBuffer;
@@ -179,6 +182,94 @@ export class Picker {
         },
       ],
     });
+
+    // ── Instanced pick pipeline ──
+    // Draws scene.getInstancedTemplates() into the SAME r32uint + depth32float
+    // pick target, applying the per-instance mat4 (slot 1, 88B stride) and
+    // writing the express id WITH bit 30 set so the decoder distinguishes it
+    // from a flat mesh-index (bit 30 clear) or a point (bit 31). No expressId
+    // storage buffer — the id rides the instance buffer per occurrence.
+    const instancedPickModule = this.device.createShaderModule({
+      code: `
+        struct Uniforms { viewProj: mat4x4<f32> }
+        @binding(0) @group(0) var<uniform> uniforms: Uniforms;
+        struct VertexInput { @location(0) position: vec3<f32> }
+        struct InstanceInput {
+          @location(3) m0: vec4<f32>,
+          @location(4) m1: vec4<f32>,
+          @location(5) m2: vec4<f32>,
+          @location(6) m3: vec4<f32>,
+          @location(7) instEntityId: u32,
+          @location(8) instFlags: u32,
+        }
+        struct VertexOutput {
+          @builtin(position) position: vec4<f32>,
+          @location(0) @interpolate(flat) objectId: u32,
+          @location(1) @interpolate(flat) instFlags: u32,
+        }
+        @vertex
+        fn vs_main(input: VertexInput, inst: InstanceInput) -> VertexOutput {
+          var output: VertexOutput;
+          let m = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
+          output.position = uniforms.viewProj * (m * vec4<f32>(input.position, 1.0));
+          // bit 30 = instanced marker; express id in the low 30 bits.
+          output.objectId = 0x40000000u | (inst.instEntityId & 0x3FFFFFFFu);
+          output.instFlags = inst.instFlags;
+          return output;
+        }
+        @fragment
+        fn fs_main(input: VertexOutput) -> @location(0) u32 {
+          // Hidden occurrences (flags bit 1) are not pickable — mirror the render-pass
+          // discard so a hidden instanced element can't be selected through the picker.
+          if ((input.instFlags & 2u) != 0u) {
+            discard;
+          }
+          return input.objectId;
+        }
+      `,
+    });
+    // NON-FATAL: the instanced pick pipeline is an add-on (instanced occurrences are
+    // also resolvable via the GPU/CPU flat paths). A degraded WebGPU backend (e.g.
+    // CI's SwiftShader) rejecting it must NOT abort the Picker — and therefore the
+    // whole renderer init — and blank the canvas. On failure we leave it null and
+    // renderPickPass skips the instanced pick draw.
+    try {
+      this.instancedPickPipeline = this.device.createRenderPipeline({
+        layout: 'auto',
+        vertex: {
+          module: instancedPickModule,
+          entryPoint: 'vs_main',
+          buffers: [
+            // slot 0: template vertex (28B pos+norm+entityId) — only position read.
+            { arrayStride: 28, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] },
+            // slot 1: per-instance (88B) — mat4 + entityId + flags (colour ignored here).
+            {
+              arrayStride: 88,
+              stepMode: 'instance',
+              attributes: [
+                { shaderLocation: 3, offset: 0, format: 'float32x4' },
+                { shaderLocation: 4, offset: 16, format: 'float32x4' },
+                { shaderLocation: 5, offset: 32, format: 'float32x4' },
+                { shaderLocation: 6, offset: 48, format: 'float32x4' },
+                { shaderLocation: 7, offset: 64, format: 'uint32' },
+                { shaderLocation: 8, offset: 84, format: 'uint32' },
+              ],
+            },
+          ],
+        },
+        fragment: { module: instancedPickModule, entryPoint: 'fs_main', targets: [{ format: 'r32uint' }] },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+        depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
+      });
+      this.instancedPickBindGroup = this.device.createBindGroup({
+        layout: this.instancedPickPipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
+      });
+    } catch (err) {
+      console.warn('[Picker] instanced pick pipeline unavailable; instanced occurrences fall back to other pick paths:', err);
+      this.instancedPickPipeline = null;
+      this.instancedPickBindGroup = null;
+    }
   }
 
   /**
@@ -202,8 +293,9 @@ export class Picker {
     viewProj: Float32Array,
     pointNodes?: ReadonlyArray<PointPickNode>,
     pointSizing?: PointPickSizing,
+    instancedTemplates?: readonly InstancedTemplateGPU[],
   ): Promise<PickResult | null> {
-    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing);
+    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates);
 
     // Clamp the texel origin to the texture bounds. Math.floor(x/y) can
     // be -1 or equal to width/height on border clicks (and on
@@ -286,6 +378,17 @@ export class Picker {
       };
     }
 
+    if (decoded.kind === 'instanced') {
+      // Instanced occurrence — the shader wrote the express id directly into the
+      // pick value (no mesh-index lookup). modelIndex is not tracked per
+      // occurrence yet (single-model instancing).
+      return {
+        expressId: decoded.instanceExpressId,
+        modelIndex: undefined,
+        worldXYZ: worldXYZ ?? undefined,
+      };
+    }
+
     // Mesh hit — meshIndex is (actual index + 1), already validated > 0.
     const mesh = meshes[decoded.meshIndexPlusOne - 1];
     if (!mesh) return null;
@@ -322,6 +425,7 @@ export class Picker {
     viewProj: Float32Array,
     pointNodes?: ReadonlyArray<PointPickNode>,
     pointSizing?: PointPickSizing,
+    instancedTemplates?: readonly InstancedTemplateGPU[],
   ): Promise<Set<number>> {
     // Normalise + clip rect to texture bounds.
     const lx = Math.max(0, Math.floor(Math.min(x0, x1)));
@@ -332,7 +436,7 @@ export class Picker {
     const rectH = hy - ly + 1;
     if (rectW <= 0 || rectH <= 0) return new Set();
 
-    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing);
+    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates);
 
     // copyTextureToBuffer requires bytesPerRow to be a multiple of 256.
     // r32uint = 4 bytes per texel. Round up to nearest 256.
@@ -364,6 +468,10 @@ export class Picker {
         if (decoded.kind === 'none') continue;
         if (decoded.kind === 'point') {
           ids.add(decoded.pointExpressId);
+        } else if (decoded.kind === 'instanced') {
+          // Instanced samples carry the express id directly (meshIndexPlusOne === 0),
+          // so rect/shift-drag select must read it here too — not just single-click.
+          ids.add(decoded.instanceExpressId);
         } else {
           const mesh = meshes[decoded.meshIndexPlusOne - 1];
           if (mesh) ids.add(mesh.expressId);
@@ -388,6 +496,7 @@ export class Picker {
     viewProj: Float32Array,
     pointNodes?: ReadonlyArray<PointPickNode>,
     pointSizing?: PointPickSizing,
+    instancedTemplates?: readonly InstancedTemplateGPU[],
   ): GPUCommandEncoder {
     if (this.colorTexture.width !== width || this.colorTexture.height !== height) {
       this.colorTexture.destroy();
@@ -444,6 +553,20 @@ export class Picker {
       pass.setVertexBuffer(0, mesh.vertexBuffer);
       pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
       pass.drawIndexed(mesh.indexCount, 1, 0, 0, i);
+    }
+
+    // GPU-instanced occurrences — drawn into the SAME r32uint + depth target so
+    // occlusion is shared with flat meshes/points. The shader writes
+    // (bit30 | express id) per occurrence; the decoder returns the entity.
+    if (instancedTemplates && instancedTemplates.length > 0 && this.instancedPickPipeline && this.instancedPickBindGroup) {
+      pass.setPipeline(this.instancedPickPipeline);
+      pass.setBindGroup(0, this.instancedPickBindGroup);
+      for (const it of instancedTemplates) {
+        pass.setVertexBuffer(0, it.vertexBuffer);
+        pass.setVertexBuffer(1, it.instanceBuffer);
+        pass.setIndexBuffer(it.indexBuffer, 'uint32');
+        pass.drawIndexed(it.indexCount, it.instanceCount);
+      }
     }
 
     if (pointNodes && pointNodes.length > 0) {

@@ -32,6 +32,15 @@ export { CoordinateHandler } from './coordinate-handler.js';
 export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
+export {
+  // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION`
+  // are intentionally NOT re-exported — they have no consumer outside the
+  // decoder module + its test, so they stay internal. (#1238 review)
+  decodeInstancedShard,
+  type DecodedInstancedShard,
+  type DecodedInstancedTemplate,
+  type DecodedInstance,
+} from './packed-instanced-decoder.js';
 
 export * from './types.js';
 
@@ -85,6 +94,12 @@ export interface GeometryProcessorOptions {
    */
   mergeLayers?: boolean;
   /**
+   * GPU-instancing partition toggle (default true). Set false for FEDERATED loads:
+   * the renderer's instanced path is primary-model only, so a federated model must
+   * keep all geometry on the flat path or its opaque repeated occurrences are dropped.
+   */
+  enableInstancing?: boolean;
+  /**
    * Tessellation detail level for curved geometry (issue #976):
    * `'lowest' | 'low' | 'medium' | 'high' | 'highest'`. Unset/`'medium'`
    * reproduces the engine's historical densities byte-for-byte. Lower
@@ -135,6 +150,16 @@ export type StreamingGeometryEvent =
       totalSoFar: number;
       coordinateInfo?: import('./types.js').CoordinateInfo;
       nativeTelemetry?: import('./platform-bridge.js').NativeBatchTelemetry;
+      /** Emit-both GPU-instancing: per-batch IFNS shards (transferable). The
+       *  consumer decodes + uploads them as instanced overlays; present only
+       *  once the wasm exposes processGeometryBatchInstanced. */
+      instancedShards?: ArrayBuffer[];
+      /** Geometry-diff hashes (#924) for instanced-ONLY entities — those whose
+       *  whole geometry went to the shard, so no flat MeshData carries the hash.
+       *  Parallel arrays (express id → hash) so compare still detects changes on
+       *  repeated opaque elements. Present only when geometry hashing is on. */
+      instancedGeometryHashIds?: Uint32Array;
+      instancedGeometryHashValues?: BigUint64Array;
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
@@ -173,6 +198,7 @@ export class GeometryProcessor {
   private isNative: boolean = false;
   private lastNativeStats: PlatformGeometryStats | null = null;
   private mergeLayers: boolean;
+  private enableInstancing: boolean;
   private tessellationQuality: TessellationQuality | null;
 
   constructor(options: GeometryProcessorOptions = {}) {
@@ -180,6 +206,7 @@ export class GeometryProcessor {
     this.coordinateHandler = new CoordinateHandler();
     this.isNative = options.preferNative !== false && isTauri();
     this.mergeLayers = options.mergeLayers === true;
+    this.enableInstancing = options.enableInstancing !== false;
     this.tessellationQuality = options.tessellationQuality ?? null;
     // Note: options accepted for API compatibility
     void options.quality;
@@ -730,6 +757,8 @@ export class GeometryProcessor {
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
       mergeLayers: this.mergeLayers,
+      // Federated loads disable instancing (primary-only render path).
+      enableInstancing: this.enableInstancing,
       // Issue #924: forward the geometry-hash tolerance the host enabled via
       // `enableGeometryHashes()` so the worker pool fingerprints too.
       geometryHashTolerance: this.bridge?.getComputeGeometryHashes() ?? null,

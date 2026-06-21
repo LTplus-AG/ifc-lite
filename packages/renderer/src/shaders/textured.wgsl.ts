@@ -48,19 +48,26 @@ function deriveTexturedShader(): string {
     'uniform binding',
   );
 
-  // 2. UV vertex attribute on VertexInput.
+  // 2. UV vertex attribute on VertexInput. Placed at @location(10), NOT 3-9:
+  //    main.wgsl also declares vs_instanced + InstanceInput at vertex-input
+  //    @location 3..9 (mat4 3-6, entityId 7, colour 8, selected flag 9), which
+  //    this derived module still contains (unused by the textured pipeline). A uv
+  //    in 3..9 would collide with InstanceInput in vs_instanced's input interface
+  //    = a shader-creation error. @10 is clear of both the per-vertex inputs
+  //    (0..2) and the per-instance inputs (3..9). The textured pipeline's slot-0
+  //    uv attribute uses shaderLocation 10 to match.
   s = replaceOnce(
     s,
     '          @location(2) entityId: u32,\n        }\n\n        struct VertexOutput {',
-    '          @location(2) entityId: u32,\n          @location(3) uv: vec2<f32>,\n        }\n\n        struct VertexOutput {',
+    '          @location(2) entityId: u32,\n          @location(10) uv: vec2<f32>,\n        }\n\n        struct VertexOutput {',
     'VertexInput uv',
   );
 
-  // 3. UV interpolant on VertexOutput.
+  // 3. UV interpolant on VertexOutput (after the @location(5) instSelected varying).
   s = replaceOnce(
     s,
-    '          @location(3) viewPos: vec3<f32>,  // For edge detection\n        }',
-    '          @location(3) viewPos: vec3<f32>,  // For edge detection\n          @location(4) uv: vec2<f32>,\n        }',
+    '          @location(5) @interpolate(flat) instSelected: u32,\n        }',
+    '          @location(5) @interpolate(flat) instSelected: u32,\n          @location(6) uv: vec2<f32>,\n        }',
     'VertexOutput uv',
   );
 
@@ -78,12 +85,16 @@ function deriveTexturedShader(): string {
   //    so without this RGBA textures with transparent regions would render
   //    fully opaque. (Partial translucency would need a transparent textured
   //    pipeline — out of scope for the cutout case.)
+  // main.wgsl now reads the per-draw albedo from the `input.color` varying
+  // (vs_main writes uniforms.baseColor into it). For textured meshes input.color
+  // == uniforms.baseColor (drawn via vs_main, never instanced), so multiplying
+  // the texel by input.color keeps the authored-tint semantics.
   s = replaceOnce(
     s,
-    'var baseColor = uniforms.baseColor.rgb;',
+    'var baseColor = input.color.rgb;',
     'let albedoTexel = textureSample(albedoTex, albedoSampler, input.uv);\n' +
       '          if (albedoTexel.a < 0.004) { discard; }\n' +
-      '          var baseColor = albedoTexel.rgb * uniforms.baseColor.rgb;',
+      '          var baseColor = albedoTexel.rgb * input.color.rgb;',
     'albedo sample',
   );
 

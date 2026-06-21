@@ -21,6 +21,10 @@ export class RenderPipeline {
     private webgpuDevice: WebGPUDevice;
     private pipeline: GPURenderPipeline;
     private culledPipeline!: GPURenderPipeline;  // Opaque pipeline with backface culling — material-layer slices only (their winding is reliable)
+    private instancedPipeline!: GPURenderPipeline;  // GPU-instancing: template (slot 0) + per-instance buffer (slot 1)
+    private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); lazily built, null if unbuilt/rejected
+    private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
+    private instancedTransparentPipelineTried = false;  // built-or-failed once; don't retry a rejecting backend every frame
     private selectionPipeline: GPURenderPipeline;  // Pipeline for selected meshes (renders on top)
     private transparentPipeline: GPURenderPipeline;  // Pipeline for transparent meshes with alpha blending
     private overlayPipeline: GPURenderPipeline;  // Pipeline for color overlays (lens) - renders at exact same depth
@@ -196,6 +200,50 @@ export class RenderPipeline {
 
         this.pipeline = this.device.createRenderPipeline(pipelineDescriptor);
 
+        // GPU-instancing pipeline: same fragment/targets/depth/MSAA as the opaque
+        // pipeline, but vs_instanced + a SECOND vertex buffer (slot 1, stepMode
+        // 'instance') carrying the per-occurrence mat4 (4 column vec4s) + entityId
+        // + rgba. Slot 0 stays the template's 28-byte vertex (pos+norm+entityId);
+        // the per-vertex entityId there is unused (vs_instanced reads the
+        // per-instance id) but kept so slot 0 matches the flat layout exactly.
+        // Shared vertex stage for both instanced pipelines (opaque + transparent):
+        // template vertex (slot 0) + per-occurrence buffer (slot 1).
+        const instancedVertex: GPUVertexState = {
+            module: shaderModule,
+            entryPoint: 'vs_instanced',
+            buffers: [
+                {
+                    arrayStride: 28,
+                    attributes: [
+                        { shaderLocation: 0, offset: 0, format: 'float32x3' }, // position
+                        { shaderLocation: 1, offset: 12, format: 'float32x3' }, // normal
+                        { shaderLocation: 2, offset: 24, format: 'uint32' }, // entityId (unused here)
+                    ],
+                },
+                {
+                    arrayStride: 88, // mat4(64) + entityId(4) + rgba(16) + flags(4) — INSTANCE_STRIDE_BYTES
+                    stepMode: 'instance',
+                    attributes: [
+                        { shaderLocation: 3, offset: 0, format: 'float32x4' }, // instMat col0
+                        { shaderLocation: 4, offset: 16, format: 'float32x4' }, // col1
+                        { shaderLocation: 5, offset: 32, format: 'float32x4' }, // col2
+                        { shaderLocation: 6, offset: 48, format: 'float32x4' }, // col3
+                        { shaderLocation: 7, offset: 64, format: 'uint32' }, // entityId
+                        { shaderLocation: 8, offset: 68, format: 'float32x4' }, // rgba
+                        { shaderLocation: 9, offset: 84, format: 'uint32' }, // flags (bit 0 = selected, bit 1 = hidden)
+                    ],
+                },
+            ],
+        };
+
+        this.instancedPipeline = this.device.createRenderPipeline({
+            ...pipelineDescriptor,
+            vertex: instancedVertex,
+        } as GPURenderPipelineDescriptor);
+        // Stash the instanced vertex stage so the transparent instanced pipeline
+        // (built after transparentPipelineDescriptor below) reuses it verbatim.
+        const instancedVertexStage = instancedVertex;
+
         // Backface-culled clone of the opaque pipeline, used ONLY for material-
         // layer slices. Those are thin watertight outward-wound solids stacked
         // with coincident interface caps; drawn double-sided (cullMode 'none')
@@ -307,6 +355,24 @@ export class RenderPipeline {
 
         this.transparentPipeline = this.device.createRenderPipeline(transparentPipelineDescriptor);
 
+        // Transparent instanced pipeline: the transparent descriptor (src-alpha blend,
+        // no depth write) but with the instanced vertex stage. Drives the second
+        // instanced sub-pass that draws occurrences whose per-instance alpha dropped
+        // below the cutoff (lens-ghost / x-ray / compare overlays) — the opaque
+        // instanced pipeline ignores alpha, so without this they'd render solid.
+        //
+        // Created LAZILY on first use (never on a plain load), NOT at init. CI's
+        // SwiftShader-Vulkan WebGPU is fragile: an extra createRenderPipeline at init
+        // drops its error scope and loses the whole device, so the canvas never mounts.
+        // Deferring it keeps init at the minimal pipeline set that backend tolerates;
+        // real WebGPU builds it on demand when an overlay first needs it. A creation
+        // failure leaves it null and the renderer skips the transparent instanced pass.
+        this.makeInstancedTransparentPipeline = () =>
+            this.device.createRenderPipeline({
+                ...transparentPipelineDescriptor,
+                vertex: instancedVertexStage,
+            } as GPURenderPipelineDescriptor);
+
         // Create overlay pipeline for lens color overrides
         // Uses depthCompare 'equal' so it ONLY renders where original geometry already wrote depth.
         // This prevents hidden entities from "leaking through" overlay batches.
@@ -403,7 +469,11 @@ export class RenderPipeline {
                             { shaderLocation: 0, offset: 0, format: 'float32x3' },
                             { shaderLocation: 1, offset: 12, format: 'float32x3' },
                             { shaderLocation: 2, offset: 24, format: 'uint32' },
-                            { shaderLocation: 3, offset: 28, format: 'float32x2' },
+                            // uv at @location(10): main.wgsl's vs_instanced/InstanceInput
+                            // occupy vertex-input @location 3..9 in this derived module,
+                            // so the textured uv lane moves clear of them (see
+                            // textured.wgsl.ts). Byte offset (28) is unchanged.
+                            { shaderLocation: 10, offset: 28, format: 'float32x2' },
                         ],
                     },
                 ],
@@ -495,6 +565,29 @@ export class RenderPipeline {
     }
 
     /**
+     * Write a raw 48-float (192-byte) uniform block into the SHARED uniform
+     * buffer, whose bind group is `getBindGroup()`. Used by the GPU-instancing
+     * pass, which reuses the frame's viewProj + section + flags from the
+     * renderer's prebuilt template (model + baseColor are unused — vs_instanced
+     * takes the transform + colour per-occurrence from the instance buffer).
+     */
+    writeRawUniforms(data: Float32Array, extraFlagsX = 0): void {
+        this.device.queue.writeBuffer(this.uniformBuffer, 0, data);
+        // OR extra bits into flags.x (u32 at byte 176) WITHOUT mutating the caller's
+        // shared template buffer. Used to mark the instanced passes: bit 2 = instanced
+        // pass, bit 3 = transparent instanced sub-pass (the shader routes per-instance
+        // opacity off these).
+        if (extraFlagsX !== 0) {
+            const baseFlagsX = new Uint32Array(data.buffer, data.byteOffset + 176, 1)[0];
+            this.device.queue.writeBuffer(
+                this.uniformBuffer,
+                176,
+                new Uint32Array([baseFlagsX | extraFlagsX]),
+            );
+        }
+    }
+
+    /**
      * Write the global lighting environment uniform buffer. Cheap (80 bytes);
      * called once per frame with the resolved `RenderOptions.environment`.
      */
@@ -574,6 +667,43 @@ export class RenderPipeline {
     /** Backface-culled opaque pipeline — material-layer slices only. */
     getCulledPipeline(): GPURenderPipeline {
         return this.culledPipeline;
+    }
+
+    /** GPU-instancing pipeline (template vertex buffer at slot 0 + per-instance buffer at slot 1). */
+    getInstancedPipeline(): GPURenderPipeline {
+        return this.instancedPipeline;
+    }
+
+    getInstancedTransparentPipeline(): GPURenderPipeline | null {
+        // Lazy build on first request (when an overlay first makes an instanced
+        // occurrence translucent). Kept off the init path so a fragile backend that
+        // can't build it doesn't lose the device at startup. Tried once.
+        if (
+            !this.instancedTransparentPipeline &&
+            !this.instancedTransparentPipelineTried &&
+            this.makeInstancedTransparentPipeline
+        ) {
+            this.instancedTransparentPipelineTried = true;
+            // WebGPU reports pipeline *validation* errors asynchronously via an
+            // error scope, NOT as a synchronous throw — the try/catch alone only
+            // catches device-loss / OOM-style failures. Wrap the build in a
+            // validation scope so a pipeline that fails validation is nulled
+            // instead of being used (broken) for instanced blending. (#1238 review)
+            this.device.pushErrorScope('validation');
+            try {
+                this.instancedTransparentPipeline = this.makeInstancedTransparentPipeline();
+            } catch (err) {
+                console.warn('[RenderPipeline] transparent instanced pipeline unavailable; instanced overlays will not blend:', err);
+                this.instancedTransparentPipeline = null;
+            }
+            this.device.popErrorScope().then((error) => {
+                if (error) {
+                    console.warn('[RenderPipeline] transparent instanced pipeline failed validation; instanced overlays will not blend:', error.message);
+                    this.instancedTransparentPipeline = null;
+                }
+            }).catch(() => { /* device lost while popping the scope — pipeline is already unusable */ });
+        }
+        return this.instancedTransparentPipeline;
     }
 
     getSelectionPipeline(): GPURenderPipeline {

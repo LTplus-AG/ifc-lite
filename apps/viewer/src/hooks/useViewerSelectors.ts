@@ -218,16 +218,20 @@ export function useColorUpdateState() {
   const clearPendingMeshColorUpdates = useViewerStore((state) => state.clearPendingMeshColorUpdates);
   const clearPendingMeshRemovals = useViewerStore((state) => state.clearPendingMeshRemovals);
   const clearPendingMeshTranslations = useViewerStore((state) => state.clearPendingMeshTranslations);
+  const pendingInstancedShards = useViewerStore((state) => state.pendingInstancedShards);
+  const clearInstancedShards = useViewerStore((state) => state.clearInstancedShards);
 
   return {
     pendingColorUpdates,
     pendingMeshColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearInstancedShards,
   };
 }
 

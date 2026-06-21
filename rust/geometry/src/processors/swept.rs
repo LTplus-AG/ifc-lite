@@ -276,7 +276,7 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
             indices,
             rtc_applied: false,
             origin: [0.0; 3],
-        };
+        instance_meta: None, };
 
         // Ship smooth per-vertex normals, computed here in the directrix-local
         // frame where the coordinates are small (0..directrix-length) and so
@@ -543,7 +543,7 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
             normals: Vec::new(),
             indices,
             rtc_applied: false, 
-            origin: [0.0; 3],        };
+            origin: [0.0; 3],        instance_meta: None, };
 
         // Apply Position to lift Position-local coords into object coords.
         apply_transform(&mut mesh, &position_transform);

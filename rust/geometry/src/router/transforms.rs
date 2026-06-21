@@ -37,6 +37,31 @@ pub(crate) fn local_frame_enabled() -> bool {
     })
 }
 
+/// GPU-instancing capture is ALWAYS ON (no flag). The pipeline attaches
+/// [`crate::mesh::InstanceMeta`] (rep-identity + per-occurrence world transform)
+/// to every instanceable mesh so the collator can group occurrences into unique
+/// templates + per-instance transforms. This adds only metadata + an O(verts)
+/// content hash — the flat geometry output (positions/normals/indices) is
+/// unchanged, so determinism snapshots (which hash geometry, not `instance_meta`)
+/// stay byte-identical, and the instancing renderer path is data-driven, not
+/// toggled. (The old env flag never fired in wasm — `std::env` is empty there —
+/// which is exactly the browser path that needs it.)
+#[inline]
+pub(crate) fn instancing_enabled() -> bool {
+    true
+}
+
+/// Flatten a column-major nalgebra `Matrix4<f64>` into a row-major `[f64; 16]`
+/// (the [`crate::mesh::InstanceMeta`] convention; matches a GPU mat4 fed row-by-row).
+pub(crate) fn mat4_to_row_major(m: &Matrix4<f64>) -> [f64; 16] {
+    [
+        m[(0, 0)], m[(0, 1)], m[(0, 2)], m[(0, 3)],
+        m[(1, 0)], m[(1, 1)], m[(1, 2)], m[(1, 3)],
+        m[(2, 0)], m[(2, 1)], m[(2, 2)], m[(2, 3)],
+        m[(3, 0)], m[(3, 1)], m[(3, 2)], m[(3, 3)],
+    ]
+}
+
 impl GeometryRouter {
     /// Apply local placement transformation to mesh
     pub(super) fn apply_placement(
@@ -57,6 +82,13 @@ impl GeometryRouter {
 
         let mut transform = self.get_placement_transform(&placement, decoder)?;
         self.scale_transform(&mut transform);
+        // Instancing: record the full (scaled) world placement on the mesh's
+        // instance metadata BEFORE it is baked + RTC-folded by transform_mesh_world.
+        // Only fires when processing already marked this mesh instanceable (so the
+        // metadata exists); a no-op otherwise, keeping the flat path untouched.
+        if let Some(im) = mesh.instance_meta.as_mut() {
+            im.transform = mat4_to_row_major(&transform);
+        }
         self.transform_mesh_world(mesh, &transform);
         Ok(())
     }

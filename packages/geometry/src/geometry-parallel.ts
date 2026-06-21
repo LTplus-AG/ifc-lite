@@ -120,6 +120,12 @@ export interface ProcessParallelOptions {
    */
   mergeLayers?: boolean;
   /**
+   * GPU-instancing partition toggle (default true). Set false for FEDERATED loads:
+   * the instanced render path is primary-model only, so a federated model must keep
+   * all geometry on the flat path or its opaque repeated occurrences are dropped.
+   */
+  enableInstancing?: boolean;
+  /**
    * Issue #924 — per-entity geometry-hash tolerance in metres. When a
    * positive value is given, each geometry worker's IfcAPI receives
    * `setComputeGeometryHashes(tol)` before the first stream-chunk, so the
@@ -343,19 +349,45 @@ export async function* processParallel(
           // renderer reconstructs world via a per-batch model-matrix translate.
           ...(m.origin ? { origin: m.origin } : {}),
         }));
-        if (meshes.length > 0) {
+        // GPU-instancing: per-batch IFNS shards ride alongside the flat meshes.
+        // Opaque repeated occurrences render ONLY via these shards (taken off the
+        // flat `meshes` array), so their count must be folded into the running
+        // total for an accurate `totalSoFar`.
+        const instancedShards = (msg as { instancedShards?: ArrayBuffer[] }).instancedShards;
+        const instancedOccurrences =
+          (msg as { instancedOccurrences?: number }).instancedOccurrences ?? 0;
+        // #924 compare parity: geometry-diff hashes for instanced-only entities
+        // (no flat mesh carries them). Forward straight through to the consumer.
+        const instancedGeometryHashIds =
+          (msg as { instancedGeometryHashIds?: Uint32Array }).instancedGeometryHashIds;
+        const instancedGeometryHashValues =
+          (msg as { instancedGeometryHashValues?: BigUint64Array }).instancedGeometryHashValues;
+        if (
+          meshes.length > 0 ||
+          (instancedShards && instancedShards.length > 0) ||
+          (instancedGeometryHashIds && instancedGeometryHashIds.length > 0)
+        ) {
           // Update totalMeshes per batch so consumers see a live
           // running count via `totalSoFar`. The `complete` event
           // below used to be the only updater, leaving streamed
           // batches reporting a stale total until the worker exited.
-          totalMeshes += meshes.length;
-          coordinator.processMeshesIncremental(meshes);
+          if (meshes.length > 0) {
+            totalMeshes += meshes.length;
+            coordinator.processMeshesIncremental(meshes);
+          }
+          // Instanced occurrences left the flat array but are still rendered
+          // geometry — count them so totalSoFar reflects the full model.
+          totalMeshes += instancedOccurrences;
           const coordinateInfo = coordinator.getCurrentCoordinateInfo();
           eventQueue.push({
             type: 'batch',
             meshes,
             totalSoFar: totalMeshes,
             coordinateInfo: coordinateInfo || undefined,
+            ...(instancedShards && instancedShards.length > 0 ? { instancedShards } : {}),
+            ...(instancedGeometryHashIds && instancedGeometryHashIds.length > 0
+              ? { instancedGeometryHashIds, instancedGeometryHashValues }
+              : {}),
           });
           wake();
         }
@@ -464,6 +496,12 @@ export async function* processParallel(
     worker.postMessage({
       type: 'set-merge-layers',
       enabled: options?.mergeLayers === true,
+    });
+    // GPU-instancing partition toggle — default ON; the host sets false for federated
+    // loads so a federated model's geometry stays flat (instancing is primary-only).
+    worker.postMessage({
+      type: 'set-instancing-enabled',
+      enabled: options?.enableInstancing !== false,
     });
     // Issue #924: forward the geometry-hash tolerance the same way — always
     // sent so the controller path stays uniform; null is a cheap no-op.

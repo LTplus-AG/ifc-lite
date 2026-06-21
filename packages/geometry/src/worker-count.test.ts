@@ -139,6 +139,49 @@ describe('computeWorkerCount', () => {
     expect(withUndef.reason).toBe('cores');
   });
 
+  it('small compute-bound file (20 MB, 10 cores) → near-full cores (cores-2)', () => {
+    // 170_KM-class: a small, transient, COMPUTE-bound load (boolean-clipped
+    // steel) — not the sustained bandwidth-bound big-file regime the per-core
+    // caps guard. On a 10-core active-cooled machine it gets cores-2 = 8 workers
+    // (was capped at 4, leaving 6 cores idle on CSG-bound geometry). Memory is
+    // a non-issue at 20 MB so the memoryCap doesn't bind.
+    const r = computeWorkerCount({
+      fileSizeMB: 20, cores: 10, deviceMemoryGB: 16, totalJobs: 25_000,
+    });
+    expect(r.count).toBe(8);
+    expect(r.reason).toBe('cores');
+  });
+
+  it('tiny file (4 MB, 10 cores) stays on the conservative cap (4), not the bump', () => {
+    // Below MIN_PARALLEL_MB (8): a small/simple model loads fast on a few
+    // workers; the caller spawns from a file-size proxy before real job counts
+    // exist, so we must not pre-spawn workers that would sit idle. (#1258 P2)
+    const r = computeWorkerCount({
+      fileSizeMB: 4, cores: 10, deviceMemoryGB: 16, totalJobs: 400,
+    });
+    expect(r.count).toBe(4);
+    expect(r.reason).toBe('cores');
+  });
+
+  it('big file on the same 10-core host still holds the bandwidth cap (3)', () => {
+    // The small-file fast path must NOT lift the >512 MB bandwidth ceiling.
+    const r = computeWorkerCount({
+      fileSizeMB: 722, cores: 10, deviceMemoryGB: 16, totalJobs: 70_000,
+    });
+    expect(r.count).toBe(3);
+    expect(r.reason).toBe('cores');
+  });
+
+  it('small file on an 8-core fanless host keeps the conservative cap (no thermal risk taken)', () => {
+    // The small-file path is gated to 10+ cores (active cooling); fanless
+    // 8-core stays on its existing tier.
+    const r = computeWorkerCount({
+      fileSizeMB: 20, cores: 8, deviceMemoryGB: 8, totalJobs: 25_000,
+    });
+    expect(r.count).toBe(3);
+    expect(r.reason).toBe('cores');
+  });
+
   it('M-series Pro/Max (12 cores, 16 GB), 400 MB file → 5 workers', () => {
     // 12+ cores tier: small files get 5 workers; huge files cap at 4.
     const r = computeWorkerCount({

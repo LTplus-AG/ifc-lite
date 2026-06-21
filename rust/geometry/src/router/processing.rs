@@ -4,8 +4,25 @@
 
 //! Core element processing: resolving representations, processing items, and caching.
 
+use super::transforms::{instancing_enabled, mat4_to_row_major};
 use super::GeometryRouter;
-use crate::{Error, Mesh, Result, SubMeshCollection};
+use crate::{Error, InstanceMeta, Mesh, Result, SubMeshCollection};
+
+/// High tag bit distinguishing direct-solid rep_identity (a 128-bit local-mesh
+/// content hash) from mapped-item rep_identity (a RepresentationMap entity id,
+/// always < 2^32), so the two id spaces can never collide in `collate_instances`.
+/// Bit 127 is set on direct-solid ids and clear on mapped ids; it costs one hash
+/// bit (127 effective), still content-addressing grade.
+const DIRECT_SOLID_TAG: u128 = 1u128 << 127;
+
+/// Row-major 4x4 identity; placeholder `InstanceMeta::transform` before the
+/// element's world placement is folded in by `apply_placement`.
+const IDENTITY_ROW_MAJOR: [f64; 16] = [
+    1.0, 0.0, 0.0, 0.0, //
+    0.0, 1.0, 0.0, 0.0, //
+    0.0, 0.0, 1.0, 0.0, //
+    0.0, 0.0, 0.0, 1.0, //
+];
 use ifc_lite_core::{
     has_geometry_by_name, DecodedEntity, EntityDecoder, GeometryCategory, IfcType,
 };
@@ -441,6 +458,14 @@ impl GeometryRouter {
         // Process all representations and merge meshes
         let mut combined_mesh = Mesh::new();
 
+        // Instancing: an element is cleanly shareable only when its whole body is
+        // exactly ONE representation item that itself carried instance metadata
+        // (a mapped item). `Mesh::merge` does not propagate the side-channel, so we
+        // capture the single item's metadata here and re-attach it below; any second
+        // item disqualifies the element (left as None -> rendered flat).
+        let mut single_instance_meta: Option<InstanceMeta> = None;
+        let mut instanceable_item_count: usize = 0;
+
         // First pass: check if we have any direct geometry representations
         // This prevents duplication when both direct and MappedRepresentation exist
         let has_direct_geometry = representations.iter().any(|rep| {
@@ -517,8 +542,22 @@ impl GeometryRouter {
             // Process each representation item
             for item in items {
                 let mesh = self.process_representation_item(&item, decoder)?;
+                if instancing_enabled() && !mesh.positions.is_empty() {
+                    instanceable_item_count += 1;
+                    single_instance_meta = if instanceable_item_count == 1 {
+                        mesh.instance_meta.clone()
+                    } else {
+                        None
+                    };
+                }
                 combined_mesh.merge(&mesh);
             }
+        }
+
+        // Re-attach single-item instance metadata so apply_placement can fold the
+        // element's world placement into `transform`.
+        if instancing_enabled() {
+            combined_mesh.instance_meta = single_instance_meta;
         }
 
         // Mesh hygiene before placement (rigid transform preserves geometry, so
@@ -836,7 +875,8 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<Mesh> {
         // MappedItem has its own instancing cache (the source representation is
-        // already shared), so it never enters the structural-hash path.
+        // already shared), so it never enters the structural-hash path. It also
+        // sets its own instance_meta, so the direct-solid tagging below is skipped.
         if item.ifc_type == IfcType::IfcMappedItem {
             return self.process_mapped_item_cached(item, decoder);
         }
@@ -847,7 +887,7 @@ impl GeometryRouter {
         if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
             let hit = cache.lock().expect("dedup cache poisoned").get(&key).cloned();
             if let Some(mesh) = hit {
-                return Ok((*mesh).clone());
+                return Ok(self.tag_direct_instance((*mesh).clone()));
             }
         }
 
@@ -871,7 +911,44 @@ impl GeometryRouter {
             }
         }
 
-        Ok(mesh)
+        Ok(self.tag_direct_instance(mesh))
+    }
+
+    /// Instancing: tag a direct-solid item mesh with its local-geometry content
+    /// hash as `rep_identity`, so identical representations across the model
+    /// collate into a single template + per-occurrence transforms. The hash is of
+    /// the pre-placement local mesh (the same `compute_mesh_hash` the geometry
+    /// cache uses), so two occurrences differing only by `IfcObjectPlacement`
+    /// share an id. A high tag bit namespaces these apart from mapped-item ids
+    /// (RepresentationMap entity ids). No-op when the flag is off or the mesh
+    /// already carries metadata (mapped items) / is empty.
+    fn tag_direct_instance(&self, mut mesh: Mesh) -> Mesh {
+        if instancing_enabled() && mesh.instance_meta.is_none() && !mesh.positions.is_empty() {
+            // FULL 128-bit (non-sampling) hash: rep_identity has no downstream
+            // meshes_equal guard at the source and must be cross-worker consistent,
+            // so a sampled-hash collision (#833 family) would silently group
+            // non-identical geometry. The 128-bit content hash makes that ~2^-127.
+            let exact_rep = Self::compute_mesh_hash_full(&mesh) | DIRECT_SOLID_TAG;
+            // Stash the PRE-PLACEMENT local mesh (the exact state this hash saw)
+            // for the rigid post-pass (build_rigid_map) — needed by both the
+            // offline analysis and the production rigid emit.
+            if crate::congruence::analysis_enabled() || crate::congruence::rigid_enabled() {
+                crate::congruence::record_local(exact_rep, &mesh);
+            }
+            // NOTE: the rotation-normalized rigid tier (RigidCache) is NOT run here.
+            // Verify-on-insert with a shared cache serialises the parallel geometry
+            // workers and stalls large streams (measured). Production integration is
+            // a rayon POST-PASS on captured local meshes in a collect-all path
+            // (coupled with the instanced wire format); the exact-bit tier ships now.
+            mesh.instance_meta = Some(InstanceMeta {
+                transform: IDENTITY_ROW_MAJOR,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: exact_rep,
+                instanceable: true,
+            });
+        }
+        mesh
     }
 
     /// Cache key for an item: its structural hash combined with the router params
@@ -1057,9 +1134,26 @@ impl GeometryRouter {
             let cache = self.mapped_item_cache.borrow();
             if let Some(cached_mesh) = cache.get(&source_id) {
                 let mut mesh = cached_mesh.as_ref().clone();
+                let mut local_rm = None;
                 if let Some(mut transform) = mapping_transform {
                     self.scale_transform(&mut transform);
+                    if instancing_enabled() {
+                        local_rm = Some(mat4_to_row_major(&transform));
+                    }
                     self.transform_mesh_local(&mut mesh, &transform);
+                }
+                // Instancing: all occurrences of this RepresentationMap share the
+                // cached source-coords geometry; `local_transform` is the mapping
+                // (canonical -> element-local), `transform` is filled later by the
+                // element's apply_placement (element-local -> world).
+                if instancing_enabled() {
+                    mesh.instance_meta = Some(InstanceMeta {
+                        transform: IDENTITY_ROW_MAJOR,
+                        local_transform: local_rm,
+                        canonical_transform: None,
+                        rep_identity: source_id as u128,
+                        instanceable: true,
+                    });
                 }
                 return Ok(mesh);
             }
@@ -1111,9 +1205,22 @@ impl GeometryRouter {
         }
 
         // Apply MappingTarget transformation to this instance
+        let mut local_rm = None;
         if let Some(mut transform) = mapping_transform {
             self.scale_transform(&mut transform);
+            if instancing_enabled() {
+                local_rm = Some(mat4_to_row_major(&transform));
+            }
             self.transform_mesh_local(&mut mesh, &transform);
+        }
+        if instancing_enabled() {
+            mesh.instance_meta = Some(InstanceMeta {
+                transform: IDENTITY_ROW_MAJOR,
+                local_transform: local_rm,
+                        canonical_transform: None,
+                rep_identity: source_id as u128,
+                instanceable: true,
+            });
         }
 
         Ok(mesh)

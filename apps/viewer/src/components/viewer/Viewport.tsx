@@ -288,10 +288,12 @@ export function Viewport({
     pendingMeshColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearInstancedShards,
   } = useColorUpdateState();
 
   // IFC data state
@@ -400,6 +402,25 @@ export function Viewport({
   useEffect(() => {
     rendererRef.current?.requestRender();
   }, [environment]);
+
+  // GPU-instancing is class-0 occurrence geometry (the Model view). Hide the
+  // instanced pass in the Types view mode, where the flat path renders the
+  // class-1/2 type library instead — mirrors the flat path's geometry_class gate
+  // (ViewportContainer) so the two views never both render. effectiveViewMode
+  // falls back to 'model' when the model carries no type library.
+  const typeViewMode = useViewerStore((s) => s.typeViewMode);
+  const hasTypeGeometry = useViewerStore((s) => s.hasTypeGeometry);
+  useEffect(() => {
+    if (!isInitialized) return;
+    const scene = rendererRef.current?.getScene();
+    if (!scene) return;
+    scene.setInstancedVisible(!hasTypeGeometry || typeViewMode === 'model');
+    rendererRef.current?.requestRender();
+    // Depend on isInitialized so the instanced-visibility state is applied once
+    // the renderer is ready, even if the view-mode inputs never change after the
+    // first (pre-init) run that bailed. Mirrors the annotation/grid effects.
+    // (#1238 review)
+  }, [typeViewMode, hasTypeGeometry, isInitialized]);
 
   // Animation frame ref
   const animationFrameRef = useRef<number | null>(null);
@@ -724,8 +745,11 @@ export function Viewport({
           }
           let min: { x: number; y: number; z: number } | null = null;
           let max: { x: number; y: number; z: number } | null = null;
+          const scene = rendererRef.current?.getScene();
           for (const id of ids) {
-            const b = getEntityBounds(geom, id);
+            // GPU-instanced occurrences aren't in geometryResult.meshes; fall back to
+            // the renderer's per-occurrence world AABB so framing them still works.
+            const b = getEntityBounds(geom, id) ?? scene?.getInstancedEntityBounds(id) ?? null;
             if (!b) continue;
             if (!min || !max) {
               min = { x: b.min.x, y: b.min.y, z: b.min.z };
@@ -1177,10 +1201,12 @@ export function Viewport({
     pendingMeshColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearInstancedShards,
     clearColorRef,
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,
     onGeometryReleased,

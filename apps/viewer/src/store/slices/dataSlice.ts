@@ -70,6 +70,15 @@ export interface DataSlice {
   setPendingMeshRemovals: (ids: Set<number>) => void;
   clearPendingMeshRemovals: () => void;
   /**
+   * Emit-both GPU-instancing: raw IFNS shard bytes (transferable ArrayBuffers)
+   * collated per geometry batch by the worker. `useGeometryStreaming` drains
+   * them each frame via `scene.addInstancedShard` (decode + upload as instanced
+   * templates). Additive overlay on the flat geometry; null when none pending.
+   */
+  pendingInstancedShards: ArrayBuffer[] | null;
+  appendInstancedShards: (shards: ArrayBuffer[]) => void;
+  clearInstancedShards: () => void;
+  /**
    * Pending per-entity translations for the renderer. Authoring
    * actions (translateEntity, setEntityPosition, gizmo drag) push
    * `globalId → [dx, dy, dz]` in *renderer* frame (Y-up). The
@@ -120,6 +129,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   pendingColorUpdates: null,
   pendingMeshColorUpdates: null,
   pendingMeshRemovals: null,
+  pendingInstancedShards: null,
   pendingMeshTranslations: null,
 
   // Actions
@@ -292,6 +302,13 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   }),
 
   clearPendingMeshRemovals: () => set({ pendingMeshRemovals: null }),
+
+  appendInstancedShards: (shards) => set((state) => ({
+    // Accumulate across batches — useGeometryStreaming drains once per frame.
+    pendingInstancedShards: [...(state.pendingInstancedShards ?? []), ...shards],
+  })),
+
+  clearInstancedShards: () => set({ pendingInstancedShards: null }),
 
   setPendingMeshTranslations: (updates) => set((state) => {
     // Accumulate deltas across calls — a single drag-frame may

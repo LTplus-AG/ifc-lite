@@ -123,8 +123,11 @@ export class IfcAPI {
    */
   buildPrePassOnce(data: Uint8Array): any;
   /**
-   * Process geometry for a subset of pre-scanned entities.
-   * Takes raw bytes and pre-pass data from buildPrePassOnce.
+   * Process geometry for a subset of pre-scanned entities → flat
+   * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
+   * Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
+   * to MeshDataJs (the IFC Z-up→WebGL Y-up swap + winding reversal happen
+   * there). Output is byte-for-byte what the pre-refactor method produced.
    */
   processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
   /**
@@ -153,6 +156,36 @@ export class IfcAPI {
    *   `{ type: "complete", totalJobs }`
    */
   buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
+  /**
+   * Like [`IfcAPI::process_geometry_batch`] but collates the batch's meshes
+   * into a GPU-instancing shard (IFNS wire format) instead of a flat
+   * MeshCollection. Repeated geometry collapses to one template + per-
+   * occurrence transforms; non-instanceable meshes ride as flat singleton
+   * templates so nothing is dropped. The shard stays in the producer-native
+   * (IFC Z-up) frame — the renderer composes the constant Z-up→Y-up swap at
+   * upload. Each batch shard renders independently: affinity routing already
+   * co-locates identical geometry on one worker, so per-batch collation
+   * captures ~all the dedup and no cross-batch merge is needed. Returns empty
+   * bytes only when the batch produced zero non-empty meshes.
+   */
+  processGeometryBatchInstanced(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): Uint8Array;
+  /**
+   * Produce a batch ONCE and PARTITION it (the instanced-ONLY path): opaque
+   * ordinary occurrences (colour alpha >= 0.99 AND geometry_class == 0) are
+   * collated into the instanced shard; everything else (transparent glass,
+   * type-product geometry) goes to the flat MeshCollection. Each mesh takes
+   * exactly ONE route, so produce_batch runs once (no emit-both 2× meshing)
+   * and the renderer draws opaque occurrences via instancing instead of flat.
+   * Partition mirrors the renderer gates: INSTANCED_ALPHA_CUTOFF (0.99 =
+   * OPAQUE_ALPHA_CUTOFF) for transparency, geometry_class for the Model/Types
+   * split.
+   *
+   * NOTE: the renderer must be instanced-feature-complete (picking / selection
+   * / lens overlays on instanced geometry) before the worker calls this in
+   * place of processGeometryBatch — otherwise those features break for the
+   * opaque bulk. See the instanced-only follow-ups.
+   */
+  processGeometryBatchPartitioned(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
   /**
    * Parse the file and return structured per-axis data (tag + endpoints) in
    * the renderer's Y-up world space (RTC-subtracted, metres). Use this when
@@ -566,6 +599,27 @@ export class MeshOutlineJs {
    * Element extent (min) along the cut axis, world units.
    */
   readonly axisMin: number;
+}
+
+export class PartitionedBatch {
+  private constructor();
+  free(): void;
+  [Symbol.dispose](): void;
+  /**
+   * The instanced IFNS shard bytes (opaque ordinary occurrences). Moves out.
+   */
+  takeShard(): Uint8Array;
+  /**
+   * The flat MeshCollection (transparent glass + type-product geometry).
+   * Moves out — call once.
+   */
+  takeMeshes(): MeshCollection | undefined;
+  /**
+   * Number of occurrences routed into the instanced shard this batch. The viewer
+   * folds this into its total mesh count so the count reflects ALL rendered
+   * geometry (flat + instanced), not just the flat MeshCollection.
+   */
+  readonly instancedOccurrences: number;
 }
 
 export class ProfileCollection {
@@ -983,6 +1037,7 @@ export interface InitOutput {
   readonly __wbg_meshcollection_free: (a: number, b: number) => void;
   readonly __wbg_meshdatajs_free: (a: number, b: number) => void;
   readonly __wbg_meshoutlinejs_free: (a: number, b: number) => void;
+  readonly __wbg_partitionedbatch_free: (a: number, b: number) => void;
   readonly __wbg_profilecollection_free: (a: number, b: number) => void;
   readonly __wbg_profileentryjs_free: (a: number, b: number) => void;
   readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
@@ -1031,6 +1086,8 @@ export interface InitOutput {
   readonly ifcapi_parseGridLines: (a: number, b: number, c: number) => number;
   readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
   readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
+  readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;
+  readonly ifcapi_processGeometryBatchPartitioned: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
   readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
@@ -1076,6 +1133,9 @@ export interface InitOutput {
   readonly meshoutlinejs_axisMin: (a: number) => number;
   readonly meshoutlinejs_contour: (a: number, b: number) => number;
   readonly meshoutlinejs_contourCount: (a: number) => number;
+  readonly partitionedbatch_instancedOccurrences: (a: number) => number;
+  readonly partitionedbatch_takeMeshes: (a: number) => number;
+  readonly partitionedbatch_takeShard: (a: number, b: number) => void;
   readonly profilecollection_get: (a: number, b: number) => number;
   readonly profilecollection_length: (a: number) => number;
   readonly profileentryjs_extrusionDepth: (a: number) => number;

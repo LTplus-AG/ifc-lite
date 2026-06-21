@@ -145,6 +145,17 @@ export interface GeometryWorkerSetMergeLayersMessage {
 }
 
 /**
+ * Toggle the GPU-instancing partition for this worker (default on). Send AFTER `init`
+ * and BEFORE the first `stream-start`, mirroring `set-merge-layers`. The host disables
+ * it for federated loads so a federated model's geometry stays on the flat path
+ * (instancing is primary-model only).
+ */
+export interface GeometryWorkerSetInstancingMessage {
+  type: 'set-instancing-enabled';
+  enabled: boolean;
+}
+
+/**
  * Forward the model-diff "compute geometry hashes" toggle (issue #924) down
  * to this worker's IfcAPI. Send AFTER `init` and BEFORE the first
  * `stream-start`, mirroring `set-merge-layers`. A positive `tolerance`
@@ -176,6 +187,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetStylesMessage
   | GeometryWorkerSetEntityIndexMessage
   | GeometryWorkerSetMergeLayersMessage
+  | GeometryWorkerSetInstancingMessage
   | GeometryWorkerSetComputeGeometryHashesMessage
   | GeometryWorkerSetTessellationQualityMessage
   | GeometryWorkerPrePassMessage;
@@ -198,6 +210,19 @@ export interface GeometryWorkerBatchMessage {
      *  A `bigint` survives the structured-clone `postMessage`. */
     geometryHash?: bigint;
   }[];
+  /** GPU-instancing: per-batch IFNS shards (transferable ArrayBuffers). The
+   *  renderer decodes + GPU-instances them. Opaque repeated occurrences render
+   *  ONLY via these (they were taken off the flat `meshes` array). */
+  instancedShards?: ArrayBuffer[];
+  /** Occurrence count carried by `instancedShards` this batch — folded into the
+   *  pool's running mesh total so it counts flat + instanced geometry. */
+  instancedOccurrences?: number;
+  /** Geometry-diff hashes (#924) for instanced-ONLY entities (no flat mesh
+   *  carries them). Parallel arrays: express id → hash. Present only when
+   *  geometry hashing is enabled AND a batch routed an entity's whole geometry
+   *  to the instanced shard. Transferable. */
+  instancedGeometryHashIds?: Uint32Array;
+  instancedGeometryHashValues?: BigUint64Array;
 }
 
 export interface GeometryWorkerProgressMessage {
@@ -315,6 +340,15 @@ async function ensureInit(): Promise<IfcAPI> {
  */
 let mergeLayersFlag: boolean = false;
 let mergeLayersApplied: boolean = false;
+
+/**
+ * GPU-instancing partition toggle (default on). The host disables it for FEDERATED
+ * loads: the instanced render path + entity map are primary-model only (single global
+ * scene, primary id space), so a federated model must receive ALL its geometry as flat
+ * meshes. With this off, processBatch uses plain processGeometryBatch (no shards), so
+ * opaque repeated occurrences stay in the flat stream instead of being dropped.
+ */
+let instancingEnabled: boolean = true;
 
 /** Narrow typed wrapper for the optional `setMergeLayers` extension. */
 type IfcAPIWithMerge = IfcAPI & {
@@ -436,6 +470,17 @@ interface ProcessingSession {
   materialColors: Uint8Array | undefined;
   pendingMeshes: GeometryWorkerBatchMessage['meshes'];
   pendingTransfers: ArrayBuffer[];
+  /** GPU-instancing: per-batch IFNS shard bytes, flushed with the batch message. */
+  pendingInstancedShards: ArrayBuffer[];
+  /** Occurrence count accumulated in pendingInstancedShards since the last flush. */
+  pendingInstancedOccurrences: number;
+  /**
+   * Geometry-diff hashes (#924) for elements whose meshes ALL went to the
+   * instanced shard, so no flat MeshData carries the hash. Without this the
+   * compare feature would silently regress for repeated opaque geometry (it
+   * worked when those elements rendered flat). Keyed by express id → hash.
+   */
+  pendingInstancedGeometryHashes: Map<number, bigint>;
   totalMeshesEmitted: number;
   cumulativeMeshBytes: number;
 }
@@ -492,21 +537,65 @@ function startSession(input: {
     materialColors: input.materialColors,
     pendingMeshes: [],
     pendingTransfers: [],
+    pendingInstancedShards: [],
+    pendingInstancedOccurrences: 0,
+    pendingInstancedGeometryHashes: new Map(),
     totalMeshesEmitted: 0,
     cumulativeMeshBytes: 0,
   };
 }
 
 function flushPending(session: ProcessingSession): void {
-  if (session.pendingMeshes.length === 0) return;
+  const instancedShards = session.pendingInstancedShards;
+  session.pendingInstancedShards = [];
+  const instancedOccurrences = session.pendingInstancedOccurrences;
+  session.pendingInstancedOccurrences = 0;
+  // Drain the instanced-only geometry-hash side-channel into transferable arrays
+  // (#924 compare parity). Cleared every flush so it can't leak across batches.
+  const hashEntries = session.pendingInstancedGeometryHashes;
+  session.pendingInstancedGeometryHashes = new Map();
+  if (
+    session.pendingMeshes.length === 0 &&
+    instancedShards.length === 0 &&
+    hashEntries.size === 0
+  ) {
+    return;
+  }
   const meshes = session.pendingMeshes;
   const transfers = session.pendingTransfers;
   session.pendingMeshes = [];
   session.pendingTransfers = [];
-  session.totalMeshesEmitted += meshes.length;
+  let instancedGeometryHashIds: Uint32Array | undefined;
+  let instancedGeometryHashValues: BigUint64Array | undefined;
+  if (hashEntries.size > 0) {
+    instancedGeometryHashIds = new Uint32Array(hashEntries.size);
+    instancedGeometryHashValues = new BigUint64Array(hashEntries.size);
+    let k = 0;
+    for (const [id, hash] of hashEntries) {
+      instancedGeometryHashIds[k] = id;
+      instancedGeometryHashValues[k] = hash;
+      k += 1;
+    }
+    // Freshly allocated above, so `.buffer` is a real ArrayBuffer (TS widens it
+    // to ArrayBufferLike); safe to transfer.
+    transfers.push(
+      instancedGeometryHashIds.buffer as ArrayBuffer,
+      instancedGeometryHashValues.buffer as ArrayBuffer,
+    );
+  }
+  // Total counts both routes: flat meshes + instanced occurrences (the latter
+  // left the flat array but are still rendered geometry).
+  session.totalMeshesEmitted += meshes.length + instancedOccurrences;
   (self as unknown as Worker).postMessage(
-    { type: 'batch', meshes } as GeometryWorkerBatchMessage,
-    transfers,
+    {
+      type: 'batch',
+      meshes,
+      ...(instancedShards.length > 0 ? { instancedShards } : {}),
+      ...(instancedOccurrences > 0 ? { instancedOccurrences } : {}),
+      ...(instancedGeometryHashIds ? { instancedGeometryHashIds } : {}),
+      ...(instancedGeometryHashValues ? { instancedGeometryHashValues } : {}),
+    } as GeometryWorkerBatchMessage,
+    [...transfers, ...instancedShards],
   );
 }
 
@@ -519,6 +608,11 @@ function collectMeshes(
     // enabled via `set-compute-geometry-hashes`. Read inside the try so
     // `collection.free()` in finally still runs if extraction throws.
     const geometryHashes = extractGeometryHashesFromCollection(collection);
+    // Track which entities got a flat mesh; any hashed entity NOT seen here had
+    // all its meshes routed to the instanced shard, so its geometry-diff hash
+    // would otherwise be dropped (it rides on flat MeshData). Captured below
+    // and emitted via a side-channel so compare still sees instanced geometry.
+    const flatMeshedIds = new Set<number>();
 
     for (let i = 0; i < collection.length; i++) {
       // #1097: takeMesh MOVES the mesh out (no clone) — each mesh is read once.
@@ -581,10 +675,17 @@ function collectMeshes(
         // #924: attach the per-entity geometry fingerprint (empty Map → no-op
         // unless geometry hashing was enabled).
         if (geometryHash !== undefined) meshData.geometryHash = geometryHash;
+        flatMeshedIds.add(mesh.expressId);
         session.pendingMeshes.push(meshData);
       } finally {
         mesh.free();
       }
+    }
+    // Instanced-only entities: hashes present in the collection but with no flat
+    // mesh emitted this batch. Carry them so the compare fingerprint builder can
+    // still detect geometry changes on repeated opaque elements. (#1238 / #924)
+    for (const [id, hash] of geometryHashes) {
+      if (!flatMeshedIds.has(id)) session.pendingInstancedGeometryHashes.set(id, hash);
     }
   } finally {
     collection.free();
@@ -628,15 +729,69 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
 
   try {
     const ifcApi = await ensureInit();
-    const collection = ifcApi.processGeometryBatch(
-      session.localBytes, jobs, session.unitScale,
-      session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-      session.voidKeys, session.voidCounts, session.voidValues,
-      session.styleIds, session.styleColors,
-      session.planeAngleToRadians,
-      session.materialElementIds, session.materialColorCounts, session.materialColors,
-    );
-    collectMeshes(session, collection);
+    // Instanced-only path: produce geometry ONCE via processGeometryBatchPartitioned,
+    // which splits each batch into flat meshes (transparent + type-template +
+    // textured) and an IFNS instancing shard (opaque, untextured ordinary
+    // occurrences). This replaces the temporary emit-both stage (which meshed
+    // twice): the upload/memory/draw win is realised here because instanced
+    // occurrences are taken OFF the flat path entirely.
+    //
+    // Defensive fallback: if the loaded wasm predates the partitioned export,
+    // fall back to plain processGeometryBatch (flat-only, no instancing) so the
+    // viewer stays fully functional rather than throwing into binary-split recovery.
+    const partitionedFn = (ifcApi as unknown as {
+      processGeometryBatchPartitioned?: (...args: unknown[]) => {
+        takeMeshes(): ReturnType<IfcAPI['processGeometryBatch']> | undefined;
+        takeShard(): Uint8Array;
+        readonly instancedOccurrences: number;
+        free?(): void;
+      };
+    }).processGeometryBatchPartitioned;
+
+    if (typeof partitionedFn === 'function' && instancingEnabled) {
+      const partitioned = partitionedFn.call(
+        ifcApi, session.localBytes, jobs, session.unitScale,
+        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+        session.voidKeys, session.voidCounts, session.voidValues,
+        session.styleIds, session.styleColors, session.planeAngleToRadians,
+        session.materialElementIds, session.materialColorCounts, session.materialColors,
+      );
+      try {
+        // takeMeshes() MOVES the flat MeshCollection out (take-once); collectMeshes
+        // frees it. None only on a second take — we call it once.
+        const collection = partitioned.takeMeshes();
+        if (collection) collectMeshes(session, collection);
+        const shard = partitioned.takeShard();
+        if (shard && shard.byteLength > 0) {
+          // wasm-bindgen Vec<u8> returns a fresh standalone Uint8Array (offset 0,
+          // exact length), so .buffer is safe to transfer. Guard defensively: if
+          // it is ever a view into a larger buffer, copy out the exact bytes
+          // instead of transferring (and detaching) the parent buffer.
+          const exact =
+            shard.byteOffset === 0 && shard.byteLength === shard.buffer.byteLength
+              ? (shard.buffer as ArrayBuffer)
+              : (shard.slice().buffer as ArrayBuffer);
+          session.pendingInstancedShards.push(exact);
+        }
+        // Fold the instanced occurrence count into the streamed mesh total so the
+        // viewer's "N meshes" reflects ALL rendered geometry (flat + instanced),
+        // not just the flat MeshCollection (these occurrences left the flat path).
+        session.pendingInstancedOccurrences += partitioned.instancedOccurrences ?? 0;
+      } finally {
+        // Free the now-empty PartitionedBatch wrapper (its contents were moved out).
+        partitioned.free?.();
+      }
+    } else {
+      const collection = ifcApi.processGeometryBatch(
+        session.localBytes, jobs, session.unitScale,
+        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+        session.voidKeys, session.voidCounts, session.voidValues,
+        session.styleIds, session.styleColors,
+        session.planeAngleToRadians,
+        session.materialElementIds, session.materialColorCounts, session.materialColors,
+      );
+      collectMeshes(session, collection);
+    }
   } catch (err) {
     const msg = (err as Error).message;
     // The recovery below issues more synchronous WASM work — a SAB-fallback
@@ -873,6 +1028,12 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       mergeLayersFlag = e.data.enabled === true;
       mergeLayersApplied = false;
       applyMergeLayersToApi();
+      return;
+    }
+    if (e.data.type === 'set-instancing-enabled') {
+      // Default on; the host disables it for federated loads so their geometry stays
+      // on the flat path (processBatch falls back to plain processGeometryBatch).
+      instancingEnabled = e.data.enabled === true;
       return;
     }
 

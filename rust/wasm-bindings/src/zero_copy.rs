@@ -274,6 +274,8 @@ impl MeshDataJs {
             // Per-element local-frame origin from the producer (IFC frame); the
             // Z-up→Y-up swap is applied in `new`. [0,0,0] when local frame off.
             origin: m.origin,
+            // Instancing side-channel is not used on this wasm zero-copy path.
+            instance_meta: None,
         };
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);

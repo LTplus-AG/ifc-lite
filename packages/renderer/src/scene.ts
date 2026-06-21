@@ -16,8 +16,19 @@ import {
   prepareRayDirInv,
   raycastBoundingBoxes,
   raycastTriangles,
+  rayIntersectsBox,
 } from './scene-raycaster.js';
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
+import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
+import type { DecodedInstancedShard } from '@ifc-lite/geometry';
+import {
+  prepareInstancedRender,
+  INSTANCE_STRIDE_BYTES,
+  INSTANCE_COLOR_OFFSET,
+  INSTANCE_FLAGS_OFFSET,
+  INSTANCE_FLAG_SELECTED,
+  INSTANCE_FLAG_HIDDEN,
+} from './instanced-render.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
@@ -62,6 +73,46 @@ function destroyGpuResources(
   if (m.uniformBuffer) m.uniformBuffer.destroy();
 }
 
+/**
+ * One GPU-uploaded instanced template: unique geometry (slot-0 vertex + index
+ * buffers, 28-byte pos+norm+entityId vertex matching the flat layout) drawn once
+ * per occurrence via a per-instance buffer at slot 1 and
+ * `drawIndexed(indexCount, instanceCount)`. Buffers are Scene-owned, freed in clear().
+ */
+export interface InstancedTemplateGPU {
+  vertexBuffer: GPUBuffer;
+  indexBuffer: GPUBuffer;
+  indexCount: number;
+  instanceBuffer: GPUBuffer;
+  instanceCount: number;
+}
+
+/** Shared empty result for getInstancedTemplates() when the instanced pass is hidden. */
+const EMPTY_INSTANCED_TEMPLATES: readonly InstancedTemplateGPU[] = [];
+
+/** One occurrence's location in the instanced buffers, for per-instance selection
+ *  + colour-override patching. originalColor restores after a lens/IDS overlay clears. */
+interface InstancedOccurrence {
+  templateIndex: number;
+  byteOffset: number;
+  originalColor: [number, number, number, number];
+}
+
+/** Compact CPU-side copy of one instanced template, retained so CPU consumers
+ *  (bounds / raycast / measure / section / export) can reach instanced geometry
+ *  WITHOUT holding a full per-occurrence MeshData each — the occurrences share this
+ *  one geometry and apply their own matrix (read from `instanceData` at the
+ *  occurrence's byteOffset+0, column-major). These are references into the decoded
+ *  shard, so retaining them costs the (already compact) shard size, not N copies. */
+interface InstancedTemplateCpu {
+  positions: Float32Array;
+  normals: Float32Array;
+  indices: Uint32Array;
+  instanceData: ArrayBuffer; // packed 88-byte instance records (mat4 at +0, col-major)
+  localMin: [number, number, number];
+  localMax: [number, number, number];
+}
+
 export class Scene {
   private meshes: Mesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
@@ -71,6 +122,18 @@ export class Scene {
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
+  private instancedTemplates: InstancedTemplateGPU[] = [];          // GPU-instancing: unique templates + per-occurrence buffers (fed by addInstancedShard)
+  private instancedVisible = true;                                  // GPU-instancing: hidden in Types view mode (instanced geometry is class-0 occurrences)
+  private instancedEntityMap: Map<number, InstancedOccurrence[]> = new Map(); // express_id -> occurrences, for per-instance selection/overlay patching
+  private instancedTemplateCpu: InstancedTemplateCpu[] = [];        // compact CPU geometry per template (index-aligned with instancedTemplates) for CPU consumers
+  private instancedDevice?: GPUDevice;                              // cached for per-instance flag/colour writeBuffer updates
+  private instancedSelected: Set<number> = new Set();              // currently flag-selected instanced express_ids
+  private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
+  private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
+  private instancedHasTransparent = false;                         // an override made some instanced occurrence translucent
+  private lastInstancedHiddenIds: ReadonlySet<number> | null = null;   // ref-equality guard for setInstancedVisibility
+  private lastInstancedIsolatedIds: ReadonlySet<number> | null = null;
+  private instancedVisibilityDirty = false;                       // set when a new shard adds occurrences → re-apply visibility
 
   // Buffer-size-aware bucket splitting: when a single color group's geometry
   // would exceed the GPU maxBufferSize, overflow is directed to a new
@@ -393,6 +456,16 @@ export class Scene {
         visit(piece);
       }
     }
+    // Instanced-only occurrences live in the shard, not meshDataMap, so full-
+    // geometry CPU consumers (e.g. the deviation BVH) would miss them. Materialize
+    // them lazily here — these copies are transient (the caller builds its BVH and
+    // discards them), so this does NOT retain the N full copies instancing avoids.
+    // Skipped after geometry release (templates freed). (#1238 review)
+    if (!this.geometryReleased) {
+      for (const piece of this.getAllInstancedMeshData()) {
+        visit(piece);
+      }
+    }
   }
 
   getMeshDataPieces(expressId: number, modelIndex?: number): MeshData[] | undefined {
@@ -587,7 +660,10 @@ export class Scene {
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) {
       this.boundingBoxes.delete(expressId);
-      return false;
+      // Instanced-only entity (lives in the shard, not meshDataMap): without this
+      // the GPU occurrence keeps rendering AND picking after delete/split. Tombstone
+      // it on the GPU + drop its instanced state. (#1238 review)
+      return this.removeInstancedEntity(expressId);
     }
 
     // Track which buckets need re-batching so we don't repeatedly
@@ -652,9 +728,35 @@ export class Scene {
     // in the buckets and would otherwise linger after a delete/split (same ghost
     // class as a move).
     this.evictHighlightMeshes(expressId);
+    // An entity can have BOTH flat meshes and instanced occurrences; clean up the
+    // instanced side here too so a mixed entity doesn't keep ghost instances.
+    if (this.removeInstancedEntity(expressId)) removedDedicated = true;
     // True when at least one dedicated mesh was removed — covers
     // the case where a mesh was queued but not yet bucketed.
     return removedDedicated;
+  }
+
+  /**
+   * Tombstone a GPU-instanced entity on delete/split: set its HIDDEN flag on the
+   * GPU (both render + pick shaders discard it) before forgetting its occurrence
+   * locations, then drop all instanced state for it. The occurrence's buffer slots
+   * are not reclaimed (delete/split is rare) — hiding them is sufficient and never
+   * touches other entities' slots. Returns true if the id was instanced. (#1238)
+   */
+  private removeInstancedEntity(expressId: number): boolean {
+    if (!this.instancedEntityMap.has(expressId)) return false;
+    const device = this.instancedDevice;
+    if (device) {
+      // Must set the flag while the occurrence locations are still in the map.
+      this.instancedHidden.add(expressId);
+      this.writeInstanceFlags(device, expressId);
+    }
+    this.instancedEntityMap.delete(expressId);
+    this.instancedSelected.delete(expressId);
+    this.instancedHidden.delete(expressId);
+    this.instancedOverridden.delete(expressId);
+    this.boundingBoxes.delete(expressId);
+    return true;
   }
 
   /**
@@ -1195,6 +1297,9 @@ export class Scene {
     this.buckets.clear();
     this.meshDataBucket = new Map();
     this.meshDataMap.clear();
+    // Free the compact instanced template geometry too; the per-occurrence world
+    // AABBs already live in boundingBoxes, so bbox-raycast still finds instanced ids.
+    this.instancedTemplateCpu = [];
     this.activeBucketKey.clear();
     this.pendingBatchKeys.clear();
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
@@ -1266,6 +1371,11 @@ export class Scene {
 
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
     this.meshDataMap.clear();
+    // Free the compact instanced template geometry; per-occurrence world AABBs are
+    // already cached in boundingBoxes, so the released-path bbox-raycast still
+    // resolves instanced ids (exact-triangle measure/section is unavailable post-
+    // release, same as the flat path).
+    this.instancedTemplateCpu = [];
     // Clear meshData arrays in each bucket (typed arrays become GC-eligible)
     // but keep the bucket shells so batchedMesh references remain valid
     for (const bucket of this.buckets.values()) {
@@ -1663,11 +1773,13 @@ export class Scene {
     if (this.geometryReleased) {
       console.warn('[Scene] setColorOverrides called after geometry data was released — skipping.');
       this.colorOverrides = null;
+      this.setInstancedColorOverrides(null);
       return;
     }
 
     if (overrides.size === 0) {
       this.colorOverrides = null;
+      this.setInstancedColorOverrides(null);
       return;
     }
 
@@ -1676,6 +1788,11 @@ export class Scene {
     // frozen by the readonly type — we don't deep-clone the inner arrays
     // because they're treated as immutable by every consumer.
     this.colorOverrides = new Map(overrides);
+
+    // Mirror the overlay onto the GPU-instanced occurrences: patch their colour
+    // bytes in place (no separate overlay pass — the instanced records carry the
+    // override colour directly). No-op when no instanced data is loaded.
+    this.setInstancedColorOverrides(overrides);
 
     // Group expressIds by override color
     const colorGroups = new Map<string, { color: [number, number, number, number]; meshData: MeshData[] }>();
@@ -1713,6 +1830,7 @@ export class Scene {
   clearColorOverrides(): void {
     this.destroyOverrideBatches();
     this.colorOverrides = null;
+    this.setInstancedColorOverrides(null);
   }
 
   /** Get overlay batches for rendering */
@@ -1755,6 +1873,434 @@ export class Scene {
   /** Textured meshes (#961) for the renderer's dedicated textured sub-pass. */
   getTexturedMeshes(): readonly TexturedMesh[] {
     return this.texturedMeshes;
+  }
+
+  /**
+   * Toggle the instanced draw pass. Instanced geometry is class-0 occurrences
+   * (the Model view); hide it in the Types view mode, where the flat path shows
+   * the class-1/2 type library instead. Buffers stay uploaded — just not drawn —
+   * so toggling back is free.
+   */
+  setInstancedVisible(visible: boolean): void {
+    this.instancedVisible = visible;
+  }
+
+  /** GPU-instancing templates for the renderer's instanced draw pass. Empty when
+   *  hidden (Types view mode) so the draw loop skips it. */
+  getInstancedTemplates(): readonly InstancedTemplateGPU[] {
+    if (!this.instancedVisible) return EMPTY_INSTANCED_TEMPLATES;
+    return this.instancedTemplates;
+  }
+
+  /**
+   * Decode a per-batch IFNS instancing shard (`processGeometryBatchInstanced`)
+   * and upload its templates for GPU-instanced drawing. Each unique geometry
+   * becomes a slot-0 vertex buffer (28-byte pos+norm+entityId, matching the flat
+   * layout — the per-vertex entityId is a 0 placeholder; vs_instanced reads the
+   * per-occurrence id) + index buffer, plus a slot-1 per-instance buffer (mat4 +
+   * entityId + rgba) already composed in the WebGL Y-up frame
+   * (`prepareInstancedRender` folds the Z-up→Y-up swap). No-op on a non-shard or
+   * empty payload. Idempotent only in the sense of "append" — call clear() to
+   * reset on a new model.
+   *
+   * Takes an ALREADY-DECODED shard (the worker/main layer that receives the raw
+   * IFNS bytes owns `decodeInstancedShard`), so this module keeps only a
+   * type-only dependency on @ifc-lite/geometry and the Scene stays focused on
+   * GPU upload.
+   */
+  addInstancedShard(device: GPUDevice, shard: DecodedInstancedShard): void {
+    this.instancedDevice = device; // cached for per-instance selection/overlay writeBuffer
+    const prepared = prepareInstancedRender(shard);
+    for (const t of prepared) {
+      const vcount = Math.floor(t.positions.length / 3);
+      if (vcount === 0 || t.indices.length === 0 || t.instanceCount === 0) continue;
+
+      // Interleave the template's local positions + normals into the 28-byte
+      // (pos3f + norm3f + entityId u32) vertex layout the instanced pipeline's
+      // slot 0 expects. entityId is a 0 placeholder (vs_instanced ignores it).
+      const vtx = new ArrayBuffer(vcount * 28);
+      const vf = new Float32Array(vtx);
+      for (let i = 0; i < vcount; i++) {
+        const o = i * 7;
+        vf[o + 0] = t.positions[i * 3 + 0];
+        vf[o + 1] = t.positions[i * 3 + 1];
+        vf[o + 2] = t.positions[i * 3 + 2];
+        // normals may be shorter/absent on degenerate meshes — default to 0.
+        vf[o + 3] = i * 3 + 0 < t.normals.length ? t.normals[i * 3 + 0] : 0;
+        vf[o + 4] = i * 3 + 1 < t.normals.length ? t.normals[i * 3 + 1] : 0;
+        vf[o + 5] = i * 3 + 2 < t.normals.length ? t.normals[i * 3 + 2] : 0;
+        // vf[o + 6] (entityId lane) stays 0.
+      }
+
+      const vertexBuffer = device.createBuffer({
+        size: vtx.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: true,
+      });
+      new Uint8Array(vertexBuffer.getMappedRange()).set(new Uint8Array(vtx));
+      vertexBuffer.unmap();
+
+      const indexBuffer = device.createBuffer({
+        size: t.indices.byteLength,
+        usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: true,
+      });
+      new Uint32Array(indexBuffer.getMappedRange()).set(t.indices);
+      indexBuffer.unmap();
+
+      // instanceBuffer is already the interleaved mat4 + entityId + rgba block
+      // (INSTANCE_STRIDE_BYTES per occurrence) from prepareInstancedRender.
+      const instSize = t.instanceCount * INSTANCE_STRIDE_BYTES;
+      const instanceBuffer = device.createBuffer({
+        size: instSize,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: true,
+      });
+      new Uint8Array(instanceBuffer.getMappedRange()).set(
+        new Uint8Array(t.instanceBuffer, 0, instSize),
+      );
+      instanceBuffer.unmap();
+
+      const templateIndex = this.instancedTemplates.length;
+      this.instancedTemplates.push({
+        vertexBuffer,
+        indexBuffer,
+        indexCount: t.indices.length,
+        instanceBuffer,
+        instanceCount: t.instanceCount,
+      });
+
+      // Template-local AABB (used to derive per-occurrence world AABBs cheaply).
+      let lmnx = Infinity, lmny = Infinity, lmnz = Infinity;
+      let lmxx = -Infinity, lmxy = -Infinity, lmxz = -Infinity;
+      for (let i = 0; i < t.positions.length; i += 3) {
+        const x = t.positions[i], y = t.positions[i + 1], z = t.positions[i + 2];
+        if (x < lmnx) lmnx = x; if (y < lmny) lmny = y; if (z < lmnz) lmnz = z;
+        if (x > lmxx) lmxx = x; if (y > lmxy) lmxy = y; if (z > lmxz) lmxz = z;
+      }
+      // Retain the compact CPU geometry + the packed instance records (mat4 per
+      // occurrence) so CPU consumers can reach instanced geometry without a full
+      // per-occurrence MeshData each. These are references into the decoded shard.
+      this.instancedTemplateCpu.push({
+        positions: t.positions,
+        normals: t.normals,
+        indices: t.indices,
+        instanceData: t.instanceBuffer,
+        localMin: [lmnx, lmny, lmnz],
+        localMax: [lmxx, lmxy, lmxz],
+      });
+
+      // Map each occurrence's express_id -> (template, byte offset, original
+      // colour) so selection (flag byte) + lens/IDS overlays (colour bytes) can
+      // patch individual occurrences via writeBuffer without a re-upload. Also fold
+      // each occurrence's world AABB (template local box × its mat4) into
+      // boundingBoxes so getEntityBoundingBox + the CPU raycast-bounds path
+      // (BCF anchors, large/released-model picking, frame-selection) see instanced
+      // geometry. (Templates with no finite local box — empty geometry — are skipped.)
+      const cdv = new DataView(t.instanceBuffer);
+      const haveBox = Number.isFinite(lmnx);
+      for (let i = 0; i < t.instanceCount; i++) {
+        const byteOffset = i * INSTANCE_STRIDE_BYTES;
+        const eid = t.entityIds[i];
+        const originalColor: [number, number, number, number] = [
+          cdv.getFloat32(byteOffset + INSTANCE_COLOR_OFFSET, true),
+          cdv.getFloat32(byteOffset + INSTANCE_COLOR_OFFSET + 4, true),
+          cdv.getFloat32(byteOffset + INSTANCE_COLOR_OFFSET + 8, true),
+          cdv.getFloat32(byteOffset + INSTANCE_COLOR_OFFSET + 12, true),
+        ];
+        let arr = this.instancedEntityMap.get(eid);
+        if (!arr) {
+          arr = [];
+          this.instancedEntityMap.set(eid, arr);
+        }
+        arr.push({ templateIndex, byteOffset, originalColor });
+
+        if (haveBox) {
+          this.unionInstancedWorldAabb(eid, cdv, byteOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
+        }
+      }
+    }
+    // New occurrences default to flags=0 (visible). Force the next setInstancedVisibility
+    // to recompute so an already-active isolate/hide also applies to geometry that
+    // streamed in after the visibility was set.
+    this.instancedVisibilityDirty = true;
+  }
+
+  /** Transform a template's local AABB by an occurrence's column-major mat4 (read
+   *  from the packed instance record at `matOffset`) and union the world box into
+   *  boundingBoxes[eid]. */
+  private unionInstancedWorldAabb(
+    eid: number,
+    dv: DataView,
+    matOffset: number,
+    lmnx: number, lmny: number, lmnz: number,
+    lmxx: number, lmxy: number, lmxz: number,
+  ): void {
+    const m0 = dv.getFloat32(matOffset + 0, true), m1 = dv.getFloat32(matOffset + 4, true), m2 = dv.getFloat32(matOffset + 8, true);
+    const m4 = dv.getFloat32(matOffset + 16, true), m5 = dv.getFloat32(matOffset + 20, true), m6 = dv.getFloat32(matOffset + 24, true);
+    const m8 = dv.getFloat32(matOffset + 32, true), m9 = dv.getFloat32(matOffset + 36, true), m10 = dv.getFloat32(matOffset + 40, true);
+    const m12 = dv.getFloat32(matOffset + 48, true), m13 = dv.getFloat32(matOffset + 52, true), m14 = dv.getFloat32(matOffset + 56, true);
+    let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let c = 0; c < 8; c++) {
+      const x = (c & 1) ? lmxx : lmnx, y = (c & 2) ? lmxy : lmny, z = (c & 4) ? lmxz : lmnz;
+      const wx = m0 * x + m4 * y + m8 * z + m12;
+      const wy = m1 * x + m5 * y + m9 * z + m13;
+      const wz = m2 * x + m6 * y + m10 * z + m14;
+      if (wx < minX) minX = wx; if (wy < minY) minY = wy; if (wz < minZ) minZ = wz;
+      if (wx > maxX) maxX = wx; if (wy > maxY) maxY = wy; if (wz > maxZ) maxZ = wz;
+    }
+    const existing = this.boundingBoxes.get(eid);
+    if (existing) {
+      existing.min.x = Math.min(existing.min.x, minX);
+      existing.min.y = Math.min(existing.min.y, minY);
+      existing.min.z = Math.min(existing.min.z, minZ);
+      existing.max.x = Math.max(existing.max.x, maxX);
+      existing.max.y = Math.max(existing.max.y, maxY);
+      existing.max.z = Math.max(existing.max.z, maxZ);
+    } else {
+      this.boundingBoxes.set(eid, { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } });
+    }
+  }
+
+  /** True if `expressId` is a GPU-instanced occurrence (lives only in the instanced
+   *  shard, not the flat meshDataMap). CPU consumers use this to decide whether to
+   *  fall back to the instanced accessors below. */
+  isInstancedEntity(expressId: number): boolean {
+    return this.instancedEntityMap.has(expressId);
+  }
+
+  /** All instanced occurrence express_ids (for CPU consumers that enumerate geometry,
+   *  e.g. the raycast-engine and exporters). */
+  getInstancedEntityIds(): IterableIterator<number> {
+    return this.instancedEntityMap.keys();
+  }
+
+  /** Materialize EVERY instanced occurrence as world-space MeshData. Transient + not
+   *  retained — for one-shot full-geometry consumers (glTF / IFC5 export) that must
+   *  include the instanced occurrences absent from geometryResult.meshes. Returns []
+   *  when no instanced data is loaded or after geometry release (templates freed). */
+  getAllInstancedMeshData(): MeshData[] {
+    const out: MeshData[] = [];
+    for (const eid of this.instancedEntityMap.keys()) {
+      const pieces = this.getInstancedMeshDataPieces(eid);
+      if (pieces) out.push(...pieces);
+    }
+    return out;
+  }
+
+  /** World-space AABB for an instanced occurrence (union over its occurrences),
+   *  or null if not instanced. Populated at upload time, so this is O(1). */
+  getInstancedEntityBounds(expressId: number): BoundingBox | null {
+    if (!this.instancedEntityMap.has(expressId)) return null;
+    return this.boundingBoxes.get(expressId) ?? null;
+  }
+
+  /** Lazily materialize per-occurrence world-space MeshData for an instanced entity
+   *  (template geometry × each occurrence's matrix). NOT retained — built on demand
+   *  for CPU consumers that need triangles (exact raycast / measure / section-face /
+   *  export). Returns undefined if the id is not instanced. */
+  getInstancedMeshDataPieces(expressId: number): MeshData[] | undefined {
+    const occ = this.instancedEntityMap.get(expressId);
+    if (!occ || occ.length === 0) return undefined;
+    const out: MeshData[] = [];
+    for (const o of occ) {
+      const tpl = this.instancedTemplateCpu[o.templateIndex];
+      if (!tpl || tpl.positions.length === 0) continue;
+      const dv = new DataView(tpl.instanceData);
+      const b = o.byteOffset;
+      const m0 = dv.getFloat32(b + 0, true), m1 = dv.getFloat32(b + 4, true), m2 = dv.getFloat32(b + 8, true);
+      const m4 = dv.getFloat32(b + 16, true), m5 = dv.getFloat32(b + 20, true), m6 = dv.getFloat32(b + 24, true);
+      const m8 = dv.getFloat32(b + 32, true), m9 = dv.getFloat32(b + 36, true), m10 = dv.getFloat32(b + 40, true);
+      const m12 = dv.getFloat32(b + 48, true), m13 = dv.getFloat32(b + 52, true), m14 = dv.getFloat32(b + 56, true);
+      const n = tpl.positions.length;
+      const positions = new Float32Array(n);
+      const normals = new Float32Array(tpl.normals.length);
+      for (let i = 0; i < n; i += 3) {
+        const x = tpl.positions[i], y = tpl.positions[i + 1], z = tpl.positions[i + 2];
+        positions[i] = m0 * x + m4 * y + m8 * z + m12;
+        positions[i + 1] = m1 * x + m5 * y + m9 * z + m13;
+        positions[i + 2] = m2 * x + m6 * y + m10 * z + m14;
+        if (i + 2 < tpl.normals.length) {
+          // Rotate normals by the upper-3×3 (instancing transforms are rigid +
+          // uniform scale, so this is correct up to a renormalize).
+          const nx = tpl.normals[i], ny = tpl.normals[i + 1], nz = tpl.normals[i + 2];
+          let rx = m0 * nx + m4 * ny + m8 * nz;
+          let ry = m1 * nx + m5 * ny + m9 * nz;
+          let rz = m2 * nx + m6 * ny + m10 * nz;
+          const len = Math.hypot(rx, ry, rz) || 1;
+          rx /= len; ry /= len; rz /= len;
+          normals[i] = rx; normals[i + 1] = ry; normals[i + 2] = rz;
+        }
+      }
+      const color: [number, number, number, number] = [...o.originalColor];
+      out.push({ expressId, positions, normals, indices: tpl.indices, color });
+    }
+    return out.length > 0 ? out : undefined;
+  }
+
+  /**
+   * Per-instance SELECTION: highlight the occurrences of `expressIds` by setting
+   * their flag byte (bit 0) and clearing the previously-selected ones. The shader
+   * (vs_instanced -> fs_main) applies the blue highlight per occurrence, so no
+   * re-draw is needed. No-op until a shard has been uploaded.
+   */
+  setInstancedSelection(expressIds: ReadonlySet<number>): void {
+    const device = this.instancedDevice;
+    if (!device || this.instancedTemplates.length === 0) return;
+    // Called every render frame from the renderer. Fast-path an UNCHANGED selection
+    // (the common orbit case, especially the empty set) so we skip both the per-frame
+    // writeBuffer loops AND the `new Set(...)` allocation — equal sizes + full
+    // containment ⇒ set equality.
+    let changed = expressIds.size !== this.instancedSelected.size;
+    if (!changed) {
+      for (const eid of expressIds) {
+        if (!this.instancedSelected.has(eid)) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) return;
+    // Re-derive the combined flag lane (selected | hidden) for every occurrence whose
+    // selected-membership flips, so we never clobber the hidden bit.
+    const prev = this.instancedSelected;
+    this.instancedSelected = new Set(expressIds);
+    for (const eid of prev) {
+      if (!expressIds.has(eid)) this.writeInstanceFlags(device, eid);
+    }
+    for (const eid of expressIds) {
+      if (!prev.has(eid)) this.writeInstanceFlags(device, eid);
+    }
+  }
+
+  /**
+   * Per-instance VISIBILITY (hide / isolate): set the hidden flag bit on occurrences
+   * that should not render, mirroring the flat path's hiddenIds/isolatedIds filter.
+   * The shader discards hidden occurrences in BOTH the render and pick passes, so they
+   * neither draw nor are pickable. `isolatedIds != null` means "show only these"; any
+   * occurrence not in the set is hidden. Diffed so an unchanged visibility set is a
+   * no-op (no writeBuffer). No-op until a shard has been uploaded.
+   */
+  setInstancedVisibility(
+    hiddenIds: ReadonlySet<number> | null | undefined,
+    isolatedIds: ReadonlySet<number> | null | undefined,
+  ): void {
+    const device = this.instancedDevice;
+    if (!device || this.instancedTemplates.length === 0) return;
+    // Called every render frame. The viewer passes stable Set references that only
+    // change when visibility changes, so a reference-equality guard skips the O(N)
+    // set rebuild + allocation during orbit (the common, unchanged case). The dirty
+    // flag forces a recompute after a new shard adds occurrences mid-stream, so an
+    // active isolate/hide also applies to geometry that streams in afterwards.
+    if (
+      !this.instancedVisibilityDirty &&
+      hiddenIds === this.lastInstancedHiddenIds &&
+      isolatedIds === this.lastInstancedIsolatedIds
+    ) {
+      return;
+    }
+    this.instancedVisibilityDirty = false;
+    this.lastInstancedHiddenIds = hiddenIds ?? null;
+    this.lastInstancedIsolatedIds = isolatedIds ?? null;
+    const isHidden = (eid: number): boolean =>
+      (hiddenIds != null && hiddenIds.has(eid)) ||
+      (isolatedIds != null && !isolatedIds.has(eid));
+    // Recompute the effective hidden set over all instanced occurrences and diff vs
+    // the current one; only flips touch the GPU buffer.
+    const next = new Set<number>();
+    for (const eid of this.instancedEntityMap.keys()) {
+      if (isHidden(eid)) next.add(eid);
+    }
+    // Fast-path: unchanged hidden set → nothing to write.
+    let changed = next.size !== this.instancedHidden.size;
+    if (!changed) {
+      for (const eid of next) {
+        if (!this.instancedHidden.has(eid)) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) return;
+    const prev = this.instancedHidden;
+    this.instancedHidden = next;
+    for (const eid of prev) {
+      if (!next.has(eid)) this.writeInstanceFlags(device, eid);
+    }
+    for (const eid of next) {
+      if (!prev.has(eid)) this.writeInstanceFlags(device, eid);
+    }
+  }
+
+  /**
+   * Per-instance COLOUR OVERRIDE (lens / IDS / compare / 4D): patch the colour
+   * bytes of the affected occurrences in place; occurrences dropped from the map
+   * are restored to their original colour. Pass null/empty to clear all.
+   */
+  setInstancedColorOverrides(
+    overrides: ReadonlyMap<number, readonly [number, number, number, number]> | null,
+  ): void {
+    const device = this.instancedDevice;
+    if (!device || this.instancedTemplates.length === 0) return;
+    const next = overrides ?? new Map<number, readonly [number, number, number, number]>();
+    for (const eid of this.instancedOverridden) {
+      if (!next.has(eid)) this.restoreInstanceColor(device, eid);
+    }
+    let hasTransparent = false;
+    for (const [eid, rgba] of next) {
+      this.writeInstanceColor(device, eid, rgba);
+      // Instanced occurrences are opaque by partition; only an override can drop alpha
+      // below the cutoff (lens-ghost / x-ray / compare). Track it so the renderer runs
+      // the transparent instanced sub-pass only when something is actually translucent.
+      if (rgba[3] < OPAQUE_ALPHA_CUTOFF) hasTransparent = true;
+    }
+    this.instancedOverridden = new Set(next.keys());
+    this.instancedHasTransparent = hasTransparent;
+  }
+
+  /** True when an active colour override made some instanced occurrence translucent,
+   *  so the renderer should run the transparent instanced sub-pass. */
+  hasTransparentInstances(): boolean {
+    return this.instancedHasTransparent;
+  }
+
+  /** Write the combined flag lane (selected | hidden) for every occurrence of `eid`.
+   *  Folding both bits here means selection and visibility updates never clobber each
+   *  other (they share the one u32 flags lane at INSTANCE_FLAGS_OFFSET). */
+  private writeInstanceFlags(device: GPUDevice, eid: number): void {
+    const locs = this.instancedEntityMap.get(eid);
+    if (!locs) return;
+    const flags =
+      (this.instancedSelected.has(eid) ? INSTANCE_FLAG_SELECTED : 0) |
+      (this.instancedHidden.has(eid) ? INSTANCE_FLAG_HIDDEN : 0);
+    const data = new Uint32Array([flags >>> 0]);
+    for (const loc of locs) {
+      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
+      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, data);
+    }
+  }
+
+  private writeInstanceColor(
+    device: GPUDevice,
+    eid: number,
+    rgba: readonly [number, number, number, number],
+  ): void {
+    const locs = this.instancedEntityMap.get(eid);
+    if (!locs) return;
+    const data = new Float32Array([rgba[0], rgba[1], rgba[2], rgba[3]]);
+    for (const loc of locs) {
+      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
+      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, data);
+    }
+  }
+
+  private restoreInstanceColor(device: GPUDevice, eid: number): void {
+    const locs = this.instancedEntityMap.get(eid);
+    if (!locs) return;
+    for (const loc of locs) {
+      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
+      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, new Float32Array(loc.originalColor));
+    }
   }
 
   /**
@@ -1870,6 +2416,23 @@ export class Scene {
       tm.texture.destroy();
     }
     this.texturedMeshes = [];
+    // GPU-instancing templates own their vertex/index/instance buffers.
+    for (const it of this.instancedTemplates) {
+      it.vertexBuffer.destroy();
+      it.indexBuffer.destroy();
+      it.instanceBuffer.destroy();
+    }
+    this.instancedTemplates = [];
+    this.instancedTemplateCpu = [];
+    this.instancedEntityMap.clear();
+    this.instancedSelected.clear();
+    this.instancedHidden.clear();
+    this.instancedOverridden.clear();
+    this.instancedHasTransparent = false;
+    this.lastInstancedHiddenIds = null;
+    this.lastInstancedIsolatedIds = null;
+    this.instancedVisibilityDirty = false;
+    this.instancedDevice = undefined;
     // Clear partial batch cache
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     // Destroy streaming fragments (already included in batchedMeshes, but tracked separately)
@@ -1966,9 +2529,16 @@ export class Scene {
    */
   getAllMeshDataExpressIds(): number[] {
     if (this.geometryReleased) {
+      // boundingBoxes already includes instanced occurrences (their AABBs are
+      // stored there at upload), so the released path needs no extra union.
       return Array.from(this.boundingBoxes.keys());
     }
-    return Array.from(this.meshDataMap.keys());
+    // Union instanced-only occurrences (absent from meshDataMap) so CPU consumers
+    // enumerating geometry see them too. IDs only — no geometry materialized.
+    // (#1238 review)
+    const ids = new Set<number>(this.meshDataMap.keys());
+    for (const eid of this.instancedEntityMap.keys()) ids.add(eid);
+    return Array.from(ids);
   }
 
   /**
@@ -2036,7 +2606,7 @@ export class Scene {
     }
 
     // Full triangle-level raycast with bounding-box pre-filter
-    return raycastTriangles(
+    const flatHit = raycastTriangles(
       rayOrigin,
       rayDir,
       rayDirInv,
@@ -2046,5 +2616,39 @@ export class Scene {
       hiddenIds,
       isolatedIds,
     );
+
+    // Instanced-only occurrences live in the shard, not meshDataMap, so the CPU
+    // pick fallback would miss them. Materialize triangles lazily ONLY for
+    // entities whose world AABB the ray actually hits (never the whole instanced
+    // population), then return whichever hit is closer. (#1238 review)
+    let instancedHit: RaycastHit | null = null;
+    if (this.instancedEntityMap.size > 0) {
+      const instancedMap = new Map<number, MeshData[]>();
+      for (const eid of this.instancedEntityMap.keys()) {
+        if (hiddenIds?.has(eid)) continue;
+        if (isolatedIds != null && !isolatedIds.has(eid)) continue;
+        const bounds = this.getInstancedEntityBounds(eid);
+        if (!bounds || !rayIntersectsBox(rayOrigin, rayDirInv, rayDirSign, bounds)) continue;
+        const pieces = this.getInstancedMeshDataPieces(eid);
+        if (pieces && pieces.length > 0) instancedMap.set(eid, pieces);
+      }
+      if (instancedMap.size > 0) {
+        instancedHit = raycastTriangles(
+          rayOrigin,
+          rayDir,
+          rayDirInv,
+          rayDirSign,
+          instancedMap,
+          (id) => this.getInstancedEntityBounds(id),
+          hiddenIds,
+          isolatedIds,
+        );
+      }
+    }
+
+    if (flatHit && instancedHit) {
+      return instancedHit.distance < flatHit.distance ? instancedHit : flatHit;
+    }
+    return flatHit ?? instancedHit;
   }
 }

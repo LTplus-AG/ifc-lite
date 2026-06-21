@@ -44,6 +44,7 @@ import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { type MeshData } from '@ifc-lite/geometry';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { withInstancedMeshes } from '../../utils/instancedExport.js';
 
 type ColorSource = 'rendering' | 'shading';
 
@@ -209,12 +210,26 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       // re-meshing). Visibility + colour-source selection is applied here because
       // the Rust path emits exactly the meshes it is handed — this mirrors the
       // previous GLTFExporter `isMeshVisible` / `pickColor` semantics.
+      //
+      // Fold in GPU-instanced occurrences (absent from geometryResult.meshes — they
+      // live in shards) for the primary model so the GLB isn't missing repeated
+      // geometry; the same visibility/colour filter below applies to them.
+      // Instancing is the PRIMARY model only (idOffset 0). Detect that by offset,
+      // not by the `__legacy__` id — a federated primary also has idOffset 0 but
+      // carries a real model id, and would otherwise lose its instanced
+      // occurrences from the export. Mirrors ExportDialog.tsx. (#1238 review)
+      const federatedModel = models.get(selectedModelId);
+      const idOffset = federatedModel?.idOffset ?? 0;
+      const exportGeometry = withInstancedMeshes(
+        selectedModel.geometryResult,
+        idOffset === 0,
+      );
       const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
       const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
       const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
       const hasIsolation = !!globalIsolated && globalIsolated.size > 0;
 
-      const meshes = (selectedModel.geometryResult.meshes as MeshData[])
+      const meshes = (exportGeometry.meshes as MeshData[])
         .filter((m) => {
           if (!visibleOnly) return true;
           if (hiddenIfcTypes && m.ifcType && hiddenIfcTypes.has(m.ifcType)) return false;
@@ -228,7 +243,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
             : m,
         );
 
-      const glb = await exportGlbFromGeometry(selectedModel.geometryResult, { meshes, includeMetadata });
+      const glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata });
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       const url = URL.createObjectURL(blob);

@@ -6,6 +6,12 @@
  * Application entry point
  */
 
+// turbo-cache-bust: the OOM'd 2fd153e7 build cached a partial apps/viewer/dist
+// for this viewer:build input hash (built under fat-LTO memory pressure), so
+// every later FULL-TURBO build restored the broken dist → READY-but-404. This
+// content change forces a cache miss so the viewer rebuilds fresh now that
+// thin-LTO removes the OOM. Safe to delete once a clean build is cached.
+
 // MUST be the first import: disables React 19.2's dev-mode component-render
 // Performance tracking before react-dom caches `supportsUserTiming`, so large-IFC
 // geometry/dataStore props don't blow its recursive prop-diff to a RangeError/OOM

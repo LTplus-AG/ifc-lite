@@ -152,6 +152,7 @@ export function useIfcLoader() {
     setGeometryResult,
     setBoundedGeometryMode,
     appendGeometryBatch,
+    appendInstancedShards,
     updateMeshColors,
     updateCoordinateInfo,
     upsertModel,
@@ -168,6 +169,7 @@ export function useIfcLoader() {
     setGeometryResult: s.setGeometryResult,
     setBoundedGeometryMode: s.setBoundedGeometryMode,
     appendGeometryBatch: s.appendGeometryBatch,
+    appendInstancedShards: s.appendInstancedShards,
     updateMeshColors: s.updateMeshColors,
     updateCoordinateInfo: s.updateCoordinateInfo,
     upsertModel: s.upsertModel,
@@ -648,6 +650,11 @@ export function useIfcLoader() {
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
         mergeLayers: mergeLayersAtLoad,
+        // GPU instancing is primary-model only (single global scene, primary id
+        // space). A federated load must keep all geometry flat, else its opaque
+        // repeated occurrences would be partitioned into shards the federated path
+        // doesn't consume and silently dropped.
+        enableInstancing: target.kind === 'primary',
       });
       await geometryProcessor.init();
       // Issue #924: enable RTC-invariant per-entity geometry fingerprints so
@@ -817,6 +824,11 @@ export function useIfcLoader() {
       let estimatedTotal = 0;
       let totalMeshes = 0;
       const allMeshes: MeshData[] = []; // Collect all meshes for BVH building
+      const allInstancedShards: ArrayBuffer[] = []; // Raw IFNS shard bytes, retained for the cache write
+      // #924 compare parity: geometry-diff hashes for instanced-ONLY entities
+      // (their meshes never enter `allMeshes`). Folded onto the GeometryResult so
+      // buildEntityFingerprints can still diff repeated opaque geometry.
+      const allInstancedGeometryHashes = new Map<number, bigint>();
       let finalCoordinateInfo: CoordinateInfo | null = null;
       // Capture RTC offset from WASM for proper multi-model alignment
       let capturedRtcOffset: { x: number; y: number; z: number } | null = null;
@@ -984,11 +996,33 @@ export function useIfcLoader() {
 
               // Collect meshes for BVH building (use loop to avoid stack overflow with large batches)
               for (let i = 0; i < event.meshes.length; i++) allMeshes.push(event.meshes[i]);
+              // #924: fold instanced-only entity geometry hashes (no flat mesh
+              // carries them) into the model map so compare can diff them.
+              if (event.instancedGeometryHashIds && event.instancedGeometryHashValues) {
+                const hashIds = event.instancedGeometryHashIds;
+                const hashVals = event.instancedGeometryHashValues;
+                const hashN = Math.min(hashIds.length, hashVals.length);
+                for (let i = 0; i < hashN; i++) {
+                  allInstancedGeometryHashes.set(hashIds[i], hashVals[i]);
+                }
+              }
               finalCoordinateInfo = event.coordinateInfo ?? null;
               totalMeshes = event.totalSoFar;
               lastTotalMeshes = event.totalSoFar;
 
               if (target.kind === 'primary') {
+                // GPU-instancing: hand the batch's IFNS shards to the store so
+                // useGeometryStreaming decodes + uploads them via the instanced path.
+                // Also retain the raw bytes so they're written into the cache (the
+                // decode/upload only reads them, never detaches) — otherwise a cache
+                // reload would drop every instanced occurrence. Empty for non-
+                // instanced models / older wasm.
+                if (event.instancedShards && event.instancedShards.length > 0) {
+                  appendInstancedShards(event.instancedShards);
+                  for (let i = 0; i < event.instancedShards.length; i++) {
+                    allInstancedShards.push(event.instancedShards[i]);
+                  }
+                }
                 // Accumulate meshes for batched rendering
                 for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
 
@@ -1055,6 +1089,16 @@ export function useIfcLoader() {
                   updateMeshColors(cumulativeColorUpdates);
                 }
                 updateCoordinateInfo(finalCoordinateInfo);
+                // #924 compare parity: the streamed geometryResult holds flat
+                // meshes only, so fold the instanced-only entity hashes onto it
+                // before finalize reads it (no-op when hashing is off / nothing
+                // was fully instanced).
+                if (allInstancedGeometryHashes.size > 0) {
+                  const gr = useViewerStore.getState().geometryResult;
+                  if (gr) {
+                    setGeometryResult({ ...gr, instancedGeometryHashes: allInstancedGeometryHashes });
+                  }
+                }
               }
 
               setProgress({ phase: 'Complete', percent: 100 });
@@ -1090,6 +1134,11 @@ export function useIfcLoader() {
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                     totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                     coordinateInfo: finalCoordinateInfo ?? createCoordinateInfo(calculateMeshBounds(allMeshes).bounds),
+                    // Empty for federated (instancing is primary-only) but kept for
+                    // shape consistency / future-proofing. (#924 compare parity)
+                    ...(allInstancedGeometryHashes.size > 0
+                      ? { instancedGeometryHashes: allInstancedGeometryHashes }
+                      : {}),
                   };
                   await finalizeModel(dataStore, federatedGeometry, getSchemaVersion(dataStore), {
                     loadState: 'complete',
@@ -1125,6 +1174,9 @@ export function useIfcLoader() {
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                     totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                     coordinateInfo: finalCoordinateInfo,
+                    // Persist the GPU-instancing shards too, else a cache reload would
+                    // restore the flat meshes only and drop all instanced occurrences.
+                    ...(allInstancedShards.length > 0 ? { instancedShards: allInstancedShards } : {}),
                   };
                   await saveToCache(cacheKey, dataStore, geometryData, buffer, file.name);
                 }
@@ -1258,7 +1310,7 @@ export function useIfcLoader() {
       setLoading(false);
       setGeometryStreamingActive(false);
     }
-  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer]);
+  }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, appendInstancedShards, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer]);
 
   return { loadFile };
 }

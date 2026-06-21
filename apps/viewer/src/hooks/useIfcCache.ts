@@ -154,10 +154,12 @@ export function useIfcCache() {
     setProgress,
     setIfcDataStore,
     setGeometryResult,
+    appendInstancedShards,
   } = useViewerStore(useShallow((s) => ({
     setProgress: s.setProgress,
     setIfcDataStore: s.setIfcDataStore,
     setGeometryResult: s.setGeometryResult,
+    appendInstancedShards: s.appendInstancedShards,
   })));
 
   /**
@@ -291,6 +293,14 @@ export function useIfcCache() {
           totalTriangles,
           coordinateInfo,
         });
+
+        // Restore the GPU-instancing shards (opaque repeated occurrences that were
+        // partitioned off the flat meshes). useGeometryStreaming drains these →
+        // decodeInstancedShard → scene.addInstancedShard, exactly like a fresh load,
+        // so cached instanced geometry renders + picks + exports correctly.
+        if (result.geometry.instancedShards && result.geometry.instancedShards.length > 0) {
+          appendInstancedShards(result.geometry.instancedShards);
+        }
 
         // Set data store
         setIfcDataStore(dataStore);

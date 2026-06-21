@@ -214,6 +214,7 @@ export class PickingManager {
             viewProj,
             pointNodes,
             pointSizing,
+            this.scene.getInstancedTemplates(),
         );
         return result;
     }
@@ -267,6 +268,7 @@ export class PickingManager {
             viewProj,
             pointSnap?.nodes ?? undefined,
             pointSnap?.sizing ?? undefined,
+            this.scene.getInstancedTemplates(),
         );
     }
 }

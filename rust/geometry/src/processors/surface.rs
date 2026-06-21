@@ -125,7 +125,7 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
             normals: Vec::new(),
             indices,
             rtc_applied: false, 
-            origin: [0.0; 3],        })
+            origin: [0.0; 3],        instance_meta: None, })
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

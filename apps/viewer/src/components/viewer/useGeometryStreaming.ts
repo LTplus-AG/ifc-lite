@@ -21,6 +21,7 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
+import { decodeInstancedShard } from '@ifc-lite/geometry';
 import { toast } from '../ui/toast.js';
 
 // Session-scoped flag so the linear-infrastructure hint fires at most once
@@ -67,10 +68,18 @@ export interface UseGeometryStreamingParams {
    * follows the IFC coordinate mutation on the next frame.
    */
   pendingMeshTranslations: Map<number, [number, number, number]> | null;
+  /**
+   * Emit-both GPU-instancing: raw IFNS shard bytes from the geometry worker,
+   * drained here via `scene.addInstancedShard` (decode + upload as instanced
+   * templates). Cleared after each drain. Inert until the wasm exposes
+   * processGeometryBatchInstanced.
+   */
+  pendingInstancedShards: ArrayBuffer[] | null;
   clearPendingMeshColorUpdates: () => void;
   clearPendingColorUpdates: () => void;
   clearPendingMeshRemovals: () => void;
   clearPendingMeshTranslations: () => void;
+  clearInstancedShards: () => void;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   releaseGeometryAfterFinalize?: boolean;
   onGeometryReleased?: () => void;
@@ -103,10 +112,12 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pendingColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingInstancedShards,
     clearPendingMeshColorUpdates,
     clearPendingColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearInstancedShards,
     clearColorRef,
     releaseGeometryAfterFinalize = false,
     onGeometryReleased,
@@ -589,6 +600,40 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
     clearPendingMeshRemovals();
   }, [pendingMeshRemovals, isInitialized, clearPendingMeshRemovals]);
+
+  // ─── GPU-instancing shards ───────────────────────────────────────────
+  // The geometry worker collates each batch into an IFNS shard; the loader
+  // pushes the raw bytes into pendingInstancedShards. Drain here: decode +
+  // upload each as instanced templates (repeated opaque occurrences render
+  // ONLY via these). Runs on the default path now.
+  useEffect(() => {
+    if (pendingInstancedShards === null || !isInitialized) return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const device = renderer.getGPUDevice();
+    const scene = renderer.getScene();
+    if (!device) return;
+
+    if (pendingInstancedShards.length > 0) {
+      for (const bytes of pendingInstancedShards) {
+        // CRITICAL: never let a shard decode/upload throw OUT of this effect.
+        // addInstancedShard creates GPU buffers (mappedAtCreation); on a degraded
+        // backend whose device is being lost (e.g. CI's SwiftShader), createBuffer
+        // throws — and an uncaught throw in a React effect tears down the Viewport
+        // subtree via the error boundary, unmounting the <canvas> entirely. Instanced
+        // overlays are non-essential, so swallow per-shard failures: the flat geometry
+        // still renders.
+        try {
+          const shard = decodeInstancedShard(new Uint8Array(bytes));
+          if (shard) scene.addInstancedShard(device, shard);
+        } catch (err) {
+          console.warn('[useGeometryStreaming] instanced shard upload failed (device lost?), skipping:', err);
+        }
+      }
+      renderer.requestRender();
+    }
+    clearInstancedShards();
+  }, [pendingInstancedShards, isInitialized, clearInstancedShards]);
 
   // ─── Mesh translations (move / gizmo drag / numeric move) ────────────
   // Drain the pending-translation map onto the renderer. Same

@@ -86,7 +86,19 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   // Cores-based ceiling (preserves the previous tier behaviour, but expressed
   // as upper bounds rather than exact picks).
   let coresCap: number;
-  if (cores >= 16 && deviceMemoryGB >= 16) {
+  // Small files load in a few seconds (not a sustained grind) and cost trivial
+  // memory, so neither the thermal nor the bandwidth/RAM concerns the per-core
+  // caps below guard against bind. A small but geometry-heavy model is
+  // COMPUTE-bound (boolean-clipped steel — 170_KM is 20 MB / ~5000 booleans —
+  // or dense breps), which scales with cores; the 3–4-worker cap left most of
+  // an active-cooled (10+ core) machine idle. The measured bandwidth ceiling
+  // was a >512 MB georef result (#1159) — the opposite regime. Give small files
+  // near-full parallelism; the memoryCap below still gates if RAM is tight, and
+  // `?geomWorkers=N` still overrides per-host.
+  const SMALL_FILE_MB = 64;
+  if (fileSizeMB <= SMALL_FILE_MB && cores >= 10) {
+    coresCap = Math.min(maxWorkers, cores - 2);
+  } else if (cores >= 16 && deviceMemoryGB >= 16) {
     coresCap = Math.min(maxWorkers, Math.floor(cores / 2));
   } else if (cores >= 12 && deviceMemoryGB >= 8) {
     // 12+ cores indicates M-series Pro 12-core or M-series Max with active

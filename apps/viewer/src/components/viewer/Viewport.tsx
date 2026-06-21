@@ -411,11 +411,16 @@ export function Viewport({
   const typeViewMode = useViewerStore((s) => s.typeViewMode);
   const hasTypeGeometry = useViewerStore((s) => s.hasTypeGeometry);
   useEffect(() => {
+    if (!isInitialized) return;
     const scene = rendererRef.current?.getScene();
     if (!scene) return;
     scene.setInstancedVisible(!hasTypeGeometry || typeViewMode === 'model');
     rendererRef.current?.requestRender();
-  }, [typeViewMode, hasTypeGeometry]);
+    // Depend on isInitialized so the instanced-visibility state is applied once
+    // the renderer is ready, even if the view-mode inputs never change after the
+    // first (pre-init) run that bailed. Mirrors the annotation/grid effects.
+    // (#1238 review)
+  }, [typeViewMode, hasTypeGeometry, isInitialized]);
 
   // Animation frame ref
   const animationFrameRef = useRef<number | null>(null);

@@ -684,12 +684,24 @@ export class RenderPipeline {
             this.makeInstancedTransparentPipeline
         ) {
             this.instancedTransparentPipelineTried = true;
+            // WebGPU reports pipeline *validation* errors asynchronously via an
+            // error scope, NOT as a synchronous throw — the try/catch alone only
+            // catches device-loss / OOM-style failures. Wrap the build in a
+            // validation scope so a pipeline that fails validation is nulled
+            // instead of being used (broken) for instanced blending. (#1238 review)
+            this.device.pushErrorScope('validation');
             try {
                 this.instancedTransparentPipeline = this.makeInstancedTransparentPipeline();
             } catch (err) {
                 console.warn('[RenderPipeline] transparent instanced pipeline unavailable; instanced overlays will not blend:', err);
                 this.instancedTransparentPipeline = null;
             }
+            this.device.popErrorScope().then((error) => {
+                if (error) {
+                    console.warn('[RenderPipeline] transparent instanced pipeline failed validation; instanced overlays will not blend:', error.message);
+                    this.instancedTransparentPipeline = null;
+                }
+            }).catch(() => { /* device lost while popping the scope — pipeline is already unusable */ });
         }
         return this.instancedTransparentPipeline;
     }

@@ -207,6 +207,12 @@ export interface GeometryWorkerBatchMessage {
   /** Occurrence count carried by `instancedShards` this batch — folded into the
    *  pool's running mesh total so it counts flat + instanced geometry. */
   instancedOccurrences?: number;
+  /** Geometry-diff hashes (#924) for instanced-ONLY entities (no flat mesh
+   *  carries them). Parallel arrays: express id → hash. Present only when
+   *  geometry hashing is enabled AND a batch routed an entity's whole geometry
+   *  to the instanced shard. Transferable. */
+  instancedGeometryHashIds?: Uint32Array;
+  instancedGeometryHashValues?: BigUint64Array;
 }
 
 export interface GeometryWorkerProgressMessage {
@@ -423,6 +429,13 @@ interface ProcessingSession {
   pendingInstancedShards: ArrayBuffer[];
   /** Occurrence count accumulated in pendingInstancedShards since the last flush. */
   pendingInstancedOccurrences: number;
+  /**
+   * Geometry-diff hashes (#924) for elements whose meshes ALL went to the
+   * instanced shard, so no flat MeshData carries the hash. Without this the
+   * compare feature would silently regress for repeated opaque geometry (it
+   * worked when those elements rendered flat). Keyed by express id → hash.
+   */
+  pendingInstancedGeometryHashes: Map<number, bigint>;
   totalMeshesEmitted: number;
   cumulativeMeshBytes: number;
 }
@@ -481,6 +494,7 @@ function startSession(input: {
     pendingTransfers: [],
     pendingInstancedShards: [],
     pendingInstancedOccurrences: 0,
+    pendingInstancedGeometryHashes: new Map(),
     totalMeshesEmitted: 0,
     cumulativeMeshBytes: 0,
   };
@@ -491,11 +505,39 @@ function flushPending(session: ProcessingSession): void {
   session.pendingInstancedShards = [];
   const instancedOccurrences = session.pendingInstancedOccurrences;
   session.pendingInstancedOccurrences = 0;
-  if (session.pendingMeshes.length === 0 && instancedShards.length === 0) return;
+  // Drain the instanced-only geometry-hash side-channel into transferable arrays
+  // (#924 compare parity). Cleared every flush so it can't leak across batches.
+  const hashEntries = session.pendingInstancedGeometryHashes;
+  session.pendingInstancedGeometryHashes = new Map();
+  if (
+    session.pendingMeshes.length === 0 &&
+    instancedShards.length === 0 &&
+    hashEntries.size === 0
+  ) {
+    return;
+  }
   const meshes = session.pendingMeshes;
   const transfers = session.pendingTransfers;
   session.pendingMeshes = [];
   session.pendingTransfers = [];
+  let instancedGeometryHashIds: Uint32Array | undefined;
+  let instancedGeometryHashValues: BigUint64Array | undefined;
+  if (hashEntries.size > 0) {
+    instancedGeometryHashIds = new Uint32Array(hashEntries.size);
+    instancedGeometryHashValues = new BigUint64Array(hashEntries.size);
+    let k = 0;
+    for (const [id, hash] of hashEntries) {
+      instancedGeometryHashIds[k] = id;
+      instancedGeometryHashValues[k] = hash;
+      k += 1;
+    }
+    // Freshly allocated above, so `.buffer` is a real ArrayBuffer (TS widens it
+    // to ArrayBufferLike); safe to transfer.
+    transfers.push(
+      instancedGeometryHashIds.buffer as ArrayBuffer,
+      instancedGeometryHashValues.buffer as ArrayBuffer,
+    );
+  }
   // Total counts both routes: flat meshes + instanced occurrences (the latter
   // left the flat array but are still rendered geometry).
   session.totalMeshesEmitted += meshes.length + instancedOccurrences;
@@ -505,6 +547,8 @@ function flushPending(session: ProcessingSession): void {
       meshes,
       ...(instancedShards.length > 0 ? { instancedShards } : {}),
       ...(instancedOccurrences > 0 ? { instancedOccurrences } : {}),
+      ...(instancedGeometryHashIds ? { instancedGeometryHashIds } : {}),
+      ...(instancedGeometryHashValues ? { instancedGeometryHashValues } : {}),
     } as GeometryWorkerBatchMessage,
     [...transfers, ...instancedShards],
   );
@@ -519,6 +563,11 @@ function collectMeshes(
     // enabled via `set-compute-geometry-hashes`. Read inside the try so
     // `collection.free()` in finally still runs if extraction throws.
     const geometryHashes = extractGeometryHashesFromCollection(collection);
+    // Track which entities got a flat mesh; any hashed entity NOT seen here had
+    // all its meshes routed to the instanced shard, so its geometry-diff hash
+    // would otherwise be dropped (it rides on flat MeshData). Captured below
+    // and emitted via a side-channel so compare still sees instanced geometry.
+    const flatMeshedIds = new Set<number>();
 
     for (let i = 0; i < collection.length; i++) {
       // #1097: takeMesh MOVES the mesh out (no clone) — each mesh is read once.
@@ -581,10 +630,17 @@ function collectMeshes(
         // #924: attach the per-entity geometry fingerprint (empty Map → no-op
         // unless geometry hashing was enabled).
         if (geometryHash !== undefined) meshData.geometryHash = geometryHash;
+        flatMeshedIds.add(mesh.expressId);
         session.pendingMeshes.push(meshData);
       } finally {
         mesh.free();
       }
+    }
+    // Instanced-only entities: hashes present in the collection but with no flat
+    // mesh emitted this batch. Carry them so the compare fingerprint builder can
+    // still detect geometry changes on repeated opaque elements. (#1238 / #924)
+    for (const [id, hash] of geometryHashes) {
+      if (!flatMeshedIds.has(id)) session.pendingInstancedGeometryHashes.set(id, hash);
     }
   } finally {
     collection.free();

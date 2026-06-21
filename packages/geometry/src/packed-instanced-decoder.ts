@@ -146,6 +146,11 @@ export function decodeInstancedShard(payload: unknown): DecodedInstancedShard {
   for (let i = 0; i < instanceCount; i += 1) {
     const base = instanceTableOffset + i * INSTANCE_RECORD_BYTES;
     const templateIndex = view.getUint32(base, true);
+    if (templateIndex >= templates.length) {
+      throw new Error(
+        `Instanced shard instance ${i} references missing template ${templateIndex} (have ${templates.length})`,
+      );
+    }
     const entityId = view.getUint32(base + 4, true);
     const color: [number, number, number, number] = [
       view.getFloat32(base + 8, true),

@@ -825,6 +825,10 @@ export function useIfcLoader() {
       let totalMeshes = 0;
       const allMeshes: MeshData[] = []; // Collect all meshes for BVH building
       const allInstancedShards: ArrayBuffer[] = []; // Raw IFNS shard bytes, retained for the cache write
+      // #924 compare parity: geometry-diff hashes for instanced-ONLY entities
+      // (their meshes never enter `allMeshes`). Folded onto the GeometryResult so
+      // buildEntityFingerprints can still diff repeated opaque geometry.
+      const allInstancedGeometryHashes = new Map<number, bigint>();
       let finalCoordinateInfo: CoordinateInfo | null = null;
       // Capture RTC offset from WASM for proper multi-model alignment
       let capturedRtcOffset: { x: number; y: number; z: number } | null = null;
@@ -992,6 +996,16 @@ export function useIfcLoader() {
 
               // Collect meshes for BVH building (use loop to avoid stack overflow with large batches)
               for (let i = 0; i < event.meshes.length; i++) allMeshes.push(event.meshes[i]);
+              // #924: fold instanced-only entity geometry hashes (no flat mesh
+              // carries them) into the model map so compare can diff them.
+              if (event.instancedGeometryHashIds && event.instancedGeometryHashValues) {
+                const hashIds = event.instancedGeometryHashIds;
+                const hashVals = event.instancedGeometryHashValues;
+                const hashN = Math.min(hashIds.length, hashVals.length);
+                for (let i = 0; i < hashN; i++) {
+                  allInstancedGeometryHashes.set(hashIds[i], hashVals[i]);
+                }
+              }
               finalCoordinateInfo = event.coordinateInfo ?? null;
               totalMeshes = event.totalSoFar;
               lastTotalMeshes = event.totalSoFar;
@@ -1075,6 +1089,16 @@ export function useIfcLoader() {
                   updateMeshColors(cumulativeColorUpdates);
                 }
                 updateCoordinateInfo(finalCoordinateInfo);
+                // #924 compare parity: the streamed geometryResult holds flat
+                // meshes only, so fold the instanced-only entity hashes onto it
+                // before finalize reads it (no-op when hashing is off / nothing
+                // was fully instanced).
+                if (allInstancedGeometryHashes.size > 0) {
+                  const gr = useViewerStore.getState().geometryResult;
+                  if (gr) {
+                    setGeometryResult({ ...gr, instancedGeometryHashes: allInstancedGeometryHashes });
+                  }
+                }
               }
 
               setProgress({ phase: 'Complete', percent: 100 });
@@ -1110,6 +1134,11 @@ export function useIfcLoader() {
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                     totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                     coordinateInfo: finalCoordinateInfo ?? createCoordinateInfo(calculateMeshBounds(allMeshes).bounds),
+                    // Empty for federated (instancing is primary-only) but kept for
+                    // shape consistency / future-proofing. (#924 compare parity)
+                    ...(allInstancedGeometryHashes.size > 0
+                      ? { instancedGeometryHashes: allInstancedGeometryHashes }
+                      : {}),
                   };
                   await finalizeModel(dataStore, federatedGeometry, getSchemaVersion(dataStore), {
                     loadState: 'complete',

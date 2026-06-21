@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! GPU-instancing collation.
 //!
 //! Phase A produces baked meshes that carry [`InstanceMeta`] (rep-identity +
@@ -239,7 +243,16 @@ pub fn verify_recomposition(meshes: &[Mesh], collated: &Collated) -> f64 {
         for occ in &tmpl.occurrences {
             let target = &meshes[occ.mesh_index];
             let rel = Matrix4::from_row_slice(&occ.transform.map(|v| v as f64));
+            // A valid template↔occurrence pair shares the same geometry (same
+            // vertex count, different transform). If the counts differ the
+            // occurrence can't be recomposed from the template — flag it as an
+            // unbounded error instead of panicking on an out-of-bounds index,
+            // so the diagnostic surfaces the mismatch. (#1238 review)
             let n = template.positions.len() / 3;
+            if target.positions.len() / 3 != n {
+                max_err = f64::INFINITY;
+                continue;
+            }
             for v in 0..n {
                 // Template world vertex = template.origin + position.
                 let tx = template.origin[0] + template.positions[v * 3] as f64;

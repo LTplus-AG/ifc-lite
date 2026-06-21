@@ -33,10 +33,10 @@ export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 export {
+  // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION`
+  // are intentionally NOT re-exported — they have no consumer outside the
+  // decoder module + its test, so they stay internal. (#1238 review)
   decodeInstancedShard,
-  isInstancedShard,
-  INSTANCED_SHARD_MAGIC,
-  INSTANCED_SHARD_VERSION,
   type DecodedInstancedShard,
   type DecodedInstancedTemplate,
   type DecodedInstance,
@@ -154,6 +154,12 @@ export type StreamingGeometryEvent =
        *  consumer decodes + uploads them as instanced overlays; present only
        *  once the wasm exposes processGeometryBatchInstanced. */
       instancedShards?: ArrayBuffer[];
+      /** Geometry-diff hashes (#924) for instanced-ONLY entities — those whose
+       *  whole geometry went to the shard, so no flat MeshData carries the hash.
+       *  Parallel arrays (express id → hash) so compare still detects changes on
+       *  repeated opaque elements. Present only when geometry hashing is on. */
+      instancedGeometryHashIds?: Uint32Array;
+      instancedGeometryHashValues?: BigUint64Array;
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }

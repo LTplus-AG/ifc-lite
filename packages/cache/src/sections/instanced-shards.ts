@@ -30,7 +30,19 @@ export function readInstancedShards(reader: BufferReader): ArrayBuffer[] {
   const count = reader.readUint32();
   const out: ArrayBuffer[] = [];
   for (let i = 0; i < count; i++) {
+    // readBytes() uses Uint8Array.slice(), which silently clamps to the buffer
+    // end on a truncated cache — returning a short shard the decoder would then
+    // mis-parse. Validate length against the bytes actually remaining so a
+    // corrupt/truncated section fails fast instead of dropping geometry. (#1238)
+    if (reader.remaining < 4) {
+      throw new Error(`Truncated InstancedShards: missing length for shard ${i}/${count}`);
+    }
     const len = reader.readUint32();
+    if (len > reader.remaining) {
+      throw new Error(
+        `Truncated InstancedShards: shard ${i} declares ${len} bytes but only ${reader.remaining} remain`,
+      );
+    }
     const bytes = reader.readBytes(len);
     // readBytes may return a view into the larger cache buffer; copy out the exact
     // bytes so the shard is a standalone ArrayBuffer the decoder can own/transfer.

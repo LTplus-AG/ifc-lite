@@ -355,7 +355,17 @@ export async function* processParallel(
         const instancedShards = (msg as { instancedShards?: ArrayBuffer[] }).instancedShards;
         const instancedOccurrences =
           (msg as { instancedOccurrences?: number }).instancedOccurrences ?? 0;
-        if (meshes.length > 0 || (instancedShards && instancedShards.length > 0)) {
+        // #924 compare parity: geometry-diff hashes for instanced-only entities
+        // (no flat mesh carries them). Forward straight through to the consumer.
+        const instancedGeometryHashIds =
+          (msg as { instancedGeometryHashIds?: Uint32Array }).instancedGeometryHashIds;
+        const instancedGeometryHashValues =
+          (msg as { instancedGeometryHashValues?: BigUint64Array }).instancedGeometryHashValues;
+        if (
+          meshes.length > 0 ||
+          (instancedShards && instancedShards.length > 0) ||
+          (instancedGeometryHashIds && instancedGeometryHashIds.length > 0)
+        ) {
           // Update totalMeshes per batch so consumers see a live
           // running count via `totalSoFar`. The `complete` event
           // below used to be the only updater, leaving streamed
@@ -374,6 +384,9 @@ export async function* processParallel(
             totalSoFar: totalMeshes,
             coordinateInfo: coordinateInfo || undefined,
             ...(instancedShards && instancedShards.length > 0 ? { instancedShards } : {}),
+            ...(instancedGeometryHashIds && instancedGeometryHashIds.length > 0
+              ? { instancedGeometryHashIds, instancedGeometryHashValues }
+              : {}),
           });
           wake();
         }

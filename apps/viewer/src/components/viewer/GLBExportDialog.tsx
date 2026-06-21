@@ -214,9 +214,15 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       // Fold in GPU-instanced occurrences (absent from geometryResult.meshes — they
       // live in shards) for the primary model so the GLB isn't missing repeated
       // geometry; the same visibility/colour filter below applies to them.
+      // Instancing is the PRIMARY model only (idOffset 0). Detect that by offset,
+      // not by the `__legacy__` id — a federated primary also has idOffset 0 but
+      // carries a real model id, and would otherwise lose its instanced
+      // occurrences from the export. Mirrors ExportDialog.tsx. (#1238 review)
+      const federatedModel = models.get(selectedModelId);
+      const idOffset = federatedModel?.idOffset ?? 0;
       const exportGeometry = withInstancedMeshes(
         selectedModel.geometryResult,
-        selectedModelId === '__legacy__',
+        idOffset === 0,
       );
       const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
       const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;

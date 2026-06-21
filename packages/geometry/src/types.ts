@@ -173,6 +173,15 @@ export interface GeometryResult {
   totalTriangles: number;
   totalVertices: number;
   coordinateInfo: CoordinateInfo;
+  /**
+   * Geometry-diff hashes (#924) for instanced-ONLY entities — repeated opaque
+   * geometry whose whole mesh set went to the GPU-instanced shard, so it never
+   * appears in `meshes`. Keyed by express id → hash. Lets the compare feature
+   * detect geometry changes on instanced elements (it would otherwise silently
+   * miss them, a regression vs. the pre-instancing flat path). Absent when
+   * geometry hashing is off or no entity was fully instanced.
+   */
+  instancedGeometryHashes?: Map<number, bigint>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

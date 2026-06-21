@@ -56,6 +56,15 @@ export interface BuildFingerprintsModel {
   store: IfcDataStore;
   /** Tessellated meshes. Express ids are federation-global (`local + idOffset`). */
   meshes: readonly MeshData[];
+  /**
+   * Geometry-diff hashes for instanced-ONLY entities (#924) — repeated opaque
+   * geometry that GPU-instancing took off the flat `meshes` array, so it carries
+   * no per-mesh `geometryHash`. Keyed by express id (same convention as
+   * `meshes`). Without this, compare would silently miss geometry changes on
+   * instanced elements. Instancing is primary-model only, so these ids have
+   * `idOffset === 0`.
+   */
+  instancedGeometryHashes?: ReadonlyMap<number, bigint>;
   /** This model's federation id offset (0 for the anchor / single-model load). */
   idOffset: number;
 }
@@ -73,7 +82,7 @@ export interface BuildFingerprintsModel {
 export async function buildEntityFingerprints(
   model: BuildFingerprintsModel,
 ): Promise<EntityFingerprint<CompareRef>[]> {
-  const { store, meshes, idOffset, modelId } = model;
+  const { store, meshes, instancedGeometryHashes, idOffset, modelId } = model;
 
   // local express id → first geometry hash seen for it (may be undefined when
   // hashing was disabled or the WASM build predates it — data diff still works)
@@ -84,6 +93,18 @@ export async function buildEntityFingerprints(
       geometryByLocalId.set(localId, mesh.geometryHash);
     } else if (geometryByLocalId.get(localId) === undefined && mesh.geometryHash !== undefined) {
       geometryByLocalId.set(localId, mesh.geometryHash);
+    }
+  }
+  // Fold in instanced-only entities (#924): repeated opaque geometry GPU-instancing
+  // took off the flat `meshes` array. They have no MeshData, so they'd be absent
+  // from compare entirely — add them here so geometry changes are still detected.
+  // A real flat-mesh hash always wins (set first above); only fill gaps.
+  if (instancedGeometryHashes) {
+    for (const [expressId, hash] of instancedGeometryHashes) {
+      const localId = expressId - idOffset;
+      if (geometryByLocalId.get(localId) === undefined) {
+        geometryByLocalId.set(localId, hash);
+      }
     }
   }
 

@@ -16,6 +16,7 @@ import {
   prepareRayDirInv,
   raycastBoundingBoxes,
   raycastTriangles,
+  rayIntersectsBox,
 } from './scene-raycaster.js';
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
@@ -455,6 +456,16 @@ export class Scene {
         visit(piece);
       }
     }
+    // Instanced-only occurrences live in the shard, not meshDataMap, so full-
+    // geometry CPU consumers (e.g. the deviation BVH) would miss them. Materialize
+    // them lazily here — these copies are transient (the caller builds its BVH and
+    // discards them), so this does NOT retain the N full copies instancing avoids.
+    // Skipped after geometry release (templates freed). (#1238 review)
+    if (!this.geometryReleased) {
+      for (const piece of this.getAllInstancedMeshData()) {
+        visit(piece);
+      }
+    }
   }
 
   getMeshDataPieces(expressId: number, modelIndex?: number): MeshData[] | undefined {
@@ -649,7 +660,10 @@ export class Scene {
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) {
       this.boundingBoxes.delete(expressId);
-      return false;
+      // Instanced-only entity (lives in the shard, not meshDataMap): without this
+      // the GPU occurrence keeps rendering AND picking after delete/split. Tombstone
+      // it on the GPU + drop its instanced state. (#1238 review)
+      return this.removeInstancedEntity(expressId);
     }
 
     // Track which buckets need re-batching so we don't repeatedly
@@ -714,9 +728,35 @@ export class Scene {
     // in the buckets and would otherwise linger after a delete/split (same ghost
     // class as a move).
     this.evictHighlightMeshes(expressId);
+    // An entity can have BOTH flat meshes and instanced occurrences; clean up the
+    // instanced side here too so a mixed entity doesn't keep ghost instances.
+    if (this.removeInstancedEntity(expressId)) removedDedicated = true;
     // True when at least one dedicated mesh was removed — covers
     // the case where a mesh was queued but not yet bucketed.
     return removedDedicated;
+  }
+
+  /**
+   * Tombstone a GPU-instanced entity on delete/split: set its HIDDEN flag on the
+   * GPU (both render + pick shaders discard it) before forgetting its occurrence
+   * locations, then drop all instanced state for it. The occurrence's buffer slots
+   * are not reclaimed (delete/split is rare) — hiding them is sufficient and never
+   * touches other entities' slots. Returns true if the id was instanced. (#1238)
+   */
+  private removeInstancedEntity(expressId: number): boolean {
+    if (!this.instancedEntityMap.has(expressId)) return false;
+    const device = this.instancedDevice;
+    if (device) {
+      // Must set the flag while the occurrence locations are still in the map.
+      this.instancedHidden.add(expressId);
+      this.writeInstanceFlags(device, expressId);
+    }
+    this.instancedEntityMap.delete(expressId);
+    this.instancedSelected.delete(expressId);
+    this.instancedHidden.delete(expressId);
+    this.instancedOverridden.delete(expressId);
+    this.boundingBoxes.delete(expressId);
+    return true;
   }
 
   /**
@@ -2489,9 +2529,16 @@ export class Scene {
    */
   getAllMeshDataExpressIds(): number[] {
     if (this.geometryReleased) {
+      // boundingBoxes already includes instanced occurrences (their AABBs are
+      // stored there at upload), so the released path needs no extra union.
       return Array.from(this.boundingBoxes.keys());
     }
-    return Array.from(this.meshDataMap.keys());
+    // Union instanced-only occurrences (absent from meshDataMap) so CPU consumers
+    // enumerating geometry see them too. IDs only — no geometry materialized.
+    // (#1238 review)
+    const ids = new Set<number>(this.meshDataMap.keys());
+    for (const eid of this.instancedEntityMap.keys()) ids.add(eid);
+    return Array.from(ids);
   }
 
   /**
@@ -2559,7 +2606,7 @@ export class Scene {
     }
 
     // Full triangle-level raycast with bounding-box pre-filter
-    return raycastTriangles(
+    const flatHit = raycastTriangles(
       rayOrigin,
       rayDir,
       rayDirInv,
@@ -2569,5 +2616,39 @@ export class Scene {
       hiddenIds,
       isolatedIds,
     );
+
+    // Instanced-only occurrences live in the shard, not meshDataMap, so the CPU
+    // pick fallback would miss them. Materialize triangles lazily ONLY for
+    // entities whose world AABB the ray actually hits (never the whole instanced
+    // population), then return whichever hit is closer. (#1238 review)
+    let instancedHit: RaycastHit | null = null;
+    if (this.instancedEntityMap.size > 0) {
+      const instancedMap = new Map<number, MeshData[]>();
+      for (const eid of this.instancedEntityMap.keys()) {
+        if (hiddenIds?.has(eid)) continue;
+        if (isolatedIds != null && !isolatedIds.has(eid)) continue;
+        const bounds = this.getInstancedEntityBounds(eid);
+        if (!bounds || !rayIntersectsBox(rayOrigin, rayDirInv, rayDirSign, bounds)) continue;
+        const pieces = this.getInstancedMeshDataPieces(eid);
+        if (pieces && pieces.length > 0) instancedMap.set(eid, pieces);
+      }
+      if (instancedMap.size > 0) {
+        instancedHit = raycastTriangles(
+          rayOrigin,
+          rayDir,
+          rayDirInv,
+          rayDirSign,
+          instancedMap,
+          (id) => this.getInstancedEntityBounds(id),
+          hiddenIds,
+          isolatedIds,
+        );
+      }
+    }
+
+    if (flatHit && instancedHit) {
+      return instancedHit.distance < flatHit.distance ? instancedHit : flatHit;
+    }
+    return flatHit ?? instancedHit;
   }
 }

@@ -618,6 +618,9 @@ impl Mesh {
         self.normals.clear();
         self.indices.clear();
         self.rtc_applied = false;
+        // Reset instancing metadata so a cleared+reused mesh can't carry stale
+        // rep-identity / transform into unrelated geometry. (#1238 review)
+        self.instance_meta = None;
     }
 
     /// Weld coincident vertices, preserving per-vertex normals.

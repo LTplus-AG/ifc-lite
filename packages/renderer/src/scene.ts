@@ -1911,6 +1911,26 @@ export class Scene {
   addInstancedShard(device: GPUDevice, shard: DecodedInstancedShard): void {
     this.instancedDevice = device; // cached for per-instance selection/overlay writeBuffer
     const prepared = prepareInstancedRender(shard);
+    // [INST-DBG] TEMP diagnostic (170_KM instanced-render regression). Logs per
+    // shard: decoded vs prepared counts + the FIRST instance's world translation
+    // (col-major mat4 → floats 12,13,14). Sane ≈ model world coords; NaN/0/huge
+    // ⇒ produce/compose bug; prepared=0 ⇒ all transparent/dropped.
+    {
+      let totalInst = 0;
+      for (const p of prepared) totalInst += p.instanceCount;
+      let sample = 'n/a';
+      const first = prepared.find((p) => p.instanceCount > 0);
+      if (first) {
+        const dv = new DataView(first.instanceBuffer);
+        const tx = dv.getFloat32(48, true), ty = dv.getFloat32(52, true), tz = dv.getFloat32(56, true);
+        const o = shard.templates[first.templateIndex]?.origin;
+        sample = `worldT=[${tx.toFixed(1)},${ty.toFixed(1)},${tz.toFixed(1)}] tmplOrigin=[${o ? o.map((v) => v.toFixed(0)).join(',') : '?'}]`;
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        `[INST-DBG] addInstancedShard: shardTemplates=${shard.templates.length} shardInstances=${shard.instances.length} prepared=${prepared.length} totalInst=${totalInst} sharedFrameOrigin=${this.sharedFrameOrigin ? '[' + this.sharedFrameOrigin.map((v) => v.toFixed(0)).join(',') + ']' : 'null'} ${sample}`,
+      );
+    }
     for (const t of prepared) {
       const vcount = Math.floor(t.positions.length / 3);
       if (vcount === 0 || t.indices.length === 0 || t.instanceCount === 0) continue;

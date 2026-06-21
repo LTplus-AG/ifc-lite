@@ -615,6 +615,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (!device) return;
 
     if (pendingInstancedShards.length > 0) {
+      // [INST-DBG] TEMP: count shards received / decoded ok / failed this drain.
+      let dbgOk = 0, dbgFail = 0;
       for (const bytes of pendingInstancedShards) {
         // CRITICAL: never let a shard decode/upload throw OUT of this effect.
         // addInstancedShard creates GPU buffers (mappedAtCreation); on a degraded
@@ -625,11 +627,14 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         // still renders.
         try {
           const shard = decodeInstancedShard(new Uint8Array(bytes));
-          if (shard) scene.addInstancedShard(device, shard);
+          if (shard) { scene.addInstancedShard(device, shard); dbgOk += 1; }
         } catch (err) {
+          dbgFail += 1;
           console.warn('[useGeometryStreaming] instanced shard upload failed (device lost?), skipping:', err);
         }
       }
+      // eslint-disable-next-line no-console
+      console.log(`[INST-DBG] drain: received=${pendingInstancedShards.length} decodedOk=${dbgOk} failed=${dbgFail}`);
       renderer.requestRender();
     }
     clearInstancedShards();

@@ -9,8 +9,9 @@
  * accidentally duplicated or coincident objects — re-imported geometry, a wall
  * pasted twice, a column modelled on top of another. That is *not* a discipline
  * clash, so it gets its own lightweight pass: purely AABB + a cheap geometry
- * signature (triangle count), no narrow-phase triangle work. It scales to large
- * models via a uniform hash grid, so it is cheap enough to run on every load.
+ * signature (triangle count), no narrow-phase triangle work. The broad phase is
+ * a one-axis sort-and-sweep, which handles mixed-scale models correctly (no grid
+ * cell size to mis-tune), so it is cheap enough to run on every load.
  *
  * Output is a normal {@link ClashResult} (rule id `duplicates`) so the existing
  * panel, grouping and BCF export render it with no special-casing.
@@ -28,7 +29,6 @@ import type {
   ClashSeverity,
   ClashSummary,
   ExclusionSet,
-  Vec3,
 } from './types.js';
 
 export interface DuplicateOptions {
@@ -125,11 +125,6 @@ function buildSummary(clashes: Clash[]): ClashSummary {
   return { total: clashes.length, byRule, byTypePair, bySeverity };
 }
 
-/** Quantise a centre to an integer grid cell at resolution `cell`. */
-function cellKey(c: Vec3, cell: number): string {
-  return `${Math.floor(c[0] / cell)},${Math.floor(c[1] / cell)},${Math.floor(c[2] / cell)}`;
-}
-
 /**
  * Find duplicate / fully-overlapping elements. Returns a {@link ClashResult}
  * where each clash is a near-coincident pair: severity `major` for an exact
@@ -141,28 +136,6 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
   const exactThreshold = options.exactThreshold ?? DEFAULTS.exactThreshold;
   const positionTolerance = options.positionTolerance ?? DEFAULTS.positionTolerance;
   const exclusions = options.exclusions;
-
-  // A hash grid keyed by quantised centre. Duplicates share a centre so they
-  // land in the same (or an adjacent) cell — querying the 27-cell neighbourhood
-  // keeps it correct across cell boundaries while staying near-linear.
-  const centers = elements.map((el) => center(el.bounds));
-  // Cell size scaled to the typical element so the grid stays sparse on big
-  // models; never smaller than the position tolerance.
-  let avgExtent = 0;
-  for (const el of elements) {
-    const b = el.bounds;
-    avgExtent += (b.max[0] - b.min[0] + b.max[1] - b.min[1] + b.max[2] - b.min[2]) / 3;
-  }
-  avgExtent = elements.length > 0 ? avgExtent / elements.length : 1;
-  const cell = Math.max(positionTolerance * 4, avgExtent, 0.1);
-
-  const grid = new Map<string, number[]>();
-  for (let i = 0; i < elements.length; i += 1) {
-    const key = cellKey(centers[i], cell);
-    const bucket = grid.get(key);
-    if (bucket) bucket.push(i);
-    else grid.set(key, [i]);
-  }
 
   const clashes: Clash[] = [];
   const seen = new Set<string>();
@@ -208,18 +181,47 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     });
   };
 
-  for (let i = 0; i < elements.length; i += 1) {
-    const [cx, cy, cz] = centers[i];
-    for (let dx = -1; dx <= 1; dx += 1) {
-      for (let dy = -1; dy <= 1; dy += 1) {
-        for (let dz = -1; dz <= 1; dz += 1) {
-          const key = `${Math.floor(cx / cell) + dx},${Math.floor(cy / cell) + dy},${Math.floor(cz / cell) + dz}`;
-          const bucket = grid.get(key);
-          if (!bucket) continue;
-          for (const j of bucket) consider(i, j);
-        }
+  // Broad phase: one-axis sort-and-sweep over the AABBs. Unlike a fixed-size
+  // hash grid, this makes NO assumption about element scale — so two large
+  // objects offset by a few metres (still well above the IoU threshold) are
+  // never skipped just because many small elements shrank an average cell size.
+  // Sweep along the axis with the widest spread of box minima so the active set
+  // (and thus the comparison count) stays small.
+  let axis = 0;
+  let bestSpread = -Infinity;
+  for (let a = 0; a < 3; a += 1) {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const el of elements) {
+      const v = el.bounds.min[a];
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    const spread = hi - lo;
+    if (spread > bestSpread) {
+      bestSpread = spread;
+      axis = a;
+    }
+  }
+
+  const order = elements.map((_, i) => i).sort(
+    (x, y) => elements[x].bounds.min[axis] - elements[y].bounds.min[axis],
+  );
+  // `active` holds indices whose box still extends past the current box's start
+  // on `axis`; only those can overlap, so we compare against just them.
+  const active: number[] = [];
+  for (const idx of order) {
+    const minA = elements[idx].bounds.min[axis];
+    for (let k = active.length - 1; k >= 0; k -= 1) {
+      if (elements[active[k]].bounds.max[axis] < minA) {
+        active[k] = active[active.length - 1];
+        active.pop();
       }
     }
+    for (const other of active) {
+      consider(Math.min(idx, other), Math.max(idx, other));
+    }
+    active.push(idx);
   }
 
   clashes.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));

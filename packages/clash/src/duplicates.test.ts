@@ -85,6 +85,19 @@ describe('findDuplicates', () => {
     expect(res.summary.byRule.duplicates).toBe(2);
   });
 
+  it('finds large duplicates offset by metres even among many small elements', () => {
+    // Regression for the mixed-scale gap: a fixed-size grid driven by the small
+    // elements would put the two 200 m boxes (offset 4 m, IoU ≈ 0.96) many cells
+    // apart and miss them. Sort-and-sweep does not.
+    const elements: ClashElement[] = [];
+    for (let i = 0; i < 200; i += 1) elements.push(box(`s${i}`, [i * 0.3, 0, 0], 0.1, 6));
+    elements.push(box('big-a', [500, 0, 0], 100, 1000));
+    elements.push(box('big-b', [504, 0, 0], 100, 1000));
+    const res = findDuplicates(elements);
+    const ids = res.clashes.map((c) => `${c.a.key}/${c.b.key}`);
+    expect(ids).toContain('big-a/big-b');
+  });
+
   it('scales across many cells without missing centre-sharing pairs', () => {
     const elements: ClashElement[] = [];
     for (let i = 0; i < 50; i += 1) {

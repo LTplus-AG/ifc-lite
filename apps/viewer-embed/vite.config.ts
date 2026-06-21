@@ -47,6 +47,10 @@ export default defineConfig({
       '@ifc-lite/lens': path.resolve(__dirname, '../../packages/lens/src'),
       '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),
+      // More-specific FIRST: the general '@ifc-lite/wasm' alias below points at a
+      // FILE, so '@ifc-lite/wasm/threaded' would otherwise resolve to
+      // 'pkg/ifc-lite.js/threaded' (ENOTDIR). Vite matches aliases in order.
+      '@ifc-lite/wasm/threaded': path.resolve(__dirname, '../../packages/wasm/pkg-threaded/ifc-lite.js'),
       '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
     },
   },

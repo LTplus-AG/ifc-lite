@@ -238,6 +238,10 @@ export default defineConfig({
       '@ifc-lite/cache': path.resolve(__dirname, '../../packages/cache/src'),
       '@ifc-lite/ifcx': path.resolve(__dirname, '../../packages/ifcx/src'),
       '@ifc-lite/pointcloud': path.resolve(__dirname, '../../packages/pointcloud/src'),
+      // More-specific FIRST: the general '@ifc-lite/wasm' alias points at a
+      // FILE, so '@ifc-lite/wasm/threaded' would otherwise resolve to
+      // 'pkg/ifc-lite.js/threaded' (ENOTDIR). Vite matches aliases in order.
+      '@ifc-lite/wasm/threaded': path.resolve(__dirname, '../../packages/wasm/pkg-threaded/ifc-lite.js'),
       '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
       '@ifc-lite/sdk': path.resolve(__dirname, '../../packages/sdk/src'),
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),

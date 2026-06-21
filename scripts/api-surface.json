@@ -1573,8 +1573,6 @@
     "GeometryQuality: enum",
     "GeometryResult: interface",
     "GridAxis: interface",
-    "INSTANCED_SHARD_MAGIC: const",
-    "INSTANCED_SHARD_VERSION: const",
     "IPlatformBridge: interface",
     "IfcLiteBridge: class",
     "MeshData: interface",
@@ -1603,7 +1601,6 @@
     "createPlatformBridge: function",
     "decodeInstancedShard: function",
     "getGeometryStreamWatchdogMs: function",
-    "isInstancedShard: function",
     "isTauri: function",
     "pickWorkerCount: function"
   ],

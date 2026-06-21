@@ -34,3 +34,16 @@ export {
 } from './triage.js';
 export { groupClashes, type GroupOptions } from './grouping.js';
 export { compareClashRuns, type ClashRevisionDiff } from './lifecycle.js';
+export {
+  SEVERITY_RANK,
+  TOUCHING_EPSILON,
+  penetrationDepth,
+  isTouching,
+  sortClashes,
+  type ClashSortBy,
+} from './analysis.js';
+export {
+  findDuplicates,
+  DUPLICATES_RULE,
+  type DuplicateOptions,
+} from './duplicates.js';

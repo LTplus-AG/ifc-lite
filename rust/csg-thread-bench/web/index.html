@@ -28,7 +28,10 @@ async function main() {
   await mod.default();
   log(`is_threaded=${mod.is_threaded()}`);
 
-  // Threaded build needs the pool initialized before ANY par_iter.
+  // Threaded build needs the pool initialized before ANY par_iter. The
+  // generated wasm-bindgen-rayon worker helper does a directory import a static
+  // server can't resolve; build.sh rewrites it to a concrete path, so build the
+  // threaded bundle via that script (not raw wasm-pack) or this step hangs.
   if (pkg === 'threaded') {
     const t0 = performance.now();
     await mod.initThreadPool(threads);

@@ -28,6 +28,7 @@ import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { computeWorkerCount } from './worker-count.js';
+import { wasmThreadsSupported } from './wasm-threads.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 
 /**
@@ -415,7 +416,21 @@ export async function* processParallel(
     totalJobs: estimatedJobs,
     workerCountOverride: options?.workerCountOverride,
   });
-  const workerCount = workerCountResult.count;
+  // Single-controller threaded path (opt-in via `?geomThreads=1` while we
+  // validate it): when the host is cross-origin isolated + threads-capable, run
+  // ONE worker that uses a wasm-bindgen-rayon pool internally, instead of N
+  // single-thread workers — so we don't oversubscribe (N pools × cores). Falls
+  // back to the N-worker single-thread path on any host that can't, and the
+  // worker itself falls back to the single-thread bundle if its threaded init
+  // throws. See docs/architecture/csg-threading-design.md.
+  let threadedOptIn = false;
+  try {
+    threadedOptIn = new URLSearchParams(self.location?.search ?? '').get('geomThreads') === '1';
+  } catch {
+    threadedOptIn = false;
+  }
+  const useThreaded = threadedOptIn && wasmThreadsSupported();
+  const workerCount = useThreaded ? 1 : workerCountResult.count;
 
   const workers: Worker[] = [];
   for (let i = 0; i < workerCount; i++) {
@@ -434,6 +449,10 @@ export async function* processParallel(
     worker.postMessage({
       type: 'init',
       ...(wasmUrlForWorker ? { wasmUrl: wasmUrlForWorker } : {}),
+      // Single-controller: this one worker loads the threaded bundle + spins up
+      // a rayon pool. Only set when the host is capable (else the worker stays
+      // on the single-thread bundle).
+      ...(useThreaded ? { threaded: true } : {}),
     });
     // Issue #540: forward the user's "Merge Multilayer Walls" toggle
     // BEFORE any stream-start so the worker's IfcAPI has the flag set
@@ -619,7 +638,7 @@ export async function* processParallel(
   const overrideNote = options?.workerCountOverride != null
     ? ` (override=${options.workerCountOverride}, bound=${workerCountResult.reason})`
     : ` (cores=${cores}, bound=${workerCountResult.reason})`;
-  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}`);
+  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${useThreaded ? ' (single-controller threaded)' : ''}${overrideNote}`);
 
   const prepassWorker = makePrepassWorker();
   // Wrap the rest of the pipeline so worker teardown runs not only on

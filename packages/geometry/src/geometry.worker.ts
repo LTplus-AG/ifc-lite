@@ -4,6 +4,7 @@
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
+import { wasmThreadsSupported, threadedPoolSize } from './wasm-threads.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import {
   DEFAULT_BATCH_SIZING,
@@ -28,6 +29,15 @@ export interface GeometryWorkerInitMessage {
    * Vite/webpack/Rollup consumers that already work keep working.
    */
   wasmUrl?: string;
+  /**
+   * Single-controller threaded path: load the threaded WASM bundle
+   * (`@ifc-lite/wasm/threaded`) and spin up a wasm-bindgen-rayon pool, instead
+   * of the single-thread bundle. Set by the orchestrator only for the lone
+   * worker it spawns when the host is cross-origin isolated + threads-capable
+   * (opt-in via `?geomThreads=1`). The worker still falls back to the
+   * single-thread bundle if threaded init throws.
+   */
+  threaded?: boolean;
 }
 
 /**
@@ -234,6 +244,16 @@ let api: IfcAPI | null = null;
 let cachedWasmUrl: string | undefined = undefined;
 
 /**
+ * Set from the `init` message: this worker should load the threaded WASM bundle
+ * and run a rayon pool (single-controller). Read once by {@link ensureInit}.
+ */
+let threadedRequested = false;
+/** Constructor for the active bundle's `IfcAPI` — the static (single-thread)
+ *  import by default; replaced with the threaded bundle's class if the threaded
+ *  init succeeds. Both are the same wasm-bindgen class, different bundle. */
+let IfcAPICtor: typeof IfcAPI = IfcAPI;
+
+/**
  * Idempotent wasm + IfcAPI initializer. Centralises the
  * `if (!api) { await init(); api = new IfcAPI(); ... }` boilerplate that
  * every message handler used to repeat. Honours `cachedWasmUrl` so the
@@ -246,10 +266,35 @@ let cachedWasmUrl: string | undefined = undefined;
  * retried once before failing. `__wbg_init` only short-circuits on
  * `wasm !== undefined`, so a retry after a failed load safely re-fetches.
  */
+let wasmInitialized = false;
+
 async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
-  await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
-  api = new IfcAPI();
+  if (!wasmInitialized) {
+    let threaded = false;
+    if (threadedRequested && wasmThreadsSupported()) {
+      try {
+        // Threaded bundle resolves its OWN co-located wasm via import.meta.url —
+        // do NOT pass cachedWasmUrl (that's the single-thread bundle's binary).
+        const mod = await import('@ifc-lite/wasm/threaded');
+        await initWasmWithRetry(() => mod.default(), { label: 'geometry.worker[threaded]' });
+        await mod.initThreadPool(threadedPoolSize());
+        IfcAPICtor = mod.IfcAPI as unknown as typeof IfcAPI;
+        threaded = true;
+        console.log(`[geometry.worker] threaded WASM active (${threadedPoolSize()} threads)`);
+      } catch (err) {
+        // Any failure (bundle missing, COOP/COEP off, initThreadPool hang-guard)
+        // → fall back to the single-thread bundle so the worker still functions.
+        console.warn('[geometry.worker] threaded WASM init failed; using single-thread bundle', err);
+        IfcAPICtor = IfcAPI;
+      }
+    }
+    if (!threaded) {
+      await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
+    }
+    wasmInitialized = true;
+  }
+  api = new IfcAPICtor();
   mergeLayersApplied = false;
   applyMergeLayersToApi();
   geometryHashApplied = false;
@@ -730,6 +775,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
 
     if (e.data.type === 'init') {
       if (e.data.wasmUrl) cachedWasmUrl = e.data.wasmUrl;
+      // Single-controller: remember the threaded request for ensureInit. The
+      // explicit-wasmModule sync path below is the plain bundle only (the
+      // orchestrator never sends both threaded + wasmModule).
+      threadedRequested = !!e.data.threaded;
       if (e.data.wasmModule) {
         initSync({ module_or_path: e.data.wasmModule });
         api = new IfcAPI();

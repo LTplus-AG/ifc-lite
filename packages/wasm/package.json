@@ -18,7 +18,11 @@
   "files": [
     "pkg/ifc-lite_bg.wasm",
     "pkg/ifc-lite.js",
-    "pkg/ifc-lite.d.ts"
+    "pkg/ifc-lite.d.ts",
+    "threaded.d.ts",
+    "pkg-threaded/ifc-lite_bg.wasm",
+    "pkg-threaded/ifc-lite.js",
+    "pkg-threaded/snippets/**"
   ],
   "main": "./pkg/ifc-lite.js",
   "module": "./pkg/ifc-lite.js",
@@ -29,7 +33,13 @@
       "import": "./pkg/ifc-lite.js",
       "default": "./pkg/ifc-lite.js"
     },
-    "./ifc-lite_bg.wasm": "./pkg/ifc-lite_bg.wasm"
+    "./ifc-lite_bg.wasm": "./pkg/ifc-lite_bg.wasm",
+    "./threaded": {
+      "types": "./threaded.d.ts",
+      "import": "./pkg-threaded/ifc-lite.js",
+      "default": "./pkg-threaded/ifc-lite.js"
+    },
+    "./pkg-threaded/ifc-lite_bg.wasm": "./pkg-threaded/ifc-lite_bg.wasm"
   },
   "sideEffects": false,
   "keywords": [

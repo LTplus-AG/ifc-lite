@@ -120,12 +120,14 @@ else
   echo "   ⚠️  Over $TARGET_LABEL target ($(($WASM_SIZE / 1024))KB)"
 fi
 
-# --- Optional second bundle: threaded (atomics + shared memory) -------------
-# Off by default. Enable with `BUILD_THREADED=1 ./scripts/build-wasm.sh`.
-# This is a SEPARATE bundle selected at runtime via wasm-feature-detect +
+# --- Second bundle: threaded (atomics + shared memory) ----------------------
+# ON BY DEFAULT — the viewer selects it at runtime via wasm-feature-detect +
 # crossOriginIsolated (Safari lacks credentialless threads → it loads the
-# single-thread bundle above). See docs/architecture/csg-threading-design.md.
-if [ "${BUILD_THREADED:-}" = "1" ]; then
+# single-thread bundle above). Opt OUT with `BUILD_THREADED=0 ./scripts/build-wasm.sh`
+# (e.g. a fast local single-thread iteration). It reuses the SAME
+# nightly-2025-11-15 + build-std the single-thread bundle already needs, so no
+# extra toolchain. See docs/architecture/csg-threading-design.md.
+if [ "${BUILD_THREADED:-1}" != "0" ]; then
   THREADED_OUT="../../packages/wasm/pkg-threaded"
   echo ""
   echo "🧵 Building threaded bundle → $THREADED_OUT (atomics/shared-memory + wasm-bindgen-rayon)"

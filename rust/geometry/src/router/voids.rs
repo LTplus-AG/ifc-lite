@@ -177,9 +177,30 @@ impl OpeningFrame {
     }
 }
 
+/// Whether `dir` is (essentially) parallel to a world axis.
+///
+/// This gates the opening-classification fork: an opening only takes the fast
+/// world-axis-aligned-AABB `Rectangular` cut path when its extrusion direction
+/// AND its inferred frame are axis-aligned; otherwise it is cut as its true
+/// oriented box (`DiagonalRectangular` / exact mesh). The AABB of a *rotated*
+/// opening box is strictly larger than the box itself, so cutting the AABB
+/// removes wall material outside the real opening — leaving a hole that is
+/// bigger than the window and skewed to the world grid instead of orthogonal
+/// to the wall.
+///
+/// The tolerance must therefore be TIGHT. The previous value (0.95, ≈ 18°) let
+/// a wall rotated in plan by up to ~18° — a façade a few degrees off the
+/// project grid, or an entire building rotated relative to the world axes —
+/// fall onto the AABB path and over-cut its openings by tens of centimetres
+/// (issue #1167, "weird wall hole cutting"). `cos(1°)` keeps genuinely
+/// axis-aligned walls — whose direction cosines are exact up to f32 mesh-normal
+/// noise (~1e-6 ≈ 0.0001°) — on the fast path with a ~1000× margin, while
+/// routing anything rotated by ≥ 1° to the exact oriented cut. At 1° the
+/// residual AABB over-cut would be sub-millimetre anyway.
 #[inline]
 fn is_axis_aligned_direction(dir: &Vector3<f64>) -> bool {
-    const AXIS_THRESHOLD: f64 = 0.95;
+    // cos(1°). Deliberately tight — see the doc comment (issue #1167).
+    const AXIS_THRESHOLD: f64 = 0.999_847_695;
     dir.x.abs().max(dir.y.abs()).max(dir.z.abs()) > AXIS_THRESHOLD
 }
 
@@ -639,6 +660,100 @@ fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Opt
         cross_a,
         cross_b,
     })
+}
+
+/// Build a right-handed orthonormal wall frame `[len, up, depth]` from a
+/// (roughly horizontal) opening depth axis: `depth` is the wall-thickness /
+/// penetration axis, `up` is world +Z, `len` runs along the wall. Returns
+/// `None` if `depth` is degenerate or too close to vertical (not a plan-rotated
+/// wall). `len × up = depth`, so a box wound for world axes keeps its winding
+/// when mapped back. Issue #1167: cutting the openings in this frame makes the
+/// wall and its openings axis-aligned, where the exact subtract is clean — the
+/// world-space tilted cut at large coordinates fragments badly.
+fn wall_frame_from_depth(depth: Vector3<f64>) -> Option<[Vector3<f64>; 3]> {
+    let d = depth.try_normalize(NORMALIZE_EPSILON)?;
+    if d.z.abs() > 0.2 {
+        return None; // roof/floor/sloped — not a plan-rotated wall
+    }
+    let up = Vector3::new(0.0, 0.0, 1.0);
+    let len = up.cross(&d).try_normalize(NORMALIZE_EPSILON)?;
+    let up = d.cross(&len).try_normalize(NORMALIZE_EPSILON)?; // re-orthogonalise
+    // [len, up, d] right-handed: len × up = d.
+    Some([len, up, d])
+}
+
+/// Express `mesh` in the orthonormal frame `axes = [a, b, c]` about `center`:
+/// `p' = [ (p-center)·a, (p-center)·b, (p-center)·c ]`. Centering keeps
+/// coordinates small (f32-precise) and the rotation makes a frame-oriented box
+/// axis-aligned. [`mesh_from_frame`] is the exact inverse.
+fn mesh_to_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vector3<f64>) -> Mesh {
+    let mut positions = Vec::with_capacity(mesh.positions.len());
+    for ch in mesh.positions.chunks_exact(3) {
+        let p = Vector3::new(ch[0] as f64, ch[1] as f64, ch[2] as f64) - center;
+        positions.push(p.dot(&axes[0]) as f32);
+        positions.push(p.dot(&axes[1]) as f32);
+        positions.push(p.dot(&axes[2]) as f32);
+    }
+    let mut normals = Vec::with_capacity(mesh.normals.len());
+    for ch in mesh.normals.chunks_exact(3) {
+        let n = Vector3::new(ch[0] as f64, ch[1] as f64, ch[2] as f64);
+        normals.push(n.dot(&axes[0]) as f32);
+        normals.push(n.dot(&axes[1]) as f32);
+        normals.push(n.dot(&axes[2]) as f32);
+    }
+    Mesh {
+        positions,
+        normals,
+        indices: mesh.indices.clone(),
+        rtc_applied: mesh.rtc_applied,
+        origin: mesh.origin,
+    }
+}
+
+/// Inverse of [`mesh_to_frame`]: `p = center + x·a + y·b + z·c`.
+fn mesh_from_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vector3<f64>) -> Mesh {
+    let mut positions = Vec::with_capacity(mesh.positions.len());
+    for ch in mesh.positions.chunks_exact(3) {
+        let q = center + axes[0] * ch[0] as f64 + axes[1] * ch[1] as f64 + axes[2] * ch[2] as f64;
+        positions.push(q.x as f32);
+        positions.push(q.y as f32);
+        positions.push(q.z as f32);
+    }
+    let mut normals = Vec::with_capacity(mesh.normals.len());
+    for ch in mesh.normals.chunks_exact(3) {
+        let m = axes[0] * ch[0] as f64 + axes[1] * ch[1] as f64 + axes[2] * ch[2] as f64;
+        normals.push(m.x as f32);
+        normals.push(m.y as f32);
+        normals.push(m.z as f32);
+    }
+    Mesh {
+        positions,
+        normals,
+        indices: mesh.indices.clone(),
+        rtc_applied: mesh.rtc_applied,
+        origin: mesh.origin,
+    }
+}
+
+/// Axis-aligned bounds of `mesh` expressed in the frame `axes` about `center`.
+fn project_aabb_in_frame(
+    mesh: &Mesh,
+    axes: &[Vector3<f64>; 3],
+    center: Vector3<f64>,
+) -> Option<(Point3<f64>, Point3<f64>)> {
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    for ch in mesh.positions.chunks_exact(3) {
+        let p = Vector3::new(ch[0] as f64, ch[1] as f64, ch[2] as f64) - center;
+        for k in 0..3 {
+            let v = p.dot(&axes[k]);
+            lo[k] = lo[k].min(v);
+            hi[k] = hi[k].max(v);
+        }
+    }
+    lo.iter()
+        .all(|v| v.is_finite())
+        .then(|| (Point3::new(lo[0], lo[1], lo[2]), Point3::new(hi[0], hi[1], hi[2])))
 }
 
 /// Reusable buffers for triangle clipping operations
@@ -1889,6 +2004,101 @@ impl GeometryRouter {
         out.map(crate::csg::ClippingProcessor::consolidate_coplanar)
     }
 
+    /// Cut a plan-rotated wall's openings in the wall's own axis-aligned,
+    /// origin-centred frame (issue #1167). Returns `None` (caller uses the
+    /// world path) unless an opening supplies a non-axis-aligned, ~horizontal
+    /// depth axis (a vertical wall rotated in plan) and every opening carries a
+    /// cutter mesh.
+    ///
+    /// In the wall frame the host and its openings are axis-aligned and near the
+    /// origin, so the exact subtract runs in the clean, f32-precise regime a
+    /// straight wall enjoys — clean-box openings even reclassify to the
+    /// watertight `rect_fast` path. Curved / brep openings keep their mesh and
+    /// are subtracted there too. The result is rotated back; the orthonormal,
+    /// origin-centred round-trip is identity for untouched geometry. Recursing
+    /// into [`Self::apply_void_context_inner`] is safe: in the frame every
+    /// opening's depth is +Z (axis-aligned), so this guard returns `None` on the
+    /// inner call.
+    fn try_cut_wall_local_frame(
+        &self,
+        mesh: &Mesh,
+        ctx: &VoidContext,
+        element_id: u32,
+    ) -> Option<Mesh> {
+        if ctx.merged_openings.is_empty() {
+            return None;
+        }
+        let depth_of = |op: &OpeningType| -> Option<Vector3<f64>> {
+            match op {
+                OpeningType::DiagonalRectangular(_, f) => Some(f.depth),
+                OpeningType::NonRectangular(_, _, _, d) => *d,
+                OpeningType::Rectangular(_, _, d) => *d,
+            }
+        };
+        // Define the wall frame from the first opening whose depth is a
+        // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
+        // keep their (unchanged) world path.
+        let axes = ctx
+            .merged_openings
+            .iter()
+            .filter_map(depth_of)
+            .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
+            .and_then(wall_frame_from_depth)?;
+
+        // AABB-only `Rectangular` openings can't be rotated into the frame; a
+        // plan-rotated wall never has them (they'd be diagonal), so bail.
+        if ctx
+            .merged_openings
+            .iter()
+            .any(|op| matches!(op, OpeningType::Rectangular(..)))
+        {
+            return None;
+        }
+
+        let (mn, mx) = mesh.bounds();
+        let center = Vector3::new(
+            ((mn.x + mx.x) * 0.5) as f64,
+            ((mn.y + mx.y) * 0.5) as f64,
+            ((mn.z + mx.z) * 0.5) as f64,
+        );
+        let host_local = mesh_to_frame(mesh, &axes, center);
+
+        let z = Vector3::new(0.0, 0.0, 1.0);
+        let mut local_openings: Vec<OpeningType> = Vec::with_capacity(ctx.merged_openings.len());
+        for op in &ctx.merged_openings {
+            let cutter = match op {
+                OpeningType::DiagonalRectangular(m, _) => m,
+                OpeningType::NonRectangular(m, _, _, _) => m,
+                OpeningType::Rectangular(..) => return None,
+            };
+            let (lmn, lmx) = project_aabb_in_frame(cutter, &axes, center)?;
+            match op {
+                // A clean tilted box becomes an axis-aligned rectangular cut in
+                // the frame — the watertight `rect_fast` path.
+                OpeningType::DiagonalRectangular(..) => {
+                    local_openings.push(OpeningType::Rectangular(lmn, lmx, Some(z)));
+                }
+                // Curved / brep openings keep their (now un-rotated, centred)
+                // mesh for the exact subtract.
+                _ => {
+                    let mesh_local = mesh_to_frame(cutter, &axes, center);
+                    local_openings.push(OpeningType::NonRectangular(mesh_local, lmn, lmx, Some(z)));
+                }
+            }
+        }
+        let local_ctx = VoidContext {
+            merged_openings: Self::merge_rectangular_openings(&local_openings),
+            openings: local_openings,
+            // The local-frame recursion never re-captures the parametric cut
+            // (issue #1209): it operates on already-classified openings, so the
+            // analytic `param` path is irrelevant here — defer to the exact path.
+            param: None,
+        };
+
+        let result_local = self.apply_void_context_inner(host_local, &local_ctx, element_id);
+        Some(mesh_from_frame(&result_local, &axes, center))
+    }
+
     fn apply_void_context_inner(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // Capture the input triangle count + bounds so the per-host
         // diagnostic can flag the "cuts attempted but produced no
@@ -1901,6 +2111,16 @@ impl GeometryRouter {
         };
         if ctx.is_noop() {
             return mesh;
+        }
+
+        // LOCAL-FRAME CUT (issue #1167): a vertical wall rotated in plan is cut
+        // in its own axis-aligned, origin-centred frame — where the exact
+        // subtract is clean and f32-precise — then the result is rotated back.
+        // The world-space tilted cut at large coordinates over-cuts and
+        // fragments badly. Scoped to plan-rotated walls; everything else falls
+        // through to the world path unchanged.
+        if let Some(cut) = self.try_cut_wall_local_frame(&mesh, ctx, element_id) {
+            return cut;
         }
 
         let clipper = ClippingProcessor::new();

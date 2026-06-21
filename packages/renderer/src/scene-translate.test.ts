@@ -175,4 +175,20 @@ describe('Scene.translateInstancedEntity', () => {
     assert.strictEqual(scene.translateInstancedEntity(404, [0, 5, 0]), false, 'unknown id');
     assert.strictEqual(scene.translateInstancedEntity(5, [0, 0, 0]), false, 'zero delta');
   });
+
+  it('keeps instanced bounds after a mixed flat+instanced move (no stranded null)', () => {
+    const scene = new Scene();
+    // Same expressId has BOTH an instanced occurrence and a flat mesh. The flat
+    // translate deletes the cached AABB; the instanced pass must rebuild it so a
+    // later bounds query is non-null (Codex review of #1289).
+    injectInstanced(scene, 7, [0, 0, 0]);
+    scene.addMeshData(mesh(7, [0, 0, 0, 1, 1, 1]));
+
+    assert.strictEqual(scene.translateMeshesForEntity(7, [0, 5, 0]), true);
+
+    const bounds = scene.getInstancedEntityBounds(7);
+    assert.ok(bounds, 'instanced bounds are not stranded to null');
+    assert.strictEqual(bounds!.min.y, 5, 'instanced bounds reflect the lift');
+    assert.strictEqual(bounds!.max.y, 6);
+  });
 });

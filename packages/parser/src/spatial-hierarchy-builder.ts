@@ -346,24 +346,16 @@ export class SpatialHierarchyBuilder {
         return undefined;
       };
       
-      // Try index 9 first (correct index for IfcBuildingStorey.Elevation in IFC4)
+      // Elevation is attribute index 9 for IfcBuildingStorey in both IFC2x3 and
+      // IFC4 (GlobalId, OwnerHistory, Name, Description, ObjectType,
+      // ObjectPlacement, Representation, LongName, CompositionType, Elevation).
+      // Read ONLY that slot: a previous "scan every attribute for a number < 10000"
+      // fallback wrongly treated reference attributes — parsed as bare express-id
+      // numbers (e.g. OwnerHistory #3628 -> 3628, or ObjectPlacement #7150) — as
+      // elevations, so a storey with a null Elevation got a garbage value instead
+      // of falling through to the ObjectPlacement-Z fallback below (#1289).
       if (attrs.length > 9) {
-        const elev = extractNumber(attrs[9]);
-        if (elev !== undefined) return elev;
-      }
-      
-      // Try index 8 (in case of schema variations)
-      if (attrs.length > 8) {
-        const elev = extractNumber(attrs[8]);
-        if (elev !== undefined) return elev;
-      }
-
-      // Fallback: search for first numeric value that looks like an elevation
-      for (let i = 0; i < attrs.length; i++) {
-        const elev = extractNumber(attrs[i]);
-        if (elev !== undefined && Math.abs(elev) < 10000) {
-          return elev;
-        }
+        return extractNumber(attrs[9]);
       }
     } catch (error) {
       // Elevation extraction is optional - log for debugging but don't fail

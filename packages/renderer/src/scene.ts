@@ -799,8 +799,13 @@ export class Scene {
     // instanced occurrences live in the per-template instance buffers, NOT in
     // meshDataMap, so the flat path below can't reach them — without this they
     // are "left behind" when a storey lifts in Exploded mode (#1289).
-    const instancedMoved = this.translateInstancedEntity(expressId, delta);
+    //
+    // Flat runs FIRST because it deletes the entity's cached world AABB; the
+    // instanced pass runs last and rebuilds that AABB from the moved occurrence
+    // matrices, so a mixed flat+instanced entity never ends up with stranded
+    // (null) instanced bounds.
     const flatMoved = this.translateFlatMeshesForEntity(expressId, delta);
+    const instancedMoved = this.translateInstancedEntity(expressId, delta);
     return flatMoved || instancedMoved;
   }
 
@@ -921,14 +926,33 @@ export class Scene {
     }
     if (!moved) return false;
 
-    // Shift the cached world AABB by the same delta so pick / measure / section
-    // bounds stay correct without a recompute (all occurrences moved identically).
-    const bbox = this.boundingBoxes.get(expressId);
-    if (bbox) {
-      bbox.min.x += dx; bbox.min.y += dy; bbox.min.z += dz;
-      bbox.max.x += dx; bbox.max.y += dy; bbox.max.z += dz;
-    }
+    // Rebuild the cached world AABB from the moved occurrence matrices so pick /
+    // measure / section bounds stay correct. A simple in-place shift is unsafe for
+    // an entity that has BOTH flat meshes and instanced occurrences: the flat
+    // translate path deletes this same cache entry, which would strand the shift
+    // (a later getInstancedEntityBounds would return null). Recomputing fresh is
+    // robust regardless of the flat path and the upload-time bounds.
+    this.recomputeInstancedBounds(expressId);
     return true;
+  }
+
+  /** Recompute an instanced entity's cached world AABB by unioning the transformed
+   *  template AABB across its occurrences (using their CURRENT matrices). Used after
+   *  a translate so bounds reflect the moved geometry. No-op for a non-instanced id. */
+  private recomputeInstancedBounds(expressId: number): void {
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (!occurrences || occurrences.length === 0) return;
+    this.boundingBoxes.delete(expressId);
+    for (const occ of occurrences) {
+      const cpu = this.instancedTemplateCpu[occ.templateIndex];
+      if (!cpu) continue;
+      const dv = new DataView(cpu.instanceData);
+      this.unionInstancedWorldAabb(
+        expressId, dv, occ.byteOffset,
+        cpu.localMin[0], cpu.localMin[1], cpu.localMin[2],
+        cpu.localMax[0], cpu.localMax[1], cpu.localMax[2],
+      );
+    }
   }
 
   /** Drop the per-entity selection-highlight meshes for `expressId` (frozen

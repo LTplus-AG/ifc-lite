@@ -632,8 +632,9 @@ impl GeometryRouter {
             return self.process_mapped_item_cached(item, decoder);
         }
 
-        // `None` ⇒ dedup disabled (no hash overhead). On a hit, return a clone of
-        // the cached item mesh; meshing is skipped entirely.
+        // `None` ⇒ dedup disabled (no hash overhead). On a hit, clone the cached
+        // item mesh and stamp its STORED rep_identity (no per-occurrence re-hash);
+        // meshing is skipped entirely.
         let dedup_key = self.item_dedup_key(item, decoder);
         if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
             let hit = cache
@@ -641,12 +642,16 @@ impl GeometryRouter {
                 .unwrap_or_else(|e| e.into_inner())
                 .get(&key)
                 .cloned();
-            if let Some(mesh) = hit {
-                return Ok(self.tag_direct_instance((*mesh).clone()));
+            if let Some(entry) = hit {
+                let (mesh, rep) = (entry.0.clone(), entry.1);
+                return Ok(self.stamp_direct_instance(mesh, rep));
             }
         }
 
         let mesh = self.process_representation_item_uncached(item, decoder)?;
+        // Compute the instancing rep_identity ONCE for this unique shape so cache
+        // hits can reuse it instead of re-hashing the full mesh per occurrence.
+        let rep = self.direct_rep_identity(&mesh);
 
         // Cache the freshly-meshed item under its structural hash. Two exclusions:
         //  - empty meshes (unsupported/degenerate geometry);
@@ -661,7 +666,7 @@ impl GeometryRouter {
             if !mesh.positions.is_empty() && !crate::kernel::budget::tripped() {
                 // Clone into the Arc BEFORE locking: a mesh deep-copy inside the
                 // single-Mutex critical section serializes the pool on every miss.
-                let cached = Arc::new(mesh.clone());
+                let cached = Arc::new((mesh.clone(), rep));
                 cache
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
@@ -669,24 +674,32 @@ impl GeometryRouter {
             }
         }
 
-        Ok(self.tag_direct_instance(mesh))
+        Ok(self.stamp_direct_instance(mesh, rep))
     }
 
-    /// Instancing: tag a direct-solid item mesh with its local-geometry content
-    /// hash as `rep_identity`, so identical representations across the model
-    /// collate into a single template + per-occurrence transforms. The hash is of
-    /// the pre-placement local mesh (the same `compute_mesh_hash` the geometry
-    /// cache uses), so two occurrences differing only by `IfcObjectPlacement`
-    /// share an id. A high tag bit namespaces these apart from mapped-item ids
-    /// (RepresentationMap entity ids). No-op when the flag is off or the mesh
-    /// already carries metadata (mapped items) / is empty.
-    fn tag_direct_instance(&self, mut mesh: Mesh) -> Mesh {
+    /// Compute the direct-solid instancing `rep_identity` for a freshly-built,
+    /// pre-placement item mesh, or `None` when instancing is off / the mesh is
+    /// empty / it already carries metadata (mapped items). FULL 128-bit
+    /// (non-sampling) hash: rep_identity has no downstream meshes_equal guard at
+    /// the source and must be cross-worker consistent, so a sampled-hash collision
+    /// (#833 family) would silently group non-identical geometry; 128-bit makes
+    /// that ~2^-127. Computed ONCE per unique shape — cache hits reuse the stored
+    /// value via [`Self::stamp_direct_instance`] instead of re-hashing.
+    fn direct_rep_identity(&self, mesh: &Mesh) -> Option<u128> {
         if instancing_enabled() && mesh.instance_meta.is_none() && !mesh.positions.is_empty() {
-            // FULL 128-bit (non-sampling) hash: rep_identity has no downstream
-            // meshes_equal guard at the source and must be cross-worker consistent,
-            // so a sampled-hash collision (#833 family) would silently group
-            // non-identical geometry. The 128-bit content hash makes that ~2^-127.
-            let exact_rep = Self::compute_mesh_hash_full(&mesh) | DIRECT_SOLID_TAG;
+            Some(Self::compute_mesh_hash_full(mesh) | DIRECT_SOLID_TAG)
+        } else {
+            None
+        }
+    }
+
+    /// Stamp a direct-solid item mesh with a KNOWN `rep_identity` (no re-hash) so
+    /// identical representations collate into a single template + per-occurrence
+    /// transforms. `rep` comes from [`Self::direct_rep_identity`] on a fresh build
+    /// or from the dedup cache on a hit; `None` is a no-op (instancing off / empty
+    /// / already tagged).
+    fn stamp_direct_instance(&self, mut mesh: Mesh, rep: Option<u128>) -> Mesh {
+        if let Some(exact_rep) = rep {
             mesh.instance_meta = Some(InstanceMeta {
                 transform: IDENTITY_ROW_MAJOR,
                 local_transform: None,
@@ -718,13 +731,25 @@ impl GeometryRouter {
         // arch models improve too (advanced_model 3.1×, ISSUE_068 1.7×) with no
         // regression on the tested corpus. The IfcMappedItem instancing cache is a
         // separate path, always on.
-        if !matches!(
+        let base = matches!(
             item.ifc_type,
             IfcType::IfcFacetedBrep
                 | IfcType::IfcBooleanResult
                 | IfcType::IfcBooleanClippingResult
                 | IfcType::IfcExtrudedAreaSolid
-        ) {
+        );
+        // Additive, flagged OFF by default: faceset / surface-model families. Their
+        // generic byte signature (`sig_walk_bytes`) is already complete; gated so a
+        // low-reuse model never pays the hash for no payback (the #1177 trap).
+        let extra = Self::build_dedup_extra_enabled()
+            && matches!(
+                item.ifc_type,
+                IfcType::IfcPolygonalFaceSet
+                    | IfcType::IfcTriangulatedFaceSet
+                    | IfcType::IfcShellBasedSurfaceModel
+                    | IfcType::IfcFaceBasedSurfaceModel
+            );
+        if !(base || extra) {
             return None;
         }
         let structural = {

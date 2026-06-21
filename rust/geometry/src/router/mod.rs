@@ -72,12 +72,19 @@ pub trait GeometryProcessor {
 }
 
 /// Shared content-dedup cache: maps a 128-bit structural item hash to the
-/// LOCAL (pre-placement, void-free, colour-free) item mesh. Build ONE per loaded
+/// LOCAL (pre-placement, void-free, colour-free) item mesh PLUS its precomputed
+/// instancing `rep_identity` (`Some` when instancing tagged it, else `None`).
+/// Storing the rep beside the mesh lets a cache hit stamp it without re-running
+/// the O(verts) `compute_mesh_hash_full` per occurrence. Build ONE per loaded
 /// model with [`GeometryRouter::new_dedup_cache`] and inject it into every
 /// per-element / per-batch router via
 /// [`GeometryRouter::enable_content_dedup_shared`] so byte-identical geometry is
 /// meshed once regardless of how the work is partitioned across threads/batches.
-pub type ItemDedupCache = Arc<Mutex<FxHashMap<u128, Arc<Mesh>>>>;
+pub type ItemDedupCache = Arc<Mutex<FxHashMap<u128, Arc<(Mesh, Option<u128>)>>>>;
+
+/// Test/env override for [`GeometryRouter::build_dedup_extra_enabled`]:
+/// -1 = env default, 0 = forced off, 1 = forced on.
+static DEDUP_EXTRA_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 /// Shared `IfcMappedItem` source cache: maps an `IfcRepresentationMap` express id
 /// to its SOURCE-coordinate (pre-`MappingTarget`, pre-placement, colour-free) item
@@ -384,6 +391,36 @@ impl GeometryRouter {
     /// meshes bake in this model's unit scale / tessellation quality.
     pub fn new_dedup_cache() -> ItemDedupCache {
         Arc::new(Mutex::new(FxHashMap::default()))
+    }
+
+    /// Whether content-dedup covers EXTRA item types beyond the proven default
+    /// set (faceset / surface-model families). `item_signature`'s generic byte
+    /// walk is already complete for them, so this is pure additive build savings
+    /// on models that repeat tessellated geometry — but it pays a hash on every
+    /// such item, so it stays OFF by default until corpus-validated (low-reuse
+    /// models would pay the hash for no payback, the #1177 trap). Opt in with
+    /// `IFC_LITE_DEDUP_EXTRA=1` or [`Self::set_build_dedup_extra_override`].
+    /// Default OFF keeps native==wasm identical.
+    pub fn build_dedup_extra_enabled() -> bool {
+        match DEDUP_EXTRA_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+            0 => return false,
+            1 => return true,
+            _ => {}
+        }
+        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *ON.get_or_init(|| std::env::var("IFC_LITE_DEDUP_EXTRA").as_deref() == Ok("1"))
+    }
+
+    /// Test-only: force [`Self::build_dedup_extra_enabled`] on/off (`None` = env).
+    pub fn set_build_dedup_extra_override(v: Option<bool>) {
+        DEDUP_EXTRA_OVERRIDE.store(
+            match v {
+                None => -1,
+                Some(false) => 0,
+                Some(true) => 1,
+            },
+            std::sync::atomic::Ordering::Relaxed,
+        );
     }
 
     /// Inject a shared item-dedup cache (see [`Self::new_dedup_cache`]) into this

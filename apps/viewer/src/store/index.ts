@@ -692,18 +692,37 @@ function registerSidebarExclusivity(store: ReturnType<typeof createViewerStore>)
   });
 }
 
+/**
+ * Keep the Hierarchy left slot (#1267) in step with its rail visibility: hiding
+ * the Hierarchy icon from the activity bar collapses its left slot, and showing
+ * it again re-opens the slot — so "hide it" actually hides the panel, not just
+ * its rail entry. One-way (hidden-set → collapse); collapsing via the left drag
+ * handle keeps the rail icon so the panel can be re-opened from there.
+ */
+function registerHierarchyLeftSync(store: ReturnType<typeof createViewerStore>): void {
+  store.subscribe((state, prev) => {
+    const wasHidden = prev.sidebarHiddenIds.includes('hierarchy');
+    const isHidden = state.sidebarHiddenIds.includes('hierarchy');
+    if (isHidden !== wasHidden) state.setLeftPanelCollapsed(isHidden);
+  });
+}
+
 export function getViewerStoreApi() {
   const existing = globalStoreRegistry[STORE_SINGLETON_KEY];
   if (existing) return existing;
   const store = createViewerStore();
   globalStoreRegistry[STORE_SINGLETON_KEY] = store;
   registerSidebarExclusivity(store);
+  registerHierarchyLeftSync(store);
   // Initial reconcile: a persisted panel flag (e.g. scriptPanelVisible) can be
   // true at load before any change fires the subscription, so seed the docked
   // panel from the current flags rather than leaving it on the fallback.
   const init = store.getState();
   const initialActive = SIDEBAR_PANEL_FLAGS.find(([flag]) => init[flag])?.[1];
   if (initialActive) init.setSidebarActivePanel(initialActive);
+  // A persisted "Hierarchy hidden" never fired the subscription above, so seed
+  // the collapsed left slot from it on load (#1267).
+  if (init.sidebarHiddenIds.includes('hierarchy')) init.setLeftPanelCollapsed(true);
   return store;
 }
 

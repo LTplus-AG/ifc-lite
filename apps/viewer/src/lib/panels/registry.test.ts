@@ -32,12 +32,26 @@ describe('workspacePanelForShortcutCode (Alt+digit routing #1200/#1208)', () => 
     assert.strictEqual(workspacePanelForShortcutCode('Numpad0'), WORKSPACE_PANELS[9].id);
   });
 
-  it('every digit maps to a distinct, valid panel id', () => {
+  it('the ten digit shortcuts map to the first ten registry panels, in order', () => {
     const codes = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0'];
     const ids = codes.map((c) => workspacePanelForShortcutCode(c));
     assert.ok(ids.every((id) => id !== undefined && isWorkspacePanelId(id)));
     assert.strictEqual(new Set(ids).size, codes.length, 'no two digits collide');
-    assert.strictEqual(ids.length, WORKSPACE_PANELS.length, 'one digit per registry panel');
+    // Only the first ten registry entries get an Alt shortcut; later additions
+    // (e.g. Hierarchy, #1267) are reachable from the rail but have no digit.
+    assert.deepStrictEqual(ids, WORKSPACE_PANELS.slice(0, 10).map((p) => p.id));
+  });
+
+  it('registry panels past the tenth have no Alt+digit shortcut (#1267)', () => {
+    // Hierarchy is appended so the frozen Alt+1..0 mapping stays intact.
+    assert.ok(WORKSPACE_PANELS.length >= 11, 'expected Hierarchy appended to the registry');
+    const shortcutTargets = new Set(
+      ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0']
+        .map((c) => workspacePanelForShortcutCode(c)),
+    );
+    for (const def of WORKSPACE_PANELS.slice(10)) {
+      assert.ok(!shortcutTargets.has(def.id), `${def.id} should not be bound to a digit`);
+    }
   });
 
   it('bottom-strip panels are reachable by shortcut and flagged as bottom', () => {

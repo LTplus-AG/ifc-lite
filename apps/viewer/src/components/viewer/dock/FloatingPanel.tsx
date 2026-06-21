@@ -5,11 +5,17 @@
 /**
  * A floating / edge-snapped workspace-panel window (issue #1201).
  *
- * Chrome around an arbitrary panel: a drag-by-header title bar, dock controls
- * (snap left / right / bottom / free-float, re-dock into the right slot, close)
- * and a resize affordance. Geometry lives in the dock slice so it persists and
- * survives re-render; this component only translates pointer gestures into
- * `setFloatingPanelRect` / `snapFloatingPanel` calls.
+ * Chrome around an arbitrary panel: a drag-by-header title bar, float controls
+ * and a resize affordance. The float controls are two distinct ideas, and the
+ * labels keep them apart (#1264):
+ *   - SNAP left / right / bottom / free — positions the *floating overlay*; it
+ *     still sits ON TOP of the model (the 3D view stays full size behind it).
+ *   - DOCK — re-docks the panel into the sidebar, which RESERVES space so the
+ *     panel and the model sit side by side (and can be split, #1266).
+ *
+ * Geometry lives in the dock slice so it persists and survives re-render; this
+ * component only translates pointer gestures into `setFloatingPanelRect` /
+ * `snapFloatingPanel` calls.
  */
 
 import { useEffect, useRef, type ReactNode } from 'react';
@@ -183,14 +189,18 @@ export function FloatingPanel({
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <span className="text-xs font-medium truncate min-w-0 flex-1">{title}</span>
         <div className="flex items-center gap-0.5 shrink-0">
-          {snapBtn('left', PanelLeft, 'Dock left')}
-          {snapBtn('bottom', PanelBottom, 'Dock bottom')}
-          {snapBtn('right', PanelRight, 'Dock right')}
+          {/* Float positioning — overlay; the model stays full size behind it. */}
+          {snapBtn('left', PanelLeft, 'Snap left (overlay)')}
+          {snapBtn('bottom', PanelBottom, 'Snap bottom (overlay)')}
+          {snapBtn('right', PanelRight, 'Snap right (overlay)')}
           {snapBtn('free', Square, 'Free float')}
+          <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
+          {/* Dock — reserves space (panel + model side by side). */}
           <button
             type="button"
             data-no-drag
-            title="Dock into right panel"
+            title="Dock into sidebar (reserves space)"
+            aria-label="Dock into sidebar — reserves space beside the model"
             onClick={onDock}
             className="h-6 w-6 inline-flex items-center justify-center rounded hover:bg-muted transition-colors"
           >

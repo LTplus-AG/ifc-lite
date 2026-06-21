@@ -3,32 +3,44 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The docked sidebar's content pane (#1208).
+ * The docked sidebar's content pane (#1208, split added in #1266).
  *
- * Renders the single active workspace panel. Each panel ships its own header
- * (title + close), so the sidebar adds only a slim **grab bar**: a dot-grid
- * grip you drag to detach + a chevron that collapses the pane to the rail.
+ * Renders the active workspace panel, and — when the user splits it — a SECOND
+ * panel stacked beneath it with a draggable divider (Blender-style). Both halves
+ * reserve real layout space (the pane is a flex sibling of the viewport), so a
+ * split is "model | Information / IDS", never an overlay. Floating (#1201) stays
+ * a separate overlay channel.
  *
- * The drag is LIVE: on the first move the panel lifts straight out of the dock
- * into a floating window (#1201) positioned exactly where it was, then tracks
- * the cursor for the whole gesture (no disappear-until-drop). Release inside
- * the viewport → it stays floating where dropped; release past the window edge
- * (e.g. dragging onto another monitor) → it hands off to an OS / Picture-in-
- * Picture window. Pointer capture on <body> keeps the gesture alive after the
- * grab bar unmounts and while the cursor leaves the window.
+ * Each panel ships its own header (title + close), so the sidebar adds only a
+ * slim **grab bar**: a dot-grid grip you drag to detach, a Split control, and a
+ * chevron that collapses the pane to the rail.
+ *
+ * The detach drag is LIVE: on the first move the panel lifts straight out of the
+ * dock into a floating window (#1201) positioned exactly where it was, then
+ * tracks the cursor for the whole gesture. Release inside the viewport → it
+ * stays floating; release past the window edge → it hands off to an OS / PiP
+ * window.
  *
  * Render precedence preserves the pre-existing right-slot behavior:
  *   right-placed analysis extension → Add Element tool → active panel → Information.
  */
 
-import { useSyncExternalStore } from 'react';
-import { Grip, ChevronRight } from 'lucide-react';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { Grip, ChevronRight, Rows2, X, Check } from 'lucide-react';
 import { useViewerStore } from '@/store';
-import { type WorkspacePanelId } from '@/lib/panels/registry';
+import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { AddElementPanel } from '../AddElementPanel';
 import {
@@ -38,39 +50,166 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 
-/** Slim grab bar: drag the grip to lift the panel into a live floating window
- *  (release past the window edge to pop out to another screen); the chevron
- *  collapses the pane to the rail. Title-less + close-less — the body owns those. */
+/** Right-pane panels eligible to share the docked split (#1266). */
+const SIDE_PANELS = WORKSPACE_PANELS.filter((p) => p.region === 'side');
+
+/** Dropdown that picks / switches / removes the lower split panel (#1266). */
+function SplitMenu({ primaryId }: { primaryId: WorkspacePanelId }) {
+  const secondary = useViewerStore((s) => s.sidebarSecondaryPanel);
+  const setSecondary = useViewerStore((s) => s.setSidebarSecondaryPanel);
+  const closeFloatingPanel = useViewerStore((s) => s.closeFloatingPanel);
+  const setPanelPoppedOut = useViewerStore((s) => s.setPanelPoppedOut);
+
+  // Picking a panel that's currently floating / popped pulls it back inline.
+  const pick = (id: WorkspacePanelId) => {
+    closeFloatingPanel(id);
+    setPanelPoppedOut(id, false);
+    setSecondary(id);
+  };
+
+  const options = SIDE_PANELS.filter((p) => p.id !== primaryId);
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              data-chrome-btn
+              data-no-drag
+              aria-label="Split panel"
+              className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <Rows2 className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Split — stack a second panel below</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          {secondary ? 'Panel below' : 'Split — show below'}
+        </DropdownMenuLabel>
+        {options.map((p) => (
+          <DropdownMenuItem key={p.id} onSelect={() => pick(p.id)} className="gap-2">
+            <p.Icon className="h-4 w-4 text-muted-foreground" />
+            <span className="flex-1">{p.title}</span>
+            {secondary === p.id && <Check className="h-3.5 w-3.5 text-primary" />}
+          </DropdownMenuItem>
+        ))}
+        {secondary && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setSecondary(null)} className="gap-2">
+              <X className="h-4 w-4 text-muted-foreground" />
+              Remove split
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Slim grab bar for the TOP / single panel: drag the grip to lift the panel
+ *  into a live floating window, Split to stack a second panel below, chevron to
+ *  collapse the pane to the rail. Title-less + close-less — the body owns those. */
 function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
   const setSidebarMode = useViewerStore((s) => s.setSidebarMode);
   const onPointerDown = usePanelDetachDrag(detachId);
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {/* Pointer-only drag affordance — not a button (it has no keyboard
-            action and wraps the real collapse <button>). Keyboard users reach
-            panels via the activity bar / Alt+N (#1208). */}
-        <div
-          onPointerDown={onPointerDown}
-          className="flex items-center gap-1 h-6 shrink-0 px-1.5 border-b border-border/50 bg-muted/10 select-none touch-none cursor-grab active:cursor-grabbing"
-        >
+    <div
+      onPointerDown={onPointerDown}
+      className="flex items-center gap-1 h-6 shrink-0 px-1.5 border-b border-border/50 bg-muted/10 select-none touch-none cursor-grab active:cursor-grabbing"
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
           <Grip className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
-          <span className="flex-1" />
-          <button
-            type="button"
-            data-chrome-btn
-            aria-label="Collapse sidebar to icons"
-            title="Collapse to icons"
-            onClick={() => setSidebarMode('collapsed')}
-            className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Drag to float · drag onto another screen to pop out</TooltipContent>
+      </Tooltip>
+      <span className="flex-1" />
+      <SplitMenu primaryId={detachId} />
+      <button
+        type="button"
+        data-chrome-btn
+        data-no-drag
+        aria-label="Collapse sidebar to icons"
+        title="Collapse to icons"
+        onClick={() => setSidebarMode('collapsed')}
+        className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+      >
+        <ChevronRight className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/** Slim bar for the BOTTOM split panel: shows the panel name + a close-split
+ *  control (the body keeps its own header). */
+function SecondaryChromeBar({ id }: { id: WorkspacePanelId }) {
+  const setSecondary = useViewerStore((s) => s.setSidebarSecondaryPanel);
+  const title = getPanelDef(id)?.title ?? id;
+  return (
+    <div className="flex items-center gap-1 h-6 shrink-0 px-1.5 border-b border-border/50 bg-muted/10 select-none">
+      <Rows2 className="h-3 w-3 text-muted-foreground/50 shrink-0" aria-hidden />
+      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground truncate flex-1">{title}</span>
+      <button
+        type="button"
+        aria-label="Remove split"
+        title="Remove split"
+        onClick={() => setSecondary(null)}
+        className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/** Two stacked panels + a draggable divider; both halves reserve space (#1266). */
+function SplitContainer({
+  containerRef,
+  ratio,
+  onDividerDown,
+  primary,
+  secondaryId,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  ratio: number;
+  onDividerDown: (e: React.MouseEvent) => void;
+  primary: React.ReactNode;
+  secondaryId: WorkspacePanelId;
+}) {
+  const setSecondary = useViewerStore((s) => s.setSidebarSecondaryPanel);
+  return (
+    <div ref={containerRef} className="h-full flex flex-col panel-container">
+      {/* Top half — flex-basis is the ratio; min-height stops it collapsing. */}
+      <div
+        data-detach-root
+        className="flex flex-col min-h-[120px] overflow-hidden"
+        style={{ flexBasis: `${ratio * 100}%`, flexGrow: 0, flexShrink: 1 }}
+      >
+        {primary}
+      </div>
+      {/* Divider */}
+      <div
+        onMouseDown={onDividerDown}
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize split"
+        className="h-1.5 shrink-0 cursor-row-resize bg-border hover:bg-primary/50 active:bg-primary/70 transition-colors"
+      />
+      {/* Bottom half — fills the rest. */}
+      <div className="flex-1 min-h-[120px] flex flex-col overflow-hidden">
+        <SecondaryChromeBar id={secondaryId} />
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {renderPanelBody(secondaryId, () => setSecondary(null))}
         </div>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">Drag to float · drag onto another screen to pop out</TooltipContent>
-    </Tooltip>
+      </div>
+    </div>
   );
 }
 
@@ -78,7 +217,41 @@ export function SidebarPanelHost() {
   const activePanel = useViewerStore((s) => s.sidebarActivePanel);
   const activeTool = useViewerStore((s) => s.activeTool);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
+  const secondaryPanel = useViewerStore((s) => s.sidebarSecondaryPanel);
+  const splitRatio = useViewerStore((s) => s.sidebarSplitRatio);
+  const setSplitRatio = useViewerStore((s) => s.setSidebarSplitRatio);
   const { floatingIds, poppedIds, closePanel } = usePanelControls();
+
+  // Divider drag: translate pointer Y within the pane into the top-half ratio.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+  const onDividerDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const move = (ev: MouseEvent) => {
+        if (rect.height <= 0) return;
+        setSplitRatio((ev.clientY - rect.top) / rect.height);
+      };
+      const teardown = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        dragCleanupRef.current = null;
+      };
+      const up = () => teardown();
+      dragCleanupRef.current = teardown;
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    },
+    [setSplitRatio],
+  );
 
   const analysisState = useSyncExternalStore(
     subscribeAnalysisExtensions,
@@ -96,7 +269,16 @@ export function SidebarPanelHost() {
     shown = null;
   }
 
-  // Right-placed analysis extension / Add Element carry their own chrome.
+  // A split only renders when the secondary still resolves to an inline panel
+  // (not floated / popped, not collapsed to the same id as the primary).
+  const secondaryActive =
+    secondaryPanel !== null &&
+    secondaryPanel !== shown &&
+    !floatingIds.has(secondaryPanel) &&
+    !poppedIds.has(secondaryPanel);
+
+  // Right-placed analysis extension / Add Element carry their own chrome and
+  // never split.
   if (rightExtension) {
     return (
       <div data-detach-root className="h-full flex flex-col panel-container">
@@ -114,22 +296,56 @@ export function SidebarPanelHost() {
 
   // Information fallback (or empty when Information is detached).
   if (shown === null || shown === 'properties') {
-    return (
-      <div data-detach-root className="h-full flex flex-col panel-container">
-        {shown === 'properties' && <PanelChromeBar detachId="properties" />}
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {shown === 'properties' && renderPanelBody('properties', () => {})}
+    // Empty (Information detached) or no split → render single.
+    if (shown === null || !secondaryActive) {
+      return (
+        <div data-detach-root className="h-full flex flex-col panel-container">
+          {shown === 'properties' && <PanelChromeBar detachId="properties" />}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {shown === 'properties' && renderPanelBody('properties', () => {})}
+          </div>
+          <ExtensionDockHost slot="dock.right" className="max-h-[40%] border-t" />
         </div>
-        <ExtensionDockHost slot="dock.right" className="max-h-[40%] border-t" />
-      </div>
+      );
+    }
+    // Information on top, a second panel below (the user's canonical example).
+    return (
+      <SplitContainer
+        containerRef={containerRef}
+        ratio={splitRatio}
+        onDividerDown={onDividerDown}
+        primary={
+          <>
+            <PanelChromeBar detachId="properties" />
+            <div className="flex-1 min-h-0 overflow-hidden">{renderPanelBody('properties', () => {})}</div>
+          </>
+        }
+        secondaryId={secondaryPanel as WorkspacePanelId}
+      />
     );
   }
 
-  // A docked analysis panel — grab bar + the panel's own body.
+  // A docked analysis panel — optionally split with a second panel below.
+  if (!secondaryActive) {
+    return (
+      <div className="h-full flex flex-col panel-container">
+        <PanelChromeBar detachId={shown} />
+        <div className="flex-1 min-h-0 overflow-hidden">{renderPanelBody(shown, () => closePanel(shown))}</div>
+      </div>
+    );
+  }
   return (
-    <div className="h-full flex flex-col panel-container">
-      <PanelChromeBar detachId={shown} />
-      <div className="flex-1 min-h-0 overflow-hidden">{renderPanelBody(shown, () => closePanel(shown))}</div>
-    </div>
+    <SplitContainer
+      containerRef={containerRef}
+      ratio={splitRatio}
+      onDividerDown={onDividerDown}
+      primary={
+        <>
+          <PanelChromeBar detachId={shown} />
+          <div className="flex-1 min-h-0 overflow-hidden">{renderPanelBody(shown, () => closePanel(shown))}</div>
+        </>
+      }
+      secondaryId={secondaryPanel as WorkspacePanelId}
+    />
   );
 }

@@ -24,9 +24,24 @@ import type { StateCreator } from 'zustand';
 import {
   WORKSPACE_PANELS,
   isWorkspacePanelId,
+  getPanelDef,
   SIDEBAR_DEFAULT_WIDTH_PCT,
   type WorkspacePanelId,
 } from '@/lib/panels/registry';
+
+/** Clamp the docked-split ratio so neither half can collapse to nothing. */
+const MIN_SPLIT_RATIO = 0.2;
+const MAX_SPLIT_RATIO = 0.8;
+function clampSplitRatio(r: number): number {
+  if (!Number.isFinite(r)) return 0.5;
+  return Math.max(MIN_SPLIT_RATIO, Math.min(MAX_SPLIT_RATIO, r));
+}
+
+/** Only right-pane (`side`) panels can share the docked split (#1266) — bottom
+ *  and left panels have their own regions. */
+function canShareSplit(id: WorkspacePanelId): boolean {
+  return getPanelDef(id)?.region === 'side';
+}
 
 /** Expanded = rail + content pane; collapsed = icon-only rail. The activity-bar
  *  rail is always visible — there is intentionally no "fully off" mode (the
@@ -45,7 +60,15 @@ const STORAGE_KEY = 'ifc-lite:sidebar-layout-v1';
 const MIN_WIDTH_PCT = 14;
 const MAX_WIDTH_PCT = 60;
 
-const DEFAULT_ORDER: WorkspacePanelId[] = WORKSPACE_PANELS.map((p) => p.id);
+// Display order in the rail. Hierarchy (#1267) is appended to WORKSPACE_PANELS
+// to keep the frozen Alt+1..0 mapping intact, but its natural home is the TOP
+// of the rail (it's the primary navigation surface), so float it to the front
+// here. The registry order still drives Alt+N; this only drives display.
+const DEFAULT_ORDER: WorkspacePanelId[] = (() => {
+  const ids = WORKSPACE_PANELS.map((p) => p.id);
+  const rest = ids.filter((id) => id !== 'hierarchy');
+  return ids.includes('hierarchy') ? ['hierarchy', ...rest] : rest;
+})();
 
 function clampWidth(pct: number): number {
   if (!Number.isFinite(pct)) return SIDEBAR_DEFAULT_WIDTH_PCT;
@@ -145,6 +168,13 @@ export interface SidebarSlice {
   /** The panel currently shown in the dock — runtime only; tracked from the
    *  per-panel visibility flags by the store subscription. */
   sidebarActivePanel: WorkspacePanelId;
+  /** The panel shown in the LOWER half of a split docked pane, or null when the
+   *  pane isn't split (#1266). Side panels only; runtime-only (a within-session
+   *  power feature, like the float layout's geometry). */
+  sidebarSecondaryPanel: WorkspacePanelId | null;
+  /** Fraction (0.2–0.8) of the docked pane's height given to the TOP panel when
+   *  split. Runtime-only. */
+  sidebarSplitRatio: number;
   /** Panels currently torn off into an OS / PiP window — runtime only
    *  (window handles can't persist, and pop-up blockers forbid auto-reopen). */
   poppedOutIds: WorkspacePanelId[];
@@ -164,6 +194,11 @@ export interface SidebarSlice {
   resetSidebarLayout: () => void;
   /** Set the active docked panel (called by the store's exclusivity subscription). */
   setSidebarActivePanel: (id: WorkspacePanelId) => void;
+  /** Set / clear the lower-half split panel (#1266). Ignores non-side panels and
+   *  a panel that already owns the top half. Un-floating is the caller's job. */
+  setSidebarSecondaryPanel: (id: WorkspacePanelId | null) => void;
+  /** Resize the docked split (fraction for the top panel, clamped 0.2–0.8). */
+  setSidebarSplitRatio: (ratio: number) => void;
   /** Track a panel popped out into / re-docked from an OS window. */
   setPanelPoppedOut: (id: WorkspacePanelId, on: boolean) => void;
 
@@ -194,6 +229,8 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
     sidebarHiddenIds: persisted.hiddenIds,
     sidebarCustomizing: false,
     sidebarActivePanel: 'properties',
+    sidebarSecondaryPanel: null,
+    sidebarSplitRatio: 0.5,
     poppedOutIds: [],
 
     setSidebarMode: (mode) => {
@@ -253,13 +290,28 @@ export const createSidebarSlice: StateCreator<SidebarSlice, [], [], SidebarSlice
         sidebarOrder: snap.order,
         sidebarHiddenIds: snap.hiddenIds,
         sidebarCustomizing: false,
+        // Drop any docked split back to a single panel (#1266).
+        sidebarSecondaryPanel: null,
+        sidebarSplitRatio: 0.5,
       });
       persist(snap);
     },
 
     setSidebarActivePanel: (id) => {
-      if (get().sidebarActivePanel !== id) set({ sidebarActivePanel: id });
+      const patch: Partial<SidebarSlice> = {};
+      if (get().sidebarActivePanel !== id) patch.sidebarActivePanel = id;
+      // The top half can't also be the bottom half — if the new primary is the
+      // split secondary, collapse the split (#1266).
+      if (get().sidebarSecondaryPanel === id) patch.sidebarSecondaryPanel = null;
+      if (Object.keys(patch).length > 0) set(patch);
     },
+
+    setSidebarSecondaryPanel: (id) => {
+      if (id !== null && (!canShareSplit(id) || id === get().sidebarActivePanel)) return;
+      set({ sidebarSecondaryPanel: id });
+    },
+
+    setSidebarSplitRatio: (ratio) => set({ sidebarSplitRatio: clampSplitRatio(ratio) }),
 
     setPanelPoppedOut: (id, on) => {
       const current = get().poppedOutIds;

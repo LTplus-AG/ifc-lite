@@ -40,9 +40,11 @@ import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { CustomizeSidebar } from './CustomizeSidebar';
 
-/** Alt+N hint per panel — by registry index (frozen since #1200): 1-9, then 0. */
+/** Alt+N hint per panel — by registry index (frozen since #1200): 1-9, then 0.
+ *  Only the first ten registry entries get a shortcut; later additions (e.g.
+ *  Hierarchy, #1267) have none, so the map is limited to the first ten. */
 const ALT_LABEL = new Map<WorkspacePanelId, string>(
-  WORKSPACE_PANELS.map((p, i) => [p.id, i < 9 ? `Alt+${i + 1}` : 'Alt+0']),
+  WORKSPACE_PANELS.slice(0, 10).map((p, i) => [p.id, i < 9 ? `Alt+${i + 1}` : 'Alt+0']),
 );
 
 export function ActivityBar() {
@@ -65,9 +67,16 @@ export function ActivityBar() {
   const visibleIds = order.filter((id) => customizing || !hidden.has(id) || id === 'properties');
 
   const onIconClick = (id: WorkspacePanelId) => {
+    const region = getPanelDef(id)?.region;
+    // The left nav panel (Hierarchy, #1267) lives in its own slot — just toggle
+    // it; it never affects the right-pane sidebar mode.
+    if (region === 'left') {
+      toggle(id);
+      return;
+    }
     // Bottom-region panels (Script / Schedule / Lists) open in the bottom strip
     // — their own region — without touching the right-pane sidebar mode.
-    if (getPanelDef(id)?.region === 'bottom') {
+    if (region === 'bottom') {
       toggle(id);
       return;
     }
@@ -167,7 +176,7 @@ export function ActivityBar() {
                   <span className="text-muted-foreground">
                     {customizing
                       ? isHidden ? ' · hidden — click to show' : ' · click to hide'
-                      : ` · ${ALT_LABEL.get(id) ?? ''}${loc === 'floating' ? ' · floating' : loc === 'popped' ? ' · popped out' : ''}`}
+                      : `${ALT_LABEL.get(id) ? ` · ${ALT_LABEL.get(id)}` : ''}${loc === 'floating' ? ' · floating' : loc === 'popped' ? ' · popped out' : ''}`}
                   </span>
                 </TooltipContent>
               </Tooltip>

@@ -462,6 +462,8 @@ export function HierarchyPanel() {
           clearStoreySelection();
           // Clear the mirrored storey rule too (issue #1107).
           upsertSearchRule((r) => r.kind === 'storey', null);
+          // Make the "click again to leave Solo" behaviour discoverable (#1265).
+          toast.success('Showing all storeys');
         } else {
           // Select this storey (replaces any existing selection). Isolating a
           // single storey IS Solo, so reflect that in the level-display mode —
@@ -470,7 +472,8 @@ export function HierarchyPanel() {
           setLevelDisplayMode('solo');
           // Mirror to the advanced filter: one storey rule = this storey (issue #1107).
           upsertSearchRule((r) => r.kind === 'storey' && r.op === 'in', Rule.storey([node.name], 'in'));
-          toast.success(`Filter → storey ${node.name}`);
+          // Phrase it as Solo so the storey-row → Solo link is obvious (#1265).
+          toast.success(`Solo: showing only ${node.name}`);
         }
       }
     } else if (node.type === 'IfcSpace') {

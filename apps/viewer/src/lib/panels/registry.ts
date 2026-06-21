@@ -28,14 +28,17 @@ import {
   Terminal,
   CalendarRange,
   Table2,
+  ListTree,
   type LucideIcon,
 } from 'lucide-react';
 
 /** Every panel reachable from the unified sidebar rail. `properties` is the
  *  Information panel (the right pane's default fallback). Each panel opens in
  *  its home {@link WorkspacePanelDef.region} — `side` panels in the right pane,
- *  `bottom` panels (Script / Schedule / Lists) in the bottom strip. */
+ *  `bottom` panels (Script / Schedule / Lists) in the bottom strip, and the
+ *  `left` panel (Hierarchy) in the left navigation slot (#1267). */
 export type WorkspacePanelId =
+  | 'hierarchy'
   | 'properties'
   | 'compare'
   | 'bcf'
@@ -48,10 +51,11 @@ export type WorkspacePanelId =
   | 'lists';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
-export type PanelGroup = 'inspect' | 'review' | 'author' | 'work';
+export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
 
-/** Where a panel docks when opened from the rail. */
-export type PanelRegion = 'side' | 'bottom';
+/** Where a panel docks when opened from the rail. `left` is the dedicated
+ *  hierarchy navigation slot, toggled via `leftPanelCollapsed` (#1267). */
+export type PanelRegion = 'side' | 'bottom' | 'left';
 
 export interface WorkspacePanelDef {
   id: WorkspacePanelId;
@@ -81,6 +85,11 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   { id: 'script', title: 'Script editor', short: 'Script', Icon: Terminal, group: 'work', region: 'bottom', prefersWide: true },
   { id: 'gantt', title: 'Construction schedule', short: 'Schedule', Icon: CalendarRange, group: 'work', region: 'bottom', prefersWide: true },
   { id: 'lists', title: 'Entity lists', short: 'Lists', Icon: Table2, group: 'work', region: 'bottom', prefersWide: true },
+  // Left-slot nav panel (#1267) — APPENDED so the frozen Alt+1..0 mapping above
+  // is untouched (it gets no Alt shortcut). Its default *display* position is the
+  // top of the rail (see DEFAULT_ORDER in sidebarSlice); the activity bar toggles
+  // its left slot via `leftPanelCollapsed` rather than the right-pane flags.
+  { id: 'hierarchy', title: 'Hierarchy', short: 'Tree', Icon: ListTree, group: 'navigate', region: 'left' },
 ];
 
 /** The bottom-strip panel ids, mapped to their store visibility flag + setter
@@ -89,6 +98,12 @@ export type BottomPanelId = Extract<WorkspacePanelId, 'script' | 'gantt' | 'list
 
 export function isBottomPanel(id: WorkspacePanelId): id is BottomPanelId {
   return id === 'script' || id === 'gantt' || id === 'lists';
+}
+
+/** The left-slot nav panel (Hierarchy, #1267) — toggled via `leftPanelCollapsed`,
+ *  never floated / popped / docked into the right pane. */
+export function isLeftPanel(id: WorkspacePanelId): id is 'hierarchy' {
+  return id === 'hierarchy';
 }
 
 const PANEL_BY_ID = new Map<WorkspacePanelId, WorkspacePanelDef>(WORKSPACE_PANELS.map((p) => [p.id, p]));

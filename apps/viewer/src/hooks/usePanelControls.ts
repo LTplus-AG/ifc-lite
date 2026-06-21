@@ -18,6 +18,7 @@ import { useViewerStore } from '@/store';
 import {
   isAnalysisPanel,
   isBottomPanel,
+  isLeftPanel,
   type WorkspacePanelId,
   type AnalysisPanelId,
 } from '@/lib/panels/registry';
@@ -69,6 +70,8 @@ export function usePanelControls(): PanelControls {
   const scriptVisible = useViewerStore((s) => s.scriptPanelVisible);
   const ganttVisible = useViewerStore((s) => s.ganttPanelVisible);
   const listVisible = useViewerStore((s) => s.listPanelVisible);
+  // The Hierarchy panel (left region, #1267) is "docked" while its slot is open.
+  const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
 
   const floatingIds = useMemo(
     () => new Set<WorkspacePanelId>(floatingPanels.map((p) => p.id)),
@@ -87,12 +90,13 @@ export function usePanelControls(): PanelControls {
 
   const isDockedInHome = useCallback(
     (id: WorkspacePanelId): boolean => {
+      if (id === 'hierarchy') return !leftPanelCollapsed; // left slot open
       if (id === 'script') return scriptVisible;
       if (id === 'gantt') return ganttVisible;
       if (id === 'lists') return listVisible;
       return id === sideDocked; // side panels: the panel actually shown in the pane
     },
-    [sideDocked, scriptVisible, ganttVisible, listVisible],
+    [sideDocked, scriptVisible, ganttVisible, listVisible, leftPanelCollapsed],
   );
 
   const panelLocation = useCallback(
@@ -110,25 +114,49 @@ export function usePanelControls(): PanelControls {
   );
 
   const openInHome = useCallback((id: WorkspacePanelId) => {
+    // Hierarchy's home is the left slot — reveal it instead of routing through
+    // the right-pane / bottom-strip flags (#1267).
+    if (isLeftPanel(id)) {
+      useViewerStore.getState().setLeftPanelCollapsed(false);
+      return;
+    }
     useViewerStore.getState().openPanelInHome(id);
   }, []);
 
   const toggle = useCallback((id: WorkspacePanelId) => {
+    if (isLeftPanel(id)) {
+      const s = useViewerStore.getState();
+      s.setLeftPanelCollapsed(!s.leftPanelCollapsed);
+      return;
+    }
     if (isBottomPanel(id)) useViewerStore.getState().toggleBottomPanel(id);
     else useViewerStore.getState().toggleWorkspacePanel(id);
   }, []);
 
   const floatPanel = useCallback((id: WorkspacePanelId) => {
+    // The left nav panel stays docked on the left — never floats (#1267).
+    if (isLeftPanel(id)) {
+      useViewerStore.getState().setLeftPanelCollapsed(false);
+      return;
+    }
     closePanelWindow(id);
     useViewerStore.getState().floatPanel(id);
     useViewerStore.getState().setRightPanelCollapsed(false);
   }, []);
 
   const popOutPanel = useCallback((id: WorkspacePanelId) => {
+    if (isLeftPanel(id)) {
+      useViewerStore.getState().setLeftPanelCollapsed(false);
+      return;
+    }
     void openPanelWindow(id);
   }, []);
 
   const closePanel = useCallback((id: WorkspacePanelId) => {
+    if (isLeftPanel(id)) {
+      useViewerStore.getState().setLeftPanelCollapsed(true);
+      return;
+    }
     useViewerStore.getState().closeFloatingPanel(id);
     closePanelWindow(id);
     if (isAnalysisPanel(id)) setDockedVisible(id, false);

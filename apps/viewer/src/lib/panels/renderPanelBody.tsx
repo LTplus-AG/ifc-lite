@@ -13,6 +13,7 @@
 
 import type { ReactNode } from 'react';
 import type { WorkspacePanelId } from './registry';
+import { HierarchyPanel } from '@/components/viewer/HierarchyPanel';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { ComparePanel } from '@/components/viewer/ComparePanel';
 import { BCFPanel } from '@/components/viewer/BCFPanel';
@@ -31,6 +32,9 @@ import { ListPanel } from '@/components/viewer/lists/ListPanel';
  */
 export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
   switch (id) {
+    // Hierarchy's home is the left slot (#1267); it is never routed to the right
+    // pane / float / pop-out, but the case keeps the id → body map exhaustive.
+    case 'hierarchy': return <HierarchyPanel />;
     case 'properties': return <PropertiesPanel />;
     case 'compare': return <ComparePanel onClose={onClose} />;
     case 'bcf': return <BCFPanel onClose={onClose} />;

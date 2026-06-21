@@ -115,6 +115,81 @@ describe('sidebarSlice (#1208)', () => {
     s.getState().resetSidebarLayout();
     assert.strictEqual(s.getState().sidebarMode, 'expanded');
     assert.deepStrictEqual(s.getState().sidebarHiddenIds, []);
-    assert.strictEqual(s.getState().sidebarOrder[0], WORKSPACE_PANELS[0].id);
+    // Hierarchy (#1267) is the default top of the rail, even though it's the
+    // last *registry* entry (so the Alt+1..0 mapping stays frozen).
+    assert.strictEqual(s.getState().sidebarOrder[0], 'hierarchy');
+  });
+});
+
+describe('sidebarSlice ordering (#1267)', () => {
+  it('defaults Hierarchy to the top of the rail order', () => {
+    const s = make();
+    assert.strictEqual(s.getState().sidebarOrder[0], 'hierarchy');
+  });
+
+  it('keeps every registry panel present after reordering Hierarchy', () => {
+    const s = make();
+    const before = [...s.getState().sidebarOrder].sort();
+    s.getState().reorderSidebarPanel('hierarchy', 5);
+    const after = [...s.getState().sidebarOrder].sort();
+    assert.deepStrictEqual(after, before);
+    assert.strictEqual(s.getState().sidebarOrder.length, WORKSPACE_PANELS.length);
+  });
+});
+
+describe('sidebarSlice docked split (#1266)', () => {
+  it('sets a side panel as the lower split half', () => {
+    const s = make();
+    s.getState().setSidebarActivePanel('ids');
+    s.getState().setSidebarSecondaryPanel('compare');
+    assert.strictEqual(s.getState().sidebarSecondaryPanel, 'compare');
+  });
+
+  it('rejects non-side panels as the split half (bottom / left)', () => {
+    const s = make();
+    s.getState().setSidebarActivePanel('ids');
+    s.getState().setSidebarSecondaryPanel('script'); // bottom strip
+    assert.strictEqual(s.getState().sidebarSecondaryPanel, null);
+    s.getState().setSidebarSecondaryPanel('hierarchy'); // left slot
+    assert.strictEqual(s.getState().sidebarSecondaryPanel, null);
+  });
+
+  it('refuses to split a panel against itself', () => {
+    const s = make();
+    s.getState().setSidebarActivePanel('ids');
+    s.getState().setSidebarSecondaryPanel('ids');
+    assert.strictEqual(s.getState().sidebarSecondaryPanel, null);
+  });
+
+  it('collapses the split when the secondary is promoted to primary', () => {
+    const s = make();
+    s.getState().setSidebarActivePanel('ids');
+    s.getState().setSidebarSecondaryPanel('compare');
+    assert.strictEqual(s.getState().sidebarSecondaryPanel, 'compare');
+    s.getState().setSidebarActivePanel('compare');
+    assert.strictEqual(s.getState().sidebarActivePanel, 'compare');
+    assert.strictEqual(s.getState().sidebarSecondaryPanel, null);
+  });
+
+  it('clamps the split ratio to [0.2, 0.8] and falls back on NaN', () => {
+    const s = make();
+    s.getState().setSidebarSplitRatio(0.05);
+    assert.strictEqual(s.getState().sidebarSplitRatio, 0.2);
+    s.getState().setSidebarSplitRatio(0.95);
+    assert.strictEqual(s.getState().sidebarSplitRatio, 0.8);
+    s.getState().setSidebarSplitRatio(0.42);
+    assert.strictEqual(s.getState().sidebarSplitRatio, 0.42);
+    s.getState().setSidebarSplitRatio(Number.NaN);
+    assert.strictEqual(s.getState().sidebarSplitRatio, 0.5);
+  });
+
+  it('resetSidebarLayout drops the split back to a single panel', () => {
+    const s = make();
+    s.getState().setSidebarActivePanel('ids');
+    s.getState().setSidebarSecondaryPanel('compare');
+    s.getState().setSidebarSplitRatio(0.7);
+    s.getState().resetSidebarLayout();
+    assert.strictEqual(s.getState().sidebarSecondaryPanel, null);
+    assert.strictEqual(s.getState().sidebarSplitRatio, 0.5);
   });
 });

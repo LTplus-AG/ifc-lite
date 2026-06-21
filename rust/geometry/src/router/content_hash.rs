@@ -27,7 +27,7 @@
 //! ordering beyond the bit pattern), so native x86_64/aarch64 and wasm32 produce
 //! identical keys.
 
-use ifc_lite_core::{AttributeValue, EntityDecoder};
+use ifc_lite_core::EntityDecoder;
 use rustc_hash::FxHashMap;
 
 /// Defensive recursion bound. IFC geometry is a DAG (item → solids → profiles →
@@ -247,9 +247,15 @@ fn sig_entity(decoder: &mut EntityDecoder, id: u32, memo: &mut FxHashMap<u32, u1
         }
     }
     memo.insert(id, CYCLE_SENTINEL); // break cycles (DAG ⇒ unreachable in practice)
-    let entity = match decoder.decode_by_id(id) {
-        Ok(e) => e,
-        Err(_) => {
+    // Cheap structural hash from the RAW STEP bytes — no `decode_by_id`, so no
+    // per-attribute `AttributeValue` allocation. That decode cost (every
+    // IfcCartesianPoint of every extrusion/boolean operand) is what made dedup a
+    // net loss on procedural geometry (#1177) and kept the gate brep-only. Walk
+    // the record bytes folding literals, and on each `#ref` recurse so the hash
+    // stays structural + renumbering-invariant (the entity's own id is skipped).
+    let raw: Vec<u8> = match decoder.get_raw_bytes(id) {
+        Some(b) => b.to_vec(),
+        None => {
             // Unresolvable reference: a fixed sentinel (NOT the id, so structurally
             // identical-but-renumbered files still collide).
             let s = fold(0, 0x00BA_D0BA_D0BA_D000);
@@ -257,40 +263,71 @@ fn sig_entity(decoder: &mut EntityDecoder, id: u32, memo: &mut FxHashMap<u32, u1
             return s;
         }
     };
-    // Hash the stable type NAME (IfcType isn't a primitive-castable enum).
-    let mut acc = fold_bytes(fold(0, 0x5EED_5EED), entity.ifc_type.as_str().as_bytes());
-    for attr in &entity.attributes {
-        acc = hash_attr(decoder, attr, acc, memo, depth);
-    }
+    let acc = sig_walk_bytes(decoder, &raw, memo, depth);
     memo.insert(id, acc);
     acc
 }
 
-fn hash_attr(
+/// Structural signature of a single STEP record from its raw bytes, recursing on
+/// every `#ref`. Folds literal runs verbatim and replaces each ref with its
+/// child signature, so the result is identical regardless of entity-id numbering.
+/// `#` inside a single-quoted string (STEP escapes a literal quote as `''`) is
+/// NOT treated as a ref. The record's own leading `#<id>=` is skipped.
+fn sig_walk_bytes(
     decoder: &mut EntityDecoder,
-    attr: &AttributeValue,
-    acc: u128,
+    bytes: &[u8],
     memo: &mut FxHashMap<u32, u128>,
     depth: u32,
 ) -> u128 {
-    match attr {
-        AttributeValue::EntityRef(r) => {
-            let child = sig_entity(decoder, *r, memo, depth + 1);
-            // Fold both lanes of the child hash, tagged.
-            fold(fold(fold(acc, 1), child as u64), (child >> 64) as u64)
+    let len = bytes.len();
+    // Skip a leading `#<id>=` (only when the `=` precedes the first `(`).
+    let mut i = 0;
+    {
+        let mut k = 0;
+        while k < len && bytes[k] != b'(' && bytes[k] != b'=' {
+            k += 1;
         }
-        AttributeValue::String(s) => fold_bytes(fold(acc, 2), s.as_bytes()),
-        AttributeValue::Integer(i) => fold(fold(acc, 3), *i as u64),
-        AttributeValue::Float(f) => fold(fold(acc, 4), f.to_bits()),
-        AttributeValue::Enum(e) => fold_bytes(fold(acc, 5), e.as_bytes()),
-        AttributeValue::List(items) => {
-            let mut a = fold(fold(acc, 6), items.len() as u64);
-            for it in items {
-                a = hash_attr(decoder, it, a, memo, depth);
-            }
-            a
+        if k < len && bytes[k] == b'=' {
+            i = k + 1;
         }
-        AttributeValue::Null => fold(acc, 8),
-        AttributeValue::Derived => fold(acc, 9),
     }
+    let mut acc = fold(0, 0x5EED_5EED);
+    let mut lit_start = i;
+    let mut in_str = false;
+    while i < len {
+        let c = bytes[i];
+        if in_str {
+            if c == b'\'' {
+                // `''` is an escaped quote inside the string, not its end.
+                if i + 1 < len && bytes[i + 1] == b'\'' {
+                    i += 2;
+                    continue;
+                }
+                in_str = false;
+            }
+            i += 1;
+            continue;
+        }
+        if c == b'\'' {
+            in_str = true;
+            i += 1;
+            continue;
+        }
+        if c == b'#' && i + 1 < len && bytes[i + 1].is_ascii_digit() {
+            acc = fold_bytes(acc, &bytes[lit_start..i]);
+            let mut j = i + 1;
+            let mut rid = 0u32;
+            while j < len && bytes[j].is_ascii_digit() {
+                rid = rid.wrapping_mul(10).wrapping_add((bytes[j] - b'0') as u32);
+                j += 1;
+            }
+            let child = sig_entity(decoder, rid, memo, depth + 1);
+            acc = fold(fold(fold(acc, 1), child as u64), (child >> 64) as u64);
+            i = j;
+            lit_start = i;
+            continue;
+        }
+        i += 1;
+    }
+    fold_bytes(acc, &bytes[lit_start..len])
 }

@@ -37,6 +37,14 @@ interface SelectionRef {
   expressId: number;
 }
 
+/**
+ * How the rest of the model is shown when a clash is focused (#1275):
+ * - `highlight`: everything stays visible, the pair is just selected/framed;
+ * - `isolate`:   everything else is hidden;
+ * - `ghost`:     everything else fades to translucent X-Ray context.
+ */
+export type ClashFocusMode = 'highlight' | 'isolate' | 'ghost';
+
 /** How clashes collapse into BCF topics. `storey` is omitted — Clash has no
  *  storey, so it degrades to `rule` (see grouping.ts) and would only confuse. */
 export type ClashBcfGroupBy = 'cluster' | 'rule' | 'typePair' | 'element';
@@ -258,13 +266,28 @@ export function useClash() {
   }, []);
 
   /**
-   * Select both elements of a clash, highlight them, and frame the camera. When
-   * `isolate` is set, also hide everything else so only the clashing pair is
-   * visible — the "isolate clashing objects" view (#1275). Otherwise any active
-   * isolation is cleared so the pair is highlighted in full context.
+   * Apply a focus mode to a set of global ids in the shared visibility channels:
+   * - `highlight`: clear isolation + ghosting (pair highlighted in full context);
+   * - `isolate`:   hide everything except the ids (#1275);
+   * - `ghost`:     keep the ids solid and fade the rest to translucent context
+   *                via the renderer's X-Ray path (#1275 "see them in context").
+   */
+  const applyFocusMode = useCallback((globalIds: number[], mode: ClashFocusMode): void => {
+    const state = useViewerStore.getState();
+    if (mode === 'isolate') state.setIsolatedEntities(new Set(globalIds));
+    else if (mode === 'ghost') state.setGhostExceptEntities(new Set(globalIds));
+    else {
+      state.clearIsolation();
+      state.clearGhost();
+    }
+  }, []);
+
+  /**
+   * Select both elements of a clash, highlight them, frame the camera, and apply
+   * the chosen focus `mode` (highlight / isolate / ghost) — #1275.
    */
   const focusClash = useCallback(
-    (clash: Clash, isolate = false): void => {
+    (clash: Clash, mode: ClashFocusMode = 'highlight'): void => {
       const state = useViewerStore.getState();
       const a = refOf(clash.a);
       const b = refOf(clash.b);
@@ -280,32 +303,29 @@ export function useClash() {
       state.clearEntitySelection();
       state.setSelectedEntityIds(globalIds); // highlight BOTH elements + frame target
       state.addEntitiesToSelection(refs); // model-aware context for the properties panel
-      if (isolate) state.setIsolatedEntities(new Set(globalIds));
-      else state.clearIsolation();
+      applyFocusMode(globalIds, mode);
       state.setClashSelectedId(clash.id);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
     },
-    [refOf],
+    [refOf, applyFocusMode],
   );
 
   /**
    * Focus a SINGLE element of a clash pair so the user can step through each side
-   * and read it in isolation (#1276). `isolate` hides everything else; otherwise
-   * the element is highlighted in context.
+   * and read it on its own (#1276), applying the chosen focus `mode`.
    */
   const selectElement = useCallback(
-    (el: ClashElementRef, isolate = false): void => {
+    (el: ClashElementRef, mode: ClashFocusMode = 'highlight'): void => {
       const state = useViewerStore.getState();
       const ref = refOf(el);
       if (!ref) return;
       state.clearEntitySelection();
       state.setSelectedEntityIds([el.ref]);
       state.addEntitiesToSelection([ref]);
-      if (isolate) state.setIsolatedEntities(new Set([el.ref]));
-      else state.clearIsolation();
+      applyFocusMode([el.ref], mode);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
     },
-    [refOf],
+    [refOf, applyFocusMode],
   );
 
   /** Highlight every element involved in any clash. */
@@ -335,6 +355,7 @@ export function useClash() {
     const state = useViewerStore.getState();
     state.clearEntitySelection();
     state.clearIsolation(); // drop any clash isolation so the full model returns
+    state.clearGhost(); // and any X-Ray ghosting
     setSelectedId(null);
   }, [setSelectedId]);
 
@@ -456,6 +477,7 @@ export function useClash() {
     const state = useViewerStore.getState();
     state.clearEntitySelection();
     state.clearIsolation();
+    state.clearGhost();
     clear();
   }, [clear]);
 

@@ -1100,8 +1100,17 @@ export class Renderer {
         // Snapshot the caller's map so mid-frame mutation can't desync classification
         // and uniform-write decisions for the same batch/mesh.
         const txOverridesSrc = options.transparencyOverrides;
-        const hasTxOverrides = txOverridesSrc != null && txOverridesSrc.size > 0;
-        const txOverrides = hasTxOverrides ? new Map(txOverridesSrc) : null;
+        const hasTxMap = txOverridesSrc != null && txOverridesSrc.size > 0;
+        const txOverrides = hasTxMap ? new Map(txOverridesSrc) : null;
+        // X-Ray *context* mode: every non-selected mesh NOT in ghostExceptIds
+        // fades to ghostAlpha. It feeds the same alpha-override machinery as
+        // transparencyOverrides (explicit per-id entries win), so it routes
+        // through the transparent pipeline with no extra call sites — and avoids
+        // building a Map over every element just to fade "the rest".
+        const ghostExceptIds = options.ghostExceptIds ?? null;
+        const ghostAlpha = options.ghostAlpha ?? 0.12;
+        const hasGhost = ghostExceptIds != null;
+        const hasTxOverrides = hasTxMap || hasGhost;
         const alphaForMesh = (expressId: number, fallback: number): number => {
             if (!hasTxOverrides) return fallback;
             // Selected meshes are exempt — the highlight pass renders them last,
@@ -1109,8 +1118,10 @@ export class Renderer {
             // consistent so a selected mesh never enters the transparent pipeline
             // because of its own override entry.
             if (hasSelected && selectedExpressIds.has(expressId)) return fallback;
-            const a = txOverrides!.get(expressId);
-            return a !== undefined ? a : fallback;
+            const a = txOverrides?.get(expressId);
+            if (a !== undefined) return a;
+            if (hasGhost && !ghostExceptIds!.has(expressId)) return ghostAlpha;
+            return fallback;
         };
         // Cache resolved batch alpha for the frame: classification needs it
         // (opaque vs transparent routing) and renderBatch needs it for the
@@ -1132,8 +1143,12 @@ export class Renderer {
                 // pass redraws them on top, but excluding here also means a
                 // batch made entirely of selected entities stays opaque.
                 if (hasSelected && selectedExpressIds.has(eid)) continue;
-                const a = txOverrides!.get(eid);
-                if (a !== undefined && a < minAlpha) minAlpha = a;
+                const a = txOverrides?.get(eid);
+                if (a !== undefined) {
+                    if (a < minAlpha) minAlpha = a;
+                } else if (hasGhost && !ghostExceptIds!.has(eid)) {
+                    if (ghostAlpha < minAlpha) minAlpha = ghostAlpha;
+                }
             }
             const resolved = minAlpha === Infinity ? fallback : minAlpha;
             batchAlphaCache!.set(batch, resolved);

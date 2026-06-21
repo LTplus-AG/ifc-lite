@@ -37,10 +37,12 @@ export function useSelectionState() {
 export function useVisibilityState() {
   const hiddenEntities = useViewerStore((state) => state.hiddenEntities);
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);
+  const ghostExceptEntities = useViewerStore((state) => state.ghostExceptEntities);
 
   return {
     hiddenEntities,
     isolatedEntities,
+    ghostExceptEntities,
   };
 }
 

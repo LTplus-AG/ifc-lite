@@ -24,6 +24,11 @@ export interface VisibilitySlice {
   // State (legacy - single model)
   hiddenEntities: Set<number>;
   isolatedEntities: Set<number> | null;
+  /** X-Ray context: when non-null, every entity NOT in this set renders ghosted
+   *  (translucent) so a focused subset (e.g. a clash pair) stands out while the
+   *  rest stays visible for context. `null` = no ghosting. Drives the renderer's
+   *  `ghostExceptIds`. */
+  ghostExceptEntities: Set<number> | null;
   /** Class-level filter (from Class tab type-group clicks) — independent of isolatedEntities */
   classFilter: { ids: Set<number>; label: string } | null;
   typeVisibility: TypeVisibility;
@@ -72,6 +77,10 @@ export interface VisibilitySlice {
   setHiddenEntities: (ids: Set<number>) => void;
   /** Set all isolated entities at once (for BCF viewpoint with defaultVisibility=false) */
   setIsolatedEntities: (ids: Set<number> | null) => void;
+  /** Ghost everything except these entities (X-Ray context). `null` clears it. */
+  setGhostExceptEntities: (ids: Set<number> | null) => void;
+  /** Clear X-Ray context ghosting. */
+  clearGhost: () => void;
 
   // Actions (multi-model)
   /** Hide entity in specific model */
@@ -98,6 +107,7 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
   // Initial state (legacy)
   hiddenEntities: new Set(),
   isolatedEntities: null,
+  ghostExceptEntities: null,
   classFilter: null,
   // Read persisted toggles fresh so the user's choices survive reloads.
   typeVisibility: getPersistedTypeVisibility(),
@@ -199,16 +209,25 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
 
   clearClassFilter: () => set({ classFilter: null }),
 
-  clearAllFilters: () => set({ isolatedEntities: null, classFilter: null }),
+  clearAllFilters: () => set({ isolatedEntities: null, classFilter: null, ghostExceptEntities: null }),
 
-  showAll: () => set({ hiddenEntities: new Set(), isolatedEntities: null, classFilter: null }),
+  showAll: () => set({ hiddenEntities: new Set(), isolatedEntities: null, classFilter: null, ghostExceptEntities: null }),
 
   setHiddenEntities: (ids) => set({ hiddenEntities: new Set(ids), isolatedEntities: null, classFilter: null }),
 
   setIsolatedEntities: (ids) => set({
     isolatedEntities: ids ? new Set(ids) : null,
     hiddenEntities: new Set(), // Clear hidden when setting isolation
+    ghostExceptEntities: null, // Isolation (hide) and ghosting are mutually exclusive
   }),
+
+  setGhostExceptEntities: (ids) => set({
+    ghostExceptEntities: ids ? new Set(ids) : null,
+    // Ghosting shows the rest translucent — clear isolation (which hides it).
+    isolatedEntities: null,
+  }),
+
+  clearGhost: () => set({ ghostExceptEntities: null }),
 
   isEntityVisible: (id) => {
     const state = get();

@@ -265,6 +265,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // Visibility (legacy)
       hiddenEntities: new Set(),
       isolatedEntities: null,
+      ghostExceptEntities: null,
       classFilter: null,
       // Re-read persisted toggles on every file load so a new model never
       // reverts the user's visibility choices (e.g. "Show Annotations").

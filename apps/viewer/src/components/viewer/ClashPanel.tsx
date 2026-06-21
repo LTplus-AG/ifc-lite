@@ -22,7 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { useClash } from '@/hooks/useClash';
+import { useClash, type ClashFocusMode } from '@/hooks/useClash';
 import { useBCF } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
 import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
@@ -128,7 +128,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<ClashSortBy>('severity');
   const [hideTouching, setHideTouching] = useState(false);
-  const [isolateOnSelect, setIsolateOnSelect] = useState(false);
+  /** How the rest of the model is shown when a clash is focused (#1275). */
+  const [focusMode, setFocusMode] = useState<ClashFocusMode>('highlight');
   const [showHelp, setShowHelp] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
 
@@ -214,7 +215,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     setCreatingTopic(true);
     try {
       if (clash) {
-        focusClash(clash);
+        focusClash(clash, focusMode);
         // Wait for the camera move + a render before grabbing the snapshot.
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       }
@@ -235,12 +236,23 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     } finally {
       setCreatingTopic(false);
     }
-  }, [result, creatingTopic, selectedId, focusClash, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, addViewpoint, setBcfPanelVisible]);
+  }, [result, creatingTopic, selectedId, focusClash, focusMode, bcfProject, setBcfProject, total, bcfAuthor, addTopic, createViewpointFromState, addViewpoint, setBcfPanelVisible]);
+
+  /** Switch the focus mode and immediately re-apply it to the selected clash so
+   *  the change is visible without re-clicking the row (#1275). */
+  const changeFocusMode = useCallback(
+    (mode: ClashFocusMode): void => {
+      setFocusMode(mode);
+      const current = selectedId ? result?.clashes.find((c) => c.id === selectedId) : undefined;
+      if (current) focusClash(current, mode);
+    },
+    [selectedId, result, focusClash],
+  );
 
   /** One side (A or B) of a clash inside the expanded row (#1276). */
   const ElementRow = ({ el, side }: { el: ClashElementRef; side: 0 | 1 }) => (
     <button
-      onClick={() => selectElement(el, isolateOnSelect)}
+      onClick={() => selectElement(el, focusMode)}
       title={`${el.tag} · ${el.name ?? el.key}`}
       className="flex w-full items-center gap-2 py-1 pl-7 pr-3 text-left hover:bg-muted/50"
     >
@@ -507,15 +519,33 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <input type="checkbox" checked={hideTouching} onChange={(e) => setHideTouching(e.target.checked)} className="accent-[#f7768e]" />
               Hide touching{touchingCount > 0 ? ` (${touchingCount})` : ''}
             </label>
-            <label className="inline-flex items-center gap-1.5 cursor-pointer" title="When selecting a clash, hide everything except the clashing objects">
-              <input type="checkbox" checked={isolateOnSelect} onChange={(e) => setIsolateOnSelect(e.target.checked)} className="accent-[#f7768e]" />
-              Isolate on select
-            </label>
+            <div className="inline-flex items-center gap-1" title="How the rest of the model is shown when you click a clash">
+              <span>On select:</span>
+              <div className="inline-flex rounded-md border border-border overflow-hidden">
+                {([
+                  ['highlight', 'Highlight', 'Keep the whole model visible'],
+                  ['isolate', 'Isolate', 'Hide everything except the clashing pair'],
+                  ['ghost', 'Ghost', 'Fade the rest to translucent context (X-Ray)'],
+                ] as [ClashFocusMode, string, string][]).map(([m, label, tip]) => (
+                  <button
+                    key={m}
+                    title={tip}
+                    onClick={() => changeFocusMode(m)}
+                    className={cn(
+                      'px-1.5 py-0.5 transition-colors',
+                      focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="ml-auto flex items-center gap-1 shrink-0">
               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" title="Select every element involved in a clash" onClick={highlightAll}>
                 Highlight all
               </Button>
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" title="Clear selection and isolation" onClick={clearHighlight}>
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" title="Clear selection, isolation and ghosting" onClick={clearHighlight}>
                 Clear
               </Button>
             </div>
@@ -582,7 +612,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                           {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                         </button>
                         <button
-                          onClick={() => focusClash(clash, isolateOnSelect)}
+                          onClick={() => focusClash(clash, focusMode)}
                           className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left hover:bg-muted/50"
                         >
                           <span
@@ -607,8 +637,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                           <span className="shrink-0 tabular-nums text-muted-foreground">{formatDistance(clash.distance)}</span>
                         </button>
                         <button
-                          onClick={() => focusClash(clash, true)}
-                          title="Isolate this pair (hide everything else)"
+                          onClick={() => focusClash(clash, focusMode === 'highlight' ? 'isolate' : focusMode)}
+                          title={focusMode === 'ghost' ? 'Ghost the rest (X-Ray context)' : 'Isolate this pair (hide everything else)'}
                           className="flex items-center px-2 text-muted-foreground hover:text-foreground"
                         >
                           <Focus className="h-3.5 w-3.5" />

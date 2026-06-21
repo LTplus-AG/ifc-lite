@@ -217,7 +217,7 @@ export function Viewport({
 
   // Visibility state - use computedIsolatedIds from parent (includes storey selection)
   // Fall back to store isolation if computedIsolatedIds is not provided
-  const { hiddenEntities, isolatedEntities: storeIsolatedEntities } = useVisibilityState();
+  const { hiddenEntities, isolatedEntities: storeIsolatedEntities, ghostExceptEntities } = useVisibilityState();
   const isolatedEntities = computedIsolatedIds ?? storeIsolatedEntities ?? null;
 
   // Tool state — `sectionPickMode` arms a face-pick on the next click for
@@ -479,6 +479,7 @@ export function Viewport({
   const coordinateInfoRef = useLatestRef(coordinateInfo);
   const hiddenEntitiesRef = useLatestRef(hiddenEntities);
   const isolatedEntitiesRef = useLatestRef(isolatedEntities);
+  const ghostExceptEntitiesRef = useLatestRef(ghostExceptEntities);
   const selectedEntityIdRef = useLatestRef(selectedEntityId);
   const selectedEntityIdsRef = useLatestRef(selectedEntityIds);
   const selectedModelIndexRef = useLatestRef(selectedModelIndex);
@@ -1169,6 +1170,7 @@ export function Viewport({
     terrainClipYRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,
+    ghostExceptEntitiesRef,
     selectedEntityIdRef,
     selectedModelIndexRef,
     clearColorRef,
@@ -1232,6 +1234,7 @@ export function Viewport({
     visualEnhancementRef,
     hiddenEntities,
     isolatedEntities,
+    ghostExceptEntities,
     selectedEntityId,
     selectedEntityIds,
     selectedModelIndex,

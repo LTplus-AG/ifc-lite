@@ -34,6 +34,8 @@ export interface UseAnimationLoopParams {
   terrainClipYRef: MutableRefObject<number | null>;
   hiddenEntitiesRef: MutableRefObject<Set<number>>;
   isolatedEntitiesRef: MutableRefObject<Set<number> | null>;
+  /** X-Ray context: ghost every entity NOT in this set (null = no ghosting). */
+  ghostExceptEntitiesRef: MutableRefObject<Set<number> | null>;
   selectedEntityIdRef: MutableRefObject<number | null>;
   selectedModelIndexRef: MutableRefObject<number | undefined>;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
@@ -76,6 +78,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     terrainClipYRef,
     hiddenEntitiesRef,
     isolatedEntitiesRef,
+    ghostExceptEntitiesRef,
     selectedEntityIdRef,
     selectedModelIndexRef,
     clearColorRef,
@@ -184,6 +187,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         renderer.render({
           hiddenIds: hiddenEntitiesRef.current,
           isolatedIds: isolatedEntitiesRef.current,
+          ghostExceptIds: ghostExceptEntitiesRef.current,
           selectedId: selectedEntityIdRef.current,
           selectedIds: selectedEntityIdsRef.current,
           selectedModelIndex: selectedModelIndexRef.current,

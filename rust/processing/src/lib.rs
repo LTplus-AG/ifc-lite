@@ -8,6 +8,7 @@
 //! the HTTP server and the native FFI library.
 
 pub mod element;
+pub mod geometry_export;
 mod georeferencing;
 pub mod prepass;
 mod processor;
@@ -15,6 +16,7 @@ pub mod style;
 mod symbolic;
 mod types;
 
+pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 pub use georeferencing::{extract_georeferencing, Georeferencing};
 /// Re-exported so the server can name the quality level without a direct
 /// `ifc-lite-geometry` dependency edge for one enum.

@@ -1,0 +1,69 @@
+name: python-wheels
+
+# Build + publish the native ifc-lite geometry wheel (ifclite-geom, the PyO3
+# binding in rust/python). abi3-py39 -> one wheel per platform covers CPython
+# >= 3.9. Tag `ifclite-geom-v*` to publish to PyPI (trusted publishing / OIDC).
+on:
+  push:
+    tags: ["ifclite-geom-v*"]
+  pull_request:
+    paths:
+      - "rust/python/**"
+      - "rust/processing/**"
+      - "rust/geometry/**"
+      - "rust/core/**"
+      - ".github/workflows/python-wheels.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: wheel ${{ matrix.os }} / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64 }
+          - { os: ubuntu-latest, target: aarch64 }
+          - { os: macos-14, target: aarch64 }
+          - { os: macos-13, target: x86_64 }
+          - { os: windows-latest, target: x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: rust/python
+          target: ${{ matrix.target }}
+          manylinux: auto
+          args: --release --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: rust/python/dist/*.whl
+
+  publish:
+    name: publish to PyPI
+    if: startsWith(github.ref, 'refs/tags/ifclite-geom-v')
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # PyPI trusted publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          # First publish needs a PyPI trusted-publisher config for `ifclite-geom`
+          # (project + this workflow), same OIDC pattern as the crates/npm release.

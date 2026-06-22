@@ -1,0 +1,26 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ifclite-geom"
+description = "Native ifc-lite geometry-data export for Python (welded, IFC Z-up, world coords)."
+requires-python = ">=3.9"
+license = { text = "MPL-2.0" }
+authors = [{ name = "IFC-Lite Contributors" }]
+keywords = ["ifc", "bim", "geometry", "tessellation"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/LTplus-AG/ifc-lite"
+
+[tool.maturin]
+# The cdylib is `ifclite_geom`; build an abi3 wheel (one wheel per platform
+# works across CPython >= 3.9). Manifest-relative to this crate.
+module-name = "ifclite_geom"
+features = ["pyo3/extension-module"]

@@ -511,13 +511,38 @@ fn opening_engulfs_host_solid(host: &Mesh, opening: &Mesh) -> bool {
     if !point_inside_mesh(opening, host_centroid) {
         return false;
     }
-    // Match the inward pull used by `opening_redundant_with_host` so a host
-    // vertex on a shared face lands strictly inside the host — and therefore
-    // strictly inside an opening that contains the host.
-    const PULL_TO_CENTROID: f64 = 0.05;
+    // Inset each host vertex by a fixed absolute distance toward the centroid
+    // before testing containment. Vertices on a face coincident with the
+    // opening boundary must land strictly inside; for a truly engulfing opening
+    // even sub-millimetre distances suffice. Using 0.1 % of the host's smallest
+    // extent (clamped to [1e-5, 1e-3] model units) keeps the inset smaller than
+    // any real gap between a non-engulfing opening and the host, preventing
+    // false positives on near-complete openings that leave a narrow border.
+    let inset = {
+        let mut mn = [f32::INFINITY; 3];
+        let mut mx = [f32::NEG_INFINITY; 3];
+        for v in host.positions.chunks_exact(3) {
+            mn[0] = mn[0].min(v[0]);
+            mx[0] = mx[0].max(v[0]);
+            mn[1] = mn[1].min(v[1]);
+            mx[1] = mx[1].max(v[1]);
+            mn[2] = mn[2].min(v[2]);
+            mx[2] = mx[2].max(v[2]);
+        }
+        let min_extent = (0..3)
+            .map(|i| (mx[i] - mn[i]) as f64)
+            .fold(f64::INFINITY, f64::min);
+        (min_extent * 0.001).clamp(1e-5, 1e-3)
+    };
     for v in host.positions.chunks_exact(3) {
         let vertex = Point3::new(v[0] as f64, v[1] as f64, v[2] as f64);
-        let sample = vertex + (host_centroid - vertex) * PULL_TO_CENTROID;
+        let to_centroid = host_centroid - vertex;
+        let dist = to_centroid.norm();
+        let sample = if dist > inset {
+            vertex + to_centroid * (inset / dist)
+        } else {
+            host_centroid
+        };
         if !point_inside_mesh(opening, sample) {
             return false;
         }

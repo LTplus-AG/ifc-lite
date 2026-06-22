@@ -390,3 +390,98 @@ describe('compareStoreyEntries', () => {
     assert.strictEqual(compareStoreyEntries({ name: 'roof' }, { name: 'ROOF' }, 'name-asc'), 0);
   });
 });
+
+/** IFC4.3 facility with three IfcFacilityPart rows named "Part 10/2/1"
+ *  (express ids 4/5/6), listed 4,5,6 under an IfcFacility. */
+function createFacilityPartsDataStore(): IfcDataStore {
+  const p10 = createSpatialNode(4, IfcTypeEnum.IfcFacilityPart, 'Part 10');
+  const p2 = createSpatialNode(5, IfcTypeEnum.IfcFacilityPart, 'Part 2');
+  const p1 = createSpatialNode(6, IfcTypeEnum.IfcFacilityPart, 'Part 1');
+  const facilityNode = createSpatialNode(2, IfcTypeEnum.IfcFacility, 'FACILITY', [p10, p2, p1]);
+  const projectNode = createSpatialNode(1, IfcTypeEnum.IfcProject, 'PROJECT', [facilityNode]);
+
+  const spatialHierarchy: SpatialHierarchy = {
+    project: projectNode,
+    byStorey: new Map(),
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map(),
+    storeyHeights: new Map(),
+    elementToStorey: new Map(),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+
+  return {
+    spatialHierarchy,
+    entities: { count: 0, getName: () => '', getTypeName: () => 'Unknown' },
+  } as unknown as IfcDataStore;
+}
+
+/** A building with mixed children: storey "Level B" (4), space "Atrium" (5),
+ *  storey "Level A" (6) — listed 4,5,6. The space is a non-level sibling. */
+function createMixedChildrenDataStore(): IfcDataStore {
+  const sB = createSpatialNode(4, IfcTypeEnum.IfcBuildingStorey, 'Level B');
+  sB.elevation = 0;
+  const space = createSpatialNode(5, IfcTypeEnum.IfcSpace, 'Atrium');
+  const sA = createSpatialNode(6, IfcTypeEnum.IfcBuildingStorey, 'Level A');
+  sA.elevation = 0;
+  const buildingNode = createSpatialNode(3, IfcTypeEnum.IfcBuilding, 'MY_BUILDING', [sB, space, sA]);
+  const siteNode = createSpatialNode(2, IfcTypeEnum.IfcSite, 'MY_SITE', [buildingNode]);
+  const projectNode = createSpatialNode(1, IfcTypeEnum.IfcProject, 'MY_PROJECT', [siteNode]);
+
+  const spatialHierarchy: SpatialHierarchy = {
+    project: projectNode,
+    byStorey: new Map([[4, []], [6, []]]),
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map([[5, []]]),
+    storeyElevations: new Map([[4, 0], [6, 0]]),
+    storeyHeights: new Map(),
+    elementToStorey: new Map(),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+
+  return {
+    spatialHierarchy,
+    entities: { count: 0, getName: () => '', getTypeName: () => 'Unknown' },
+  } as unknown as IfcDataStore;
+}
+
+describe('storey sort order — IFC4.3 parts and non-level siblings (#1296)', () => {
+  it('sorts IfcFacilityPart rows, not just IfcBuildingStorey', () => {
+    const nodes = buildTreeData(
+      new Map(),
+      createFacilityPartsDataStore(),
+      new Set(['root-1', 'root-1-2']),
+      false,
+      [],
+      'name-asc',
+    );
+    const order = nodes.filter((n) => n.type === 'IfcFacilityPart').map((n) => n.expressIds[0]);
+    // Part 1, Part 2, Part 10 (natural numeric) → ids 6, 5, 4
+    assert.deepStrictEqual(order, [6, 5, 4]);
+  });
+
+  it('keeps a non-level sibling (IfcSpace) in its original slot while sorting storeys', () => {
+    const nodes = buildTreeData(
+      new Map(),
+      createMixedChildrenDataStore(),
+      new Set(['root-1', 'root-1-2', 'root-1-2-3']),
+      false,
+      [],
+      'name-asc',
+    );
+    const order = nodes
+      .filter((n) => (n.type === 'IfcBuildingStorey' || n.type === 'IfcSpace') && n.id.startsWith('root-1-2-3-'))
+      .map((n) => n.expressIds[0]);
+    // Storeys A(6)/B(4) reorder by name; the space (5) stays in the middle slot.
+    assert.deepStrictEqual(order, [6, 5, 4]);
+  });
+});

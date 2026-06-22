@@ -25,13 +25,18 @@ export type GroupingMode = 'spatial' | 'type' | 'ifc-type' | 'material';
 const SORT_STORAGE_KEY = 'hierarchy-sort';
 
 /** Read the persisted sort mode, falling back to the default for missing or
- *  stale (e.g. renamed) localStorage values. */
+ *  stale (e.g. renamed) localStorage values. Reads can throw (private mode,
+ *  opaque origin), so guard and fall back rather than break the panel mount. */
 function readStoredSortMode(): HierarchySortMode {
   if (typeof window === 'undefined') return DEFAULT_HIERARCHY_SORT;
-  const stored = localStorage.getItem(SORT_STORAGE_KEY);
-  return stored && (HIERARCHY_SORT_MODES as readonly string[]).includes(stored)
-    ? (stored as HierarchySortMode)
-    : DEFAULT_HIERARCHY_SORT;
+  try {
+    const stored = localStorage.getItem(SORT_STORAGE_KEY);
+    return stored && (HIERARCHY_SORT_MODES as readonly string[]).includes(stored)
+      ? (stored as HierarchySortMode)
+      : DEFAULT_HIERARCHY_SORT;
+  } catch {
+    return DEFAULT_HIERARCHY_SORT;
+  }
 }
 
 interface UseHierarchyTreeParams {
@@ -345,7 +350,11 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const handleSetSortMode = useCallback((mode: HierarchySortMode) => {
     setSortMode(mode);
     if (typeof window !== 'undefined') {
-      localStorage.setItem(SORT_STORAGE_KEY, mode);
+      try {
+        localStorage.setItem(SORT_STORAGE_KEY, mode);
+      } catch {
+        // Private mode / quota — keep the in-memory choice, just don't persist.
+      }
     }
   }, []);
 

@@ -28,6 +28,22 @@ export function elevationKey(elevation: number): string {
   return (Math.round(elevation * 2) / 2).toFixed(2);
 }
 
+/** "Level" rows the browser sorts: building storeys plus their IFC4.3
+ *  facility-part equivalents (facility / bridge / road / railway parts). These
+ *  are the elevation-bearing leaf containers under a building or facility, so
+ *  they share the storey sort; other spatial children (Site, Building, Space)
+ *  keep their document order. `isStoreyLikeSpatialType` covers only
+ *  IfcBuildingStorey, hence the explicit part types here. */
+function isLevelLikeSpatialType(type: IfcTypeEnum): boolean {
+  return (
+    isStoreyLikeSpatialType(type) ||
+    type === IfcTypeEnum.IfcFacilityPart ||
+    type === IfcTypeEnum.IfcBridgePart ||
+    type === IfcTypeEnum.IfcRoadPart ||
+    type === IfcTypeEnum.IfcRailwayPart
+  );
+}
+
 /** Natural, case-insensitive name collation so "Level 2" sorts before "Level 10". */
 const storeyNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
@@ -338,13 +354,19 @@ function buildSpatialNodes(
   });
 
   if (isNodeExpanded) {
-    // Reorder storey-like children by the chosen browser sort mode (#1296).
-    // Only storey lists are reordered; other spatial children (Site, Building)
-    // keep their document order.
-    const containsStoreys = (spatialNode.children || []).some((child) => isStoreyLikeSpatialType(child.type));
-    const sortedChildren = containsStoreys
-      ? [...(spatialNode.children || [])].sort((a, b) => compareStoreyEntries(a, b, sortMode))
-      : spatialNode.children || [];
+    // Reorder the level-like children (storeys + facility parts) by the chosen
+    // browser sort mode (#1296), sorting only those rows IN PLACE so non-level
+    // siblings (Site, Building, Space) keep their document position.
+    const children = spatialNode.children || [];
+    const levelChildren = children.filter((child) => isLevelLikeSpatialType(child.type));
+    let sortedChildren = children;
+    if (levelChildren.length > 1) {
+      const sortedLevels = [...levelChildren].sort((a, b) => compareStoreyEntries(a, b, sortMode));
+      let li = 0;
+      sortedChildren = children.map((child) =>
+        isLevelLikeSpatialType(child.type) ? sortedLevels[li++] : child,
+      );
+    }
 
     for (const child of sortedChildren) {
       buildSpatialNodes(

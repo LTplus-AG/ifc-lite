@@ -64,9 +64,9 @@
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.61.0",
     "@types/node": "^25.9.3",
-    "knip": "^6.16.1",
+    "knip": "^6.17.1",
     "tsx": "^4.22.4",
     "turbo": "^2.9.18",
     "typescript": "^6.0.3"

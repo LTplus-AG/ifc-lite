@@ -22,12 +22,12 @@
     "@ifc-lite/wasm": "workspace:^"
   },
   "optionalDependencies": {
-    "@tauri-apps/api": "^2.11.0"
+    "@tauri-apps/api": "^2.11.1"
   },
   "devDependencies": {
-    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/api": "^2.11.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.9"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

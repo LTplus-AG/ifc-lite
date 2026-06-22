@@ -27,9 +27,9 @@
     "@xmldom/xmldom": "^0.9.10"
   },
   "devDependencies": {
-    "happy-dom": "^20.10.3",
+    "happy-dom": "^20.10.6",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.9"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

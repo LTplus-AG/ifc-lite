@@ -33,7 +33,7 @@ use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -130,6 +130,12 @@ pub struct GeometryRouter {
     /// the wasm layer per batch and logged to the browser console (the geometry
     /// crate can't `web_sys`). Drainable via [`Self::take_layer_slice_diag`].
     layer_slice_diag: RefCell<Vec<(u32, &'static str)>>,
+    /// Host product express IDs that a void subtraction fully CONSUMED — an
+    /// opening whose real solid contains the whole host, so the correct result
+    /// is an empty mesh. Without this flag the empty mesh reads as a failed cut
+    /// and the element pipeline falls back to the un-cut host, re-rendering a
+    /// spurious solid. Queried via [`Self::host_consumed_by_void`].
+    voids_consumed_hosts: RefCell<FxHashSet<u32>>,
     /// Tessellation detail level. Immutable per router instance and passed to
     /// every processor's `process`. Defaults to [`TessellationQuality::Medium`]
     /// (historical hardcoded behavior).
@@ -248,6 +254,7 @@ impl GeometryRouter {
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
             layer_slice_diag: RefCell::new(Vec::new()),
+            voids_consumed_hosts: RefCell::new(FxHashSet::default()),
             tessellation_quality: TessellationQuality::Medium,
         };
 
@@ -607,6 +614,21 @@ impl GeometryRouter {
     /// Total number of CSG failures across all products.
     pub fn csg_failure_total(&self) -> usize {
         self.csg_failures.borrow().values().map(|v| v.len()).sum()
+    }
+
+    /// Internal: mark a host product as fully consumed by a containing void, so
+    /// the element pipeline does NOT fall back to the un-cut host when the void
+    /// subtraction yields an empty mesh. See [`Self::host_consumed_by_void`].
+    pub(crate) fn record_void_consumed_host(&self, product_id: u32) {
+        self.voids_consumed_hosts.borrow_mut().insert(product_id);
+    }
+
+    /// Whether a host product was fully consumed by a containing void (its
+    /// opening's real solid engulfs the host). An empty void-cut result for
+    /// such a host is CORRECT — the element should render nothing — and must
+    /// not trigger the un-cut fallback.
+    pub fn host_consumed_by_void(&self, product_id: u32) -> bool {
+        self.voids_consumed_hosts.borrow().contains(&product_id)
     }
 
     /// Internal: record a batch of failures against a product. Existing

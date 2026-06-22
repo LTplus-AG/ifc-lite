@@ -309,7 +309,12 @@ fn produce_inner(
         .process_element_with_voids(job.entity, decoder, ctx.void_index)
         .ok();
     let needs_fallback = match mesh_candidate.as_ref() {
-        Some(mesh) => mesh.is_empty(),
+        // An empty void-cut result normally means the cut FAILED and emptied
+        // the host, so we re-render it un-cut. But when a containing void
+        // genuinely CONSUMED the host (`host_consumed_by_void`), the empty
+        // result is correct — keep it, or the un-cut host re-appears as a
+        // spurious solid.
+        Some(mesh) => mesh.is_empty() && !router.host_consumed_by_void(job.id),
         None => true,
     };
     if needs_fallback {

@@ -461,6 +461,70 @@ fn opening_redundant_with_host(host: &Mesh, opening: &Mesh, axis: &Vector3<f64>)
     true
 }
 
+/// Forward-ray crossing parity: `true` when `point` lies inside the closed
+/// `mesh`. Casts a ray in a fixed off-axis direction and counts triangle
+/// crossings ahead of the origin — an odd count means inside. The skewed
+/// direction keeps the ray from grazing axis-aligned shared edges/vertices
+/// (the common case for box cutters), so the parity stays reliable.
+fn point_inside_mesh(mesh: &Mesh, point: Point3<f64>) -> bool {
+    // Irrational-ish, non-axis-aligned direction: avoids exact edge/vertex
+    // grazes on the axis-aligned faces that dominate IFC opening boxes.
+    let dir = Vector3::new(0.573_257_1, 0.665_412_3, 0.477_889_5);
+    let mut crossings = 0usize;
+    for tri in mesh.indices.chunks_exact(3) {
+        let (Some(a), Some(b), Some(c)) = (
+            mesh_point(mesh, tri[0]),
+            mesh_point(mesh, tri[1]),
+            mesh_point(mesh, tri[2]),
+        ) else {
+            continue;
+        };
+        if let Some(t) = ray_triangle_param(point, &dir, a, b, c) {
+            if t > 1e-9 {
+                crossings += 1;
+            }
+        }
+    }
+    crossings % 2 == 1
+}
+
+/// `true` when the opening's real solid CONTAINS the host: the host centroid
+/// and every host vertex (each pulled slightly inward toward the host centroid
+/// so a vertex lying on a face coincident with the cutter still samples
+/// strictly inside) lie inside the opening mesh.
+///
+/// This is the signature of a void that fully consumes its host: the correct
+/// boolean result is empty. The exact subtract instead no-ops on the
+/// coincident shared faces and returns the host re-triangulated at unchanged
+/// volume, so detect containment directly and drop the host.
+///
+/// Tests the opening's REAL solid, not just its AABB, so it does NOT fire when
+/// the opening's bounding box engulfs the host but its actual profile excludes
+/// it — there the host vertices fall outside the opening solid and it is kept.
+fn opening_engulfs_host_solid(host: &Mesh, opening: &Mesh) -> bool {
+    if host.indices.is_empty() || opening.indices.is_empty() {
+        return false;
+    }
+    let Some(host_centroid) = mesh_vertex_centroid(host) else {
+        return false;
+    };
+    if !point_inside_mesh(opening, host_centroid) {
+        return false;
+    }
+    // Match the inward pull used by `opening_redundant_with_host` so a host
+    // vertex on a shared face lands strictly inside the host — and therefore
+    // strictly inside an opening that contains the host.
+    const PULL_TO_CENTROID: f64 = 0.05;
+    for v in host.positions.chunks_exact(3) {
+        let vertex = Point3::new(v[0] as f64, v[1] as f64, v[2] as f64);
+        let sample = vertex + (host_centroid - vertex) * PULL_TO_CENTROID;
+        if !point_inside_mesh(opening, sample) {
+            return false;
+        }
+    }
+    true
+}
+
 /// Centroid (vertex average) of a mesh, or `None` when it has no vertices.
 fn mesh_vertex_centroid(mesh: &Mesh) -> Option<Point3<f64>> {
     let n = mesh.positions.len() / 3;
@@ -2625,6 +2689,36 @@ impl GeometryRouter {
                     };
                     if open_vol < min_open_vol {
                         continue;
+                    }
+
+                    // ENGULFING-SOLID VOID: when this opening's real solid
+                    // CONTAINS the whole host, the exact subtract no-ops on the
+                    // coincident shared faces and returns the host unchanged in
+                    // volume (a spurious solid where the opening should be). A
+                    // cheap AABB-engulf pre-check (false for an ordinary opening,
+                    // which spans the host on at most its thickness axis) gates
+                    // the O(host_v · opening_t) containment scan, which confirms
+                    // TRUE solid containment — so a void whose AABB engulfs the
+                    // host while its real profile excludes it is not affected.
+                    // On a hit the host is fully consumed.
+                    let aabb_engulfs = {
+                        let tol = 0.03_f32;
+                        let covers = |omin: f32, omax: f32, hmin: f32, hmax: f32| {
+                            let slack = (hmax - hmin).abs().max(1.0e-9) * tol;
+                            omin <= hmin + slack && omax >= hmax - slack
+                        };
+                        covers(open_min_f32.x, open_max_f32.x, result_min.x, result_max.x)
+                            && covers(open_min_f32.y, open_max_f32.y, result_min.y, result_max.y)
+                            && covers(open_min_f32.z, open_max_f32.z, result_min.z, result_max.z)
+                    };
+                    if aabb_engulfs && opening_engulfs_host_solid(&result, opening_mesh) {
+                        // Mark the host consumed so the element pipeline keeps
+                        // the empty result instead of falling back to the un-cut
+                        // host.
+                        self.record_void_consumed_host(element_id);
+                        result = Mesh::default();
+                        host_mutated = true;
+                        break;
                     }
 
                     let tri_before = result.triangle_count();

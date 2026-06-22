@@ -2400,6 +2400,18 @@ export class Renderer {
                         this.device._lastUncapturedError = `VALIDATION: ${msg}`;
                         this.device._uncapturedErrorCount++;
                     }
+                }).catch((error: unknown) => {
+                    // popErrorScope() rejects (e.g. "Instance dropped in popErrorScope")
+                    // when the GPU device is lost while the scope is still pending. This
+                    // escapes the surrounding synchronous try/catch and would otherwise
+                    // surface as an unhandled rejection. Treat it like any other device
+                    // loss: invalidate the context so it reconfigures next frame.
+                    this.device.invalidateContext();
+                    const now = performance.now();
+                    if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
+                        this.lastRenderErrorTime = now;
+                        console.warn('[WebGPU] popErrorScope rejected (device likely lost):', error);
+                    }
                 });
             }
         } catch (error) {

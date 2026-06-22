@@ -41,6 +41,7 @@ import {
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 
 interface HbjsonExportDialogProps {
   trigger?: React.ReactNode;
@@ -97,14 +98,7 @@ export function HbjsonExportDialog({ trigger }: HbjsonExportDialogProps) {
       }
 
       const blob = new Blob([hbjson], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${baseName}.hbjson`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${sanitizeFilename(baseName, { fallback: 'model' })}.hbjson`);
 
       const msg = `Exported HBJSON (${(blob.size / 1024).toFixed(0)} KB)`;
       setExportResult({ success: true, message: msg });

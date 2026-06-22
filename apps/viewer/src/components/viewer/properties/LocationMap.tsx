@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { downloadBlob } from '@/lib/export/download';
 import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
 import { buildKmz } from '@/lib/geo/kmz-exporter';
 
@@ -461,13 +462,7 @@ export function LocationMap({
         glb,
         name: 'IFC Model',
       });
-      const blob = new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'model.kmz';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' }), 'model.kmz');
     } catch (err) {
       console.error('KMZ export failed:', err);
     }

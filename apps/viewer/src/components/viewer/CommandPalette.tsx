@@ -91,6 +91,7 @@ import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
+import { downloadFile } from '@/lib/export/download';
 import { getRecentFiles, formatFileSize, getCachedFile } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
@@ -195,18 +196,6 @@ function recordUsage(id: string) {
     r.unshift(id);
     localStorage.setItem(RECENT_KEY, JSON.stringify(r.slice(0, 30)));
   } catch { /* noop */ }
-}
-
-// ── Utilities ──────────────────────────────────────────────────────────
-
-function downloadBlob(data: BlobPart | Uint8Array, name: string, mime: string) {
-  // The Rust/wasm exporters return `Uint8Array<ArrayBufferLike>`, which TS 5.7
-  // no longer treats as a `BlobPart`. Copy into a fresh ArrayBuffer-backed view
-  // (same coercion as GLBExportDialog) so the Blob constructor accepts it.
-  const part: BlobPart = data instanceof Uint8Array ? new Uint8Array(data) : data;
-  const url = URL.createObjectURL(new Blob([part], { type: mime }));
-  Object.assign(document.createElement('a'), { href: url, download: name }).click();
-  URL.revokeObjectURL(url);
 }
 
 /** Toggle a sidebar workspace panel (#1208). The store's `toggleWorkspacePanel`
@@ -508,24 +497,24 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       { id: 'export:glb', label: 'Export GLB', keywords: '3d model gltf download', category: 'Export', icon: Download,
         action: async () => {
           const gr = useViewerStore.getState().geometryResult; if (!gr) return;
-          try { downloadBlob(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
+          try { downloadFile(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
           catch (e) { console.error('GLB export failed:', e); }
         } },
       { id: 'export:csv-entities', label: 'Export CSV: Entities', keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadBlob(await exportCsvFromBytes(d.source, 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-properties', label: 'Export CSV: Properties', keywords: 'pset spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadBlob(await exportCsvFromBytes(d.source, 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-quantities', label: 'Export CSV: Quantities', keywords: 'qto spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadBlob(await exportCsvFromBytes(d.source, 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-spatial', label: 'Export CSV: Spatial', keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadBlob(await exportCsvFromBytes(d.source, 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:json', label: 'Export JSON', keywords: 'data entities all download', category: 'Export', icon: FileJson,
         action: () => {
           const d = useViewerStore.getState().ifcDataStore; if (!d) return;
           try {
             const out: Record<string, unknown>[] = [];
             for (let i = 0; i < d.entities.count; i++) { const id = d.entities.expressId[i]; out.push({ expressId: id, globalId: d.entities.getGlobalId(id), name: d.entities.getName(id), type: d.entities.getTypeName(id), properties: d.properties.getForEntity(id) }); }
-            downloadBlob(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
+            downloadFile(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
           } catch (e) { console.error(e); }
         } },
     );

@@ -20,6 +20,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
+import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 
 interface ExportChangesButtonProps {
   /** Optional custom class name */
@@ -123,7 +124,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   const generateFilename = useCallback(() => {
     if (!modelInfo) return 'export.ifc';
     // Remove extension if present
-    const baseName = modelInfo.name.replace(/\.[^.]+$/, '');
+    const baseName = sanitizeFilename(modelInfo.name.replace(/\.[^.]+$/, ''), { fallback: 'export' });
     return `${baseName}_${formatDate()}.ifc`;
   }, [modelInfo, formatDate]);
 
@@ -169,15 +170,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       });
 
       // Download the file
-      const blob = new Blob([toBlobPart(spliced.content)], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = generateFilename();
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadBlob(new Blob([toBlobPart(spliced.content)], { type: 'text/plain' }), generateFilename());
 
       setExportStatus('success');
 

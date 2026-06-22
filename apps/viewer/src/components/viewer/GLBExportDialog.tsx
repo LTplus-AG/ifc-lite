@@ -44,6 +44,7 @@ import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { type MeshData } from '@ifc-lite/geometry';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 
 type ColorSource = 'rendering' | 'shading';
@@ -246,16 +247,9 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       const glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata });
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const baseName = selectedModel.name.replace(/\.[^.]+$/, '');
+      const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
       const suffix = visibleOnly ? '_visible' : '';
-      a.download = `${baseName}${suffix}.glb`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${baseName}${suffix}.glb`);
 
       const msg = `Exported GLB (${(blob.size / 1024).toFixed(0)} KB)`;
       setExportResult({ success: true, message: msg });

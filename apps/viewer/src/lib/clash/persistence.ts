@@ -21,6 +21,7 @@ import {
   type ClashMode,
   type ClashSeverity,
 } from '@ifc-lite/clash';
+import { downloadFile } from '../export/download.js';
 
 /** A built-in or user-defined clash rule preset, with editor/runtime flags. */
 export type ClashPreset = ClashRulePreset & { enabled: boolean; builtin: boolean };
@@ -235,15 +236,8 @@ export function saveSettings(settings: ClashGlobalSettings): SaveResult {
 /** Download the user's presets (customs + modified built-ins) as a JSON file. */
 export function exportPresets(presets: ClashPreset[]): void {
   const custom = presets.filter((p) => !p.builtin || builtinDiffersFromDefault(p));
-  const blob = new Blob([JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2)], {
-    type: 'application/json',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'clash-rules.clash-presets.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2);
+  downloadFile(json, 'clash-rules.clash-presets.json', 'application/json');
 }
 
 /** Parse an exported file into custom presets (ids regenerated, `builtin` stripped). */

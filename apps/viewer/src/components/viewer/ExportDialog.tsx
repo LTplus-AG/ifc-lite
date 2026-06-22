@@ -60,6 +60,7 @@ import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
+import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -385,15 +386,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         setExportProgress(null);
 
-        const blob = new Blob([toBlobPart(result.content)], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'merged_export.ifc';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(new Blob([toBlobPart(result.content)], { type: 'text/plain' }), 'merged_export.ifc');
 
         const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`;
         setExportResult({ success: true, message: msg });
@@ -410,7 +403,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         throw new Error('Selected model has no parsed IFC data store available for export');
       }
       const mutationView = getMutationView(selectedModelId);
-      const baseName = selectedModel.name.replace(/\.[^.]+$/, '');
+      const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
 
       // ── IFC5 → always IFCX ──────────────────────────────────────────
       if (isIfc5) {
@@ -464,16 +457,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           author: 'ifc-lite',
         });
 
-        const blob = new Blob([toBlobPart(result.content)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         const suffix = changesOnly ? '_changes' : (visibleOnly ? '_visible' : '_export');
-        a.download = `${baseName}${suffix}.ifcx`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(new Blob([toBlobPart(result.content)], { type: 'application/json' }), `${baseName}${suffix}.ifcx`);
 
         const ifcxMsg = `Exported IFCX: ${result.stats.nodeCount} nodes, ${result.stats.meshCount} meshes, ${result.stats.propertyCount} properties`;
         setExportResult({ success: true, message: ifcxMsg });
@@ -491,15 +476,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           exportedAt: new Date().toISOString(),
         };
 
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${baseName}_changes.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${baseName}_changes.json`);
 
         const jsonMsg = `Exported ${mutations.length} changes as JSON`;
         setExportResult({ success: true, message: jsonMsg });
@@ -556,16 +533,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           scheduleSourceModelId: state.scheduleSourceModelId ?? null,
         });
 
-        const blob = new Blob([toBlobPart(spliced.content)], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         const suffix = visibleOnly ? '_visible' : '_export';
-        a.download = `${baseName}${suffix}.ifc`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(new Blob([toBlobPart(spliced.content)], { type: 'text/plain' }), `${baseName}${suffix}.ifc`);
 
         const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
         setExportResult({ success: true, message: stepMsg });

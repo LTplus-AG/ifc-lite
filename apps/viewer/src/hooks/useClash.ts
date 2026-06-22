@@ -31,6 +31,7 @@ import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { posthog } from '@/lib/analytics';
+import { downloadBlob } from '@/lib/export/download';
 
 interface SelectionRef {
   modelId: string;
@@ -65,15 +66,6 @@ export interface ClashBcfConfig {
 
 /** Dark, neutral background for offscreen snapshot captures (Tokyo Night base). */
 const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.04, 0.05, 0.1, 1];
-
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
 
 /** Decode a `data:image/png;base64,...` URL into raw PNG bytes for the BCF zip. */
 function dataUrlToBytes(dataUrl: string): Uint8Array | undefined {

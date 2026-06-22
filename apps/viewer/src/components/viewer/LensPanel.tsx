@@ -22,6 +22,7 @@ import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Save, Download, Upload
 import { discoverDataSources } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { downloadFile } from '@/lib/export/download';
 import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
@@ -1260,13 +1261,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
   const handleExport = useCallback(() => {
     const data = exportLenses();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'lenses.json';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadFile(JSON.stringify(data, null, 2), 'lenses.json', 'application/json');
   }, [exportLenses]);
 
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { sanitizeFilename } from './index.js';
+import { sanitizeFilename } from './download.js';
 
 describe('sanitizeFilename', () => {
   it('preserves uppercase letters (issue #1299)', () => {
@@ -21,7 +21,7 @@ describe('sanitizeFilename', () => {
     assert.strictEqual(sanitizeFilename('A_B-C D'), 'A_B-C D');
   });
 
-  it('replaces path separators and reserved characters', () => {
+  it('replaces path separators and reserved characters with a hyphen', () => {
     assert.strictEqual(sanitizeFilename('a/b\\c'), 'a-b-c');
     assert.strictEqual(sanitizeFilename('a:b*c?d'), 'a-b-c-d');
   });
@@ -35,18 +35,20 @@ describe('sanitizeFilename', () => {
     assert.strictEqual(sanitizeFilename('---x---'), 'x');
   });
 
-  it('falls back to "list" for empty or all-stripped input', () => {
-    assert.strictEqual(sanitizeFilename(''), 'list');
-    assert.strictEqual(sanitizeFilename('   '), 'list');
-    assert.strictEqual(sanitizeFilename('***'), 'list');
-  });
-
-  it('caps the length at 60 characters', () => {
-    const long = 'X'.repeat(100);
-    assert.strictEqual(sanitizeFilename(long).length, 60);
-  });
-
   it('keeps non-ASCII letters', () => {
     assert.strictEqual(sanitizeFilename('Brücke Ö'), 'Brücke Ö');
+  });
+
+  it('uses the provided fallback for empty or fully-stripped input', () => {
+    assert.strictEqual(sanitizeFilename(''), 'file');
+    assert.strictEqual(sanitizeFilename('   '), 'file');
+    assert.strictEqual(sanitizeFilename('***'), 'file');
+    assert.strictEqual(sanitizeFilename('', { fallback: 'list' }), 'list');
+    assert.strictEqual(sanitizeFilename('***', { fallback: 'model' }), 'model');
+  });
+
+  it('caps the length at maxLength (default 60)', () => {
+    assert.strictEqual(sanitizeFilename('X'.repeat(100)).length, 60);
+    assert.strictEqual(sanitizeFilename('X'.repeat(100), { maxLength: 40 }).length, 40);
   });
 });

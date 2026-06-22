@@ -40,6 +40,7 @@ import { BCFTopicList } from './bcf/BCFTopicList';
 import { BCFTopicDetail } from './bcf/BCFTopicDetail';
 import { BCFCreateTopicForm } from './bcf/BCFCreateTopicForm';
 import { openGenericFileDialog } from '@/services/file-dialog';
+import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 
 // ============================================================================
 // Main BCF Panel Component
@@ -190,16 +191,9 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     try {
       setBcfLoading(true);
       const blob = await writeBCF(bcfProject);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
       // Use project name, or generate from model name, or date-based fallback
-      const fileName = bcfProject.name || getDefaultProjectName();
-      a.download = `${fileName}.bcfzip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'issues' });
+      downloadBlob(blob, `${fileName}.bcfzip`);
       posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
     } catch (error) {
       console.error('Failed to export BCF:', error);

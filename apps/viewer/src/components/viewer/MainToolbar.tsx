@@ -75,6 +75,7 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { exportCsvFromBytes } from '@/lib/export/csv';
+import { downloadFile, downloadDataUrl } from '@/lib/export/download';
 import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
@@ -713,11 +714,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const canvas = document.querySelector('canvas');
     if (!canvas) return;
     try {
-      const dataUrl = canvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = 'screenshot.png';
-      a.click();
+      downloadDataUrl(canvas.toDataURL('image/png'), 'screenshot.png');
       toast.success('Screenshot saved');
     } catch (err) {
       console.error('Screenshot failed:', err);
@@ -730,14 +727,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     try {
       const csv = await exportCsvFromBytes(ifcDataStore.source, type, { includeProperties: type === 'entities' });
       const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;
-
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadFile(csv, filename, 'text/csv');
       toast.success(`Exported ${type} CSV`);
     } catch (err) {
       console.error('CSV export failed:', err);
@@ -761,13 +751,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       }
 
       const json = JSON.stringify({ entities }, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'model-data.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadFile(json, 'model-data.json', 'application/json');
       toast.success(`Exported ${entities.length} entities as JSON`);
     } catch (err) {
       console.error('JSON export failed:', err);

@@ -14,6 +14,7 @@
  * happens when the user presses that button.
  */
 import { useEffect, useState } from 'react';
+import { downloadBlob } from '../../lib/export/download';
 
 export interface PlaygroundFile {
   /** Stable id used by tools to refer back to a written artifact. */
@@ -101,16 +102,8 @@ class FileStore {
   download(id: string): void {
     const file = this.files.find((f) => f.id === id);
     if (!file) return;
-    const url = URL.createObjectURL(file.blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    // Revoke after a tick so the browser actually fetched the blob.
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // file.filename is already coerced (extension-forced, OS-safe) at creation.
+    downloadBlob(file.blob, file.filename);
   }
 
   subscribe(listener: () => void): () => void {

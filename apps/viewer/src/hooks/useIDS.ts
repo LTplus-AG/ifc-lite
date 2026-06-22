@@ -32,6 +32,7 @@ import {
 } from '@ifc-lite/ids';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { createBCFFromIDSReport, writeBCF } from '@ifc-lite/bcf';
+import { downloadBlob } from '@/lib/export/download';
 import type { EntityBoundsInput, IDSBCFExportOptions } from '@ifc-lite/bcf';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
 import { getEntityBounds } from '@/utils/viewportUtils';
@@ -1114,12 +1115,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     setBcfExportProgress({ phase: 'writing', current: 1, total: 2, message: 'Writing BCF file...' });
 
     const blob = await writeBCF(bcfProject);
-    const url = URL.createObjectURL(blob);
-    const a = globalThis.document.createElement('a');
-    a.href = url;
-    a.download = `ids-report-${new Date().toISOString().split('T')[0]}.bcfzip`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `ids-report-${new Date().toISOString().split('T')[0]}.bcfzip`);
 
     // Phase 5: Load into BCF panel if requested
     if (loadIntoBcfPanel) {

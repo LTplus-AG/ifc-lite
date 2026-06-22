@@ -1,5 +1,21 @@
 # @ifc-lite/wasm
 
+## 2.12.0
+
+### Minor Changes
+
+- [#1295](https://github.com/LTplus-AG/ifc-lite/pull/1295) [`cd466b9`](https://github.com/LTplus-AG/ifc-lite/commit/cd466b940545697fa0e933a2154208d9c0f8cc9f) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Skip tiny detail cuts in the preview tessellation tiers ([#1286](https://github.com/LTplus-AG/ifc-lite/issues/1286)).
+
+  In the `Lowest`/`Low` tessellation tiers, an `IfcBooleanResult` DIFFERENCE whose
+  cutter's max dimension is below 10% of the host's (a small steel cope/notch, a
+  minor detail recess) is now skipped and the host renders un-cut. On
+  boolean-heavy Tekla steel models the exact `subtract` per cut dominates load
+  time and almost every cut is such a small local notch, so dropping them in the
+  preview tiers recovers Manifold-class load times (170_KM geometry ~7.6 s →
+  ~1.1 s, ~6.9×) with no parallelism and full determinism. `Medium` (the default)
+  and finer keep every cut — byte-identical to before. The threshold is tunable
+  natively via `IFC_LITE_FAST_CUT_RATIO`.
+
 ## 2.11.1
 
 ### Patch Changes

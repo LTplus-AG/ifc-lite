@@ -16,11 +16,13 @@
 //!
 //! [`orient_mesh_outward`] recovers face adjacency (the meshes are flat-shaded,
 //! so positions are welded by a fine grid), propagates a consistent orientation
-//! across shared edges per connected component, then flips each component so its
-//! signed volume is positive (outward). A non-manifold or non-orientable
-//! component is left untouched — re-orienting it is ambiguous and must not make
-//! things worse. The winding-invariant geometry hash and the summary snapshots
-//! are unaffected; only normals/quantities change, which is the point.
+//! across shared edges per connected component, then flips each CLOSED component
+//! so its signed volume is positive (outward). An OPEN component (a TIN /
+//! `SurfaceModel` sheet with boundary edges — no meaningful enclosed volume) or a
+//! non-manifold / non-orientable one is left untouched: re-orienting it is
+//! ambiguous and would reverse authored normals. The winding-invariant geometry
+//! hash and the summary snapshots are unaffected; only normals/quantities change,
+//! which is the point.
 
 use crate::Mesh;
 use rustc_hash::FxHashMap;
@@ -38,6 +40,14 @@ const WELD: f64 = 1.0e5;
 pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
     let ntri = mesh.indices.len() / 3;
     if ntri < 2 {
+        return false;
+    }
+    // Bail cleanly on malformed buffers instead of panicking on an out-of-range
+    // index below.
+    let vertex_count = mesh.positions.len() / 3;
+    if mesh.positions.len() % 3 != 0
+        || mesh.indices.iter().any(|&idx| idx as usize >= vertex_count)
+    {
         return false;
     }
 
@@ -88,6 +98,12 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
         let mut stack = vec![seed];
         visited[seed] = true;
         let mut orientable = true;
+        // Only a CLOSED manifold (every welded edge shared by exactly two tris) has
+        // a meaningful "outward". An OPEN component — an `IfcTriangulatedFaceSet`
+        // TIN (`Closed=.F.`), a `SurfaceModel` sheet — would be flipped by its
+        // (meaningless) signed volume, reversing the authored normals. Track any
+        // boundary/non-manifold edge and leave such a component untouched.
+        let mut closed = true;
 
         while let Some(t) = stack.pop() {
             comp.push(t);
@@ -104,9 +120,11 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
                 }
                 let key = if a < b { (a, b) } else { (b, a) };
                 let inc = &edge_tris[&key];
+                if inc.len() != 2 {
+                    closed = false; // boundary (1) or non-manifold (>2) edge
+                }
                 if inc.len() > 2 {
-                    orientable = false; // non-manifold edge
-                    continue;
+                    continue; // ambiguous — don't propagate across a non-manifold edge
                 }
                 for &nb in inc {
                     if nb == t {
@@ -128,14 +146,14 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
             }
         }
 
-        if !orientable {
+        if !orientable || !closed {
             for &t in &comp {
-                flip[t] = false; // leave this component's winding as authored
+                flip[t] = false; // open / non-orientable — leave winding as authored
             }
             continue;
         }
 
-        // Flip the whole component outward (positive signed volume).
+        // Flip the whole CLOSED component outward (positive signed volume).
         let mut vol6 = 0.0f64;
         for &t in &comp {
             let v = tv(t);
@@ -243,5 +261,40 @@ mod tests {
         let flipped = orient_mesh_outward(&mut m);
         assert!(flipped, "an inward-wound cube must be flipped outward");
         assert_eq!(bad_edges(&m), 0);
+    }
+
+    /// An OPEN sheet (a flat quad = two tris, with boundary edges) has no
+    /// meaningful enclosed volume. Even with one tri authored backwards, the
+    /// orienter must leave it byte-identical rather than flip it by a bogus
+    /// signed volume (which would reverse a TIN / SurfaceModel's authored normals).
+    #[test]
+    fn open_sheet_is_left_untouched() {
+        let p = [
+            [0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
+        ];
+        let faces: [[usize; 3]; 2] = [[0, 1, 2], [0, 3, 2]]; // tri 1 deliberately reversed
+        let mut m = Mesh::new();
+        for f in &faces {
+            for &vi in f {
+                m.positions.extend_from_slice(&p[vi]);
+                m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+            }
+            let base = m.indices.len() as u32;
+            m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+        }
+        let before = m.indices.clone();
+        let flipped = orient_mesh_outward(&mut m);
+        assert!(!flipped, "an open sheet must not be re-oriented");
+        assert_eq!(m.indices, before, "open-sheet index buffer must be untouched");
+    }
+
+    /// Malformed buffers (an index past the vertex array) must bail cleanly, not
+    /// panic.
+    #[test]
+    fn malformed_indices_bail_without_panic() {
+        let mut m = cube(&[]);
+        m.indices[0] = 9999; // out of range
+        let flipped = orient_mesh_outward(&mut m);
+        assert!(!flipped, "malformed input must be a no-op");
     }
 }

@@ -20,19 +20,13 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
-import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 
 interface ExportChangesButtonProps {
   /** Optional custom class name */
   className?: string;
 }
 
-function toBlobPart(content: string | Uint8Array): BlobPart {
-  if (typeof content === 'string') return content;
-  const bytes = new Uint8Array(content.byteLength);
-  bytes.set(content);
-  return bytes;
-}
 
 export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   const models = useViewerStore((s) => s.models);
@@ -170,7 +164,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       });
 
       // Download the file
-      downloadBlob(new Blob([toBlobPart(spliced.content)], { type: 'text/plain' }), generateFilename());
+      downloadFile(spliced.content, generateFilename(), 'text/plain');
 
       setExportStatus('success');
 

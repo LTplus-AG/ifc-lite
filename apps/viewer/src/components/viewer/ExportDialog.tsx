@@ -60,7 +60,7 @@ import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
-import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -69,12 +69,6 @@ interface ExportDialogProps {
   trigger?: React.ReactNode;
 }
 
-function toBlobPart(content: string | Uint8Array): BlobPart {
-  if (typeof content === 'string') return content;
-  const bytes = new Uint8Array(content.byteLength);
-  bytes.set(content);
-  return bytes;
-}
 
 export function ExportDialog({ trigger }: ExportDialogProps) {
   const models = useViewerStore((s) => s.models);
@@ -386,7 +380,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         setExportProgress(null);
 
-        downloadBlob(new Blob([toBlobPart(result.content)], { type: 'text/plain' }), 'merged_export.ifc');
+        downloadFile(result.content, 'merged_export.ifc', 'text/plain');
 
         const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`;
         setExportResult({ success: true, message: msg });
@@ -458,7 +452,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
 
         const suffix = changesOnly ? '_changes' : (visibleOnly ? '_visible' : '_export');
-        downloadBlob(new Blob([toBlobPart(result.content)], { type: 'application/json' }), `${baseName}${suffix}.ifcx`);
+        downloadFile(result.content, `${baseName}${suffix}.ifcx`, 'application/json');
 
         const ifcxMsg = `Exported IFCX: ${result.stats.nodeCount} nodes, ${result.stats.meshCount} meshes, ${result.stats.propertyCount} properties`;
         setExportResult({ success: true, message: ifcxMsg });
@@ -476,7 +470,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           exportedAt: new Date().toISOString(),
         };
 
-        downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${baseName}_changes.json`);
+        downloadFile(JSON.stringify(data, null, 2), `${baseName}_changes.json`, 'application/json');
 
         const jsonMsg = `Exported ${mutations.length} changes as JSON`;
         setExportResult({ success: true, message: jsonMsg });
@@ -534,7 +528,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
 
         const suffix = visibleOnly ? '_visible' : '_export';
-        downloadBlob(new Blob([toBlobPart(spliced.content)], { type: 'text/plain' }), `${baseName}${suffix}.ifc`);
+        downloadFile(spliced.content, `${baseName}${suffix}.ifc`, 'text/plain');
 
         const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
         setExportResult({ success: true, message: stepMsg });

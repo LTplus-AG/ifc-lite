@@ -35,6 +35,10 @@ describe('sanitizeFilename', () => {
     assert.strictEqual(sanitizeFilename('---x---'), 'x');
   });
 
+  it('keeps leading/trailing underscores (only space/dot/hyphen are trimmed)', () => {
+    assert.strictEqual(sanitizeFilename('_my_list_'), '_my_list_');
+  });
+
   it('keeps non-ASCII letters', () => {
     assert.strictEqual(sanitizeFilename('Brücke Ö'), 'Brücke Ö');
   });

@@ -26,6 +26,10 @@ export interface SanitizeFilenameOptions {
  * collapse to a single space and leading/trailing separators are trimmed.
  *
  * Pass only the stem — append the extension yourself (`${sanitizeFilename(x)}.csv`).
+ *
+ * Note: underscores are kept anywhere (including the ends — only space/dot/hyphen
+ * are trimmed off the ends). `fallback` is returned verbatim when the result is
+ * empty, so pass a clean token like `'list'` / `'model'`.
  */
 export function sanitizeFilename(name: string, options: SanitizeFilenameOptions = {}): string {
   const fallback = options.fallback ?? 'file';

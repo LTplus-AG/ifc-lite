@@ -21,7 +21,7 @@ serde_json = "1.0"
 # lean, while native server/CLI builds opt in. arrow/parquet pinned to the server's 59.
 arrow = { version = "59", default-features = false, features = ["ipc"], optional = true }
 parquet = { version = "59", default-features = false, features = ["arrow", "snap", "zstd"], optional = true }
-zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
 
 [features]
 default = []

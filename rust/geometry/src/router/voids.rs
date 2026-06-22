@@ -841,6 +841,26 @@ impl VoidContext {
     }
 }
 
+/// Fold a per-element local-frame mesh into absolute world coordinates in place
+/// (`position += origin`, then `origin = 0`). A cutter sourced from
+/// `process_element` arrives in the opening's OWN local frame when
+/// `local_frame_enabled()` is on (the wasm default); the void pipeline requires
+/// cutters in world coords (see `classify_openings`/#1297), so this restores that
+/// invariant. No-op when the mesh is already world-framed (origin 0 — the native
+/// default), keeping that path byte-identical.
+fn fold_origin_to_world(mesh: &mut Mesh) {
+    let o = mesh.origin;
+    if o == [0.0, 0.0, 0.0] {
+        return;
+    }
+    for c in mesh.positions.chunks_exact_mut(3) {
+        c[0] = (c[0] as f64 + o[0]) as f32;
+        c[1] = (c[1] as f64 + o[1]) as f32;
+        c[2] = (c[2] as f64 + o[2]) as f32;
+    }
+    mesh.origin = [0.0, 0.0, 0.0];
+}
+
 /// Translate a cutter mesh's positions by `-origin` in f64 before the f32 store,
 /// moving it into the host's local frame. `origin` is carried on the result as
 /// zero (the mesh is now expressed in the shared local frame).
@@ -2918,10 +2938,24 @@ impl GeometryRouter {
                 Err(_) => continue,
             };
 
-            let opening_mesh = match self.process_element(&opening_entity, decoder) {
+            let mut opening_mesh = match self.process_element(&opening_entity, decoder) {
                 Ok(m) if !m.is_empty() => m,
                 _ => continue,
             };
+            // The void cut runs in a SHARED host+cutter frame: `apply_void_context`
+            // relativizes cutters that are in WORLD coords by the host origin (see the
+            // `get_opening_item_meshes_world` contract note, which extracts with
+            // `relativize=false` for exactly this reason). `process_element`, however,
+            // honours `local_frame_enabled()` (default ON for wasm), so it returns the
+            // opening in the opening's OWN local frame — positions relative to
+            // `mesh.origin` (the opening's AABB centre). Stored as a cutter that way, the
+            // opening's origin is never folded back in, so `relativized_by(host_origin)`
+            // and the #635 fallback AABB (`opening_mesh.bounds()`, which ignores origin)
+            // land the cutter ~`-opening_origin` away from the host. The AABB-overlap
+            // guard then skips it, the CSG is a silent no-op, and the host renders SOLID
+            // (#1297 — wasm-only; native has local frame OFF so cutters are already
+            // world-framed). Fold the origin back to world here to restore the invariant.
+            fold_origin_to_world(&mut opening_mesh);
 
             let vertex_count = opening_mesh.positions.len() / 3;
 

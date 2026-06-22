@@ -92,6 +92,7 @@ pub mod instancing;
 pub mod kernel;
 pub mod material_layer_index;
 pub mod mesh;
+pub mod mesh_orient;
 pub mod processors;
 pub mod profile;
 pub mod profile_extractor;
@@ -126,6 +127,7 @@ pub use instancing::{
 };
 pub use material_layer_index::{LayerAxis, LayerBuildup, LayerInfo, MaterialLayerIndex};
 pub use mesh::{CoordinateShift, InstanceMeta, Mesh, SubMesh, SubMeshCollection};
+pub use mesh_orient::orient_mesh_outward;
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,

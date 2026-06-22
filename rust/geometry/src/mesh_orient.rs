@@ -1,0 +1,247 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! Make a mesh's per-triangle winding consistent and OUTWARD, per connected
+//! component.
+//!
+//! IFC faceted breps (whose face loops are not reliably outward) and merged
+//! multi-item bodies (an extrusion unioned with a boolean cut) can arrive with
+//! MIXED per-triangle winding: some faces wound outward, some inward. That
+//! corrupts signed volume (quantities) and the smooth normals
+//! [`crate::csg::calculate_normals`] accumulates from the winding (lighting). The
+//! kernel's whole-operand `orient_outward` only flips an ENTIRE mesh by its
+//! global signed volume, so it cannot repair a mesh that is internally
+//! inconsistent.
+//!
+//! [`orient_mesh_outward`] recovers face adjacency (the meshes are flat-shaded,
+//! so positions are welded by a fine grid), propagates a consistent orientation
+//! across shared edges per connected component, then flips each component so its
+//! signed volume is positive (outward). A non-manifold or non-orientable
+//! component is left untouched — re-orienting it is ambiguous and must not make
+//! things worse. The winding-invariant geometry hash and the summary snapshots
+//! are unaffected; only normals/quantities change, which is the point.
+
+use crate::Mesh;
+use rustc_hash::FxHashMap;
+
+/// Vertex weld grid (10 µm): fine enough not to merge distinct mm-scale features,
+/// coarse enough to weld the (usually bit-equal) coincident flat-shaded
+/// duplicates so shared edges are found. Under-welding only splits a body into
+/// more components (each still oriented); over-welding would fuse distinct
+/// vertices and is the dangerous direction, so the grid stays fine.
+const WELD: f64 = 1.0e5;
+
+/// Orient every connected component of `mesh` consistently and outward, in place.
+/// Returns `true` iff any triangle's winding was flipped (the caller must then
+/// recompute normals — the existing ones were baked with the old winding).
+pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
+    let ntri = mesh.indices.len() / 3;
+    if ntri < 2 {
+        return false;
+    }
+
+    // Weld positions -> welded vertex id; record the welded vid of every corner.
+    let q = |v: f32| (v as f64 * WELD).round() as i64;
+    let mut vid_of: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
+    let mut vpos: Vec<[f64; 3]> = Vec::new();
+    let mut corner: Vec<u32> = Vec::with_capacity(mesh.indices.len());
+    for &idx in &mesh.indices {
+        let b = idx as usize * 3;
+        let key = (
+            q(mesh.positions[b]),
+            q(mesh.positions[b + 1]),
+            q(mesh.positions[b + 2]),
+        );
+        let vid = *vid_of.entry(key).or_insert_with(|| {
+            let id = vpos.len() as u32;
+            vpos.push([key.0 as f64 / WELD, key.1 as f64 / WELD, key.2 as f64 / WELD]);
+            id
+        });
+        corner.push(vid);
+    }
+    let tv = |t: usize| [corner[3 * t], corner[3 * t + 1], corner[3 * t + 2]];
+
+    // Undirected welded edge -> incident triangles. >2 incident ⇒ non-manifold.
+    let mut edge_tris: FxHashMap<(u32, u32), Vec<usize>> = FxHashMap::default();
+    for t in 0..ntri {
+        let v = tv(t);
+        for &(a, b) in &[(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
+            if a == b {
+                continue; // welded-degenerate edge
+            }
+            let key = if a < b { (a, b) } else { (b, a) };
+            edge_tris.entry(key).or_default().push(t);
+        }
+    }
+
+    let mut flip = vec![false; ntri];
+    let mut visited = vec![false; ntri];
+    let mut any_flip = false;
+
+    for seed in 0..ntri {
+        if visited[seed] {
+            continue;
+        }
+        // BFS the component, propagating a consistent orientation.
+        let mut comp: Vec<usize> = Vec::new();
+        let mut stack = vec![seed];
+        visited[seed] = true;
+        let mut orientable = true;
+
+        while let Some(t) = stack.pop() {
+            comp.push(t);
+            let v = tv(t);
+            // Effective directed edges of t given its current flip.
+            let dirs = if flip[t] {
+                [(v[0], v[2]), (v[2], v[1]), (v[1], v[0])]
+            } else {
+                [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])]
+            };
+            for &(a, b) in &dirs {
+                if a == b {
+                    continue;
+                }
+                let key = if a < b { (a, b) } else { (b, a) };
+                let inc = &edge_tris[&key];
+                if inc.len() > 2 {
+                    orientable = false; // non-manifold edge
+                    continue;
+                }
+                for &nb in inc {
+                    if nb == t {
+                        continue;
+                    }
+                    // A consistent neighbour must traverse this edge as (b, a). Its
+                    // UNFLIPPED winding has (a, b) iff it must flip to do so.
+                    let nv = tv(nb);
+                    let need_flip =
+                        [(nv[0], nv[1]), (nv[1], nv[2]), (nv[2], nv[0])].contains(&(a, b));
+                    if !visited[nb] {
+                        visited[nb] = true;
+                        flip[nb] = need_flip;
+                        stack.push(nb);
+                    } else if flip[nb] != need_flip {
+                        orientable = false; // contradiction (non-orientable)
+                    }
+                }
+            }
+        }
+
+        if !orientable {
+            for &t in &comp {
+                flip[t] = false; // leave this component's winding as authored
+            }
+            continue;
+        }
+
+        // Flip the whole component outward (positive signed volume).
+        let mut vol6 = 0.0f64;
+        for &t in &comp {
+            let v = tv(t);
+            let (i0, i1, i2) = if flip[t] {
+                (v[0], v[2], v[1])
+            } else {
+                (v[0], v[1], v[2])
+            };
+            let (a, b, c) = (vpos[i0 as usize], vpos[i1 as usize], vpos[i2 as usize]);
+            vol6 += a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2])
+                + a[2] * (b[0] * c[1] - b[1] * c[0]);
+        }
+        if vol6 < 0.0 {
+            for &t in &comp {
+                flip[t] = !flip[t];
+            }
+        }
+    }
+
+    for t in 0..ntri {
+        if flip[t] {
+            mesh.indices.swap(3 * t + 1, 3 * t + 2);
+            any_flip = true;
+        }
+    }
+    any_flip
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a unit cube as a flat-shaded mesh (positions not index-shared), with
+    /// `bad` triangle indices given as flipped (inward) so the winding is mixed.
+    fn cube(flipped: &[usize]) -> Mesh {
+        // 12 triangles, outward-wound.
+        let c = [
+            [0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
+        ];
+        let faces: [[usize; 3]; 12] = [
+            [0, 2, 1], [0, 3, 2], // bottom z=0 (outward -z)
+            [4, 5, 6], [4, 6, 7], // top z=1 (outward +z)
+            [0, 1, 5], [0, 5, 4], // front y=0
+            [2, 3, 7], [2, 7, 6], // back y=1
+            [1, 2, 6], [1, 6, 5], // right x=1
+            [0, 4, 7], [0, 7, 3], // left x=0
+        ];
+        let mut m = Mesh::new();
+        for (t, f) in faces.iter().enumerate() {
+            let mut tri = *f;
+            if flipped.contains(&t) {
+                tri.swap(1, 2);
+            }
+            for &vi in &tri {
+                m.positions.extend_from_slice(&c[vi]);
+                m.normals.extend_from_slice(&[0.0, 0.0, 0.0]);
+            }
+            let base = (m.indices.len()) as u32;
+            m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+        }
+        m
+    }
+
+    fn bad_edges(m: &Mesh) -> usize {
+        let q = |v: f32| (v as f64 * WELD).round() as i64;
+        let key = |i: u32| {
+            let b = i as usize * 3;
+            (q(m.positions[b]), q(m.positions[b + 1]), q(m.positions[b + 2]))
+        };
+        let mut dir: FxHashMap<((i64, i64, i64), (i64, i64, i64)), u32> = FxHashMap::default();
+        for t in m.indices.chunks_exact(3) {
+            let (a, b, c) = (key(t[0]), key(t[1]), key(t[2]));
+            for e in [(a, b), (b, c), (c, a)] {
+                *dir.entry(e).or_insert(0) += 1;
+            }
+        }
+        dir.values().filter(|&&c| c >= 2).count()
+    }
+
+    #[test]
+    fn fixes_mixed_winding_to_consistent_outward() {
+        let mut m = cube(&[3, 7, 10]); // three inward-flipped faces
+        assert!(bad_edges(&m) > 0, "fixture must start winding-inconsistent");
+        let flipped = orient_mesh_outward(&mut m);
+        assert!(flipped, "the mixed-winding cube must be re-oriented");
+        assert_eq!(bad_edges(&m), 0, "winding must be consistent after orient");
+    }
+
+    #[test]
+    fn already_outward_is_untouched() {
+        let mut m = cube(&[]);
+        let before = m.indices.clone();
+        let flipped = orient_mesh_outward(&mut m);
+        assert!(!flipped, "a clean outward cube must not be touched");
+        assert_eq!(m.indices, before, "index buffer must be byte-identical");
+    }
+
+    #[test]
+    fn fully_inward_cube_is_flipped_outward() {
+        // Every face inward: globally consistent but negative volume → flip all.
+        let all: Vec<usize> = (0..12).collect();
+        let mut m = cube(&all);
+        assert_eq!(bad_edges(&m), 0, "a fully-inward cube is still consistent");
+        let flipped = orient_mesh_outward(&mut m);
+        assert!(flipped, "an inward-wound cube must be flipped outward");
+        assert_eq!(bad_edges(&m), 0);
+    }
+}

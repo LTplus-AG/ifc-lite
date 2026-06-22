@@ -38,8 +38,8 @@ use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
 use crate::types::mesh::{MeshData, MeshTextureData};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::{
-    calculate_normals, BoolFailure, GeometryHasher, GeometryRouter, Mesh, ResolvedTextureMap,
-    SubMeshCollection,
+    calculate_normals, orient_mesh_outward, BoolFailure, GeometryHasher, GeometryRouter, Mesh,
+    ResolvedTextureMap, SubMeshCollection,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
@@ -323,6 +323,16 @@ fn produce_inner(
         return Vec::new();
     }
 
+    // Make the assembled body consistently outward-wound. A faceted brep (IFC
+    // face loops are not reliably outward) or a merged multi-item body (extrusion
+    // unioned with a boolean cut) can carry MIXED winding that corrupts signed
+    // volume and the smooth normals computed below. No-op for already-consistent
+    // bodies (every extrusion), so their index buffer + normals are untouched; a
+    // flip invalidates any baked normals, so recompute them.
+    if orient_mesh_outward(&mut mesh) {
+        calculate_normals(&mut mesh);
+    }
+
     // Multi-colour IfcIndexedColourMap → one mesh per palette group (#858),
     // resolved by walking the element's representation for the colour-mapped
     // face set. Only applies while the produced triangle count still matches
@@ -396,7 +406,9 @@ fn emit_sub_meshes(
         if sub_mesh.is_empty() {
             continue;
         }
-        if sub_mesh.normals.len() != sub_mesh.positions.len() {
+        // Consistently outward-wind each sub-body (see the single-mesh path); a
+        // flip invalidates baked normals, so recompute on flip or when absent.
+        if orient_mesh_outward(&mut sub_mesh) || sub_mesh.normals.len() != sub_mesh.positions.len() {
             calculate_normals(&mut sub_mesh);
         }
 

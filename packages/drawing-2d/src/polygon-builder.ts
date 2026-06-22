@@ -131,8 +131,9 @@ export class PolygonBuilder {
       used: false,
     }));
 
-    // Build closed loops
-    const loops = this.buildLoops(segments2D);
+    // Build closed loops. Multi-material (per-layer) groups additionally STITCH
+    // disconnected open band segments at the interface chords (see `buildLoops`).
+    const loops = this.buildLoops(segments2D, color !== undefined);
 
     if (loops.length === 0) return [];
 
@@ -154,21 +155,94 @@ export class PolygonBuilder {
   }
 
   /**
-   * Build closed loops from segments using a greedy chain-building algorithm
+   * Build closed loops from segments using a greedy chain-building algorithm.
+   *
+   * `stitchOpen` (multi-material / per-layer groups only): an INTERIOR layer band
+   * of a 3+ layer wall has no wall face — its plan section is two disconnected
+   * end strips that no single chain can close. Such fragments are collected and
+   * stitched end-to-end at the interface chords (`stitchOpenChains`) so the core
+   * layer still fills. Chains that close into a non-degenerate loop on their own
+   * (a 2-layer U-band, the finish-on-both-faces case) stay separate, preserving
+   * existing per-loop behaviour.
    */
-  private buildLoops(segments: Segment2D[]): Loop[] {
+  private buildLoops(segments: Segment2D[], stitchOpen: boolean): Loop[] {
     const loops: Loop[] = [];
+    const fragments: Point2D[][] = [];
 
-    // Keep building loops until no more unused segments
     while (true) {
-      // Find first unused segment
       const startIdx = segments.findIndex((s) => !s.used);
       if (startIdx === -1) break;
 
-      const loop = this.buildSingleLoop(segments, startIdx);
-      if (loop && loop.length >= 3) {
-        const area = polygonSignedArea(loop);
-        loops.push({ points: loop, area });
+      const chain = this.buildSingleLoop(segments, startIdx);
+      if (!chain) continue;
+
+      const standalone =
+        chain.points.length >= 3 &&
+        (chain.closed || Math.abs(polygonSignedArea(chain.points)) > 1e-9);
+
+      if (standalone) {
+        loops.push({ points: chain.points, area: polygonSignedArea(chain.points) });
+      } else if (stitchOpen) {
+        fragments.push(chain.points); // too short/degenerate to close alone — stitch it
+      }
+      // else (single-material, sub-loop fragment): dropped, as before.
+    }
+
+    if (stitchOpen && fragments.length > 0) {
+      loops.push(...this.stitchOpenChains(fragments));
+    }
+
+    return loops;
+  }
+
+  /**
+   * Stitch open band fragments (each a polyline) into closed loops by joining the
+   * nearest endpoints ACROSS fragments, only closing a chain on itself once no
+   * other fragment is left to attach. Merging across-first is essential: an
+   * interior band is thin, so its interface chord (along the wall length) is
+   * longer than the band thickness — a naive "close the nearest endpoints" rule
+   * would collapse the band instead of spanning it.
+   */
+  private stitchOpenChains(fragments: Point2D[][]): Loop[] {
+    const loops: Loop[] = [];
+    const used = new Array(fragments.length).fill(false);
+
+    for (let s = 0; s < fragments.length; s++) {
+      if (used[s]) continue;
+      let chain = fragments[s].slice();
+      used[s] = true;
+
+      // Attach the nearest remaining fragment to the tail until none are left.
+      for (;;) {
+        const tail = chain[chain.length - 1];
+        let best = -1;
+        let reverse = false;
+        let bestDist = Infinity;
+        for (let i = 0; i < fragments.length; i++) {
+          if (used[i]) continue;
+          const f = fragments[i];
+          const dStart = point2DDistance(f[0], tail);
+          const dEnd = point2DDistance(f[f.length - 1], tail);
+          if (dStart < bestDist) {
+            bestDist = dStart;
+            best = i;
+            reverse = false;
+          }
+          if (dEnd < bestDist) {
+            bestDist = dEnd;
+            best = i;
+            reverse = true;
+          }
+        }
+        if (best === -1) break;
+        used[best] = true;
+        const next = reverse ? fragments[best].slice().reverse() : fragments[best].slice();
+        if (point2DDistance(chain[chain.length - 1], next[0]) < this.tolerance) next.shift();
+        chain = chain.concat(next);
+      }
+
+      if (chain.length >= 3 && Math.abs(polygonSignedArea(chain)) > 1e-9) {
+        loops.push({ points: chain, area: polygonSignedArea(chain) });
       }
     }
 
@@ -189,7 +263,10 @@ export class PolygonBuilder {
    * used to draw — so per-layer section fills are unchanged. Genuinely closed
    * cross-sections still close here (tail meets head) and return identically.
    */
-  private buildSingleLoop(segments: Segment2D[], startIdx: number): Point2D[] | null {
+  private buildSingleLoop(
+    segments: Segment2D[],
+    startIdx: number,
+  ): { points: Point2D[]; closed: boolean } | null {
     const startSeg = segments[startIdx];
     startSeg.used = true;
 
@@ -208,7 +285,7 @@ export class PolygonBuilder {
       // endpoint and return the closed loop (the pre-existing behaviour).
       if (points.length >= 3 && point2DDistance(tail, head) < this.tolerance) {
         points.pop();
-        return points;
+        return { points, closed: true };
       }
 
       // Prefer extending the tail forward.
@@ -234,12 +311,11 @@ export class PolygonBuilder {
       }
 
       // Neither end extends: an OPEN contour (a cap-free layer band, or genuinely
-      // open geometry). Return it; the signed-area / fill close it implicitly with
-      // the head→tail chord.
+      // open geometry).
       break;
     }
 
-    return points.length >= 3 ? points : null;
+    return points.length >= 2 ? { points, closed: false } : null;
   }
 
   /**

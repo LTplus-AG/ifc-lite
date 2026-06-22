@@ -137,4 +137,38 @@ describe('PolygonBuilder — open-band reconstruction (cap-free layer slabs)', (
       expect(area).toBeCloseTo(1.0, 5);
     }
   });
+
+  it('fills an INTERIOR layer of a 3+ layer wall (disconnected end strips stitched)', () => {
+    // Wall x∈[0,10], thickness split into 3 layers: outer [0,1], CORE [1,3],
+    // inner [3,4]. The core band has no wall face — its plan section is only the
+    // two END strips (x=0 and x=10), disconnected. A per-band loop builder drops
+    // it (the regression Codex flagged on #1311); stitching the fragments at the
+    // y=1 and y=3 interface chords recovers the core fill.
+    const seg = (
+      ax: number, ay: number, bx: number, by: number,
+      c: [number, number, number, number],
+    ): CutSegment => ({
+      p0: { x: ax, y: ay, z: 0 }, p1: { x: bx, y: by, z: 0 },
+      p0_2d: { x: ax, y: ay }, p1_2d: { x: bx, y: by },
+      entityId: 1, ifcType: 'IfcWall', modelIndex: 0, color: c,
+    });
+    const GREEN: [number, number, number, number] = [0, 1, 0, 1];
+    const segments = [
+      // outer RED band [0,1]: wall face + 2 end strips (a closeable U)
+      seg(0, 0, 10, 0, RED), seg(0, 0, 0, 1, RED), seg(10, 0, 10, 1, RED),
+      // CORE GREEN band [1,3]: ONLY the two end strips — disconnected
+      seg(0, 1, 0, 3, GREEN), seg(10, 1, 10, 3, GREEN),
+      // inner BLUE band [3,4]: wall face + 2 end strips
+      seg(0, 4, 10, 4, BLUE), seg(0, 3, 0, 4, BLUE), seg(10, 3, 10, 4, BLUE),
+    ];
+
+    const polygons = new PolygonBuilder().buildPolygons(segments);
+
+    expect(polygons).toHaveLength(3);
+    const area = (c: [number, number, number, number]) =>
+      Math.abs(polygonSignedArea(polygons.find((p) => p.color === c)!.polygon.outer));
+    expect(area(GREEN)).toBeCloseTo(20.0, 5); // core: 10 (length) × 2 (thickness)
+    expect(area(RED)).toBeCloseTo(10.0, 5);
+    expect(area(BLUE)).toBeCloseTo(10.0, 5);
+  });
 });

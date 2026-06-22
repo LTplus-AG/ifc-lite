@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/ffi", "rust/export", "rust/wasm-bindings", "apps/server"]
+members = ["rust/core", "rust/geometry", "rust/processing", "rust/clash", "rust/ffi", "rust/export", "rust/wasm-bindings", "rust/python", "apps/server"]
 resolver = "2"
 
 [workspace.package]

@@ -110,36 +110,52 @@ fn slices_correctly_under_per_element_local_frame() {
         );
     }
 
-    // Every slab must be a CLOSED solid (the cut faces capped) — otherwise the
-    // layers read as hollow shell bands in 3D and a section finds no filled
-    // region. Watertight ⇒ every edge shared by exactly two triangles; checked
-    // by welded position (the mesh is flat-shaded, so vertex indices aren't
-    // shared across faces).
-    for sub in &collection.sub_meshes {
-        assert_eq!(boundary_edge_count(&sub.mesh), 0, "each sliced layer must be a closed, capped solid");
-    }
+    // The slabs are NOT capped at the shared interfaces. Capping closed each slab
+    // but doubled every interface into a coincident, oppositely-wound full-section
+    // sheet — the "ghost face": non-watertight (degree-4 edges) and ~3x the
+    // triangles. Instead the slabs are open bands whose UNION is the wall's
+    // watertight outer skin: every edge shared by exactly two triangles, none by
+    // four. (The 2D section re-closes each band's open contour at the interface
+    // chord; see the `drawing-2d` PolygonBuilder bidirectional loop builder.)
+    let (open, doubled) = union_edge_stats(&collection.sub_meshes);
+    assert_eq!(
+        open, 0,
+        "the union of the layer bands must be watertight (no open edges), got {open}"
+    );
+    assert_eq!(
+        doubled, 0,
+        "no interface may be a doubled coincident sheet (no degree-4 edges), got {doubled}"
+    );
 }
 
-/// Count edges used by exactly one triangle (open boundary), welding vertices by
-/// rounded world position so flat-shaded duplicates don't read as gaps.
-fn boundary_edge_count(mesh: &ifc_lite_geometry::Mesh) -> usize {
+/// Weld every sub-mesh of a sliced element by rounded WORLD position (origin +
+/// position; flat-shaded, so positions are not index-shared) and return
+/// `(open_edges, degree>=4_edges)` for the UNION. `open == 0` ⇒ watertight;
+/// `degree>=4 == 0` ⇒ no doubled coincident interface sheet (the ghost face).
+fn union_edge_stats(subs: &[ifc_lite_geometry::mesh::SubMesh]) -> (usize, usize) {
     use std::collections::HashMap;
-    let key = |i: usize| -> (i64, i64, i64) {
-        let q = |v: f32| (v as f64 * 1.0e4).round() as i64;
-        (
-            q(mesh.positions[i * 3]),
-            q(mesh.positions[i * 3 + 1]),
-            q(mesh.positions[i * 3 + 2]),
-        )
-    };
+    let q = |v: f32, o: f64| ((v as f64 + o) * 1.0e4).round() as i64;
     let mut edges: HashMap<[(i64, i64, i64); 2], u32> = HashMap::new();
-    for tri in mesh.indices.chunks_exact(3) {
-        let v = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
-        for &(a, b) in &[(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
-            let (ka, kb) = (key(a), key(b));
-            let e = if ka <= kb { [ka, kb] } else { [kb, ka] };
-            *edges.entry(e).or_insert(0) += 1;
+    for sub in subs {
+        let m = &sub.mesh;
+        let o = m.origin;
+        let key = |i: usize| -> (i64, i64, i64) {
+            (
+                q(m.positions[i * 3], o[0]),
+                q(m.positions[i * 3 + 1], o[1]),
+                q(m.positions[i * 3 + 2], o[2]),
+            )
+        };
+        for tri in m.indices.chunks_exact(3) {
+            let v = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
+            for &(a, b) in &[(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
+                let (ka, kb) = (key(a), key(b));
+                let e = if ka <= kb { [ka, kb] } else { [kb, ka] };
+                *edges.entry(e).or_insert(0) += 1;
+            }
         }
     }
-    edges.values().filter(|&&c| c == 1).count()
+    let open = edges.values().filter(|&&c| c == 1).count();
+    let doubled = edges.values().filter(|&&c| c >= 4).count();
+    (open, doubled)
 }

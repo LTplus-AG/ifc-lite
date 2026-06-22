@@ -21,7 +21,6 @@
 
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, Plane};
-use crate::processors::cap_half_space_clip;
 use crate::material_layer_index::{LayerAxis, LayerBuildup, LayerInfo};
 use crate::mesh::{SubMesh, SubMeshCollection};
 use crate::{Mesh, Point3, Result, Vector3};
@@ -523,39 +522,60 @@ fn slice_mesh_into_layers(
     let clipper = ClippingProcessor::new();
     let mut out = SubMeshCollection::new();
 
+    // Carve each layer's band off a running REMAINDER at the interface planes,
+    // and DO NOT cap the cut. Two design choices, one fix:
+    //
+    //  - No cap. Capping closed every slab, so each SHARED interface became a
+    //    doubled, coincident, oppositely-wound full-cross-section sheet: the wall
+    //    rendered solid (the interior caps are backface-culled) but the emitted
+    //    mesh was non-watertight (degree-4 interface edges) and ~3x the triangles
+    //    — the "ghost face" on opening-cut layered walls. Uncapped, each band is
+    //    the wall's outer skin within its layer range; the union of the bands is
+    //    exactly the wall's watertight outer shell, partitioned per material. The
+    //    interface is no longer a 3D sheet; the 2D section re-closes each band's
+    //    open contour at the interface chord (its loop builder is bidirectional,
+    //    see `drawing-2d` `PolygonBuilder`), so per-layer section fills are intact.
+    //
+    //  - Progressive carve, not a fresh clone per band. Both sides of every
+    //    interface are produced by the SAME clip of the SAME remainder, so their
+    //    cut tessellations are identical and the bands weld edge-for-edge (no
+    //    T-junctions, no hairline cracks). Clipping independent clones instead let
+    //    a twice-clipped middle band diverge from its neighbour at the second
+    //    interface, leaving open T-junction edges.
+    //
+    // `clip_mesh` keeps the half-space the plane normal points INTO and builds a
+    // fresh `Mesh` (origin [0,0,0]); the input mesh + planes are in the element's
+    // local frame (#1114), so the origin is restored on each band below.
+    let mut remainder = mesh.clone();
+
     for (i, layer) in visual_layers.iter().enumerate() {
-        let after_prev: Option<&Plane> = if i == 0 { None } else { planes.get(i - 1) };
         let before_next: Option<&Plane> = if i + 1 == visual_layers.len() {
             None
         } else {
             planes.get(i)
         };
 
-        let mut slab = mesh.clone();
-
-        // Each interface clip is CAPPED so the slab is a closed solid — a real
-        // material layer with faces at both interfaces — not just the wall's
-        // outer shell sliced into bands. Without the cap the layers read as
-        // hollow in 3D (colour on the exterior only) and a section finds no
-        // filled per-layer regions to draw.
-        if let Some(plane) = after_prev {
-            if let Ok(mut clipped) = clipper.clip_mesh(&slab, plane) {
-                cap_half_space_clip(&mut clipped, plane.point, plane.normal);
-                slab = clipped;
+        let mut slab = match before_next {
+            Some(plane) => {
+                let flipped = Plane::new(plane.point, -plane.normal);
+                // band = remainder below the interface; remainder = above it.
+                match (
+                    clipper.clip_mesh(&remainder, &flipped),
+                    clipper.clip_mesh(&remainder, plane),
+                ) {
+                    (Ok(band), Ok(rest)) => {
+                        remainder = rest;
+                        band
+                    }
+                    // Degenerate interface clip: emit the whole remainder for this
+                    // layer rather than dropping geometry, and stop carving.
+                    _ => std::mem::replace(&mut remainder, Mesh::new()),
+                }
             }
-        }
-        if let Some(plane) = before_next {
-            let flipped = Plane::new(plane.point, -plane.normal);
-            if let Ok(mut clipped) = clipper.clip_mesh(&slab, &flipped) {
-                cap_half_space_clip(&mut clipped, flipped.point, flipped.normal);
-                slab = clipped;
-            }
-        }
+            // Last layer: everything left in the remainder.
+            None => std::mem::replace(&mut remainder, Mesh::new()),
+        };
 
-        // `clip_mesh` builds a fresh `Mesh` (origin [0,0,0]), dropping the local
-        // frame: the input mesh and the cut planes are both relative to
-        // `mesh.origin` (#1114), so the clipped slab is too — carry the origin
-        // forward or every sliced wall renders at the world origin (misplaced).
         slab.origin = mesh.origin;
 
         if !slab.is_empty() {

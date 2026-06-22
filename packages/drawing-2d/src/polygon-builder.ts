@@ -176,16 +176,24 @@ export class PolygonBuilder {
   }
 
   /**
-   * Build a single closed loop starting from a segment
+   * Build a single loop starting from a segment.
+   *
+   * BIDIRECTIONAL: the chain is extended from BOTH ends (append at the tail,
+   * prepend at the head) until neither end finds a connecting segment. A purely
+   * forward walk strands segments when it starts mid-chain — fatal for an OPEN
+   * contour, which is exactly what a material-layer band is now that the slicer
+   * no longer caps the interface planes (the cap was a doubled, non-watertight
+   * 3D sheet). A cap-free band's section is a U (outer face + the two end
+   * strips); extending from both ends assembles all of it, and the implicit
+   * head→tail closing chord of the returned ring IS the interface line the cap
+   * used to draw — so per-layer section fills are unchanged. Genuinely closed
+   * cross-sections still close here (tail meets head) and return identically.
    */
   private buildSingleLoop(segments: Segment2D[], startIdx: number): Point2D[] | null {
-    const points: Point2D[] = [];
     const startSeg = segments[startIdx];
     startSeg.used = true;
 
-    points.push(startSeg.start);
-    let currentEnd = startSeg.end;
-    const loopStart = startSeg.start;
+    const points: Point2D[] = [startSeg.start, startSeg.end];
 
     const maxIterations = segments.length;
     let iterations = 0;
@@ -193,34 +201,44 @@ export class PolygonBuilder {
     while (iterations < maxIterations) {
       iterations++;
 
-      // Check if we've closed the loop
-      if (point2DDistance(currentEnd, loopStart) < this.tolerance) {
+      const head = points[0];
+      const tail = points[points.length - 1];
+
+      // Closed ring: the tail has come back to the head. Drop the duplicate
+      // endpoint and return the closed loop (the pre-existing behaviour).
+      if (points.length >= 3 && point2DDistance(tail, head) < this.tolerance) {
+        points.pop();
         return points;
       }
 
-      // Find next connecting segment
-      const nextIdx = this.findConnectingSegment(segments, currentEnd);
-      if (nextIdx === -1) {
-        // Can't close loop - mark remaining as unused and return partial
-        // This can happen with open geometry or numerical issues
-        break;
+      // Prefer extending the tail forward.
+      const tailIdx = this.findConnectingSegment(segments, tail);
+      if (tailIdx !== -1) {
+        const seg = segments[tailIdx];
+        seg.used = true;
+        const next =
+          point2DDistance(seg.start, tail) < this.tolerance ? seg.end : seg.start;
+        points.push(next);
+        continue;
       }
 
-      const nextSeg = segments[nextIdx];
-      nextSeg.used = true;
-
-      // Determine which end connects
-      if (point2DDistance(nextSeg.start, currentEnd) < this.tolerance) {
-        points.push(nextSeg.start);
-        currentEnd = nextSeg.end;
-      } else {
-        points.push(nextSeg.end);
-        currentEnd = nextSeg.start;
+      // Otherwise extend the head backward.
+      const headIdx = this.findConnectingSegment(segments, head);
+      if (headIdx !== -1) {
+        const seg = segments[headIdx];
+        seg.used = true;
+        const prev =
+          point2DDistance(seg.start, head) < this.tolerance ? seg.end : seg.start;
+        points.unshift(prev);
+        continue;
       }
+
+      // Neither end extends: an OPEN contour (a cap-free layer band, or genuinely
+      // open geometry). Return it; the signed-area / fill close it implicitly with
+      // the head→tail chord.
+      break;
     }
 
-    // Loop didn't close - return points anyway for potential use
-    // Some entities may have open cross-sections
     return points.length >= 3 ? points : null;
   }
 

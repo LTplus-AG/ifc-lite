@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { PolygonBuilder } from './polygon-builder.js';
+import { polygonSignedArea } from './math.js';
 import type { CutSegment } from './types.js';
 
 /** Build the 4 cut segments of an axis-aligned rectangle [x0,x1]×[y0,y1]. */
@@ -89,5 +90,51 @@ describe('PolygonBuilder — material-layer colour split', () => {
     expect(polygons).toHaveLength(3);
     expect(polygons.filter((p) => p.color === RED || (p.color && p.color[0] === 1))).toHaveLength(2);
     for (const p of polygons) expect(p.color).toBeDefined();
+  });
+});
+
+describe('PolygonBuilder — open-band reconstruction (cap-free layer slabs)', () => {
+  /** The 3 cut segments of a layer band whose interface side (x = `xCut`) is
+   *  OPEN — the section shape of a material-layer slab now that the slicer no
+   *  longer caps the interface plane. `outerX` is the band's wall-face side. */
+  function openBand(
+    outerX: number,
+    xCut: number,
+    entityId: number,
+    color: [number, number, number, number],
+  ): CutSegment[] {
+    const mk = (ax: number, ay: number, bx: number, by: number): CutSegment => ({
+      p0: { x: ax, y: ay, z: 0 }, p1: { x: bx, y: by, z: 0 },
+      p0_2d: { x: ax, y: ay }, p1_2d: { x: bx, y: by },
+      entityId, ifcType: 'IfcWall', modelIndex: 0, color,
+    });
+    return [
+      mk(outerX, 0, outerX, 1),   // wall-face edge
+      mk(outerX, 0, xCut, 0),     // bottom strip (open end at xCut)
+      mk(outerX, 1, xCut, 1),     // top strip    (open end at xCut)
+    ];
+  }
+
+  it('closes each open band at the interface chord → one filled polygon per layer', () => {
+    // 2-layer wall sectioned: RED band [0,1] open at x=1, BLUE band [2,1] open at
+    // x=1 — the shared interface. A forward-only loop builder strands these and
+    // emits nothing; the bidirectional builder assembles each U and the implicit
+    // head→tail chord (x=1) re-creates the interface the removed cap used to draw.
+    const segments = [
+      ...openBand(0, 1, 100, RED),
+      ...openBand(2, 1, 100, BLUE),
+    ];
+
+    const polygons = new PolygonBuilder().buildPolygons(segments);
+
+    expect(polygons).toHaveLength(2);
+    const colors = polygons.map((p) => p.color);
+    expect(colors).toContainEqual(RED);
+    expect(colors).toContainEqual(BLUE);
+    // Each layer is a unit square (area 1): the open contours were closed, not dropped.
+    for (const p of polygons) {
+      const area = Math.abs(polygonSignedArea(p.polygon.outer));
+      expect(area).toBeCloseTo(1.0, 5);
+    }
   });
 });

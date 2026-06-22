@@ -27,6 +27,7 @@ import { isSpatialContainer } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
 import { HierarchyNode, SectionHeader } from './hierarchy/HierarchyNode';
 import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
+import { HierarchySortControl } from './hierarchy/HierarchySortControl';
 
 export function HierarchyPanel() {
   const {
@@ -106,6 +107,8 @@ export function HierarchyPanel() {
     setSearchQuery,
     groupingMode,
     setGroupingMode,
+    sortMode,
+    setSortMode,
     unifiedStoreys,
     filteredNodes: rawFilteredNodes,
     storeysNodes: rawStoreysNodes,
@@ -709,6 +712,9 @@ export function HierarchyPanel() {
             className="h-9 text-sm rounded-none border-2 border-zinc-200 dark:border-zinc-800 focus:border-primary focus:ring-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
           />
           {groupingToggle}
+          {groupingMode === 'spatial' && (
+            <HierarchySortControl value={sortMode} onChange={setSortMode} />
+          )}
         </div>
 
         {/* Resizable content area */}
@@ -829,6 +835,9 @@ export function HierarchyPanel() {
           className="h-9 text-sm rounded-none border-2 border-zinc-200 dark:border-zinc-800 focus:border-primary focus:ring-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
         />
         {groupingToggle}
+        {groupingMode === 'spatial' && (
+          <HierarchySortControl value={sortMode} onChange={setSortMode} />
+        )}
       </div>
 
       {/* Section Header */}

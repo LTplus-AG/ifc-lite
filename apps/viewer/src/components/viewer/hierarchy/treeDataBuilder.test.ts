@@ -7,7 +7,8 @@ import assert from 'node:assert';
 import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { buildTreeData, buildTypeTree, type AuthoredProduct } from './treeDataBuilder';
+import { buildTreeData, buildTypeTree, compareStoreyEntries, type AuthoredProduct } from './treeDataBuilder';
+import type { HierarchySortMode } from './types';
 
 function createSpatialNode(
   expressId: number,
@@ -299,5 +300,93 @@ describe('buildTreeData', () => {
     assert.strictEqual(railing.ifcType, 'IfcRailing');
     assert.strictEqual(flight.depth, stair.depth + 1, 'parts nest one level under the assembly');
     assert.strictEqual(flight.hasChildren, false, 'leaf parts are not expandable');
+  });
+});
+
+/** Three storeys whose names deliberately don't track elevation, so each sort
+ *  mode produces a distinct order. Storey express ids: 4 = "Level 10" @ 0m,
+ *  5 = "Level 2" @ 6m, 6 = "Level 1" @ 3m. Children are listed 4,5,6. */
+function createSortStoreyDataStore(): IfcDataStore {
+  const s10 = createSpatialNode(4, IfcTypeEnum.IfcBuildingStorey, 'Level 10');
+  s10.elevation = 0;
+  const s2 = createSpatialNode(5, IfcTypeEnum.IfcBuildingStorey, 'Level 2');
+  s2.elevation = 6;
+  const s1 = createSpatialNode(6, IfcTypeEnum.IfcBuildingStorey, 'Level 1');
+  s1.elevation = 3;
+  const buildingNode = createSpatialNode(3, IfcTypeEnum.IfcBuilding, 'MY_BUILDING', [s10, s2, s1]);
+  const siteNode = createSpatialNode(2, IfcTypeEnum.IfcSite, 'MY_SITE', [buildingNode]);
+  const projectNode = createSpatialNode(1, IfcTypeEnum.IfcProject, 'MY_PROJECT', [siteNode]);
+
+  const spatialHierarchy: SpatialHierarchy = {
+    project: projectNode,
+    byStorey: new Map([[4, []], [5, []], [6, []]]),
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map([[4, 0], [5, 6], [6, 3]]),
+    storeyHeights: new Map(),
+    elementToStorey: new Map(),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+
+  return {
+    spatialHierarchy,
+    entities: {
+      count: 0,
+      getName: () => '',
+      getTypeName: () => 'Unknown',
+    },
+  } as unknown as IfcDataStore;
+}
+
+describe('storey sort order (#1296)', () => {
+  // Expand project/site/building so the storey children are emitted in sorted order.
+  const expanded = new Set(['root-1', 'root-1-2', 'root-1-2-3']);
+
+  function storeyOrder(sortMode: HierarchySortMode): number[] {
+    const nodes = buildTreeData(new Map(), createSortStoreyDataStore(), expanded, false, [], sortMode);
+    return nodes
+      .filter((n) => n.type === 'IfcBuildingStorey')
+      .map((n) => n.expressIds[0]);
+  }
+
+  it('defaults to elevation, highest first', () => {
+    // No explicit mode → previous behaviour preserved.
+    const nodes = buildTreeData(new Map(), createSortStoreyDataStore(), expanded, false, []);
+    const order = nodes.filter((n) => n.type === 'IfcBuildingStorey').map((n) => n.expressIds[0]);
+    assert.deepStrictEqual(order, [5, 6, 4]);
+  });
+
+  it('elevation-desc orders highest elevation first', () => {
+    assert.deepStrictEqual(storeyOrder('elevation-desc'), [5, 6, 4]);
+  });
+
+  it('elevation-asc orders lowest elevation first', () => {
+    assert.deepStrictEqual(storeyOrder('elevation-asc'), [4, 6, 5]);
+  });
+
+  it('name-asc sorts alphanumerically with natural numeric order (Level 2 before Level 10)', () => {
+    assert.deepStrictEqual(storeyOrder('name-asc'), [6, 5, 4]);
+  });
+
+  it('name-desc reverses the alphanumeric order', () => {
+    assert.deepStrictEqual(storeyOrder('name-desc'), [4, 5, 6]);
+  });
+});
+
+describe('compareStoreyEntries', () => {
+  it('treats missing elevation as 0', () => {
+    const a = { name: 'A' };
+    const b = { name: 'B', elevation: 5 };
+    // desc: b (5) before a (0) → positive when comparing (a, b)
+    assert.ok(compareStoreyEntries(a, b, 'elevation-desc') > 0);
+    assert.ok(compareStoreyEntries(a, b, 'elevation-asc') < 0);
+  });
+
+  it('name sort is case-insensitive', () => {
+    assert.strictEqual(compareStoreyEntries({ name: 'roof' }, { name: 'ROOF' }, 'name-asc'), 0);
   });
 });

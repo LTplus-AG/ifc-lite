@@ -820,6 +820,19 @@ impl VoidContext {
         self.openings.is_empty()
     }
 
+    /// True iff every cutter mesh is already in world coords (`origin == 0`). When
+    /// so AND the host is world-framed, `apply_void_context` can run the inner CSG
+    /// directly (the native / legacy fast path) without cloning the cutters; if any
+    /// cutter carries its own per-element origin it must be relativized first.
+    fn all_cutters_world_framed(&self) -> bool {
+        let world = |o: &OpeningType| match o {
+            OpeningType::Rectangular(..) => true,
+            OpeningType::DiagonalRectangular(m, _) => m.origin == [0.0, 0.0, 0.0],
+            OpeningType::NonRectangular(m, ..) => m.origin == [0.0, 0.0, 0.0],
+        };
+        self.openings.iter().all(world) && self.merged_openings.iter().all(world)
+    }
+
     /// Return a copy of this context with every opening (raw + merged)
     /// translated by `-origin`, i.e. moved from the world frame into the host's
     /// per-element local frame. Used by [`GeometryRouter::apply_void_context`]
@@ -841,35 +854,24 @@ impl VoidContext {
     }
 }
 
-/// Fold a per-element local-frame mesh into absolute world coordinates in place
-/// (`position += origin`, then `origin = 0`). A cutter sourced from
-/// `process_element` arrives in the opening's OWN local frame when
-/// `local_frame_enabled()` is on (the wasm default); the void pipeline requires
-/// cutters in world coords (see `classify_openings`/#1297), so this restores that
-/// invariant. No-op when the mesh is already world-framed (origin 0 — the native
-/// default), keeping that path byte-identical.
-fn fold_origin_to_world(mesh: &mut Mesh) {
+/// Express a cutter mesh in the host's local frame: `result = position +
+/// mesh.origin - host_origin`, folded in f64 before the f32 store, with the
+/// result origin zeroed (the mesh now lives in the shared host frame).
+///
+/// Honouring the cutter's OWN `origin` keeps a per-element local-frame opening
+/// (the wasm default: small positions relative to the opening's AABB centre)
+/// PRECISE — it is never first rounded to absolute world f32 and then brought
+/// back near the host, so detail openings far from the global origin can't
+/// collapse on the coarse world grid (#1310 review). A world-framed cutter
+/// (`origin == 0` — the native and ≤100-vertex default) reduces to the plain
+/// `position - host_origin` and stays byte-identical.
+fn translate_cutter_mesh(mesh: &Mesh, host_origin: [f64; 3]) -> Mesh {
     let o = mesh.origin;
-    if o == [0.0, 0.0, 0.0] {
-        return;
-    }
-    for c in mesh.positions.chunks_exact_mut(3) {
-        c[0] = (c[0] as f64 + o[0]) as f32;
-        c[1] = (c[1] as f64 + o[1]) as f32;
-        c[2] = (c[2] as f64 + o[2]) as f32;
-    }
-    mesh.origin = [0.0, 0.0, 0.0];
-}
-
-/// Translate a cutter mesh's positions by `-origin` in f64 before the f32 store,
-/// moving it into the host's local frame. `origin` is carried on the result as
-/// zero (the mesh is now expressed in the shared local frame).
-fn translate_cutter_mesh(mesh: &Mesh, origin: [f64; 3]) -> Mesh {
     let mut positions = Vec::with_capacity(mesh.positions.len());
     for c in mesh.positions.chunks_exact(3) {
-        positions.push((c[0] as f64 - origin[0]) as f32);
-        positions.push((c[1] as f64 - origin[1]) as f32);
-        positions.push((c[2] as f64 - origin[2]) as f32);
+        positions.push((c[0] as f64 + o[0] - host_origin[0]) as f32);
+        positions.push((c[1] as f64 + o[1] - host_origin[1]) as f32);
+        positions.push((c[2] as f64 + o[2] - host_origin[2]) as f32);
     }
     Mesh {
         positions,
@@ -877,7 +879,8 @@ fn translate_cutter_mesh(mesh: &Mesh, origin: [f64; 3]) -> Mesh {
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
         origin: [0.0; 3],
-    instance_meta: None, }
+        instance_meta: None,
+    }
 }
 
 impl OpeningType {
@@ -1985,11 +1988,15 @@ impl GeometryRouter {
         }
 
         let origin = mesh.origin;
-        if origin == [0.0, 0.0, 0.0] {
-            // Legacy/world frame: no relativization needed.
+        if origin == [0.0, 0.0, 0.0] && ctx.all_cutters_world_framed() {
+            // Legacy/world frame on host AND cutters: no relativization needed.
             return self.apply_void_context_inner(mesh, ctx, element_id);
         }
         // Work entirely in the host's local frame (origin 0 on every operand).
+        // `relativized_by` folds each cutter's OWN origin and subtracts the host
+        // origin in f64, so a per-element local-frame opening lands at the host
+        // precisely. This also covers a host that snapped to origin 0 while its
+        // openings did not (origin == 0 but cutters are local-framed).
         mesh.origin = [0.0, 0.0, 0.0];
         let local_ctx = ctx.relativized_by(origin);
         let mut result = self.apply_void_context_inner(mesh, &local_ctx, element_id);
@@ -2899,10 +2906,15 @@ impl GeometryRouter {
             .get_opening_item_bounds_with_direction(opening_entity, decoder)
             .ok()
             .and_then(|items| items.into_iter().find_map(|(_, _, d)| d));
+        // WORLD bounds: `opening_mesh` may be in its own per-element local frame
+        // (wasm), so fold its origin back in. `apply_void_context` then relativizes
+        // these by the host origin alongside the cutter mesh, keeping both in the
+        // shared host frame (#1310 review).
+        let o = opening_mesh.origin;
         let (mn, mx) = opening_mesh.bounds();
         (
-            Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
-            Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
+            Point3::new(mn.x as f64 + o[0], mn.y as f64 + o[1], mn.z as f64 + o[2]),
+            Point3::new(mx.x as f64 + o[0], mx.y as f64 + o[1], mx.z as f64 + o[2]),
             dir,
         )
     }
@@ -2938,24 +2950,17 @@ impl GeometryRouter {
                 Err(_) => continue,
             };
 
-            let mut opening_mesh = match self.process_element(&opening_entity, decoder) {
+            // The cutter is kept in WHATEVER frame `process_element` produced — world
+            // (native / local frame off) or the opening's own per-element local frame
+            // (wasm). `apply_void_context` carries `mesh.origin` through and folds it in
+            // f64 when it relativizes the cutter into the host frame, so the opening's
+            // detail stays precise even far from the global origin and the AABB-overlap
+            // guard sees the cutter at the host (#1297, refined per #1310 review). The
+            // bounds derived below are folded to WORLD so the same relativization applies.
+            let opening_mesh = match self.process_element(&opening_entity, decoder) {
                 Ok(m) if !m.is_empty() => m,
                 _ => continue,
             };
-            // The void cut runs in a SHARED host+cutter frame: `apply_void_context`
-            // relativizes cutters that are in WORLD coords by the host origin (see the
-            // `get_opening_item_meshes_world` contract note, which extracts with
-            // `relativize=false` for exactly this reason). `process_element`, however,
-            // honours `local_frame_enabled()` (default ON for wasm), so it returns the
-            // opening in the opening's OWN local frame — positions relative to
-            // `mesh.origin` (the opening's AABB centre). Stored as a cutter that way, the
-            // opening's origin is never folded back in, so `relativized_by(host_origin)`
-            // and the #635 fallback AABB (`opening_mesh.bounds()`, which ignores origin)
-            // land the cutter ~`-opening_origin` away from the host. The AABB-overlap
-            // guard then skips it, the CSG is a silent no-op, and the host renders SOLID
-            // (#1297 — wasm-only; native has local frame OFF so cutters are already
-            // world-framed). Fold the origin back to world here to restore the invariant.
-            fold_origin_to_world(&mut opening_mesh);
 
             let vertex_count = opening_mesh.positions.len() / 3;
 
@@ -3110,11 +3115,20 @@ impl GeometryRouter {
                         }
                     }
                 } else {
+                    // WORLD bounds (fold the opening's per-element origin); see
+                    // `fallback_aabb_for_opening` (#1310 review).
+                    let o = opening_mesh.origin;
                     let (open_min, open_max) = opening_mesh.bounds();
-                    let min_f64 =
-                        Point3::new(open_min.x as f64, open_min.y as f64, open_min.z as f64);
-                    let max_f64 =
-                        Point3::new(open_max.x as f64, open_max.y as f64, open_max.z as f64);
+                    let min_f64 = Point3::new(
+                        open_min.x as f64 + o[0],
+                        open_min.y as f64 + o[1],
+                        open_min.z as f64 + o[2],
+                    );
+                    let max_f64 = Point3::new(
+                        open_max.x as f64 + o[0],
+                        open_max.y as f64 + o[1],
+                        open_max.z as f64 + o[2],
+                    );
 
                     bump(
                         self,

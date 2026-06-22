@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Native Python bindings for ifc-lite geometry.
 //!
 //! Exposes the analysis geometry-data export (welded, IFC Z-up, absolute-world
@@ -28,7 +32,14 @@ fn run_export(ifc_bytes: Vec<u8>) -> Result<GeometryDataExport, String> {
         .spawn(move || {
             let result = process_geometry(&ifc_bytes);
             let rtc = result.metadata.coordinate_info.origin_shift;
-            build_geometry_data_export(&result.meshes, rtc)
+            // Reapply the IfcSite rotation only in the site-local axis frame;
+            // model_rtc / raw_ifc keep true IFC world axes (R = identity).
+            let site_rotation = if result.mesh_coordinate_space.as_deref() == Some("site_local") {
+                result.site_transform.as_deref()
+            } else {
+                None
+            };
+            build_geometry_data_export(&result.meshes, rtc, site_rotation)
         })
         .map_err(|e| format!("spawn failed: {e}"))?
         .join()

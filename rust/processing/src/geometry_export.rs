@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Analysis-ready geometry-data export.
 //!
 //! A per-entity geometry dump distinct from the render-oriented GLB. Where the
@@ -64,11 +68,23 @@ pub struct GeometryDataExport {
 /// Build the geometry-data export from a processed model's meshes.
 ///
 /// `rtc_offset` is `ProcessingResult.metadata.coordinate_info.origin_shift`.
+///
+/// `site_rotation` is the IfcSite placement (column-major 4x4) **only when the
+/// model was processed into the `site_local` coordinate space** — there the
+/// pipeline inverse-rotates positions + origin into site-local axes, so to emit
+/// true IFC world coordinates we reapply the forward 3x3 rotation:
+/// `world = R * (position + origin) + rtc_offset`. Pass `None` for the
+/// `model_rtc` / `raw_ifc` spaces (R = identity), which is the common case.
 pub fn build_geometry_data_export(
     meshes: &[MeshData],
     rtc_offset: [f64; 3],
+    site_rotation: Option<&[f64]>,
 ) -> GeometryDataExport {
     let mut elements: BTreeMap<u32, ExportedElement> = BTreeMap::new();
+    let rot = match site_rotation {
+        Some(m) if m.len() >= 16 => Some(m),
+        _ => None,
+    };
 
     for m in meshes {
         // Occurrences only — skip type-product RepresentationMap geometry.
@@ -81,11 +97,17 @@ pub fn build_geometry_data_export(
             .positions
             .chunks_exact(3)
             .map(|p| {
-                [
-                    p[0] as f64 + o[0] + rtc_offset[0],
-                    p[1] as f64 + o[1] + rtc_offset[1],
-                    p[2] as f64 + o[2] + rtc_offset[2],
-                ]
+                // World point in (possibly site-local) axes: position + origin.
+                let (x, y, z) = (p[0] as f64 + o[0], p[1] as f64 + o[1], p[2] as f64 + o[2]);
+                match rot {
+                    // Reapply the site forward rotation (column-major R), then RTC.
+                    Some(r) => [
+                        r[0] * x + r[4] * y + r[8] * z + rtc_offset[0],
+                        r[1] * x + r[5] * y + r[9] * z + rtc_offset[1],
+                        r[2] * x + r[6] * y + r[10] * z + rtc_offset[2],
+                    ],
+                    None => [x + rtc_offset[0], y + rtc_offset[1], z + rtc_offset[2]],
+                }
             })
             .collect();
 

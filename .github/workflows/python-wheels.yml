@@ -42,6 +42,9 @@ jobs:
           working-directory: rust/python
           target: ${{ matrix.target }}
           manylinux: auto
+          # rust-toolchain.toml pins nightly + a global [unstable] build-std, so
+          # the manylinux container's toolchain needs rust-src to rebuild std.
+          before-script-linux: rustup component add rust-src
           args: --release --out dist
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:

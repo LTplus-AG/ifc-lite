@@ -292,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-python"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "ifc-lite-processing",
  "pyo3",

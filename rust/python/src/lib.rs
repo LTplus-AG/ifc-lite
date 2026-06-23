@@ -50,9 +50,14 @@ fn run_export(ifc_bytes: Vec<u8>) -> Result<GeometryDataExport, String> {
 /// little-endian byte buffers (f64 xyz triplets, u32 triangle indices) for
 /// `numpy.frombuffer`. Returns a dict:
 /// `{ up_axis:"Z", units:"m", rtc_offset:[x,y,z], element_count,
-///    elements: { step_id: { ifc_type, color:[r,g,b,a], vertices:bytes,
-///    faces:bytes } } }`. Vertices are welded, IFC Z-up, absolute-world metres.
+///    elements: { step_id: { ifc_type, global_id, name, color:[r,g,b,a],
+///    vertices:bytes, faces:bytes } } }`. `global_id` / `name` are `None` when
+///    the source entity has none. Vertices are welded, IFC Z-up, absolute-world
+///    metres, keyed by IFC STEP id (occurrences only).
+///
+/// `ifc_bytes` is the raw IFC file content (e.g. `open(path, "rb").read()`).
 #[pyfunction]
+#[pyo3(signature = (ifc_bytes))]
 fn geometry_data_buffers(py: Python<'_>, ifc_bytes: Vec<u8>) -> PyResult<Py<PyAny>> {
     let export = py
         .detach(|| run_export(ifc_bytes))
@@ -68,6 +73,10 @@ fn geometry_data_buffers(py: Python<'_>, ifc_bytes: Vec<u8>) -> PyResult<Py<PyAn
     for (id, el) in &export.elements {
         let d = PyDict::new(py);
         d.set_item("ifc_type", &el.ifc_type)?;
+        // Mirror the JSON path so both exports carry the same identity fields;
+        // `None` maps to Python `None` (key always present).
+        d.set_item("global_id", el.global_id.clone())?;
+        d.set_item("name", el.name.clone())?;
         d.set_item("color", el.color.to_vec())?;
         // Reinterpret the contiguous `[f64;3]` / `[u32;3]` vecs as little-endian
         // bytes (zero-copy; PyBytes copies into Python). Targets are all LE.
@@ -91,8 +100,14 @@ fn geometry_data_buffers(py: Python<'_>, ifc_bytes: Vec<u8>) -> PyResult<Py<PyAn
     Ok(out.into_any().unbind())
 }
 
-/// Tessellate IFC bytes; return the `ifc-lite-geometry-data` JSON document.
+/// Tessellate IFC bytes; return the `ifc-lite-geometry-data` JSON document as a
+/// string. Same geometry as [`geometry_data_buffers`], but vertices/faces are
+/// JSON arrays (no numpy needed) and each element also carries `global_id` and
+/// `name` when present.
+///
+/// `ifc_bytes` is the raw IFC file content (e.g. `open(path, "rb").read()`).
 #[pyfunction]
+#[pyo3(signature = (ifc_bytes))]
 fn geometry_data_json(py: Python<'_>, ifc_bytes: Vec<u8>) -> PyResult<String> {
     let export = py
         .detach(|| run_export(ifc_bytes))

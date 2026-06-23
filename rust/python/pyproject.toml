@@ -5,6 +5,7 @@ build-backend = "maturin"
 [project]
 name = "ifclite-geom"
 description = "Native ifc-lite geometry-data export for Python (welded, IFC Z-up, world coords)."
+readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MPL-2.0" }
 authors = [{ name = "IFC-Lite Contributors" }]
@@ -17,10 +18,16 @@ classifiers = [
 dynamic = ["version"]
 
 [project.urls]
+Homepage = "https://github.com/LTplus-AG/ifc-lite"
 Repository = "https://github.com/LTplus-AG/ifc-lite"
+Documentation = "https://github.com/LTplus-AG/ifc-lite/tree/main/rust/python#readme"
 
 [tool.maturin]
 # The cdylib is `ifclite_geom`; build an abi3 wheel (one wheel per platform
 # works across CPython >= 3.9). Manifest-relative to this crate.
 module-name = "ifclite_geom"
 features = ["pyo3/extension-module"]
+# Ship the type stub next to the compiled module so editors / type checkers get
+# signatures and docstrings (the .so itself carries no static types). Pure-Rust
+# layout: the stub lands at the wheel root, adjacent to ifclite_geom.<abi>.so.
+include = [{ path = "ifclite_geom.pyi", format = "wheel" }]

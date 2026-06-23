@@ -203,9 +203,6 @@ pub fn extract_face_indices_from_entity(bytes: &[u8]) -> Option<Vec<u32>> {
                     attr_end = Some(i);
                 }
                 comma_count += 1;
-                if comma_count == 3 {
-                    // Next character starts the 4th attribute
-                }
             }
             _ => {}
         }

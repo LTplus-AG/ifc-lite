@@ -188,6 +188,7 @@ const ifcx = new Ifc5Exporter(store, meshes).export({ includeGeometry: true });
 | [**Three.js / Babylon.js**](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
 | [**Server**](https://ltplus-ag.github.io/ifc-lite/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
 | [**Build for Desktop**](https://ltplus-ag.github.io/ifc-lite/guide/desktop/) | Your own offline native app, very large files (500 MB+) | Extension points to wrap the packages in Tauri, with an optional native-Rust geometry fast path |
+| [**Python (native wheel)**](https://ltplus-ag.github.io/ifc-lite/api/python/) | Analysis, scripting, scientific Python | `pip install ifclite-geom` runs the geometry kernel in-process, meshes straight to numpy |
 
 Not sure? Start with the browser setup. You can add a server or switch engines later.
 
@@ -235,7 +236,7 @@ Ready-to-run projects in [`examples/`](examples/):
 | **BIM features** | [Federation](https://ltplus-ag.github.io/ifc-lite/guide/federation/) · [BCF](https://ltplus-ag.github.io/ifc-lite/guide/bcf/) · [IDS Validation](https://ltplus-ag.github.io/ifc-lite/guide/ids/) · [2D Drawings](https://ltplus-ag.github.io/ifc-lite/guide/drawing-2d/) · [Property Editing](https://ltplus-ag.github.io/ifc-lite/guide/mutations/) |
 | **Tutorials** | [Build a Viewer](https://ltplus-ag.github.io/ifc-lite/tutorials/building-viewer/) · [Three.js](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) · [Babylon.js](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/) · [Custom Queries](https://ltplus-ag.github.io/ifc-lite/tutorials/custom-queries/) |
 | **Deep dives** | [Architecture](https://ltplus-ag.github.io/ifc-lite/architecture/overview/) · [Data Flow](https://ltplus-ag.github.io/ifc-lite/architecture/data-flow/) · [Performance](https://ltplus-ag.github.io/ifc-lite/guide/performance/) |
-| **API** | [TypeScript](https://ltplus-ag.github.io/ifc-lite/api/typescript/) · [Rust](https://ltplus-ag.github.io/ifc-lite/api/rust/) · [WASM](https://ltplus-ag.github.io/ifc-lite/api/wasm/) |
+| **API** | [TypeScript](https://ltplus-ag.github.io/ifc-lite/api/typescript/) · [Rust](https://ltplus-ag.github.io/ifc-lite/api/rust/) · [WASM](https://ltplus-ag.github.io/ifc-lite/api/wasm/) · [Python](https://ltplus-ag.github.io/ifc-lite/api/python/) |
 
 ## Contributing
 

@@ -147,6 +147,7 @@ nav:
     - TypeScript API: api/typescript.md
     - Rust API: api/rust.md
     - WASM Bindings: api/wasm.md
+    - Python (PyPI): api/python.md
   - Tutorials:
     - Building a Viewer: tutorials/building-viewer.md
     - Three.js Integration: tutorials/threejs-integration.md

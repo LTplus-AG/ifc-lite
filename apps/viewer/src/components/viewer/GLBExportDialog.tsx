@@ -94,6 +94,9 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   const [colorSource, setColorSource] = useState<ColorSource>('rendering');
   const [visibleOnly, setVisibleOnly] = useState(false);
   const [includeMetadata, setIncludeMetadata] = useState(true);
+  // Lit materials shade from normals in external viewers; unlit (#1321) renders
+  // the flat apparent base colour. Default lit — most users expect shading.
+  const [lit, setLit] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -244,7 +247,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
             : m,
         );
 
-      const glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata });
+      const glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata, lit });
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
@@ -259,6 +262,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         visible_only: visibleOnly,
         include_metadata: includeMetadata,
         color_source: colorSource,
+        lit,
         size_kb: Math.round(blob.size / 1024),
       });
     } catch (err) {
@@ -273,6 +277,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     selectedModel,
     selectedModelId,
     includeMetadata,
+    lit,
     colorSource,
     visibleOnly,
     typeVisibility,
@@ -379,6 +384,17 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
               </p>
             </div>
             <Switch checked={includeMetadata} onCheckedChange={setIncludeMetadata} />
+          </div>
+
+          {/* Lit materials */}
+          <div className="flex items-center justify-between">
+            <div>
+              <Label>Lit Materials</Label>
+              <p className="text-xs text-muted-foreground">
+                Shade from normals in other viewers. Off = flat apparent colour (unlit)
+              </p>
+            </div>
+            <Switch checked={lit} onCheckedChange={setLit} />
           </div>
 
           {exportResult && (

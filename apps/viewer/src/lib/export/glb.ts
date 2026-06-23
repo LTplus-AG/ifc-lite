@@ -14,6 +14,12 @@ export interface GlbFromGeometryOptions {
   includeMetadata?: boolean;
   /** Pre-filtered meshes to emit (visibility/colour selection already applied). */
   meshes?: MeshData[];
+  /**
+   * Emit standard (lit) PBR materials so external viewers shade the model from
+   * its normals. `false` ⇒ flat `KHR_materials_unlit` (the historical look —
+   * apparent base colour only, no shading). Defaults to lit. (#1321)
+   */
+  lit?: boolean;
 }
 
 /** The slice of `GeometryProcessor` this helper drives — a test seam (see glb.test.ts). */
@@ -34,7 +40,7 @@ export async function exportGlbFromGeometry(
   const gp = createProcessor();
   await gp.init();
   try {
-    const glb = gp.exportGlbFromMeshes(meshes, opts.includeMetadata ?? false);
+    const glb = gp.exportGlbFromMeshes(meshes, opts.includeMetadata ?? false, opts.lit ?? true);
     if (!glb) throw new Error('GLB assembly returned no data');
     return glb;
   } finally {

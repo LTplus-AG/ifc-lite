@@ -27,6 +27,11 @@ pub struct GltfOptions {
     pub hidden: Vec<u32>,
     /// Exclude meshes whose IFC type is in this set (class-level visibility toggle).
     pub hidden_types: Vec<String>,
+    /// Emit standard (lit) PBR materials so external viewers shade the model from
+    /// its normals. When `false`, materials are tagged `KHR_materials_unlit` and
+    /// render flat with just the apparent base colour (the historical behaviour,
+    /// kept for colour-accurate exports). Default `true`. (#1321)
+    pub lit: bool,
 }
 
 impl Default for GltfOptions {
@@ -36,6 +41,7 @@ impl Default for GltfOptions {
             isolated: Vec::new(),
             hidden: Vec::new(),
             hidden_types: Vec::new(),
+            lit: true,
         }
     }
 }
@@ -117,7 +123,10 @@ struct Attributes {
 struct Material {
     #[serde(rename = "pbrMetallicRoughness")]
     pbr: Pbr,
-    extensions: Extensions,
+    // `Some` only for unlit exports (#1321); a lit material omits it entirely so
+    // the viewer applies standard PBR lighting from the mesh normals.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    extensions: Option<Extensions>,
     #[serde(rename = "alphaMode", skip_serializing_if = "Option::is_none")]
     alpha_mode: Option<&'static str>,
     // IFC face winding isn't reliably outward (the viewer renders cull-none /
@@ -244,7 +253,7 @@ fn view_ok(v: &MeshView) -> bool {
 /// georef scale) AND self-contained: a consumer that ignores node transforms sees
 /// the whole model uniformly offset, never each element collapsed onto the origin
 /// (the failure mode of per-element `node.translation`).
-fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfStats) {
+fn assemble_glb(views: &[MeshView], include_metadata: bool, lit: bool) -> (Vec<u8>, GltfStats) {
     // Pre-filter once so both passes (centre, then bake) see exactly the same set.
     let visible: Vec<&MeshView> = views.iter().filter(|v| view_ok(v)).collect();
 
@@ -363,7 +372,11 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfSta
                     metallic_factor: 0.0,
                     roughness_factor: 1.0,
                 },
-                extensions: Extensions { khr_materials_unlit: EmptyObj {} },
+                extensions: if lit {
+                    None
+                } else {
+                    Some(Extensions { khr_materials_unlit: EmptyObj {} })
+                },
                 alpha_mode: if mesh.color[3] < 1.0 { Some("BLEND") } else { None },
                 double_sided: true,
             });
@@ -465,7 +478,7 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool) -> (Vec<u8>, GltfSta
         accessors,
         buffer_views,
         buffers: vec![Buffer { byte_length: bin.len() as u32 }],
-        extensions_used: if stats.materials > 0 {
+        extensions_used: if !lit && stats.materials > 0 {
             Some(vec!["KHR_materials_unlit"])
         } else {
             None
@@ -504,7 +517,7 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
             origin: y.origin,
         })
         .collect();
-    assemble_glb(&views, opts.include_metadata)
+    assemble_glb(&views, opts.include_metadata, opts.lit)
 }
 
 /// Assemble a GLB from already-produced meshes (the viewer's MeshData — **no re-meshing**).
@@ -523,6 +536,7 @@ pub fn export_glb_from_meshes(
     origins: &[f64],
     express_ids: &[u32],
     include_metadata: bool,
+    lit: bool,
 ) -> (Vec<u8>, GltfStats) {
     let n = vertex_counts.len();
     let mut views: Vec<MeshView> = Vec::with_capacity(n);
@@ -564,7 +578,7 @@ pub fn export_glb_from_meshes(
         vbase += vc;
         ibase += ic;
     }
-    assemble_glb(&views, include_metadata)
+    assemble_glb(&views, include_metadata, lit)
 }
 
 /// Pack a glTF JSON document and binary buffer into a GLB container (little-endian).
@@ -664,9 +678,17 @@ mod tests {
             }
         }
 
-        // Materials present + KHR_materials_unlit declared + double-sided.
+        // Materials present + LIT by default (#1321: no KHR_materials_unlit) +
+        // double-sided.
         assert!(json["materials"].as_array().unwrap().len() >= 1);
-        assert_eq!(json["extensionsUsed"][0], "KHR_materials_unlit");
+        assert!(
+            json.get("extensionsUsed").is_none(),
+            "lit by default: no extensionsUsed / unlit extension"
+        );
+        assert!(
+            json["materials"].as_array().unwrap().iter().all(|m| m.get("extensions").is_none()),
+            "lit materials carry no extensions"
+        );
         assert!(
             json["materials"].as_array().unwrap().iter().all(|m| m["doubleSided"] == true),
             "materials double-sided (IFC winding isn't reliably outward)"
@@ -713,7 +735,7 @@ mod tests {
 
         let (glb, stats) = export_glb_from_meshes(
             &positions, &normals, &indices, &vertex_counts, &index_counts, &colors, &origins,
-            &express_ids, true,
+            &express_ids, true, true,
         );
         assert_eq!(stats.meshes, 2);
         assert_eq!(stats.triangles, 4);
@@ -775,6 +797,42 @@ mod tests {
         // Translucent material → BLEND.
         assert!(json["materials"].as_array().unwrap().iter().any(|m| m["alphaMode"] == "BLEND"));
         assert_eq!(bin.len(), json["buffers"][0]["byteLength"].as_u64().unwrap() as usize);
+
+        // Lit (the call above passed lit = true): no unlit extension anywhere.
+        assert!(json.get("extensionsUsed").is_none(), "lit export omits extensionsUsed");
+        assert!(
+            json["materials"].as_array().unwrap().iter().all(|m| m.get("extensions").is_none()),
+            "lit materials carry no extensions"
+        );
+    }
+
+    #[test]
+    fn unlit_option_emits_khr_materials_unlit() {
+        // #1321: lit = false reproduces the historical flat material — every
+        // material tagged KHR_materials_unlit and the extension declared globally.
+        let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+        let normals: Vec<f32> = std::iter::repeat([0.0f32, 0.0, 1.0]).take(4).flatten().collect();
+        let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+        let (glb, _) = export_glb_from_meshes(
+            &positions,
+            &normals,
+            &indices,
+            &[4],
+            &[6],
+            &[0.5, 0.5, 0.5, 1.0],
+            &[0.0, 0.0, 0.0],
+            &[10],
+            false,
+            false, // lit = false ⇒ unlit
+        );
+        let (json, _) = parse_glb(&glb);
+        assert_eq!(json["extensionsUsed"][0], "KHR_materials_unlit");
+        assert!(
+            json["materials"].as_array().unwrap().iter().all(|m| m["extensions"]
+                ["KHR_materials_unlit"]
+                .is_object()),
+            "unlit materials carry the KHR_materials_unlit extension"
+        );
     }
 
     #[test]

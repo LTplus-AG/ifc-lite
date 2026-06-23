@@ -1078,9 +1078,10 @@ export class GeometryProcessor {
     hidden: Uint32Array = new Uint32Array(),
     isolated: Uint32Array = new Uint32Array(),
     hiddenTypesCsv = '',
+    lit = true,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportGlb(safeUtf8Decode(buffer), includeMetadata, hidden, isolated, hiddenTypesCsv);
+    return this.bridge.exportGlb(safeUtf8Decode(buffer), includeMetadata, hidden, isolated, hiddenTypesCsv, lit);
   }
 
   exportCsv(
@@ -1149,9 +1150,11 @@ export class GeometryProcessor {
   /**
    * Assemble a GLB from already-produced meshes (no re-meshing) — the viewer path.
    * Flattens `MeshData[]` into the wasm binding's parallel arrays. The caller passes
-   * exactly the meshes it wants emitted (its own visibility filtering).
+   * exactly the meshes it wants emitted (its own visibility filtering). `lit` emits
+   * standard PBR materials that shade from normals; `false` ⇒ flat
+   * `KHR_materials_unlit` (the historical look — #1321).
    */
-  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false): Uint8Array | null {
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     let totalV = 0;
     let totalI = 0;
@@ -1185,7 +1188,7 @@ export class GeometryProcessor {
       io += m.indices.length;
     }
     return this.bridge.exportGlbFromMeshes(
-      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata,
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit,
     );
   }
 

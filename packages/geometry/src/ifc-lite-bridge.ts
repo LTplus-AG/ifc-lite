@@ -321,9 +321,10 @@ export class IfcLiteBridge {
     hidden: Uint32Array = new Uint32Array(),
     isolated: Uint32Array = new Uint32Array(),
     hiddenTypesCsv = '',
+    lit = true,
   ): Uint8Array {
     return this.runExport('exportGlb', content, (api) =>
-      api.exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv),
+      api.exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit),
     );
   }
 
@@ -425,13 +426,14 @@ export class IfcLiteBridge {
     origins: Float64Array,
     expressIds: Uint32Array,
     includeMetadata: boolean,
+    lit = true,
   ): Uint8Array {
     if (!this.ifcApi) {
       throw new Error('IFC-Lite not initialized. Call init() first.');
     }
     try {
       return this.ifcApi.exportGlbFromMeshes(
-        positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata,
+        positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit,
       );
     } catch (error) {
       log.error('Failed to exportGlbFromMeshes', error, { operation: 'exportGlbFromMeshes' });

@@ -1,4 +1,5 @@
 ---
+"@ifc-lite/wasm": patch
 "@ifc-lite/drawing-2d": patch
 "@ifc-lite/renderer": patch
 ---

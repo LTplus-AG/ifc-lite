@@ -2494,8 +2494,11 @@ impl GeometryRouter {
                 let depth_dir = extrusion_dir
                     .filter(|d| d.norm() > NORMALIZE_EPSILON)
                     .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
+                // Same internal-membrane weld as the sequential path, so a
+                // two-extrusion cap-to-cap opening cuts cleanly when batched too.
+                let deseamed = Self::remove_internal_membrane(opening_mesh, depth_dir);
                 let ext =
-                    Self::extend_opening_mesh_through_host(opening_mesh, &result, depth_dir);
+                    Self::extend_opening_mesh_through_host(&deseamed, &result, depth_dir);
                 // #2176: only per-component-watertight solids may join a group.
                 if !mesh_is_closed_exact(&ext) {
                     continue;
@@ -2609,8 +2612,11 @@ impl GeometryRouter {
                             let depth_dir = extrusion_dir
                                 .filter(|d| d.norm() > NORMALIZE_EPSILON)
                                 .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
+                            // Deseam (as the sequential path does) before re-extending.
+                            let deseamed =
+                                Self::remove_internal_membrane(opening_mesh, depth_dir);
                             let ext = Self::extend_opening_mesh_through_host(
-                                opening_mesh,
+                                &deseamed,
                                 &result,
                                 depth_dir,
                             );

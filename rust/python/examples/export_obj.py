@@ -1,3 +1,6 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """Export every element of an IFC file to a single Wavefront .obj.
 
 Each IFC element becomes an `o <step_id>_<ifc_type>` group. Only numpy is

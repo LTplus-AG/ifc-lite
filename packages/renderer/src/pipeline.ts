@@ -559,7 +559,7 @@ export class RenderPipeline {
     }
 
     /**
-     * Write a raw 48-float (192-byte) uniform block into the SHARED uniform
+     * Write a raw 56-float (224-byte) uniform block into the SHARED uniform
      * buffer, whose bind group is `getBindGroup()`. Used by the GPU-instancing
      * pass, which reuses the frame's viewProj + section + flags from the
      * renderer's prebuilt template (model + baseColor are unused — vs_instanced

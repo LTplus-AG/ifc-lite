@@ -235,7 +235,8 @@ export interface RenderOptions {
   // Section plane clipping
   sectionPlane?: SectionPlane;
   // Section / crop box: clip geometry to an axis-aligned world-space box (all six
-  // sides). Independent of `sectionPlane`. Discarded fragments are also unpickable.
+  // sides). Independent of `sectionPlane`. Rendering only: the GPU picker does not
+  // clip on the box (same as `sectionPlane`), so consumers filter box picks themselves.
   clipBox?: ClipBox;
   // Terrain clipping: discard fragments below this Y value in viewer space.
   // Used by Cesium overlay to prevent model from showing below terrain.

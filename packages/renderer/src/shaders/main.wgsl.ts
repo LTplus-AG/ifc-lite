@@ -15,7 +15,9 @@ export const mainShaderSource = `
           metallicRoughness: vec2<f32>, // x = metallic, y = roughness
           _padding1: vec2<f32>,
           sectionPlane: vec4<f32>,      // xyz = plane normal, w = plane distance
-          flags: vec4<u32>,             // x = isSelected, y = sectionEnabled, z = edgeEnabled, w = edgeIntensityMilli
+          flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
+          clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
+          clipBoxMax: vec4<f32>,        // xyz = clip-box max corner (world), w = pad
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
 
@@ -219,6 +221,14 @@ export const mainShaderSource = `
             let side = select(1.0, -1.0, flipped);
             let distToPlane = (dot(input.worldPos, planeNormal) - planeDistance) * side;
             if (distToPlane > 0.0) {
+              discard;
+            }
+          }
+          // Clip box (section / crop box): discard fragments OUTSIDE the AABB.
+          // flags.y bit 2 = clip-box enabled.
+          if ((uniforms.flags.y & 4u) != 0u) {
+            let p = input.worldPos;
+            if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) {
               discard;
             }
           }

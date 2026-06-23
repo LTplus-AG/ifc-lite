@@ -135,6 +135,23 @@ export interface SectionPlane {
   distance?: number;
 }
 
+/**
+ * Axis-aligned clip box (section / crop box): geometry is kept only where it
+ * lies INSIDE all six box planes; fragments outside the box are discarded by the
+ * shader (real geometry cut, unlike bounding-box element isolation). Coordinates
+ * are in the same world space the shader sees as `input.worldPos` — i.e. the
+ * viewer space the camera/section planes use. Independent of `sectionPlane`; both
+ * can be active at once.
+ */
+export interface ClipBox {
+  /** Box min corner [x, y, z] in world space. */
+  min: [number, number, number];
+  /** Box max corner [x, y, z] in world space. */
+  max: [number, number, number];
+  /** When false (or omitted), the box has no effect. */
+  enabled: boolean;
+}
+
 export type ContactShadingQuality = 'off' | 'low' | 'high';
 export type SeparationLinesQuality = 'off' | 'low' | 'high';
 
@@ -217,6 +234,9 @@ export interface RenderOptions {
   selectedModelIndex?: number;    // Model index for multi-model selection (must match mesh.modelIndex)
   // Section plane clipping
   sectionPlane?: SectionPlane;
+  // Section / crop box: clip geometry to an axis-aligned world-space box (all six
+  // sides). Independent of `sectionPlane`. Discarded fragments are also unpickable.
+  clipBox?: ClipBox;
   // Terrain clipping: discard fragments below this Y value in viewer space.
   // Used by Cesium overlay to prevent model from showing below terrain.
   terrainClipY?: number;

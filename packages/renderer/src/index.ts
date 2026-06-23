@@ -95,6 +95,7 @@ import type {
     SeparationLinesQuality,
 } from './types.js';
 import { SectionPlaneRenderer } from './section-plane.js';
+import { packClipBox } from './clip-box.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
 import {
   SymbolicFillPipeline,
@@ -234,8 +235,9 @@ export class Renderer {
     private _loggedSectionBounds: boolean = false;
 
     // Pooled per-frame buffers to avoid GC pressure from per-batch Float32Array allocations
-    // A single 192-byte uniform buffer (48 floats) is reused for all batches/meshes within a frame
-    private readonly uniformScratch = new Float32Array(48);
+    // A single 224-byte uniform buffer (56 floats) is reused for all batches/meshes within a frame
+    // (48 floats viewProj…flags + 8 floats clipBoxMin/clipBoxMax)
+    private readonly uniformScratch = new Float32Array(56);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, 176, 4);
 
     constructor(canvas: HTMLCanvasElement) {
@@ -1497,12 +1499,16 @@ export class Renderer {
                         meshBuf[40] = 0; meshBuf[41] = 0; meshBuf[42] = 0; meshBuf[43] = 0;
                     }
 
+                    // Clip box (offset 48-55: min.xyz + pad, max.xyz + pad) → enable bit
+                    const clipBit = packClipBox(options.clipBox, meshBuf, 48);
+
                     // Flags (offset 44-47 as u32)
-                    // flags.y packs: bit 0 = sectionEnabled, bit 1 = flipped
+                    // flags.y packs: bit 0 = sectionEnabled, bit 1 = flipped, bit 2 = clipBoxEnabled
                     meshFlags[0] = isSelected ? 1 : 0;
                     meshFlags[1] =
                         (sectionPlaneData?.enabled ? 1 : 0) |
-                        (options.sectionPlane?.flipped ? 2 : 0);
+                        (options.sectionPlane?.flipped ? 2 : 0) |
+                        clipBit;
                     meshFlags[2] = edgeEnabledU32;
                     meshFlags[3] = edgeIntensityMilliU32;
 
@@ -1780,16 +1786,19 @@ export class Renderer {
                 } else {
                     tpl[40] = 0; tpl[41] = 0; tpl[42] = 0; tpl[43] = 0;
                 }
+                // Clip box (offset 48-55: min.xyz + pad, max.xyz + pad) → enable bit
+                const tplClipBit = packClipBox(options.clipBox, tpl, 48);
                 // flags layout (main shader):
                 //   x = isSelected (0/1)
-                //   y = sectionEnabled bitfield:
-                //       bit 0 = enabled, bit 1 = flipped
+                //   y = section/clip bitfield:
+                //       bit 0 = sectionEnabled, bit 1 = flipped, bit 2 = clipBoxEnabled
                 //   z = edgeEnabled (0/1)
                 //   w = edgeIntensityMilli
                 tplFlags[0] = 0;
                 tplFlags[1] =
                     (sectionPlaneData?.enabled ? 1 : 0) |
-                    (options.sectionPlane?.flipped ? 2 : 0);
+                    (options.sectionPlane?.flipped ? 2 : 0) |
+                    tplClipBit;
                 tplFlags[2] = edgeEnabledU32;
                 tplFlags[3] = edgeIntensityMilliU32;
 

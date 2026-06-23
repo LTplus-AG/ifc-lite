@@ -1,5 +1,21 @@
 # @ifc-lite/geometry
 
+## 2.10.0
+
+### Minor Changes
+
+- [#1322](https://github.com/LTplus-AG/ifc-lite/pull/1322) [`9544b4d`](https://github.com/LTplus-AG/ifc-lite/commit/9544b4d4c2b3502994d59f4af13cfb1661e87044) Thanks [@Blogbotana](https://github.com/Blogbotana)! - GLB export: add a `lit` option (default `true`) so exported models render with
+  standard PBR lighting in external viewers instead of flat `KHR_materials_unlit`.
+  `GeometryProcessor.exportGlb(.., lit?)` and `exportGlbFromMeshes(meshes, includeMetadata?, lit?)`
+  now emit lit materials by default; pass `lit: false` for the previous flat,
+  apparent-colour look. Normals were always written — only the unlit material
+  extension suppressed shading. ([#1321](https://github.com/LTplus-AG/ifc-lite/issues/1321))
+
+### Patch Changes
+
+- Updated dependencies [[`9544b4d`](https://github.com/LTplus-AG/ifc-lite/commit/9544b4d4c2b3502994d59f4af13cfb1661e87044)]:
+  - @ifc-lite/wasm@2.13.0
+
 ## 2.9.2
 
 ### Patch Changes

@@ -1466,6 +1466,16 @@ impl ProfileProcessor {
             .get_float(4)
             .ok_or_else(|| Error::geometry("CircleHollow missing WallThickness".to_string()))?;
 
+        // Validate wall thickness (parity with RectangleHollow). A wall >= radius
+        // yields a zero/negative inner radius: the inner ring collapses to the
+        // centre or mirrors through the origin, leaving a self-intersecting hole.
+        if wall_thickness >= radius {
+            return Err(Error::geometry(format!(
+                "CircleHollow WallThickness {} exceeds Radius {}",
+                wall_thickness, radius
+            )));
+        }
+
         let inner_radius = radius - wall_thickness;
         let segments = self.quality().circle_profile_segments(36);
 

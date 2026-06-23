@@ -89,10 +89,12 @@ export class IfcAPI {
    * comma-separated list of IFC type names whose class toggle is off (e.g.
    * `"IfcOpeningElement,IfcSpace"`). `include_metadata` attaches counts + per-node
    * `expressId`. Per-mesh RTC origin rides the node translation (precision-safe).
-   * `lit` emits standard PBR materials that shade from normals (`false` ⇒ flat
-   * `KHR_materials_unlit`, the historical look — #1321).
+   * `lit` emits standard PBR materials that shade from normals; omitted or
+   * `true` ⇒ lit (the default), `false` ⇒ flat `KHR_materials_unlit` (the
+   * historical look — #1321). Optional at the boundary so older 5-arg callers
+   * keep lit-by-default behaviour.
    */
-  exportGlb(content: string, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string, lit: boolean): Uint8Array;
+  exportGlb(content: string, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string, lit?: boolean | null): Uint8Array;
   /**
    * Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
    * for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
@@ -107,7 +109,7 @@ export class IfcAPI {
    * RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
    * per-mesh local). The caller passes exactly the meshes it wants emitted.
    */
-  exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit: boolean): Uint8Array;
+  exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null): Uint8Array;
   /**
    * Export the render geometry in `content` as a Wavefront **OBJ** string.
    *

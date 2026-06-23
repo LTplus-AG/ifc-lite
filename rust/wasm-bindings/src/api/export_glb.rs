@@ -15,8 +15,10 @@ impl IfcAPI {
     /// comma-separated list of IFC type names whose class toggle is off (e.g.
     /// `"IfcOpeningElement,IfcSpace"`). `include_metadata` attaches counts + per-node
     /// `expressId`. Per-mesh RTC origin rides the node translation (precision-safe).
-    /// `lit` emits standard PBR materials that shade from normals (`false` ⇒ flat
-    /// `KHR_materials_unlit`, the historical look — #1321).
+    /// `lit` emits standard PBR materials that shade from normals; omitted or
+    /// `true` ⇒ lit (the default), `false` ⇒ flat `KHR_materials_unlit` (the
+    /// historical look — #1321). Optional at the boundary so older 5-arg callers
+    /// keep lit-by-default behaviour.
     #[wasm_bindgen(js_name = exportGlb)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_glb(
@@ -26,7 +28,7 @@ impl IfcAPI {
         hidden: &[u32],
         isolated: &[u32],
         hidden_types_csv: String,
-        lit: bool,
+        lit: Option<bool>,
     ) -> Vec<u8> {
         let hidden_types = hidden_types_csv
             .split(',')
@@ -38,7 +40,7 @@ impl IfcAPI {
             hidden: hidden.to_vec(),
             isolated: isolated.to_vec(),
             hidden_types,
-            lit,
+            lit: lit.unwrap_or(true),
         };
         ifc_lite_export::export_glb(content.as_bytes(), &opts)
     }
@@ -61,7 +63,7 @@ impl IfcAPI {
         origins: &[f64],
         express_ids: &[u32],
         include_metadata: bool,
-        lit: bool,
+        lit: Option<bool>,
     ) -> Vec<u8> {
         ifc_lite_export::export_glb_from_meshes(
             positions,
@@ -73,7 +75,7 @@ impl IfcAPI {
             origins,
             express_ids,
             include_metadata,
-            lit,
+            lit.unwrap_or(true),
         )
         .0
     }

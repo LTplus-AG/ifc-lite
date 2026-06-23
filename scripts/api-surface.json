@@ -3238,6 +3238,7 @@
     "BatchedMesh: interface",
     "Bounds3: interface",
     "Camera: class",
+    "ClipBox: interface",
     "ContactShadingQuality: type",
     "CutPolygon2D: interface",
     "DEFAULT_CAP_STYLE: const",

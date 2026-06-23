@@ -2106,7 +2106,8 @@ export class Renderer {
                         tplFlags[0] = 0;
                         tplFlags[1] =
                             (sectionPlaneData?.enabled ? 1 : 0) |
-                            (options.sectionPlane?.flipped ? 2 : 0);
+                            (options.sectionPlane?.flipped ? 2 : 0) |
+                            tplClipBit;
                         tplFlags[2] = edgeEnabledU32;
                         tplFlags[3] = edgeIntensityMilliU32;
 
@@ -2162,7 +2163,8 @@ export class Renderer {
                     tplFlags[0] = 1; // isSelected
                     tplFlags[1] =
                         (sectionPlaneData?.enabled ? 1 : 0) |
-                        (options.sectionPlane?.flipped ? 2 : 0);
+                        (options.sectionPlane?.flipped ? 2 : 0) |
+                        tplClipBit;
                     tplFlags[2] = edgeEnabledU32;
                     tplFlags[3] = edgeIntensityMilliU32;
 

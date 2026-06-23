@@ -53,20 +53,20 @@ fn run_export(ifc_bytes: Vec<u8>) -> Result<GeometryDataExport, String> {
 ///    elements: { step_id: { ifc_type, color:[r,g,b,a], vertices:bytes,
 ///    faces:bytes } } }`. Vertices are welded, IFC Z-up, absolute-world metres.
 #[pyfunction]
-fn geometry_data_buffers(py: Python<'_>, ifc_bytes: Vec<u8>) -> PyResult<PyObject> {
+fn geometry_data_buffers(py: Python<'_>, ifc_bytes: Vec<u8>) -> PyResult<Py<PyAny>> {
     let export = py
-        .allow_threads(|| run_export(ifc_bytes))
+        .detach(|| run_export(ifc_bytes))
         .map_err(PyRuntimeError::new_err)?;
 
-    let out = PyDict::new_bound(py);
+    let out = PyDict::new(py);
     out.set_item("up_axis", export.up_axis)?;
     out.set_item("units", export.units)?;
     out.set_item("rtc_offset", export.rtc_offset.to_vec())?;
     out.set_item("element_count", export.element_count)?;
 
-    let els = PyDict::new_bound(py);
+    let els = PyDict::new(py);
     for (id, el) in &export.elements {
-        let d = PyDict::new_bound(py);
+        let d = PyDict::new(py);
         d.set_item("ifc_type", &el.ifc_type)?;
         d.set_item("color", el.color.to_vec())?;
         // Reinterpret the contiguous `[f64;3]` / `[u32;3]` vecs as little-endian
@@ -83,19 +83,19 @@ fn geometry_data_buffers(py: Python<'_>, ifc_bytes: Vec<u8>) -> PyResult<PyObjec
                 std::mem::size_of_val(el.faces.as_slice()),
             )
         };
-        d.set_item("vertices", PyBytes::new_bound(py, vbytes))?;
-        d.set_item("faces", PyBytes::new_bound(py, fbytes))?;
+        d.set_item("vertices", PyBytes::new(py, vbytes))?;
+        d.set_item("faces", PyBytes::new(py, fbytes))?;
         els.set_item(*id, d)?;
     }
     out.set_item("elements", els)?;
-    Ok(out.into())
+    Ok(out.into_any().unbind())
 }
 
 /// Tessellate IFC bytes; return the `ifc-lite-geometry-data` JSON document.
 #[pyfunction]
 fn geometry_data_json(py: Python<'_>, ifc_bytes: Vec<u8>) -> PyResult<String> {
     let export = py
-        .allow_threads(|| run_export(ifc_bytes))
+        .detach(|| run_export(ifc_bytes))
         .map_err(PyRuntimeError::new_err)?;
     export
         .to_json()

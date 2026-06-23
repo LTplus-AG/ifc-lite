@@ -2763,8 +2763,12 @@ impl GeometryRouter {
                     let depth_dir = extrusion_dir
                         .filter(|d| d.norm() > NORMALIZE_EPSILON)
                         .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
+                    // Weld out any internal cap membrane (two extrusions glued
+                    // cap-to-cap inside the host) so the cutter is one continuous
+                    // solid and the subtract carves a clean through-hole.
+                    let deseamed = Self::remove_internal_membrane(opening_mesh, depth_dir);
                     let extended_opening = Self::extend_opening_mesh_through_host(
-                        opening_mesh,
+                        &deseamed,
                         &result,
                         depth_dir,
                     );
@@ -3639,6 +3643,143 @@ impl GeometryRouter {
             m.add_triangle(b, b + 2, b + 3);
         }
         m
+    }
+
+    /// Remove the INTERNAL MEMBRANE left when an opening is authored as two (or
+    /// more) extrusions glued cap-to-cap — the AC20 round windows store two
+    /// `IfcExtrudedAreaSolid` with the SAME circle profile and the SAME start
+    /// point extruding in OPPOSITE directions, so the combined cutter mesh
+    /// carries a back-to-back pair of cap disks where the two solids meet (e.g. 28
+    /// tris on a shared plane mid-wall). The exact CSG subtract treats that double
+    /// cap as a real boundary and leaves a solid plug at the seam — the window
+    /// never cuts through.
+    ///
+    /// We delete the WHOLE interior cap plane (every cap-facing triangle in an
+    /// interior bucket that carries faces pointing both along and against the
+    /// axis), not just vertex-coincident pairs: the two disks are often
+    /// triangulated DIFFERENTLY, so pair-matching leaves a central plug (a square
+    /// patch inside the round hole). Removing the full membrane welds the two
+    /// solids into one continuous tube whose only caps are the true outer ends, so
+    /// the subtract carves a clean through-hole. A no-op for ordinary single-solid
+    /// openings (no interior back-to-back cap plane exists).
+    fn remove_internal_membrane(opening_mesh: &Mesh, axis_dir: Vector3<f64>) -> Mesh {
+        let tri_count = opening_mesh.indices.len() / 3;
+        if tri_count < 4 {
+            return opening_mesh.clone();
+        }
+        let p = |i: usize| -> [f64; 3] {
+            [
+                opening_mesh.positions[i * 3] as f64,
+                opening_mesh.positions[i * 3 + 1] as f64,
+                opening_mesh.positions[i * 3 + 2] as f64,
+            ]
+        };
+        // Penetration axis: the cutter's cylinder/extrusion axis, along which the
+        // two glued solids stack and their shared seam caps lie. Prefer the
+        // supplied depth direction; fall back to the cutter's longest bbox axis.
+        let mut d = axis_dir;
+        if d.norm() < NORMALIZE_EPSILON {
+            let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+            for c in opening_mesh.positions.chunks_exact(3) {
+                for a in 0..3 {
+                    lo[a] = lo[a].min(c[a] as f64);
+                    hi[a] = hi[a].max(c[a] as f64);
+                }
+            }
+            let ext = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
+            let la = (0..3).max_by(|&i, &j| ext[i].partial_cmp(&ext[j]).unwrap()).unwrap();
+            d = Vector3::new(
+                if la == 0 { 1.0 } else { 0.0 },
+                if la == 1 { 1.0 } else { 0.0 },
+                if la == 2 { 1.0 } else { 0.0 },
+            );
+        }
+        d /= d.norm();
+
+        // Cutter span along the axis — its extreme ends are the TRUE outer caps,
+        // which must be kept.
+        let (mut smin, mut smax) = (f64::INFINITY, f64::NEG_INFINITY);
+        for c in opening_mesh.positions.chunks_exact(3) {
+            let s = c[0] as f64 * d.x + c[1] as f64 * d.y + c[2] as f64 * d.z;
+            smin = smin.min(s);
+            smax = smax.max(s);
+        }
+        let span = (smax - smin).abs();
+        if span < NORMALIZE_EPSILON {
+            return opening_mesh.clone();
+        }
+        // Bucket cap triangles by their plane offset along the axis (0.5 mm grid,
+        // so a flat cap's triangles cluster into one bucket). A bucket touching
+        // either extreme is an outer cap and is never removed.
+        let cell = (span * 0.005).max(5.0e-4);
+        let bucket = |s: f64| (s / cell).round() as i64;
+        let (min_b, max_b) = (bucket(smin), bucket(smax));
+
+        // Per interior cap-plane bucket, record whether it carries faces pointing
+        // BOTH along +axis and −axis. Two solids glued cap-to-cap leave exactly
+        // that: an outward cap of one and an inward cap of the other on the same
+        // plane. A lone interior cap (a single solid with an internal gap — rare)
+        // points only one way and is left intact, so a genuine two-hole opening is
+        // not merged into one.
+        let mut buckets: std::collections::HashMap<i64, [bool; 2]> =
+            std::collections::HashMap::new();
+        let mut cap_tris: Vec<(i64, bool)> = Vec::with_capacity(tri_count);
+        for t in 0..tri_count {
+            let (i0, i1, i2) = (
+                opening_mesh.indices[t * 3] as usize,
+                opening_mesh.indices[t * 3 + 1] as usize,
+                opening_mesh.indices[t * 3 + 2] as usize,
+            );
+            let (a, b, c) = (p(i0), p(i1), p(i2));
+            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let n = [
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+            let nl = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            if nl < 1e-12 {
+                cap_tris.push((i64::MIN, false));
+                continue;
+            }
+            let align = (n[0] * d.x + n[1] * d.y + n[2] * d.z) / nl;
+            if align.abs() <= 0.9 {
+                cap_tris.push((i64::MIN, false)); // not a cap (tube wall)
+                continue;
+            }
+            let cs = ((a[0] + b[0] + c[0]) / 3.0) * d.x
+                + ((a[1] + b[1] + c[1]) / 3.0) * d.y
+                + ((a[2] + b[2] + c[2]) / 3.0) * d.z;
+            let bk = bucket(cs);
+            let positive = align > 0.0;
+            cap_tris.push((bk, positive));
+            if bk != min_b && bk != max_b {
+                let e = buckets.entry(bk).or_insert([false, false]);
+                e[positive as usize] = true;
+            }
+        }
+        // A bucket is a glued membrane iff it has faces pointing both ways.
+        let membrane: std::collections::HashSet<i64> = buckets
+            .iter()
+            .filter(|(_, dirs)| dirs[0] && dirs[1])
+            .map(|(&b, _)| b)
+            .collect();
+        if membrane.is_empty() {
+            return opening_mesh.clone();
+        }
+        let mut out = opening_mesh.clone();
+        out.indices.clear();
+        for t in 0..tri_count {
+            let (bk, _) = cap_tris[t];
+            if membrane.contains(&bk) {
+                continue;
+            }
+            out.indices.push(opening_mesh.indices[t * 3]);
+            out.indices.push(opening_mesh.indices[t * 3 + 1]);
+            out.indices.push(opening_mesh.indices[t * 3 + 2]);
+        }
+        out
     }
 
     fn extend_opening_mesh_through_host(

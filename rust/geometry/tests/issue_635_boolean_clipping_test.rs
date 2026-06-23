@@ -949,3 +949,65 @@ fn issue_635_no_gable_cap_67828() {
     assert_no_gable_cap(&mesh, WALL_67828);
 }
 
+/// Regression for issue #635: the PRODUCTION submesh path
+/// (`process_element_with_submeshes_and_voids`) must also apply the round-
+/// window void for wall #67828.
+///
+/// The viewer calls this path first (before `process_element_with_voids`),
+/// and returns early if it yields non-empty sub-meshes. If those sub-meshes
+/// have no hole the viewer renders a solid wall even though the fallback path
+/// would have worked correctly.
+#[test]
+fn issue_635_submesh_path_wall_67828_has_round_window_hole() {
+    let content = match load_fixture(FIXTURE) {
+        Some(c) => c,
+        None => {
+            eprintln!("{} missing — skipping issue-635 submesh path test", FIXTURE);
+            return;
+        }
+    };
+    let void_index = build_void_index_like_production(&content);
+    let entity_index = ifc_lite_core::build_entity_index(&content);
+    let mut decoder = ifc_lite_core::EntityDecoder::with_index(&content, entity_index);
+    let entity = decoder
+        .decode_by_id(WALL_67828)
+        .expect("wall #67828 should decode");
+    let router = GeometryRouter::with_scale(1.0);
+    let sub_meshes = router
+        .process_element_with_submeshes_and_voids(&entity, &mut decoder, &void_index)
+        .expect("process_element_with_submeshes_and_voids should succeed");
+    assert!(
+        !sub_meshes.is_empty(),
+        "wall #67828 submesh path produced empty collection"
+    );
+    let wall_mesh = sub_meshes.into_combined_mesh();
+    assert!(!wall_mesh.is_empty(), "combined sub-mesh is empty");
+
+    let (op_min, op_max) =
+        opening_world_aabb(&content, OPENING_68400).expect("opening #68400 should have geometry");
+
+    let hits = count_hits_through_opening_centre(&wall_mesh, op_min, op_max);
+    assert!(
+        hits <= 4,
+        "submesh path: wall #67828 has {} triangles in the centre of round window #68400 — \
+         void cut was NOT applied. opening_aabb=[{:?}..{:?}], wall_tris={}",
+        hits,
+        op_min,
+        op_max,
+        wall_mesh.triangle_count()
+    );
+
+    let (boundary_verts, aspect) = opening_boundary_metrics(&wall_mesh, op_min, op_max);
+    assert!(
+        boundary_verts >= 8,
+        "submesh path: round window #68400 hole boundary has only {} vertices — \
+         CSG cut produced no detectable rim",
+        boundary_verts
+    );
+    assert!(
+        aspect < 1.5,
+        "submesh path: round window #68400 boundary aspect {:.3} — non-circular cut",
+        aspect
+    );
+}
+

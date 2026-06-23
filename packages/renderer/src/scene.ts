@@ -1666,14 +1666,6 @@ export class Scene {
       ],
     });
 
-    // Backface-cull this batch iff EVERY source mesh is a material-layer slice
-    // (geometryClass 3). Mixed-class buckets (a non-layer element that happens
-    // to share the exact colour) stay double-sided — culling them could drop
-    // faces if their winding is unreliable; the layer slices' winding is not.
-    const isLayer =
-      meshDataArray.length > 0 &&
-      meshDataArray.every((m) => (m.geometryClass ?? 0) === 3);
-
     return {
       id: this.nextBatchId++,
       colorKey: bucketKey ?? this.colorKey(color),
@@ -1688,7 +1680,6 @@ export class Scene {
       // Per-batch local frame: positions are stored relative to this; the draw
       // loop applies model = translate(origin) so they land in world space.
       origin: merged.origin,
-      isLayer,
     };
   }
 

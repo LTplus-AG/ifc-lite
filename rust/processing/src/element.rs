@@ -252,13 +252,14 @@ fn produce_inner(
         .get(&job.id)
         .is_some_and(|openings| !openings.is_empty());
 
-    // Material-layer wall: its per-layer slices are thin coincident-faced solids
-    // that z-fight into a hollow-looking shell when drawn double-sided. They have
-    // verified-correct outward winding, though, so we tag them GEOM_CLASS_LAYER_SLICE
-    // and the renderer draws them BACKFACE-CULLED — the build-up stays visible on
-    // the faces/edges, but the interior coincident caps (which would z-fight) are
-    // never rasterised, so the wall reads as a clean solid. The 2D/section cut
-    // (which never culls) consumes the same class for its per-layer fills.
+    // Material-layer wall: tag its per-layer slices GEOM_CLASS_LAYER_SLICE so the
+    // 2D/section cut can split the cut into per-layer fills (one sub-mesh = one
+    // layer = one colour). Since #1311 the slices are OPEN bands whose union is
+    // the wall's watertight outer skin (no coincident interface caps), and the
+    // renderer draws them DOUBLE-SIDED like all other IFC geometry — IFC winding
+    // is not reliably outward, so the previous backface-culling of these slices
+    // dropped inward-wound faces and made the wall read hollow. The tag no longer
+    // drives any culling; it is purely the per-layer-fill marker.
     let layer_class = if router.is_material_layer_sliceable(job.id) {
         GEOM_CLASS_LAYER_SLICE
     } else {

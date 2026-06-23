@@ -75,12 +75,6 @@ export interface BatchedMesh {
    *  space (world = origin + position). Keeps f32 vertex coords element-small at
    *  building/georef scale (no fan collapse). [0,0,0] = absolute (legacy). */
   origin?: [number, number, number];
-  /** True when every source mesh in this batch is a material-layer slice
-   *  (geometryClass 3). Those slices are watertight, outward-wound thin solids
-   *  whose interior coincident caps z-fight when drawn double-sided; the draw
-   *  loop renders this batch with the BACKFACE-CULLING pipeline so only the
-   *  visible build-up surfaces rasterise (clean solid, no hollow shimmer). */
-  isLayer?: boolean;
 }
 
 // Section plane for clipping

@@ -1823,23 +1823,18 @@ export class Renderer {
                     pass.drawIndexed(batch.indexCount);
                 };
 
-                // Render opaque batches first with opaque pipeline. Material-layer
-                // slices (isLayer) draw separately with the BACKFACE-CULLING
-                // pipeline — their thin coincident interior caps would otherwise
-                // z-fight into a hollow shimmer; culling drops them (winding is
-                // reliable) so the build-up reads as a clean solid.
+                // Render opaque batches with the opaque (double-sided) pipeline.
+                // Material-layer slices render double-sided like all other IFC
+                // geometry. They USED to be backface-culled to hide the coincident
+                // interface caps of the old CLOSED per-layer slabs; since #1311 the
+                // slabs are open bands whose UNION is the wall's watertight outer
+                // skin (no caps ⇒ no coincident faces to z-fight). IFC winding is
+                // not reliably outward, so culling those bands dropped inward-wound
+                // faces and punched holes — the wall read HOLLOW even uncut.
+                // Double-siding draws every face of the watertight skin ⇒ solid.
                 pass.setPipeline(this.pipeline.getPipeline());
                 for (const batch of opaqueBatches) {
-                    if (batch.isLayer) continue;
                     renderBatch(batch);
-                }
-                const layerOpaqueBatches = opaqueBatches.filter((b) => b.isLayer);
-                if (layerOpaqueBatches.length > 0) {
-                    pass.setPipeline(this.pipeline.getCulledPipeline());
-                    for (const batch of layerOpaqueBatches) {
-                        renderBatch(batch);
-                    }
-                    pass.setPipeline(this.pipeline.getPipeline());
                 }
 
                 // GPU-instancing pass — repeated geometry collated by the producer
@@ -1951,13 +1946,12 @@ export class Renderer {
                             );
                             if (isTransparent) {
                                 pass.setPipeline(this.pipeline.getTransparentPipeline());
-                            } else if (subBatch.isLayer) {
-                                // Material-layer slice sub-batch: backface-cull so
-                                // the thin coincident caps don't z-fight (see the
-                                // full-batch path above).
-                                pass.setPipeline(this.pipeline.getCulledPipeline());
-                                opaqueSubBatches.push(subBatch);
                             } else {
+                                // Opaque (incl. material-layer slices): double-sided.
+                                // Layer slices are NOT culled — since #1311 they are
+                                // open watertight-skin bands with unreliable winding,
+                                // so culling punched holes (wall read hollow). See the
+                                // full-batch path above.
                                 pass.setPipeline(this.pipeline.getPipeline());
                                 opaqueSubBatches.push(subBatch);
                             }

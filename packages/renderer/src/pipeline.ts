@@ -20,7 +20,6 @@ export class RenderPipeline {
     private device: GPUDevice;
     private webgpuDevice: WebGPUDevice;
     private pipeline: GPURenderPipeline;
-    private culledPipeline!: GPURenderPipeline;  // Opaque pipeline with backface culling — material-layer slices only (their winding is reliable)
     private instancedPipeline!: GPURenderPipeline;  // GPU-instancing: template (slot 0) + per-instance buffer (slot 1)
     private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); lazily built, null if unbuilt/rejected
     private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
@@ -243,19 +242,6 @@ export class RenderPipeline {
         // Stash the instanced vertex stage so the transparent instanced pipeline
         // (built after transparentPipelineDescriptor below) reuses it verbatim.
         const instancedVertexStage = instancedVertex;
-
-        // Backface-culled clone of the opaque pipeline, used ONLY for material-
-        // layer slices. Those are thin watertight outward-wound solids stacked
-        // with coincident interface caps; drawn double-sided (cullMode 'none')
-        // the back-facing cap of each pair z-fights its neighbour into a hollow-
-        // looking shimmer. Their winding is reliable (positive signed volume), so
-        // culling back faces (default frontFace 'ccw') drops the interior caps
-        // and the build-up reads as a clean solid. General IFC geometry stays on
-        // the non-culled `pipeline` because its winding is not reliable.
-        this.culledPipeline = this.device.createRenderPipeline({
-            ...pipelineDescriptor,
-            primitive: { topology: 'triangle-list', cullMode: 'back' },
-        } as GPURenderPipelineDescriptor);
 
         // Create selection pipeline descriptor
         const selectionPipelineDescriptor: GPURenderPipelineDescriptor = {
@@ -662,11 +648,6 @@ export class RenderPipeline {
 
     getPipeline(): GPURenderPipeline {
         return this.pipeline;
-    }
-
-    /** Backface-culled opaque pipeline — material-layer slices only. */
-    getCulledPipeline(): GPURenderPipeline {
-        return this.culledPipeline;
     }
 
     /** GPU-instancing pipeline (template vertex buffer at slot 0 + per-instance buffer at slot 1). */

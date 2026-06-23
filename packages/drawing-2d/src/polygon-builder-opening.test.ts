@@ -142,3 +142,36 @@ describe('PolygonBuilder — opening-cut multilayer walls', () => {
     expect(coversPoint(polys, oc)).toBe(false);
   });
 });
+
+describe('PolygonBuilder.buildBasePolygons — opaque section backstop', () => {
+  const LEFT: [number, number] = [0, 4];
+  const RIGHT: [number, number] = [6, 10];
+
+  it('builds the full closed cross-section per layered entity (both chunks, opening empty)', () => {
+    // Same 3-layer opening wall. The base ignores the per-layer split: combining
+    // all bands drops the open interfaces and leaves the watertight outer skin,
+    // which closes into the two solid chunks — no interface stitching needed.
+    const segments = [
+      ...layerBand([LEFT, RIGHT], 0.0, 0.2, true, false, 7, RED),
+      ...layerBand([LEFT, RIGHT], 0.2, 0.6, false, false, 7, GREEN),
+      ...layerBand([LEFT, RIGHT], 0.6, 0.8, false, true, 7, BLUE),
+    ];
+    const base = new PolygonBuilder().buildBasePolygons(segments);
+
+    expect(base).toHaveLength(2);               // one per solid chunk
+    for (const p of base) {
+      expect(p.isLayerBase).toBe(true);
+      expect(p.color).toBeUndefined();          // colourless ⇒ opaque uniform fill
+    }
+    // full wall section = 2 chunks × (4 length × 0.8 thickness) = 6.4
+    expect(areaOf(base)).toBeCloseTo(6.4, 5);
+    expect(coversPoint(base, { x: 5, y: 0.4 })).toBe(false); // opening stays empty
+    // and it DOES cover where a layer fill belongs, so a missing layer reads solid
+    expect(coversPoint(base, { x: 2, y: 0.4 })).toBe(true);
+  });
+
+  it('emits no base for a single-material entity (its normal fill is already solid)', () => {
+    const segments = layerBand([[0, 10]], 0, 0.3, true, true, 8, RED);
+    expect(new PolygonBuilder().buildBasePolygons(segments)).toHaveLength(0);
+  });
+});

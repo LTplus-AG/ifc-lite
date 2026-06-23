@@ -78,6 +78,41 @@ export class PolygonBuilder {
   }
 
   /**
+   * Build the OPAQUE BASE cross-section for every MULTI-material entity — its
+   * full solid section, ignoring the per-layer colour split.
+   *
+   * Combining all of one entity's cut segments drops the (open) interface
+   * boundaries and leaves only the wall's outer skin, which — because #1311 made
+   * the union of layer bands watertight — is a set of CLOSED rings (the solid
+   * chunks, with openings as holes/separate rings). So this needs no interface
+   * stitching: the ordinary closed-loop builder resolves it robustly. Drawn
+   * behind the per-layer fills in the 3D overlay, it guarantees a cut never reads
+   * hollow even where the per-layer reconstruction has to fall back. Single-
+   * material entities are skipped — their normal `cutPolygons` already fill solid.
+   */
+  buildBasePolygons(segments: CutSegment[]): DrawingPolygon[] {
+    const byEntity = new Map<EntityKey, CutSegment[]>();
+    for (const seg of segments) {
+      const key = makeEntityKey(seg.modelIndex, seg.entityId);
+      let bucket = byEntity.get(key);
+      if (!bucket) { bucket = []; byEntity.set(key, bucket); }
+      bucket.push(seg);
+    }
+
+    const out: DrawingPolygon[][] = [];
+    for (const entitySegments of byEntity.values()) {
+      // Only entities that cut into >1 material get per-layer fills (hence a base).
+      const colors = new Set(entitySegments.map((s) => colorKey(s.color)));
+      if (colors.size < 2) continue;
+      // Colourless build ⇒ closed-loop path (the combined section is closed).
+      const base = this.buildColorGroupPolygons(entitySegments, undefined)
+        .map((p) => ({ ...p, isLayerBase: true }));
+      if (base.length > 0) out.push(base);
+    }
+    return out.flat();
+  }
+
+  /**
    * Build polygons for a single entity.
    *
    * Sub-groups the entity's segments by material colour so an

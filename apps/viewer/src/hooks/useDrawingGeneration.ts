@@ -982,10 +982,19 @@ export function useDrawingGeneration({
         }
 
         // Create hybrid drawing
+        // Keep the opaque layer-base backstop (3D overlay only) in step with the
+        // filtered per-layer fills, so an entity replaced by a symbolic rep does
+        // not leave a base with no colour fills behind it.
+        const filteredLayerBasePolygons = result.layerBaseCutPolygons?.filter(
+          (poly: { entityId?: number }) =>
+            poly.entityId === undefined || !entitiesWithRelevantSymbols.has(poly.entityId),
+        );
+
         const hybridDrawing: Drawing2D = {
           ...result,
           lines: combinedLines,
           cutPolygons: filteredCutPolygons,
+          layerBaseCutPolygons: filteredLayerBasePolygons,
           bounds: {
             min: { x: isFinite(minX) ? minX : result.bounds.min.x, y: isFinite(minY) ? minY : result.bounds.min.y },
             max: { x: isFinite(maxX) ? maxX : result.bounds.max.x, y: isFinite(maxY) ? maxY : result.bounds.max.y },

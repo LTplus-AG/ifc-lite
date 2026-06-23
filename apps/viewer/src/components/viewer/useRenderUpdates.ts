@@ -90,7 +90,18 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     if (!renderer || !isInitialized) return;
 
     if (activeTool === 'section' && drawing2D && drawing2D.cutPolygons.length > 0 && show3DOverlay) {
-      const polygons: CutPolygon2D[] = drawing2D.cutPolygons.map((cp) => ({
+      // Opaque base cross-sections FIRST (one per multi-material entity, built
+      // from the watertight union so they always close). The overlay triangulates
+      // polygons in array order into one draw, so these render BEHIND the per-
+      // layer colours below; where a layer's cap could not be reconstructed the
+      // base keeps the cut solid instead of see-through (the "wall looks hollow in
+      // section view" backstop). Colourless → uniform opaque cap fill.
+      const basePolygons: CutPolygon2D[] = (drawing2D.layerBaseCutPolygons ?? []).map((cp) => ({
+        polygon: cp.polygon,
+        ifcType: cp.ifcType,
+        expressId: cp.entityId,
+      }));
+      const layerPolygons: CutPolygon2D[] = drawing2D.cutPolygons.map((cp) => ({
         polygon: cp.polygon,
         ifcType: cp.ifcType,
         expressId: cp.entityId,
@@ -99,6 +110,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
         // build-up. Undefined for single-material polygons → uniform cap style.
         color: cp.color,
       }));
+      const polygons: CutPolygon2D[] = [...basePolygons, ...layerPolygons];
 
       const lines: DrawingLine2D[] = drawing2D.lines
         .filter((line) => showHiddenLines || line.visibility !== 'hidden')

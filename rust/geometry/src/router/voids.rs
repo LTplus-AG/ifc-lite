@@ -3715,15 +3715,39 @@ impl GeometryRouter {
         let bucket = |s: f64| (s / cell).round() as i64;
         let (min_b, max_b) = (bucket(smin), bucket(smax));
 
-        // Per interior cap-plane bucket, record whether it carries faces pointing
-        // BOTH along +axis and −axis. Two solids glued cap-to-cap leave exactly
-        // that: an outward cap of one and an inward cap of the other on the same
-        // plane. A lone interior cap (a single solid with an internal gap — rare)
-        // points only one way and is left intact, so a genuine two-hole opening is
-        // not merged into one.
-        let mut buckets: std::collections::HashMap<i64, [bool; 2]> =
+        // Lateral basis (u, v) ⊥ axis, for the spatial-overlap test below.
+        let helper = if d.x.abs() < 0.9 {
+            Vector3::new(1.0, 0.0, 0.0)
+        } else {
+            Vector3::new(0.0, 1.0, 0.0)
+        };
+        let u = d.cross(&helper).normalize();
+        let v = d.cross(&u);
+
+        // Per interior cap-plane bucket, track the LATERAL (⊥ axis) bounding box of
+        // the +axis-facing and −axis-facing cap faces SEPARATELY. Two solids glued
+        // cap-to-cap leave an outward cap of one and an inward cap of the other on
+        // the same plane — but, crucially, with the SAME lateral footprint (the
+        // shared disk). Tracking direction alone is not enough: two laterally
+        // SEPARATE caps (e.g. side-by-side cutters abutting at one offset) would
+        // also carry both directions in the bucket, and welding them would punch
+        // through solid material between the holes. So a bucket is a membrane only
+        // where the two footprints actually OVERLAP, and only that overlap region
+        // is removed — a lone cap or a disjoint neighbour sharing the offset is
+        // kept. A genuine two-hole opening is therefore not merged into one.
+        let bbox_union = |bb: &mut Option<[f64; 4]>, lu: f64, lv: f64| match bb {
+            None => *bb = Some([lu, lu, lv, lv]),
+            Some(b) => {
+                b[0] = b[0].min(lu);
+                b[1] = b[1].max(lu);
+                b[2] = b[2].min(lv);
+                b[3] = b[3].max(lv);
+            }
+        };
+        let mut buckets: std::collections::HashMap<i64, [Option<[f64; 4]>; 2]> =
             std::collections::HashMap::new();
-        let mut cap_tris: Vec<(i64, bool)> = Vec::with_capacity(tri_count);
+        // Per cap triangle: (bucket, lateral_u, lateral_v); non-caps use i64::MIN.
+        let mut cap_tris: Vec<(i64, f64, f64)> = Vec::with_capacity(tri_count);
         for t in 0..tri_count {
             let (i0, i1, i2) = (
                 opening_mesh.indices[t * 3] as usize,
@@ -3740,40 +3764,58 @@ impl GeometryRouter {
             ];
             let nl = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
             if nl < 1e-12 {
-                cap_tris.push((i64::MIN, false));
+                cap_tris.push((i64::MIN, 0.0, 0.0));
                 continue;
             }
             let align = (n[0] * d.x + n[1] * d.y + n[2] * d.z) / nl;
             if align.abs() <= 0.9 {
-                cap_tris.push((i64::MIN, false)); // not a cap (tube wall)
+                cap_tris.push((i64::MIN, 0.0, 0.0)); // not a cap (tube wall)
                 continue;
             }
-            let cs = ((a[0] + b[0] + c[0]) / 3.0) * d.x
-                + ((a[1] + b[1] + c[1]) / 3.0) * d.y
-                + ((a[2] + b[2] + c[2]) / 3.0) * d.z;
+            let cx = (a[0] + b[0] + c[0]) / 3.0;
+            let cy = (a[1] + b[1] + c[1]) / 3.0;
+            let cz = (a[2] + b[2] + c[2]) / 3.0;
+            let cs = cx * d.x + cy * d.y + cz * d.z;
+            let lu = cx * u.x + cy * u.y + cz * u.z;
+            let lv = cx * v.x + cy * v.y + cz * v.z;
             let bk = bucket(cs);
-            let positive = align > 0.0;
-            cap_tris.push((bk, positive));
+            cap_tris.push((bk, lu, lv));
             if bk != min_b && bk != max_b {
-                let e = buckets.entry(bk).or_insert([false, false]);
-                e[positive as usize] = true;
+                let e = buckets.entry(bk).or_insert([None, None]);
+                bbox_union(&mut e[(align > 0.0) as usize], lu, lv);
             }
         }
-        // A bucket is a glued membrane iff it has faces pointing both ways.
-        let membrane: std::collections::HashSet<i64> = buckets
-            .iter()
-            .filter(|(_, dirs)| dirs[0] && dirs[1])
-            .map(|(&b, _)| b)
-            .collect();
-        if membrane.is_empty() {
+        // A bucket is a glued membrane where its +face and −face footprints overlap
+        // laterally; the membrane region is that lateral intersection.
+        let mut membrane_region: std::collections::HashMap<i64, [f64; 4]> =
+            std::collections::HashMap::new();
+        for (&bk, dirs) in &buckets {
+            if let (Some(neg), Some(pos)) = (dirs[0], dirs[1]) {
+                let iu0 = neg[0].max(pos[0]);
+                let iu1 = neg[1].min(pos[1]);
+                let iv0 = neg[2].max(pos[2]);
+                let iv1 = neg[3].min(pos[3]);
+                // Require a non-degenerate overlap so caps merely touching at an
+                // edge/corner (a real internal partition, not a coincident disk)
+                // are not welded.
+                if iu1 - iu0 > 1.0e-3 && iv1 - iv0 > 1.0e-3 {
+                    membrane_region.insert(bk, [iu0, iu1, iv0, iv1]);
+                }
+            }
+        }
+        if membrane_region.is_empty() {
             return opening_mesh.clone();
         }
+        let pad = 1.0e-4;
         let mut out = opening_mesh.clone();
         out.indices.clear();
         for t in 0..tri_count {
-            let (bk, _) = cap_tris[t];
-            if membrane.contains(&bk) {
-                continue;
+            let (bk, lu, lv) = cap_tris[t];
+            if let Some(r) = membrane_region.get(&bk) {
+                if lu >= r[0] - pad && lu <= r[1] + pad && lv >= r[2] - pad && lv <= r[3] + pad
+                {
+                    continue; // inside the overlapping membrane footprint
+                }
             }
             out.indices.push(opening_mesh.indices[t * 3]);
             out.indices.push(opening_mesh.indices[t * 3 + 1]);

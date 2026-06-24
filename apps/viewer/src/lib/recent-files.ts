@@ -86,6 +86,12 @@ function openDB(): Promise<IDBDatabase> {
 /** Cache file blobs in IndexedDB for instant reload from palette. */
 export async function cacheFileBlobs(files: File[]): Promise<void> {
   try {
+    // Only stage up to the cache capacity. The store keeps at most
+    // MAX_CACHED_FILES entries, so reading every blob of a large multi-file drop
+    // into memory just to evict most of them afterwards is wasteful — keep the
+    // last-selected ones (the eviction below keeps newest by timestamp anyway).
+    const eligible = files.filter((f) => f.size <= MAX_CACHE_SIZE).slice(-MAX_CACHED_FILES);
+
     // Read every blob FIRST. An IndexedDB transaction auto-commits as soon as
     // control returns to the event loop with no pending request, so awaiting
     // file.arrayBuffer() *inside* the transaction would inactivate it and make
@@ -93,8 +99,7 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
     // nothing cached). Do all the async reads up front, then write in one
     // synchronous burst.
     const records: { name: string; blob: ArrayBuffer; size: number; type: string; timestamp: number }[] = [];
-    for (const file of files) {
-      if (file.size > MAX_CACHE_SIZE) continue; // skip oversized files
+    for (const file of eligible) {
       records.push({
         name: file.name,
         blob: await file.arrayBuffer(),

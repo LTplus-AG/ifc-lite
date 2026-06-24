@@ -502,13 +502,20 @@ export function ViewportContainer() {
       return;
     }
 
-    recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
-    void cacheFileBlobs(supportedFiles);
-    setRecentFiles(getRecentFiles().slice(0, 3));
-
     void handlesPromise.then((opened) => {
-      const handleByName = new Map((opened ?? []).map((o) => [o.file.name, o.handle]));
-      routeLoad(supportedFiles, supportedFiles.map((f) => handleByName.get(f.name)));
+      // Prefer the handle-paired files (Chromium): each file + handle comes from
+      // the same dropped item, so no filename matching is needed. Fall back to
+      // the plain dropped files when no handles were captured (Firefox/Safari).
+      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file));
+      const useHandles = supportedOpened.length > 0;
+      const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
+      const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
+
+      recordRecentFiles(files.map((file) => ({ name: file.name, size: file.size })));
+      void cacheFileBlobs(files);
+      setRecentFiles(getRecentFiles().slice(0, 3));
+
+      routeLoad(files, handles);
     });
   }, [routeLoad, applyDragEvent, isSupportedFile, webgpu.supported]);
 

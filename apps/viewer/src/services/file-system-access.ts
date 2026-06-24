@@ -136,7 +136,8 @@ export function handlesFromDataTransfer(dataTransfer: DataTransfer): Promise<Ope
   const pending = items.map((item) => {
     try {
       return item.getAsFileSystemHandle?.() ?? Promise.resolve(null);
-    } catch {
+    } catch (err) {
+      console.warn('[file-system-access] getAsFileSystemHandle threw for a dropped item', err);
       return Promise.resolve(null);
     }
   });

@@ -296,6 +296,11 @@ function isSupportedModelFile(f: File): boolean {
     || n.endsWith('.e57') || n.endsWith('.pts') || n.endsWith('.xyz');
 }
 
+/** Case-insensitive IFCX check (filenames are accepted case-insensitively). */
+function isIfcxModelFile(f: File): boolean {
+  return f.name.toLowerCase().endsWith('.ifcx');
+}
+
 interface MainToolbarProps {
   onShowShortcuts?: () => void;
 }
@@ -484,7 +489,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     handles?: (FileSystemFileHandle | undefined)[],
   ) => {
     if (supportedFiles.length === 0) return;
-    const newFilesAreIfcx = supportedFiles.every(f => f.name.endsWith('.ifcx'));
+    const newFilesAreIfcx = supportedFiles.every(isIfcxModelFile);
     const existingIsIfcx = isIfcxDataStore(ifcDataStore);
 
     if (newFilesAreIfcx && existingIsIfcx) {
@@ -533,8 +538,12 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       fileInputRef.current?.click();
       return;
     }
-    const opened = await openIfcFilesWithHandles();
-    if (!opened) return; // cancelled, unavailable, or picker failed
+    const picked = await openIfcFilesWithHandles();
+    if (!picked) return; // cancelled, unavailable, or picker failed
+    // The picker keeps an "all files" option, so drop anything unsupported
+    // before it reaches the load pipeline (matches the <input> + Add Model paths).
+    const opened = picked.filter(o => isSupportedModelFile(o.file));
+    if (opened.length === 0) return;
 
     const files = opened.map(o => o.file);
     recordRecentFiles(files.map(f => ({ name: f.name, size: f.size })));
@@ -545,7 +554,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       void loadFile(opened[0].file, { kind: 'primary' }, { sourceHandle: opened[0].handle });
     } else {
       // Multiple files mirror handleFileSelect's branching.
-      const allIfcx = files.every(f => f.name.endsWith('.ifcx'));
+      const allIfcx = files.every(isIfcxModelFile);
       resetViewerState();
       clearAllModels();
       if (allIfcx) {
@@ -592,7 +601,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     void cacheFileBlobs(ok.map((r) => r.fresh));
 
     if (targets.length === 1) {
-      void loadFile(ok[0].fresh, { kind: 'primary' }, { sourceHandle: ok[0].model.sourceHandle });
+      // Await so the success toast only fires once the reload has completed.
+      await loadFile(ok[0].fresh, { kind: 'primary' }, { sourceHandle: ok[0].model.sourceHandle });
     } else {
       // Rebuild the federation from fresh bytes, preserving id + order + state.
       clearAllModels();
@@ -942,6 +952,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
                 void handleRefresh();
               }}
               disabled={loading}
+              aria-label={models.size > 1 ? 'Refresh models from disk' : 'Refresh model from disk'}
             >
               <RefreshCw className="h-4 w-4" />
             </Button>

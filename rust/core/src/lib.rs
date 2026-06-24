@@ -72,6 +72,7 @@ pub mod model_bounds;
 pub mod parser;
 pub mod schema_gen;
 pub(crate) mod schema_helpers;
+pub mod step_encoding;
 pub mod streaming;
 pub mod units;
 
@@ -91,6 +92,7 @@ pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
 pub use parser::{parse_entity, EntityScanner, Token};
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
 pub use schema_helpers::{has_geometry_by_name, is_simple_geometry_type};
+pub use step_encoding::{decode_ifc_string, encode_ifc_string};
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use units::{
     extract_length_unit_scale, extract_plane_angle_to_radians, get_si_prefix_multiplier,

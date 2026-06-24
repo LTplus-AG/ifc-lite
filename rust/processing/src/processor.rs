@@ -649,7 +649,10 @@ fn parse_step_string(token: &[u8]) -> Option<String> {
     if trimmed.len() < 2 || trimmed[0] != b'\'' || trimmed[trimmed.len() - 1] != b'\'' {
         return None;
     }
-    Some(String::from_utf8_lossy(&trimmed[1..trimmed.len() - 1]).replace("''", "'"))
+    let unescaped = String::from_utf8_lossy(&trimmed[1..trimmed.len() - 1]).replace("''", "'");
+    // Decode STEP unicode escapes so quick-metadata names match the from_token
+    // path and the TS parser (e.g. a name stored as Br\X2\00FC\X0\cke).
+    Some(ifc_lite_core::decode_ifc_string(&unescaped).into_owned())
 }
 
 fn parse_step_ref(token: &[u8]) -> Option<u32> {

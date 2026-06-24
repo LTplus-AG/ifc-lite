@@ -1,0 +1,60 @@
+{
+  "_comment": "Shared decode test vectors for the Rust step_encoding and TS ifc-string decoders. Expected values use JSON unicode escapes so this file stays pure ASCII. Both decoders must agree on every case.",
+  "cases": [
+    {
+      "name": "plain_ascii",
+      "encoded": "Hello World",
+      "decoded": "Hello World"
+    },
+    {
+      "name": "guid_no_escape",
+      "encoded": "3Bvg7$qHb0gP37$Qz2vN1k",
+      "decoded": "3Bvg7$qHb0gP37$Qz2vN1k"
+    },
+    {
+      "name": "x2_bmp",
+      "encoded": "Br\\X2\\00FC\\X0\\cke",
+      "decoded": "Br\u00fccke"
+    },
+    {
+      "name": "x2_multi_unit",
+      "encoded": "\\X2\\00E400F6\\X0\\",
+      "decoded": "\u00e4\u00f6"
+    },
+    {
+      "name": "x2_surrogate_pair",
+      "encoded": "\\X2\\D83DDE00\\X0\\",
+      "decoded": "\ud83d\ude00"
+    },
+    {
+      "name": "x4_astral",
+      "encoded": "\\X4\\0001F600\\X0\\",
+      "decoded": "\ud83d\ude00"
+    },
+    {
+      "name": "x_single_byte_iso8859",
+      "encoded": "\\X\\E9",
+      "decoded": "\u00e9"
+    },
+    {
+      "name": "s_extended_ascii",
+      "encoded": "\\S\\a",
+      "decoded": "\u00e1"
+    },
+    {
+      "name": "p_directive_dropped",
+      "encoded": "\\PA\\Hello",
+      "decoded": "Hello"
+    },
+    {
+      "name": "unknown_escape_kept",
+      "encoded": "a\\Qb",
+      "decoded": "a\\Qb"
+    },
+    {
+      "name": "malformed_x2_no_terminator",
+      "encoded": "\\X2\\00FC",
+      "decoded": "\\X2\\00FC"
+    }
+  ]
+}

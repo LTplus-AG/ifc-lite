@@ -44,6 +44,8 @@ thiserror = "2.0"
 [dev-dependencies]
 ifc-lite-geometry = { path = "../geometry" }
 tokio = { version = "1", features = ["macros", "rt"] }
+# Test-only: parse the shared decode parity fixture.
+serde_json = "1.0"
 
 [lints]
 workspace = true

@@ -1,5 +1,13 @@
 # @ifc-lite/wasm
 
+## 2.13.2
+
+### Patch Changes
+
+- [#1342](https://github.com/LTplus-AG/ifc-lite/pull/1342) [`c7c58c0`](https://github.com/LTplus-AG/ifc-lite/commit/c7c58c09e40fe40be5cc14cadf95beac18130ea5) Thanks [@louistrue](https://github.com/louistrue)! - Decode STEP string escapes (`\X2\`, `\X4\`, `\X\`, `\S\`, `\P\`) in the Rust parser so entity names and property values surface as native UTF-8, matching the TypeScript `decodeIfcString`. Previously the Rust/CLI/server path left the escapes literal (a name stored as `Name\X2\00FC\X0\` came through unescaped), while the browser parser decoded them, so the two paths disagreed on non-ASCII text. The Rust and TS decoders are now pinned to one shared test-vector fixture so they cannot drift.
+
+- [#1351](https://github.com/LTplus-AG/ifc-lite/pull/1351) [`18187fa`](https://github.com/LTplus-AG/ifc-lite/commit/18187facd6fa6fec15a23ef5e3263353730c5d8b) Thanks [@louistrue](https://github.com/louistrue)! - Sample `IfcSweptDiskSolid` directrix arcs in full 3D. A directrix segment that is an `IfcTrimmedCurve` over an `IfcCircle`/`IfcEllipse` was sampled through the 2D conic path and lifted with `z = 0`, dropping the arc's out-of-plane component. Rebar bend arcs (Tekla `IfcReinforcingBar` bodies) live in the XZ plane, so the flattened arc landed in the wrong plane and twisted the swept tube — L-bars grew a spurious hook and U-bars crumpled (issue [#1348](https://github.com/LTplus-AG/ifc-lite/issues/1348)). The arc is now sampled against the conic's real 3D placement (centre + X/Y axes), honouring parameter and cartesian trim bounds. Fixes [#1348](https://github.com/LTplus-AG/ifc-lite/issues/1348) and the geometry half of [#1350](https://github.com/LTplus-AG/ifc-lite/issues/1350).
+
 ## 2.13.1
 
 ### Patch Changes

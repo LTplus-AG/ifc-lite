@@ -1,5 +1,16 @@
 # @ifc-lite/parser
 
+## 3.4.0
+
+### Minor Changes
+
+- [#1347](https://github.com/LTplus-AG/ifc-lite/pull/1347) [`297ae7b`](https://github.com/LTplus-AG/ifc-lite/commit/297ae7bc232519fe06a25d6ea20f39290e8a7ed2) Thanks [@louistrue](https://github.com/louistrue)! - `SpatialHierarchyBuilder` is now the single source for spatial-hierarchy construction. Added `buildFromCache(entities, relationships)` for cache restores (no source buffer, so storey elevations stay empty and `getStoreyByElevation` returns null), alongside the existing `build(...)` for fresh parses. Both entry points share one `buildNode`, so they can no longer drift: the fresh path now also applies the aggregate-descendant storey mapping (an `IfcBuildingElementPart` under an `IfcWall` resolves to that wall's storey), and the cache path now also has the cyclic-`IfcRelAggregates` guard. The viewer's duplicate `rebuildSpatialHierarchy` becomes a thin wrapper over `buildFromCache`.
+
+### Patch Changes
+
+- Updated dependencies [[`c7c58c0`](https://github.com/LTplus-AG/ifc-lite/commit/c7c58c09e40fe40be5cc14cadf95beac18130ea5), [`18187fa`](https://github.com/LTplus-AG/ifc-lite/commit/18187facd6fa6fec15a23ef5e3263353730c5d8b)]:
+  - @ifc-lite/wasm@2.13.2
+
 ## 3.3.2
 
 ### Patch Changes

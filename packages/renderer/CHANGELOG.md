@@ -1,5 +1,14 @@
 # @ifc-lite/renderer
 
+## 1.30.1
+
+### Patch Changes
+
+- [#1351](https://github.com/LTplus-AG/ifc-lite/pull/1351) [`18187fa`](https://github.com/LTplus-AG/ifc-lite/commit/18187facd6fa6fec15a23ef5e3263353730c5d8b) Thanks [@louistrue](https://github.com/louistrue)! - Keep small high-aspect elements on the compact camera-fit pose. The linear-infrastructure fit policy (camera positioned inside the bbox looking down the longest axis) is meant for railway / road alignments hundreds of metres long, but it triggered on any high-aspect bounding box regardless of absolute size. A single reinforcing bar viewed alone (e.g. a 4.86 m bar, aspect ~130:1) got framed end-on from inside its own bounding box and rendered as nothing (issue [#1350](https://github.com/LTplus-AG/ifc-lite/issues/1350)). The linear policy now requires the longest axis to be at least 100 m; below that the compact SE-isometric pose frames the whole element. Fixes the rendering half of [#1350](https://github.com/LTplus-AG/ifc-lite/issues/1350).
+
+- Updated dependencies [[`0b73ebb`](https://github.com/LTplus-AG/ifc-lite/commit/0b73ebb785d378651e063ace128ad097991ccfb6)]:
+  - @ifc-lite/geometry@2.10.1
+
 ## 1.30.0
 
 ### Minor Changes

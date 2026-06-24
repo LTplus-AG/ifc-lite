@@ -1,5 +1,17 @@
 # @ifc-lite/geometry
 
+## 2.10.1
+
+### Patch Changes
+
+- [#1340](https://github.com/LTplus-AG/ifc-lite/pull/1340) [`0b73ebb`](https://github.com/LTplus-AG/ifc-lite/commit/0b73ebb785d378651e063ace128ad097991ccfb6) Thanks [@louistrue](https://github.com/louistrue)! - Fix two void-cut over-cuts on walls with direction-less (e.g. FreeCAD/brep) openings ([#1337](https://github.com/LTplus-AG/ifc-lite/issues/1337)):
+
+  - Two rectangular openings on perpendicular walls whose world AABBs cross at a building corner were merged into one phantom bounding box and punched a hole through both walls. The opening merge now fires only when the two boxes coincide on at least two axes (so `bbox(A,B) == A ∪ B`, no phantom volume), which still collapses the aligned/tiled openings the merge exists to optimize.
+  - A deep box opening (cutter deeper than the wall is thick) had its through-host penetration axis guessed as its thinnest AABB axis, which for such cutters is in-plane rather than through-wall. The cap-flush extension then ran along the wrong axis and latched onto a neighbouring void's reveal facet, growing the hole ~0.3 m on later-cut openings. The penetration axis is now inferred from the axis along which the opening pierces past the host, falling back to thinnest only for genuinely flush cutters.
+
+- Updated dependencies [[`c7c58c0`](https://github.com/LTplus-AG/ifc-lite/commit/c7c58c09e40fe40be5cc14cadf95beac18130ea5), [`18187fa`](https://github.com/LTplus-AG/ifc-lite/commit/18187facd6fa6fec15a23ef5e3263353730c5d8b)]:
+  - @ifc-lite/wasm@2.13.2
+
 ## 2.10.0
 
 ### Minor Changes

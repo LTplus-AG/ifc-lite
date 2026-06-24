@@ -171,6 +171,84 @@ export function rayBoxDistance(
   return tmin < 0 ? 0 : tmin;
 }
 
+/** Ray-box entry/exit params [tmin, tmax] (unclamped), or null on miss. */
+function rayBoxInterval(
+  rayOrigin: Vec3,
+  rayDirInv: Vec3,
+  rayDirSign: [number, number, number],
+  box: BoundingBox,
+): { tmin: number; tmax: number } | null {
+  const bounds = [box.min, box.max];
+  let tmin = -Infinity;
+  let tmax = Infinity;
+  const axes: (keyof Vec3)[] = ['x', 'y', 'z'];
+  for (let a = 0; a < 3; a++) {
+    const ax = axes[a];
+    if (!isFinite(rayDirInv[ax])) {
+      if (rayOrigin[ax] < box.min[ax] || rayOrigin[ax] > box.max[ax]) return null;
+    } else {
+      const t1 = (bounds[rayDirSign[a]][ax] - rayOrigin[ax]) * rayDirInv[ax];
+      const t2 = (bounds[1 - rayDirSign[a]][ax] - rayOrigin[ax]) * rayDirInv[ax];
+      if (t1 > tmin) tmin = t1;
+      if (t2 < tmax) tmax = t2;
+    }
+  }
+  if (tmax < tmin || tmax < 0) return null;
+  return { tmin, tmax };
+}
+
+/**
+ * Entry distance into the VISIBLE part of `box` under the section plane / crop
+ * box, or null if the box is wholly clipped along the ray. Unlike a plain box
+ * entry, this clips the crop box exactly (AABB intersection) and the section
+ * plane as a half-space, so the released-geometry bbox raycast can't return a box
+ * whose only ray overlap is in the cropped/sectioned-away region.
+ */
+export function clippedBoxEntryDistance(
+  rayOrigin: Vec3,
+  rayDir: Vec3,
+  rayDirInv: Vec3,
+  rayDirSign: [number, number, number],
+  box: BoundingBox,
+  clip: PickClipState | null | undefined,
+): number | null {
+  // Crop box: the visible region inside `box` is exactly box intersect cropBox (both AABB).
+  let testBox = box;
+  const cb = clip?.clipBox;
+  if (cb?.enabled) {
+    const min: Vec3 = { x: Math.max(box.min.x, cb.min[0]), y: Math.max(box.min.y, cb.min[1]), z: Math.max(box.min.z, cb.min[2]) };
+    const max: Vec3 = { x: Math.min(box.max.x, cb.max[0]), y: Math.min(box.max.y, cb.max[1]), z: Math.min(box.max.z, cb.max[2]) };
+    if (min.x > max.x || min.y > max.y || min.z > max.z) return null;
+    testBox = { min, max };
+  }
+  const iv = rayBoxInterval(rayOrigin, rayDirInv, rayDirSign, testBox);
+  if (!iv) return null;
+  let { tmin, tmax } = iv;
+
+  // Section plane: visible where f(t) = (dot(P(t),n) - dist) * side <= 0.
+  const sp = clip?.sectionPlane;
+  if (sp) {
+    const side = sp.flipped ? -1 : 1;
+    const [nx, ny, nz] = sp.normal;
+    const f0 = (rayOrigin.x * nx + rayOrigin.y * ny + rayOrigin.z * nz - sp.distance) * side;
+    const slope = (rayDir.x * nx + rayDir.y * ny + rayDir.z * nz) * side;
+    if (Math.abs(slope) < 1e-12) {
+      if (f0 > 0) return null; // ray runs parallel on the cut-away side
+    } else {
+      const tCross = -f0 / slope;
+      if (slope > 0) {
+        if (tmin > tCross) return null;       // whole interval cut away
+        if (tmax > tCross) tmax = tCross;      // visible only up to the plane
+      } else {
+        if (tmax < tCross) return null;
+        if (tmin < tCross) tmin = tCross;      // visible only beyond the plane
+      }
+    }
+    if (tmax < tmin) return null;
+  }
+  return tmin < 0 ? 0 : tmin;
+}
+
 /**
  * Möller–Trumbore ray-triangle intersection.
  * Returns distance to intersection or null if no hit.
@@ -239,6 +317,7 @@ export function prepareRayDirInv(rayDir: Vec3): { rayDirInv: Vec3; rayDirSign: [
  */
 export function raycastBoundingBoxes(
   rayOrigin: Vec3,
+  rayDir: Vec3,
   rayDirInv: Vec3,
   rayDirSign: [number, number, number],
   boundingBoxes: Map<number, BoundingBox>,
@@ -253,10 +332,12 @@ export function raycastBoundingBoxes(
   for (const [expressId, bbox] of boundingBoxes) {
     if (hiddenIds?.has(expressId)) continue;
     if (isolatedIds !== null && isolatedIds !== undefined && !isolatedIds.has(expressId)) continue;
-    // Skip boxes the section plane / crop box fully hides (can't be picked).
-    if (hasClip && boxFullyClipped(clip, bbox)) continue;
 
-    const tNear = rayBoxDistance(rayOrigin, rayDirInv, rayDirSign, bbox);
+    // Entry into the VISIBLE part of the box, so a box clipped (fully or
+    // partially) by the section plane / crop box can't win the pick.
+    const tNear = hasClip
+      ? clippedBoxEntryDistance(rayOrigin, rayDir, rayDirInv, rayDirSign, bbox, clip)
+      : rayBoxDistance(rayOrigin, rayDirInv, rayDirSign, bbox);
     if (tNear !== null && tNear < closestDistance) {
       closestDistance = tNear;
       closestHit = { expressId, distance: tNear };

@@ -14,6 +14,8 @@ import assert from 'node:assert';
 
 import {
   raycastTriangles,
+  raycastBoundingBoxes,
+  clippedBoxEntryDistance,
   prepareRayDirInv,
   pointClipped,
   boxFullyClipped,
@@ -75,6 +77,43 @@ describe('raycastTriangles clip awareness', () => {
   it('disabled crop box does not clip', () => {
     const clip: PickClipState = { clipBox: { min: [-2, -2, -12], max: [2, 2, -7], enabled: false } };
     assert.strictEqual(cast(clip)?.expressId, NEAR);
+  });
+});
+
+describe('raycastBoundingBoxes clip awareness (released-geometry path)', () => {
+  const NEAR_B = 11; // z in [-6, -4]
+  const FAR_B = 22;  // z in [-11, -9]
+  const boxz = (lo: number, hi: number): BoundingBox => ({ min: { x: -1, y: -1, z: lo }, max: { x: 1, y: 1, z: hi } });
+  const boxes = new Map<number, BoundingBox>([[NEAR_B, boxz(-6, -4)], [FAR_B, boxz(-11, -9)]]);
+  const castBox = (clip?: PickClipState | null) =>
+    raycastBoundingBoxes(rayOrigin, rayDir, rayDirInv, rayDirSign, boxes, undefined, undefined, clip);
+
+  it('no clip: nearest box', () => {
+    assert.strictEqual(castBox(null)?.expressId, NEAR_B);
+  });
+  it('section plane cutting away the near box returns the far one', () => {
+    assert.strictEqual(castBox({ sectionPlane: { normal: [0, 0, 1], distance: -7, flipped: false } })?.expressId, FAR_B);
+  });
+  it('crop box excluding the near box returns the far one', () => {
+    assert.strictEqual(castBox({ clipBox: { min: [-2, -2, -12], max: [2, 2, -7], enabled: true } })?.expressId, FAR_B);
+  });
+
+  it('partially clipped box reports its VISIBLE entry (at the cut), not its near face', () => {
+    // Box spans z[-12,-4] (enters at t=4); section keeps z<=-7, so the visible
+    // entry is the plane crossing at z=-7 (t=7), not the box's near face (t=4).
+    const d = clippedBoxEntryDistance(
+      rayOrigin, rayDir, rayDirInv, rayDirSign, boxz(-12, -4),
+      { sectionPlane: { normal: [0, 0, 1], distance: -7, flipped: false } },
+    );
+    assert.ok(d !== null && Math.abs(d - 7) < 1e-9, `expected ~7, got ${d}`);
+  });
+
+  it('fully clipped box returns null entry', () => {
+    const d = clippedBoxEntryDistance(
+      rayOrigin, rayDir, rayDirInv, rayDirSign, boxz(-6, -4),
+      { sectionPlane: { normal: [0, 0, 1], distance: -7, flipped: false } },
+    );
+    assert.strictEqual(d, null);
   });
 });
 

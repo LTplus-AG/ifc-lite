@@ -1477,14 +1477,22 @@ export class Renderer {
             // it (section/crop-clipped geometry must be unpickable, not just hidden).
             // `flipped` matches how the mesh flags pack it below. terrainClipY feeds
             // sectionPlaneData too, so it's covered without special-casing.
+            // Snapshot (don't alias the caller's arrays/object) so an in-place
+            // mutation after render() can't make pick() mirror a different cut.
             this._activePickSection = sectionPlaneData?.enabled
                 ? {
-                    normal: sectionPlaneData.normal,
+                    normal: [...sectionPlaneData.normal] as [number, number, number],
                     distance: sectionPlaneData.distance,
                     flipped: !!options.sectionPlane?.flipped,
                 }
                 : null;
-            this._activePickClipBox = options.clipBox ?? null;
+            this._activePickClipBox = options.clipBox?.enabled
+                ? {
+                    enabled: true,
+                    min: [...options.clipBox.min] as [number, number, number],
+                    max: [...options.clipBox.max] as [number, number, number],
+                }
+                : null;
 
             // Reuse pooled scratch buffer for per-mesh uniform writes
             const meshBuf = this.uniformScratch;

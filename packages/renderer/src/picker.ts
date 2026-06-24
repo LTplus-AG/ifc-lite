@@ -640,12 +640,14 @@ export class Picker {
         this.pointPicker = new PointPicker(this.webgpuDevice);
       }
       const sz = pointSizing ?? { sizeMode: 0, worldRadius: 0.02, pointSizePx: 4 };
+      // Point clouds are section-clipped on render, so the point picker must clip
+      // on the same plane (the crop box does not clip points, on render or here).
       this.pointPicker.drawIntoPass(pass, pointNodes, viewProj, { width, height }, {
         sizeMode: sz.sizeMode,
         worldRadius: sz.worldRadius,
         pointSizePx: sz.pointSizePx,
         clickTolerancePx: sz.clickTolerancePx ?? 2,
-      });
+      }, clip?.sectionPlane ?? null);
     }
     pass.end();
     return encoder;

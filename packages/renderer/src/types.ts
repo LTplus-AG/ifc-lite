@@ -277,7 +277,8 @@ export interface PickOptions {
  * Resolved clip state the GPU picker mirrors from the most recent render so that
  * section/crop-clipped geometry is unpickable, not just invisible. The renderer
  * stashes this each `render()` and feeds it to the picker; consumers don't build
- * it. Triangle meshes only: points are not clipped here (nor on render).
+ * it. Point clouds are clipped by the section plane only (matching the point
+ * render); the crop box clips triangle meshes only, on render and on pick.
  */
 export interface PickClipState {
   // Resolved section plane (world space, already enabled), or null when off.

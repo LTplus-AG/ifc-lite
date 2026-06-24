@@ -2690,7 +2690,7 @@ export class Scene {
 
     // When geometry data has been released, use bounding-box-only raycast.
     if (this.geometryReleased) {
-      return raycastBoundingBoxes(rayOrigin, rayDirInv, rayDirSign, this.boundingBoxes, hiddenIds, isolatedIds, clip);
+      return raycastBoundingBoxes(rayOrigin, rayDir, rayDirInv, rayDirSign, this.boundingBoxes, hiddenIds, isolatedIds, clip);
     }
 
     // Full triangle-level raycast with bounding-box pre-filter

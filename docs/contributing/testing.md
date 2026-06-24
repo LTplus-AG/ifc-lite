@@ -70,6 +70,23 @@ cargo test parse_entity
 cargo test -- --nocapture
 ```
 
+#### Fuzzing the STEP parser
+
+The entity parser has a coverage-guided fuzz target (`rust/core/fuzz/`). It is a
+standalone crate, so it is not built by `cargo build`/`cargo test` or in CI; run
+it locally with [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) (needs
+the nightly toolchain, already pinned):
+
+```bash
+cargo install cargo-fuzz
+cd rust/core
+cargo fuzz run parse_entity -- -max_total_time=60
+```
+
+The contract under fuzz is that `parse_entity` never panics, hangs, or overflows
+on arbitrary bytes (only returns `Ok`/`Err`). `tests/malformed_input.rs` pins the
+same contract for specific inputs in normal CI.
+
 ## Writing Tests
 
 ### TypeScript Tests (Vitest)

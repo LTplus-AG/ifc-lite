@@ -329,4 +329,33 @@ mod tests {
         // Should only get 1 entity (only IFCWALL)
         assert_eq!(entity_count, 1);
     }
+
+    #[tokio::test]
+    async fn test_parse_stream_skips_garbage_and_completes() {
+        // Malformed lines interleaved with valid entities must not truncate the
+        // scan or hang: the scanner skips the garbage and still reaches the
+        // valid entities and a Completed event.
+        let content = r#"
+#1=IFCPROJECT('g',$,$,$,$,$,$,$,$);
+this is not an entity line at all !!! ;;;
+#2=IFCWALL('g2',$,$,$,$,$,$,$);
+@%^&*() not valid step
+#3=IFCDOOR('g3',$,$,$,$,$,$,$);
+"#;
+
+        let mut stream = parse_stream(content, StreamConfig::default());
+
+        let mut entity_count = 0;
+        let mut completed = None;
+        while let Some(event) = stream.next().await {
+            match event {
+                ParseEvent::EntityScanned { .. } => entity_count += 1,
+                ParseEvent::Completed { entity_count: n, .. } => completed = Some(n),
+                _ => {}
+            }
+        }
+
+        assert_eq!(entity_count, 3, "scanner should skip garbage and find all 3");
+        assert_eq!(completed, Some(3), "stream must reach Completed, not truncate");
+    }
 }

@@ -56,6 +56,38 @@ describe('pickFitPolicy', () => {
       assert.strictEqual(policy.kind, 'compact');
       assert.strictEqual(policy.aspect, 10);
     });
+
+    it('keeps a small high-aspect element compact (single rebar, issue #1350)', () => {
+      // A 4.86 m × 0.084 m × 0.037 m reinforcing bar viewed alone — aspect
+      // ~131:1, well past the linear threshold, but only metres long. The
+      // linear "look down the axis from inside the bbox" pose framed it
+      // end-on and it rendered as nothing. The absolute size floor must keep
+      // it compact so the SE-isometric pose shows the whole bar.
+      const policy = pickFitPolicy(
+        bounds(2005.06, 5961.1, 25.5, 2005.097, 5961.184, 30.36),
+        { fovY: FOV_45 },
+      );
+      assert.strictEqual(policy.kind, 'compact');
+      assert.ok(policy.aspect > 100, `aspect ${policy.aspect} should exceed 100`);
+      // distance = longest * 2; longest ≈ 4.86, so ≈ 9.72 — a normal
+      // see-the-whole-bar framing, not an inside-the-bbox linear pose.
+      assert.ok(
+        policy.distance > 9 && policy.distance < 11,
+        `distance ${policy.distance} should be ~2x the 4.86 m length`,
+      );
+    });
+
+    it('honours the linearMinLongest floor override', () => {
+      // 80 m × 1 m × 1 m — aspect 80, above the aspect threshold but below
+      // the 100 m default size floor → compact. Lowering the floor to 50 m
+      // lets it cross into linear.
+      const b = bounds(0, 0, 0, 80, 1, 1);
+      assert.strictEqual(pickFitPolicy(b, { fovY: FOV_45 }).kind, 'compact');
+      assert.strictEqual(
+        pickFitPolicy(b, { fovY: FOV_45, linearMinLongest: 50 }).kind,
+        'linear',
+      );
+    });
   });
 
   describe('linear branch', () => {

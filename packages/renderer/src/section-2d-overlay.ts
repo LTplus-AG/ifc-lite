@@ -116,6 +116,12 @@ export class Section2DOverlayRenderer {
   private sampleCount: number;
   private initialized = false;
 
+  // Colour for the standalone 3D overlay lines (annotation / alignment / grid)
+  // and the section-cut outline, which share the line pipeline. Defaults to
+  // opaque black for backwards compatibility; a consumer can theme it (e.g. light
+  // lines on a dark canvas) via setOverlayLineColor().
+  private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
+
   // Cached geometry buffers
   private fillVertexBuffer: GPUBuffer | null = null;
   private fillIndexBuffer: GPUBuffer | null = null;
@@ -296,9 +302,18 @@ export class Section2DOverlayRenderer {
     // Shader for lines (uniform color)
     const lineShader = this.device.createShaderModule({
       code: `
+        // Mirrors the fill shader's uniform layout so both pipelines can share
+        // one buffer; the line shader only reads viewProj, planeOffset and the
+        // appended lineColor (byte offset 144). capFillColor/… are unused here but
+        // declared for correct field offsets.
         struct Uniforms {
           viewProj: mat4x4<f32>,
           planeOffset: vec4<f32>,
+          capFillColor: vec4<f32>,
+          capStrokeColor: vec4<f32>,
+          params: vec4<f32>,
+          params2: vec4<f32>,
+          lineColor: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
 
@@ -334,7 +349,7 @@ export class Section2DOverlayRenderer {
         @fragment
         fn fs_main(input: VertexOutput) -> FragOutLine {
           var out: FragOutLine;
-          out.color    = vec4<f32>(0.0, 0.0, 0.0, 1.0);  // Black lines
+          out.color    = uniforms.lineColor;  // consumer-themeable (defaults black)
           out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
           return out;
         }
@@ -455,11 +470,12 @@ export class Section2DOverlayRenderer {
     //   capStrokeColor — vec4          16 B
     //   params         — vec4          16 B   x=patternId, y=spacingPx, z=angleRad, w=widthPx
     //   params2        — vec4          16 B   x=secondaryAngleRad
-    // Total: 144 B. The extended layout lets the fill fragment shader
-    // apply the user's cap style (screen-space hatch + colour) directly
-    // over the exact polygon silhouette the 2D section cutter produced.
+    //   lineColor      — vec4          16 B   overlay/section-cut line colour
+    // Total: 160 B. The fill fragment shader reads up to params2 (144 B); the
+    // line shader reads viewProj/planeOffset + the appended lineColor (offset
+    // 144 B), so the two pipelines share this one buffer without aliasing.
     this.uniformBuffer = this.device.createBuffer({
-      size: 144,
+      size: 160,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -700,6 +716,16 @@ export class Section2DOverlayRenderer {
   }
 
   /**
+   * Set the colour of the overlay lines (annotation / alignment / grid) and the
+   * section-cut outline, which share the line pipeline. RGBA components are in
+   * 0..1. Defaults to opaque black; set e.g. a light colour to keep the lines
+   * legible on a dark canvas. Takes effect on the next draw.
+   */
+  setOverlayLineColor(color: readonly [number, number, number, number]): void {
+    this.overlayLineColor = color;
+  }
+
+  /**
    * Upload a flat Float32Array of 3D line-list vertices for the standalone
    * annotation overlay. Each segment is `[x1, y1, z1, x2, y2, z2]` in world
    * space. The buffer is independent of the section cut's line buffer and
@@ -790,9 +816,10 @@ export class Section2DOverlayRenderer {
     // Reuse the existing fill uniform buffer slot 0 (viewProj + planeOffset).
     // The line shader only reads those two fields, so the fill/cap-style
     // tail of the uniforms is harmless leftover data.
-    const uniforms = new Float32Array(20);
+    const uniforms = new Float32Array(40);
     uniforms.set(viewProj, 0);
     // planeOffset = 0 — vertices are already in world space.
+    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
     pass.setPipeline(this.linePipeline);
@@ -810,9 +837,10 @@ export class Section2DOverlayRenderer {
     if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
     if (!this.alignmentLineVertexBuffer || this.alignmentLineVertexCount === 0) return;
 
-    const uniforms = new Float32Array(20);
+    const uniforms = new Float32Array(40);
     uniforms.set(viewProj, 0);
     // planeOffset = 0 — vertices are already in world space.
+    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
     pass.setPipeline(this.linePipeline);
@@ -867,9 +895,10 @@ export class Section2DOverlayRenderer {
     if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
     if (!this.gridLineVertexBuffer || this.gridLineVertexCount === 0) return;
 
-    const uniforms = new Float32Array(20);
+    const uniforms = new Float32Array(40);
     uniforms.set(viewProj, 0);
     // planeOffset = 0 — vertices are already in world space.
+    uniforms.set(this.overlayLineColor, 36); // lineColor (byte offset 144)
     this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
 
     pass.setPipeline(this.linePipeline);
@@ -920,8 +949,10 @@ export class Section2DOverlayRenderer {
     //   24..27 capStrokeColor
     //   28..31 params  (patternId, spacingPx, angleRad, widthPx)
     //   32..35 params2 (secondaryAngleRad, _, _, _)
-    const uniforms = new Float32Array(36);
+    //   36..39 lineColor (section-cut outline colour)
+    const uniforms = new Float32Array(40);
     uniforms.set(viewProj, 0);
+    uniforms.set(this.overlayLineColor, 36); // section-cut outline colour
     uniforms[16] = offset[0];
     uniforms[17] = offset[1];
     uniforms[18] = offset[2];

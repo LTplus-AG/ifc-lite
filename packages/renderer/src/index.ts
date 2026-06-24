@@ -2687,6 +2687,17 @@ export class Renderer {
      * The overlay is drawn regardless of whether a section plane is active.
      * Pass an empty Float32Array to clear.
      */
+    /**
+     * Set the colour of the overlay lines (annotation / alignment / grid) and the
+     * section-cut outline (RGBA, 0..1). Defaults to opaque black; theme it to keep
+     * lines legible on a dark canvas. The matching label colour is per-text via
+     * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
+     */
+    setOverlayLineColor(color: readonly [number, number, number, number]): void {
+        this.section2DOverlayRenderer?.setOverlayLineColor(color);
+        this.requestRender();
+    }
+
     uploadAnnotationLines3D(vertices: Float32Array): void {
         if (!this.section2DOverlayRenderer) return;
         this.section2DOverlayRenderer.uploadAnnotationLines3D(vertices);

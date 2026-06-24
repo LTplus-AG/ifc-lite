@@ -389,13 +389,25 @@ impl IfcAPI {
                 // model), the element -> storey -> building -> site chain can't
                 // resolve from the partial index, detection returns (0,0,0), and the
                 // huge ~8e6 m world coordinates get cast to f32 downstream → ~0.5 m
-                // of vertex jitter. If no offset was found AND we haven't even
-                // scanned the IfcSite yet, re-detect against a FULL index so the
-                // complete chain resolves. Gated on both so the common early-site /
-                // origin-local model never pays for a second index build.
+                // of vertex jitter. Re-detect against a FULL index when no large
+                // offset was found AND either (a) we haven't scanned the IfcSite
+                // yet, or (b) the partial index resolved NO usable placement
+                // samples at all. Case (b) covers the inverse ordering: the
+                // IfcSite *entity* is early (so `site_position` is already set) but
+                // its IfcAxis2Placement3D *location* — where the national-grid
+                // offset actually lives — is forward-referenced past the file head,
+                // so the element→storey→building→site chain still can't resolve and
+                // detection returns None. Gating on `!detection_succeeded` instead
+                // of site scan order alone keeps the common early-site model that
+                // DID resolve a (0,0,0) "no shift" from paying for a second index
+                // build, while rescuing the forward-referenced-placement case that
+                // otherwise fell through to the placement-bounds centroid — which
+                // averages the near-origin relative placements against the lone far
+                // anchor and lands at ~half the true offset, leaving geometry
+                // stranded in the f32-collapse zone.
                 // (`buildPrePassOnce` and the small-file tail already use a full
                 // index, so only this early-meta path needs the fallback.)
-                if !is_large(rtc_offset) && site_position.is_none() {
+                if !is_large(rtc_offset) && (site_position.is_none() || !detection_succeeded) {
                     let full_index = ifc_lite_core::build_entity_index(content);
                     let mut full_decoder = EntityDecoder::with_index(content, full_index);
                     if let Some(full_rtc) =

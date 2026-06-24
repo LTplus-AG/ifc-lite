@@ -288,6 +288,14 @@ function ActionButton({ icon: Icon, label, onClick, shortcut, disabled }: Action
 }
 // #endregion
 
+/** Extensions the viewer can ingest (IFC / IFCX / GLB / point clouds). */
+function isSupportedModelFile(f: File): boolean {
+  const n = f.name.toLowerCase();
+  return n.endsWith('.ifc') || n.endsWith('.ifcx') || n.endsWith('.glb')
+    || n.endsWith('.las') || n.endsWith('.laz') || n.endsWith('.ply') || n.endsWith('.pcd')
+    || n.endsWith('.e57') || n.endsWith('.pts') || n.endsWith('.xyz');
+}
+
 interface MainToolbarProps {
   onShowShortcuts?: () => void;
 }
@@ -434,11 +442,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
+    // Filter to supported files (IFC, IFCX, GLB, point clouds)
+    const supportedFiles = Array.from(files).filter(isSupportedModelFile);
 
     if (supportedFiles.length === 0) return;
 
@@ -471,38 +476,53 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     e.target.value = '';
   }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
 
-  const handleAddModelSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
-
+  // Shared Add-Model routing. `handles` is positionally aligned with
+  // `supportedFiles`, carrying a live FS Access handle per file (Chromium) so
+  // each added model stays part of a refreshable federation.
+  const addSupportedFiles = useCallback((
+    supportedFiles: File[],
+    handles?: (FileSystemFileHandle | undefined)[],
+  ) => {
     if (supportedFiles.length === 0) return;
-
-    // Check if adding IFCX files
     const newFilesAreIfcx = supportedFiles.every(f => f.name.endsWith('.ifcx'));
     const existingIsIfcx = isIfcxDataStore(ifcDataStore);
 
     if (newFilesAreIfcx && existingIsIfcx) {
       // Adding IFCX overlay(s) to existing IFCX model - re-compose with new layers
       console.log(`[MainToolbar] Adding ${supportedFiles.length} IFCX overlay(s) to existing IFCX model - re-composing`);
-      addIfcxOverlays(supportedFiles);
+      void addIfcxOverlays(supportedFiles);
     } else if (newFilesAreIfcx && !existingIsIfcx && ifcDataStore) {
       // User trying to add IFCX to IFC4 model - won't work
       console.warn('[MainToolbar] Cannot add IFCX files to non-IFCX model');
       alert(`IFCX overlay files cannot be added to IFC4 models.\n\nPlease load IFCX files separately.`);
     } else {
       // Standard case - add as independent models (IFC4, GLB, or mixed)
-      loadFilesSequentially(supportedFiles);
+      void loadFilesSequentially(supportedFiles, handles);
     }
+  }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
 
+  const handleAddModelSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    // <input> yields no live handle, so models added this way aren't refreshable.
+    const supportedFiles = Array.from(files).filter(isSupportedModelFile);
+    addSupportedFiles(supportedFiles);
     // Reset input so same files can be selected again
     e.target.value = '';
-  }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
+  }, [addSupportedFiles]);
+
+  // Preferred Add-Model path: the picker captures a handle per file so the
+  // resulting federation can be refreshed. Falls back to the hidden <input>.
+  const handleAddModelClick = useCallback(async () => {
+    if (!supportsFileSystemAccess()) {
+      addModelInputRef.current?.click();
+      return;
+    }
+    const opened = await openIfcFilesWithHandles();
+    if (!opened) return;
+    const supported = opened.filter(o => isSupportedModelFile(o.file));
+    addSupportedFiles(supported.map(o => o.file), supported.map(o => o.handle));
+  }, [addSupportedFiles]);
 
   // Open via the File System Access API when available (Chromium) so we capture
   // a live FileSystemFileHandle for each file — that handle is what lets the
@@ -518,49 +538,85 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
     const files = opened.map(o => o.file);
     recordRecentFiles(files.map(f => ({ name: f.name, size: f.size })));
-    cacheFileBlobs(files);
+    void cacheFileBlobs(files);
 
     if (opened.length === 1) {
       // Single model: keep the handle so Refresh can re-read it from disk.
       void loadFile(opened[0].file, { kind: 'primary' }, { sourceHandle: opened[0].handle });
     } else {
-      // Multiple files mirror handleFileSelect's branching (no per-model handle).
+      // Multiple files mirror handleFileSelect's branching.
       const allIfcx = files.every(f => f.name.endsWith('.ifcx'));
       resetViewerState();
       clearAllModels();
       if (allIfcx) {
-        loadFederatedIfcx(files);
+        // IFCX layers compose into one shared store — no per-file handle.
+        void loadFederatedIfcx(files);
       } else {
-        loadFilesSequentially(files);
+        // Carry each file's handle so the whole federation stays refreshable.
+        void loadFilesSequentially(files, opened.map(o => o.handle));
       }
     }
   }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
 
-  // Refresh re-reads the same file from disk and re-parses it. It is only
-  // possible for a single model opened via the File System Access API (which
-  // gave us a live handle); drag-drop, <input type="file">, cache-restored, and
-  // federated loads have no handle, so the button is not offered for them.
-  const refreshableModel = useMemo<FederatedModel | null>(() => {
-    if (loading || models.size !== 1) return null;
-    const only = models.values().next().value as FederatedModel | undefined;
-    return only?.sourceHandle ? only : null;
+  // Refresh re-reads files from disk and re-parses them. Offered when EVERY
+  // loaded model has a live FS Access handle (a single model, or a federation
+  // fully opened via the picker/drag this session). Drag-drop on non-Chromium,
+  // <input type="file">, cache-restored, and IFCX-composed models have no
+  // handle, so a mixed session hides the button rather than risk dropping the
+  // handle-less models during the rebuild.
+  const canRefresh = useMemo(() => {
+    if (loading || models.size === 0) return false;
+    return Array.from(models.values()).every(m => m.sourceHandle);
   }, [models, loading]);
 
   const handleRefresh = useCallback(async () => {
-    const model = refreshableModel;
-    if (!model?.sourceHandle) return;
-    const fresh = await readFreshFile(model.sourceHandle);
-    if (!fresh) {
-      toast.error(
-        `Couldn't re-read "${model.name}". It may have been moved or deleted, or access was denied.`,
-      );
+    const targets = (Array.from(useViewerStore.getState().models.values()) as FederatedModel[])
+      .filter((m): m is FederatedModel & { sourceHandle: FileSystemFileHandle } => Boolean(m.sourceHandle))
+      .sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
+    if (targets.length === 0) return;
+
+    // Re-read every handle BEFORE clearing anything, so a failed read never
+    // leaves the viewer empty.
+    const reads = await Promise.all(
+      targets.map(async (m) => ({ model: m, fresh: await readFreshFile(m.sourceHandle) })),
+    );
+    const ok = reads.filter((r) => r.fresh) as { model: typeof targets[number]; fresh: File }[];
+    const failedNames = reads.filter((r) => !r.fresh).map((r) => `"${r.model.name}"`);
+
+    if (ok.length === 0) {
+      toast.error(`Couldn't re-read ${failedNames.join(', ')}. Files may have moved, been deleted, or access was denied.`);
       return;
     }
-    recordRecentFiles([{ name: fresh.name, size: fresh.size }]);
-    cacheFileBlobs([fresh]);
-    void loadFile(fresh, { kind: 'primary' }, { sourceHandle: model.sourceHandle });
-    toast.success(`Refreshed "${fresh.name}"`);
-  }, [refreshableModel, loadFile]);
+
+    recordRecentFiles(ok.map((r) => ({ name: r.fresh.name, size: r.fresh.size })));
+    void cacheFileBlobs(ok.map((r) => r.fresh));
+
+    if (targets.length === 1) {
+      void loadFile(ok[0].fresh, { kind: 'primary' }, { sourceHandle: ok[0].model.sourceHandle });
+    } else {
+      // Rebuild the federation from fresh bytes, preserving id + order + state.
+      clearAllModels();
+      for (const r of ok) {
+        const reloadedId = await addModel(r.fresh, {
+          name: r.model.name,
+          modelId: r.model.id,
+          loadedAt: r.model.loadedAt,
+          visible: r.model.visible,
+          collapsed: r.model.collapsed,
+          sourceHandle: r.model.sourceHandle,
+        });
+        if (reloadedId && r.model.visible === false) {
+          useViewerStore.getState().setModelVisibility(r.model.id, false);
+        }
+      }
+    }
+
+    if (failedNames.length > 0) {
+      toast.error(`Refreshed ${ok.length}; couldn't re-read ${failedNames.join(', ')}.`);
+    } else {
+      toast.success(ok.length === 1 ? `Refreshed "${ok[0].fresh.name}"` : `Refreshed ${ok.length} models`);
+    }
+  }, [loadFile, addModel, clearAllModels]);
 
   const hasSelection = selectedEntityId !== null;
   // Selection chip uses the multi-select size when present; falls back
@@ -866,7 +922,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <TooltipContent>Open IFC File</TooltipContent>
       </Tooltip>
 
-      {refreshableModel && (
+      {canRefresh && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -881,7 +937,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               <RefreshCw className="h-4 w-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Refresh model from disk</TooltipContent>
+          <TooltipContent>{models.size > 1 ? 'Refresh models from disk' : 'Refresh model from disk'}</TooltipContent>
         </Tooltip>
       )}
 
@@ -894,7 +950,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               size="icon-sm"
               onClick={(e) => {
                 (e.currentTarget as HTMLButtonElement).blur();
-                addModelInputRef.current?.click();
+                void handleAddModelClick();
               }}
               disabled={loading}
               className="text-[#9ece6a] hover:text-[#9ece6a] hover:bg-[#9ece6a]/10"

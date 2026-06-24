@@ -54,3 +54,8 @@ interface Window {
     options?: OpenFilePickerOptions,
   ): Promise<FileSystemFileHandle[]>;
 }
+
+interface DataTransferItem {
+  /** Chromium-only: live handle for a dropped file (call synchronously in `drop`). */
+  getAsFileSystemHandle?(): Promise<FileSystemHandle | null>;
+}

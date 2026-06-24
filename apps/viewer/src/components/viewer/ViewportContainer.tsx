@@ -31,6 +31,11 @@ import type { AggregationRelationships } from '@/utils/aggregation';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
+import {
+  supportsFileSystemAccess,
+  openIfcFilesWithHandles,
+  handlesFromDataTransfer,
+} from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
 import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus } from 'lucide-react';
@@ -440,6 +445,35 @@ export function ViewportContainer() {
     applyDragEvent('leave');
   }, [applyDragEvent]);
 
+  const isSupportedFile = useCallback((f: File) => {
+    const n = f.name.toLowerCase();
+    return n.endsWith('.ifc') || n.endsWith('.ifcx') || n.endsWith('.glb')
+      || n.endsWith('.las') || n.endsWith('.laz') || n.endsWith('.ply') || n.endsWith('.pcd')
+      || n.endsWith('.e57') || n.endsWith('.pts') || n.endsWith('.xyz');
+  }, []);
+
+  // Single routing point for every ingestion path (picker / drop / input). The
+  // optional `handles` array is positionally aligned with `files` and carries a
+  // live FS Access handle per file when one was captured (Chromium) so the model
+  // stays refreshable; entries are `undefined` otherwise.
+  const routeLoad = useCallback((
+    files: File[],
+    handles?: (FileSystemFileHandle | undefined)[],
+  ) => {
+    if (hasModelsLoaded) {
+      // Models already loaded - add new files sequentially (federate).
+      void loadFilesSequentially(files, handles);
+    } else if (files.length === 1) {
+      // Single file, no models loaded - primary single-model load.
+      void loadFile(files[0], { kind: 'primary' }, { sourceHandle: handles?.[0] });
+    } else {
+      // Multiple files, no models loaded - start a fresh federation.
+      resetViewerState();
+      clearAllModels();
+      void loadFilesSequentially(files, handles);
+    }
+  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, hasModelsLoaded]);
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -450,12 +484,13 @@ export function ViewportContainer() {
       return;
     }
 
+    // Capture live handles synchronously — the DataTransferItemList is neutered
+    // once this handler returns, so this must run before any await.
+    const handlesPromise = handlesFromDataTransfer(e.dataTransfer);
+
     // Filter to supported files (IFC, IFCX, GLB, point clouds)
     const allDropped = Array.from(e.dataTransfer.files);
-    const supportedFiles = allDropped.filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
+    const supportedFiles = allDropped.filter(isSupportedFile);
 
     if (supportedFiles.length === 0) {
       // Tell the user *why* — common case is a Recap project / SketchUp
@@ -471,19 +506,11 @@ export function ViewportContainer() {
     void cacheFileBlobs(supportedFiles);
     setRecentFiles(getRecentFiles().slice(0, 3));
 
-    if (hasModelsLoaded) {
-      // Models already loaded - add new files sequentially
-      loadFilesSequentially(supportedFiles);
-    } else if (supportedFiles.length === 1) {
-      // Single file, no models loaded - use loadFile
-      loadFile(supportedFiles[0]);
-    } else {
-      // Multiple files, no models loaded - use federation
-      resetViewerState();
-      clearAllModels();
-      loadFilesSequentially(supportedFiles);
-    }
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, webgpu.supported, hasModelsLoaded]);
+    void handlesPromise.then((opened) => {
+      const handleByName = new Map((opened ?? []).map((o) => [o.file.name, o.handle]));
+      routeLoad(supportedFiles, supportedFiles.map((f) => handleByName.get(f.name)));
+    });
+  }, [routeLoad, applyDragEvent, isSupportedFile, webgpu.supported]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     // Block file loading if WebGPU not supported
@@ -494,11 +521,9 @@ export function ViewportContainer() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
+    // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
+    // live handle, so these models are not refreshable.
+    const supportedFiles = Array.from(files).filter(isSupportedFile);
 
     if (supportedFiles.length === 0) return;
 
@@ -506,20 +531,33 @@ export function ViewportContainer() {
     void cacheFileBlobs(supportedFiles);
     setRecentFiles(getRecentFiles().slice(0, 3));
 
-    if (supportedFiles.length === 1) {
-      // Single file - use loadFile (simpler single-model path)
-      loadFile(supportedFiles[0]);
-    } else {
-      // Multiple files selected - use federation from the start
-      // Clear everything and start fresh, then load sequentially
-      resetViewerState();
-      clearAllModels();
-      loadFilesSequentially(supportedFiles);
-    }
+    routeLoad(supportedFiles);
 
     // Reset input so same file can be selected again
     e.target.value = '';
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, webgpu.supported]);
+  }, [routeLoad, isSupportedFile, webgpu.supported]);
+
+  // Preferred open path: the File System Access picker (Chromium) captures a
+  // live handle per file so the model can be refreshed from disk. Falls back to
+  // the hidden <input type="file"> on browsers without the API.
+  const handleOpenClick = useCallback(async () => {
+    if (!webgpu.supported) return;
+    if (!supportsFileSystemAccess()) {
+      fileInputRef.current?.click();
+      return;
+    }
+    const opened = await openIfcFilesWithHandles();
+    if (!opened) return;
+    const supported = opened.filter((o) => isSupportedFile(o.file));
+    if (supported.length === 0) return;
+
+    const files = supported.map((o) => o.file);
+    recordRecentFiles(files.map((f) => ({ name: f.name, size: f.size })));
+    void cacheFileBlobs(files);
+    setRecentFiles(getRecentFiles().slice(0, 3));
+
+    routeLoad(files, supported.map((o) => o.handle));
+  }, [routeLoad, isSupportedFile, webgpu.supported]);
 
   const handleStartBlank = useCallback(async () => {
     if (!webgpu.supported) return;
@@ -1016,12 +1054,7 @@ export function ViewportContainer() {
             */}
             {/* Track 1 — open / drag */}
             <button
-              onClick={() => {
-                if (!webgpu.supported) {
-                  return;
-                }
-                fileInputRef.current?.click();
-              }}
+              onClick={() => { void handleOpenClick(); }}
               disabled={!webgpu.supported || webgpu.checking}
               className={`group w-full flex items-center justify-center gap-3 px-6 py-3 font-mono text-sm border transition-all ${
                 !webgpu.supported || webgpu.checking
@@ -1094,7 +1127,7 @@ export function ViewportContainer() {
                           await loadFile(cached);
                           return;
                         }
-                        fileInputRef.current?.click();
+                        void handleOpenClick();
                       }}
                       className="flex items-center justify-between gap-3 border border-zinc-200 bg-zinc-50 px-3 py-2 text-left transition-colors hover:border-primary hover:text-primary dark:border-[#3b4261] dark:bg-[#1f2335] dark:hover:border-primary"
                     >

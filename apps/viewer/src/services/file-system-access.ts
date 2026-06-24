@@ -115,3 +115,45 @@ export async function readFreshFile(handle: FileSystemFileHandle): Promise<File 
     return null;
   }
 }
+
+/**
+ * Capture live handles for files dropped onto the page (Chromium). Returns one
+ * `{ file, handle }` per dropped file that exposes a file handle, or `null` when
+ * the API is unavailable so the caller can fall back to `dataTransfer.files`.
+ *
+ * MUST be invoked synchronously from the `drop` event handler: the
+ * `DataTransferItemList` is neutered the moment the handler returns to the event
+ * loop, so every `getAsFileSystemHandle()` call is kicked off before the first
+ * `await` and only then resolved together.
+ */
+export function handlesFromDataTransfer(dataTransfer: DataTransfer): Promise<OpenedFile[] | null> {
+  if (!supportsFileSystemAccess()) return Promise.resolve(null);
+  const items = Array.from(dataTransfer.items).filter((i) => i.kind === 'file');
+  if (items.length === 0) return Promise.resolve(null);
+  if (typeof items[0].getAsFileSystemHandle !== 'function') return Promise.resolve(null);
+
+  // Synchronous: start every handle request before awaiting anything.
+  const pending = items.map((item) => {
+    try {
+      return item.getAsFileSystemHandle?.() ?? Promise.resolve(null);
+    } catch {
+      return Promise.resolve(null);
+    }
+  });
+
+  return (async () => {
+    const handles = await Promise.all(pending);
+    const opened: OpenedFile[] = [];
+    for (const h of handles) {
+      if (h && h.kind === 'file') {
+        const fh = h as FileSystemFileHandle;
+        try {
+          opened.push({ file: await fh.getFile(), handle: fh });
+        } catch (err) {
+          console.warn(`[file-system-access] drag handle read failed for "${fh.name}"`, err);
+        }
+      }
+    }
+    return opened.length > 0 ? opened : null;
+  })();
+}

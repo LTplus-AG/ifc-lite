@@ -335,6 +335,7 @@ export function useIfcLoader() {
             loadedAt: target.loadedAt ?? Date.now(),
             fileSize: buffer.byteLength,
             sourceFile: file,
+            sourceHandle: options?.sourceHandle,
             idOffset,
             maxExpressId,
             pointCloudHandleId: patch?.pointCloudHandleId,

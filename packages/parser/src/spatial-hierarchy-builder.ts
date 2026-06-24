@@ -167,7 +167,9 @@ export class SpatialHierarchyBuilder {
         const path: SpatialNode[] = [];
         const findPath = (node: SpatialNode, targetId: number): boolean => {
           path.push(node);
-          if (node.elements.includes(targetId)) {
+          // Match the node itself (so a promoted space/zone resolves) or one of
+          // its contained elements.
+          if (node.expressId === targetId || node.elements.includes(targetId)) {
             return true;
           }
           for (const child of node.children) {

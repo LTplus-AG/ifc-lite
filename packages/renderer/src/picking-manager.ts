@@ -96,7 +96,7 @@ export class PickingManager {
         if (batchedMeshes.length > 0) {
             if (this.scene.isGeometryDataReleased()) {
                 const ray = this.camera.unprojectToRay(scaledX, scaledY, this.canvas.width, this.canvas.height);
-                const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds);
+                const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds, clip);
                 if (!hit) return null;
                 return {
                     expressId: hit.expressId,
@@ -153,7 +153,7 @@ export class PickingManager {
             if (toCreate > MAX_PICK_MESH_CREATION || (visibleExpressIds.length > 0 && requiredPieceCounts.size === 0)) {
                 // Use CPU raycasting fallback - works regardless of how many individual meshes exist
                 const ray = this.camera.unprojectToRay(scaledX, scaledY, this.canvas.width, this.canvas.height);
-                const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds);
+                const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds, clip);
                 if (!hit) return null;
                 // CPU raycasting returns expressId and modelIndex
                 return {

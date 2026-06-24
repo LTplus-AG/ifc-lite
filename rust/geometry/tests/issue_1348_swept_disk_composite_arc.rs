@@ -42,7 +42,12 @@ fn bounds(mesh: &Mesh) -> ([f32; 3], [f32; 3]) {
 /// stays in the `y ≈ 0` plane the bar was authored in. Pre-fix, the trimmed
 /// circle arc was computed in 2D and lifted to `z = 0`, pushing its points out
 /// to the arc radius in Y.
-fn assert_directrix_is_planar(fixture: &str, composite_id: u32, max_abs_y_mm: f64) {
+fn assert_directrix_is_planar(
+    fixture: &str,
+    composite_id: u32,
+    max_abs_y_mm: f64,
+    min_abs_z_mm: f64,
+) {
     let content = read_fixture(fixture);
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
@@ -70,7 +75,7 @@ fn assert_directrix_is_planar(fixture: &str, composite_id: u32, max_abs_y_mm: f6
     // And the arc must actually descend in Z (the bend lives in the XZ plane).
     let worst_z = pts.iter().fold(0.0_f64, |acc, p| acc.max(p.z.abs()));
     assert!(
-        worst_z > 50.0,
+        worst_z > min_abs_z_mm,
         "directrix never left z=0 (max |z| = {worst_z:.3} mm); the arc was not sampled in 3D",
     );
 }
@@ -78,10 +83,12 @@ fn assert_directrix_is_planar(fixture: &str, composite_id: u32, max_abs_y_mm: f6
 #[test]
 fn lbar_directrix_stays_planar() {
     // L-bar arc radius is 89.5 mm; the pre-fix flatten pushed Y out to ~89.5.
+    // The bend descends ~89.5 mm, then the down-leg another 160 mm.
     assert_directrix_is_planar(
         "tests/fixtures/swept_disk_composite_arc_lbar.ifc",
         59,
         1.0,
+        50.0,
     );
 }
 
@@ -92,6 +99,22 @@ fn ubar_directrix_stays_planar() {
         "tests/fixtures/swept_disk_composite_arc_ubar.ifc",
         71,
         1.0,
+        50.0,
+    );
+}
+
+#[test]
+fn crankbar_directrix_stays_planar() {
+    // Crank bar (issue #1350): two SMALL arcs (~4.7°) joining an offset run. The
+    // pre-fix flatten only pushed Y out to ~10.7 mm here — not visually obvious,
+    // but the resulting self-intersecting tube degenerated badly enough that the
+    // viewer dropped it entirely ("shape not rendered when viewed alone"). The
+    // crank only steps down ~47 mm, so the in-3D z check uses a smaller floor.
+    assert_directrix_is_planar(
+        "tests/fixtures/swept_disk_composite_arc_crankbar.ifc",
+        70,
+        1.0,
+        10.0,
     );
 }
 
@@ -143,5 +166,17 @@ fn ubar_swept_tube_is_thin_in_y() {
         "tests/fixtures/swept_disk_composite_arc_ubar.ifc",
         125,
         0.029,
+    );
+}
+
+#[test]
+fn crankbar_renders_and_is_thin_in_y() {
+    // Issue #1350: the crank bar rendered nothing when viewed as a single
+    // element. With the directrix sampled in 3D it produces a clean swept tube
+    // that stays in its y≈0 plane (37 mm tube diameter).
+    assert_bar_is_thin_in_y(
+        "tests/fixtures/swept_disk_composite_arc_crankbar.ifc",
+        79,
+        0.037,
     );
 }

@@ -722,6 +722,20 @@ export function ViewportContainer() {
   // without requiring a new geometry array reference.
   const geometryVersion = filteredVersionRef.current;
 
+  // 3D-context (Cesium) geometry must honour the SAME type-visibility filter as
+  // the WebGPU viewport, or openings/spaces hidden in 2D/3D reappear in the
+  // world view. The Cesium GLB builder reads `geometryResult.meshes`, so wrap the
+  // result with the already-filtered mesh list (`filteredGeometry`) rather than
+  // the raw `mergedGeometryResult` (issue #1337: a 900 m-tall IfcOpeningElement
+  // roof-cutter rendered as a giant salmon column over the building because the
+  // Cesium path skipped the opening filter that the viewport applies). Memoised
+  // on geometryVersion so the GLB rebuilds when the visible set changes.
+  const cesiumGeometryResult = useMemo(() => {
+    if (!mergedGeometryResult || !filteredGeometry) return null;
+    return { ...mergedGeometryResult, meshes: filteredGeometry };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
+
   // Compute combined isolation set (storeys + manual isolation)
   // This is passed to the renderer for batch-level visibility filtering
   // Now supports multi-model: aggregates elements from all models for selected storeys
@@ -1188,7 +1202,7 @@ export function ViewportContainer() {
           cameraMapConversion={georef.baseMapConversion}
           projectedCRS={georef.projectedCRS}
           coordinateInfo={georef.coordinateInfo}
-          geometryResult={mergedGeometryResult}
+          geometryResult={cesiumGeometryResult}
           lengthUnitScale={georef.lengthUnitScale}
           storeyElevations={georef.storeyElevations}
         />

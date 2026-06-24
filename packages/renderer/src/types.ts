@@ -235,8 +235,9 @@ export interface RenderOptions {
   // Section plane clipping
   sectionPlane?: SectionPlane;
   // Section / crop box: clip geometry to an axis-aligned world-space box (all six
-  // sides). Independent of `sectionPlane`. Rendering only: the GPU picker does not
-  // clip on the box (same as `sectionPlane`), so consumers filter box picks themselves.
+  // sides). Independent of `sectionPlane`. The GPU picker mirrors the active
+  // section plane + clip box from the last render, so cropped/sectioned-away
+  // geometry is unpickable too with no extra wiring.
   clipBox?: ClipBox;
   // Terrain clipping: discard fragments below this Y value in viewer space.
   // Used by Cesium overlay to prevent model from showing below terrain.
@@ -270,6 +271,19 @@ export interface PickOptions {
   // Visibility filtering - same as RenderOptions for consistency
   hiddenIds?: Set<number>;        // Hidden elements (can't be picked)
   isolatedIds?: Set<number> | null; // Only these elements can be picked (null = all pickable)
+}
+
+/**
+ * Resolved clip state the GPU picker mirrors from the most recent render so that
+ * section/crop-clipped geometry is unpickable, not just invisible. The renderer
+ * stashes this each `render()` and feeds it to the picker; consumers don't build
+ * it. Triangle meshes only: points are not clipped here (nor on render).
+ */
+export interface PickClipState {
+  // Resolved section plane (world space, already enabled), or null when off.
+  sectionPlane?: { normal: [number, number, number]; distance: number; flipped: boolean } | null;
+  // Active axis-aligned crop box, or null when off.
+  clipBox?: ClipBox | null;
 }
 
 /**

@@ -159,20 +159,33 @@ impl<'a> ParserState<'a> {
             });
         }
 
-        // Scan for next entity
-        if let Some((id, type_name, start, _end)) = self.scanner.next_entity() {
+        // Scan for the next entity, skipping filtered types iteratively. A
+        // `return self.next_event()` per skipped entity recursed once per skip
+        // and could overflow the stack on a long run of skip-listed records.
+        loop {
+            let Some((id, type_name, start, _end)) = self.scanner.next_entity() else {
+                // No more entities - emit Completed event and end stream
+                self.completed = true;
+                let duration_ms = get_timestamp() - self.start_time;
+                return Some(ParseEvent::Completed {
+                    duration_ms,
+                    entity_count: self.entities_scanned,
+                    triangle_count: self.triangles_generated,
+                });
+            };
+
             // Parse entity type
             let ifc_type = IfcType::from_str(type_name);
 
             // Check if we should skip this type
             if self.config.skip_types.contains(&ifc_type) {
-                return self.next_event(); // Skip to next
+                continue; // Skip to next
             }
 
             // Check if we should only process specific types
             if let Some(ref only_types) = self.config.only_types {
                 if !only_types.contains(&ifc_type) {
-                    return self.next_event(); // Skip to next
+                    continue; // Skip to next
                 }
             }
 
@@ -200,16 +213,7 @@ impl<'a> ParserState<'a> {
                 });
             }
 
-            Some(event)
-        } else {
-            // No more entities - emit Completed event and end stream
-            self.completed = true;
-            let duration_ms = get_timestamp() - self.start_time;
-            Some(ParseEvent::Completed {
-                duration_ms,
-                entity_count: self.entities_scanned,
-                triangle_count: self.triangles_generated,
-            })
+            return Some(event);
         }
     }
 }

@@ -1466,6 +1466,16 @@ impl ProfileProcessor {
             .get_float(4)
             .ok_or_else(|| Error::geometry("CircleHollow missing WallThickness".to_string()))?;
 
+        // Validate wall thickness (parity with RectangleHollow). A wall >= radius
+        // yields a zero/negative inner radius: the inner ring collapses to the
+        // centre or mirrors through the origin, leaving a self-intersecting hole.
+        if wall_thickness >= radius {
+            return Err(Error::geometry(format!(
+                "CircleHollow WallThickness {} exceeds Radius {}",
+                wall_thickness, radius
+            )));
+        }
+
         let inner_radius = radius - wall_thickness;
         let segments = self.quality().circle_profile_segments(36);
 
@@ -3093,8 +3103,12 @@ impl ProfileProcessor {
                             + (mid.y - (start.y + end.y) / 2.0).powi(2))
                         .sqrt();
                         // Estimate arc angle: larger mid deviation = larger arc
+                        // Sweep angle from chord c and sagitta s: a circular arc
+                        // has s/c = (1/2)tan(phi/4), so phi = 4*atan(2s/c). (The
+                        // old 2*acos(s/c) was inverted: flat arcs got the most
+                        // segments, tight arcs the fewest.)
                         let arc_estimate = if chord_len > 1e-10 {
-                            (mid_chord / chord_len).abs().min(1.0).acos() * 2.0
+                            4.0 * (2.0 * mid_chord / chord_len).atan()
                         } else {
                             0.5
                         };
@@ -3329,8 +3343,10 @@ impl ProfileProcessor {
                         0.5 * (start.z + end.z),
                     );
                     let mid_dev = mid_offset.norm();
+                    // Sweep angle phi = 4*atan(2s/c) (s = sagitta, c = chord);
+                    // the old 2*acos(s/c) was inverted. Same fix as the 2D path.
                     let arc_estimate = if chord_len > 1e-10 {
-                        (mid_dev / chord_len).abs().min(1.0).acos() * 2.0
+                        4.0 * (2.0 * mid_dev / chord_len).atan()
                     } else {
                         0.5
                     };

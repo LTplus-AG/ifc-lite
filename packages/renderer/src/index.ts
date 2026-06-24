@@ -89,6 +89,8 @@ import type {
     RenderOptions,
     PickOptions,
     PickResult,
+    PickClipState,
+    ClipBox,
     Mesh,
     VisualEnhancementOptions,
     ContactShadingQuality,
@@ -239,6 +241,12 @@ export class Renderer {
     // (48 floats viewProj…flags + 8 floats clipBoxMin/clipBoxMax)
     private readonly uniformScratch = new Float32Array(56);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, 176, 4);
+
+    // What the last render() actually clipped, so the GPU picker can mirror it and
+    // section/crop-clipped geometry stays unpickable, not just invisible. Updated
+    // every render; read by pick()/pickRect(). null = nothing clipped that frame.
+    private _activePickSection: { normal: [number, number, number]; distance: number; flipped: boolean } | null = null;
+    private _activePickClipBox: ClipBox | null = null;
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -1465,6 +1473,19 @@ export class Renderer {
                 }
             }
 
+            // Stash what we actually clipped this frame so the GPU picker mirrors
+            // it (section/crop-clipped geometry must be unpickable, not just hidden).
+            // `flipped` matches how the mesh flags pack it below. terrainClipY feeds
+            // sectionPlaneData too, so it's covered without special-casing.
+            this._activePickSection = sectionPlaneData?.enabled
+                ? {
+                    normal: sectionPlaneData.normal,
+                    distance: sectionPlaneData.distance,
+                    flipped: !!options.sectionPlane?.flipped,
+                }
+                : null;
+            this._activePickClipBox = options.clipBox ?? null;
+
             // Reuse pooled scratch buffer for per-mesh uniform writes
             const meshBuf = this.uniformScratch;
             const meshFlags = this.uniformScratchU32;
@@ -2443,7 +2464,15 @@ export class Renderer {
      * These are scaled internally to match the actual canvas pixel dimensions.
      */
     async pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null> {
-        return this.pickingManager.pick(x, y, options);
+        return this.pickingManager.pick(x, y, options, this.activePickClip());
+    }
+
+    /**
+     * Section plane + clip box from the last render(), so the picker discards the
+     * same fragments and clipped-away geometry can't be selected.
+     */
+    private activePickClip(): PickClipState {
+        return { sectionPlane: this._activePickSection, clipBox: this._activePickClipBox };
     }
 
     /**
@@ -2462,7 +2491,7 @@ export class Renderer {
         y1: number,
         options?: PickOptions,
     ): Promise<Set<number>> {
-        return this.pickingManager.pickRect(x0, y0, x1, y1, options);
+        return this.pickingManager.pickRect(x0, y0, x1, y1, options, this.activePickClip());
     }
 
     /**

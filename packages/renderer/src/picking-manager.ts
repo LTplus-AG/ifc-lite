@@ -11,7 +11,7 @@ import { Camera } from './camera.js';
 import { Scene } from './scene.js';
 import { Picker, type PointPickSizing } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
-import type { PickOptions, PickResult } from './types.js';
+import type { PickOptions, PickResult, PickClipState } from './types.js';
 import type { PointPickNode } from './point-picker.js';
 
 /**
@@ -65,7 +65,7 @@ export class PickingManager {
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
      * These are scaled internally to match the actual canvas pixel dimensions.
      */
-    async pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null> {
+    async pick(x: number, y: number, options?: PickOptions, clip?: PickClipState | null): Promise<PickResult | null> {
         if (!this.picker) {
             return null;
         }
@@ -215,6 +215,7 @@ export class PickingManager {
             pointNodes,
             pointSizing,
             this.scene.getInstancedTemplates(),
+            clip,
         );
         return result;
     }
@@ -242,6 +243,7 @@ export class PickingManager {
         x1: number,
         y1: number,
         options?: PickOptions,
+        clip?: PickClipState | null,
     ): Promise<Set<number>> {
         if (!this.picker) return new Set();
         const rect = this.canvas.getBoundingClientRect();
@@ -269,6 +271,7 @@ export class PickingManager {
             pointSnap?.nodes ?? undefined,
             pointSnap?.sizing ?? undefined,
             this.scene.getInstancedTemplates(),
+            clip,
         );
     }
 }

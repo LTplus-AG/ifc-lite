@@ -3260,6 +3260,7 @@
     "MathUtils: class",
     "Mesh: interface",
     "ModelRange: interface",
+    "PickClipState: interface",
     "PickFitPolicyOptions: interface",
     "PickOptions: interface",
     "PickResult: interface",

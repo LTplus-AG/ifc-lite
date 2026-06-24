@@ -598,6 +598,14 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
                         }
 
                         if is_outer || outer_points.is_none() {
+                            // A second outer bound demotes the previous one to a
+                            // hole rather than dropping it (parity with
+                            // FacetedBrepProcessor); a face is otherwise lost.
+                            if outer_points.is_some() && is_outer {
+                                if let Some(prev_outer) = outer_points.take() {
+                                    hole_points.push(prev_outer);
+                                }
+                            }
                             outer_points = Some(points);
                         } else {
                             hole_points.push(points);
@@ -761,6 +769,14 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
                         }
 
                         if is_outer || outer_points.is_none() {
+                            // A second outer bound demotes the previous one to a
+                            // hole rather than dropping it (parity with
+                            // FacetedBrepProcessor); a face is otherwise lost.
+                            if outer_points.is_some() && is_outer {
+                                if let Some(prev_outer) = outer_points.take() {
+                                    hole_points.push(prev_outer);
+                                }
+                            }
                             outer_points = Some(points);
                         } else {
                             hole_points.push(points);

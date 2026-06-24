@@ -618,6 +618,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     }
   }, [loadFile, addModel, clearAllModels]);
 
+  // The command palette dispatches this (synchronously, inside the click) so the
+  // toolbar's handle-capturing open path runs while user activation is still
+  // live — required for the file dialog to actually open on Chrome.
+  useEffect(() => {
+    const handler = () => { void handleOpenClick(); };
+    window.addEventListener('ifc-lite:open-files', handler);
+    return () => window.removeEventListener('ifc-lite:open-files', handler);
+  }, [handleOpenClick]);
+
   const hasSelection = selectedEntityId !== null;
   // Selection chip uses the multi-select size when present; falls back
   // to the single legacy `selectedEntityId` so the chip still says

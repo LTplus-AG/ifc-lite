@@ -92,7 +92,7 @@ import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile } from '@/lib/export/download';
-import { getRecentFiles, formatFileSize, getCachedFile } from '@/lib/recent-files';
+import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
@@ -120,6 +120,13 @@ interface Command {
   shortcut?: string;
   detail?: string;            // subtle secondary text (e.g. file size)
   action: () => void;
+  /**
+   * Run the action synchronously inside the click handler instead of deferring
+   * to the next animation frame. Required for actions that open a file dialog:
+   * Chrome only honours `input.click()` / `showOpenFilePicker()` while transient
+   * user activation is live, which a `requestAnimationFrame` hop would discard.
+   */
+  immediate?: boolean;
 }
 
 interface FlatItem {
@@ -246,6 +253,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const navigatedByKeyboard = useRef(false);
+  // Names currently in the blob cache, refreshed each open. Lets recent-file
+  // clicks decide hit/miss without an async gap that would void user activation.
+  const cachedNamesRef = useRef<Set<string>>(new Set());
 
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
@@ -255,6 +265,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     if (open) {
       setRecentIds(getRecentIds());
       setRecentFiles(getRecentFiles());
+      void getCachedFileNames().then((names) => { cachedNamesRef.current = new Set(names); });
       setQuery('');
       requestAnimationFrame(() => inputRef.current?.focus());
     }
@@ -265,11 +276,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     const c: Command[] = [];
 
     // ── File ──
+    // `immediate` so the open action runs inside the click gesture: opening a
+    // file dialog needs live user activation, which a rAF hop would discard.
+    // The actual picker is driven by MainToolbar's handleOpenClick (via the
+    // `ifc-lite:open-files` event) so palette opens capture a live handle too.
     c.push(
       { id: 'file:open', label: 'Open File', keywords: 'ifc ifcx glb load model browse', category: 'File', icon: FolderOpen,
+        immediate: true,
         action: () => {
-          const input = document.getElementById('file-input-open') as HTMLInputElement | null;
-          if (input) input.click();
+          window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
         } },
     );
     for (const rf of recentFiles) {
@@ -279,17 +294,20 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         keywords: `recent open ${formatFileSize(rf.size)}`,
         category: 'File', icon: Clock,
         detail: formatFileSize(rf.size),
+        immediate: true,
         action: () => {
-          // Try loading from IndexedDB blob cache → dispatches to MainToolbar's loadFile
-          getCachedFile(rf).then(file => {
-            if (file) {
-              window.dispatchEvent(new CustomEvent('ifc-lite:load-file', { detail: file }));
-            } else {
-              // Cache miss — fall back to file picker
-              const input = document.getElementById('file-input-open') as HTMLInputElement | null;
-              if (input) input.click();
-            }
-          });
+          // Cached (decided synchronously from the pre-loaded key set): load the
+          // blob — dispatching a load event needs no user activation.
+          if (cachedNamesRef.current.has(fileName)) {
+            void getCachedFile(rf).then(file => {
+              if (file) window.dispatchEvent(new CustomEvent('ifc-lite:load-file', { detail: file }));
+              else window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
+            });
+          } else {
+            // Not cached — re-pick. Synchronous within the gesture so the dialog
+            // actually opens on Chrome.
+            window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
+          }
         },
       });
     }
@@ -634,7 +652,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const runCommand = useCallback((cmd: Command) => {
     onOpenChange(false);
     recordUsage(cmd.id);
-    requestAnimationFrame(() => cmd.action());
+    // File-dialog actions must run while user activation is still live; deferring
+    // them to a frame later voids it and Chrome silently ignores the dialog.
+    if (cmd.immediate) {
+      cmd.action();
+    } else {
+      requestAnimationFrame(() => cmd.action());
+    }
   }, [onOpenChange]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

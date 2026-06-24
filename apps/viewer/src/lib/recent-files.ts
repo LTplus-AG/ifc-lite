@@ -116,6 +116,28 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
   } catch { /* IndexedDB unavailable — degrade gracefully */ }
 }
 
+/**
+ * List the names of files currently in the blob cache (keys only, no blobs).
+ * Cheap enough to call on every palette open so callers can decide cache
+ * hit/miss synchronously, without an `await` that would drop the user
+ * activation a file dialog needs.
+ */
+export async function getCachedFileNames(): Promise<string[]> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const req = tx.objectStore(STORE_NAME).getAllKeys();
+    const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return keys.map(String);
+  } catch {
+    return [];
+  }
+}
+
 /** Retrieve a cached file blob and reconstruct a File object. */
 export async function getCachedFile(target: string | RecentFileEntry): Promise<File | null> {
   const name = typeof target === 'string' ? target : target.name;

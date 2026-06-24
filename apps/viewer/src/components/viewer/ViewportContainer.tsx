@@ -699,6 +699,7 @@ export function ViewportContainer() {
       prevVis.openings !== typeVisibility.openings ||
       prevVis.virtualElements !== typeVisibility.virtualElements ||
       prevVis.site !== typeVisibility.site ||
+      prevVis.ifcAnnotations !== typeVisibility.ifcAnnotations ||
       filteredTypeModeRef.current !== effectiveViewMode;
     const sourceChanged = filteredSourceRef.current !== allMeshes;
     if (typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current) {
@@ -709,7 +710,7 @@ export function ViewportContainer() {
       filteredTypeModeRef.current = effectiveViewMode;
     }
 
-    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site;
+    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
     const prevCacheLen = cache.length;
 
     // Only process NEW meshes since last run — O(batch_size) not O(total)
@@ -739,6 +740,12 @@ export function ViewportContainer() {
         if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) continue;
         if (ifcType === 'IfcVirtualElement' && !typeVisibility.virtualElements) continue;
         if (ifcType === 'IfcSite' && !typeVisibility.site) continue;
+        // IfcAnnotation can carry real 3D solid geometry (e.g. Bonsai
+        // plan-view "DRAWING" boxes) on top of the 2D symbolic curve overlay.
+        // The `ifcAnnotations` toggle drives the curve overlay (Viewport.tsx);
+        // honour it here too so the toggle also hides those 3D meshes instead
+        // of leaving them rendered as stray cubes (issue #1354).
+        if (ifcType === 'IfcAnnotation' && !typeVisibility.ifcAnnotations) continue;
       }
 
       // Mesh alpha flows through unchanged. The previous code re-multiplied

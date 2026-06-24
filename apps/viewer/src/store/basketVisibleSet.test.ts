@@ -255,6 +255,44 @@ describe('basketVisibleSet', () => {
     });
   });
 
+  describe('type visibility: IfcAnnotation (issue #1354)', () => {
+    const meshes = [
+      { expressId: 1, ifcType: 'IfcWall' },
+      { expressId: 2, ifcType: 'IfcAnnotation' },
+    ];
+
+    it('includes IfcAnnotation 3D meshes when the toggle is on', () => {
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(),
+        selectedEntity: null,
+        selectedEntityIds: new Set(),
+        hierarchyBasketSelection: new Set(),
+        geometryResult: { meshes } as any,
+        typeVisibility: { ...useViewerStore.getState().typeVisibility, ifcAnnotations: true },
+      });
+      invalidateVisibleBasketCache();
+
+      const refs = getVisibleBasketEntityRefsFromStore();
+      assert.ok(refs.some((r) => entityRefToString(r) === 'legacy:2'));
+    });
+
+    it('drops IfcAnnotation 3D meshes when the toggle is off', () => {
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(),
+        selectedEntity: null,
+        selectedEntityIds: new Set(),
+        hierarchyBasketSelection: new Set(),
+        geometryResult: { meshes } as any,
+        typeVisibility: { ...useViewerStore.getState().typeVisibility, ifcAnnotations: false },
+      });
+      invalidateVisibleBasketCache();
+
+      const refs = getVisibleBasketEntityRefsFromStore();
+      assert.ok(refs.some((r) => entityRefToString(r) === 'legacy:1'));
+      assert.ok(!refs.some((r) => entityRefToString(r) === 'legacy:2'));
+    });
+  });
+
   describe('federation: unresolved globalId in multi-model', () => {
     it('getBasketSelectionRefsFromStore returns array when models exist', () => {
       useViewerStore.setState({

@@ -1972,12 +1972,23 @@ impl ProfileProcessor {
                 // over an IfcLine and produced an empty mesh).
                 if let Some(basis_attr) = curve.get(0) {
                     if let Some(basis) = decoder.resolve_ref(basis_attr)? {
-                        if basis.ifc_type == IfcType::IfcLine {
-                            return self.process_trimmed_line_3d(curve, &basis, decoder);
+                        match basis.ifc_type {
+                            IfcType::IfcLine => {
+                                return self.process_trimmed_line_3d(curve, &basis, decoder);
+                            }
+                            // A trimmed circle/ellipse must be sampled against its
+                            // own 3D placement. The 2D fallback below lifts with
+                            // z=0 and drops any out-of-plane component — rebar
+                            // bend arcs live in the XZ plane, so flattening them
+                            // twisted the swept tube (issue #1348).
+                            IfcType::IfcCircle | IfcType::IfcEllipse => {
+                                return self.process_trimmed_conic_3d(curve, &basis, decoder);
+                            }
+                            _ => {}
                         }
                     }
                 }
-                // Other basis curves (conics, splines): get 2D points and lift to 3D.
+                // Other basis curves (splines): get 2D points and lift to 3D.
                 let points_2d = self.process_trimmed_curve_with_depth(curve, decoder, depth)?;
                 Ok(points_2d
                     .into_iter()
@@ -2144,27 +2155,25 @@ impl ProfileProcessor {
         })
     }
 
-    /// Process circle curve in 3D space (for swept disk solid, etc.)
-    fn process_circle_3d(
+    /// Read a conic's placement (`IfcCircle`/`IfcEllipse` Position) as a full 3D
+    /// frame: `(center, x_axis, y_axis)`. Handles both `IfcAxis2Placement3D`
+    /// (Location + Axis(Z) + RefDirection(X), with Y = Z × X) and the planar
+    /// `IfcAxis2Placement2D` (Location + RefDirection(X) in the XY plane, Y the
+    /// 90° CCW perpendicular). Used by both the full-circle sampler and the
+    /// trimmed-arc sampler so a 3D-placed arc is never flattened to z=0.
+    fn read_conic_placement_3d(
         &self,
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
-    ) -> Result<Vec<Point3<f64>>> {
-        // IfcCircle: Position (IfcAxis2Placement2D or 3D), Radius
+    ) -> Result<(Point3<f64>, Vector3<f64>, Vector3<f64>)> {
         let position_attr = curve
             .get(0)
-            .ok_or_else(|| Error::geometry("Circle missing Position".to_string()))?;
-
-        let radius = curve
-            .get_float(1)
-            .ok_or_else(|| Error::geometry("Circle missing Radius".to_string()))?;
-
+            .ok_or_else(|| Error::geometry("Conic missing Position".to_string()))?;
         let position = decoder
             .resolve_ref(position_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve circle position".to_string()))?;
+            .ok_or_else(|| Error::geometry("Failed to resolve conic position".to_string()))?;
 
-        // Get center and orientation from Axis2Placement3D
-        let (center, x_axis, y_axis) = if position.ifc_type == IfcType::IfcAxis2Placement3D {
+        if position.ifc_type == IfcType::IfcAxis2Placement3D {
             // IfcAxis2Placement3D: Location, Axis (Z), RefDirection (X)
             let loc_attr = position
                 .get(0)
@@ -2237,9 +2246,11 @@ impl ProfileProcessor {
             // Y axis = Z cross X
             let y_axis = z_axis.cross(&x_axis).normalize();
 
-            (center, x_axis, y_axis)
+            Ok((center, x_axis, y_axis))
         } else {
-            // 2D placement - use XY plane
+            // Planar IfcAxis2Placement2D: Location + RefDirection (X) at index 1.
+            // Build the frame in the XY plane (z = 0), honouring RefDirection so a
+            // rotated arc keeps its orientation (matches the 2D conic sampler).
             let loc_attr = position.get(0);
             let (cx, cy) = if let Some(attr) = loc_attr {
                 let loc = decoder.resolve_ref(attr)?;
@@ -2259,12 +2270,38 @@ impl ProfileProcessor {
             } else {
                 (0.0, 0.0)
             };
-            (
-                Point3::new(cx, cy, 0.0),
-                Vector3::new(1.0, 0.0, 0.0),
-                Vector3::new(0.0, 1.0, 0.0),
-            )
-        };
+            let x_axis = position
+                .get(1)
+                .filter(|a| !a.is_null())
+                .and_then(|a| decoder.resolve_ref(a).ok().flatten())
+                .and_then(|d| {
+                    let coords = d.get(0).and_then(|v| v.as_list())?;
+                    Some(Vector3::new(
+                        coords.first().and_then(|v| v.as_float()).unwrap_or(1.0),
+                        coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
+                        0.0,
+                    ))
+                })
+                .and_then(|v| v.try_normalize(1e-12))
+                .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
+            // 90° CCW perpendicular in the XY plane.
+            let y_axis = Vector3::new(-x_axis.y, x_axis.x, 0.0);
+            Ok((Point3::new(cx, cy, 0.0), x_axis, y_axis))
+        }
+    }
+
+    /// Process circle curve in 3D space (for swept disk solid, etc.)
+    fn process_circle_3d(
+        &self,
+        curve: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Vec<Point3<f64>>> {
+        // IfcCircle: Position (IfcAxis2Placement2D or 3D), Radius
+        let radius = curve
+            .get_float(1)
+            .ok_or_else(|| Error::geometry("Circle missing Radius".to_string()))?;
+
+        let (center, x_axis, y_axis) = self.read_conic_placement_3d(curve, decoder)?;
 
         // Generate circle points in 3D (24 at Medium, scaled by quality)
         let segments = scale_segments(24, 8, 96, self.quality());
@@ -2277,6 +2314,196 @@ impl ProfileProcessor {
         }
 
         Ok(points)
+    }
+
+    /// Sample an `IfcTrimmedCurve` whose basis is an `IfcCircle`/`IfcEllipse` in
+    /// FULL 3D, honouring the conic's 3D placement.
+    ///
+    /// The old path lifted the 2D `process_trimmed_conic` result with `z = 0`,
+    /// which silently dropped any out-of-plane component of the arc. Rebar bend
+    /// arcs (Tekla `IfcSweptDiskSolid` directrices) live in the XZ plane, so the
+    /// flattened arc landed at the wrong place and twisted the swept tube — the
+    /// L/U-bar corruption in issue #1348. Sampling against the placement's real
+    /// X/Y axes keeps the arc in its true plane.
+    fn process_trimmed_conic_3d(
+        &self,
+        trimmed: &DecodedEntity,
+        basis: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Vec<Point3<f64>>> {
+        let radius = basis.get_float(1).unwrap_or(1.0);
+        let radius2 = if basis.ifc_type == IfcType::IfcEllipse {
+            basis.get_float(2).unwrap_or(radius)
+        } else {
+            radius
+        };
+
+        let (center, x_axis, y_axis) = self.read_conic_placement_3d(basis, decoder)?;
+
+        // MasterRepresentation (attr 4): `.CARTESIAN.` resolves bounds from the
+        // trim points; otherwise parameter angles win (matching the 2D sampler).
+        let prefer_cartesian = trimmed
+            .get(4)
+            .and_then(|v| v.as_enum())
+            .map(|m| m == "CARTESIAN")
+            .unwrap_or(false);
+
+        let sense = trimmed
+            .get(3)
+            .and_then(|v| match v {
+                AttributeValue::Enum(s) => Some(s == "T"),
+                _ => None,
+            })
+            .unwrap_or(true);
+
+        let angle_scale = decoder.plane_angle_to_radians();
+        let start_angle = self
+            .trim_to_angle_3d(
+                trimmed.get(1),
+                prefer_cartesian,
+                &center,
+                &x_axis,
+                &y_axis,
+                radius,
+                radius2,
+                angle_scale,
+                decoder,
+            )
+            .unwrap_or(0.0);
+        let mut end_angle = self
+            .trim_to_angle_3d(
+                trimmed.get(2),
+                prefer_cartesian,
+                &center,
+                &x_axis,
+                &y_axis,
+                radius,
+                radius2,
+                angle_scale,
+                decoder,
+            )
+            .unwrap_or(2.0 * PI);
+
+        // Wrap so a sense-T arc whose end angle dropped below the start (crossed
+        // the 0/360° seam) stays the short arc, not its ~360° complement.
+        if sense && end_angle < start_angle {
+            end_angle += 2.0 * PI;
+        } else if !sense && end_angle > start_angle {
+            end_angle -= 2.0 * PI;
+        }
+
+        // Segment count: same angular floor + chord-deviation budget as the 2D
+        // conic sampler so density matches across the codebase.
+        let arc_angle = (end_angle - start_angle).abs();
+        let by_angle = (arc_angle / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize;
+        let by_chord = {
+            const CHORD_TOL_M: f64 = 5.0e-4; // 0.5 mm absolute deviation budget
+            let r_eff = radius.abs().max(radius2.abs());
+            let radius_m = r_eff * decoder.length_unit_scale();
+            if radius_m > CHORD_TOL_M {
+                let rel = (CHORD_TOL_M / radius_m).clamp(1e-9, 0.5);
+                let max_step = 2.0 * (1.0 - rel).acos();
+                if max_step > 1e-9 {
+                    (arc_angle / max_step).ceil() as usize
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        };
+        let num_segments = self
+            .quality()
+            .profile_arc_segments(by_angle.max(by_chord), 2)
+            .min(128);
+
+        let angle_range = if sense {
+            end_angle - start_angle
+        } else {
+            start_angle - end_angle
+        };
+
+        let mut points = Vec::with_capacity(num_segments + 1);
+        for i in 0..=num_segments {
+            let t = i as f64 / num_segments as f64;
+            let angle = if sense {
+                start_angle + t * angle_range
+            } else {
+                start_angle - t * angle_range.abs()
+            };
+            let p = center
+                + x_axis * (radius * angle.cos())
+                + y_axis * (radius2 * angle.sin());
+            points.push(p);
+        }
+
+        Ok(points)
+    }
+
+    /// Resolve one bound of an `IfcTrimmingSelect` on a 3D-placed conic to an
+    /// angle in the conic's local frame. `IfcParameterValue` bounds are angles in
+    /// the project's PLANEANGLEUNIT (scaled by `angle_scale`); `IfcCartesianPoint`
+    /// bounds are projected onto the placement's X/Y axes and read off as
+    /// `atan2`. Mirrors `extract_trim_select` + the 2D `to_angle` closure, but
+    /// keeps the full 3D point so out-of-plane placements resolve correctly.
+    #[allow(clippy::too_many_arguments)]
+    fn trim_to_angle_3d(
+        &self,
+        attr: Option<&AttributeValue>,
+        prefer_cartesian: bool,
+        center: &Point3<f64>,
+        x_axis: &Vector3<f64>,
+        y_axis: &Vector3<f64>,
+        radius: f64,
+        radius2: f64,
+        angle_scale: f64,
+        decoder: &mut EntityDecoder,
+    ) -> Option<f64> {
+        let list = attr?.as_list()?;
+        let mut param: Option<f64> = None;
+        let mut point: Option<Point3<f64>> = None;
+
+        for item in list {
+            // IFCPARAMETERVALUE(value) is stored as List(["IFCPARAMETERVALUE", value]).
+            if let Some(inner_list) = item.as_list() {
+                if let Some(type_name) = inner_list.first().and_then(|v| v.as_string()) {
+                    if type_name == "IFCPARAMETERVALUE" {
+                        param = inner_list.get(1).and_then(|v| v.as_float());
+                        continue;
+                    }
+                }
+            }
+            // A reference to an IfcCartesianPoint (kept in full 3D).
+            if item.as_entity_ref().is_some() {
+                if let Ok(Some(pt)) = decoder.resolve_ref(item) {
+                    if pt.ifc_type == IfcType::IfcCartesianPoint {
+                        if let Some(coords) = pt.get(0).and_then(|v| v.as_list()) {
+                            point = Some(Point3::new(
+                                coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
+                                coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
+                                coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
+                            ));
+                        }
+                    }
+                }
+                continue;
+            }
+            // Bare numeric fallback: a parameter without the IFCPARAMETERVALUE wrapper.
+            if let Some(f) = item.as_float() {
+                param = Some(f);
+            }
+        }
+
+        let use_point = (prefer_cartesian && point.is_some()) || param.is_none();
+        if use_point {
+            if let Some(p) = point {
+                let d = p - center;
+                let lx = d.dot(x_axis);
+                let ly = d.dot(y_axis);
+                return Some((ly / radius2).atan2(lx / radius));
+            }
+        }
+        param.map(|v| v * angle_scale)
     }
 
     /// Process polyline into 3D points

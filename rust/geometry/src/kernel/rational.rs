@@ -284,11 +284,15 @@ pub(crate) fn point_of(p: &ImplicitPoint) -> V3 {
 }
 
 /// orient2d on three already-materialised points (oracle), projected by `axis`.
+// Used only by the exact-arithmetic oracle in unit tests.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn orient2d_pts(a: &V3, b: &V3, c: &V3, axis: DropAxis) -> Sign {
     sign_of(&tri_area2(a, b, c, axis))
 }
 
 /// Exact twice-signed-area of a projected triangle (for coverage checks).
+// Used only by the exact-arithmetic oracle in unit tests.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn tri_area2(a: &V3, b: &V3, c: &V3, axis: DropAxis) -> BigRational {
     let (i, j) = axis_idx(axis);
     (&a[i] - &c[i]) * (&b[j] - &c[j]) - (&a[j] - &c[j]) * (&b[i] - &c[i])

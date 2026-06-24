@@ -137,7 +137,7 @@ impl GeometryRouter {
         // geometry work so cutting planes never sit on degenerate
         // interfaces. When everything collapses to one visual layer there
         // is nothing to slice.
-        let visual_layers = merge_thin_layers(&layers, self.unit_scale);
+        let visual_layers = merge_thin_layers(layers, self.unit_scale);
         if visual_layers.len() < 2 {
             self.push_layer_slice_diag(element.id, "skip:thin-layers-collapsed-to-1");
             return Ok(None);
@@ -569,11 +569,11 @@ fn slice_mesh_into_layers(
                     }
                     // Degenerate interface clip: emit the whole remainder for this
                     // layer rather than dropping geometry, and stop carving.
-                    _ => std::mem::replace(&mut remainder, Mesh::new()),
+                    _ => std::mem::take(&mut remainder),
                 }
             }
             // Last layer: everything left in the remainder.
-            None => std::mem::replace(&mut remainder, Mesh::new()),
+            None => std::mem::take(&mut remainder),
         };
 
         slab.origin = mesh.origin;

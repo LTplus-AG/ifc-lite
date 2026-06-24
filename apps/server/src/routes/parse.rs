@@ -7,7 +7,7 @@
 use crate::error::ApiError;
 use crate::services::streaming::detect_schema_version;
 use crate::services::{
-    cache::DiskCache, extract_data_model, process_geometry_filtered, process_streaming,
+    cache::DiskCache, extract_data_model, process_streaming,
     serialize_data_model_to_parquet, serialize_to_parquet,
     serialize_to_parquet_optimized_with_stats, OpeningFilterMode, OptimizedStats,
     VERTEX_MULTIPLIER,
@@ -335,6 +335,9 @@ pub async fn parse_stream(
 }
 
 /// SSE event types for Parquet streaming.
+// Variant sizes differ because the payload events carry buffers; boxing them
+// would complicate the SSE serialization path for no runtime benefit here.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ParquetStreamEvent {

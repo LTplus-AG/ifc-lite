@@ -26,3 +26,6 @@ zip = { version = "8", default-features = false, features = ["deflate"], optiona
 [features]
 default = []
 parquet-bos = ["dep:arrow", "dep:parquet", "dep:zip"]
+
+[lints]
+workspace = true

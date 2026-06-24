@@ -91,3 +91,20 @@ robust = "1.2"
 [[example]]
 name = "color_extraction_test"
 path = "examples/color_extraction_test.rs"
+
+# Geometry inherits the workspace numeric-safety policy (restated here, since a
+# member cannot both inherit and extend `[lints]`) and additionally allows the
+# structure lints that fire pervasively in a numerics kernel and are intentional
+# here. These structure allows are deliberately NOT workspace-wide, so the parser,
+# server, and exporters stay strict on them.
+[lints.clippy]
+excessive_precision = "allow"
+manual_range_contains = "allow"
+manual_clamp = "allow"
+neg_cmp_op_on_partial_ord = "allow"
+approx_constant = "allow"
+type_complexity = "allow"
+too_many_arguments = "allow"
+large_enum_variant = "allow"
+needless_range_loop = "allow"
+should_implement_trait = "allow"

@@ -716,7 +716,7 @@ fn rounded_rectangle_outline(
 fn push_dedup(out: &mut Vec<Point2<f64>>, pt: Point2<f64>) {
     if out
         .last()
-        .map_or(true, |p| (p.x - pt.x).abs() > 1.0e-9 || (p.y - pt.y).abs() > 1.0e-9)
+        .is_none_or(|p| (p.x - pt.x).abs() > 1.0e-9 || (p.y - pt.y).abs() > 1.0e-9)
     {
         out.push(pt);
     }
@@ -779,7 +779,7 @@ fn round_corner(
     let t_in = corner - ein * r; // tangent point on the incoming edge
     let t_out = corner + eout * r; // tangent point on the outgoing edge
     let center = corner - ein * r + eout * r;
-    let mut a0 = (t_in.y - center.y).atan2(t_in.x - center.x);
+    let a0 = (t_in.y - center.y).atan2(t_in.x - center.x);
     let mut a1 = (t_out.y - center.y).atan2(t_out.x - center.x);
     // Sweep the short way (a 90° corner gives a quarter arc).
     while a1 - a0 > std::f64::consts::PI {
@@ -2364,7 +2364,7 @@ impl ProfileProcessor {
                             if let Some((origin, x_axis)) =
                                 axis2_placement_location_and_x_axis_3d(&placement, decoder)
                             {
-                                if result.last().map_or(true, |last: &Point3<f64>| {
+                                if result.last().is_none_or(|last: &Point3<f64>| {
                                     (last - origin).norm() > 1e-9
                                 }) {
                                     result.push(origin);
@@ -2439,7 +2439,7 @@ impl ProfileProcessor {
         // surfaces visibly as railway signals authored at station 900 m
         // snapping onto the segment-start marker around station 800 m.
         if let Some(terminal) = last_curve_segment_terminal {
-            if result.last().map_or(true, |last: &Point3<f64>| {
+            if result.last().is_none_or(|last: &Point3<f64>| {
                 (last - terminal).norm() > 1e-9
             }) {
                 result.push(terminal);
@@ -2541,7 +2541,7 @@ impl ProfileProcessor {
             const JUNCTION_EPS: f64 = 1e-6;
             let mut iter = trimmed.into_iter();
             if let Some(first) = iter.next() {
-                let coincident = result.last().map_or(false, |last| {
+                let coincident = result.last().is_some_and(|last| {
                     (first.x - last.x).abs() < JUNCTION_EPS
                         && (first.y - last.y).abs() < JUNCTION_EPS
                         && (first.z - last.z).abs() < JUNCTION_EPS

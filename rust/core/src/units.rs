@@ -419,7 +419,7 @@ pub fn extract_plane_angle_to_radians(decoder: &mut EntityDecoder, project_id: u
         if unit_type_str == "IFCSIUNIT" {
             // [1]=UnitType, [2]=Prefix, [3]=Name
             let kind = unit_entity.get(1).and_then(|a| a.as_enum());
-            if kind.as_deref() != Some("PLANEANGLEUNIT") {
+            if kind != Some("PLANEANGLEUNIT") {
                 continue;
             }
             // SI plane-angle unit is .RADIAN. by definition; SI prefixes
@@ -427,7 +427,7 @@ pub fn extract_plane_angle_to_radians(decoder: &mut EntityDecoder, project_id: u
             let prefix_scale = match unit_entity.get(2) {
                 Some(p) if !p.is_null() => p
                     .as_enum()
-                    .map(|s| get_si_prefix_multiplier(&s))
+                    .map(get_si_prefix_multiplier)
                     .unwrap_or(1.0),
                 _ => 1.0,
             };
@@ -437,7 +437,7 @@ pub fn extract_plane_angle_to_radians(decoder: &mut EntityDecoder, project_id: u
         if unit_type_str == "IFCCONVERSIONBASEDUNIT" {
             // [1]=UnitType, [2]=Name, [3]=ConversionFactor (IFCMEASUREWITHUNIT)
             let kind = unit_entity.get(1).and_then(|a| a.as_enum());
-            if kind.as_deref() != Some("PLANEANGLEUNIT") {
+            if kind != Some("PLANEANGLEUNIT") {
                 continue;
             }
             // The conversion factor expresses (1 file-unit) in terms of its

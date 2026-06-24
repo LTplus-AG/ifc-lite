@@ -45,7 +45,7 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
     // Bail cleanly on malformed buffers instead of panicking on an out-of-range
     // index below.
     let vertex_count = mesh.positions.len() / 3;
-    if mesh.positions.len() % 3 != 0
+    if !mesh.positions.len().is_multiple_of(3)
         || mesh.indices.iter().any(|&idx| idx as usize >= vertex_count)
     {
         return false;

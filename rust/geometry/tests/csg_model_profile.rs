@@ -137,13 +137,13 @@ fn profile_model() {
         if ms > 1000.0 {
             over_1s += 1;
             // live flush so a hang shows the culprit element immediately
-            print!("  [>1s] id={id} {ty} {ms:.0}ms peak_escal={peak_escal} elem_escal={elem_escal} openings={openings} tripped={tripped}\n");
+            println!("  [>1s] id={id} {ty} {ms:.0}ms peak_escal={peak_escal} elem_escal={elem_escal} openings={openings} tripped={tripped}");
             let _ = std::io::stdout().flush();
         }
         recs.push(Rec { id: *id, ty: ty.clone(), ms, peak_escal, elem_escal, tris, openings, tripped });
         done += 1;
-        if done % 500 == 0 {
-            print!("  ...{done}/{} elements, {:.1}s elapsed\n", products.len(), t_all.elapsed().as_secs_f64());
+        if done.is_multiple_of(500) {
+            println!("  ...{done}/{} elements, {:.1}s elapsed", products.len(), t_all.elapsed().as_secs_f64());
             let _ = std::io::stdout().flush();
         }
     }
@@ -172,7 +172,7 @@ fn profile_model() {
         elems.first().copied().unwrap_or(0), pct(0.01), pct(0.05), pct(0.10), pct(0.50));
 
     println!("\n--- 25 slowest elements ---");
-    println!("{:>10}  {:>24}  {:>10}  {:>12}  {:>12}  {:>8}  {:>8}  {}", "id", "type", "ms", "peak_escal", "elem_escal", "tris", "openings", "tripped");
+    println!("{:>10}  {:>24}  {:>10}  {:>12}  {:>12}  {:>8}  {:>8}  tripped", "id", "type", "ms", "peak_escal", "elem_escal", "tris", "openings");
     for r in recs.iter().take(25) {
         println!("{:>10}  {:>24}  {:>10.1}  {:>12}  {:>12}  {:>8}  {:>8}  {}",
             r.id, r.ty, r.ms, r.peak_escal, r.elem_escal, r.tris, r.openings, r.tripped);

@@ -139,7 +139,7 @@ pub fn resolve_submesh_color(
         return color;
     }
     if let Some(colors) = material_colors {
-        let prefer_transparent = *mat_color_idx % 2 == 0;
+        let prefer_transparent = (*mat_color_idx).is_multiple_of(2);
         *mat_color_idx += 1;
         if let Some(color) = pick_material_style_for_submesh(colors, prefer_transparent) {
             return color;

@@ -710,7 +710,7 @@ fn scale_translation(mut m: Matrix4<f64>, scale: f64) -> Matrix4<f64> {
 fn convert_ifc_to_webgl(m: &Matrix4<f64>) -> [f32; 16] {
     let mut result = [0.0f32; 16];
     for col in 0..4 {
-        result[col * 4 + 0] = m[(0, col)] as f32; // X row: unchanged
+        result[col * 4] = m[(0, col)] as f32; // X row: unchanged
         result[col * 4 + 1] = m[(2, col)] as f32; // Y row: was Z
         result[col * 4 + 2] = -m[(1, col)] as f32; // Z row: was -Y
         result[col * 4 + 3] = m[(3, col)] as f32; // homogeneous

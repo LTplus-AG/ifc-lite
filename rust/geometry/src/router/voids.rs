@@ -1013,9 +1013,9 @@ struct ParamRectCut {
 }
 
 impl GeometryRouter {
-    /// Get individual bounding boxes for each representation item in an opening element.
-    /// This handles disconnected geometry (e.g., two separate window openings in one IfcOpeningElement)
-    /// by returning separate bounds for each item instead of one combined bounding box.
+    // Get individual bounding boxes for each representation item in an opening element.
+    // This handles disconnected geometry (e.g., two separate window openings in one IfcOpeningElement)
+    // by returning separate bounds for each item instead of one combined bounding box.
 
     /// Extract extrusion direction and position transform from IfcExtrudedAreaSolid
     /// Returns (local_direction, position_transform)
@@ -1074,7 +1074,7 @@ impl GeometryRouter {
                         self.extract_extrusion_direction_from_solid(&current, decoder)?;
                     let combined = match (mapping_chain.as_ref(), position_transform) {
                         (Some(chain), Some(pos)) => Some(chain * pos),
-                        (Some(chain), None) => Some(chain.clone()),
+                        (Some(chain), None) => Some(*chain),
                         (None, Some(pos)) => Some(pos),
                         (None, None) => None,
                     };
@@ -1735,7 +1735,7 @@ impl GeometryRouter {
     /// 1. Get chamfered wall mesh (preserves chamfered corners)
     /// 2. For each opening, use optimized box cutting with internal face generation
     /// 3. Apply any clipping operations (roof clips) from original representation
-    #[inline]
+    ///
     /// Process an element with void subtraction (openings).
     ///
     /// This function handles three distinct cases for cutting openings:
@@ -1753,6 +1753,7 @@ impl GeometryRouter {
     /// post-clipping step for rectangular and diagonal openings.  For diagonal
     /// walls the geometry is computed in a rotated axis-aligned frame and
     /// rotated back, giving correct results for any wall orientation.
+    #[inline]
     pub fn process_element_with_voids(
         &self,
         element: &DecodedEntity,
@@ -2249,6 +2250,9 @@ impl GeometryRouter {
         Some(mesh_from_frame(&result_local, &axes, center))
     }
 
+    // `host_mutated` is set just before an early `break`, so the final write is
+    // intentionally never read back; keep the flag for readability of the branch.
+    #[allow(unused_assignments)]
     fn apply_void_context_inner(&self, mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // Capture the input triangle count + bounds so the per-host
         // diagnostic can flag the "cuts attempted but produced no
@@ -2769,30 +2773,27 @@ impl GeometryRouter {
                         depth_dir,
                     );
                     let cutter = &extended_opening;
-                    match clipper.subtract_mesh(&result, cutter) {
-                        Ok(csg_result) => {
-                            let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
-                                .max(MIN_VALID_TRIANGLES);
-                            // CSG only counts as a success when the result actually
-                            // changed (either fewer triangles, indicating polygons
-                            // were removed, or more triangles, indicating the
-                            // opening was carved as new boundary tris). When the
-                            // safety thresholds in `subtract_mesh` short-circuit —
-                            // e.g. `MAX_CSG_POLYGONS_PER_MESH` rejects a high-poly
-                            // round/curved opening (issue #635) — the host mesh is
-                            // returned unchanged, leaving the void uncut.
-                            let changed = csg_result.triangle_count() != tri_before;
-                            csg_unchanged = !changed;
-                            if !csg_result.is_empty()
-                                && csg_result.triangle_count() >= min_tris
-                                && changed
-                            {
-                                result = csg_result;
-                                host_mutated = true;
-                                csg_succeeded = true;
-                            }
+                    if let Ok(csg_result) = clipper.subtract_mesh(&result, cutter) {
+                        let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
+                            .max(MIN_VALID_TRIANGLES);
+                        // CSG only counts as a success when the result actually
+                        // changed (either fewer triangles, indicating polygons
+                        // were removed, or more triangles, indicating the
+                        // opening was carved as new boundary tris). When the
+                        // safety thresholds in `subtract_mesh` short-circuit,
+                        // e.g. `MAX_CSG_POLYGONS_PER_MESH` rejects a high-poly
+                        // round/curved opening (issue #635), the host mesh is
+                        // returned unchanged, leaving the void uncut.
+                        let changed = csg_result.triangle_count() != tri_before;
+                        csg_unchanged = !changed;
+                        if !csg_result.is_empty()
+                            && csg_result.triangle_count() >= min_tris
+                            && changed
+                        {
+                            result = csg_result;
+                            host_mutated = true;
+                            csg_succeeded = true;
                         }
-                        Err(_) => {}
                     }
 
                     // AABB fallback (issue #635): when CSG can't subtract the
@@ -3357,10 +3358,10 @@ impl GeometryRouter {
         result
     }
 
-    /// Cut a rectangular opening from a mesh using optimized plane clipping
-    ///
-    /// This is more efficient than full CSG because:
-    /// 1. Only processes triangles that intersect the opening bounds
+    // Cut a rectangular opening from a mesh using optimized plane clipping.
+    // This is more efficient than full CSG because it only processes triangles
+    // that intersect the opening bounds.
+    //
     /// Extend opening bounds along extrusion direction to match wall extent
     ///
     /// Projects wall corners onto the extrusion axis and extends the opening

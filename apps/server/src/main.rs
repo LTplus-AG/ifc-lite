@@ -86,6 +86,9 @@ pub struct AppState {
 ///
 /// Extracted from `main` so integration tests can exercise the full route
 /// table in-process (via `tower`'s `oneshot`) without binding a socket.
+// `TimeoutLayer::new` is deprecated in favor of `with_status_code`, but keeping
+// the existing default-status behavior here; revisit when tower-http is bumped.
+#[allow(deprecated)]
 fn build_router(state: AppState) -> Router {
     let config = state.config.clone();
 

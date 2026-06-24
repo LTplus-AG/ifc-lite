@@ -34,6 +34,8 @@ fn read_fixture() -> Option<String> {
 }
 
 /// Directed welded edges seen >= 2 times (winding-inconsistent edges).
+// The quantized directed-edge key type is explicit by design in this test helper.
+#[allow(clippy::type_complexity)]
 fn inconsistent_edges(positions: &[f32], origin: [f64; 3], indices: &[u32]) -> usize {
     let q = |v: f32, o: f64| ((v as f64 + o) * 1.0e5).round() as i64;
     let key = |i: u32| {

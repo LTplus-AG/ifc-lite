@@ -763,7 +763,7 @@ fn test_trimmed_circle_3d_placement_reads_ref_direction() {
     let mesh = processor.process(&entity, &mut decoder, &schema, TessellationQuality::Medium).unwrap();
     assert!(!mesh.is_empty());
 
-    let (min, max) = mesh.bounds();
+    let (_min, max) = mesh.bounds();
     // With RefDirection respected (90° rotation), the trim from 270° to 360°
     // sweeps from local-frame "below center" to local-frame "right of center";
     // in world that maps to "left of center" to "below center" because +X

@@ -649,7 +649,7 @@ fn verify(t: &Welded, c: &Welded) -> VerifyOutcome {
     let mut best_any: Option<f64> = None; // min dev among any corresponded candidate
     let mut reflection_seen = false;
     for map in &maps {
-        if map.iter().any(|&x| x == usize::MAX) {
+        if map.contains(&usize::MAX) {
             continue;
         }
         if let Some((dev, conn, refl, r)) = eval_correspondence(t, c, map) {
@@ -658,7 +658,7 @@ fn verify(t: &Welded, c: &Welded) -> VerifyOutcome {
                 continue;
             }
             best_any = Some(best_any.map_or(dev, |d: f64| d.min(dev)));
-            if conn && best_valid.map_or(true, |(d, _)| dev < d) {
+            if conn && best_valid.is_none_or(|(d, _)| dev < d) {
                 best_valid = Some((dev, r));
             }
         }

@@ -120,7 +120,6 @@ fn explicit_coord(p: &ImplicitPoint) -> [f64; 3] {
 /// antisymmetric, so we canonicalise the args to implicit-first (stable, to keep
 /// it a pure function), dispatch to the 0I/1I/2I/3I config, and flip the result
 /// once per transposition (the permutation parity).
-
 pub fn orient2d_any(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: DropAxis) -> Sign {
     let pts = [a, b, c];
     let key = |p: &ImplicitPoint| u8::from(matches!(p, ImplicitPoint::Explicit(_))); // implicit=0

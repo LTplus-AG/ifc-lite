@@ -286,7 +286,7 @@ impl GeometryRouter {
             .as_list()
             .ok_or_else(|| Error::geometry("DirectionRatios is not a list".to_string()))?;
 
-        let dx = ratios.get(0).and_then(|v| v.as_float()).unwrap_or(0.0);
+        let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0);
         let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
         let dz = ratios.get(2).and_then(|v| v.as_float()).unwrap_or(1.0);
 
@@ -308,10 +308,7 @@ impl GeometryRouter {
             if !pos_attr.is_null() {
                 if let Ok(Some(pos_entity)) = decoder.resolve_ref(pos_attr) {
                     if pos_entity.ifc_type == IfcType::IfcAxis2Placement3D {
-                        match self.parse_axis2_placement_3d(&pos_entity, decoder) {
-                            Ok(transform) => Some(transform),
-                            Err(_) => None,
-                        }
+                        self.parse_axis2_placement_3d(&pos_entity, decoder).ok()
                     } else {
                         None
                     }

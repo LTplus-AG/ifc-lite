@@ -418,7 +418,7 @@ impl GeometryRouter {
                 let point_entities = decoder.resolve_ref_list(points_attr)?;
                 let mut points = Vec::with_capacity(point_entities.len());
 
-                for (_i, point_entity) in point_entities.iter().enumerate() {
+                for point_entity in point_entities.iter() {
                     if point_entity.ifc_type == IfcType::IfcCartesianPoint {
                         if let Some(coords_attr) = point_entity.get(0) {
                             if let Some(coords) = coords_attr.as_list() {

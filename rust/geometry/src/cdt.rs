@@ -147,6 +147,7 @@ struct Cdt {
     tris: Vec<Tri>,
     /// Constraint segments (canonical edge keys); never flipped, never crossed.
     constraints: BTreeSet<(usize, usize)>,
+    #[allow(dead_code)] // retained for diagnostics/parity with the input-vertex count
     n_input: usize,
     super_base: usize,
     /// Per-triangle inside-domain flag, parallel to `tris`. Maintained
@@ -953,15 +954,14 @@ impl Cdt {
             if !self.tris[ti].alive {
                 continue;
             }
-            if self.tris[ti].v.iter().any(|&x| x >= self.super_base) {
-                if depth[ti] == -1 {
+            if self.tris[ti].v.iter().any(|&x| x >= self.super_base)
+                && depth[ti] == -1 {
                     depth[ti] = 0;
                     queue.push_back(ti);
                 }
-            }
         }
 
-        let mut bfs = |start_queue: &mut VecDeque<usize>, depth: &mut [i32]| {
+        let bfs = |start_queue: &mut VecDeque<usize>, depth: &mut [i32]| {
             while let Some(ti) = start_queue.pop_front() {
                 let d = depth[ti];
                 for e in 0..3 {
@@ -1450,6 +1450,8 @@ pub(crate) fn triangulate_refined(
 /// that cannot absorb new vertices (they map indices straight onto a fixed 3D
 /// ring). Returns `None` if a constrained-Delaunay over just the input vertices
 /// can't be produced (caller falls back to ear-clipping).
+// Only exercised by unit tests today; kept as a no-Steiner triangulation entry point.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn triangulate_simple_no_steiner(points: &[Point2<f64>]) -> Option<Vec<usize>> {
     let rings = vec![points.iter().map(p2).collect::<Vec<P2>>()];
     let (pts, segs) = rings_to_pslg(&rings);
@@ -1465,6 +1467,8 @@ pub(crate) fn triangulate_simple_no_steiner(points: &[Point2<f64>]) -> Option<Ve
 /// Quality-triangulate a polygon-with-holes WITHOUT adding Steiner points:
 /// indices reference the combined `outer ++ holes` vertex list only. For
 /// callers that lay out exactly those vertices in 3D and index them directly.
+// Only exercised by unit tests today; kept as a no-Steiner triangulation entry point.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn triangulate_holes_no_steiner(
     outer: &[Point2<f64>],
     holes: &[Vec<Point2<f64>>],
@@ -1634,8 +1638,8 @@ mod tests {
             pt(0.0, 3.0),
         ];
         let hole = vec![pt(4.0, 1.0), pt(8.0, 1.0), pt(6.0, 2.5)];
-        let a = triangulate_refined(&outer, &[hole.clone()], true).unwrap();
-        let b = triangulate_refined(&outer, &[hole.clone()], true).unwrap();
+        let a = triangulate_refined(&outer, std::slice::from_ref(&hole), true).unwrap();
+        let b = triangulate_refined(&outer, std::slice::from_ref(&hole), true).unwrap();
         // The full-Ruppert run must actually ADD Steiner points (otherwise this
         // would only exercise the base CDT, not the refinement loop).
         let n_input = outer.len() + hole.len();
@@ -1859,7 +1863,7 @@ mod tests {
             pt(7.0, 7.0),
             pt(3.0, 7.0),
         ];
-        let idx = triangulate_holes_no_steiner(&outer, &[hole.clone()]).expect("holes");
+        let idx = triangulate_holes_no_steiner(&outer, std::slice::from_ref(&hole)).expect("holes");
         let mut pts = outer.clone();
         pts.extend(hole);
         let area = area_of(&pts, &idx);

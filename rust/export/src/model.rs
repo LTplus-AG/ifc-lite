@@ -245,7 +245,7 @@ pub fn build_export_model(content: &[u8]) -> ExportModel {
         let name = opt_string(entity.get(2));
         let description = opt_string(entity.get(3));
         let object_type = opt_string(entity.get(4));
-        let has_geometry = entity.get(6).map_or(false, |a| !a.is_null());
+        let has_geometry = entity.get(6).is_some_and(|a| !a.is_null());
 
         let mut property_sets = Vec::new();
         let mut quantity_sets = Vec::new();

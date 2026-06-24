@@ -212,11 +212,11 @@ impl GeometryRouter {
     /// gracefully when the curve cannot be sampled or the attribute layout
     /// is malformed; never panics.
     ///
-    /// Output transform: origin = curve sample + lateral·right + vertical·up
-    /// + longitudinal·tangent. Basis is (tangent, right, up) with
-    /// `up = (0, 0, 1)` and `right = up × tangent`. When the tangent is
-    /// (nearly) vertical the frame degenerates and falls back to identity
-    /// rotation about the sampled origin.
+    /// Output transform: the origin is the curve sample plus
+    /// `lateral*right + vertical*up + longitudinal*tangent`. Basis is
+    /// (tangent, right, up) with `up = (0, 0, 1)` and `right = up cross tangent`.
+    /// When the tangent is (nearly) vertical the frame degenerates and falls
+    /// back to identity rotation about the sampled origin.
     fn resolve_linear_placement_with_depth(
         &self,
         placement: &DecodedEntity,

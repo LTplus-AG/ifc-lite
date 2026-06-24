@@ -489,7 +489,7 @@ pub fn decode_instanced(bytes: &[u8]) -> Option<DecodedInstanced> {
     let instance_count = ru32(12)? as usize;
     let positions_len = ru32(16)? as usize;
     let normals_len = ru32(20)? as usize;
-    let indices_len = ru32(24)? as usize;
+    let _indices_len = ru32(24)? as usize;
 
     let tt_off = 32;
     let it_off = tt_off + template_count * 48;

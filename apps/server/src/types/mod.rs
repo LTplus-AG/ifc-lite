@@ -9,5 +9,5 @@ mod response;
 
 pub use mesh::MeshData;
 pub use response::{
-    CoordinateInfo, MetadataResponse, ModelMetadata, ParseResponse, ProcessingStats, StreamEvent,
+    MetadataResponse, ModelMetadata, ParseResponse, ProcessingStats, StreamEvent,
 };

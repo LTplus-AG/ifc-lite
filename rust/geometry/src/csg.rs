@@ -2110,7 +2110,7 @@ mod tests {
             |i: usize| 4 * i as u32 + 2,
             |i: usize| 4 * i as u32 + 3,
         );
-        let mut quad = |a: u32, b: u32, c: u32, d: u32, m: &mut Mesh| {
+        let quad = |a: u32, b: u32, c: u32, d: u32, m: &mut Mesh| {
             m.add_triangle(a, b, c);
             m.add_triangle(a, c, d);
         };

@@ -18,6 +18,19 @@ ifc-lite-clash = { version = "4.1.0", path = "rust/clash" }
 ifc-lite-export = { version = "4.1.0", path = "rust/export" }
 ifc-lite-wasm = { version = "4.1.0", path = "rust/wasm-bindings" }
 
+# Numeric-safety policy, inherited by every member via `[lints] workspace = true`.
+# clippy must not auto-rewrite numeric literals or float comparisons: `.clamp()`,
+# `RangeInclusive::contains`, and `partial_cmp` change NaN/panic behavior, and the
+# precise literals in numeric code are intentional. Structure lints that only the
+# geometry kernel needs are allowed in rust/geometry/Cargo.toml, not here, so the
+# gate stays strict for the parser, server, and exporters.
+[workspace.lints.clippy]
+excessive_precision = "allow"
+manual_range_contains = "allow"
+manual_clamp = "allow"
+neg_cmp_op_on_partial_ord = "allow"
+approx_constant = "allow"
+
 [profile.release]
 opt-level = 3           # Optimize for speed
 lto = true              # Link-time optimization

@@ -281,7 +281,7 @@ mod tests {
 
         // At least one node carries a known IFC5 property in the bsi::ifc::prop:: namespace.
         let has_prop = data.iter().any(|n| {
-            n["attributes"].as_object().map_or(false, |a| {
+            n["attributes"].as_object().is_some_and(|a| {
                 a.keys().any(|k| k.starts_with("bsi::ifc::prop::") && k != "bsi::ifc::prop::Name")
             })
         });

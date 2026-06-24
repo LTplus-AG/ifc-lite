@@ -41,7 +41,6 @@ mod tests;
 pub use advanced::{AdvancedBrepProcessor, BSplineSurfaceProcessor};
 pub use alignment::IfcAlignmentProcessor;
 pub use boolean::BooleanClippingProcessor;
-pub(crate) use boolean::cap_half_space_clip;
 pub use brep::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, ShellBasedSurfaceModelProcessor,
 };

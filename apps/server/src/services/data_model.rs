@@ -1235,16 +1235,14 @@ fn build_spatial_hierarchy(
 
     // Also process any spatial nodes not reachable from project (shouldn't happen, but be safe)
     for &entity_id in &spatial_entity_ids {
-        if !nodes_map.contains_key(&entity_id) {
+        if let std::collections::hash_map::Entry::Vacant(e) = nodes_map.entry(entity_id) {
             if let Some(entity) = entity_map.get(&entity_id) {
                 let name = entity
                     .name
                     .clone()
                     .unwrap_or_else(|| format!("{}#{}", entity.type_name, entity_id));
 
-                nodes_map.insert(
-                    entity_id,
-                    SpatialNode {
+                e.insert(SpatialNode {
                         entity_id,
                         parent_id: 0,
                         level: 0,
@@ -1265,8 +1263,7 @@ fn build_spatial_hierarchy(
                             .get(&entity_id)
                             .cloned()
                             .unwrap_or_default(),
-                    },
-                );
+                    });
             }
         }
     }
@@ -1308,6 +1305,9 @@ fn build_spatial_hierarchy(
 }
 
 /// Recursively build spatial nodes with full information.
+// Threads the full recursion context (maps, caches, accumulators); grouping the
+// args into a struct would not change behavior and is out of scope here.
+#[allow(clippy::too_many_arguments)]
 fn build_spatial_nodes_recursive(
     entity_id: u32,
     parent_id: u32,

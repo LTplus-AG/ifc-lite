@@ -548,12 +548,12 @@ mod wall_profile_research {
 
         // Get wall bounds for the optimized function
         let (wall_min_f32, wall_max_f32) = wall_mesh.bounds();
-        let wall_min = Point3::new(
+        let _wall_min = Point3::new(
             wall_min_f32.x as f64,
             wall_min_f32.y as f64,
             wall_min_f32.z as f64,
         );
-        let wall_max = Point3::new(
+        let _wall_max = Point3::new(
             wall_max_f32.x as f64,
             wall_max_f32.y as f64,
             wall_max_f32.z as f64,
@@ -879,7 +879,7 @@ END-ISO-10303-21;
         // The RTC delta between models should be finite and usable for alignment
         let delta_x = offset_a.0 - offset_b.0;
         let delta_y = offset_a.1 - offset_b.1;
-        let delta_z = offset_a.2 - offset_b.2;
+        let _delta_z = offset_a.2 - offset_b.2;
 
         // Models are about 1.3 km apart in X and 1 km apart in Y
         assert!(

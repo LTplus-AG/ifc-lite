@@ -208,7 +208,7 @@ fn mesh_visible(mesh: &MeshData, opts: &GltfOptions) -> bool {
     // Geometry sanity: matching, non-empty, triangulated.
     !mesh.indices.is_empty()
         && mesh.positions.len() >= 9
-        && mesh.positions.len() % 3 == 0
+        && mesh.positions.len().is_multiple_of(3)
         && mesh.normals.len() == mesh.positions.len()
 }
 
@@ -239,7 +239,7 @@ pub struct MeshView<'a> {
 fn view_ok(v: &MeshView) -> bool {
     !v.indices.is_empty()
         && v.positions.len() >= 9
-        && v.positions.len() % 3 == 0
+        && v.positions.len().is_multiple_of(3)
         && v.normals.len() == v.positions.len()
 }
 
@@ -526,6 +526,9 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
 /// `origins` is xyz per mesh, `express_ids` labels each mesh. Indices are per-mesh LOCAL.
 /// Callers pass exactly the meshes they want emitted (visibility filtering is theirs).
 #[allow(clippy::too_many_arguments)]
+// The index `i` walks several parallel count/offset arrays in lockstep; a
+// range loop is the clearest expression and avoids zipping ragged slices.
+#[allow(clippy::needless_range_loop)]
 pub fn export_glb_from_meshes(
     positions: &[f32],
     normals: &[f32],
@@ -600,13 +603,13 @@ fn pack_glb(json_bytes: &[u8], bin: &[u8]) -> Vec<u8> {
     out.extend_from_slice(&(padded_json as u32).to_le_bytes());
     out.extend_from_slice(b"JSON");
     out.extend_from_slice(json_bytes);
-    out.extend(std::iter::repeat(0x20).take(json_pad));
+    out.extend(std::iter::repeat_n(0x20, json_pad));
 
     // BIN chunk (zero-padded)
     out.extend_from_slice(&(padded_bin as u32).to_le_bytes());
     out.extend_from_slice(b"BIN\0");
     out.extend_from_slice(bin);
-    out.extend(std::iter::repeat(0x00).take(bin_pad));
+    out.extend(std::iter::repeat_n(0x00, bin_pad));
 
     out
 }
@@ -680,7 +683,7 @@ mod tests {
 
         // Materials present + LIT by default (#1321: no KHR_materials_unlit) +
         // double-sided.
-        assert!(json["materials"].as_array().unwrap().len() >= 1);
+        assert!(!json["materials"].as_array().unwrap().is_empty());
         assert!(
             json.get("extensionsUsed").is_none(),
             "lit by default: no extensionsUsed / unlit extension"
@@ -725,7 +728,7 @@ mod tests {
             0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // mesh 0
             0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // mesh 1
         ];
-        let normals: Vec<f32> = std::iter::repeat([0.0f32, 0.0, 1.0]).take(8).flatten().collect();
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 8).flatten().collect();
         let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3, 0, 1, 2, 0, 2, 3];
         let vertex_counts = vec![4u32, 4];
         let index_counts = vec![6u32, 6];
@@ -811,7 +814,7 @@ mod tests {
         // #1321: lit = false reproduces the historical flat material — every
         // material tagged KHR_materials_unlit and the extension declared globally.
         let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
-        let normals: Vec<f32> = std::iter::repeat([0.0f32, 0.0, 1.0]).take(4).flatten().collect();
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
         let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
         let (glb, _) = export_glb_from_meshes(
             &positions,

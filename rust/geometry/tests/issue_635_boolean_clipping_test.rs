@@ -226,9 +226,9 @@ fn count_hits_through_opening_centre(
 ///        * appear in exactly one triangle of that face (free-edge,
 ///          i.e. a topological boundary on that face), AND
 ///        * whose midpoint lies inside the opening's in-plane AABB.
-///      Those are rim edges of the hole on that face. The wall's outer
-///      perimeter edges are excluded because their midpoints sit far
-///      outside the opening footprint.
+///          Those are rim edges of the hole on that face. The wall's outer
+///          perimeter edges are excluded because their midpoints sit far
+///          outside the opening footprint.
 ///
 /// This works whether the CSG output is densely tessellated (many
 /// small triangles around the rim) or minimally tessellated (the rim

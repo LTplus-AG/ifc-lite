@@ -5,7 +5,7 @@
 // Test that IFC files with materials/colors/styling entities don't crash
 // the geometry processing pipeline.
 
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcSchema};
+use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{calculate_normals, GeometryRouter};
 
 const IFC_WITH_MATERIALS: &str = r#"ISO-10303-21;
@@ -139,10 +139,10 @@ fn test_ifc_with_materials_does_not_crash() {
     assert!(!entity_index.is_empty(), "Entity index should not be empty");
 
     // Create decoder
-    let mut decoder = EntityDecoder::with_index(content, entity_index.into());
+    let mut decoder = EntityDecoder::with_index(content, entity_index);
 
     // Create geometry router
-    let mut router = GeometryRouter::with_units(content, &mut decoder);
+    let router = GeometryRouter::with_units(content, &mut decoder);
 
     // Process all building elements
     let mut scanner = EntityScanner::new(content);
@@ -206,7 +206,7 @@ fn test_styled_item_parsing() {
 
     // Build entity index
     let entity_index = build_entity_index(content);
-    let mut decoder = EntityDecoder::with_index(content, entity_index.into());
+    let mut decoder = EntityDecoder::with_index(content, entity_index);
 
     // Decode IFCSURFACESTYLERENDERING with typed values
     let rendering = decoder

@@ -582,10 +582,8 @@ fn point_inside_bvh(
 
 fn to_f64_pt(arr: &Arrangement, v: Vid) -> [f64; 3] {
     let idx = v as usize;
-    if let Some(slot) = arr.f64_cache.borrow().get(idx).copied() {
-        if let Some(p) = slot {
-            return p;
-        }
+    if let Some(Some(p)) = arr.f64_cache.borrow().get(idx).copied() {
+        return p;
     }
     let pt = arr.interner.get(v);
     // Reuse the interner's already-cached I512 lambda (computed once at intern time)

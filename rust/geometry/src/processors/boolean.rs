@@ -1445,7 +1445,7 @@ pub(crate) fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, cli
     let lift = |p: &Point2<f64>| -> Point3<f64> { origin + u_axis * p.x + v_axis * p.y };
 
     for (oi, ring) in rings.iter().enumerate() {
-        if depth[oi] % 2 != 0 {
+        if !depth[oi].is_multiple_of(2) {
             continue; // hole — emitted with its outer ring
         }
         // Outer ring CCW; its immediate holes (depth+1, contained) CW.

@@ -212,8 +212,8 @@ fn tessellate_bspline_surface(
     if u_degree >= u_knots.len() || v_degree >= v_knots.len() {
         return None;
     }
-    if u_knots.len() - u_degree - 1 >= u_knots.len()
-        || v_knots.len() - v_degree - 1 >= v_knots.len()
+    if u_knots.len() - u_degree > u_knots.len()
+        || v_knots.len() - v_degree > v_knots.len()
     {
         return None;
     }

@@ -114,7 +114,7 @@ fn type_token_is(bytes: &[u8], name: &[u8]) -> bool {
         && ty[..name.len()].eq_ignore_ascii_case(name)
         // The type token must END here (next byte is '(' or whitespace), so
         // "IFCFACETEDBREP" never matches a longer "IFCFACETEDBREPX".
-        && ty.get(name.len()).map_or(true, |&c| matches!(c, b'(' | b' ' | b'\r' | b'\n' | b'\t'))
+        && ty.get(name.len()).is_none_or(|&c| matches!(c, b'(' | b' ' | b'\r' | b'\n' | b'\t'))
 }
 
 /// Parse the first `#<digits>` entity reference inside a STEP record's attribute

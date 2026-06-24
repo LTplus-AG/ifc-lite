@@ -249,6 +249,10 @@ struct EntityJob {
     representation_map_id: Option<u32>,
 }
 
+// Only invoked on the wasm32 serial path; dead on the native build.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+// Threads the full metadata-resolution context; splitting it would not improve clarity.
+#[allow(clippy::too_many_arguments)]
 fn populate_entity_job_metadata(
     job: &mut EntityJob,
     geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
@@ -1113,7 +1117,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             }
             entity_jobs.push(EntityJob {
                 id,
-                ifc_type: ifc_type.clone(),
+                ifc_type,
                 start,
                 end,
                 product_definition_shape_id: None,
@@ -1736,6 +1740,9 @@ pub fn process_geometry_streaming_filtered_with_options(
     }
 }
 
+// Carries the full per-job processing context; factoring the args into a struct
+// would not change behavior and is out of scope for the lint gate.
+#[allow(clippy::too_many_arguments)]
 fn process_entity_job(
     job: &EntityJob,
     content: &[u8],
@@ -2109,7 +2116,7 @@ fn apply_opening_filter(
     // or only partially present, and without it we cannot identify which specific openings
     // belong to windows/doors.
     if mode == OpeningFilterMode::IgnoreAll {
-        for (&id, _) in &filling_jobs {
+        for &id in filling_jobs.keys() {
             skipped_entity_ids.insert(id);
         }
         return (skipped_entity_ids, FxHashMap::default());
@@ -2273,6 +2280,7 @@ fn has_glass_style(style: &GeometryStyleInfo) -> bool {
 mod tests {
     use super::*;
 
+    #[allow(dead_code)] // test helper retained for building index fixtures
     fn map(pairs: &[(u32, &[u32])]) -> FxHashMap<u32, Vec<u32>> {
         pairs.iter().map(|(k, v)| (*k, v.to_vec())).collect()
     }

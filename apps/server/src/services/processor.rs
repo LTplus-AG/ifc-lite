@@ -4,4 +4,4 @@
 
 //! IFC processing service — re-exports from the shared `ifc-lite-processing` crate.
 
-pub use ifc_lite_processing::{process_geometry_filtered, OpeningFilterMode};
+pub use ifc_lite_processing::OpeningFilterMode;

@@ -19,6 +19,7 @@
 //!      counting triangle crossings (Möller–Trumbore),
 //!   3. flood-fills the 0-crossing cells from the grid border; any 0-cell NOT
 //!      reachable from the border is an INTERIOR hole — i.e. the window cut.
+//!
 //! A solid (uncut) wall, or one with a central plug, has too few interior hole
 //! cells and the test FAILS.
 

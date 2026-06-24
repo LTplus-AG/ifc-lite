@@ -300,7 +300,7 @@ pub unsafe extern "C" fn ifc_lite_parse_ex(
 #[no_mangle]
 pub unsafe extern "C" fn ifc_lite_free(ptr: *mut u8, len: usize) {
     if !ptr.is_null() && len > 0 {
-        let _ = Box::from_raw(slice::from_raw_parts_mut(ptr, len));
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len));
     }
 }
 

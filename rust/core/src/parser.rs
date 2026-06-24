@@ -236,6 +236,9 @@ fn list_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
 
 /// Parse a complete entity line from raw IFC bytes.
 /// Example: #123=IFCWALL('guid','owner',$,$,'name',$,$,$);
+// The nom `IResult` parser tuple type is intentionally explicit here; factoring
+// it into a `type` alias would obscure the parser combinator structure.
+#[allow(clippy::type_complexity)]
 pub fn parse_entity<'a, T>(input: &'a T) -> Result<(u32, IfcType, Vec<Token<'a>>)>
 where
     T: AsRef<[u8]> + ?Sized,

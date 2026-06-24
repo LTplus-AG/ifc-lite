@@ -83,3 +83,6 @@ tower = { version = "0.5", features = ["util"] }
 [[bench]]
 name = "serialization"
 harness = false
+
+[lints]
+workspace = true

@@ -845,7 +845,7 @@ impl GeometryRouter {
                     }
 
                     // Apply MappedItem transform to newly added sub-meshes
-                    if let Some(mut transform) = mapping_transform.clone() {
+                    if let Some(mut transform) = mapping_transform {
                         self.scale_transform(&mut transform);
                         // The MappingTarget is baked into the vertices here, but
                         // `rep_identity` was hashed from the canonical (pre-target)

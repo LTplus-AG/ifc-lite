@@ -18,5 +18,5 @@ pub use parquet_data_model::serialize_data_model_to_parquet;
 pub use parquet_optimized::{
     serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,
 };
-pub use processor::{process_geometry_filtered, OpeningFilterMode};
+pub use processor::OpeningFilterMode;
 pub use streaming::process_streaming;

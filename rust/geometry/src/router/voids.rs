@@ -2494,11 +2494,8 @@ impl GeometryRouter {
                 let depth_dir = extrusion_dir
                     .filter(|d| d.norm() > NORMALIZE_EPSILON)
                     .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                // Same internal-membrane weld as the sequential path, so a
-                // two-extrusion cap-to-cap opening cuts cleanly when batched too.
-                let deseamed = Self::remove_internal_membrane(opening_mesh, depth_dir);
                 let ext =
-                    Self::extend_opening_mesh_through_host(&deseamed, &result, depth_dir);
+                    Self::extend_opening_mesh_through_host(opening_mesh, &result, depth_dir);
                 // #2176: only per-component-watertight solids may join a group.
                 if !mesh_is_closed_exact(&ext) {
                     continue;
@@ -2612,11 +2609,8 @@ impl GeometryRouter {
                             let depth_dir = extrusion_dir
                                 .filter(|d| d.norm() > NORMALIZE_EPSILON)
                                 .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                            // Deseam (as the sequential path does) before re-extending.
-                            let deseamed =
-                                Self::remove_internal_membrane(opening_mesh, depth_dir);
                             let ext = Self::extend_opening_mesh_through_host(
-                                &deseamed,
+                                opening_mesh,
                                 &result,
                                 depth_dir,
                             );
@@ -2769,12 +2763,8 @@ impl GeometryRouter {
                     let depth_dir = extrusion_dir
                         .filter(|d| d.norm() > NORMALIZE_EPSILON)
                         .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                    // Weld out any internal cap membrane (two extrusions glued
-                    // cap-to-cap inside the host) so the cutter is one continuous
-                    // solid and the subtract carves a clean through-hole.
-                    let deseamed = Self::remove_internal_membrane(opening_mesh, depth_dir);
                     let extended_opening = Self::extend_opening_mesh_through_host(
-                        &deseamed,
+                        opening_mesh,
                         &result,
                         depth_dir,
                     );
@@ -3835,6 +3825,15 @@ impl GeometryRouter {
         host_mesh: &Mesh,
         dir: Vector3<f64>,
     ) -> Mesh {
+        // Weld out any internal cap membrane FIRST: an opening authored as two (or
+        // more) extrusions glued cap-to-cap inside the host (e.g. the AC20 round
+        // windows) leaves a back-to-back cap pair mid-cutter that the exact subtract
+        // treats as a real boundary, leaving a solid plug at the seam. Deseaming here,
+        // inside the one helper every void path funnels through, means no current or
+        // future call site can forget it. No-op for ordinary single-solid openings.
+        let deseamed = Self::remove_internal_membrane(opening_mesh, dir);
+        let opening_mesh = &deseamed;
+
         let len = dir.norm();
         if len < NORMALIZE_EPSILON {
             return opening_mesh.clone();

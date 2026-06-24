@@ -186,6 +186,7 @@ export function useIfcLoader() {
   const loadFile = useCallback(async (
     file: File,
     target: LoadTarget = { kind: 'primary' },
+    options?: { sourceHandle?: FileSystemFileHandle },
   ) => {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // Only a primary (destructive, replace-everything) load bumps the session.
@@ -243,6 +244,7 @@ export function useIfcLoader() {
           loadedAt: Date.now(),
           fileSize,
           sourceFile: file,
+          sourceHandle: options?.sourceHandle,
           idOffset: 0,
           maxExpressId: 0,
           loadState: 'pending',

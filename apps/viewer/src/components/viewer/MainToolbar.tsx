@@ -51,6 +51,7 @@ import {
   Redo2,
   Boxes,
   Shapes,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -69,7 +70,7 @@ import {
   DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
-import { useViewerStore, isIfcxDataStore } from '@/store';
+import { useViewerStore, isIfcxDataStore, type FederatedModel } from '@/store';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
@@ -85,6 +86,11 @@ import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
 import { SearchInline } from './SearchInline';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
+import {
+  supportsFileSystemAccess,
+  openIfcFilesWithHandles,
+  readFreshFile,
+} from '@/services/file-system-access';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { toast } from '@/components/ui/toast';
@@ -498,6 +504,64 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     e.target.value = '';
   }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
 
+  // Open via the File System Access API when available (Chromium) so we capture
+  // a live FileSystemFileHandle for each file — that handle is what lets the
+  // Refresh button re-read the same file from disk later (issue #1345). Browsers
+  // without the API fall back to the hidden <input type="file">.
+  const handleOpenClick = useCallback(async () => {
+    if (!supportsFileSystemAccess()) {
+      fileInputRef.current?.click();
+      return;
+    }
+    const opened = await openIfcFilesWithHandles();
+    if (!opened) return; // cancelled, unavailable, or picker failed
+
+    const files = opened.map(o => o.file);
+    recordRecentFiles(files.map(f => ({ name: f.name, size: f.size })));
+    cacheFileBlobs(files);
+
+    if (opened.length === 1) {
+      // Single model: keep the handle so Refresh can re-read it from disk.
+      void loadFile(opened[0].file, { kind: 'primary' }, { sourceHandle: opened[0].handle });
+    } else {
+      // Multiple files mirror handleFileSelect's branching (no per-model handle).
+      const allIfcx = files.every(f => f.name.endsWith('.ifcx'));
+      resetViewerState();
+      clearAllModels();
+      if (allIfcx) {
+        loadFederatedIfcx(files);
+      } else {
+        loadFilesSequentially(files);
+      }
+    }
+  }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
+
+  // Refresh re-reads the same file from disk and re-parses it. It is only
+  // possible for a single model opened via the File System Access API (which
+  // gave us a live handle); drag-drop, <input type="file">, cache-restored, and
+  // federated loads have no handle, so the button is not offered for them.
+  const refreshableModel = useMemo<FederatedModel | null>(() => {
+    if (loading || models.size !== 1) return null;
+    const only = models.values().next().value as FederatedModel | undefined;
+    return only?.sourceHandle ? only : null;
+  }, [models, loading]);
+
+  const handleRefresh = useCallback(async () => {
+    const model = refreshableModel;
+    if (!model?.sourceHandle) return;
+    const fresh = await readFreshFile(model.sourceHandle);
+    if (!fresh) {
+      toast.error(
+        `Couldn't re-read "${model.name}". It may have been moved or deleted, or access was denied.`,
+      );
+      return;
+    }
+    recordRecentFiles([{ name: fresh.name, size: fresh.size }]);
+    cacheFileBlobs([fresh]);
+    void loadFile(fresh, { kind: 'primary' }, { sourceHandle: model.sourceHandle });
+    toast.success(`Refreshed "${fresh.name}"`);
+  }, [refreshableModel, loadFile]);
+
   const hasSelection = selectedEntityId !== null;
   // Selection chip uses the multi-select size when present; falls back
   // to the single legacy `selectedEntityId` so the chip still says
@@ -788,7 +852,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             onClick={(e) => {
               // Blur button to close tooltip before opening file dialog
               (e.currentTarget as HTMLButtonElement).blur();
-              fileInputRef.current?.click();
+              void handleOpenClick();
             }}
             disabled={loading}
           >
@@ -801,6 +865,25 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         </TooltipTrigger>
         <TooltipContent>Open IFC File</TooltipContent>
       </Tooltip>
+
+      {refreshableModel && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={(e) => {
+                (e.currentTarget as HTMLButtonElement).blur();
+                void handleRefresh();
+              }}
+              disabled={loading}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh model from disk</TooltipContent>
+        </Tooltip>
+      )}
 
       {/* Add Model button - only shown when models are loaded */}
       {hasModelsLoaded && (

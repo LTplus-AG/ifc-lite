@@ -336,6 +336,15 @@ export interface FederatedModel {
   /** Original source handle used for explicit reload/reposition operations. */
   sourceFile?: ModelSourceFile;
   /**
+   * Live File System Access handle captured when the model was opened via
+   * `showOpenFilePicker` (Chromium only). Unlike `sourceFile` — a frozen
+   * snapshot of the bytes at pick time — this can be re-read with `getFile()`
+   * to pull the current on-disk contents, powering the "Refresh" action
+   * (issue #1345). Absent for drag-drop, `<input type="file">`, cache-restored,
+   * and federated loads. Held in memory only; never serialized to cache.
+   */
+  sourceHandle?: FileSystemFileHandle;
+  /**
    * ID offset for this model (from FederationRegistry)
    * All mesh expressIds are globalIds = originalExpressId + idOffset
    * Use this to convert back to original IDs for property lookup

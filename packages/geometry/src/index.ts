@@ -779,6 +779,9 @@ export class GeometryProcessor {
    * @param options.sizeThreshold File size threshold in bytes (default: 2MB)
    * @param options.batchSize Number of meshes per batch for streaming (default: 25)
    * @param options.entityIndex Optional entity index for priority-based loading
+   * @yields StreamingGeometryEvent with 'batch' events containing MeshData[].
+   *   Multiple meshes may share the same expressId (one per material/part).
+   *   Consumers should group by expressId for per-element rendering or picking.
    */
   async *processAdaptive(
     buffer: Uint8Array,

@@ -6,21 +6,34 @@
  * Geometry types for IFC-Lite
  */
 
+/**
+ * Mesh data for a single geometric representation of an IFC element.
+ *
+ * An element may produce MULTIPLE MeshData entries (one per material, CSG part,
+ * or representation item). Group by `expressId` for per-element operations such
+ * as DOM grouping, picking, or depth sorting. The number of meshes per element
+ * depends on the IFC file's geometric complexity.
+ */
 export interface MeshData {
   expressId: number;
   ifcType?: string;          // IFC type name (e.g., "IfcWall", "IfcSpace") - optional for backward compatibility with old caches
   modelIndex?: number;       // Index of the model this mesh belongs to (for multi-model federation)
   positions: Float32Array;  // [x,y,z, x,y,z, ...]
   normals: Float32Array;    // [nx,ny,nz, ...]
-  indices: Uint32Array;     // Triangle indices
+  /** Triangle indices (3 per face).
+   *  NOTE: Winding order is UNRELIABLE (meshes are double-sided by design).
+   *  Do not use winding for front/back-face determination or normal-based
+   *  culling. Use depth testing or `abs(dot(normal, viewDir))` for shading. */
+  indices: Uint32Array;
   /** Apparent rendering colour: IfcSurfaceStyleRendering.DiffuseColour
    *  when authored, otherwise the SurfaceColour. Matches what most IFC
    *  viewers display and what the GLB exporter uses by default. */
   color: [number, number, number, number];
   /** SurfaceColour, populated by the WASM extractor only when the file
    *  authored a distinct DiffuseColour (so `shadingColor !== color`).
-   *  Consumed by the GLB exporter's "Shading" colour-source option;
-   *  renderers and other exporters can ignore it. */
+   *  Consumed by the GLB exporter's "Shading" colour-source option.
+   *  For basic rendering, use `color` (matches most IFC viewers).
+   *  For physically-accurate rendering, prefer `shadingColor ?? color`. */
   shadingColor?: [number, number, number, number];
   /** Per-vertex entity IDs for color-merged batches (desktop fast path).
    *  When present the renderer writes these instead of repeating `expressId`
@@ -40,12 +53,17 @@ export interface MeshData {
    *  share the same value (it is the whole-entity hash). Consumed by the
    *  model-diff / compare feature (issue #924); renderers ignore it. */
   geometryHash?: bigint;
-  /** Geometry provenance for the viewer's Model/Types view switch (#957 follow-up):
-   *  0 = occurrence (placed IfcProduct), 1 = orphan type geometry (an
-   *  IfcTypeProduct RepresentationMap with no occurrence — shown in BOTH modes),
-   *  2 = instanced type geometry (the type-library shape of a type that HAS an
-   *  occurrence — hidden in Model mode, shown in Types mode). Absent/0 for caches
-   *  and non-wasm paths. */
+  /** Geometry provenance for rendering and the viewer's Model/Types view switch:
+   *  - 0 = occurrence (placed IfcProduct). RENDER THIS in normal/Model views.
+   *  - 1 = orphan type geometry (an IfcTypeProduct RepresentationMap with no
+   *    occurrence). RENDER THIS in both Model and Types views.
+   *  - 2 = instanced type template. DO NOT RENDER in normal/Model view.
+   *    Instances of this type appear as class 0 occurrences with the same shape.
+   *    Rendering class 2 produces duplicate overlapping geometry.
+   *    Shown only in the viewer's Types mode.
+   *
+   *  Absent/undefined is treated as 0 (occurrence).
+   *  Downstream filter: `if ((mesh.geometryClass ?? 0) === 2) continue;` */
   geometryClass?: number;
   /** Per-element local-frame origin (WebGL Y-up, metres): world position of
    *  vertex i = `origin + positions[3i..3i+3]`. Present when the wasm pipeline

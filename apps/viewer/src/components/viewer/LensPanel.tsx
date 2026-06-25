@@ -1036,7 +1036,7 @@ function LensCard({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {onEdit && (
+          {onEdit && !lens.builtin && (
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(lens); }}
               className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200 p-0.5"

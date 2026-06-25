@@ -259,7 +259,7 @@ export const LENS_CRITERIA_TYPES = [
 
 /** Common entity attribute names for the lens rule editor */
 export const ENTITY_ATTRIBUTE_NAMES = [
-  'Name', 'Description', 'ObjectType', 'Tag',
+  'Name', 'Description', 'ObjectType', 'PredefinedType', 'Tag',
 ] as const;
 
 /** Common IFC classes for lens rule editor UI */

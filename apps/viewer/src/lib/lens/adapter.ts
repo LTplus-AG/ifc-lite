@@ -21,6 +21,7 @@ import {
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
 } from '@ifc-lite/parser';
+import { resolveEntityPredefinedType } from '@/lib/entity-predefined-type';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { FederatedModel } from '@/store/types';
 
@@ -190,6 +191,9 @@ export function createLensDataProvider(
           if (ot) return ot;
           break;
         }
+        case 'PredefinedType':
+          // No columnar accessor — resolve from the source buffer (#1364).
+          return resolveEntityPredefinedType(store, id);
         case 'Tag':
           // Tag is not stored in columnar — always on-demand
           break;

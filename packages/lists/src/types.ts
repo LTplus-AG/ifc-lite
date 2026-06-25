@@ -71,6 +71,9 @@ export interface ListDataProvider {
   getClassifications?(expressId: number): ListClassificationRef[];
   /** Building-storey name the element belongs to, or '' when unplaced. */
   getStoreyName?(expressId: number): string;
+  /** IFC `PredefinedType` enum token (e.g. "FLOOR", "FLOORING"), or '' when
+   *  the element has none. Used by the `PredefinedType` attribute column. */
+  getEntityPredefinedType?(expressId: number): string;
   /**
    * Discover EVERY property set / property and quantity set / quantity in
    * the model — complete and independent of entity-type selection — so the
@@ -248,6 +251,7 @@ export const ENTITY_ATTRIBUTES = [
   'Class',
   'Description',
   'ObjectType',
+  'PredefinedType',
   'Tag',
 ] as const;
 

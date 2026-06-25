@@ -96,23 +96,18 @@ function matchesMaterial(
 
   const pattern = criteria.materialName.toLowerCase();
 
-  // Prefer the individual-material accessor: a multi-layer element should
-  // match on any of its constituent materials (e.g. "gypsumboard" matches a
-  // wall whose layer set also contains insulation), not just the layer-set
-  // name that getMaterialName returns. (#1366)
-  if (provider.getMaterialNames) {
-    const names = provider.getMaterialNames(globalId);
-    if (names && names.length > 0) {
-      return names.some((n) => n.toLowerCase().includes(pattern));
-    }
-  }
-
-  // Fall back to the single material-name accessor when available.
-  if (provider.getMaterialName) {
-    const matName = provider.getMaterialName(globalId);
-    if (matName) {
-      return matName.toLowerCase().includes(pattern);
-    }
+  // Match against BOTH the individual constituent materials AND the single /
+  // layer-set name. A multi-layer element should match on any of its materials
+  // ("gypsumboard" matches a wall whose layer set also has insulation), and a
+  // rule built from the discovery dropdown — which may surface either an
+  // individual name or the layer-set name (e.g. "Basic Wall: Ext - Gyp/Ins") —
+  // must still match. Checking only one accessor regressed the other. (#1366)
+  if (provider.getMaterialNames || provider.getMaterialName) {
+    const names = provider.getMaterialNames?.(globalId);
+    if (names && names.some((n) => n.toLowerCase().includes(pattern))) return true;
+    const matName = provider.getMaterialName?.(globalId);
+    if (matName && matName.toLowerCase().includes(pattern)) return true;
+    // A dedicated material accessor exists; don't fall through to the pset scan.
     return false;
   }
 

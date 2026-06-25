@@ -423,3 +423,37 @@ describe('matchesCriteria — model', () => {
     expect(matchesCriteria(c, 1, createModelProvider(false))).toBe(false);
   });
 });
+
+describe('matchesCriteria — material (#1366)', () => {
+  // A layered wall: layer-set name from getMaterialName, individual materials
+  // from getMaterialNames.
+  const provider: LensDataProvider = {
+    getEntityCount: () => 1,
+    forEachEntity: (cb) => cb(1, 'm1'),
+    getEntityType: () => 'IfcWall',
+    getPropertyValue: () => undefined,
+    getPropertySets: () => [],
+    getMaterialName: () => 'Basic Wall: Ext - Gyp/Ins',
+    getMaterialNames: () => ['Gypsum Board', 'Insulation'],
+  };
+  const rule = (materialName: string): LensCriteria => ({ type: 'material', materialName });
+
+  it('matches an individual constituent material', () => {
+    expect(matchesCriteria(rule('gypsum'), 1, provider)).toBe(true);
+    expect(matchesCriteria(rule('insulation'), 1, provider)).toBe(true);
+  });
+
+  it('still matches the layer-set / single name (no regression for dropdown rules)', () => {
+    expect(matchesCriteria(rule('Basic Wall'), 1, provider)).toBe(true);
+  });
+
+  it('does not match an unrelated material', () => {
+    expect(matchesCriteria(rule('steel'), 1, provider)).toBe(false);
+  });
+
+  it('matches via getMaterialName when getMaterialNames is absent', () => {
+    const single: LensDataProvider = { ...provider, getMaterialNames: undefined };
+    expect(matchesCriteria(rule('Gyp/Ins'), 1, single)).toBe(true);
+    expect(matchesCriteria(rule('brick'), 1, single)).toBe(false);
+  });
+});

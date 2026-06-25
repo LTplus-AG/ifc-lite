@@ -386,7 +386,8 @@ export async function loadPrecisionGrid(spec: PrecisionGridSpec): Promise<boolea
       const adapter = {
         getImageCount: () => tiff.getImageCount(),
         getImage: async (index: number) => {
-          const img = await tiff.getImage(index);
+          // Reuse the band-guard probe for image 0 instead of re-fetching it.
+          const img = index === 0 ? probe : await tiff.getImage(index);
           const [scaleX = 0, scaleY = 0] = img.getResolution();
           return new Proxy(img, {
             get(target, property) {

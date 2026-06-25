@@ -267,6 +267,53 @@ describe('evaluateAutoColorLens', () => {
     expect(result.executionTime).toBeGreaterThanOrEqual(0);
   });
 
+  it('should group a multi-material element under EVERY one of its materials (#1366)', () => {
+    // 4 walls with Gypsum, plus Insulation on three of them; one is single-mat.
+    const materials = new Map<number, string[]>([
+      [1, ['Gypsum']],
+      [2, ['Gypsum', 'Insulation']],
+      [3, ['Gypsum', 'Insulation']],
+      [4, ['Insulation']],
+    ]);
+    const provider: LensDataProvider = {
+      getEntityCount: () => materials.size,
+      forEachEntity: (cb) => { for (const id of materials.keys()) cb(id, 'm1'); },
+      getEntityType: () => 'IfcWall',
+      getPropertyValue: () => undefined,
+      getPropertySets: () => [],
+      getMaterialNames: (id) => materials.get(id) ?? [],
+    };
+
+    const result = evaluateAutoColorLens({ source: 'material' }, provider);
+
+    const byName = new Map(result.legend.map(e => [e.name, e]));
+    expect(new Set(byName.keys())).toEqual(new Set(['Gypsum', 'Insulation']));
+    // Gypsum: walls 1,2,3 — Insulation: walls 2,3,4. Multi-material walls
+    // appear in BOTH buckets (previously they bucketed by the layer-set name).
+    expect(new Set(result.ruleEntityIds.get(byName.get('Gypsum')!.id))).toEqual(new Set([1, 2, 3]));
+    expect(new Set(result.ruleEntityIds.get(byName.get('Insulation')!.id))).toEqual(new Set([2, 3, 4]));
+    expect(byName.get('Gypsum')!.count).toBe(3);
+    expect(byName.get('Insulation')!.count).toBe(3);
+    // Every element still renders in exactly one colour.
+    for (const id of materials.keys()) {
+      expect(result.colorMap.has(id)).toBe(true);
+    }
+  });
+
+  it('falls back to single getMaterialName when getMaterialNames is absent', () => {
+    const provider: LensDataProvider = {
+      getEntityCount: () => 1,
+      forEachEntity: (cb) => cb(1, 'm1'),
+      getEntityType: () => 'IfcWall',
+      getPropertyValue: () => undefined,
+      getPropertySets: () => [],
+      getMaterialName: () => 'Concrete',
+    };
+    const result = evaluateAutoColorLens({ source: 'material' }, provider);
+    expect(result.legend.map(e => e.name)).toEqual(['Concrete']);
+    expect(result.ruleEntityIds.get(result.legend[0].id)).toEqual([1]);
+  });
+
   it('should auto-color by property when provider supports getPropertyValue', () => {
     const entities = [
       { id: 1, type: 'IfcWall' },

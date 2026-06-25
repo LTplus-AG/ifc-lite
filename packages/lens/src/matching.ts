@@ -96,7 +96,18 @@ function matchesMaterial(
 
   const pattern = criteria.materialName.toLowerCase();
 
-  // Prefer dedicated material accessor if available
+  // Prefer the individual-material accessor: a multi-layer element should
+  // match on any of its constituent materials (e.g. "gypsumboard" matches a
+  // wall whose layer set also contains insulation), not just the layer-set
+  // name that getMaterialName returns. (#1366)
+  if (provider.getMaterialNames) {
+    const names = provider.getMaterialNames(globalId);
+    if (names && names.length > 0) {
+      return names.some((n) => n.toLowerCase().includes(pattern));
+    }
+  }
+
+  // Fall back to the single material-name accessor when available.
   if (provider.getMaterialName) {
     const matName = provider.getMaterialName(globalId);
     if (matName) {

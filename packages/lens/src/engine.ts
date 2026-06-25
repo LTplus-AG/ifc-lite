@@ -139,20 +139,24 @@ export function evaluateAutoColorLens(
   const ghostIds: number[] = [];
 
   provider.forEachEntity((globalId) => {
-    const raw = extractAutoColorValue(autoColor, globalId, provider);
-    const value = raw != null ? String(raw).trim() : '';
+    // Most sources yield a single value; `material` can yield several — an
+    // element built from a layer / constituent set belongs to EVERY one of its
+    // materials, so it may join multiple value groups (#1366).
+    const values = extractAutoColorValues(autoColor, globalId, provider);
 
-    if (value === '') {
+    if (values.length === 0) {
       ghostIds.push(globalId);
       return;
     }
 
-    let group = valueGroups.get(value);
-    if (!group) {
-      group = [];
-      valueGroups.set(value, group);
+    for (const value of values) {
+      let group = valueGroups.get(value);
+      if (!group) {
+        group = [];
+        valueGroups.set(value, group);
+      }
+      group.push(globalId);
     }
-    group.push(globalId);
   });
 
   // Phase 2: Sort distinct values by entity count (descending) for best color allocation
@@ -173,7 +177,10 @@ export function evaluateAutoColorLens(
     const rgba = hexToRgba(color, 1);
 
     for (const id of entityIds) {
-      colorMap.set(id, rgba);
+      // An element may belong to several value groups (e.g. multi-material).
+      // It renders in a single colour, so the first group wins — groups are
+      // sorted by count desc, so that is the element's largest material group.
+      if (!colorMap.has(id)) colorMap.set(id, rgba);
     }
 
     ruleCounts.set(ruleId, entityIds.length);
@@ -197,6 +204,37 @@ export function evaluateAutoColorLens(
     legend,
     executionTime: performance.now() - startTime,
   };
+}
+
+/**
+ * Extract every distinct value an entity should be grouped under. Only
+ * `material` is multi-valued — an element with a layer / constituent set
+ * belongs to each of its individual materials; all other sources collapse to
+ * a single value. Values are trimmed and de-duplicated; empties are dropped.
+ * Falls back to the single-valued {@link extractAutoColorValue} when the
+ * multi-material accessor is unavailable. (#1366)
+ */
+function extractAutoColorValues(
+  spec: AutoColorSpec,
+  globalId: number,
+  provider: LensDataProvider,
+): string[] {
+  if (spec.source === 'material' && provider.getMaterialNames) {
+    const names = provider.getMaterialNames(globalId);
+    if (names && names.length > 0) {
+      const seen = new Set<string>();
+      for (const n of names) {
+        const t = (n ?? '').trim();
+        if (t) seen.add(t);
+      }
+      if (seen.size > 0) return [...seen];
+    }
+    // else fall through to the single-valued accessor
+  }
+
+  const raw = extractAutoColorValue(spec, globalId, provider);
+  const value = raw != null ? String(raw).trim() : '';
+  return value === '' ? [] : [value];
 }
 
 /**

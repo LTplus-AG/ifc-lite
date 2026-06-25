@@ -22,6 +22,7 @@ import {
   extractMaterialsOnDemand,
 } from '@ifc-lite/parser';
 import { resolveEntityPredefinedType } from '@/lib/entity-predefined-type';
+import { lensMaterialNames } from '@/lib/lens-material-names';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { FederatedModel } from '@/store/types';
 
@@ -292,6 +293,13 @@ export function createLensDataProvider(
       if (info.profiles?.length) return info.profiles[0].materialName;
       if (info.materials?.length) return info.materials[0]?.name;
       return undefined;
+    },
+
+    getMaterialNames(globalId: number): string[] {
+      const resolved = resolveGlobalId(globalId, entries);
+      if (!resolved) return [];
+      const store = resolved.entry.ifcDataStore;
+      return lensMaterialNames(extractMaterialsOnDemand(store, resolved.expressId));
     },
 
     getModelId(globalId: number): string | undefined {

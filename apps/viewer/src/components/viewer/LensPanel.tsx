@@ -26,6 +26,7 @@ import { downloadFile } from '@/lib/export/download';
 import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
+import { buildAutoColorLensToSave } from './lens-editor-utils';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@/store/slices/lensSlice';
 import {
   LENS_PALETTE, ENTITY_ATTRIBUTE_NAMES, AUTO_COLOR_SOURCES,
@@ -798,7 +799,7 @@ function AutoColorEditor({
   discovered,
   onRequestDiscovery,
 }: {
-  initial: { name: string; autoColor: AutoColorSpec };
+  initial: { id?: string; name: string; autoColor: AutoColorSpec };
   onSave: (lens: Lens) => void;
   onCancel: () => void;
   discovered: DiscoveredLensData | null;
@@ -850,12 +851,11 @@ function AutoColorEditor({
     if (needsPset) autoColor.psetName = psetName.trim();
     if (needsPropertyName) autoColor.propertyName = propertyName.trim();
 
-    onSave({
-      id: `lens-auto-${Date.now()}`,
-      name: name.trim(),
-      rules: [],
-      autoColor,
-    });
+    onSave(buildAutoColorLensToSave(
+      initial,
+      { name: name.trim(), autoColor },
+      () => `lens-auto-${Date.now()}`,
+    ));
   };
 
   const canSave = name.trim().length > 0
@@ -1036,7 +1036,7 @@ function LensCard({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {onEdit && !isAutoColor && (
+          {onEdit && (
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(lens); }}
               className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200 p-0.5"
@@ -1354,14 +1354,25 @@ export function LensPanel({ onClose }: LensPanelProps) {
       <div className="flex-1 overflow-auto p-3 space-y-2">
         {savedLenses.map(lens => (
           editingLens?.id === lens.id ? (
-            <LensEditor
-              key={lens.id}
-              initial={editingLens}
-              onSave={handleSaveLens}
-              onCancel={() => setEditingLens(null)}
-              discovered={discoveredLensData}
-              onRequestDiscovery={handleRequestDiscovery}
-            />
+            editingLens.autoColor ? (
+              <AutoColorEditor
+                key={lens.id}
+                initial={{ id: editingLens.id, name: editingLens.name, autoColor: editingLens.autoColor }}
+                onSave={handleSaveLens}
+                onCancel={() => setEditingLens(null)}
+                discovered={discoveredLensData}
+                onRequestDiscovery={handleRequestDiscovery}
+              />
+            ) : (
+              <LensEditor
+                key={lens.id}
+                initial={editingLens}
+                onSave={handleSaveLens}
+                onCancel={() => setEditingLens(null)}
+                discovered={discoveredLensData}
+                onRequestDiscovery={handleRequestDiscovery}
+              />
+            )
           ) : (
             <LensCard
               key={lens.id}

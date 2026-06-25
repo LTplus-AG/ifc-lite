@@ -181,18 +181,22 @@ const DATUM_TOWGS84: Record<string, string> = {
  *   - No +nadgrids reference (or it's the no-op `@null`)
  *   - A +towgs84 is already present (proj4 will honour it)
  */
-function sanitizeProj4(def: string, code?: string | null, datumName?: string | null): string {
-  if (!def.includes('+nadgrids') || def.includes('+nadgrids=@null')) return def;
-  if (/\+towgs84=/.test(def)) {
-    // Strip the unusable grid reference but keep the existing datum shift.
-    return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim();
-  }
+export function sanitizeProj4(def: string, code?: string | null, datumName?: string | null): string {
+  const stripNadgrids = (s: string) => s.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim();
+  const hasNadgrids = def.includes('+nadgrids') && !def.includes('+nadgrids=@null');
+  const hasTowgs84 = /\+towgs84=/.test(def);
+
+  // A datum shift is already present — keep it; only drop an unusable grid ref.
+  if (hasTowgs84) return hasNadgrids ? stripNadgrids(def) : def;
 
   const datumKey = datumName?.trim().toLowerCase() ?? '';
   const towgs84 = datumKey ? DATUM_TOWGS84[datumKey] : undefined;
 
   if (!towgs84) {
-    if (datumKey && !unknownDatumWarningCache.has(datumKey)) {
+    // No known fallback shift. For a grid-referencing def, warn + strip the
+    // unusable reference. For a plain def we leave it untouched (its datum may
+    // already be WGS84-aligned, or simply unknown to us).
+    if (hasNadgrids && datumKey && !unknownDatumWarningCache.has(datumKey)) {
       unknownDatumWarningCache.add(datumKey);
       console.warn(
         `[reproject] EPSG:${code ?? '?'} ("${datumName}") needs browser-unavailable `
@@ -202,21 +206,24 @@ function sanitizeProj4(def: string, code?: string | null, datumName?: string | n
         + 'DATUM_TOWGS84 in apps/viewer/src/lib/geo/reproject.ts.',
       );
     }
-    // Strip the grid reference; let proj4 fall through with no datum shift
-    // rather than silently substitute a wrong-region transform.
-    return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim();
+    return hasNadgrids ? stripNadgrids(def) : def;
   }
 
+  // We have a +towgs84 for this datum and the def carries none. Apply it. This
+  // covers a +nadgrids grid we can't load (strip + approximate) AND a bundled
+  // def that simply omits the shift for an offset datum — e.g. Ferro Krovak
+  // (EPSG:2065) / S-JTSK, where without it proj4 performs no datum shift at
+  // all and the model lands hundreds of metres off the basemap. (#1357)
   if (code && !approxDatumWarningCache.has(code)) {
     approxDatumWarningCache.add(code);
     console.warn(
-      `[reproject] EPSG:${code} requires browser-unavailable datum grids; `
-      + `using approximate +towgs84 for "${datumName}" instead. `
+      `[reproject] EPSG:${code} ("${datumName}") uses an approximate +towgs84 `
+      + 'datum shift (browser-unavailable precision grid). '
       + 'Expect metre-level XY differences for some locations.',
     );
   }
 
-  return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim() + ' ' + towgs84;
+  return `${hasNadgrids ? stripNadgrids(def) : def.replace(/\s+/g, ' ').trim()} ${towgs84}`;
 }
 
 /**

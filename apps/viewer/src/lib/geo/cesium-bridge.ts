@@ -35,6 +35,8 @@ import {
   type TerrainElevationSample,
 } from './terrain-elevation';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { shouldPreferOrthometricTerrain } from './cesium-placement';
+import { egm96Undulation } from './egm96-undulation';
 
 export interface GeodesicPosition {
   longitude: number;
@@ -74,8 +76,12 @@ export interface CesiumBridge {
 export interface CesiumModelOriginInfo extends GeodesicPosition {
   longitude: number;
   latitude: number;
+  /** Ellipsoidal height fed to Cesium (orthometric `ifcOriginHeight` + `geoidUndulation`). */
   height: number;
+  /** Raw IFC-authored altitude (orthometric): OrthogonalHeight·mapScale + origin Z. */
   ifcOriginHeight: number;
+  /** Geoid undulation N added to convert orthometric → ellipsoidal (0 when not applied). */
+  geoidUndulation: number;
   easting: number;
   northing: number;
   horizontalScale: number;
@@ -110,11 +116,21 @@ export async function computeCesiumModelOrigin(
   try {
     const [lon, lat] = proj4(projDef, 'WGS84', [easting, northing]);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    // IFC OrthogonalHeight is orthometric (above the vertical datum); Cesium
+    // places geometry by ellipsoidal height. Add the geoid undulation N so the
+    // model isn't buried ~N below the world terrain (≈ +45 m in Czechia,
+    // +49 m in Switzerland). Gated on a declared vertical datum — the
+    // unambiguous "these heights are orthometric" signal; models that don't
+    // declare one are left exactly as before. (#1355)
+    const geoidUndulation = shouldPreferOrthometricTerrain(projectedCRS)
+      ? egm96Undulation(lat, lon)
+      : 0;
     return {
       longitude: lon,
       latitude: lat,
-      height,
+      height: height + geoidUndulation,
       ifcOriginHeight,
+      geoidUndulation,
       easting,
       northing,
       horizontalScale,

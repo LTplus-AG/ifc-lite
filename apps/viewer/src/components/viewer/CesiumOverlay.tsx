@@ -30,6 +30,7 @@ import {
   shouldPreferOrthometricTerrain,
 } from '@/lib/geo/cesium-placement';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
+import { egm96Undulation } from '@/lib/geo/egm96-undulation';
 import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
 import { sunPosition, sunTimes } from '@ifc-lite/solar';
 
@@ -526,11 +527,18 @@ export function CesiumOverlay({
       // (IfcMapConversion.OrthogonalHeight + geometry origin), so they ARE
       // the final bridges. computeCesiumPlacement is still called for the
       // clip-plane Y; placementHeight == ifcOriginHeight.
+      // The model origin is now ellipsoidal (orthometric + geoid N, #1355).
+      // Express an orthometric terrain sample in the same ellipsoidal frame so
+      // the below-terrain clip plane stays consistent; Cesium-sourced terrain
+      // is already ellipsoidal and needs no shift.
+      const terrainHForFrame = (terrainSample?.reference === 'orthometric' && terrainH !== null)
+        ? terrainH + egm96Undulation(modelTentative.modelOrigin.latitude, modelTentative.modelOrigin.longitude)
+        : terrainH;
       const placement = computeCesiumPlacement({
         coordinateInfo,
         projectedCRS,
         ifcOriginHeight: modelTentative.modelOrigin.height,
-        terrainHeight: terrainH,
+        terrainHeight: terrainHForFrame,
         storeyElevations,
       });
       const cameraPlacement = usesSeparateCameraBridge
@@ -538,7 +546,7 @@ export function CesiumOverlay({
             coordinateInfo,
             projectedCRS,
             ifcOriginHeight: cameraTentative.modelOrigin.height,
-            terrainHeight: terrainH,
+            terrainHeight: terrainHForFrame,
             storeyElevations,
           })
         : placement;

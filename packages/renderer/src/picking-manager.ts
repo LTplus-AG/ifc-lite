@@ -104,13 +104,15 @@ export class PickingManager {
                 };
             }
 
-            // Collect all expressIds from batched meshes
-            const expressIds = new Set<number>();
-            for (const batch of batchedMeshes) {
-                for (const expressId of batch.expressIds) {
-                    expressIds.add(expressId);
-                }
-            }
+            // Collect every pickable expressId. We use the scene's authoritative
+            // mesh-data id set rather than each batch's `expressIds`, because a batch
+            // only records the PRIMARY expressId of each merged piece. When a door or
+            // window is colour-fused into a batch keyed by its host wall / opening,
+            // the filler's id lives only in the per-vertex entityIds (registered in
+            // meshDataMap by Scene.addMeshData). Reading batch.expressIds alone would
+            // skip the filler, so under isolation its mesh is never hydrated and
+            // pick() returns null (#1358).
+            const expressIds = new Set<number>(this.scene.getAllMeshDataExpressIds());
 
             // Track how many individual mesh pieces already exist for each (expressId:modelIndex).
             // Multi-piece elements (windows/doors with submeshes) need all pieces for reliable picking.

@@ -1,5 +1,15 @@
 # @ifc-lite/geometry
 
+## 2.11.0
+
+### Minor Changes
+
+- [#1382](https://github.com/LTplus-AG/ifc-lite/pull/1382) [`f1d6720`](https://github.com/LTplus-AG/ifc-lite/commit/f1d672054e4afa246b851d25fffc91604f9f0507) Thanks [@louistrue](https://github.com/louistrue)! - Detect and broadcast the "stale deployment" WASM-asset failure so hosts can recover from version skew. When a production deploy rotates the content-hashed `ifc-lite_bg-<hash>.wasm` under a still-open tab, the lazy fetch 404s (served as `text/plain`) and `WebAssembly.instantiateStreaming` throws `Response has unsupported MIME type 'text/plain' … expected 'application/wasm'` — the engine never initializes ([#1363](https://github.com/LTplus-AG/ifc-lite/issues/1363)). A same-URL retry can't recover a rotated asset, so the geometry engine now classifies this case (`isWasmAssetUnavailableError`) and dispatches a `WASM_ASSET_UNAVAILABLE_EVENT` on `globalThis` at its init choke points (the main-thread `GeometryProcessor.init` and the worker-pool error handlers). The library never reloads the page itself; an opted-in host (the viewer) listens and reloads once onto the current deployment.
+
+### Patch Changes
+
+- [#1385](https://github.com/LTplus-AG/ifc-lite/pull/1385) [`da89f45`](https://github.com/LTplus-AG/ifc-lite/commit/da89f45e47aa1ba96f83bc0abb04310cef2260ef) Thanks [@louistrue](https://github.com/louistrue)! - Fix wall openings rendering filled when a single `IfcOpeningElement` carries a row of separate void bodies ([#1367](https://github.com/LTplus-AG/ifc-lite/issues/1367)). The void router merged every body of such a high-vertex opening into one cutter and subtracted them in a single arrangement, which left diagonal "bridge" triangles spanning some of the holes. An opening is now split into one cutter per body when its bodies form 2 or more disjoint spatial clusters, so each window is cut on its own. Bodies that touch or overlap (one void split into adjacent parts, e.g. inner/outer wall-leaf halves of a window) still subtract merged, so the gable-wall watertightness path is unchanged.
+
 ## 2.10.1
 
 ### Patch Changes

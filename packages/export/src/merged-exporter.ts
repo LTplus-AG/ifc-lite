@@ -11,13 +11,15 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { generateHeader, deterministicGlobalId } from '@ifc-lite/parser';
+import { generateHeader, deterministicGlobalId, IfcParser } from '@ifc-lite/parser';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import { safeUtf8Decode } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { assembleStepBytes } from './step-serialization.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
+import { StepExporter } from './step-exporter.js';
 
 /** Entity types forming shared infrastructure (deduplicated across models). */
 const SHARED_INFRASTRUCTURE_TYPES = new Set([
@@ -158,6 +160,28 @@ export interface MergeModelInput {
    * federated as its own project (different unit). See {@link MergedExporter}.
    */
   lengthUnitScale?: number;
+
+  /**
+   * Pending edits for this model — property / attribute / quantity / retype /
+   * positional mutations and overlay-created entities. When present and
+   * non-empty, {@link MergedExporter.exportAsync} bakes them into the model
+   * (via {@link StepExporter}) before merging, so federated export round-trips
+   * edits exactly like single-model export. Empty or absent views cost nothing.
+   *
+   * Only honoured by the async `exportAsync` path: baking re-parses the edited
+   * bytes, which needs the async parser. The synchronous {@link MergedExporter.export}
+   * throws if any model carries pending edits.
+   */
+  mutationView?: MutablePropertyView;
+}
+
+/** True when a mutation view carries any pending edit (mutations or overlay-created entities). */
+function viewHasMutations(view: MutablePropertyView | undefined): boolean {
+  if (!view) return false;
+  const muts = typeof view.getMutations === 'function' ? view.getMutations() : [];
+  if (muts.length > 0) return true;
+  const created = typeof view.getNewEntities === 'function' ? view.getNewEntities() : [];
+  return created.length > 0;
 }
 
 /**
@@ -307,7 +331,17 @@ export class MergedExporter {
     const onProgress = options.onProgress;
     const schema = (options.schema || 'IFC4') as IfcSchemaVersion;
     const header = this.buildHeader(options, schema);
-    const setup = this.buildMergeSetup(options);
+
+    // Baking edits into source bytes needs the async parser, so the sync path
+    // cannot honour them. Fail loudly rather than silently dropping the edits.
+    if (this.models.some(m => viewHasMutations(m.mutationView))) {
+      throw new Error(
+        'MergedExporter.export() cannot apply pending edits — baking needs the async parser. ' +
+        'Use exportAsync() for merged export with mutations.',
+      );
+    }
+    const models = this.models;
+    const setup = this.buildMergeSetup(options, models);
 
     const allEntityLines: string[] = [];
     // Tracks every GlobalId already emitted → its final express id + unit scale,
@@ -317,7 +351,7 @@ export class MergedExporter {
     let isFirstModel = true;
     let federatedModelCount = 0;
 
-    for (const model of this.models) {
+    for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
       const source = model.dataStore.source;
       if (!source || source.length === 0) continue;
@@ -365,14 +399,19 @@ export class MergedExporter {
     // See export(): merged files emit an ifc-lite provenance header by policy
     // (no single source header to preserve across federated models).
     const header = this.buildHeader(options, schema);
-    const setup = this.buildMergeSetup(options);
+
+    // Bake each model's pending edits into its source bytes before merging, so
+    // federated export round-trips mutations like single-model export. Models
+    // without edits pass through unchanged (no export/parse cost).
+    const models = await this.bakeMutatedModels();
+    const setup = this.buildMergeSetup(options, models);
 
     const allEntityLines: string[] = [];
     const guidToFinalId = new Map<string, GuidRecord>();
 
     // First pass: count total entities for progress
     let totalEntities = 0;
-    for (const model of this.models) {
+    for (const model of models) {
       totalEntities += getCompleteEntityIndex(model.dataStore).size;
     }
 
@@ -383,7 +422,7 @@ export class MergedExporter {
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
-    for (const model of this.models) {
+    for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
       const source = model.dataStore.source;
       if (!source || source.length === 0) continue;
@@ -456,6 +495,50 @@ export class MergedExporter {
   }
 
   /**
+   * Bake each model's pending edits into its source bytes before merging.
+   *
+   * A model with a non-empty {@link MergeModelInput.mutationView} is run through
+   * {@link StepExporter} in its own source schema (mutations applied, geometry +
+   * quantities kept), and the resulting bytes are re-parsed into a fresh data
+   * store. The merge pipeline then sees the edited entities as ordinary source,
+   * so unit-aware federation, GlobalId reconciliation and id offsetting are
+   * unaffected. Models without edits pass through untouched (no export/parse cost).
+   */
+  private async bakeMutatedModels(): Promise<MergeModelInput[]> {
+    const baked: MergeModelInput[] = [];
+    let parser: IfcParser | null = null;
+    for (const model of this.models) {
+      if (!viewHasMutations(model.mutationView)) {
+        baked.push(model);
+        continue;
+      }
+      const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
+      // Export in the SOURCE schema so no schema conversion happens here — the
+      // merge loop still converts to the requested target schema per entity.
+      const exported = new StepExporter(model.dataStore, model.mutationView).export({
+        schema: sourceSchema,
+        applyMutations: true,
+        includeGeometry: true,
+        includeQuantities: true,
+      });
+      parser = parser ?? new IfcParser();
+      // slice() yields an exact-length ArrayBuffer-backed copy for the parser.
+      const reparsed = await parser.parseColumnar(exported.content.slice().buffer, {
+        disableWorkerScan: true,
+      });
+      baked.push({
+        id: model.id,
+        name: model.name,
+        dataStore: reparsed,
+        // Keep the caller's explicit unit scale (else the original store's) so
+        // unit-aware federation is unaffected by the bake round-trip.
+        lengthUnitScale: model.lengthUnitScale ?? model.dataStore.lengthUnitScale,
+      });
+    }
+    return baked;
+  }
+
+  /**
    * Assemble the result stats, including any federation conformance warnings.
    */
   private buildStats(totalEntityCount: number, fileSize: number, federatedModelCount: number): MergeExportResult['stats'] {
@@ -493,18 +576,19 @@ export class MergedExporter {
    * Compute the model-independent state shared by export()/exportAsync():
    * per-model id offsets and the primary model's project/infra/spatial/unit info.
    */
-  private buildMergeSetup(options: MergeExportOptions): MergeSetup {
+  private buildMergeSetup(options: MergeExportOptions, models: MergeModelInput[]): MergeSetup {
     // Determine ID offsets. Span the COMPLETE entity set (incl. deferred
     // property atoms) so the next model's offset clears every id this model
-    // will emit — otherwise a deferred atom at a high id collides.
+    // will emit — otherwise a deferred atom at a high id collides. Computed over
+    // the (possibly baked) model list so mutation-created entities are covered.
     let nextAvailableId = 1;
     const modelOffsets = new Map<string, number>();
-    for (const model of this.models) {
+    for (const model of models) {
       modelOffsets.set(model.id, nextAvailableId - 1); // start at nextAvailableId
       nextAvailableId += getMaxExpressId(getCompleteEntityIndex(model.dataStore));
     }
 
-    const firstModel = this.models[0];
+    const firstModel = models[0];
     return {
       modelOffsets,
       firstModelOffset: modelOffsets.get(firstModel.id)!,

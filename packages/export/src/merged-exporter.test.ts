@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutations';
 
 type MockEntityRef = { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number };
 
@@ -691,6 +692,57 @@ describe('MergedExporter', () => {
       // Both text literals survive (not unified away); the literal is untouched.
       expect(content.match(/=IFCTEXTLITERAL\(/g)?.length).toBe(2);
       expect(content.match(new RegExp(literal, 'g'))?.length).toBe(2);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+  });
+
+  // Federated export must round-trip pending edits (issue #1406): the merged
+  // path historically read raw source bytes and dropped every mutation, so only
+  // single-model export reflected edits. exportAsync now bakes each model's
+  // mutation view before merging.
+  describe('mutations (round-trip of edits)', () => {
+    const wallA = guid('wallA');
+    const wallB = guid('wallB');
+
+    function editedModelA(): MergeModelInput {
+      const base = buildModel('m1', 'A', [
+        [1, 'IFCWALL', `#1=IFCWALL('${wallA}',$,'Original Wall A',$,$,$,$,$,$);`],
+      ]);
+      const view = new LiveMutablePropertyView(null, 'm1');
+      view.setAttribute(1, 'Name', 'Edited Wall A');
+      return { ...base, mutationView: view };
+    }
+
+    const modelB: () => MergeModelInput = () => buildModel('m2', 'B', [
+      [1, 'IFCWALL', `#1=IFCWALL('${wallB}',$,'Wall B',$,$,$,$,$,$);`],
+    ]);
+
+    it('applies a model’s attribute edit in merged (federated) export', async () => {
+      const result = await new MergedExporter([editedModelA(), modelB()]).exportAsync({ schema: 'IFC4' });
+      const content = decode(result.content);
+
+      expect(content).toContain("'Edited Wall A'");
+      expect(content).not.toContain("'Original Wall A'");
+      // The unedited second model is unaffected and still present.
+      expect(content).toContain("'Wall B'");
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('sync export() throws rather than silently dropping pending edits', () => {
+      expect(() => new MergedExporter([editedModelA(), modelB()]).export({ schema: 'IFC4' }))
+        .toThrow(/exportAsync/);
+    });
+
+    it('a model whose view has no pending edits is not baked (no-op)', async () => {
+      const emptyView = new LiveMutablePropertyView(null, 'm2');
+      const a = buildModel('m1', 'A', [
+        [1, 'IFCWALL', `#1=IFCWALL('${wallA}',$,'Wall A',$,$,$,$,$,$);`],
+      ]);
+      const b: MergeModelInput = { ...modelB(), mutationView: emptyView };
+      const result = await new MergedExporter([a, b]).exportAsync({ schema: 'IFC4' });
+      const content = decode(result.content);
+      expect(content).toContain("'Wall A'");
+      expect(content).toContain("'Wall B'");
       expect(findDanglingRefs(content)).toEqual([]);
     });
   });

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   X,
   Play,
@@ -132,6 +132,11 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const [focusMode, setFocusMode] = useState<ClashFocusMode>('highlight');
   const [showHelp, setShowHelp] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
+
+  // Clear the clash A/B glow when the panel closes/unmounts so the tint doesn't
+  // linger on the model after the user leaves clash mode (#1277/#1339 review).
+  const setClashHighlightColors = useViewerStore((s) => s.setClashHighlightColors);
+  useEffect(() => () => { setClashHighlightColors(null); }, [setClashHighlightColors]);
 
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {

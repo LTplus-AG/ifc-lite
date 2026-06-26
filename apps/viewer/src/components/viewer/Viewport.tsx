@@ -741,9 +741,14 @@ export function Viewport({
           const geom = geometryRef.current;
           const set = selectedEntityIdsRef.current;
           const single = selectedEntityIdRef.current;
+          // A focused clash glows its pair via the clash-highlight channel WITHOUT
+          // selecting it, so frame those ids too when there's no selection (#1277).
+          const hl = clashHighlightColorsRef.current;
           const ids = set && set.size > 0
             ? Array.from(set)
-            : single !== null ? [single] : [];
+            : hl && hl.size > 0
+              ? Array.from(hl.keys())
+              : single !== null ? [single] : [];
           if (!geom || ids.length === 0) {
             console.warn('[Viewport] frameSelection: No selection or geometry');
             return;

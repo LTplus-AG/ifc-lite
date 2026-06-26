@@ -292,16 +292,18 @@ export function useClash() {
       const globalIds: number[] = [];
       if (a) globalIds.push(clash.a.ref);
       if (b) globalIds.push(clash.b.ref);
-      // Replace any existing selection so the camera frames only this clash pair.
+      // Do NOT select the pair. Selecting forced a "selected" state (the 2-SEL
+      // counter, and in isolate/ghost the elements read as selected). Instead we
+      // just glow the two elements in distinct vibrant colours via the clash
+      // highlight channel — the renderer gives highlighted ids the same glow /
+      // opaque / stay-solid-through-ghost treatment as a selection, so the
+      // colours show in highlight, isolate AND ghost with no selection. (#1277/#1339)
       state.clearEntitySelection();
-      state.setSelectedEntityIds(globalIds); // highlight BOTH elements + frame target
-      state.addEntitiesToSelection(refs); // model-aware context for the properties panel
-      // Paint the two elements in distinct colours so the user can tell A from B
-      // (the selection outline alone gave both the same colour — #1277/#1339).
-      // The selection outline is still drawn on top of these fills.
       state.setClashHighlightColors(buildClashPairColors(a ? clash.a.ref : null, b ? clash.b.ref : null));
       applyFocusMode(globalIds, mode);
       state.setClashSelectedId(clash.id);
+      // frameSelection also frames the clash-highlight ids (see Viewport), so the
+      // camera encloses the pair without a selection.
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
     },
     [refOf, applyFocusMode],
@@ -316,11 +318,9 @@ export function useClash() {
       const state = useViewerStore.getState();
       const ref = refOf(el);
       if (!ref) return;
+      // Glow-only (no selection), consistent with focusClash — one element in
+      // focus is painted the clash A colour and framed, without a selected state.
       state.clearEntitySelection();
-      state.setSelectedEntityIds([el.ref]);
-      state.addEntitiesToSelection([ref]);
-      // One element in focus — paint it the clash A colour so stepping through a
-      // pair (#1276) keeps a consistent, distinct fill rather than a stale pair.
       state.setClashHighlightColors(new Map([[el.ref, CLASH_COLOR_A]]));
       applyFocusMode([el.ref], mode);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());

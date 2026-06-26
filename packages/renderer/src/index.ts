@@ -1097,6 +1097,17 @@ export class Renderer {
                 selectedExpressIds.add(id);
             }
         }
+        // Elements with a highlight tint (e.g. a focused clash pair) get the SAME
+        // render treatment as a selection — individual-mesh hydration, opaque
+        // forcing, stay-solid-through-ghost, and the re-lit glow — WITHOUT being
+        // in the store selection. So the clash colours show in isolate/ghost mode
+        // with no "selected" state. The flat path paints them their custom colour
+        // (bit 4) rather than selection blue. (#1277/#1339)
+        if (options.highlightColors) {
+            for (const id of options.highlightColors.keys()) {
+                selectedExpressIds.add(id);
+            }
+        }
         const hasSelected = selectedExpressIds.size > 0;
 
         // Keep the GPU-instanced occurrences' per-instance selected flag in sync.
@@ -1511,16 +1522,16 @@ export class Renderer {
                     // For multi-model support: also check modelIndex if provided
                     const expressIdMatch = mesh.expressId === selectedId;
                     const modelIndexMatch = selectedModelIndex === undefined || mesh.modelIndex === selectedModelIndex;
+                    // Highlight-tinted elements (clash pair) are in selectedExpressIds
+                    // too, so they get the glow even when not in the store selection.
+                    const highlightColor = options.highlightColors?.get(mesh.expressId);
                     const isSelected = (selectedId !== undefined && selectedId !== null && expressIdMatch && modelIndexMatch)
-                        || (selectedIds !== undefined && selectedIds.has(mesh.expressId));
+                        || (selectedIds !== undefined && selectedIds.has(mesh.expressId))
+                        || highlightColor !== undefined;
 
-                    // Per-element highlight tint (e.g. clash A vs B): when a
-                    // selected mesh has a highlight colour, paint it as the
-                    // albedo and flag the shader to glow it in that colour
-                    // instead of the default selection blue (#1277/#1339).
-                    const highlightColor = (isSelected && options.highlightColors)
-                        ? options.highlightColors.get(mesh.expressId)
-                        : undefined;
+                    // Per-element highlight tint (e.g. clash A vs B): paint the
+                    // mesh its custom colour and flag the shader to glow it in
+                    // that colour instead of the default selection blue (#1277/#1339).
                     if (highlightColor) {
                         meshBuf[32] = highlightColor[0];
                         meshBuf[33] = highlightColor[1];

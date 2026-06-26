@@ -499,9 +499,15 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         let totalEntities = scene.getMeshes().length;
         for (const b of batchedMeshes) totalEntities += b.expressIds.length;
         const isLargeModel = totalEntities > 50_000;
+        // Outlier/sparse models (issue #1394) already carry a robust orbit
+        // anchor that gives an instant, good pivot. Skip the CPU raycast for
+        // them too: the first-orbit BVH build can stall the main thread for
+        // ~1s (the reported "model only appears after ~1s of dragging"), and
+        // orbiting around the model centre is the better behaviour anyway.
+        const hasRobustAnchor = camera.getOrbitAnchorBounds() !== null;
 
         let hit: { intersection: { point: { x: number; y: number; z: number } } } | null = null;
-        if (!isLargeModel) {
+        if (!isLargeModel && !hasRobustAnchor) {
           hit = renderer.raycastScene(cx, cy, {
             hiddenIds: hiddenEntitiesRef.current,
             isolatedIds: isolatedEntitiesRef.current,
@@ -522,12 +528,9 @@ export function useMouseControls(params: UseMouseControlsParams): void {
           // No geometry hit or large model — anchor the pivot to the scene
           // centre (a stable point on the model) rather than the camera target,
           // which drifts as you orbit/pan and made repeated rotation feel
-          // untethered (issue #1107, item 3). The anchor is projected onto the
-          // cursor ray so the pivot still sits under the pointer, at the scene's
-          // depth. getSceneBounds() is O(1) (cached), safe on the large-model
-          // path. Falls back to the camera target if bounds aren't known yet.
-          const ray = camera.unprojectToRay(cx, cy, canvas.width, canvas.height);
-          const bounds = camera.getSceneBounds();
+          // untethered (issue #1107, item 3).
+          const anchorBounds = camera.getOrbitAnchorBounds();
+          const bounds = anchorBounds ?? camera.getSceneBounds();
           const anchor = bounds
             ? {
                 x: (bounds.min.x + bounds.max.x) / 2,
@@ -535,17 +538,32 @@ export function useMouseControls(params: UseMouseControlsParams): void {
                 z: (bounds.min.z + bounds.max.z) / 2,
               }
             : camera.getTarget();
-          const toAnchor = {
-            x: anchor.x - ray.origin.x,
-            y: anchor.y - ray.origin.y,
-            z: anchor.z - ray.origin.z,
-          };
-          const d = Math.max(1, toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z);
-          camera.setOrbitCenter({
-            x: ray.origin.x + ray.direction.x * d,
-            y: ray.origin.y + ray.direction.y * d,
-            z: ray.origin.z + ray.direction.z * d,
-          });
+          let pivot: { x: number; y: number; z: number };
+          if (anchorBounds) {
+            // Outlier model (issue #1394): the geometry is a compact cluster
+            // surrounded by lots of empty space, so the cursor usually misses
+            // it. Projecting the anchor onto the cursor ray (the #1107 path
+            // below) would place the pivot in that empty space *beside* the
+            // model, and orbiting then swings the model out of frame. Orbit
+            // around the robust model centre directly so it stays put.
+            pivot = anchor;
+          } else {
+            // #1107: project the scene centre onto the cursor ray so the pivot
+            // still sits under the pointer, at the scene's depth.
+            const ray = camera.unprojectToRay(cx, cy, canvas.width, canvas.height);
+            const toAnchor = {
+              x: anchor.x - ray.origin.x,
+              y: anchor.y - ray.origin.y,
+              z: anchor.z - ray.origin.z,
+            };
+            const d = Math.max(1, toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z);
+            pivot = {
+              x: ray.origin.x + ray.direction.x * d,
+              y: ray.origin.y + ray.direction.y * d,
+              z: ray.origin.z + ray.direction.z * d,
+            };
+          }
+          camera.setOrbitCenter(pivot);
         }
       }
 

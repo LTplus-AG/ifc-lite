@@ -41,6 +41,7 @@ export class Camera {
       projectionMode: 'perspective',
       orthoSize: 50, // Default half-height in world units
       sceneBounds: null,
+      orbitAnchorBounds: null,
     };
 
     const updateMatrices = () => this.updateMatrices();
@@ -458,6 +459,25 @@ export class Camera {
    */
   getSceneBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
     return this.state.sceneBounds;
+  }
+
+  /**
+   * Set the outlier-robust orbit-pivot anchor bounds (issue #1394), or `null`
+   * to clear it (the pivot then falls back to {@link getSceneBounds}). The
+   * renderer never touches this, so it survives the per-upload `setSceneBounds`
+   * syncs that keep `sceneBounds` pinned to the full model AABB.
+   */
+  setOrbitAnchorBounds(bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null): void {
+    this.state.orbitAnchorBounds = bounds;
+  }
+
+  /**
+   * The robust orbit-pivot anchor bounds last set via {@link setOrbitAnchorBounds}
+   * (null if never set / cleared). O(1); safe on the orbit hot path. Returns the
+   * live reference; callers must not mutate.
+   */
+  getOrbitAnchorBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
+    return this.state.orbitAnchorBounds;
   }
 
   private updateMatrices(): void {

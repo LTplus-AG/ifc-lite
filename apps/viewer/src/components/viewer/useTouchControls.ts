@@ -97,8 +97,8 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // Anchor to the scene centre (stable) rather than the drifting camera
       // target, projected onto the finger ray (issue #1107, item 3). Matches
       // the mouse orbit fallback in useMouseControls.
-      const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
-      const bounds = camera.getSceneBounds();
+      const anchorBounds = camera.getOrbitAnchorBounds();
+      const bounds = anchorBounds ?? camera.getSceneBounds();
       const anchor = bounds
         ? {
             x: (bounds.min.x + bounds.max.x) / 2,
@@ -106,20 +106,28 @@ export function useTouchControls(params: UseTouchControlsParams): void {
             z: (bounds.min.z + bounds.max.z) / 2,
           }
         : camera.getTarget();
-      const toAnchor = {
-        x: anchor.x - ray.origin.x,
-        y: anchor.y - ray.origin.y,
-        z: anchor.z - ray.origin.z,
-      };
-      const d = Math.max(
-        1,
-        toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z,
-      );
-      camera.setOrbitCenter({
-        x: ray.origin.x + ray.direction.x * d,
-        y: ray.origin.y + ray.direction.y * d,
-        z: ray.origin.z + ray.direction.z * d,
-      });
+      if (anchorBounds) {
+        // Outlier model (issue #1394): orbit around the robust model centre
+        // directly. Projecting onto the finger ray would place the pivot in the
+        // empty space beside the sparse model and swing it out of frame.
+        camera.setOrbitCenter(anchor);
+      } else {
+        const ray = camera.unprojectToRay(tx, ty, canvas.width, canvas.height);
+        const toAnchor = {
+          x: anchor.x - ray.origin.x,
+          y: anchor.y - ray.origin.y,
+          z: anchor.z - ray.origin.z,
+        };
+        const d = Math.max(
+          1,
+          toAnchor.x * ray.direction.x + toAnchor.y * ray.direction.y + toAnchor.z * ray.direction.z,
+        );
+        camera.setOrbitCenter({
+          x: ray.origin.x + ray.direction.x * d,
+          y: ray.origin.y + ray.direction.y * d,
+          z: ray.origin.z + ray.direction.z * d,
+        });
+      }
     };
 
     const handleTouchStart = async (e: TouchEvent) => {

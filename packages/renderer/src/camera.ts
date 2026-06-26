@@ -289,6 +289,10 @@ export class Camera {
   reset(): void {
     this.controls.setOrbitCenter(null);
     this.animator.reset();
+    // Drop the previous model's outlier-robust orbit anchor (issue #1394) — it
+    // survives setSceneBounds() syncs, so without this a model swap would orbit
+    // the new model around the old one's centre until the first fit clears it.
+    this.state.orbitAnchorBounds = null;
   }
 
   getViewProjMatrix(): Mat4 {

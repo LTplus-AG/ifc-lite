@@ -86,10 +86,15 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       const rect = canvas.getBoundingClientRect();
       const tx = touch.clientX - rect.left;
       const ty = touch.clientY - rect.top;
-      const hit = renderer.raycastScene(tx, ty, {
-        hiddenIds: hiddenEntitiesRef.current,
-        isolatedIds: isolatedEntitiesRef.current,
-      });
+      // Outlier/sparse models (issue #1394) carry a robust orbit anchor that
+      // gives an instant, good pivot — skip the raycast (its first-touch BVH
+      // build can stall the main thread ~1s) and orbit the model centre below.
+      const hit = camera.getOrbitAnchorBounds() !== null
+        ? null
+        : renderer.raycastScene(tx, ty, {
+            hiddenIds: hiddenEntitiesRef.current,
+            isolatedIds: isolatedEntitiesRef.current,
+          });
       if (hit?.intersection) {
         camera.setOrbitCenter(hit.intersection.point);
         return;

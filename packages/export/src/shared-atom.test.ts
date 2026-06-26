@@ -19,6 +19,23 @@ function danglingRefs(text: string): number[] {
   return [...refs].filter(id => !defined.has(id)).sort((a, b) => a - b);
 }
 
+/** Resolve `Pset.<prop>` to the IFCLABEL value its atom carries in the export. */
+function propertyValue(text: string, psetName: string, propName: string): string | null {
+  const byId = new Map<number, string>();
+  for (const m of text.matchAll(/(^|\n)\s*#(\d+)\s*=([^\n]*)/g)) byId.set(+m[2], m[3]);
+  const psetLine = [...byId.values()].find(
+    l => new RegExp(`^IFCPROPERTYSET\\('.*?',[^,]*,'${psetName}'`).test(l),
+  );
+  if (!psetLine) return null;
+  const atomIds = [...psetLine.matchAll(/#(\d+)/g)].map(m => +m[1]);
+  for (const id of atomIds) {
+    const atom = byId.get(id);
+    const m = atom?.match(/^IFCPROPERTYSINGLEVALUE\('([^']*)',[^,]*,IFCLABEL\('([^']*)'\)/);
+    if (m && m[1] === propName) return m[2];
+  }
+  return null;
+}
+
 // A wall with two property sets that SHARE one IfcPropertySingleValue (#20),
 // mirroring how IFC exporters deduplicate Pset_*Common atoms (e.g. IsExternal).
 const IFC = `ISO-10303-21;
@@ -55,9 +72,11 @@ describe('StepExporter — shared property atoms (issue #1413)', () => {
     // No dangling refs — the shared atom #20 is retained for Pset_B.
     expect(danglingRefs(out)).toEqual([]);
     expect(out).toMatch(/(^|\n)\s*#20\s*=/);
-    // Pset_B is untouched and still references the original shared value.
-    expect(out).toContain("IFCLABEL('orig')");
-    // The edit is applied (new value present).
-    expect(out).toContain('edited');
+    // The edit lands on Pset_A.OnlyA specifically...
+    expect(propertyValue(out, 'Pset_A', 'OnlyA')).toBe('edited');
+    // ...while the untouched Pset_B keeps the original shared value, and the
+    // shared atom carries its original value (not the edit).
+    expect(propertyValue(out, 'Pset_B', 'Shared')).toBe('orig');
+    expect(propertyValue(out, 'Pset_A', 'Shared')).toBe('orig');
   });
 });

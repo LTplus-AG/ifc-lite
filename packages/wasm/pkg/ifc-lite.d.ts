@@ -122,11 +122,6 @@ export class IfcAPI {
    */
   exportObj(content: string, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): string;
   /**
-   * Run the pre-pass ONCE and return serialized results for worker distribution.
-   * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
-   */
-  buildPrePassOnce(data: Uint8Array): any;
-  /**
    * Process geometry for a subset of pre-scanned entities → flat
    * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
    * Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
@@ -134,32 +129,6 @@ export class IfcAPI {
    * there). Output is byte-for-byte what the pre-refactor method produced.
    */
   processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
-  /**
-   * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
-   * instead of waiting for the full file scan to complete.
-   *
-   * Single linear walk over the file:
-   *   1. Builds the entity index incrementally from the same scan that
-   *      collects geometry jobs (a separate index scan would double
-   *      wall-clock).
-   *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
-   *      first ~50 geometry jobs have been collected, resolves
-   *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
-   *      JS host can spin up geometry process workers.
-   *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
-   *      the meta phase already buffered some).
-   *   4. Emits `complete` with the total job count at end of scan.
-   *
-   * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
-   * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
-   * (first 100 K bytes scanned + meta + first chunk).
-   *
-   * The callback receives a single `JsValue` argument shaped as one of:
-   *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
-   *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
-   *   `{ type: "complete", totalJobs }`
-   */
-  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
   /**
    * Like [`IfcAPI::process_geometry_batch`] but collates the batch's meshes
    * into a GPU-instancing shard (IFNS wire format) instead of a flat
@@ -190,6 +159,37 @@ export class IfcAPI {
    * opaque bulk. See the instanced-only follow-ups.
    */
   processGeometryBatchPartitioned(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
+  /**
+   * Run the pre-pass ONCE and return serialized results for worker distribution.
+   * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
+   */
+  buildPrePassOnce(data: Uint8Array): any;
+  /**
+   * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
+   * instead of waiting for the full file scan to complete.
+   *
+   * Single linear walk over the file:
+   *   1. Builds the entity index incrementally from the same scan that
+   *      collects geometry jobs (a separate index scan would double
+   *      wall-clock).
+   *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
+   *      first ~50 geometry jobs have been collected, resolves
+   *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
+   *      JS host can spin up geometry process workers.
+   *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
+   *      the meta phase already buffered some).
+   *   4. Emits `complete` with the total job count at end of scan.
+   *
+   * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
+   * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
+   * (first 100 K bytes scanned + meta + first chunk).
+   *
+   * The callback receives a single `JsValue` argument shaped as one of:
+   *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
+   *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
+   *   `{ type: "complete", totalJobs }`
+   */
+  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
   /**
    * Parse the file and return structured per-axis data (tag + endpoints) in
    * the renderer's Y-up world space (RTC-subtracted, metres). Use this when

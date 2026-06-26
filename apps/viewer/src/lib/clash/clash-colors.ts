@@ -3,23 +3,23 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Distinct fill colours for the two elements of a focused clash pair (#1277,
- * #1339). Before this, both clashing elements were highlighted with the single
- * selection colour, so you couldn't tell which was which. We now paint element
- * A and element B in two clearly-different colours (applied through the renderer
- * colour-override channel, with the normal selection outline drawn on top).
+ * Distinct, vibrant highlight tints for the two elements of a focused clash
+ * pair (#1277, #1339). Before this, both clashing elements were highlighted
+ * with the single selection-blue, so you couldn't tell which was which. These
+ * feed the renderer's per-element highlight channel (`RenderOptions.highlightColors`),
+ * which glows the selected element in this colour using the SAME re-lit
+ * selection treatment — so the pair pops like a selection but in two colours.
  *
- * RGBA floats in 0..1 — the shape `pendingColorUpdates` / `scene.setColorOverrides`
- * consume. Warm vs cool, high contrast on both light and dark themes, and chosen
- * to stay distinguishable for the common red/green colour-vision deficiency
- * (orange vs blue, not red vs green).
+ * RGBA floats in 0..1. High-chroma warm-vs-cool so they stay distinct from each
+ * other, from the default selection-blue, and under red/green colour-vision
+ * deficiency (orange vs cyan, not red vs green).
  */
 export type RGBA = [number, number, number, number];
 
-/** Element A — warm orange. */
-export const CLASH_COLOR_A: RGBA = [0.96, 0.45, 0.13, 1];
-/** Element B — cool blue. */
-export const CLASH_COLOR_B: RGBA = [0.16, 0.5, 0.92, 1];
+/** Element A — vibrant amber/orange. */
+export const CLASH_COLOR_A: RGBA = [1.0, 0.5, 0.05, 1];
+/** Element B — vibrant cyan. */
+export const CLASH_COLOR_B: RGBA = [0.0, 0.82, 1.0, 1];
 
 /**
  * Build the global-id → colour map that paints a clash pair. `null` ids (an

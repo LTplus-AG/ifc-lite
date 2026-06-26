@@ -1514,11 +1514,25 @@ export class Renderer {
                     const isSelected = (selectedId !== undefined && selectedId !== null && expressIdMatch && modelIndexMatch)
                         || (selectedIds !== undefined && selectedIds.has(mesh.expressId));
 
-                    meshBuf[32] = mesh.color[0];
-                    meshBuf[33] = mesh.color[1];
-                    meshBuf[34] = mesh.color[2];
-                    // Selected meshes always keep their own alpha so highlights stay opaque
-                    meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
+                    // Per-element highlight tint (e.g. clash A vs B): when a
+                    // selected mesh has a highlight colour, paint it as the
+                    // albedo and flag the shader to glow it in that colour
+                    // instead of the default selection blue (#1277/#1339).
+                    const highlightColor = (isSelected && options.highlightColors)
+                        ? options.highlightColors.get(mesh.expressId)
+                        : undefined;
+                    if (highlightColor) {
+                        meshBuf[32] = highlightColor[0];
+                        meshBuf[33] = highlightColor[1];
+                        meshBuf[34] = highlightColor[2];
+                        meshBuf[35] = highlightColor[3];
+                    } else {
+                        meshBuf[32] = mesh.color[0];
+                        meshBuf[33] = mesh.color[1];
+                        meshBuf[34] = mesh.color[2];
+                        // Selected meshes always keep their own alpha so highlights stay opaque
+                        meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
+                    }
                     meshBuf[36] = mesh.material?.metallic ?? 0.0;
                     meshBuf[37] = mesh.material?.roughness ?? 0.6;
                     meshBuf[38] = 0; meshBuf[39] = 0;
@@ -1537,8 +1551,9 @@ export class Renderer {
                     const clipBit = packClipBox(options.clipBox, meshBuf, 48);
 
                     // Flags (offset 44-47 as u32)
+                    // flags.x: bit 0 = isSelected, bit 4 (16) = custom highlight tint
                     // flags.y packs: bit 0 = sectionEnabled, bit 1 = flipped, bit 2 = clipBoxEnabled
-                    meshFlags[0] = isSelected ? 1 : 0;
+                    meshFlags[0] = (isSelected ? 1 : 0) | (highlightColor ? 16 : 0);
                     meshFlags[1] =
                         (sectionPlaneData?.enabled ? 1 : 0) |
                         (options.sectionPlane?.flipped ? 2 : 0) |

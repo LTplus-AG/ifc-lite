@@ -483,6 +483,10 @@ export function Viewport({
   const selectedEntityIdRef = useLatestRef(selectedEntityId);
   const selectedEntityIdsRef = useLatestRef(selectedEntityIds);
   const selectedModelIndexRef = useLatestRef(selectedModelIndex);
+  // Per-element clash A/B highlight tints (#1277/#1339) — kept in a ref so the
+  // animation loop reads the latest without re-subscribing.
+  const clashHighlightColors = useViewerStore((s) => s.clashHighlightColors);
+  const clashHighlightColorsRef = useLatestRef(clashHighlightColors);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);
@@ -1180,6 +1184,7 @@ export function Viewport({
     visualEnhancementRef,
     environmentRef,
     selectedEntityIdsRef,
+    clashHighlightColorsRef,
     coordinateInfoRef,
     isInteractingRef,
     lastCameraStateRef,

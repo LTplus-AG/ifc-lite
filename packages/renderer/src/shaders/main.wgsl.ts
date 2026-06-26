@@ -381,7 +381,14 @@ export const mainShaderSource = `
           if (isSelected) {
             let shadeLum = dot(lightTerm, vec3<f32>(0.299, 0.587, 0.114));
             let shade = clamp(shadeLum * 1.55, 0.45, 1.2);
-            color = vec3<f32>(0.3, 0.6, 1.0) * shade;
+            // flags.x bit 4 (value 16) = custom highlight tint: use the per-mesh
+            // baseColor as the highlight albedo instead of the default selection
+            // blue, so distinct elements (e.g. the two sides of a clash) glow in
+            // distinct, vibrant colours while keeping the same re-lit glow,
+            // crease structure and opacity as a normal selection. (#1277/#1339)
+            let customHighlight = (uniforms.flags.x & 16u) != 0u;
+            let hlAlbedo = select(vec3<f32>(0.3, 0.6, 1.0), baseColor, customHighlight);
+            color = hlAlbedo * shade;
           }
 
           // Beautiful fresnel effect for transparent materials (glass)

@@ -62,6 +62,13 @@ export interface ClashSlice {
   clashPresets: ClashPreset[];
   /** Currently focused clash id (for highlight in the list). */
   clashSelectedId: string | null;
+  /**
+   * Per-element highlight tint for the focused clash pair — `Map<globalId, RGBA>`
+   * (element A one vibrant colour, element B another). Fed to the renderer so the
+   * selection glow paints A and B distinctly instead of the single selection
+   * blue. `null` when no clash is focused. (#1277/#1339)
+   */
+  clashHighlightColors: Map<number, [number, number, number, number]> | null;
 
   setClashPanelVisible: (visible: boolean) => void;
   toggleClashPanel: () => void;
@@ -78,6 +85,7 @@ export interface ClashSlice {
   setClashGroupBy: (groupBy: ClashGroupBy) => void;
   resetClashSettings: () => void;
   setClashSelectedId: (id: string | null) => void;
+  setClashHighlightColors: (colors: Map<number, [number, number, number, number]> | null) => void;
   // Preset CRUD (persisted). create/update/import return a SaveResult so the UI
   // can surface quota / cap failures; the rest are best-effort.
   createClashPreset: (input: NewClashPreset) => SaveResult;
@@ -126,6 +134,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashGroupBy: initial.groupBy,
     clashPresets: buildInitialPresets(),
     clashSelectedId: null,
+    clashHighlightColors: null,
 
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),
@@ -163,6 +172,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     },
 
     setClashSelectedId: (clashSelectedId) => set({ clashSelectedId }),
+    setClashHighlightColors: (clashHighlightColors) => set({ clashHighlightColors }),
 
     createClashPreset: (input) => {
       const name = validatePresetName(input.name);
@@ -246,6 +256,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashError: null,
         clashProgress: null,
         clashSelectedId: null,
+        clashHighlightColors: null,
       }),
   };
 };

@@ -216,4 +216,12 @@ describe('MutablePropertyView.hasPendingChanges', () => {
     expect(view.getMutations().length).toBeGreaterThan(0);
     expect(view.hasPendingChanges()).toBe(true);
   });
+
+  it('reports a type-only (retype) edit so merged export does not drop it', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    expect(view.hasPendingChanges()).toBe(false);
+
+    view.setEntityType(1, 'IfcColumn');
+    expect(view.hasPendingChanges()).toBe(true);
+  });
 });

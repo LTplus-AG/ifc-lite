@@ -1199,8 +1199,8 @@ export class MutablePropertyView {
 
   /**
    * True when the overlay currently carries anything the STEP exporter would
-   * bake (property/quantity overrides, attribute or positional edits, pset/qset
-   * creates or deletes, or overlay-created/tombstoned entities).
+   * bake (property/quantity overrides, attribute / positional / type edits,
+   * pset/qset creates or deletes, or overlay-created/tombstoned entities).
    *
    * Unlike {@link getMutations} / {@link hasChanges}, this reflects the *current
    * overlay footprint* — the same set {@link clear} resets and the exporter
@@ -1218,6 +1218,7 @@ export class MutablePropertyView {
       this.quantityMutations.size > 0 ||
       this.attributeMutations.size > 0 ||
       this.positionalAttrMutations.size > 0 ||
+      this.typeMutations.size > 0 ||
       this.newPsets.size > 0 ||
       this.newQsets.size > 0 ||
       this.deletedPsets.size > 0 ||

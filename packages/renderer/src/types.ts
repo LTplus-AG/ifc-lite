@@ -191,6 +191,12 @@ export interface RenderOptions {
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
   /**
+   * Render the active colour overrides almost full-bright so they POP like a
+   * highlight rather than reading as normal lit materials. Used while a clash is
+   * focused so the amber/cyan pair stands out. (#1277/#1339)
+   */
+  emphasizeOverrides?: boolean;
+  /**
    * Per-frame alpha overrides — primary use case is X-Ray mode.
    *
    * Map<expressId, alpha 0..1>. Non-selected meshes/batches whose expressId

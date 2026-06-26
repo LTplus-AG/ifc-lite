@@ -384,6 +384,17 @@ export const mainShaderSource = `
             color = vec3<f32>(0.3, 0.6, 1.0) * shade;
           }
 
+          // flags.x bit 5 (value 32) = EMPHASIZE overlay: render the colour
+          // override almost full-bright (high floor) so it POPS like a highlight
+          // instead of reading as a normal lit material — used for the focused
+          // clash pair so its amber/cyan stands out against the model. Keeps a
+          // touch of per-face shading so form still reads. (#1277/#1339)
+          if (isOverlay && (uniforms.flags.x & 32u) != 0u) {
+            let shadeLum = dot(lightTerm, vec3<f32>(0.299, 0.587, 0.114));
+            let shade = clamp(shadeLum * 1.7, 0.85, 1.45);
+            color = baseColor * shade;
+          }
+
           // Beautiful fresnel effect for transparent materials (glass)
           // Skip when selected — the glass shine and desaturation wash out the
           // blue highlight, making it appear white instead of blue.

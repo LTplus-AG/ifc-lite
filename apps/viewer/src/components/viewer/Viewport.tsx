@@ -1200,6 +1200,7 @@ export function Viewport({
     visualEnhancementRef,
     environmentRef,
     selectedEntityIdsRef,
+    clashHighlightColorsRef,
     coordinateInfoRef,
     isInteractingRef,
     lastCameraStateRef,

@@ -2020,7 +2020,8 @@ export class Renderer {
                 const overrideBatches = this.scene.getOverrideBatches();
                 if (overrideBatches.length > 0) {
                     pass.setPipeline(this.pipeline.getOverlayPipeline());
-                    tplFlags[0] = 2;  // set overlay bit for the duration of these draws
+                    // bit 1 = overlay; bit 5 (32) = emphasize (pop) — see shader.
+                    tplFlags[0] = options.emphasizeOverrides ? (2 | 32) : 2;
                     for (const batch of overrideBatches) {
                         renderBatch(batch);
                     }

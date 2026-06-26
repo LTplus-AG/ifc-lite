@@ -680,7 +680,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             </div>
           )}
 
-          {exportScope === 'single' && (
+          {(exportScope === 'single' || exportScope === 'merged') && (
             <div className="flex items-center justify-between">
               <Label>Apply Property Changes</Label>
               <Switch checked={applyMutations} onCheckedChange={setApplyMutations} />

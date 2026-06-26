@@ -578,6 +578,8 @@ export class Renderer {
         // Otherwise the caller's "compute done" callback fires before
         // the deviation buffers are actually populated.
         await this.device.getDevice().queue.onSubmittedWorkDone();
+        // The GPU is done reading each chunk's params uniform — free them.
+        this.deviationPipeline.releaseTransientParams();
         this.requestRender();
 
         // Suggest a default half-range = max(0.01m, max-extent / 1000).

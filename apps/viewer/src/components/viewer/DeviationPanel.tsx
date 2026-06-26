@@ -15,7 +15,7 @@
  * `pointCloudAssetCount > 0`.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { cn } from '@/lib/utils';
@@ -85,6 +85,25 @@ export function DeviationPanel({ triangleCount }: DeviationPanelProps) {
       setRunning(false);
     }
   }, [halfRange, setHalfRange, setColorMode, setComputed]);
+
+  // Auto-compute when the user switches to the Deviation colour mode and a
+  // result isn't ready. Selecting the mode alone only points the splat shader
+  // at the per-point deviation buffer — which stays zero-initialised (→ every
+  // point at the ramp centre, i.e. flat grey/white) until the compute pass
+  // runs. Auto-running it makes "pick Deviation" actually show the heatmap.
+  // Guarded by a ref so a failed compute doesn't retry-loop (the manual
+  // button stays available); reset when leaving deviation mode.
+  const autoComputedRef = useRef(false);
+  useEffect(() => {
+    if (colorMode !== 'deviation') {
+      autoComputedRef.current = false;
+      return;
+    }
+    if (!computed && !running && !autoComputedRef.current && triangleCount > 0) {
+      autoComputedRef.current = true;
+      void handleCompute();
+    }
+  }, [colorMode, computed, running, triangleCount, handleCompute]);
 
   // Hide the panel entirely when there's no BIM to compare against.
   // Point-cloud-only sessions (just a LAS / IFCx scan) have nothing

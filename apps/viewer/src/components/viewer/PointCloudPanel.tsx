@@ -54,6 +54,7 @@ export function PointCloudPanel({ assetCount, triangleCount }: PointCloudPanelPr
   const setEdlStrength = useViewerStore((s) => s.setPointCloudEdlStrength);
   const fixedColor = useViewerStore((s) => s.pointCloudFixedColor);
   const setFixedColor = useViewerStore((s) => s.setPointCloudFixedColor);
+  const deviationComputed = useViewerStore((s) => s.pointCloudDeviationComputed);
 
   if (assetCount <= 0) return null;
 
@@ -91,6 +92,18 @@ export function PointCloudPanel({ assetCount, triangleCount }: PointCloudPanelPr
           );
         })}
         <PointCloudLegend colorMode={colorMode} />
+        {colorMode === 'deviation' && !deviationComputed && (
+          // Selecting the Deviation colour mode only tells the shader to
+          // read the per-point deviation buffer — it does NOT run the
+          // compare. Until "Compute deviation" runs, that buffer is all
+          // zeros, so every point maps to the ramp centre (grey). Nudge
+          // the user toward the compute button below.
+          <span className="text-[10px] text-amber-500 px-2 leading-tight">
+            {triangleCount > 0
+              ? 'Run “Compute deviation” below to populate the heatmap.'
+              : 'Load a BIM model to compare the scan against.'}
+          </span>
+        )}
         {colorMode === 'fixed' && (
           // Native colour input — keeps the panel dependency-free.
           // Hex round-trips through float[0..1]: parse `#rrggbb` to a

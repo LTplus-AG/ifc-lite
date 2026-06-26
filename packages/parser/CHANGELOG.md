@@ -1,5 +1,11 @@
 # @ifc-lite/parser
 
+## 3.5.0
+
+### Minor Changes
+
+- [#1388](https://github.com/LTplus-AG/ifc-lite/pull/1388) [`8a4ce69`](https://github.com/LTplus-AG/ifc-lite/commit/8a4ce694ea1d8c1b0f25310f8a1addb3ff649f14) Thanks [@mehmet-ylcnky](https://github.com/mehmet-ylcnky)! - Re-export EntityTable and SpatialHierarchy types from @ifc-lite/data, allowing consumers to import store types directly from @ifc-lite/parser.
+
 ## 3.4.1
 
 ### Patch Changes

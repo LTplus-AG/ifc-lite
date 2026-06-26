@@ -137,6 +137,44 @@ describe('matchesCriteria — property', () => {
     expect(matchesCriteria(c, 1, provider)).toBe(false);
   });
 
+  // The properties panel shows IFC booleans capitalized ("True"/"False"), but
+  // String(boolean) is lowercase. A user typing what they see must still
+  // match. Genuinely case-sensitive strings stay strict. (#1403)
+  it('should match a capitalized boolean against a lowercase stored value', () => {
+    const c: LensCriteria = {
+      type: 'property',
+      propertySet: 'Pset_WallCommon',
+      propertyName: 'IsExternal',
+      operator: 'equals',
+      propertyValue: 'True',
+    };
+    expect(matchesCriteria(c, 1, provider)).toBe(true);
+  });
+
+  it('should match a boolean regardless of either side casing', () => {
+    const boolProvider = createMockProvider([
+      { id: 1, type: 'IfcWall', properties: { Pset_X: { LoadBearing: true } } },
+      { id: 2, type: 'IfcWall', properties: { Pset_X: { LoadBearing: false } } },
+    ]);
+    const truthy: LensCriteria = { type: 'property', propertySet: 'Pset_X', propertyName: 'LoadBearing', operator: 'equals', propertyValue: 'TRUE' };
+    const falsy: LensCriteria = { type: 'property', propertySet: 'Pset_X', propertyName: 'LoadBearing', operator: 'equals', propertyValue: 'False' };
+    expect(matchesCriteria(truthy, 1, boolProvider)).toBe(true);
+    expect(matchesCriteria(truthy, 2, boolProvider)).toBe(false);
+    expect(matchesCriteria(falsy, 2, boolProvider)).toBe(true);
+    expect(matchesCriteria(falsy, 1, boolProvider)).toBe(false);
+  });
+
+  it('should keep non-boolean equals case-sensitive', () => {
+    const c: LensCriteria = {
+      type: 'property',
+      propertySet: 'Pset_WallCommon',
+      propertyName: 'FireRating',
+      operator: 'equals',
+      propertyValue: 'rei60', // stored as 'REI60'
+    };
+    expect(matchesCriteria(c, 1, provider)).toBe(false);
+  });
+
   it('should match contains operator (case-insensitive)', () => {
     const c: LensCriteria = {
       type: 'property',

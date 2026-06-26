@@ -16,23 +16,39 @@ import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
 import { findField, type Data3DEntry, type PrototypeField } from './e57-xml.js';
 
 /**
- * Decode the binary section starting at `entry.binaryFileOffset` in the
- * logical-bytes view. NOTE: `binaryFileOffset` here must already point
- * at the first DataPacket (i.e. AFTER the 32-byte CompressedVector
- * section header) — `decodeE57` does this conversion via
- * `resolveCompressedVectorDataOffset`. Callers passing the raw XML
- * offset directly will see a "bytestreamCount ≠ prototype length"
- * mismatch.
- *
- * Supports Float (single/double), ScaledInteger (bit-packed integer
- * with scale/offset), and Integer for cartesianX/Y/Z + colorRed/
- * Green/Blue + intensity. Other prototype fields are honoured for
- * stride math but discarded.
+ * Resolved prototype field set for one scan: the cartesian axes (always
+ * present, validated) plus the optional colour / intensity /
+ * classification channels and the predicates that decide which output
+ * buffers to allocate. Shared by the whole-file (`decodeE57Scan`) and
+ * the streaming (`E57StreamingSource`) decoders so both agree on which
+ * channels a scan carries.
  */
-export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedPointChunk {
-  const xField = findField(entry.prototype, 'cartesianX');
-  const yField = findField(entry.prototype, 'cartesianY');
-  const zField = findField(entry.prototype, 'cartesianZ');
+export interface ScanFieldSet {
+  xField: PrototypeField;
+  yField: PrototypeField;
+  zField: PrototypeField;
+  rField?: PrototypeField;
+  gField?: PrototypeField;
+  bField?: PrototypeField;
+  /** colorRed/Green/Blue all present → emit a colours buffer. */
+  hasRgb: boolean;
+  iField?: PrototypeField;
+  /** intensity present (any supported kind) → emit an intensities buffer. */
+  hasIntensity: boolean;
+  cField?: PrototypeField;
+  /** classification present as Integer/ScaledInteger → emit a class buffer. */
+  hasClassification: boolean;
+}
+
+/**
+ * Validate + resolve a scan's prototype into a `ScanFieldSet`. Throws on
+ * a missing or plain-Integer cartesian axis (only Float / ScaledInteger
+ * cartesian is supported — see the inline note below).
+ */
+export function resolveScanFields(prototype: PrototypeField[]): ScanFieldSet {
+  const xField = findField(prototype, 'cartesianX');
+  const yField = findField(prototype, 'cartesianY');
+  const zField = findField(prototype, 'cartesianZ');
   if (!xField || !yField || !zField) {
     throw new Error('E57: prototype missing cartesianX/Y/Z');
   }
@@ -47,11 +63,11 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
       );
     }
   }
-  const rField = findField(entry.prototype, 'colorRed');
-  const gField = findField(entry.prototype, 'colorGreen');
-  const bField = findField(entry.prototype, 'colorBlue');
+  const rField = findField(prototype, 'colorRed');
+  const gField = findField(prototype, 'colorGreen');
+  const bField = findField(prototype, 'colorBlue');
   const hasRgb = !!(rField && gField && bField);
-  const iField = findField(entry.prototype, 'intensity');
+  const iField = findField(prototype, 'intensity');
   // Classification: not in the standard ASTM E2807 prototype, but
   // some exporters (CloudCompare, custom LIDAR pipelines) add a
   // `classification` Integer / ScaledInteger field. We honour it
@@ -59,24 +75,210 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
   // works on those files. Stock Faro / Leica scans don't carry it
   // — that's why classification mode shows everything as class 0
   // (the spec maps that to "Created, never classified").
-  const cField = findField(entry.prototype, 'classification');
+  const cField = findField(prototype, 'classification');
+  return {
+    xField, yField, zField,
+    rField, gField, bField, hasRgb,
+    // Any supported intensity kind (Float / Integer / ScaledInteger).
+    iField,
+    hasIntensity: !!iField && (iField.kind === 'Float' || iField.kind === 'Integer' || iField.kind === 'ScaledInteger'),
+    cField,
+    hasClassification: !!cField && (cField.kind === 'Integer' || cField.kind === 'ScaledInteger'),
+  };
+}
+
+/** Lightweight 4-byte DataPacket header peek (type + total logical length). */
+export interface PacketHeaderPeek {
+  /** packetType: 1=data, 2=index, 3=empty. */
+  packetType: number;
+  /** Total packet length in logical bytes (header field + 1). */
+  packetLength: number;
+}
+
+/**
+ * Read a DataPacket's 4-byte header without decoding its payload. The
+ * streaming reader uses this to learn a packet's length up front so it
+ * can decide whether the packet fits in the current window before
+ * committing to decode it.
+ *
+ * Packet header (4 bytes):
+ *   byte 0:    packetType (1=data, 2=index, 3=empty)
+ *   byte 1:    packetFlags (bit 0 = compressorRestart)
+ *   bytes 2-3: packetLogicalLength - 1 (LE u16; total packet bytes minus 1)
+ */
+export function peekPacketHeader(view: DataView, offset: number): PacketHeaderPeek {
+  return {
+    packetType: view.getUint8(offset),
+    packetLength: view.getUint16(offset + 2, true) + 1,
+  };
+}
+
+/** Result of decoding a single DataPacket. */
+export interface DecodedPacket {
+  /** packetType: 1=data (positions populated), 2/3=skip (take=0). */
+  packetType: number;
+  /** Total packet length in logical bytes — advance the cursor by this. */
+  packetLength: number;
+  /** Records decoded into the channel buffers (0 for non-data packets). */
+  take: number;
+  /** take*3 cartesian floats (data packets only). */
+  positions?: Float32Array;
+  /** take*3 colour floats when the scan carries RGB. */
+  colors?: Float32Array;
+  /** take intensities when the scan carries intensity. */
+  intensities?: Uint16Array;
+  /** take classifications when the scan carries them. */
+  classifications?: Uint8Array;
+}
+
+/**
+ * Decode ONE DataPacket at `offset` in the logical-byte view `logical`.
+ *
+ * Non-data packets (index/empty) return `{ packetType, packetLength,
+ * take: 0 }` so the caller can skip them by `packetLength`. Data packets
+ * decode up to `maxRecords` consecutive records into freshly-allocated,
+ * tightly-sized channel buffers — the caller owns striding, pose, and
+ * concatenation.
+ *
+ * Callers must ensure `offset + 4 <= logical.length` (header readable)
+ * before calling; this function then bounds-checks the full packet
+ * against `logical.length` for data packets.
+ */
+export function decodeE57Packet(
+  logical: Uint8Array,
+  view: DataView,
+  offset: number,
+  fields: ScanFieldSet,
+  prototype: PrototypeField[],
+  maxRecords: number,
+): DecodedPacket {
+  const packetType = view.getUint8(offset);
+  const packetLength = view.getUint16(offset + 2, true) + 1;
+  if (packetType !== 1) {
+    // Skip non-data packets (index/empty); they may appear interleaved.
+    return { packetType, packetLength, take: 0 };
+  }
+  const packetEnd = offset + packetLength;
+  if (packetEnd > logical.length) {
+    throw new Error('E57: DataPacket runs past end of logical bytes');
+  }
+  // Data packet header beyond the common 4 bytes:
+  //   byte 4..5: bytestreamCount (u16 LE)
+  //   then `bytestreamCount` × u16 LE = bytestreamByteCount[]
+  //   then payload (concatenated bytestreams, in prototype order)
+  //
+  // CRCs in E57 live at the PAGE level (4 bytes per 1024-byte
+  // physical page, stripped by `stripPageCrc` before we get here).
+  // There is no per-packet trailing CRC — the bytestreams fill the
+  // packet exactly up to `packetEnd`. An earlier version of this
+  // code subtracted 4 bytes assuming a packet-level CRC, which
+  // false-positived the bounds checks below on real-world Faro /
+  // Trimble exports whose last bytestream ends within the final
+  // 4 bytes of the packet.
+  const payloadEnd = packetEnd;
+  if (offset + 6 > payloadEnd) {
+    throw new Error('E57: truncated DataPacket header');
+  }
+  const bytestreamCount = view.getUint16(offset + 4, true);
+  if (bytestreamCount !== prototype.length) {
+    throw new Error(
+      `E57: packet bytestreamCount (${bytestreamCount}) ≠ prototype length (${prototype.length})`,
+    );
+  }
+  const bytestreamLengths: number[] = [];
+  let cursor = offset + 6;
+  for (let i = 0; i < bytestreamCount; i++) {
+    if (cursor + 2 > payloadEnd) {
+      throw new Error('E57: truncated bytestream length table');
+    }
+    bytestreamLengths.push(view.getUint16(cursor, true));
+    cursor += 2;
+  }
+  const fieldOffsets = new Map<string, { start: number; length: number }>();
+  let streamCursor = cursor;
+  for (let i = 0; i < bytestreamCount; i++) {
+    // Each bytestream must fit inside the packet payload — a corrupt
+    // file could otherwise have us read into the next packet or
+    // even past `logical`.
+    if (streamCursor + bytestreamLengths[i] > payloadEnd) {
+      throw new Error(
+        `E57: bytestream ${prototype[i].name} (${bytestreamLengths[i]} bytes) `
+        + `runs past packet payload at offset ${streamCursor}`,
+      );
+    }
+    fieldOffsets.set(prototype[i].name, { start: streamCursor, length: bytestreamLengths[i] });
+    streamCursor += bytestreamLengths[i];
+  }
+
+  // Per-axis packet capacity varies by field kind: Float uses
+  // floor(length / byteSize), ScaledInteger uses floor(length * 8 /
+  // bitsPerRecord). Take the min so a mixed-encoding packet picks
+  // the shortest stream.
+  const { xField, yField, zField } = fields;
+  const xPos = fieldOffsets.get('cartesianX')!;
+  const yPos = fieldOffsets.get('cartesianY')!;
+  const zPos = fieldOffsets.get('cartesianZ')!;
+  const xCapacity = floatOrSiPointCapacity(xField, xPos.length);
+  const yCapacity = floatOrSiPointCapacity(yField, yPos.length);
+  const zCapacity = floatOrSiPointCapacity(zField, zPos.length);
+  const pointsInPacket = Math.min(xCapacity, yCapacity, zCapacity);
+  const take = Math.min(pointsInPacket, Math.max(0, maxRecords));
+
+  const positions = new Float32Array(take * 3);
+  const colors = fields.hasRgb ? new Float32Array(take * 3) : undefined;
+  const intensities = fields.hasIntensity ? new Uint16Array(take) : undefined;
+  const classifications = fields.hasClassification ? new Uint8Array(take) : undefined;
+
+  readCartesianStream(logical, view, xField, xPos.start, positions, 0, take, 0);
+  readCartesianStream(logical, view, yField, yPos.start, positions, 0, take, 1);
+  readCartesianStream(logical, view, zField, zPos.start, positions, 0, take, 2);
+
+  if (colors && fields.rField && fields.gField && fields.bField) {
+    writeColorChannel(view, fieldOffsets.get('colorRed')!.start, fields.rField, colors, 0, take, 0, logical);
+    writeColorChannel(view, fieldOffsets.get('colorGreen')!.start, fields.gField, colors, 0, take, 1, logical);
+    writeColorChannel(view, fieldOffsets.get('colorBlue')!.start, fields.bField, colors, 0, take, 2, logical);
+  }
+  if (intensities && fields.iField) {
+    readIntensityStream(logical, view, fields.iField, fieldOffsets.get('intensity')!.start, intensities, 0, take);
+  }
+  if (classifications && fields.cField) {
+    readClassificationStream(
+      logical, view, fields.cField,
+      fieldOffsets.get('classification')!.start,
+      classifications, 0, take,
+    );
+  }
+
+  return { packetType, packetLength, take, positions, colors, intensities, classifications };
+}
+
+/**
+ * Decode the binary section starting at `entry.binaryFileOffset` in the
+ * logical-bytes view. NOTE: `binaryFileOffset` here must already point
+ * at the first DataPacket (i.e. AFTER the 32-byte CompressedVector
+ * section header) — `decodeE57` does this conversion via
+ * `resolveCompressedVectorDataOffset`. Callers passing the raw XML
+ * offset directly will see a "bytestreamCount ≠ prototype length"
+ * mismatch.
+ *
+ * Supports Float (single/double), ScaledInteger (bit-packed integer
+ * with scale/offset), and Integer for cartesianX/Y/Z + colorRed/
+ * Green/Blue + intensity. Other prototype fields are honoured for
+ * stride math but discarded.
+ *
+ * Whole-file path: holds the entire scan in memory. The streaming
+ * `E57StreamingSource` shares the per-packet primitives above but reads
+ * the binary section incrementally so multi-GB files don't allocate the
+ * whole file at once.
+ */
+export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedPointChunk {
+  const fields = resolveScanFields(entry.prototype);
 
   const positions = new Float32Array(entry.recordCount * 3);
-  const colors = hasRgb ? new Float32Array(entry.recordCount * 3) : undefined;
-  // Allocate intensity for any supported field kind. ScaledInteger
-  // and Integer (u8 / u16) are both common in real exports.
-  const intensities = iField && (iField.kind === 'Float' || iField.kind === 'Integer' || iField.kind === 'ScaledInteger')
-    ? new Uint16Array(entry.recordCount)
-    : undefined;
-  const classifications = cField && (cField.kind === 'Integer' || cField.kind === 'ScaledInteger')
-    ? new Uint8Array(entry.recordCount)
-    : undefined;
+  const colors = fields.hasRgb ? new Float32Array(entry.recordCount * 3) : undefined;
+  const intensities = fields.hasIntensity ? new Uint16Array(entry.recordCount) : undefined;
+  const classifications = fields.hasClassification ? new Uint8Array(entry.recordCount) : undefined;
 
-  // Walk DataPackets starting at binaryFileOffset.
-  // Packet header (4 bytes):
-  //   byte 0: packetType (1=data, 2=index, 3=empty)
-  //   byte 1: packetFlags (bit 0 = compressorRestart)
-  //   bytes 2..3: packetLogicalLength - 1 (LE u16; total packet bytes minus 1)
   let offset = entry.binaryFileOffset;
   const view = new DataView(logical.buffer, logical.byteOffset, logical.byteLength);
   let written = 0;
@@ -85,100 +287,19 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
     if (offset + 4 > logical.length) {
       throw new Error('E57: truncated DataPacket header');
     }
-    const packetType = view.getUint8(offset);
-    const packetLogicalLength = view.getUint16(offset + 2, true) + 1;
-    if (packetType !== 1) {
-      // Skip non-data packets (index/empty); they may appear interleaved.
-      offset += packetLogicalLength;
+    const packet = decodeE57Packet(logical, view, offset, fields, entry.prototype, entry.recordCount - written);
+    if (packet.packetType !== 1) {
+      offset += packet.packetLength;
       continue;
     }
-    const packetEnd = offset + packetLogicalLength;
-    if (packetEnd > logical.length) {
-      throw new Error('E57: DataPacket runs past end of logical bytes');
+    if (packet.take > 0 && packet.positions) {
+      positions.set(packet.positions, written * 3);
+      if (colors && packet.colors) colors.set(packet.colors, written * 3);
+      if (intensities && packet.intensities) intensities.set(packet.intensities, written);
+      if (classifications && packet.classifications) classifications.set(packet.classifications, written);
+      written += packet.take;
     }
-    // Data packet header beyond the common 4 bytes:
-    //   byte 4..5: bytestreamCount (u16 LE)
-    //   then `bytestreamCount` × u16 LE = bytestreamByteCount[]
-    //   then payload (concatenated bytestreams, in prototype order)
-    //
-    // CRCs in E57 live at the PAGE level (4 bytes per 1024-byte
-    // physical page, stripped by `stripPageCrc` before we get here).
-    // There is no per-packet trailing CRC — the bytestreams fill the
-    // packet exactly up to `packetEnd`. An earlier version of this
-    // code subtracted 4 bytes assuming a packet-level CRC, which
-    // false-positived the bounds checks below on real-world Faro /
-    // Trimble exports whose last bytestream ends within the final
-    // 4 bytes of the packet.
-    const payloadEnd = packetEnd;
-    if (offset + 6 > payloadEnd) {
-      throw new Error('E57: truncated DataPacket header');
-    }
-    const bytestreamCount = view.getUint16(offset + 4, true);
-    if (bytestreamCount !== entry.prototype.length) {
-      throw new Error(
-        `E57: packet bytestreamCount (${bytestreamCount}) ≠ prototype length (${entry.prototype.length})`,
-      );
-    }
-    const bytestreamLengths: number[] = [];
-    let cursor = offset + 6;
-    for (let i = 0; i < bytestreamCount; i++) {
-      if (cursor + 2 > payloadEnd) {
-        throw new Error('E57: truncated bytestream length table');
-      }
-      bytestreamLengths.push(view.getUint16(cursor, true));
-      cursor += 2;
-    }
-    const fieldOffsets = new Map<string, { start: number; length: number }>();
-    let streamCursor = cursor;
-    for (let i = 0; i < bytestreamCount; i++) {
-      // Each bytestream must fit inside the packet payload — a corrupt
-      // file could otherwise have us read into the next packet or
-      // even past `logical`.
-      if (streamCursor + bytestreamLengths[i] > payloadEnd) {
-        throw new Error(
-          `E57: bytestream ${entry.prototype[i].name} (${bytestreamLengths[i]} bytes) `
-          + `runs past packet payload at offset ${streamCursor}`,
-        );
-      }
-      fieldOffsets.set(entry.prototype[i].name, { start: streamCursor, length: bytestreamLengths[i] });
-      streamCursor += bytestreamLengths[i];
-    }
-
-    // Per-axis packet capacity now varies by field kind: Float uses
-    // floor(length / byteSize), ScaledInteger uses floor(length * 8 /
-    // bitsPerRecord). Take the min so a mixed-encoding packet picks
-    // the shortest stream.
-    const xPos = fieldOffsets.get('cartesianX')!;
-    const yPos = fieldOffsets.get('cartesianY')!;
-    const zPos = fieldOffsets.get('cartesianZ')!;
-    const xCapacity = floatOrSiPointCapacity(xField, xPos.length);
-    const yCapacity = floatOrSiPointCapacity(yField, yPos.length);
-    const zCapacity = floatOrSiPointCapacity(zField, zPos.length);
-    const pointsInPacket = Math.min(xCapacity, yCapacity, zCapacity);
-    const take = Math.min(pointsInPacket, entry.recordCount - written);
-
-    readCartesianStream(logical, view, xField, xPos.start, positions, written, take, 0);
-    readCartesianStream(logical, view, yField, yPos.start, positions, written, take, 1);
-    readCartesianStream(logical, view, zField, zPos.start, positions, written, take, 2);
-
-    if (colors && rField && gField && bField) {
-      writeColorChannel(view, fieldOffsets.get('colorRed')!.start, rField, colors, written, take, 0, logical);
-      writeColorChannel(view, fieldOffsets.get('colorGreen')!.start, gField, colors, written, take, 1, logical);
-      writeColorChannel(view, fieldOffsets.get('colorBlue')!.start, bField, colors, written, take, 2, logical);
-    }
-    if (intensities && iField) {
-      readIntensityStream(logical, view, iField, fieldOffsets.get('intensity')!.start, intensities, written, take);
-    }
-    if (classifications && cField) {
-      readClassificationStream(
-        logical, view, cField,
-        fieldOffsets.get('classification')!.start,
-        classifications, written, take,
-      );
-    }
-
-    written += take;
-    offset = packetEnd;
+    offset += packet.packetLength;
   }
 
   if (written < entry.recordCount) {

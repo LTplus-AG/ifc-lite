@@ -43,6 +43,7 @@ import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
+import { isMeshVisibleInViewMode } from '@/lib/type-view-visibility';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -656,6 +657,35 @@ export function ViewportContainer() {
     // that arrives in a later batch even when the meshes array is mutated in place.
   }, [mergedGeometryResult, geometryContentVersion]);
 
+  // Does the model carry any PLACED occurrence (class 0)? Used to decide whether
+  // orphan type-library geometry (class 1) is clutter to hide in Model view or
+  // the only geometry that must stay visible (pure type-library files). Same
+  // incremental-scan pattern as hasTypeGeometry. (#1353)
+  const occGeoSourceRef = useRef<MeshData[] | null>(null);
+  const occGeoScanLenRef = useRef(0);
+  const sawOccurrenceRef = useRef(false);
+  const hasOccurrenceGeometry = useMemo(() => {
+    const meshes = mergedGeometryResult?.meshes;
+    if (!meshes || meshes.length === 0) {
+      occGeoSourceRef.current = meshes ?? null;
+      occGeoScanLenRef.current = meshes?.length ?? 0;
+      sawOccurrenceRef.current = false;
+      return false;
+    }
+    if (occGeoSourceRef.current !== meshes || meshes.length < occGeoScanLenRef.current) {
+      occGeoSourceRef.current = meshes;
+      occGeoScanLenRef.current = 0;
+      sawOccurrenceRef.current = false;
+    }
+    if (!sawOccurrenceRef.current) {
+      for (let i = occGeoScanLenRef.current; i < meshes.length; i++) {
+        if ((meshes[i].geometryClass ?? 0) === 0) { sawOccurrenceRef.current = true; break; }
+      }
+    }
+    occGeoScanLenRef.current = meshes.length;
+    return sawOccurrenceRef.current;
+  }, [mergedGeometryResult, geometryContentVersion]);
+
   // Persisted view mode may be 'types' from a prior model; fall back to 'model'
   // when the current geometry has no type library so "Types" never renders an
   // empty scene (and the now-hidden switch can't be used to recover).
@@ -676,6 +706,7 @@ export function ViewportContainer() {
   const filteredSourceRef = useRef<MeshData[] | null>(null);
   const filteredTypeVisRef = useRef(typeVisibility);
   const filteredTypeModeRef = useRef(effectiveViewMode);
+  const filteredHasOccRef = useRef(hasOccurrenceGeometry);
   const filteredVersionRef = useRef(0);
 
   const filteredGeometry = useMemo(() => {
@@ -700,7 +731,10 @@ export function ViewportContainer() {
       prevVis.virtualElements !== typeVisibility.virtualElements ||
       prevVis.site !== typeVisibility.site ||
       prevVis.ifcAnnotations !== typeVisibility.ifcAnnotations ||
-      filteredTypeModeRef.current !== effectiveViewMode;
+      filteredTypeModeRef.current !== effectiveViewMode ||
+      // Occurrence-presence flipping (e.g. occurrences stream in after orphan
+      // types) changes whether class-1 orphans render in Model view (#1353).
+      filteredHasOccRef.current !== hasOccurrenceGeometry;
     const sourceChanged = filteredSourceRef.current !== allMeshes;
     if (typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current) {
       cache.length = 0;
@@ -708,6 +742,7 @@ export function ViewportContainer() {
       filteredSourceRef.current = allMeshes;
       filteredTypeVisRef.current = typeVisibility;
       filteredTypeModeRef.current = effectiveViewMode;
+      filteredHasOccRef.current = hasOccurrenceGeometry;
     }
 
     const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
@@ -718,19 +753,14 @@ export function ViewportContainer() {
       const mesh = allMeshes[i];
       const ifcType = mesh.ifcType;
 
-      // Model/Types view switch (#957 follow-up). geometryClass: 0 = occurrence,
-      // 1 = orphan type (no occurrence — shown in BOTH modes since it's the only
-      // geometry), 2 = instanced type-library shape. In 'model' mode hide class 2
-      // (else the AC20 duplicate boxes at the MappingOrigin reappear); in 'types'
-      // mode hide occurrences (class 0) so only the type library shows.
+      // Model/Types view switch (#957, #1353). geometryClass: 0 = occurrence,
+      // 1 = orphan type, 2 = instanced type-library shape, 3 = material-layer
+      // slice (treated like an occurrence — it's part of the real build-up).
+      // An orphan type (class 1) renders in Model view ONLY when the model has
+      // no placed occurrences (pure type-library file); otherwise it's unplaced
+      // library clutter and belongs in the Types view. See helper for the table.
       const geometryClass = mesh.geometryClass ?? 0;
-      // Class 3 = a material-layer slice. It IS rendered in 3D (the renderer
-      // draws it backface-culled so the build-up shows without the thin slabs
-      // z-fighting into a hollow shell), so it's treated like an occurrence
-      // (class 0) for the Model/Types switch.
-      if (effectiveViewMode === 'types') {
-        if (geometryClass === 0 || geometryClass === 3) continue;
-      } else if (geometryClass === 2) {
+      if (!isMeshVisibleInViewMode(geometryClass, effectiveViewMode, hasOccurrenceGeometry)) {
         continue;
       }
 
@@ -768,7 +798,7 @@ export function ViewportContainer() {
     // Return the same array reference — downstream change detection uses
     // geometryVersion (which increments each batch) instead of array identity.
     return cache;
-  }, [mergedGeometryResult, typeVisibility, effectiveViewMode]);
+  }, [mergedGeometryResult, typeVisibility, effectiveViewMode, hasOccurrenceGeometry]);
 
   // Version counter that changes every batch — triggers useGeometryStreaming
   // without requiring a new geometry array reference.

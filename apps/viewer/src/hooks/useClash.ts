@@ -300,6 +300,9 @@ export function useClash() {
       // colours show in highlight, isolate AND ghost with no selection. (#1277/#1339)
       state.clearEntitySelection();
       state.setClashHighlightColors(buildClashPairColors(a ? clash.a.ref : null, b ? clash.b.ref : null));
+      // Mark the overlap REGION (clash.bounds AABB, world frame) as a distinct
+      // third-colour wireframe box (#1277).
+      state.setClashOverlapBox(clash.bounds ? { min: clash.bounds.min, max: clash.bounds.max } : null);
       applyFocusMode(globalIds, mode);
       state.setClashSelectedId(clash.id);
       // frameSelection also frames the clash-highlight ids (see Viewport), so the
@@ -322,6 +325,7 @@ export function useClash() {
       // focus is painted the clash A colour and framed, without a selected state.
       state.clearEntitySelection();
       state.setClashHighlightColors(new Map([[el.ref, CLASH_COLOR_A]]));
+      state.setClashOverlapBox(null);
       applyFocusMode([el.ref], mode);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
     },
@@ -353,6 +357,7 @@ export function useClash() {
     // and B in another, so per-pair colours are ambiguous here. Reset any stale
     // pair tint and rely on the selection outline.
     state.setClashHighlightColors(null);
+    state.setClashOverlapBox(null);
   }, [refOf]);
 
   const clearHighlight = useCallback((): void => {
@@ -361,6 +366,7 @@ export function useClash() {
     state.clearIsolation(); // drop any clash isolation so the full model returns
     state.clearGhost(); // and any X-Ray ghosting
     state.setClashHighlightColors(null); // drop the clash A/B glow tints
+    state.setClashOverlapBox(null);
     setSelectedId(null);
   }, [setSelectedId]);
 

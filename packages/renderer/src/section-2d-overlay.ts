@@ -150,6 +150,14 @@ export class Section2DOverlayRenderer {
   private gridLineVertexBuffer: GPUBuffer | null = null;
   private gridLineVertexCount = 0;
 
+  // Standalone 3D clash-overlap-box overlay (#1277): the wireframe AABB of a
+  // focused clash, drawn in its OWN distinct colour (not the shared overlay
+  // line colour) so the overlap region reads as a third colour next to the two
+  // glowing clash elements.
+  private clashBoxLineVertexBuffer: GPUBuffer | null = null;
+  private clashBoxLineVertexCount = 0;
+  private clashBoxLineColor: readonly [number, number, number, number] = [1, 0, 1, 1];
+
   constructor(device: GPUDevice, format: GPUTextureFormat, sampleCount: number = 4) {
     this.device = device;
     this.format = format;
@@ -905,6 +913,62 @@ export class Section2DOverlayRenderer {
     pass.setBindGroup(0, this.bindGroup);
     pass.setVertexBuffer(0, this.gridLineVertexBuffer);
     pass.draw(this.gridLineVertexCount);
+  }
+
+  /** Colour for the clash-overlap box (its own, not the shared overlay colour). */
+  setClashBoxLineColor(color: readonly [number, number, number, number]): void {
+    this.clashBoxLineColor = color;
+  }
+
+  /**
+   * Upload the clash-overlap-box wireframe as a flat `[x,y,z, …]` line-list in
+   * world space (12 AABB edges = 24 vertices). Separate buffer + colour from the
+   * other overlays. Pass an empty array to clear. (#1277)
+   */
+  uploadClashBoxLines3D(vertices: Float32Array): void {
+    this.init();
+    if (this.clashBoxLineVertexBuffer) {
+      this.clashBoxLineVertexBuffer.destroy();
+      this.clashBoxLineVertexBuffer = null;
+    }
+    this.clashBoxLineVertexCount = 0;
+    if (vertices.length < 6) return;
+    this.clashBoxLineVertexBuffer = this.device.createBuffer({
+      size: vertices.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(this.clashBoxLineVertexBuffer, 0, vertices);
+    this.clashBoxLineVertexCount = vertices.length / 3;
+  }
+
+  clearClashBoxLines3D(): void {
+    if (this.clashBoxLineVertexBuffer) {
+      this.clashBoxLineVertexBuffer.destroy();
+      this.clashBoxLineVertexBuffer = null;
+    }
+    this.clashBoxLineVertexCount = 0;
+  }
+
+  hasClashBoxLines3D(): boolean {
+    return this.clashBoxLineVertexCount > 0;
+  }
+
+  /** Draw the clash-overlap box in its own colour. Same line pipeline. (#1277) */
+  drawClashBoxLines3D(pass: GPURenderPassEncoder, viewProj: Float32Array): void {
+    this.init();
+    if (!this.linePipeline || !this.uniformBuffer || !this.bindGroup) return;
+    if (!this.clashBoxLineVertexBuffer || this.clashBoxLineVertexCount === 0) return;
+
+    const uniforms = new Float32Array(40);
+    uniforms.set(viewProj, 0);
+    // planeOffset = 0 — vertices are already in world space.
+    uniforms.set(this.clashBoxLineColor, 36); // lineColor (byte offset 144)
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, uniforms);
+
+    pass.setPipeline(this.linePipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    pass.setVertexBuffer(0, this.clashBoxLineVertexBuffer);
+    pass.draw(this.clashBoxLineVertexCount);
   }
 
   /**

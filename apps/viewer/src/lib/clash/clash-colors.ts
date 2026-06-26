@@ -20,6 +20,8 @@ export type RGBA = [number, number, number, number];
 export const CLASH_COLOR_A: RGBA = [1.0, 0.5, 0.05, 1];
 /** Element B — vibrant cyan. */
 export const CLASH_COLOR_B: RGBA = [0.0, 0.82, 1.0, 1];
+/** Overlap region wireframe box — vibrant magenta (a third, distinct colour). */
+export const CLASH_COLOR_OVERLAP: RGBA = [1.0, 0.1, 0.85, 1];
 
 /**
  * Build the global-id → colour map that paints a clash pair. `null` ids (an

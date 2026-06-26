@@ -26,6 +26,7 @@ import {
 } from '../../hooks/useViewerSelectors.js';
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
+import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import {
   getEntityBounds,
@@ -487,6 +488,16 @@ export function Viewport({
   // animation loop reads the latest without re-subscribing.
   const clashHighlightColors = useViewerStore((s) => s.clashHighlightColors);
   const clashHighlightColorsRef = useLatestRef(clashHighlightColors);
+  // Clash overlap-region wireframe box (#1277): push the focused clash's bounds
+  // to the renderer as a distinct-colour box. Cleared (null) on teardown.
+  const clashOverlapBox = useViewerStore((s) => s.clashOverlapBox);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setClashOverlapBox(
+      clashOverlapBox ? { ...clashOverlapBox, color: CLASH_COLOR_OVERLAP } : null,
+    );
+  }, [clashOverlapBox]);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);

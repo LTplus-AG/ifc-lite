@@ -133,10 +133,14 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const [showHelp, setShowHelp] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
 
-  // Clear the clash A/B glow when the panel closes/unmounts so the tint doesn't
-  // linger on the model after the user leaves clash mode (#1277/#1339 review).
+  // Clear the clash A/B glow + overlap box when the panel closes/unmounts so the
+  // tint doesn't linger on the model after the user leaves clash mode (#1277).
   const setClashHighlightColors = useViewerStore((s) => s.setClashHighlightColors);
-  useEffect(() => () => { setClashHighlightColors(null); }, [setClashHighlightColors]);
+  const setClashOverlapBox = useViewerStore((s) => s.setClashOverlapBox);
+  useEffect(() => () => {
+    setClashHighlightColors(null);
+    setClashOverlapBox(null);
+  }, [setClashHighlightColors, setClashOverlapBox]);
 
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {

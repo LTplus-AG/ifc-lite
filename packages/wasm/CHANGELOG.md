@@ -1,5 +1,11 @@
 # @ifc-lite/wasm
 
+## 2.13.3
+
+### Patch Changes
+
+- [#1397](https://github.com/LTplus-AG/ifc-lite/pull/1397) [`7b265f4`](https://github.com/LTplus-AG/ifc-lite/commit/7b265f4c900a020cd4566e9abcc84bc792576812) Thanks [@louistrue](https://github.com/louistrue)! - Fix arched (degree-trimmed arc) openings rendering as full circles on Revit/EDM exports ([#1367](https://github.com/LTplus-AG/ifc-lite/issues/1367)). These exporters write entity records with a space after the `=` (`[#1593796](https://github.com/LTplus-AG/ifc-lite/issues/1593796)= IFCPROJECT(`) and place `IFCPROJECT` plus the unit chain near the file tail. The streaming meta resolver's `find_ifcproject_id` searched for the literal `=IFCPROJECT(` (no space), so it found no project and the unit assignment silently defaulted (length → metres on a millimetre model, plane-angle → radians on a degree model). With the angle treated as radians, an `IfcTrimmedCurve` arc trimmed at `65.91°`/`114.08°` swept ~48 radians (~7.6 full turns), so an arched window opening cut a full-circle "void sphere" through the wall. The project scan now tolerates whitespace around `=`, and the plane-angle resolver reports an unresolved partial-index chain as "retry on a full index" (mirroring the length resolver) instead of masking it as the radian default, so a degree unit whose `IFCMEASUREWITHUNIT` lands past the streaming gate still resolves.
+
 ## 2.13.2
 
 ### Patch Changes

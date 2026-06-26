@@ -1,5 +1,11 @@
 # @ifc-lite/renderer
 
+## 1.32.0
+
+### Minor Changes
+
+- [#1377](https://github.com/LTplus-AG/ifc-lite/pull/1377) [`2c331ad`](https://github.com/LTplus-AG/ifc-lite/commit/2c331addfc97fc67d2c022f65babb3f08d48c088) Thanks [@louistrue](https://github.com/louistrue)! - Add `Renderer.setClashOverlapBox(box | null)` — draws a world-space AABB as a distinct-colour wireframe box (e.g. the clash overlap region) via the existing overlay line pipeline. Pass `null` to clear. ([#1277](https://github.com/LTplus-AG/ifc-lite/issues/1277)/[#1339](https://github.com/LTplus-AG/ifc-lite/issues/1339))
+
 ## 1.31.0
 
 ### Minor Changes

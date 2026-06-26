@@ -175,9 +175,20 @@ export interface MergeModelInput {
   mutationView?: MutablePropertyView;
 }
 
-/** True when a mutation view carries any pending edit (mutations or overlay-created entities). */
+/**
+ * True when a mutation view carries pending edits the exporter would bake.
+ *
+ * Keys off the view's *current overlay footprint* (`hasPendingChanges`), not the
+ * append-only mutation history: the history never shrinks, so an
+ * edited-then-undone model would keep reporting changes and force a redundant
+ * re-bake. `hasPendingChanges` is a conservative over-approximation (the safe
+ * direction here — under-reporting would silently drop edits). Falls back to the
+ * legacy history/new-entity check for views that predate the method.
+ */
 function viewHasMutations(view: MutablePropertyView | undefined): boolean {
   if (!view) return false;
+  if (typeof view.hasPendingChanges === 'function') return view.hasPendingChanges();
+  // Legacy fallback (older MutablePropertyView without hasPendingChanges).
   const muts = typeof view.getMutations === 'function' ? view.getMutations() : [];
   if (muts.length > 0) return true;
   const created = typeof view.getNewEntities === 'function' ? view.getNewEntities() : [];

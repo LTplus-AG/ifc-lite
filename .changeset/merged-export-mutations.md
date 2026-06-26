@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/export": minor
+"@ifc-lite/mutations": minor
 "@ifc-lite/viewer": patch
 ---
 
@@ -14,3 +15,7 @@ Models without pending edits pass through unchanged (no export/parse cost). The 
 `MergedExporter.export()` throws if a model carries pending edits, since baking needs the
 async parser. The viewer's "Merged (All Models)" export now passes each model's mutation view
 (gated by the Apply Mutations toggle).
+
+`MutablePropertyView` gains `hasPendingChanges()`, which reports the current overlay footprint
+(what the exporter would bake) rather than the append-only mutation history; the merged
+exporter uses it to decide whether to re-bake a model.

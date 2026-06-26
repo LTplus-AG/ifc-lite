@@ -97,7 +97,16 @@ export class E57StreamingSource implements StreamingPointSource {
   // Streaming cursor.
   private scanIdx = 0;
   private logCursor = 0;
+  /** Records consumed of the CURRENT scan (resets at each scan boundary). */
   private recordsWritten = 0;
+  /**
+   * Cumulative declared `recordCount` of every scan BEFORE the current one.
+   * `scanRecordBase + recordsWritten` is the record's index in the merged
+   * multi-scan cloud — the phase the stride must align to so downsampling
+   * matches the whole-file decoder (which strides the merged cloud globally)
+   * rather than restarting the stride phase inside each scan.
+   */
+  private scanRecordBase = 0;
 
   constructor(
     blob: Blob,
@@ -160,6 +169,7 @@ export class E57StreamingSource implements StreamingPointSource {
     this.scanIdx = 0;
     this.logCursor = scans[0].dataLogicalOffset;
     this.recordsWritten = 0;
+    this.scanRecordBase = 0;
     this.opened = true;
     return this.toInfo();
   }
@@ -191,6 +201,10 @@ export class E57StreamingSource implements StreamingPointSource {
         this.scanIdx < this.scans.length
         && this.recordsWritten >= this.scans[this.scanIdx].recordCount
       ) {
+        // Carry the finished scan's full declared record count into the
+        // file-global phase so the next scan keeps striding on the merged
+        // cloud's index line (…, k·stride, …) instead of re-aligning to 0.
+        this.scanRecordBase += this.scans[this.scanIdx].recordCount;
         this.scanIdx++;
         if (this.scanIdx < this.scans.length) {
           this.logCursor = this.scans[this.scanIdx].dataLogicalOffset;
@@ -250,7 +264,9 @@ export class E57StreamingSource implements StreamingPointSource {
           continue;
         }
         if (packet.take > 0 && packet.positions) {
-          const sel = selectStride(packet, this.recordsWritten, stride, scan.pose);
+          // Phase the stride on the file-global record index so multi-scan
+          // downsampling matches the whole-file decoder, not per-scan.
+          const sel = selectStride(packet, this.scanRecordBase + this.recordsWritten, stride, scan.pose);
           if (sel.count > 0) {
             parts.push(sel);
             produced += sel.count;
@@ -284,6 +300,7 @@ export class E57StreamingSource implements StreamingPointSource {
     this.scanIdx = 0;
     this.logCursor = 0;
     this.recordsWritten = 0;
+    this.scanRecordBase = 0;
   }
 
   /**
@@ -384,9 +401,10 @@ async function readLogicalRange(
 
 /**
  * Take every `stride`-th record from a decoded packet (phased by the
- * scan-global record index `base`) and apply the scan's pose. Returns a
- * fresh, tightly-sized slice — the packet's own buffers are reused
- * verbatim when `stride === 1`.
+ * file-global record index `base` — the record's position in the merged
+ * multi-scan cloud, so the kept set is {i : (base+j) ≡ 0 mod stride})
+ * and apply the scan's pose. Returns a fresh, tightly-sized slice — the
+ * packet's own buffers are reused verbatim when `stride === 1`.
  */
 function selectStride(
   packet: DecodedPacket,

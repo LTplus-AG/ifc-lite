@@ -147,6 +147,71 @@ function buildE57(
   return { blob: new Blob([physical]), physical };
 }
 
+/**
+ * Build a complete, CRC-paged MULTI-scan E57 file as a Blob. Each scan
+ * gets its own CompressedVector section header + data region, laid out
+ * back-to-back: [header 48 / pad 64] [sec0 32][data0] [sec1 32][data1] … [xml].
+ * All scans here are cartesian-only (no colour) to keep the layout simple.
+ */
+function buildMultiScanE57(
+  scans: TestPoint[][],
+  opts: { pageSize?: number; pointsPerPacket?: number } = {},
+): { blob: Blob; physical: Uint8Array } {
+  const pageSize = opts.pageSize ?? 256;
+  const ppp = opts.pointsPerPacket ?? 8;
+
+  let cursor = 64;
+  const layout = scans.map((pts) => {
+    const packets = buildDataPackets(pts, ppp);
+    const sectionLogicalOffset = cursor;
+    const dataLogicalOffset = cursor + 32;
+    cursor = dataLogicalOffset + packets.length;
+    return { pts, packets, sectionLogicalOffset, dataLogicalOffset };
+  });
+  const xmlLogicalOffset = cursor;
+
+  const children = layout.map((s, i) =>
+    `<vectorChild type="Structure">`
+    + `<guid type="String">{scan-${i + 1}}</guid>`
+    + `<points type="CompressedVector" fileOffset="${logicalToPhysical(s.sectionLogicalOffset, pageSize)}" recordCount="${s.pts.length}">`
+    + `<prototype type="Structure">`
+    + `<cartesianX type="Float" precision="single"/>`
+    + `<cartesianY type="Float" precision="single"/>`
+    + `<cartesianZ type="Float" precision="single"/>`
+    + `</prototype>`
+    + `</points>`
+    + `</vectorChild>`,
+  ).join('');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>`
+    + `<e57Root type="Structure"><data3D type="Vector">${children}</data3D></e57Root>`;
+  const xmlBytes = enc.encode(xml);
+
+  const logicalLen = xmlLogicalOffset + xmlBytes.length;
+  const logical = new Uint8Array(logicalLen);
+
+  logical.set(enc.encode('ASTM-E57'), 0);
+  const hv = new DataView(logical.buffer, 0, 48);
+  hv.setUint32(8, 1, true);
+  hv.setUint32(12, 0, true);
+  hv.setBigUint64(16, BigInt(logicalLen), true);
+  hv.setBigUint64(24, BigInt(logicalToPhysical(xmlLogicalOffset, pageSize)), true);
+  hv.setBigUint64(32, BigInt(xmlBytes.length), true);
+  hv.setBigUint64(40, BigInt(pageSize), true);
+
+  for (const s of layout) {
+    const sv = new DataView(logical.buffer, s.sectionLogicalOffset, 32);
+    sv.setUint8(0, 1);
+    sv.setBigUint64(8, BigInt(32 + s.packets.length), true);
+    sv.setBigUint64(16, BigInt(logicalToPhysical(s.dataLogicalOffset, pageSize)), true);
+    sv.setBigUint64(24, 0n, true);
+    logical.set(s.packets, s.dataLogicalOffset);
+  }
+  logical.set(xmlBytes, xmlLogicalOffset);
+
+  const physical = inflateToPhysical(logical, pageSize);
+  return { blob: new Blob([physical]), physical };
+}
+
 async function drain(src: E57StreamingSource, maxPoints: number): Promise<DecodedPointChunk[]> {
   await src.open();
   const chunks: DecodedPointChunk[] = [];
@@ -250,6 +315,56 @@ describe('E57StreamingSource', () => {
     expect(totalPoints(chunks)).toBe(10);
     const xs = mergePositions(chunks).filter((_, i) => i % 3 === 0);
     expect(xs).toEqual([0, 2.5, 5, 7.5, 10, 12.5, 15, 17.5, 20, 22.5]);
+  });
+
+  it('strides multi-scan files on the merged global index, not per-scan', async () => {
+    // Two scans with disjoint x ranges so a per-scan phase reset (the
+    // pre-fix bug) is visible in the output: scan A x∈[0,28), scan B
+    // x∈[100,132). Merged global order is A (idx 0..27) then B (idx 28..59).
+    const scanA: TestPoint[] = [];
+    for (let i = 0; i < 28; i++) scanA.push({ x: i, y: 0, z: 0 });
+    const scanB: TestPoint[] = [];
+    for (let i = 0; i < 32; i++) scanB.push({ x: 100 + i, y: 0, z: 0 });
+
+    const { blob, physical } = buildMultiScanE57([scanA, scanB], { pageSize: 256, pointsPerPacket: 8 });
+
+    // Reference: whole-file decode (merged, scan order) then GLOBAL stride.
+    const reference = decodeE57(physical);
+    expect(reference).not.toBeNull();
+    expect(reference!.pointCount).toBe(60);
+    const stride = 5;
+    const refXs = Array.from(reference!.positions).filter((_, i) => i % 3 === 0);
+    const expectedXs = refXs.filter((_, p) => p % stride === 0);
+
+    const src = new E57StreamingSource(blob, { downsample: { stride } });
+    const info = await src.open();
+    // Reported count must equal what is actually emitted (ceil(60/5)=12).
+    expect(info.totalPointCount).toBe(Math.ceil(60 / stride));
+
+    const chunks = await drain(src, 200_000);
+    expect(totalPoints(chunks)).toBe(Math.ceil(60 / stride));
+    const gotXs = mergePositions(chunks).filter((_, i) => i % 3 === 0);
+    // Global indices 0,5,…,55 → scan A x=0,5,10,15,20,25; then the phase
+    // CARRIES across the boundary: next kept global index is 30 (not 28),
+    // i.e. scan B local 2,7,12,17,22,27 → x=102,107,112,117,122,127.
+    // A per-scan reset (the bug) would instead emit 13 pts ending
+    // 100,105,…,130. This asserts the file-global phase.
+    expect(gotXs).toEqual([0, 5, 10, 15, 20, 25, 102, 107, 112, 117, 122, 127]);
+    expect(gotXs).toEqual(expectedXs);
+  });
+
+  it('streams multi-scan files identically to the whole-file decoder (stride 1)', async () => {
+    const scanA: TestPoint[] = [];
+    for (let i = 0; i < 13; i++) scanA.push({ x: i, y: i + 1, z: i + 2 });
+    const scanB: TestPoint[] = [];
+    for (let i = 0; i < 19; i++) scanB.push({ x: 50 + i, y: 60 + i, z: 70 + i });
+    const { blob, physical } = buildMultiScanE57([scanA, scanB], { pageSize: 256, pointsPerPacket: 8 });
+    const reference = decodeE57(physical);
+    expect(reference!.pointCount).toBe(32);
+    const src = new E57StreamingSource(blob);
+    const chunks = await drain(src, 200_000);
+    expect(totalPoints(chunks)).toBe(32);
+    expect(mergePositions(chunks)).toEqual(Array.from(reference!.positions));
   });
 
   it('reports header metadata via open()', async () => {

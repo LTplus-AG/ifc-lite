@@ -19,12 +19,16 @@ function danglingRefs(text: string): number[] {
   return [...refs].filter(id => !defined.has(id)).sort((a, b) => a - b);
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Resolve `Pset.<prop>` to the IFCLABEL value its atom carries in the export. */
 function propertyValue(text: string, psetName: string, propName: string): string | null {
   const byId = new Map<number, string>();
   for (const m of text.matchAll(/(^|\n)\s*#(\d+)\s*=([^\n]*)/g)) byId.set(+m[2], m[3]);
   const psetLine = [...byId.values()].find(
-    l => new RegExp(`^IFCPROPERTYSET\\('.*?',[^,]*,'${psetName}'`).test(l),
+    l => new RegExp(`^IFCPROPERTYSET\\('.*?',[^,]*,'${escapeRegExp(psetName)}'`).test(l),
   );
   if (!psetLine) return null;
   const atomIds = [...psetLine.matchAll(/#(\d+)/g)].map(m => +m[1]);

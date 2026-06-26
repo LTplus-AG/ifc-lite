@@ -59,8 +59,13 @@ export async function mergeCommand(args: string[]): Promise<void> {
       modelCount: result.stats.modelCount,
       totalEntityCount: result.stats.totalEntityCount,
       fileSize: result.stats.fileSize,
+      federatedModelCount: result.stats.federatedModelCount,
+      warnings: result.stats.warnings,
     });
   } else {
     process.stderr.write(`Merged ${result.stats.modelCount} models → ${outPath} (${result.stats.totalEntityCount} entities)\n`);
+    for (const warning of result.stats.warnings) {
+      process.stderr.write(`Warning: ${warning}\n`);
+    }
   }
 }

@@ -69,6 +69,14 @@ function buildModel(id: string, name: string, entries: Array<[number, string, st
 /** Decode Uint8Array content to string for test assertions */
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
+/**
+ * Build a valid 22-char IFC GlobalId from a short, charset-safe label.
+ * The merge's GlobalId reconciliation only activates on real 22-char ids, so
+ * mixed-unit / shared-GUID tests must use these (the short 'g1'/'g2' ids in the
+ * legacy tests are intentionally ignored by that logic).
+ */
+const guid = (label: string): string => (label + '0'.repeat(22)).slice(0, 22);
+
 /** Count `#N` references in the output that have no `#N=` definition. */
 function findDanglingRefs(content: string): number[] {
   const defined = new Set<number>();
@@ -373,5 +381,266 @@ describe('MergedExporter', () => {
     expect(decode(result.content)).toContain('DATA;');
     expect(decode(result.content)).toContain('ENDSEC;');
     expect(decode(result.content)).toContain('END-ISO-10303-21;');
+  });
+
+  // Regression: github.com/LTplus-AG/ifc-lite/issues/1332
+  // A model whose length unit differs from the first model's must NOT be folded
+  // into the first project's unit (which silently rescales its coordinates).
+  // Instead it is federated: it keeps its own IfcProject, IfcUnitAssignment and
+  // representation context, and its raw coordinates are copied verbatim.
+  describe('unit-aware federation (#1332)', () => {
+    // model1 = feet (lengthUnitScale 0.3048); model2 = metres (1.0). maxId(m1)=9.
+    const electrical = (): MergeModelInput => {
+      const m = buildModel('elec', 'Electrical', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('elecProj')}',$,'Elec',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#9));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#8,$);"],
+        [4, 'IFCSITE', `#4=IFCSITE('${guid('elecSite')}',$,'Site',$,$,$,$,$,$,$);`],
+        [5, 'IFCWALL', `#5=IFCWALL('${guid('elecWall')}',$,'W',$,$,#6,$,$);`],
+        [6, 'IFCCARTESIANPOINT', '#6=IFCCARTESIANPOINT((100.,200.,300.));'],
+        [7, 'IFCRELAGGREGATES', `#7=IFCRELAGGREGATES('${guid('elecAgg')}',$,$,$,#1,(#4));`],
+        [8, 'IFCCARTESIANPOINT', '#8=IFCCARTESIANPOINT((0.,0.,0.));'],
+        [9, 'IFCSIUNIT', '#9=IFCSIUNIT(*,.LENGTHUNIT.,$,.FOOT.);'],
+      ]);
+      m.lengthUnitScale = 0.3048;
+      return m;
+    };
+    const architecture = (): MergeModelInput => {
+      const m = buildModel('arch', 'Architecture', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('archProj')}',$,'Arch',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#9));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#8,$);"],
+        [4, 'IFCSITE', `#4=IFCSITE('${guid('archSite')}',$,'Site',$,$,$,$,$,$,$);`],
+        [5, 'IFCCOLUMN', `#5=IFCCOLUMN('${guid('archCol')}',$,'C',$,$,#6,$,$);`],
+        [6, 'IFCCARTESIANPOINT', '#6=IFCCARTESIANPOINT((1.5,2.5,3.5));'],
+        [7, 'IFCRELAGGREGATES', `#7=IFCRELAGGREGATES('${guid('archAgg')}',$,$,$,#1,(#4));`],
+        [8, 'IFCCARTESIANPOINT', '#8=IFCCARTESIANPOINT((0.,0.,0.));'],
+        [9, 'IFCSIUNIT', '#9=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      ]);
+      m.lengthUnitScale = 1.0;
+      return m;
+    };
+
+    it('keeps the divergent-unit model as its own project + units (no remap, no dedup)', () => {
+      const result = new MergedExporter([electrical(), architecture()]).export({ schema: 'IFC4' });
+      const content = decode(result.content);
+
+      // First (feet) model unchanged.
+      expect(content).toContain(`#1=IFCPROJECT('${guid('elecProj')}'`);
+
+      // Second (metre) model federated: its project is KEPT (offset 9 → #10),
+      // NOT skipped and NOT remapped onto the first project.
+      expect(content).toContain(`#10=IFCPROJECT('${guid('archProj')}'`);
+      // Its own unit assignment and context survive (not deduplicated).
+      expect(content).toContain('#11=IFCUNITASSIGNMENT');
+      expect(content).toContain('#12=IFCGEOMETRICREPRESENTATIONCONTEXT');
+      // Output is a federation: exactly two IfcProject roots.
+      expect(content.match(/=IFCPROJECT\(/g)?.length).toBe(2);
+
+      // The metre aggregate points at the metre project (#10) and site (#13) —
+      // proof it was NOT reparented onto the feet project (#1).
+      expect(content).toMatch(
+        new RegExp(`#16=IFCRELAGGREGATES\\('${guid('archAgg')}',\\$,\\$,\\$,#10,\\(#13\\)\\)`),
+      );
+
+      // Coordinates copied verbatim — not rescaled into the foot unit.
+      expect(content).toContain('(1.5,2.5,3.5)');
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('re-stamps shared GlobalIds across a unit boundary (no duplicate GUID errors)', () => {
+      // Both disciplines reuse the same Site GlobalId (the Duplex case).
+      const elec = buildModel('elec', 'Electrical', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('m1Proj')}',$,'Elec',$,$,$,$,$,#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#4));'],
+        [3, 'IFCSITE', `#3=IFCSITE('${guid('sharedSite')}',$,'Site',$,$,$,$,$,$,$);`],
+        [4, 'IFCSIUNIT', '#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.FOOT.);'],
+      ]);
+      elec.lengthUnitScale = 0.3048;
+      const arch = buildModel('arch', 'Architecture', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('m2Proj')}',$,'Arch',$,$,$,$,$,#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#4));'],
+        [3, 'IFCSITE', `#3=IFCSITE('${guid('sharedSite')}',$,'Site',$,$,$,$,$,$,$);`],
+        [4, 'IFCSIUNIT', '#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      ]);
+      arch.lengthUnitScale = 1.0;
+
+      const content = decode(new MergedExporter([elec, arch]).export({ schema: 'IFC4' }).content);
+
+      // The shared GlobalId must appear exactly once (kept on the first site).
+      expect(content.match(new RegExp(guid('sharedSite'), 'g'))?.length).toBe(1);
+      // Both sites are still present (federated, not unified) — the second got a
+      // fresh GlobalId so the file has no duplicate-GUID error.
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(2);
+      expect(content.match(/=IFCPROJECT\(/g)?.length).toBe(2);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('unifies (not duplicates) shared GlobalIds when models share a unit', () => {
+      // Same unit (both metres) + a shared wall GlobalId → genuinely the same
+      // entity, so it is unified to one instance and references are remapped.
+      const m1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('m1Proj')}',$,'Arch',$,$,$,$,$,$);`],
+        [2, 'IFCWALL', `#2=IFCWALL('${guid('sharedWall')}',$,'W',$,$,$,$,$);`],
+      ]);
+      const m2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('m2Proj')}',$,'Struct',$,$,$,$,$,$);`],
+        [2, 'IFCWALL', `#2=IFCWALL('${guid('sharedWall')}',$,'W',$,$,$,$,$);`],
+        [3, 'IFCRELDEFINESBYPROPERTIES', `#3=IFCRELDEFINESBYPROPERTIES('${guid('m2Rel')}',$,$,$,(#2),#4);`],
+        [4, 'IFCPROPERTYSET', `#4=IFCPROPERTYSET('${guid('m2Pset')}',$,'Pset',$,$);`],
+      ]);
+
+      const content = decode(new MergedExporter([m1, m2]).export({ schema: 'IFC4' }).content);
+
+      // The shared wall is emitted once; the project is unified (single root).
+      expect(content.match(new RegExp(guid('sharedWall'), 'g'))?.length).toBe(1);
+      expect(content.match(/=IFCPROJECT\(/g)?.length).toBe(1);
+      // m2's relationship is reparented onto the unified wall (#2), not m2's
+      // skipped copy (which would have been #4 after the offset of 2).
+      expect(content).toMatch(
+        new RegExp(`IFCRELDEFINESBYPROPERTIES\\('${guid('m2Rel')}',\\$,\\$,\\$,\\(#2\\),#6\\)`),
+      );
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it("'assume-shared' forces unification even when units differ", () => {
+      const elec = buildModel('elec', 'Electrical', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('m1Proj')}',$,'Elec',$,$,$,$,$,$);`],
+        [2, 'IFCSITE', `#2=IFCSITE('${guid('sharedSite')}',$,'Site',$,$,$,$,$,$,$);`],
+      ]);
+      elec.lengthUnitScale = 0.3048;
+      const arch = buildModel('arch', 'Architecture', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('m2Proj')}',$,'Arch',$,$,$,$,$,$);`],
+        [2, 'IFCSITE', `#2=IFCSITE('${guid('sharedSite')}',$,'Site',$,$,$,$,$,$,$);`],
+      ]);
+      arch.lengthUnitScale = 1.0;
+
+      const content = decode(
+        new MergedExporter([elec, arch]).export({ schema: 'IFC4', unitReconciliation: 'assume-shared' }).content,
+      );
+
+      // Forced single project + unified site despite the unit mismatch.
+      expect(content.match(/=IFCPROJECT\(/g)?.length).toBe(1);
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(1);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('federates via exportAsync as well', async () => {
+      const result = await new MergedExporter([electrical(), architecture()]).exportAsync({ schema: 'IFC4' });
+      const content = decode(result.content);
+      expect(content.match(/=IFCPROJECT\(/g)?.length).toBe(2);
+      expect(content).toContain('(1.5,2.5,3.5)');
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('surfaces a conformance warning when federation triggers (and none otherwise)', () => {
+      const federated = new MergedExporter([electrical(), architecture()]).export({ schema: 'IFC4' });
+      expect(federated.stats.federatedModelCount).toBe(1);
+      expect(federated.stats.warnings.length).toBe(1);
+      expect(federated.stats.warnings[0]).toMatch(/IfcSingleProjectInstance/);
+
+      // Two same-unit models: no federation, no warning.
+      const a = buildModel('a', 'A', [[1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('aProj')}',$,'A',$,$,$,$,$,$);`]]);
+      const b = buildModel('b', 'B', [[1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('bProj')}',$,'B',$,$,$,$,$,$);`]]);
+      const clean = new MergedExporter([a, b]).export({ schema: 'IFC4' });
+      expect(clean.stats.federatedModelCount).toBe(0);
+      expect(clean.stats.warnings).toEqual([]);
+    });
+
+    // Regression (review of #1332): objectified relationships must NOT be
+    // dropped on a GlobalId match — same GlobalId does not imply same membership,
+    // so dropping one orphans its elements from the spatial tree.
+    it('keeps (re-stamps) a relationship with a shared GlobalId instead of dropping its members', () => {
+      const a = buildModel('a', 'Arch', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('projA')}',$,'A',$,$,$,$,$,$);`],
+        [2, 'IFCBUILDINGSTOREY', `#2=IFCBUILDINGSTOREY('${guid('sharedStorey')}',$,'L1',$,$,$,$,$,.ELEMENT.,0.);`],
+        [3, 'IFCWALL', `#3=IFCWALL('${guid('wallA')}',$,'WA',$,$,$,$,$);`],
+        [4, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', `#4=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('sharedRel')}',$,$,$,(#3),#2);`],
+      ]);
+      const b = buildModel('b', 'Struct', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('projB')}',$,'B',$,$,$,$,$,$);`],
+        [2, 'IFCBUILDINGSTOREY', `#2=IFCBUILDINGSTOREY('${guid('sharedStorey')}',$,'L1',$,$,$,$,$,.ELEMENT.,0.);`],
+        [3, 'IFCCOLUMN', `#3=IFCCOLUMN('${guid('colB')}',$,'CB',$,$,$,$,$);`],
+        [4, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', `#4=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('sharedRel')}',$,$,$,(#3),#2);`],
+      ]);
+
+      const content = decode(new MergedExporter([a, b]).export({ schema: 'IFC4' }).content);
+
+      // Storey is unified (one instance), but BOTH containment relationships survive.
+      expect(content.match(/=IFCBUILDINGSTOREY\(/g)?.length).toBe(1);
+      expect(content.match(/=IFCRELCONTAINEDINSPATIALSTRUCTURE\(/g)?.length).toBe(2);
+      // B's column is kept (#3 + offset 4 = #7) and contained in the unified storey #2.
+      expect(content).toContain(`#7=IFCCOLUMN('${guid('colB')}'`);
+      expect(content).toMatch(/IFCRELCONTAINEDINSPATIALSTRUCTURE\([^)]*,\(#7\),#2\)/);
+      // The shared relationship GlobalId survives once; B's copy was re-stamped.
+      expect(content.match(new RegExp(guid('sharedRel'), 'g'))?.length).toBe(1);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    // Regression (review of #1332): a non-rooted resource entity whose Name is
+    // coincidentally a 22-char GlobalId-charset string must NOT be treated as a
+    // GlobalId, or its value would be unified away / its Name overwritten.
+    it('does not mistake a 22-char property Name for a GlobalId', () => {
+      const propName = guid('ThermalRes'); // 22 chars, valid GlobalId charset
+      const a = buildModel('a', 'Arch', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('projA')}',$,'A',$,$,$,$,$,$);`],
+        [2, 'IFCWALL', `#2=IFCWALL('${guid('wallA')}',$,'WA',$,$,$,$,$);`],
+        [3, 'IFCPROPERTYSET', `#3=IFCPROPERTYSET('${guid('psetA')}',$,'Pset_X',$,(#4));`],
+        [4, 'IFCPROPERTYSINGLEVALUE', `#4=IFCPROPERTYSINGLEVALUE('${propName}',$,IFCTEXT('aVal'),$);`],
+        [5, 'IFCRELDEFINESBYPROPERTIES', `#5=IFCRELDEFINESBYPROPERTIES('${guid('relA')}',$,$,$,(#2),#3);`],
+      ]);
+      const b = buildModel('b', 'Struct', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('projB')}',$,'B',$,$,$,$,$,$);`],
+        [2, 'IFCWALL', `#2=IFCWALL('${guid('wallB')}',$,'WB',$,$,$,$,$);`],
+        [3, 'IFCPROPERTYSET', `#3=IFCPROPERTYSET('${guid('psetB')}',$,'Pset_X',$,(#4));`],
+        [4, 'IFCPROPERTYSINGLEVALUE', `#4=IFCPROPERTYSINGLEVALUE('${propName}',$,IFCTEXT('bVal'),$);`],
+        [5, 'IFCRELDEFINESBYPROPERTIES', `#5=IFCRELDEFINESBYPROPERTIES('${guid('relB')}',$,$,$,(#2),#3);`],
+      ]);
+
+      const content = decode(new MergedExporter([a, b]).export({ schema: 'IFC4' }).content);
+
+      // Both property atoms survive with their own distinct values and Name intact.
+      expect(content.match(/=IFCPROPERTYSINGLEVALUE\(/g)?.length).toBe(2);
+      expect(content).toContain("IFCTEXT('aVal')");
+      expect(content).toContain("IFCTEXT('bVal')");
+      expect(content.match(new RegExp(propName, 'g'))?.length).toBe(2);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    // Regression (review of #1332): in a 3+ model merge, a unit-compatible model
+    // must not be unified onto an entity emitted by a FEDERATED (different-unit)
+    // model just because the GlobalId matches — that would reintroduce the
+    // mis-scale transitively.
+    it('does not unify a compatible model onto a federated entity sharing a GlobalId', () => {
+      const sharedWall = guid('sharedWall');
+      const a = buildModel('a', 'PrimaryMetre', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('projA')}',$,'A',$,$,$,$,$,$);`],
+        [2, 'IFCWALL', `#2=IFCWALL('${guid('wallA')}',$,'WA',$,$,#3,$,$);`],
+        [3, 'IFCCARTESIANPOINT', '#3=IFCCARTESIANPOINT((9.,9.,9.));'],
+      ]);
+      a.lengthUnitScale = 1.0; // primary = metres
+      const b = buildModel('b', 'Feet', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('projB')}',$,'B',$,$,$,$,$,$);`],
+        [2, 'IFCWALL', `#2=IFCWALL('${sharedWall}',$,'BW-feet',$,$,#3,$,$);`],
+        [3, 'IFCCARTESIANPOINT', '#3=IFCCARTESIANPOINT((100.,100.,100.));'],
+      ]);
+      b.lengthUnitScale = 0.3048; // federated (feet)
+      const c = buildModel('c', 'Metre', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('projC')}',$,'C',$,$,$,$,$,$);`],
+        [2, 'IFCWALL', `#2=IFCWALL('${sharedWall}',$,'CW-metres',$,$,#3,$,$);`],
+        [3, 'IFCCARTESIANPOINT', '#3=IFCCARTESIANPOINT((2.,2.,2.));'],
+      ]);
+      c.lengthUnitScale = 1.0; // compatible with primary
+
+      const content = decode(new MergedExporter([a, b, c]).export({ schema: 'IFC4' }).content);
+
+      // C's metre wall must NOT be dropped/reparented onto B's feet wall.
+      expect(content).toContain("'CW-metres'");
+      expect(content).toContain('(2.,2.,2.)'); // C's coordinate is preserved, not orphaned to feet space
+      expect(content.match(/=IFCWALL\(/g)?.length).toBe(3); // all three walls survive
+      // The shared GlobalId is kept once (on B, first emitter); C's was re-stamped.
+      expect(content.match(new RegExp(sharedWall, 'g'))?.length).toBe(1);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
   });
 });

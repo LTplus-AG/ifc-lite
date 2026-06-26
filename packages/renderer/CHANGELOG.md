@@ -1,5 +1,15 @@
 # @ifc-lite/renderer
 
+## 1.31.0
+
+### Minor Changes
+
+- [#1360](https://github.com/LTplus-AG/ifc-lite/pull/1360) [`608e527`](https://github.com/LTplus-AG/ifc-lite/commit/608e5276637430e4a97f1aab0f50267a247fdbe2) Thanks [@Blogbotana](https://github.com/Blogbotana)! - renderer: add `Renderer.setOverlayLineColor(rgba)` so the 3D overlay lines (annotation / alignment / grid) and the section-cut outline are themeable. The line shader previously hardcoded black, leaving these lines invisible on dark backgrounds; the colour now comes from a uniform and defaults to opaque black (no behaviour change unless set). Complements `SymbolicTextInput.color`, which already themes the matching labels.
+
+### Patch Changes
+
+- [#1368](https://github.com/LTplus-AG/ifc-lite/pull/1368) [`1c27802`](https://github.com/LTplus-AG/ifc-lite/commit/1c27802ae79b402e540ff607b73bed29e02d897d) Thanks [@louistrue](https://github.com/louistrue)! - Fix picking of colour-merged fillers (IfcDoor / IfcWindow) under isolation. When a door or window is colour-fused into a batch keyed by its host wall or opening, its expressId lives only in the per-vertex `entityIds`, not in `batch.expressIds`. Picking now seeds its candidate set from the scene's authoritative mesh-data id set (`getAllMeshDataExpressIds()`), so an isolated door/window is hydrated and selectable instead of returning `null` from `pick()`. ([#1358](https://github.com/LTplus-AG/ifc-lite/issues/1358))
+
 ## 1.30.1
 
 ### Patch Changes

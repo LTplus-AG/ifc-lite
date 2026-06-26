@@ -1,5 +1,13 @@
 # @ifc-lite/lens
 
+## 1.16.0
+
+### Minor Changes
+
+- [#1373](https://github.com/LTplus-AG/ifc-lite/pull/1373) [`f8599d7`](https://github.com/LTplus-AG/ifc-lite/commit/f8599d78d7ee040de2bd521c878bae721de774c6) Thanks [@louistrue](https://github.com/louistrue)! - Expose IFC `PredefinedType` as a selectable entity attribute in Lists and Lens. `ENTITY_ATTRIBUTES` (lists) and `ENTITY_ATTRIBUTE_NAMES` (lens) now include `PredefinedType`, so it can be used as a List column / condition and as a Lens "color by attribute" / rule criterion. The list engine resolves it through a new optional `ListDataProvider.getEntityPredefinedType(expressId)` accessor (implementers without it degrade gracefully). ([#1364](https://github.com/LTplus-AG/ifc-lite/issues/1364))
+
+- [#1374](https://github.com/LTplus-AG/ifc-lite/pull/1374) [`35a3fd7`](https://github.com/LTplus-AG/ifc-lite/commit/35a3fd786519080524b037a8990908ae880bdef8) Thanks [@louistrue](https://github.com/louistrue)! - "Color/select by Material" now groups by individual materials instead of the layer-set / usage name. A multi-layer element (e.g. a wall of gypsum board + insulation) now belongs to each of its materials' groups, so selecting "gypsum board" isolates every wall containing it — including multi-layer walls — and the legend lists the real materials rather than the Revit family/type string. Material rule criteria (`materialName`) match the same way. Adds an optional `LensDataProvider.getMaterialNames(globalId)` accessor; providers without it fall back to the previous single `getMaterialName` value. ([#1366](https://github.com/LTplus-AG/ifc-lite/issues/1366))
+
 ## 1.15.3
 
 ### Patch Changes

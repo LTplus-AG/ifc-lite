@@ -417,6 +417,11 @@ export function useIfcLoader() {
           setLoading(false);
           return;
         }
+        // WebGPU init is async (Viewport calls `renderer.init()` on mount).
+        // Dropping a point cloud BEFORE an IFC — i.e. right after mount,
+        // before init resolves — used to throw "Renderer not initialized"
+        // from `beginPointCloudStream`. Wait for the device to be ready.
+        await renderer.whenReady();
         setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
         setGeometryStreamingActive(false);
         const blob = file;

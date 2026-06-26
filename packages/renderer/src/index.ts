@@ -190,6 +190,9 @@ export class Renderer {
         highQuality: true,
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
+    /** Set true at the end of `init()`; gates `whenReady()`. */
+    private ready = false;
+    private readyWaiters: Array<() => void> = [];
     private deviationPipeline: DeviationPipeline | null = null;
     /**
      * Cache of which mesh-set the BVH was built from. We rebuild on
@@ -341,6 +344,28 @@ export class Renderer {
                 },
             };
         });
+
+        this.markReady();
+    }
+
+    /**
+     * Resolves once `init()` has finished and the GPU device + point-cloud
+     * renderer are usable. Callers that may run before init completes — e.g.
+     * dropping a point cloud immediately after the viewport mounts, before
+     * the async WebGPU init resolves — should `await renderer.whenReady()`
+     * before `beginPointCloudStream`, which otherwise throws
+     * "Renderer not initialized".
+     */
+    whenReady(): Promise<void> {
+        if (this.ready) return Promise.resolve();
+        return new Promise<void>((resolve) => { this.readyWaiters.push(resolve); });
+    }
+
+    private markReady(): void {
+        this.ready = true;
+        const waiters = this.readyWaiters;
+        this.readyWaiters = [];
+        for (const w of waiters) w();
     }
 
     /**

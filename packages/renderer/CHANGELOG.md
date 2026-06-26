@@ -1,5 +1,18 @@
 # @ifc-lite/renderer
 
+## 1.33.0
+
+### Minor Changes
+
+- [#1410](https://github.com/LTplus-AG/ifc-lite/pull/1410) [`32fe7de`](https://github.com/LTplus-AG/ifc-lite/commit/32fe7de75745e0d7088f7979d6a83f238607cf21) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.setOrbitAnchorBounds(bounds | null)` / `getOrbitAnchorBounds()` — an outlier-robust orbit-pivot anchor distinct from the full-scene `sceneBounds`. The renderer keeps `sceneBounds` pinned to the full model AABB (needed for near/far clipping and section ranges), but a handful of far-flung meshes can push that AABB's centre into empty space; when the anchor is set, the orbit-pivot fallback rotates around the tighter centre instead. Part of the fix for the model disappearing during orbit on sparse/outlier models ([#1394](https://github.com/LTplus-AG/ifc-lite/issues/1394)).
+
+### Patch Changes
+
+- [#1409](https://github.com/LTplus-AG/ifc-lite/pull/1409) [`76b6a4f`](https://github.com/LTplus-AG/ifc-lite/commit/76b6a4fd1c6f3710127e402c11636917a338ce38) Thanks [@louistrue](https://github.com/louistrue)! - Fix measure-snap missing all-but-one occurrence of GPU-instanced geometry ([#1405](https://github.com/LTplus-AG/ifc-lite/issues/1405)). `Scene.getInstancedMeshDataPieces` materializes one `MeshData` per instanced occurrence, all stamped with the same `expressId` but holding distinct world-space positions. `SnapDetector` cached the deduped vertices/edges/valence keyed on `expressId` alone, so the first occurrence's geometry was served for every later one (whose true world positions are elsewhere) and snap fell back to a free-point face hit — vertex/edge snapping lit up on only a single instance while raycast (which is cache-free) kept working on all of them. Materialized occurrences now carry a stable per-occurrence `occurrenceKey` (new optional field on `MeshData`), and the snap geometry cache keys on `occurrenceKey ?? expressId`, so snap works on every occurrence and the cache no longer collides instanced pieces with a flat mesh of the same `expressId`.
+
+- Updated dependencies [[`76b6a4f`](https://github.com/LTplus-AG/ifc-lite/commit/76b6a4fd1c6f3710127e402c11636917a338ce38)]:
+  - @ifc-lite/geometry@2.12.0
+
 ## 1.32.0
 
 ### Minor Changes

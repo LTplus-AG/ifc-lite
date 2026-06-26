@@ -1,5 +1,11 @@
 # @ifc-lite/lens
 
+## 1.16.1
+
+### Patch Changes
+
+- [#1412](https://github.com/LTplus-AG/ifc-lite/pull/1412) [`8c56b98`](https://github.com/LTplus-AG/ifc-lite/commit/8c56b985e0e5a6839c407f9eb5844831b3bdb711) Thanks [@louistrue](https://github.com/louistrue)! - Lens `equals` matching now compares boolean values case-insensitively. IFC booleans surface in the properties panel capitalized (`True` / `False`), but `String(boolean)` is lowercase, so a rule typed as the value the user sees never matched. Non-boolean strings stay case-sensitive so codes and ratings keep matching exactly. ([#1403](https://github.com/LTplus-AG/ifc-lite/issues/1403))
+
 ## 1.16.0
 
 ### Minor Changes

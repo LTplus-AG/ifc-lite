@@ -1,5 +1,16 @@
 # @ifc-lite/geometry
 
+## 2.12.0
+
+### Minor Changes
+
+- [#1409](https://github.com/LTplus-AG/ifc-lite/pull/1409) [`76b6a4f`](https://github.com/LTplus-AG/ifc-lite/commit/76b6a4fd1c6f3710127e402c11636917a338ce38) Thanks [@louistrue](https://github.com/louistrue)! - Fix measure-snap missing all-but-one occurrence of GPU-instanced geometry ([#1405](https://github.com/LTplus-AG/ifc-lite/issues/1405)). `Scene.getInstancedMeshDataPieces` materializes one `MeshData` per instanced occurrence, all stamped with the same `expressId` but holding distinct world-space positions. `SnapDetector` cached the deduped vertices/edges/valence keyed on `expressId` alone, so the first occurrence's geometry was served for every later one (whose true world positions are elsewhere) and snap fell back to a free-point face hit — vertex/edge snapping lit up on only a single instance while raycast (which is cache-free) kept working on all of them. Materialized occurrences now carry a stable per-occurrence `occurrenceKey` (new optional field on `MeshData`), and the snap geometry cache keys on `occurrenceKey ?? expressId`, so snap works on every occurrence and the cache no longer collides instanced pieces with a flat mesh of the same `expressId`.
+
+### Patch Changes
+
+- Updated dependencies [[`f746659`](https://github.com/LTplus-AG/ifc-lite/commit/f746659ada2c918d88ea8458240e5d91b3f348f4)]:
+  - @ifc-lite/wasm@2.13.4
+
 ## 2.11.0
 
 ### Minor Changes

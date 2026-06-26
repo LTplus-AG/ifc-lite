@@ -170,10 +170,11 @@ function readPsetSingleValues(
       if (typeof raw === 'number') {
         values[propName] = raw;
       } else if (typeof raw === 'string') {
-        const num = getNumber(raw);
-        // Prefer numeric coordinates (stored as strings in some writers) but
-        // keep EPSG labels like "EPSG:7415" as strings.
-        values[propName] = num !== undefined && /^[+-]?\d/.test(raw.trim()) ? num : raw;
+        // Keep the raw string verbatim. Coordinate fields are coerced on read
+        // via `asNumber` (some writers store Eastings/Scale as strings), while
+        // CRS metadata that merely looks numeric — `Name: "7415"`, `MapZone:
+        // "31N"` — must stay a string so `asString` doesn't discard it.
+        values[propName] = raw;
       }
     }
   }
@@ -205,7 +206,34 @@ function findPsetByName(
 }
 
 function asString(value: string | number | undefined): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+  if (typeof value === 'string') return value.length > 0 ? value : undefined;
+  if (typeof value === 'number') return String(value);
+  return undefined;
+}
+
+function asNumber(value: string | number | undefined): number | undefined {
+  return typeof value === 'number' ? value : getNumber(value);
+}
+
+/**
+ * Map an IFC unit label (e.g. "MILLIMETRE", "FOOT") to its metre scale.
+ * Mirrors the viewer's `inferMapUnitScale` and the native `IfcProjectedCRS`
+ * path so direct parser/MCP consumers of `ProjectedCRS.mapUnitScale` see the
+ * same scale regardless of whether the CRS came from a native entity or an
+ * ePSet. Returns `undefined` for an absent/unknown unit (the ePSet convention
+ * then defers to the project length unit downstream).
+ */
+function inferMapUnitScaleFromLabel(mapUnit: string | undefined): number | undefined {
+  if (!mapUnit) return undefined;
+  const n = mapUnit.toUpperCase();
+  if (n.includes('US') && (n.includes('SURVEY') || n.includes('FTUS'))) return 0.3048006096;
+  if (n.includes('FOOT') || n.includes('FEET')) return 0.3048;
+  if (n.includes('MILLI')) return 0.001;
+  if (n.includes('CENTI')) return 0.01;
+  if (n.includes('DECI')) return 0.1;
+  if (n.includes('KILO')) return 1000;
+  if (n.includes('METRE') || n.includes('METER')) return 1;
+  return undefined;
 }
 
 /**
@@ -224,10 +252,10 @@ function extractEPSetMapConversion(
 
   const values = readPsetSingleValues(entities, pset);
 
-  const eastings = typeof values['Eastings'] === 'number' ? (values['Eastings'] as number) : 0;
-  const northings = typeof values['Northings'] === 'number' ? (values['Northings'] as number) : 0;
-  const orthogonalHeight = typeof values['OrthogonalHeight'] === 'number' ? (values['OrthogonalHeight'] as number) : 0;
-  if (eastings === 0 && northings === 0 && orthogonalHeight === 0) return null;
+  // Some writers store the offsets as strings, so coerce on read.
+  const eastings = asNumber(values['Eastings']) ?? 0;
+  const northings = asNumber(values['Northings']) ?? 0;
+  const orthogonalHeight = asNumber(values['OrthogonalHeight']) ?? 0;
 
   const mapConversion: MapConversion = {
     id: pset.expressId,
@@ -236,9 +264,9 @@ function extractEPSetMapConversion(
     eastings,
     northings,
     orthogonalHeight,
-    xAxisAbscissa: typeof values['XAxisAbscissa'] === 'number' ? (values['XAxisAbscissa'] as number) : undefined,
-    xAxisOrdinate: typeof values['XAxisOrdinate'] === 'number' ? (values['XAxisOrdinate'] as number) : undefined,
-    scale: typeof values['Scale'] === 'number' ? (values['Scale'] as number) : undefined,
+    xAxisAbscissa: asNumber(values['XAxisAbscissa']),
+    xAxisOrdinate: asNumber(values['XAxisOrdinate']),
+    scale: asNumber(values['Scale']),
   };
 
   // Resolve the CRS name from ePSet_ProjectedCRS.Name, falling back to the
@@ -249,8 +277,16 @@ function extractEPSetMapConversion(
   const crsValues = crsPset ? readPsetSingleValues(entities, crsPset) : {};
   const crsName = asString(crsValues['Name']) ?? asString(values['TargetCRS']);
 
+  // Reject only when there is nothing to georeference by: no CRS name AND the
+  // placement sits at the local origin. Mirrors `has_georef()` in rust/core
+  // (a CRS name OR any non-zero offset is sufficient) so a valid zero-origin
+  // placement at a real projected CRS is kept rather than dropping to the
+  // legacy IfcSite/EPSG:4326 fallback.
+  if (!crsName && eastings === 0 && northings === 0 && orthogonalHeight === 0) return null;
+
   let projectedCRS: ProjectedCRS | undefined;
   if (crsName || crsPset) {
+    const mapUnit = asString(crsValues['MapUnit']);
     projectedCRS = {
       id: crsPset?.expressId ?? pset.expressId,
       name: crsName ?? '',
@@ -259,7 +295,11 @@ function extractEPSetMapConversion(
       verticalDatum: asString(crsValues['VerticalDatum']),
       mapProjection: asString(crsValues['MapProjection']),
       mapZone: asString(crsValues['MapZone']),
-      mapUnit: asString(crsValues['MapUnit']),
+      mapUnit,
+      // An explicit ePSet MapUnit carries its own scale (parity with the native
+      // IfcProjectedCRS path). When absent, leave it undefined so consumers fall
+      // back to the project length unit per the buildingSMART convention.
+      mapUnitScale: inferMapUnitScaleFromLabel(mapUnit),
     };
   }
 

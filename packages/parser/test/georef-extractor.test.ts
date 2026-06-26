@@ -399,4 +399,85 @@ describe('Georeferencing Extractor', () => {
     expect(georef.source).toBe('ePSetMapConversion');
     expect(georef.projectedCRS?.name).toBe('EPSG:28992');
   });
+
+  // A bare-numeric EPSG `Name` ("7415") and a `MapZone` like "31N" must stay
+  // strings — over-eager numeric coercion used to drop them before the CRS was
+  // assembled, leaving the gate without a name.
+  it('preserves numeric-looking CRS metadata as strings', () => {
+    const { entities, entitiesByType } = epsetEntities('ePset_MapConversion');
+    entities.set(10, {
+      expressId: 10,
+      type: 'IfcPropertySingleValue',
+      attributes: ['Name', null, '7415', null],
+    });
+    entities.set(11, {
+      expressId: 11,
+      type: 'IfcPropertySingleValue',
+      attributes: ['MapZone', null, '31N', null],
+    });
+    entities.set(12, {
+      expressId: 12,
+      type: 'IfcPropertySet',
+      attributes: ['0PSet00000000000000002', null, 'ePset_ProjectedCRS', null, ['#10', '#11']],
+    });
+    entitiesByType.set('IfcPropertySingleValue', [1, 2, 3, 10, 11]);
+    entitiesByType.set('IfcPropertySet', [4, 12]);
+
+    const georef = extractGeoreferencing(entities, entitiesByType);
+    expect(georef.projectedCRS?.name).toBe('7415');
+    expect(georef.projectedCRS?.mapZone).toBe('31N');
+  });
+
+  // A model placed at the projected-CRS origin (offsets all 0) but carrying a
+  // real CRS name is a valid georeference and must not drop to EPSG:4326.
+  it('keeps a zero-origin ePSet georeference when a CRS name is present', () => {
+    const { entities, entitiesByType } = epsetEntities('ePset_MapConversion');
+    (entities.get(1)!.attributes as unknown[])[2] = 0;
+    (entities.get(2)!.attributes as unknown[])[2] = 0;
+    (entities.get(3)!.attributes as unknown[])[2] = 0;
+    entities.set(10, {
+      expressId: 10,
+      type: 'IfcPropertySingleValue',
+      attributes: ['Name', null, 'EPSG:28992', null],
+    });
+    entities.set(11, {
+      expressId: 11,
+      type: 'IfcPropertySet',
+      attributes: ['0PSet00000000000000002', null, 'ePset_ProjectedCRS', null, ['#10']],
+    });
+    entitiesByType.set('IfcPropertySingleValue', [1, 2, 3, 10]);
+    entitiesByType.set('IfcPropertySet', [4, 11]);
+
+    const georef = extractGeoreferencing(entities, entitiesByType);
+    expect(georef.source).toBe('ePSetMapConversion');
+    expect(georef.projectedCRS?.name).toBe('EPSG:28992');
+    expect(georef.mapConversion?.eastings).toBe(0);
+  });
+
+  // An explicit ePSet MapUnit label carries its own scale (parity with the
+  // native IfcProjectedCRS path); direct consumers must not assume metres.
+  it('infers mapUnitScale from an explicit ePSet MapUnit label', () => {
+    const { entities, entitiesByType } = epsetEntities('ePset_MapConversion');
+    entities.set(10, {
+      expressId: 10,
+      type: 'IfcPropertySingleValue',
+      attributes: ['Name', null, 'EPSG:2225', null],
+    });
+    entities.set(11, {
+      expressId: 11,
+      type: 'IfcPropertySingleValue',
+      attributes: ['MapUnit', null, 'FOOT', null],
+    });
+    entities.set(12, {
+      expressId: 12,
+      type: 'IfcPropertySet',
+      attributes: ['0PSet00000000000000002', null, 'ePset_ProjectedCRS', null, ['#10', '#11']],
+    });
+    entitiesByType.set('IfcPropertySingleValue', [1, 2, 3, 10, 11]);
+    entitiesByType.set('IfcPropertySet', [4, 12]);
+
+    const georef = extractGeoreferencing(entities, entitiesByType);
+    expect(georef.projectedCRS?.mapUnit).toBe('FOOT');
+    expect(georef.projectedCRS?.mapUnitScale).toBe(0.3048);
+  });
 });

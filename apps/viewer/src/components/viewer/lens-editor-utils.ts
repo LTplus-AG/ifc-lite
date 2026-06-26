@@ -3,6 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Lens, LensRule, AutoColorSpec } from '@/store/slices/lensSlice';
+// Import the value directly from the source package (not via the slice) to avoid
+// a circular value import: lensSlice imports the helpers from this module.
+import { AUTO_COLOR_SOURCES } from '@ifc-lite/lens';
 
 /**
  * Build the {@link Lens} to persist from an auto-color editor session.
@@ -50,11 +53,59 @@ export function duplicateLensConfig(lens: Lens, generateId: () => string): Lens 
   return copy;
 }
 
-/** A single lens shape accepted by the JSON importer. */
-function isImportableLens(item: unknown): item is { id?: unknown; name: string; rules: LensRule[]; autoColor?: unknown } {
-  if (item === null || typeof item !== 'object') return false;
-  const obj = item as Record<string, unknown>;
-  return typeof obj.name === 'string' && obj.name.length > 0 && Array.isArray(obj.rules);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Validate a single rule from imported JSON before it enters the store. A
+ *  malformed rule (e.g. `null`, or missing criteria) would otherwise break
+ *  rule rendering and matching. */
+function isImportableRule(item: unknown): item is LensRule {
+  if (!isRecord(item)) return false;
+  return typeof item.id === 'string'
+    && typeof item.name === 'string'
+    && typeof item.enabled === 'boolean'
+    && isRecord(item.criteria)
+    && typeof item.criteria.type === 'string'
+    && typeof item.action === 'string'
+    && typeof item.color === 'string';
+}
+
+/** Validate an auto-color spec from imported JSON (source must be a known
+ *  source; the optional name fields must be strings if present). */
+function isImportableAutoColor(item: unknown): item is AutoColorSpec {
+  if (!isRecord(item)) return false;
+  if (typeof item.source !== 'string'
+    || !(AUTO_COLOR_SOURCES as readonly string[]).includes(item.source)) return false;
+  if (item.psetName !== undefined && typeof item.psetName !== 'string') return false;
+  if (item.propertyName !== undefined && typeof item.propertyName !== 'string') return false;
+  return true;
+}
+
+/** A single lens shape accepted by the JSON importer. Rules and the optional
+ *  auto-color spec are fully shape-checked so a hand-edited/corrupt file cannot
+ *  push malformed entries (`rules: [null]`, `autoColor: []`) into the store. */
+function isImportableLens(item: unknown): item is { id?: unknown; name: string; rules: LensRule[]; autoColor?: AutoColorSpec } {
+  if (!isRecord(item)) return false;
+  return typeof item.name === 'string'
+    && item.name.length > 0
+    && Array.isArray(item.rules)
+    && item.rules.every(isImportableRule)
+    && (item.autoColor === undefined || isImportableAutoColor(item.autoColor));
+}
+
+/**
+ * Return an id derived from `base` that is not present in `taken`, and reserve
+ * it (mutates `taken`). Guards against the rare case where time-based ids
+ * (`lens-${Date.now()}`) collide — e.g. a rapid duplicate, or two id-less
+ * imports in the same millisecond — which would make update/delete ambiguous. (#1403)
+ */
+export function reserveUniqueId(base: string, taken: Set<string>): string {
+  let id = base;
+  let n = 1;
+  while (taken.has(id)) id = `${base}-${n++}`;
+  taken.add(id);
+  return id;
 }
 
 /**
@@ -91,8 +142,8 @@ export function mergeImportedLenses(
       rules: item.rules,
       builtin: prior?.builtin ?? false,
     };
-    if (item.autoColor && typeof item.autoColor === 'object') {
-      merged.autoColor = item.autoColor as AutoColorSpec;
+    if (item.autoColor) {
+      merged.autoColor = { ...item.autoColor };
     }
     if (!byId.has(id)) order.push(id);
     byId.set(id, merged);

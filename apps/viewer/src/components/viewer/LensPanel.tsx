@@ -1387,8 +1387,11 @@ export function LensPanel({ onClose }: LensPanelProps) {
         // hand it the parsed value normalized to an array. Re-importing an
         // edited export now updates lenses in place instead of no-op'ing. (#1403)
         importLenses(Array.isArray(parsed) ? parsed : [parsed]);
-      } catch {
-        // invalid JSON — silently ignore
+      } catch (err) {
+        // Malformed JSON (or an unreadable file). Surface it instead of
+        // swallowing — well-formed-but-invalid lenses are filtered silently by
+        // the importer, but a parse failure is worth logging.
+        console.error('Lens import failed:', err);
       }
     };
     reader.readAsText(file);

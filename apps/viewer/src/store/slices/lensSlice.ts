@@ -13,7 +13,7 @@
 import type { StateCreator } from 'zustand';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@ifc-lite/lens';
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
-import { duplicateLensConfig, mergeImportedLenses } from '@/components/viewer/lens-editor-utils';
+import { duplicateLensConfig, mergeImportedLenses, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
 
 // Re-export types so existing consumer imports from this file still work
 export type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
@@ -204,7 +204,8 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     const state = get();
     const index = state.savedLenses.findIndex(l => l.id === id);
     if (index === -1) return null;
-    const copy = duplicateLensConfig(state.savedLenses[index], () => `lens-${Date.now()}`);
+    const taken = new Set(state.savedLenses.map(l => l.id));
+    const copy = duplicateLensConfig(state.savedLenses[index], () => reserveUniqueId(`lens-${Date.now()}`, taken));
     const next = [...state.savedLenses];
     next.splice(index + 1, 0, copy);
     saveLenses(next);
@@ -238,10 +239,11 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     // Upsert by id: replace existing lenses in place, append new ones.
     // Makes the export → edit-JSON → re-import round-trip work (#1403).
     const ts = Date.now();
+    const taken = new Set(state.savedLenses.map(l => l.id));
     const next = mergeImportedLenses(
       state.savedLenses,
       lenses,
-      (i) => `lens-imported-${ts}-${i}`,
+      (i) => reserveUniqueId(`lens-imported-${ts}-${i}`, taken),
     );
     saveLenses(next);
     return { savedLenses: next };

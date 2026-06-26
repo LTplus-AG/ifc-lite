@@ -10,6 +10,7 @@ import {
   duplicateLensConfig,
   mergeImportedLenses,
   moveItem,
+  reserveUniqueId,
 } from './lens-editor-utils.js';
 import type { Lens } from '@/store/slices/lensSlice';
 
@@ -118,9 +119,60 @@ describe('mergeImportedLenses (#1403)', () => {
     assert.deepEqual(next.map((l) => l.name), ['Building Envelope', 'My Lens', 'ok']);
   });
 
-  it('preserves an imported autoColor spec', () => {
-    const next = mergeImportedLenses(existing, [{ id: 'auto-x', name: 'Auto', rules: [], autoColor: { source: 'material' } }], (i) => `gen-${i}`);
+  it('rejects lenses whose rules array is shape-invalid (e.g. [null] or partial rule)', () => {
+    const next = mergeImportedLenses(
+      existing,
+      [
+        { name: 'bad-null-rule', rules: [null] },
+        { name: 'bad-partial-rule', rules: [{ id: 'r', name: 'r' /* missing enabled/criteria/action/color */ }] },
+        { name: 'good', rules: ruleLens.rules },
+      ],
+      (i) => `gen-${i}`,
+    );
+    assert.deepEqual(next.map((l) => l.name), ['Building Envelope', 'My Lens', 'good']);
+  });
+
+  it('preserves a valid imported autoColor spec (and clones it)', () => {
+    const spec = { source: 'material' as const };
+    const next = mergeImportedLenses(existing, [{ id: 'auto-x', name: 'Auto', rules: [], autoColor: spec }], (i) => `gen-${i}`);
     assert.deepEqual(next[2].autoColor, { source: 'material' });
+    assert.notEqual(next[2].autoColor, spec, 'autoColor must be cloned, not aliased');
+  });
+
+  it('rejects a lens carrying a malformed autoColor (bad shape or unknown source)', () => {
+    const next = mergeImportedLenses(
+      existing,
+      [
+        { id: 'a1', name: 'arr-autocolor', rules: [], autoColor: [] },
+        { id: 'a2', name: 'bad-source', rules: [], autoColor: { source: 'not-a-source' } },
+        { id: 'a3', name: 'bad-pset-type', rules: [], autoColor: { source: 'property', psetName: 7 } },
+        { id: 'a4', name: 'good-autocolor', rules: [], autoColor: { source: 'ifcType' } },
+      ],
+      (i) => `gen-${i}`,
+    );
+    assert.deepEqual(next.map((l) => l.name), ['Building Envelope', 'My Lens', 'good-autocolor']);
+  });
+});
+
+describe('reserveUniqueId (#1403)', () => {
+  it('returns the base id when free and reserves it', () => {
+    const taken = new Set<string>();
+    assert.equal(reserveUniqueId('lens-1', taken), 'lens-1');
+    assert.ok(taken.has('lens-1'));
+  });
+
+  it('appends an incrementing suffix on collision', () => {
+    const taken = new Set(['lens-1', 'lens-1-1']);
+    assert.equal(reserveUniqueId('lens-1', taken), 'lens-1-2');
+    assert.ok(taken.has('lens-1-2'));
+  });
+
+  it('produces distinct ids across successive calls with the same base', () => {
+    const taken = new Set<string>();
+    const a = reserveUniqueId('lens-x', taken);
+    const b = reserveUniqueId('lens-x', taken);
+    const c = reserveUniqueId('lens-x', taken);
+    assert.deepEqual([a, b, c], ['lens-x', 'lens-x-1', 'lens-x-2']);
   });
 });
 

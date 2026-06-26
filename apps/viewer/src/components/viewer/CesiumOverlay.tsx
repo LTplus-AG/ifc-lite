@@ -560,6 +560,24 @@ export function CesiumOverlay({
             upAxis: Cesium.Axis.Z,
             forwardAxis: Cesium.Axis.X,
           });
+          // Ambient floor. The overlay composits transparently with the
+          // atmosphere/skybox off, so the scene's ONLY light is the directional
+          // sun — without an environment map the model's shadowed faces get no
+          // ambient and read muddy. Give the model a flat image-based-lighting
+          // ambient via a constant spherical-harmonic term: every surface stays
+          // readable while the sun still shapes the lit faces. (#1380)
+          try {
+            const ibl = (model as unknown as {
+              imageBasedLighting?: { sphericalHarmonicCoefficients: unknown };
+            }).imageBasedLighting;
+            if (ibl) {
+              const a = new Cesium.Cartesian3(0.72, 0.72, 0.75); // neutral daylight ambient
+              const z = Cesium.Cartesian3.ZERO;
+              ibl.sphericalHarmonicCoefficients = [a, z, z, z, z, z, z, z, z];
+            }
+          } catch (e) {
+            console.warn('[CesiumOverlay] could not set model ambient IBL:', e);
+          }
         } finally {
           URL.revokeObjectURL(glbUrl);
         }

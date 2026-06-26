@@ -51,7 +51,6 @@ export interface UseAnimationLoopParams {
    */
   modelBoundsRef?: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
   selectedEntityIdsRef: MutableRefObject<Set<number> | undefined>;
-  clashHighlightColorsRef: MutableRefObject<Map<number, [number, number, number, number]> | null | undefined>;
   coordinateInfoRef: MutableRefObject<CoordinateInfo | undefined>;
   isInteractingRef: MutableRefObject<boolean>;
   lastCameraStateRef: MutableRefObject<{
@@ -89,7 +88,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     sectionRangeRef,
     modelBoundsRef,
     selectedEntityIdsRef,
-    clashHighlightColorsRef,
     coordinateInfoRef,
     isInteractingRef,
     lastCameraStateRef,
@@ -192,7 +190,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           ghostExceptIds: ghostExceptEntitiesRef.current,
           selectedId: selectedEntityIdRef.current,
           selectedIds: selectedEntityIdsRef.current,
-          highlightColors: clashHighlightColorsRef.current ?? undefined,
           selectedModelIndex: selectedModelIndexRef.current,
           clearColor: clearColorRef.current,
           visualEnhancement: visualEnhancementRef.current,

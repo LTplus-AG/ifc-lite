@@ -133,14 +133,15 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const [showHelp, setShowHelp] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
 
-  // Clear the clash A/B glow + overlap box when the panel closes/unmounts so the
-  // tint doesn't linger on the model after the user leaves clash mode (#1277).
-  const setClashHighlightColors = useViewerStore((s) => s.setClashHighlightColors);
-  const setClashOverlapBox = useViewerStore((s) => s.setClashOverlapBox);
+  // Clear the clash colours + overlap box when the panel closes/unmounts so they
+  // don't linger on the model after the user leaves clash mode. Restore the
+  // colour-override channel to an active lens (if any) rather than blanking it. (#1277)
   useEffect(() => () => {
-    setClashHighlightColors(null);
-    setClashOverlapBox(null);
-  }, [setClashHighlightColors, setClashOverlapBox]);
+    const s = useViewerStore.getState();
+    s.setClashHighlightColors(null);
+    s.setClashOverlapBox(null);
+    s.setPendingColorUpdates(s.lensAppliedColors ?? new Map());
+  }, []);
 
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {

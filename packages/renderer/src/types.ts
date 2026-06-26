@@ -191,14 +191,6 @@ export interface RenderOptions {
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
   /**
-   * Per-element highlight tint for SELECTED meshes — `Map<expressId, RGBA 0..1>`.
-   * A selected mesh whose id is here glows in that colour instead of the default
-   * selection blue (same re-lit glow treatment). Used to render the two sides of
-   * a clash in distinct, vibrant colours. Only applied to ids also in
-   * `selectedId`/`selectedIds`. (#1277/#1339)
-   */
-  highlightColors?: Map<number, [number, number, number, number]>;
-  /**
    * Per-frame alpha overrides — primary use case is X-Ray mode.
    *
    * Map<expressId, alpha 0..1>. Non-selected meshes/batches whose expressId

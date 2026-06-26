@@ -181,9 +181,6 @@ export class Renderer {
     // Overlay/section-cut line colour, kept on the Renderer so it survives a
     // pre-init call and a section2DOverlayRenderer re-creation (re-applied below).
     private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
-    // Ref-stable cache for the (hiddenIds ∪ instanced-highlight-ids) set passed to
-    // setInstancedVisibility, so its per-frame diff still no-ops during clash focus. (#1277)
-    private instancedHiddenUnionCache: { key: string; base: Set<number> | undefined; set: Set<number> } | null = null;
     // IfcAnnotation overlay pipelines (issue #653). Created on `init()` once
     // the device exists; nulled until then.
     private symbolicFillPipeline: SymbolicFillPipeline | null = null;
@@ -1101,17 +1098,6 @@ export class Renderer {
                 selectedExpressIds.add(id);
             }
         }
-        // Elements with a highlight tint (e.g. a focused clash pair) get the SAME
-        // render treatment as a selection — individual-mesh hydration, opaque
-        // forcing, stay-solid-through-ghost, and the re-lit glow — WITHOUT being
-        // in the store selection. So the clash colours show in isolate/ghost mode
-        // with no "selected" state. The flat path paints them their custom colour
-        // (bit 4) rather than selection blue. (#1277/#1339)
-        if (options.highlightColors) {
-            for (const id of options.highlightColors.keys()) {
-                selectedExpressIds.add(id);
-            }
-        }
         const hasSelected = selectedExpressIds.size > 0;
 
         // Keep the GPU-instanced occurrences' per-instance selected flag in sync.
@@ -1120,37 +1106,11 @@ export class Renderer {
         // no instanced data is loaded. The flat path handles selection inline
         // below via `selectedExpressIds`.
         this.scene.setInstancedSelection(selectedExpressIds);
-
-        // A highlight-tinted id (clash pair) that is GPU-INSTANCED has no flat
-        // MeshData, so the per-element glow can't reach it and it would render the
-        // default selection blue. We materialize those occurrences as individual
-        // glow meshes in the hydration loop below; HIDE the instanced occurrence
-        // here so only the glowing individual mesh draws (no blue, no z-fight).
-        // (#1277/#1339)
-        const instancedHighlightIds = new Set<number>();
-        if (options.highlightColors) {
-            for (const id of options.highlightColors.keys()) {
-                if (this.scene.isInstancedEntity(id)) instancedHighlightIds.add(id);
-            }
-        }
         // Mirror hide/isolate onto the instanced occurrences (the flat path filters
         // its mesh list by hiddenIds/isolatedIds below; the instanced pass can't, so
         // it carries a per-instance hidden flag the shader discards on). Diffed → a
-        // no-op when visibility is unchanged. Union in the materialized highlight ids
-        // via a ref-stable cache so the diff still skips when nothing changed.
-        let instancedHidden = options.hiddenIds;
-        if (instancedHighlightIds.size > 0) {
-            const key = `${options.hiddenIds ? [...options.hiddenIds].length : 0}|${[...instancedHighlightIds].sort((a, b) => a - b).join(',')}`;
-            if (this.instancedHiddenUnionCache?.key !== key || this.instancedHiddenUnionCache?.base !== options.hiddenIds) {
-                const set = new Set<number>(options.hiddenIds ?? []);
-                for (const id of instancedHighlightIds) set.add(id);
-                this.instancedHiddenUnionCache = { key, base: options.hiddenIds, set };
-            }
-            instancedHidden = this.instancedHiddenUnionCache.set;
-        } else {
-            this.instancedHiddenUnionCache = null;
-        }
-        this.scene.setInstancedVisibility(instancedHidden, options.isolatedIds);
+        // no-op when visibility is unchanged.
+        this.scene.setInstancedVisibility(options.hiddenIds, options.isolatedIds);
 
         // Per-frame alpha overrides for X-Ray mode. See RenderOptions.transparencyOverrides.
         // Snapshot the caller's map so mid-frame mutation can't desync classification
@@ -1552,28 +1512,14 @@ export class Renderer {
                     // For multi-model support: also check modelIndex if provided
                     const expressIdMatch = mesh.expressId === selectedId;
                     const modelIndexMatch = selectedModelIndex === undefined || mesh.modelIndex === selectedModelIndex;
-                    // Highlight-tinted elements (clash pair) are in selectedExpressIds
-                    // too, so they get the glow even when not in the store selection.
-                    const highlightColor = options.highlightColors?.get(mesh.expressId);
                     const isSelected = (selectedId !== undefined && selectedId !== null && expressIdMatch && modelIndexMatch)
-                        || (selectedIds !== undefined && selectedIds.has(mesh.expressId))
-                        || highlightColor !== undefined;
+                        || (selectedIds !== undefined && selectedIds.has(mesh.expressId));
 
-                    // Per-element highlight tint (e.g. clash A vs B): paint the
-                    // mesh its custom colour and flag the shader to glow it in
-                    // that colour instead of the default selection blue (#1277/#1339).
-                    if (highlightColor) {
-                        meshBuf[32] = highlightColor[0];
-                        meshBuf[33] = highlightColor[1];
-                        meshBuf[34] = highlightColor[2];
-                        meshBuf[35] = highlightColor[3];
-                    } else {
-                        meshBuf[32] = mesh.color[0];
-                        meshBuf[33] = mesh.color[1];
-                        meshBuf[34] = mesh.color[2];
-                        // Selected meshes always keep their own alpha so highlights stay opaque
-                        meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
-                    }
+                    meshBuf[32] = mesh.color[0];
+                    meshBuf[33] = mesh.color[1];
+                    meshBuf[34] = mesh.color[2];
+                    // Selected meshes always keep their own alpha so highlights stay opaque
+                    meshBuf[35] = isSelected ? mesh.color[3] : alphaForMesh(mesh.expressId, mesh.color[3]);
                     meshBuf[36] = mesh.material?.metallic ?? 0.0;
                     meshBuf[37] = mesh.material?.roughness ?? 0.6;
                     meshBuf[38] = 0; meshBuf[39] = 0;
@@ -1592,9 +1538,8 @@ export class Renderer {
                     const clipBit = packClipBox(options.clipBox, meshBuf, 48);
 
                     // Flags (offset 44-47 as u32)
-                    // flags.x: bit 0 = isSelected, bit 4 (16) = custom highlight tint
                     // flags.y packs: bit 0 = sectionEnabled, bit 1 = flipped, bit 2 = clipBoxEnabled
-                    meshFlags[0] = (isSelected ? 1 : 0) | (highlightColor ? 16 : 0);
+                    meshFlags[0] = isSelected ? 1 : 0;
                     meshFlags[1] =
                         (sectionPlaneData?.enabled ? 1 : 0) |
                         (options.sectionPlane?.flipped ? 2 : 0) |
@@ -2114,15 +2059,7 @@ export class Renderer {
                     }
 
                     for (const selId of visibleSelectedIds) {
-                        let pieces = this.scene.getMeshDataPieces(selId, selectedModelIndex);
-                        // Instanced clash element: no flat MeshData → materialize the
-                        // occurrence(s) so the flat path can glow it in the custom
-                        // highlight colour (the instanced occurrence is hidden above). (#1277)
-                        if ((!pieces || pieces.length === 0)
-                            && options.highlightColors?.has(selId)
-                            && this.scene.isInstancedEntity(selId)) {
-                            pieces = this.scene.getInstancedMeshDataPieces(selId);
-                        }
+                        const pieces = this.scene.getMeshDataPieces(selId, selectedModelIndex);
                         if (!pieces || pieces.length === 0) continue;
 
                         const seenOrdinalsByKey = new Map<string, number>();

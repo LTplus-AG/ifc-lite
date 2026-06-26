@@ -24,6 +24,16 @@
  */
 export type TypeViewMode = 'model' | 'types';
 
+/**
+ * Does this mesh's geometry_class count as PLACED (real-model) geometry?
+ * Class 0 (occurrence) AND class 3 (material-layer slice) are both placed —
+ * a model whose layered walls/slabs are emitted as slices still "has
+ * occurrences", so orphan type-library geometry must hide in Model view. (#1353)
+ */
+export function meshClassIsPlaced(geometryClass: number): boolean {
+  return geometryClass === 0 || geometryClass === 3;
+}
+
 export function isMeshVisibleInViewMode(
   geometryClass: number,
   viewMode: TypeViewMode,

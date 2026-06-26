@@ -5,7 +5,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { isMeshVisibleInViewMode } from './type-view-visibility.js';
+import { isMeshVisibleInViewMode, meshClassIsPlaced } from './type-view-visibility.js';
+
+describe('meshClassIsPlaced (#1353 layer-slice follow-up)', () => {
+  it('counts occurrences (0) AND material-layer slices (3) as placed geometry', () => {
+    assert.equal(meshClassIsPlaced(0), true);
+    assert.equal(meshClassIsPlaced(3), true);
+  });
+  it('does NOT count type-library geometry (orphan 1 / instanced 2) as placed', () => {
+    // else a pure type-library file would wrongly think it has occurrences.
+    assert.equal(meshClassIsPlaced(1), false);
+    assert.equal(meshClassIsPlaced(2), false);
+  });
+});
 
 describe('isMeshVisibleInViewMode (#1353)', () => {
   describe('Model view of a real model (has occurrences)', () => {

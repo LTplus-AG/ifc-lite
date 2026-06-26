@@ -642,5 +642,56 @@ describe('MergedExporter', () => {
       expect(content.match(new RegExp(sharedWall, 'g'))?.length).toBe(1);
       expect(findDanglingRefs(content)).toEqual([]);
     });
+
+    // Regression (CodeRabbit on PR): schema conversion can replace an
+    // unsupported rooted type with an IFCPROXY carrying a freshly-minted
+    // GlobalId. The emitted (not source) GlobalId must be registered, or a later
+    // model with the original GlobalId would be unified onto that proxy.
+    it('registers the emitted GlobalId after IFCPROXY conversion (no false unify)', () => {
+      const sharedGuid = guid('sharedAlign');
+      // IfcAlignmentHorizontal has no IFC2X3 representation → replaced by an
+      // IFCPROXY carrying a freshly-minted GlobalId (schema-converter.ts).
+      const m1 = buildModel('m1', 'A', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('p1')}',$,'A',$,$,$,$,$,$);`],
+        [2, 'IFCALIGNMENTHORIZONTAL', `#2=IFCALIGNMENTHORIZONTAL('${sharedGuid}',$,'AL',$,$,$);`],
+      ]);
+      const m2 = buildModel('m2', 'B', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('p2')}',$,'B',$,$,$,$,$,$);`],
+        [2, 'IFCALIGNMENTHORIZONTAL', `#2=IFCALIGNMENTHORIZONTAL('${sharedGuid}',$,'AL',$,$,$);`],
+      ]);
+
+      const content = decode(new MergedExporter([m1, m2]).export({ schema: 'IFC2X3' }).content);
+
+      // Both alignments survive as proxies; m2 was not dropped onto m1's proxy.
+      expect(content.match(/=IFCPROXY\(/g)?.length).toBe(2);
+      // The original GlobalId was replaced by the minted proxy ids on both.
+      expect(content).not.toContain(sharedGuid);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    // Regression (CodeRabbit on PR): the rooted-entity denylist must cover other
+    // non-rooted resource entities that lead with a string, e.g. IfcTextLiteral.
+    it('does not mistake a 22-char IfcTextLiteral Literal for a GlobalId', () => {
+      const literal = guid('SomeLiteralText'); // 22-char, GlobalId charset
+      const m1 = buildModel('m1', 'A', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('p1')}',$,'A',$,$,$,$,$,$);`],
+        [2, 'IFCTEXTLITERAL', `#2=IFCTEXTLITERAL('${literal}',#3,.LEFT.);`],
+        [3, 'IFCAXIS2PLACEMENT2D', '#3=IFCAXIS2PLACEMENT2D(#4,$);'],
+        [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((0.,0.));'],
+      ]);
+      const m2 = buildModel('m2', 'B', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('p2')}',$,'B',$,$,$,$,$,$);`],
+        [2, 'IFCTEXTLITERAL', `#2=IFCTEXTLITERAL('${literal}',#3,.LEFT.);`],
+        [3, 'IFCAXIS2PLACEMENT2D', '#3=IFCAXIS2PLACEMENT2D(#4,$);'],
+        [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((0.,0.));'],
+      ]);
+
+      const content = decode(new MergedExporter([m1, m2]).export({ schema: 'IFC4' }).content);
+
+      // Both text literals survive (not unified away); the literal is untouched.
+      expect(content.match(/=IFCTEXTLITERAL\(/g)?.length).toBe(2);
+      expect(content.match(new RegExp(literal, 'g'))?.length).toBe(2);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
   });
 });

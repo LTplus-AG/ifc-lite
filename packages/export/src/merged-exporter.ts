@@ -44,6 +44,14 @@ const GLOBAL_ID_RE = /^[0-9A-Za-z_$]{22}$/;
  * when that string happens to be 22 charset characters. (IfcRoot property
  * containers like IFCPROPERTYSET / IFCELEMENTQUANTITY are deliberately absent —
  * they ARE rooted and carry a real GlobalId at attribute 0.)
+ *
+ * This is a best-effort denylist, not an exhaustive IfcRoot classifier — the
+ * merge works off raw STEP text and has no schema table. It covers the resource
+ * families that realistically appear in federated models; an unlisted
+ * string-leading resource type is only ever a problem if two models share an
+ * identical 22-char charset Name for it AND it collides, which is negligible. A
+ * miss in the other direction (treating a real root as non-rooted) is safe — it
+ * just skips one GlobalId reconciliation.
  */
 const NON_ROOTED_STRING_TYPES = new Set([
   // IfcSimpleProperty / IfcComplexProperty (IfcPropertyAbstraction — not rooted)
@@ -53,14 +61,21 @@ const NON_ROOTED_STRING_TYPES = new Set([
   // IfcPhysicalQuantity (not rooted)
   'IFCQUANTITYLENGTH', 'IFCQUANTITYAREA', 'IFCQUANTITYVOLUME', 'IFCQUANTITYCOUNT',
   'IFCQUANTITYWEIGHT', 'IFCQUANTITYTIME', 'IFCQUANTITYNUMBER', 'IFCPHYSICALCOMPLEXQUANTITY',
-  // Materials, classification & library refs (IfcExternalInformation/Reference)
-  'IFCMATERIAL', 'IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE',
+  // Materials & their constituents (IfcMaterialDefinition — not rooted; lead with a Name)
+  'IFCMATERIAL', 'IFCMATERIALPROFILE', 'IFCMATERIALPROFILESET',
+  'IFCMATERIALCONSTITUENT', 'IFCMATERIALCONSTITUENTSET',
+  // Classification, library & document refs (IfcExternalInformation/Reference)
+  'IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE',
   'IFCLIBRARYINFORMATION', 'IFCLIBRARYREFERENCE', 'IFCEXTERNALREFERENCE',
+  'IFCDOCUMENTINFORMATION', 'IFCDOCUMENTREFERENCE',
+  // Constraints & approvals (lead with a Name/Identifier)
+  'IFCMETRIC', 'IFCOBJECTIVE', 'IFCAPPROVAL', 'IFCTABLE',
   // Actors (IfcPerson/IfcOrganization lead with an Identification string)
   'IFCPERSON', 'IFCORGANIZATION',
-  // Presentation layers & styles (lead with a Name string)
+  // Presentation layers, styles & text literals (lead with a Name/Literal string)
   'IFCPRESENTATIONLAYERASSIGNMENT', 'IFCPRESENTATIONLAYERWITHSTYLE',
   'IFCSURFACESTYLE', 'IFCCURVESTYLE', 'IFCTEXTSTYLE', 'IFCFILLAREASTYLE',
+  'IFCTEXTLITERAL', 'IFCTEXTLITERALWITHEXTENT',
 ]);
 
 /** True for IfcRelationship subtypes (objectified relationships). */
@@ -678,14 +693,38 @@ export class MergedExporter {
       finalText = converted;
     }
 
-    // Record the emitted GlobalId → final express id + unit scale. Emitted
-    // entities are not sharedRemap keys, so their final id is localId + offset.
-    const emittedGuid = mintedGuid ?? plan.localGuids.get(localId);
-    if (emittedGuid !== undefined) {
-      guidToFinalId.set(emittedGuid, { finalId: localId + offset, scale: modelScale });
+    // Record the emitted GlobalId → final express id + unit scale, for rooted
+    // entities only. Read it from the FINAL line, not the source: schema
+    // conversion can replace an unsupported rooted type with an IFCPROXY that
+    // carries a freshly-minted GlobalId, so the source guid would be stale.
+    // Emitted entities are not sharedRemap keys, so their final id is
+    // localId + offset.
+    if (plan.localGuids.has(localId)) {
+      const emittedGuid = this.readLeadingGuid(finalText)
+        ?? mintedGuid ?? plan.localGuids.get(localId);
+      if (emittedGuid !== undefined) {
+        guidToFinalId.set(emittedGuid, { finalId: localId + offset, scale: modelScale });
+      }
     }
 
     return finalText;
+  }
+
+  /**
+   * Read the GlobalId (first quoted attribute) from an already-rendered STEP
+   * line. Used to register the id that was actually emitted, after any id
+   * remap, GlobalId re-stamp, or schema conversion. Returns null if the first
+   * quoted token is not a 22-char GlobalId.
+   */
+  private readLeadingGuid(entityText: string): string | null {
+    const open = entityText.indexOf('(');
+    if (open === -1) return null;
+    const q1 = entityText.indexOf("'", open + 1);
+    if (q1 === -1) return null;
+    const q2 = entityText.indexOf("'", q1 + 1);
+    if (q2 === -1) return null;
+    const raw = entityText.slice(q1 + 1, q2);
+    return GLOBAL_ID_RE.test(raw) ? raw : null;
   }
 
   /**

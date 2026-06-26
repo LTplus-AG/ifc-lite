@@ -1603,6 +1603,7 @@
     "SymbolicRepresentationCollection: class (type-only)",
     "TessellationQuality: type",
     "Vec3: interface",
+    "WASM_ASSET_UNAVAILABLE_EVENT: const",
     "WatchdogInputs: interface",
     "WorkerCountInputs: interface",
     "WorkerCountResult: interface",
@@ -1611,6 +1612,7 @@
     "decodeInstancedShard: function",
     "getGeometryStreamWatchdogMs: function",
     "isTauri: function",
+    "isWasmAssetUnavailableError: function",
     "pickWorkerCount: function"
   ],
   "@ifc-lite/ids": [

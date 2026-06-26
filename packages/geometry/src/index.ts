@@ -33,10 +33,11 @@ export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
-// WASM_ASSET_UNAVAILABLE_EVENT to reload onto the current deployment.
+// WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to reload
+// onto the current deployment. `notifyIfWasmAssetUnavailable` stays internal —
+// it is the engine-side dispatcher, imported directly where it fires.
 export {
   isWasmAssetUnavailableError,
-  notifyIfWasmAssetUnavailable,
   WASM_ASSET_UNAVAILABLE_EVENT,
 } from './wasm-asset-error.js';
 export {

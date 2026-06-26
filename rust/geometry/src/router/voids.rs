@@ -142,6 +142,58 @@ fn opening_mesh_thinnest_axis_dir(opening_mesh: &Mesh) -> Vector3<f64> {
     )
 }
 
+/// Count the disjoint spatial clusters formed by a set of per-item void AABBs.
+///
+/// Two AABBs join the same cluster when they overlap or touch on every axis
+/// (within `TOUCH_EPS`, so adjacent wall-leaf halves of one window count as one
+/// cluster); AABBs separated by a real gap on any axis stay in different
+/// clusters. Used by `classify_openings` to tell a row of SEPARATE window voids
+/// (many clusters → subtract per item) from one void split into touching parts
+/// (one cluster → keep merged). See the call site for the #1367 / FZK-Haus
+/// rationale. O(n²) union-find; `n` is the void-body count of a single opening
+/// (tiny in practice).
+fn spatial_cluster_count(
+    bounds: &[(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)],
+) -> usize {
+    const TOUCH_EPS: f64 = 1.0e-3; // 1 mm: adjacent faces count as connected
+    let n = bounds.len();
+    if n <= 1 {
+        return n;
+    }
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(p: &mut [usize], x: usize) -> usize {
+        let mut r = x;
+        while p[r] != r {
+            r = p[r];
+        }
+        let mut c = x;
+        while p[c] != r {
+            let nxt = p[c];
+            p[c] = r;
+            c = nxt;
+        }
+        r
+    }
+    let overlaps = |a: &(Point3<f64>, Point3<f64>, Option<Vector3<f64>>),
+                    b: &(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)| {
+        a.0.x <= b.1.x + TOUCH_EPS
+            && b.0.x <= a.1.x + TOUCH_EPS
+            && a.0.y <= b.1.y + TOUCH_EPS
+            && b.0.y <= a.1.y + TOUCH_EPS
+            && a.0.z <= b.1.z + TOUCH_EPS
+            && b.0.z <= a.1.z + TOUCH_EPS
+    };
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if overlaps(&bounds[i], &bounds[j]) {
+                let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
+                parent[ri] = rj;
+            }
+        }
+    }
+    (0..n).filter(|&i| find(&mut parent, i) == i).count()
+}
+
 /// Closed-surface check on exact f32 bit coords: every directed edge paired,
 /// no degenerate edges. The #2176 lesson — only per-component-watertight solid
 /// cutters may join a batched group; an open component poisons the whole
@@ -3157,9 +3209,32 @@ impl GeometryRouter {
                 });
             };
 
-            if vertex_count > 100 {
-                // High-vertex-count openings (circular / arched / faceted
-                // sweeps) won't fit through the BSP CSG safety thresholds,
+            // Probe per-item geometry up front. An opening that holds several
+            // SPATIALLY SEPARATE void solids — a whole row of windows authored
+            // under one IfcOpeningElement (issue #1367) — must be classified and
+            // subtracted PER ITEM even when its bodies SUM past the high-vertex
+            // guard below: merging them into one cutter and subtracting in a
+            // single arrangement leaves diagonal bridges over some of the holes
+            // (3 of 12 box void bodies on a limestone wall's front face),
+            // whereas one cutter per body cuts every hole cleanly.
+            //
+            // Bodies that TOUCH/OVERLAP are one logical void split into parts
+            // (e.g. the inner+outer wall-leaf halves of a single FZK-Haus
+            // window) and MUST stay merged — splitting them regresses the
+            // gable-wall consolidation watertightness guard into hairline
+            // cracks. So the trigger is ">=2 disjoint spatial clusters", not
+            // merely ">1 body". The merged high-vertex path also stays for a
+            // genuine SINGLE complex sweep (circular / arched / faceted) and for
+            // the rare opening whose per-item bounds can't be recovered.
+            let item_bounds_with_dir = self
+                .get_opening_item_bounds_with_direction(&opening_entity, decoder)
+                .unwrap_or_default();
+            let separable_bodies =
+                item_bounds_with_dir.len() > 1 && spatial_cluster_count(&item_bounds_with_dir) > 1;
+
+            if vertex_count > 100 && !separable_bodies {
+                // High-vertex-count single-body openings (circular / arched /
+                // faceted sweeps) won't fit through the CSG safety thresholds,
                 // so always carry the per-item AABB + extrusion direction
                 // as a fallback (issue #635).
                 let (fallback_min, fallback_max, fallback_dir) =
@@ -3176,12 +3251,7 @@ impl GeometryRouter {
                     fallback_max,
                     fallback_dir,
                 ));
-            } else {
-                let item_bounds_with_dir = self
-                    .get_opening_item_bounds_with_direction(&opening_entity, decoder)
-                    .unwrap_or_default();
-
-                if !item_bounds_with_dir.is_empty() {
+            } else if !item_bounds_with_dir.is_empty() {
                     // Per-item geometry-driven classification (origin/main).
                     // The earlier "is_floor_opening" host-aware heuristic
                     // (preserved here only via diagnostics) routed every
@@ -3314,7 +3384,6 @@ impl GeometryRouter {
                     );
                     openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
                 }
-            }
         }
 
         // Stash the per-host diagnostic before returning. `host.ifc_type`
@@ -4618,6 +4687,50 @@ impl GeometryRouter {
 mod reveal_tests {
     use super::*;
     use crate::Mesh;
+
+    /// AABB tuple in the shape `get_opening_item_bounds_with_direction` returns.
+    fn aabb(
+        min: (f64, f64, f64),
+        max: (f64, f64, f64),
+    ) -> (Point3<f64>, Point3<f64>, Option<Vector3<f64>>) {
+        (
+            Point3::new(min.0, min.1, min.2),
+            Point3::new(max.0, max.1, max.2),
+            None,
+        )
+    }
+
+    #[test]
+    fn spatial_clusters_separate_window_row_split_per_body() {
+        // Issue #1367: a row of window voids under one IfcOpeningElement, each
+        // separated by a solid pillar -> one cluster per body (subtract per item).
+        let boxes: Vec<_> = (0..4)
+            .map(|i| {
+                let x0 = i as f64 * 2.0;
+                aabb((x0, 0.0, 0.0), (x0 + 1.0, 0.3, 1.9))
+            })
+            .collect();
+        assert_eq!(spatial_cluster_count(&boxes), 4);
+    }
+
+    #[test]
+    fn spatial_clusters_touching_wall_leaf_halves_stay_merged() {
+        // FZK-Haus: one window void split into adjacent inner/outer wall-leaf
+        // halves (same X/Z footprint, abutting in Y) -> a single cluster (keep
+        // merged, so the gable watertightness guard is not regressed).
+        let inner = aabb((0.0, 0.0, 0.0), (1.0, 0.485, 0.9));
+        let outer = aabb((0.0, 0.485, 0.0), (1.0, 0.9, 0.9));
+        assert_eq!(spatial_cluster_count(&[inner, outer]), 1);
+    }
+
+    #[test]
+    fn spatial_clusters_single_or_empty() {
+        assert_eq!(spatial_cluster_count(&[]), 0);
+        assert_eq!(
+            spatial_cluster_count(&[aabb((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))]),
+            1
+        );
+    }
 
     /// Build a simple box mesh (12 triangles) for testing.
     #[allow(dead_code)]

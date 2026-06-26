@@ -113,6 +113,30 @@ export function mergeMapConversion(
   };
 }
 
+/**
+ * The buildingSMART IFC2x3 `ePset_MapConversion` convention stores
+ * Eastings/Northings in the project length unit — there is no MapUnit in the
+ * ePset. So an ePSet-sourced georef with no explicit MapUnit must scale its
+ * offsets by the project length-unit → metres factor.
+ *
+ * Without this, the "absent MapUnit ⇒ treat offsets as metres" heuristic in
+ * {@link resolveMapUnitToMetreScale} reads millimetre offsets as metres and
+ * flings the model ~1000× outside the CRS valid range (e.g. RD easting
+ * 160073528 mm read as 160073 km → reprojection returns null and Cesium can't
+ * place the model). Only applies when MapUnit hasn't been set/edited
+ * (mapUnitScale still undefined) — an explicit MapUnit always wins.
+ */
+export function resolveEpsetMapUnitScale(
+  source: GeoreferenceInfo['source'] | undefined,
+  mapUnitScale: number | undefined,
+  lengthUnitScale: number,
+): number | undefined {
+  if (source === 'ePSetMapConversion' && mapUnitScale === undefined) {
+    return lengthUnitScale;
+  }
+  return mapUnitScale;
+}
+
 export function getEffectiveGeoreference(
   dataStore: IfcDataStore | null | undefined,
   coordinateInfo?: CoordinateInfo,
@@ -126,6 +150,14 @@ export function getEffectiveGeoreference(
     mutations?.projectedCRS,
     lengthUnitScale,
   );
+  if (projectedCRS) {
+    // ePset_MapConversion offsets are in the project length unit (no MapUnit).
+    projectedCRS.mapUnitScale = resolveEpsetMapUnitScale(
+      original?.source,
+      projectedCRS.mapUnitScale,
+      lengthUnitScale,
+    );
+  }
   const mapConversion = mergeMapConversion(original?.mapConversion, mutations?.mapConversion);
 
   if (!projectedCRS && !mapConversion) return null;

@@ -757,6 +757,52 @@ export function extractGeoreferencingOnDemand(store: IfcDataStore): Georeference
         }
     }
 
+    // IFC2x3 fallback: models without IfcMapConversion store georeferencing in
+    // ePSet_MapConversion / ePSet_ProjectedCRS property sets. Those aren't
+    // loaded above, so the ePSet path in extractGeorefFromEntities had nothing
+    // to read and the model fell back to the legacy IfcSite EPSG:4326 (wrong
+    // CRS). Only scan property sets when no IfcMapConversion exists, and only
+    // pull in the georef ePSets + their values — not every pset in the model.
+    if (!typeMap.has('IfcMapConversion')) {
+        const psetIds = byType.get('IFCPROPERTYSET');
+        if (psetIds?.length) {
+            const georefPsetIds: number[] = [];
+            const childIds = new Set<number>();
+            for (const id of psetIds) {
+                const ref = byId.get(id);
+                if (!ref) continue;
+                const entity = extractor.extractEntity(ref);
+                if (!entity?.attributes) continue;
+                // IfcPropertySet: Name (2), HasProperties (4)
+                const name = typeof entity.attributes[2] === 'string'
+                    ? (entity.attributes[2] as string).toLowerCase()
+                    : '';
+                if (name !== 'epset_mapconversion' && name !== 'epset_projectedcrs') continue;
+                entityMap.set(id, entity);
+                georefPsetIds.push(id);
+                const props = entity.attributes[4];
+                if (Array.isArray(props)) {
+                    for (const propRef of props) {
+                        const propId = typeof propRef === 'number' ? propRef : null;
+                        if (propId === null || childIds.has(propId)) continue;
+                        // Property atoms may be deferred on huge files (not in
+                        // the primary byId index) — fall back like refFromStore.
+                        const childRef = byId.get(propId) ?? store.deferredEntityIndex?.get(propId);
+                        if (!childRef) continue;
+                        const child = extractor.extractEntity(childRef);
+                        if (child) {
+                            entityMap.set(propId, child);
+                            childIds.add(propId);
+                        }
+                    }
+                }
+            }
+            if (georefPsetIds.length) {
+                typeMap.set('IfcPropertySet', georefPsetIds);
+            }
+        }
+    }
+
     if (entityMap.size === 0) return null;
 
     // Cast to IfcEntity (they share the same shape)

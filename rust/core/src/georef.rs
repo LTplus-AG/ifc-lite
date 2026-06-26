@@ -10,7 +10,23 @@
 use crate::decoder::EntityDecoder;
 use crate::error::Result;
 use crate::generated::IfcType;
-use crate::schema_gen::DecodedEntity;
+use crate::schema_gen::{AttributeValue, DecodedEntity};
+
+/// Read an `IfcPropertySingleValue.NominalValue` (index 2) as a string,
+/// unwrapping the typed-value wrapper `IFCLABEL('…')` / `IFCIDENTIFIER('…')`
+/// (parsed as a `List([type-name, value])`) that plain `get_string` doesn't
+/// see through. Property values in the IFC2x3 ePSets are always typed, so
+/// without this the CRS `Name`/`TargetCRS` labels came back empty.
+fn pset_value_string(prop: &DecodedEntity) -> Option<String> {
+    match prop.get(2)? {
+        AttributeValue::String(s) => Some(s.clone()),
+        AttributeValue::List(items) => match (items.first(), items.get(1)) {
+            (Some(AttributeValue::String(_)), Some(AttributeValue::String(v))) => Some(v.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
 
 /// Where the georeferencing data was authored in the file.
 ///
@@ -378,30 +394,51 @@ impl GeoRefExtractor {
         decoder: &mut EntityDecoder,
         entity_types: &[(u32, IfcType)],
     ) -> Result<Option<GeoReference>> {
-        // Find IfcPropertySet with name ePSet_MapConversion
+        // Locate the ePSet_MapConversion (required) and ePSet_ProjectedCRS
+        // (optional) property sets. The match is case-insensitive: the
+        // buildingSMART geo-referencing guide spells these `ePSet_…` (capital
+        // S), but real authoring tools (e.g. the `ifc-georeferencer`
+        // post-processor) write `ePset_…` (lowercase), and an exact match
+        // silently dropped those models to the legacy IfcSite/EPSG:4326
+        // fallback so they displayed the wrong CRS. IfcPropertySet.Name is
+        // attribute 2 (attribute 0 is GlobalId); reading attribute 0 here
+        // never matched the ePSet at all (issue #900 review).
+        let mut map_conversion_pset: Option<u32> = None;
+        let mut projected_crs_pset: Option<u32> = None;
         for (id, ifc_type) in entity_types {
-            if *ifc_type == IfcType::IfcPropertySet {
-                let entity = decoder.decode_by_id(*id)?;
-                // IfcPropertySet.Name is attribute 2 (attribute 0 is GlobalId);
-                // reading attribute 0 here never matched the ePSet, so the
-                // IFC2x3 georeferencing fallback was dead (issue #900 review).
-                if let Some(name) = entity.get_string(2) {
-                    if name == "ePSet_MapConversion" || name == "EPset_MapConversion" {
-                        return Self::parse_pset_map_conversion(decoder, &entity);
-                    }
+            if *ifc_type != IfcType::IfcPropertySet {
+                continue;
+            }
+            let entity = decoder.decode_by_id(*id)?;
+            if let Some(name) = entity.get_string(2) {
+                let lower = name.to_ascii_lowercase();
+                if lower == "epset_mapconversion" && map_conversion_pset.is_none() {
+                    map_conversion_pset = Some(*id);
+                } else if lower == "epset_projectedcrs" && projected_crs_pset.is_none() {
+                    projected_crs_pset = Some(*id);
                 }
             }
         }
-        Ok(None)
+
+        let Some(mc_id) = map_conversion_pset else {
+            return Ok(None);
+        };
+        let mc_entity = decoder.decode_by_id(mc_id)?;
+        Self::parse_pset_map_conversion(decoder, &mc_entity, projected_crs_pset)
     }
 
-    /// Parse ePSet_MapConversion property set
+    /// Parse ePSet_MapConversion property set, plus the EPSG `Name` from an
+    /// optional ePSet_ProjectedCRS set (falling back to the MapConversion's
+    /// own `TargetCRS` label). Without the CRS name the EPSG code authored in
+    /// the file was never surfaced on the IFC2x3 path.
     fn parse_pset_map_conversion(
         decoder: &mut EntityDecoder,
         pset: &DecodedEntity,
+        projected_crs_pset: Option<u32>,
     ) -> Result<Option<GeoReference>> {
         let mut georef = GeoReference::new();
         georef.source = GeoRefSource::EPSetMapConversion;
+        let mut target_crs: Option<String> = None;
 
         // HasProperties is typically at index 4
         if let Some(props_list) = pset.get_list(4) {
@@ -442,11 +479,25 @@ impl GeoRefExtractor {
                                     georef.scale = v;
                                 }
                             }
+                            "TargetCRS" => {
+                                if let Some(v) = pset_value_string(&prop) {
+                                    target_crs = Some(v);
+                                }
+                            }
                             _ => {}
                         }
                     }
                 }
             }
+        }
+
+        // Pull the CRS name + datum fields from ePSet_ProjectedCRS if present.
+        if let Some(crs_id) = projected_crs_pset {
+            let crs_entity = decoder.decode_by_id(crs_id)?;
+            Self::parse_pset_projected_crs(decoder, &crs_entity, &mut georef);
+        }
+        if georef.crs_name.is_none() {
+            georef.crs_name = target_crs;
         }
 
         georef.normalize_axis();
@@ -455,6 +506,39 @@ impl GeoRefExtractor {
             Ok(Some(georef))
         } else {
             Ok(None)
+        }
+    }
+
+    /// Parse an ePSet_ProjectedCRS property set into the georef's CRS fields.
+    fn parse_pset_projected_crs(
+        decoder: &mut EntityDecoder,
+        pset: &DecodedEntity,
+        georef: &mut GeoReference,
+    ) {
+        let Some(props_list) = pset.get_list(4) else {
+            return;
+        };
+        for prop_attr in props_list {
+            let Some(prop_id) = prop_attr.as_entity_ref() else {
+                continue;
+            };
+            let Ok(prop) = decoder.decode_by_id(prop_id) else {
+                continue;
+            };
+            let Some(name) = prop.get_string(0) else {
+                continue;
+            };
+            let value = pset_value_string(&prop);
+            match name {
+                "Name" => georef.crs_name = value,
+                "Description" => georef.crs_description = value,
+                "GeodeticDatum" => georef.geodetic_datum = value,
+                "VerticalDatum" => georef.vertical_datum = value,
+                "MapProjection" => georef.map_projection = value,
+                "MapZone" => georef.map_zone = value,
+                "MapUnit" => georef.map_unit = value,
+                _ => {}
+            }
         }
     }
 

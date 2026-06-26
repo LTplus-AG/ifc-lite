@@ -157,7 +157,12 @@ const DATUM_TOWGS84: Record<string, string> = {
   // Netherlands — Amersfoort (Bessel 1841). The bundled EPSG:28992 already
   // ships with the higher-precision Kadaster +towgs84, so this fires only
   // when a derived/compound CRS lacks it (e.g. some compound RD/NAP cases).
+  // The compound EPSG:7415 (RD + NAP height) reports its datum as "RD" rather
+  // than "Amersfoort", and its bundled proj4 carries no +towgs84 at all, so it
+  // needs the same shift under that key for the offline (no precision-grid)
+  // fallback to land in the Netherlands instead of ~117 m off.
   'amersfoort': '+towgs84=565.4171,50.3319,465.5524,1.9342,-1.6677,9.1019,4.0725',
+  'rd': '+towgs84=565.4171,50.3319,465.5524,1.9342,-1.6677,9.1019,4.0725',
   // Austria — MGI (Bessel 1841)
   'militar-geographische institut': '+towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232',
   'mgi': '+towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232',

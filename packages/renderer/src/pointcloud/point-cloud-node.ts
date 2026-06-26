@@ -112,7 +112,15 @@ export function appendChunkToNode(
     device.limits.maxBufferSize,
     device.limits.maxStorageBufferBindingSize,
   );
-  const maxPerBuffer = Math.max(1, Math.floor((maxBytes * 0.95) / POINT_VERTEX_BYTES));
+  const bufferPointCap = Math.floor((maxBytes * 0.95) / POINT_VERTEX_BYTES);
+  // The deviation compute dispatches ceil(count / 64) workgroups over a whole
+  // chunk (its workgroup size is 64). That count must stay within
+  // maxComputeWorkgroupsPerDimension (65535), else WebGPU rejects the dispatch
+  // ("group size ... must be less or equal to 65535"). So a chunk is capped so
+  // both its GPU buffer AND a single per-point compute dispatch over it fit —
+  // ~4.19 M points (65535 × 64), tighter than the ~5.3 M buffer cap.
+  const dispatchPointCap = device.limits.maxComputeWorkgroupsPerDimension * 64;
+  const maxPerBuffer = Math.max(1, Math.min(bufferPointCap, dispatchPointCap));
   for (let start = 0; start < total; start += maxPerBuffer) {
     appendPointSubBuffer(device, node, chunk, start, Math.min(maxPerBuffer, total - start));
   }

@@ -385,14 +385,14 @@ export const mainShaderSource = `
           }
 
           // flags.x bit 5 (value 32) = EMPHASIZE overlay: render the colour
-          // override almost full-bright (high floor) so it POPS like a highlight
-          // instead of reading as a normal lit material — used for the focused
-          // clash pair so its amber/cyan stands out against the model. Keeps a
-          // touch of per-face shading so form still reads. (#1277/#1339)
-          if (isOverlay && (uniforms.flags.x & 32u) != 0u) {
-            let shadeLum = dot(lightTerm, vec3<f32>(0.299, 0.587, 0.114));
-            let shade = clamp(shadeLum * 1.7, 0.85, 1.45);
-            color = baseColor * shade;
+          // override FULLY UNLIT and saturated (no lighting attenuation, no
+          // wash-to-white) so the focused clash pair reads as a solid, vivid,
+          // distinct colour that pops against the lit model — like a clash tool.
+          // A faint normal-based shade keeps the silhouette from going flat. (#1277)
+          let emphasizedOverlay = isOverlay && (uniforms.flags.x & 32u) != 0u;
+          if (emphasizedOverlay) {
+            let facet = 0.85 + 0.15 * abs(dot(N, normalize(vec3<f32>(0.3, 1.0, 0.2))));
+            color = baseColor * facet;
           }
 
           // Beautiful fresnel effect for transparent materials (glass)
@@ -400,7 +400,9 @@ export const mainShaderSource = `
           // blue highlight, making it appear white instead of blue.
           // Also force alpha to 1.0 for selected objects so the highlight is
           // fully opaque (the selection pipeline has no alpha blending).
-          var finalAlpha = select(input.color.a, 1.0, isSelected);
+          // Emphasized clash overlay paints a SOLID vivid fill (force opaque) so
+          // it isn't blended down to a pale tint against the geometry beneath.
+          var finalAlpha = select(input.color.a, 1.0, isSelected || emphasizedOverlay);
           if (finalAlpha < 0.99 && !isSelected && !isOverlay) {
             // Calculate view direction for fresnel
             let V = normalize(-input.worldPos);

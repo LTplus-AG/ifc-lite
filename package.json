@@ -44,7 +44,7 @@
     "docs:serve": "python3 -m mkdocs serve",
     "docs:build": "python3 -m mkdocs build",
     "changeset": "changeset",
-    "version": "changeset version && node scripts/sync-versions.js",
+    "version": "node scripts/changeset-version-retry.mjs && node scripts/sync-versions.js",
     "release": "pnpm build && pnpm test:esm && pnpm release:npm && pnpm release:crates",
     "release:npm": "changeset publish",
     "release:crates": "node scripts/release-crates.mjs",

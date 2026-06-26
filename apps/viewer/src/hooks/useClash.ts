@@ -30,6 +30,7 @@ import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { buildClashPairColors, CLASH_COLOR_A } from '@/lib/clash/clash-colors';
 import { posthog } from '@/lib/analytics';
 import { downloadBlob } from '@/lib/export/download';
 
@@ -295,6 +296,10 @@ export function useClash() {
       state.clearEntitySelection();
       state.setSelectedEntityIds(globalIds); // highlight BOTH elements + frame target
       state.addEntitiesToSelection(refs); // model-aware context for the properties panel
+      // Paint the two elements in distinct colours so the user can tell A from B
+      // (the selection outline alone gave both the same colour — #1277/#1339).
+      // The selection outline is still drawn on top of these fills.
+      state.setPendingColorUpdates(buildClashPairColors(a ? clash.a.ref : null, b ? clash.b.ref : null));
       applyFocusMode(globalIds, mode);
       state.setClashSelectedId(clash.id);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
@@ -314,6 +319,9 @@ export function useClash() {
       state.clearEntitySelection();
       state.setSelectedEntityIds([el.ref]);
       state.addEntitiesToSelection([ref]);
+      // One element in focus — paint it the clash A colour so stepping through a
+      // pair (#1276) keeps a consistent, distinct fill rather than a stale pair.
+      state.setPendingColorUpdates(new Map([[el.ref, CLASH_COLOR_A]]));
       applyFocusMode([el.ref], mode);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
     },
@@ -341,6 +349,10 @@ export function useClash() {
     if (globalIds.size === 0) return;
     state.setSelectedEntityIds([...globalIds]);
     state.addEntitiesToSelection(refs);
+    // Showing every clashing element at once — an element can be A in one clash
+    // and B in another, so per-pair colours are ambiguous here. Reset any stale
+    // pair fills and rely on the selection outline.
+    state.setPendingColorUpdates(new Map());
   }, [refOf]);
 
   const clearHighlight = useCallback((): void => {
@@ -348,6 +360,7 @@ export function useClash() {
     state.clearEntitySelection();
     state.clearIsolation(); // drop any clash isolation so the full model returns
     state.clearGhost(); // and any X-Ray ghosting
+    state.setPendingColorUpdates(new Map()); // reset the clash A/B fill colours
     setSelectedId(null);
   }, [setSelectedId]);
 

@@ -72,6 +72,15 @@ export interface MeshData {
    *  caches predating local frame). The renderer reconstructs world via a
    *  per-batch model-matrix translate. */
   origin?: [number, number, number];
+  /** Stable key for CPU caches that must distinguish *occurrences* sharing one
+   *  `expressId`. GPU-instanced occurrences are materialized on demand as one
+   *  MeshData per occurrence, all stamped with the same `expressId` but holding
+   *  different world-space `positions` (issue #1405). Caches keyed on `expressId`
+   *  alone (e.g. the measure-snap geometry cache) would collide across them and
+   *  serve the first occurrence's geometry for every later one. When present,
+   *  such caches must key on this instead. Absent for flat meshes (one MeshData
+   *  per `expressId`), where `expressId` is already a sufficient key. */
+  occurrenceKey?: string;
 }
 
 /** A decoded RGBA8 surface texture attached to a mesh (issue #961). */

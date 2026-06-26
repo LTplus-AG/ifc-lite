@@ -2220,7 +2220,13 @@ export class Scene {
         }
       }
       const color: [number, number, number, number] = [...o.originalColor];
-      out.push({ expressId, positions, normals, indices: tpl.indices, color });
+      // Per-occurrence key so CPU caches that would otherwise key on `expressId`
+      // alone (measure-snap geometry cache) don't collide across occurrences of
+      // this instanced entity, which share `expressId` but hold distinct
+      // world-space positions (issue #1405). templateIndex+byteOffset uniquely
+      // and stably identifies an occurrence within the instance buffers.
+      const occurrenceKey = `${expressId}:inst:${o.templateIndex}:${o.byteOffset}`;
+      out.push({ expressId, positions, normals, indices: tpl.indices, color, occurrenceKey });
     }
     return out.length > 0 ? out : undefined;
   }

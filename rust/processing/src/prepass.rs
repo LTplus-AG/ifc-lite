@@ -314,9 +314,12 @@ pub fn resolve_unit_scales(
         return UnitScales::default();
     };
 
-    // Fast path: resolve on the caller's decoder/index.
+    // Fast path: resolve on the caller's decoder/index. BOTH resolvers return
+    // `None` (not a masked default) when their chain is incomplete on a partial
+    // index, so an unresolved either-scale forces the full-index retry below
+    // rather than silently shipping radians/metres (issue #1367).
     let length = ifc_lite_core::try_extract_length_unit_scale(decoder, pid);
-    let angle = ifc_lite_core::extract_plane_angle_to_radians(decoder, pid).ok();
+    let angle = ifc_lite_core::try_extract_plane_angle_to_radians(decoder, pid);
 
     if let (Some(length_unit_scale), Some(plane_angle_to_radians)) = (length, angle) {
         return UnitScales {
@@ -347,23 +350,42 @@ pub fn resolve_unit_scales(
 /// no full entity scan. Returns `None` when the file has no project.
 pub fn find_ifcproject_id(content: &[u8]) -> Option<u32> {
     let mut from = 0usize;
-    while let Some(rel) = memchr::memmem::find(&content[from..], b"=IFCPROJECT(") {
-        let eq = from + rel;
-        // Backtrack over the express id digits to the '#'.
-        let mut i = eq;
-        while i > 0 && content[i - 1].is_ascii_digit() {
+    // Search for the keyword+paren only; the `=` and `#<id>` are reconstructed by
+    // backtracking. Exporters vary the whitespace around `=` — Revit/EDM emits
+    // `#1593796= IFCPROJECT(` with a SPACE, so the old `=IFCPROJECT(` literal
+    // never matched and the whole unit chain silently defaulted (length → metres
+    // on a mm model, plane-angle → radians on a degree model, making arched
+    // openings render as full circles — issue #1367). `IFCPROJECT(` cannot
+    // collide with `IFCPROJECTEDCRS(` because the `(` must immediately follow.
+    while let Some(rel) = memchr::memmem::find(&content[from..], b"IFCPROJECT(") {
+        let kw = from + rel;
+        // Backtrack over optional whitespace, then require '='.
+        let mut i = kw;
+        while i > 0 && content[i - 1].is_ascii_whitespace() {
             i -= 1;
         }
-        if i > 0 && content[i - 1] == b'#' && i < eq {
-            let mut id: u32 = 0;
-            for &b in &content[i..eq] {
-                id = id.wrapping_mul(10).wrapping_add((b - b'0') as u32);
+        if i > 0 && content[i - 1] == b'=' {
+            i -= 1; // step over '='
+            // Optional whitespace between the express id and '='.
+            while i > 0 && content[i - 1].is_ascii_whitespace() {
+                i -= 1;
             }
-            return Some(id);
+            // Backtrack over the express id digits to the '#'.
+            let digits_end = i;
+            while i > 0 && content[i - 1].is_ascii_digit() {
+                i -= 1;
+            }
+            if i > 0 && content[i - 1] == b'#' && i < digits_end {
+                let mut id: u32 = 0;
+                for &b in &content[i..digits_end] {
+                    id = id.wrapping_mul(10).wrapping_add((b - b'0') as u32);
+                }
+                return Some(id);
+            }
         }
-        // `=IFCPROJECT(` without a leading `#<digits>` (e.g. inside a string)
+        // `IFCPROJECT(` not preceded by `#<digits>=` (e.g. inside a string)
         // — keep searching.
-        from = eq + 1;
+        from = kw + 1;
     }
     None
 }
@@ -571,6 +593,7 @@ fn refs_from_list(entity: &DecodedEntity, index: usize) -> Option<Vec<u32>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ifc_lite_core::{EntityIndex, EntityScanner};
 
     #[test]
     fn find_ifcproject_id_late_in_file() {
@@ -588,6 +611,68 @@ mod tests {
     fn find_ifcproject_id_skips_string_decoys() {
         let ifc = b"DATA;\n#5=IFCWALL('decoy =IFCPROJECT( in a name',$);\n#7=IFCPROJECT('g',$);\n";
         assert_eq!(find_ifcproject_id(ifc), Some(7));
+    }
+
+    #[test]
+    fn find_ifcproject_id_handles_whitespace_around_equals() {
+        // Revit/EDM exporters write `#id= IFCPROJECT(` with a space after `=`;
+        // the old `=IFCPROJECT(` literal never matched → the whole unit chain
+        // defaulted to metres + radians (issue #1367, arched openings → circles).
+        let space_after = b"DATA;\n#1=IFCWALL('x',$);\n#1593796= IFCPROJECT('g',$,'P',$,$,$,$,$,$);\n";
+        assert_eq!(find_ifcproject_id(space_after), Some(1593796));
+
+        let space_both = b"DATA;\n#42 = IFCPROJECT('g',$);\n";
+        assert_eq!(find_ifcproject_id(space_both), Some(42));
+
+        // IFCPROJECTEDCRS must not be mistaken for IFCPROJECT.
+        let crs_only = b"DATA;\n#9= IFCPROJECTEDCRS('EPSG:32632',$,'WGS84',$,'UTM','32N',$);\n";
+        assert_eq!(find_ifcproject_id(crs_only), None);
+    }
+
+    /// Mimics the Revit/EDM ordering of Architecture.ifc (issue #1367): the
+    /// DEGREE plane-angle unit sits near the file head but its conversion
+    /// `IFCMEASUREWITHUNIT` is at the very tail. With a PARTIAL index that has the
+    /// project + assignment + degree unit but NOT the measure, the plane-angle
+    /// resolver must report "incomplete" so `resolve_unit_scales` retries against
+    /// a full index instead of silently shipping radians.
+    #[test]
+    fn resolve_unit_scales_recovers_degrees_when_measure_past_partial_index() {
+        const IFC: &[u8] = br#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('u.ifc','2026-06-26T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#10= IFCPROJECT('g',$,'P',$,$,$,$,$,#11);
+#11= IFCUNITASSIGNMENT((#12,#13));
+#12= IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#13= IFCCONVERSIONBASEDUNIT(#14,.PLANEANGLEUNIT.,'DEGREE',#15);
+#14= IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);
+#16= IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#15= IFCMEASUREWITHUNIT(IFCRATIOMEASURE(0.0174532925199433),#16);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        // Build a PARTIAL index that omits the tail measure (#15) and exponents
+        // (#14), exactly the streaming-gate situation that masked the bug.
+        let mut partial = EntityIndex::default();
+        let mut scanner = EntityScanner::new(&IFC);
+        while let Some((id, _t, start, end)) = scanner.next_entity() {
+            if id == 15 || id == 14 {
+                continue; // forward-referenced past the gate
+            }
+            partial.insert(id, (start, end));
+        }
+        let mut decoder = EntityDecoder::with_index(IFC, partial);
+        let scales = resolve_unit_scales(IFC, Some(10), &mut decoder);
+        assert_eq!(scales.project_id, Some(10));
+        assert!((scales.length_unit_scale - 0.001).abs() < 1e-12);
+        assert!(
+            (scales.plane_angle_to_radians - 0.0174532925199433).abs() < 1e-12,
+            "expected degrees via full-index retry, got {}",
+            scales.plane_angle_to_radians
+        );
     }
 
     #[test]

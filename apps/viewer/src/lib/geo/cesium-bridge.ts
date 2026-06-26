@@ -140,6 +140,53 @@ export async function computeCesiumModelOrigin(
   }
 }
 
+/**
+ * Grid (meridian) convergence at a point in a projected CRS: the angle between
+ * grid north (the projected CRS's +N axis) and true north (the geographic ENU
+ * +N axis). Returned in radians, counter-clockwise positive, such that the grid
+ * frame equals the true-ENU frame rotated by +gamma.
+ *
+ * WHY THIS EXISTS: `IfcMapConversion` aligns the model to GRID north (its
+ * XAxisAbscissa/Ordinate are expressed in the projected grid), but Cesium's
+ * `eastNorthUpToFixedFrame()` builds a TRUE-north ENU frame. Feeding the
+ * grid-aligned model straight into that frame rotates it by the convergence —
+ * up to ~3° for UTM near a zone edge, ~7-8° for oblique projections like
+ * Krovak (EPSG:2065, S-JTSK / Czech Republic). See issue #1408.
+ *
+ * Computed by finite difference through proj4 so it works for any projection
+ * (TM, LCC, Krovak, ...) without per-projection convergence formulae. A
+ * geographic (longlat) def has zero convergence by definition.
+ */
+export function computeGridConvergence(
+  projDef: string,
+  easting: number,
+  northing: number,
+  lon: number,
+  lat: number,
+): number {
+  // Geographic CRS: lat/lon is already true-north aligned.
+  if (/\+proj=longlat\b/.test(projDef)) return 0;
+  // Near the poles the local east/metre scale degenerates; skip.
+  if (Math.abs(lat) > 89.9) return 0;
+
+  const step = 1.0; // one projected-metre step along grid north
+  let lon2: number, lat2: number;
+  try {
+    [lon2, lat2] = proj4(projDef, 'WGS84', [easting, northing + step]);
+  } catch {
+    return 0;
+  }
+  if (!Number.isFinite(lon2) || !Number.isFinite(lat2)) return 0;
+
+  // True-ENU components of the grid-north step (small-angle local metres).
+  const mPerDegLat = 111320;
+  const mPerDegLon = 111320 * Math.cos((lat * Math.PI) / 180);
+  const east = (lon2 - lon) * mPerDegLon;
+  const north = (lat2 - lat) * mPerDegLat;
+  // grid-north's bearing measured from true north is atan2(east, north) = -gamma.
+  return Math.atan2(-east, north);
+}
+
 export async function createCesiumBridge(
   mapConversion: MapConversion,
   projectedCRS: ProjectedCRS,
@@ -193,27 +240,32 @@ export async function createCesiumBridge(
   // ── Build the viewer→ENU 3x3 rotation matrix ──
   // This converts a DELTA vector from viewer space to ENU.
   // Step 1: viewer Y-up → IFC Z-up: (vx, vy, vz) → (vx, -vz, vy)
-  // Step 2: Helmert rotation: (ifcX, ifcY) → (east, north) with scale
-  //
-  // Combined as a 3x3 matrix M where [east, north, up] = M * [vx, vy, vz]:
-  //   east  = hScale * (absc * vx - ordi * (-vz))  = hScale * (absc*vx + ordi*vz)
-  //   north = hScale * (ordi * vx + absc * (-vz))   = hScale * (ordi*vx - absc*vz)
+  // Step 2: Helmert rotation: (ifcX, ifcY) → GRID (east, north) with scale
+  //   eg = hScale * (absc * vx - ordi * (-vz)) = hScale * (absc*vx + ordi*vz)
+  //   ng = hScale * (ordi * vx + absc * (-vz)) = hScale * (ordi*vx - absc*vz)
+  // Step 3: grid → true ENU. IfcMapConversion aligns the model to GRID north,
+  //   but Cesium's eastNorthUpToFixedFrame() is a TRUE-north frame. Rotate the
+  //   grid axes by the meridian convergence gamma so grid north lands where the
+  //   basemap puts it (the 2D footprint already bakes this in via proj4). See
+  //   issue #1408. R(gamma): east = cg*eg - sg*ng, north = sg*eg + cg*ng.
   //   up    = vy  (ifcZ = vy, vertical is viewer Y)
   //
-  // So M = [hScale*absc,   0,  hScale*ordi ]
-  //        [hScale*ordi,   0, -hScale*absc ]
-  //        [0,             1,  0           ]
   // Viewer-space deltas are already in metres (geometry engine converts during
   // extraction), so no lengthUnitScale needed here.
-  const m00 = hScale * absc;   // east  from vx
-  const m01 = 0;               // east  from vy
-  const m02 = hScale * ordi;   // east  from vz
-  const m10 = hScale * ordi;   // north from vx
-  const m11 = 0;               // north from vy
-  const m12 = -hScale * absc;  // north from vz
-  const m20 = 0;               // up    from vx
-  const m21 = 1;               // up    from vy (vertical = viewer Y, already metres)
-  const m22 = 0;               // up    from vz
+  const gamma = computeGridConvergence(projDef, origin.easting, origin.northing, originLon, originLat);
+  const cg = Math.cos(gamma);
+  const sg = Math.sin(gamma);
+  const ce = hScale * absc;
+  const co = hScale * ordi;
+  const m00 = cg * ce - sg * co;   // east  from vx
+  const m01 = 0;                   // east  from vy
+  const m02 = cg * co + sg * ce;   // east  from vz
+  const m10 = sg * ce + cg * co;   // north from vx
+  const m11 = 0;                   // north from vy
+  const m12 = sg * co - cg * ce;   // north from vz
+  const m20 = 0;                   // up    from vx
+  const m21 = 1;                   // up    from vy (vertical = viewer Y, already metres)
+  const m22 = 0;                   // up    from vz
 
   // ── Cache for ECEF objects ──
   let viewerToEcefMatrix: InstanceType<typeof import('cesium').Matrix4> | null = null;

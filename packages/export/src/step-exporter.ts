@@ -540,6 +540,13 @@ export class StepExporter {
       );
     }
 
+    // A modified pset is replaced wholesale, which skips ALL of its member atoms.
+    // But IFC exporters deduplicate identical Pset_*Common atoms (e.g. one
+    // IsExternal IfcPropertySingleValue shared by dozens of psets), so skipping a
+    // shared atom would orphan every OTHER pset that still references it, leaving
+    // dangling refs and an invalid file. Keep any atom a surviving container needs.
+    this.retainSharedAtoms(skipPropertySetIds, allowedEntityIds);
+
     // Export original entities from source buffer, SKIPPING modified property sets
     if (!options.deltaOnly && this.dataStore.source) {
       const source = this.dataStore.source;
@@ -1268,6 +1275,38 @@ export class StepExporter {
   /**
    * Get IDs of properties in a property set
    */
+  /**
+   * Un-skip property/quantity atoms that a surviving (non-skipped, and — under
+   * visible-only export — still-included) IfcPropertySet / IfcElementQuantity
+   * still references.
+   *
+   * When a property is edited, the modified pset is replaced and its member atoms
+   * are added to `skipIds` wholesale. Because exporters deduplicate shared
+   * Pset_*Common atoms (e.g. a single IsExternal / IsLoadBearing value referenced
+   * by many psets), that wholesale skip can drop an atom another pset still needs.
+   * This pass restores any such atom: the edited pset still emits its replacement
+   * with the new value, while the shared atom stays for the psets that keep their
+   * original value.
+   */
+  private retainSharedAtoms(skipIds: Set<number>, allowedEntityIds: Set<number> | null): void {
+    if (skipIds.size === 0) return;
+    const byType = this.dataStore.entityIndex.byType;
+    const containerIds = [
+      ...(byType.get('IFCPROPERTYSET') ?? []),
+      ...(byType.get('IFCELEMENTQUANTITY') ?? []),
+    ];
+    for (const containerId of containerIds) {
+      // Skipped containers are being dropped/replaced — their atoms may go.
+      if (skipIds.has(containerId)) continue;
+      // Under visible-only export a container outside the closure is not emitted,
+      // so it cannot keep an atom alive.
+      if (allowedEntityIds !== null && !allowedEntityIds.has(containerId)) continue;
+      for (const atomId of this.getPropertyIdsInSet(containerId)) {
+        skipIds.delete(atomId);
+      }
+    }
+  }
+
   private getPropertyIdsInSet(psetId: number): number[] {
     const entityRef = this.dataStore.entityIndex.byId.get(psetId);
     if (!entityRef || !this.dataStore.source) return [];

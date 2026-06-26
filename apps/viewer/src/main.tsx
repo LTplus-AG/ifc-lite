@@ -31,6 +31,15 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // side-effect import; keeps `@ifc-lite/parser` out of placement-edit
 // itself so its overlay-path logic stays unit-testable.
 import './lib/placement-edit.boot';
+import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
+
+// WASM engine-binary recovery — the sibling of the chunk recovery below for the
+// `ifc-lite_bg.wasm` binary, which wasm-bindgen fetches inside a worker and so
+// is invisible to Vite's `vite:preloadError`. When a deploy rotates the hashed
+// wasm under an open tab the lazy fetch 404s (served as text/plain) and the
+// engine throws an `application/wasm` MIME error (#1363); reload once, debounced,
+// to pull the current deployment's assets.
+installWasmVersionSkewRecovery();
 
 // Post-mount chunk recovery — complements the inline boot self-heal in
 // index.html. The boot watchdog handles the ENTRY failing to load; this handles

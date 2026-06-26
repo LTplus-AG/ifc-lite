@@ -51,15 +51,21 @@ function messageOf(err: unknown): string {
 /**
  * The geometry engine binary (`ifc-lite_bg.wasm`) failed to load. This is a
  * download/compile failure of the WASM module itself, not a problem with the
- * IFC file — the binary 404'd, was served with a non-OK status, or the fetch
- * was blocked (corporate proxy / antivirus / offline). wasm-bindgen's loader
- * cannot recover from a non-OK HTTP status, so it rethrows.
+ * IFC file — the binary 404'd, was served with a non-OK status, was served
+ * with the wrong MIME type, or the fetch was blocked (corporate proxy /
+ * antivirus / offline). wasm-bindgen's loader cannot recover from a non-OK
+ * HTTP status, so it rethrows.
  */
 function isWasmEngineLoadError(message: string): boolean {
   return (
     /HTTP status code is not ok/i.test(message) ||
     // `compile`/`compileStreaming`/`instantiate`/`instantiateStreaming` on `WebAssembly`.
     /'(compile|compileStreaming|instantiate|instantiateStreaming)' on 'WebAssembly'/i.test(message) ||
+    // Wrong MIME type for the engine binary — a deploy rotated the hashed wasm
+    // under an open tab, so the 404 page (text/plain) stands in for it. Firefox
+    // phrases this `Response has unsupported MIME type … expected 'application/wasm'`,
+    // Chromium `Incorrect response MIME type. Expected 'application/wasm'.` (#1363).
+    (/application\/wasm/i.test(message) && /mime|content[- ]?type|unsupported|incorrect|expected/i.test(message)) ||
     // Streaming-fetch failure for the engine binary specifically.
     (/wasm/i.test(message) && /failed to fetch|networkerror|load failed/i.test(message)) ||
     /ifc-lite_bg\.wasm/i.test(message)

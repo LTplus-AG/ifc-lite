@@ -32,6 +32,13 @@ export { CoordinateHandler } from './coordinate-handler.js';
 export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
+// Stale-deployment WASM-asset detection (#1363). The host app subscribes to
+// WASM_ASSET_UNAVAILABLE_EVENT to reload onto the current deployment.
+export {
+  isWasmAssetUnavailableError,
+  notifyIfWasmAssetUnavailable,
+  WASM_ASSET_UNAVAILABLE_EVENT,
+} from './wasm-asset-error.js';
 export {
   // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION`
   // are intentionally NOT re-exported — they have no consumer outside the
@@ -45,6 +52,7 @@ export {
 export * from './types.js';
 
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
+import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GeometryQuality } from './progressive-loader.js';
@@ -237,7 +245,15 @@ export class GeometryProcessor {
     } else {
       // WASM path
       if (this.bridge) {
-        await this.bridge.init();
+        try {
+          await this.bridge.init();
+        } catch (err) {
+          // A rotated/missing engine binary after a redeploy (#1363) can't be
+          // recovered by retrying the same hashed URL — signal the host to
+          // reload onto the current deployment. No-op for any other failure.
+          notifyIfWasmAssetUnavailable(err);
+          throw err;
+        }
       }
     }
   }

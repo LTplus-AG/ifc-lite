@@ -29,6 +29,7 @@ import type { MeshData, TessellationQuality } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { computeWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
+import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 
 /**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
@@ -406,6 +407,9 @@ export async function* processParallel(
         return;
       }
       if (msg.type === 'error') {
+        // A rotated/missing engine binary after a redeploy (#1363) surfaces
+        // here as the worker's wasm-init failure — let the host reload.
+        notifyIfWasmAssetUnavailable(msg.message);
         workerError = new Error(`Geometry worker error: ${msg.message}`);
         workersCompleted++;
         worker.terminate();
@@ -424,6 +428,7 @@ export async function* processParallel(
         (err?.message && String(err.message)) ||
         (err?.filename ? `at ${err.filename}:${err.lineno ?? 0}` : '') ||
         'worker terminated unexpectedly';
+      notifyIfWasmAssetUnavailable(detail);
       workerError = new Error(`Geometry worker failed: ${detail}`);
       workersCompleted++;
       worker.terminate();
@@ -861,6 +866,10 @@ export async function* processParallel(
       return;
     }
     if (data.type === 'error') {
+      // The streaming pre-pass is the first thing to touch the engine binary,
+      // so a stale-deploy 404 of the wasm (#1363) lands here — let the host
+      // reload onto the current deployment.
+      notifyIfWasmAssetUnavailable(data.message);
       prepassError = new Error(data.message);
       prepassDone = true;
       prepassWorker.terminate();
@@ -872,6 +881,7 @@ export async function* processParallel(
     // `buildPrePassStreaming`. We treat unknown messages as no-ops.
   };
   prepassWorker.onerror = (e) => {
+    notifyIfWasmAssetUnavailable(e.message);
     prepassError = new Error(`Pre-pass worker failed: ${e.message}`);
     prepassDone = true;
     prepassWorker.terminate();

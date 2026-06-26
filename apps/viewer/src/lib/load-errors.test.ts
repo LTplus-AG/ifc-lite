@@ -27,6 +27,36 @@ describe('classifyLoadError', () => {
     assert.equal(classifyLoadError(new Error('NetworkError when attempting to fetch wasm')), 'wasm_engine_load');
   });
 
+  it('classifies the wrong-MIME engine binary as wasm_engine_load (issue #1363)', () => {
+    // A deploy rotated the hashed wasm under an open tab, so the 404 page
+    // (served as text/plain) stands in for it and the streaming loader rejects.
+    // Firefox phrasing (the exact message captured in PostHog):
+    assert.equal(
+      classifyLoadError(
+        new TypeError(
+          "WebAssembly: Response has unsupported MIME type 'text/plain; charset=utf-8' expected 'application/wasm'",
+        ),
+      ),
+      'wasm_engine_load',
+    );
+    // Chromium phrasing:
+    assert.equal(
+      classifyLoadError(
+        new TypeError("Incorrect response MIME type. Expected 'application/wasm'."),
+      ),
+      'wasm_engine_load',
+    );
+    // Wrapped by the geometry worker pool, it must still classify the same.
+    assert.equal(
+      classifyLoadError(
+        new Error(
+          "Geometry worker error: WebAssembly: Response has unsupported MIME type 'text/plain; charset=utf-8' expected 'application/wasm'",
+        ),
+      ),
+      'wasm_engine_load',
+    );
+  });
+
   it('classifies out-of-memory failures', () => {
     assert.equal(classifyLoadError(new Error('memory access out of bounds')), 'out_of_memory');
     assert.equal(classifyLoadError(new Error('Cannot enlarge memory arrays')), 'out_of_memory');

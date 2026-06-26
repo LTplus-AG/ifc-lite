@@ -4,7 +4,9 @@
 
 //! Data model extraction service - extracts properties, relationships, and spatial hierarchy.
 
-mod associations;
+mod classifications;
+mod documents;
+mod materials;
 mod metadata;
 mod properties;
 mod quantities;
@@ -14,8 +16,12 @@ mod types;
 
 pub use types::*;
 
-use associations::{extract_classifications, extract_documents, extract_materials};
-use ifc_lite_core::{build_entity_index, extract_length_unit_scale, EntityDecoder, EntityScanner};
+use classifications::extract_classifications;
+use documents::extract_documents;
+use ifc_lite_core::{
+    build_entity_index, extract_length_unit_scale, DecodedEntity, EntityDecoder, EntityScanner,
+};
+use materials::extract_materials;
 use metadata::extract_entity_metadata;
 use properties::extract_properties;
 use quantities::extract_quantities;
@@ -209,6 +215,24 @@ where
         documents,
         spatial_hierarchy,
     }
+}
+
+/// Read an `IfcLogical` / `IfcBoolean` attribute as a tri-state `Option<bool>`
+/// (`.U.` / absent → `None`).
+pub(super) fn read_logical(entity: &DecodedEntity, index: usize) -> Option<bool> {
+    let token = entity.get(index)?.as_enum()?;
+    match token {
+        "T" | "TRUE" | "true" => Some(true),
+        "F" | "FALSE" | "false" => Some(false),
+        _ => None,
+    }
+}
+
+/// Collect the `RelatedObjects` (attribute 4) entity ids of an `IfcRelAssociates*`.
+pub(super) fn related_object_ids(rel: &DecodedEntity) -> Vec<u32> {
+    rel.get_list(4)
+        .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

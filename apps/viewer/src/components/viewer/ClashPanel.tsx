@@ -138,6 +138,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // colour-override channel to an active lens (if any) rather than blanking it. (#1277)
   useEffect(() => () => {
     const s = useViewerStore.getState();
+    // Fully reset the focus view: a clash focused in isolate/ghost would
+    // otherwise leave the model isolated/ghosted after the panel unmounts.
+    s.clearEntitySelection();
+    s.clearIsolation();
+    s.clearGhost();
+    s.setClashSelectedId(null);
     s.setClashHighlightColors(null);
     s.setClashOverlapBox(null);
     s.setPendingColorUpdates(s.lensAppliedColors ?? new Map());
@@ -639,6 +645,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                   {row.kind === 'group' ? (
                     <button
                       onClick={() => toggleSection(row.key)}
+                      aria-expanded={!collapsed.has(row.key)}
+                      aria-label={`${collapsed.has(row.key) ? 'Expand' : 'Collapse'} ${row.label}`}
                       className="flex w-full items-center gap-1.5 border-b border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/50"
                     >
                       {collapsed.has(row.key) ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
@@ -656,6 +664,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                     <div className={cn('flex w-full items-stretch border-t border-border/40 text-xs', selectedId === row.clash.id && 'bg-primary/10')}>
                       <button
                         onClick={() => toggleExpand(row.clash.id)}
+                        aria-expanded={expanded.has(row.clash.id)}
                         title={expanded.has(row.clash.id) ? 'Collapse' : 'Show both objects'}
                         className="flex items-center pl-2 pr-1 text-muted-foreground hover:text-foreground"
                       >

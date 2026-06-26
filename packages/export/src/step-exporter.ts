@@ -130,6 +130,8 @@ export class StepExporter {
   private mutationView: MutablePropertyView | null;
   private nextExpressId: number;
   private entityExtractor: EntityExtractor | null;
+  /** Lazily-resolved `#id` of an existing IfcOwnerHistory (or `$`). */
+  private ownerHistoryRefCache: string | undefined;
 
   constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView) {
     this.dataStore = dataStore;
@@ -823,6 +825,21 @@ export class StepExporter {
   }
 
   /**
+   * Resolve a STEP reference to an existing IfcOwnerHistory, used to stamp the
+   * IfcPropertySet / IfcRelDefinesByProperties / IfcElementQuantity entities we
+   * generate for mutations. OwnerHistory is optional in IFC4 but MANDATORY in
+   * IFC2X3 (IfcRoot.OwnerHistory), so emitting `$` yields an invalid IFC2X3 file
+   * that strict readers (e.g. BIM Vision) reject. Reuse any existing owner
+   * history in the model; fall back to `$` only when the file has none.
+   */
+  private resolveOwnerHistoryRef(): string {
+    if (this.ownerHistoryRefCache !== undefined) return this.ownerHistoryRefCache;
+    const ids = this.dataStore.entityIndex.byType.get('IFCOWNERHISTORY');
+    this.ownerHistoryRefCache = ids && ids.length > 0 ? `#${ids[0]}` : '$';
+    return this.ownerHistoryRefCache;
+  }
+
+  /**
    * Generate STEP entities for property sets
    */
   private generatePropertySetEntities(
@@ -859,8 +876,8 @@ export class StepExporter {
       const propRefs = propertyIds.map(id => `#${id}`).join(',');
       const globalId = this.generateGlobalId();
 
-      // #ID=IFCPROPERTYSET('GlobalId',$,'Name',$,(#props));
-      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',$,'${escapeStepString(pset.name)}',$,(${propRefs}));`;
+      // #ID=IFCPROPERTYSET('GlobalId',#ownerHistory,'Name',$,(#props));
+      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',${this.resolveOwnerHistoryRef()},'${escapeStepString(pset.name)}',$,(${propRefs}));`;
       lines.push(psetLine);
 
       if (typeOwnedPsetNames?.has(pset.name)) {
@@ -871,8 +888,8 @@ export class StepExporter {
         count++;
 
         const relGlobalId = this.generateGlobalId();
-        // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',$,$,$,(#entity),#pset);
-        const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',$,$,$,(#${entityId}),#${psetId});`;
+        // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',#ownerHistory,$,$,(#entity),#pset);
+        const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef()},$,$,(#${entityId}),#${psetId});`;
         lines.push(relLine);
       }
     }
@@ -912,8 +929,8 @@ export class StepExporter {
       const quantRefs = quantityIds.map(id => `#${id}`).join(',');
       const globalId = this.generateGlobalId();
 
-      // #ID=IFCELEMENTQUANTITY('GlobalId',$,'Name',$,$,(#quants));
-      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',$,'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
+      // #ID=IFCELEMENTQUANTITY('GlobalId',#ownerHistory,'Name',$,$,(#quants));
+      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${this.resolveOwnerHistoryRef()},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
       lines.push(qsetLine);
 
       // Create IfcRelDefinesByProperties to link qset to entity
@@ -921,7 +938,7 @@ export class StepExporter {
       count++;
 
       const relGlobalId = this.generateGlobalId();
-      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',$,$,$,(#${entityId}),#${qsetId});`;
+      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef()},$,$,(#${entityId}),#${qsetId});`;
       lines.push(relLine);
     }
 

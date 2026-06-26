@@ -369,12 +369,25 @@ export function useIfcLoader() {
 
 
 
-      // Read file from disk. The browser path streams files ≥
-      // STREAM_SAB_THRESHOLD directly into a SharedArrayBuffer, which avoids
-      // a doubled-peak ArrayBuffer + SAB allocation when the geometry
-      // pipeline copies into its own SAB. (#600)
+      // Detect point clouds from a small head slice FIRST. Point clouds
+      // (E57/LAS/LAZ/PLY/PCD/PTS/XYZ) stream from the Blob in bounded windows
+      // and must NOT be read whole into a (Shared)ArrayBuffer — a multi-GB
+      // scan dies with "Array buffer allocation failed" on that single
+      // allocation, before the streaming decoder ever runs. Magic-byte /
+      // extension detection only needs the first few bytes. Only IFC / GLB /
+      // IFCX actually need the full buffer.
+      const headBuf = await file.slice(0, 4096).arrayBuffer();
+      const pointCloudFormat = detectPointCloudFormat(file.name, headBuf);
+
+      // The browser path streams files ≥ STREAM_SAB_THRESHOLD directly into a
+      // SharedArrayBuffer, avoiding a doubled-peak ArrayBuffer + SAB allocation
+      // when the geometry pipeline copies into its own SAB (#600). For point
+      // clouds we keep `acquired`/`buffer` as a cheap head stand-in — the PC
+      // ingest path uses the Blob + file.size, never this buffer.
       const fileReadStart = performance.now();
-      const acquired: AcquiredBuffer = await acquireFileBuffer(file);
+      const acquired: AcquiredBuffer = pointCloudFormat
+        ? { buffer: headBuf, view: new Uint8Array(headBuf), isShared: false }
+        : await acquireFileBuffer(file);
       // `buffer` retains its previous semantics (ArrayBuffer-shaped) for
       // every downstream consumer. When `acquired.isShared` is true the
       // backing store is a SharedArrayBuffer; downstream code only ever
@@ -383,10 +396,15 @@ export function useIfcLoader() {
       // type-system: the runtime is identical.
       const buffer = acquired.buffer as ArrayBuffer;
       const fileReadMs = performance.now() - fileReadStart;
-      console.log(`[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB, read in ${fileReadMs.toFixed(0)}ms${acquired.isShared ? ' (streamed→SAB)' : ''}`);
+      console.log(
+        `[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB` +
+          (pointCloudFormat
+            ? ` — point cloud, streaming from Blob (no whole-file read)`
+            : `, read in ${fileReadMs.toFixed(0)}ms${acquired.isShared ? ' (streamed→SAB)' : ''}`),
+      );
 
-      // Detect file format (IFCX/IFC5 vs IFC4 STEP vs GLB vs LAS/LAZ)
-      const pointCloudFormat = detectPointCloudFormat(file.name, buffer);
+      // IFCX/IFC5 vs IFC4 STEP vs GLB resolved from the full buffer; point
+      // cloud format was already resolved from the head slice above.
       const format = pointCloudFormat ?? detectFormat(buffer);
 
       // LAS / LAZ point clouds: stream chunks straight to the renderer.
@@ -407,7 +425,7 @@ export function useIfcLoader() {
           format,
           blob,
           fileName: file.name,
-          buffer,
+          fileSize: file.size,
           renderer,
           onProgress: setProgress,
           onAssetCountDelta: incCount,

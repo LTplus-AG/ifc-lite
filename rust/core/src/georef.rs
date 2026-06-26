@@ -535,7 +535,7 @@ impl GeoRefExtractor {
         let crs_name_is_blank = georef
             .crs_name
             .as_ref()
-            .map_or(true, |name| name.trim().is_empty());
+            .is_none_or(|name| name.trim().is_empty());
         if crs_name_is_blank {
             georef.crs_name = target_crs.filter(|name| !name.trim().is_empty());
         }

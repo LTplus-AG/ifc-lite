@@ -135,3 +135,27 @@ lever.
 Native: `cargo run --release -p ifc-lite-processing --example csg_scaling_bench --features csg-capture -- <model.ifc>`
 WASM: build `rust/csg-thread-bench` plain + threaded (see crate header), serve
 `web/` with COOP/COEP (`node serve.mjs`), open `index.html?pkg=threaded&mode=…`.
+
+## Wiring status (2026-06-27)
+
+- **Production threaded bundle verified.** `BUILD_THREADED=1 ./scripts/build-wasm.sh`
+  produces `packages/wasm/pkg-threaded` (imports shared memory, exports
+  `initThreadPool` + `IfcAPI`, workerHelpers directory-import auto-patched). It
+  **boots in real Chrome**: a bring-up harness loaded the production glue and
+  logged `crossOriginIsolated=true`, `initThreadPool(8) OK`, `IfcAPI instantiated
+  OK`. So shared memory + cross-origin isolation + the rayon worker pool all come
+  up cleanly. This clears the integration risk; the kernel/end-to-end speedup is
+  already proven (rungs 1-2 above).
+- **Selection primitive landed.** `packages/geometry/src/wasm-features.ts`:
+  `supportsWasmThreads()` (shared-memory `WebAssembly.validate` probe) and
+  `isThreadedWasmUsable()` (probe AND `crossOriginIsolated`). Unit-tested.
+- **Remaining (must be built + QA'd against the running viewer, not blind):** the
+  worker statically imports the *plain* `@ifc-lite/wasm` glue, and the threaded
+  bundle ships *different* glue (rayon init). So selection is NOT a wasm-URL swap;
+  it needs (a) `@ifc-lite/wasm` to export the threaded glue (`./threaded`), (b) a
+  threaded worker variant that imports it + calls `initThreadPool`, (c) the
+  orchestrator (`geometry-parallel.ts`) to choose, when `isThreadedWasmUsable()`,
+  the "naive" single-threaded-instance path (one worker, internal CSG `par_iter`
+  across cores) instead of the N plain-worker pool, and (d) Vite copying both
+  bundles. This is a cross-package change whose correctness only shows in the
+  viewer on a real model, so it lands with a browser benchmark, not on faith.

@@ -88,4 +88,23 @@ describe('extractGeoreferencingOnDemand — IFC2x3 ePset fallback', () => {
     expect(georef?.source).toBe('siteLocation');
     expect(georef?.projectedCRS?.name).toBe('EPSG:4326');
   });
+
+  it('memoizes per store so repeated calls do not re-scan property sets', async () => {
+    // The on-demand scan decodes every IfcPropertySet to find ePset_MapConversion
+    // on models without an IfcMapConversion. The viewer calls this on the render
+    // path once per streamed geometry batch, so without caching a property-heavy
+    // model re-scans tens of thousands of psets per batch (regression #1404).
+    const ifc = `#30=IFCSITE('06pHC0eJnCHlVXWW2sVoPO',$,'Site',$,$,$,$,$,.ELEMENT.,(51,26,47,208626),(5,27,36,650968),$,$,$);
+#1357=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:28992'),$);
+#1358=IFCPROPERTYSET('27AKTMp8j58fBEhvkJkcNJ',$,'ePset_ProjectedCRS',$,(#1357));
+#1360=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCLABEL('EPSG:28992'),$);
+#1367=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#1360));`;
+    const store = await storeFromIfc(ifc);
+    const first = extractGeoreferencingOnDemand(store);
+    const second = extractGeoreferencingOnDemand(store);
+    // A cache miss recomputes a fresh GeoreferenceInfo object; the cache returns
+    // the identical reference. Reference equality therefore proves memoization.
+    expect(first).not.toBeNull();
+    expect(second).toBe(first);
+  });
 });

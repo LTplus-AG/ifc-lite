@@ -710,8 +710,31 @@ export function extractGroupMembersOnDemand(
 /**
  * Extract georeferencing info from on-demand store (source buffer + entityIndex).
  * Bridges to the entity-based georef extractor by resolving entities lazily.
+ *
+ * Memoized per store. On models without an IfcMapConversion (e.g. IFC2x3 files
+ * that carry CRS in ePSet_MapConversion / ePSet_ProjectedCRS) the underlying
+ * scan decodes EVERY IfcPropertySet from the source buffer to match by name —
+ * tens of thousands of decodes on property-heavy models. The viewer calls this
+ * on the load/render path (ViewportContainer's Cesium-availability check), which
+ * re-runs on every streamed geometry batch, so without caching the cost is
+ * O(batches x propertySets) and can turn a multi-second load into minutes.
+ * Caching collapses it to a single scan per store. Safe because the result is a
+ * pure function of the immutable source + entityIndex; georef *edits* are layered
+ * on top later in getEffectiveGeoreference(), not here.
  */
+const georefOnDemandCache = new WeakMap<IfcDataStore, GeoreferenceInfo | null>();
+
 export function extractGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
+    // Don't cache a not-yet-loaded store — it may gain source/entityIndex later.
+    if (!store.source?.length || !store.entityIndex) return null;
+    const cached = georefOnDemandCache.get(store);
+    if (cached !== undefined) return cached;
+    const result = computeGeoreferencingOnDemand(store);
+    georefOnDemandCache.set(store, result);
+    return result;
+}
+
+function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
     if (!store.source?.length || !store.entityIndex) return null;
 
     const extractor = new EntityExtractor(store.source);

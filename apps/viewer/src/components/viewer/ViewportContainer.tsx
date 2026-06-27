@@ -372,7 +372,10 @@ export function ViewportContainer() {
     ifcDataStore,
     georefMutations,
     mutationVersion,
-    mergedGeometryResult,
+    // Only the (stable) coordinateInfo is read here, not the whole result —
+    // depending on `mergedGeometryResult` re-runs this on every streamed
+    // geometry batch, re-triggering the property-set georef scan each time.
+    mergedGeometryResult?.coordinateInfo,
     cesiumPlacementDraft,
     cesiumPlacementDraftModelId,
     anchorModelIdOverride,
@@ -411,7 +414,10 @@ export function ViewportContainer() {
       return false;
     }
     setCesiumAvailable(hasGeoref());
-  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable, mergedGeometryResult]);
+    // Depend on the stable coordinateInfo, not the whole mergedGeometryResult:
+    // the latter gets a new reference each streamed batch, which would re-run
+    // this georef property-set scan ~once per batch on large models.
+  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable, mergedGeometryResult?.coordinateInfo]);
 
   // Sync the active Cesium source model ID so terrain actions are scoped correctly
   useEffect(() => {

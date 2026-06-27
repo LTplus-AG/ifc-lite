@@ -41,6 +41,15 @@ if (enabled) {
       // in ./analytics-scrub.ts.
       before_send: scrubEvent,
     });
+    // Register build attribution as super-properties so every event (incl.
+    // ifc_model_loaded) carries the deploy it was served from — this is what
+    // lets field perf regressions be pinned to a specific release. Guarded with
+    // typeof for the Node test runner, where the Vite `define` constants that
+    // back __APP_VERSION__/__BUILD_SHA__ are not injected.
+    posthogClient.register({
+      app_version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev',
+      app_build_sha: typeof __BUILD_SHA__ === 'string' ? __BUILD_SHA__ : 'dev',
+    });
     client = posthogClient;
   } catch (err) {
     console.warn('[analytics] PostHog init failed; analytics disabled', err);

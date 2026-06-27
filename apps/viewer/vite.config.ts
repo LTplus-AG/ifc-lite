@@ -208,6 +208,10 @@ const rootPkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8')
 );
 const appVersion = viewerPkg.version || rootPkg.version;
+// Git commit the bundle was built from, for attributing field perf/regressions
+// to a specific deploy. Vercel sets VERCEL_GIT_COMMIT_SHA, GitHub Actions sets
+// GITHUB_SHA; falls back to 'dev' for local builds.
+const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || 'dev').slice(0, 12);
 
 export default defineConfig({
   plugins: [
@@ -218,6 +222,7 @@ export default defineConfig({
   ],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
+    __BUILD_SHA__: JSON.stringify(buildSha),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
     __RELEASE_HISTORY__: JSON.stringify(parseChangelogs()),
     __PACKAGE_VERSIONS__: JSON.stringify(collectPackageVersions()),

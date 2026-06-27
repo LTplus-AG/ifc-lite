@@ -722,16 +722,28 @@ export function extractGroupMembersOnDemand(
  * pure function of the immutable source + entityIndex; georef *edits* are layered
  * on top later in getEffectiveGeoreference(), not here.
  */
-const georefOnDemandCache = new WeakMap<IfcDataStore, GeoreferenceInfo | null>();
+/**
+ * Memoize an O(entities) on-demand extraction per store. On-demand extractors
+ * derive purely from the immutable source + entityIndex, but the viewer calls
+ * them on render/stream hot paths where they can re-run once per geometry batch
+ * (regression #1404). Caching by store collapses that to one scan per model.
+ * Use this for any new `extract*OnDemand` so the whole family stays O(1)-per-call
+ * regardless of how often the render layer invokes it.
+ */
+const onDemandCaches = new WeakMap<IfcDataStore, Map<string, unknown>>();
+function oncePerStore<T>(store: IfcDataStore, key: string, compute: () => T): T {
+    let byKey = onDemandCaches.get(store);
+    if (!byKey) { byKey = new Map(); onDemandCaches.set(store, byKey); }
+    if (byKey.has(key)) return byKey.get(key) as T;
+    const value = compute();
+    byKey.set(key, value);
+    return value;
+}
 
 export function extractGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
     // Don't cache a not-yet-loaded store — it may gain source/entityIndex later.
     if (!store.source?.length || !store.entityIndex) return null;
-    const cached = georefOnDemandCache.get(store);
-    if (cached !== undefined) return cached;
-    const result = computeGeoreferencingOnDemand(store);
-    georefOnDemandCache.set(store, result);
-    return result;
+    return oncePerStore(store, 'georef', () => computeGeoreferencingOnDemand(store));
 }
 
 function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {

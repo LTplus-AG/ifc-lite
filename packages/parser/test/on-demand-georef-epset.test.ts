@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { StepTokenizer } from '../src/tokenizer.js';
 import { ColumnarParser } from '../src/columnar-parser.js';
 import { extractGeoreferencingOnDemand } from '../src/on-demand-extractors.js';
+import { EntityExtractor } from '../src/entity-extractor.js';
 
 /**
  * The on-demand georef path (used by the viewer's properties panel) only
@@ -106,5 +107,36 @@ describe('extractGeoreferencingOnDemand — IFC2x3 ePset fallback', () => {
     // the identical reference. Reference equality therefore proves memoization.
     expect(first).not.toBeNull();
     expect(second).toBe(first);
+  });
+
+  // Work-count regression guard (deterministic, machine-independent — counts
+  // work done, not wall-clock). The georef scan decodes one entity per property
+  // set on models without an IfcMapConversion; memoization must drop that to
+  // zero on subsequent calls so the viewer's per-batch invocations are free.
+  it('scans property sets once: zero entity decodes on the memoized second call', async () => {
+    const PSET_COUNT = 400;
+    let ifc = `#30=IFCSITE('06pHC0eJnCHlVXWW2sVoPO',$,'Site',$,$,$,$,$,.ELEMENT.,(51,26,47,208626),(5,27,36,650968),$,$,$);\n`;
+    // Many non-georef property sets force the scan to run to completion (the
+    // worst case: no ePset_MapConversion exists, so it never early-returns).
+    for (let i = 0; i < PSET_COUNT; i += 1) {
+      ifc += `#${1000 + i}=IFCPROPERTYSET('pset${i}aaaaaaaaaaaaaaaaaaaa',$,'Pset_Generic_${i}',$,());\n`;
+    }
+    const store = await storeFromIfc(ifc);
+
+    const decode = vi.spyOn(EntityExtractor.prototype, 'extractEntity');
+    decode.mockClear();
+    extractGeoreferencingOnDemand(store);
+    const firstCallDecodes = decode.mock.calls.length;
+    decode.mockClear();
+    extractGeoreferencingOnDemand(store);
+    const secondCallDecodes = decode.mock.calls.length;
+    decode.mockRestore();
+
+    // First call actually scanned the property sets...
+    expect(firstCallDecodes).toBeGreaterThanOrEqual(PSET_COUNT);
+    // ...the second call did NO work — the regression (#1404) re-scanned on
+    // every geometry batch, which on a real model is tens of thousands of
+    // decodes per batch.
+    expect(secondCallDecodes).toBe(0);
   });
 });

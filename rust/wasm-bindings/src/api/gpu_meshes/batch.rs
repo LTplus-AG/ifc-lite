@@ -98,6 +98,12 @@ impl IfcAPI {
                 built
             }
         };
+        // Threaded bundle (--features threads): keep a clone of the index Arc so the
+        // parallel batch loop below can build a fresh per-job decoder (one decoder
+        // cannot be shared `&mut` across rayon tasks). Cheap refcount bump; absent
+        // from the default (serial) build so no unused-variable warning there.
+        #[cfg(feature = "threads")]
+        let entity_index_for_jobs = std::sync::Arc::clone(&entity_index_arc);
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc);
         // Seed the unit-scale caches so curve/arc tessellation never re-pays the
         // O(file) IFCPROJECT scan: this decoder is fresh on every batch call,
@@ -288,6 +294,10 @@ impl IfcAPI {
         // Process only the entities specified in jobs_flat — every job runs
         // THE canonical per-element producer (`ifc_lite_processing::element`),
         // the same code the native pipeline runs.
+        //
+        // Default (serial) build: one warm decoder reused across the whole batch
+        // (the decoder's per-entity cache is the dominant marshalling win, #1097).
+        #[cfg(not(feature = "threads"))]
         for chunk in jobs_flat.chunks(3) {
             if chunk.len() < 3 {
                 break;
@@ -373,6 +383,141 @@ impl IfcAPI {
                 meshes: produced.meshes,
                 geometry_hash: produced.geometry_hash,
             });
+        }
+
+        // Threaded build (--features threads): mesh elements across the rayon
+        // pool, one FRESH decoder + router per job (a single decoder cannot be
+        // shared `&mut` across tasks). This mirrors the native pipeline's
+        // `process_entity_job` fan-out, the proven 4-5x per-element CSG win, but
+        // keeps the viewer's `EmitTagged` type geometry, inline colour
+        // resolution, and geometry hashing. `par_chunks` collect() preserves job
+        // order, so `outputs` is identical to the serial path's. Every `&self` /
+        // `&mut decoder` cache lookup is hoisted OUT of the closure so it
+        // captures only `Send + Sync` data (no `IfcAPI: Sync` requirement).
+        #[cfg(feature = "threads")]
+        {
+            use rayon::prelude::*;
+            let quality = self.tessellation_quality();
+            let referenced = self.get_or_build_referenced_repmaps(content, &mut decoder);
+            let instantiated = self.get_or_build_instantiated_type_ids(content, &mut decoder);
+            let material_layer_index = if !self.merge_layers() {
+                Some(self.get_or_build_material_layer_index(content, &mut decoder))
+            } else {
+                None
+            };
+            // Model-wide content-dedup cache shared by every per-job router (off by
+            // default — its structural hash costs more than the meshing it skips,
+            // see GeometryRouter::content_dedup_enabled).
+            let dedup_cache = if GeometryRouter::content_dedup_enabled() {
+                Some(GeometryRouter::new_dedup_cache())
+            } else {
+                None
+            };
+            // Per-job routers each surface their own CSG failures; collect them
+            // into one map (parity with the serial path's `batch_csg_failures`).
+            let csg_collector: std::sync::Mutex<
+                rustc_hash::FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
+            > = std::sync::Mutex::new(rustc_hash::FxHashMap::default());
+
+            outputs = jobs_flat
+                .par_chunks(3)
+                .filter_map(|chunk| {
+                    if chunk.len() < 3 {
+                        return None;
+                    }
+                    let id = chunk[0];
+                    let start = chunk[1] as usize;
+                    let end = chunk[2] as usize;
+                    if parts_to_skip.contains(&id) {
+                        return None;
+                    }
+
+                    let mut local_decoder =
+                        EntityDecoder::with_arc_index(content, entity_index_for_jobs.clone());
+                    local_decoder.seed_unit_scales(unit_scale, plane_angle_to_radians);
+                    let Ok(entity) = local_decoder.decode_at(start, end) else {
+                        return None;
+                    };
+                    let ifc_type = entity.ifc_type;
+
+                    let element_color = if !geometry_styles.is_empty()
+                        && entity.get(6).map(|a| !a.is_null()).unwrap_or(false)
+                    {
+                        resolve_element_color(&entity, geometry_styles, &mut local_decoder)
+                    } else {
+                        None
+                    };
+
+                    let kind =
+                        if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
+                            let rep_map_ids: Vec<u32> = entity
+                                .get(6)
+                                .and_then(|a| a.as_list())
+                                .map(|list| {
+                                    list.iter().filter_map(|v| v.as_entity_ref()).collect()
+                                })
+                                .unwrap_or_default();
+                            if rep_map_ids.is_empty() {
+                                return None;
+                            }
+                            let rep_maps = plan_type_geometry(
+                                &rep_map_ids,
+                                &referenced,
+                                instantiated.contains(&id),
+                                TypeGeometryMode::EmitTagged,
+                            );
+                            if rep_maps.is_empty() {
+                                return None;
+                            }
+                            ElementJobKind::TypeProduct { rep_maps }
+                        } else {
+                            ElementJobKind::Product
+                        };
+
+                    let mut local_router =
+                        GeometryRouter::with_scale_and_quality(unit_scale, quality);
+                    if needs_shift {
+                        local_router.set_rtc_offset((rtc_x, rtc_y, rtc_z));
+                    }
+                    if let Some(idx) = material_layer_index.as_ref() {
+                        local_router.set_material_layer_index(idx.clone());
+                    }
+                    if let Some(cache) = dedup_cache.as_ref() {
+                        local_router.enable_content_dedup_shared(cache.clone());
+                    }
+                    let local_router = local_router;
+
+                    let produced = produce_element_meshes(
+                        &ElementMeshJob {
+                            id,
+                            ifc_type,
+                            entity: &entity,
+                            kind,
+                            element_color,
+                            metadata: None,
+                        },
+                        &ctx,
+                        &opts,
+                        &mut local_decoder,
+                        &local_router,
+                    );
+
+                    if !produced.csg_failures.is_empty() {
+                        if let Ok(mut c) = csg_collector.lock() {
+                            for (product_id, fails) in produced.csg_failures {
+                                c.entry(product_id).or_default().extend(fails);
+                            }
+                        }
+                    }
+                    Some(ElementMeshOutput {
+                        id,
+                        meshes: produced.meshes,
+                        geometry_hash: produced.geometry_hash,
+                    })
+                })
+                .collect();
+
+            batch_csg_failures = csg_collector.into_inner().unwrap_or_default();
         }
 
         // Surface the opening / CSG diagnostics. The viewer's large-file path

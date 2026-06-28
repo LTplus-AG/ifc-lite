@@ -28,6 +28,22 @@ export interface GeometryWorkerInitMessage {
    * Vite/webpack/Rollup consumers that already work keep working.
    */
   wasmUrl?: string;
+  /**
+   * Load the THREADED wasm bundle (`@ifc-lite/wasm/threaded`) instead of the
+   * default single-thread one, and bring up an in-instance rayon pool via
+   * `initThreadPool`. The host sets this only when `isThreadedWasmUsable()` is
+   * true (engine supports the threads proposal AND the page is cross-origin
+   * isolated). When set, this worker is the SOLE geometry worker and its
+   * internal `par_iter` element loop fans CSG across `threads` cores; the plain
+   * path (this flag absent) keeps the static single-thread glue untouched.
+   * See docs/architecture/csg-threading-design.md.
+   */
+  useThreaded?: boolean;
+  /**
+   * Thread-pool size for the threaded bundle (defaults to
+   * `navigator.hardwareConcurrency`). Ignored unless `useThreaded` is set.
+   */
+  threads?: number;
 }
 
 /**
@@ -259,6 +275,50 @@ let api: IfcAPI | null = null;
 let cachedWasmUrl: string | undefined = undefined;
 
 /**
+ * Threaded-bundle state, set from the `init` message's `useThreaded`/`threads`.
+ * When `useThreadedGlue` is true, {@link ensureInit} dynamic-imports
+ * `@ifc-lite/wasm/threaded` (a SEPARATE wasm-bindgen-rayon glue backed by shared
+ * memory) and brings up the rayon pool once via `initThreadPool`; the default
+ * path keeps the static single-thread import at the top of this file and never
+ * touches any of this. See docs/architecture/csg-threading-design.md.
+ */
+let useThreadedGlue = false;
+let requestedThreadCount = 0;
+let threadPoolStarted = false;
+
+/** Shape of the threaded glue module (`@ifc-lite/wasm/threaded`). */
+type ThreadedWasmGlue = {
+  default: (input?: unknown) => Promise<unknown>;
+  initSync: (input: { module_or_path: WebAssembly.Module }) => unknown;
+  IfcAPI: new () => IfcAPI;
+  initThreadPool: (numThreads: number) => Promise<unknown>;
+};
+let threadedGlue: ThreadedWasmGlue | null = null;
+let threadedGlueLoad: Promise<ThreadedWasmGlue> | null = null;
+
+/**
+ * Dynamic-import the threaded bundle exactly once. Kept out of the static import
+ * graph so the default single-thread worker never pulls in the rayon glue or its
+ * nested worker helper; Vite code-splits this into its own chunk.
+ */
+function loadThreadedGlue(): Promise<ThreadedWasmGlue> {
+  if (!threadedGlueLoad) {
+    threadedGlueLoad = import('@ifc-lite/wasm/threaded').then((m) => {
+      threadedGlue = m as unknown as ThreadedWasmGlue;
+      return threadedGlue;
+    });
+  }
+  return threadedGlueLoad;
+}
+
+/** Resolve the rayon pool size: explicit request, else hardware concurrency. */
+function resolveThreadCount(): number {
+  if (requestedThreadCount > 0) return requestedThreadCount;
+  const hc = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : undefined;
+  return Math.max(1, hc ?? 4);
+}
+
+/**
  * Idempotent wasm + IfcAPI initializer. Centralises the
  * `if (!api) { await init(); api = new IfcAPI(); ... }` boilerplate that
  * every message handler used to repeat. Honours `cachedWasmUrl` so the
@@ -273,8 +333,22 @@ let cachedWasmUrl: string | undefined = undefined;
  */
 async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
-  await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
-  api = new IfcAPI();
+  if (useThreadedGlue) {
+    const g = await loadThreadedGlue();
+    await initWasmWithRetry(() => g.default(cachedWasmUrl), { label: 'geometry.worker(threaded)' });
+    // Bring up the rayon pool exactly once per worker realm. The recovery path
+    // (api = null in processBatch) re-enters ensureInit, but `g.default()`
+    // short-circuits on an already-loaded module and the pool must NOT be
+    // re-spawned — hence the module-level `threadPoolStarted` guard.
+    if (!threadPoolStarted) {
+      threadPoolStarted = true;
+      await g.initThreadPool(resolveThreadCount());
+    }
+    api = new g.IfcAPI();
+  } else {
+    await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
+    api = new IfcAPI();
+  }
   mergeLayersApplied = false;
   applyMergeLayersToApi();
   geometryHashApplied = false;
@@ -885,7 +959,15 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
 
     if (e.data.type === 'init') {
       if (e.data.wasmUrl) cachedWasmUrl = e.data.wasmUrl;
-      if (e.data.wasmModule) {
+      if (e.data.useThreaded) {
+        useThreadedGlue = true;
+        requestedThreadCount = e.data.threads ?? 0;
+      }
+      // The synchronous compiled-module path (initSync) is single-thread only;
+      // the threaded bundle needs async init + initThreadPool bring-up, so it
+      // always routes through ensureInit. Plain consumers passing a prebuilt
+      // module keep the exact existing fast path.
+      if (e.data.wasmModule && !useThreadedGlue) {
         initSync({ module_or_path: e.data.wasmModule });
         api = new IfcAPI();
         mergeLayersApplied = false;

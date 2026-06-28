@@ -28,6 +28,7 @@ import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { computeWorkerCount } from './worker-count.js';
+import { isThreadedWasmUsable } from './wasm-features.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 
@@ -452,7 +453,25 @@ export async function* processParallel(
     totalJobs: estimatedJobs,
     workerCountOverride: options?.workerCountOverride,
   });
-  const workerCount = workerCountResult.count;
+
+  // Threaded-WASM path (docs/architecture/csg-threading-design.md): run ONE
+  // geometry worker backed by the shared-memory bundle whose internal
+  // `par_chunks` element loop fans CSG across the rayon pool, instead of the N
+  // separate single-thread worker instances.
+  //
+  // OPT-IN (default off): the browser A/B showed this is a win on CSG-bound
+  // models (e.g. ~1.4x vs the 8-worker pool, ~2.4x vs a single serial worker)
+  // but only a tie on large decode-bound models (a fresh per-job decoder loses
+  // the serial path's warm cache, and 10 rayon threads contend on dlmalloc's
+  // single lock). It also has no fallback if the lone worker dies. So it stays
+  // behind `globalThis.__IFCLITE_THREADED_WASM__ === true` until (a) a
+  // threaded-failure → plain-pool fallback lands and (b) production PostHog
+  // per-model data confirms the win. Capability is still gated on
+  // `isThreadedWasmUsable()` (threads proposal + cross-origin isolation).
+  const threadedRequested =
+    (globalThis as { __IFCLITE_THREADED_WASM__?: boolean }).__IFCLITE_THREADED_WASM__ === true;
+  const useThreadedWasm = threadedRequested && isThreadedWasmUsable();
+  const workerCount = useThreadedWasm ? 1 : workerCountResult.count;
 
   const workers: Worker[] = [];
   for (let i = 0; i < workerCount; i++) {
@@ -468,10 +487,22 @@ export async function* processParallel(
     // `import.meta.url`-based resolution, which is what Vite + webpack
     // already handle.
     const wasmUrlForWorker = options?.wasmUrls?.wasm;
-    worker.postMessage({
-      type: 'init',
-      ...(wasmUrlForWorker ? { wasmUrl: wasmUrlForWorker } : {}),
-    });
+    if (useThreadedWasm) {
+      // The threaded glue resolves its OWN wasm binary via import.meta.url
+      // (Vite bundles `@ifc-lite/wasm/threaded`), so do NOT forward the plain
+      // `wasmUrl` here — it points at the single-thread binary. `threads` sizes
+      // the rayon pool; the worker defaults to hardwareConcurrency when omitted.
+      worker.postMessage({
+        type: 'init',
+        useThreaded: true,
+        threads: cores,
+      });
+    } else {
+      worker.postMessage({
+        type: 'init',
+        ...(wasmUrlForWorker ? { wasmUrl: wasmUrlForWorker } : {}),
+      });
+    }
     // Issue #540: forward the user's "Merge Multilayer Walls" toggle
     // BEFORE any stream-start so the worker's IfcAPI has the flag set
     // before its first parse call. The tail-promise serialiser inside
@@ -662,7 +693,8 @@ export async function* processParallel(
   const overrideNote = options?.workerCountOverride != null
     ? ` (override=${options.workerCountOverride}, bound=${workerCountResult.reason})`
     : ` (cores=${cores}, bound=${workerCountResult.reason})`;
-  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}`);
+  const threadedNote = useThreadedWasm ? ` threaded-wasm=on(threads=${cores})` : '';
+  console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}${threadedNote}`);
 
   const prepassWorker = makePrepassWorker();
   // Wrap the rest of the pipeline so worker teardown runs not only on

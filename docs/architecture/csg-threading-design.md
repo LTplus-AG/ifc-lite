@@ -149,13 +149,62 @@ WASM: build `rust/csg-thread-bench` plain + threaded (see crate header), serve
 - **Selection primitive landed.** `packages/geometry/src/wasm-features.ts`:
   `supportsWasmThreads()` (shared-memory `WebAssembly.validate` probe) and
   `isThreadedWasmUsable()` (probe AND `crossOriginIsolated`). Unit-tested.
-- **Remaining (must be built + QA'd against the running viewer, not blind):** the
-  worker statically imports the *plain* `@ifc-lite/wasm` glue, and the threaded
-  bundle ships *different* glue (rayon init). So selection is NOT a wasm-URL swap;
-  it needs (a) `@ifc-lite/wasm` to export the threaded glue (`./threaded`), (b) a
-  threaded worker variant that imports it + calls `initThreadPool`, (c) the
-  orchestrator (`geometry-parallel.ts`) to choose, when `isThreadedWasmUsable()`,
-  the "naive" single-threaded-instance path (one worker, internal CSG `par_iter`
-  across cores) instead of the N plain-worker pool, and (d) Vite copying both
-  bundles. This is a cross-package change whose correctness only shows in the
-  viewer on a real model, so it lands with a browser benchmark, not on faith.
+- **Wired end-to-end + browser-measured (2026-06-28).** The cross-package wiring
+  landed and was validated in real Chrome on a real model:
+  - **Kernel:** the viewer's per-element batch loop (`wasm-bindings`
+    `gpu_meshes/batch.rs::produce_batch`) was the missing piece — it was a serial
+    `for` even with `--features threads` (that feature only exposed
+    `init_thread_pool`). Added a `#[cfg(feature = "threads")]` `par_chunks` variant
+    (fresh per-job decoder + router, mirroring native `process_entity_job`, but
+    keeping the viewer's `EmitTagged` type geometry). The default/shipped serial
+    path is byte-identical (untouched, under `#[cfg(not(feature = "threads"))]`).
+    Both feature configs `cargo check` clean.
+  - **Glue selection:** `geometry.worker.ts` keeps the static single-thread import
+    for the plain path and *additively* dynamic-imports `@ifc-lite/wasm/threaded`
+    when the `init` message carries `useThreaded`, calling `initThreadPool` once
+    (guarded against the recovery re-init). `@ifc-lite/wasm` gained a `./threaded`
+    export; the viewer Vite config aliases it to `pkg-threaded` + excludes it from
+    pre-bundling. The dynamic import pulls the threaded bundle (and its nested
+    rayon worker) into the Vite build graph, so no manual copy step is needed.
+  - **Orchestrator:** `geometry-parallel.ts` runs ONE geometry worker on the
+    threaded path (`workerCount = 1`; internal `par_chunks` fans across the rayon
+    pool) instead of the N plain-worker pool. **Opt-in (default off):** selected
+    only when `globalThis.__IFCLITE_THREADED_WASM__ === true` AND
+    `isThreadedWasmUsable()`.
+
+  - **Measured (real Chrome, viewer dev, 10-core Apple Silicon, cold, cache
+    cleared each run). Output parity is EXACT in every cell** (verified the hard
+    way: plain@1-worker == threaded@1-worker byte-for-byte, e.g. ISSUE_068 both
+    11942 meshes / 2187k verts / 902.4K tris, so `par_chunks` produces identical
+    geometry to the serial loop):
+
+    | model | plain@8 (default) | threaded@1 (rayon) | plain@1 (serial) |
+    |---|---|---|---|
+    | ISSUE_129 (11.5 MB, CSG-bound: 339 diagonal openings) | 15.3 / 15.1 s | **11.1 / 10.9 s** | 27.1 s |
+    | ISSUE_068 (53.7 MB, decode-bound) | 14.1 / 16.2 s | 15.3 / 15.4 s | **9.9 s** |
+
+    **The win is per-element-work-size dependent, not file-size dependent.** On the
+    CSG-bound model threaded beats the default pool ~1.38x and a single serial
+    worker ~2.4x (heavy per-element CSG amortizes the rayon/atomics overhead). On
+    the decode-bound model threaded only ties the default pool and *loses* to a
+    single serial worker, because per-element work is small and two costs dominate:
+    (1) `par_chunks` builds a **fresh decoder per job**, discarding the serial
+    path's warm cross-job decode cache, and (2) ~10 rayon threads contend on
+    dlmalloc's **single global lock** during allocation-heavy decode. vs the
+    production default (plain@8) it is a win-or-tie, never a regression; vs an
+    (also non-default) single serial worker it can lose. Aside: plain@1 beating
+    plain@8 on ISSUE_068 shows the 8-worker default itself carries setup overhead
+    (8 wasm heaps + 8 entity-index builds) worth tuning independently.
+- **Why opt-in, and the path to default-on:** the lone threaded worker has **no
+  fallback** if it dies (the plain pool has N), and the win is not yet universal.
+  Before flipping default-on: (a) **per-rayon-thread warm decoder** (reuse one
+  decoder per worker thread via `map_with`/thread-local instead of fresh-per-job)
+  to recover the decode-bound case from "tie" toward "win"; (b) **threaded-failure
+  → plain-pool fallback**; (c) production **PostHog per-model** confirmation
+  (the regression dashboard/alerts already exist). Numbers above are dev-build and
+  noisy (plain@8 swung 14-16 s); a production-build A/B should firm them up.
+- **Remaining mechanical PR items:** deploy pipeline must run `BUILD_THREADED=1`
+  before `vite build`; Safari/non-isolated path stays on the untouched plain
+  bundle (verification, not new work). Changeset + CI `tsc` resolution of
+  `@ifc-lite/wasm/threaded` (ambient shim, `types` dropped from the export) are
+  done on this branch.

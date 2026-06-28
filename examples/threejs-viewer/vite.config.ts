@@ -4,8 +4,17 @@
 
 import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
+import { threadedWasmAliasTarget } from '../../packages/wasm/threaded-alias.mjs';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // The geometry worker dynamic-imports the optional `@ifc-lite/wasm/threaded`
+      // subpath; resolve it to the built threaded bundle or a stub so the build
+      // succeeds whether or not BUILD_THREADED produced it.
+      '@ifc-lite/wasm/threaded': threadedWasmAliasTarget,
+    },
+  },
   // The @ifc-lite geometry worker pool ships ES-module workers. Rollup's
   // default worker format is IIFE, which it refuses to emit for a
   // code-splitting build (multiple entries) — force ESM workers instead.

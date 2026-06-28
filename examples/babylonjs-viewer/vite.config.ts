@@ -3,8 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { defineConfig } from 'vite';
+import { threadedWasmAliasTarget } from '../../packages/wasm/threaded-alias.mjs';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // The geometry worker dynamic-imports the optional `@ifc-lite/wasm/threaded`
+      // subpath; resolve it to the built threaded bundle or a stub so the build
+      // succeeds whether or not BUILD_THREADED produced it.
+      '@ifc-lite/wasm/threaded': threadedWasmAliasTarget,
+    },
+  },
   // The @ifc-lite geometry worker pool ships ES-module workers; emit them as
   // ESM so a production build never trips over Rollup's IIFE worker default.
   worker: {

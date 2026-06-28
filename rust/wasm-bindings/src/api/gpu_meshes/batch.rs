@@ -405,11 +405,17 @@ impl IfcAPI {
             } else {
                 None
             };
-            // Model-wide content-dedup cache shared by every per-job router (off by
+            // Content-dedup cache shared by every per-job router AND reused across
+            // batches via the per-worker `cached_item_dedup` slot (parity with the
+            // serial path, which arms the outer router from the same slot). Off by
             // default — its structural hash costs more than the meshing it skips,
-            // see GeometryRouter::content_dedup_enabled).
+            // see GeometryRouter::content_dedup_enabled.
             let dedup_cache = if GeometryRouter::content_dedup_enabled() {
-                Some(GeometryRouter::new_dedup_cache())
+                let mut slot = self
+                    .cached_item_dedup
+                    .lock()
+                    .expect("ifc-lite cached_item_dedup Mutex poisoned");
+                Some(slot.get_or_insert_with(GeometryRouter::new_dedup_cache).clone())
             } else {
                 None
             };

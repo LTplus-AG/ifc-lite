@@ -5,6 +5,7 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 import path from 'path';
 import fs from 'fs';
 import { cesiumStaticAssets } from './vite-plugins/cesium-assets';
+import { threadedWasmAliasTarget } from '../../packages/wasm/threaded-alias.mjs';
 
 // --- Build-time changelog parser ---
 
@@ -238,10 +239,13 @@ export default defineConfig({
       '@ifc-lite/cache': path.resolve(__dirname, '../../packages/cache/src'),
       '@ifc-lite/ifcx': path.resolve(__dirname, '../../packages/ifcx/src'),
       '@ifc-lite/pointcloud': path.resolve(__dirname, '../../packages/pointcloud/src'),
-      // More specific first: the threaded bundle (shared-memory + rayon glue),
-      // dynamic-imported by geometry.worker.ts when the page is cross-origin
-      // isolated. Must precede the plain '@ifc-lite/wasm' alias so it wins.
-      '@ifc-lite/wasm/threaded': path.resolve(__dirname, '../../packages/wasm/pkg-threaded/ifc-lite.js'),
+      // More-specific FIRST (like '@ifc-lite/parser/browser' above): the threaded
+      // bundle (shared-memory + rayon glue), dynamic-imported by geometry.worker.ts
+      // when threading is enabled. Vite's alias plugin runs before user 'pre'
+      // plugins and the plain '@ifc-lite/wasm' string alias prefix-matches the
+      // subpath, so this MUST be an alias entry ordered before it. Target is the
+      // built bundle or a stub (the artifact is absent in normal CI builds).
+      '@ifc-lite/wasm/threaded': threadedWasmAliasTarget,
       '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
       '@ifc-lite/sdk': path.resolve(__dirname, '../../packages/sdk/src'),
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),

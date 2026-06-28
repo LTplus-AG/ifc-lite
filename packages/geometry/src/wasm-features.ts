@@ -25,7 +25,11 @@ export function supportsWasmThreads(): boolean {
         typeof WebAssembly !== 'undefined' &&
         typeof WebAssembly.validate === 'function' &&
         WebAssembly.validate(THREADS_PROBE);
-    } catch {
+    } catch (err) {
+      // Treat a probe failure as "no threads" (safe fallback to the
+      // single-thread bundle), but surface why instead of swallowing it
+      // silently (AGENTS.md: no silent catch).
+      console.warn('[ifc-lite] WASM threads probe failed; assuming unsupported:', err);
       threadsCache = false;
     }
   }

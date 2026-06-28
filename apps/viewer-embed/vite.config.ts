@@ -4,6 +4,7 @@ import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import path from 'path';
 import fs from 'fs';
+import { threadedWasmAliasTarget } from '../../packages/wasm/threaded-alias.mjs';
 
 // Read version from root package.json
 const rootPkg = JSON.parse(
@@ -47,6 +48,9 @@ export default defineConfig({
       '@ifc-lite/lens': path.resolve(__dirname, '../../packages/lens/src'),
       '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
       '@ifc-lite/create': path.resolve(__dirname, '../../packages/create/src'),
+      // More-specific FIRST: threaded bundle (or stub when not built), so the
+      // plain '@ifc-lite/wasm' alias below does not prefix-match the subpath.
+      '@ifc-lite/wasm/threaded': threadedWasmAliasTarget,
       '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
     },
   },

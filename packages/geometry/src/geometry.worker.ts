@@ -341,8 +341,11 @@ async function ensureInit(): Promise<IfcAPI> {
     // short-circuits on an already-loaded module and the pool must NOT be
     // re-spawned — hence the module-level `threadPoolStarted` guard.
     if (!threadPoolStarted) {
-      threadPoolStarted = true;
+      // Only mark the pool started AFTER initThreadPool resolves. If it rejects,
+      // the flag stays false so a later retry (recovery sets api = null) re-attempts
+      // bring-up instead of constructing a threaded IfcAPI with no running pool.
       await g.initThreadPool(resolveThreadCount());
+      threadPoolStarted = true;
     }
     api = new g.IfcAPI();
   } else {

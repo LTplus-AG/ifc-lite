@@ -37,6 +37,15 @@ const SNAPSHOT_PATH = join(ROOT, 'scripts', 'api-surface.json');
 const UPDATE = process.argv.includes('--update');
 
 /**
+ * Subpaths whose declaration is produced ONLY by an opt-in build and is not
+ * committed, so it is absent in a normal `pnpm build` / CI run and cannot be
+ * snapshot-guarded here. `@ifc-lite/wasm/threaded` is the threaded WASM bundle
+ * (built via `BUILD_THREADED=1`, gitignored like `pkg/`); its glue mirrors the
+ * plain `@ifc-lite/wasm` surface, which IS guarded.
+ */
+const SKIP_SURFACES = new Set(['@ifc-lite/wasm/threaded']);
+
+/**
  * Resolve one `exports` map target to its declaration file, or null for
  * non-code targets (wasm assets, "./package.json", glob patterns).
  * Prefers an explicit `types` condition; otherwise infers the .d.ts
@@ -96,6 +105,7 @@ function collectEntryPoints() {
         : resolveDeclaration(pkgDir, key, target);
       if (!declaration) continue; // non-code subpath — nothing to guard
       const surfaceKey = isRoot ? pkg.name : `${pkg.name}/${key.slice(2)}`;
+      if (SKIP_SURFACES.has(surfaceKey)) continue; // opt-in build artifact (see above)
       if (existsSync(declaration)) {
         entries.set(surfaceKey, declaration);
       } else {

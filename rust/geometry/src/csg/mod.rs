@@ -891,12 +891,12 @@ fn add_triangle_to_mesh(mesh: &mut Mesh, triangle: &Triangle) {
 mod tests {
     use super::*;
 
-    /// >MAX_CUTTERS_PER_ARRANGEMENT disjoint cutters force the chunked path in
+    /// More cutters than MAX_CUTTERS_PER_ARRANGEMENT force the chunked path in
     /// `subtract_mesh_many`; the result must match the sequential subtract chain.
-    /// Set difference is order-independent (host − {all} ≡ host − {chunk₁} −
-    /// {chunk₂} − …), so chunking is solid-equivalent. Guards the chunk boundary
-    /// (the perf fix for the 86 MB model that stalled the geometry stream on a
-    /// ~90-opening host packed into one arrangement).
+    /// Set difference is order-independent (`host - {all}` equals
+    /// `host - {chunk1} - {chunk2} - ...`), so chunking is solid-equivalent. Guards
+    /// the chunk boundary (the perf fix for the 86 MB model that stalled the
+    /// geometry stream on a ~90-opening host packed into one arrangement).
     #[test]
     fn subtract_mesh_many_chunks_match_sequential() {
         fn vol(m: &Mesh) -> f64 {

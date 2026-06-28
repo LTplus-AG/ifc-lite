@@ -172,37 +172,48 @@ WASM: build `rust/csg-thread-bench` plain + threaded (see crate header), serve
     only when `globalThis.__IFCLITE_THREADED_WASM__ === true` AND
     `isThreadedWasmUsable()`.
 
-  - **Measured (real Chrome, viewer dev, 10-core Apple Silicon, cold, cache
-    cleared each run). Output parity is EXACT in every cell** (verified the hard
-    way: plain@1-worker == threaded@1-worker byte-for-byte, e.g. ISSUE_068 both
-    11942 meshes / 2187k verts / 902.4K tris, so `par_chunks` produces identical
-    geometry to the serial loop):
+  - **Full bench (real Chrome, viewer dev, 10-core Apple Silicon, cold, cache
+    cleared each run; thermal-controlled — plain@8 advanced_model was identical
+    across runs 7.16/7.18 s). Output parity is EXACT** (verified the hard way:
+    plain@1-worker == threaded@1-worker byte-for-byte, e.g. ISSUE_068 both 11942
+    meshes / 2187k verts / 902.4K tris, so `par_chunks` produces identical geometry
+    to the serial loop; the plain@8-vs-threaded@1 count differences are the
+    instancing partition grouping differently for 1 stream vs 8 shards):
 
-    | model | plain@8 (default) | threaded@1 (rayon) | plain@1 (serial) |
-    |---|---|---|---|
-    | ISSUE_129 (11.5 MB, CSG-bound: 339 diagonal openings) | 15.3 / 15.1 s | **11.1 / 10.9 s** | 27.1 s |
-    | ISSUE_068 (53.7 MB, decode-bound) | 14.1 / 16.2 s | 15.3 / 15.4 s | **9.9 s** |
+    | model | size | workload | plain@8 (default) | threaded@1 | result |
+    |---|---|---|---|---|---|
+    | ISSUE_129 | 11.5 MB | CSG-bound (339 diagonal openings), balanced | 15.3 / 15.1 s | **11.0 s** | **WIN ~1.38x** |
+    | dental_clinic | 12.4 MB | light | **4.1 s** | 4.8 s | LOSS ~0.85x |
+    | advanced_model | 33.7 MB | heavy-tail (few huge elements) | **7.2 s** | 18.3 s | **LOSS ~0.39x (2.5x slower)** |
+    | ISSUE_068 | 53.7 MB | large, decode-bound | 14.1 / 16.2 s | 15.3 / 15.4 s | ~TIE |
 
-    **The win is per-element-work-size dependent, not file-size dependent.** On the
-    CSG-bound model threaded beats the default pool ~1.38x and a single serial
-    worker ~2.4x (heavy per-element CSG amortizes the rayon/atomics overhead). On
-    the decode-bound model threaded only ties the default pool and *loses* to a
-    single serial worker, because per-element work is small and two costs dominate:
-    (1) `par_chunks` builds a **fresh decoder per job**, discarding the serial
-    path's warm cross-job decode cache, and (2) ~10 rayon threads contend on
-    dlmalloc's **single global lock** during allocation-heavy decode. vs the
-    production default (plain@8) it is a win-or-tie, never a regression; vs an
-    (also non-default) single serial worker it can lose. Aside: plain@1 beating
-    plain@8 on ISSUE_068 shows the 8-worker default itself carries setup overhead
-    (8 wasm heaps + 8 entity-index builds) worth tuning independently.
-- **Why opt-in, and the path to default-on:** the lone threaded worker has **no
-  fallback** if it dies (the plain pool has N), and the win is not yet universal.
-  Before flipping default-on: (a) **per-rayon-thread warm decoder** (reuse one
-  decoder per worker thread via `map_with`/thread-local instead of fresh-per-job)
-  to recover the decode-bound case from "tie" toward "win"; (b) **threaded-failure
-  → plain-pool fallback**; (c) production **PostHog per-model** confirmation
-  (the regression dashboard/alerts already exist). Numbers above are dev-build and
-  noisy (plain@8 swung 14-16 s); a production-build A/B should firm them up.
+    **Verdict: the naive single-instance `par_chunks` is a NET REGRESSION on most
+    models, a big one (2.5x) on heavy-tail.** It wins only on the narrow case it
+    was built for — many medium CSG elements where the 8-worker pool's *static
+    shard imbalance* strands one worker (ISSUE_129 plain had `worker[7]` alone to
+    14.5 s; plain@1 serial was 27.1 s, so threading is a real 2.4x there). Why it
+    loses elsewhere:
+    - **Heavy-tail:** across-element `par_chunks` can't split a single huge element,
+      so a few giant elements serialize on individual rayon threads while the
+      single instance loses the pool's 8-way aggregate throughput + memory isolation.
+    - **Light / decode-bound:** per-element work is too small to amortize rayon +
+      atomics overhead; `par_chunks` builds a **fresh decoder per job** (discards
+      the serial warm cross-job cache) and ~10 threads contend on dlmalloc's
+      **single global lock** during allocation-heavy decode.
+    - Aside: plain@1 beating plain@8 on ISSUE_068 (9.9 vs ~15 s) shows the 8-worker
+      default itself carries setup overhead (8 wasm heaps + 8 entity-index builds).
+- **Strategic conclusion:** in-WASM threading via one shared-memory instance is
+  NOT the path to "fast WASM" in the viewer — it regresses the common cases. The
+  higher-ROI directions the bench points to: (1) **dynamic load-balancing in the
+  existing N-instance pool** (work-stealing / re-shard the stranded worker) — this
+  captures the only real win (ISSUE_129) WITHOUT dlmalloc contention, memory
+  blow-up, or the heavy-tail/decode regressions; (2) **better worker-count /
+  setup-cost tuning** (plain@1 < plain@8 on big files); (3) only then the
+  **surgical** threaded split (thread ONLY the CSG boolean step, keep decode on
+  the pool) with a **per-rayon-thread warm decoder** + **threaded-failure → pool
+  fallback**. This PR lands the threaded capability + wiring as **opt-in, off by
+  default**, byte-parity-correct, with the plain default-path untouched; the bench
+  is the evidence it must stay opt-in.
 - **Remaining mechanical PR items:** deploy pipeline must run `BUILD_THREADED=1`
   before `vite build`; Safari/non-isolated path stays on the untouched plain
   bundle (verification, not new work). Changeset + CI `tsc` resolution of

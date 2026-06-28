@@ -502,8 +502,6 @@ impl ClippingProcessor {
     /// genuinely invalid kernel OUTPUT records, exactly like
     /// [`Self::subtract_mesh`].
     pub fn subtract_mesh_many(&self, host_mesh: &Mesh, cutters: &[&Mesh]) -> Result<Mesh> {
-        let total: usize = cutters.iter().map(|c| c.triangle_count()).sum();
-        record_csg_op(0, host_mesh.triangle_count(), total);
         if host_mesh.is_empty() {
             return Ok(Mesh::new());
         }
@@ -532,6 +530,13 @@ impl ClippingProcessor {
         const MAX_CUTTERS_PER_ARRANGEMENT: usize = 16;
         let mut result = host_mesh.clone();
         for chunk in live.chunks(MAX_CUTTERS_PER_ARRANGEMENT) {
+            // Census: record THIS kernel invocation's real operand sizes (the
+            // current host + this chunk's cutters). Chunking runs the kernel once
+            // per chunk, so report K real ops, not one synthetic op carrying the
+            // whole group's cutter total. For live.len() <= cap this is one record
+            // identical to the prior single arrangement.
+            let chunk_tris: usize = chunk.iter().map(|c| c.triangle_count()).sum();
+            record_csg_op(0, result.triangle_count(), chunk_tris);
             crate::kernel::budget::begin();
             let raw = crate::kernel::mesh_bridge::subtract_many(&result, chunk);
             if crate::kernel::budget::tripped() {
@@ -544,11 +549,17 @@ impl ClippingProcessor {
                 // group so the sequential per-opening path takes over.
                 return Ok(host_mesh.clone());
             };
-            result = Self::consolidate_coplanar(raw);
-        }
-        if !result.is_empty() && !self.validate_mesh(&result) {
-            self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
-            return Ok(host_mesh.clone());
+            let next = Self::consolidate_coplanar(raw);
+            // Validate each intermediate BEFORE it becomes the next chunk's host:
+            // a non-watertight / invalid intermediate would silently corrupt every
+            // subsequent subtraction. On failure reject the whole group so the
+            // per-opening sequential path takes over — same guard as the
+            // un-chunked path, just applied per chunk.
+            if !next.is_empty() && !self.validate_mesh(&next) {
+                self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
+                return Ok(host_mesh.clone());
+            }
+            result = next;
         }
         Ok(result)
     }

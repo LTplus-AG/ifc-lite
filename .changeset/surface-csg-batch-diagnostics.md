@@ -12,8 +12,9 @@ programmatic signal reached the host. A silently-uncut model produced a wrong bu
 non-empty result with nothing the load pipeline could observe (only the native
 server path returned `total_csg_failures` / `products_with_failures`).
 
-`processGeometryBatchPartitioned` (the default viewer path) now exposes
-`totalCsgFailures` and `productsWithFailures` getters on `PartitionedBatch`. The
-geometry worker sums them across batches and reports a single per-load total on the
-completion message plus a one-line console summary, matching the native
-`ProcessingResponse`.
+The WASM `MeshCollection` (produced by both the flat and partitioned batch paths)
+now exposes `totalCsgFailures` and `productsWithFailures` getters. The geometry
+worker sums them across batches; the parallel loader aggregates the per-worker
+totals and forwards them on the public streaming `complete` event (plus a one-line
+console summary), so `loadFile` callers can observe a per-load total, matching the
+native `ProcessingResponse`. `productsWithFailures` is a batch-summed upper bound.

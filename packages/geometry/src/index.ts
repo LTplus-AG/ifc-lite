@@ -200,6 +200,9 @@ export type StreamingGeometryEvent =
        *  hosts). Omitted when zero or on non-parallel load paths. Parity with
        *  the native server path. */
       totalCsgFailures?: number;
+      /** Distinct products with at least one CSG failure. Batch-summed, so treat
+       *  it as an upper bound: a product whose geometry spans batches may be
+       *  counted more than once. */
       productsWithFailures?: number;
     };
 

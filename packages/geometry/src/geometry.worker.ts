@@ -225,6 +225,11 @@ export interface GeometryWorkerProgressMessage {
 export interface GeometryWorkerCompleteMessage {
   type: 'complete';
   totalMeshes: number;
+  /** CSG boolean failures across the whole load (un-cut openings, emptied hosts).
+   *  Omitted when zero. Parity with the native path's ProcessingResponse. */
+  totalCsgFailures?: number;
+  /** Distinct products with at least one CSG failure (upper bound; summed per batch). */
+  productsWithFailures?: number;
 }
 
 export interface GeometryWorkerErrorMessage {
@@ -438,6 +443,12 @@ interface ProcessingSession {
   pendingInstancedGeometryHashes: Map<number, bigint>;
   totalMeshesEmitted: number;
   cumulativeMeshBytes: number;
+  /** CSG boolean failures summed across every batch this load (un-cut openings,
+   *  emptied hosts). Reported once at completion so a silently-uncut model
+   *  surfaces a load total, not just scattered per-batch console warnings. */
+  totalCsgFailures: number;
+  /** Distinct failing products summed per batch (upper bound). */
+  productsWithFailures: number;
 }
 
 let activeSession: ProcessingSession | null = null;
@@ -497,6 +508,8 @@ function startSession(input: {
     pendingInstancedGeometryHashes: new Map(),
     totalMeshesEmitted: 0,
     cumulativeMeshBytes: 0,
+    totalCsgFailures: 0,
+    productsWithFailures: 0,
   };
 }
 
@@ -699,6 +712,8 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         takeMeshes(): ReturnType<IfcAPI['processGeometryBatch']> | undefined;
         takeShard(): Uint8Array;
         readonly instancedOccurrences: number;
+        readonly totalCsgFailures: number;
+        readonly productsWithFailures: number;
         free?(): void;
       };
     }).processGeometryBatchPartitioned;
@@ -732,6 +747,11 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         // viewer's "N meshes" reflects ALL rendered geometry (flat + instanced),
         // not just the flat MeshCollection (these occurrences left the flat path).
         session.pendingInstancedOccurrences += partitioned.instancedOccurrences ?? 0;
+        // CSG-failure diagnostics: accumulate the per-batch counts so completion
+        // can report a single per-load total (parity with the native path)
+        // instead of only the per-batch console warning.
+        session.totalCsgFailures += partitioned.totalCsgFailures ?? 0;
+        session.productsWithFailures += partitioned.productsWithFailures ?? 0;
       } finally {
         // Free the now-empty PartitionedBatch wrapper (its contents were moved out).
         partitioned.free?.();
@@ -820,8 +840,23 @@ function emitSessionEnd(session: ProcessingSession): void {
   (self as unknown as Worker).postMessage(
     { type: 'memory', meshBytes: session.cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
   );
+  if (session.totalCsgFailures > 0) {
+    console.warn(
+      `[ifc-lite] load complete: ${session.totalCsgFailures} CSG failure(s) across ` +
+        `${session.productsWithFailures} product(s) — some openings/voids may be uncut`,
+    );
+  }
   (self as unknown as Worker).postMessage(
-    { type: 'complete', totalMeshes: session.totalMeshesEmitted } as GeometryWorkerCompleteMessage,
+    {
+      type: 'complete',
+      totalMeshes: session.totalMeshesEmitted,
+      ...(session.totalCsgFailures > 0
+        ? {
+            totalCsgFailures: session.totalCsgFailures,
+            productsWithFailures: session.productsWithFailures,
+          }
+        : {}),
+    } as GeometryWorkerCompleteMessage,
   );
 }
 

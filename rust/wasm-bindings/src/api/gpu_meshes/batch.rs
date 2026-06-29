@@ -48,7 +48,7 @@ impl IfcAPI {
         material_element_ids: Option<Vec<u32>>,
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
-    ) -> Vec<ElementMeshOutput> {
+    ) -> (Vec<ElementMeshOutput>, crate::api::CsgBatchDiagnostics) {
         use crate::api::styling::resolve_element_color;
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
@@ -379,7 +379,7 @@ impl IfcAPI {
         // goes processAdaptive -> processParallel -> Web Workers ->
         // `processGeometryBatch`, so the log has to fire here or the
         // diagnostic helper never runs for real-world files.
-        let _ = crate::api::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
+        let (_, csg_diag) = crate::api::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
 
         // Layered-wall slicing diagnostics (#563): a quiet success summary, but a
         // per-element warning (id + reason) when a sliceable wall fails to slice
@@ -413,7 +413,7 @@ impl IfcAPI {
             }
         }
 
-        outputs
+        (outputs, csg_diag)
     }
 }
 
@@ -446,7 +446,7 @@ impl IfcAPI {
         material_colors_rgba: Option<Vec<u8>>,
     ) -> MeshCollection {
         let num_jobs = jobs_flat.len() / 3;
-        let outputs = self.produce_batch(
+        let (outputs, _) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba,
@@ -497,7 +497,7 @@ impl IfcAPI {
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
     ) -> Vec<u8> {
-        let outputs = self.produce_batch(
+        let (outputs, _) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba,
@@ -568,7 +568,7 @@ impl IfcAPI {
         material_colors_rgba: Option<Vec<u8>>,
     ) -> PartitionedBatch {
         let num_jobs = jobs_flat.len() / 3;
-        let outputs = self.produce_batch(
+        let (outputs, csg_diag) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba,
@@ -654,6 +654,8 @@ impl IfcAPI {
             meshes: Some(mesh_collection),
             shard,
             instanced_occurrences,
+            total_csg_failures: csg_diag.total_csg_failures,
+            products_with_failures: csg_diag.products_with_failures,
         }
     }
 }
@@ -686,6 +688,12 @@ pub struct PartitionedBatch {
     meshes: Option<MeshCollection>,
     shard: Vec<u8>,
     instanced_occurrences: usize,
+    /// CSG-failure counts for this batch (parity with the native
+    /// `ProcessingResponse`). The worker sums these across batches and reports a
+    /// per-load total, so a silently-uncut model surfaces a number rather than
+    /// only a per-batch `console.warn`.
+    total_csg_failures: u32,
+    products_with_failures: u32,
 }
 
 #[wasm_bindgen]
@@ -709,5 +717,19 @@ impl PartitionedBatch {
     #[wasm_bindgen(getter, js_name = instancedOccurrences)]
     pub fn instanced_occurrences(&self) -> usize {
         self.instanced_occurrences
+    }
+
+    /// CSG boolean failures recorded while producing this batch (un-cut openings,
+    /// emptied hosts, kernel fallbacks). Parity with the native path's
+    /// `total_csg_failures`.
+    #[wasm_bindgen(getter, js_name = totalCsgFailures)]
+    pub fn total_csg_failures(&self) -> u32 {
+        self.total_csg_failures
+    }
+
+    /// Distinct products (host elements) with at least one CSG failure this batch.
+    #[wasm_bindgen(getter, js_name = productsWithFailures)]
+    pub fn products_with_failures(&self) -> u32 {
+        self.products_with_failures
     }
 }

@@ -619,11 +619,21 @@ export class PartitionedBatch {
    */
   takeMeshes(): MeshCollection | undefined;
   /**
+   * CSG boolean failures recorded while producing this batch (un-cut openings,
+   * emptied hosts, kernel fallbacks). Parity with the native path's
+   * `total_csg_failures`.
+   */
+  readonly totalCsgFailures: number;
+  /**
    * Number of occurrences routed into the instanced shard this batch. The viewer
    * folds this into its total mesh count so the count reflects ALL rendered
    * geometry (flat + instanced), not just the flat MeshCollection.
    */
   readonly instancedOccurrences: number;
+  /**
+   * Distinct products (host elements) with at least one CSG failure this batch.
+   */
+  readonly productsWithFailures: number;
 }
 
 export class ProfileCollection {
@@ -1138,8 +1148,10 @@ export interface InitOutput {
   readonly meshoutlinejs_contour: (a: number, b: number) => number;
   readonly meshoutlinejs_contourCount: (a: number) => number;
   readonly partitionedbatch_instancedOccurrences: (a: number) => number;
+  readonly partitionedbatch_productsWithFailures: (a: number) => number;
   readonly partitionedbatch_takeMeshes: (a: number) => number;
   readonly partitionedbatch_takeShard: (a: number, b: number) => void;
+  readonly partitionedbatch_totalCsgFailures: (a: number) => number;
   readonly profilecollection_get: (a: number, b: number) => number;
   readonly profilecollection_length: (a: number) => number;
   readonly profileentryjs_extrusionDepth: (a: number) => number;

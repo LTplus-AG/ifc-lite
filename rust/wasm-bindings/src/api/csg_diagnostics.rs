@@ -5,6 +5,16 @@
 use super::set_js_prop;
 use wasm_bindgen::prelude::*;
 
+/// Aggregate CSG-failure counts for one `produce_batch`, mirroring the native
+/// path's `ProcessingResponse` fields (`total_csg_failures` /
+/// `products_with_failures`). Lets the viewer report a per-load total instead of
+/// only the per-batch `console.warn`, so a silently-uncut model surfaces a number.
+#[derive(Clone, Copy, Default)]
+pub(super) struct CsgBatchDiagnostics {
+    pub total_csg_failures: u32,
+    pub products_with_failures: u32,
+}
+
 /// Drain CSG / opening-classification / per-host diagnostics from the
 /// router and emit them to the browser console. Returns a JS object
 /// summarising what was logged so callers can stash it on a completion
@@ -21,7 +31,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // every element so failures can't bleed between elements). Merged with
     // whatever still sits on the router (non-canonical paths).
     collected_failures: rustc_hash::FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
-) -> JsValue {
+) -> (JsValue, CsgBatchDiagnostics) {
     let cls = router.take_classification_stats();
     let mut csg_failures = router.take_csg_failures();
     for (product_id, fails) in collected_failures {
@@ -284,5 +294,11 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
-    summary.into()
+    (
+        summary.into(),
+        CsgBatchDiagnostics {
+            total_csg_failures: total_failures as u32,
+            products_with_failures: products_with_failures as u32,
+        },
+    )
 }

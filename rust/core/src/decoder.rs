@@ -15,6 +15,25 @@ use std::sync::Arc;
 /// Pre-built entity index type
 pub type EntityIndex = FxHashMap<u32, (usize, usize)>;
 
+/// How a decoder holds its entity index: the default owned/Arc-shared FxHashMap
+/// (built per decoder), or a zero-copy view of a shared sorted buffer that is
+/// built ONCE and reused across workers ([`crate::shared_index`]). Both expose
+/// the same `(start, end)` span lookup, so the decode path is identical.
+enum IndexBacking {
+    Owned(Arc<EntityIndex>),
+    Shared(crate::shared_index::SharedEntityIndex),
+}
+
+impl IndexBacking {
+    #[inline]
+    fn get(&self, id: u32) -> Option<(usize, usize)> {
+        match self {
+            IndexBacking::Owned(map) => map.get(&id).copied(),
+            IndexBacking::Shared(s) => s.get(id),
+        }
+    }
+}
+
 /// Build an entity index from content.
 ///
 /// This intentionally shares `EntityScanner`'s HEADER skipping and quoted-string
@@ -45,10 +64,10 @@ pub struct EntityDecoder<'a> {
     /// Cache of decoded entities (entity_id -> `Arc<DecodedEntity>`)
     /// Using Arc avoids expensive clones on cache hits
     cache: FxHashMap<u32, Arc<DecodedEntity>>,
-    /// Index of entity offsets (entity_id -> (start, end))
-    /// Can be pre-built or built lazily
-    /// Using Arc to allow sharing across threads without cloning the HashMap
-    entity_index: Option<Arc<EntityIndex>>,
+    /// Index of entity offsets (entity_id -> (start, end)).
+    /// Either an owned/Arc-shared FxHashMap (built per decoder) or a zero-copy
+    /// view of a shared sorted buffer built once and reused across workers.
+    entity_index: Option<IndexBacking>,
     /// Cache of cartesian point coordinates for FacetedBrep optimization
     /// Only populated when using get_polyloop_coords_cached
     point_cache: FxHashMap<u32, (f64, f64, f64)>,
@@ -90,7 +109,7 @@ impl<'a> EntityDecoder<'a> {
         Self {
             content,
             cache: FxHashMap::default(),
-            entity_index: Some(Arc::new(index)),
+            entity_index: Some(IndexBacking::Owned(Arc::new(index))),
             point_cache: FxHashMap::default(),
             plane_angle_to_radians_cache: None,
             length_unit_scale_cache: None,
@@ -106,7 +125,29 @@ impl<'a> EntityDecoder<'a> {
         Self {
             content,
             cache: FxHashMap::default(),
-            entity_index: Some(index),
+            entity_index: Some(IndexBacking::Owned(index)),
+            point_cache: FxHashMap::default(),
+            plane_angle_to_radians_cache: None,
+            length_unit_scale_cache: None,
+        }
+    }
+
+    /// Create a decoder over a SHARED entity index — a zero-copy view of a sorted
+    /// buffer built once (e.g. by the prepass) and handed to every worker, instead
+    /// of each worker rebuilding the FxHashMap. Lookups binary-search the buffer;
+    /// see [`crate::shared_index`]. The decode path is otherwise identical.
+    pub fn with_shared_index<T>(
+        content: &'a T,
+        index: crate::shared_index::SharedEntityIndex,
+    ) -> Self
+    where
+        T: AsRef<[u8]> + ?Sized,
+    {
+        let content = content.as_ref();
+        Self {
+            content,
+            cache: FxHashMap::default(),
+            entity_index: Some(IndexBacking::Shared(index)),
             point_cache: FxHashMap::default(),
             plane_angle_to_radians_cache: None,
             length_unit_scale_cache: None,
@@ -119,7 +160,7 @@ impl<'a> EntityDecoder<'a> {
         if self.entity_index.is_some() {
             return; // Already built
         }
-        self.entity_index = Some(Arc::new(build_entity_index(self.content)));
+        self.entity_index = Some(IndexBacking::Owned(Arc::new(build_entity_index(self.content))));
     }
 
     /// Decode entity at byte offset
@@ -206,7 +247,7 @@ impl<'a> EntityDecoder<'a> {
         let (start, end) = self
             .entity_index
             .as_ref()
-            .and_then(|idx| idx.get(&entity_id).copied())
+            .and_then(|idx| idx.get(entity_id))
             .ok_or_else(|| Error::parse(0, format!("Entity #{} not found", entity_id)))?;
 
         self.decode_at(start, end)
@@ -397,7 +438,7 @@ impl<'a> EntityDecoder<'a> {
     #[inline]
     pub fn get_raw_bytes(&mut self, entity_id: u32) -> Option<&'a [u8]> {
         self.build_index();
-        let (start, end) = self.entity_index.as_ref()?.get(&entity_id).copied()?;
+        let (start, end) = self.entity_index.as_ref()?.get(entity_id)?;
         Some(&self.content[start..end])
     }
 
@@ -736,7 +777,7 @@ impl<'a> EntityDecoder<'a> {
         let bytes_full = self.content;
 
         // Get polyloop raw bytes
-        let (start, end) = index.get(&entity_id).copied()?;
+        let (start, end) = index.get(entity_id)?;
         let bytes = &bytes_full[start..end];
 
         // IFCPOLYLOOP((#id1,#id2,#id3,...));
@@ -792,7 +833,7 @@ impl<'a> EntityDecoder<'a> {
 
                     // INLINE: Get cartesian point coordinates directly
                     // This avoids the overhead of calling get_cartesian_point_fast for each point
-                    if let Some((pt_start, pt_end)) = index.get(&point_id).copied() {
+                    if let Some((pt_start, pt_end)) = index.get(point_id) {
                         if let Some(coord) =
                             parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
                         {
@@ -823,7 +864,7 @@ impl<'a> EntityDecoder<'a> {
         let bytes_full = self.content;
 
         // Get polyloop raw bytes
-        let (start, end) = index.get(&entity_id).copied()?;
+        let (start, end) = index.get(entity_id)?;
         let bytes = &bytes_full[start..end];
 
         // IFCPOLYLOOP((#id1,#id2,#id3,...));
@@ -886,7 +927,7 @@ impl<'a> EntityDecoder<'a> {
                         coords.push(coord);
                     } else {
                         // Not in cache - parse and cache
-                        if let Some((pt_start, pt_end)) = index.get(&point_id).copied() {
+                        if let Some((pt_start, pt_end)) = index.get(point_id) {
                             if let Some(coord) =
                                 parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
                             {

@@ -72,11 +72,13 @@ pub mod model_bounds;
 pub mod parser;
 pub mod schema_gen;
 pub(crate) mod schema_helpers;
+pub mod shared_index;
 pub mod step_encoding;
 pub mod streaming;
 pub mod units;
 
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
+pub use shared_index::{build_shared_entity_index_bytes, SharedEntityIndex};
 pub use error::{Error, Result};
 pub use fast_parse::{
     extract_coordinate_list_from_entity, extract_entity_refs_from_list, extract_entity_type_name,

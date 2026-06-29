@@ -9,6 +9,7 @@
 
 import { createLogger } from '@ifc-lite/data';
 import type { TessellationQuality } from './types.js';
+import type { GeometryDiagnostics } from './diagnostics.js';
 import init, {
   IfcAPI,
   SymbolicRepresentationCollection,
@@ -309,6 +310,28 @@ export class IfcLiteBridge {
     return this.runExport('exportObj', content, (api) =>
       api.exportObj(content, includeNormals, hidden, isolated),
     );
+  }
+
+  /**
+   * Run geometry extraction on the raw IFC `content` (`Uint8Array`) and return ONLY
+   * its typed CSG / opening diagnostics (the `GeometryDiagnostics` contract), or
+   * `undefined` when nothing diagnostic-worthy happened. The produced meshes are
+   * dropped. Takes bytes (not a string) so there is no input-size cap.
+   */
+  diagnoseGeometry(content: Uint8Array): GeometryDiagnostics | undefined {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      const diag = this.ifcApi.diagnoseGeometry(content) as GeometryDiagnostics | undefined;
+      return diag ?? undefined;
+    } catch (error) {
+      log.error('Failed to diagnose geometry', error, { operation: 'diagnoseGeometry' });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
   }
 
   /**

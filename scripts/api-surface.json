@@ -3601,6 +3601,7 @@
     "DataModel: interface",
     "DocumentAssociation: interface",
     "ErrorResponse: interface",
+    "GeometryDiagnostics: interface",
     "Georeferencing: interface",
     "HealthResponse: interface",
     "IfcServerClient: class",

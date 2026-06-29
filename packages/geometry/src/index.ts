@@ -1118,6 +1118,17 @@ export class GeometryProcessor {
     return this.bridge.exportGlb(safeUtf8Decode(buffer), includeMetadata, hidden, isolated, hiddenTypesCsv, lit);
   }
 
+  /**
+   * Run geometry extraction on `buffer` and return its typed CSG / opening
+   * diagnostics (the `GeometryDiagnostics` contract), or `undefined` when nothing
+   * diagnostic-worthy happened or the bridge is not initialized. The meshes are
+   * discarded - this is the diagnostics-only surface for the CLI / SDK.
+   */
+  diagnoseGeometry(buffer: Uint8Array): import('./diagnostics.js').GeometryDiagnostics | undefined {
+    if (!this.bridge?.isInitialized()) return undefined;
+    return this.bridge.diagnoseGeometry(buffer);
+  }
+
   exportCsv(
     buffer: Uint8Array,
     mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',

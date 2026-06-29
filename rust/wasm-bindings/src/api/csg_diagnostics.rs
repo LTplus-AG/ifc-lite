@@ -2,8 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use wasm_bindgen::prelude::*;
-
 /// Cap on the number of worst-failing hosts surfaced as per-product detail in
 /// the typed [`ifc_lite_geometry::GeometryDiagnostics`] (keeps the payload
 /// bounded on pathological models). The aggregate scalars stay exact; this only

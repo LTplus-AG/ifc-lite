@@ -405,6 +405,14 @@ export class IfcAPI {
    */
   scanGeometryEntitiesFast(content: string): any;
   /**
+   * Run geometry extraction on `content` and return its typed CSG / opening
+   * diagnostics (the `GeometryDiagnostics` contract) as a JS object, or
+   * `undefined` when nothing diagnostic-worthy happened (no openings, no
+   * failures). Takes the raw IFC bytes (`Uint8Array`) so there is no input-size
+   * cap. The produced meshes are dropped; only the diagnostics are returned.
+   */
+  diagnoseGeometry(content: Uint8Array): any;
+  /**
    * Parse IFC file and extract symbolic representations (Plan,
    * Annotation, FootPrint, Axis). These are 2D curves used for
    * architectural drawings instead of sectioning 3D geometry.
@@ -1077,6 +1085,7 @@ export interface InitOutput {
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
+  readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
   readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
   readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number) => void;

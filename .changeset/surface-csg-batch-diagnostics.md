@@ -2,6 +2,7 @@
 "@ifc-lite/wasm": minor
 "@ifc-lite/geometry": minor
 "@ifc-lite/server-client": minor
+"@ifc-lite/cli": minor
 ---
 
 Add a typed `GeometryDiagnostics` contract for CSG / opening diagnostics.
@@ -34,9 +35,10 @@ This surfaces it as a typed, serializable contract:
   native streaming bridge forwards it onto the viewer `complete` event, so the
   native-only deployed viewer surfaces the same diagnostics as the WASM path, and
   `@ifc-lite/server-client` types it on the stats response.
+- CLI / SDK surface: a new wasm `diagnoseGeometry(bytes)` binding runs the same
+  `process_geometry` pass and returns only its `GeometryDiagnostics`, exposed as
+  `GeometryProcessor.diagnoseGeometry` and an `ifc-lite diagnose-geometry <file.ifc>`
+  command (human-readable report, or `--json` for the raw contract).
 
 `totalCsgFailures` and the classification counts are exact; `productsWithFailures`,
-`hostsWithOpenings` and `silentNoOps` are batch-summed upper bounds. A standalone CLI
-`diagnose-geometry` command remains a follow-up (the wasm bundle's `process_geometry`
-traps on `Instant`, so a CLI surface must drive the WASM batch path's per-batch
-diagnostics rather than the native aggregator).
+`hostsWithOpenings` and `silentNoOps` are batch-summed upper bounds.

@@ -183,6 +183,93 @@ describe('auditIDSDocument — IFC schema cross-checks', () => {
     expect(codes(r.issues)).toContain('E_IFC_PROP_NOT_IN_PSET');
   });
 
+  // #1441 — an occurrence pset (`Pset_ManufacturerTypeInformation` is only
+  // declared applicable to `IfcElement`) attaches just as validly to the
+  // corresponding *type* entity. A spec whose applicability is a type
+  // entity must not be flagged inapplicable; standard validators allow it.
+  it('accepts an occurrence pset on a companion type entity (IFC4)', async () => {
+    const xml = wrap(`<specification name="Manufacturer info on type" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCACTUATORTYPE</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_ManufacturerTypeInformation</simpleValue></propertySet>
+          <baseName><simpleValue>ModelLabel</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).not.toContain('E_IFC_PROP_NOT_IN_PSET');
+  });
+
+  // Same as above but via an enumeration of type entities — the exact
+  // shape that produced the reported "{IFCACTUATORTYPE, ...} in IFC4"
+  // false positive. None of the type entities should trip the check.
+  it('accepts an occurrence pset on an enumeration of type entities (IFC4)', async () => {
+    const xml = wrap(`<specification name="Manufacturer info on types" ifcVersion="IFC4">
+      <applicability>
+        <entity><name>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="IFCACTUATORTYPE"/>
+            <xs:enumeration value="IFCPUMPTYPE"/>
+            <xs:enumeration value="IFCWINDOWTYPE"/>
+          </xs:restriction>
+        </name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_ManufacturerTypeInformation</simpleValue></propertySet>
+          <baseName><simpleValue>Manufacturer</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).not.toContain('E_IFC_PROP_NOT_IN_PSET');
+  });
+
+  // IFC2X3 entity rows omit the `typeEntity` link, so the fix relies on the
+  // schema-validated `<Occurrence>Type` naming fallback. `IfcActuator` has
+  // no occurrence form in IFC2X3 (upstream IDS-Audit-tool Issue 39), yet
+  // `IfcActuatorType` must still resolve `Pset_ManufacturerTypeInformation`
+  // (applicable to `IfcElement`) via the `IfcElement` → `IfcElementType`
+  // companion.
+  it('accepts an occurrence pset on a companion type entity (IFC2X3)', async () => {
+    const xml = wrap(`<specification name="Manufacturer info on type" ifcVersion="IFC2X3">
+      <applicability>
+        <entity><name><simpleValue>IFCACTUATORTYPE</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCLABEL">
+          <propertySet><simpleValue>Pset_ManufacturerTypeInformation</simpleValue></propertySet>
+          <baseName><simpleValue>ModelLabel</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).not.toContain('E_IFC_PROP_NOT_IN_PSET');
+  });
+
+  // The companion-type relaxation must stay tight: a pset that genuinely
+  // applies to a different element family is still flagged on an unrelated
+  // type entity. `Pset_WallCommon` (IfcWall) does not apply to
+  // `IfcActuatorType`.
+  it('still flags an unrelated pset on a type entity', async () => {
+    const xml = wrap(`<specification name="Wall pset on actuator type" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCACTUATORTYPE</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property>
+          <propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet>
+          <baseName><simpleValue>IsExternal</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).toContain('E_IFC_PROP_NOT_IN_PSET');
+  });
+
   // #1062 — standard enumerated properties (PEnum_*) serialize as
   // IfcLabel, so IFCLABEL is the canonical IDS dataType for them and
   // must not be flagged (mirrors upstream IdsLib's HasDataTypes).
@@ -266,6 +353,129 @@ describe('auditIDSDocument — IFC schema cross-checks', () => {
     </specification>`);
     const r = await auditIDSDocument(xml);
     expect(codes(r.issues)).not.toContain('W_IFC_PSET_RESERVED_PREFIX');
+  });
+
+  // #1442 — `Qto_SpaceBaseQuantities` is a standard IFC4 quantity set, but
+  // the upstream schema data only enumerates `Qto_*` sets under IFC4X3, so
+  // IFC4 has no quantity-set rows at all. Without that data we cannot assert
+  // the name is unknown, so the reserved-prefix warning must be suppressed
+  // rather than emitted as a false positive.
+  it('does not warn on a standard IFC4 quantity set (Qto_SpaceBaseQuantities)', async () => {
+    const xml = wrap(`<specification name="Space quantities" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCSPACE</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="IFCAREAMEASURE">
+          <propertySet><simpleValue>Qto_SpaceBaseQuantities</simpleValue></propertySet>
+          <baseName><simpleValue>NetFloorArea</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).not.toContain('W_IFC_PSET_RESERVED_PREFIX');
+    expect(codes(r.issues)).not.toContain('E_IFC_PROP_NOT_IN_PSET');
+  });
+
+  // The suppression is scoped to versions that lack quantity-set coverage. In
+  // IFC4X3 (full `Qto_*` data) a genuinely-unknown quantity set still warns —
+  // we have not blanket-disabled the reserved-prefix check.
+  it('still warns on an unknown Qto_* set in IFC4X3 (full Qto coverage)', async () => {
+    const xml = wrap(`<specification name="Bogus qto" ifcVersion="IFC4X3">
+      <applicability>
+        <entity><name><simpleValue>IFCSPACE</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property>
+          <propertySet><simpleValue>Qto_NotPublishedByBSI</simpleValue></propertySet>
+          <baseName><simpleValue>SomeQuantity</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).toContain('W_IFC_PSET_RESERVED_PREFIX');
+  });
+
+  // A real IFC4X3 quantity set is recognised (not flagged) — confirms the
+  // IFC4X3 path still resolves standard sets.
+  it('does not warn on a real IFC4X3 quantity set', async () => {
+    const xml = wrap(`<specification name="Space quantities" ifcVersion="IFC4X3">
+      <applicability>
+        <entity><name><simpleValue>IFCSPACE</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property>
+          <propertySet><simpleValue>Qto_SpaceBaseQuantities</simpleValue></propertySet>
+          <baseName><simpleValue>NetFloorArea</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).not.toContain('W_IFC_PSET_RESERVED_PREFIX');
+  });
+
+  // A bogus `Pset_*` name still warns in IFC4 — Pset coverage is complete, so
+  // the suppression is narrowly limited to quantity sets.
+  it('still warns on an unknown Pset_* set in IFC4 (full Pset coverage)', async () => {
+    const xml = wrap(`<specification name="Bogus pset" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property>
+          <propertySet><simpleValue>Pset_TotallyMadeUp</simpleValue></propertySet>
+          <baseName><simpleValue>SomeProperty</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    expect(codes(r.issues)).toContain('W_IFC_PSET_RESERVED_PREFIX');
+  });
+
+  // #1444 — a prohibited specification (`<applicability maxOccurs="0">`)
+  // asserts that no entity matches; the IDS spec requires its requirements
+  // to be empty. The "no requirements" warning must not fire for it.
+  it('does not warn about empty requirements on a prohibited spec (#1444)', async () => {
+    const xml = wrap(`<specification name="COBie.Space.RoomTag" ifcVersion="IFC4">
+      <applicability minOccurs="0" maxOccurs="0">
+        <entity><name><simpleValue>IFCSPACE</simpleValue></name></entity>
+        <attribute>
+          <name><simpleValue>Description</simpleValue></name>
+          <value>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="n/a" />
+              <xs:enumeration value="TBC" />
+            </xs:restriction>
+          </value>
+        </attribute>
+      </applicability>
+      <requirements />
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    const noReq = r.issues.find(
+      (i) =>
+        i.code === 'E_XSD_STRUCTURE' &&
+        i.message.includes('no <requirements>')
+    );
+    expect(noReq).toBeUndefined();
+  });
+
+  // The warning still fires for a default-cardinality spec that genuinely
+  // does nothing (no requirements, no explicit maxOccurs).
+  it('still warns about empty requirements on a default-cardinality spec', async () => {
+    const xml = wrap(`<specification name="Does nothing" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCSPACE</simpleValue></name></entity>
+      </applicability>
+      <requirements />
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    const noReq = r.issues.find(
+      (i) =>
+        i.code === 'E_XSD_STRUCTURE' &&
+        i.message.includes('no <requirements>')
+    );
+    expect(noReq).toBeDefined();
   });
 
   it('flags a partOf relation that is not valid for the IFC version', async () => {

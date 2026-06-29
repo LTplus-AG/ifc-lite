@@ -168,9 +168,18 @@ function auditSpecification(
   spec.applicability.facets.forEach((facet, fi) => {
     auditFacet(facet, `${path}.applicability.facets[${fi}]`, issues);
   });
-  if (spec.requirements.length === 0) {
+  if (spec.requirements.length === 0 && typeof spec.maxOccurs !== 'number') {
     // The XSD allows zero requirements but conventional authoring tools
     // surface this as a warning — a spec with no requirements does nothing.
+    //
+    // Exception: when the applicability declares an explicit numeric
+    // `maxOccurs`, the cardinality itself IS the assertion, so empty
+    // requirements are intentional and correct — not a no-op. The common
+    // case is a *prohibited* spec (`maxOccurs="0"`): it passes only when
+    // no entity matches the applicability, and the IDS spec forbids
+    // attaching requirements to it at all (a bounded `maxOccurs="N"` is a
+    // count assertion in the same vein). Flagging those is a false
+    // positive. (#1444)
     issues.push({
       severity: 'warning',
       code: 'E_XSD_STRUCTURE',

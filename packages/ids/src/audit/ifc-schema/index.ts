@@ -24,6 +24,7 @@ import {
   findPropertySet,
   getInheritanceChain,
   getPartOfRelations,
+  getPropertySets,
   isEntitySubtypeOf,
   RESERVED_PSET_PREFIXES,
   type IfcEntityInfo,
@@ -386,7 +387,7 @@ async function auditPropertyFacet(
   // buildingSMART-published sets. Mirrors `IdsProperty.cs` upstream.
   const isReserved = RESERVED_PSET_PREFIXES.some((p) => psetName.startsWith(p));
   if (!pset) {
-    if (isReserved) {
+    if (isReserved && (await canVerifyReservedSet(version, psetName))) {
       issues.push({
         severity: 'warning',
         code: 'W_IFC_PSET_RESERVED_PREFIX',
@@ -411,9 +412,22 @@ async function auditPropertyFacet(
       version
     );
     if (candidates.length > 0) {
+      // Type/occurrence duality: a pset declared applicable to an
+      // occurrence class (e.g. `IfcElement`) is equally applicable to that
+      // class's companion *type* entity (`IfcElementType`) — IFC lets the
+      // same pset attach to either the occurrence or its type, and a type
+      // pset propagates to its occurrences. The standard validators honour
+      // this. Without it, an IDS that targets type entities (e.g.
+      // `IfcActuatorType`) with a standard element pset (e.g.
+      // `Pset_ManufacturerTypeInformation`, whose `applicableEntities` is
+      // just `IfcElement`) is wrongly flagged as inapplicable. (#1441)
+      const applicable = await expandWithCompanionTypes(
+        version,
+        pset.applicableEntities
+      );
       const anyMatches = (
         await Promise.all(
-          candidates.map((c) => psetApplies(version, c, pset.applicableEntities))
+          candidates.map((c) => psetApplies(version, c, applicable))
         )
       ).some(Boolean);
       if (!anyMatches) {
@@ -613,6 +627,77 @@ async function psetApplies(
     if (await isEntitySubtypeOf(version, entityName, candidate)) return true;
   }
   return false;
+}
+
+/**
+ * Expand a pset's `applicableEntities` (always occurrence classes in the
+ * buildingSMART data) with each class's companion *type* entity, so the
+ * applicability check accepts an IDS that targets type entities.
+ *
+ * Standard psets list only the occurrence class — e.g.
+ * `Pset_ManufacturerTypeInformation` → `["IfcElement"]` — yet IFC permits
+ * attaching the same pset to the corresponding type (`IfcElementType` and
+ * its subtypes), and many IDS specs do exactly that. Classes without a
+ * type twin (e.g. `IfcSite`, `IfcMaterial`) contribute nothing. (#1441)
+ *
+ * IFC4+ entity rows carry an authoritative `typeEntity` link. IFC2X3 rows
+ * omit it, so we fall back to the `<Occurrence>Type` naming convention —
+ * but only when that type entity actually exists in the schema version,
+ * so we never invent a non-existent class.
+ */
+async function expandWithCompanionTypes(
+  version: IfcSchemaVersion,
+  applicable: readonly string[]
+): Promise<string[]> {
+  const expanded = new Set<string>(applicable);
+  for (const name of applicable) {
+    const entity = await findEntity(version, name);
+    if (!entity) continue;
+    if (entity.typeEntity) {
+      expanded.add(entity.typeEntity);
+      continue;
+    }
+    const namedType = `${name}Type`;
+    if (await findEntity(version, namedType)) expanded.add(namedType);
+  }
+  return [...expanded];
+}
+
+/** Memoised "does this schema version have any `Qto_*` set?" lookup. */
+const quantitySetCoverage = new Map<IfcSchemaVersion, boolean>();
+
+async function versionHasQuantitySets(
+  version: IfcSchemaVersion
+): Promise<boolean> {
+  const cached = quantitySetCoverage.get(version);
+  if (cached !== undefined) return cached;
+  const sets = await getPropertySets(version);
+  const has = sets.some((p) => p.name.startsWith('Qto_'));
+  quantitySetCoverage.set(version, has);
+  return has;
+}
+
+/**
+ * Whether the reserved-prefix warning can be trusted for `name` in this
+ * version — i.e. whether our schema tables are complete enough to assert
+ * "this reserved name is not a known standard set".
+ *
+ * `Pset_*` coverage is complete across all versions. Quantity sets (`Qto_*`)
+ * are not: the upstream IDS-Audit-tool data only enumerates them for IFC4X3,
+ * so IFC2X3/IFC4 carry no `Qto_*` rows at all. Without that data we cannot
+ * tell an authoring typo from a real standard set we simply do not have
+ * (e.g. `Qto_SpaceBaseQuantities`, which is standard in IFC4), so suppressing
+ * the warning is the honest choice rather than emitting a false positive.
+ * Verifying `Qto_*` against an incomplete table caused #1442. We deliberately
+ * do not backfill a synthesised per-version quantity-set list, since entity
+ * existence alone cannot prove a set belongs to an earlier schema version.
+ */
+async function canVerifyReservedSet(
+  version: IfcSchemaVersion,
+  name: string
+): Promise<boolean> {
+  if (!name.startsWith('Qto_')) return true;
+  return versionHasQuantitySets(version);
 }
 
 /**

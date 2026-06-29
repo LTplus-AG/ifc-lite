@@ -160,7 +160,18 @@ const ISSUES: FixtureExpectation[] = [
     expectAny: ['E_RESTRICTION_EMPTY', 'E_XSD_REQUIRED_ATTR'],
   },
   { file: 'Issue 30 - should return error.ids', status: 'error' },
-  { file: 'Issue 39 - IfcTypeObjects allowed.ids', status: 'warning' },
+  // Issue 39 selects `IfcActuatorType` (a type entity with no occurrence
+  // form in IFC2X3) and requires `Pset_ManufacturerTypeInformation`, which
+  // the schema declares applicable to `IfcElement`. The pset attaches
+  // validly to the companion type, so post-#1441 this IDS is clean — no
+  // false `E_IFC_PROP_NOT_IN_PSET`. `expectNot` pins that specific code,
+  // since the `valid` status alone is the lowest rank and cannot catch a
+  // regression on its own.
+  {
+    file: 'Issue 39 - IfcTypeObjects allowed.ids',
+    status: 'valid',
+    expectNot: ['E_IFC_PROP_NOT_IN_PSET'],
+  },
   // Issue 41 ships a clean spec — the issue was about whether IDS-Audit
   // matched it, not invalid content. We accept it.
   { file: 'Issue 41 - Schema match.ids', status: 'valid' },

@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/geometry": patch
+"@ifc-lite/cache": patch
 ---
 
 Cap the number of void cutters packed into a single CSG arrangement, fixing a
@@ -22,3 +23,10 @@ equivalence tests and a new 20-cutter chunked-equivalence test all pass, and the
 full geometry suite is unchanged). For hosts with <= 16 cutters this is exactly
 the prior single arrangement. Verified end to end: the previously-stalling model
 now loads completely and renders correctly.
+
+Bumps the geometry cache `FORMAT_VERSION` (10 → 11). For a host with > 16 void
+cutters the chunked cut is solid-equivalent but not byte-identical (and on
+pre-fix builds those hosts often fell back to an AABB box), so the mesh hash
+changes. The bump invalidates pre-fix caches so restored models re-mesh with the
+correct tessellation, and the compare/diff feature does not flag those hosts from
+a stale-cache hash mismatch.

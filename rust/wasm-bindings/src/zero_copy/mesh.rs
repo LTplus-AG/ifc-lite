@@ -502,7 +502,12 @@ impl MeshCollection {
     /// `GeometryDiagnostics` contract).
     #[inline]
     pub fn set_diagnostics(&mut self, diagnostics: ifc_lite_geometry::GeometryDiagnostics) {
-        self.diagnostics = Some(diagnostics);
+        // Skip all-zero diagnostics so the `diagnostics` getter stays `undefined`
+        // when no opening / CSG activity happened — lets a consumer gate on
+        // presence (`if event.diagnostics`) as well as on counts.
+        if !diagnostics.is_empty() {
+            self.diagnostics = Some(diagnostics);
+        }
     }
 
     /// Create from vec of meshes

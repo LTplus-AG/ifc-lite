@@ -989,9 +989,9 @@ export async function* processParallel(
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
   // One aggregate per-load summary (only this scope holds the cross-worker
   // total). Counts include batch-summed upper bounds; see the event-type doc.
-  // `diagnostics` is reassigned inside the message-handler closure, which TS
-  // CFA narrows back to its initial `null` at this yield — re-widen via an
-  // explicitly-typed alias.
+  // `diagnostics` is only reassigned inside the message-handler closure; restore
+  // its declared union type at this yield via a cast (a bare reference compiled to
+  // an unhelpful narrowed type under the generator's control-flow analysis).
   const loadDiagnostics = diagnostics as GeometryDiagnostics | null;
   if (loadDiagnostics && loadDiagnostics.totalCsgFailures > 0) {
     console.warn(

@@ -568,14 +568,6 @@ function collectMeshes(
   collection: ReturnType<IfcAPI['processGeometryBatch']>,
 ): void {
   try {
-    // CSG / opening diagnostics: both batch paths attach a GeometryDiagnostics
-    // object to the collection; merge it into the per-load accumulator. On the
-    // happy path this runs once per batch; a recovery re-run (binary split) can
-    // re-merge a batch, so the upper-bound fields are documented as such.
-    session.diagnostics = mergeGeometryDiagnostics(
-      session.diagnostics,
-      collection.diagnostics as GeometryDiagnostics | undefined,
-    );
     // Per-entity geometry fingerprints (issue #924) — empty unless hashing was
     // enabled via `set-compute-geometry-hashes`. Read inside the try so
     // `collection.free()` in finally still runs if extraction throws.
@@ -659,6 +651,17 @@ function collectMeshes(
     for (const [id, hash] of geometryHashes) {
       if (!flatMeshedIds.has(id)) session.pendingInstancedGeometryHashes.set(id, hash);
     }
+    // CSG / opening diagnostics: merge into the per-load accumulator only AFTER
+    // mesh extraction succeeds (both batch paths attach a GeometryDiagnostics to
+    // the collection). A batch that throws is binary-split + re-run by
+    // processBatch; doing the merge here means the failed attempt contributes
+    // nothing and the re-run is the sole contributor, so totalCsgFailures and the
+    // classification counts stay exact. The diagnostics field is not consumed by
+    // takeMesh, so it is still readable after the extraction loop.
+    session.diagnostics = mergeGeometryDiagnostics(
+      session.diagnostics,
+      collection.diagnostics as GeometryDiagnostics | undefined,
+    );
   } finally {
     collection.free();
   }

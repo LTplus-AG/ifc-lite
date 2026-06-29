@@ -8,7 +8,8 @@
  * which is built once per geometry batch and serialized to a JS object. The
  * geometry worker merges per-batch values across batches and the parallel loader
  * merges across workers, surfacing one `diagnostics` object on the streaming
- * `complete` event. The same shape is produced on the native/server path.
+ * `complete` event. Native `ProcessingStats` parity reuses the same aggregator
+ * and is a follow-up (not yet wired); the serial / native load paths omit it.
  *
  * Counts are best-effort observability: `totalCsgFailures` and the classification
  * counts are exact, while `productsWithFailures` / `hostsWithOpenings` /
@@ -80,7 +81,22 @@ export function mergeGeometryDiagnostics(
     .map(([reason, count]) => ({ reason, count }))
     .sort((x, y) => y.count - x.count || x.reason.localeCompare(y.reason));
 
-  const worstHosts = [...a.worstHosts, ...b.worstHosts]
+  // Fold by productId first (a host whose geometry spans batches/workers can
+  // appear in both operands' lists) before re-ranking and capping, mirroring the
+  // failuresByReason merge-by-key above. Copy each entry so the operands are not
+  // mutated.
+  const hostById = new Map<number, GeometryDiagnostics['worstHosts'][number]>();
+  for (const h of [...a.worstHosts, ...b.worstHosts]) {
+    const prev = hostById.get(h.productId);
+    if (prev) {
+      prev.csgFailures += h.csgFailures;
+      prev.openings += h.openings;
+      prev.firstFailureLabel = prev.firstFailureLabel ?? h.firstFailureLabel;
+    } else {
+      hostById.set(h.productId, { ...h });
+    }
+  }
+  const worstHosts = [...hostById.values()]
     .sort((x, y) => y.csgFailures - x.csgFailures || x.productId - y.productId)
     .slice(0, WORST_HOSTS_LIMIT);
 

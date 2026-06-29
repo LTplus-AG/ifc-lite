@@ -379,7 +379,7 @@ impl IfcAPI {
         // goes processAdaptive -> processParallel -> Web Workers ->
         // `processGeometryBatch`, so the log has to fire here or the
         // diagnostic helper never runs for real-world files.
-        let (_, csg_diag) = crate::api::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
+        let csg_diag = crate::api::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
 
         // Layered-wall slicing diagnostics (#563): a quiet success summary, but a
         // per-element warning (id + reason) when a sliceable wall fails to slice

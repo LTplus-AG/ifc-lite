@@ -2,7 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::set_js_prop;
 use wasm_bindgen::prelude::*;
 
 /// Cap on the number of worst-failing hosts surfaced as per-product detail in
@@ -11,10 +10,10 @@ use wasm_bindgen::prelude::*;
 /// bounds the optional detail list.
 const WORST_HOSTS_LIMIT: usize = 16;
 
-/// Drain CSG / opening-classification / per-host diagnostics from the
-/// router and emit them to the browser console. Returns a JS object
-/// summarising what was logged so callers can stash it on a completion
-/// callback's stats payload.
+/// Drain CSG / opening-classification / per-host diagnostics from the router and
+/// emit them to the browser console. Returns the typed
+/// [`ifc_lite_geometry::GeometryDiagnostics`] built from the same single drain
+/// (the console output is a side-effect; the typed value is what callers consume).
 ///
 /// Always emits the classifier summary at `console.debug`; emits the
 /// failure summary at `console.warn` only when there's at least one
@@ -27,7 +26,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // every element so failures can't bleed between elements). Merged with
     // whatever still sits on the router (non-canonical paths).
     collected_failures: rustc_hash::FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
-) -> (JsValue, ifc_lite_geometry::GeometryDiagnostics) {
+) -> ifc_lite_geometry::GeometryDiagnostics {
     let cls = router.take_classification_stats();
     let mut csg_failures = router.take_csg_failures();
     for (product_id, fails) in collected_failures {
@@ -53,21 +52,6 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
-    let cls_obj = js_sys::Object::new();
-    set_js_prop(&cls_obj, "rectangular", &(cls.rectangular as f64).into());
-    set_js_prop(&cls_obj, "diagonal", &(cls.diagonal as f64).into());
-    set_js_prop(
-        &cls_obj,
-        "nonRectangular",
-        &(cls.non_rectangular as f64).into(),
-    );
-    set_js_prop(
-        &cls_obj,
-        "floorOpeningGuardSaved",
-        &(cls.floor_opening_guard_saved as f64).into(),
-    );
-    set_js_prop(&cls_obj, "total", &(cls_total as f64).into());
-
     if cls_total > 0 {
         // info_1, not debug_1 — DevTools hides `debug` by default ("Verbose"
         // log level), so a debug-only summary effectively never reaches
@@ -87,20 +71,6 @@ pub(super) fn drain_and_log_csg_diagnostics(
     }
 
     let products_with_failures = csg_failures.len();
-
-    let summary = js_sys::Object::new();
-    set_js_prop(&summary, "classification", &cls_obj);
-    set_js_prop(&summary, "totalFailures", &(total_failures as f64).into());
-    set_js_prop(
-        &summary,
-        "productsWithFailures",
-        &(products_with_failures as f64).into(),
-    );
-    set_js_prop(
-        &summary,
-        "hostsWithOpenings",
-        &(host_diags.len() as f64).into(),
-    );
 
     if total_failures > 0 || !host_diags.is_empty() {
         // Per-reason breakdown for the warn line.
@@ -293,14 +263,5 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // The console logging above is the human-facing surface; this is the typed,
     // serializable contract the worker/event path consumes (built from the same
     // single drain — `rf`/`cls`/`csg_failures`/`host_diags` are not re-taken).
-    (
-        summary.into(),
-        ifc_lite_geometry::aggregate_diagnostics(
-            cls,
-            &csg_failures,
-            &host_diags,
-            rf,
-            WORST_HOSTS_LIMIT,
-        ),
-    )
+    ifc_lite_geometry::aggregate_diagnostics(cls, &csg_failures, &host_diags, rf, WORST_HOSTS_LIMIT)
 }

@@ -316,9 +316,9 @@ pub(crate) enum ClassificationKind {
 // ───────────────────────── Public diagnostics contract ─────────────────────
 // A serializable, wasm-free aggregate of the CSG / opening diagnostics computed
 // during a geometry pass. Built by `aggregate_diagnostics` from drained router
-// data so the SAME typed shape is surfaced on the wasm/viewer path (the
-// @ifc-lite/geometry `complete` event) and the native/server path
-// (ifc-lite-processing ProcessingStats). camelCase JSON for the TS contract.
+// data. Today it is wired on the wasm/viewer path (the @ifc-lite/geometry
+// `complete` event); native / server `ProcessingStats` parity reuses this same
+// wasm-free aggregator and is a follow-up. camelCase JSON for the TS contract.
 
 /// Opening-classifier outcome counts (rectangular / diagonal / non-rectangular).
 #[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
@@ -363,10 +363,11 @@ pub struct WorstHost {
     pub first_failure_label: Option<String>,
 }
 
-/// Aggregate CSG / opening diagnostics for one geometry pass — the public,
-/// cross-surface diagnostics contract. Built by [`aggregate_diagnostics`] from
-/// drained router data; serialized to the @ifc-lite/geometry `complete` event
-/// and the native `ProcessingStats`. wasm-free (serde only).
+/// Aggregate CSG / opening diagnostics for one geometry pass — the public
+/// diagnostics contract. Built by [`aggregate_diagnostics`] from drained router
+/// data and serialized to the @ifc-lite/geometry `complete` event. wasm-free
+/// (serde only) so a native `ProcessingStats` path can reuse the same aggregator
+/// (a follow-up).
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeometryDiagnostics {
@@ -396,10 +397,22 @@ impl GeometryDiagnostics {
     pub fn has_issues(&self) -> bool {
         self.total_csg_failures > 0 || self.silent_no_ops > 0
     }
+
+    /// Whether nothing diagnostic-worthy happened this pass — no openings
+    /// classified, no failures, no silent no-ops, no rect_fast activity. Callers
+    /// skip attaching an all-zero object so a consumer can gate on presence
+    /// (`if event.diagnostics`) as well as on counts.
+    pub fn is_empty(&self) -> bool {
+        self.total_csg_failures == 0
+            && self.hosts_with_openings == 0
+            && self.classification.total == 0
+            && self.silent_no_ops == 0
+            && self.rect_fast.fired == 0
+    }
 }
 
-/// Build a [`GeometryDiagnostics`] from drained router data. wasm-free, so the
-/// same typed contract is produced on the wasm/viewer path and the native path.
+/// Build a [`GeometryDiagnostics`] from drained router data. wasm-free so both
+/// the wasm/viewer path and a future native path can produce the same contract.
 /// The caller owns draining: the router accessors are destructive (`mem::take`),
 /// so drain once and pass the results here — do not double-`take`.
 pub fn aggregate_diagnostics(
@@ -557,5 +570,52 @@ mod diagnostics_contract_tests {
         assert_eq!(d.worst_hosts[0].product_id, 7);
         assert_eq!(d.worst_hosts[0].csg_failures, 2);
         assert!(d.has_issues());
+    }
+
+    #[test]
+    fn serializes_camelcase_keys_matching_the_ts_contract() {
+        // Guard the serde rename_all against drift from the @ifc-lite/geometry
+        // GeometryDiagnostics TS interface. The wasm getter uses the same renames
+        // via serde-wasm-bindgen, so this JSON key set is what crosses to JS.
+        let mut hosts: FxHashMap<u32, HostOpeningDiagnostic> = FxHashMap::default();
+        hosts.insert(
+            7,
+            HostOpeningDiagnostic {
+                host_type: "IfcWall".into(),
+                csg_failure_count: 1,
+                first_failure_label: Some("KernelError".into()),
+                ..Default::default()
+            },
+        );
+        let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
+        csg.insert(7, vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid)]);
+        let d = aggregate_diagnostics(
+            ClassificationStats { rectangular: 1, ..Default::default() },
+            &csg,
+            &hosts,
+            RectFastStats::default(),
+            16,
+        );
+        let v = serde_json::to_value(&d).expect("serializes");
+        for key in [
+            "totalCsgFailures",
+            "productsWithFailures",
+            "hostsWithOpenings",
+            "classification",
+            "failuresByReason",
+            "silentNoOps",
+            "rectFast",
+            "worstHosts",
+        ] {
+            assert!(v.get(key).is_some(), "missing top-level key {key}");
+        }
+        assert!(v["classification"].get("nonRectangular").is_some());
+        assert!(v["rectFast"].get("deferHostNotBox").is_some());
+        let wh = &v["worstHosts"][0];
+        for key in ["productId", "ifcType", "openings", "csgFailures", "firstFailureLabel"] {
+            assert!(wh.get(key).is_some(), "missing worstHosts key {key}");
+        }
+        let fr = &v["failuresByReason"][0];
+        assert!(fr.get("reason").is_some() && fr.get("count").is_some());
     }
 }

@@ -24,8 +24,8 @@ This surfaces it as a typed, serializable contract:
   across batches and the parallel loader merges across workers, logging one
   aggregate console summary.
 - The viewer reads `event.diagnostics` and logs a concise summary when CSG failures
-  or silent no-ops occur; the full object is available for any UI / telemetry
-  consumer.
+  or silent no-ops occur; the full typed object rides the streaming event for a UI
+  or telemetry consumer to subscribe to.
 
 `totalCsgFailures` and the classification counts are exact; `productsWithFailures`,
 `hostsWithOpenings` and `silentNoOps` are batch-summed upper bounds. The fields are

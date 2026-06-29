@@ -62,6 +62,15 @@ describe('mergeGeometryDiagnostics', () => {
     ]);
   });
 
+  it('folds worstHosts by productId across operands (no duplicate rows, no mutation)', () => {
+    const a = make({ worstHosts: [{ productId: 5, ifcType: 'IfcWall', openings: 1, csgFailures: 2, firstFailureLabel: 'KernelError' }] });
+    const b = make({ worstHosts: [{ productId: 5, ifcType: 'IfcWall', openings: 2, csgFailures: 3 }] });
+    const m = mergeGeometryDiagnostics(a, b)!;
+    expect(m.worstHosts).toHaveLength(1);
+    expect(m.worstHosts[0]).toMatchObject({ productId: 5, csgFailures: 5, openings: 3, firstFailureLabel: 'KernelError' });
+    expect(a.worstHosts[0].csgFailures).toBe(2); // operand a not mutated
+  });
+
   it('concatenates + ranks + caps worstHosts at 16', () => {
     const aHosts = Array.from({ length: 10 }, (_, i) => ({
       productId: i, ifcType: 'IfcWall', openings: 1, csgFailures: i,

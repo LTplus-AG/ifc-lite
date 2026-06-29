@@ -1,6 +1,7 @@
 ---
 "@ifc-lite/wasm": minor
 "@ifc-lite/geometry": minor
+"@ifc-lite/server-client": minor
 ---
 
 Add a typed `GeometryDiagnostics` contract for CSG / opening diagnostics.
@@ -26,9 +27,16 @@ This surfaces it as a typed, serializable contract:
 - The viewer reads `event.diagnostics` and logs a concise summary when CSG failures
   or silent no-ops occur; the full typed object rides the streaming event for a UI
   or telemetry consumer to subscribe to.
+- Native parity: the `rust/processing` geometry pass drains opening classification +
+  per-host diagnostics from each per-element router and aggregates them through the
+  same `aggregate_diagnostics`, attaching the full contract to
+  `ProcessingStats.geometry_diagnostics` (the WASM bundle and the server emit it). The
+  native streaming bridge forwards it onto the viewer `complete` event, so the
+  native-only deployed viewer surfaces the same diagnostics as the WASM path, and
+  `@ifc-lite/server-client` types it on the stats response.
 
 `totalCsgFailures` and the classification counts are exact; `productsWithFailures`,
-`hostsWithOpenings` and `silentNoOps` are batch-summed upper bounds. The fields are
-forwarded on the parallel WASM load path only; native `ProcessingStats` parity (the
-processor aggregates per `local_router`) and a CLI `diagnose-geometry` command are
-follow-ups.
+`hostsWithOpenings` and `silentNoOps` are batch-summed upper bounds. A standalone CLI
+`diagnose-geometry` command remains a follow-up (the wasm bundle's `process_geometry`
+traps on `Instant`, so a CLI surface must drive the WASM batch path's per-batch
+diagnostics rather than the native aggregator).

@@ -158,6 +158,50 @@ export interface ProcessingStats {
   total_csg_failures?: number;
   /** Number of distinct products with at least one CSG failure. */
   products_with_failures?: number;
+  /**
+   * Full CSG / opening diagnostics aggregated by the native geometry pass (the
+   * `GeometryDiagnostics` contract; fields are camelCase to match the Rust
+   * `rename_all`). Absent on responses from servers predating this field, or when
+   * nothing diagnostic-worthy happened.
+   */
+  geometry_diagnostics?: GeometryDiagnostics;
+}
+
+/**
+ * CSG / opening diagnostics for a geometry pass. Mirrors the Rust
+ * `GeometryDiagnostics` (camelCase serde) the server and the WASM batch path both
+ * emit. `totalCsgFailures` and the classification counts are exact;
+ * `productsWithFailures`, `hostsWithOpenings` and `silentNoOps` are batch-summed
+ * upper bounds.
+ */
+export interface GeometryDiagnostics {
+  totalCsgFailures: number;
+  productsWithFailures: number;
+  hostsWithOpenings: number;
+  classification: {
+    rectangular: number;
+    diagonal: number;
+    nonRectangular: number;
+    total: number;
+  };
+  failuresByReason: Array<{ reason: string; count: number }>;
+  silentNoOps: number;
+  rectFast: {
+    fired: number;
+    openingsCut: number;
+    deferHostNotBox: number;
+    deferNotThrough: number;
+    deferOffFace: number;
+    deferNearEdge: number;
+    deferNoOpenings: number;
+  };
+  worstHosts: Array<{
+    productId: number;
+    ifcType: string;
+    openings: number;
+    csgFailures: number;
+    firstFailureLabel?: string;
+  }>;
 }
 
 // ============================================

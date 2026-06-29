@@ -14,6 +14,7 @@ import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData } from './types.js';
 import type { GeometryStats as PlatformGeometryStats, GeometryBatch, NativeBatchTelemetry } from './platform-bridge.js';
 import type { StreamingGeometryEvent } from './index.js';
+import type { GeometryDiagnostics } from './diagnostics.js';
 
 // ── Queue tuning constants ──
 
@@ -116,6 +117,7 @@ export async function* streamNativeGeometry(
   let completed = false;
   let streamError: Error | null = null;
   let completedTotalMeshes: number | undefined;
+  let completedDiagnostics: GeometryDiagnostics | undefined;
   let totalMeshes = 0;
 
   const wake = () => {
@@ -141,6 +143,7 @@ export async function* streamNativeGeometry(
     onComplete: (stats) => {
       setLastNativeStats(stats);
       completedTotalMeshes = stats.totalMeshes;
+      completedDiagnostics = stats.diagnostics;
       completed = true;
       wake();
     },
@@ -221,5 +224,12 @@ export async function* streamNativeGeometry(
   }
 
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
-  yield { type: 'complete', totalMeshes: completedTotalMeshes ?? totalMeshes, coordinateInfo };
+  yield {
+    type: 'complete',
+    totalMeshes: completedTotalMeshes ?? totalMeshes,
+    coordinateInfo,
+    // Native CSG / opening diagnostics (parity with the WASM path's `complete`
+    // event). Present only when the native helper reported a non-empty contract.
+    ...(completedDiagnostics ? { diagnostics: completedDiagnostics } : {}),
+  };
 }

@@ -1015,6 +1015,16 @@ pub fn process_geometry_streaming_filtered_with_options(
     // the loop into ProcessingStats + one tracing summary).
     let csg_failure_collector: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>> =
         std::sync::Mutex::new(FxHashMap::default());
+    // Opening-classification + per-host opening diagnostics sinks, drained from
+    // each fresh per-job router and merged here, so the native pass can build the
+    // SAME `GeometryDiagnostics` the WASM batch path produces. Drained from the
+    // local router (not inside `produce_element_meshes`) because the WASM batch path
+    // shares that function and drains classification/host from its own warm router
+    // at batch end — draining there would empty it.
+    let classification_collector: std::sync::Mutex<ifc_lite_geometry::ClassificationStats> =
+        std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default());
+    let host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>> =
+        std::sync::Mutex::new(FxHashMap::default());
 
     // Shared content-dedup cache for the whole model: every per-job router (built
     // fresh per element below) dedups against it, so byte-identical geometry the
@@ -1128,6 +1138,8 @@ pub fn process_geometry_streaming_filtered_with_options(
                     texture_index.as_ref(),
                     site_local_rotation,
                     &csg_failure_collector,
+                    &classification_collector,
+                    &host_diag_collector,
                     &item_dedup_cache,
                 )
             })
@@ -1211,6 +1223,32 @@ pub fn process_geometry_streaming_filtered_with_options(
         );
     }
 
+    // Build the full GeometryDiagnostics contract from the drained sinks — the
+    // SAME shape the wasm batch path surfaces, so a native consumer and a browser
+    // consumer see identical diagnostics. `rect_fast` counters are process-global
+    // atomics; this run is the only geometry pass holding them, so draining once
+    // here captures every rayon worker's fast-path activity. `None` when nothing
+    // diagnostic-worthy happened (mirrors the wasm `is_empty` skip).
+    let geometry_diagnostics = {
+        // Matches the wasm path's WORST_HOSTS_LIMIT (top-N per-host detail cap).
+        const WORST_HOSTS_LIMIT: usize = 16;
+        let classification = classification_collector
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let host_diags = host_diag_collector
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let rect_fast = ifc_lite_geometry::rect_fast::take_global_stats();
+        let diag = ifc_lite_geometry::aggregate_diagnostics(
+            classification,
+            &csg_failures,
+            &host_diags,
+            rect_fast,
+            WORST_HOSTS_LIMIT,
+        );
+        (!diag.is_empty()).then_some(diag)
+    };
+
     let total_time = total_start.elapsed();
 
     tracing::info!(
@@ -1251,6 +1289,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             from_cache: false,
             total_csg_failures: total_csg_failures as u64,
             products_with_failures: products_with_failures as u64,
+            geometry_diagnostics,
         },
     }
 }
@@ -1282,6 +1321,10 @@ fn process_entity_job(
     // Shared sink for per-job router CSG diagnostics (parity with the wasm
     // path's `drain_and_log_csg_diagnostics`).
     csg_failure_collector: &std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>>,
+    // Shared sinks for opening classification + per-host opening diagnostics, drained
+    // from this job's router so the native pass aggregates the full GeometryDiagnostics.
+    classification_collector: &std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
+    host_diag_collector: &std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
     // Model-wide content-dedup cache shared by every per-job router so identical
     // geometry is meshed once across the rayon pool (#1109 follow-up).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
@@ -1357,6 +1400,33 @@ fn process_entity_job(
             for (product_id, fails) in produced.csg_failures {
                 collector.entry(product_id).or_default().extend(fails);
             }
+        }
+    }
+
+    // Drain this job's router opening diagnostics (classification counts +
+    // per-host detail) and merge them. Each job uses a FRESH router that
+    // processed exactly this one element, so the drained values are this
+    // element's only — summing across jobs mirrors the wasm batch router's
+    // accumulate-then-drain, giving the same GeometryDiagnostics counts.
+    let cls = local_router.take_classification_stats();
+    if cls.rectangular != 0
+        || cls.diagonal != 0
+        || cls.non_rectangular != 0
+        || cls.floor_opening_guard_saved != 0
+    {
+        if let Ok(mut acc) = classification_collector.lock() {
+            acc.rectangular += cls.rectangular;
+            acc.diagonal += cls.diagonal;
+            acc.non_rectangular += cls.non_rectangular;
+            acc.floor_opening_guard_saved += cls.floor_opening_guard_saved;
+        }
+    }
+    let host_diags = local_router.take_host_opening_diagnostics();
+    if !host_diags.is_empty() {
+        if let Ok(mut acc) = host_diag_collector.lock() {
+            // Product ids are disjoint across jobs (one product = one job), so this
+            // is an insert; `extend` is robust if that ever changes.
+            acc.extend(host_diags);
         }
     }
 

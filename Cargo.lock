@@ -1532,6 +1532,7 @@ dependencies = [
  "rayon",
  "robust",
  "rustc-hash",
+ "serde",
  "smallvec",
  "thiserror 2.0.18",
 ]

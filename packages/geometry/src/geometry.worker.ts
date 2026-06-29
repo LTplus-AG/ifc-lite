@@ -5,6 +5,7 @@
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import type { MeshData, TessellationQuality } from './types.js';
+import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import {
   DEFAULT_BATCH_SIZING,
   resolveBatchSizing,
@@ -225,11 +226,9 @@ export interface GeometryWorkerProgressMessage {
 export interface GeometryWorkerCompleteMessage {
   type: 'complete';
   totalMeshes: number;
-  /** CSG boolean failures across the whole load (un-cut openings, emptied hosts).
-   *  Omitted when zero. Parity with the native path's ProcessingResponse. */
-  totalCsgFailures?: number;
-  /** Distinct products with at least one CSG failure (upper bound; summed per batch). */
-  productsWithFailures?: number;
+  /** CSG / opening diagnostics merged over this worker's batches (the
+   *  GeometryDiagnostics contract). Omitted when none were recorded. */
+  diagnostics?: GeometryDiagnostics;
 }
 
 export interface GeometryWorkerErrorMessage {
@@ -443,12 +442,10 @@ interface ProcessingSession {
   pendingInstancedGeometryHashes: Map<number, bigint>;
   totalMeshesEmitted: number;
   cumulativeMeshBytes: number;
-  /** CSG boolean failures summed across every batch this load (un-cut openings,
-   *  emptied hosts). Reported once at completion so a silently-uncut model
-   *  surfaces a load total, not just scattered per-batch console warnings. */
-  totalCsgFailures: number;
-  /** Distinct failing products summed per batch (upper bound). */
-  productsWithFailures: number;
+  /** CSG / opening diagnostics merged across every batch this load (the
+   *  GeometryDiagnostics contract). Reported once at completion so a silently
+   *  uncut model surfaces a typed summary, not just scattered console warnings. */
+  diagnostics: GeometryDiagnostics | null;
 }
 
 let activeSession: ProcessingSession | null = null;
@@ -508,8 +505,7 @@ function startSession(input: {
     pendingInstancedGeometryHashes: new Map(),
     totalMeshesEmitted: 0,
     cumulativeMeshBytes: 0,
-    totalCsgFailures: 0,
-    productsWithFailures: 0,
+    diagnostics: null,
   };
 }
 
@@ -572,12 +568,14 @@ function collectMeshes(
   collection: ReturnType<IfcAPI['processGeometryBatch']>,
 ): void {
   try {
-    // CSG-failure diagnostics: both batch paths set these on the collection;
-    // summing here aggregates the per-load total. On the happy path this runs once
-    // per batch; a recovery re-run (binary split) can re-sum a batch, so
-    // productsWithFailures is a batch-summed upper bound (documented on the event).
-    session.totalCsgFailures += collection.totalCsgFailures ?? 0;
-    session.productsWithFailures += collection.productsWithFailures ?? 0;
+    // CSG / opening diagnostics: both batch paths attach a GeometryDiagnostics
+    // object to the collection; merge it into the per-load accumulator. On the
+    // happy path this runs once per batch; a recovery re-run (binary split) can
+    // re-merge a batch, so the upper-bound fields are documented as such.
+    session.diagnostics = mergeGeometryDiagnostics(
+      session.diagnostics,
+      collection.diagnostics as GeometryDiagnostics | undefined,
+    );
     // Per-entity geometry fingerprints (issue #924) — empty unless hashing was
     // enabled via `set-compute-geometry-hashes`. Read inside the try so
     // `collection.free()` in finally still runs if extraction throws.
@@ -847,12 +845,7 @@ function emitSessionEnd(session: ProcessingSession): void {
     {
       type: 'complete',
       totalMeshes: session.totalMeshesEmitted,
-      ...(session.totalCsgFailures > 0
-        ? {
-            totalCsgFailures: session.totalCsgFailures,
-            productsWithFailures: session.productsWithFailures,
-          }
-        : {}),
+      ...(session.diagnostics ? { diagnostics: session.diagnostics } : {}),
     } as GeometryWorkerCompleteMessage,
   );
 }

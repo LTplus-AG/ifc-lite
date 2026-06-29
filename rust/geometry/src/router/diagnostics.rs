@@ -312,3 +312,250 @@ pub(crate) enum ClassificationKind {
     #[allow(dead_code)]
     FloorOpeningGuardSaved,
 }
+
+// ───────────────────────── Public diagnostics contract ─────────────────────
+// A serializable, wasm-free aggregate of the CSG / opening diagnostics computed
+// during a geometry pass. Built by `aggregate_diagnostics` from drained router
+// data so the SAME typed shape is surfaced on the wasm/viewer path (the
+// @ifc-lite/geometry `complete` event) and the native/server path
+// (ifc-lite-processing ProcessingStats). camelCase JSON for the TS contract.
+
+/// Opening-classifier outcome counts (rectangular / diagonal / non-rectangular).
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClassificationSummary {
+    pub rectangular: u64,
+    pub diagonal: u64,
+    pub non_rectangular: u64,
+    pub total: u64,
+}
+
+/// One CSG failure reason and its occurrence count this pass. `reason` is one of
+/// the stable [`crate::diagnostics::BoolFailureReason::label`] strings.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReasonCount {
+    pub reason: String,
+    pub count: u64,
+}
+
+/// rect_fast fast-path engagement counters (perf observability).
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RectFastSummary {
+    pub fired: u64,
+    pub openings_cut: u64,
+    pub defer_host_not_box: u64,
+    pub defer_not_through: u64,
+    pub defer_off_face: u64,
+    pub defer_near_edge: u64,
+    pub defer_no_openings: u64,
+}
+
+/// One of the worst-failing host elements (bounded top-N, opt-in detail).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorstHost {
+    pub product_id: u32,
+    pub ifc_type: String,
+    pub openings: u64,
+    pub csg_failures: u64,
+    pub first_failure_label: Option<String>,
+}
+
+/// Aggregate CSG / opening diagnostics for one geometry pass — the public,
+/// cross-surface diagnostics contract. Built by [`aggregate_diagnostics`] from
+/// drained router data; serialized to the @ifc-lite/geometry `complete` event
+/// and the native `ProcessingStats`. wasm-free (serde only).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeometryDiagnostics {
+    /// Total CSG boolean failures (un-cut openings, emptied hosts, fallbacks).
+    pub total_csg_failures: u64,
+    /// Distinct products (host elements) with at least one failure.
+    pub products_with_failures: u64,
+    /// Hosts that had openings processed.
+    pub hosts_with_openings: u64,
+    /// Opening-classifier outcome counts.
+    pub classification: ClassificationSummary,
+    /// Failure counts by stable reason label, sorted desc by count.
+    pub failures_by_reason: Vec<ReasonCount>,
+    /// Hosts where rectangular cutters ran but the triangle count was unchanged
+    /// (cut attempted, geometry not modified) — the highest-signal "looks wrong
+    /// but did not error" indicator.
+    pub silent_no_ops: u64,
+    /// rect_fast fast-path engagement.
+    pub rect_fast: RectFastSummary,
+    /// Bounded top-N worst-failing hosts (opt-in per-product detail).
+    pub worst_hosts: Vec<WorstHost>,
+}
+
+impl GeometryDiagnostics {
+    /// Whether any CSG failure or silent no-op was recorded — a cheap gate for
+    /// "should this be surfaced to the user".
+    pub fn has_issues(&self) -> bool {
+        self.total_csg_failures > 0 || self.silent_no_ops > 0
+    }
+}
+
+/// Build a [`GeometryDiagnostics`] from drained router data. wasm-free, so the
+/// same typed contract is produced on the wasm/viewer path and the native path.
+/// The caller owns draining: the router accessors are destructive (`mem::take`),
+/// so drain once and pass the results here — do not double-`take`.
+pub fn aggregate_diagnostics(
+    classification: ClassificationStats,
+    csg_failures: &FxHashMap<u32, Vec<BoolFailure>>,
+    host_diags: &FxHashMap<u32, HostOpeningDiagnostic>,
+    rect_fast: crate::rect_fast::RectFastStats,
+    worst_hosts_limit: usize,
+) -> GeometryDiagnostics {
+    let total_csg_failures = csg_failures.values().map(Vec::len).sum::<usize>() as u64;
+    let products_with_failures = csg_failures.len() as u64;
+    let hosts_with_openings = host_diags.len() as u64;
+
+    let classification = ClassificationSummary {
+        rectangular: classification.rectangular as u64,
+        diagonal: classification.diagonal as u64,
+        non_rectangular: classification.non_rectangular as u64,
+        total: (classification.rectangular
+            + classification.diagonal
+            + classification.non_rectangular) as u64,
+    };
+
+    let mut by_reason: FxHashMap<&'static str, u64> = FxHashMap::default();
+    for fails in csg_failures.values() {
+        for f in fails {
+            *by_reason.entry(f.reason.label()).or_insert(0) += 1;
+        }
+    }
+    let mut failures_by_reason: Vec<ReasonCount> = by_reason
+        .into_iter()
+        .map(|(reason, count)| ReasonCount { reason: reason.to_string(), count })
+        .collect();
+    failures_by_reason
+        .sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.reason.cmp(&b.reason)));
+
+    let silent_no_ops = host_diags
+        .values()
+        .filter(|hd| {
+            matches!((hd.tris_before, hd.tris_after), (Some(b), Some(a)) if b == a)
+                && hd.rect_boxes_processed > 0
+        })
+        .count() as u64;
+
+    let mut worst: Vec<(&u32, &HostOpeningDiagnostic)> = host_diags
+        .iter()
+        .filter(|(_, hd)| hd.csg_failure_count > 0)
+        .collect();
+    worst.sort_by(|a, b| {
+        b.1.csg_failure_count.cmp(&a.1.csg_failure_count).then_with(|| a.0.cmp(b.0))
+    });
+    let worst_hosts: Vec<WorstHost> = worst
+        .into_iter()
+        .take(worst_hosts_limit)
+        .map(|(pid, hd)| WorstHost {
+            product_id: *pid,
+            ifc_type: hd.host_type.clone(),
+            openings: hd.openings.len() as u64,
+            csg_failures: hd.csg_failure_count as u64,
+            first_failure_label: hd.first_failure_label.clone(),
+        })
+        .collect();
+
+    GeometryDiagnostics {
+        total_csg_failures,
+        products_with_failures,
+        hosts_with_openings,
+        classification,
+        failures_by_reason,
+        silent_no_ops,
+        rect_fast: RectFastSummary {
+            fired: rect_fast.fired,
+            openings_cut: rect_fast.openings_cut,
+            defer_host_not_box: rect_fast.defer_host_not_box,
+            defer_not_through: rect_fast.defer_not_through,
+            defer_off_face: rect_fast.defer_off_face,
+            defer_near_edge: rect_fast.defer_near_edge,
+            defer_no_openings: rect_fast.defer_no_openings,
+        },
+        worst_hosts,
+    }
+}
+
+#[cfg(test)]
+mod diagnostics_contract_tests {
+    use super::*;
+    use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
+    use crate::rect_fast::RectFastStats;
+
+    #[test]
+    fn aggregate_empty_is_all_zero() {
+        let d = aggregate_diagnostics(
+            ClassificationStats::default(),
+            &FxHashMap::default(),
+            &FxHashMap::default(),
+            RectFastStats::default(),
+            16,
+        );
+        assert_eq!(d.total_csg_failures, 0);
+        assert_eq!(d.products_with_failures, 0);
+        assert!(d.failures_by_reason.is_empty());
+        assert!(d.worst_hosts.is_empty());
+        assert!(!d.has_issues());
+    }
+
+    #[test]
+    fn aggregate_summarizes_failures_hosts_classification_and_silent_noops() {
+        let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
+        csg.insert(
+            5,
+            vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost)],
+        );
+        csg.insert(
+            7,
+            vec![
+                BoolFailure::new(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost),
+                BoolFailure::new(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid),
+            ],
+        );
+
+        let mut hosts: FxHashMap<u32, HostOpeningDiagnostic> = FxHashMap::default();
+        // A silent no-op host: rect cutters ran but the triangle count is unchanged.
+        hosts.insert(
+            7,
+            HostOpeningDiagnostic {
+                host_type: "IfcWallStandardCase".into(),
+                csg_failure_count: 2,
+                first_failure_label: Some("DifferenceEmptiedHost".into()),
+                tris_before: Some(120),
+                tris_after: Some(120),
+                rect_boxes_processed: 1,
+                ..Default::default()
+            },
+        );
+
+        let cls = ClassificationStats {
+            rectangular: 3,
+            diagonal: 1,
+            non_rectangular: 0,
+            floor_opening_guard_saved: 0,
+        };
+        let rf = RectFastStats { fired: 2, openings_cut: 4, ..Default::default() };
+
+        let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16);
+        assert_eq!(d.total_csg_failures, 3);
+        assert_eq!(d.products_with_failures, 2);
+        assert_eq!(d.hosts_with_openings, 1);
+        assert_eq!(d.classification.total, 4);
+        assert_eq!(d.classification.rectangular, 3);
+        assert_eq!(d.silent_no_ops, 1);
+        assert_eq!(d.rect_fast.fired, 2);
+        // Sorted desc by count: DifferenceEmptiedHost=2 then KernelOutputInvalid=1.
+        assert_eq!(d.failures_by_reason[0].reason, "DifferenceEmptiedHost");
+        assert_eq!(d.failures_by_reason[0].count, 2);
+        assert_eq!(d.worst_hosts.len(), 1);
+        assert_eq!(d.worst_hosts[0].product_id, 7);
+        assert_eq!(d.worst_hosts[0].csg_failures, 2);
+        assert!(d.has_issues());
+    }
+}

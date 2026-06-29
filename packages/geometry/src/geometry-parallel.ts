@@ -27,6 +27,7 @@
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
+import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { computeWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
@@ -251,10 +252,9 @@ export async function* processParallel(
   let workerError: Error | null = null;
   let workersCompleted = 0;
   let totalMeshes = 0;
-  // CSG-failure totals summed across all workers, forwarded on the final
-  // completion event so loadFile callers can observe them (parity with native).
-  let totalCsgFailures = 0;
-  let productsWithFailures = 0;
+  // CSG / opening diagnostics merged across all workers, forwarded on the final
+  // completion event so loadFile callers can read a typed per-load summary.
+  let diagnostics: GeometryDiagnostics | null = null;
   let endSentToWorkers = false;
   let streamStartSentToWorkers = false;
   /**
@@ -405,8 +405,7 @@ export async function* processParallel(
         // of batch lengths we observed, a batch was lost — log but
         // trust our observed count to keep totalSoFar consistent
         // with what consumers actually rendered.
-        totalCsgFailures += msg.totalCsgFailures ?? 0;
-        productsWithFailures += msg.productsWithFailures ?? 0;
+        diagnostics = mergeGeometryDiagnostics(diagnostics, msg.diagnostics);
         workersCompleted++;
         worker.terminate();
         wake();
@@ -988,19 +987,24 @@ export async function* processParallel(
   }
 
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
-  // One aggregate per-load summary (this is the only place with the cross-worker
-  // total). Count is a batch-summed upper bound; see the event-type doc.
-  if (totalCsgFailures > 0) {
+  // One aggregate per-load summary (only this scope holds the cross-worker
+  // total). Counts include batch-summed upper bounds; see the event-type doc.
+  // `diagnostics` is reassigned inside the message-handler closure, which TS
+  // CFA narrows back to its initial `null` at this yield — re-widen via an
+  // explicitly-typed alias.
+  const loadDiagnostics = diagnostics as GeometryDiagnostics | null;
+  if (loadDiagnostics && loadDiagnostics.totalCsgFailures > 0) {
     console.warn(
-      `[ifc-lite] ${totalCsgFailures} CSG failure(s) across ${productsWithFailures} ` +
-        `product(s) this load - some openings/voids may be left uncut`,
+      `[ifc-lite] ${loadDiagnostics.totalCsgFailures} CSG failure(s) across ` +
+        `${loadDiagnostics.productsWithFailures} product(s) this load - some ` +
+        `openings/voids may be left uncut`,
     );
   }
   yield {
     type: 'complete',
     totalMeshes,
     coordinateInfo,
-    ...(totalCsgFailures > 0 ? { totalCsgFailures, productsWithFailures } : {}),
+    ...(loadDiagnostics ? { diagnostics: loadDiagnostics } : {}),
   };
   } finally {
     for (const w of workers) {

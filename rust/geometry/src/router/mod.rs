@@ -18,7 +18,11 @@ mod voids;
 mod voids_2d;
 
 pub use voids::RectParam;
-pub use diagnostics::{ClassificationStats, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag};
+pub use diagnostics::{
+    aggregate_diagnostics, ClassificationStats, ClassificationSummary, GeometryDiagnostics,
+    HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount, RectFastSummary,
+    WorstHost,
+};
 pub(crate) use diagnostics::ClassificationKind;
 
 #[cfg(test)]

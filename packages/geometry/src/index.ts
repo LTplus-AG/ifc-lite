@@ -26,6 +26,11 @@ export {
   type MetadataBootstrapSpatialNode,
 } from './platform-bridge.js';
 
+// Public CSG / opening diagnostics contract (surfaced on the streaming `complete`
+// event and the native ProcessingStats).
+export type { GeometryDiagnostics } from './diagnostics.js';
+export { mergeGeometryDiagnostics } from './diagnostics.js';
+
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler } from './coordinate-handler.js';
@@ -196,14 +201,11 @@ export type StreamingGeometryEvent =
       type: 'complete';
       totalMeshes: number;
       coordinateInfo: import('./types.js').CoordinateInfo;
-      /** CSG boolean failures across the whole load (un-cut openings, emptied
-       *  hosts). Omitted when zero or on non-parallel load paths. Parity with
-       *  the native server path. */
-      totalCsgFailures?: number;
-      /** Distinct products with at least one CSG failure. Batch-summed, so treat
-       *  it as an upper bound: a product whose geometry spans batches may be
-       *  counted more than once. */
-      productsWithFailures?: number;
+      /** CSG / opening diagnostics aggregated over the whole load (the
+       *  GeometryDiagnostics contract). Omitted when none were recorded or on
+       *  non-parallel load paths. See ./diagnostics.ts for the field semantics
+       *  and which counts are exact vs batch-summed upper bounds. */
+      diagnostics?: import('./diagnostics.js').GeometryDiagnostics;
     };
 
 // QueuedNativeStreamingEvent, native stream constants, and yieldToEventLoop

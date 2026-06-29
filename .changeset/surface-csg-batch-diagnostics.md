@@ -1,24 +1,34 @@
 ---
-"@ifc-lite/wasm": patch
-"@ifc-lite/geometry": patch
+"@ifc-lite/wasm": minor
+"@ifc-lite/geometry": minor
 ---
 
-Surface per-load CSG-failure counts from the WASM batch geometry path.
+Add a typed `GeometryDiagnostics` contract for CSG / opening diagnostics.
 
-Per-element CSG boolean failures (un-cut openings, emptied hosts, kernel fallbacks)
-were computed by the producer and drained at the batch boundary into a console
-warning, then discarded: the three batch exports returned mesh-only types, so no
-programmatic signal reached the host. A silently-uncut model produced a wrong but
-non-empty result with nothing the load pipeline could observe (only the native
-server path returned `total_csg_failures` / `products_with_failures`).
+The WASM batch path already computed a rich CSG / opening diagnostic summary
+(opening classification, per-reason failure breakdown, per-host detail, silent
+rectangular no-op detection, rect_fast fast-path engagement) and then discarded it,
+logging only to the browser console. A package consumer could not subscribe to it
+without scraping console output.
 
-The WASM `MeshCollection` (produced by both the flat and partitioned batch paths)
-now exposes `totalCsgFailures` and `productsWithFailures` getters. The geometry
-worker sums them across batches; on the parallel WASM load path the loader
-aggregates the per-worker totals, logs one console summary, and forwards them on the
-public streaming `complete` event so `loadFile` callers can read a per-load total.
+This surfaces it as a typed, serializable contract:
 
-Scope: this is a data seam, no viewer UI consumes the event fields yet (the only
-user-visible signal today is the loader's console summary). `productsWithFailures`
-is a batch-summed upper bound, and the serial and native (non-parallel) load paths
-do not carry the fields yet.
+- `rust/geometry` exposes a `GeometryDiagnostics` struct and a wasm-free
+  `aggregate_diagnostics` built from the drained router data, so the same shape is
+  producible on the WASM and native paths from a single drain.
+- The WASM `MeshCollection` exposes the per-batch `diagnostics` as a JS object
+  (replacing the earlier two scalar getters).
+- `@ifc-lite/geometry` exports the `GeometryDiagnostics` type and
+  `mergeGeometryDiagnostics`, and surfaces a per-load `diagnostics` object on the
+  streaming `complete` event: the geometry worker merges per-batch diagnostics
+  across batches and the parallel loader merges across workers, logging one
+  aggregate console summary.
+- The viewer reads `event.diagnostics` and logs a concise summary when CSG failures
+  or silent no-ops occur; the full object is available for any UI / telemetry
+  consumer.
+
+`totalCsgFailures` and the classification counts are exact; `productsWithFailures`,
+`hostsWithOpenings` and `silentNoOps` are batch-summed upper bounds. The fields are
+forwarded on the parallel WASM load path only; native `ProcessingStats` parity (the
+processor aggregates per `local_router`) and a CLI `diagnose-geometry` command are
+follow-ups.

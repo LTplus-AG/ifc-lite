@@ -5,15 +5,11 @@
 use super::set_js_prop;
 use wasm_bindgen::prelude::*;
 
-/// Aggregate CSG-failure counts for one `produce_batch`, mirroring the native
-/// path's `ProcessingResponse` fields (`total_csg_failures` /
-/// `products_with_failures`). Lets the viewer report a per-load total instead of
-/// only the per-batch `console.warn`, so a silently-uncut model surfaces a number.
-#[derive(Clone, Copy, Default)]
-pub(super) struct CsgBatchDiagnostics {
-    pub total_csg_failures: u32,
-    pub products_with_failures: u32,
-}
+/// Cap on the number of worst-failing hosts surfaced as per-product detail in
+/// the typed [`ifc_lite_geometry::GeometryDiagnostics`] (keeps the payload
+/// bounded on pathological models). The aggregate scalars stay exact; this only
+/// bounds the optional detail list.
+const WORST_HOSTS_LIMIT: usize = 16;
 
 /// Drain CSG / opening-classification / per-host diagnostics from the
 /// router and emit them to the browser console. Returns a JS object
@@ -31,7 +27,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // every element so failures can't bleed between elements). Merged with
     // whatever still sits on the router (non-canonical paths).
     collected_failures: rustc_hash::FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>,
-) -> (JsValue, CsgBatchDiagnostics) {
+) -> (JsValue, ifc_lite_geometry::GeometryDiagnostics) {
     let cls = router.take_classification_stats();
     let mut csg_failures = router.take_csg_failures();
     for (product_id, fails) in collected_failures {
@@ -294,11 +290,17 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
+    // The console logging above is the human-facing surface; this is the typed,
+    // serializable contract the worker/event path consumes (built from the same
+    // single drain — `rf`/`cls`/`csg_failures`/`host_diags` are not re-taken).
     (
         summary.into(),
-        CsgBatchDiagnostics {
-            total_csg_failures: total_failures as u32,
-            products_with_failures: products_with_failures as u32,
-        },
+        ifc_lite_geometry::aggregate_diagnostics(
+            cls,
+            &csg_failures,
+            &host_diags,
+            rf,
+            WORST_HOSTS_LIMIT,
+        ),
     )
 }

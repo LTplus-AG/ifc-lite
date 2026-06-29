@@ -48,7 +48,7 @@ impl IfcAPI {
         material_element_ids: Option<Vec<u32>>,
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
-    ) -> (Vec<ElementMeshOutput>, crate::api::CsgBatchDiagnostics) {
+    ) -> (Vec<ElementMeshOutput>, ifc_lite_geometry::GeometryDiagnostics) {
         use crate::api::styling::resolve_element_color;
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
@@ -463,8 +463,7 @@ impl IfcAPI {
                 mesh_collection.push_geometry_hash(out.id, hash);
             }
         }
-        mesh_collection
-            .set_csg_diagnostics(csg_diag.total_csg_failures, csg_diag.products_with_failures);
+        mesh_collection.set_diagnostics(csg_diag);
         mesh_collection
     }
 
@@ -655,8 +654,7 @@ impl IfcAPI {
         // safety net can still drop a (rare, degenerate) group to a singleton template.
         let shard =
             ifc_lite_geometry::collate_and_encode(&refs, INSTANCE_MIN_OCCURRENCES as usize);
-        mesh_collection
-            .set_csg_diagnostics(csg_diag.total_csg_failures, csg_diag.products_with_failures);
+        mesh_collection.set_diagnostics(csg_diag);
         PartitionedBatch {
             meshes: Some(mesh_collection),
             shard,

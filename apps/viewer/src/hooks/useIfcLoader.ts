@@ -1107,6 +1107,21 @@ export function useIfcLoader() {
                 finalCoordinateInfo.wasmRtcOffset = capturedRtcOffset;
               }
 
+              // Geometry diagnostics (the typed GeometryDiagnostics contract on the
+              // streaming `complete` event). Surface a concise main-thread summary
+              // when CSG failures or silent no-ops were recorded; the full object
+              // stays on `event.diagnostics` for any UI/telemetry consumer.
+              if (target.kind === 'primary' && event.diagnostics) {
+                const d = event.diagnostics;
+                if (d.totalCsgFailures > 0 || d.silentNoOps > 0) {
+                  console.info(
+                    `[useIfc] ${file.name} geometry diagnostics: ${d.totalCsgFailures} CSG failure(s) ` +
+                      `across ${d.productsWithFailures} product(s), ${d.silentNoOps} silent no-op(s)`,
+                    d,
+                  );
+                }
+              }
+
               if (target.kind === 'primary') {
                 // Active-model writes — PRIMARY only. Federated meshes already
                 // carry colours (applied during streaming) and their coordinate

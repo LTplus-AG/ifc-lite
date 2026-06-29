@@ -454,6 +454,13 @@ export class MeshCollection {
    */
   takeMesh(index: number): MeshDataJs | undefined;
   /**
+   * The batch's typed CSG / opening diagnostics as a JS object (the
+   * `GeometryDiagnostics` contract), or `undefined` if none were recorded. The
+   * worker merges these across batches. One serialized value keeps the rich
+   * nested shape as a single FFI crossing instead of dozens of getters.
+   */
+  readonly diagnostics: any;
+  /**
    * Get RTC offset X (for converting local coords back to world coords)
    * Add this to local X coordinates to get world X coordinates
    */
@@ -486,12 +493,6 @@ export class MeshCollection {
    */
   readonly geometryHashIds: Uint32Array;
   /**
-   * CSG boolean failures recorded while producing this batch (un-cut openings,
-   * emptied hosts, kernel fallbacks). Parity with the native path's
-   * `total_csg_failures`. Summed across batches by the worker.
-   */
-  readonly totalCsgFailures: number;
-  /**
    * Number of per-entity geometry fingerprints recorded.
    */
   readonly geometryHashCount: number;
@@ -502,10 +503,6 @@ export class MeshCollection {
    * geometry hashing was enabled.
    */
   readonly geometryHashValues: BigUint64Array;
-  /**
-   * Distinct products (host elements) with at least one CSG failure this batch.
-   */
-  readonly productsWithFailures: number;
   /**
    * Get number of meshes
    */
@@ -1113,18 +1110,17 @@ export interface InitOutput {
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
   readonly meshcollection_buildingRotation: (a: number, b: number) => void;
+  readonly meshcollection_diagnostics: (a: number) => number;
   readonly meshcollection_geometryHashCount: (a: number) => number;
   readonly meshcollection_geometryHashIds: (a: number) => number;
   readonly meshcollection_geometryHashValues: (a: number) => number;
   readonly meshcollection_get: (a: number, b: number) => number;
   readonly meshcollection_hasRtcOffset: (a: number) => number;
   readonly meshcollection_length: (a: number) => number;
-  readonly meshcollection_productsWithFailures: (a: number) => number;
   readonly meshcollection_rtcOffsetX: (a: number) => number;
   readonly meshcollection_rtcOffsetY: (a: number) => number;
   readonly meshcollection_rtcOffsetZ: (a: number) => number;
   readonly meshcollection_takeMesh: (a: number, b: number) => number;
-  readonly meshcollection_totalCsgFailures: (a: number) => number;
   readonly meshcollection_totalTriangles: (a: number) => number;
   readonly meshcollection_totalVertices: (a: number) => number;
   readonly meshdatajs_color: (a: number, b: number) => void;

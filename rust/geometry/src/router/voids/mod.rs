@@ -146,6 +146,288 @@ impl VoidContext {
             param: None,
         }
     }
+
+    /// Oriented boxes of the REAL openings whose cutter mesh is MALFORMED —
+    /// self-intersecting tessellated voids carrying garbage "fin" vertices far
+    /// from the actual hole (a broken export). The kernel under-cuts such a
+    /// cutter, leaving a wall flap bridging the opening; these boxes mark the
+    /// region that MUST end up empty so a post-cut pass can drop the flap.
+    /// Empty when every cutter is well-formed, so clean hosts are untouched.
+    fn malformed_opening_boxes(&self) -> Vec<OpeningBox> {
+        self.openings
+            .iter()
+            .filter_map(|o| match o {
+                OpeningType::NonRectangular(m, ..) => opening_obb_if_malformed(m),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+/// An oriented box: world centre, orthonormal axes, half-extents along each.
+struct OpeningBox {
+    center: Vector3<f64>,
+    axes: [Vector3<f64>; 3],
+    half: [f64; 3],
+}
+
+impl OpeningBox {
+    /// Does triangle `tri` (world) OVERLAP the opening cross-section (axes 0 & 2,
+    /// inset to spare the reveal/jamb faces on the boundary) while lying within
+    /// the wall thickness on axis 1 (the thin penetration axis, `face_eps`
+    /// slack)? An OVERLAP (not centroid) test, because the leftover material can
+    /// be a single LARGE triangle (an un-cut thin composite layer that spans the
+    /// whole wall) whose centroid is far from the opening yet which still bridges
+    /// it. The opening footprint is empty after a correct through-cut, so the
+    /// only material there is leftover; the reveals sit ON the boundary (the
+    /// inset separates them) and so survive.
+    fn covers_face_triangle(&self, tri: [Vector3<f64>; 3], inset: f64, face_eps: f64) -> bool {
+        // Within the wall-thickness band on axis 1?
+        let band = self.half[1] + face_eps;
+        let a1: [f64; 3] = [
+            (tri[0] - self.center).dot(&self.axes[1]),
+            (tri[1] - self.center).dot(&self.axes[1]),
+            (tri[2] - self.center).dot(&self.axes[1]),
+        ];
+        if a1.iter().all(|&t| t > band) || a1.iter().all(|&t| t < -band) {
+            return false;
+        }
+        // 2D triangle vs centred axis-aligned rect [-rx,rx] x [-rz,rz] (SAT).
+        let rx = self.half[0] - inset;
+        let rz = self.half[2] - inset;
+        if rx <= 0.0 || rz <= 0.0 {
+            return false;
+        }
+        let p: [[f64; 2]; 3] = [
+            [
+                (tri[0] - self.center).dot(&self.axes[0]),
+                (tri[0] - self.center).dot(&self.axes[2]),
+            ],
+            [
+                (tri[1] - self.center).dot(&self.axes[0]),
+                (tri[1] - self.center).dot(&self.axes[2]),
+            ],
+            [
+                (tri[2] - self.center).dot(&self.axes[0]),
+                (tri[2] - self.center).dot(&self.axes[2]),
+            ],
+        ];
+        tri_rect_overlap_2d(&p, rx, rz)
+    }
+}
+
+/// Separating-axis test: does convex triangle `p` (2D) overlap the centred,
+/// axis-aligned rectangle `[-rx, rx] x [-rz, rz]`?
+fn tri_rect_overlap_2d(p: &[[f64; 2]; 3], rx: f64, rz: f64) -> bool {
+    // Rect's own axes (x, z): reject if the triangle's projection is separated.
+    let (mut minx, mut maxx, mut minz, mut maxz) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+    for q in p {
+        minx = minx.min(q[0]);
+        maxx = maxx.max(q[0]);
+        minz = minz.min(q[1]);
+        maxz = maxz.max(q[1]);
+    }
+    if maxx < -rx || minx > rx || maxz < -rz || minz > rz {
+        return false;
+    }
+    // Triangle edge normals.
+    let corners = [[-rx, -rz], [rx, -rz], [rx, rz], [-rx, rz]];
+    for i in 0..3 {
+        let a = p[i];
+        let b = p[(i + 1) % 3];
+        let axis = [-(b[1] - a[1]), b[0] - a[0]];
+        let (mut tmin, mut tmax) = (f64::MAX, f64::MIN);
+        for q in p {
+            let d = q[0] * axis[0] + q[1] * axis[1];
+            tmin = tmin.min(d);
+            tmax = tmax.max(d);
+        }
+        let (mut rmin, mut rmax) = (f64::MAX, f64::MIN);
+        for cq in &corners {
+            let d = cq[0] * axis[0] + cq[1] * axis[1];
+            rmin = rmin.min(d);
+            rmax = rmax.max(d);
+        }
+        if tmax < rmin || tmin > rmax {
+            return false;
+        }
+    }
+    true
+}
+
+/// Compute the clean oriented box of a cutter's REAL opening iff the cutter is
+/// MALFORMED (a far-flung garbage-vertex cluster). `None` for a well-formed
+/// cutter — clean hosts are never reshaped.
+///
+/// The real opening is a TIGHT vertex cluster; garbage "fins" sit far away (and
+/// a fin running ALONG a long wall stays inside the host AABB, so we cluster
+/// INTRINSICALLY, not by host containment). Robust per-axis median centre
+/// (garbage is a minority, so the median lands in the real box), sort vertices
+/// by distance, cut at the largest RATIO gap in the upper half. No clear gap ->
+/// not malformed -> `None`. Principal axes via covariance eigendecomposition
+/// (for a box the eigenvectors align with the edges).
+fn opening_obb_if_malformed(m: &Mesh) -> Option<OpeningBox> {
+    let all: Vec<Vector3<f64>> = m
+        .positions
+        .chunks_exact(3)
+        .map(|p| {
+            Vector3::new(
+                p[0] as f64 + m.origin[0],
+                p[1] as f64 + m.origin[1],
+                p[2] as f64 + m.origin[2],
+            )
+        })
+        .collect();
+    if all.len() < 8 {
+        return None;
+    }
+    let median_axis = |axis: usize| -> f64 {
+        let mut vals: Vec<f64> = all.iter().map(|v| v[axis]).collect();
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        vals[vals.len() / 2]
+    };
+    let med = Vector3::new(median_axis(0), median_axis(1), median_axis(2));
+    let mut dist: Vec<(f64, usize)> = all
+        .iter()
+        .enumerate()
+        .map(|(i, v)| ((v - med).norm(), i))
+        .collect();
+    dist.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    let mut split_at = dist.len();
+    let mut best_ratio = 1.0;
+    for i in (dist.len() / 2)..(dist.len() - 1) {
+        let lo = dist[i].0.max(1.0e-6);
+        let r = dist[i + 1].0 / lo;
+        if r > best_ratio {
+            best_ratio = r;
+            split_at = i + 1;
+        }
+    }
+    // A >2x jump separates a far garbage cluster from the real opening; a clean
+    // cutter's vertices are uniformly close, so this never fires for it.
+    if best_ratio < 2.0 {
+        return None;
+    }
+    let inliers: Vec<Vector3<f64>> = dist[..split_at].iter().map(|(_, i)| all[*i]).collect();
+    if inliers.len() < 8 {
+        return None;
+    }
+    let n = inliers.len() as f64;
+    let mut c = Vector3::zeros();
+    for v in &inliers {
+        c += v;
+    }
+    c /= n;
+    let mut cov = Matrix3::zeros();
+    for v in &inliers {
+        let d = v - c;
+        cov += d * d.transpose();
+    }
+    cov /= n;
+    let eig = cov.symmetric_eigen();
+    let a0 = eig.eigenvectors.column(0).into_owned().try_normalize(1.0e-9)?;
+    let a1 = eig.eigenvectors.column(1).into_owned().try_normalize(1.0e-9)?;
+    let a2 = a0.cross(&a1).try_normalize(1.0e-9)?;
+    let axes = [a0, a1, a2];
+    let mut lo = [f64::MAX; 3];
+    let mut hi = [f64::MIN; 3];
+    for v in &inliers {
+        for k in 0..3 {
+            let t = v.dot(&axes[k]);
+            lo[k] = lo[k].min(t);
+            hi[k] = hi[k].max(t);
+        }
+    }
+    let half = [
+        (hi[0] - lo[0]) * 0.5,
+        (hi[1] - lo[1]) * 0.5,
+        (hi[2] - lo[2]) * 0.5,
+    ];
+    if half.iter().any(|&h| h < 1.0e-3) {
+        return None;
+    }
+    let mid = [
+        (hi[0] + lo[0]) * 0.5,
+        (hi[1] + lo[1]) * 0.5,
+        (hi[2] + lo[2]) * 0.5,
+    ];
+    let center = axes[0] * mid[0] + axes[1] * mid[1] + axes[2] * mid[2];
+    Some(OpeningBox { center, axes, half })
+}
+
+/// Drop wall FACE triangles that bridge a malformed-cutter opening (the #1007
+/// "flap" the kernel leaves when it under-cuts a self-intersecting void), then
+/// compact orphaned vertices. World-space: `result.origin` is folded per vertex.
+///
+/// A triangle is a flap iff its centroid falls in an opening's cross-section
+/// (axes 0 & 2 strictly inside, inset to spare the reveal/jamb faces; axis 1
+/// generously within the wall thickness) AND it is FACE-oriented (normal aligned
+/// with the box's thin/penetration axis). The opening footprint is empty after a
+/// correct cut, so the only face material there is leftover; the reveals sit on
+/// the cross-section boundary (excluded by the inset) and are perpendicular to
+/// the thin axis (excluded by the orientation test). A no-op when `boxes` is
+/// empty (every cutter well-formed) — clean hosts are untouched.
+fn clip_opening_flaps(result: &mut Mesh, boxes: &[OpeningBox]) -> usize {
+    if boxes.is_empty() || result.indices.is_empty() {
+        return 0;
+    }
+    let o = result.origin;
+    let wv = |i: u32| -> Vector3<f64> {
+        let b = i as usize * 3;
+        Vector3::new(
+            result.positions[b] as f64 + o[0],
+            result.positions[b + 1] as f64 + o[1],
+            result.positions[b + 2] as f64 + o[2],
+        )
+    };
+    let tri_count = result.indices.len() / 3;
+    let mut kept: Vec<u32> = Vec::with_capacity(result.indices.len());
+    for t in result.indices.chunks_exact(3) {
+        let (a, b, c) = (wv(t[0]), wv(t[1]), wv(t[2]));
+        let is_flap = boxes.iter().any(|bx| {
+            // Inset spares the reveal/jamb faces on the cross-section boundary;
+            // the generous thickness band covers the full wall (the leftover can
+            // sit on either face / any un-cut layer).
+            let inset = (0.1 * bx.half[0].min(bx.half[2])).clamp(0.005, 0.05);
+            bx.covers_face_triangle([a, b, c], inset, 1.0)
+        });
+        if !is_flap {
+            kept.extend_from_slice(t);
+        }
+    }
+    let dropped = tri_count - kept.len() / 3;
+    if dropped == 0 || kept.is_empty() {
+        return 0;
+    }
+    // Compact: drop the now-orphaned vertices (they would skew bounds()).
+    let has_normals = result.normals.len() == result.positions.len();
+    let mut remap: Vec<i32> = vec![-1; result.positions.len() / 3];
+    let mut new_pos: Vec<f32> = Vec::with_capacity(kept.len() * 3);
+    let mut new_nrm: Vec<f32> = Vec::with_capacity(if has_normals { kept.len() * 3 } else { 0 });
+    let mut new_idx: Vec<u32> = Vec::with_capacity(kept.len());
+    for &i in &kept {
+        let old = i as usize;
+        let slot = if remap[old] < 0 {
+            let n = (new_pos.len() / 3) as u32;
+            remap[old] = n as i32;
+            new_pos.extend_from_slice(&result.positions[old * 3..old * 3 + 3]);
+            if has_normals {
+                new_nrm.extend_from_slice(&result.normals[old * 3..old * 3 + 3]);
+            }
+            n
+        } else {
+            remap[old] as u32
+        };
+        new_idx.push(slot);
+    }
+    result.positions = new_pos;
+    if has_normals {
+        result.normals = new_nrm;
+    } else {
+        result.normals.clear();
+    }
+    result.indices = new_idx;
+    dropped
 }
 
 /// Express a cutter mesh in the host's local frame: `result = position +
@@ -568,10 +850,18 @@ impl GeometryRouter {
             }
         }
 
+        // World-space boxes of the REAL openings whose cutter is malformed
+        // (self-intersecting tessellated voids). Used post-cut to drop the wall
+        // flap the kernel leaves when it under-cuts them. Empty (no-op) for the
+        // clean-cutter common case, so well-formed hosts are untouched.
+        let flap_boxes = ctx.malformed_opening_boxes();
+
         let origin = mesh.origin;
         if origin == [0.0, 0.0, 0.0] && ctx.all_cutters_world_framed() {
             // Legacy/world frame on host AND cutters: no relativization needed.
-            return self.apply_void_context_inner(mesh, ctx, element_id);
+            let mut result = self.apply_void_context_inner(mesh, ctx, element_id);
+            clip_opening_flaps(&mut result, &flap_boxes);
+            return result;
         }
         // Work entirely in the host's local frame (origin 0 on every operand).
         // `relativized_by` folds each cutter's OWN origin and subtracts the host
@@ -582,6 +872,8 @@ impl GeometryRouter {
         let local_ctx = ctx.relativized_by(origin);
         let mut result = self.apply_void_context_inner(mesh, &local_ctx, element_id);
         result.origin = origin;
+        // Flap clip runs in WORLD on the origin-restored result (boxes are world).
+        clip_opening_flaps(&mut result, &flap_boxes);
         result
     }
 
@@ -1434,7 +1726,28 @@ impl GeometryRouter {
         // ⇒ cut volume is preserved exactly. A no-op on clean cuts (no triangle
         // exceeds 8:1), so it does not perturb the frozen corpus. Only runs when
         // a cut was actually attempted (`!ctx.is_noop()` guarantees this path).
-        let result = crate::facet_weld::refine_high_aspect_slivers(&result);
+        let mut result = crate::facet_weld::refine_high_aspect_slivers(&result);
+
+        // SPURIOUS-FLAP CLIP: a subtract can only remove material, so the cut is
+        // mathematically contained in the host's pre-cut AABB (`wall_min/max`).
+        // A malformed cutter (self-intersecting, or with garbage vertices metres
+        // from the real opening — the multi-body / tessellated-void case) can
+        // make the exact arrangement leak a far-flung flap triangle that pokes
+        // out of the wall, but only once a SECOND cutter perturbs the
+        // arrangement (so it slips past the per-cutter admission guards). Drop
+        // any triangle with a vertex beyond the host AABB; `pad` absorbs kernel
+        // snap / f64→f32 round-trip jitter (legit cut vertices land sub-mm
+        // inside). A no-op on clean cuts.
+        let diag = ((wall_max.x - wall_min.x).powi(2)
+            + (wall_max.y - wall_min.y).powi(2)
+            + (wall_max.z - wall_min.z).powi(2))
+        .sqrt();
+        let pad = (1.0e-3 * diag).max(5.0e-3) as f32;
+        result.clip_triangles_to_aabb(
+            [wall_min.x as f32, wall_min.y as f32, wall_min.z as f32],
+            [wall_max.x as f32, wall_max.y as f32, wall_max.z as f32],
+            pad,
+        );
 
         // Per-host cut-effect snapshot: tris_before / tris_after lets the
         // diagnostic surface the silent-no-op case (rectangular boxes
@@ -1509,5 +1822,104 @@ impl GeometryRouter {
         }
 
         Ok(voided)
+    }
+}
+
+#[cfg(test)]
+mod flap_clip_tests {
+    use super::*;
+
+    /// `tri_rect_overlap_2d`: a triangle covering the rect centre overlaps; one
+    /// pushed clear of the rect does not.
+    #[test]
+    fn tri_rect_overlap_basic() {
+        let rx = 1.0;
+        let rz = 1.0;
+        // Triangle straddling the centre.
+        let inside = [[-0.5, -0.5], [0.5, -0.5], [0.0, 0.5]];
+        assert!(tri_rect_overlap_2d(&inside, rx, rz));
+        // Triangle entirely to the right of the rect.
+        let outside = [[2.0, -0.5], [3.0, -0.5], [2.5, 0.5]];
+        assert!(!tri_rect_overlap_2d(&outside, rx, rz));
+        // A large triangle that merely SPANS the rect (centroid far away) still
+        // overlaps — the centroid is irrelevant, only coverage matters.
+        let spanning = [[-10.0, -0.2], [10.0, -0.2], [0.0, 5.0]];
+        assert!(tri_rect_overlap_2d(&spanning, rx, rz));
+    }
+
+    fn box_cutter_mesh(half: [f64; 3], garbage: &[[f64; 3]]) -> Mesh {
+        // 8 corners of an axis-aligned box centred at origin + far garbage verts.
+        let mut m = Mesh::new();
+        for sx in [-1.0, 1.0] {
+            for sy in [-1.0, 1.0] {
+                for sz in [-1.0, 1.0] {
+                    m.positions.extend_from_slice(&[
+                        (sx * half[0]) as f32,
+                        (sy * half[1]) as f32,
+                        (sz * half[2]) as f32,
+                    ]);
+                }
+            }
+        }
+        for g in garbage {
+            m.positions
+                .extend_from_slice(&[g[0] as f32, g[1] as f32, g[2] as f32]);
+        }
+        m
+    }
+
+    /// A cutter with far garbage "fins" is detected as malformed and its real
+    /// opening box is recovered (the fins are excluded).
+    #[test]
+    fn opening_obb_detects_malformed_and_recovers_box() {
+        let cutter = box_cutter_mesh([1.0, 0.1, 1.2], &[[0.0, 9.0, 0.0], [0.0, -9.0, 0.0]]);
+        let b = opening_obb_if_malformed(&cutter).expect("malformed cutter -> box");
+        let mut half = b.half;
+        half.sort_by(|a, c| a.partial_cmp(c).unwrap());
+        assert!((half[0] - 0.1).abs() < 0.05, "thin half {:?}", b.half);
+        assert!((half[1] - 1.0).abs() < 0.05, "mid half {:?}", b.half);
+        assert!((half[2] - 1.2).abs() < 0.05, "long half {:?}", b.half);
+    }
+
+    /// A well-formed cutter (no far cluster) is NOT reshaped.
+    #[test]
+    fn opening_obb_skips_wellformed_cutter() {
+        let cutter = box_cutter_mesh([1.0, 0.1, 1.2], &[]);
+        assert!(opening_obb_if_malformed(&cutter).is_none());
+    }
+
+    /// `clip_opening_flaps` drops a wall triangle bridging the opening footprint
+    /// but keeps geometry outside it; compaction removes the orphaned vertices.
+    #[test]
+    fn clip_removes_flap_keeps_outside() {
+        let bx = OpeningBox {
+            center: Vector3::new(0.0, 0.0, 0.0),
+            axes: [
+                Vector3::new(1.0, 0.0, 0.0),
+                Vector3::new(0.0, 1.0, 0.0),
+                Vector3::new(0.0, 0.0, 1.0),
+            ],
+            half: [1.0, 0.1, 1.2],
+        };
+        let mut m = Mesh::new();
+        let push = |m: &mut Mesh, t: [[f32; 3]; 3]| {
+            let b = (m.positions.len() / 3) as u32;
+            for v in &t {
+                m.positions.extend_from_slice(v);
+                m.normals.extend_from_slice(&[0.0, 1.0, 0.0]);
+            }
+            m.indices.extend_from_slice(&[b, b + 1, b + 2]);
+        };
+        // Flap: a face triangle bridging the opening cross-section (x,z inside).
+        push(&mut m, [[-0.5, 0.0, -0.5], [0.5, 0.0, -0.5], [0.0, 0.0, 0.5]]);
+        // Outside: a triangle well clear of the opening footprint.
+        push(&mut m, [[5.0, 0.0, 5.0], [6.0, 0.0, 5.0], [5.5, 0.0, 6.0]]);
+        let dropped = clip_opening_flaps(&mut m, std::slice::from_ref(&bx));
+        assert_eq!(dropped, 1, "exactly the flap triangle should drop");
+        assert_eq!(m.triangle_count(), 1);
+        // The surviving triangle is the outside one; its verts are compacted.
+        assert_eq!(m.positions.len() / 3, 3);
+        let (lo, _) = m.bounds();
+        assert!(lo.x > 4.0, "wrong triangle kept");
     }
 }

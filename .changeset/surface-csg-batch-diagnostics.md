@@ -14,7 +14,11 @@ server path returned `total_csg_failures` / `products_with_failures`).
 
 The WASM `MeshCollection` (produced by both the flat and partitioned batch paths)
 now exposes `totalCsgFailures` and `productsWithFailures` getters. The geometry
-worker sums them across batches; the parallel loader aggregates the per-worker
-totals and forwards them on the public streaming `complete` event (plus a one-line
-console summary), so `loadFile` callers can observe a per-load total, matching the
-native `ProcessingResponse`. `productsWithFailures` is a batch-summed upper bound.
+worker sums them across batches; on the parallel WASM load path the loader
+aggregates the per-worker totals, logs one console summary, and forwards them on the
+public streaming `complete` event so `loadFile` callers can read a per-load total.
+
+Scope: this is a data seam, no viewer UI consumes the event fields yet (the only
+user-visible signal today is the loader's console summary). `productsWithFailures`
+is a batch-summed upper bound, and the serial and native (non-parallel) load paths
+do not carry the fields yet.

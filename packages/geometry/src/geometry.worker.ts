@@ -572,9 +572,10 @@ function collectMeshes(
   collection: ReturnType<IfcAPI['processGeometryBatch']>,
 ): void {
   try {
-    // CSG-failure diagnostics: both the flat and partitioned batch paths set
-    // these on the collection, so summing here (called once per batch on both
-    // paths) gives a single per-load total at completion, parity with native.
+    // CSG-failure diagnostics: both batch paths set these on the collection;
+    // summing here aggregates the per-load total. On the happy path this runs once
+    // per batch; a recovery re-run (binary split) can re-sum a batch, so
+    // productsWithFailures is a batch-summed upper bound (documented on the event).
     session.totalCsgFailures += collection.totalCsgFailures ?? 0;
     session.productsWithFailures += collection.productsWithFailures ?? 0;
     // Per-entity geometry fingerprints (issue #924) — empty unless hashing was
@@ -838,12 +839,10 @@ function emitSessionEnd(session: ProcessingSession): void {
   (self as unknown as Worker).postMessage(
     { type: 'memory', meshBytes: session.cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
   );
-  if (session.totalCsgFailures > 0) {
-    console.warn(
-      `[ifc-lite] load complete: ${session.totalCsgFailures} CSG failure(s) across ` +
-        `${session.productsWithFailures} product(s) — some openings/voids may be uncut`,
-    );
-  }
+  // The aggregate per-load console summary is logged once by the parallel loader
+  // (geometry-parallel.ts), which holds the cross-worker total. This worker only
+  // forwards its own subtotal on the message; logging here would print one partial
+  // line per worker.
   (self as unknown as Worker).postMessage(
     {
       type: 'complete',

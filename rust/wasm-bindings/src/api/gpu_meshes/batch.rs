@@ -499,6 +499,9 @@ impl IfcAPI {
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
     ) -> Vec<u8> {
+        // NB: this instanced-only export returns raw shard bytes with no
+        // MeshCollection carrier, so CSG diagnostics are intentionally dropped. It
+        // is not the worker's default path (partitioned/flat carry the counts).
         let (outputs, _) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,

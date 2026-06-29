@@ -988,6 +988,14 @@ export async function* processParallel(
   }
 
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
+  // One aggregate per-load summary (this is the only place with the cross-worker
+  // total). Count is a batch-summed upper bound; see the event-type doc.
+  if (totalCsgFailures > 0) {
+    console.warn(
+      `[ifc-lite] ${totalCsgFailures} CSG failure(s) across ${productsWithFailures} ` +
+        `product(s) this load - some openings/voids may be left uncut`,
+    );
+  }
   yield {
     type: 'complete',
     totalMeshes,

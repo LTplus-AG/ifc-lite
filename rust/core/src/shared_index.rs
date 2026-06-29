@@ -111,6 +111,30 @@ where
     while let Some((id, _ty, start, end)) = scanner.next_entity() {
         entries.push((id, start as u32, end as u32));
     }
+    serialize_sorted_triples(entries)
+}
+
+/// Build the shared-index bytes from an already-built [`crate::EntityIndex`]
+/// (FxHashMap) — no content re-scan. Use this where the owned index already
+/// exists (e.g. the prepass) so sharing costs only a sort + serialize, not a
+/// second scan. Produces the same bytes as [`build_shared_entity_index_bytes`].
+///
+/// Returns an EMPTY buffer if any offset would overflow u32 (content ≥ 4 GiB),
+/// matching the scan-based builder's degrade-to-owned contract.
+pub fn build_shared_entity_index_bytes_from_map(index: &crate::EntityIndex) -> Vec<u8> {
+    let mut entries: Vec<(u32, u32, u32)> = Vec::with_capacity(index.len());
+    for (&id, &(start, end)) in index.iter() {
+        if start > u32::MAX as usize || end > u32::MAX as usize {
+            return Vec::new();
+        }
+        entries.push((id, start as u32, end as u32));
+    }
+    serialize_sorted_triples(entries)
+}
+
+/// Sort `(id, start, end)` triples by id and pack them as LE u32 — the layout
+/// [`SharedEntityIndex`] binary-searches. Sorting here keeps both builders honest.
+fn serialize_sorted_triples(mut entries: Vec<(u32, u32, u32)>) -> Vec<u8> {
     entries.sort_unstable_by_key(|e| e.0);
     let mut out = Vec::with_capacity(entries.len() * ENTRY);
     for (id, start, end) in entries {
@@ -153,6 +177,14 @@ ENDSEC;\nEND-ISO-10303-21;\n";
         }
         assert_eq!(s.get(9999), None, "absent id must miss");
         assert_eq!(map.get(&9999), None);
+    }
+
+    #[test]
+    fn from_map_matches_from_content() {
+        let map = build_entity_index(SAMPLE);
+        let from_content = build_shared_entity_index_bytes(SAMPLE);
+        let from_map = build_shared_entity_index_bytes_from_map(&map);
+        assert_eq!(from_content, from_map, "from_map must produce identical sorted bytes");
     }
 
     #[test]

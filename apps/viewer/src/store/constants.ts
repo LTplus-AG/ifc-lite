@@ -131,6 +131,33 @@ export const GEOM_TIER_STORAGE_KEY = 'ifc-lite-geom-tier';
 export const AUTO_LOW_TIER_MB = 50; // >= this → 'low'
 export const AUTO_LOWEST_TIER_MB = 150; // >= this → 'lowest'
 
+/** localStorage key for the load-time geometry fidelity mode (mirrors merge-layers). */
+export const GEOMETRY_MODE_STORAGE_KEY = 'ifc-lite-geometry-mode';
+
+/**
+ * Load-time geometry fidelity mode — a user-facing, persistent switch that
+ * mirrors the merge-layers load-time input (sticky in localStorage, folded into
+ * the geometry cache key, reload-to-apply).
+ * - `fast` (default): skip tiny detail boolean cuts (#1286) + auto-low
+ *   tessellation density for heavy models, for fast first paint. PREVIEW
+ *   fidelity — sub-10% cutters (bolt holes, copes) are dropped and curves may be
+ *   coarser; display, measure AND export all read this same geometry, so it is a
+ *   deliberate, visible choice rather than a silent default.
+ * - `exact`: full boolean cuts + full curve density everywhere — display,
+ *   measure and export consistent. Slower on boolean-heavy / dense models.
+ */
+export type GeometryMode = 'fast' | 'exact';
+
+/** Resolve the initial geometry mode from localStorage; default `fast`. */
+function getInitialGeometryMode(): GeometryMode {
+  if (typeof window === 'undefined') return 'fast';
+  try {
+    return localStorage.getItem(GEOMETRY_MODE_STORAGE_KEY) === 'exact' ? 'exact' : 'fast';
+  } catch {
+    return 'fast';
+  }
+}
+
 /**
  * Resolve an explicit geometry-worker count override for A/B tuning, or
  * `undefined` to use the engine's cores/memory heuristic.
@@ -202,25 +229,31 @@ export function getGeomTierOverride(): TessellationQuality | undefined {
     if ((TESSELLATION_TIERS as readonly string[]).includes(stored)) {
       return stored as TessellationQuality;
     }
-  } catch {
-    /* SSR / blocked storage — fall through to the heuristic */
+  } catch (err) {
+    // Blocked/unavailable storage (Safari private mode, locked storage) or a
+    // bad URL — fall back to the heuristic, but don't swallow silently
+    // (AGENTS.md: no silent catch). A persisted ?geomTier override is lost here.
+    console.warn('[geom-tier] override read failed; using heuristic', err);
   }
   return undefined;
 }
 
 /**
- * Resolve the load-time tessellation tier for a model of `fileSizeMB`: a manual
- * `?geomTier=` override wins, else auto-low for heavy models by size, else
- * `undefined` (engine default = medium, full curve density). Returning
- * `undefined` at the medium default keeps pre-existing cache entries valid (the
- * tier discriminator is omitted from the cache key at medium — see
- * `buildGeometryCacheKey`).
+ * Resolve the load-time tessellation tier for a model of `fileSizeMB` under the
+ * given geometry `mode`: a manual `?geomTier=` override wins in any mode; else
+ * in `fast` mode auto-low for heavy models by size; else `undefined` (engine
+ * default = medium, full curve density). In `exact` mode auto-low never fires,
+ * so dense models keep full density. Returning `undefined` at the medium default
+ * keeps pre-existing cache entries valid (the tier discriminator is omitted from
+ * the cache key at medium — see `buildGeometryCacheKey`).
  */
 export function resolveLoadTessellationTier(
-  fileSizeMB: number
+  fileSizeMB: number,
+  mode: GeometryMode = 'fast'
 ): TessellationQuality | undefined {
   const override = getGeomTierOverride();
   if (override) return override;
+  if (mode !== 'fast') return undefined;
   if (fileSizeMB >= AUTO_LOWEST_TIER_MB) return 'lowest';
   if (fileSizeMB >= AUTO_LOW_TIER_MB) return 'low';
   return undefined;
@@ -260,6 +293,13 @@ export const UI_DEFAULTS = {
    * reloads. Default `false` keeps existing per-layer rendering.
    */
   MERGE_LAYERS: getInitialMergeLayers(),
+  /**
+   * Load-time geometry fidelity mode (see `GeometryMode`). Read from
+   * localStorage on boot so the user's choice survives reloads. Default `fast`
+   * (skip tiny cuts + auto-low density for heavy models) for quick first paint;
+   * `exact` for full display/measure/export fidelity.
+   */
+  GEOMETRY_MODE: getInitialGeometryMode(),
 } as const;
 
 // ============================================================================

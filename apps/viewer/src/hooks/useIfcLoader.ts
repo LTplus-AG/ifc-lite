@@ -56,18 +56,22 @@ import { posthog } from '../lib/analytics.js';
 import { classifyLoadError, formatLoadError } from '../lib/load-errors.js';
 
 /**
- * The on-screen streaming load skips tiny detail boolean cuts (steel
- * copes/notches, minor recesses) for fast first paint on boolean-heavy models
- * (#1286) — the per-cut exact subtract dominates load time there. This is
- * decoupled from the tessellation tier: the load stays at Medium, so CURVES KEEP
- * FULL DENSITY; only the sub-threshold cuts drop.
+ * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
+ * from the user's geometry-fidelity mode (`fast` vs `exact`, see
+ * `resolveLoadTessellationTier` / store `geometryMode`). In `fast` mode the
+ * on-screen load skips sub-10% detail boolean cuts (steel copes/notches, minor
+ * recesses) for fast first paint on boolean-heavy models (#1286) and may auto-
+ * lower tessellation density on heavy models; in `exact` mode every cut runs at
+ * full density.
  *
- * Display only: exports (GLB/CSV/KMZ/HBJSON), drawings and annotations build
- * their own GeometryProcessor with the skip OFF, so their geometry keeps every
- * cut. The cache key folds this flag in (see buildGeometryCacheKey) so a skipped
- * display cache is never served where a full-fidelity build is expected.
+ * IMPORTANT: in `fast` mode this is NOT display-only — the cached
+ * `geometryResult.meshes` are what exports (GLB/IFC5/CSV) and in-viewer
+ * measure/section read, so they reflect the preview too. That is intentional and
+ * visible: the user picked `fast`. For full-fidelity exports/measurement they
+ * switch to `exact` and reload (same flow as Merge Layers). The cache key folds
+ * the derived flag + tier so a preview cache is never served where `exact` is
+ * expected, and vice versa.
  */
-const STREAMING_SKIP_SMALL_CUTS = true;
 
 /**
  * Where a {@link useIfcLoader.loadFile} call should land the model.
@@ -618,12 +622,18 @@ export function useIfcLoader() {
       // with the previous flag (issue #1107). Reused below for the
       // GeometryProcessor so the key and the actual tessellation agree.
       const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
-      // Auto-low tessellation density for heavy models (or a `?geomTier=`
-      // override). Decided here, before the cache key + GeometryProcessor, off
-      // file size — the only model-weight signal available pre-geometry — so the
-      // key stays deterministic at cache-check time and the actual tessellation
-      // matches what the key claims. `undefined` = engine default (medium).
-      const loadTessellationTier = resolveLoadTessellationTier(fileSizeMB);
+      // Snapshot the geometry-fidelity mode the same way: it is a load-time
+      // tessellation input, so it must discriminate the cache key and be reused
+      // for the GeometryProcessor. `fast` = skip sub-10% cuts + auto-low density
+      // for heavy models; `exact` = full cuts + full density.
+      const geometryModeAtLoad = useViewerStore.getState().geometryMode;
+      const skipSmallCutsAtLoad = geometryModeAtLoad === 'fast';
+      // Tessellation tier from the mode: a `?geomTier=` override wins, else
+      // auto-low for heavy models by file size in `fast` mode only (the only
+      // model-weight signal available pre-geometry, so the key stays
+      // deterministic at cache-check time). `undefined` = engine default
+      // (medium). `exact` never auto-lowers.
+      const loadTessellationTier = resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
@@ -633,10 +643,10 @@ export function useIfcLoader() {
         fingerprint,
         mergeLayersAtLoad,
         undefined,
-        STREAMING_SKIP_SMALL_CUTS,
+        skipSmallCutsAtLoad,
         loadTessellationTier
       );
-      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} tier=${loadTessellationTier ?? 'medium'} cacheKey=${cacheKey}`);
+      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} geomMode=${geometryModeAtLoad} tier=${loadTessellationTier ?? 'medium'} cacheKey=${cacheKey}`);
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).
@@ -666,12 +676,17 @@ export function useIfcLoader() {
       // Only for IFC4 STEP files (server doesn't support IFCX). Native
       // file handles (Tauri) don't have an HTTP-uploadable body, so skip
       // the server path and fall through to the WASM loader.
-      // Also skip it when merge-layers is on: the server tessellates without
-      // the flag and its cache key ignores it, so a toggle+reload would still
-      // return non-merged geometry. The local WASM path honours the flag, so
-      // route through it instead (issue #1107). Merge-layers is opt-in, so the
-      // common (flag-off) load keeps the server fast path.
-      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
+      // Also skip it whenever the load needs local-only geometry tessellation
+      // the server can't reproduce: merge-layers (issue #1107), the small-cut
+      // skip, or a non-default tessellation tier. The server tessellates with
+      // none of these and its cache key ignores them, so routing through it
+      // would return geometry that disagrees with the cache key the client
+      // committed (it would serve full-cut/medium where `fast` was requested).
+      // The local WASM path honours all three. (In `fast` mode the local skip is
+      // also the faster path on boolean-heavy models, so little is lost.)
+      const needsLocalGeometryBuild =
+        mergeLayersAtLoad || skipSmallCutsAtLoad || loadTessellationTier !== undefined;
+      if (target.kind === 'primary' && format === 'ifc' && !needsLocalGeometryBuild && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
@@ -704,10 +719,10 @@ export function useIfcLoader() {
         // Must match the tier folded into `cacheKey` above so the cached bytes
         // and the live tessellation agree (issues #540, #1107).
         tessellationQuality: loadTessellationTier,
-        // Skip tiny detail boolean cuts on the on-screen load for fast first
-        // paint (#1286) while keeping full-density curves at the chosen tier.
-        // Must match the flag folded into `cacheKey` above (issues #540, #1107).
-        skipSmallCuts: STREAMING_SKIP_SMALL_CUTS,
+        // Skip tiny detail boolean cuts in `fast` mode for quick first paint
+        // (#1286); `exact` mode keeps every cut. Must match the flag folded into
+        // `cacheKey` above so cached bytes and live tessellation agree (#540, #1107).
+        skipSmallCuts: skipSmallCutsAtLoad,
         preferNative: false,
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.

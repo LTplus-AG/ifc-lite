@@ -29,6 +29,7 @@ import {
   Camera,
   Info,
   Layers2,
+  Zap,
   SquareX,
   BoxSelect,
   Building2,
@@ -378,6 +379,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // "what shows in the scene" controls.
   const mergeLayers = useViewerStore((state) => state.mergeLayers);
   const setMergeLayers = useViewerStore((state) => state.setMergeLayers);
+  const geometryMode = useViewerStore((state) => state.geometryMode);
+  const setGeometryMode = useViewerStore((state) => state.setGeometryMode);
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
   const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
   const setBcfPanelVisible = useViewerStore((state) => state.setBcfPanelVisible);
@@ -1564,6 +1567,29 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               </span>
             </span>
             <Switch checked={mergeLayers} onCheckedChange={(next) => setMergeLayers(next === true)} />
+          </label>
+
+          {/* Fast vs Exact geometry — like merge-layers, a load-time geometry
+              input that only takes effect on the next model load ("· on reload").
+              Fast skips sub-10% detail cuts + auto-lowers density on heavy models
+              for quick first paint; Exact keeps every cut at full density for
+              display/measure/export fidelity. */}
+          <label className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
+            <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', geometryMode !== 'fast' && 'opacity-50')}>
+              <Zap className="h-4 w-4 shrink-0 text-primary" />
+              <span className="grid gap-0.5 min-w-0">
+                <span className="text-sm leading-tight truncate">Fast geometry</span>
+                <span className="text-[10px] leading-tight text-muted-foreground truncate">
+                  {geometryMode === 'fast'
+                    ? 'Skip tiny cuts, auto-detail · on reload'
+                    : 'Exact: full cuts + density · on reload'}
+                </span>
+              </span>
+            </span>
+            <Switch
+              checked={geometryMode === 'fast'}
+              onCheckedChange={(next) => setGeometryMode(next === true ? 'fast' : 'exact')}
+            />
           </label>
         </DropdownMenuContent>
       </DropdownMenu>

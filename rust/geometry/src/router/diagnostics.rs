@@ -195,6 +195,25 @@ impl GeometryRouter {
         std::mem::take(&mut *self.host_opening_diagnostics.borrow_mut())
     }
 
+    /// Accumulate one rect_fast cut's counters into THIS router (request-local).
+    /// Called from the void-cut fast paths instead of a process-global sink, so
+    /// concurrent native geometry passes never steal each other's counters.
+    pub(crate) fn record_rect_fast(&self, s: &crate::rect_fast::RectFastStats) {
+        let mut acc = self.rect_fast_stats.borrow_mut();
+        acc.fired += s.fired;
+        acc.openings_cut += s.openings_cut;
+        acc.defer_host_not_box += s.defer_host_not_box;
+        acc.defer_not_through += s.defer_not_through;
+        acc.defer_off_face += s.defer_off_face;
+        acc.defer_near_edge += s.defer_near_edge;
+        acc.defer_no_openings += s.defer_no_openings;
+    }
+
+    /// Drain and return this router's rect_fast counters (resets them to zero).
+    pub fn take_rect_fast_stats(&self) -> crate::rect_fast::RectFastStats {
+        std::mem::take(&mut *self.rect_fast_stats.borrow_mut())
+    }
+
     /// Total number of hosts with diagnostic records (mostly for tests).
     pub fn host_opening_diagnostic_count(&self) -> usize {
         self.host_opening_diagnostics.borrow().len()

@@ -1025,6 +1025,11 @@ pub fn process_geometry_streaming_filtered_with_options(
         std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default());
     let host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>> =
         std::sync::Mutex::new(FxHashMap::default());
+    // rect_fast engagement is now drained from each per-job router too (request-
+    // local), so this pass's `rectFast` is isolated from any concurrent geometry
+    // pass instead of reading process-global counters.
+    let rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats> =
+        std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default());
 
     // Shared content-dedup cache for the whole model: every per-job router (built
     // fresh per element below) dedups against it, so byte-identical geometry the
@@ -1140,6 +1145,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     &csg_failure_collector,
                     &classification_collector,
                     &host_diag_collector,
+                    &rect_fast_collector,
                     &item_dedup_cache,
                 )
             })
@@ -1228,17 +1234,9 @@ pub fn process_geometry_streaming_filtered_with_options(
     // consumer see identical diagnostics. `None` when nothing diagnostic-worthy
     // happened (mirrors the wasm `is_empty` skip).
     //
-    // CAVEAT (cross-contamination): unlike `classification`/`host_diags`/
-    // `csg_failures` — which are request-local sinks threaded through this pass —
-    // `rect_fast` counters are PROCESS-GLOBAL atomics drained here. If two native
-    // geometry passes run concurrently in the same process, this drain captures
-    // BOTH passes' fast-path activity and zeroes the counters for the other, so
-    // the rect_fast slice of these diagnostics is only accurate when geometry
-    // passes are serialized in-process. Making it request-local means threading a
-    // per-router `RectFastStats` cell (mirroring `csg_failures`' RefCell +
-    // per-element drain, incl. the abandoned-fallback discard) through the void
-    // cut path, the processor collector, AND the wasm `csg_diagnostics` reader —
-    // deferred as a larger refactor (see PR notes).
+    // Every sink — `classification`, `host_diags`, `csg_failures` AND `rect_fast` —
+    // is request-local: each was drained from this pass's own per-job routers and
+    // merged here, so concurrent in-process geometry passes never cross-contaminate.
     let geometry_diagnostics = {
         // Matches the wasm path's WORST_HOSTS_LIMIT (top-N per-host detail cap).
         const WORST_HOSTS_LIMIT: usize = 16;
@@ -1248,7 +1246,9 @@ pub fn process_geometry_streaming_filtered_with_options(
         let host_diags = host_diag_collector
             .into_inner()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let rect_fast = ifc_lite_geometry::rect_fast::take_global_stats();
+        let rect_fast = rect_fast_collector
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let diag = ifc_lite_geometry::aggregate_diagnostics(
             classification,
             &csg_failures,
@@ -1335,6 +1335,7 @@ fn process_entity_job(
     // from this job's router so the native pass aggregates the full GeometryDiagnostics.
     classification_collector: &std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
     host_diag_collector: &std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
+    rect_fast_collector: &std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
     // Model-wide content-dedup cache shared by every per-job router so identical
     // geometry is meshed once across the rayon pool (#1109 follow-up).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
@@ -1437,6 +1438,27 @@ fn process_entity_job(
             // Product ids are disjoint across jobs (one product = one job), so this
             // is an insert; `extend` is robust if that ever changes.
             acc.extend(host_diags);
+        }
+    }
+    // Drain this job's router rect_fast counters into the request-local collector
+    // (process-global counters are gone — see GeometryRouter::record_rect_fast).
+    let rf = local_router.take_rect_fast_stats();
+    if rf.fired != 0
+        || rf.openings_cut != 0
+        || rf.defer_host_not_box != 0
+        || rf.defer_not_through != 0
+        || rf.defer_off_face != 0
+        || rf.defer_near_edge != 0
+        || rf.defer_no_openings != 0
+    {
+        if let Ok(mut acc) = rect_fast_collector.lock() {
+            acc.fired += rf.fired;
+            acc.openings_cut += rf.openings_cut;
+            acc.defer_host_not_box += rf.defer_host_not_box;
+            acc.defer_not_through += rf.defer_not_through;
+            acc.defer_off_face += rf.defer_off_face;
+            acc.defer_near_edge += rf.defer_near_edge;
+            acc.defer_no_openings += rf.defer_no_openings;
         }
     }
 

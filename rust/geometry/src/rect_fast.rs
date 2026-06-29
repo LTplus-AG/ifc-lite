@@ -103,37 +103,11 @@ pub fn take_param_fires() -> u64 {
     PARAM_FIRES.swap(0, std::sync::atomic::Ordering::Relaxed)
 }
 
-mod telemetry {
-    use super::RectFastStats;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static C: [AtomicU64; 7] = [const { AtomicU64::new(0) }; 7];
-    pub fn record(s: &RectFastStats) {
-        for (a, v) in C.iter().zip([
-            s.fired, s.openings_cut, s.defer_host_not_box, s.defer_not_through,
-            s.defer_off_face, s.defer_near_edge, s.defer_no_openings,
-        ]) {
-            a.fetch_add(v, Ordering::Relaxed);
-        }
-    }
-    pub fn take() -> RectFastStats {
-        let g = |i: usize| C[i].swap(0, Ordering::Relaxed);
-        RectFastStats {
-            fired: g(0), openings_cut: g(1), defer_host_not_box: g(2),
-            defer_not_through: g(3), defer_off_face: g(4), defer_near_edge: g(5),
-            defer_no_openings: g(6),
-        }
-    }
-}
-
-/// Accumulate per-cut stats into the process-global counters (for fire-rate
-/// measurement); `take_global_stats` drains them.
-pub fn record_global(stats: &RectFastStats) {
-    telemetry::record(stats);
-}
-/// Read + reset the global fire/defer counters.
-pub fn take_global_stats() -> RectFastStats {
-    telemetry::take()
-}
+// rect_fast engagement counters are now REQUEST-LOCAL: each cut records into its
+// router via `GeometryRouter::record_rect_fast` (drained by `take_rect_fast_stats`),
+// so concurrent native geometry passes get isolated per-load `rectFast` diagnostics.
+// The previous process-global atomic sink (`record_global` / `take_global_stats`)
+// was removed because it cross-contaminated concurrent loads.
 
 /// An axis-aligned box AABB extracted from a host mesh, plus a check that every
 /// face is axis-aligned (the precondition for the world-coord cut).

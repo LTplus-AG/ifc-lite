@@ -236,7 +236,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // AND nothing deferred (no rect-opening hosts in the batch); presence with
     // fired=0 + high host_not_box means the walls aren't clean axis-aligned
     // boxes (multi-layer / non-box) and correctly fell back to the exact kernel.
-    let rf = ifc_lite_geometry::rect_fast::take_global_stats();
+    let rf = router.take_rect_fast_stats();
     if rf.fired > 0
         || rf.defer_host_not_box > 0
         || rf.defer_not_through > 0

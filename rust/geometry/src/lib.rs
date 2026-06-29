@@ -99,6 +99,7 @@ pub mod profile_extractor;
 pub mod profiles;
 pub mod projection_outline;
 pub mod rect_fast;
+pub use rect_fast::RectFastStats;
 pub mod router;
 pub mod tessellation;
 pub mod space_dcel;

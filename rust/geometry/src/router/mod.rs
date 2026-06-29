@@ -133,6 +133,13 @@ pub struct GeometryRouter {
     /// get cut?" from a console log alone. Drainable via
     /// [`Self::take_host_opening_diagnostics`].
     host_opening_diagnostics: RefCell<FxHashMap<u32, HostOpeningDiagnostic>>,
+    /// REQUEST-LOCAL rect_fast fast-path engagement counters. Accumulated per-cut
+    /// by [`Self::record_rect_fast`] into THIS router (not a process-global), so a
+    /// native server running concurrent geometry passes — each with its own router
+    /// — gets isolated per-load `rectFast` diagnostics. Drainable via
+    /// [`Self::take_rect_fast_stats`]; the wasm batch path drains its one router,
+    /// the native path drains each per-element router and sums.
+    rect_fast_stats: RefCell<crate::rect_fast::RectFastStats>,
     /// Diagnostic (#563): per-element outcome of layered-wall slicing — why a
     /// sliceable wall did or didn't split into per-layer sub-meshes. Drained by
     /// the wasm layer per batch and logged to the browser console (the geometry
@@ -168,6 +175,7 @@ impl GeometryRouter {
             csg_failures: RefCell::new(FxHashMap::default()),
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
+            rect_fast_stats: RefCell::new(crate::rect_fast::RectFastStats::default()),
             layer_slice_diag: RefCell::new(Vec::new()),
             voids_consumed_hosts: RefCell::new(FxHashSet::default()),
             tessellation_quality: TessellationQuality::Medium,

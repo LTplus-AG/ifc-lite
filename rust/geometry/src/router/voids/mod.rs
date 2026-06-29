@@ -535,7 +535,7 @@ impl GeometryRouter {
 
         let mut stats = crate::rect_fast::RectFastStats::default();
         let cut_f = crate::rect_fast::subtract_rect_openings(&host_f, &boxes, &mut stats)?;
-        crate::rect_fast::record_global(&stats);
+        self.record_rect_fast(&stats);
         let merged = crate::csg::ClippingProcessor::consolidate_coplanar(cut_f);
         // Emit as a local-frame mesh (small positions + origin), then run the SAME
         // hygiene the production output applies — in the small frame, where it is
@@ -612,7 +612,7 @@ impl GeometryRouter {
         }
         let mut stats = crate::rect_fast::RectFastStats::default();
         let out = crate::rect_fast::subtract_rect_openings(host, &boxes, &mut stats);
-        crate::rect_fast::record_global(&stats);
+        self.record_rect_fast(&stats);
         // The cellular cut conformingly splits EVERY face by ALL grid lines (so
         // adjacent cells share edges → watertight), which over-fragments faces an
         // opening doesn't reach. Run the result through the SAME coplanar merge

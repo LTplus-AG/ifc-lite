@@ -13,6 +13,7 @@
 
 use std::collections::HashMap;
 
+use ifc_lite_geometry::{collate_refs, InstanceMeshRef, InstanceMeta, InstanceTemplate};
 use ifc_lite_processing::{process_geometry, MeshData};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -94,6 +95,12 @@ struct Node {
     children: Option<Vec<u32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     translation: Option<[f64; 3]>,
+    // Column-major 4x4 (glTF convention) placing an instanced occurrence's shared
+    // template geometry at its world pose. Mutually exclusive with `translation`
+    // (glTF forbids both on one node); instanced occurrence nodes use `matrix`,
+    // flat/root nodes use `translation`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    matrix: Option<[f32; 16]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     extras: Option<Value>,
 }
@@ -218,6 +225,305 @@ fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
     (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
 }
 
+/// 128-bit content key for the flat-remainder dedup: the mesh's LOCAL geometry
+/// (positions / normals / indices, hashed as raw bit patterns) folded with its
+/// colour. Two meshes the rep-identity collator did NOT flag instanceable but whose
+/// BAKED local buffers are nonetheless bit-identical (same shape, same orientation,
+/// same colour) share one emitted glTF mesh placed by a node translation. Colour is
+/// in the key because the glTF material rides the primitive, not the node. Two
+/// independently-seeded streams give a 128-bit key (collision ~2^-127).
+fn geom_color_key(positions: &[f32], normals: &[f32], indices: &[u32], color: [f32; 4]) -> u128 {
+    use std::hash::{Hash, Hasher};
+    let stream = |seed: u64| -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        seed.hash(&mut h);
+        positions.len().hash(&mut h);
+        for &p in positions {
+            p.to_bits().hash(&mut h);
+        }
+        for &n in normals {
+            n.to_bits().hash(&mut h);
+        }
+        indices.hash(&mut h);
+        color_key(color).hash(&mut h);
+        h.finish()
+    };
+    ((stream(0x9E37_79B9_7F4A_7C15) as u128) << 64) | stream(0xD1B5_4A32_D192_ED03) as u128
+}
+
+// ── Instancing matrix math (row-major f64 4x4) ──────────────────────────────
+//
+// An occurrence's node matrix must map the shared template's Y-up LOCAL geometry
+// to that occurrence's Y-up BAKED world position, minus the model-wide
+// `scene_center` that the root node carries:
+//
+//   N_k = T(-scene_center) · S · [ T(-rtc) · (M_k · M_ref⁻¹) · T(rtc) ] · S⁻¹ · T(template_origin_yup)
+//
+// where `M = transform · local · canonical` is the per-occurrence world placement
+// from `InstanceMeta` (Z-up, **pre-RTC**), `rtc` is the model RTC/site offset the
+// baker subtracted (Z-up), and `S` is the Z-up→Y-up basis `(x,y,z) → (x, z, -y)`.
+// The `T(-rtc)·…·T(rtc)` conjugation moves the relative transform from the pre-RTC
+// frame `M` lives in into the POST-RTC baked frame the template geometry is in —
+// without it, a rotated occurrence under a non-zero site/georef offset is
+// mis-translated by `(R_rel - I)·rtc` (kilometres at national-grid scale). Everything
+// is f64, recomputed from the f64 `InstanceMeta` (NOT the collator's f32 `rel`), so
+// the absolute-magnitude terms cancel to a small, f32-precise translation before the
+// final downcast even at national-grid coordinates.
+
+/// Z-up→Y-up basis as a row-major 4x4 (linear part only; `(x,y,z) → (x, z, -y)`).
+const S_YUP: [f64; 16] = [
+    1.0, 0.0, 0.0, 0.0, //
+    0.0, 0.0, 1.0, 0.0, //
+    0.0, -1.0, 0.0, 0.0, //
+    0.0, 0.0, 0.0, 1.0,
+];
+/// Inverse (transpose, since `S_YUP` is a proper rotation): `(x,y,z) → (x, -z, y)`.
+const S_YUP_INV: [f64; 16] = [
+    1.0, 0.0, 0.0, 0.0, //
+    0.0, 0.0, -1.0, 0.0, //
+    0.0, 1.0, 0.0, 0.0, //
+    0.0, 0.0, 0.0, 1.0,
+];
+const IDENTITY16: [f64; 16] = [
+    1.0, 0.0, 0.0, 0.0, //
+    0.0, 1.0, 0.0, 0.0, //
+    0.0, 0.0, 1.0, 0.0, //
+    0.0, 0.0, 0.0, 1.0,
+];
+
+/// Row-major 4x4 multiply `a · b`.
+fn mat4_mul(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
+    let mut out = [0.0f64; 16];
+    for r in 0..4 {
+        for c in 0..4 {
+            let mut s = 0.0;
+            for k in 0..4 {
+                s += a[r * 4 + k] * b[k * 4 + c];
+            }
+            out[r * 4 + c] = s;
+        }
+    }
+    out
+}
+
+/// Row-major translation matrix.
+fn mat4_translation(t: [f64; 3]) -> [f64; 16] {
+    [
+        1.0, 0.0, 0.0, t[0], //
+        0.0, 1.0, 0.0, t[1], //
+        0.0, 0.0, 1.0, t[2], //
+        0.0, 0.0, 0.0, 1.0,
+    ]
+}
+
+/// Transpose a row-major f64 4x4 into the column-major `[f32; 16]` glTF expects.
+fn row_major_f64_to_col_major_f32(m: &[f64; 16]) -> [f32; 16] {
+    let mut out = [0.0f32; 16];
+    for r in 0..4 {
+        for c in 0..4 {
+            out[c * 4 + r] = m[r * 4 + c] as f32;
+        }
+    }
+    out
+}
+
+/// Inverse of a row-major AFFINE 4x4 (last row `[0,0,0,1]`): invert the upper 3x3
+/// (cofactor / determinant) and map the translation by `-R⁻¹·t`. Returns `None` if
+/// the 3x3 is singular (degenerate placement) so the caller can fall back to flat.
+fn affine_inverse(m: &[f64; 16]) -> Option<[f64; 16]> {
+    let a = m[0]; let b = m[1]; let c = m[2];
+    let d = m[4]; let e = m[5]; let f = m[6];
+    let g = m[8]; let h = m[9]; let i = m[10];
+    let det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    if det.abs() < 1e-18 {
+        return None;
+    }
+    let inv_det = 1.0 / det;
+    // Inverse of the 3x3 (row-major) via the transposed cofactor matrix.
+    let r = [
+        (e * i - f * h) * inv_det,
+        (c * h - b * i) * inv_det,
+        (b * f - c * e) * inv_det,
+        (f * g - d * i) * inv_det,
+        (a * i - c * g) * inv_det,
+        (c * d - a * f) * inv_det,
+        (d * h - e * g) * inv_det,
+        (b * g - a * h) * inv_det,
+        (a * e - b * d) * inv_det,
+    ];
+    let (tx, ty, tz) = (m[3], m[7], m[11]);
+    // Translation of the inverse: -R⁻¹ · t.
+    let it = [
+        -(r[0] * tx + r[1] * ty + r[2] * tz),
+        -(r[3] * tx + r[4] * ty + r[5] * tz),
+        -(r[6] * tx + r[7] * ty + r[8] * tz),
+    ];
+    Some([
+        r[0], r[1], r[2], it[0], //
+        r[3], r[4], r[5], it[1], //
+        r[6], r[7], r[8], it[2], //
+        0.0, 0.0, 0.0, 1.0,
+    ])
+}
+
+/// Compose an `InstanceMeta`'s world placement `transform · local · canonical`
+/// (row-major f64), the same product the collator's `compose_world` builds.
+fn compose_world_meta(meta: &InstanceMeta) -> [f64; 16] {
+    let local = meta.local_transform.unwrap_or(IDENTITY16);
+    let canonical = meta.canonical_transform.unwrap_or(IDENTITY16);
+    mat4_mul(&meta.transform, &mat4_mul(&local, &canonical))
+}
+
+/// Build the column-major glTF node matrix placing a shared template (Y-up local
+/// geometry, relative to `template_origin_yup`) at one occurrence's BAKED pose.
+/// Recomputed in f64 from the occurrence's `InstanceMeta`, the precomputed template
+/// inverse `m_ref_inv` (`affine_inverse(compose_world_meta(template))`, computed once
+/// per group), and the model `rtc` offset (Z-up) the baker subtracted.
+fn occurrence_node_matrix(
+    occ: &InstanceMeta,
+    m_ref_inv: &[f64; 16],
+    rtc_zup: [f64; 3],
+    template_origin_yup: [f64; 3],
+    scene_center: [f64; 3],
+) -> [f32; 16] {
+    let m_k = compose_world_meta(occ);
+    // rel maps the template's PRE-RTC world geometry onto occurrence k's.
+    let rel_pre = mat4_mul(&m_k, m_ref_inv);
+    // Conjugate into the POST-RTC baked frame the geometry actually lives in.
+    let rel_baked = mat4_mul(
+        &mat4_translation([-rtc_zup[0], -rtc_zup[1], -rtc_zup[2]]),
+        &mat4_mul(&rel_pre, &mat4_translation(rtc_zup)),
+    );
+    // Conjugate Z-up→Y-up (the template was converted by the same S).
+    let rel_yup = mat4_mul(&mat4_mul(&S_YUP, &rel_baked), &S_YUP_INV);
+    let n = mat4_mul(
+        &mat4_translation([-scene_center[0], -scene_center[1], -scene_center[2]]),
+        &mat4_mul(&rel_yup, &mat4_translation(template_origin_yup)),
+    );
+    row_major_f64_to_col_major_f32(&n)
+}
+
+/// Emit one mesh's geometry (positions/normals/indices baked by `vertex_offset`),
+/// its three accessors, deduped material, and a glTF `Mesh`; returns the mesh
+/// index. `vertex_offset` is added to each local position before the f32 downcast:
+/// for a UNIQUE mesh it is `origin - scene_center` (the self-contained
+/// world-minus-center bake), for a SHARED mesh it is zero (pure local geometry,
+/// placed via the occurrence node's translation). Bumps the deduped `stats`.
+#[allow(clippy::too_many_arguments)]
+fn push_mesh(
+    positions: &mut Vec<u8>,
+    normals: &mut Vec<u8>,
+    indices: &mut Vec<u8>,
+    accessors: &mut Vec<Accessor>,
+    meshes: &mut Vec<Mesh>,
+    materials: &mut Vec<Material>,
+    material_map: &mut HashMap<(i32, i32, i32, i32), u32>,
+    mesh: &MeshView,
+    vertex_offset: [f64; 3],
+    lit: bool,
+    stats: &mut GltfStats,
+) -> u32 {
+    let nverts = (mesh.positions.len() / 3) as u32;
+    let pos_off = positions.len() as u32;
+    let norm_off = normals.len() as u32;
+    let idx_off = indices.len() as u32;
+
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
+    for p in mesh.positions.chunks_exact(3) {
+        for k in 0..3 {
+            let baked = (p[k] as f64 + vertex_offset[k]) as f32;
+            positions.extend_from_slice(&baked.to_le_bytes());
+            if baked < min[k] {
+                min[k] = baked;
+            }
+            if baked > max[k] {
+                max[k] = baked;
+            }
+        }
+    }
+    for &n in mesh.normals {
+        normals.extend_from_slice(&n.to_le_bytes());
+    }
+    for &i in mesh.indices {
+        indices.extend_from_slice(&i.to_le_bytes());
+    }
+
+    let pos_acc = accessors.len() as u32;
+    accessors.push(Accessor {
+        buffer_view: 0,
+        byte_offset: pos_off,
+        component_type: 5126, // FLOAT
+        count: nverts,
+        ty: "VEC3",
+        min: Some(min),
+        max: Some(max),
+    });
+    let norm_acc = accessors.len() as u32;
+    accessors.push(Accessor {
+        buffer_view: 1,
+        byte_offset: norm_off,
+        component_type: 5126,
+        count: nverts,
+        ty: "VEC3",
+        min: None,
+        max: None,
+    });
+    let idx_acc = accessors.len() as u32;
+    accessors.push(Accessor {
+        buffer_view: 2,
+        byte_offset: idx_off,
+        component_type: 5125, // UNSIGNED_INT
+        count: mesh.indices.len() as u32,
+        ty: "SCALAR",
+        min: None,
+        max: None,
+    });
+
+    let key = color_key(mesh.color);
+    let material = *material_map.entry(key).or_insert_with(|| {
+        let idx = materials.len() as u32;
+        materials.push(Material {
+            pbr: Pbr {
+                base_color_factor: mesh.color,
+                metallic_factor: 0.0,
+                roughness_factor: 1.0,
+            },
+            extensions: if lit {
+                None
+            } else {
+                Some(Extensions { khr_materials_unlit: EmptyObj {} })
+            },
+            alpha_mode: if mesh.color[3] < 1.0 { Some("BLEND") } else { None },
+            double_sided: true,
+        });
+        idx
+    });
+
+    let mesh_idx = meshes.len() as u32;
+    meshes.push(Mesh {
+        primitives: vec![Primitive {
+            attributes: Attributes { position: pos_acc, normal: norm_acc },
+            indices: idx_acc,
+            material: Some(material),
+        }],
+    });
+
+    stats.meshes += 1;
+    stats.vertices += nverts as usize;
+    stats.triangles += mesh.indices.len() / 3;
+    mesh_idx
+}
+
+/// Per-node `extras` (`expressId` / `ifcType`) when metadata is requested.
+fn node_extras(include_metadata: bool, express_id: u32, ifc_type: &str) -> Option<Value> {
+    if include_metadata {
+        Some(json!({ "expressId": express_id, "ifcType": ifc_type }))
+    } else {
+        None
+    }
+}
+
 /// Export the render geometry in `content` as a binary **GLB**.
 pub fn export_glb(content: &[u8], opts: &GltfOptions) -> Vec<u8> {
     export_glb_with_stats(content, opts).0
@@ -234,6 +540,13 @@ pub struct MeshView<'a> {
     pub indices: &'a [u32],
     pub color: [f32; 4],
     pub origin: [f64; 3],
+    /// GPU-instancing side-channel (rep-identity + per-occurrence world transform),
+    /// in the IFC **Z-up** frame. Present only on the from-bytes path (`process_geometry`);
+    /// `None` on the from-meshes path (the viewer's MeshData drops it across the
+    /// worker boundary) and for non-instanceable geometry. When two or more views
+    /// share a `rep_identity`, the assembler emits the geometry once and places each
+    /// occurrence with a node matrix. See [`assemble_glb`].
+    pub instance: Option<&'a InstanceMeta>,
 }
 
 fn view_ok(v: &MeshView) -> bool {
@@ -253,7 +566,18 @@ fn view_ok(v: &MeshView) -> bool {
 /// georef scale) AND self-contained: a consumer that ignores node transforms sees
 /// the whole model uniformly offset, never each element collapsed onto the origin
 /// (the failure mode of per-element `node.translation`).
-fn assemble_glb(views: &[MeshView], include_metadata: bool, lit: bool) -> (Vec<u8>, GltfStats) {
+///
+/// `rtc_zup` is the model RTC / site-local offset (Z-up) that `process_geometry`
+/// subtracted when baking vertices; the instancing path needs it to express each
+/// occurrence's relative transform in the same POST-RTC frame the baked geometry
+/// lives in. Pass `[0, 0, 0]` when geometry is already absolute (the from-meshes
+/// path, which never instances anyway).
+fn assemble_glb(
+    views: &[MeshView],
+    include_metadata: bool,
+    lit: bool,
+    rtc_zup: [f64; 3],
+) -> (Vec<u8>, GltfStats) {
     // Pre-filter once so both passes (centre, then bake) see exactly the same set.
     let visible: Vec<&MeshView> = views.iter().filter(|v| view_ok(v)).collect();
 
@@ -299,118 +623,180 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool, lit: bool) -> (Vec<u
 
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
 
-    // ── Pass 2: bake centre-relative positions + assemble accessors/nodes ───
-    for mesh in &visible {
-        let nverts = (mesh.positions.len() / 3) as u32;
-        let o = mesh.origin;
+    // ── Pass 1.5: collate by representation identity ────────────────────────────
+    // Group occurrences that share a representation (IfcMappedItem / repeated
+    // geometry) so the geometry is emitted ONCE and each occurrence is placed with a
+    // node matrix — the size win on repetitive models (50-85% fewer vertices). This
+    // is the SAME rep-identity grouping the GPU/native instancing path uses;
+    // content-hashing the BAKED f32 vertices cannot recover these repeats because
+    // per-occurrence placement bakes distinct float positions. Meshes without usable
+    // instance metadata (the from-meshes path, non-instanceable void-cut elements,
+    // singletons) fall to `flat_indices` and keep the self-contained
+    // world-minus-center bake above.
+    let refs: Vec<InstanceMeshRef> = visible
+        .iter()
+        .map(|m| InstanceMeshRef {
+            positions: m.positions,
+            normals: m.normals,
+            indices: m.indices,
+            origin: m.origin,
+            instance_meta: m.instance,
+            entity_id: m.express_id,
+            color: m.color,
+        })
+        .collect();
+    let collated = collate_refs(&refs, 2);
 
-        let pos_off = positions.len() as u32;
-        let norm_off = normals.len() as u32;
-        let idx_off = indices.len() as u32;
-
-        // Bake each vertex into the scene-centre-relative frame (f32). Bounds are
-        // taken on the baked coords — accessor space is exactly the buffer bytes.
-        let mut min = [f32::INFINITY; 3];
-        let mut max = [f32::NEG_INFINITY; 3];
-        for p in mesh.positions.chunks_exact(3) {
-            for k in 0..3 {
-                let baked = ((p[k] as f64 + o[k]) - scene_center[k]) as f32;
-                positions.extend_from_slice(&baked.to_le_bytes());
-                if baked < min[k] {
-                    min[k] = baked;
-                }
-                if baked > max[k] {
-                    max[k] = baked;
-                }
-            }
-        }
-        for &n in mesh.normals {
-            normals.extend_from_slice(&n.to_le_bytes());
-        }
-        for &i in mesh.indices {
-            indices.extend_from_slice(&i.to_le_bytes());
-        }
-
-        let pos_acc = accessors.len() as u32;
-        accessors.push(Accessor {
-            buffer_view: 0,
-            byte_offset: pos_off,
-            component_type: 5126, // FLOAT
-            count: nverts,
-            ty: "VEC3",
-            min: Some(min),
-            max: Some(max),
+    // Partition into instanced templates (non-rigid, exact-bit) and a flat remainder.
+    // Only EXACT-bit groups are instanced: the template's local geometry IS each
+    // occurrence's, so exported per-occurrence geometry stays byte-faithful. Rigid-
+    // tier groups (rotation-normalized, env-gated and OFF by default) substitute a
+    // congruent-but-not-identical template, so they fall to the flat remainder.
+    let mut flat: Vec<usize> = collated.flat_indices.clone();
+    let mut instanced: Vec<(&InstanceTemplate, [f64; 16])> =
+        Vec::with_capacity(collated.templates.len());
+    for template in &collated.templates {
+        let rigid = template.occurrences.iter().any(|o| {
+            visible[o.mesh_index]
+                .instance
+                .and_then(|m| m.canonical_transform)
+                .is_some()
         });
-        let norm_acc = accessors.len() as u32;
-        accessors.push(Accessor {
-            buffer_view: 1,
-            byte_offset: norm_off,
-            component_type: 5126,
-            count: nverts,
-            ty: "VEC3",
-            min: None,
-            max: None,
-        });
-        let idx_acc = accessors.len() as u32;
-        accessors.push(Accessor {
-            buffer_view: 2,
-            byte_offset: idx_off,
-            component_type: 5125, // UNSIGNED_INT
-            count: mesh.indices.len() as u32,
-            ty: "SCALAR",
-            min: None,
-            max: None,
-        });
+        // Precompute the template's inverse world placement (f64) ONCE per group;
+        // every occurrence's node matrix reuses it. A missing instance side-channel
+        // or a singular/degenerate template placement routes the whole group to the
+        // flat path (still correct, just not instanced).
+        let m_ref_inv = (!rigid)
+            .then(|| visible[template.template_index].instance)
+            .flatten()
+            .filter(|_| template.occurrences.iter().all(|o| visible[o.mesh_index].instance.is_some()))
+            .and_then(|ti| affine_inverse(&compose_world_meta(ti)));
+        match m_ref_inv {
+            Some(inv) => instanced.push((template, inv)),
+            None => flat.extend(template.occurrences.iter().map(|o| o.mesh_index)),
+        }
+    }
 
-        // Material (dedup by rounded RGBA).
-        let key = color_key(mesh.color);
-        let material = *material_map.entry(key).or_insert_with(|| {
-            let idx = materials.len() as u32;
-            materials.push(Material {
-                pbr: Pbr {
-                    base_color_factor: mesh.color,
-                    metallic_factor: 0.0,
-                    roughness_factor: 1.0,
-                },
-                extensions: if lit {
-                    None
-                } else {
-                    Some(Extensions { khr_materials_unlit: EmptyObj {} })
-                },
-                alpha_mode: if mesh.color[3] < 1.0 { Some("BLEND") } else { None },
-                double_sided: true,
+    // ── Pass 2: flat remainder, content-hash deduped ────────────────────────────
+    // The rep-identity collator only groups geometry it can prove shareable. Many
+    // models also have byte-identical BAKED meshes it does not flag (e.g. unmapped
+    // repeated parts). Dedup those by local-geometry+colour content hash so they
+    // still share one mesh placed by a node translation — this guarantees the
+    // instanced output never regresses below the plain content-hash baseline.
+    let flat_keys: Vec<u128> = flat
+        .iter()
+        .map(|&i| geom_color_key(visible[i].positions, visible[i].normals, visible[i].indices, visible[i].color))
+        .collect();
+    let mut flat_counts: HashMap<u128, u32> = HashMap::new();
+    for &k in &flat_keys {
+        *flat_counts.entry(k).or_insert(0) += 1;
+    }
+    let mut flat_cache: HashMap<u128, u32> = HashMap::new();
+    for (j, &idx) in flat.iter().enumerate() {
+        let mesh = visible[idx];
+        let placement = [
+            mesh.origin[0] - scene_center[0],
+            mesh.origin[1] - scene_center[1],
+            mesh.origin[2] - scene_center[2],
+        ];
+        let key = flat_keys[j];
+        let (mesh_idx, translation) = if flat_counts.get(&key).copied().unwrap_or(1) >= 2 {
+            // Repeated baked geometry: emit LOCAL once, place via node translation.
+            let mi = *flat_cache.entry(key).or_insert_with(|| {
+                push_mesh(
+                    &mut positions, &mut normals, &mut indices, &mut accessors, &mut meshes,
+                    &mut materials, &mut material_map, mesh, [0.0, 0.0, 0.0], lit, &mut stats,
+                )
             });
-            idx
-        });
-
-        let mesh_idx = meshes.len() as u32;
-        meshes.push(Mesh {
-            primitives: vec![Primitive {
-                attributes: Attributes { position: pos_acc, normal: norm_acc },
-                indices: idx_acc,
-                material: Some(material),
-            }],
-        });
-
-        let extras = if include_metadata {
-            Some(json!({ "expressId": mesh.express_id, "ifcType": mesh.ifc_type }))
+            let tx = placement.iter().any(|c| c.abs() > 1e-9).then_some(placement);
+            (mi, tx)
         } else {
-            None
+            // Singleton: bake world-minus-center into the vertices, identity node.
+            let mi = push_mesh(
+                &mut positions, &mut normals, &mut indices, &mut accessors, &mut meshes,
+                &mut materials, &mut material_map, mesh, placement, lit, &mut stats,
+            );
+            (mi, None)
         };
         let node_idx = nodes.len() as u32;
-        nodes.push(Node { mesh: Some(mesh_idx), children: None, translation: None, extras });
+        nodes.push(Node {
+            mesh: Some(mesh_idx),
+            children: None,
+            translation,
+            matrix: None,
+            extras: node_extras(include_metadata, mesh.express_id, mesh.ifc_type),
+        });
         element_node_indices.push(node_idx);
+    }
 
-        stats.meshes += 1;
-        stats.vertices += nverts as usize;
-        stats.triangles += mesh.indices.len() / 3;
+    // ── Pass 2: instanced templates ─────────────────────────────────────────────
+    for (template, m_ref_inv) in instanced {
+        // glTF materials ride the mesh primitive, not the node, but the collator
+        // groups by geometry only (`rep_identity` excludes colour). Split the
+        // occurrences by colour so same-shape/different-colour occurrences get
+        // distinct materials — one shared template mesh per colour bucket.
+        let t_view = visible[template.template_index];
+        let t_origin_yup = t_view.origin;
+        // First-seen colour-bucket order keeps the emitted mesh/material/node
+        // ordering deterministic (HashMap iteration order is not).
+        let mut bucket_order: Vec<(i32, i32, i32, i32)> = Vec::new();
+        let mut by_color: HashMap<(i32, i32, i32, i32), Vec<usize>> = HashMap::new();
+        for (oi, occ) in template.occurrences.iter().enumerate() {
+            let ck = color_key(visible[occ.mesh_index].color);
+            by_color
+                .entry(ck)
+                .or_insert_with(|| {
+                    bucket_order.push(ck);
+                    Vec::new()
+                })
+                .push(oi);
+        }
+        for ck in &bucket_order {
+            let bucket = &by_color[ck];
+            let bucket_color = visible[template.occurrences[bucket[0]].mesh_index].color;
+            // The shared mesh: the template's LOCAL geometry (vertex_offset = 0,
+            // relative to the template origin) tinted with the bucket colour.
+            let tmpl_mesh = MeshView {
+                express_id: t_view.express_id,
+                ifc_type: t_view.ifc_type,
+                positions: t_view.positions,
+                normals: t_view.normals,
+                indices: t_view.indices,
+                color: bucket_color,
+                origin: t_view.origin,
+                instance: None,
+            };
+            let mesh_idx = push_mesh(
+                &mut positions, &mut normals, &mut indices, &mut accessors,
+                &mut meshes, &mut materials, &mut material_map, &tmpl_mesh,
+                [0.0, 0.0, 0.0], lit, &mut stats,
+            );
+            for &oi in bucket {
+                let occ = &template.occurrences[oi];
+                let occ_view = visible[occ.mesh_index];
+                // Safe: the partition only kept this group when every occurrence has
+                // an instance side-channel and the template inverse exists.
+                let occ_meta = occ_view.instance.expect("instanced occurrence has InstanceMeta");
+                let matrix = occurrence_node_matrix(
+                    occ_meta, &m_ref_inv, rtc_zup, t_origin_yup, scene_center,
+                );
+                let node_idx = nodes.len() as u32;
+                nodes.push(Node {
+                    mesh: Some(mesh_idx),
+                    children: None,
+                    translation: None,
+                    matrix: Some(matrix),
+                    extras: node_extras(include_metadata, occ_view.express_id, occ_view.ifc_type),
+                });
+                element_node_indices.push(node_idx);
+            }
+        }
     }
     stats.materials = materials.len();
 
     // Single root node carries the model-wide centre (omitted when ~zero) and
     // parents every element node, so the scene has exactly one top-level node.
-    let center_nonzero =
-        scene_center.iter().any(|c| c.abs() > f64::EPSILON);
+    let center_nonzero = scene_center.iter().any(|c| c.abs() > 1e-9);
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
     } else {
@@ -419,6 +805,7 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool, lit: bool) -> (Vec<u
             mesh: None,
             children: Some(element_node_indices),
             translation: if center_nonzero { Some(scene_center) } else { None },
+            matrix: None,
             extras: None,
         });
         vec![root_idx]
@@ -515,9 +902,15 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
             indices: &y.indices,
             color: m.color,
             origin: y.origin,
+            // Z-up instancing side-channel; rep-identity grouping is frame- and
+            // bake-invariant (the assembler conjugates the transform into Y-up).
+            instance: m.instance.as_ref(),
         })
         .collect();
-    assemble_glb(&views, opts.include_metadata, opts.lit)
+    // RTC / site-local offset the baker subtracted (Z-up); the instancing path needs
+    // it to place occurrences in the same POST-RTC frame the baked geometry lives in.
+    let rtc_zup = result.metadata.coordinate_info.origin_shift;
+    assemble_glb(&views, opts.include_metadata, opts.lit, rtc_zup)
 }
 
 /// Assemble a GLB from already-produced meshes (the viewer's MeshData — **no re-meshing**).
@@ -577,11 +970,16 @@ pub fn export_glb_from_meshes(
             indices: islice,
             color,
             origin,
+            // The viewer's MeshData drops the instancing side-channel across the
+            // worker boundary (it is `#[serde(skip)]`), so this path is always flat.
+            instance: None,
         });
         vbase += vc;
         ibase += ic;
     }
-    assemble_glb(&views, include_metadata, lit)
+    // From-meshes geometry is already absolute Y-up and never instances (no
+    // side-channel), so there is no RTC frame to compensate.
+    assemble_glb(&views, include_metadata, lit, [0.0, 0.0, 0.0])
 }
 
 /// Pack a glTF JSON document and binary buffer into a GLB container (little-endian).
@@ -657,13 +1055,15 @@ mod tests {
 
         let nodes = json["nodes"].as_array().unwrap();
         let meshes = json["meshes"].as_array().unwrap();
-        // One mesh-node per element + a single root node that parents them all.
-        assert_eq!(nodes.len(), stats.meshes + 1);
-        assert_eq!(meshes.len(), stats.meshes);
+        // Instancing: one node per element OCCURRENCE + a single root that parents
+        // them all. `meshes` is the DEDUPED unique-geometry count (repeated shapes
+        // share one mesh), so meshes <= occurrences and json meshes == stats.meshes.
+        let occurrences = nodes.len() - 1;
+        assert_eq!(meshes.len(), stats.meshes, "json meshes == deduped mesh count");
+        assert!(stats.meshes <= occurrences, "unique meshes <= occurrences");
 
-        // Scene has exactly one top-level node: the root. It carries the placement
-        // translation and lists every element node as a child; element nodes
-        // themselves carry NO translation (placement is baked relative to centre).
+        // Scene has exactly one top-level node: the root. It carries the model
+        // centre translation and parents every occurrence node.
         let scene_nodes = json["scenes"][0]["nodes"].as_array().unwrap();
         assert_eq!(scene_nodes.len(), 1, "single root node");
         let root_idx = scene_nodes[0].as_u64().unwrap() as usize;
@@ -671,15 +1071,32 @@ mod tests {
         assert!(root.get("mesh").is_none(), "root is a transform node, no mesh");
         assert_eq!(
             root["children"].as_array().unwrap().len(),
-            stats.meshes,
-            "root parents every element node"
+            occurrences,
+            "root parents every occurrence node"
         );
+        // Every non-root node references a mesh. An element node is one of:
+        //   - flat singleton: placement baked into vertices, no transform;
+        //   - flat content-hash share: a node TRANSLATION places the shared mesh;
+        //   - rep-instanced: a node MATRIX places the shared template.
+        // glTF forbids both `matrix` and `translation` on one node — assert that.
+        let mut instanced_nodes = 0usize;
         for (i, n) in nodes.iter().enumerate() {
             if i != root_idx {
-                assert!(n.get("translation").is_none(), "element nodes carry no translation");
                 assert!(n["mesh"].is_number(), "element nodes reference a mesh");
+                assert!(
+                    !(n.get("matrix").is_some() && n.get("translation").is_some()),
+                    "a node never carries both matrix and translation"
+                );
+                if let Some(m) = n.get("matrix") {
+                    assert_eq!(m.as_array().unwrap().len(), 16, "node matrix is a 4x4");
+                    instanced_nodes += 1;
+                }
             }
         }
+        // duplex repeats geometry, so instancing must have fired: fewer unique meshes
+        // than occurrences AND at least one occurrence placed via a node matrix.
+        assert!(stats.meshes < occurrences, "duplex repeats geometry -> dedup fired");
+        assert!(instanced_nodes > 0, "shared templates are placed via node matrix");
 
         // Materials present + LIT by default (#1321: no KHR_materials_unlit) +
         // double-sided.
@@ -807,6 +1224,245 @@ mod tests {
             json["materials"].as_array().unwrap().iter().all(|m| m.get("extensions").is_none()),
             "lit materials carry no extensions"
         );
+    }
+
+    #[test]
+    fn export_is_byte_deterministic() {
+        // Instancing groups by HashMap keys (rep colour buckets, material dedup);
+        // emission order must be fixed so repeated exports are byte-identical.
+        let content = fixture("ara3d/C20-Institute-Var-2.ifc");
+        let a = export_glb(&content, &GltfOptions { include_metadata: true, ..Default::default() });
+        let b = export_glb(&content, &GltfOptions { include_metadata: true, ..Default::default() });
+        assert_eq!(a, b, "repeated GLB exports must be byte-identical");
+    }
+
+    #[test]
+    fn occurrence_matrix_reconstructs_rotated_instance_under_national_grid_rtc() {
+        // Decisive synthetic test for the RTC/rotation frame (review finding C1+M1):
+        // a ROTATED occurrence at NATIONAL-GRID coordinates. The node matrix is built
+        // from the same InstanceMeta the baker would carry; reconstructing the
+        // occurrence from the template's baked-local geometry must land on the
+        // occurrence's own baked geometry to sub-millimetre, even though the relative
+        // transform's absolute terms are ~1e5 m. (A pre-RTC `rel` applied to post-RTC
+        // geometry — the bug — misplaces this by ~(R-I)·rtc, i.e. hundreds of metres.)
+        use ifc_lite_geometry::InstanceMeta;
+
+        // Row-major helpers.
+        let translate = |t: [f64; 3]| -> [f64; 16] {
+            [1., 0., 0., t[0], 0., 1., 0., t[1], 0., 0., 1., t[2], 0., 0., 0., 1.]
+        };
+        // Rotation about Z (Z-up): (x,y) rotate, z fixed.
+        let rot_z = |deg: f64| -> [f64; 16] {
+            let (s, c) = (deg.to_radians().sin(), deg.to_radians().cos());
+            [c, -s, 0., 0., s, c, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.]
+        };
+        let apply = |m: &[f64; 16], p: [f64; 3]| -> [f64; 3] {
+            [
+                m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3],
+                m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
+                m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11],
+            ]
+        };
+
+        // Placements (Z-up, pre-RTC): template upright, occurrence rotated 37° about Z.
+        let m_ref = super::mat4_mul(&translate([10., 20., 5.]), &rot_z(0.0));
+        let m_k = super::mat4_mul(&translate([60., 35., 5.]), &rot_z(37.0));
+        // National-grid RTC the baker subtracts (e.g. Dutch RD-ish easting/northing).
+        let rtc = [155_000.0_f64, 463_000.0, 0.0];
+
+        // Canonical (rep-local) geometry — a few non-degenerate points.
+        let canonical = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.5, 0.5, 1.5],
+            [2.0, 0.3, 0.7],
+        ];
+        // Baked = placement·canonical - rtc, in Z-up.
+        let bake = |m: &[f64; 16]| -> Vec<[f64; 3]> {
+            canonical
+                .iter()
+                .map(|&x| {
+                    let w = apply(m, x);
+                    [w[0] - rtc[0], w[1] - rtc[1], w[2] - rtc[2]]
+                })
+                .collect()
+        };
+        let tmpl_baked = bake(&m_ref);
+        let occ_baked = bake(&m_k);
+
+        // Template origin = centroid of its baked geometry; local = baked - origin.
+        let n = canonical.len() as f64;
+        let origin_z = {
+            let mut o = [0.0; 3];
+            for p in &tmpl_baked {
+                for k in 0..3 {
+                    o[k] += p[k] / n;
+                }
+            }
+            o
+        };
+        // Convert template origin + local, and the occurrence's baked truth, to Y-up.
+        let origin_yup = crate::frame::yup_f64(origin_z);
+        let tmpl_local_yup: Vec<[f64; 3]> = tmpl_baked
+            .iter()
+            .map(|p| crate::frame::yup_f64([p[0] - origin_z[0], p[1] - origin_z[1], p[2] - origin_z[2]]))
+            .collect();
+        let occ_world_yup: Vec<[f64; 3]> = occ_baked.iter().map(|p| crate::frame::yup_f64(*p)).collect();
+
+        // scene_center = centre of the combined baked Y-up AABB.
+        let mut lo = [f64::INFINITY; 3];
+        let mut hi = [f64::NEG_INFINITY; 3];
+        for p in tmpl_baked.iter().chain(occ_baked.iter()) {
+            let y = crate::frame::yup_f64(*p);
+            for k in 0..3 {
+                lo[k] = lo[k].min(y[k]);
+                hi[k] = hi[k].max(y[k]);
+            }
+        }
+        let scene_center = [(lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5, (lo[2] + hi[2]) * 0.5];
+
+        let meta = |transform: [f64; 16]| InstanceMeta {
+            transform,
+            local_transform: None,
+            canonical_transform: None,
+            rep_identity: 42,
+            instanceable: true,
+        };
+        let m_ref_inv = super::affine_inverse(&super::compose_world_meta(&meta(m_ref)))
+            .expect("template placement invertible");
+        let node = super::occurrence_node_matrix(&meta(m_k), &m_ref_inv, rtc, origin_yup, scene_center);
+
+        // Reconstruct: world = scene_center(root) + node(col-major) · template_local.
+        let mut max_err = 0.0f64;
+        for (lv, truth) in tmpl_local_yup.iter().zip(&occ_world_yup) {
+            let (x, y, z) = (lv[0], lv[1], lv[2]);
+            let world = [
+                scene_center[0] + node[0] as f64 * x + node[4] as f64 * y + node[8] as f64 * z + node[12] as f64,
+                scene_center[1] + node[1] as f64 * x + node[5] as f64 * y + node[9] as f64 * z + node[13] as f64,
+                scene_center[2] + node[2] as f64 * x + node[6] as f64 * y + node[10] as f64 * z + node[14] as f64,
+            ];
+            for k in 0..3 {
+                max_err = max_err.max((world[k] - truth[k]).abs());
+            }
+        }
+        assert!(
+            max_err < 1e-3,
+            "rotated instance under national-grid RTC mis-reconstructed by {max_err} m"
+        );
+    }
+
+    #[test]
+    fn instanced_occurrences_reconstruct_world_positions() {
+        // Decisive precision round-trip on a REAL repetitive model: every instanced
+        // occurrence must reconstruct its true baked world geometry via
+        //   world = root.translation + node.matrix · template_local_vertex
+        // matching `process_geometry`'s per-occurrence baked Y-up world (origin +
+        // position). This exercises the full chain — rep-identity grouping, the
+        // Z-up→Y-up conjugation, scene-center folding, and the f32 node matrix — on
+        // genuinely rotated, placed occurrences, so any frame/RTC error surfaces.
+        let content = fixture("ara3d/C20-Institute-Var-2.ifc");
+        let opts = GltfOptions { include_metadata: true, ..GltfOptions::default() };
+        let (glb, _stats) = export_glb_with_stats(&content, &opts);
+        let (json, bin) = parse_glb(&glb);
+
+        // Truth: express id -> the occurrence's baked Y-up world vertices.
+        let result = process_geometry(&content[..]);
+        let default_opts = GltfOptions::default();
+        let mut truth: HashMap<u32, Vec<[f64; 3]>> = HashMap::new();
+        let mut dup_ids: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        for m in &result.meshes {
+            if !super::mesh_visible(m, &default_opts) || m.positions.len() < 9 {
+                continue;
+            }
+            let y = crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin);
+            let verts: Vec<[f64; 3]> = y
+                .positions
+                .chunks_exact(3)
+                .map(|c| {
+                    [
+                        c[0] as f64 + y.origin[0],
+                        c[1] as f64 + y.origin[1],
+                        c[2] as f64 + y.origin[2],
+                    ]
+                })
+                .collect();
+            // An express id with >1 visible mesh (submeshes) is ambiguous to match
+            // 1:1 against a single template, so exclude it from the check.
+            if truth.insert(m.express_id, verts).is_some() {
+                dup_ids.insert(m.express_id);
+            }
+        }
+
+        let nodes = json["nodes"].as_array().unwrap();
+        let accs = json["accessors"].as_array().unwrap();
+        let bviews = json["bufferViews"].as_array().unwrap();
+        let meshes_j = json["meshes"].as_array().unwrap();
+        let scene_nodes = json["scenes"][0]["nodes"].as_array().unwrap();
+        let root = &nodes[scene_nodes[0].as_u64().unwrap() as usize];
+        let root_t = root
+            .get("translation")
+            .map(|v| {
+                let a = v.as_array().unwrap();
+                [a[0].as_f64().unwrap(), a[1].as_f64().unwrap(), a[2].as_f64().unwrap()]
+            })
+            .unwrap_or([0.0; 3]);
+
+        // Read a mesh's POSITION accessor floats straight out of the BIN chunk.
+        let read_positions = |mesh_idx: usize| -> Vec<[f32; 3]> {
+            let pa = meshes_j[mesh_idx]["primitives"][0]["attributes"]["POSITION"]
+                .as_u64()
+                .unwrap() as usize;
+            let acc = &accs[pa];
+            let count = acc["count"].as_u64().unwrap() as usize;
+            let bv = &bviews[acc["bufferView"].as_u64().unwrap() as usize];
+            let base = bv["byteOffset"].as_u64().unwrap() as usize
+                + acc["byteOffset"].as_u64().unwrap() as usize;
+            (0..count)
+                .map(|i| {
+                    let o = base + i * 12;
+                    [
+                        f32::from_le_bytes(bin[o..o + 4].try_into().unwrap()),
+                        f32::from_le_bytes(bin[o + 4..o + 8].try_into().unwrap()),
+                        f32::from_le_bytes(bin[o + 8..o + 12].try_into().unwrap()),
+                    ]
+                })
+                .collect()
+        };
+
+        let mut checked = 0usize;
+        let mut max_err = 0.0f64;
+        for child in root["children"].as_array().unwrap() {
+            let node = &nodes[child.as_u64().unwrap() as usize];
+            // Instanced occurrences carry a node matrix; flat ones do not.
+            let Some(mv) = node.get("matrix") else { continue };
+            let express = node["extras"]["expressId"].as_u64().unwrap() as u32;
+            if dup_ids.contains(&express) {
+                continue;
+            }
+            let Some(truth_verts) = truth.get(&express) else { continue };
+            let locals = read_positions(node["mesh"].as_u64().unwrap() as usize);
+            if locals.len() != truth_verts.len() {
+                continue;
+            }
+            // Column-major 4x4: element (row r, col c) = m[c*4 + r].
+            let m: Vec<f64> = mv.as_array().unwrap().iter().map(|x| x.as_f64().unwrap()).collect();
+            for (lv, t) in locals.iter().zip(truth_verts) {
+                let (lx, ly, lz) = (lv[0] as f64, lv[1] as f64, lv[2] as f64);
+                let world = [
+                    root_t[0] + m[0] * lx + m[4] * ly + m[8] * lz + m[12],
+                    root_t[1] + m[1] * lx + m[5] * ly + m[9] * lz + m[13],
+                    root_t[2] + m[2] * lx + m[6] * ly + m[10] * lz + m[14],
+                ];
+                for k in 0..3 {
+                    max_err = max_err.max((world[k] - t[k]).abs());
+                }
+            }
+            checked += 1;
+        }
+        assert!(checked > 50, "expected many instanced occurrences to verify, got {checked}");
+        // f32 vertex/matrix precision at building scale: well under a millimetre.
+        assert!(max_err < 1e-3, "instanced world reconstruction error {max_err} m too large");
     }
 
     #[test]

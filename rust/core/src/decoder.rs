@@ -439,7 +439,9 @@ impl<'a> EntityDecoder<'a> {
     pub fn get_raw_bytes(&mut self, entity_id: u32) -> Option<&'a [u8]> {
         self.build_index();
         let (start, end) = self.entity_index.as_ref()?.get(entity_id)?;
-        Some(&self.content[start..end])
+        // Checked slice: a stale/truncated shared index could yield a span past
+        // the current content; `get` returns None instead of panicking.
+        self.content.get(start..end)
     }
 
     /// Fast extraction of first entity ref from raw bytes
@@ -778,7 +780,7 @@ impl<'a> EntityDecoder<'a> {
 
         // Get polyloop raw bytes
         let (start, end) = index.get(entity_id)?;
-        let bytes = &bytes_full[start..end];
+        let bytes = bytes_full.get(start..end)?;
 
         // IFCPOLYLOOP((#id1,#id2,#id3,...));
         let mut i = 0;
@@ -834,8 +836,9 @@ impl<'a> EntityDecoder<'a> {
                     // INLINE: Get cartesian point coordinates directly
                     // This avoids the overhead of calling get_cartesian_point_fast for each point
                     if let Some((pt_start, pt_end)) = index.get(point_id) {
-                        if let Some(coord) =
-                            parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
+                        if let Some(coord) = bytes_full
+                            .get(pt_start..pt_end)
+                            .and_then(parse_cartesian_point_inline)
                         {
                             coords.push(coord);
                         }
@@ -865,7 +868,7 @@ impl<'a> EntityDecoder<'a> {
 
         // Get polyloop raw bytes
         let (start, end) = index.get(entity_id)?;
-        let bytes = &bytes_full[start..end];
+        let bytes = bytes_full.get(start..end)?;
 
         // IFCPOLYLOOP((#id1,#id2,#id3,...));
         let mut i = 0;

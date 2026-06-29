@@ -338,29 +338,34 @@ impl IfcAPI {
     /// multiple loads with different files.
     #[wasm_bindgen(js_name = setEntityIndex)]
     pub fn set_entity_index(&self, ids: &[u32], starts: &[u32], lengths: &[u32]) {
-        // Build the SHARED binary-search index (a sorted (id,start,end) buffer)
-        // from the columns instead of an FxHashMap: ~152 MB and no 12.6 M inserts
-        // per worker, vs ~354 MB + inserts. `produce_batch` reads
-        // `cached_shared_index` first. Empty bytes (malformed columns) leave it
-        // unset, so the owned `cached_entity_index` lazy path still applies.
-        let bytes =
-            ifc_lite_core::build_shared_entity_index_bytes_from_columns(ids, starts, lengths);
-        if bytes.is_empty() {
-            return;
-        }
-        let shared = ifc_lite_core::SharedEntityIndex::from_bytes(std::sync::Arc::from(
-            bytes.into_boxed_slice(),
-        ));
+        // A new file is being loaded: invalidate ANY prior index (shared or owned)
+        // BEFORE building, so a malformed/empty column set can never leave the
+        // previous load's index — and its now-mismatched (start,end) spans — in
+        // place on a reused IfcAPI. On empty bytes we leave both unset and the
+        // owned lazy `build_entity_index` rebuilds against the new content.
         self.cached_shared_index
             .lock()
             .expect("ifc-lite cached_shared_index Mutex poisoned")
-            .replace(shared);
-        // Drop any owned index from a prior load on this reused IfcAPI so the
-        // batch path uses the shared index (and frees the old map).
+            .take();
         self.cached_entity_index
             .lock()
             .expect("ifc-lite cached_entity_index Mutex poisoned")
             .take();
+
+        // Build the SHARED binary-search index (a sorted (id,start,end) buffer)
+        // from the columns instead of an FxHashMap: ~152 MB and no 12.6 M inserts
+        // per worker. `produce_batch` reads `cached_shared_index` first.
+        let bytes =
+            ifc_lite_core::build_shared_entity_index_bytes_from_columns(ids, starts, lengths);
+        if !bytes.is_empty() {
+            let shared = ifc_lite_core::SharedEntityIndex::from_bytes(std::sync::Arc::from(
+                bytes.into_boxed_slice(),
+            ));
+            self.cached_shared_index
+                .lock()
+                .expect("ifc-lite cached_shared_index Mutex poisoned")
+                .replace(shared);
+        }
 
         // Swapping the entity index means a different file. The other caches are
         // content-scoped (keyed off the previous load) — carrying them into the

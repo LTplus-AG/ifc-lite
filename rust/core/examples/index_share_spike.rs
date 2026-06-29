@@ -90,12 +90,18 @@ fn main() {
     let flat_bytes = n as f64 * 12.0; // (u32,u32,u32), no padding
     let workers = 3.0;
     println!("\n[memory estimate, {n} entities]");
-    println!("  per-worker FxHashMap:  {:.0} MB  x{workers:.0} workers = {:.0} MB",
+    // REALITY: separate WASM realms have no shared linear memory, so each worker
+    // COPIES the flat array into its own heap — 3x152, NOT a single shared 1x152.
+    // The win is the smaller per-worker footprint (flat vs hashmap), not sharing.
+    println!("  per-worker FxHashMap:  {:.0} MB  x{workers:.0} = {:.0} MB",
         hashmap_bytes / 1e6, hashmap_bytes * workers / 1e6);
-    println!("  one shared flat array: {:.0} MB  (x1, all workers view it)", flat_bytes / 1e6);
-    println!("  => saves ~{:.0} MB peak ({:.1}x less index memory)",
-        (hashmap_bytes * workers - flat_bytes) / 1e6,
-        (hashmap_bytes * workers) / flat_bytes);
+    println!("  per-worker flat array: {:.0} MB  x{workers:.0} = {:.0} MB (each realm copies it)",
+        flat_bytes / 1e6, flat_bytes * workers / 1e6);
+    println!("  => saves ~{:.0} MB peak ({:.1}x less index memory per worker)",
+        (hashmap_bytes - flat_bytes) * workers / 1e6,
+        hashmap_bytes / flat_bytes);
+    println!("  (ideal 1x-shared = {:.0} MB / ~{:.0} MB saved, but needs shared wasm memory)",
+        flat_bytes / 1e6, (hashmap_bytes * workers - flat_bytes) / 1e6);
 
     // --- Verdict signals ---
     println!("\n[verdict signals]");

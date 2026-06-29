@@ -33,7 +33,7 @@ impl SharedEntityIndex {
     /// The buffer length must be a multiple of 12; a non-conforming buffer yields
     /// an empty index (all lookups miss) rather than panicking.
     pub fn from_bytes(data: Arc<[u8]>) -> Self {
-        if data.len() % ENTRY != 0 {
+        if !data.len().is_multiple_of(ENTRY) {
             return Self { data: Arc::from(&[][..]) };
         }
         Self { data }

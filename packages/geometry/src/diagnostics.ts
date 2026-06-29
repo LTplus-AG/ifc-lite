@@ -33,9 +33,11 @@ export interface GeometryDiagnostics {
   /** Failure counts by stable reason label, sorted desc by count. */
   failuresByReason: Array<{ reason: string; count: number }>;
   /**
-   * Hosts where rectangular cutters ran but the triangle count was unchanged
-   * (cut attempted, geometry not modified) - the highest-signal "looks wrong but
-   * did not error" indicator. Batch-summed upper bound.
+   * Hosts where rectangular cutters ran, the triangle count was unchanged, and NO
+   * failure was recorded (cut attempted, geometry not modified) - the highest-
+   * signal "looks wrong but did not error" indicator. Hosts that failed are
+   * excluded (they are loud failures counted in totalCsgFailures, not silent).
+   * Batch-summed upper bound.
    */
   silentNoOps: number;
   /** rect_fast fast-path engagement (perf observability). */

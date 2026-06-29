@@ -451,8 +451,14 @@ pub fn aggregate_diagnostics(
     let silent_no_ops = host_diags
         .values()
         .filter(|hd| {
+            // A TRUE silent no-op: rect cutters ran, the triangle count was
+            // unchanged, AND the kernel recorded no failure. A host that already
+            // failed is a loud failure, not a silent one — excluding it keeps this
+            // the precise "ran clean but produced no change" signal (so it is not
+            // double-reported alongside total_csg_failures).
             matches!((hd.tris_before, hd.tris_after), (Some(b), Some(a)) if b == a)
                 && hd.rect_boxes_processed > 0
+                && hd.csg_failure_count == 0
         })
         .count() as u64;
 
@@ -533,7 +539,8 @@ mod diagnostics_contract_tests {
         );
 
         let mut hosts: FxHashMap<u32, HostOpeningDiagnostic> = FxHashMap::default();
-        // A silent no-op host: rect cutters ran but the triangle count is unchanged.
+        // A FAILED host (also unchanged tris) — must NOT be counted as a silent
+        // no-op because it recorded an explicit failure.
         hosts.insert(
             7,
             HostOpeningDiagnostic {
@@ -543,6 +550,18 @@ mod diagnostics_contract_tests {
                 tris_before: Some(120),
                 tris_after: Some(120),
                 rect_boxes_processed: 1,
+                ..Default::default()
+            },
+        );
+        // A TRUE silent no-op host: rect cutters ran, tris unchanged, NO failure.
+        hosts.insert(
+            9,
+            HostOpeningDiagnostic {
+                host_type: "IfcSlab".into(),
+                csg_failure_count: 0,
+                tris_before: Some(50),
+                tris_after: Some(50),
+                rect_boxes_processed: 2,
                 ..Default::default()
             },
         );
@@ -558,9 +577,11 @@ mod diagnostics_contract_tests {
         let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16);
         assert_eq!(d.total_csg_failures, 3);
         assert_eq!(d.products_with_failures, 2);
-        assert_eq!(d.hosts_with_openings, 1);
+        assert_eq!(d.hosts_with_openings, 2);
         assert_eq!(d.classification.total, 4);
         assert_eq!(d.classification.rectangular, 3);
+        // Only host 9 (clean, unchanged tris) counts; host 7 failed, so it is NOT
+        // a silent no-op.
         assert_eq!(d.silent_no_ops, 1);
         assert_eq!(d.rect_fast.fired, 2);
         // Sorted desc by count: DifferenceEmptiedHost=2 then KernelOutputInvalid=1.

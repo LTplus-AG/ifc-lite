@@ -13,11 +13,11 @@
     "@ifc-lite/data": "^2.0.0",
     "@ifc-lite/geometry": "^2.1.0",
     "@ifc-lite/parser": "^3.0.0",
-    "three": "^0.184.0"
+    "three": "^0.185.0"
   },
   "devDependencies": {
-    "@types/three": "^0.184.1",
+    "@types/three": "^0.185.0",
     "typescript": "^6.0.3",
-    "vite": "^7.3.5"
+    "vite": "^7.3.6"
   }
 }

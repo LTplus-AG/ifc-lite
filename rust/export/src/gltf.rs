@@ -645,7 +645,12 @@ fn assemble_glb(
             color: m.color,
         })
         .collect();
-    let collated = collate_refs(&refs, 2);
+    // rtc [0,0,0]: this path keeps the RAW pre-RTC relative transforms and applies
+    // its own `T(-rtc)·rel·T(rtc)` conjugation per occurrence in
+    // `occurrence_node_matrix` (it has the Z-up model rtc there). Passing the rtc
+    // here too would conjugate twice. The wasm GPU-shard path, which consumes the
+    // relative transform directly (no downstream conjugation), passes the real rtc.
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
 
     // Partition into instanced templates (non-rigid, exact-bit) and a flat remainder.
     // Only EXACT-bit groups are instanced: the template's local geometry IS each

@@ -529,7 +529,11 @@ impl IfcAPI {
             })
             .collect();
         // min_group = 2: instance any repeat; singletons + non-instanceable flat.
-        ifc_lite_geometry::collate_and_encode(&refs, 2)
+        // Pass the applied RTC so per-occurrence transforms are reduced to the
+        // post-RTC frame (matches the small baked origins; without it a rotated
+        // occurrence lands at 2× the georef offset and collapses GLB exports).
+        let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
+        ifc_lite_geometry::collate_and_encode(&refs, 2, rtc)
     }
 
     /// Produce a batch ONCE and PARTITION it (the instanced-ONLY path): opaque
@@ -648,8 +652,11 @@ impl IfcAPI {
         // min_group == the routing threshold so collate_refs never re-flattens a group
         // that already passed the count gate; only its own try_inverse / shape-mismatch
         // safety net can still drop a (rare, degenerate) group to a singleton template.
+        // Reduce occurrence transforms to the post-RTC frame (see the other call
+        // site) so rotated occurrences don't fly out to 2× the georef offset.
+        let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
         let shard =
-            ifc_lite_geometry::collate_and_encode(&refs, INSTANCE_MIN_OCCURRENCES as usize);
+            ifc_lite_geometry::collate_and_encode(&refs, INSTANCE_MIN_OCCURRENCES as usize, rtc);
         PartitionedBatch {
             meshes: Some(mesh_collection),
             shard,

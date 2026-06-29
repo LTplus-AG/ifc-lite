@@ -676,17 +676,21 @@ export function useIfcLoader() {
       // Only for IFC4 STEP files (server doesn't support IFCX). Native
       // file handles (Tauri) don't have an HTTP-uploadable body, so skip
       // the server path and fall through to the WASM loader.
-      // Also skip it whenever the load needs local-only geometry tessellation
-      // the server can't reproduce: merge-layers (issue #1107), the small-cut
-      // skip, or a non-default tessellation tier. The server tessellates with
-      // none of these and its cache key ignores them, so routing through it
-      // would return geometry that disagrees with the cache key the client
-      // committed (it would serve full-cut/medium where `fast` was requested).
-      // The local WASM path honours all three. (In `fast` mode the local skip is
-      // also the faster path on boolean-heavy models, so little is lost.)
-      const needsLocalGeometryBuild =
-        mergeLayersAtLoad || skipSmallCutsAtLoad || loadTessellationTier !== undefined;
-      if (target.kind === 'primary' && format === 'ifc' && !needsLocalGeometryBuild && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
+      // Skip it when merge-layers is on: the server tessellates without that
+      // flag and its cache key ignores it, so a toggle+reload would still return
+      // non-merged geometry (issue #1107). Merge-layers is opt-in, so the common
+      // load keeps the server fast path.
+      //
+      // The geometry-fidelity mode (skip-small-cuts / auto-low tier) is a
+      // LOCAL-WASM display optimization and does NOT gate the server here. The
+      // server produces canonical full-fidelity geometry and caches it under its
+      // OWN key (useIfcServer: streamResult.cache_key) — it never writes the
+      // local `-sc/-tlow` cacheKey, so there is no key/geometry mismatch. Gating
+      // the server on the default-on `fast` mode would disable the multi-core
+      // server fast-path for every primary IFC load (the cause of an "overall
+      // slower" regression on server-enabled deploys); fast mode still applies on
+      // every local-path load (IFCX, merge-layers, Tauri, or server-off).
+      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {

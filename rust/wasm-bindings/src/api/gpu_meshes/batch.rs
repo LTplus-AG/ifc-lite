@@ -81,24 +81,39 @@ impl IfcAPI {
         // because they're separate WASM realms from the pre-pass worker),
         // build once here and store under Arc so subsequent calls hit
         // the fast path.
-        let entity_index_arc: std::sync::Arc<ifc_lite_core::EntityIndex> = {
-            // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
-            // The clone is what gets handed to rayon — no lock contention
-            // on the per-job hot path that follows. Poison panics here
-            // (an earlier panic-with-lock-held has corrupted the cache).
-            let mut slot = self
-                .cached_entity_index
-                .lock()
-                .expect("ifc-lite cached_entity_index Mutex poisoned");
-            if let Some(existing) = slot.as_ref() {
-                std::sync::Arc::clone(existing)
-            } else {
-                let built = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
-                *slot = Some(std::sync::Arc::clone(&built));
-                built
-            }
+        // Prefer the SHARED entity index when the orchestrator provided one
+        // (`setEntityIndex` builds it from the columns): the decoder binary-
+        // searches a ~152 MB sorted buffer instead of this worker holding a
+        // ~354 MB FxHashMap. The shared index is cheap to clone (Arc<[u8]>). Fall
+        // back to the owned index (cached, or lazily built by scanning) when no
+        // shared index was set — byte-identical to before.
+        let shared_index = self
+            .cached_shared_index
+            .lock()
+            .expect("ifc-lite cached_shared_index Mutex poisoned")
+            .clone();
+        let mut decoder = if let Some(shared_index) = shared_index {
+            EntityDecoder::with_shared_index(content, shared_index)
+        } else {
+            let entity_index_arc: std::sync::Arc<ifc_lite_core::EntityIndex> = {
+                // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
+                // The clone is what gets handed to rayon — no lock contention
+                // on the per-job hot path that follows. Poison panics here
+                // (an earlier panic-with-lock-held has corrupted the cache).
+                let mut slot = self
+                    .cached_entity_index
+                    .lock()
+                    .expect("ifc-lite cached_entity_index Mutex poisoned");
+                if let Some(existing) = slot.as_ref() {
+                    std::sync::Arc::clone(existing)
+                } else {
+                    let built = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
+                    *slot = Some(std::sync::Arc::clone(&built));
+                    built
+                }
+            };
+            EntityDecoder::with_arc_index(content, entity_index_arc)
         };
-        let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc);
         // Seed the unit-scale caches so curve/arc tessellation never re-pays the
         // O(file) IFCPROJECT scan: this decoder is fresh on every batch call,
         // and `plane_angle_to_radians()` would otherwise walk the whole DATA

@@ -79,7 +79,8 @@ pub mod units;
 
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
 pub use shared_index::{
-    build_shared_entity_index_bytes, build_shared_entity_index_bytes_from_map, SharedEntityIndex,
+    build_shared_entity_index_bytes, build_shared_entity_index_bytes_from_columns,
+    build_shared_entity_index_bytes_from_map, SharedEntityIndex,
 };
 pub use error::{Error, Result};
 pub use fast_parse::{

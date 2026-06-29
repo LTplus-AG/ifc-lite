@@ -57,6 +57,16 @@ pub struct IfcAPI {
     /// under concurrent `&self` access.
     cached_entity_index: std::sync::Mutex<Option<std::sync::Arc<EntityIndex>>>,
 
+    /// Optional SHARED entity index for this worker: a sorted `(id,start,end)`
+    /// buffer the orchestrator builds ONCE (in the prepass) and hands to every
+    /// geometry worker via `setSharedEntityIndex`. When present, each batch's
+    /// decoder binary-searches it (`with_shared_index`) instead of rebuilding the
+    /// 12.6 M-entry FxHashMap per worker — eliminating the per-worker scan+insert
+    /// (~7 s) and shrinking the index from ~354 MB to ~152 MB on huge models.
+    /// `None` (the default) keeps the owned `cached_entity_index` path, byte-
+    /// identical to before. Cheap to clone (`Arc<[u8]>`).
+    cached_shared_index: std::sync::Mutex<Option<ifc_lite_core::SharedEntityIndex>>,
+
     /// Per-worker shared content-dedup cache (#1109 follow-up). The
     /// `GeometryRouter` is rebuilt every `processGeometryBatch`, so its item-mesh
     /// dedup cache would reset each batch. Holding ONE cache here and injecting it
@@ -203,6 +213,7 @@ impl IfcAPI {
         Self {
             initialized: true,
             cached_entity_index: std::sync::Mutex::new(None),
+            cached_shared_index: std::sync::Mutex::new(None),
             cached_item_dedup: std::sync::Mutex::new(None),
             merge_layers: std::sync::atomic::AtomicBool::new(false),
             cached_parts_to_skip: std::sync::Mutex::new(None),
@@ -242,6 +253,10 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_entity_index Mutex poisoned");
         slot.take();
+        self.cached_shared_index
+            .lock()
+            .expect("ifc-lite cached_shared_index Mutex poisoned")
+            .take();
         // The parts-to-skip set is keyed off the content scanned during
         // the previous load; drop it together with the entity index so the
         // next file's first batch call rebuilds against fresh content.
@@ -323,22 +338,29 @@ impl IfcAPI {
     /// multiple loads with different files.
     #[wasm_bindgen(js_name = setEntityIndex)]
     pub fn set_entity_index(&self, ids: &[u32], starts: &[u32], lengths: &[u32]) {
-        let n = ids.len();
-        if n == 0 || starts.len() != n || lengths.len() != n {
+        // Build the SHARED binary-search index (a sorted (id,start,end) buffer)
+        // from the columns instead of an FxHashMap: ~152 MB and no 12.6 M inserts
+        // per worker, vs ~354 MB + inserts. `produce_batch` reads
+        // `cached_shared_index` first. Empty bytes (malformed columns) leave it
+        // unset, so the owned `cached_entity_index` lazy path still applies.
+        let bytes =
+            ifc_lite_core::build_shared_entity_index_bytes_from_columns(ids, starts, lengths);
+        if bytes.is_empty() {
             return;
         }
-        let mut index = ifc_lite_core::EntityIndex::with_capacity_and_hasher(n, Default::default());
-        for i in 0..n {
-            let start = starts[i] as usize;
-            let length = lengths[i] as usize;
-            index.insert(ids[i], (start, start + length));
-        }
-        let mut slot = self
-            .cached_entity_index
+        let shared = ifc_lite_core::SharedEntityIndex::from_bytes(std::sync::Arc::from(
+            bytes.into_boxed_slice(),
+        ));
+        self.cached_shared_index
             .lock()
-            .expect("ifc-lite cached_entity_index Mutex poisoned");
-        *slot = Some(std::sync::Arc::new(index));
-        drop(slot);
+            .expect("ifc-lite cached_shared_index Mutex poisoned")
+            .replace(shared);
+        // Drop any owned index from a prior load on this reused IfcAPI so the
+        // batch path uses the shared index (and frees the old map).
+        self.cached_entity_index
+            .lock()
+            .expect("ifc-lite cached_entity_index Mutex poisoned")
+            .take();
 
         // Swapping the entity index means a different file. The other caches are
         // content-scoped (keyed off the previous load) — carrying them into the

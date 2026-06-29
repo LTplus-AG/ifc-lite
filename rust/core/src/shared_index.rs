@@ -132,6 +132,35 @@ pub fn build_shared_entity_index_bytes_from_map(index: &crate::EntityIndex) -> V
     serialize_sorted_triples(entries)
 }
 
+/// Build the shared-index bytes from pre-extracted `(ids, starts, lengths)`
+/// columns — the form the orchestrator already streams to each geometry worker
+/// (`setEntityIndex`). `end = start + length`, matching the FxHashMap's tuple.
+/// No re-scan and no FxHashMap: just sort + serialize, so a worker gets the index
+/// at 152 MB / binary-search instead of building a 354 MB map with 12.6 M inserts.
+///
+/// Returns an EMPTY buffer on a malformed column set (mismatched lengths) or if
+/// any offset would overflow u32, so the caller falls back to the owned path.
+pub fn build_shared_entity_index_bytes_from_columns(
+    ids: &[u32],
+    starts: &[u32],
+    lengths: &[u32],
+) -> Vec<u8> {
+    let n = ids.len();
+    if n == 0 || starts.len() != n || lengths.len() != n {
+        return Vec::new();
+    }
+    let mut entries: Vec<(u32, u32, u32)> = Vec::with_capacity(n);
+    for i in 0..n {
+        // start + length can exceed u32 only on a ≥4 GiB file (not wasm32);
+        // checked add degrades to the owned path rather than wrapping.
+        let Some(end) = starts[i].checked_add(lengths[i]) else {
+            return Vec::new();
+        };
+        entries.push((ids[i], starts[i], end));
+    }
+    serialize_sorted_triples(entries)
+}
+
 /// Sort `(id, start, end)` triples by id and pack them as LE u32 — the layout
 /// [`SharedEntityIndex`] binary-searches. Sorting here keeps both builders honest.
 fn serialize_sorted_triples(mut entries: Vec<(u32, u32, u32)>) -> Vec<u8> {
@@ -185,6 +214,31 @@ ENDSEC;\nEND-ISO-10303-21;\n";
         let from_content = build_shared_entity_index_bytes(SAMPLE);
         let from_map = build_shared_entity_index_bytes_from_map(&map);
         assert_eq!(from_content, from_map, "from_map must produce identical sorted bytes");
+    }
+
+    #[test]
+    fn from_columns_matches_from_map() {
+        let map = build_entity_index(SAMPLE);
+        // Derive parallel (ids, starts, lengths) columns from the map, exactly as
+        // the orchestrator streams them to a worker's setEntityIndex.
+        let (mut ids, mut starts, mut lengths) = (Vec::new(), Vec::new(), Vec::new());
+        for (&id, &(s, e)) in map.iter() {
+            ids.push(id);
+            starts.push(s as u32);
+            lengths.push((e - s) as u32);
+        }
+        let from_cols = build_shared_entity_index_bytes_from_columns(&ids, &starts, &lengths);
+        let from_map = build_shared_entity_index_bytes_from_map(&map);
+        assert_eq!(from_cols, from_map, "from_columns must match from_map");
+        let s = SharedEntityIndex::from_bytes(Arc::from(from_cols.into_boxed_slice()));
+        for (&id, &(start, end)) in map.iter() {
+            assert_eq!(s.get(id), Some((start, end)), "column-built span mismatch for #{id}");
+        }
+    }
+
+    #[test]
+    fn from_columns_rejects_mismatched_lengths() {
+        assert!(build_shared_entity_index_bytes_from_columns(&[1, 2], &[0], &[5, 6]).is_empty());
     }
 
     #[test]

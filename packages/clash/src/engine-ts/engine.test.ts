@@ -47,6 +47,53 @@ function boxElement(key: string, tag: string, center: Vec3, size = 1): ClashElem
   };
 }
 
+/** Box corners in the canonical order, given a centre and per-axis half-extents. */
+function boxCorners(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number): Vec3[] {
+  return [
+    [cx - hx, cy - hy, cz - hz],
+    [cx + hx, cy - hy, cz - hz],
+    [cx + hx, cy + hy, cz - hz],
+    [cx - hx, cy + hy, cz - hz],
+    [cx - hx, cy - hy, cz + hz],
+    [cx + hx, cy - hy, cz + hz],
+    [cx + hx, cy + hy, cz + hz],
+    [cx - hx, cy + hy, cz + hz],
+  ];
+}
+
+const BOX_INDICES = new Uint32Array([
+  0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1,
+  1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0,
+]);
+
+/** Box element with independent per-axis half-extents (for crossing bars). */
+function boxElementHxyz(key: string, tag: string, center: Vec3, half: Vec3): ClashElement {
+  const corners = boxCorners(center[0], center[1], center[2], half[0], half[1], half[2]);
+  const positions = new Float32Array(corners.flat());
+  return { key, ref: nextRef++, model: 'm', tag, bounds: fromPositions(positions), positions, indices: BOX_INDICES };
+}
+
+const PRISM_INDICES = new Uint32Array([
+  0, 1, 2, 3, 4, 5, 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5,
+]);
+
+/** Closed triangular prism: `footprint` (XY) extruded between z0 and z1. */
+function triPrismElement(
+  key: string,
+  tag: string,
+  footprint: [Vec3, Vec3, Vec3] | [[number, number], [number, number], [number, number]],
+  z0: number,
+  z1: number,
+): ClashElement {
+  const [p0, p1, p2] = footprint as [[number, number], [number, number], [number, number]];
+  const v = [
+    p0[0], p0[1], z0, p1[0], p1[1], z0, p2[0], p2[1], z0,
+    p0[0], p0[1], z1, p1[0], p1[1], z1, p2[0], p2[1], z1,
+  ];
+  const positions = new Float32Array(v);
+  return { key, ref: nextRef++, model: 'm', tag, bounds: fromPositions(positions), positions, indices: PRISM_INDICES };
+}
+
 const engine = createClashEngine({ backend: 'ts' });
 const hard = (over: Partial<ClashRule> = {}): ClashRule => ({
   id: 'r',
@@ -158,5 +205,51 @@ describe('TsClashEngine', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(engine.run(elements, [hard()], { signal: controller.signal })).rejects.toThrow();
+  });
+});
+
+describe('TsClashEngine: false-positive + bounds regressions (#1362 / #1402)', () => {
+  const wallDuct = (over: Partial<ClashRule> = {}): ClashRule => ({
+    id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct', mode: 'hard', ...over,
+  });
+
+  it('does not report a hard clash for skewed members that only share a face (Bug A)', async () => {
+    // Two wedges meeting flush at a slanted face: their axis-aligned bounds overlap
+    // fully, but the solids share NO volume. The old AABB-penetration proxy fired a
+    // false hard clash here.
+    const elements = [
+      triPrismElement('A', 'IfcWall', [[0, 0], [2, 0], [0, 2]], 0, 1),
+      triPrismElement('B', 'IfcDuct', [[2, 0], [0, 2], [5, 5]], 0, 1),
+    ];
+    const result = await engine.run(elements, [wallDuct()]);
+    expect(result.summary.total).toBe(0);
+  });
+
+  it('still reports a hard clash when members genuinely interpenetrate (Bug A recall)', async () => {
+    // Same wedge A, but a box that straddles the slanted face -> real shared volume.
+    const elements = [
+      triPrismElement('A', 'IfcWall', [[0, 0], [2, 0], [0, 2]], 0, 1),
+      boxElementHxyz('B', 'IfcDuct', [1, 1, 0.5], [0.5, 0.5, 0.5]),
+    ];
+    const result = await engine.run(elements, [wallDuct()]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+  });
+
+  it('reports a tight contact box for a genuine crossing, not the element overlap (Bug B)', async () => {
+    // Perpendicular bars: A runs along X, B along Y, crossing near the origin.
+    const a = boxElementHxyz('A', 'IfcWall', [0, 0, 0], [5, 0.5, 0.5]);
+    const b = boxElementHxyz('B', 'IfcDuct', [0, 0, 0], [0.5, 5, 0.5]);
+    const result = await engine.run([a, b], [wallDuct()]);
+    expect(result.summary.total).toBe(1);
+    const { bounds } = result.clashes[0];
+    // Element-AABB overlap z-extent is 1.0 (both bars span z[-0.5,0.5]); the tight
+    // contact box must be strictly thinner in z.
+    expect(bounds.max[2] - bounds.min[2]).toBeLessThan(1.0);
+    // And it must stay within element A's bounds (the overlap is a subset of both).
+    for (let i = 0; i < 3; i += 1) {
+      expect(bounds.min[i]).toBeGreaterThanOrEqual(a.bounds.min[i] - 1e-6);
+      expect(bounds.max[i]).toBeLessThanOrEqual(a.bounds.max[i] + 1e-6);
+    }
   });
 });

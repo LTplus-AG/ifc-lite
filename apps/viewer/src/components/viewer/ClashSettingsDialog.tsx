@@ -61,6 +61,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
   const clearance = useViewerStore((s) => s.clashClearance);
   const clusterEpsilon = useViewerStore((s) => s.clashClusterEpsilon);
   const reportTouch = useViewerStore((s) => s.clashReportTouch);
+  const showRegionBox = useViewerStore((s) => s.showClashRegionBox);
   const groupBy = useViewerStore((s) => s.clashGroupBy);
   const presets = useViewerStore((s) => s.clashPresets);
   const classes = useViewerStore((s) => s.discoveredLensData?.classes ?? null);
@@ -70,6 +71,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
   const setClearance = useViewerStore((s) => s.setClashClearance);
   const setClusterEpsilon = useViewerStore((s) => s.setClashClusterEpsilon);
   const setReportTouch = useViewerStore((s) => s.setClashReportTouch);
+  const setShowRegionBox = useViewerStore((s) => s.setShowClashRegionBox);
   const setGroupBy = useViewerStore((s) => s.setClashGroupBy);
   const resetSettings = useViewerStore((s) => s.resetClashSettings);
   const createPreset = useViewerStore((s) => s.createClashPreset);
@@ -207,6 +209,10 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
 
             <SettingRow label="Report grazing contacts" hint="Include touch-classified results (surfaces that just graze) in detection.">
               <Switch checked={reportTouch} onCheckedChange={setReportTouch} />
+            </SettingRow>
+
+            <SettingRow label="Show clash region box" hint="Draw a wireframe box around the focused clash's contact region. Off by default so it does not hide the actual penetration.">
+              <Switch checked={showRegionBox} onCheckedChange={setShowRegionBox} />
             </SettingRow>
 
             <SettingRow label="Default grouping" hint="How the results list is organized in the panel.">

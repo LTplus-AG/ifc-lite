@@ -76,6 +76,14 @@ export interface ClashSlice {
    * (#1277)
    */
   clashOverlapBox: { min: [number, number, number]; max: [number, number, number] } | null;
+  /**
+   * Whether the focused clash's region box is drawn in the 3D view. Off by
+   * default (#1402): the wireframe box obscured the actual penetration and, being
+   * on the section-exempt overlay, appeared uncut by the section plane. The two
+   * glowing elements plus the contact marker convey the clash; the box is an
+   * opt-in extra.
+   */
+  showClashRegionBox: boolean;
 
   setClashPanelVisible: (visible: boolean) => void;
   toggleClashPanel: () => void;
@@ -94,6 +102,7 @@ export interface ClashSlice {
   setClashSelectedId: (id: string | null) => void;
   setClashHighlightColors: (colors: Map<number, [number, number, number, number]> | null) => void;
   setClashOverlapBox: (box: { min: [number, number, number]; max: [number, number, number] } | null) => void;
+  setShowClashRegionBox: (show: boolean) => void;
   // Preset CRUD (persisted). create/update/import return a SaveResult so the UI
   // can surface quota / cap failures; the rest are best-effort.
   createClashPreset: (input: NewClashPreset) => SaveResult;
@@ -144,6 +153,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashSelectedId: null,
     clashHighlightColors: null,
     clashOverlapBox: null,
+    showClashRegionBox: false,
 
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),
@@ -183,6 +193,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     setClashSelectedId: (clashSelectedId) => set({ clashSelectedId }),
     setClashHighlightColors: (clashHighlightColors) => set({ clashHighlightColors }),
     setClashOverlapBox: (clashOverlapBox) => set({ clashOverlapBox }),
+    setShowClashRegionBox: (showClashRegionBox) => set({ showClashRegionBox }),
 
     createClashPreset: (input) => {
       const name = validatePresetName(input.name);

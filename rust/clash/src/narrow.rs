@@ -59,6 +59,11 @@ pub fn test_pair(
     let mut intersects = false;
     let mut contact_sum: [f64; 3] = [0.0, 0.0, 0.0];
     let mut contact_n: u32 = 0;
+    // Tight contact AABB: min/max of the per-pair contact points (the crossing
+    // representatives), so a hard verdict reports the local contact region rather
+    // than the whole-element AABB overlap (#1362 / #1402).
+    let mut c_min: Vec3 = [f64::INFINITY; 3];
+    let mut c_max: Vec3 = [f64::NEG_INFINITY; 3];
     let mut min_dist = f64::INFINITY;
     let mut closest_a: Vec3 = aabb_a.min;
     let mut closest_b: Vec3 = aabb_b.min;
@@ -79,6 +84,14 @@ pub fn test_pair(
                 contact_sum[1] += c[1];
                 contact_sum[2] += c[2];
                 contact_n += 1;
+                for i in 0..3 {
+                    if c[i] < c_min[i] {
+                        c_min[i] = c[i];
+                    }
+                    if c[i] > c_max[i] {
+                        c_max[i] = c[i];
+                    }
+                }
             } else if !intersects {
                 // Distance only matters while we might still be clearance/touch.
                 let (dist, p_a, p_b) = tri_tri_distance(s0, s1, s2, l0, l1, l2);
@@ -100,13 +113,21 @@ pub fn test_pair(
         } else {
             overlap.center()
         };
+        // Tight contact AABB (Bug B): the box around the actual triangle crossings,
+        // clamped to the element overlap so it can never exceed it. Falls back to
+        // the overlap when (defensively) no contact point was recorded.
+        let bounds = if contact_n > 0 {
+            overlap_bounds(&Aabb::new(c_min, c_max), &overlap)
+        } else {
+            overlap
+        };
         // Phase-0 penetration estimate from AABB overlap.
         let penetration = (-signed_gap(aabb_a, aabb_b)).max(0.0);
         return Some(NarrowResult {
             status: ClashStatus::Hard,
             distance: -penetration,
             point,
-            bounds: overlap,
+            bounds,
         });
     }
 
@@ -138,17 +159,30 @@ pub fn test_pair(
         return None;
     }
 
-    // Surfaces coincide/touch with no genuine crossing, but the volumes overlap
-    // beyond tolerance (coplanar surfaces, e.g. axis-aligned boxes) -> hard.
+    // Surfaces coincide/touch with no genuine crossing, but the AABBs penetrate
+    // beyond tolerance (coplanar surfaces, e.g. axis-aligned boxes). AABB
+    // penetration ALONE is not enough: two skewed/abutting members that merely
+    // share a face have overlapping AABBs yet no shared volume, and the old proxy
+    // promoted that touch to a false hard clash (#1362). Confirm a real volume
+    // overlap first: the midpoint of the two vertex centroids lies in the shared
+    // interior for a genuine overlap, but on/outside the interface for a bare face
+    // touch -> require it inside BOTH solids before reporting hard.
     if min_dist <= tolerance {
         let gap = signed_gap(aabb_a, aabb_b);
         if gap < -tolerance {
-            return Some(NarrowResult {
-                status: ClashStatus::Hard,
-                distance: gap,
-                point: overlap.center(),
-                bounds: overlap,
-            });
+            let probe = mid(tri_a.vertex_centroid(), tri_b.vertex_centroid());
+            if tri_a.contains_point(probe) && tri_b.contains_point(probe) {
+                // Tight contact bounds (Bug B): the nearest-surface contact, not
+                // the whole-element AABB overlap (meters wide for long members).
+                return Some(NarrowResult {
+                    status: ClashStatus::Hard,
+                    distance: gap,
+                    point: mid(closest_a, closest_b),
+                    bounds: bounds_of_points(closest_a, closest_b),
+                });
+            }
+            // Only a face touch (no shared volume): fall through to the touch
+            // handling below, which suppresses it unless report_touch is set.
         }
     }
 

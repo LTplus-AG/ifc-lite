@@ -20,7 +20,15 @@ fn fixture_path(relative: &str) -> std::path::PathBuf {
 
 #[test]
 fn native_pass_surfaces_geometry_diagnostics() {
-    let bytes = std::fs::read(fixture_path(FIXTURE)).expect("read fixture");
+    // ara3d fixtures are not committed; skip cleanly when absent (AGENTS.md test
+    // convention, matching issue_1320_wall_67828_round_window).
+    let bytes = match std::fs::read(fixture_path(FIXTURE)) {
+        Ok(b) => b,
+        Err(_) => {
+            eprintln!("{FIXTURE} missing - skipping");
+            return;
+        }
+    };
     let result = process_geometry(&bytes);
 
     let diag = result

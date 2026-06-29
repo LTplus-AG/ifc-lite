@@ -302,7 +302,7 @@ export class IfcLiteBridge {
    * `hidden` / `isolated` are express-id visibility filters (empty `isolated` ⇒ all).
    */
   exportObj(
-    content: string,
+    content: Uint8Array,
     includeNormals = true,
     hidden: Uint32Array = new Uint32Array(),
     isolated: Uint32Array = new Uint32Array(),
@@ -339,7 +339,7 @@ export class IfcLiteBridge {
    * `hiddenTypesCsv` is a comma-separated IFC-type visibility filter.
    */
   exportGlb(
-    content: string,
+    content: Uint8Array,
     includeMetadata = false,
     hidden: Uint32Array = new Uint32Array(),
     isolated: Uint32Array = new Uint32Array(),
@@ -356,7 +356,7 @@ export class IfcLiteBridge {
    * empty `delimiter` ⇒ `,`; `includeProperties` adds flattened `Pset_Prop` columns.
    */
   exportCsv(
-    content: string,
+    content: Uint8Array,
     mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
     delimiter = ',',
     includeProperties = false,
@@ -368,7 +368,7 @@ export class IfcLiteBridge {
 
   /** Export structured JSON (array of entity objects with typed property values). */
   exportJson(
-    content: string,
+    content: Uint8Array,
     pretty = false,
     includeProperties = true,
     includeQuantities = true,
@@ -384,7 +384,7 @@ export class IfcLiteBridge {
    * empty `included` ⇒ whole model.
    */
   exportStep(
-    content: string,
+    content: Uint8Array,
     schema = '',
     included: Uint32Array = new Uint32Array(),
     mutationsJson = '',
@@ -411,7 +411,7 @@ export class IfcLiteBridge {
   }
 
   /** Export IFC5/IFCX (USD-style node graph). */
-  exportIfcx(content: string, onlyKnownProperties = true, pretty = false): string {
+  exportIfcx(content: Uint8Array, onlyKnownProperties = true, pretty = false): string {
     return this.runExport('exportIfcx', content, (api) =>
       api.exportIfcx(content, onlyKnownProperties, pretty),
     );
@@ -423,7 +423,7 @@ export class IfcLiteBridge {
    * OBJ/glTF/STEP exporters so `--type`/`--storey`/`--where`/`--limit` subsets apply.
    */
   exportJsonld(
-    content: string,
+    content: Uint8Array,
     context = '',
     includeProperties = true,
     includeQuantities = false,
@@ -500,7 +500,7 @@ export class IfcLiteBridge {
    * (Ladybug Tools energy/daylight model). Rooms are built analytically from
    * extruded-area profiles (watertight by construction).
    */
-  exportHbjson(content: string, name: string): string {
+  exportHbjson(content: Uint8Array, name: string): string {
     return this.runExport('exportHbjson', content, (api) => api.exportHbjson(content, name));
   }
 
@@ -508,7 +508,7 @@ export class IfcLiteBridge {
    * Shared wrapper for the domain-format exporters: init guard + structured error
    * logging + fatal-wasm-error marking, mirroring the other bridge entry points.
    */
-  private runExport<T>(op: string, content: string, run: (api: IfcAPI) => T): T {
+  private runExport<T>(op: string, content: Uint8Array, run: (api: IfcAPI) => T): T {
     if (!this.ifcApi) {
       throw new Error('IFC-Lite not initialized. Call init() first.');
     }

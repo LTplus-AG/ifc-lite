@@ -50,7 +50,18 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * only and silently drop all instanced occurrences — the bump invalidates those so
  * the model re-meshes (and re-writes a complete v10 cache with the shards).
  */
-export const FORMAT_VERSION = 10;
+/**
+ * v10→v11: CSG void-cutting caps cutters at 16 per N-ary arrangement and subtracts
+ * dense opening groups in chunks (#1432). For a host with >16 disjoint void cutters
+ * this is solid-equivalent but NOT byte-identical: the per-chunk consolidate yields
+ * a different tessellation and mesh hash than the old single arrangement. On
+ * pre-#1432 builds those hosts often exceeded the escalation budget and fell back to
+ * an AABB-box, so the chunked cut is also more correct. A v10 cache holds the old
+ * (boxed or differently-fragmented) mesh + hash, so without a bump a restored model
+ * would render stale geometry and the compare/diff feature would flag those hosts as
+ * changed. The bump invalidates pre-#1432 caches so they re-mesh.
+ */
+export const FORMAT_VERSION = 11;
 
 /** Section types in the binary format */
 export enum SectionType {

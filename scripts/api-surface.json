@@ -1220,6 +1220,7 @@
     "collectStyleEntities: function",
     "convertEntityType: function",
     "convertStepLine: function",
+    "countGlbMeshes: function",
     "describeConversion: function",
     "exportToStep: function",
     "extractGlbMapping: function",

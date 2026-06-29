@@ -502,8 +502,6 @@ impl ClippingProcessor {
     /// genuinely invalid kernel OUTPUT records, exactly like
     /// [`Self::subtract_mesh`].
     pub fn subtract_mesh_many(&self, host_mesh: &Mesh, cutters: &[&Mesh]) -> Result<Mesh> {
-        let total: usize = cutters.iter().map(|c| c.triangle_count()).sum();
-        record_csg_op(0, host_mesh.triangle_count(), total);
         if host_mesh.is_empty() {
             return Ok(Mesh::new());
         }
@@ -515,25 +513,53 @@ impl ClippingProcessor {
         if live.is_empty() {
             return Ok(host_mesh.clone()); // silent: sequential path takes over
         }
-        crate::kernel::budget::begin();
-        let raw = crate::kernel::mesh_bridge::subtract_many(host_mesh, &live);
-        if crate::kernel::budget::tripped() {
-            // Escalation budget exceeded on the batched arrangement (#1109).
-            // Reject silently so the per-opening sequential path takes over —
-            // each opening gets its own budget + #635 AABB fallback, so the few
-            // hard cutters degrade while the rest cut exactly. Deterministic.
-            return Ok(host_mesh.clone());
-        }
-        let Some(raw) = raw else {
-            // Unrecovered constraint in the N-ary arrangement — reject the
-            // group (silently, see above) so the sequential per-opening path
-            // (few constraints per arrangement) takes over.
-            return Ok(host_mesh.clone());
-        };
-        let result = Self::consolidate_coplanar(raw);
-        if !result.is_empty() && !self.validate_mesh(&result) {
-            self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
-            return Ok(host_mesh.clone());
+        // Cap the cutters packed into ONE conforming arrangement. Void cutters
+        // here are order-free (set difference: host − {all} ≡ host − {chunk₁} −
+        // {chunk₂} − …), and the N-ary arrangement cost is SUPER-LINEAR in the
+        // cutters in a single arrangement. A Revit IfcBuildingElementPart with
+        // ~90 openings cost ~12 s in one arrangement vs ~0.4 s chunked at 16 (30×),
+        // and on wasm that single element alone blew the geometry-stream watchdog —
+        // an 86 MB model that loaded in ~15 s natively STALLED at 40 s in the
+        // browser. Chunking bounds the per-arrangement cost so no single element
+        // can stall the stream. It is solid-equivalent (the batch path's contract
+        // is volume parity + watertightness, not byte-identical tessellation); for
+        // live.len() <= MAX_CUTTERS_PER_ARRANGEMENT it IS the prior single
+        // arrangement. On any chunk's budget trip / unrecovered constraint, reject
+        // the WHOLE group (return host un-cut) so the per-opening sequential path
+        // (own budget + #635 AABB fallback) takes over — identical to before.
+        const MAX_CUTTERS_PER_ARRANGEMENT: usize = 16;
+        let mut result = host_mesh.clone();
+        for chunk in live.chunks(MAX_CUTTERS_PER_ARRANGEMENT) {
+            // Census: record THIS kernel invocation's real operand sizes (the
+            // current host + this chunk's cutters). Chunking runs the kernel once
+            // per chunk, so report K real ops, not one synthetic op carrying the
+            // whole group's cutter total. For live.len() <= cap this is one record
+            // identical to the prior single arrangement.
+            let chunk_tris: usize = chunk.iter().map(|c| c.triangle_count()).sum();
+            record_csg_op(0, result.triangle_count(), chunk_tris);
+            crate::kernel::budget::begin();
+            let raw = crate::kernel::mesh_bridge::subtract_many(&result, chunk);
+            if crate::kernel::budget::tripped() {
+                // Escalation budget exceeded (#1109): reject the group silently so
+                // the per-opening sequential path takes over (deterministic).
+                return Ok(host_mesh.clone());
+            }
+            let Some(raw) = raw else {
+                // Unrecovered constraint in this chunk's arrangement — reject the
+                // group so the sequential per-opening path takes over.
+                return Ok(host_mesh.clone());
+            };
+            let next = Self::consolidate_coplanar(raw);
+            // Validate each intermediate BEFORE it becomes the next chunk's host:
+            // a non-watertight / invalid intermediate would silently corrupt every
+            // subsequent subtraction. On failure reject the whole group so the
+            // per-opening sequential path takes over — same guard as the
+            // un-chunked path, just applied per chunk.
+            if !next.is_empty() && !self.validate_mesh(&next) {
+                self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
+                return Ok(host_mesh.clone());
+            }
+            result = next;
         }
         Ok(result)
     }
@@ -875,6 +901,62 @@ fn add_triangle_to_mesh(mesh: &mut Mesh, triangle: &Triangle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// More cutters than MAX_CUTTERS_PER_ARRANGEMENT force the chunked path in
+    /// `subtract_mesh_many`; the result must match the sequential subtract chain.
+    /// Set difference is order-independent (`host - {all}` equals
+    /// `host - {chunk1} - {chunk2} - ...`), so chunking is solid-equivalent. Guards
+    /// the chunk boundary (the perf fix for the 86 MB model that stalled the
+    /// geometry stream on a ~90-opening host packed into one arrangement).
+    #[test]
+    fn subtract_mesh_many_chunks_match_sequential() {
+        fn vol(m: &Mesh) -> f64 {
+            let p = |i: u32| {
+                let k = i as usize * 3;
+                [
+                    m.positions[k] as f64,
+                    m.positions[k + 1] as f64,
+                    m.positions[k + 2] as f64,
+                ]
+            };
+            let mut v = 0.0;
+            for t in m.indices.chunks_exact(3) {
+                let (a, b, c) = (p(t[0]), p(t[1]), p(t[2]));
+                v += a[0] * (b[1] * c[2] - c[1] * b[2])
+                    - a[1] * (b[0] * c[2] - c[0] * b[2])
+                    + a[2] * (b[0] * c[1] - c[0] * b[1]);
+            }
+            (v / 6.0).abs()
+        }
+        let csg = ClippingProcessor::new();
+        // Long wall + 20 disjoint through-openings (>16 ⇒ 2 chunks at the cap).
+        let wall = aabb_to_mesh(Point3::new(0., 0., 0.), Point3::new(40., 3., 0.2));
+        let cutters: Vec<Mesh> = (0..20)
+            .map(|i| {
+                let x = 1.0 + i as f64 * 2.0; // 2 m spacing ⇒ pairwise disjoint
+                aabb_to_mesh(Point3::new(x, 1., -0.5), Point3::new(x + 1.0, 2., 0.7))
+            })
+            .collect();
+        let refs: Vec<&Mesh> = cutters.iter().collect();
+        let batched = csg
+            .subtract_mesh_many(&wall, &refs)
+            .expect("chunked subtract must conform");
+        let mut seq = wall.clone();
+        for c in &cutters {
+            seq = csg.subtract_mesh(&seq, c).expect("sequential subtract");
+        }
+        let (vb, vs) = (vol(&batched), vol(&seq));
+        assert!(
+            (vb - vs).abs() < 1e-4,
+            "chunked volume {vb} != sequential {vs} on 20 disjoint cutters"
+        );
+        // Sanity: ~20 holes (~0.2 m³ each) actually removed from the ~24 m³ wall.
+        assert!(
+            vb < vol(&wall) - 3.0,
+            "expected ~20 holes removed; wall {} -> {vb}",
+            vol(&wall)
+        );
+    }
 
     #[test]
     fn test_plane_signed_distance() {

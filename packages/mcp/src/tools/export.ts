@@ -14,6 +14,7 @@
 import { writeFile, readFile } from 'node:fs/promises';
 import type { EntityRef } from '@ifc-lite/sdk';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { countGlbMeshes } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -145,6 +146,15 @@ const exportGlb: Tool = {
     const isolated = filterType
       ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
       : new Uint32Array();
+    // An empty isolation set means "export everything" to the Rust mesher, so a
+    // `type` filter that matched nothing would silently export the WHOLE model
+    // and report success. Fail loud instead, mirroring the CLI guard.
+    if (filterType && isolated.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: `No ${filterType} entities found - nothing to export.`,
+      });
+    }
     const bytes = await resolveIfcBytes(m);
     const gp = new GeometryProcessor();
     await gp.init();
@@ -152,6 +162,16 @@ const exportGlb: Tool = {
       const glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
       if (glb == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
+      }
+      // A structurally valid GLB with zero meshes means nothing had render
+      // geometry — fail loud instead of writing an empty file as success.
+      if (countGlbMeshes(glb) === 0) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.INTERNAL_ERROR,
+          message: filterType
+            ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
+            : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
+        });
       }
       await writeFile(filePath, glb);
       return okResult(`Wrote ${glb.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: glb.length });
@@ -182,6 +202,15 @@ const exportObj: Tool = {
     const isolated = filterType
       ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
       : new Uint32Array();
+    // An empty isolation set means "export everything" to the Rust mesher, so a
+    // `type` filter that matched nothing would silently export the WHOLE model
+    // and report success. Fail loud instead, mirroring the CLI guard.
+    if (filterType && isolated.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: `No ${filterType} entities found - nothing to export.`,
+      });
+    }
     const bytes = await resolveIfcBytes(m);
     const gp = new GeometryProcessor();
     await gp.init();

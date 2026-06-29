@@ -836,6 +836,85 @@ impl Mesh {
         self.indices = valid_indices;
         removed_count
     }
+
+    /// Drop triangles with ANY vertex outside `[min - pad, max + pad]`, then
+    /// compact away the now-unreferenced vertices. Returns the count dropped.
+    ///
+    /// Boolean subtraction can only REMOVE material, so the cut of a host whose
+    /// pre-cut AABB is `[min, max]` is mathematically contained in that AABB.
+    /// A malformed cutter — self-intersecting, or carrying garbage vertices
+    /// metres from the real opening (e.g. an exporter that welds stray points
+    /// into a tessellated void, the multi-body-cutter case) — can make the
+    /// exact mesh-arrangement leak a spurious far-flung "flap" triangle into the
+    /// output: a visible spike poking metres out of the wall. Such a triangle
+    /// only appears once a SECOND cutter perturbs the arrangement, so it slips
+    /// past the per-cutter admission guards. Any output vertex beyond the host
+    /// AABB (past `pad`, which absorbs kernel snap / f64→f32 round-trip jitter)
+    /// is provably such an artifact, so the triangle is dropped and its orphaned
+    /// vertices removed (they would otherwise skew `bounds()` and every
+    /// AABB-derived consumer: framing, picking, clash, export).
+    ///
+    /// A no-op on clean cuts — when nothing lies outside, `positions`/`normals`
+    /// are left bit-identical so the frozen snapshot corpus is unperturbed. Also
+    /// a no-op in the degenerate case where EVERY triangle would be dropped (an
+    /// upstream frame/placement bug, not a cut artifact): the mesh is preserved
+    /// rather than silently emptied.
+    pub fn clip_triangles_to_aabb(&mut self, min: [f32; 3], max: [f32; 3], pad: f32) -> usize {
+        if self.indices.is_empty() {
+            return 0;
+        }
+        let lo = [min[0] - pad, min[1] - pad, min[2] - pad];
+        let hi = [max[0] + pad, max[1] + pad, max[2] + pad];
+        let inside = |i: u32| -> bool {
+            let b = i as usize * 3;
+            let (x, y, z) = (self.positions[b], self.positions[b + 1], self.positions[b + 2]);
+            x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1] && z >= lo[2] && z <= hi[2]
+        };
+        let tri_count = self.indices.len() / 3;
+        let mut kept: Vec<u32> = Vec::with_capacity(self.indices.len());
+        for t in self.indices.chunks_exact(3) {
+            if inside(t[0]) && inside(t[1]) && inside(t[2]) {
+                kept.extend_from_slice(t);
+            }
+        }
+        let dropped = tri_count - kept.len() / 3;
+        // No-op when nothing protrudes (bit-identical) or when the whole mesh
+        // would vanish (preserve it — that signals a bug elsewhere, not a spike).
+        if dropped == 0 || kept.is_empty() {
+            return 0;
+        }
+        // Compact: remap referenced vertices, drop orphans.
+        let has_normals = self.normals.len() == self.positions.len();
+        let mut remap: Vec<i32> = vec![-1; self.positions.len() / 3];
+        let mut new_pos: Vec<f32> = Vec::with_capacity(kept.len() * 3);
+        let mut new_nrm: Vec<f32> = Vec::with_capacity(if has_normals { kept.len() * 3 } else { 0 });
+        let mut new_idx: Vec<u32> = Vec::with_capacity(kept.len());
+        for &i in &kept {
+            let old = i as usize;
+            let slot = if remap[old] < 0 {
+                let n = (new_pos.len() / 3) as u32;
+                remap[old] = n as i32;
+                new_pos.extend_from_slice(&self.positions[old * 3..old * 3 + 3]);
+                if has_normals {
+                    new_nrm.extend_from_slice(&self.normals[old * 3..old * 3 + 3]);
+                }
+                n
+            } else {
+                remap[old] as u32
+            };
+            new_idx.push(slot);
+        }
+        self.positions = new_pos;
+        if has_normals {
+            self.normals = new_nrm;
+        } else {
+            // Per-vertex normal array was absent or already inconsistent; clear
+            // it so a stale, mis-indexed buffer never ships downstream.
+            self.normals.clear();
+        }
+        self.indices = new_idx;
+        dropped
+    }
 }
 
 impl Default for Mesh {
@@ -997,6 +1076,76 @@ fn weld_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Build a mesh from explicit triangles (each tri = 3 xyz triples).
+    fn mesh_from_tris(tris: &[[[f32; 3]; 3]]) -> Mesh {
+        let mut m = Mesh::new();
+        for (i, t) in tris.iter().enumerate() {
+            for v in t {
+                m.positions.extend_from_slice(v);
+                m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+            }
+            let b = (i * 3) as u32;
+            m.indices.extend_from_slice(&[b, b + 1, b + 2]);
+        }
+        m
+    }
+
+    #[test]
+    fn clip_to_aabb_drops_protruding_flap_and_compacts() {
+        // Two in-bounds triangles forming a unit quad in z=0, plus one spurious
+        // "spike" flap whose apex pokes far below the host AABB (the malformed-
+        // cutter artifact): apex at y = -5 while the host is y in [0,1].
+        let mut m = mesh_from_tris(&[
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+            [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            // spike: one vertex 5 m below the host
+            [[1.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.5, -5.0, 0.0]],
+        ]);
+        let dropped = m.clip_triangles_to_aabb([0.0, 0.0, 0.0], [1.0, 1.0, 0.0], 0.01);
+        assert_eq!(dropped, 1, "only the spike triangle should be dropped");
+        assert_eq!(m.triangle_count(), 2);
+        // Orphaned spike apex must be compacted away so bounds() is clean.
+        let (lo, hi) = m.bounds();
+        assert!(lo.y >= -0.01, "protruding apex left in positions: lo.y = {}", lo.y);
+        let _ = hi;
+        // 9 input verts (3 per tri, unshared) → after dropping the spike's 3 and
+        // compacting the orphaned apex, the 2 kept tris keep their 6 verts.
+        assert_eq!(m.positions.len() / 3, 6, "orphaned apex must be compacted out");
+        assert_eq!(m.normals.len(), m.positions.len(), "normals stay in sync");
+        // every surviving index is in range
+        assert!(m.indices.iter().all(|&i| (i as usize) < m.positions.len() / 3));
+    }
+
+    #[test]
+    fn clip_to_aabb_is_noop_when_nothing_protrudes() {
+        let tris = [
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+            [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+        ];
+        let mut m = mesh_from_tris(&tris);
+        let before_pos = m.positions.clone();
+        let before_idx = m.indices.clone();
+        let dropped = m.clip_triangles_to_aabb([0.0, 0.0, 0.0], [1.0, 1.0, 0.0], 0.01);
+        assert_eq!(dropped, 0);
+        // bit-identical: clean cuts must not perturb the frozen snapshot corpus
+        assert_eq!(m.positions, before_pos);
+        assert_eq!(m.indices, before_idx);
+    }
+
+    #[test]
+    fn clip_to_aabb_preserves_mesh_when_all_would_drop() {
+        // Degenerate guard: if EVERY triangle is outside (an upstream frame bug,
+        // not a spike), preserve the mesh rather than silently emptying it.
+        let mut m = mesh_from_tris(&[[
+            [100.0, 100.0, 0.0],
+            [101.0, 100.0, 0.0],
+            [101.0, 101.0, 0.0],
+        ]]);
+        let dropped = m.clip_triangles_to_aabb([0.0, 0.0, 0.0], [1.0, 1.0, 0.0], 0.01);
+        assert_eq!(dropped, 0);
+        assert_eq!(m.triangle_count(), 1, "mesh preserved, not emptied");
+    }
 
     #[test]
     fn test_merge() {

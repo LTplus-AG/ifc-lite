@@ -19,13 +19,13 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = exportStep)]
     pub fn export_step(
         &self,
-        content: String,
+        content: &[u8],
         schema: String,
         included: &[u32],
         mutations_json: String,
     ) -> String {
         ifc_lite_export::export_step_json(
-            content.as_bytes(),
+            content,
             if schema.is_empty() { None } else { Some(schema) },
             if included.is_empty() { None } else { Some(included.to_vec()) },
             &mutations_json,

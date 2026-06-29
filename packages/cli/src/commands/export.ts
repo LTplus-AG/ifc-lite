@@ -13,6 +13,7 @@
 import { writeFile, readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { countGlbMeshes } from '@ifc-lite/export';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
@@ -310,6 +311,16 @@ export async function exportCommand(args: string[]): Promise<void> {
           const out = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
           if (out == null) fatal('GLB export failed (geometry pipeline not initialized)');
           if (!outPath) fatal('--out is required for GLB/glTF export (binary output)');
+          // Fail loud on an empty export: assemble_glb still emits a structurally
+          // valid GLB with zero meshes when nothing had render geometry, which would
+          // otherwise be written to disk and reported as success.
+          if (countGlbMeshes(out as Uint8Array) === 0) {
+            fatal(
+              filterActive
+                ? 'GLB export produced 0 meshes — the matched entities have no exportable render geometry. Check --type/--storey/--where/--limit.'
+                : 'GLB export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).',
+            );
+          }
           await writeFile(outPath, out as Uint8Array);
           process.stderr.write(`Written to ${outPath}\n`);
         }

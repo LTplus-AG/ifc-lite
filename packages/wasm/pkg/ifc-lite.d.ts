@@ -94,7 +94,7 @@ export class IfcAPI {
    * historical look — #1321). Optional at the boundary so older 5-arg callers
    * keep lit-by-default behaviour.
    */
-  exportGlb(content: string, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string, lit?: boolean | null): Uint8Array;
+  exportGlb(content: Uint8Array, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string, lit?: boolean | null): Uint8Array;
   /**
    * Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
    * for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
@@ -120,7 +120,7 @@ export class IfcAPI {
    * const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
    * ```
    */
-  exportObj(content: string, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): string;
+  exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): string;
   /**
    * Process geometry for a subset of pre-scanned entities → flat
    * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
@@ -211,22 +211,22 @@ export class IfcAPI {
    * `"spatial"`}. `delimiter` defaults to `,` when empty; `include_properties` adds
    * flattened `Pset_Prop` columns to the entities view.
    */
-  exportCsv(content: string, mode: string, delimiter: string, include_properties: boolean): string;
+  exportCsv(content: Uint8Array, mode: string, delimiter: string, include_properties: boolean): string;
   /**
    * Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
    * only properties with an official IFC5 schema.
    */
-  exportIfcx(content: string, only_known_properties: boolean, pretty: boolean): string;
+  exportIfcx(content: Uint8Array, only_known_properties: boolean, pretty: boolean): string;
   /**
    * Export structured **JSON** (array of entity objects with typed property values).
    */
-  exportJson(content: string, pretty: boolean, include_properties: boolean, include_quantities: boolean): string;
+  exportJson(content: Uint8Array, pretty: boolean, include_properties: boolean, include_quantities: boolean): string;
   /**
    * Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
    * IFC4 OWL default. `included` is an express-id isolation filter mirroring the
    * OBJ/glTF/STEP exporters (empty ⇒ all entities).
    */
-  exportJsonld(content: string, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): string;
+  exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): string;
   /**
    * Re-serialize the model in `content` to a STEP/IFC string.
    *
@@ -236,7 +236,7 @@ export class IfcAPI {
    * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
    * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
    */
-  exportStep(content: string, schema: string, included: Uint32Array, mutations_json: string): string;
+  exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): string;
   /**
    * Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
    * bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
@@ -255,7 +255,7 @@ export class IfcAPI {
    * const hbjson = api.exportHbjson(ifcContent, "my_model");
    * ```
    */
-  exportHbjson(content: string, name: string): string;
+  exportHbjson(content: Uint8Array, name: string): string;
   /**
    * Parse the file and return every `IfcAlignment` directrix as a flat
    * `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in

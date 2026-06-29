@@ -20,8 +20,8 @@ impl IfcAPI {
     /// const hbjson = api.exportHbjson(ifcContent, "my_model");
     /// ```
     #[wasm_bindgen(js_name = exportHbjson)]
-    pub fn export_hbjson(&self, content: String, name: String) -> String {
+    pub fn export_hbjson(&self, content: &[u8], name: String) -> String {
         let opts = ifc_lite_export::HbjsonOptions { name, tolerance: 0.01 };
-        ifc_lite_export::export_hbjson(content.as_bytes(), &opts)
+        ifc_lite_export::export_hbjson(content, &opts)
     }
 }

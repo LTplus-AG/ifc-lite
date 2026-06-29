@@ -197,8 +197,8 @@ pub fn encode_instanced(
 /// One-shot producer: collate the mesh views into templates + instances and
 /// encode them as an instanced shard. The caller (e.g. the native helper) builds
 /// `InstanceMeshRef`s borrowing its own mesh storage — no geometry is cloned.
-pub fn collate_and_encode(meshes: &[InstanceMeshRef], min_group: usize) -> Vec<u8> {
-    let collated = collate_refs(meshes, min_group);
+pub fn collate_and_encode(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3]) -> Vec<u8> {
+    let collated = collate_refs(meshes, min_group, rtc);
     encode_refs(meshes, &collated)
 }
 

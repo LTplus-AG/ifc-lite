@@ -10,6 +10,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { safeUtf8Decode } from '@ifc-lite/data';
 
 // glTF 2.0 constants
 const GLB_MAGIC = 0x46546c67; // 'glTF'
@@ -155,8 +156,13 @@ export function parseGLB(data: Uint8Array): ParsedGLB {
     }
 
     if (chunkType === CHUNK_TYPE_JSON) {
-      const jsonBytes = data.subarray(offset, offset + chunkLength);
-      const jsonString = new TextDecoder().decode(jsonBytes);
+      // Decode SAB-safe: the viewer streams large imports (>= 256 MB) into a
+      // SharedArrayBuffer (acquireFileBuffer), and `TextDecoder.decode` rejects any
+      // SharedArrayBuffer-backed view (a Spectre mitigation) with "...can't be a
+      // SharedArrayBuffer...". safeUtf8Decode copies the JSON chunk into a private
+      // (non-shared) scratch buffer on the SAB path, so re-importing a large GLB no
+      // longer throws. Only the small JSON chunk is copied; BIN stays zero-copy.
+      const jsonString = safeUtf8Decode(data, offset, offset + chunkLength);
       json = JSON.parse(jsonString) as GLTFDocument;
     } else if (chunkType === CHUNK_TYPE_BIN) {
       bin = data.slice(offset, offset + chunkLength);
@@ -354,7 +360,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
   // element node under one translated root (placement rides that root, vertices
   // are centre-relative), so a parser that read accessors alone would land the
   // whole model at the scene centre. Walk from the scene roots accumulating
-  // translation, then bake it into each mesh node's vertices → absolute world.
+  // translation; the composed value rides each mesh as `MeshData.origin` below.
   const nodeWorldT = new Map<number, [number, number, number]>();
   {
     const seen = new Set<number>();
@@ -424,24 +430,22 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
       if (posAccessorIdx === undefined) continue;
 
       // Read position data
-      let positions = readAccessorData(gltf, bin, posAccessorIdx);
+      const positions = readAccessorData(gltf, bin, posAccessorIdx);
       if (!(positions instanceof Float32Array)) {
         throw new Error('Position data must be Float32');
       }
 
-      // Fold the node's composed world translation into the vertices (a fresh
-      // buffer — readAccessorData may alias the shared bin). Yields absolute
-      // world positions so bounds/render need no per-node transform handling.
+      // Surface the node's composed world translation as `MeshData.origin`
+      // (world = origin + position) rather than baking it into the f32 vertices.
+      // The exporter keeps vertices scene-centre-relative precisely so a
+      // georeferenced placement (a root translation of ~1e6 m) stays out of the
+      // f32 buffer; baking it back in would re-snap every vertex to a ~0.5 m grid
+      // and collapse fine detail (the GLB-roundtrip corruption). The renderer and
+      // all world-space consumers fold `origin` (#1114), so positions stay small
+      // and full-precision while the element still lands at its world position.
       const wt = nodeWorldT.get(nodeIdx);
-      if (wt && (wt[0] !== 0 || wt[1] !== 0 || wt[2] !== 0)) {
-        const placed = new Float32Array(positions.length);
-        for (let i = 0; i < positions.length; i += 3) {
-          placed[i] = positions[i] + wt[0];
-          placed[i + 1] = positions[i + 1] + wt[1];
-          placed[i + 2] = positions[i + 2] + wt[2];
-        }
-        positions = placed;
-      }
+      const origin: [number, number, number] | undefined =
+        wt && (wt[0] !== 0 || wt[1] !== 0 || wt[2] !== 0) ? wt : undefined;
 
       // Read normal data (optional, generate if missing)
       let normals: Float32Array;
@@ -480,6 +484,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
         normals,
         indices,
         color: resolveMaterialColor(primitive.material),
+        ...(origin ? { origin } : {}),
       });
     }
   }

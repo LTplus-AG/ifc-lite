@@ -212,12 +212,35 @@ describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip'
   });
 });
 
-describe('parseGLBToMeshData — node translation folding', () => {
+describe('parseGLB — SharedArrayBuffer-backed input', () => {
+  // The viewer streams large imports (>= 256 MB) into a SharedArrayBuffer
+  // (acquireFileBuffer). In a browser, `TextDecoder.decode` rejects any
+  // SAB-backed view (a Spectre mitigation) with "...can't be a SharedArrayBuffer
+  // ...", which crashed re-import of large exported GLBs. The JSON chunk now goes
+  // through safeUtf8Decode, which copies it into a private buffer on the SAB path.
+  //
+  // NOTE: Node's TextDecoder does NOT reproduce the browser's SAB rejection, so
+  // this is a path-coverage / documentation test (it exercises the SAB input and
+  // asserts correctness), not a guard that can fail on the pre-fix code in CI.
+  it('parses a GLB whose bytes are backed by a SharedArrayBuffer', () => {
+    const glb = buildGLB([[0.2, 0.4, 0.6, 1.0]]);
+    const sab = new SharedArrayBuffer(glb.byteLength);
+    const shared = new Uint8Array(sab);
+    shared.set(glb);
+    const meshes = loadGLBToMeshData(shared);
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0].color[0]).toBeCloseTo(0.2);
+    expect(meshes[0].color[2]).toBeCloseTo(0.6);
+  });
+});
+
+describe('parseGLBToMeshData — node translation → origin', () => {
   // The exporter parents every element node under ONE translated root node (the
   // placement rides that root; vertices are scene-centre-relative). A parser that
-  // ignored node transforms would land the whole model at the centre ("all centre
-  // aligned"). Verify the composed root translation is baked into world positions.
-  it('bakes a translated root node into child mesh world positions', () => {
+  // ignored node transforms would land the whole model at the centre. We surface
+  // the composed root translation as `MeshData.origin` (world = origin + position)
+  // rather than baking it into the f32 vertices — see the georef-precision test.
+  it('surfaces a composed root translation as origin, leaving vertices local', () => {
     const bin = new Uint8Array(84);
     const fv = new Float32Array(bin.buffer);
     fv.set([0, 0, 0, 1, 0, 0, 0, 1, 0], 0); // positions (centre-relative)
@@ -252,16 +275,15 @@ describe('parseGLBToMeshData — node translation folding', () => {
 
     expect(meshes).toHaveLength(1);
     expect(meshes[0].expressId).toBe(42);
-    // Each vertex must be offset by the root translation [10, 20, 30].
-    expect(Array.from(meshes[0].positions)).toEqual([
-      10, 20, 30, 11, 20, 30, 10, 21, 30,
-    ]);
+    // Placement rides `origin`; vertices stay local (world = origin + position).
+    expect(meshes[0].origin).toEqual([10, 20, 30]);
+    expect(Array.from(meshes[0].positions)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0]);
   });
 
-  it('folds translation for a mesh node not reachable from the scene root', () => {
+  it('uses a mesh node’s own translation as origin when unreachable from the scene root', () => {
     // node 0 is the scene root (no mesh); the mesh lives on node 1 which is NOT a
-    // child of node 0 (disconnected). Extraction must still fold node 1's own
-    // translation rather than emit local-space vertices.
+    // child of node 0 (disconnected). Extraction must still apply node 1's own
+    // translation rather than emit it as the scene root's.
     const bin = new Uint8Array(84);
     const fv = new Float32Array(bin.buffer);
     fv.set([0, 0, 0, 1, 0, 0, 0, 1, 0], 0);
@@ -295,6 +317,54 @@ describe('parseGLBToMeshData — node translation folding', () => {
 
     expect(meshes).toHaveLength(1);
     // node 1's own translation [5,6,7] is applied (NOT node 0's [100,0,0]).
-    expect(Array.from(meshes[0].positions)).toEqual([5, 6, 7, 6, 6, 7, 5, 7, 7]);
+    expect(meshes[0].origin).toEqual([5, 6, 7]);
+    expect(Array.from(meshes[0].positions)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  });
+
+  it('keeps sub-metre detail for a georeferenced root translation (no f32 collapse)', () => {
+    // Regression for the GLB-roundtrip corruption: a georef root translation
+    // (~6e6 m) baked into f32 vertices re-snaps everything to a ~0.5 m grid. With
+    // the translation on `origin`, the centre-relative vertices keep full f32
+    // precision and the cm-scale spread survives the round-trip.
+    const bin = new Uint8Array(84);
+    const fv = new Float32Array(bin.buffer);
+    // Three vertices 0.04 m apart in X, 0.31 m offset in Z — the kind of detail a
+    // rebar cross-section carries.
+    fv.set([-0.02, 0, 0.31, 0.02, 0, 0.31, 0, 5, 0.31], 0);
+    fv.set([0, 0, 1, 0, 0, 1, 0, 0, 1], 9);
+    new Uint32Array(bin.buffer, 72, 3).set([0, 1, 2]);
+
+    const sceneCenter = [501018.54, 53, -6083869.35]; // EPSG:4326-scale, Y-up GLB frame
+    const meshes = parseGLBToMeshData(
+      {
+        asset: { version: '2.0' },
+        scene: 0,
+        scenes: [{ nodes: [1] }],
+        nodes: [
+          { mesh: 0, extras: { expressId: 7 } },
+          { children: [0], translation: sceneCenter },
+        ],
+        meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
+        accessors: [
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+        ],
+        bufferViews: [
+          { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
+          { buffer: 0, byteOffset: 36, byteLength: 36, byteStride: 12, target: 34962 },
+          { buffer: 0, byteOffset: 72, byteLength: 12, target: 34963 },
+        ],
+        buffers: [{ byteLength: 84 }],
+      },
+      bin,
+    );
+
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0].origin).toEqual(sceneCenter);
+    const p = meshes[0].positions;
+    // Full precision retained: 0.04 m X-spread and 0.31 m Z-offset survive exactly.
+    expect(p[3] - p[0]).toBeCloseTo(0.04, 6);
+    expect(p[2]).toBeCloseTo(0.31, 6);
   });
 });

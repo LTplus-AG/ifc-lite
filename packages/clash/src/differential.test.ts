@@ -143,6 +143,14 @@ function assertParity(a: ClashResult, b: ClashResult): void {
     for (let i = 0; i < 3; i += 1) {
       expect(Math.abs(y.point[i] - x.point[i])).toBeLessThan(EPS);
     }
+    // Tight-contact bounds must agree across backends too (#1402 Bug B), not just
+    // count/status/point — otherwise a bounds regression in one kernel slips by.
+    if (x.bounds && y.bounds) {
+      for (let i = 0; i < 3; i += 1) {
+        expect(Math.abs(y.bounds.min[i] - x.bounds.min[i])).toBeLessThan(EPS);
+        expect(Math.abs(y.bounds.max[i] - x.bounds.max[i])).toBeLessThan(EPS);
+      }
+    }
   }
 }
 
@@ -239,6 +247,18 @@ describe('differential: WASM kernel === TS kernel', () => {
     const els = [
       boxHxyz('A', 'IfcWall', [0, 0, 0], [5, 0.5, 0.5]),
       boxHxyz('B', 'IfcDuctSegment', [0, 0, 0], [0.5, 5, 0.5]),
+    ];
+    const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(n).toBe(1);
+  });
+
+  it('agrees on unequal-length aligned overlap (overlap-centre probe) (#1362)', async () => {
+    // Long bar x[-5,5] and short bar x[4.9,5.9] sharing y/z extents: the centroid
+    // midpoint falls outside the short bar, so both kernels must rely on the
+    // AABB-overlap-centre probe and agree it is a hard clash.
+    const els = [
+      boxHxyz('A', 'IfcWall', [0, 0, 0], [5, 0.5, 0.5]),
+      boxHxyz('B', 'IfcDuctSegment', [5.4, 0, 0], [0.5, 0.5, 0.5]),
     ];
     const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
     expect(n).toBe(1);

@@ -503,7 +503,10 @@ export function Viewport({
         ? { ...clashOverlapBox, color: CLASH_COLOR_OVERLAP }
         : null,
     );
-  }, [clashOverlapBox, showClashRegionBox]);
+    // isInitialized: if a box is already set before the renderer mounts, this
+    // effect bails early; depend on it so the box is (re)sent once the renderer
+    // is ready.
+  }, [clashOverlapBox, showClashRegionBox, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);

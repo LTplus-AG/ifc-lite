@@ -258,10 +258,15 @@ describe('TsClashEngine: false-positive + bounds regressions (#1362 / #1402)', (
     // Element-AABB overlap z-extent is 1.0 (both bars span z[-0.5,0.5]); the tight
     // contact box must be strictly thinner in z.
     expect(bounds.max[2] - bounds.min[2]).toBeLessThan(1.0);
-    // And it must stay within element A's bounds (the overlap is a subset of both).
+    // And it must stay within the element-OVERLAP AABB on every axis, not just
+    // element A: A is the long X bar, so an A-only check would still pass if the
+    // box expanded across A's whole 10 m X span. The overlap is x[-0.5,0.5] (B's
+    // width) on X, y[-0.5,0.5] (A's width) on Y, z[-0.5,0.5] on Z.
     for (let i = 0; i < 3; i += 1) {
-      expect(bounds.min[i]).toBeGreaterThanOrEqual(a.bounds.min[i] - 1e-6);
-      expect(bounds.max[i]).toBeLessThanOrEqual(a.bounds.max[i] + 1e-6);
+      const overlapMin = Math.max(a.bounds.min[i], b.bounds.min[i]);
+      const overlapMax = Math.min(a.bounds.max[i], b.bounds.max[i]);
+      expect(bounds.min[i]).toBeGreaterThanOrEqual(overlapMin - 1e-6);
+      expect(bounds.max[i]).toBeLessThanOrEqual(overlapMax + 1e-6);
     }
   });
 });

@@ -186,6 +186,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashClusterEpsilon: DEFAULT_CLASH_SETTINGS.clusterEpsilon,
         clashReportTouch: DEFAULT_CLASH_SETTINGS.reportTouch,
         clashGroupBy: DEFAULT_CLASH_SETTINGS.groupBy,
+        showClashRegionBox: false,
       });
       persistSettings();
     },

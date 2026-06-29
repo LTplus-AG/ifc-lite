@@ -398,6 +398,7 @@ fn crossing_hard_bounds_are_tight() {
     let a = box_hxyz(0.0, 0.0, 0.0, 5.0, 0.5, 0.5); // x[-5,5]
     let b = box_hxyz(0.0, 0.0, 0.0, 0.5, 5.0, 0.5); // y[-5,5]
     let a_aabb = a.2.clone();
+    let b_aabb = b.2.clone();
     let session = session_of_parts(&[a, b]);
     let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "crossing bars are a hard clash");
@@ -412,12 +413,16 @@ fn crossing_hard_bounds_are_tight() {
         "contact bounds must be tighter in z than the element overlap ({bounds_z} vs {overlap_z})"
     );
 
-    // The tight bounds must stay inside the (smaller) element's AABB, never wider.
+    // The tight bounds must stay inside the element-OVERLAP AABB on every axis,
+    // not just element A: A is the long X bar, so an X regression returning most
+    // of A's 10 m span would still satisfy an A-only check. The overlap is
+    // x[-0.5,0.5] (B's width) on X.
     for axis in 0..3 {
+        let overlap_min = a_aabb[axis].max(b_aabb[axis]) as f64;
+        let overlap_max = a_aabb[axis + 3].min(b_aabb[axis + 3]) as f64;
         assert!(
-            rec.bounds[axis] >= a_aabb[axis] as f64 - 1e-6
-                && rec.bounds[axis + 3] <= a_aabb[axis + 3] as f64 + 1e-6,
-            "contact bounds escape element A on axis {axis}"
+            rec.bounds[axis] >= overlap_min - 1e-6 && rec.bounds[axis + 3] <= overlap_max + 1e-6,
+            "contact bounds escape the element-overlap AABB on axis {axis}"
         );
     }
 }

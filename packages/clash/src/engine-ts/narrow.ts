@@ -131,14 +131,21 @@ export function testPair(
   // all coplanar). AABB penetration ALONE is not enough: two skewed/abutting
   // members that merely share a face have overlapping AABBs yet no shared volume,
   // and the old proxy promoted that touch to a false hard clash (#1362). Confirm
-  // a real volume overlap first: the midpoint of the two vertex centroids lies in
-  // the shared interior for a genuine overlap, but on/outside the interface for a
-  // bare face touch — require it inside BOTH solids before reporting hard.
+  // a real shared volume first by probing for an interior point inside BOTH
+  // solids. Two probes are needed: the vertex-centroid midpoint sits inside a
+  // skewed straddling overlap, while the AABB-overlap centre covers an
+  // unequal-length aligned overlap (whose centroid midpoint can fall outside the
+  // shorter member). A bare face touch has no interior point common to both, so
+  // neither probe qualifies. Accept the pair if EITHER probe is inside both.
   if (minDist <= tolerance) {
     const gap = signedGap(elA.bounds, elB.bounds);
     if (gap < -tolerance) {
-      const probe = mid(triA.vertexCentroid(), triB.vertexCentroid());
-      if (triA.containsPoint(probe) && triB.containsPoint(probe)) {
+      const probeCentroid = mid(triA.vertexCentroid(), triB.vertexCentroid());
+      const probeOverlap = center(overlap);
+      if (
+        (triA.containsPoint(probeCentroid) && triB.containsPoint(probeCentroid)) ||
+        (triA.containsPoint(probeOverlap) && triB.containsPoint(probeOverlap))
+      ) {
         // Tight contact bounds (Bug B): the nearest-surface contact, not the
         // whole-element AABB overlap (meters wide for long/curved members).
         return {

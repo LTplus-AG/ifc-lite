@@ -377,6 +377,20 @@ fn skewed_genuine_overlap_still_hard() {
 }
 
 #[test]
+fn aligned_unequal_overlap_still_hard() {
+    // Bug A recall (PR #1455 review): two AXIS-ALIGNED members of unequal length
+    // that genuinely overlap by a small amount, sharing y/z extents. The vertex-
+    // centroid midpoint (~x=2.7) lies outside the shorter member, so a single
+    // centroid probe would drop the clash; the AABB-overlap-centre probe keeps it.
+    let a = box_hxyz(0.0, 0.0, 0.0, 5.0, 0.5, 0.5); // x[-5,5]
+    let b = box_hxyz(5.4, 0.0, 0.0, 0.5, 0.5, 0.5); // x[4.9,5.9], overlaps x[4.9,5]
+    let session = session_of_parts(&[a, b]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1, "a genuine aligned overlap is a hard clash");
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+}
+
+#[test]
 fn crossing_hard_bounds_are_tight() {
     // Bug B (#1362 / #1402): two perpendicular bars genuinely cross. The reported
     // contact bounds must be the LOCAL crossing region, not the whole-element AABB

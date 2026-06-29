@@ -236,6 +236,18 @@ describe('TsClashEngine: false-positive + bounds regressions (#1362 / #1402)', (
     expect(result.clashes[0].status).toBe('hard');
   });
 
+  it('still reports a hard clash for unequal-length aligned members that overlap (Bug A recall #1455)', async () => {
+    // A long bar x[-5,5] and a short bar x[4.9,5.9] sharing y/z extents overlap by
+    // 0.1 m. The vertex-centroid midpoint (~x=2.7) lies outside the short bar, so a
+    // single centroid probe would drop this real clash; the overlap-centre probe
+    // keeps it.
+    const a = boxElementHxyz('A', 'IfcWall', [0, 0, 0], [5, 0.5, 0.5]);
+    const b = boxElementHxyz('B', 'IfcDuct', [5.4, 0, 0], [0.5, 0.5, 0.5]);
+    const result = await engine.run([a, b], [wallDuct()]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+  });
+
   it('reports a tight contact box for a genuine crossing, not the element overlap (Bug B)', async () => {
     // Perpendicular bars: A runs along X, B along Y, crossing near the origin.
     const a = boxElementHxyz('A', 'IfcWall', [0, 0, 0], [5, 0.5, 0.5]);

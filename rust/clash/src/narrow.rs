@@ -163,15 +163,21 @@ pub fn test_pair(
     // beyond tolerance (coplanar surfaces, e.g. axis-aligned boxes). AABB
     // penetration ALONE is not enough: two skewed/abutting members that merely
     // share a face have overlapping AABBs yet no shared volume, and the old proxy
-    // promoted that touch to a false hard clash (#1362). Confirm a real volume
-    // overlap first: the midpoint of the two vertex centroids lies in the shared
-    // interior for a genuine overlap, but on/outside the interface for a bare face
-    // touch -> require it inside BOTH solids before reporting hard.
+    // promoted that touch to a false hard clash (#1362). Confirm a real shared
+    // volume first by probing for an interior point inside BOTH solids. Two probes
+    // are needed: the vertex-centroid midpoint sits inside a skewed straddling
+    // overlap, while the AABB-overlap centre covers an unequal-length aligned
+    // overlap (whose centroid midpoint can fall outside the shorter member). A
+    // bare face touch has no interior point common to both, so neither probe
+    // qualifies. Accept the pair if EITHER probe is inside both.
     if min_dist <= tolerance {
         let gap = signed_gap(aabb_a, aabb_b);
         if gap < -tolerance {
-            let probe = mid(tri_a.vertex_centroid(), tri_b.vertex_centroid());
-            if tri_a.contains_point(probe) && tri_b.contains_point(probe) {
+            let probe_centroid = mid(tri_a.vertex_centroid(), tri_b.vertex_centroid());
+            let probe_overlap = overlap.center();
+            if (tri_a.contains_point(probe_centroid) && tri_b.contains_point(probe_centroid))
+                || (tri_a.contains_point(probe_overlap) && tri_b.contains_point(probe_overlap))
+            {
                 // Tight contact bounds (Bug B): the nearest-surface contact, not
                 // the whole-element AABB overlap (meters wide for long members).
                 return Some(NarrowResult {

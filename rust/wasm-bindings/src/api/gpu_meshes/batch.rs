@@ -108,19 +108,19 @@ impl IfcAPI {
             .unwrap_or_else(|| self.get_or_resolve_plane_angle(&mut decoder));
         decoder.seed_unit_scales(unit_scale, plane_angle_to_radians);
 
-        // Apply the consumer-selected small-cut skip (#1286) for this batch.
-        // Independent of the tessellation tier so the viewer can skip tiny steel
-        // cuts while keeping full-density curves. Set every batch (default off)
-        // so an export's batch, which never enables it, keeps every cut even if a
-        // prior display batch in the same worker turned it on.
-        ifc_lite_geometry::set_skip_small_cuts(self.skip_small_cuts());
-
         // Create geometry router with unit scale and the consumer-selected
         // tessellation quality (issue #976) — Medium unless JS called
         // `setTessellationQuality`, so default output is byte-for-byte
         // identical to the pre-quality pipeline.
         let mut router =
             GeometryRouter::with_scale_and_quality(unit_scale, self.tessellation_quality());
+
+        // Apply the consumer-selected small-cut skip (#1286) for this batch.
+        // Independent of the tessellation tier so the viewer can skip tiny steel
+        // cuts while keeping full-density curves. Scoped to this router (not a
+        // process-wide flag), so an export's router, which never enables it,
+        // keeps every cut regardless of a concurrent display build.
+        router.set_skip_small_cuts(self.skip_small_cuts());
 
         // Arm content-dedup against the per-worker shared cache so byte-identical
         // geometry (e.g. Tekla parts the exporter failed to share via

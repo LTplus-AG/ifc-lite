@@ -53,13 +53,32 @@ pub struct BooleanClippingProcessor {
     /// and drained from any internal `ClippingProcessor` instances. Drainable
     /// via [`Self::take_failures`].
     failures: RefCell<Vec<BoolFailure>>,
+    /// Per-build small-cut skip (#1286). When set, a solid-solid DIFFERENCE
+    /// whose cutter is far smaller than its host is dropped (host rendered
+    /// un-cut) even at a full tessellation tier. Scoped to this processor
+    /// instance — injected by the [`crate::router::GeometryRouter`] that
+    /// constructs it — so concurrent native builds never bleed the flag into
+    /// each other (was a process-wide static). `false` ⇒ every cut runs,
+    /// byte-identical to before the optimization.
+    skip_small_cuts: bool,
 }
 
 impl BooleanClippingProcessor {
     pub fn new() -> Self {
+        Self::with_skip_small_cuts(false)
+    }
+
+    /// Construct with the per-build small-cut skip set (see
+    /// [`Self::skip_small_cuts`]). The router injects the build's value here;
+    /// nested boolean operands reuse the same `self`, and the only cross-
+    /// processor boolean construction sites (`CsgSolidProcessor`,
+    /// `MappedItemProcessor`) forward their own field so a whole CSG tree shares
+    /// one scoped value.
+    pub fn with_skip_small_cuts(skip_small_cuts: bool) -> Self {
         Self {
             schema: IfcSchema::new(),
             failures: RefCell::new(Vec::new()),
+            skip_small_cuts,
         }
     }
 
@@ -141,9 +160,8 @@ impl BooleanClippingProcessor {
             IfcType::IfcBlock => {
                 BlockProcessor::new().process(operand, decoder, &self.schema, quality)
             }
-            IfcType::IfcCsgSolid => {
-                CsgSolidProcessor::new().process(operand, decoder, &self.schema, quality)
-            }
+            IfcType::IfcCsgSolid => CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts)
+                .process(operand, decoder, &self.schema, quality),
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 // Recursive case with depth tracking
                 self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality)
@@ -732,12 +750,14 @@ impl BooleanClippingProcessor {
             // the dominant load-time cost on boolean-heavy steel — for a
             // barely-visible change. Dropping it renders the host un-cut and
             // recovers Manifold-class load times. Enabled either by a preview
-            // tessellation tier (Lowest/Low) OR by the explicit `skip_small_cuts`
-            // flag, which the viewer turns on WITHOUT dropping to a preview tier
+            // tessellation tier (Lowest/Low) OR by the per-build `skip_small_cuts`
+            // field, which the viewer turns on WITHOUT dropping to a preview tier
             // so curves stay full-density while the tiny cuts are skipped (#1286).
-            // With neither set (the default), EVERY cut runs — byte-identical to
+            // The field is scoped to this processor (injected by the router), so
+            // concurrent native builds never bleed it into one another. With
+            // neither set (the default), EVERY cut runs — byte-identical to
             // before this optimization, on any tier.
-            if (quality_skips_small_cuts(quality) || skip_small_cuts_enabled())
+            if (quality_skips_small_cuts(quality) || self.skip_small_cuts)
                 && cutter_below_skip_ratio(&mesh, &second_mesh)
             {
                 return Ok(mesh);
@@ -790,29 +810,6 @@ impl BooleanClippingProcessor {
 /// geometry is byte-identical to before this optimization.
 fn quality_skips_small_cuts(quality: TessellationQuality) -> bool {
     matches!(quality, TessellationQuality::Lowest | TessellationQuality::Low)
-}
-
-/// Explicit, tier-independent small-cut skip switch. The viewer enables it for
-/// the on-screen load so tiny detail cuts (steel copes/notches) are skipped for
-/// fast first paint WHILE the tessellation tier stays at `Medium` — curves keep
-/// full density (decoupling the cut-skip from the curve LOD, #1286).
-///
-/// A process-wide flag mirroring [`fast_cut_skip_ratio`]: in wasm each worker is
-/// its own module instance so this is effectively per-worker, and the JS bridge
-/// sets it before every batch (exports/drawings leave it at the `false` default,
-/// so their geometry keeps every cut). Native callers (the server, tests) never
-/// set it, so native output is byte-identical to before. `Relaxed` is sufficient
-/// — the flag is set once before a batch, then only read.
-static SKIP_SMALL_CUTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Enable/disable the tier-independent small-cut skip (see [`SKIP_SMALL_CUTS`]).
-pub fn set_skip_small_cuts(on: bool) {
-    SKIP_SMALL_CUTS.store(on, std::sync::atomic::Ordering::Relaxed);
-}
-
-#[inline]
-fn skip_small_cuts_enabled() -> bool {
-    SKIP_SMALL_CUTS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Skip ratio for preview-mode small-cut dropping: cutter max-dimension as a

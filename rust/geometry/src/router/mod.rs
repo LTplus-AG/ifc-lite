@@ -144,6 +144,13 @@ pub struct GeometryRouter {
     /// every processor's `process`. Defaults to [`TessellationQuality::Medium`]
     /// (historical hardcoded behavior).
     tessellation_quality: TessellationQuality,
+    /// Per-build small-cut skip (#1286). Injected into the boolean / CSG /
+    /// mapped processors at construction so a solid-solid DIFFERENCE with a tiny
+    /// cutter can be dropped without forcing a preview tessellation tier. Scoped
+    /// to this router (one per loaded build) so concurrent native builds never
+    /// bleed the flag into one another — it used to be a process-wide static.
+    /// `false` (default) ⇒ every cut runs, byte-identical to before.
+    skip_small_cuts: bool,
 }
 
 impl GeometryRouter {
@@ -167,6 +174,7 @@ impl GeometryRouter {
             layer_slice_diag: RefCell::new(Vec::new()),
             voids_consumed_hosts: RefCell::new(FxHashSet::default()),
             tessellation_quality: TessellationQuality::Medium,
+            skip_small_cuts: false,
         };
 
         // Register default P0 processors
@@ -381,6 +389,45 @@ impl GeometryRouter {
     #[inline]
     pub fn tessellation_quality(&self) -> TessellationQuality {
         self.tessellation_quality
+    }
+
+    /// Set the per-build small-cut skip (#1286) and re-register the boolean /
+    /// CSG / mapped processors so they carry it. Tier-independent: the viewer
+    /// turns this on to skip tiny steel copes/notches for fast first paint while
+    /// the tessellation tier stays at `Medium` (curves keep full density).
+    ///
+    /// Scoped to this router instance, so a concurrent native build with the
+    /// skip off is unaffected (this replaced a process-wide static that bled
+    /// across builds). `false` (default) keeps every cut, byte-identical to
+    /// before the optimization.
+    pub fn set_skip_small_cuts(&mut self, on: bool) {
+        if self.skip_small_cuts == on {
+            return;
+        }
+        self.skip_small_cuts = on;
+        self.register_skip_dependent_processors();
+    }
+
+    /// Get the current per-build small-cut skip flag.
+    #[inline]
+    pub fn skip_small_cuts(&self) -> bool {
+        self.skip_small_cuts
+    }
+
+    /// (Re)register the processors whose behavior depends on `skip_small_cuts`
+    /// so they pick up the current value. Called at construction and whenever
+    /// [`Self::set_skip_small_cuts`] flips the flag; `register` overwrites the
+    /// existing map entries keyed by IFC type.
+    fn register_skip_dependent_processors(&mut self) {
+        self.register(Box::new(MappedItemProcessor::with_skip_small_cuts(
+            self.skip_small_cuts,
+        )));
+        self.register(Box::new(BooleanClippingProcessor::with_skip_small_cuts(
+            self.skip_small_cuts,
+        )));
+        self.register(Box::new(CsgSolidProcessor::with_skip_small_cuts(
+            self.skip_small_cuts,
+        )));
     }
 
     /// Set the RTC offset for large coordinate handling

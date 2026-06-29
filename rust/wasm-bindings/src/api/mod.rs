@@ -164,7 +164,7 @@ pub struct IfcAPI {
     /// drops `IfcBooleanResult` differences whose cutter is tiny relative to its host
     /// (steel copes/notches) WITHOUT lowering the tessellation tier, so curves keep
     /// full density. Default off ⇒ every cut runs (byte-identical to before). Applied
-    /// to the geometry crate's flag at the top of each batch via `set_skip_small_cuts`.
+    /// to the per-batch `GeometryRouter` via `GeometryRouter::set_skip_small_cuts`.
     skip_small_cuts: std::sync::atomic::AtomicBool,
 
     /// Lazily-resolved plane-angle → radians scale for the current content,
@@ -536,8 +536,8 @@ impl IfcAPI {
         }
     }
 
-    /// Active small-cut skip flag, applied to the geometry crate's switch at the
-    /// top of `processGeometryBatch`. JS controls it via [`Self::set_skip_small_cuts`].
+    /// Active small-cut skip flag, applied to the per-batch `GeometryRouter` at
+    /// the top of `processGeometryBatch`. JS controls it via [`Self::set_skip_small_cuts`].
     pub(crate) fn skip_small_cuts(&self) -> bool {
         self.skip_small_cuts
             .load(std::sync::atomic::Ordering::Relaxed)

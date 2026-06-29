@@ -129,7 +129,7 @@ pub use material_layer_index::{LayerAxis, LayerBuildup, LayerInfo, MaterialLayer
 pub use mesh::{CoordinateShift, InstanceMeta, Mesh, SubMesh, SubMeshCollection};
 pub use mesh_orient::orient_mesh_outward;
 pub use processors::{
-    set_skip_small_cuts, AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
+    AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
     build_texture_index, MappedItemProcessor, MeshTexture, PolygonalFaceSetProcessor,
     ResolvedTextureMap, RevolvedAreaSolidProcessor, SurfaceOfLinearExtrusionProcessor,

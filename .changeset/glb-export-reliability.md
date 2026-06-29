@@ -1,7 +1,7 @@
 ---
 "@ifc-lite/wasm": minor
 "@ifc-lite/geometry": minor
-"@ifc-lite/export": patch
+"@ifc-lite/export": minor
 "@ifc-lite/cli": patch
 "@ifc-lite/mcp": patch
 ---
@@ -17,6 +17,12 @@ than 0x1fffffe8 characters", so files in the 0.5 GB+ range failed before any geo
 ran. The boundary now passes the raw `Uint8Array`/`&[u8]` straight through (matching the
 existing `exportMerged` path), which removes the cap, drops a redundant full-buffer copy
 and a UTF-8 re-encode, and is byte-faithful for non-UTF-8 input.
+
+Scope: this lifts the cap on the INPUT side for all exporters. GLB returns a
+`Uint8Array`, so its output also escapes the V8 ceiling; the string-returning
+exporters (OBJ/CSV/JSON/JSON-LD/STEP/IFCX/HBJSON) still cap their serialized OUTPUT
+at the same ~512 MB string limit. In-browser, the wasm32 linear-memory heap (not the
+string cap) is the practical ceiling for the very largest models.
 
 Fail loud on an empty GLB export. A malformed-but-parseable model (or a filter whose
 matched entities carry no triangulated geometry) produced a structurally valid GLB with

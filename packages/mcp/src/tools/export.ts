@@ -146,6 +146,15 @@ const exportGlb: Tool = {
     const isolated = filterType
       ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
       : new Uint32Array();
+    // An empty isolation set means "export everything" to the Rust mesher, so a
+    // `type` filter that matched nothing would silently export the WHOLE model
+    // and report success. Fail loud instead, mirroring the CLI guard.
+    if (filterType && isolated.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: `No ${filterType} entities found - nothing to export.`,
+      });
+    }
     const bytes = await resolveIfcBytes(m);
     const gp = new GeometryProcessor();
     await gp.init();
@@ -193,6 +202,15 @@ const exportObj: Tool = {
     const isolated = filterType
       ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
       : new Uint32Array();
+    // An empty isolation set means "export everything" to the Rust mesher, so a
+    // `type` filter that matched nothing would silently export the WHOLE model
+    // and report success. Fail loud instead, mirroring the CLI guard.
+    if (filterType && isolated.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: `No ${filterType} entities found - nothing to export.`,
+      });
+    }
     const bytes = await resolveIfcBytes(m);
     const gp = new GeometryProcessor();
     await gp.init();

@@ -50,6 +50,12 @@ describe('countGlbMeshes', () => {
     expect(countGlbMeshes(glb)).toBe(3);
   });
 
+  it('returns 0 without throwing on a malformed / non-GLB buffer', () => {
+    expect(countGlbMeshes(new Uint8Array(0))).toBe(0);
+    expect(countGlbMeshes(new Uint8Array([1, 2, 3]))).toBe(0);
+    expect(countGlbMeshes(new Uint8Array([0x67, 0x6c, 0x54, 0x46, 9, 9, 9, 9]))).toBe(0);
+  });
+
   it('parses round-trip with the shared parseGLB', () => {
     const glb = buildGlb({ asset: { version: '2.0' }, meshes: [{}] }, new Uint8Array([1, 2, 3, 4]));
     const { json, bin } = parseGLB(glb);

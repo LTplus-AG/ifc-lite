@@ -55,7 +55,15 @@ export function parseGLB(glb: Uint8Array): ParsedGlb {
  * the cost is bounded by the metadata size and dwarfed by the meshing it follows.
  */
 export function countGlbMeshes(glb: Uint8Array): number {
-  const { json } = parseGLB(glb);
+  let json: ParsedGlb['json'];
+  try {
+    ({ json } = parseGLB(glb));
+  } catch {
+    // A malformed / truncated / non-GLB buffer has no countable meshes. Return 0
+    // so callers treat it as an empty export (and fail loud) rather than crashing
+    // on the parse with an opaque stack trace.
+    return 0;
+  }
   return Array.isArray(json?.meshes) ? json.meshes.length : 0;
 }
 

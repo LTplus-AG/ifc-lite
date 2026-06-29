@@ -460,8 +460,9 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool, lit: bool) -> (Vec<u
     // and per-mesh accessor/bufferView offset is bounded by it (positions grows
     // monotonically, so an over-limit run aborts before the GLB is packed). The
     // container total (JSON chunk + framing on top) is guarded separately in
-    // pack_glb. (In wasm32 the 32-bit heap OOMs long before 4 GiB; this protects
-    // native consumers of the export crate.) Sum in usize to avoid the u32 wrap.
+    // pack_glb. Summed in usize, which is 64-bit on the native consumers this
+    // guard actually protects; on wasm32 usize is 32-bit, but the linear-memory
+    // heap OOMs long before 4 GiB so the guard is effectively native-only there.
     let bin_len = positions.len() + normals.len() + indices.len();
     assert!(
         bin_len <= u32::MAX as usize,

@@ -446,7 +446,7 @@ impl IfcAPI {
         material_colors_rgba: Option<Vec<u8>>,
     ) -> MeshCollection {
         let num_jobs = jobs_flat.len() / 3;
-        let (outputs, _) = self.produce_batch(
+        let (outputs, csg_diag) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba,
@@ -463,6 +463,8 @@ impl IfcAPI {
                 mesh_collection.push_geometry_hash(out.id, hash);
             }
         }
+        mesh_collection
+            .set_csg_diagnostics(csg_diag.total_csg_failures, csg_diag.products_with_failures);
         mesh_collection
     }
 
@@ -650,12 +652,12 @@ impl IfcAPI {
         // safety net can still drop a (rare, degenerate) group to a singleton template.
         let shard =
             ifc_lite_geometry::collate_and_encode(&refs, INSTANCE_MIN_OCCURRENCES as usize);
+        mesh_collection
+            .set_csg_diagnostics(csg_diag.total_csg_failures, csg_diag.products_with_failures);
         PartitionedBatch {
             meshes: Some(mesh_collection),
             shard,
             instanced_occurrences,
-            total_csg_failures: csg_diag.total_csg_failures,
-            products_with_failures: csg_diag.products_with_failures,
         }
     }
 }
@@ -688,12 +690,6 @@ pub struct PartitionedBatch {
     meshes: Option<MeshCollection>,
     shard: Vec<u8>,
     instanced_occurrences: usize,
-    /// CSG-failure counts for this batch (parity with the native
-    /// `ProcessingResponse`). The worker sums these across batches and reports a
-    /// per-load total, so a silently-uncut model surfaces a number rather than
-    /// only a per-batch `console.warn`.
-    total_csg_failures: u32,
-    products_with_failures: u32,
 }
 
 #[wasm_bindgen]
@@ -717,19 +713,5 @@ impl PartitionedBatch {
     #[wasm_bindgen(getter, js_name = instancedOccurrences)]
     pub fn instanced_occurrences(&self) -> usize {
         self.instanced_occurrences
-    }
-
-    /// CSG boolean failures recorded while producing this batch (un-cut openings,
-    /// emptied hosts, kernel fallbacks). Parity with the native path's
-    /// `total_csg_failures`.
-    #[wasm_bindgen(getter, js_name = totalCsgFailures)]
-    pub fn total_csg_failures(&self) -> u32 {
-        self.total_csg_failures
-    }
-
-    /// Distinct products (host elements) with at least one CSG failure this batch.
-    #[wasm_bindgen(getter, js_name = productsWithFailures)]
-    pub fn products_with_failures(&self) -> u32 {
-        self.products_with_failures
     }
 }

@@ -192,7 +192,16 @@ export type StreamingGeometryEvent =
    * is additive.
    */
   | { type: 'progress'; phase: 'prepass' | 'workers' }
-  | { type: 'complete'; totalMeshes: number; coordinateInfo: import('./types.js').CoordinateInfo };
+  | {
+      type: 'complete';
+      totalMeshes: number;
+      coordinateInfo: import('./types.js').CoordinateInfo;
+      /** CSG boolean failures across the whole load (un-cut openings, emptied
+       *  hosts). Omitted when zero or on non-parallel load paths. Parity with
+       *  the native server path. */
+      totalCsgFailures?: number;
+      productsWithFailures?: number;
+    };
 
 // QueuedNativeStreamingEvent, native stream constants, and yieldToEventLoop
 // have been extracted to ./geometry-native.ts

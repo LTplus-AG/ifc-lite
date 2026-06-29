@@ -572,6 +572,11 @@ function collectMeshes(
   collection: ReturnType<IfcAPI['processGeometryBatch']>,
 ): void {
   try {
+    // CSG-failure diagnostics: both the flat and partitioned batch paths set
+    // these on the collection, so summing here (called once per batch on both
+    // paths) gives a single per-load total at completion, parity with native.
+    session.totalCsgFailures += collection.totalCsgFailures ?? 0;
+    session.productsWithFailures += collection.productsWithFailures ?? 0;
     // Per-entity geometry fingerprints (issue #924) — empty unless hashing was
     // enabled via `set-compute-geometry-hashes`. Read inside the try so
     // `collection.free()` in finally still runs if extraction throws.
@@ -712,8 +717,6 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         takeMeshes(): ReturnType<IfcAPI['processGeometryBatch']> | undefined;
         takeShard(): Uint8Array;
         readonly instancedOccurrences: number;
-        readonly totalCsgFailures: number;
-        readonly productsWithFailures: number;
         free?(): void;
       };
     }).processGeometryBatchPartitioned;
@@ -747,11 +750,6 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
         // viewer's "N meshes" reflects ALL rendered geometry (flat + instanced),
         // not just the flat MeshCollection (these occurrences left the flat path).
         session.pendingInstancedOccurrences += partitioned.instancedOccurrences ?? 0;
-        // CSG-failure diagnostics: accumulate the per-batch counts so completion
-        // can report a single per-load total (parity with the native path)
-        // instead of only the per-batch console warning.
-        session.totalCsgFailures += partitioned.totalCsgFailures ?? 0;
-        session.productsWithFailures += partitioned.productsWithFailures ?? 0;
       } finally {
         // Free the now-empty PartitionedBatch wrapper (its contents were moved out).
         partitioned.free?.();

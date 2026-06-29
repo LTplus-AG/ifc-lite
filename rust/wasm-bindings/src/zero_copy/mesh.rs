@@ -307,6 +307,12 @@ pub struct MeshCollection {
     /// its fingerprint (see `ifc_lite_geometry::geom_hash`). Empty otherwise.
     geometry_hash_ids: Vec<u32>,
     geometry_hash_values: Vec<u64>,
+    /// CSG boolean failures for the batch that produced this collection (un-cut
+    /// openings, emptied hosts, kernel fallbacks). The worker sums these across
+    /// batches to report a per-load total (parity with the native
+    /// `ProcessingResponse`); both the flat and partitioned batch paths set them.
+    total_csg_failures: u32,
+    products_with_failures: u32,
 }
 
 #[wasm_bindgen]
@@ -436,6 +442,20 @@ impl MeshCollection {
     pub fn geometry_hash_count(&self) -> usize {
         self.geometry_hash_ids.len()
     }
+
+    /// CSG boolean failures recorded while producing this batch (un-cut openings,
+    /// emptied hosts, kernel fallbacks). Parity with the native path's
+    /// `total_csg_failures`. Summed across batches by the worker.
+    #[wasm_bindgen(getter, js_name = totalCsgFailures)]
+    pub fn total_csg_failures(&self) -> u32 {
+        self.total_csg_failures
+    }
+
+    /// Distinct products (host elements) with at least one CSG failure this batch.
+    #[wasm_bindgen(getter, js_name = productsWithFailures)]
+    pub fn products_with_failures(&self) -> u32 {
+        self.products_with_failures
+    }
 }
 
 impl MeshCollection {
@@ -449,6 +469,8 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            total_csg_failures: 0,
+            products_with_failures: 0,
         }
     }
 
@@ -462,6 +484,8 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            total_csg_failures: 0,
+            products_with_failures: 0,
         }
     }
 
@@ -478,6 +502,14 @@ impl MeshCollection {
         self.geometry_hash_values.push(hash);
     }
 
+    /// Record the batch's CSG-failure counts (parity with the native path's
+    /// `total_csg_failures` / `products_with_failures`).
+    #[inline]
+    pub fn set_csg_diagnostics(&mut self, total_csg_failures: u32, products_with_failures: u32) {
+        self.total_csg_failures = total_csg_failures;
+        self.products_with_failures = products_with_failures;
+    }
+
     /// Create from vec of meshes
     pub fn from_vec(meshes: Vec<MeshDataJs>) -> Self {
         Self {
@@ -488,6 +520,8 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            total_csg_failures: 0,
+            products_with_failures: 0,
         }
     }
 
@@ -559,6 +593,8 @@ impl Clone for MeshCollection {
             building_rotation: self.building_rotation,
             geometry_hash_ids: self.geometry_hash_ids.clone(),
             geometry_hash_values: self.geometry_hash_values.clone(),
+            total_csg_failures: self.total_csg_failures,
+            products_with_failures: self.products_with_failures,
         }
     }
 }

@@ -251,6 +251,10 @@ export async function* processParallel(
   let workerError: Error | null = null;
   let workersCompleted = 0;
   let totalMeshes = 0;
+  // CSG-failure totals summed across all workers, forwarded on the final
+  // completion event so loadFile callers can observe them (parity with native).
+  let totalCsgFailures = 0;
+  let productsWithFailures = 0;
   let endSentToWorkers = false;
   let streamStartSentToWorkers = false;
   /**
@@ -401,6 +405,8 @@ export async function* processParallel(
         // of batch lengths we observed, a batch was lost — log but
         // trust our observed count to keep totalSoFar consistent
         // with what consumers actually rendered.
+        totalCsgFailures += msg.totalCsgFailures ?? 0;
+        productsWithFailures += msg.productsWithFailures ?? 0;
         workersCompleted++;
         worker.terminate();
         wake();
@@ -982,7 +988,12 @@ export async function* processParallel(
   }
 
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
-  yield { type: 'complete', totalMeshes, coordinateInfo };
+  yield {
+    type: 'complete',
+    totalMeshes,
+    coordinateInfo,
+    ...(totalCsgFailures > 0 ? { totalCsgFailures, productsWithFailures } : {}),
+  };
   } finally {
     for (const w of workers) {
       try { w.terminate(); } catch { /* cleanup — safe to ignore */ }

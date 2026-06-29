@@ -1225,10 +1225,20 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     // Build the full GeometryDiagnostics contract from the drained sinks — the
     // SAME shape the wasm batch path surfaces, so a native consumer and a browser
-    // consumer see identical diagnostics. `rect_fast` counters are process-global
-    // atomics; this run is the only geometry pass holding them, so draining once
-    // here captures every rayon worker's fast-path activity. `None` when nothing
-    // diagnostic-worthy happened (mirrors the wasm `is_empty` skip).
+    // consumer see identical diagnostics. `None` when nothing diagnostic-worthy
+    // happened (mirrors the wasm `is_empty` skip).
+    //
+    // CAVEAT (cross-contamination): unlike `classification`/`host_diags`/
+    // `csg_failures` — which are request-local sinks threaded through this pass —
+    // `rect_fast` counters are PROCESS-GLOBAL atomics drained here. If two native
+    // geometry passes run concurrently in the same process, this drain captures
+    // BOTH passes' fast-path activity and zeroes the counters for the other, so
+    // the rect_fast slice of these diagnostics is only accurate when geometry
+    // passes are serialized in-process. Making it request-local means threading a
+    // per-router `RectFastStats` cell (mirroring `csg_failures`' RefCell +
+    // per-element drain, incl. the abandoned-fallback discard) through the void
+    // cut path, the processor collector, AND the wasm `csg_diagnostics` reader —
+    // deferred as a larger refactor (see PR notes).
     let geometry_diagnostics = {
         // Matches the wasm path's WORST_HOSTS_LIMIT (top-N per-host detail cap).
         const WORST_HOSTS_LIMIT: usize = 16;

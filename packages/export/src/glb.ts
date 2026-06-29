@@ -45,6 +45,20 @@ export function parseGLB(glb: Uint8Array): ParsedGlb {
   return { json, bin };
 }
 
+/**
+ * Count the meshes declared in an IFC-Lite-generated GLB. Zero means the export
+ * carries no render geometry — a structurally valid but empty GLB. The
+ * CLI / MCP exporters use this to fail loud instead of writing an empty file as
+ * "success" (e.g. malformed-but-parseable input, or a filter whose matched
+ * entities have no triangulated representation). Only the GLB JSON metadata chunk
+ * is parsed; the multi-GB binary mesh buffer (the separate BIN chunk) is not, so
+ * the cost is bounded by the metadata size and dwarfed by the meshing it follows.
+ */
+export function countGlbMeshes(glb: Uint8Array): number {
+  const { json } = parseGLB(glb);
+  return Array.isArray(json?.meshes) ? json.meshes.length : 0;
+}
+
 function componentTypeSize(componentType: number): number {
   // Only types we emit
   if (componentType === 5126) return 4; // FLOAT

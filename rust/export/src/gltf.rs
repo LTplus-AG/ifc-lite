@@ -453,7 +453,22 @@ fn assemble_glb(views: &[MeshView], include_metadata: bool, lit: bool) -> (Vec<u
         });
     }
 
-    let mut bin = Vec::with_capacity((pos_len + norm_len + idx_len) as usize);
+    // glTF/GLB is a 32-bit container: every buffer offset, byteLength and chunk
+    // length is a u32. Past 4 GiB those `as u32` casts silently wrap (release sets
+    // overflow-checks = false) and emit a structurally corrupt GLB instead of
+    // erroring. Guard the concatenated binary buffer here — every buffer.byteLength
+    // and per-mesh accessor/bufferView offset is bounded by it (positions grows
+    // monotonically, so an over-limit run aborts before the GLB is packed). The
+    // container total (JSON chunk + framing on top) is guarded separately in
+    // pack_glb. (In wasm32 the 32-bit heap OOMs long before 4 GiB; this protects
+    // native consumers of the export crate.) Sum in usize to avoid the u32 wrap.
+    let bin_len = positions.len() + normals.len() + indices.len();
+    assert!(
+        bin_len <= u32::MAX as usize,
+        "GLB binary buffer is {bin_len} bytes, over the glTF 32-bit buffer limit \
+         (4 GiB); the model is too large for a single GLB",
+    );
+    let mut bin = Vec::with_capacity(bin_len);
     bin.extend_from_slice(&positions);
     bin.extend_from_slice(&normals);
     bin.extend_from_slice(&indices);
@@ -592,6 +607,15 @@ fn pack_glb(json_bytes: &[u8], bin: &[u8]) -> Vec<u8> {
     let padded_bin = bin.len() + bin_pad;
 
     let total = 12 + 8 + padded_json + 8 + padded_bin;
+    // The GLB container total and chunk lengths are u32 (little-endian). This is
+    // the authoritative 4 GiB guard: it covers the JSON chunk + 28 bytes of
+    // framing + padding on top of the binary buffer, which the assemble_glb check
+    // (binary buffer only) does not. Fail loud instead of wrapping into a corrupt
+    // container. (Reachable only for a ~4 GiB native export; wasm32 OOMs first.)
+    assert!(
+        total <= u32::MAX as usize,
+        "GLB total size is {total} bytes, over the glTF 32-bit container limit (4 GiB)",
+    );
     let mut out = Vec::with_capacity(total);
 
     // GLB header

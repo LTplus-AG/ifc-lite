@@ -16,7 +16,7 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = exportCsv)]
     pub fn export_csv(
         &self,
-        content: String,
+        content: &[u8],
         mode: String,
         delimiter: String,
         include_properties: bool,
@@ -31,20 +31,20 @@ impl IfcAPI {
             delimiter: if delimiter.is_empty() { ",".to_string() } else { delimiter },
             include_properties,
         };
-        ifc_lite_export::export_csv(content.as_bytes(), mode, &opts)
+        ifc_lite_export::export_csv(content, mode, &opts)
     }
 
     /// Export structured **JSON** (array of entity objects with typed property values).
     #[wasm_bindgen(js_name = exportJson)]
     pub fn export_json(
         &self,
-        content: String,
+        content: &[u8],
         pretty: bool,
         include_properties: bool,
         include_quantities: bool,
     ) -> String {
         let opts = JsonOptions { pretty, include_properties, include_quantities };
-        ifc_lite_export::export_json(content.as_bytes(), &opts)
+        ifc_lite_export::export_json(content, &opts)
     }
 
     /// Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
@@ -53,7 +53,7 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = exportJsonld)]
     pub fn export_jsonld(
         &self,
-        content: String,
+        content: &[u8],
         context: String,
         include_properties: bool,
         include_quantities: bool,
@@ -70,7 +70,7 @@ impl IfcAPI {
         if !context.is_empty() {
             opts.context = context;
         }
-        ifc_lite_export::export_jsonld(content.as_bytes(), &opts)
+        ifc_lite_export::export_jsonld(content, &opts)
     }
 
     /// Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
@@ -78,11 +78,11 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = exportIfcx)]
     pub fn export_ifcx(
         &self,
-        content: String,
+        content: &[u8],
         only_known_properties: bool,
         pretty: bool,
     ) -> String {
         let opts = Ifc5Options { only_known_properties, pretty, ..Default::default() };
-        ifc_lite_export::export_ifc5(content.as_bytes(), &opts)
+        ifc_lite_export::export_ifc5(content, &opts)
     }
 }

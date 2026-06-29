@@ -14,6 +14,7 @@
 import { writeFile, readFile } from 'node:fs/promises';
 import type { EntityRef } from '@ifc-lite/sdk';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { countGlbMeshes } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -152,6 +153,16 @@ const exportGlb: Tool = {
       const glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
       if (glb == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
+      }
+      // A structurally valid GLB with zero meshes means nothing had render
+      // geometry — fail loud instead of writing an empty file as success.
+      if (countGlbMeshes(glb) === 0) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.INTERNAL_ERROR,
+          message: filterType
+            ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
+            : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
+        });
       }
       await writeFile(filePath, glb);
       return okResult(`Wrote ${glb.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: glb.length });

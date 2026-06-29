@@ -1089,7 +1089,7 @@ export class GeometryProcessor {
     isolated: Uint32Array = new Uint32Array(),
   ): string | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportObj(safeUtf8Decode(buffer), includeNormals, hidden, isolated);
+    return this.bridge.exportObj(buffer, includeNormals, hidden, isolated);
   }
 
   exportGlb(
@@ -1101,7 +1101,7 @@ export class GeometryProcessor {
     lit = true,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportGlb(safeUtf8Decode(buffer), includeMetadata, hidden, isolated, hiddenTypesCsv, lit);
+    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit);
   }
 
   exportCsv(
@@ -1111,7 +1111,7 @@ export class GeometryProcessor {
     includeProperties = false,
   ): string | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportCsv(safeUtf8Decode(buffer), mode, delimiter, includeProperties);
+    return this.bridge.exportCsv(buffer, mode, delimiter, includeProperties);
   }
 
   exportJson(
@@ -1121,7 +1121,7 @@ export class GeometryProcessor {
     includeQuantities = true,
   ): string | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportJson(safeUtf8Decode(buffer), pretty, includeProperties, includeQuantities);
+    return this.bridge.exportJson(buffer, pretty, includeProperties, includeQuantities);
   }
 
   exportJsonld(
@@ -1133,7 +1133,7 @@ export class GeometryProcessor {
     included: Uint32Array = new Uint32Array(),
   ): string | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportJsonld(safeUtf8Decode(buffer), context, includeProperties, includeQuantities, pretty, included);
+    return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
   }
 
   exportStep(
@@ -1143,12 +1143,12 @@ export class GeometryProcessor {
     mutationsJson = '',
   ): string | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportStep(safeUtf8Decode(buffer), schema, included, mutationsJson);
+    return this.bridge.exportStep(buffer, schema, included, mutationsJson);
   }
 
   exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): string | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportIfcx(safeUtf8Decode(buffer), onlyKnownProperties, pretty);
+    return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
   }
 
   /** Merge several IFC models (raw byte buffers) into one STEP/IFC string. */
@@ -1240,8 +1240,7 @@ export class GeometryProcessor {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
-    const content = safeUtf8Decode(buffer);
-    return this.bridge.exportHbjson(content, name);
+    return this.bridge.exportHbjson(buffer, name);
   }
 
   /**

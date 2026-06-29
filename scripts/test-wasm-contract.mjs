@@ -501,12 +501,20 @@ test('should handle truncated IFC content gracefully', () => {
 console.log('\n📋 export (exportGlb / exportKmz)');
 
 // A real GLB from the column fixture — also the input the KMZ packer consumes.
-const glbBytes = api.exportGlb(columnContent, false, new Uint32Array(), new Uint32Array(), '');
+const glbBytes = api.exportGlb(new TextEncoder().encode(columnContent), false, new Uint32Array(), new Uint32Array(), '');
 
-test('exportGlb returns a binary glTF (GLB magic "glTF")', () => {
+test('exportGlb returns a binary glTF (GLB magic "glTF") with real meshes', () => {
   assert.ok(glbBytes instanceof Uint8Array, 'GLB should be a Uint8Array');
   assert.ok(glbBytes.length > 20, 'GLB should be non-trivial');
   assert.deepEqual(Array.from(glbBytes.slice(0, 4)), [0x67, 0x6c, 0x54, 0x46]); // "glTF"
+  // Guard that the export actually carried geometry. The IFC source must cross
+  // the boundary as a Uint8Array; if it ever arrived empty (e.g. a string coerced
+  // to zero bytes), the GLB would still be structurally valid yet declare zero
+  // meshes — caught here.
+  const dv = new DataView(glbBytes.buffer, glbBytes.byteOffset, glbBytes.byteLength);
+  const jsonLen = dv.getUint32(12, true);
+  const gltf = JSON.parse(Buffer.from(glbBytes.buffer, glbBytes.byteOffset + 20, jsonLen).toString('utf-8'));
+  assert.ok(Array.isArray(gltf.meshes) && gltf.meshes.length > 0, 'GLB should declare meshes');
 });
 
 test('exportKmz packs a stored-zip KMZ (PK header, doc.kml + model.glb, axis-derived heading)', () => {

@@ -20,7 +20,7 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = exportObj)]
     pub fn export_obj(
         &self,
-        content: String,
+        content: &[u8],
         include_normals: bool,
         hidden: &[u32],
         isolated: &[u32],
@@ -30,6 +30,6 @@ impl IfcAPI {
             hidden: hidden.to_vec(),
             isolated: isolated.to_vec(),
         };
-        ifc_lite_export::export_obj(content.as_bytes(), &opts)
+        ifc_lite_export::export_obj(content, &opts)
     }
 }

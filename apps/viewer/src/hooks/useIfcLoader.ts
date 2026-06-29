@@ -14,7 +14,7 @@ import { useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
-import { getGeomWorkerOverride } from '../store/constants.js';
+import { getGeomWorkerOverride, resolveLoadTessellationTier } from '../store/constants.js';
 import { IfcParser, detectFormat, type IfcDataStore } from '@ifc-lite/parser';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
@@ -618,6 +618,12 @@ export function useIfcLoader() {
       // with the previous flag (issue #1107). Reused below for the
       // GeometryProcessor so the key and the actual tessellation agree.
       const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
+      // Auto-low tessellation density for heavy models (or a `?geomTier=`
+      // override). Decided here, before the cache key + GeometryProcessor, off
+      // file size — the only model-weight signal available pre-geometry — so the
+      // key stays deterministic at cache-check time and the actual tessellation
+      // matches what the key claims. `undefined` = engine default (medium).
+      const loadTessellationTier = resolveLoadTessellationTier(fileSizeMB);
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
@@ -627,9 +633,10 @@ export function useIfcLoader() {
         fingerprint,
         mergeLayersAtLoad,
         undefined,
-        STREAMING_SKIP_SMALL_CUTS
+        STREAMING_SKIP_SMALL_CUTS,
+        loadTessellationTier
       );
-      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} cacheKey=${cacheKey}`);
+      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} tier=${loadTessellationTier ?? 'medium'} cacheKey=${cacheKey}`);
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).
@@ -692,8 +699,13 @@ export function useIfcLoader() {
       // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
+        // Auto-low vertex density for heavy models (or `?geomTier=` override);
+        // `undefined` keeps the engine default (medium, full-density curves).
+        // Must match the tier folded into `cacheKey` above so the cached bytes
+        // and the live tessellation agree (issues #540, #1107).
+        tessellationQuality: loadTessellationTier,
         // Skip tiny detail boolean cuts on the on-screen load for fast first
-        // paint (#1286) while keeping Medium tessellation (full-density curves).
+        // paint (#1286) while keeping full-density curves at the chosen tier.
         // Must match the flag folded into `cacheKey` above (issues #540, #1107).
         skipSmallCuts: STREAMING_SKIP_SMALL_CUTS,
         preferNative: false,

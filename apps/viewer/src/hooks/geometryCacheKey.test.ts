@@ -53,4 +53,30 @@ describe('buildGeometryCacheKey', () => {
     assert.strictEqual(key, 'ifc-4096-feed-v5-ml-sc');
     assert.match(key, /^[A-Za-z0-9_-]+$/);
   });
+
+  it('omits the tessellation-tier discriminator at the medium default (preserves legacy entries)', () => {
+    const unset = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false);
+    const medium = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false, 'medium');
+    assert.strictEqual(unset, 'ifc-2048-deadbeef-v5');
+    assert.strictEqual(medium, 'ifc-2048-deadbeef-v5');
+  });
+
+  it('appends a tessellation-tier discriminator for a non-default tier (auto-low must not collide with medium)', () => {
+    const low = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false, 'low');
+    const medium = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false, 'medium');
+    assert.strictEqual(low, 'ifc-2048-deadbeef-v5-tlow');
+    assert.notStrictEqual(low, medium);
+  });
+
+  it('produces distinct keys per tier so different densities cache separately', () => {
+    const low = buildGeometryCacheKey(4096, 'feed', false, 5, false, 'low');
+    const lowest = buildGeometryCacheKey(4096, 'feed', false, 5, false, 'lowest');
+    assert.notStrictEqual(low, lowest);
+  });
+
+  it('composes all discriminators and stays filename-safe', () => {
+    const key = buildGeometryCacheKey(4096, 'feed', true, 5, true, 'lowest');
+    assert.strictEqual(key, 'ifc-4096-feed-v5-ml-sc-tlowest');
+    assert.match(key, /^[A-Za-z0-9_-]+$/);
+  });
 });

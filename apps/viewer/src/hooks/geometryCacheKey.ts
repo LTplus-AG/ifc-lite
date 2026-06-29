@@ -21,10 +21,15 @@ import { FORMAT_VERSION } from '@ifc-lite/cache';
  *     (#1286), so its cached geometry differs from a full-cut build. It must
  *     discriminate the key or a skipped display cache would be served where a
  *     full-fidelity build is expected (and vice versa).
+ *   - `tessellationTier`: the load-time vertex-density tier (auto-low for heavy
+ *     models, or a `?geomTier=` override). A model meshed at `low` has different
+ *     bytes than at `medium`, so the tier must discriminate the key or a coarse
+ *     preview cache would be served where full density is expected (and vice
+ *     versa).
  *
- * The `mergeLayers` and `skipSmallCuts` discriminators are omitted at their
- * defaults (`false`) so pre-existing cache entries stay valid — only the opt-in
- * paths get a distinct key.
+ * The `mergeLayers`, `skipSmallCuts`, and `tessellationTier` discriminators are
+ * omitted at their defaults (`false` / `medium`) so pre-existing cache entries
+ * stay valid — only the opt-in / non-default paths get a distinct key.
  *
  * The desktop (Tauri) cache backend only accepts `[A-Za-z0-9_-]`, so the key
  * stays filename-safe and independent of the original filename.
@@ -34,7 +39,9 @@ export function buildGeometryCacheKey(
   fingerprint: string,
   mergeLayers: boolean,
   formatVersion: number | string = FORMAT_VERSION,
-  skipSmallCuts?: boolean
+  skipSmallCuts?: boolean,
+  tessellationTier?: string
 ): string {
-  return `ifc-${byteLength}-${fingerprint}-v${formatVersion}${mergeLayers ? '-ml' : ''}${skipSmallCuts ? '-sc' : ''}`;
+  const tier = tessellationTier && tessellationTier !== 'medium' ? `-t${tessellationTier}` : '';
+  return `ifc-${byteLength}-${fingerprint}-v${formatVersion}${mergeLayers ? '-ml' : ''}${skipSmallCuts ? '-sc' : ''}${tier}`;
 }

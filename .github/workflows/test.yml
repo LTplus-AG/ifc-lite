@@ -125,7 +125,7 @@ jobs:
       # from the GitHub Release CDN. Pattern documented in AGENTS.md §9.
       - name: Cache test fixtures
         id: fixtures-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
           # Namespace cache key separately from `release.yml` (`release-fixtures-…`).
@@ -258,7 +258,7 @@ jobs:
           path: packages
       - name: Cache test fixtures
         id: fixtures-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
           key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
@@ -312,7 +312,7 @@ jobs:
           name: build-output
           path: packages
       - name: Cache test fixtures
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: fixtures-cache
         with:
           path: tests/models
@@ -364,7 +364,7 @@ jobs:
           prefix-key: ci-rust
       - name: Cache test fixtures
         id: fixtures-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tests/models
           key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}

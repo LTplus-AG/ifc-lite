@@ -153,7 +153,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashSelectedId: null,
     clashHighlightColors: null,
     clashOverlapBox: null,
-    showClashRegionBox: false,
+    showClashRegionBox: true,
 
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),

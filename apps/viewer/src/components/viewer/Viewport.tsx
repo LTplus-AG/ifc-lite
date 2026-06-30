@@ -491,9 +491,10 @@ export function Viewport({
   // Clash overlap-region wireframe box (#1277): push the focused clash's bounds
   // to the renderer as a distinct-colour box. Cleared (null) on teardown.
   const clashOverlapBox = useViewerStore((s) => s.clashOverlapBox);
-  // Off by default (#1402): the region box obscured the penetration and, drawn on
-  // the section-exempt overlay, looked uncut by the section plane. Only push it to
-  // the renderer when the user opts in via the clash settings.
+  // On by default (#1402): the box now uses the tight contact bounds (#1362 Bug B),
+  // so it marks the actual penetration instead of the old whole-element AABB that
+  // obscured everything. Pushed to the renderer whenever a clash is focused; the
+  // clash settings toggle hides it.
   const showClashRegionBox = useViewerStore((s) => s.showClashRegionBox);
   useEffect(() => {
     const renderer = rendererRef.current;

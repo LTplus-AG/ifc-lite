@@ -77,11 +77,11 @@ export interface ClashSlice {
    */
   clashOverlapBox: { min: [number, number, number]; max: [number, number, number] } | null;
   /**
-   * Whether the focused clash's region box is drawn in the 3D view. Off by
-   * default (#1402): the wireframe box obscured the actual penetration and, being
-   * on the section-exempt overlay, appeared uncut by the section plane. The two
-   * glowing elements plus the contact marker convey the clash; the box is an
-   * opt-in extra.
+   * Whether the focused clash's region box is drawn in the 3D view. On by
+   * default (#1402): with the tight contact bounds (#1362 Bug B) the box marks
+   * the actual penetration region instead of the old whole-element AABB that
+   * obscured everything. It draws on the always-visible overlay so it shows
+   * through the (often isolated) clashing solids; toggle it off in clash settings.
    */
   showClashRegionBox: boolean;
 
@@ -186,7 +186,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashClusterEpsilon: DEFAULT_CLASH_SETTINGS.clusterEpsilon,
         clashReportTouch: DEFAULT_CLASH_SETTINGS.reportTouch,
         clashGroupBy: DEFAULT_CLASH_SETTINGS.groupBy,
-        showClashRegionBox: false,
+        showClashRegionBox: true,
       });
       persistSettings();
     },

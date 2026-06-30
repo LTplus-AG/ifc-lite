@@ -211,7 +211,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
               <Switch checked={reportTouch} onCheckedChange={setReportTouch} />
             </SettingRow>
 
-            <SettingRow label="Show clash region box" hint="Draw a wireframe box around the focused clash's contact region. Off by default so it does not hide the actual penetration.">
+            <SettingRow label="Show clash region box" hint="Draw a tight wireframe box around the focused clash's contact region to mark the penetration. On by default; turn off to hide it.">
               <Switch checked={showRegionBox} onCheckedChange={setShowRegionBox} />
             </SettingRow>
 

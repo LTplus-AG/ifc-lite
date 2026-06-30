@@ -157,6 +157,19 @@
     "createBCFFromClashResult: function",
     "mapBcfToClashes: function"
   ],
+  "@ifc-lite/clash/contact": [
+    "AABB: interface",
+    "ContactOptions: interface",
+    "Mesh: interface",
+    "NarrowPhaseOptions: interface",
+    "SharedFaceCluster: interface",
+    "SharedFaceOptions: interface",
+    "TrianglePair: type",
+    "Vec3: type",
+    "clusterSharedFaces: function",
+    "contactClusters: function",
+    "narrowPhase: function"
+  ],
   "@ifc-lite/clash/ifcx": [
     "IfcxAdapterOptions: interface",
     "IfcxAdapterResult: interface",

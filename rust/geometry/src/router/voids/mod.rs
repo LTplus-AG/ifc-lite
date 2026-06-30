@@ -242,6 +242,38 @@ fn make_obb_mesh(corners: &[Point3<f64>; 8]) -> Mesh {
     m
 }
 
+/// True if `m` welds (by position) to a CLOSED 2-manifold: every edge is shared
+/// by exactly two triangles — the topological signature of a valid solid. A
+/// clean opening box AND a watertight roof/gable prism (a tall cutter reaching
+/// hundreds of metres up to clip a wall to the roofline) both pass; only a
+/// self-intersecting / fin-laden GARBAGE cutter (the #1007 family) leaves
+/// boundary or non-manifold edges and fails. Conservative: a cutter with too
+/// few faces to bound a solid (e.g. a stray point cloud) is NOT closed, so it
+/// stays eligible for the malformed-cutter repair.
+fn cutter_is_closed_manifold(m: &Mesh) -> bool {
+    // A closed solid needs >= 4 triangles (a tetrahedron).
+    if m.indices.len() < 12 {
+        return false;
+    }
+    // Weld duplicated per-face vertices back together so shared edges are
+    // detectable; 10 µm is far below any real opening feature.
+    let w = m.welded_by_position(1.0e-5);
+    if w.indices.len() < 12 {
+        return false;
+    }
+    let mut edge_uses: FxHashMap<(u32, u32), u32> = FxHashMap::default();
+    for t in w.indices.chunks_exact(3) {
+        if t[0] == t[1] || t[1] == t[2] || t[0] == t[2] {
+            return false; // a degenerate triangle survived welding
+        }
+        for &(a, b) in &[(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            let key = if a < b { (a, b) } else { (b, a) };
+            *edge_uses.entry(key).or_insert(0) += 1;
+        }
+    }
+    edge_uses.values().all(|&c| c == 2)
+}
+
 /// Compute the clean oriented box of a cutter's REAL opening iff the cutter is
 /// MALFORMED (a far-flung garbage-vertex cluster). `None` for a well-formed
 /// cutter — clean hosts are never reshaped.
@@ -254,6 +286,14 @@ fn make_obb_mesh(corners: &[Point3<f64>; 8]) -> Mesh {
 /// not malformed -> `None`. Principal axes via covariance eigendecomposition
 /// (for a box the eigenvectors align with the edges).
 fn opening_obb_if_malformed(m: &Mesh) -> Option<OpeningBox> {
+    // A cutter that welds to a closed solid is well-formed by construction — its
+    // far vertices are STRUCTURAL (a watertight roof prism, not stray garbage),
+    // so the far-cluster heuristic below must never reshape it. This is what
+    // separates a legitimate gable/roof cut (whose top can sit ~900 m up) from
+    // the self-intersecting tessellated voids the repair targets.
+    if cutter_is_closed_manifold(m) {
+        return None;
+    }
     let all: Vec<Vector3<f64>> = m
         .positions
         .chunks_exact(3)
@@ -1835,6 +1875,26 @@ mod flap_clip_tests {
     fn opening_obb_skips_wellformed_cutter() {
         let cutter = box_cutter_mesh([1.0, 0.1, 1.2], &[]);
         assert!(opening_obb_if_malformed(&cutter).is_none());
+    }
+
+    /// A watertight TALL cutter — a roof/gable void authored as a closed prism
+    /// reaching far up (here ~900 m) to clip a wall down to the roofline — is a
+    /// VALID SOLID, so its far (top) vertices are STRUCTURAL, not garbage. The
+    /// closed-manifold gate must spare it: flagging it malformed re-cut every
+    /// roof-capped wall as a flat horizontal slab, slicing the gable off (the
+    /// #1440 false-positive). `aabb_box` welds to a closed box, mirroring the
+    /// `IfcClosedShell` roof cutters that triggered the regression.
+    #[test]
+    fn watertight_tall_roof_cutter_is_not_flagged_malformed() {
+        let tall = aabb_box([0.6, 0.15, 450.0]);
+        assert!(
+            cutter_is_closed_manifold(&tall),
+            "a closed box prism must read as a valid solid"
+        );
+        assert!(
+            opening_obb_if_malformed(&tall).is_none(),
+            "a watertight tall cutter must never be reshaped as 'malformed'"
+        );
     }
 
     fn signed_volume(m: &Mesh) -> f64 {

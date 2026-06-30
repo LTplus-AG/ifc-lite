@@ -1,5 +1,17 @@
 # @ifc-lite/clash
 
+## 1.4.0
+
+### Minor Changes
+
+- [#1469](https://github.com/LTplus-AG/ifc-lite/pull/1469) [`731579f`](https://github.com/LTplus-AG/ifc-lite/commit/731579f6a981b5e55e36b8ff949dc5a51003ec08) Thanks [@louistrue](https://github.com/louistrue)! - Clash detection no longer treats non-physical / non-product geometry as a clash
+  candidate ([#1464](https://github.com/LTplus-AG/ifc-lite/issues/1464)). Spatial volumes (`IfcSpace`, `IfcSpatialZone`), voids
+  (`IfcOpeningElement`/`IfcOpeningStandardCase`), `IfcVirtualElement`, reference
+  geometry (`IfcGrid`, `IfcGridAxis`, `IfcAnnotation`) and non-product material
+  associations are dropped from the candidate set in `elementsFromStep`, so a
+  "detect all" run and per-rule runs only ever consider real building elements
+  instead of surfacing phantom clashes that no rule referenced.
+
 ## 1.3.0
 
 ### Minor Changes

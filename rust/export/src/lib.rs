@@ -38,7 +38,8 @@ pub use jsonld::{export_jsonld, JsonLdOptions};
 pub use kmz::{export_kmz, ifc_angle_to_kml_heading, KmzOptions};
 pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use model::{
-    build_export_model, EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue,
+    build_export_model, stream_export_model, EntityRow, ExportModel, PropValue, PropertySet,
+    QuantitySet, QuantityValue,
 };
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]

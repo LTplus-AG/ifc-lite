@@ -15,7 +15,7 @@ use ifc_lite_core::{
 };
 
 /// A single property value (`IfcPropertySingleValue` and friends).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PropValue {
     pub name: String,
     pub value: String,
@@ -24,14 +24,14 @@ pub struct PropValue {
 }
 
 /// A named property set (`IfcPropertySet`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PropertySet {
     pub name: String,
     pub properties: Vec<PropValue>,
 }
 
 /// A single physical quantity (`IfcQuantityLength`/`Area`/`Volume`/…).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct QuantityValue {
     pub name: String,
     pub value: f64,
@@ -40,14 +40,14 @@ pub struct QuantityValue {
 }
 
 /// A named quantity set (`IfcElementQuantity`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct QuantitySet {
     pub name: String,
     pub quantities: Vec<QuantityValue>,
 }
 
 /// One exportable entity row (an `IfcProduct` occurrence).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EntityRow {
     pub express_id: u32,
     pub ifc_type: String,
@@ -87,7 +87,7 @@ impl EntityRow {
 }
 
 /// The full extracted model.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExportModel {
     pub entities: Vec<EntityRow>,
 }
@@ -196,21 +196,49 @@ fn decode_quantity_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Opti
 }
 
 /// Build the export model from raw IFC/STEP bytes.
+///
+/// Collects every row into an [`ExportModel`]. This is fine for normal models,
+/// but for very large ones (tens of millions of entities) the retained
+/// `Vec<EntityRow>` is itself multiple GB — prefer [`stream_export_model`], which
+/// yields rows one at a time and never holds them all. `build_export_model` is a
+/// thin `collect` over `stream_export_model`, so the two share one code path.
 pub fn build_export_model(content: &[u8]) -> ExportModel {
+    let mut entities = Vec::new();
+    stream_export_model(content, |row| entities.push(row));
+    ExportModel { entities }
+}
+
+/// Stream one [`EntityRow`] per `IfcProduct` occurrence, in file order, invoking
+/// `f` for each row and then dropping it.
+///
+/// Unlike [`build_export_model`], this never retains all rows and never caches the
+/// non-product entities (cartesian points, directions, index lists, …) that make
+/// up the bulk of a STEP file. Peak working set is bounded by the entity index
+/// plus the property side-map (both O(products)), so a model with tens of millions
+/// of entities extracts in a few GB instead of exhausting memory. Output is the
+/// caller's responsibility to stream onwards (e.g. to S3/Parquet) and drop.
+pub fn stream_export_model(content: &[u8], mut f: impl FnMut(EntityRow)) {
+    // Property resolution memoizes the shared `IfcPropertySet`/leaf entities for
+    // speed. Cap that cache so it can't grow without bound across millions of
+    // products; clearing only forces a re-decode of a shared set, never affects
+    // correctness.
+    const PSET_CACHE_CAP: usize = 1 << 18; // 262_144 entries
+
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
     // Pass 1 — object → attached property/quantity definitions (IfcRelDefinesByProperties).
     // IfcRelDefinesByProperties: [GlobalId, OwnerHistory, Name, Description,
     //                             RelatedObjects(4, list), RelatingPropertyDefinition(5, ref)]
+    // Decode uncached: each relation is visited exactly once here.
     let mut defs_by_object: HashMap<u32, Vec<u32>> = HashMap::new();
     {
         let mut scanner = EntityScanner::new(content);
-        while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        while let Some((_id, type_name, start, end)) = scanner.next_entity() {
             if type_name != "IFCRELDEFINESBYPROPERTIES" {
                 continue;
             }
-            let rel = match decoder.decode_at_with_id(id, start, end) {
+            let rel = match decoder.decode_at_uncached(start, end) {
                 Ok(e) => e,
                 Err(_) => continue,
             };
@@ -229,16 +257,19 @@ pub fn build_export_model(content: &[u8]) -> ExportModel {
     }
 
     // Pass 2 — emit a row per IfcProduct occurrence, resolving its property/quantity sets.
-    let mut entities = Vec::new();
     let mut scanner = EntityScanner::new(content);
-    while let Some((id, _type_name, start, end)) = scanner.next_entity() {
-        let entity = match decoder.decode_at_with_id(id, start, end) {
+    while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        // Filter on the STEP keyword *before* decoding. `parse_entity` resolves the
+        // type via this same `IfcType::from_str`, so this is identical to decoding
+        // and testing `ifc_type.is_subtype_of(IfcProduct)` — but it skips parsing
+        // the millions of non-product geometry primitives entirely.
+        if !IfcType::from_str(type_name).is_subtype_of(IfcType::IfcProduct) {
+            continue;
+        }
+        let entity = match decoder.decode_at_uncached(start, end) {
             Ok(e) => e,
             Err(_) => continue,
         };
-        if !entity.ifc_type.is_subtype_of(IfcType::IfcProduct) {
-            continue;
-        }
         // PascalCase canonical name (IfcWall), not the STEP keyword (IFCWALL).
         let ifc_type = entity.ifc_type.name().to_string();
         let global_id = opt_string(entity.get(0));
@@ -275,7 +306,7 @@ pub fn build_export_model(content: &[u8]) -> ExportModel {
             }
         }
 
-        entities.push(EntityRow {
+        f(EntityRow {
             express_id: id,
             ifc_type,
             global_id,
@@ -286,9 +317,12 @@ pub fn build_export_model(content: &[u8]) -> ExportModel {
             property_sets,
             quantity_sets,
         });
-    }
 
-    ExportModel { entities }
+        // Keep the property-resolution cache bounded across the whole file.
+        if decoder.cache_size() > PSET_CACHE_CAP {
+            decoder.clear_cache();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -322,6 +356,25 @@ mod tests {
             .next();
         let p = any_prop.expect("at least one property");
         assert!(!p.name.is_empty() && !p.value_type.is_empty());
+    }
+
+    #[test]
+    fn stream_matches_build_row_for_row() {
+        // `build_export_model` is a `collect` over `stream_export_model`, so the
+        // two must agree byte-for-byte, in the same order, on the same input.
+        // Guards against the streaming path ever drifting from the collected one.
+        let rel = "ara3d/duplex.ifc";
+        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
+        if !std::path::Path::new(&path).exists() {
+            eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
+            return;
+        }
+        let bytes = fixture(rel);
+        let collected = build_export_model(&bytes).entities;
+        let mut streamed = Vec::new();
+        stream_export_model(&bytes, |r| streamed.push(r));
+        assert!(!streamed.is_empty(), "expected products");
+        assert_eq!(collected, streamed, "stream and collect must agree row-for-row");
     }
 
     #[test]

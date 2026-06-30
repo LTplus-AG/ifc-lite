@@ -120,7 +120,19 @@ export function testPair(
   let tN = 0;
   if (contactN > 0) { for (let i = 0; i < 3; i += 1) { if (cMin[i] < tMin[i]) tMin[i] = cMin[i]; if (cMax[i] > tMax[i]) tMax[i] = cMax[i]; } tN += 1; }
   if (ncN > 0) { for (let i = 0; i < 3; i += 1) { if (ncMin[i] < tMin[i]) tMin[i] = ncMin[i]; if (ncMax[i] > tMax[i]) tMax[i] = ncMax[i]; } tN += 1; }
-  const contactBounds = tN > 0 ? overlapBounds({ min: tMin, max: tMax }, overlap) : overlap;
+  // Clamp the contact AABB to the element overlap per-axis. (overlapBounds would
+  // degenerate a disjoint axis to a midpoint that can land OUTSIDE the overlap,
+  // breaking the "clamped to overlap" contract for the box.)
+  let contactBounds = overlap;
+  if (tN > 0) {
+    const cMinClamped: Vec3 = [0, 0, 0];
+    const cMaxClamped: Vec3 = [0, 0, 0];
+    for (let i = 0; i < 3; i += 1) {
+      cMinClamped[i] = Math.min(Math.max(tMin[i], overlap.min[i]), overlap.max[i]);
+      cMaxClamped[i] = Math.min(Math.max(tMax[i], overlap.min[i]), overlap.max[i]);
+    }
+    contactBounds = { min: cMinClamped, max: cMaxClamped };
+  }
 
   if (intersects) {
     const point: Vec3 = contactN > 0

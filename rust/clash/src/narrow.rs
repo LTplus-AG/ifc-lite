@@ -161,7 +161,16 @@ pub fn test_pair(
         t_n += 1;
     }
     let contact_bounds = if t_n > 0 {
-        overlap_bounds(&Aabb::new(t_min, t_max), &overlap)
+        // Clamp the contact AABB to the element overlap per-axis. (overlap_bounds
+        // would degenerate a disjoint axis to a midpoint that can land OUTSIDE the
+        // overlap, breaking the "clamped to overlap" contract for the box.)
+        let mut min: Vec3 = [0.0; 3];
+        let mut max: Vec3 = [0.0; 3];
+        for i in 0..3 {
+            min[i] = t_min[i].max(overlap.min[i]).min(overlap.max[i]);
+            max[i] = t_max[i].max(overlap.min[i]).min(overlap.max[i]);
+        }
+        Aabb::new(min, max)
     } else {
         overlap
     };

@@ -23,6 +23,10 @@
       "import": "./dist/bcf-bridge.js",
       "types": "./dist/bcf-bridge.d.ts"
     },
+    "./contact": {
+      "import": "./dist/contact/index.js",
+      "types": "./dist/contact/index.d.ts"
+    },
     "./wasm": {
       "import": "./dist/engine-wasm/index.js",
       "types": "./dist/engine-wasm/index.d.ts"

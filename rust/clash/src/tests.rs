@@ -243,6 +243,16 @@ fn overlapping_cubes_hard() {
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Hard);
     assert!(rec.distance < 0.0, "penetration distance must be negative, got {}", rec.distance);
+    // The coplanar/flush overlap must report the real (non-degenerate) overlap
+    // region so it renders as a visible penetration box (#1402), not the zero-size
+    // box of two near-coincident surface points. Overlap here is 0.5 x 1 x 1.
+    let dx = rec.bounds[3] - rec.bounds[0];
+    let dy = rec.bounds[4] - rec.bounds[1];
+    let dz = rec.bounds[5] - rec.bounds[2];
+    assert!(
+        dx > 0.4 && dx < 0.6 && dy > 0.5 && dz > 0.5,
+        "coplanar hard clash must report a visible overlap region, got {dx}x{dy}x{dz}"
+    );
 }
 
 #[test]

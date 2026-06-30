@@ -115,6 +115,14 @@ describe('TsClashEngine', () => {
     expect(result.clashes[0].status).toBe('hard');
     expect(result.clashes[0].distance).toBeLessThan(0);
     expect(result.summary.byRule.r).toBe(1);
+    // The coplanar/flush overlap must report the real (non-degenerate) overlap
+    // region so it renders as a visible penetration box (#1402), not a zero-size
+    // box. Overlap of the two unit cubes offset 0.5 in x is 0.5 x 1 x 1.
+    const b = result.clashes[0].bounds;
+    expect(b.max[0] - b.min[0]).toBeGreaterThan(0.4);
+    expect(b.max[0] - b.min[0]).toBeLessThan(0.6);
+    expect(b.max[1] - b.min[1]).toBeGreaterThan(0.5);
+    expect(b.max[2] - b.min[2]).toBeGreaterThan(0.5);
   });
 
   it('reports no clash for separated elements in hard mode', async () => {

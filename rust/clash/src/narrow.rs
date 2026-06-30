@@ -178,13 +178,16 @@ pub fn test_pair(
             if (tri_a.contains_point(probe_centroid) && tri_b.contains_point(probe_centroid))
                 || (tri_a.contains_point(probe_overlap) && tri_b.contains_point(probe_overlap))
             {
-                // Tight contact bounds (Bug B): the nearest-surface contact, not
-                // the whole-element AABB overlap (meters wide for long members).
+                // The shared volume of a coplanar/flush overlap IS the element-AABB
+                // intersection, and it is tight here: skewed false-touches were
+                // suppressed above, so only genuine overlaps reach this point. (For a
+                // flush overlap the nearest-surface points are near-coincident, so
+                // boxing them would yield a degenerate, invisible region box — #1402.)
                 return Some(NarrowResult {
                     status: ClashStatus::Hard,
                     distance: gap,
                     point: mid(closest_a, closest_b),
-                    bounds: bounds_of_points(closest_a, closest_b),
+                    bounds: overlap,
                 });
             }
             // Only a face touch (no shared volume): fall through to the touch

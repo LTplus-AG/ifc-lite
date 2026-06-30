@@ -45,6 +45,9 @@ impl IfcAPI {
             // wasm export path is single-model. Add a parameter here if/when the
             // browser needs to federate.
             model_id: None,
+            // The viewer loads the GLB directly; quantization is a server/export-pipeline
+            // concern (KHR_mesh_quantization needs loader support the viewer doesn't wire).
+            quantize: false,
         };
         ifc_lite_export::export_glb(content, &opts)
     }

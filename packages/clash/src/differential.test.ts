@@ -145,6 +145,9 @@ function assertParity(a: ClashResult, b: ClashResult): void {
     }
     // Tight-contact bounds must agree across backends too (#1402 Bug B), not just
     // count/status/point — otherwise a bounds regression in one kernel slips by.
+    // Both kernels must also agree on whether bounds exist at all, so a one-sided
+    // bounds regression cannot hide behind a presence check.
+    expect(Boolean(y.bounds), `clash ${x.id} bounds presence must match`).toBe(Boolean(x.bounds));
     if (x.bounds && y.bounds) {
       for (let i = 0; i < 3; i += 1) {
         expect(Math.abs(y.bounds.min[i] - x.bounds.min[i])).toBeLessThan(EPS);

@@ -79,6 +79,9 @@ export function BCFCreateTopicForm({
   onCaptureSnapshot,
   capturingSnapshot = false,
 }: BCFCreateTopicFormProps) {
+  // Keep the original ISO due date so an edit that doesn't touch the date can
+  // round-trip it intact (the date input only sees YYYY-MM-DD). (#1461)
+  const initialDueDate = initialTopic?.dueDate;
   const [title, setTitle] = useState(initialTopic?.title ?? initialTitle);
   const [description, setDescription] = useState(initialTopic?.description ?? initialDescription);
   const [topicType, setTopicType] = useState(initialTopic?.topicType ?? 'Issue');
@@ -86,7 +89,7 @@ export function BCFCreateTopicForm({
   const [priority, setPriority] = useState(initialTopic?.priority ?? 'Medium');
   const [assignedTo, setAssignedTo] = useState(initialTopic?.assignedTo ?? '');
   // `<input type="date">` wants a bare YYYY-MM-DD; topics may carry a full ISO timestamp.
-  const [dueDate, setDueDate] = useState((initialTopic?.dueDate ?? '').split('T')[0]);
+  const [dueDate, setDueDate] = useState((initialDueDate ?? '').split('T')[0]);
   const [labels, setLabels] = useState((initialTopic?.labels ?? []).join(', '));
   const [includeSnapshot, setIncludeSnapshot] = useState(true);
 
@@ -109,13 +112,18 @@ export function BCFCreateTopicForm({
           topicStatus,
           priority,
           assignedTo: assignedTo.trim() || undefined,
-          dueDate: dueDate || undefined,
+          // Round-trip the original ISO timestamp when the date is unchanged, so
+          // editing another field doesn't drop an imported topic's time/offset.
+          dueDate:
+            dueDate && initialDueDate && dueDate === initialDueDate.split('T')[0]
+              ? initialDueDate
+              : dueDate || undefined,
           labels: parsedLabels.length ? parsedLabels : undefined,
         },
         { includeSnapshot: snapshotCapable && includeSnapshot },
       );
     },
-    [title, description, topicType, topicStatus, priority, assignedTo, dueDate, labels, includeSnapshot, snapshotCapable, onSubmit],
+    [title, description, topicType, topicStatus, priority, assignedTo, dueDate, labels, includeSnapshot, snapshotCapable, initialDueDate, onSubmit],
   );
 
   return (

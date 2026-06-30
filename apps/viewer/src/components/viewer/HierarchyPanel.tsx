@@ -149,7 +149,7 @@ export function HierarchyPanel() {
   // toggles, Shift selects the contiguous range in the visible order. Built
   // over the flattened, visible node list so ranges follow what's on screen.
   // Assemblies keep their existing select-all-parts behaviour. (#1463)
-  const onMultiSelect = useEntityListMultiSelect();
+  const { select: onMultiSelect, setAnchor: setMultiSelectAnchor } = useEntityListMultiSelect();
   const selectableNodeItems = useMemo<MultiSelectItem[]>(() => {
     const out: MultiSelectItem[] = [];
     for (const node of filteredNodes) {
@@ -525,6 +525,9 @@ export function HierarchyPanel() {
         if (modelId && modelId !== 'legacy') setActiveModel(modelId);
         return;
       }
+      // Plain click goes through the legacy single-select below, but still seed
+      // the multi-select anchor so a following Shift+click extends from here. (#1463)
+      if (multiIdx !== undefined) setMultiSelectAnchor(multiIdx);
 
       setSelectedEntityIds([]);
 
@@ -556,6 +559,9 @@ export function HierarchyPanel() {
         if (modelId && modelId !== 'legacy') setActiveModel(modelId);
         return;
       }
+      // Plain click uses the legacy single-select below, but still seed the
+      // multi-select anchor so a following Shift+click extends from here. (#1463)
+      if (multiIdx !== undefined) setMultiSelectAnchor(multiIdx);
 
       if (parts && parts.length > 0) {
         // A decomposing assembly (IfcElementAssembly, IfcStair-as-container, …)
@@ -586,7 +592,7 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, selectableNodeItems, selectableNodeIndexById]);
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById]);
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {

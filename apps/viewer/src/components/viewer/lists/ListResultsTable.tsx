@@ -60,7 +60,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   const activateAutoColorFromColumn = useViewerStore((s) => s.activateAutoColorFromColumn);
   const activeLensId = useViewerStore((s) => s.activeLensId);
-  const onMultiSelect = useEntityListMultiSelect();
+  const { select: onMultiSelect } = useEntityListMultiSelect();
 
   // Visibility state — re-filter when 3D visibility changes.
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);

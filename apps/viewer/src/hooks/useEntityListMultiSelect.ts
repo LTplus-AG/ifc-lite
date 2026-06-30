@@ -43,6 +43,18 @@ export type MultiSelectClickHandler = (
   modifiers: SelectModifiers,
 ) => void;
 
+export interface ListMultiSelect {
+  /** Handle a row click (single / toggle / range per modifier keys). */
+  select: MultiSelectClickHandler;
+  /**
+   * Record the anchor for a row index WITHOUT changing the selection. A panel
+   * that routes plain clicks through its own (legacy) selection path calls this
+   * so a following Shift+click still extends a contiguous range from that
+   * row. (#1463)
+   */
+  setAnchor: (index: number) => void;
+}
+
 /**
  * Resolve a list click into a selection intent - pure so the Explorer-style
  * precedence (Shift range beats Ctrl/Cmd toggle beats plain replace) is unit
@@ -70,7 +82,7 @@ export function resolveListSelection(
   return { kind: 'single', index };
 }
 
-export function useEntityListMultiSelect(): MultiSelectClickHandler {
+export function useEntityListMultiSelect(): ListMultiSelect {
   const anchorRef = useRef<number | null>(null);
 
   const clearEntitySelection = useViewerStore((s) => s.clearEntitySelection);
@@ -90,7 +102,11 @@ export function useEntityListMultiSelect(): MultiSelectClickHandler {
     [clearEntitySelection, setSelectedEntityIds, addEntitiesToSelection],
   );
 
-  return useCallback(
+  const setAnchor = useCallback((index: number) => {
+    anchorRef.current = index;
+  }, []);
+
+  const select = useCallback<MultiSelectClickHandler>(
     (items, index, modifiers) => {
       const item = items[index];
       if (!item) return;
@@ -114,4 +130,6 @@ export function useEntityListMultiSelect(): MultiSelectClickHandler {
     },
     [selectExact, toggleSelection, toggleEntitySelection],
   );
+
+  return { select, setAnchor };
 }

@@ -798,14 +798,16 @@ function LensEditor({
 
   // Clone a rule's criteria/action/color directly below it, so building many
   // similar rules (e.g. one value per color) doesn't restart the selectors each
-  // time. Deep-copies criteria and assigns a fresh id. (#1460)
+  // time. Deep-copies criteria and assigns a fresh id. A random suffix (not the
+  // array length) guarantees uniqueness even when add/duplicate/remove interleave
+  // within the same millisecond, so React keys never collide. (#1460)
   const duplicateRule = (index: number) => {
     setRules((prev) => {
       const src = prev[index];
       if (!src) return prev;
       const copy: LensRule = {
         ...src,
-        id: `rule-${Date.now()}-${prev.length}`,
+        id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         criteria: { ...src.criteria },
       };
       const next = [...prev];

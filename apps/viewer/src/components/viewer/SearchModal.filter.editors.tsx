@@ -248,34 +248,51 @@ function PredefinedTypeEditor({
   options: ReadonlyArray<string>;
   onChange: (values: string[], op: SetOp) => void;
 }) {
-  // Discovered predefined types -> a multi-select, identical to the IFC-type
-  // editor, so "is one of" / "is not one of" pick from real values. Falls back
-  // to comma-separated free-text when nothing was discovered yet. (#1462)
-  if (options.length > 0) {
-    return (
-      <SetRuleEditor
-        values={values}
-        op={op}
-        options={options.map((t) => ({ label: t, value: t }))}
-        onChange={onChange}
-      />
-    );
-  }
+  // Free-text comma input is always available so ANY token can be entered:
+  // discovery only samples a bounded slice of entities, so a valid value may
+  // not be in `options`. When values ARE discovered, an extra "Pick" dropdown
+  // toggles them into the same comma list (both write `values`). (#1462)
   const text = values.join(', ');
+  const setFromText = (raw: string) =>
+    onChange(raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0), op);
+  const toggle = (v: string) =>
+    onChange(values.includes(v) ? values.filter((x) => x !== v) : [...values, v], op);
   return (
     <>
       <OpDropdown ops={SET_OPS} value={op} onChange={(next) => onChange(values, next)} />
       <Input
         placeholder="e.g. SOLIDWALL, PARTITIONING"
         value={text}
-        onChange={(e) =>
-          onChange(
-            e.target.value.split(',').map((s) => s.trim()).filter((s) => s.length > 0),
-            op,
-          )
-        }
-        className="h-7 w-72 text-xs font-mono"
+        onChange={(e) => setFromText(e.target.value)}
+        className="h-7 w-56 text-xs font-mono"
       />
+      {options.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-7 gap-1 text-xs font-mono">
+              Pick
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+            {options.map((o) => (
+              <DropdownMenuItem
+                key={o}
+                onSelect={(e) => {
+                  // Keep the menu open for multi-pick.
+                  e.preventDefault();
+                  toggle(o);
+                }}
+                className="font-mono"
+              >
+                <span className="mr-2 inline-block w-3 text-center">
+                  {values.includes(o) ? '✓' : ''}
+                </span>
+                {o}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </>
   );
 }

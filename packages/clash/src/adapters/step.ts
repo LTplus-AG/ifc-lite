@@ -24,6 +24,28 @@ export interface FederationLike {
   toGlobalId(modelId: string, expressId: number): number;
 }
 
+/**
+ * Types that are never physical clash candidates: spatial volumes, voids,
+ * virtual/reference geometry, and non-product material associations. Including
+ * them produced phantom clashes (IfcSpace, IfcVirtualElement, IfcOpeningElement,
+ * even IfcMaterialConstituent) that no clash rule referenced - they are dropped
+ * from the candidate set entirely, so "detect all" and per-rule runs only ever
+ * consider real building elements. (#1464)
+ */
+const NON_CLASHABLE_TAGS: ReadonlySet<string> = new Set([
+  'IfcSpace',
+  'IfcSpatialZone',
+  'IfcOpeningElement',
+  'IfcOpeningStandardCase',
+  'IfcVirtualElement',
+  'IfcGrid',
+  'IfcGridAxis',
+  'IfcAnnotation',
+  'IfcMaterial',
+  'IfcMaterialConstituent',
+  'IfcMaterialLayer',
+]);
+
 export interface StepAdapterOptions {
   store: IfcDataStore;
   meshes: MeshData[];
@@ -68,6 +90,11 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     const expressId = mesh.expressId;
     const node = new EntityNode(store, expressId);
 
+    // Drop non-physical / non-product geometry up front so it never becomes a
+    // clash candidate (no rule should have to exclude IfcSpace by hand). (#1464)
+    const tag = node.type || mesh.ifcType || 'IfcProduct';
+    if (NON_CLASHABLE_TAGS.has(tag)) continue;
+
     // The wasm geometry path stores positions in the element's LOCAL frame
     // (world = origin + position; see `MeshData.origin`). Clash works in world
     // space — the `ClashElement` contract is world-frame triangles, and the
@@ -98,7 +125,7 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
       key,
       ref: federation ? federation.toGlobalId(modelId, expressId) : expressId,
       model: modelId,
-      tag: node.type || mesh.ifcType || 'IfcProduct',
+      tag,
       name: storedName || undefined,
       storey: node.storey()?.name || undefined,
       bounds: fromPositions(positions, worldTransform),

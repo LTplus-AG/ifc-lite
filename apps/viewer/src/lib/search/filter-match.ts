@@ -27,6 +27,7 @@ import {
   type QuantityRule,
   type ClassificationRule,
 } from './filter-rules.js';
+import { lensMaterialNames } from '../lens-material-names.js';
 
 // ── Pset / Qto matching ──────────────────────────────────────────────────────
 
@@ -114,19 +115,13 @@ export function defaultStoreyName(store: IfcDataStore, expressId: number): strin
 
 // ── Material / classification / elevation resolution ─────────────────────────
 
-/** Collect every material-name string an element exposes — top-level
- *  material, plus layer / constituent / profile names and list members.
- *  Used by the multi-valued `material` rule matcher. */
+/** Collect the *individual* material names an element exposes - each layer /
+ *  constituent / profile material, or the single plain material - for the
+ *  multi-valued `material` rule matcher and the material dropdown. Shares the
+ *  #1366 lens collector, so filtering by material groups by the real materials
+ *  rather than the layer-set / Revit family+type name that masked them. (#1462) */
 export function materialNamesOf(info: MaterialInfo | null): string[] {
-  if (!info) return [];
-  const names: string[] = [];
-  const push = (s: string | undefined) => { if (s) names.push(s); };
-  push(info.name);
-  for (const l of info.layers ?? []) { push(l.materialName); push(l.name); }
-  for (const c of info.constituents ?? []) { push(c.materialName); push(c.name); }
-  for (const p of info.profiles ?? []) { push(p.materialName); push(p.name); }
-  for (const m of info.materials ?? []) push(m.name);
-  return names;
+  return lensMaterialNames(info);
 }
 
 /** Match a classification rule against an element's classification refs.

@@ -28,7 +28,6 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
@@ -263,7 +262,10 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
               </div>
             </div>
 
-            <ScrollArea className="max-h-[42vh] pr-1">
+            {/* Native overflow scroller (a definite max-height + overflow-y-auto),
+                matching the Detection tab. A Radix ScrollArea here never engaged
+                its viewport scroll, so extra rules were clipped and unreachable. (#1464) */}
+            <div className="max-h-[42vh] overflow-y-auto pr-1">
               <div className="space-y-1">
                 {presets.map((p) => (
                   <div
@@ -297,7 +299,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
 
             {draft && (
               <div className="rounded-md border border-[#f7768e]/40 bg-muted/30 p-2.5 space-y-2">

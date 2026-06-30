@@ -19,6 +19,7 @@ import {
   Focus,
   EyeOff,
   Crosshair,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,6 +48,8 @@ import { PriorityBadge, formatDate, formatDateTime, TOPIC_STATUSES } from './bcf
 export interface BCFTopicDetailProps {
   topic: BCFTopic;
   onBack: () => void;
+  /** Open the edit form for this topic (#1461). */
+  onEditTopic: () => void;
   onAddComment: (text: string, viewpointGuid?: string) => void;
   onAddViewpoint: () => void;
   onActivateViewpoint: (viewpoint: BCFViewpoint) => void;
@@ -68,6 +71,7 @@ export interface BCFTopicDetailProps {
 export function BCFTopicDetail({
   topic,
   onBack,
+  onEditTopic,
   onAddComment,
   onAddViewpoint,
   onActivateViewpoint,
@@ -130,6 +134,14 @@ export function BCFTopicDetail({
             </Button>
           </TooltipTrigger>
           <TooltipContent>Zoom to</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" onClick={onEditTopic} aria-label="Edit topic">
+              <Pencil className="h-4 w-4" aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Edit topic</TooltipContent>
         </Tooltip>
         <Button
           variant="ghost"

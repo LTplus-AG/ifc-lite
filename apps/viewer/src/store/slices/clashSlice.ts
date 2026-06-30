@@ -12,7 +12,12 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { ClashResult, ClashGroup, ClashMode, ClashProgress } from '@ifc-lite/clash';
+import type { ClashResult, ClashGroup, ClashMode, ClashProgress, ClashSortBy } from '@ifc-lite/clash';
+
+/** How the rest of the model is shown when a clash is focused (#1275). Lives
+ *  here (not in `useClash`) so the panel's view choice persists across panel
+ *  switches. (#1464) */
+export type ClashFocusMode = 'highlight' | 'isolate' | 'ghost';
 import {
   buildInitialPresets,
   defaultPresets,
@@ -58,6 +63,13 @@ export interface ClashSlice {
   clashReportTouch: boolean;
   /** How the result list is organized (persisted). */
   clashGroupBy: ClashGroupBy;
+  /** Result-list sort key - view state, kept in the store so it survives a
+   *  panel switch instead of resetting to default each time. (#1464) */
+  clashSortBy: ClashSortBy;
+  /** "Hide touching" result filter - view state, same persistence. (#1464) */
+  clashHideTouching: boolean;
+  /** On-select focus presentation (highlight / isolate / ghost). (#1464) */
+  clashFocusMode: ClashFocusMode;
   /** Built-in + custom rule presets (persisted). */
   clashPresets: ClashPreset[];
   /** Currently focused clash id (for highlight in the list). */
@@ -105,6 +117,9 @@ export interface ClashSlice {
   setClashClusterEpsilon: (epsilon: number) => void;
   setClashReportTouch: (reportTouch: boolean) => void;
   setClashGroupBy: (groupBy: ClashGroupBy) => void;
+  setClashSortBy: (sortBy: ClashSortBy) => void;
+  setClashHideTouching: (hide: boolean) => void;
+  setClashFocusMode: (mode: ClashFocusMode) => void;
   resetClashSettings: () => void;
   setClashSelectedId: (id: string | null) => void;
   setClashHighlightColors: (colors: Map<number, [number, number, number, number]> | null) => void;
@@ -157,6 +172,9 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashClusterEpsilon: initial.clusterEpsilon,
     clashReportTouch: initial.reportTouch,
     clashGroupBy: initial.groupBy,
+    clashSortBy: 'severity',
+    clashHideTouching: false,
+    clashFocusMode: 'highlight',
     clashPresets: buildInitialPresets(),
     clashSelectedId: null,
     clashHighlightColors: null,
@@ -187,6 +205,11 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     },
     setClashReportTouch: (clashReportTouch) => { set({ clashReportTouch }); persistSettings(); },
     setClashGroupBy: (clashGroupBy) => { set({ clashGroupBy }); persistSettings(); },
+    // View-state setters: kept in the store (not localStorage) so they survive a
+    // panel switch within the session without growing the persisted blob. (#1464)
+    setClashSortBy: (clashSortBy) => set({ clashSortBy }),
+    setClashHideTouching: (clashHideTouching) => set({ clashHideTouching }),
+    setClashFocusMode: (clashFocusMode) => set({ clashFocusMode }),
     resetClashSettings: () => {
       set({
         clashMode: DEFAULT_CLASH_SETTINGS.mode,

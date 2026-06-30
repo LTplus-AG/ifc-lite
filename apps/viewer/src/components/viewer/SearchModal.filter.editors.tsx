@@ -112,6 +112,7 @@ export function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, valueSch
         <PredefinedTypeEditor
           values={rule.values}
           op={rule.op}
+          options={valueSchema?.predefinedTypes ?? NO_OPTIONS}
           onChange={(values, op) => onChange(Rule.predefinedType(values, op))}
         />
       )}
@@ -239,14 +240,27 @@ function SetRuleEditor({ values, op, options, onChange }: SetRuleEditorProps) {
 function PredefinedTypeEditor({
   values,
   op,
+  options,
   onChange,
 }: {
   values: string[];
   op: SetOp;
+  options: ReadonlyArray<string>;
   onChange: (values: string[], op: SetOp) => void;
 }) {
-  // Predefined types aren't materialised in the parser today — pick
-  // them via free-text. The user enters comma-separated values.
+  // Discovered predefined types -> a multi-select, identical to the IFC-type
+  // editor, so "is one of" / "is not one of" pick from real values. Falls back
+  // to comma-separated free-text when nothing was discovered yet. (#1462)
+  if (options.length > 0) {
+    return (
+      <SetRuleEditor
+        values={values}
+        op={op}
+        options={options.map((t) => ({ label: t, value: t }))}
+        onChange={onChange}
+      />
+    );
+  }
   const text = values.join(', ');
   return (
     <>

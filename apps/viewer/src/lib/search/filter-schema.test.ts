@@ -230,4 +230,30 @@ describe('discoverPropertyAndQuantitySchema — fallback pass via PropertyTable'
     // Unit is "" until on-demand extractors materialise it.
     assert.ok(quantities.every(([, unit]) => unit === ''));
   });
+
+  it('scopes psets to the selected IFC types - only those types\' sets (#1462)', () => {
+    const store = buildStore({
+      entities: [
+        { expressId: 1, type: 'IFCWALL', globalId: '', name: '' },
+        { expressId: 2, type: 'IFCCOVERING', globalId: '', name: '' },
+      ],
+      psetRows: [
+        { entityId: 1, psetName: 'Pset_WallCommon', propName: 'IsExternal' },
+        { entityId: 2, psetName: 'Pset_CoveringCommon', propName: 'FireRating' },
+        { entityId: 2, psetName: 'Pset_Tiling', propName: 'NominalThickness' },
+      ],
+    });
+    // Unscoped: both types' psets are present.
+    const all = discoverPropertyAndQuantitySchema(store);
+    assert.deepStrictEqual(
+      all.psets.map(([n]) => n).sort(),
+      ['Pset_CoveringCommon', 'Pset_Tiling', 'Pset_WallCommon'],
+    );
+    // Scoped to IfcCovering: only the covering psets, no Pset_WallCommon noise.
+    const scoped = discoverPropertyAndQuantitySchema(store, ['IfcCovering']);
+    assert.deepStrictEqual(
+      scoped.psets.map(([n]) => n).sort(),
+      ['Pset_CoveringCommon', 'Pset_Tiling'],
+    );
+  });
 });

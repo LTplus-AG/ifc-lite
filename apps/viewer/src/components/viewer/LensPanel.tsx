@@ -280,6 +280,7 @@ function RuleEditor({
   index,
   onChange,
   onRemove,
+  onDuplicate,
   discovered,
   onRequestDiscovery,
   isDragging,
@@ -295,6 +296,8 @@ function RuleEditor({
   index: number;
   onChange: (patch: Partial<LensRule>) => void;
   onRemove: () => void;
+  /** Clone this rule (criteria/action/color) directly below it. (#1460) */
+  onDuplicate: () => void;
   discovered: DiscoveredLensData | null;
   onRequestDiscovery: (categories: { properties?: boolean; quantities?: boolean; classifications?: boolean; materials?: boolean }) => void;
   isDragging?: boolean;
@@ -585,6 +588,14 @@ function RuleEditor({
         )}
 
         <button
+          onClick={onDuplicate}
+          className="text-zinc-400 hover:text-primary dark:text-zinc-500 dark:hover:text-primary p-0.5 flex-shrink-0"
+          title="Duplicate rule"
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </button>
+
+        <button
           onClick={onRemove}
           className="text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 p-0.5 flex-shrink-0"
           title="Remove rule"
@@ -785,6 +796,24 @@ function LensEditor({
     setRules(rules.filter((_, i) => i !== index));
   };
 
+  // Clone a rule's criteria/action/color directly below it, so building many
+  // similar rules (e.g. one value per color) doesn't restart the selectors each
+  // time. Deep-copies criteria and assigns a fresh id. (#1460)
+  const duplicateRule = (index: number) => {
+    setRules((prev) => {
+      const src = prev[index];
+      if (!src) return prev;
+      const copy: LensRule = {
+        ...src,
+        id: `rule-${Date.now()}-${prev.length}`,
+        criteria: { ...src.criteria },
+      };
+      const next = [...prev];
+      next.splice(index + 1, 0, copy);
+      return next;
+    });
+  };
+
   /** Check if a rule has sufficient criteria to be valid */
   const isRuleValid = (r: LensRule): boolean => {
     const c = r.criteria;
@@ -833,6 +862,7 @@ function LensEditor({
             index={i}
             onChange={(patch) => updateRule(i, patch)}
             onRemove={() => removeRule(i)}
+            onDuplicate={() => duplicateRule(i)}
             discovered={discovered}
             onRequestDiscovery={onRequestDiscovery}
             isDragging={dragIndex === i}

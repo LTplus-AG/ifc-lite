@@ -12,6 +12,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useViewerStore } from '@/store';
+import type { ClashFocusMode } from '@/store/slices/clashSlice';
 import {
   createClashEngine,
   rulesFromPresets,
@@ -78,8 +79,12 @@ function contactLineList(clusters: readonly SharedFaceCluster[]): number[] {
  * - `highlight`: everything stays visible, the pair is just selected/framed;
  * - `isolate`:   everything else is hidden;
  * - `ghost`:     everything else fades to translucent X-Ray context.
+ *
+ * Canonical definition lives in the clash store slice (so the panel's choice
+ * persists across panel switches); imported at the top + re-exported here for
+ * existing consumers. (#1464)
  */
-export type ClashFocusMode = 'highlight' | 'isolate' | 'ghost';
+export type { ClashFocusMode };
 
 /** How clashes collapse into BCF topics. `storey` is omitted — Clash has no
  *  storey, so it degrades to `rule` (see grouping.ts) and would only confuse. */

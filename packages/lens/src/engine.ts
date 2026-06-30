@@ -261,7 +261,11 @@ function extractAutoColorValues(
     const name = c.name?.trim();
     const key = code || name || '';
     if (key === '') return [];
-    const label = code && name && name !== c.identification ? `${code} (${name})` : key;
+    // Append the name only when it adds information beyond the code: skip it when
+    // it merely repeats the bare identification OR the full "System: Code" string
+    // (some exports store the whole code in the name attribute).
+    const nameAddsInfo = !!name && name !== c.identification && name !== code;
+    const label = code && nameAddsInfo ? `${code} (${name})` : key;
     return [{ key, label }];
   }
 

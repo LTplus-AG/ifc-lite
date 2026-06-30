@@ -393,7 +393,7 @@ describe('evaluateAutoColorLens', () => {
     (provider as Record<string, unknown>).getClassifications = (id: number) => {
       // Code only, no name.
       if (id === 1) return [{ system: 'Uniclass', identification: 'EF_25_10' }];
-      // Name repeats the code -> no redundant parenthetical.
+      // Name repeats the bare code -> no redundant parenthetical.
       if (id === 2) return [{ system: 'Uniclass', identification: 'EF_25_30', name: 'EF_25_30' }];
       return [];
     };
@@ -403,6 +403,20 @@ describe('evaluateAutoColorLens', () => {
 
     const labels = result.legend.map((e) => e.name).sort();
     expect(labels).toEqual(['Uniclass: EF_25_10', 'Uniclass: EF_25_30']);
+  });
+
+  it('drops the parenthetical when the name repeats the full System: Code string (#1469)', () => {
+    const entities = [{ id: 1, type: 'IfcWall' }];
+    const provider = createMockProvider(entities);
+    (provider as Record<string, unknown>).getClassifications = () => [
+      // Some exports store the whole "System: Code" string in the name attribute.
+      { system: 'Uniclass', identification: 'EF_25_10', name: 'Uniclass: EF_25_10' },
+    ];
+
+    const spec: AutoColorSpec = { source: 'classification', psetName: 'Uniclass' };
+    const result = evaluateAutoColorLens(spec, provider);
+
+    expect(result.legend.map((e) => e.name)).toEqual(['Uniclass: EF_25_10']);
   });
 
   it('should honor psetName as a classification-system filter for multi-system entities', () => {

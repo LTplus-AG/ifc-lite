@@ -776,10 +776,14 @@ function LensEditor({
     setDragOverIndex(null);
   };
 
+  // Unique rule id: a random suffix (not the array length) so add / duplicate /
+  // remove interleaving within one millisecond can never collide React keys. (#1460)
+  const newRuleId = () => `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
   const addRule = () => {
     const colorIndex = rules.length % LENS_PALETTE.length;
     setRules([...rules, {
-      id: `rule-${Date.now()}-${rules.length}`,
+      id: newRuleId(),
       name: 'New Rule',
       enabled: true,
       criteria: { type: 'ifcType', ifcType: '' },
@@ -798,16 +802,14 @@ function LensEditor({
 
   // Clone a rule's criteria/action/color directly below it, so building many
   // similar rules (e.g. one value per color) doesn't restart the selectors each
-  // time. Deep-copies criteria and assigns a fresh id. A random suffix (not the
-  // array length) guarantees uniqueness even when add/duplicate/remove interleave
-  // within the same millisecond, so React keys never collide. (#1460)
+  // time. Deep-copies criteria and assigns a fresh unique id. (#1460)
   const duplicateRule = (index: number) => {
     setRules((prev) => {
       const src = prev[index];
       if (!src) return prev;
       const copy: LensRule = {
         ...src,
-        id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: newRuleId(),
         criteria: { ...src.criteria },
       };
       const next = [...prev];

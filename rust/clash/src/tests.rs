@@ -415,12 +415,12 @@ fn crossing_hard_bounds_are_tight() {
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Hard);
 
-    // Element-AABB overlap (what the old code returned as `bounds`).
-    let overlap_z = 1.0_f64; // z[-0.5,0.5] for both bars
-    let bounds_z = rec.bounds[5] - rec.bounds[2];
+    // Tight along the long bar: A spans x[-5,5] (10 m), but the contact is only
+    // the local crossing (~B's 1 m width), so the box must NOT span the whole bar.
+    let bounds_x = rec.bounds[3] - rec.bounds[0];
     assert!(
-        bounds_z < overlap_z,
-        "contact bounds must be tighter in z than the element overlap ({bounds_z} vs {overlap_z})"
+        bounds_x < 2.0,
+        "contact bounds must be local along the long bar, not its full length (got {bounds_x})"
     );
 
     // The tight bounds must stay inside the element-OVERLAP AABB on every axis,

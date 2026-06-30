@@ -54,6 +54,13 @@ export function testPair(
   // than the whole-element AABB overlap (#1362 / #1402).
   const cMin: Vec3 = [Infinity, Infinity, Infinity];
   const cMax: Vec3 = [-Infinity, -Infinity, -Infinity];
+  // Near-contact AABB for coplanar/flush overlaps (no triangle crossing): the
+  // local region where surfaces actually touch, so the hard box is the contact
+  // patch (e.g. a wall corner) rather than the whole-element AABB intersection,
+  // which for angled members spans nearly the full member length (#1362/#1402).
+  const ncMin: Vec3 = [Infinity, Infinity, Infinity];
+  const ncMax: Vec3 = [-Infinity, -Infinity, -Infinity];
+  let ncN = 0;
   let minDist = Infinity;
   let closestA: Vec3 = elA.bounds.min as Vec3;
   let closestB: Vec3 = elB.bounds.min as Vec3;
@@ -76,13 +83,25 @@ export function testPair(
           if (c[i] < cMin[i]) cMin[i] = c[i];
           if (c[i] > cMax[i]) cMax[i] = c[i];
         }
-      } else if (!intersects) {
-        // Distance only matters while we still might be a clearance/touch case.
+      } else {
+        // Not a crossing: measure the gap (drives clearance/touch) and, when the
+        // pair is touching (within tolerance), accumulate it into the contact
+        // region. We do this even after a crossing was found, because coincident
+        // faces of flush members register as touches (not crossings) and carry
+        // most of the real contact area.
         const d = triTriDistance(s0, s1, s2, l0, l1, l2);
         if (d.dist < minDist) {
           minDist = d.dist;
           closestA = d.pA;
           closestB = d.pB;
+        }
+        if (d.dist <= tolerance) {
+          const cp = mid(d.pA, d.pB);
+          ncN += 1;
+          for (let i = 0; i < 3; i += 1) {
+            if (cp[i] < ncMin[i]) ncMin[i] = cp[i];
+            if (cp[i] > ncMax[i]) ncMax[i] = cp[i];
+          }
         }
       }
     }
@@ -90,17 +109,26 @@ export function testPair(
 
   const overlap = overlapBounds(elA.bounds, elB.bounds);
 
+  // Tight contact region: the union of the genuine triangle crossings (cMin/cMax)
+  // and the coplanar/flush touching pairs within tolerance (ncMin/ncMax), clamped
+  // to the element overlap. Crossings alone miss coincident faces (which register
+  // as touches, not crossings) so flush members reported only a partial, mis-
+  // placed patch; near-contacts alone miss angled crossings. Falls back to the
+  // overlap when neither was captured (#1362 / #1402).
+  const tMin: Vec3 = [Infinity, Infinity, Infinity];
+  const tMax: Vec3 = [-Infinity, -Infinity, -Infinity];
+  let tN = 0;
+  if (contactN > 0) { for (let i = 0; i < 3; i += 1) { if (cMin[i] < tMin[i]) tMin[i] = cMin[i]; if (cMax[i] > tMax[i]) tMax[i] = cMax[i]; } tN += 1; }
+  if (ncN > 0) { for (let i = 0; i < 3; i += 1) { if (ncMin[i] < tMin[i]) tMin[i] = ncMin[i]; if (ncMax[i] > tMax[i]) tMax[i] = ncMax[i]; } tN += 1; }
+  const contactBounds = tN > 0 ? overlapBounds({ min: tMin, max: tMax }, overlap) : overlap;
+
   if (intersects) {
     const point: Vec3 = contactN > 0
       ? [contactSumX / contactN, contactSumY / contactN, contactSumZ / contactN]
       : center(overlap);
-    // Tight contact AABB (Bug B): the box around the actual triangle crossings,
-    // clamped to the element overlap so it can never exceed it. Falls back to the
-    // overlap when (defensively) no contact point was recorded.
-    const bounds = contactN > 0 ? overlapBounds({ min: cMin, max: cMax }, overlap) : overlap;
     // Phase-0 penetration estimate from AABB overlap; exact depth lands in Rust.
     const penetration = Math.max(0, -signedGap(elA.bounds, elB.bounds));
-    return { status: 'hard', distance: -penetration, point, bounds };
+    return { status: 'hard', distance: -penetration, point, bounds: contactBounds };
   }
 
   // Fully-enclosed solid: no surface crossing, but one element's AABB is wholly
@@ -146,16 +174,15 @@ export function testPair(
         (triA.containsPoint(probeCentroid) && triB.containsPoint(probeCentroid)) ||
         (triA.containsPoint(probeOverlap) && triB.containsPoint(probeOverlap))
       ) {
-        // The shared volume of a coplanar/flush overlap IS the element-AABB
-        // intersection, and it is tight here: skewed false-touches were already
-        // suppressed above, so only genuine overlaps reach this point. (For a
-        // flush overlap the two nearest-surface points are near-coincident, so
-        // boxing them would yield a degenerate, invisible region box — #1402.)
+        // Report the tight contact region (the touching patch where the surfaces
+        // actually coincide), clamped to the element overlap — not the whole-
+        // element AABB intersection, which for angled members spans nearly the
+        // full member length and sits away from the real contact (#1362/#1402).
         return {
           status: 'hard',
           distance: gap,
           point: mid(closestA, closestB),
-          bounds: overlap,
+          bounds: contactBounds,
         };
       }
       // Only a face touch (no shared volume): fall through to the touch handling

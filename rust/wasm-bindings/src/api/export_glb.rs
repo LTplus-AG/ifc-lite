@@ -41,6 +41,10 @@ impl IfcAPI {
             isolated: isolated.to_vec(),
             hidden_types,
             lit: lit.unwrap_or(true),
+            // Federation (modelId stamping) is a server-side concern; the viewer's
+            // wasm export path is single-model. Add a parameter here if/when the
+            // browser needs to federate.
+            model_id: None,
         };
         ifc_lite_export::export_glb(content, &opts)
     }

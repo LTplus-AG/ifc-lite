@@ -33,6 +33,10 @@ pub struct GltfOptions {
     /// render flat with just the apparent base colour (the historical behaviour,
     /// kept for colour-accurate exports). Default `true`. (#1321)
     pub lit: bool,
+    /// Per-model id stamped into every node's `extras.modelId` (federation: lets a
+    /// host distinguish elements from different models that share express-id space).
+    /// `None` ⇒ single model, no `modelId` emitted. Requires `include_metadata`.
+    pub model_id: Option<String>,
 }
 
 impl Default for GltfOptions {
@@ -43,6 +47,7 @@ impl Default for GltfOptions {
             hidden: Vec::new(),
             hidden_types: Vec::new(),
             lit: true,
+            model_id: None,
         }
     }
 }
@@ -515,13 +520,30 @@ fn push_mesh(
     mesh_idx
 }
 
-/// Per-node `extras` (`expressId` / `ifcType`) when metadata is requested.
-fn node_extras(include_metadata: bool, express_id: u32, ifc_type: &str) -> Option<Value> {
-    if include_metadata {
-        Some(json!({ "expressId": express_id, "ifcType": ifc_type }))
-    } else {
-        None
+/// Per-node `extras` (`expressId` / `ifcType`, plus `GlobalId` / `modelId` when
+/// available) when metadata is requested. `GlobalId` is the IFC EXPRESS attribute
+/// (PascalCase); the others are synthetic, hence camelCase.
+fn node_extras(
+    include_metadata: bool,
+    express_id: u32,
+    ifc_type: &str,
+    global_id: Option<&str>,
+    model_id: Option<&str>,
+) -> Option<Value> {
+    if !include_metadata {
+        return None;
     }
+    let mut extras = json!({ "expressId": express_id, "ifcType": ifc_type });
+    let obj = extras.as_object_mut().expect("json! built an object");
+    if let Some(g) = global_id {
+        // EXPRESS PascalCase for the IFC attribute, per the export naming convention
+        // (AGENTS.md). `expressId`/`ifcType`/`modelId` are synthetic, hence camelCase.
+        obj.insert("GlobalId".to_string(), json!(g));
+    }
+    if let Some(m) = model_id {
+        obj.insert("modelId".to_string(), json!(m));
+    }
+    Some(extras)
 }
 
 /// Export the render geometry in `content` as a binary **GLB**.
@@ -535,6 +557,9 @@ pub fn export_glb(content: &[u8], opts: &GltfOptions) -> Vec<u8> {
 pub struct MeshView<'a> {
     pub express_id: u32,
     pub ifc_type: &'a str,
+    /// IFC `GlobalId` (GUID) of this element, when known. `None` on the
+    /// from-meshes path, which carries only numeric express ids.
+    pub global_id: Option<&'a str>,
     pub positions: &'a [f32],
     pub normals: &'a [f32],
     pub indices: &'a [u32],
@@ -575,6 +600,7 @@ fn view_ok(v: &MeshView) -> bool {
 fn assemble_glb(
     views: &[MeshView],
     include_metadata: bool,
+    model_id: Option<&str>,
     lit: bool,
     rtc_zup: [f64; 3],
 ) -> (Vec<u8>, GltfStats) {
@@ -729,7 +755,7 @@ fn assemble_glb(
             children: None,
             translation,
             matrix: None,
-            extras: node_extras(include_metadata, mesh.express_id, mesh.ifc_type),
+            extras: node_extras(include_metadata, mesh.express_id, mesh.ifc_type, mesh.global_id, model_id),
         });
         element_node_indices.push(node_idx);
     }
@@ -764,6 +790,7 @@ fn assemble_glb(
             let tmpl_mesh = MeshView {
                 express_id: t_view.express_id,
                 ifc_type: t_view.ifc_type,
+                global_id: t_view.global_id,
                 positions: t_view.positions,
                 normals: t_view.normals,
                 indices: t_view.indices,
@@ -791,7 +818,7 @@ fn assemble_glb(
                     children: None,
                     translation: None,
                     matrix: Some(matrix),
-                    extras: node_extras(include_metadata, occ_view.express_id, occ_view.ifc_type),
+                    extras: node_extras(include_metadata, occ_view.express_id, occ_view.ifc_type, occ_view.global_id, model_id),
                 });
                 element_node_indices.push(node_idx);
             }
@@ -918,6 +945,7 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
         .map(|(m, y)| MeshView {
             express_id: m.express_id,
             ifc_type: &m.ifc_type,
+            global_id: m.global_id.as_deref(),
             positions: &y.positions,
             normals: &y.normals,
             indices: &y.indices,
@@ -931,7 +959,7 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
     // RTC / site-local offset the baker subtracted (Z-up); the instancing path needs
     // it to place occurrences in the same POST-RTC frame the baked geometry lives in.
     let rtc_zup = result.metadata.coordinate_info.origin_shift;
-    assemble_glb(&views, opts.include_metadata, opts.lit, rtc_zup)
+    assemble_glb(&views, opts.include_metadata, opts.model_id.as_deref(), opts.lit, rtc_zup)
 }
 
 /// Assemble a GLB from already-produced meshes (the viewer's MeshData — **no re-meshing**).
@@ -986,6 +1014,7 @@ pub fn export_glb_from_meshes(
         views.push(MeshView {
             express_id: express_ids.get(i).copied().unwrap_or(0),
             ifc_type: "",
+            global_id: None,
             positions: pslice,
             normals: nslice,
             indices: islice,
@@ -1000,7 +1029,7 @@ pub fn export_glb_from_meshes(
     }
     // From-meshes geometry is already absolute Y-up and never instances (no
     // side-channel), so there is no RTC frame to compensate.
-    assemble_glb(&views, include_metadata, lit, [0.0, 0.0, 0.0])
+    assemble_glb(&views, include_metadata, None, lit, [0.0, 0.0, 0.0])
 }
 
 /// Pack a glTF JSON document and binary buffer into a GLB container (little-endian).
@@ -1264,6 +1293,52 @@ mod tests {
         let a = export_glb(&content, &GltfOptions { include_metadata: true, ..Default::default() });
         let b = export_glb(&content, &GltfOptions { include_metadata: true, ..Default::default() });
         assert_eq!(a, b, "repeated GLB exports must be byte-identical");
+    }
+
+    #[test]
+    fn nodes_carry_global_id_and_model_id() {
+        // From-bytes export with metadata + a model id: every element node carries
+        // `modelId`, and elements with an IFC GlobalId carry `GlobalId`.
+        let content = fixture("ara3d/duplex.ifc");
+        let opts = GltfOptions {
+            include_metadata: true,
+            model_id: Some("model-42".to_string()),
+            ..GltfOptions::default()
+        };
+        let (glb, _stats) = export_glb_with_stats(&content, &opts);
+        let (json, _bin) = parse_glb(&glb);
+        let nodes = json["nodes"].as_array().unwrap();
+
+        let mut saw_global = false;
+        let mut element_nodes = 0;
+        for n in nodes {
+            let Some(extras) = n.get("extras") else { continue };
+            if extras.get("expressId").is_none() {
+                continue; // structural node (e.g. root), not an element
+            }
+            element_nodes += 1;
+            assert_eq!(
+                extras["modelId"].as_str(),
+                Some("model-42"),
+                "every element node carries the model id"
+            );
+            if let Some(g) = extras.get("GlobalId").and_then(|v| v.as_str()) {
+                assert!(!g.is_empty(), "GlobalId is non-empty when present");
+                saw_global = true;
+            }
+        }
+        assert!(element_nodes > 0, "expected element nodes with metadata");
+        assert!(saw_global, "at least one node carries an IFC GlobalId");
+
+        // Without a model id, no `modelId` key is emitted.
+        let plain = GltfOptions { include_metadata: true, ..GltfOptions::default() };
+        let (glb2, _) = export_glb_with_stats(&content, &plain);
+        let (json2, _) = parse_glb(&glb2);
+        for n in json2["nodes"].as_array().unwrap() {
+            if let Some(extras) = n.get("extras") {
+                assert!(extras.get("modelId").is_none(), "no modelId without a model id");
+            }
+        }
     }
 
     #[test]

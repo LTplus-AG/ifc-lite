@@ -12,9 +12,11 @@
 //! zero (local-frame feature off) the output is byte-equivalent to the old TS path.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{collate_refs, InstanceMeshRef, InstanceMeta, InstanceTemplate};
-use ifc_lite_processing::{process_geometry, MeshData};
+use ifc_lite_processing::{process_geometry, process_geometry_with_index, MeshData, ProcessingResult};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -926,7 +928,22 @@ fn assemble_glb(
 
 /// Like [`export_glb`] but also returns coverage stats. Meshes the model from bytes.
 pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
-    let result = process_geometry(content);
+    export_glb_from_result(process_geometry(content), opts)
+}
+
+/// Like [`export_glb_with_stats`] but reuses a pre-built entity index — for a caller
+/// that also runs the attribute pass ([`crate::stream_export_model_with_index`]) over
+/// the same bytes, `build_entity_index` once and share it across both. `index` MUST be
+/// built from the same `content`; output is byte-identical to `export_glb_with_stats`.
+pub fn export_glb_with_stats_with_index(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Arc<EntityIndex>,
+) -> (Vec<u8>, GltfStats) {
+    export_glb_from_result(process_geometry_with_index(content, index), opts)
+}
+
+fn export_glb_from_result(result: ProcessingResult, opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
     // `process_geometry` emits the producer-native IFC **Z-up** frame (the Z-up→Y-up
     // swap normally happens at the wasm FFI, which this path never crosses). glTF
     // mandates +Y-up, so convert each visible mesh to Y-up — positions/normals
@@ -1099,6 +1116,19 @@ mod tests {
         assert_eq!(&glb[json_end + 4..json_end + 8], b"BIN\0", "BIN tag");
         let bin = glb[json_end + 8..json_end + 8 + bin_len].to_vec();
         (json, bin)
+    }
+
+    #[test]
+    fn with_index_glb_is_byte_identical() {
+        // The shared-index path must emit byte-for-byte the same GLB as the
+        // self-indexing path — it only injects an index equal to the one
+        // `export_glb_with_stats` builds internally. Guards the two from drifting.
+        let bytes = fixture("ara3d/duplex.ifc");
+        let opts = GltfOptions::default();
+        let (plain, _) = export_glb_with_stats(&bytes, &opts);
+        let idx = Arc::new(crate::build_entity_index(&bytes));
+        let (shared, _) = export_glb_with_stats_with_index(&bytes, &opts, idx);
+        assert_eq!(plain, shared, "shared-index GLB must equal self-indexed GLB");
     }
 
     #[test]

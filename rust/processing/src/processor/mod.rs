@@ -114,7 +114,9 @@ pub struct ProcessingResult {
 }
 
 /// Controls the tradeoff between first-frame latency and richer upfront metadata.
-#[derive(Debug, Clone, Copy)]
+// Not `Copy`: `entity_index` holds an `Arc`. Every construction either moves the
+// struct into a process call once or `..Default::default()`s it, so `Clone` suffices.
+#[derive(Debug, Clone)]
 pub struct StreamingOptions {
     /// Batch size used for the very first emitted chunk.
     pub initial_batch_size: usize,
@@ -137,6 +139,14 @@ pub struct StreamingOptions {
     /// (`symbolic.rs`) deliberately ignores the level — symbols are
     /// resolution-independent line work.
     pub tessellation_quality: TessellationQuality,
+    /// Pre-built entity index to reuse instead of scanning `content` again. A caller
+    /// that runs both the geometry pass and a second pass over the same bytes (e.g. a
+    /// server emitting GLB *and* extracting properties) can `build_entity_index`
+    /// once and inject it here, skipping the duplicate SIMD scan. `None` builds it
+    /// internally, exactly as before. The index MUST come from
+    /// `build_entity_index(content)` for the *same* `content`, or decoding will read
+    /// the wrong byte ranges.
+    pub entity_index: Option<Arc<EntityIndex>>,
 }
 
 impl Default for StreamingOptions {
@@ -150,6 +160,7 @@ impl Default for StreamingOptions {
             emit_quick_metadata_bootstrap: false,
             retain_emitted_meshes: true,
             tessellation_quality: TessellationQuality::default(),
+            entity_index: None,
         }
     }
 }
@@ -279,6 +290,31 @@ where
     T: AsRef<[u8]> + ?Sized,
 {
     process_geometry_filtered(content.as_ref(), OpeningFilterMode::Default)
+}
+
+/// Like [`process_geometry`] but reuses a pre-built entity index instead of scanning
+/// `content` for one. For a caller that also runs a second pass over the same bytes
+/// (e.g. pairing GLB export with attribute extraction): build the index once with
+/// `ifc_lite_core::build_entity_index` and share it across both, skipping the
+/// duplicate scan. `index` MUST be built from the same `content`. Output is identical
+/// to `process_geometry(content)`.
+pub fn process_geometry_with_index<T>(content: &T, index: Arc<EntityIndex>) -> ProcessingResult
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    process_geometry_streaming_filtered_with_options(
+        content.as_ref(),
+        OpeningFilterMode::Default,
+        StreamingOptions {
+            initial_batch_size: usize::MAX,
+            throughput_batch_size: usize::MAX,
+            entity_index: Some(index),
+            ..StreamingOptions::default()
+        },
+        |_, _, _| {},
+        |_| {},
+        |_| {},
+    )
 }
 
 /// Process IFC content with parallel geometry extraction and emit batches as they complete.
@@ -412,8 +448,12 @@ pub fn process_geometry_streaming_filtered_with_options(
         "Starting IFC geometry processing"
     );
 
-    // Build entity index (fast SIMD-accelerated single pass)
-    let entity_index = Arc::new(build_entity_index(content));
+    // Build the entity index (fast SIMD-accelerated single pass), unless a caller
+    // injected one built from the same `content` to share across passes.
+    let entity_index = options
+        .entity_index
+        .clone()
+        .unwrap_or_else(|| Arc::new(build_entity_index(content)));
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
     tracing::debug!("Built entity index");
 

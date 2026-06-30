@@ -9,9 +9,11 @@
 //! directly-attached `IfcRelDefinesByProperties` property/quantity sets.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use ifc_lite_core::{
-    build_entity_index, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcType,
+    build_entity_index, AttributeValue, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner,
+    IfcType,
 };
 
 /// A single property value (`IfcPropertySingleValue` and friends).
@@ -217,15 +219,28 @@ pub fn build_export_model(content: &[u8]) -> ExportModel {
 /// plus the property side-map (both O(products)), so a model with tens of millions
 /// of entities extracts in a few GB instead of exhausting memory. Output is the
 /// caller's responsibility to stream onwards (e.g. to S3/Parquet) and drop.
-pub fn stream_export_model(content: &[u8], mut f: impl FnMut(EntityRow)) {
+pub fn stream_export_model(content: &[u8], f: impl FnMut(EntityRow)) {
+    let entity_index = Arc::new(build_entity_index(content));
+    stream_export_model_with_index(content, &entity_index, f);
+}
+
+/// Like [`stream_export_model`] but reuses a pre-built entity index. A caller also
+/// running the geometry pass ([`crate::export_glb_with_stats_with_index`]) over the
+/// same bytes builds the index once with [`build_entity_index`] and shares it across
+/// both, skipping the duplicate scan. `entity_index` MUST be built from the same
+/// `content`; output is identical to `stream_export_model`.
+pub fn stream_export_model_with_index(
+    content: &[u8],
+    entity_index: &Arc<EntityIndex>,
+    mut f: impl FnMut(EntityRow),
+) {
     // Property resolution memoizes the shared `IfcPropertySet`/leaf entities for
     // speed. Cap that cache so it can't grow without bound across millions of
     // products; clearing only forces a re-decode of a shared set, never affects
     // correctness.
     const PSET_CACHE_CAP: usize = 1 << 18; // 262_144 entries
 
-    let entity_index = build_entity_index(content);
-    let mut decoder = EntityDecoder::with_index(content, entity_index);
+    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
 
     // Pass 1 — object → attached property/quantity definitions (IfcRelDefinesByProperties).
     // IfcRelDefinesByProperties: [GlobalId, OwnerHistory, Name, Description,
@@ -375,6 +390,26 @@ mod tests {
         stream_export_model(&bytes, |r| streamed.push(r));
         assert!(!streamed.is_empty(), "expected products");
         assert_eq!(collected, streamed, "stream and collect must agree row-for-row");
+    }
+
+    #[test]
+    fn stream_with_index_matches_plain() {
+        // The injected-index path shares one index across passes; it must yield
+        // identical rows to the self-indexing path. Guards the two from drifting.
+        let rel = "ara3d/duplex.ifc";
+        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
+        if !std::path::Path::new(&path).exists() {
+            eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
+            return;
+        }
+        let bytes = fixture(rel);
+        let mut plain = Vec::new();
+        stream_export_model(&bytes, |r| plain.push(r));
+        let idx = Arc::new(build_entity_index(&bytes));
+        let mut shared = Vec::new();
+        stream_export_model_with_index(&bytes, &idx, |r| shared.push(r));
+        assert!(!plain.is_empty(), "expected products");
+        assert_eq!(plain, shared, "injected-index rows must match self-indexed rows");
     }
 
     #[test]

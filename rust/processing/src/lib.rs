@@ -23,7 +23,7 @@ pub use georeferencing::{extract_georeferencing, Georeferencing};
 pub use ifc_lite_geometry::TessellationQuality;
 pub use processor::{
     convert_mesh_to_site_local, process_geometry, process_geometry_filtered,
-    process_geometry_filtered_with_quality,
+    process_geometry_filtered_with_quality, process_geometry_with_index,
     process_geometry_streaming, process_geometry_streaming_filtered,
     process_geometry_streaming_filtered_with_options, process_geometry_streaming_with_options,
     process_geometry_streaming_with_options_and_bootstrap,

@@ -1292,6 +1292,12 @@ fn build_gltf(
 /// materializes all of its `MeshData` at once — the wasm-OOM fix. Small models
 /// keep the in-memory instanced assembler (byte-identical to before).
 pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
+    // Quantized exports stay on the in-memory assembler regardless of size:
+    // quantization is a NATIVE-ONLY opt-in (the wasm binding hardcodes
+    // `quantize: false`, so the browser path - the one with the hard heap
+    // ceiling - always gets the bounded assembler), and native large-quantized
+    // exports are a working, measured path (multi-buffer glTF + quantization).
+    // Teaching the bounded assembler quantized layout is a tracked follow-up.
     if !opts.quantize && content.len() >= glb_stream_threshold_bytes() {
         return export_glb_streaming_bounded(content, opts);
     }
@@ -2017,7 +2023,11 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
                 assert!(
                     meta.express_id == m.express_id
                         && meta.nverts as usize * 3 == y.positions.len()
-                        && meta.nidx as usize == y.indices.len(),
+                        && meta.nidx as usize == y.indices.len()
+                        // Content-exact: an element can emit multiple submeshes
+                        // with identical counts, so id+counts alone could let a
+                        // reordered stream write into the wrong offsets.
+                        && meta.key == geom_color_key(&y.positions, &y.normals, &y.indices, m.color),
                     "GLB streaming pass 2 diverged from pass 1 at mesh {cursor} \
                      (expected #{} {}v/{}i, got #{} {}v/{}i); the mesh stream is not deterministic",
                     meta.express_id, meta.nverts, meta.nidx,

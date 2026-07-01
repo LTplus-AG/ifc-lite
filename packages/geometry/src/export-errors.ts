@@ -18,5 +18,9 @@ export const NO_RENDER_GEOMETRY = 'NO_RENDER_GEOMETRY';
  * error thrown by the wasm boundary (e.g. `exportGlb` on a geometry-less or
  * fully filtered-out model). */
 export function isNoRenderGeometryError(error: unknown): boolean {
-  return error instanceof Error && error.message.startsWith(NO_RENDER_GEOMETRY);
+  return (
+    error instanceof Error &&
+    (error.message === NO_RENDER_GEOMETRY ||
+      error.message.startsWith(`${NO_RENDER_GEOMETRY}:`))
+  );
 }

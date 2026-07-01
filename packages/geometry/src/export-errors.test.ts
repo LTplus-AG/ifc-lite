@@ -17,5 +17,7 @@ describe('isNoRenderGeometryError', () => {
     expect(isNoRenderGeometryError('NO_RENDER_GEOMETRY')).toBe(false);
     expect(isNoRenderGeometryError(undefined)).toBe(false);
     expect(isNoRenderGeometryError(new Error(`prefix ${NO_RENDER_GEOMETRY}`))).toBe(false);
+    expect(isNoRenderGeometryError(new Error(`${NO_RENDER_GEOMETRY}_OTHER: x`))).toBe(false);
+    expect(isNoRenderGeometryError(new Error(NO_RENDER_GEOMETRY))).toBe(true);
   });
 });

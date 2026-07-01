@@ -20,11 +20,9 @@ export async function writeOutput(content: string | Uint8Array, outPath?: string
     process.stderr.write(`Written to ${outPath}\n`);
   } else {
     process.stdout.write(content);
-    const endsWithNewline =
-      typeof content === 'string'
-        ? content.endsWith('\n')
-        : content.length > 0 && content[content.length - 1] === 0x0a;
-    if (!endsWithNewline) process.stdout.write('\n');
+    // Convenience newline for human-readable string output only; byte output
+    // stays verbatim so `--format step > out.ifc` matches the exporter bytes.
+    if (typeof content === 'string' && !content.endsWith('\n')) process.stdout.write('\n');
   }
 }
 

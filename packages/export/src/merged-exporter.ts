@@ -1313,27 +1313,34 @@ export class MergedExporter {
     skipEntityIds: Set<number>,
     mergeModes: Pick<MergeSetup, 'mergeSites' | 'mergeBuildings' | 'mergeStoreys'>,
   ): void {
-    // Unify IfcSite
+    // Unify IfcSite. matchedFirstSites guards against two of this model's
+    // sites (e.g. duplicate/identically-named) both matching the same
+    // first-model target — only the first claims it, the second is kept as
+    // its own root instead of silently losing its spatial sub-tree.
     const sites = this.findEntitiesByType(dataStore, 'IFCSITE');
+    const matchedFirstSites = new Set<number>();
     for (const id of sites) {
       const match = this.matchRootContainer(
         id, dataStore, mergeModes.mergeSites, sites.length,
-        lookup.sitesByName, lookup.siteIds,
+        lookup.sitesByName, lookup.siteIds, matchedFirstSites,
       );
       if (match !== undefined) {
+        matchedFirstSites.add(match);
         sharedRemap.set(id, match + firstModelOffset);
         skipEntityIds.add(id);
       }
     }
 
-    // Unify IfcBuilding
+    // Unify IfcBuilding — same already-matched guard as sites.
     const buildings = this.findEntitiesByType(dataStore, 'IFCBUILDING');
+    const matchedFirstBuildings = new Set<number>();
     for (const id of buildings) {
       const match = this.matchRootContainer(
         id, dataStore, mergeModes.mergeBuildings, buildings.length,
-        lookup.buildingsByName, lookup.buildingIds,
+        lookup.buildingsByName, lookup.buildingIds, matchedFirstBuildings,
       );
       if (match !== undefined) {
+        matchedFirstBuildings.add(match);
         sharedRemap.set(id, match + firstModelOffset);
         skipEntityIds.add(id);
       }
@@ -1387,6 +1394,12 @@ export class MergedExporter {
    * - `'single'`: ignore name — unify iff both models contribute exactly one.
    * - `'by-name'`: name match only, no single-instance fallback.
    * - omitted: name match, else single-instance fallback (pre-existing heuristic).
+   *
+   * `matchedFirst` excludes first-model targets already claimed by an earlier
+   * entity in this same model's loop — without it, two of this model's sites
+   * (or buildings) sharing a name/being the sole instance would both resolve
+   * to the same target, and the second would be dropped (skipped + remapped)
+   * rather than kept as its own root.
    */
   private matchRootContainer(
     id: number,
@@ -1395,12 +1408,18 @@ export class MergedExporter {
     countInThisModel: number,
     firstModelByName: Map<string, number>,
     firstModelIds: number[],
+    matchedFirst: Set<number>,
   ): number | undefined {
-    const bySingle = () =>
-      countInThisModel === 1 && firstModelIds.length === 1 ? firstModelIds[0] : undefined;
+    const bySingle = () => {
+      if (countInThisModel !== 1 || firstModelIds.length !== 1) return undefined;
+      const candidate = firstModelIds[0];
+      return matchedFirst.has(candidate) ? undefined : candidate;
+    };
     const byName = () => {
       const name = this.extractEntityName(id, dataStore);
-      return name ? firstModelByName.get(name.toLowerCase()) : undefined;
+      if (!name) return undefined;
+      const candidate = firstModelByName.get(name.toLowerCase());
+      return candidate !== undefined && !matchedFirst.has(candidate) ? candidate : undefined;
     };
 
     if (mergeMode === 'single') return bySingle();

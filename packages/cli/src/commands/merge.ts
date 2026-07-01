@@ -43,14 +43,27 @@ export async function mergeCommand(args: string[]): Promise<void> {
 
   // How IfcSite/IfcBuilding/IfcBuildingStorey are matched across models
   // (mirrors IfcOpenShell/BlenderBIM's "Merge Projects" recipe). Omitted keeps
-  // MergedExporter's pre-existing combined heuristic.
+  // MergedExporter's pre-existing combined heuristic. getFlag() returns
+  // undefined both when a flag is absent AND when it's the last arg with no
+  // value, so check presence separately — otherwise `merge a.ifc b.ifc --out
+  // x.ifc --merge-sites` (trailing, valueless) would silently fall back to
+  // the default instead of erroring.
+  if (hasFlag(args, '--merge-sites') && getFlag(args, '--merge-sites') === undefined) {
+    fatal(`--merge-sites requires a value: one of ${ROOT_CONTAINER_MODES.join(', ')}`);
+  }
   const mergeSitesFlag = getFlag(args, '--merge-sites') as RootContainerMode | undefined;
   if (mergeSitesFlag !== undefined && !ROOT_CONTAINER_MODES.includes(mergeSitesFlag)) {
     fatal(`--merge-sites must be one of: ${ROOT_CONTAINER_MODES.join(', ')}`);
   }
+  if (hasFlag(args, '--merge-buildings') && getFlag(args, '--merge-buildings') === undefined) {
+    fatal(`--merge-buildings requires a value: one of ${ROOT_CONTAINER_MODES.join(', ')}`);
+  }
   const mergeBuildingsFlag = getFlag(args, '--merge-buildings') as RootContainerMode | undefined;
   if (mergeBuildingsFlag !== undefined && !ROOT_CONTAINER_MODES.includes(mergeBuildingsFlag)) {
     fatal(`--merge-buildings must be one of: ${ROOT_CONTAINER_MODES.join(', ')}`);
+  }
+  if (hasFlag(args, '--merge-storeys') && getFlag(args, '--merge-storeys') === undefined) {
+    fatal(`--merge-storeys requires a value: one of ${STOREY_MODES.join(', ')}`);
   }
   const mergeStoreysFlag = getFlag(args, '--merge-storeys') as StoreyMode | undefined;
   if (mergeStoreysFlag !== undefined && !STOREY_MODES.includes(mergeStoreysFlag)) {

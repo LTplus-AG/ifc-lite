@@ -87,6 +87,13 @@ jobs:
             # sha for push-to-main builds
             type=sha,prefix=,event=branch
 
+      # The registry cache exporter requires a fully lowercase repository name
+      # (OCI spec), but ${{ github.repository_owner }} preserves case
+      # (`LTplus-AG`). The image *tags* are fine because docker/metadata-action
+      # lowercases them; the raw cache ref below is not, so lowercase it here.
+      - name: Compute lowercase cache ref
+        run: echo "CACHE_IMAGE=${REGISTRY}/$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Build and push
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
@@ -106,14 +113,14 @@ jobs:
           # is free + unlimited for public packages, so the cache cost drops to
           # $0 while warm builds stay fast. Trade: pushing the cache to GHCR
           # adds ~1-3 min of network per build vs Depot's local cache.
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:buildcache
           # mode=max keeps the cargo-chef "cooked deps" stage in the cache —
           # that layer is what makes warm builds finish in minutes instead of
           # recompiling the whole workspace, so dropping to mode=min would
           # *raise* compute minutes. image-manifest+oci-mediatypes make the
           # cache blob a GHCR-compatible OCI manifest (required for the registry
           # backend to push to ghcr.io).
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+          cache-to: type=registry,ref=${{ env.CACHE_IMAGE }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
           # Build arm64 only for actual releases (distribution images). On the
           # frequent push-to-main builds (~1/3 of commits touch rust/** and
           # trigger this workflow) we build amd64 only — the arm64 leg runs

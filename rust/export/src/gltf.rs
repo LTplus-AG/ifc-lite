@@ -1321,7 +1321,11 @@ pub fn try_export_glb_with_stats(
 /// Like [`export_glb_with_stats`] but reuses a pre-built entity index — for a caller
 /// that also runs the attribute pass ([`crate::stream_export_model_with_index`]) over
 /// the same bytes, `build_entity_index` once and share it across both. `index` MUST be
-/// built from the same `content`; output is byte-identical to `export_glb_with_stats`.
+/// built from the same `content`; output is byte-identical to `export_glb_with_stats`
+/// below the streaming threshold. NOTE: this path always uses the in-memory assembler
+/// (the bounded two-pass path rebuilds its own index per pass and cannot reuse this
+/// one); a native caller that needs bounded memory on a large model should call
+/// [`export_glb_streaming_bounded`] directly.
 pub fn export_glb_with_stats_with_index(
     content: &[u8],
     opts: &GltfOptions,

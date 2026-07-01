@@ -232,40 +232,6 @@ impl Mesh {
         self.normals.push(normal.z as f32);
     }
 
-    /// Add a vertex with normal, applying coordinate shift in f64 BEFORE f32 conversion
-    /// This preserves precision for large coordinates (georeferenced models)
-    ///
-    /// # Arguments
-    /// * `position` - Vertex position in world coordinates (f64)
-    /// * `normal` - Vertex normal
-    /// * `shift` - Coordinate shift to subtract (in f64) before converting to f32
-    ///
-    /// # Precision
-    /// For coordinates like 5,000,000m (Swiss UTM), direct f32 conversion loses ~1m precision.
-    /// By subtracting the centroid first (in f64), we convert small values (0-100m range)
-    /// which preserves sub-millimeter precision.
-    #[inline]
-    pub fn add_vertex_with_shift(
-        &mut self,
-        position: Point3<f64>,
-        normal: Vector3<f64>,
-        shift: &CoordinateShift,
-    ) {
-        // Subtract shift in f64 precision BEFORE converting to f32
-        // This is the key to preserving precision for large coordinates
-        let shifted_x = position.x - shift.x;
-        let shifted_y = position.y - shift.y;
-        let shifted_z = position.z - shift.z;
-
-        self.positions.push(shifted_x as f32);
-        self.positions.push(shifted_y as f32);
-        self.positions.push(shifted_z as f32);
-
-        self.normals.push(normal.x as f32);
-        self.normals.push(normal.y as f32);
-        self.normals.push(normal.z as f32);
-    }
-
     /// Apply coordinate shift to existing positions in-place
     /// Uses f64 intermediate for precision when subtracting large offsets
     #[inline]
@@ -1171,45 +1137,6 @@ mod tests {
         let zero_shift = CoordinateShift::default();
         assert!(!zero_shift.is_significant());
         assert!(zero_shift.is_zero());
-    }
-
-    #[test]
-    fn test_add_vertex_with_shift_preserves_precision() {
-        // Test case: Swiss UTM coordinates (typical large coordinate scenario)
-        // Without shifting: 5000000.123 as f32 = 5000000.0 (loses 0.123m precision!)
-        // With shifting: (5000000.123 - 5000000.0) as f32 = 0.123 (full precision preserved)
-
-        let mut mesh = Mesh::new();
-
-        // Large coordinates typical of Swiss UTM (EPSG:2056)
-        let p1 = Point3::new(2679012.123456, 1247892.654321, 432.111);
-        let p2 = Point3::new(2679012.223456, 1247892.754321, 432.211);
-
-        // Create shift from approximate centroid
-        let shift = CoordinateShift::new(2679012.0, 1247892.0, 432.0);
-
-        mesh.add_vertex_with_shift(p1, Vector3::z(), &shift);
-        mesh.add_vertex_with_shift(p2, Vector3::z(), &shift);
-
-        // Verify shifted positions have sub-millimeter precision
-        // p1 shifted: (0.123456, 0.654321, 0.111)
-        // p2 shifted: (0.223456, 0.754321, 0.211)
-        assert!((mesh.positions[0] - 0.123456).abs() < 0.0001); // X1
-        assert!((mesh.positions[1] - 0.654321).abs() < 0.0001); // Y1
-        assert!((mesh.positions[2] - 0.111).abs() < 0.0001); // Z1
-        assert!((mesh.positions[3] - 0.223456).abs() < 0.0001); // X2
-        assert!((mesh.positions[4] - 0.754321).abs() < 0.0001); // Y2
-        assert!((mesh.positions[5] - 0.211).abs() < 0.0001); // Z2
-
-        // Verify relative distances are preserved with high precision
-        let dx = mesh.positions[3] - mesh.positions[0];
-        let dy = mesh.positions[4] - mesh.positions[1];
-        let dz = mesh.positions[5] - mesh.positions[2];
-
-        // Expected: dx=0.1, dy=0.1, dz=0.1
-        assert!((dx - 0.1).abs() < 0.0001);
-        assert!((dy - 0.1).abs() < 0.0001);
-        assert!((dz - 0.1).abs() < 0.0001);
     }
 
     #[test]

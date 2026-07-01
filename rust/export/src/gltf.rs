@@ -1285,7 +1285,16 @@ fn build_gltf(
 /// valid zero-mesh GLB reported as success. Prefer [`try_export_glb_with_stats`],
 /// which turns that case into [`ExportError::NoRenderGeometry`] so no caller can
 /// silently ship an empty artifact.
+///
+/// Inputs at or above the streaming threshold (default 32 MB, native override
+/// `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) route to the bounded
+/// two-pass assembler ([`export_glb_streaming_bounded`]) so a large model never
+/// materializes all of its `MeshData` at once — the wasm-OOM fix. Small models
+/// keep the in-memory instanced assembler (byte-identical to before).
 pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
+    if !opts.quantize && content.len() >= glb_stream_threshold_bytes() {
+        return export_glb_streaming_bounded(content, opts);
+    }
     export_glb_from_result(process_geometry(content), opts)
 }
 
@@ -1571,6 +1580,475 @@ pub fn export_gltf_streaming(
         extensions_required: opts.quantize.then(|| vec!["KHR_mesh_quantization"]),
     };
     serde_json::to_vec(&gltf).expect("glTF JSON serializes")
+}
+
+// ── Bounded-memory single-GLB export ─────────────────────────────────────────
+
+/// Per-mesh record from the metadata streaming pass: everything the glTF JSON
+/// needs, WITHOUT the vertex bytes (those are re-streamed and written directly
+/// into the output on the second pass).
+struct StreamedMeshMeta {
+    express_id: u32,
+    ifc_type: String,
+    global_id: Option<String>,
+    color: [f32; 4],
+    /// Y-up per-element origin (world = origin + position).
+    origin: [f64; 3],
+    nverts: u32,
+    nidx: u32,
+    /// Local (pre-bake) f32 position bbox. Because `x as f32` is monotonic, the
+    /// baked accessor min/max equal `(local as f64 + vertex_offset) as f32`
+    /// exactly — no second pass needed to fill the JSON.
+    local_min: [f32; 3],
+    local_max: [f32; 3],
+    /// Content-dedup key (local geometry + colour), same as the in-memory flat path.
+    key: u128,
+    /// `Some(write)` when this occurrence emits geometry bytes on pass 2;
+    /// `None` when it shares a previously emitted mesh (content-hash dedup).
+    write: Option<StreamedWrite>,
+}
+
+/// Byte destinations (offsets WITHIN each run) + bake offset for one emitted mesh.
+struct StreamedWrite {
+    pos_off: u64,
+    norm_off: u64,
+    idx_off: u64,
+    /// Added to each position (f64) before the f32 downcast: `origin - scene_center`
+    /// for singletons, zero for shared (content-deduped) meshes.
+    vertex_offset: [f64; 3],
+}
+
+/// Input-size threshold (bytes) above which `export_glb_with_stats` uses the
+/// bounded streaming assembler instead of the in-memory instanced one.
+/// `IFC_LITE_GLB_STREAM_THRESHOLD_MB` overrides on native (`0` disables
+/// streaming entirely); wasm has no environment, so the default always applies
+/// there — which is the point: the wasm path must never build the whole model
+/// in memory for large inputs.
+fn glb_stream_threshold_bytes() -> usize {
+    const DEFAULT_MB: usize = 32;
+    let mb = std::env::var("IFC_LITE_GLB_STREAM_THRESHOLD_MB")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_MB);
+    if mb == 0 {
+        return usize::MAX;
+    }
+    mb.saturating_mul(1024 * 1024)
+}
+
+/// Bounded-memory single-**GLB** export: two passes over the deterministic mesh
+/// stream (`retain_emitted_meshes: false`, peak input = one batch).
+///
+/// Pass 1 records per-mesh METADATA only (counts, local bbox, colour, ids,
+/// content-hash) plus the world AABB; the complete glTF JSON is then built and
+/// the final GLB `Vec` is preallocated at its exact container size. Pass 2
+/// re-streams the same meshes and bakes their bytes straight into the output at
+/// precomputed offsets. Peak memory = the final artifact + one batch + metadata
+/// — never the whole model's `MeshData`, never a growing three-run scratch, and
+/// never a second full copy from a final concatenation.
+///
+/// Tradeoffs vs the in-memory assembler (`build_gltf`):
+/// - rep-identity instancing is SKIPPED (it needs every occurrence co-resident);
+///   content-hash dedup is kept (the hash is computed batch-locally on pass 1).
+///   Models with no instanceable groups produce BYTE-IDENTICAL output; models
+///   with them produce the same world geometry, larger by the forgone dedup.
+/// - the model is meshed twice (the price of bounded memory).
+/// - quantization is not supported here; the caller gates on `opts.quantize`.
+pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
+    assert!(!opts.quantize, "quantized export uses the in-memory assembler");
+    let stream_opts =
+        || StreamingOptions { retain_emitted_meshes: false, ..StreamingOptions::default() };
+
+    // ── Pass 1: metadata + world AABB ────────────────────────────────────────
+    let mut metas: Vec<StreamedMeshMeta> = Vec::new();
+    let mut wmin = [f64::INFINITY; 3];
+    let mut wmax = [f64::NEG_INFINITY; 3];
+    process_geometry_streaming_filtered_with_options(
+        content,
+        OpeningFilterMode::Default,
+        stream_opts(),
+        |batch, _, _| {
+            for m in batch {
+                if !mesh_visible(m, opts) {
+                    continue;
+                }
+                let y = crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin);
+                // Same geometry-sanity gate as `view_ok` on the in-memory path.
+                if y.indices.is_empty()
+                    || y.positions.len() < 9
+                    || !y.positions.len().is_multiple_of(3)
+                    || y.normals.len() != y.positions.len()
+                {
+                    continue;
+                }
+                let mut lmin = [f32::INFINITY; 3];
+                let mut lmax = [f32::NEG_INFINITY; 3];
+                for p in y.positions.chunks_exact(3) {
+                    for (k, &v) in p.iter().enumerate() {
+                        if v < lmin[k] {
+                            lmin[k] = v;
+                        }
+                        if v > lmax[k] {
+                            lmax[k] = v;
+                        }
+                    }
+                }
+                // World AABB from the local bbox: `x as f64` is exact and the fold
+                // is order-independent, so this equals the in-memory per-vertex fold.
+                for k in 0..3 {
+                    wmin[k] = wmin[k].min(lmin[k] as f64 + y.origin[k]);
+                    wmax[k] = wmax[k].max(lmax[k] as f64 + y.origin[k]);
+                }
+                metas.push(StreamedMeshMeta {
+                    express_id: m.express_id,
+                    ifc_type: m.ifc_type.clone(),
+                    global_id: m.global_id.clone(),
+                    color: m.color,
+                    origin: y.origin,
+                    nverts: (y.positions.len() / 3) as u32,
+                    nidx: y.indices.len() as u32,
+                    local_min: lmin,
+                    local_max: lmax,
+                    key: geom_color_key(&y.positions, &y.normals, &y.indices, m.color),
+                    write: None,
+                });
+            }
+        },
+        |_| {},
+        |_| {},
+    );
+    let scene_center = if metas.is_empty() {
+        [0.0, 0.0, 0.0]
+    } else {
+        [
+            (wmin[0] + wmax[0]) * 0.5,
+            (wmin[1] + wmax[1]) * 0.5,
+            (wmin[2] + wmax[2]) * 0.5,
+        ]
+    };
+
+    // ── Build the glTF JSON (mirrors build_gltf's flat branch exactly) ──────
+    let mut key_counts: HashMap<u128, u32> = HashMap::new();
+    for meta in &metas {
+        *key_counts.entry(meta.key).or_insert(0) += 1;
+    }
+    let mut accessors: Vec<Accessor> = Vec::new();
+    let mut meshes: Vec<Mesh> = Vec::new();
+    let mut nodes: Vec<Node> = Vec::new();
+    let mut materials: Vec<Material> = Vec::new();
+    let mut material_map: HashMap<(i32, i32, i32, i32), u32> = HashMap::new();
+    let mut element_node_indices: Vec<u32> = Vec::new();
+    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut shared_cache: HashMap<u128, u32> = HashMap::new();
+    let (mut pos_len, mut norm_len, mut idx_len) = (0u64, 0u64, 0u64);
+
+    // First simulation pass computes run lengths so accessor emission below can
+    // reference stable bufferView indices (0/1/2) with per-run byte offsets.
+    // Emission order = stream order, geometry emitted on a shared key's FIRST
+    // occurrence only — identical to the in-memory flat pass.
+    struct Emitted {
+        mesh_idx: u32,
+        translation: Option<[f64; 3]>,
+    }
+    let mut per_meta: Vec<Emitted> = Vec::with_capacity(metas.len());
+    for meta in &mut metas {
+        let placement = [
+            meta.origin[0] - scene_center[0],
+            meta.origin[1] - scene_center[1],
+            meta.origin[2] - scene_center[2],
+        ];
+        let shared = key_counts.get(&meta.key).copied().unwrap_or(1) >= 2;
+        let (emit, vertex_offset, translation) = if shared {
+            (
+                !shared_cache.contains_key(&meta.key),
+                [0.0, 0.0, 0.0],
+                placement.iter().any(|c| c.abs() > 1e-9).then_some(placement),
+            )
+        } else {
+            (true, placement, None)
+        };
+        let mesh_idx = if emit {
+            let bake = |local: [f32; 3]| -> [f32; 3] {
+                [
+                    (local[0] as f64 + vertex_offset[0]) as f32,
+                    (local[1] as f64 + vertex_offset[1]) as f32,
+                    (local[2] as f64 + vertex_offset[2]) as f32,
+                ]
+            };
+            let pos_acc = accessors.len() as u32;
+            accessors.push(Accessor {
+                buffer_view: 0,
+                byte_offset: pos_len as u32,
+                component_type: 5126,
+                count: meta.nverts,
+                ty: "VEC3",
+                normalized: None,
+                min: Some(bake(meta.local_min)),
+                max: Some(bake(meta.local_max)),
+            });
+            let norm_acc = accessors.len() as u32;
+            accessors.push(Accessor {
+                buffer_view: 1,
+                byte_offset: norm_len as u32,
+                component_type: 5126,
+                count: meta.nverts,
+                ty: "VEC3",
+                normalized: None,
+                min: None,
+                max: None,
+            });
+            let idx_acc = accessors.len() as u32;
+            accessors.push(Accessor {
+                buffer_view: 2,
+                byte_offset: idx_len as u32,
+                component_type: 5125,
+                count: meta.nidx,
+                ty: "SCALAR",
+                normalized: None,
+                min: None,
+                max: None,
+            });
+            let material = *material_map.entry(color_key(meta.color)).or_insert_with(|| {
+                let idx = materials.len() as u32;
+                materials.push(Material {
+                    pbr: Pbr {
+                        base_color_factor: meta.color,
+                        metallic_factor: 0.0,
+                        roughness_factor: 1.0,
+                    },
+                    extensions: if opts.lit {
+                        None
+                    } else {
+                        Some(Extensions { khr_materials_unlit: EmptyObj {} })
+                    },
+                    alpha_mode: if meta.color[3] < 1.0 { Some("BLEND") } else { None },
+                    double_sided: true,
+                });
+                idx
+            });
+            let mesh_idx = meshes.len() as u32;
+            meshes.push(Mesh {
+                primitives: vec![Primitive {
+                    attributes: Attributes { position: pos_acc, normal: norm_acc },
+                    indices: idx_acc,
+                    material: Some(material),
+                }],
+            });
+            stats.meshes += 1;
+            stats.vertices += meta.nverts as usize;
+            stats.triangles += meta.nidx as usize / 3;
+            meta.write = Some(StreamedWrite {
+                pos_off: pos_len,
+                norm_off: norm_len,
+                idx_off: idx_len,
+                vertex_offset,
+            });
+            pos_len += meta.nverts as u64 * 12;
+            norm_len += meta.nverts as u64 * 12;
+            idx_len += meta.nidx as u64 * 4;
+            if shared {
+                shared_cache.insert(meta.key, mesh_idx);
+            }
+            mesh_idx
+        } else {
+            shared_cache[&meta.key]
+        };
+        per_meta.push(Emitted { mesh_idx, translation });
+    }
+    for (meta, emitted) in metas.iter().zip(&per_meta) {
+        let node_idx = nodes.len() as u32;
+        nodes.push(Node {
+            mesh: Some(emitted.mesh_idx),
+            children: None,
+            translation: emitted.translation,
+            scale: None,
+            matrix: None,
+            extras: node_extras(
+                opts.include_metadata,
+                meta.express_id,
+                &meta.ifc_type,
+                meta.global_id.as_deref(),
+                opts.model_id.as_deref(),
+            ),
+        });
+        element_node_indices.push(node_idx);
+    }
+    stats.materials = materials.len();
+
+    let bin_total = pos_len + norm_len + idx_len;
+    // Same message as Chunker::flush so the worker's `OutputTooLarge` classifier
+    // matches regardless of which assembler tripped.
+    assert!(
+        bin_total <= u32::MAX as u64,
+        "GLB binary buffer is {bin_total} bytes, over the glTF 32-bit buffer limit \
+         (4 GiB); the model is too large for a single GLB",
+    );
+    let (buffers, buffer_views) = if bin_total == 0 && stats.meshes == 0 {
+        (vec![Buffer { byte_length: 0, uri: None }], Vec::new())
+    } else {
+        (
+            vec![Buffer { byte_length: bin_total as u32, uri: None }],
+            vec![
+                BufferView {
+                    buffer: 0,
+                    byte_offset: 0,
+                    byte_length: pos_len as u32,
+                    byte_stride: Some(12),
+                    target: 34962,
+                },
+                BufferView {
+                    buffer: 0,
+                    byte_offset: pos_len as u32,
+                    byte_length: norm_len as u32,
+                    byte_stride: Some(12),
+                    target: 34962,
+                },
+                BufferView {
+                    buffer: 0,
+                    byte_offset: (pos_len + norm_len) as u32,
+                    byte_length: idx_len as u32,
+                    byte_stride: None,
+                    target: 34963,
+                },
+            ],
+        )
+    };
+
+    let center_nonzero = scene_center.iter().any(|c| c.abs() > 1e-9);
+    let scene_nodes = if element_node_indices.is_empty() {
+        Vec::new()
+    } else {
+        let root_idx = nodes.len() as u32;
+        nodes.push(Node {
+            mesh: None,
+            children: Some(element_node_indices),
+            translation: if center_nonzero { Some(scene_center) } else { None },
+            scale: None,
+            matrix: None,
+            extras: None,
+        });
+        vec![root_idx]
+    };
+
+    let asset_extras = opts.include_metadata.then(|| {
+        json!({
+            "meshCount": stats.meshes,
+            "vertexCount": stats.vertices,
+            "triangleCount": stats.triangles,
+        })
+    });
+    let gltf = Gltf {
+        asset: Asset { version: "2.0", generator: "IFC-Lite", extras: asset_extras },
+        scene: 0,
+        scenes: vec![Scene { nodes: scene_nodes }],
+        nodes,
+        meshes,
+        materials: if materials.is_empty() { None } else { Some(materials) },
+        accessors,
+        buffer_views,
+        buffers,
+        extensions_used: {
+            let mut ext: Vec<&'static str> = Vec::new();
+            if !opts.lit && stats.materials > 0 {
+                ext.push("KHR_materials_unlit");
+            }
+            (!ext.is_empty()).then_some(ext)
+        },
+        extensions_required: None,
+    };
+    let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
+
+    // ── Preallocate the exact GLB container, then pass 2 writes into it ─────
+    let json_pad = (4 - (json.len() % 4)) % 4;
+    let bin_pad = ((4 - (bin_total % 4)) % 4) as usize;
+    let padded_json = json.len() + json_pad;
+    let padded_bin = bin_total as usize + bin_pad;
+    let total = 12 + 8 + padded_json + 8 + padded_bin;
+    // Same message as pack_glb (the authoritative container guard).
+    assert!(
+        total <= u32::MAX as usize,
+        "GLB total size is {total} bytes, over the glTF 32-bit container limit (4 GiB)",
+    );
+    let mut out = Vec::with_capacity(total);
+    out.extend_from_slice(b"glTF");
+    out.extend_from_slice(&2u32.to_le_bytes());
+    out.extend_from_slice(&(total as u32).to_le_bytes());
+    out.extend_from_slice(&(padded_json as u32).to_le_bytes());
+    out.extend_from_slice(b"JSON");
+    out.extend_from_slice(&json);
+    out.extend(std::iter::repeat_n(0x20, json_pad));
+    out.extend_from_slice(&(padded_bin as u32).to_le_bytes());
+    out.extend_from_slice(b"BIN\0");
+    let bin_base = out.len();
+    // Zero-fill the BIN region (+ its padding); pass 2 overwrites every emitted byte.
+    out.resize(total, 0);
+    let pos_base = bin_base;
+    let norm_base = bin_base + pos_len as usize;
+    let idx_base = bin_base + (pos_len + norm_len) as usize;
+
+    let mut cursor = 0usize;
+    process_geometry_streaming_filtered_with_options(
+        content,
+        OpeningFilterMode::Default,
+        stream_opts(),
+        |batch, _, _| {
+            for m in batch {
+                if !mesh_visible(m, opts) {
+                    continue;
+                }
+                let y = crate::frame::to_yup(&m.positions, &m.normals, &m.indices, m.origin);
+                if y.indices.is_empty()
+                    || y.positions.len() < 9
+                    || !y.positions.len().is_multiple_of(3)
+                    || y.normals.len() != y.positions.len()
+                {
+                    continue;
+                }
+                let meta = metas.get(cursor).unwrap_or_else(|| {
+                    panic!("GLB streaming pass 2 saw more meshes than pass 1 ({cursor}); the mesh stream is not deterministic")
+                });
+                assert!(
+                    meta.express_id == m.express_id
+                        && meta.nverts as usize * 3 == y.positions.len()
+                        && meta.nidx as usize == y.indices.len(),
+                    "GLB streaming pass 2 diverged from pass 1 at mesh {cursor} \
+                     (expected #{} {}v/{}i, got #{} {}v/{}i); the mesh stream is not deterministic",
+                    meta.express_id, meta.nverts, meta.nidx,
+                    m.express_id, y.positions.len() / 3, y.indices.len(),
+                );
+                if let Some(w) = &meta.write {
+                    let mut po = pos_base + w.pos_off as usize;
+                    for p in y.positions.chunks_exact(3) {
+                        for (&pv, &off) in p.iter().zip(&w.vertex_offset) {
+                            let baked = (pv as f64 + off) as f32;
+                            out[po..po + 4].copy_from_slice(&baked.to_le_bytes());
+                            po += 4;
+                        }
+                    }
+                    let mut no = norm_base + w.norm_off as usize;
+                    for &n in &y.normals {
+                        out[no..no + 4].copy_from_slice(&n.to_le_bytes());
+                        no += 4;
+                    }
+                    let mut io = idx_base + w.idx_off as usize;
+                    for &i in &y.indices {
+                        out[io..io + 4].copy_from_slice(&i.to_le_bytes());
+                        io += 4;
+                    }
+                }
+                cursor += 1;
+            }
+        },
+        |_| {},
+        |_| {},
+    );
+    assert!(
+        cursor == metas.len(),
+        "GLB streaming pass 2 saw {cursor} meshes, pass 1 saw {}; the mesh stream is not deterministic",
+        metas.len(),
+    );
+
+    (out, stats)
 }
 
 /// Assemble a GLB from already-produced meshes (the viewer's MeshData — **no re-meshing**).
@@ -2614,7 +3092,7 @@ END-ISO-10303-21;\n";
         let (glb, stats) = export_glb_with_stats(GEOMETRYLESS_IFC.as_bytes(), &GltfOptions::default());
         assert_eq!(stats.meshes, 0);
         let (json, _) = parse_glb(&glb);
-        assert!(json["meshes"].as_array().map_or(true, |m| m.is_empty()));
+        assert!(json["meshes"].as_array().is_none_or(|m| m.is_empty()));
     }
 
     #[test]
@@ -2625,5 +3103,80 @@ END-ISO-10303-21;\n";
         assert!(stats.meshes >= 1);
         let (baseline, _) = export_glb_with_stats(&content, &GltfOptions::default());
         assert_eq!(glb, baseline, "try_ path must be byte-identical to export_glb");
+    }
+
+    /// Sum of world triangles: every node instance of a mesh counts its index
+    /// accessor, so dedup/instancing differences between assemblers cancel out.
+    fn world_triangles(json: &Value) -> u64 {
+        let empty = vec![];
+        let nodes = json["nodes"].as_array().unwrap_or(&empty);
+        let mut tris = 0u64;
+        for node in nodes {
+            let Some(mi) = node["mesh"].as_u64() else { continue };
+            let prim = &json["meshes"][mi as usize]["primitives"][0];
+            let ai = prim["indices"].as_u64().expect("indices accessor") as usize;
+            tris += json["accessors"][ai]["count"].as_u64().expect("count") / 3;
+        }
+        tris
+    }
+
+    #[test]
+    fn streaming_bounded_is_byte_identical_on_flat_models() {
+        // Models with no instanceable groups exercise exactly the code the two
+        // assemblers share (flat emission + content dedup); their output must be
+        // byte-for-byte identical, JSON and BIN.
+        for rel in ["ifcopenshell/1019-column.ifc", "ifcopenshell/1030-sphere.ifc"] {
+            let content = fixture(rel);
+            let opts = GltfOptions { include_metadata: true, ..GltfOptions::default() };
+            let (in_memory, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
+            let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
+            assert_eq!(mem_stats.meshes, stream_stats.meshes, "{rel}: mesh stats");
+            assert_eq!(in_memory, streamed, "{rel}: bounded assembler must be byte-identical");
+        }
+    }
+
+    #[test]
+    fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
+        // duplex has rep-identity groups the streaming path deliberately skips
+        // (bounded memory cannot hold every occurrence). World geometry must be
+        // identical anyway: same element nodes, same total placed triangles.
+        let content = fixture("ara3d/duplex.ifc");
+        let opts = GltfOptions::default();
+        let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
+        let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
+        assert!(stream_stats.meshes > 0);
+        let (mem_json, _) = parse_glb(&in_memory);
+        let (str_json, str_bin) = parse_glb(&streamed);
+        // One element node per visible mesh occurrence on both paths (+1 root each).
+        assert_eq!(
+            mem_json["nodes"].as_array().unwrap().len(),
+            str_json["nodes"].as_array().unwrap().len(),
+            "element node count must match",
+        );
+        assert_eq!(
+            world_triangles(&mem_json),
+            world_triangles(&str_json),
+            "world triangle count must match",
+        );
+        // The BIN must be exactly the three runs the JSON declares.
+        let declared: u64 = str_json["bufferViews"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|bv| bv["byteLength"].as_u64().unwrap())
+            .sum();
+        // pos/norm are 12-byte and idx 4-byte multiples, so the BIN needs no padding
+        // and must be exactly the three declared runs.
+        assert_eq!(declared as usize, str_bin.len(), "BIN length matches declared runs");
+    }
+
+    #[test]
+    fn streaming_bounded_matches_in_memory_on_empty_model() {
+        let empty = GEOMETRYLESS_IFC.as_bytes();
+        let opts = GltfOptions::default();
+        let (in_memory, _) = export_glb_from_result(process_geometry(empty), &opts);
+        let (streamed, stats) = export_glb_streaming_bounded(empty, &opts);
+        assert_eq!(stats.meshes, 0);
+        assert_eq!(in_memory, streamed, "empty-model GLB must be byte-identical");
     }
 }

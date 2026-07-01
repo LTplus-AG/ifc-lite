@@ -2724,7 +2724,10 @@ export class Scene {
     if (occurrences && occurrences.length > 0) {
       const tmpl = this.instancedTemplateCpu[occurrences[0].templateIndex];
       if (tmpl && Number.isFinite(tmpl.localMin[0])) {
-        return { min: tmpl.localMin, max: tmpl.localMax };
+        // Copy — tmpl.localMin/localMax are the live arrays retained in
+        // instancedTemplateCpu; a caller mutating the returned box must not
+        // corrupt internal renderer state.
+        return { min: [...tmpl.localMin], max: [...tmpl.localMax] };
       }
     }
     return null;
@@ -2745,13 +2748,24 @@ export class Scene {
    *
    * Returns `null` for a container/assembly with no mesh, or when not
    * captured (older cached geometry, or the instancing template was released).
+   *
+   * Returns `Float64Array`, NOT `Float32Array`: `localToWorld` carries the
+   * placement's translation in the *original* (pre-RTC) coordinate frame,
+   * which for a building-scale/georeferenced model can be tens of thousands
+   * of metres from the origin — f32 there loses sub-millimetre precision
+   * (the exact fan-collapse failure mode `MeshData.origin` exists to avoid
+   * for `positions`). The flat path's source data is already f64
+   * (`piece.localToWorld` round-trips from Rust's `[f64; 16]`); the
+   * instanced path's source (the GPU instance buffer) is genuinely f32, so
+   * widening it here is lossless but doesn't recover precision already lost
+   * upstream in that path.
    */
-  getEntityTransform(expressId: number): Float32Array | null {
+  getEntityTransform(expressId: number): Float64Array | null {
     const pieces = this.meshDataMap.get(expressId);
     if (pieces && pieces.length > 0) {
       for (const piece of pieces) {
         if (piece.localToWorld && piece.localToWorld.length === 16) {
-          return new Float32Array(piece.localToWorld);
+          return new Float64Array(piece.localToWorld);
         }
       }
       return null;
@@ -2763,7 +2777,7 @@ export class Scene {
       const tmpl = this.instancedTemplateCpu[templateIndex];
       if (!tmpl) return null;
       const dv = new DataView(tmpl.instanceData);
-      const row = new Float32Array(16);
+      const row = new Float64Array(16);
       for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 4; c++) {
           // Source is column-major (mat[c][r] at byteOffset + (c*4+r)*4);

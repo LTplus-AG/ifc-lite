@@ -69,6 +69,35 @@ describe('Scene.getEntityLocalBounds', () => {
       max: [1, 2, 1],
     });
   });
+
+  it('returns the shared template box for a GPU-instanced entity, as a copy', () => {
+    const scene = new Scene();
+    // Seed the private instancing state directly (GPU-buffer-agnostic data
+    // side), mirroring scene-remove.test.ts's approach for boundingBoxes.
+    scene['instancedTemplateCpu'] = [
+      {
+        positions: new Float32Array(),
+        normals: new Float32Array(),
+        indices: new Uint32Array(),
+        instanceData: new ArrayBuffer(0),
+        localMin: [0, 0, 0],
+        localMax: [2, 2, 2],
+      },
+    ];
+    scene['instancedEntityMap'] = new Map([
+      [7, [{ templateIndex: 0, byteOffset: 0, originalColor: [0, 0, 0, 1] }]],
+    ]);
+
+    const bounds = scene.getEntityLocalBounds(7);
+    assert.deepStrictEqual(bounds, { min: [0, 0, 0], max: [2, 2, 2] });
+
+    // Regression: must be a copy, not the live template arrays — mutating the
+    // result must not corrupt internal renderer state (Greptile P1).
+    bounds!.min[0] = 999;
+    const tmpl = scene['instancedTemplateCpu'][0];
+    assert.strictEqual(tmpl.localMin[0], 0, 'mutating the returned box must not affect the template');
+    assert.deepStrictEqual(scene.getEntityLocalBounds(7), { min: [0, 0, 0], max: [2, 2, 2] });
+  });
 });
 
 describe('Scene.getEntityTransform', () => {
@@ -83,12 +112,61 @@ describe('Scene.getEntityTransform', () => {
     assert.strictEqual(scene.getEntityTransform(1), null);
   });
 
-  it('returns the captured transform as a row-major Float32Array(16)', () => {
+  it('returns the captured transform as a row-major Float64Array(16)', () => {
     const scene = new Scene();
     scene.addMeshData(makeMesh(4, { localToWorld: IDENTITY_ROW_MAJOR }));
     const transform = scene.getEntityTransform(4);
-    assert.ok(transform instanceof Float32Array);
+    assert.ok(transform instanceof Float64Array);
     assert.strictEqual(transform!.length, 16);
     assert.deepStrictEqual(Array.from(transform!), IDENTITY_ROW_MAJOR);
+  });
+
+  it('does not lose precision for a large-magnitude (georeferenced) translation', () => {
+    // A translation far from the origin — the exact case f32 would corrupt
+    // (sub-mm precision lost past a few hundred metres).
+    const farTransform = [...IDENTITY_ROW_MAJOR];
+    farTransform[3] = 123_456_789.123456; // translation X
+    const scene = new Scene();
+    scene.addMeshData(makeMesh(5, { localToWorld: farTransform }));
+    const transform = scene.getEntityTransform(5);
+    assert.strictEqual(transform![3], 123_456_789.123456);
+  });
+
+  it('reads a GPU-instanced occurrence transform, column-major -> row-major', () => {
+    const scene = new Scene();
+    // Column-major identity + translation (10, 20, 30), packed as the GPU
+    // instance buffer stores it (mat4 at byte offset 0).
+    const instanceData = new ArrayBuffer(64);
+    const dv = new DataView(instanceData);
+    // prettier-ignore
+    const colMajor = [
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      10, 20, 30, 1,
+    ];
+    colMajor.forEach((v, i) => dv.setFloat32(i * 4, v, true));
+
+    scene['instancedTemplateCpu'] = [
+      {
+        positions: new Float32Array(),
+        normals: new Float32Array(),
+        indices: new Uint32Array(),
+        instanceData,
+        localMin: [0, 0, 0],
+        localMax: [1, 1, 1],
+      },
+    ];
+    scene['instancedEntityMap'] = new Map([
+      [8, [{ templateIndex: 0, byteOffset: 0, originalColor: [0, 0, 0, 1] }]],
+    ]);
+
+    const transform = scene.getEntityTransform(8);
+    assert.deepStrictEqual(Array.from(transform!), [
+      1, 0, 0, 10,
+      0, 1, 0, 20,
+      0, 0, 1, 30,
+      0, 0, 0, 1,
+    ]);
   });
 });

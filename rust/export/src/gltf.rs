@@ -449,7 +449,7 @@ struct Chunker<'s> {
     idx: Vec<u8>,
     buffer_views: Vec<BufferView>,
     buffers: Vec<Buffer>,
-    vec3_stride: u32, // 6 quantized SHORT, 12 f32
+    vec3_stride: u32, // 8 quantized SHORT (6 tight + 2 pad), 12 f32
     cap: usize,
     next_buffer: u32,
     sink: Option<&'s mut dyn FnMut(String, Vec<u8>)>,

@@ -252,7 +252,8 @@ export class IfcAPI {
    */
   exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
   /**
-   * Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
+   * Merge several IFC models into one STEP/IFC UTF-8 byte buffer (`Uint8Array`).
+   * `concatenated` is every model's
    * bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
    * keeps its ids; later models are id-offset and their project unified to the first.
    */

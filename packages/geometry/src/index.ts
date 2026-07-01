@@ -1114,7 +1114,10 @@ export class GeometryProcessor {
 
   /**
    * Domain-format exporters (Rust source of truth in `ifc-lite-export`). Each takes
-   * the raw IFC buffer and returns the serialized format, or null if not initialized.
+   * the raw IFC buffer and returns the serialized output as bytes (`Uint8Array`;
+   * UTF-8 for the text formats, so output is not capped by the V8 max-string
+   * ceiling - decode with `TextDecoder` when a string is needed), or null if
+   * not initialized.
    */
 
   exportObj(
@@ -1202,7 +1205,7 @@ export class GeometryProcessor {
     return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
   }
 
-  /** Merge several IFC models (raw byte buffers) into one STEP/IFC string. */
+  /** Merge several IFC models (raw byte buffers) into one STEP/IFC UTF-8 byte buffer. */
   exportMerged(buffers: Uint8Array[], schema = ''): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     let total = 0;

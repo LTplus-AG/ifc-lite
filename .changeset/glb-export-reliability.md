@@ -1,6 +1,6 @@
 ---
-"@ifc-lite/wasm": minor
-"@ifc-lite/geometry": minor
+"@ifc-lite/wasm": major
+"@ifc-lite/geometry": major
 "@ifc-lite/cli": minor
 "@ifc-lite/mcp": minor
 ---

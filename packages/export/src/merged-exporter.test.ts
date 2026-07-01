@@ -696,6 +696,219 @@ describe('MergedExporter', () => {
     });
   });
 
+  // Regression: github.com/LTplus-AG/ifc-lite/issues/1475
+  // `unitReconciliation: 'normalize'` rescales every length-valued datum of a
+  // differing-unit model into the primary model's unit, so the output is ONE
+  // IfcProject with ONE IfcUnitAssignment (correctly scaled) — not a federation.
+  describe('unit normalization (#1475)', () => {
+    // Primary = metres. Both models declare square-/cubic-metre area/volume units
+    // (the Revit convention: millimetre lengths but metre-derived area/volume).
+    const metreModel = (): MergeModelInput => {
+      const m = buildModel('primary', 'Primary-metre', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('primProj')}',$,'Primary',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8,#9,#10));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#7,$);"],
+        [4, 'IFCSITE', `#4=IFCSITE('${guid('primSite')}',$,'Site',$,$,$,$,$,$,$);`],
+        [5, 'IFCWALL', `#5=IFCWALL('${guid('primWall')}',$,'PW',$,$,#6,$,$);`],
+        [6, 'IFCCARTESIANPOINT', '#6=IFCCARTESIANPOINT((1.5,0.,0.));'],
+        [7, 'IFCCARTESIANPOINT', '#7=IFCCARTESIANPOINT((0.,0.,0.));'],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [9, 'IFCSIUNIT', '#9=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);'],
+        [10, 'IFCSIUNIT', '#10=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);'],
+        [11, 'IFCRELAGGREGATES', `#11=IFCRELAGGREGATES('${guid('primAgg')}',$,$,$,#1,(#4));`],
+      ]);
+      m.lengthUnitScale = 1.0;
+      return m;
+    };
+
+    // Secondary = millimetres. A column at x=3000 mm, a storey at 3000 mm, a
+    // 2500 mm extrusion depth, a 300 mm circle radius, a length quantity in mm and
+    // an AREA quantity already in m² (Revit) that must NOT be length-rescaled.
+    const mmModel = (): MergeModelInput => {
+      const m = buildModel('mm', 'Secondary-mm', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('mmProj')}',$,'Secondary',$,$,$,$,(#3),#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8,#9,#10));'],
+        [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#7,$);"],
+        [4, 'IFCSITE', `#4=IFCSITE('${guid('mmSite')}',$,'Site',$,$,$,$,$,$,$);`],
+        [5, 'IFCCOLUMN', `#5=IFCCOLUMN('${guid('mmCol')}',$,'MC',$,$,#6,$,$);`],
+        [6, 'IFCCARTESIANPOINT', '#6=IFCCARTESIANPOINT((3000.,0.,0.));'],
+        [7, 'IFCCARTESIANPOINT', '#7=IFCCARTESIANPOINT((0.,0.,0.));'],
+        [8, 'IFCSIUNIT', '#8=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);'],
+        [9, 'IFCSIUNIT', '#9=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);'],
+        [10, 'IFCSIUNIT', '#10=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);'],
+        [11, 'IFCBUILDINGSTOREY', `#11=IFCBUILDINGSTOREY('${guid('mmStorey')}',$,'L1',$,$,$,$,$,.ELEMENT.,3000.);`],
+        [12, 'IFCEXTRUDEDAREASOLID', '#12=IFCEXTRUDEDAREASOLID(#13,#7,#14,2500.);'],
+        [13, 'IFCCIRCLEPROFILEDEF', '#13=IFCCIRCLEPROFILEDEF(.AREA.,$,$,300.);'],
+        [14, 'IFCDIRECTION', '#14=IFCDIRECTION((0.,0.,1.));'],
+        [15, 'IFCQUANTITYLENGTH', "#15=IFCQUANTITYLENGTH('Height',$,$,3000.,$);"],
+        [16, 'IFCQUANTITYAREA', "#16=IFCQUANTITYAREA('Area',$,$,12.5,$);"],
+        [17, 'IFCRELAGGREGATES', `#17=IFCRELAGGREGATES('${guid('mmAgg')}',$,$,$,#1,(#4));`],
+      ]);
+      m.lengthUnitScale = 0.001;
+      return m;
+    };
+
+    it('rescales coordinates and unifies into one single-unit project', () => {
+      const result = new MergedExporter([metreModel(), mmModel()])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      const content = decode(result.content);
+
+      // mm coordinate 3000 → 3 metres; the primary metre coord is untouched.
+      expect(content).toContain('(3.,0.,0.)');
+      expect(content).not.toContain('(3000.,0.,0.)');
+      expect(content).toContain('(1.5,0.,0.)');
+
+      // Exactly one IfcProject and one IfcUnitAssignment — a clean single-unit file.
+      expect(content.match(/=IFCPROJECT\(/g)?.length).toBe(1);
+      expect(content.match(/=IFCUNITASSIGNMENT\(/g)?.length).toBe(1);
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(1);
+
+      expect(result.stats.federatedModelCount).toBe(0);
+      expect(result.stats.normalizedModelCount).toBe(1);
+      expect(result.stats.warnings).toEqual([]);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('rescales scalar lengths (elevation, depth, radius) and length quantities', () => {
+      const content = decode(new MergedExporter([metreModel(), mmModel()])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' }).content);
+
+      // Storey elevation 3000 mm → 3 m.
+      expect(content).toMatch(/,\.ELEMENT\.,3\.\)/);
+      // Extrusion depth 2500 mm → 2.5 m; circle radius 300 mm → 0.3 m.
+      expect(content).toMatch(/IFCEXTRUDEDAREASOLID\(#\d+,#\d+,#\d+,2\.5\)/);
+      expect(content).toContain('IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.3)');
+      // Length quantity 3000 mm → 3 m.
+      expect(content).toContain("IFCQUANTITYLENGTH('Height',$,$,3.,$)");
+      // Direction is never rescaled.
+      expect(content).toContain('IFCDIRECTION((0.,0.,1.))');
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('does NOT length-rescale area quantities already in square metres (Revit)', () => {
+      const content = decode(new MergedExporter([metreModel(), mmModel()])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' }).content);
+      // Area is declared in m² in both models → the area factor is 1, so 12.5 stays.
+      expect(content).toContain("IFCQUANTITYAREA('Area',$,$,12.5,$)");
+    });
+
+    it('converts a conversion-based square-foot area quantity into square metres', () => {
+      // Secondary declares AREAUNIT as an IfcConversionBasedUnit (square foot,
+      // 0.09290304 m²) via IfcMeasureWithUnit → the area factor is read from it.
+      const imperial = buildModel('imp', 'Imperial', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('impProj')}',$,'Imp',$,$,$,$,$,#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#3,#5));'],
+        [3, 'IFCSIUNIT', '#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.FOOT.);'],
+        [4, 'IFCSIUNIT', '#4=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);'],
+        [5, 'IFCCONVERSIONBASEDUNIT', "#5=IFCCONVERSIONBASEDUNIT(#9,.AREAUNIT.,'SQUARE FOOT',#6);"],
+        [6, 'IFCMEASUREWITHUNIT', '#6=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#4);'],
+        [7, 'IFCELEMENTQUANTITY', `#7=IFCELEMENTQUANTITY('${guid('impQto')}',$,'Q',$,$,(#8));`],
+        [8, 'IFCQUANTITYAREA', "#8=IFCQUANTITYAREA('Area',$,$,10.,$);"],
+        [9, 'IFCDIMENSIONALEXPONENTS', '#9=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);'],
+      ]);
+      imperial.lengthUnitScale = 0.3048;
+
+      const content = decode(new MergedExporter([metreModel(), imperial])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' }).content);
+      // 10 ft² × 0.09290304 = 0.9290304 m².
+      expect(content).toContain("IFCQUANTITYAREA('Area',$,$,0.9290304,$)");
+      // The conversion factor itself (a unit definition) is untouched.
+      expect(content).toContain('IFCAREAMEASURE(0.09290304)');
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('rescales in the other direction (metre model into a feet primary)', () => {
+      const feet = buildModel('feet', 'Feet', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('ftProj')}',$,'Feet',$,$,$,$,$,#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#3));'],
+        [3, 'IFCSIUNIT', '#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.FOOT.);'],
+        [4, 'IFCWALL', `#4=IFCWALL('${guid('ftWall')}',$,'FW',$,$,#5,$,$);`],
+        [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((5.,0.,0.));'],
+      ]);
+      feet.lengthUnitScale = 0.3048;
+      const metre = buildModel('m', 'Metre', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('mProj')}',$,'Metre',$,$,$,$,$,#2);`],
+        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#3));'],
+        [3, 'IFCSIUNIT', '#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [4, 'IFCCOLUMN', `#4=IFCCOLUMN('${guid('mCol')}',$,'MC',$,$,#5,$,$);`],
+        [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((3.048,0.,0.));'],
+      ]);
+      metre.lengthUnitScale = 1.0;
+
+      const content = decode(new MergedExporter([feet, metre])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' }).content);
+      // 3.048 m ÷ 0.3048 m/ft = 10 ft.
+      expect(content).toContain('(10.,0.,0.)');
+      expect(content.match(/=IFCPROJECT\(/g)?.length).toBe(1);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('normalizes via exportAsync as well', async () => {
+      const result = await new MergedExporter([metreModel(), mmModel()])
+        .exportAsync({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      const content = decode(result.content);
+      expect(content).toContain('(3.,0.,0.)');
+      expect(content.match(/=IFCPROJECT\(/g)?.length).toBe(1);
+      expect(result.stats.normalizedModelCount).toBe(1);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('leaves an already-shared-unit model untouched under normalize', () => {
+      const result = new MergedExporter([metreModel(), metreModel()])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      const content = decode(result.content);
+      // Same unit → nothing rescaled, still unified to one project.
+      expect(result.stats.normalizedModelCount).toBe(0);
+      expect(content.match(/=IFCPROJECT\(/g)?.length).toBe(1);
+      expect(content).toContain('(1.5,0.,0.)');
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it('warns that IFC4X3-specific length attributes may be unscaled', () => {
+      const mm = mmModel();
+      (mm.dataStore as { schemaVersion: string }).schemaVersion = 'IFC4X3';
+      const result = new MergedExporter([metreModel(), mm])
+        .export({ schema: 'IFC4X3', unitReconciliation: 'normalize' });
+      expect(result.stats.normalizedModelCount).toBe(1);
+      expect(result.stats.warnings.some(w => w.includes('IFC4X3'))).toBe(true);
+    });
+
+    it('warns when a normalized model carries georeferencing', () => {
+      const mm = mmModel();
+      const store = mm.dataStore;
+      // Splice a minimal IfcMapConversion into the mock store so the caveat fires.
+      const map = "#18=IFCMAPCONVERSION(#3,#19,10.,20.,0.,$,$,$);";
+      const crs = "#19=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);";
+      const extra = new TextEncoder().encode(map + crs);
+      const merged = new Uint8Array(store.source!.length + extra.length);
+      merged.set(store.source!); merged.set(extra, store.source!.length);
+      let off = store.source!.length;
+      for (const [id, type, text] of [[18, 'IFCMAPCONVERSION', map], [19, 'IFCPROJECTEDCRS', crs]] as Array<[number, string, string]>) {
+        const len = new TextEncoder().encode(text).length;
+        store.entityIndex.byId.set(id, { expressId: id, type, byteOffset: off, byteLength: len, lineNumber: 0 } as never);
+        if (!store.entityIndex.byType.has(type)) store.entityIndex.byType.set(type, []);
+        store.entityIndex.byType.get(type)!.push(id);
+        off += len;
+      }
+      (store as { source: Uint8Array }).source = merged;
+
+      const result = new MergedExporter([metreModel(), mm])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      expect(result.stats.warnings.some(w => w.includes('georeferencing'))).toBe(true);
+    });
+
+    it("contrast: 'auto' federates the mm model (two projects), 'normalize' unifies it", () => {
+      const auto = decode(new MergedExporter([metreModel(), mmModel()]).export({ schema: 'IFC4' }).content);
+      expect(auto.match(/=IFCPROJECT\(/g)?.length).toBe(2); // federated
+      expect(auto).toContain('(3000.,0.,0.)'); // raw mm coords preserved
+
+      const norm = decode(new MergedExporter([metreModel(), mmModel()])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' }).content);
+      expect(norm.match(/=IFCPROJECT\(/g)?.length).toBe(1); // unified
+      expect(norm).not.toContain('(3000.,0.,0.)'); // rescaled
+    });
+  });
+
   // Federated export must round-trip pending edits (issue #1406): the merged
   // path historically read raw source bytes and dropped every mutation, so only
   // single-model export reflected edits. exportAsync now bakes each model's

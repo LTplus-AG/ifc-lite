@@ -62,7 +62,7 @@ impl IfcAPI {
         );
         let unit_scale = unit_scales.length_unit_scale;
         decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
-        let mut router = GeometryRouter::with_scale(unit_scale);
+        let router = GeometryRouter::with_scale(unit_scale);
 
         // Detect RTC offset
         let rtc_jobs: Vec<_> = pre_pass

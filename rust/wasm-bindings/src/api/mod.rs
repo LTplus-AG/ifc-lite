@@ -24,7 +24,6 @@ mod space_plate;
 pub(crate) mod styling;
 mod symbolic;
 
-pub use clash::{ClashRunResult, ClashSession};
 use csg_diagnostics::drain_and_log_csg_diagnostics;
 
 use ifc_lite_core::EntityIndex;

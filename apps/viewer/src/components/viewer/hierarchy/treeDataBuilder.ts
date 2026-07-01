@@ -70,10 +70,13 @@ export function compareStoreyEntries(
 /** The name a spatial element row renders with: its entity name, or a
  *  "<Type> #<id>" fallback. Single source of truth so the displayed label
  *  (emitElementSubtree) and the name-sort key (orderElementIdsByName) can't
- *  drift apart. */
-function getElementDisplayName(id: number, dataStore: IfcDataStore): string {
+ *  drift apart. Callers that already resolved the type name pass it as
+ *  `typeName` so the fallback branch does not fetch it a second time. */
+function getElementDisplayName(id: number, dataStore: IfcDataStore, typeName?: string): string {
   const entities = dataStore.entities;
-  return entities?.getName(id) || `${entities?.getTypeName(id) || 'Unknown'} #${id}`;
+  const name = entities?.getName(id);
+  if (name) return name;
+  return `${typeName || entities?.getTypeName(id) || 'Unknown'} #${id}`;
 }
 
 /** Order the element rows within a spatial container by the active browser sort
@@ -292,7 +295,8 @@ function emitElementSubtree(
   const relationships = dataStore.relationships as AggregationRelationships | undefined;
   const globalId = resolveTreeGlobalId(modelId, elementId, models);
   const entityType = dataStore.entities?.getTypeName(elementId) || 'Unknown';
-  const entityName = getElementDisplayName(elementId, dataStore);
+  // Reuse entityType so an unnamed element resolves its type name only once.
+  const entityName = getElementDisplayName(elementId, dataStore, entityType);
 
   // Direct decomposition children, minus anything already on the path (cycle
   // guard), ordered by the active name sort so it reaches inside a decomposing

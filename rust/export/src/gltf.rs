@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{collate_refs, InstanceMeshRef, InstanceMeta, InstanceTemplate};
 use ifc_lite_processing::{
@@ -1279,8 +1280,33 @@ fn build_gltf(
 }
 
 /// Like [`export_glb`] but also returns coverage stats. Meshes the model from bytes.
+///
+/// NOTE: this path fails OPEN on an empty visible set — it returns a structurally
+/// valid zero-mesh GLB reported as success. Prefer [`try_export_glb_with_stats`],
+/// which turns that case into [`ExportError::NoRenderGeometry`] so no caller can
+/// silently ship an empty artifact.
 pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
     export_glb_from_result(process_geometry(content), opts)
+}
+
+/// Fail-closed [`export_glb`]: an empty visible mesh set is an error, not a valid
+/// empty GLB. Success implies the artifact contains at least one mesh, so every
+/// caller (CLI, MCP, SDK, viewer, direct Rust) inherits the guard that previously
+/// lived only in the TS wrappers.
+pub fn try_export_glb(content: &[u8], opts: &GltfOptions) -> Result<Vec<u8>, ExportError> {
+    try_export_glb_with_stats(content, opts).map(|(glb, _)| glb)
+}
+
+/// Fail-closed [`export_glb_with_stats`]; see [`try_export_glb`].
+pub fn try_export_glb_with_stats(
+    content: &[u8],
+    opts: &GltfOptions,
+) -> Result<(Vec<u8>, GltfStats), ExportError> {
+    let (glb, stats) = export_glb_with_stats(content, opts);
+    if stats.meshes == 0 {
+        return Err(ExportError::NoRenderGeometry);
+    }
+    Ok((glb, stats))
 }
 
 /// Like [`export_glb_with_stats`] but reuses a pre-built entity index — for a caller
@@ -2562,5 +2588,42 @@ mod tests {
         )
         .1;
         assert!(iso.meshes >= 1 && iso.meshes <= full.meshes);
+    }
+
+    /// A structurally valid IFC with zero products (no render geometry).
+    const GEOMETRYLESS_IFC: &str = "ISO-10303-21;\n\
+HEADER;\n\
+FILE_DESCRIPTION((''),'2;1');\n\
+FILE_NAME('empty.ifc','2026-01-01T00:00:00',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\n\
+ENDSEC;\n\
+DATA;\n\
+#1=IFCPROJECT('0000000000000000000001',$,'Empty',$,$,$,$,$,#2);\n\
+#2=IFCUNITASSIGNMENT((#3));\n\
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
+ENDSEC;\n\
+END-ISO-10303-21;\n";
+
+    #[test]
+    fn try_export_glb_fails_closed_on_geometryless_model() {
+        let err = try_export_glb(GEOMETRYLESS_IFC.as_bytes(), &GltfOptions::default())
+            .expect_err("a zero-mesh export must be an error, not a valid empty GLB");
+        assert_eq!(err, ExportError::NoRenderGeometry);
+        assert_eq!(err.code(), "NO_RENDER_GEOMETRY");
+        // The fail-open path still exists for callers that explicitly want it.
+        let (glb, stats) = export_glb_with_stats(GEOMETRYLESS_IFC.as_bytes(), &GltfOptions::default());
+        assert_eq!(stats.meshes, 0);
+        let (json, _) = parse_glb(&glb);
+        assert!(json["meshes"].as_array().map_or(true, |m| m.is_empty()));
+    }
+
+    #[test]
+    fn try_export_glb_matches_fail_open_path_when_nonempty() {
+        let content = fixture("ifcopenshell/1019-column.ifc");
+        let (glb, stats) =
+            try_export_glb_with_stats(&content, &GltfOptions::default()).expect("has geometry");
+        assert!(stats.meshes >= 1);
+        let (baseline, _) = export_glb_with_stats(&content, &GltfOptions::default());
+        assert_eq!(glb, baseline, "try_ path must be byte-identical to export_glb");
     }
 }

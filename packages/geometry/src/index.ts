@@ -31,6 +31,9 @@ export {
 export type { GeometryDiagnostics } from './diagnostics.js';
 export { mergeGeometryDiagnostics } from './diagnostics.js';
 
+// Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
+export { NO_RENDER_GEOMETRY, isNoRenderGeometryError } from './export-errors.js';
+
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler } from './coordinate-handler.js';
@@ -1124,6 +1127,11 @@ export class GeometryProcessor {
     return this.bridge.exportObj(buffer, includeNormals, hidden, isolated);
   }
 
+  /**
+   * Export render geometry as a binary GLB. Fails closed: a model whose visible
+   * mesh set is empty throws the typed `NO_RENDER_GEOMETRY` error (match with
+   * `isNoRenderGeometryError`) instead of returning a valid but empty GLB.
+   */
   exportGlb(
     buffer: Uint8Array,
     includeMetadata = false,

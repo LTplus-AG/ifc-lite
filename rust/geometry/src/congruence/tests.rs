@@ -227,3 +227,19 @@ fn translated_copy_merges() {
     }
     assert!(safe_merge(&a, &b), "a translated copy must merge");
 }
+
+#[test]
+fn nan_vertex_does_not_panic() {
+    // A NaN/inf coordinate propagates through the centroid into the covariance
+    // eigenvalues; the eigenvalue sorts in signature_keys and the PCA eigenframe
+    // must use total_cmp (partial_cmp().unwrap() panicked on NaN). The invariant
+    // here is "no unwind", not any particular bucketing outcome.
+    let mut m = tetra();
+    m.positions.extend_from_slice(&[f32::NAN, 0.5, 0.5]);
+    m.normals.extend_from_slice(&[0.0, 0.0, 0.0]);
+    m.indices.extend_from_slice(&[0, 1, 4]);
+    if let Some(w) = build_welded(&m) {
+        let _ = signature_keys(&w);
+        let _ = verify(&w, &w);
+    }
+}

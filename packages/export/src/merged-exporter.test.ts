@@ -287,6 +287,122 @@ describe('MergedExporter', () => {
     expect(() => new MergedExporter([])).toThrow('at least one model');
   });
 
+  describe('configurable spatial merge matching (mergeSites/mergeBuildings/mergeStoreys)', () => {
+    it('mergeSites "single" unifies by count alone, ignoring differing names', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g2',$,'Site A',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g4',$,'Site B',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeSites: 'single' });
+      const content = decode(result.content);
+
+      expect(content).not.toContain("IFCSITE('g4'");
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(1);
+    });
+
+    it('mergeSites "by-name" keeps differing-name lone sites separate (no single fallback)', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g2',$,'Site A',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g4',$,'Site B',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeSites: 'by-name' });
+      const content = decode(result.content);
+
+      // Differing names, no single-instance fallback → both kept
+      expect(content).toContain("IFCSITE('g2'");
+      expect(content).toContain("IFCSITE('g4'");
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(2);
+    });
+
+    it('mergeBuildings "single" unifies by count alone, ignoring differing names', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDING', "#2=IFCBUILDING('g2',$,'Building A',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDING', "#2=IFCBUILDING('g4',$,'Building B',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeBuildings: 'single' });
+      const content = decode(result.content);
+
+      expect(content).not.toContain("IFCBUILDING('g4'");
+      expect(content.match(/=IFCBUILDING\(/g)?.length).toBe(1);
+    });
+
+    it('mergeStoreys "by-name" does not fall back to elevation', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g2',$,'EG',$,$,$,$,$,.ELEMENT.,0.);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        // Same elevation, different name — would unify under the elevation fallback.
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g4',$,'Ground',$,$,$,$,$,.ELEMENT.,0.);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeStoreys: 'by-name' });
+      const content = decode(result.content);
+
+      // Strict by-name: no elevation fallback → kept separate
+      expect(content).toContain("IFCBUILDINGSTOREY('g4'");
+    });
+
+    it('mergeStoreys "by-elevation" ignores matching names when elevation differs', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g2',$,'Ground Floor',$,$,$,$,$,.ELEMENT.,0.);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        // Same name, very different elevation — would unify under the name match.
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g4',$,'Ground Floor',$,$,$,$,$,.ELEMENT.,9000.);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeStoreys: 'by-elevation' });
+      const content = decode(result.content);
+
+      // Strict by-elevation: name is ignored, elevation is out of tolerance → kept separate
+      expect(content).toContain("IFCBUILDINGSTOREY('g4'");
+    });
+
+    it('omitted mergeSites/mergeStoreys keeps the pre-existing combined heuristic', () => {
+      // Same fixture as the "single" test above, but with no mode override —
+      // must still unify via the name-else-single-fallback heuristic.
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g2',$,'Site A',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g4',$,'Site B',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first' });
+      const content = decode(result.content);
+
+      expect(content).not.toContain("IFCSITE('g4'");
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(1);
+    });
+  });
+
   // Regression: github.com/LTplus-AG/ifc-lite/issues/1110
   // When the parser defers property atoms out of byId (deferPropertyAtomIndex
   // on huge files), the merge must still emit them — otherwise the kept

@@ -1292,13 +1292,7 @@ fn build_gltf(
 /// materializes all of its `MeshData` at once — the wasm-OOM fix. Small models
 /// keep the in-memory instanced assembler (byte-identical to before).
 pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
-    // Quantized exports stay on the in-memory assembler regardless of size:
-    // quantization is a NATIVE-ONLY opt-in (the wasm binding hardcodes
-    // `quantize: false`, so the browser path - the one with the hard heap
-    // ceiling - always gets the bounded assembler), and native large-quantized
-    // exports are a working, measured path (multi-buffer glTF + quantization).
-    // Teaching the bounded assembler quantized layout is a tracked follow-up.
-    if !opts.quantize && content.len() >= glb_stream_threshold_bytes() {
+    if content.len() >= glb_stream_threshold_bytes() {
         return export_glb_streaming_bounded(content, opts);
     }
     export_glb_from_result(process_geometry(content), opts)
@@ -1618,14 +1612,17 @@ struct StreamedMeshMeta {
     write: Option<StreamedWrite>,
 }
 
-/// Byte destinations (offsets WITHIN each run) + bake offset for one emitted mesh.
+/// Byte destinations (offsets WITHIN each run) + bake parameters for one emitted mesh.
 struct StreamedWrite {
     pos_off: u64,
     norm_off: u64,
     idx_off: u64,
-    /// Added to each position (f64) before the f32 downcast: `origin - scene_center`
-    /// for singletons, zero for shared (content-deduped) meshes.
+    /// f32 path: added to each position (f64) before the f32 downcast:
+    /// `origin - scene_center` for singletons, zero for shared meshes.
     vertex_offset: [f64; 3],
+    /// Quantized path: `(center, half, small_indices)` for the SHORT encoding
+    /// (the node carries the dequant); `vertex_offset` is unused when set.
+    quant: Option<([f64; 3], [f64; 3], bool)>,
 }
 
 /// Input-size threshold (bytes) above which `export_glb_with_stats` uses the
@@ -1666,9 +1663,13 @@ fn glb_stream_threshold_bytes() -> usize {
 ///   Models with no instanceable groups produce BYTE-IDENTICAL output; models
 ///   with them produce the same world geometry, larger by the forgone dedup.
 /// - the model is meshed twice (the price of bounded memory).
-/// - quantization is not supported here; the caller gates on `opts.quantize`.
+///
+/// Supports both the f32 and the `KHR_mesh_quantization` layouts; the quantized
+/// accessor min/max come from the local bbox in closed form (the quantize map is
+/// monotone per axis). Caveat: a NaN vertex coordinate quantizes to 0 in the
+/// byte stream on both paths, but only the in-memory fold lets that 0 into the
+/// accessor min/max hint; clean meshes are byte-identical.
 pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
-    assert!(!opts.quantize, "quantized export uses the in-memory assembler");
     let stream_opts =
         || StreamingOptions { retain_emitted_meshes: false, ..StreamingOptions::default() };
 
@@ -1752,8 +1753,12 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
     let mut material_map: HashMap<(i32, i32, i32, i32), u32> = HashMap::new();
     let mut element_node_indices: Vec<u32> = Vec::new();
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
-    let mut shared_cache: HashMap<u128, u32> = HashMap::new();
+    // key -> (mesh_idx, dequant center, dequant half). center/half are dummy
+    // zeros/ones on the f32 path (node scale stays None), the per-mesh dequant
+    // the node folds in on the quantized path (mirrors build_gltf's flat_cache).
+    let mut shared_cache: HashMap<u128, (u32, [f64; 3], [f64; 3])> = HashMap::new();
     let (mut pos_len, mut norm_len, mut idx_len) = (0u64, 0u64, 0u64);
+    let quantize = opts.quantize;
 
     // First simulation pass computes run lengths so accessor emission below can
     // reference stable bufferView indices (0/1/2) with per-run byte offsets.
@@ -1762,6 +1767,7 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
     struct Emitted {
         mesh_idx: u32,
         translation: Option<[f64; 3]>,
+        scale: Option<[f64; 3]>,
     }
     let mut per_meta: Vec<Emitted> = Vec::with_capacity(metas.len());
     for meta in &mut metas {
@@ -1771,56 +1777,113 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
             meta.origin[2] - scene_center[2],
         ];
         let shared = key_counts.get(&meta.key).copied().unwrap_or(1) >= 2;
-        let (emit, vertex_offset, translation) = if shared {
-            (
-                !shared_cache.contains_key(&meta.key),
-                [0.0, 0.0, 0.0],
-                placement.iter().any(|c| c.abs() > 1e-9).then_some(placement),
-            )
-        } else {
-            (true, placement, None)
+        // Per-mesh dequant frame (quantized layout): centre + half-extent of the
+        // LOCAL bbox, degenerate axes guarded to 1, exactly as push_mesh_quantized.
+        let (q_center, q_half) = {
+            let mut c = [0.0f64; 3];
+            let mut h = [1.0f64; 3];
+            for k in 0..3 {
+                let lo = meta.local_min[k] as f64;
+                let hi = meta.local_max[k] as f64;
+                c[k] = (lo + hi) * 0.5;
+                let hh = (hi - lo) * 0.5;
+                if hh > 0.0 {
+                    h[k] = hh;
+                }
+            }
+            (c, h)
         };
-        let mesh_idx = if emit {
-            let bake = |local: [f32; 3]| -> [f32; 3] {
-                [
-                    (local[0] as f64 + vertex_offset[0]) as f32,
-                    (local[1] as f64 + vertex_offset[1]) as f32,
-                    (local[2] as f64 + vertex_offset[2]) as f32,
-                ]
+        let emit = !(shared && shared_cache.contains_key(&meta.key));
+        // f32 path only: singletons bake world-minus-centre into the vertices.
+        let vertex_offset =
+            if shared || quantize { [0.0, 0.0, 0.0] } else { placement };
+        let (mesh_idx, center, half) = if emit {
+            let (pos_acc, norm_acc, idx_acc) = if quantize {
+                // Quantize is monotone per axis, so the accessor min/max are the
+                // quantized local bbox corners in closed form.
+                let q1 = |v: f32, k: usize| -> f32 {
+                    let n = ((v as f64 - q_center[k]) / q_half[k]).clamp(-1.0, 1.0);
+                    ((n * 32767.0).round() as i16) as f32
+                };
+                let qv = |v: [f32; 3]| [q1(v[0], 0), q1(v[1], 1), q1(v[2], 2)];
+                let pos_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 0,
+                    byte_offset: pos_len as u32,
+                    component_type: 5122, // SHORT
+                    count: meta.nverts,
+                    ty: "VEC3",
+                    normalized: Some(true),
+                    min: Some(qv(meta.local_min)),
+                    max: Some(qv(meta.local_max)),
+                });
+                let norm_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 1,
+                    byte_offset: norm_len as u32,
+                    component_type: 5122,
+                    count: meta.nverts,
+                    ty: "VEC3",
+                    normalized: Some(true),
+                    min: None,
+                    max: None,
+                });
+                let small = meta.nverts <= u16::MAX as u32 + 1;
+                let idx_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 2,
+                    byte_offset: idx_len as u32,
+                    component_type: if small { 5123 } else { 5125 },
+                    count: meta.nidx,
+                    ty: "SCALAR",
+                    normalized: None,
+                    min: None,
+                    max: None,
+                });
+                (pos_acc, norm_acc, idx_acc)
+            } else {
+                let bake = |local: [f32; 3]| -> [f32; 3] {
+                    [
+                        (local[0] as f64 + vertex_offset[0]) as f32,
+                        (local[1] as f64 + vertex_offset[1]) as f32,
+                        (local[2] as f64 + vertex_offset[2]) as f32,
+                    ]
+                };
+                let pos_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 0,
+                    byte_offset: pos_len as u32,
+                    component_type: 5126,
+                    count: meta.nverts,
+                    ty: "VEC3",
+                    normalized: None,
+                    min: Some(bake(meta.local_min)),
+                    max: Some(bake(meta.local_max)),
+                });
+                let norm_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 1,
+                    byte_offset: norm_len as u32,
+                    component_type: 5126,
+                    count: meta.nverts,
+                    ty: "VEC3",
+                    normalized: None,
+                    min: None,
+                    max: None,
+                });
+                let idx_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 2,
+                    byte_offset: idx_len as u32,
+                    component_type: 5125,
+                    count: meta.nidx,
+                    ty: "SCALAR",
+                    normalized: None,
+                    min: None,
+                    max: None,
+                });
+                (pos_acc, norm_acc, idx_acc)
             };
-            let pos_acc = accessors.len() as u32;
-            accessors.push(Accessor {
-                buffer_view: 0,
-                byte_offset: pos_len as u32,
-                component_type: 5126,
-                count: meta.nverts,
-                ty: "VEC3",
-                normalized: None,
-                min: Some(bake(meta.local_min)),
-                max: Some(bake(meta.local_max)),
-            });
-            let norm_acc = accessors.len() as u32;
-            accessors.push(Accessor {
-                buffer_view: 1,
-                byte_offset: norm_len as u32,
-                component_type: 5126,
-                count: meta.nverts,
-                ty: "VEC3",
-                normalized: None,
-                min: None,
-                max: None,
-            });
-            let idx_acc = accessors.len() as u32;
-            accessors.push(Accessor {
-                buffer_view: 2,
-                byte_offset: idx_len as u32,
-                component_type: 5125,
-                count: meta.nidx,
-                ty: "SCALAR",
-                normalized: None,
-                min: None,
-                max: None,
-            });
             let material = *material_map.entry(color_key(meta.color)).or_insert_with(|| {
                 let idx = materials.len() as u32;
                 materials.push(Material {
@@ -1850,23 +1913,53 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
             stats.meshes += 1;
             stats.vertices += meta.nverts as usize;
             stats.triangles += meta.nidx as usize / 3;
+            let small = meta.nverts <= u16::MAX as u32 + 1;
             meta.write = Some(StreamedWrite {
                 pos_off: pos_len,
                 norm_off: norm_len,
                 idx_off: idx_len,
                 vertex_offset,
+                quant: quantize.then_some((q_center, q_half, small)),
             });
-            pos_len += meta.nverts as u64 * 12;
-            norm_len += meta.nverts as u64 * 12;
-            idx_len += meta.nidx as u64 * 4;
-            if shared {
-                shared_cache.insert(meta.key, mesh_idx);
+            if quantize {
+                pos_len += meta.nverts as u64 * 8;
+                norm_len += meta.nverts as u64 * 8;
+                idx_len += meta.nidx as u64 * if small { 2 } else { 4 };
+                // The in-memory chunker pads the index run to 4-byte alignment
+                // after every mesh; mirror it so offsets and lengths agree.
+                idx_len = idx_len.div_ceil(4) * 4;
+            } else {
+                pos_len += meta.nverts as u64 * 12;
+                norm_len += meta.nverts as u64 * 12;
+                idx_len += meta.nidx as u64 * 4;
             }
-            mesh_idx
+            if shared {
+                shared_cache.insert(meta.key, (mesh_idx, q_center, q_half));
+            }
+            (mesh_idx, q_center, q_half)
         } else {
             shared_cache[&meta.key]
         };
-        per_meta.push(Emitted { mesh_idx, translation });
+        let (translation, scale) = if quantize {
+            // Placement is pure translation, so it commutes with the dequant
+            // translate: node = T(placement + center) · S(half).
+            (
+                Some([
+                    placement[0] + center[0],
+                    placement[1] + center[1],
+                    placement[2] + center[2],
+                ]),
+                Some(half),
+            )
+        } else if shared {
+            (
+                placement.iter().any(|c| c.abs() > 1e-9).then_some(placement),
+                None,
+            )
+        } else {
+            (None, None)
+        };
+        per_meta.push(Emitted { mesh_idx, translation, scale });
     }
     for (meta, emitted) in metas.iter().zip(&per_meta) {
         let node_idx = nodes.len() as u32;
@@ -1874,7 +1967,7 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
             mesh: Some(emitted.mesh_idx),
             children: None,
             translation: emitted.translation,
-            scale: None,
+            scale: emitted.scale,
             matrix: None,
             extras: node_extras(
                 opts.include_metadata,
@@ -1906,14 +1999,14 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
                     buffer: 0,
                     byte_offset: 0,
                     byte_length: pos_len as u32,
-                    byte_stride: Some(12),
+                    byte_stride: Some(if quantize { 8 } else { 12 }),
                     target: 34962,
                 },
                 BufferView {
                     buffer: 0,
                     byte_offset: pos_len as u32,
                     byte_length: norm_len as u32,
-                    byte_stride: Some(12),
+                    byte_stride: Some(if quantize { 8 } else { 12 }),
                     target: 34962,
                 },
                 BufferView {
@@ -1965,9 +2058,12 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
             if !opts.lit && stats.materials > 0 {
                 ext.push("KHR_materials_unlit");
             }
+            if quantize {
+                ext.push("KHR_mesh_quantization");
+            }
             (!ext.is_empty()).then_some(ext)
         },
-        extensions_required: None,
+        extensions_required: quantize.then(|| vec!["KHR_mesh_quantization"]),
     };
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
 
@@ -2034,23 +2130,69 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
                     m.express_id, y.positions.len() / 3, y.indices.len(),
                 );
                 if let Some(w) = &meta.write {
-                    let mut po = pos_base + w.pos_off as usize;
-                    for p in y.positions.chunks_exact(3) {
-                        for (&pv, &off) in p.iter().zip(&w.vertex_offset) {
-                            let baked = (pv as f64 + off) as f32;
-                            out[po..po + 4].copy_from_slice(&baked.to_le_bytes());
-                            po += 4;
+                    if let Some((center, half, small)) = &w.quant {
+                        // SHORT-normalized encoding, identical to push_mesh_quantized;
+                        // the 2-byte stride pads and the index-run 4-alignment pads
+                        // are already zero from the container prefill.
+                        let mut po = pos_base + w.pos_off as usize;
+                        for p in y.positions.chunks_exact(3) {
+                            for (k, &v) in p.iter().enumerate() {
+                                let n = ((v as f64 - center[k]) / half[k]).clamp(-1.0, 1.0);
+                                let q = (n * 32767.0).round() as i16;
+                                out[po..po + 2].copy_from_slice(&q.to_le_bytes());
+                                po += 2;
+                            }
+                            po += 2; // 8-byte stride pad
                         }
-                    }
-                    let mut no = norm_base + w.norm_off as usize;
-                    for &n in &y.normals {
-                        out[no..no + 4].copy_from_slice(&n.to_le_bytes());
-                        no += 4;
-                    }
-                    let mut io = idx_base + w.idx_off as usize;
-                    for &i in &y.indices {
-                        out[io..io + 4].copy_from_slice(&i.to_le_bytes());
-                        io += 4;
+                        let mut no = norm_base + w.norm_off as usize;
+                        for nrm in y.normals.chunks_exact(3) {
+                            let mut v = [
+                                nrm[0] as f64 * half[0],
+                                nrm[1] as f64 * half[1],
+                                nrm[2] as f64 * half[2],
+                            ];
+                            let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                            if len > 0.0 {
+                                v = [v[0] / len, v[1] / len, v[2] / len];
+                            }
+                            for c in v {
+                                let q = (c.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+                                out[no..no + 2].copy_from_slice(&q.to_le_bytes());
+                                no += 2;
+                            }
+                            no += 2; // 8-byte stride pad
+                        }
+                        let mut io = idx_base + w.idx_off as usize;
+                        if *small {
+                            for &i in &y.indices {
+                                out[io..io + 2].copy_from_slice(&(i as u16).to_le_bytes());
+                                io += 2;
+                            }
+                        } else {
+                            for &i in &y.indices {
+                                out[io..io + 4].copy_from_slice(&i.to_le_bytes());
+                                io += 4;
+                            }
+                        }
+                    } else {
+                        let mut po = pos_base + w.pos_off as usize;
+                        for p in y.positions.chunks_exact(3) {
+                            for (&pv, &off) in p.iter().zip(&w.vertex_offset) {
+                                let baked = (pv as f64 + off) as f32;
+                                out[po..po + 4].copy_from_slice(&baked.to_le_bytes());
+                                po += 4;
+                            }
+                        }
+                        let mut no = norm_base + w.norm_off as usize;
+                        for &n in &y.normals {
+                            out[no..no + 4].copy_from_slice(&n.to_le_bytes());
+                            no += 4;
+                        }
+                        let mut io = idx_base + w.idx_off as usize;
+                        for &i in &y.indices {
+                            out[io..io + 4].copy_from_slice(&i.to_le_bytes());
+                            io += 4;
+                        }
                     }
                 }
                 cursor += 1;
@@ -3198,6 +3340,45 @@ END-ISO-10303-21;\n";
         // pos/norm are 12-byte and idx 4-byte multiples, so the BIN needs no padding
         // and must be exactly the three declared runs.
         assert_eq!(declared as usize, str_bin.len(), "BIN length matches declared runs");
+    }
+
+    #[test]
+    fn streaming_bounded_quantized_is_byte_identical_on_flat_models() {
+        for rel in ["ifcopenshell/1019-column.ifc", "ifcopenshell/1030-sphere.ifc"] {
+            let Some(content) = fixture_opt(rel) else { continue };
+            let opts = GltfOptions {
+                quantize: true,
+                include_metadata: true,
+                ..GltfOptions::default()
+            };
+            let (in_memory, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
+            let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
+            assert_eq!(mem_stats.meshes, stream_stats.meshes, "{rel}: mesh stats");
+            assert_eq!(in_memory, streamed, "{rel}: quantized bounded must be byte-identical");
+        }
+    }
+
+    #[test]
+    fn streaming_bounded_quantized_preserves_world_geometry_on_instanced_model() {
+        let Some(content) = fixture_opt("ara3d/duplex.ifc") else { return };
+        let opts = GltfOptions { quantize: true, ..GltfOptions::default() };
+        let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
+        let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
+        assert!(stream_stats.meshes > 0);
+        let (mem_json, _) = parse_glb(&in_memory);
+        let (str_json, _) = parse_glb(&streamed);
+        // Node counts legitimately differ (the in-memory instanced quantized path
+        // nests a dequant child under a placement parent), but each occurrence
+        // carries exactly one mesh node on both paths, so placed triangles agree.
+        assert_eq!(
+            world_triangles(&mem_json),
+            world_triangles(&str_json),
+            "world triangle count must match",
+        );
+        assert_eq!(
+            str_json["extensionsRequired"][0].as_str(),
+            Some("KHR_mesh_quantization"),
+        );
     }
 
     #[test]

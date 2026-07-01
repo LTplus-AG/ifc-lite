@@ -17,6 +17,7 @@ mod transforms;
 mod voids;
 mod voids_2d;
 
+pub use transforms::local_frame_set_enabled_override;
 pub use voids::RectParam;
 pub use diagnostics::{
     aggregate_diagnostics, ClassificationStats, ClassificationSummary, GeometryDiagnostics,

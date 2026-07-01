@@ -141,9 +141,10 @@ pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
 pub use router::{
-    aggregate_diagnostics, ClassificationStats, ClassificationSummary, GeometryDiagnostics,
-    GeometryProcessor, GeometryRouter, HostOpeningDiagnostic, ItemDedupCache, OpeningDiagnostic,
-    OpeningKindDiag, ReasonCount, RectFastSummary, RectParam, WorstHost,
+    aggregate_diagnostics, local_frame_set_enabled_override, ClassificationStats,
+    ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
+    HostOpeningDiagnostic, ItemDedupCache, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
+    RectFastSummary, RectParam, WorstHost,
 };
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{

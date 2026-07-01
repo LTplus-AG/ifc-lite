@@ -67,6 +67,15 @@ export function compareStoreyEntries(
   }
 }
 
+/** The name a spatial element row renders with: its entity name, or a
+ *  "<Type> #<id>" fallback. Single source of truth so the displayed label
+ *  (emitElementSubtree) and the name-sort key (orderElementIdsByName) can't
+ *  drift apart. */
+function getElementDisplayName(id: number, dataStore: IfcDataStore): string {
+  const entities = dataStore.entities;
+  return entities?.getName(id) || `${entities?.getTypeName(id) || 'Unknown'} #${id}`;
+}
+
 /** Order the element rows within a spatial container by the active browser sort
  *  (issue #1476). A name sort orders elements by the same visible name the row
  *  renders (`getName || "<Type> #<id>"`), using the natural-numeric collator so
@@ -84,14 +93,11 @@ function orderElementIdsByName(
   if ((mode !== 'name-asc' && mode !== 'name-desc') || elementIds.length < 2) {
     return elementIds;
   }
-  const entities = dataStore.entities;
-  const displayName = (id: number): string =>
-    entities?.getName(id) || `${entities?.getTypeName(id) || 'Unknown'} #${id}`;
   const dir = mode === 'name-desc' ? -1 : 1;
   // Decorate-sort-undecorate: resolve each display name exactly once rather than
   // O(n log n) times inside the comparator.
   return elementIds
-    .map((id) => ({ id, name: displayName(id) }))
+    .map((id) => ({ id, name: getElementDisplayName(id, dataStore) }))
     .sort((a, b) => dir * storeyNameCollator.compare(a.name, b.name))
     .map((e) => e.id);
 }
@@ -286,7 +292,7 @@ function emitElementSubtree(
   const relationships = dataStore.relationships as AggregationRelationships | undefined;
   const globalId = resolveTreeGlobalId(modelId, elementId, models);
   const entityType = dataStore.entities?.getTypeName(elementId) || 'Unknown';
-  const entityName = dataStore.entities?.getName(elementId) || `${entityType} #${elementId}`;
+  const entityName = getElementDisplayName(elementId, dataStore);
 
   // Direct decomposition children, minus anything already on the path (cycle
   // guard), ordered by the active name sort so it reaches inside a decomposing

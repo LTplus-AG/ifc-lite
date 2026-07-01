@@ -291,21 +291,21 @@ export async function exportCommand(args: string[]): Promise<void> {
         if (format === 'ifcx') {
           const out = gp.exportIfcx(bytes);
           if (out == null) fatal('IFCX export failed (geometry pipeline not initialized)');
-          await writeOutput(out as string, outPath);
+          await writeOutput(out as Uint8Array, outPath);
         } else if (format === 'step') {
           // Rust faithful re-serialization (+ reference-closed subset when filtered).
           const schema = getFlag(args, '--schema') ?? '';
           const out = gp.exportStep(bytes, schema, isolated);
           if (out == null) fatal('STEP export failed (geometry pipeline not initialized)');
-          await writeOutput(out as string, outPath);
+          await writeOutput(out as Uint8Array, outPath);
         } else if (format === 'jsonld') {
           const out = gp.exportJsonld(bytes, '', true, false, false, isolated);
           if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
-          await writeOutput(out as string, outPath);
+          await writeOutput(out as Uint8Array, outPath);
         } else if (format === 'obj') {
           const out = gp.exportObj(bytes, true, new Uint32Array(), isolated);
           if (out == null) fatal('OBJ export failed (geometry pipeline not initialized)');
-          await writeOutput(out as string, outPath);
+          await writeOutput(out as Uint8Array, outPath);
         } else {
           // gltf | glb → binary GLB
           if (!outPath) fatal('--out is required for GLB/glTF export (binary output)');

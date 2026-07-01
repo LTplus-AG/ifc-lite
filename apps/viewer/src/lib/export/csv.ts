@@ -35,7 +35,8 @@ export async function exportCsvFromBytes(
   try {
     const csv = gp.exportCsv(bytes, mode, opts.delimiter ?? ',', opts.includeProperties ?? false);
     if (csv == null) throw new Error('CSV export returned no data');
-    return csv;
+    // Viewer CSV exports are UI-sized; decode to keep the string contract.
+    return new TextDecoder().decode(csv);
   } finally {
     gp.dispose();
   }

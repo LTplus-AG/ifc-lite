@@ -20,7 +20,8 @@ function makeStub(result: string | null | (() => never)) {
     exportCsv(_bytes: Uint8Array, mode: CsvMode = 'entities', delimiter = ',', includeProperties = false) {
       calls.exportArgs.push({ mode, delimiter, includeProperties });
       if (typeof result === 'function') result();
-      return result as string | null;
+      // The wasm boundary returns UTF-8 bytes; the wrapper decodes.
+      return result == null ? null : new TextEncoder().encode(result as string);
     },
     dispose() {
       calls.dispose++;

@@ -1122,7 +1122,7 @@ export class GeometryProcessor {
     includeNormals = true,
     hidden: Uint32Array = new Uint32Array(),
     isolated: Uint32Array = new Uint32Array(),
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportObj(buffer, includeNormals, hidden, isolated);
   }
@@ -1160,7 +1160,7 @@ export class GeometryProcessor {
     mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
     delimiter = ',',
     includeProperties = false,
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportCsv(buffer, mode, delimiter, includeProperties);
   }
@@ -1170,7 +1170,7 @@ export class GeometryProcessor {
     pretty = false,
     includeProperties = true,
     includeQuantities = true,
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportJson(buffer, pretty, includeProperties, includeQuantities);
   }
@@ -1182,7 +1182,7 @@ export class GeometryProcessor {
     includeQuantities = false,
     pretty = false,
     included: Uint32Array = new Uint32Array(),
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
   }
@@ -1192,18 +1192,18 @@ export class GeometryProcessor {
     schema = '',
     included: Uint32Array = new Uint32Array(),
     mutationsJson = '',
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportStep(buffer, schema, included, mutationsJson);
   }
 
-  exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): string | null {
+  exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
   }
 
   /** Merge several IFC models (raw byte buffers) into one STEP/IFC string. */
-  exportMerged(buffers: Uint8Array[], schema = ''): string | null {
+  exportMerged(buffers: Uint8Array[], schema = ''): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     let total = 0;
     for (const b of buffers) total += b.byteLength;
@@ -1287,7 +1287,7 @@ export class GeometryProcessor {
    * @param buffer IFC file buffer
    * @param name Model identifier / display name
    */
-  exportHbjson(buffer: Uint8Array, name: string): string | null {
+  exportHbjson(buffer: Uint8Array, name: string): Uint8Array | null {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }

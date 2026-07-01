@@ -234,7 +234,7 @@ const exportObj: Tool = {
       if (obj == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
       }
-      await writeFile(filePath, obj, 'utf-8');
+      await writeFile(filePath, obj);
       return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });
     } finally {
       gp.dispose();
@@ -267,7 +267,7 @@ const exportIfcx: Tool = {
       if (ifcx == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
       }
-      await writeFile(filePath, ifcx, 'utf-8');
+      await writeFile(filePath, ifcx);
       return okResult(`Wrote ${ifcx.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
     } finally {
       gp.dispose();

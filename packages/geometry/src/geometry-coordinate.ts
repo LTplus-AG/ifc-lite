@@ -82,6 +82,20 @@ export function convertMeshCollectionToBatch(
           originArr && originArr.length === 3 && (originArr[0] || originArr[1] || originArr[2])
             ? [originArr[0], originArr[1], originArr[2]]
             : undefined;
+        // Local (pre-placement) AABB + placement transform (issue #1474);
+        // absent on older bundles (no getter) or when not captured (e.g. an
+        // instancing template).
+        const localBoundsArr = (mesh as { localBounds?: ArrayLike<number> }).localBounds;
+        const localBounds =
+          localBoundsArr && localBoundsArr.length === 6
+            ? {
+                min: [localBoundsArr[0], localBoundsArr[1], localBoundsArr[2]] as [number, number, number],
+                max: [localBoundsArr[3], localBoundsArr[4], localBoundsArr[5]] as [number, number, number],
+              }
+            : undefined;
+        const localToWorldArr = (mesh as { localToWorld?: ArrayLike<number> }).localToWorld;
+        const localToWorld =
+          localToWorldArr && localToWorldArr.length === 16 ? Array.from(localToWorldArr) : undefined;
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
@@ -91,6 +105,8 @@ export function convertMeshCollectionToBatch(
           color: [color[0], color[1], color[2], color[3]],
           ...(shadingColor ? { shadingColor } : {}),
           ...(origin ? { origin } : {}),
+          ...(localBounds ? { localBounds } : {}),
+          ...(localToWorld ? { localToWorld } : {}),
           // #957 follow-up: carry the Model/Types geometry class so the viewer's
           // view-mode filter can show/hide type-library geometry.
           geometryClass: (mesh as { geometryClass?: number }).geometryClass ?? 0,

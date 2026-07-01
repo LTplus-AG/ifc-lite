@@ -2681,6 +2681,102 @@ export class Scene {
   }
 
   /**
+   * Local (pre-placement, object-space) AABB for an entity (issue #1474) — the
+   * element's true, un-rotated extent, unlike {@link getEntityBoundingBox}'s
+   * world-space (axis-aligned-to-world) box. Y-up metres, same frame as
+   * `positions`. O(1): no vertex scan, reads `MeshData.localBounds` captured
+   * by the geometry pipeline.
+   *
+   * Unions `localBounds` across all of the entity's mesh pieces — safe with
+   * no reconciliation, since every piece of one element is already expressed
+   * in the same local frame (see `MeshData.localBounds` docs). For a
+   * GPU-instanced entity, returns the shared template's local box (identical
+   * for every occurrence — the per-occurrence world placement comes from
+   * {@link getEntityTransform}).
+   *
+   * Returns `null` for a container/assembly with no mesh (e.g.
+   * `IfcElementAssembly`), or when not captured (older cached geometry).
+   */
+  getEntityLocalBounds(expressId: number): { min: [number, number, number]; max: [number, number, number] } | null {
+    const pieces = this.meshDataMap.get(expressId);
+    if (pieces && pieces.length > 0) {
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      let found = false;
+      for (const piece of pieces) {
+        const lb = piece.localBounds;
+        if (!lb) continue;
+        found = true;
+        if (lb.min[0] < minX) minX = lb.min[0];
+        if (lb.min[1] < minY) minY = lb.min[1];
+        if (lb.min[2] < minZ) minZ = lb.min[2];
+        if (lb.max[0] > maxX) maxX = lb.max[0];
+        if (lb.max[1] > maxY) maxY = lb.max[1];
+        if (lb.max[2] > maxZ) maxZ = lb.max[2];
+      }
+      return found ? { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] } : null;
+    }
+
+    // GPU-instanced entity: no flat mesh piece — the template's local box
+    // (computed once at upload time, `scene.ts` instancing upload path) is
+    // shared by every occurrence.
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (occurrences && occurrences.length > 0) {
+      const tmpl = this.instancedTemplateCpu[occurrences[0].templateIndex];
+      if (tmpl && Number.isFinite(tmpl.localMin[0])) {
+        return { min: tmpl.localMin, max: tmpl.localMax };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The resolved local→world placement transform for an entity (issue
+   * #1474): row-major 4×4 (16 numbers), Y-up metres — pairs with
+   * {@link getEntityLocalBounds} to reconstruct the element's true oriented
+   * world box (an OBB), unlike {@link getEntityBoundingBox}'s pre-unioned
+   * world-axis-aligned box.
+   *
+   * A multi-piece entity's pieces all share one placement (one
+   * `IfcLocalPlacement` per element) — returns the first piece that carries
+   * one. For a GPU-instanced entity, returns the SPECIFIC occurrence's
+   * transform (read from the packed instance buffer, column-major, and
+   * transposed here so the public contract is row-major regardless of path).
+   *
+   * Returns `null` for a container/assembly with no mesh, or when not
+   * captured (older cached geometry, or the instancing template was released).
+   */
+  getEntityTransform(expressId: number): Float32Array | null {
+    const pieces = this.meshDataMap.get(expressId);
+    if (pieces && pieces.length > 0) {
+      for (const piece of pieces) {
+        if (piece.localToWorld && piece.localToWorld.length === 16) {
+          return new Float32Array(piece.localToWorld);
+        }
+      }
+      return null;
+    }
+
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (occurrences && occurrences.length > 0) {
+      const { templateIndex, byteOffset } = occurrences[0];
+      const tmpl = this.instancedTemplateCpu[templateIndex];
+      if (!tmpl) return null;
+      const dv = new DataView(tmpl.instanceData);
+      const row = new Float32Array(16);
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          // Source is column-major (mat[c][r] at byteOffset + (c*4+r)*4);
+          // write it out row-major.
+          row[r * 4 + c] = dv.getFloat32(byteOffset + (c * 4 + r) * 4, true);
+        }
+      }
+      return row;
+    }
+    return null;
+  }
+
+  /**
    * CPU raycast against all mesh data.
    * Returns expressId and modelIndex of closest hit, or null.
    * Delegates to extracted raycaster utilities.

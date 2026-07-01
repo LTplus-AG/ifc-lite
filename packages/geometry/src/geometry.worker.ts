@@ -642,6 +642,19 @@ function collectMeshes(
           originArr && originArr.length === 3 && (originArr[0] || originArr[1] || originArr[2])
             ? [originArr[0], originArr[1], originArr[2]]
             : undefined;
+        // Local (pre-placement) AABB + placement transform (issue #1474);
+        // absent on older wasm bundles (no getter) or when not captured.
+        const localBoundsArr = mesh.localBounds;
+        const localBounds =
+          localBoundsArr && localBoundsArr.length === 6
+            ? {
+                min: [localBoundsArr[0], localBoundsArr[1], localBoundsArr[2]] as [number, number, number],
+                max: [localBoundsArr[3], localBoundsArr[4], localBoundsArr[5]] as [number, number, number],
+              }
+            : undefined;
+        const localToWorldArr = mesh.localToWorld;
+        const localToWorld =
+          localToWorldArr && localToWorldArr.length === 16 ? Array.from(localToWorldArr) : undefined;
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
@@ -649,6 +662,8 @@ function collectMeshes(
           color: [color[0], color[1], color[2], color[3]],
           ...(shadingColor ? { shadingColor } : {}),
           ...(origin ? { origin } : {}),
+          ...(localBounds ? { localBounds } : {}),
+          ...(localToWorld ? { localToWorld } : {}),
           // Provenance for the Model/Types switch (0=occurrence, 1=orphan type,
           // 2=instanced type). Older wasm bundles lack the getter → default 0.
           geometryClass: mesh.geometryClass ?? 0,

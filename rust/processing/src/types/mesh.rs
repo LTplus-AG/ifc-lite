@@ -87,6 +87,16 @@ pub struct MeshData {
     /// and never round-trips through the JSON/disk cache.
     #[serde(skip)]
     pub instance: Option<InstanceMeta>,
+    /// Local (pre-placement, object-space) AABB (issue #1474) — see
+    /// `ifc_lite_geometry::Mesh::local_bounds`. Purely in-memory, like
+    /// `instance` — `#[serde(skip)]`, recomputed fresh each load.
+    #[serde(skip)]
+    pub local_bounds: Option<[f32; 6]>,
+    /// The resolved `IfcLocalPlacement` chain applied to this mesh (issue
+    /// #1474), row-major — see `ifc_lite_geometry::Mesh::local_to_world`.
+    /// Purely in-memory, like `instance` — `#[serde(skip)]`.
+    #[serde(skip)]
+    pub local_to_world: Option<[f64; 16]>,
 }
 
 fn geometry_class_is_occurrence(class: &u8) -> bool {
@@ -125,12 +135,26 @@ impl MeshData {
             geometry_class: 0,
             origin: [0.0; 3],
             instance: None,
+            local_bounds: None,
+            local_to_world: None,
         }
     }
 
     /// Attach GPU-instancing metadata (see the `instance` field).
     pub fn with_instance(mut self, instance: Option<InstanceMeta>) -> Self {
         self.instance = instance;
+        self
+    }
+
+    /// Set the local (pre-placement, object-space) AABB (see `local_bounds`).
+    pub fn with_local_bounds(mut self, local_bounds: Option<[f32; 6]>) -> Self {
+        self.local_bounds = local_bounds;
+        self
+    }
+
+    /// Set the resolved placement transform (see `local_to_world`).
+    pub fn with_local_to_world(mut self, local_to_world: Option<[f64; 16]>) -> Self {
+        self.local_to_world = local_to_world;
         self
     }
 

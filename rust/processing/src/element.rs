@@ -583,6 +583,14 @@ fn build_mesh_data(
     } else {
         None
     };
+    // Local bounds/placement transform (issue #1474): same caveat as instancing
+    // above — a site-local rotation re-transforms positions and would invalidate
+    // the captured placement, so drop both when one is active.
+    let (local_bounds, local_to_world) = if ctx.site_local_rotation.is_none() {
+        (mesh.local_bounds, mesh.local_to_world)
+    } else {
+        (None, None)
+    };
     let mut mesh_data = MeshData::new(
         job.id,
         job.ifc_type.name().to_string(),
@@ -592,7 +600,9 @@ fn build_mesh_data(
         color,
     )
     .with_origin(mesh_origin)
-    .with_instance(instance);
+    .with_instance(instance)
+    .with_local_bounds(local_bounds)
+    .with_local_to_world(local_to_world);
     if let Some(meta) = job.metadata {
         mesh_data = mesh_data
             .with_element_metadata(

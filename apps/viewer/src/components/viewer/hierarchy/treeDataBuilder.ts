@@ -67,6 +67,35 @@ export function compareStoreyEntries(
   }
 }
 
+/** Order the element rows within a spatial container by the active browser sort
+ *  (issue #1476). A name sort orders elements by the same visible name the row
+ *  renders (`getName || "<Type> #<id>"`), using the natural-numeric collator so
+ *  "W-2" sorts before "W-10"; this makes the sort reach INSIDE a storey, not just
+ *  the storey rows — the whole point of the reported bug (one storey means the
+ *  storey sort is a no-op). Elevation modes keep the as-modeled document order, since
+ *  individual elements carry no elevation. Returns the input array unchanged (not
+ *  a copy) when nothing to reorder, so callers must treat the result as readonly.
+ *  `Array.prototype.sort` is stable, so equal-named elements keep document order. */
+function orderElementIdsByName(
+  elementIds: number[],
+  dataStore: IfcDataStore,
+  mode: HierarchySortMode,
+): number[] {
+  if ((mode !== 'name-asc' && mode !== 'name-desc') || elementIds.length < 2) {
+    return elementIds;
+  }
+  const entities = dataStore.entities;
+  const displayName = (id: number): string =>
+    entities?.getName(id) || `${entities?.getTypeName(id) || 'Unknown'} #${id}`;
+  const dir = mode === 'name-desc' ? -1 : 1;
+  // Decorate-sort-undecorate: resolve each display name exactly once rather than
+  // O(n log n) times inside the comparator.
+  return elementIds
+    .map((id) => ({ id, name: displayName(id) }))
+    .sort((a, b) => dir * storeyNameCollator.compare(a.name, b.name))
+    .map((e) => e.id);
+}
+
 /** Convert IfcTypeEnum to NodeType string */
 export function getNodeType(ifcType: IfcTypeEnum): NodeType {
   switch (ifcType) {
@@ -252,15 +281,23 @@ function emitElementSubtree(
   expandedNodes: Set<string>,
   nodes: TreeNode[],
   ancestors: Set<number>,
+  sortMode: HierarchySortMode,
 ): void {
   const relationships = dataStore.relationships as AggregationRelationships | undefined;
   const globalId = resolveTreeGlobalId(modelId, elementId, models);
   const entityType = dataStore.entities?.getTypeName(elementId) || 'Unknown';
   const entityName = dataStore.entities?.getName(elementId) || `${entityType} #${elementId}`;
 
-  // Direct decomposition children, minus anything already on the path (cycle guard).
-  const childIds = getAggregatedChildren(relationships, elementId)
-    .filter((id) => id !== elementId && !ancestors.has(id));
+  // Direct decomposition children, minus anything already on the path (cycle
+  // guard), ordered by the active name sort so it reaches inside a decomposing
+  // assembly too, not just the storey rows (issue #1476).
+  const childIds = orderElementIdsByName(
+    getAggregatedChildren(relationships, elementId).filter(
+      (id) => id !== elementId && !ancestors.has(id),
+    ),
+    dataStore,
+    sortMode,
+  );
   const hasChildren = childIds.length > 0;
   const nodeId = `element-${modelId}-${elementId}`;
   const isExpanded = hasChildren && expandedNodes.has(nodeId);
@@ -293,7 +330,7 @@ function emitElementSubtree(
   if (isExpanded) {
     const nextAncestors = new Set(ancestors).add(elementId);
     for (const childId of childIds) {
-      emitElementSubtree(childId, modelId, models, dataStore, depth + 1, expandedNodes, nodes, nextAncestors);
+      emitElementSubtree(childId, modelId, models, dataStore, depth + 1, expandedNodes, nodes, nextAncestors, sortMode);
     }
   }
 }
@@ -386,10 +423,13 @@ function buildSpatialNodes(
     }
 
     // Add direct spatial children elements for expanded nodes — each may itself
-    // decompose into nested parts via IfcRelAggregates (issue #1133).
+    // decompose into nested parts via IfcRelAggregates (issue #1133). Order them
+    // by the active name sort so it reaches inside the storey/space, not just the
+    // storey rows (issue #1476).
     if (hasDirectElements) {
-      for (const elementId of elements) {
-        emitElementSubtree(elementId, modelId, models, dataStore, depth + 1, expandedNodes, nodes, new Set());
+      const orderedElements = orderElementIdsByName(elements, dataStore, sortMode);
+      for (const elementId of orderedElements) {
+        emitElementSubtree(elementId, modelId, models, dataStore, depth + 1, expandedNodes, nodes, new Set(), sortMode);
       }
     }
   }
@@ -456,10 +496,12 @@ export function buildTreeData(
           });
 
           // If contribution expanded, show elements (assemblies nest their
-          // IfcRelAggregates parts — issue #1133).
+          // IfcRelAggregates parts — issue #1133), ordered by the active name
+          // sort so it reaches inside the storey (issue #1476).
           if (contribExpanded && model?.ifcDataStore) {
-            for (const elementId of storey.elements) {
-              emitElementSubtree(elementId, storey.modelId, models, model.ifcDataStore, 2, expandedNodes, nodes, new Set());
+            const orderedElements = orderElementIdsByName(storey.elements, model.ifcDataStore, sortMode);
+            for (const elementId of orderedElements) {
+              emitElementSubtree(elementId, storey.modelId, models, model.ifcDataStore, 2, expandedNodes, nodes, new Set(), sortMode);
             }
           }
         }

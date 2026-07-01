@@ -8,6 +8,11 @@
  * when storey names don't track height; this lets the user switch to an
  * alphanumeric (natural-numeric) name sort, in either direction.
  *
+ * A name sort applies at every spatial level — storey rows AND the elements
+ * inside each storey (issue #1476), so it stays useful even when a model has a
+ * single storey. Elevation modes reorder only the storey stack; elements keep
+ * their as-modeled document order (they carry no elevation).
+ *
  * Only meaningful in the spatial grouping mode — the Class / Type / Material
  * trees are already name-sorted — so the panel renders it just for `spatial`.
  */
@@ -52,7 +57,7 @@ export function HierarchySortControl({ value, onChange }: HierarchySortControlPr
           variant="outline"
           size="sm"
           className="h-6 w-full justify-between gap-1 px-2 mt-1 text-[10px] rounded-none uppercase tracking-wider"
-          title="Sort storeys"
+          title="Sort the spatial browser (storeys and their contents)"
         >
           <span className="flex items-center gap-1 min-w-0">
             <ActiveIcon className="h-3 w-3 shrink-0" />

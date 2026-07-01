@@ -1286,7 +1286,7 @@ fn build_gltf(
 /// which turns that case into [`ExportError::NoRenderGeometry`] so no caller can
 /// silently ship an empty artifact.
 ///
-/// Inputs at or above the streaming threshold (default 32 MB, native override
+/// Inputs at or above the streaming threshold (default 64 MB, native override
 /// `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) route to the bounded
 /// two-pass assembler ([`export_glb_streaming_bounded`]) so a large model never
 /// materializes all of its `MeshData` at once — the wasm-OOM fix. Small models
@@ -1629,7 +1629,10 @@ struct StreamedWrite {
 /// there — which is the point: the wasm path must never build the whole model
 /// in memory for large inputs.
 fn glb_stream_threshold_bytes() -> usize {
-    const DEFAULT_MB: usize = 32;
+    // 64 MB: 2x under the smallest input reported to trap the wasm heap (131 MB),
+    // while instancing-heavy mid-size models (which lose rep-identity dedup on
+    // the streaming path) keep the in-memory instanced assembler.
+    const DEFAULT_MB: usize = 64;
     let mb = std::env::var("IFC_LITE_GLB_STREAM_THRESHOLD_MB")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())

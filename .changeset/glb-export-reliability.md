@@ -9,7 +9,7 @@ feat(export): large-model GLB reliability - bounded memory, fail-closed, byte re
 
 Three related hardening changes on the export surface:
 
-- **Bounded-memory GLB.** Inputs at or above 32 MB (native override
+- **Bounded-memory GLB.** Inputs at or above 64 MB (native override
   `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) are exported through a
   two-pass streaming assembler: pass 1 records per-mesh metadata only, pass 2
   re-streams and bakes vertex bytes directly into an exactly-preallocated GLB.

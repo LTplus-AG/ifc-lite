@@ -42,6 +42,13 @@ pub(super) fn build_welded(mesh: &Mesh) -> Option<Welded> {
     if nv < 4 || nv > MAX_VERTS || w.indices.is_empty() {
         return None;
     }
+    // Reject non-finite coordinates outright: a NaN/inf vertex poisons the
+    // centroid and covariance (NaN eigenvalues), and verify's max-deviation
+    // fold is NaN-blind (`NaN > max_dev` is false), so a malformed mesh could
+    // otherwise bucket AND pass verification with a NaN canonical transform.
+    if w.positions.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
     let mut verts: Vec<Vector3<f64>> = Vec::with_capacity(nv);
     let mut c = Vector3::zeros();
     for i in 0..nv {

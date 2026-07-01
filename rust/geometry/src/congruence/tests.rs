@@ -229,17 +229,23 @@ fn translated_copy_merges() {
 }
 
 #[test]
-fn nan_vertex_does_not_panic() {
-    // A NaN/inf coordinate propagates through the centroid into the covariance
-    // eigenvalues; the eigenvalue sorts in signature_keys and the PCA eigenframe
-    // must use total_cmp (partial_cmp().unwrap() panicked on NaN). The invariant
-    // here is "no unwind", not any particular bucketing outcome.
+fn non_finite_vertex_mesh_is_rejected() {
+    // A NaN/inf coordinate poisons the centroid/covariance (NaN eigenvalues;
+    // the pre-fix partial_cmp().unwrap() sorts panicked on them) and verify's
+    // max-deviation fold is NaN-blind, so a malformed mesh could bucket AND
+    // pass verification with a NaN canonical transform. build_welded is the
+    // single entry to the pipeline and must reject it outright; the total_cmp
+    // sorts stay as defense-in-depth for values arising later.
     let mut m = tetra();
     m.positions.extend_from_slice(&[f32::NAN, 0.5, 0.5]);
     m.normals.extend_from_slice(&[0.0, 0.0, 0.0]);
     m.indices.extend_from_slice(&[0, 1, 4]);
-    if let Some(w) = build_welded(&m) {
-        let _ = signature_keys(&w);
-        let _ = verify(&w, &w);
-    }
+    assert!(build_welded(&m).is_none(), "NaN-vertex mesh must be rejected");
+
+    let mut inf = tetra();
+    inf.positions[0] = f32::INFINITY;
+    assert!(build_welded(&inf).is_none(), "inf-vertex mesh must be rejected");
+
+    // Finite meshes are unaffected by the gate.
+    assert!(build_welded(&tetra()).is_some());
 }

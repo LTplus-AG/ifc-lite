@@ -528,12 +528,10 @@ impl IfcAPI {
     /// [`Self::set_tessellation_quality`].
     pub(crate) fn tessellation_quality(&self) -> ifc_lite_geometry::TessellationQuality {
         use ifc_lite_geometry::TessellationQuality;
-        match self
-            .tessellation_quality
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            idx => TessellationQuality::from_index(idx),
-        }
+        TessellationQuality::from_index(
+            self.tessellation_quality
+                .load(std::sync::atomic::Ordering::Relaxed),
+        )
     }
 
     /// Active small-cut skip flag, applied to the per-batch `GeometryRouter` at
@@ -558,11 +556,10 @@ impl IfcAPI {
     }
 
     /// Get or lazily build the cached parts-to-skip set used by
-    /// `processGeometryBatch` when the
-    /// merge-layers toggle is on. Two full-file scans (`MaterialLayerIndex`
-    /// + `propagate_voids_to_parts`) are amortised across every batch on
-    /// the same content; first-call cost ~one IFC re-scan, subsequent
-    /// calls are an `Arc::clone`.
+    /// `processGeometryBatch` when the merge-layers toggle is on. Two
+    /// full-file scans (`MaterialLayerIndex` plus `propagate_voids_to_parts`)
+    /// are amortised across every batch on the same content; first-call cost
+    /// ~one IFC re-scan, subsequent calls are an `Arc::clone`.
     ///
     /// Returns an empty set when no eligible parts exist — callers can
     /// still cheaply test `parts.contains(&id)` without a branch.
@@ -853,24 +850,4 @@ impl Default for IfcAPI {
 #[inline]
 fn set_js_prop(obj: &JsValue, key: &str, value: &JsValue) -> bool {
     js_sys::Reflect::set(obj, &JsValue::from_str(key), value).unwrap_or(false)
-}
-
-/// Safely set a property on a JavaScript object using JsValue key.
-/// Returns true if successful, false otherwise.
-#[inline]
-fn set_js_prop_jv(obj: &JsValue, key: &JsValue, value: &JsValue) -> bool {
-    js_sys::Reflect::set(obj, key, value).unwrap_or(false)
-}
-
-/// Convert entity counts map to JavaScript object
-fn counts_to_js(counts: &rustc_hash::FxHashMap<String, usize>) -> JsValue {
-    let obj = js_sys::Object::new();
-
-    for (type_name, count) in counts {
-        let key = JsValue::from_str(type_name.as_str());
-        let value = JsValue::from_f64(*count as f64);
-        set_js_prop_jv(&obj, &key, &value);
-    }
-
-    obj.into()
 }

@@ -16,6 +16,13 @@ struct ElementMeshOutput {
     geometry_hash: Option<u64>,
 }
 
+/// Session-constant style lookups shared across batches: colour map plus
+/// per-style `GeometryStyleInfo` index (see the #1097 cache note below).
+type StyleMaps = std::sync::Arc<(
+    rustc_hash::FxHashMap<u32, [f32; 4]>,
+    rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+)>;
+
 impl IfcAPI {
     /// Shared core for both batch outputs: run the canonical per-element
     /// producer over `jobs_flat` (setup + loop + CSG/layer diagnostics),
@@ -175,10 +182,7 @@ impl IfcAPI {
         // AND the GeometryStyleInfo index the producer consumes ONCE per worker
         // and reuse across batches (was ~18 M HashMap inserts each on a 140 K-
         // styled model). Keyed by a cheap (len, first_id, last_id) signature.
-        let style_maps: std::sync::Arc<(
-            rustc_hash::FxHashMap<u32, [f32; 4]>,
-            rustc_hash::FxHashMap<u32, GeometryStyleInfo>,
-        )> = {
+        let style_maps: StyleMaps = {
             let sig_len = style_ids.len();
             let sig_first = style_ids.first().copied().unwrap_or(0);
             let sig_last = style_ids.last().copied().unwrap_or(0);
@@ -193,11 +197,11 @@ impl IfcAPI {
                 _ => {
                     let mut colors: rustc_hash::FxHashMap<u32, [f32; 4]> =
                         rustc_hash::FxHashMap::with_capacity_and_hasher(sig_len, Default::default());
-                    for i in 0..style_ids.len() {
+                    for (i, &style_id) in style_ids.iter().enumerate() {
                         let base = i * 4;
                         if base + 3 < style_colors.len() {
                             colors.insert(
-                                style_ids[i],
+                                style_id,
                                 [
                                     style_colors[base] as f32 / 255.0,
                                     style_colors[base + 1] as f32 / 255.0,

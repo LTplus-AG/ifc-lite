@@ -76,7 +76,11 @@ export function packBundle(bundle: Bundle, signature?: SignatureBlock): Uint8Arr
     ...(signature ? { signature } : {}),
   };
   const json = JSON.stringify(envelope);
-  return gzipSync(new TextEncoder().encode(json));
+  // Pin mtime to 0 so the gzip header doesn't embed wall-clock time:
+  // otherwise two packs of identical content straddling a second boundary
+  // differ in the 4-byte MTIME field, flaking the determinism test and
+  // breaking the content-addressed bundle hash the loader verifies.
+  return gzipSync(new TextEncoder().encode(json), { mtime: 0 });
 }
 
 /**

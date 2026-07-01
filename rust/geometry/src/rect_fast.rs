@@ -64,11 +64,15 @@ pub fn enabled() -> bool {
 static PARAM_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 /// PARAMETRIC rectangular-opening fast path (placement-frame, ground-truth-exact cut).
-/// DEFAULT OFF — opt in with `IFC_LITE_RECT_PARAM=1` or `param_set_enabled_override`.
-/// Gated separately from [`enabled`] because it is a deliberate behaviour change: it
-/// emits the analytic box-minus-boxes solid, which is MORE correct than the exact kernel
-/// on engulfing-opening walls. Stays off until a parity CI gate + a wasm toggle land, so
-/// native==wasm holds trivially (both off) until the flag is flipped in lockstep.
+/// DEFAULT ON -- opt out with `IFC_LITE_RECT_PARAM=0` or `param_set_enabled_override`
+/// (mirroring the [`enabled`] escape hatch). Gated separately from [`enabled`] because
+/// it is a deliberate behaviour change: it emits the analytic box-minus-boxes solid,
+/// which is MORE correct than the exact kernel on engulfing-opening walls.
+/// Corpus-validated ON (tests/rect_param_validate.rs A/B over 5 real models): every
+/// non-firing element byte-identical ON vs OFF, every firing host watertight and
+/// matching the analytic ground truth. wasm has no env, so `std::env::var` errs there
+/// and the default is ON on both targets -- native==wasm stays in lockstep; the
+/// wasm-side `setRectParamFastPath` override remains the programmatic escape hatch.
 pub fn param_enabled() -> bool {
     match PARAM_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
         0 => return false,
@@ -77,7 +81,7 @@ pub fn param_enabled() -> bool {
     }
     use std::sync::OnceLock;
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var("IFC_LITE_RECT_PARAM").as_deref() == Ok("1"))
+    *ON.get_or_init(|| std::env::var("IFC_LITE_RECT_PARAM").as_deref() != Ok("0"))
 }
 
 /// Test-only: force `param_enabled()` on/off (or `None` for the env default).

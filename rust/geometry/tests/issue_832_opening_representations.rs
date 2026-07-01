@@ -155,9 +155,23 @@ fn all_five_opening_representations_stay_bounded() {
             "expected IfcWall at #{wall_id}",
         );
 
-        let mesh = router
+        let mut mesh = router
             .process_element_with_voids(&wall, &mut decoder, &void_index)
             .unwrap_or_else(|e| panic!("process wall #{wall_id}: {e}"));
+
+        // The parametric rect-opening fast path (default ON) emits a
+        // LOCAL-FRAME mesh: small positions plus mesh.origin, world =
+        // origin + position (the contract every production consumer folds).
+        // Fold it so the world-space band checks below stay in world coords.
+        if mesh.origin != [0.0, 0.0, 0.0] {
+            let o = mesh.origin;
+            for c in mesh.positions.chunks_exact_mut(3) {
+                c[0] = (c[0] as f64 + o[0]) as f32;
+                c[1] = (c[1] as f64 + o[1]) as f32;
+                c[2] = (c[2] as f64 + o[2]) as f32;
+            }
+            mesh.origin = [0.0, 0.0, 0.0];
+        }
 
         let (wmin, wmax) = mesh_bounds(&mesh);
 

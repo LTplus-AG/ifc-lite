@@ -437,12 +437,13 @@ impl IfcAPI {
     /// Enable or disable the PARAMETRIC rectangular-opening fast path (the
     /// placement-frame, ground-truth-exact analytic cut) for `processGeometryBatch`.
     ///
-    /// DEFAULT OFF. This is the wasm-side toggle that lets native and wasm flip the
-    /// flag in LOCKSTEP — the byte-identical native==wasm contract requires both
-    /// targets take the same path, and wasm has no env to read `IFC_LITE_RECT_PARAM`.
+    /// DEFAULT ON (corpus-validated; native defaults ON too, and wasm has no env to
+    /// read `IFC_LITE_RECT_PARAM`, so both targets default in LOCKSTEP -- the
+    /// byte-identical native==wasm contract requires both take the same path). This
+    /// toggle is the wasm-side escape hatch mirroring `IFC_LITE_RECT_PARAM=0`.
     /// The path subtracts rectangular openings as exact parametric boxes in the host's
     /// own placement frame (rotated walls included), deferring any non-clean case to
-    /// the exact kernel. Pass `true` before `processGeometryBatch`.
+    /// the exact kernel. Pass `false` before `processGeometryBatch` to opt out.
     #[wasm_bindgen(js_name = setRectParamFastPath)]
     pub fn set_rect_param_fast_path(&self, enabled: bool) {
         ifc_lite_geometry::rect_fast::param_set_enabled_override(Some(enabled));

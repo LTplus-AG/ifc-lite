@@ -98,6 +98,33 @@ describe('Scene.getEntityLocalBounds', () => {
     assert.strictEqual(tmpl.localMin[0], 0, 'mutating the returned box must not affect the template');
     assert.deepStrictEqual(scene.getEntityLocalBounds(7), { min: [0, 0, 0], max: [2, 2, 2] });
   });
+
+  it('unions across occurrences backed by DIFFERENT templates (mapped-item sub-assembly)', () => {
+    // One expressId, two occurrence records pointing at two distinct
+    // templates — e.g. a mapped-item assembly split across materials.
+    // Regression: the instanced path must union, not just read occurrences[0].
+    const scene = new Scene();
+    scene['instancedTemplateCpu'] = [
+      {
+        positions: new Float32Array(), normals: new Float32Array(), indices: new Uint32Array(),
+        instanceData: new ArrayBuffer(0), localMin: [0, 0, 0], localMax: [1, 1, 1],
+      },
+      {
+        positions: new Float32Array(), normals: new Float32Array(), indices: new Uint32Array(),
+        instanceData: new ArrayBuffer(0), localMin: [-1, 0.5, 0], localMax: [0.5, 2, 1],
+      },
+    ];
+    scene['instancedEntityMap'] = new Map([
+      [9, [
+        { templateIndex: 0, byteOffset: 0, originalColor: [0, 0, 0, 1] },
+        { templateIndex: 1, byteOffset: 0, originalColor: [0, 0, 0, 1] },
+      ]],
+    ]);
+    assert.deepStrictEqual(scene.getEntityLocalBounds(9), {
+      min: [-1, 0, 0],
+      max: [1, 2, 1],
+    });
+  });
 });
 
 describe('Scene.getEntityTransform', () => {
@@ -168,5 +195,32 @@ describe('Scene.getEntityTransform', () => {
       0, 0, 1, 30,
       0, 0, 0, 1,
     ]);
+  });
+});
+
+describe('Scene splitMeshForStreaming', () => {
+  it('preserves localBounds/localToWorld on every fragment of an oversized mesh', () => {
+    // Regression: fragments used to carry origin forward but silently drop
+    // localBounds/localToWorld, so getEntityLocalBounds/getEntityTransform
+    // returned null for any element large enough to stream-split.
+    const scene = new Scene();
+    const TRIANGLE_COUNT = 70_000; // > STREAMING_FRAGMENT_MAX_INDICES/3 (60,000)
+    const indices = new Uint32Array(TRIANGLE_COUNT * 3);
+    for (let i = 0; i < indices.length; i++) indices[i] = i % 3; // 3 shared vertices
+    const big = makeMesh(6, {
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+      indices,
+      origin: [5, 5, 5],
+      localBounds: { min: [0, 0, 0], max: [1, 1, 0] },
+      localToWorld: IDENTITY_ROW_MAJOR,
+    });
+
+    const fragments = scene['splitMeshForStreaming'](big) as MeshData[];
+    assert.ok(fragments.length > 1, 'the mesh should actually split');
+    for (const frag of fragments) {
+      assert.deepStrictEqual(frag.localBounds, { min: [0, 0, 0], max: [1, 1, 0] });
+      assert.deepStrictEqual(Array.from(frag.localToWorld!), IDENTITY_ROW_MAJOR);
+    }
   });
 });

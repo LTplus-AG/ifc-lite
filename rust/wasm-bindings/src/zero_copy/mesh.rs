@@ -170,14 +170,16 @@ impl MeshDataJs {
     }
 
     /// Local (pre-placement, object-space) AABB (issue #1474), WebGL Y-up,
-    /// `[minX,minY,minZ,maxX,maxY,maxZ]`. `null` when not captured.
+    /// `[minX,minY,minZ,maxX,maxY,maxZ]`. `undefined` when not captured
+    /// (wasm-bindgen maps `Option::None` to `undefined`, not `null`).
     #[wasm_bindgen(getter, js_name = localBounds)]
     pub fn local_bounds(&self) -> Option<Vec<f32>> {
         self.local_bounds.map(|b| b.to_vec())
     }
 
     /// The resolved `IfcLocalPlacement` chain for this mesh (issue #1474),
-    /// row-major 4×4, WebGL Y-up. `null` when not captured.
+    /// row-major 4×4, WebGL Y-up. `undefined` when not captured (see
+    /// `local_bounds` above).
     #[wasm_bindgen(getter, js_name = localToWorld)]
     pub fn local_to_world(&self) -> Option<Vec<f64>> {
         self.local_to_world.map(|m| m.to_vec())

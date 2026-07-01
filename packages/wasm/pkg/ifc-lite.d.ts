@@ -542,7 +542,8 @@ export class MeshDataJs {
   readonly hasTexture: boolean;
   /**
    * Local (pre-placement, object-space) AABB (issue #1474), WebGL Y-up,
-   * `[minX,minY,minZ,maxX,maxY,maxZ]`. `null` when not captured.
+   * `[minX,minY,minZ,maxX,maxY,maxZ]`. `undefined` when not captured
+   * (wasm-bindgen maps `Option::None` to `undefined`, not `null`).
    */
   readonly localBounds: Float32Array | undefined;
   /**
@@ -568,7 +569,8 @@ export class MeshDataJs {
   readonly geometryClass: number;
   /**
    * The resolved `IfcLocalPlacement` chain for this mesh (issue #1474),
-   * row-major 4×4, WebGL Y-up. `null` when not captured.
+   * row-major 4×4, WebGL Y-up. `undefined` when not captured (see
+   * `local_bounds` above).
    */
   readonly localToWorld: Float64Array | undefined;
   readonly textureHeight: number;

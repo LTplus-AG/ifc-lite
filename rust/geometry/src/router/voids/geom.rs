@@ -303,6 +303,8 @@ pub(super) fn rotate_mesh_into_frame(mesh: &Mesh, rt: &Matrix3<f64>, center: &Po
         rtc_applied: mesh.rtc_applied,
         origin: [0.0; 3],
         positions,
+        // Frame-transformed cut intermediate — not an instanceable occurrence,
+        // and pre-placement (issue #1474 fields don't apply here either).
     instance_meta: None, local_bounds: None, local_to_world: None }
 }
 
@@ -332,6 +334,8 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
         origin: [center.x, center.y, center.z],
+        // Frame-transformed cut intermediate — not an instanceable occurrence,
+        // and pre-placement (issue #1474 fields don't apply here either).
     instance_meta: None, local_bounds: None, local_to_world: None }
 }
 

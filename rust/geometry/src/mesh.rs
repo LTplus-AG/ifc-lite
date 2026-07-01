@@ -637,6 +637,9 @@ impl Mesh {
         // Reset instancing metadata so a cleared+reused mesh can't carry stale
         // rep-identity / transform into unrelated geometry. (#1238 review)
         self.instance_meta = None;
+        // Same concern for the local-bounds/placement capture (issue #1474).
+        self.local_bounds = None;
+        self.local_to_world = None;
     }
 
     /// Weld coincident vertices, preserving per-vertex normals.

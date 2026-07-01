@@ -42,8 +42,8 @@ jobs:
     # Cap a stuck "Build and push" so it can't run to GitHub's 6h default.
     # A *cold* build — cargo-chef cooking the whole workspace after a
     # deps-cache miss — is the long pole, and a cold build that gets cancelled
-    # never warms the gha cache, so the cap must let one complete. 120 covers
-    # a cold build; warm builds finish in minutes.
+    # never warms the registry cache, so the cap must let one complete. 120
+    # covers a cold build; warm builds finish in minutes.
     timeout-minutes: 120
     permissions:
       contents: read
@@ -97,16 +97,27 @@ jobs:
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          cache-from: type=gha
+          # Cache lives in GHCR (a `:buildcache` tag on the same package), NOT
+          # in the GitHub Actions cache. On a Depot runner `type=gha` is
+          # intercepted by Depot's cache backend and billed per-GB — with
+          # mode=max writing the multi-GB cargo-chef layer set on ~1/3 of main
+          # pushes, that was the single largest contributor to Depot's uncapped
+          # cache bill. `type=registry` writes straight to GHCR instead, which
+          # is free + unlimited for public packages, so the cache cost drops to
+          # $0 while warm builds stay fast. Trade: pushing the cache to GHCR
+          # adds ~1-3 min of network per build vs Depot's local cache.
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           # mode=max keeps the cargo-chef "cooked deps" stage in the cache —
           # that layer is what makes warm builds finish in minutes instead of
           # recompiling the whole workspace, so dropping to mode=min would
-          # *raise* compute minutes.
-          cache-to: type=gha,mode=max
+          # *raise* compute minutes. image-manifest+oci-mediatypes make the
+          # cache blob a GHCR-compatible OCI manifest (required for the registry
+          # backend to push to ghcr.io).
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
           # Build arm64 only for actual releases (distribution images). On the
           # frequent push-to-main builds (~1/3 of commits touch rust/** and
           # trigger this workflow) we build amd64 only — the arm64 leg runs
-          # under slow QEMU emulation and doubled both build time AND the gha
-          # cache that drives Depot's per-GB storage bill. The `latest`/sha
-          # main images stay amd64; multi-arch manifests ship on release.
+          # under slow QEMU emulation and roughly doubled build time (and, when
+          # the cache was on Depot, the cache bill too). The `latest`/sha main
+          # images stay amd64; multi-arch manifests ship on release.
           platforms: ${{ github.event_name == 'release' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}

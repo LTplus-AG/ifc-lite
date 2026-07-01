@@ -42,6 +42,7 @@ Snapshot that triggered this work (June 2026):
 | Job | Runner | Rationale |
 |---|---|---|
 | `changes`, `lint`, `typecheck`, `node-tests`, `test` gate | `ubuntu-latest` (free) | Not compile-bound; free + unlimited on a public repo |
+| `test-templates` (6-way matrix) | `ubuntu-latest` (free) | Scaffolds + builds templates against published pkgs; no Rust/WASM compile, no cargo cache — never needed Depot |
 | `desktop-override-audit` | `ubuntu-latest` (free) | Only `[ -f ]` file checks |
 | `build` (WASM) | `depot-ubuntu-24.04-4` | Compiles the WASM bundle; needs cores + cache |
 | `desktop-frontend-build` | `depot-ubuntu-24.04-4` | Compiles WASM from source |
@@ -68,6 +69,19 @@ Change: build **amd64 only on push-to-main** (`latest`/sha images), and
 **multi-arch only on `release: published`** (distribution images). `mode=max` is
 intentionally kept — it caches the cargo-chef "cooked deps" layer that makes
 warm builds finish in minutes; `mode=min` would *raise* compute minutes.
+
+**Cache backend moved off Depot (the bigger lever).** The build cache was
+`cache-to: type=gha,mode=max`. On a Depot runner `type=gha` is intercepted by
+Depot's cache backend and **billed per-GB** — and mode=max writes the whole
+multi-GB cargo-chef layer set on every rust-touching main push, so this was the
+single largest contributor to Depot's uncapped cache (it reached 173 GB). Now
+it's `type=registry,ref=…/ifc-lite-server:buildcache` — the cache lives as a
+`:buildcache` tag on the same GHCR package, which is **free + unlimited for
+public packages**. Warm builds stay fast; the cache line drops to $0. Cost:
+~1-3 min of extra network per build to push the cache to GHCR (vs Depot's local
+cache). The docker job itself stays on Depot for compute; a further option is to
+move it to a free `ubuntu-latest` runner (registry cache keeps warm builds
+reasonable, but cold cargo-chef builds get slow — accept the timeout risk first).
 
 Future option if arm64-on-main is ever wanted again: use Depot's **native arm64
 runners** (`depot-ubuntu-24.04-arm-*`, AWS Graviton, no QEMU) via a build matrix

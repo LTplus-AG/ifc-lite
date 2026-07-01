@@ -39,6 +39,11 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       geometry: ${{ steps.filter.outputs.geometry }}
+      # `true` when the WASM source is byte-identical to the published release
+      # tag, so `build` can fetch the prebuilt bundle and run on a FREE runner
+      # instead of compiling wasm32 on a paid Depot runner. See the `build`
+      # job and scripts/ci-wasm-prebuilt-eligible.sh.
+      wasm_prebuilt: ${{ steps.wasm.outputs.eligible }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -77,6 +82,15 @@ jobs:
               - 'Cargo.lock'
               - '.github/workflows/test.yml'
 
+      # Decide whether `build` can skip the from-source wasm32 compile. The
+      # probe emits `true` only when the WASM source is byte-identical to the
+      # `@ifc-lite/wasm@<version>` release tag that produced the published
+      # bundle; any doubt emits `false` → build from source on Depot (unchanged
+      # behaviour). It can never green-light a stale bundle.
+      - name: Resolve prebuilt-WASM eligibility
+        id: wasm
+        run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
+
   # Shared install + WASM + workspace build. Uploads built dist/ for the
   # downstream JS jobs; Rust jobs do their own checkout + cargo cache
   # restore (Swatinem) and don't need this artifact.
@@ -84,7 +98,15 @@ jobs:
     name: Build packages + WASM
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true'
-    runs-on: depot-ubuntu-24.04-4
+    # Runner is chosen by whether we can skip the wasm32 compile. When the WASM
+    # source is byte-identical to the published release tag (the common case on
+    # frontend-only PRs), we fetch the prebuilt @ifc-lite/wasm bundle and run on
+    # a FREE ubuntu-latest runner — no Rust toolchain, no wasm-pack, no Swatinem
+    # rust-cache write to Depot. When Rust changed we compile from source on the
+    # paid Depot runner (needs the cores + the uncapped cargo cache), exactly as
+    # before. This is the CI twin of the scripts/vercel-install.sh fast path and
+    # attacks the single largest Depot line — the wasm32 compile on ~2/3 of PRs.
+    runs-on: ${{ needs.changes.outputs.wasm_prebuilt == 'true' && 'ubuntu-latest' || 'depot-ubuntu-24.04-4' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -111,14 +133,35 @@ jobs:
       # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
       # C++ toolchain needed since M9). Single-sourced in
       # .github/actions/setup-wasm-build so the four wasm-building
-      # workflows stay in lock-step.
+      # workflows stay in lock-step. Skipped on the prebuilt fast path — that's
+      # where the Depot minutes AND the `ci-build` Swatinem rust-cache write to
+      # Depot both disappear.
       - name: Setup WASM build toolchain
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
         uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: ci-build
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Fast path: drop the published bundle into packages/wasm/pkg/ so the
+      # from-source `Build WASM` step below soft-skips (wasm-pack absent +
+      # runtime present → exit 0) and downstream consumers get a working
+      # runtime. Only runs when `changes` proved the source matches the release
+      # tag, so this is the exact binary a source build would produce. Retried
+      # because it's the one new hard-fail path (no Rust toolchain to fall back
+      # to on this runner); a transient npm blip shouldn't block the PR.
+      - name: Fetch prebuilt WASM
+        if: needs.changes.outputs.wasm_prebuilt == 'true'
+        run: |
+          for attempt in 1 2 3; do
+            if node scripts/fetch-prebuilt-wasm.mjs; then exit 0; fi
+            echo "::warning::prebuilt WASM fetch attempt ${attempt} failed; retrying…"
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not fetch the prebuilt @ifc-lite/wasm bundle after 3 attempts."
+          exit 1
 
       # Cache the fetched fixture tree keyed on the manifest hash. ~994 MiB.
       # Cache hit = no network. Cache miss (manifest changed) = one cold pull
@@ -146,7 +189,11 @@ jobs:
       # (pkg/ifc-lite.d.ts) is committed for the wasm-free typecheck lane
       # (#952). This step catches Rust → wasm breakage before downstream
       # consumers see it.
+      # Skipped on the prebuilt fast path (the bundle was just fetched above);
+      # the type-sync gate below is skipped there too, since a frontend-only PR
+      # can't have changed the committed .d.ts.
       - name: Build WASM
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
         run: bash scripts/build-wasm.sh
 
       # Guard the wasm-free typecheck lane (#952): the committed
@@ -158,6 +205,7 @@ jobs:
       # churn on every wasm-pack run (see AGENTS.md) and are intentionally
       # excluded.
       - name: Verify committed wasm types are in sync
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
         run: |
           if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts; then
             echo "::error file=packages/wasm/pkg/ifc-lite.d.ts::Committed wasm types are out of sync with the Rust source. Run 'bash scripts/build-wasm.sh' and commit the regenerated packages/wasm/pkg/ifc-lite.d.ts."

@@ -44,17 +44,46 @@ Snapshot that triggered this work (June 2026):
 | `changes`, `lint`, `typecheck`, `node-tests`, `test` gate | `ubuntu-latest` (free) | Not compile-bound; free + unlimited on a public repo |
 | `test-templates` (6-way matrix) | `ubuntu-latest` (free) | Scaffolds + builds templates against published pkgs; no Rust/WASM compile, no cargo cache — never needed Depot |
 | `desktop-override-audit` | `ubuntu-latest` (free) | Only `[ -f ]` file checks |
-| `build` (WASM) | `depot-ubuntu-24.04-4` | Compiles the WASM bundle; needs cores + cache |
+| `build` (WASM) | **`ubuntu-latest` (free) OR `depot-ubuntu-24.04-4`** | Frontend-only PRs fetch the prebuilt bundle and run free; Rust PRs compile from source on Depot. See §1a |
 | `desktop-frontend-build` | `depot-ubuntu-24.04-4` | Compiles WASM from source |
 | `rust-tests` | `depot-ubuntu-24.04-4` (was `-8`) | Kept on Depot for the cargo cache; right-sized for cost |
 | ~~`manifold-tests`~~ | — | DELETED at M9 (Manifold C++ kernel removed; pure-Rust kernel runs in `rust-tests`) |
 
 `release.yml`, `docs.yml`, `sdk-canary.yml` already use free `ubuntu-latest`.
 
+### 1a. Prebuilt-WASM fast path in CI (the biggest compute lever)
+
+The `build` job compiles `rust → wasm32` on **every** PR, but the WASM only
+changes on the ~1/3 of PRs that touch Rust. On the other ~2/3 (viewer/frontend
+work) the compile is wasted — and it's the single largest Depot compute line,
+plus its `ci-build` Swatinem rust-cache is a top Depot storage entry.
+
+The `changes` job now runs `scripts/ci-wasm-prebuilt-eligible.sh`, the CI twin
+of the `scripts/vercel-install.sh` fast path. It emits `wasm_prebuilt=true` only
+when the WASM source (`rust/** + Cargo.{toml,lock} + rust-toolchain.toml +
+scripts/build-wasm.sh`) is **byte-identical to the `@ifc-lite/wasm@<version>`
+release tag** that produced the published bundle. When true, `build`:
+- runs on **free `ubuntu-latest`** instead of paid Depot (`runs-on` is a
+  conditional expression on the output),
+- **skips** the Rust toolchain, the wasm32 compile, and the `ci-build`
+  rust-cache write to Depot,
+- **fetches** the published bundle via `scripts/fetch-prebuilt-wasm.mjs` (the
+  from-source `Build WASM` step then soft-skips: wasm-pack absent + runtime
+  present → exit 0).
+
+**Correctness:** any doubt (version unreadable, tag unreachable, Rust changed)
+emits `false` → compile from source on Depot, exactly as before. Because the
+guard is a byte-identical diff against the exact release tag, the fetched binary
+is what a source build would produce — a stale bundle can never be tested. The
+one new hard-fail path (prebuilt fetch fails on a runner with no Rust fallback)
+is retried 3× so a transient npm blip doesn't block the PR.
+
 ### Depot — do this in the dashboard (one-time)
-- **Cache → Retention: 7 days** (default is 14 days, *no size cap* — that's how it
-  reached 173 GB). Combined with the docker arm64 change below this is the main
-  cache-cost lever.
+- **Cache → Retention: 7 days** — already set. Note this alone doesn't shrink a
+  253 GB cache that's re-written faster than 7 days; the code-side levers (docker
+  cache → GHCR in §2, the WASM fast path above) are what stop *feeding* it. The
+  Cache Explorer shows the bulk is docker `buildkit-blob-*` (moved to GHCR by §2)
+  + the `ci-build`/`ci-rust` rust-caches.
 
 ---
 

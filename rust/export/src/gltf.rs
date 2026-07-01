@@ -2180,6 +2180,19 @@ mod tests {
         std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
     }
 
+    /// Like [`fixture`] but returns `None` when the catalogued fixture has not
+    /// been fetched, so the test can SKIP (never throw) per the house rule.
+    fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
+        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
+        match std::fs::read(&path) {
+            Ok(bytes) => Some(bytes),
+            Err(_) => {
+                eprintln!("skipping: fixture {rel} not fetched (run `pnpm fixtures`)");
+                None
+            }
+        }
+    }
+
     /// Parse a GLB and return (json: Value, bin: Vec<u8>).
     fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {
         // Assert the literal magic bytes (not a derived constant) so a wrong magic
@@ -3104,7 +3117,7 @@ END-ISO-10303-21;\n";
 
     #[test]
     fn try_export_glb_matches_fail_open_path_when_nonempty() {
-        let content = fixture("ifcopenshell/1019-column.ifc");
+        let Some(content) = fixture_opt("ifcopenshell/1019-column.ifc") else { return };
         let (glb, stats) =
             try_export_glb_with_stats(&content, &GltfOptions::default()).expect("has geometry");
         assert!(stats.meshes >= 1);
@@ -3133,7 +3146,7 @@ END-ISO-10303-21;\n";
         // assemblers share (flat emission + content dedup); their output must be
         // byte-for-byte identical, JSON and BIN.
         for rel in ["ifcopenshell/1019-column.ifc", "ifcopenshell/1030-sphere.ifc"] {
-            let content = fixture(rel);
+            let Some(content) = fixture_opt(rel) else { continue };
             let opts = GltfOptions { include_metadata: true, ..GltfOptions::default() };
             let (in_memory, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
             let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
@@ -3147,7 +3160,7 @@ END-ISO-10303-21;\n";
         // duplex has rep-identity groups the streaming path deliberately skips
         // (bounded memory cannot hold every occurrence). World geometry must be
         // identical anyway: same element nodes, same total placed triangles.
-        let content = fixture("ara3d/duplex.ifc");
+        let Some(content) = fixture_opt("ara3d/duplex.ifc") else { return };
         let opts = GltfOptions::default();
         let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
         let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);

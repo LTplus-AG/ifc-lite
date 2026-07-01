@@ -3,15 +3,54 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { existsSync, readFileSync, readdirSync } from 'fs';
+// Compare the freshest viewer benchmark results against the committed
+// baseline and report per-metric deltas.
+//
+// Usage:
+//   node scripts/check-benchmark-regression.js                 # exit 1 on regression
+//   node scripts/check-benchmark-regression.js --advisory      # threshold regressions are
+//                                                              # reported but exit 0; hard
+//                                                              # errors (no results, missing
+//                                                              # baseline file) still exit 1
+//   node scripts/check-benchmark-regression.js --markdown out.md
+//                                                              # also write a GitHub-flavored
+//                                                              # markdown report (PR comment /
+//                                                              # step summary)
+//
+// BENCHMARK_BASELINE=<path> overrides the baseline file, e.g. to diff against
+// a locally recorded scratch baseline instead of the committed (CI-recorded)
+// one.
+
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '..');
 
-const baselinePath = join(rootDir, 'tests/benchmark/baseline.json');
+const args = process.argv.slice(2);
+const advisory = args.includes('--advisory');
+
+// Parsed lazily inside main() so a usage error prints the clean top-level
+// message instead of a raw stack trace.
+function parseMarkdownPath() {
+  const eq = args.find((a) => a.startsWith('--markdown='));
+  if (eq) return resolve(eq.slice('--markdown='.length));
+  const idx = args.indexOf('--markdown');
+  if (idx !== -1) {
+    const value = args[idx + 1];
+    if (!value || value.startsWith('--')) {
+      throw new Error('--markdown requires a file path argument');
+    }
+    return resolve(value);
+  }
+  return null;
+}
+
+const baselinePath = process.env.BENCHMARK_BASELINE
+  ? resolve(process.env.BENCHMARK_BASELINE)
+  : join(rootDir, 'tests/benchmark/baseline.json');
 const resultsDir = join(rootDir, 'tests/benchmark/benchmark-results');
 
 const thresholds = {
@@ -62,7 +101,7 @@ function loadResults() {
   });
 }
 
-function checkBenchmarkRegression() {
+function compareResults() {
   if (!existsSync(baselinePath)) {
     throw new Error('No baseline available. Create one with `pnpm benchmark:baseline`.');
   }
@@ -70,48 +109,134 @@ function checkBenchmarkRegression() {
   const baseline = loadJson(baselinePath);
   const results = loadResults();
 
-  const regressions = [];
-  const missingBaseline = [];
-
-  console.log('Benchmark regression check');
-  console.log('='.repeat(80));
-
+  const models = [];
   for (const { payload, name } of results) {
     const fileName = payload.file;
     const metrics = payload.metrics || {};
-    const baselineMetrics = baseline[fileName]?.metrics;
+    const baselineEntry = baseline[fileName];
 
-    console.log(`\n${fileName}`);
-    console.log(`  Result source: ${name}`);
+    const model = {
+      fileName,
+      source: name,
+      baselineTimestamp: baselineEntry?.timestamp ?? null,
+      baselineEnvironment: baselineEntry?.environment ?? null,
+      missingBaseline: !baselineEntry?.metrics,
+      rows: [],
+    };
 
-    if (!baselineMetrics) {
-      missingBaseline.push(fileName);
-      console.log('  ⚠ No baseline entry for this model');
-      continue;
-    }
-
-    for (const metricName of Object.keys(thresholds)) {
-      const threshold = thresholds[metricName];
-      const currentValue = metrics[metricName];
-      const baselineValue = baselineMetrics[metricName];
-      const increasePct = percentIncrease(currentValue, baselineValue);
-      const line = `  - ${metricName}: ${formatMs(currentValue)} vs ${formatMs(baselineValue)} (${formatPct(increasePct)})`;
-
-      if (increasePct !== null && increasePct > threshold) {
-        regressions.push({
-          fileName,
+    if (!model.missingBaseline) {
+      for (const metricName of Object.keys(thresholds)) {
+        const threshold = thresholds[metricName];
+        const currentValue = metrics[metricName];
+        const baselineValue = baselineEntry.metrics[metricName];
+        const increasePct = percentIncrease(currentValue, baselineValue);
+        model.rows.push({
           metricName,
           currentValue,
           baselineValue,
           increasePct,
           threshold,
+          regressed: increasePct !== null && increasePct > threshold,
         });
-        console.log(`${line}  ❌ threshold +${threshold}%`);
+      }
+    }
+    models.push(model);
+  }
+
+  return { models };
+}
+
+function printConsoleReport(models) {
+  console.log('Benchmark regression check');
+  console.log('='.repeat(80));
+
+  for (const model of models) {
+    console.log(`\n${model.fileName}`);
+    console.log(`  Result source: ${model.source}`);
+
+    if (model.missingBaseline) {
+      console.log('  ⚠ No baseline entry for this model');
+      continue;
+    }
+    if (model.baselineEnvironment) {
+      console.log(`  Baseline environment: ${model.baselineEnvironment}`);
+    }
+
+    for (const row of model.rows) {
+      const line = `  - ${row.metricName}: ${formatMs(row.currentValue)} vs ${formatMs(row.baselineValue)} (${formatPct(row.increasePct)})`;
+      if (row.regressed) {
+        console.log(`${line}  ❌ threshold +${row.threshold}%`);
       } else {
         console.log(`${line}  ✅`);
       }
     }
   }
+}
+
+function buildMarkdownReport(models, regressions) {
+  const lines = [];
+  lines.push('<!-- viewer-benchmark-report -->');
+  lines.push('## Viewer benchmark');
+  lines.push('');
+  if (regressions.length > 0) {
+    lines.push(
+      `⚠ **${regressions.length} metric(s) exceeded the regression threshold**` +
+        (advisory ? ' (advisory only, not blocking).' : '.')
+    );
+  } else {
+    lines.push('✅ No threshold regressions detected.');
+  }
+  lines.push('');
+
+  for (const model of models) {
+    lines.push(`### ${model.fileName}`);
+    if (model.missingBaseline) {
+      lines.push('');
+      lines.push('⚠ No baseline entry for this model.');
+      lines.push('');
+      continue;
+    }
+    const baselineNote = [
+      model.baselineTimestamp ? `recorded ${model.baselineTimestamp}` : null,
+      model.baselineEnvironment ? `on ${model.baselineEnvironment}` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    if (baselineNote) {
+      lines.push('');
+      lines.push(`Baseline ${baselineNote}.`);
+    }
+    lines.push('');
+    lines.push('| Metric | Current | Baseline | Delta | Threshold | Status |');
+    lines.push('|---|---|---|---|---|---|');
+    for (const row of model.rows) {
+      const status = row.regressed ? '❌' : '✅';
+      lines.push(
+        `| ${row.metricName} | ${formatMs(row.currentValue)} | ${formatMs(row.baselineValue)} | ` +
+          `${formatPct(row.increasePct)} | +${row.threshold}% | ${status} |`
+      );
+    }
+    lines.push('');
+  }
+
+  lines.push(
+    'Refresh the baseline from a CI run: dispatch the Benchmark workflow with ' +
+      '`record_baseline`, download the `benchmark-baseline` artifact, and commit ' +
+      '`baseline.json` (see tests/benchmark/README.md).'
+  );
+  lines.push('');
+  return lines.join('\n');
+}
+
+function main() {
+  const markdownPath = parseMarkdownPath();
+  const { models } = compareResults();
+  const regressions = models.flatMap((m) =>
+    m.rows.filter((r) => r.regressed).map((r) => ({ fileName: m.fileName, ...r }))
+  );
+  const missingBaseline = models.filter((m) => m.missingBaseline).map((m) => m.fileName);
+
+  printConsoleReport(models);
 
   console.log('\n' + '='.repeat(80));
   if (missingBaseline.length > 0) {
@@ -121,6 +246,11 @@ function checkBenchmarkRegression() {
     }
   }
 
+  if (markdownPath) {
+    writeFileSync(markdownPath, buildMarkdownReport(models, regressions));
+    console.log(`Markdown report written to ${markdownPath}`);
+  }
+
   if (regressions.length > 0) {
     console.error(`\nFound ${regressions.length} regression(s):`);
     for (const reg of regressions) {
@@ -128,6 +258,10 @@ function checkBenchmarkRegression() {
         `  - ${reg.fileName} :: ${reg.metricName} increased by ${reg.increasePct.toFixed(1)}% ` +
           `(${reg.currentValue}ms vs ${reg.baselineValue}ms, allowed +${reg.threshold}%)`
       );
+    }
+    if (advisory) {
+      console.log('\nAdvisory mode: regressions reported but not failing the run.');
+      return;
     }
     process.exit(1);
   }
@@ -139,7 +273,7 @@ function checkBenchmarkRegression() {
 }
 
 try {
-  checkBenchmarkRegression();
+  main();
 } catch (error) {
   console.error(`❌ ${error.message}`);
   process.exit(1);

@@ -1,28 +1,22 @@
 {
   "version": 1,
-  "base": "samples/demo-project.ifc",
-  "revB": "samples/demo-project-rev-b.ifc",
-  "ids": "samples/demo-project.ids",
-  "lenses": "samples/demo-project.lenses.json",
+  "base": "samples/building-architecture.ifc",
+  "revB": "samples/building-architecture-rev-b.ifc",
+  "ids": "samples/building-architecture.ids",
+  "clash": "samples/building-architecture-rev-b.ifc",
   "globalIds": {
-    "fireRatingGapWalls": [
-      "2gqaXbEYrDmOAuzMHlL3LD",
-      "2DCuA66u56HO9a7eFL$OLJ"
-    ],
-    "clashDuct": "1sFnw2d_nC2emDLobT_TOM",
-    "clashBeam": "0a19VmDqb8Cf8aFS3FBfyl",
-    "clearancePipe": "1m2jiGFwX05QefEuN7mu5Y",
-    "movedColumn": "1qRFm$Mcf2sPZrg_w4Vcd0",
-    "addedWall": "0NSUsc0_zDVPvYNFAOSWlb",
-    "deletedDoor": "0i2jU9xbLB1exkgpiV22Qk",
-    "dataModifiedWall": "1HHLcAeH539B8gFExdv3$A"
+    "dataModified": "1AQAupaRP1txwK1AGiN61V",
+    "geometryMoved": "3wdauVJT5Fx9drrREiDqA$",
+    "deleted": "2e9pghUJbBqR4jTInsONQT",
+    "added": "3GwpRmJBf7fhCP8KgMyfOD",
+    "clashAdded": "3GwpRmJBf7fhCP8KgMyfOD",
+    "clashHit": "0OfZwWc8j9QP5uX8xPTxDH"
   },
   "facts": {
     "storeys": [
-      "Level 1",
-      "Level 2"
+      "00 groundfloor"
     ],
-    "searchTerm": "door",
-    "clashPair": "duct vs beam"
+    "searchTerm": "wall",
+    "clashPair": "IfcDuctSegment vs IfcWall"
   }
 }

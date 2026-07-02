@@ -32,7 +32,7 @@ pub async fn parse_full(
     // upload is buffered, reserving the max upload size since multipart rarely
     // declares a length up front. Held for the request's whole lifetime so a
     // disconnected-but-still-running job keeps its memory slot.
-    let _admission = state
+    let admission_guard = state
         .admission
         .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
         .await?;
@@ -59,11 +59,15 @@ pub async fn parse_full(
     // geometry with the 2D symbolic-data extraction (issue #843) so
     // callers can render IfcGrid axes and IfcAnnotation polylines from
     // the same response without re-uploading the file.
-    let (result, symbolic_data) = tokio::task::spawn_blocking(move || {
+    // The guard moves INTO the blocking task and comes back with the result:
+    // if the TimeoutLayer (or a disconnect) cancels this handler future, the
+    // detached blocking work keeps running - and keeps its admission slot -
+    // until it actually exits, so a replacement cannot be admitted on top.
+    let ((result, symbolic_data), _admission) = tokio::task::spawn_blocking(move || {
         let result =
             process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality);
         let symbolic = ifc_lite_processing::extract_symbolic_data(&content);
-        (result, symbolic)
+        ((result, symbolic), admission_guard)
     })
     .await?;
 
@@ -152,7 +156,7 @@ pub async fn parse_metadata(
     // upload is buffered, reserving the max upload size since multipart rarely
     // declares a length up front. Held for the request's whole lifetime so a
     // disconnected-but-still-running job keeps its memory slot.
-    let _admission = state
+    let admission_guard = state
         .admission
         .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
         .await?;
@@ -176,14 +180,18 @@ pub async fn parse_metadata(
 
         let schema_version = detect_schema_version(&content);
 
-        MetadataResponse {
-            entity_count,
-            geometry_count,
-            schema_version: schema_version.to_string(),
-            file_size,
-        }
+        (
+            MetadataResponse {
+                entity_count,
+                geometry_count,
+                schema_version: schema_version.to_string(),
+                file_size,
+            },
+            admission_guard,
+        )
     })
     .await?;
+    let (result, _admission) = result;
 
     Ok(Json(result))
 }

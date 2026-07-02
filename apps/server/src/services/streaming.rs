@@ -88,13 +88,18 @@ pub fn process_streaming(
     let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let cancel_for_task = std::sync::Arc::clone(&cancel);
 
+    // The admission permit must be held until BOTH sides are done: the
+    // blocking producer (on disconnect the stream drops first, but the task
+    // keeps its memory/CPU until the cooperative cancel takes effect) AND the
+    // response stream (the unbounded channel can hold every emitted batch
+    // after a fast producer exits, so dropping the permit at task exit would
+    // let a replacement parse be admitted on top of the undrained buffers).
+    // An Arc'd guard held by both releases on whichever finishes last.
+    let admission = admission.map(std::sync::Arc::new);
+    let admission_for_task = admission.clone();
+
     let handle = tokio::task::spawn_blocking(move || {
-        // The admission permit must outlive the BLOCKING TASK, not just the
-        // response stream: on disconnect the stream drops first, but the task
-        // keeps its memory/CPU until the cooperative cancel takes effect at
-        // the next chunk boundary. Holding the guard here means a replacement
-        // is never admitted on top of a still-running job.
-        let _admission = admission;
+        let _admission = admission_for_task;
         let cache_key = DiskCache::generate_key(&content);
 
         let mut started = false;
@@ -186,6 +191,7 @@ pub fn process_streaming(
     });
 
     Box::pin(stream! {
+        let _admission = admission;
         while let Some(event) = rx.recv().await {
             yield event;
         }

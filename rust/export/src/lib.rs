@@ -177,6 +177,9 @@ mod tests {
         // without paying for the index. Well-formed fixtures have unique ids, so
         // the index map length equals the scanned entity count.
         let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+            eprintln!(
+                "skipping entity_count_reexport_matches_index: fixture absent — run `pnpm fixtures`"
+            );
             return;
         };
         let counted = entity_count(&bytes);

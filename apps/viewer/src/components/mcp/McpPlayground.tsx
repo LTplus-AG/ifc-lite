@@ -67,9 +67,9 @@ interface SampleEntry {
 }
 
 const SAMPLES: SampleEntry[] = [
-  { id: 'hello-wall',          label: 'Hello Wall',          blurb: 'IFC5 minimal · 1 wall, 1 storey',          url: '/samples/hello-wall.ifc',          approxBytes:  78_000 },
+  { id: 'hello-wall',          label: 'Hello Wall',          blurb: 'IFC4 minimal · 1 wall, 1 storey',          url: '/samples/hello-wall.ifc',          approxBytes:  78_000 },
   { id: 'building-architecture', label: 'Building / Architecture', blurb: 'buildingSMART sample · 444 entities, IFC4', url: '/samples/building-architecture.ifc', approxBytes: 220_000 },
-  { id: 'infra-bridge',        label: 'Infra Bridge',        blurb: 'Infrastructure · IFC4.3 bridge sample',     url: '/samples/infra-bridge.ifc',        approxBytes: 1_800_000 },
+  { id: 'infra-bridge',        label: 'Infra Bridge',        blurb: 'Infrastructure · IFC4 bridge sample',      url: '/samples/infra-bridge.ifc',        approxBytes: 1_800_000 },
 ];
 
 export function McpPlayground(): ReactNode {

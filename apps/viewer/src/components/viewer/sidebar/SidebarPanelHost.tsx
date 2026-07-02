@@ -35,6 +35,7 @@ import { renderPanelBody } from '@/lib/panels/renderPanelBody';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { PanelTourButton } from '@/components/tours/PanelTourButton';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -139,6 +140,7 @@ function PanelChromeBar({ detachId }: { detachId: WorkspacePanelId }) {
         <TooltipContent side="bottom">Drag to float, or onto another screen to pop out</TooltipContent>
       </Tooltip>
       <span className="flex-1" />
+      <PanelTourButton panelId={detachId} />
       <SplitMenu primaryId={detachId} />
       <Tooltip>
         <TooltipTrigger asChild>

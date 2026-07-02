@@ -13,7 +13,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { AddElementPanel } from './AddElementPanel';
 import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
-import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
+import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
@@ -37,6 +37,7 @@ import { GanttPanel } from './schedule/GanttPanel';
 import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
+import { TourHost } from '@/components/tours/TourHost';
 import { SidebarDock } from './sidebar/SidebarDock';
 import { FloatingPanelHost } from './dock/FloatingPanelHost';
 import { PanelWindowHost } from './dock/PanelWindowHost';
@@ -124,7 +125,13 @@ export function ViewerLayout() {
 
   useEffect(() => {
     const openCommandPalette = () => setCommandPaletteOpen(true);
-    const showShortcuts = () => shortcutsDialog.toggle();
+    // With a `detail.tab` the event is a deep link (e.g. the Learn hub) and
+    // always opens; without it, it keeps its legacy toggle semantics.
+    const showShortcuts = (e: Event) => {
+      const tab = (e as CustomEvent<{ tab?: InfoDialogTab } | undefined>).detail?.tab;
+      if (tab) shortcutsDialog.openTab(tab);
+      else shortcutsDialog.toggle();
+    };
 
     window.addEventListener('ifc-lite:open-command-palette', openCommandPalette);
     window.addEventListener('ifc-lite:show-shortcuts', showShortcuts);
@@ -303,13 +310,14 @@ export function ViewerLayout() {
           </div>
         )}
         {/* Keyboard Shortcuts Dialog */}
-        <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} />
+        <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
 
         {/* Global Overlays */}
         <EntityContextMenu />
         <HoverTooltip />
         <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
         <SearchModal />
+        <TourHost />
 
         {/* Main Toolbar — use compact MobileToolbar on mobile */}
         {isMobile ? <MobileToolbar /> : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}

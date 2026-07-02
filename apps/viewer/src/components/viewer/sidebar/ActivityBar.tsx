@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { activityAnchor, tourAnchor } from '@/lib/tours/anchors';
 import { CustomizeSidebar } from './CustomizeSidebar';
 
 /** Alt+N hint per panel, by registry index (frozen since #1200): 1-9, then 0.
@@ -122,6 +123,7 @@ export function ActivityBar() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
+                    {...tourAnchor(activityAnchor(id))}
                     aria-label={ariaLabel}
                     aria-pressed={active}
                     draggable={customizing && id !== 'properties'}

@@ -87,6 +87,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.4
         version: 6.43.4
+      '@floating-ui/dom':
+        specifier: ^1.7.4
+        version: 1.7.6
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../../packages/bcf

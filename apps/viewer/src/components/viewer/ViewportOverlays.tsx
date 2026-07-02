@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { useIfc } from '@/hooks/useIfc';
+import { emitCameraInteracted } from '@/lib/tours/events';
 import { cn } from '@/lib/utils';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
@@ -39,6 +40,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   const cameraRotationRef = useRef({ azimuth: 45, elevation: 25 });
   const viewCubeRef = useRef<ViewCubeRef | null>(null);
   const axisHelperRef = useRef<AxisHelperRef | null>(null);
+  const lastCubeGestureEmitRef = useRef(0);
 
   // Local state for scale - updated via callback, no global re-renders
   const [scale, setScale] = useState(10);
@@ -105,6 +107,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
     const mappedView = viewMap[view];
     if (mappedView && cameraCallbacks.setPresetView) {
       cameraCallbacks.setPresetView(mappedView);
+      emitCameraInteracted('preset');
     }
   }, [cameraCallbacks]);
 
@@ -203,7 +206,15 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}
-            onDrag={(deltaX, deltaY) => cameraCallbacks.orbit?.(deltaX, deltaY)}
+            onDrag={(deltaX, deltaY) => {
+              cameraCallbacks.orbit?.(deltaX, deltaY);
+              // Throttled: onDrag fires per pointer move.
+              const now = performance.now();
+              if (now - lastCubeGestureEmitRef.current > 500) {
+                lastCubeGestureEmitRef.current = now;
+                emitCameraInteracted('orbit');
+              }
+            }}
             rotationX={initialRotationX}
             rotationY={initialRotationY}
           />

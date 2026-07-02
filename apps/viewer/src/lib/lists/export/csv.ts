@@ -6,6 +6,11 @@ import type { CellValue } from '@ifc-lite/lists';
 import { displayCell, type ExportModel } from './model';
 
 function esc(s: string, delim: string): string {
+  // Neutralize spreadsheet formula injection (CWE-1236): a leading =, +, -, @,
+  // TAB or CR makes a cell execute as a formula in Excel/LibreOffice/Sheets.
+  // List cells derive from attacker-controllable IFC values, so prefix such
+  // cells with an apostrophe (matching the SDK export adapter).
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /["\r\n]/.test(s) || s.includes(delim) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

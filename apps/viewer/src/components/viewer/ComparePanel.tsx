@@ -13,6 +13,7 @@ import { useEffect, useMemo } from 'react';
 import { GitCompareArrows, Loader2, Play, X, Trash2, Download, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { useCompare } from '@/hooks/useCompare';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
@@ -215,7 +216,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
             <>
               {/* Run controls */}
               <div className="p-3 space-y-3 border-b border-border">
-                <div className="grid grid-cols-[1.25rem_1fr] items-center gap-x-2 gap-y-2 text-xs">
+                <div className="grid grid-cols-[1.25rem_1fr] items-center gap-x-2 gap-y-2 text-xs" {...tourAnchor(TOUR_ANCHORS.compareAb)}>
                   <span className="text-muted-foreground">A</span>
                   <select
                     value={baseModelId ?? ''}
@@ -267,7 +268,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                   </label>
                 </div>
 
-                <Button size="sm" className="w-full gap-1.5" disabled={!canRun} onClick={() => void runComparison()}>
+                <Button size="sm" className="w-full gap-1.5" disabled={!canRun} onClick={() => void runComparison()} {...tourAnchor(TOUR_ANCHORS.compareRun)}>
                   {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                   {running ? 'Comparing…' : 'Run comparison'}
                 </Button>
@@ -285,7 +286,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
               {/* Counts */}
               {counts && (
-                <div className="grid grid-cols-4 gap-1 p-3 border-b border-border text-center">
+                <div className="grid grid-cols-4 gap-1 p-3 border-b border-border text-center" {...tourAnchor(TOUR_ANCHORS.compareCounts)}>
                   <CountBadge label="Changed" value={counts.modified} color={COMPARE_COLORS.modified} />
                   <CountBadge label="Added" value={counts.added} color={COMPARE_COLORS.added} />
                   <CountBadge label="Deleted" value={counts.deleted} color={COMPARE_COLORS.deleted} />

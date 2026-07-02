@@ -52,6 +52,16 @@ export const TOUR_ANCHORS = {
   clashFocusMode: 'clash-focus-mode',
   /** ClashPanel "BCF topic" button in the results toolbar (result with clashes). */
   clashBcf: 'clash-bcf',
+  /** ComparePanel A/B model-select grid (only with two loaded models). */
+  compareAb: 'compare-ab',
+  /** ComparePanel "Run comparison" button (only with two loaded models). */
+  compareRun: 'compare-run',
+  /** ComparePanel counts grid (only while a result exists). */
+  compareCounts: 'compare-counts',
+  /** CompareResultsList scroll area (two loaded models, not BCF-composing). */
+  compareResults: 'compare-results',
+  /** ChangeDetailView root (only while a MODIFIED row is selected). */
+  compareDetail: 'compare-detail',
 } as const;
 
 /** Activity-bar rail button for a panel (one templated attribute serves

@@ -33,6 +33,8 @@ function read(): TourStorage {
     const parsed = JSON.parse(raw) as Partial<TourStorage>;
     return { inviteDismissedAt: parsed.inviteDismissedAt, tours: parsed.tours ?? {} };
   } catch {
+    // Privacy modes throw on localStorage access and malformed JSON is not
+    // worth surfacing - both degrade to "no tour history".
     return { tours: {} };
   }
 }

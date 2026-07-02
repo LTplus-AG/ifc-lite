@@ -67,7 +67,7 @@ export const COMPARE_TOUR: TourDefinition = {
       prepare: (store) => {
         const s = store.getState();
         const models = [...s.models.values()];
-        if (models.filter((m) => m.name.startsWith('demo-project')).length < 2) return;
+        // Exact kit names only - anything else keeps the panel's defaults.
         const base = models.find((m) => m.name === 'demo-project.ifc');
         const revB = models.find((m) => m.name === 'demo-project-rev-b.ifc');
         if (!base || !revB) return;

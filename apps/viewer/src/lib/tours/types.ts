@@ -178,6 +178,9 @@ export interface UiSnapshot {
     position: number;
     enabled: boolean;
     flipped: boolean;
+    /** Face-picked plane params; captured so an abort can restore a
+     *  pre-tour custom cut, not just the cardinal fields. */
+    custom: ViewerState['sectionPlane']['custom'];
   };
   activeLensId: string | null;
   /** May be null before the renderer registered camera callbacks. */

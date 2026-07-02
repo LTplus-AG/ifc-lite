@@ -144,29 +144,46 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     };
   }),
 
-  removeModel: (modelId) => set((state) => {
-    const newModels = new Map(state.models);
-    newModels.delete(modelId);
-
-    // Unregister from federation registry
-    federationRegistry.unregisterModel(modelId);
-
-    // Update activeModelId if removed model was active
-    let newActiveId = state.activeModelId;
-    if (state.activeModelId === modelId) {
-      const remaining = Array.from(newModels.keys());
-      newActiveId = remaining.length > 0 ? remaining[0] : null;
-    }
-
-    const activeModel = newActiveId ? newModels.get(newActiveId) : null;
-
-    return {
-      models: newModels,
-      activeModelId: newActiveId,
-      ifcDataStore: activeModel?.ifcDataStore ?? null,
-      geometryResult: activeModel?.geometryResult ?? null,
+  removeModel: (modelId) => {
+    // Discard the removed model's mutation footprint before dropping it.
+    // Otherwise its mutation view, georef edits, undo/redo stacks and any
+    // schedule it owns linger in the store: getModifiedEntityCount keeps
+    // counting a model that can no longer be exported, and a schedule whose
+    // source model is gone dangles. clearMutations empties the view + stacks +
+    // georef (and clears an owned schedule); clearMutationView then drops the
+    // now-empty view entry so the count stops iterating it. Both are existing,
+    // separately-tested actions on the mutation slice (cross-slice via get()).
+    const cross = get() as unknown as {
+      clearMutations?: (id: string) => void;
+      clearMutationView?: (id: string) => void;
     };
-  }),
+    cross.clearMutations?.(modelId);
+    cross.clearMutationView?.(modelId);
+
+    set((state) => {
+      const newModels = new Map(state.models);
+      newModels.delete(modelId);
+
+      // Unregister from federation registry
+      federationRegistry.unregisterModel(modelId);
+
+      // Update activeModelId if removed model was active
+      let newActiveId = state.activeModelId;
+      if (state.activeModelId === modelId) {
+        const remaining = Array.from(newModels.keys());
+        newActiveId = remaining.length > 0 ? remaining[0] : null;
+      }
+
+      const activeModel = newActiveId ? newModels.get(newActiveId) : null;
+
+      return {
+        models: newModels,
+        activeModelId: newActiveId,
+        ifcDataStore: activeModel?.ifcDataStore ?? null,
+        geometryResult: activeModel?.geometryResult ?? null,
+      };
+    });
+  },
 
   clearAllModels: () => {
     // Clear the federation registry

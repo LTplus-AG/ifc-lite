@@ -156,6 +156,28 @@ describe('ModelSlice', () => {
       assert.strictEqual(state.models.size, 0);
     });
 
+    it('discards the removed model\'s mutation footprint', () => {
+      // removeModel clears the model's mutation view/stacks/georef/schedule via
+      // cross-slice actions so getModifiedEntityCount stops counting it and no
+      // schedule source dangles. Stub the cross-slice actions and assert the
+      // wiring (the actions themselves are covered by the mutation slice).
+      const model = createMockModel('model-1', 'Test Model');
+      state.addModel(model);
+
+      const clearedMutations: string[] = [];
+      const clearedViews: string[] = [];
+      (state as unknown as { clearMutations: (id: string) => void }).clearMutations = (id) =>
+        clearedMutations.push(id);
+      (state as unknown as { clearMutationView: (id: string) => void }).clearMutationView = (id) =>
+        clearedViews.push(id);
+
+      state.removeModel('model-1');
+
+      assert.deepStrictEqual(clearedMutations, ['model-1']);
+      assert.deepStrictEqual(clearedViews, ['model-1']);
+      assert.strictEqual(state.models.size, 0);
+    });
+
     it('should update activeModelId if removed model was active', () => {
       const model1 = createMockModel('model-1', 'First Model');
       const model2 = createMockModel('model-2', 'Second Model');

@@ -87,9 +87,10 @@ function collectAnnotationEntityIds(
 ): Set<number> {
   const ids = new Set<number>();
   const addFrom = (store: IfcDataStore | null | undefined, toGlobal: (localId: number) => number) => {
-    const getByType = (store as { getEntitiesByType?: (t: string) => Array<{ expressId: number }> } | null | undefined)?.getEntitiesByType;
-    if (typeof getByType !== 'function') return;
-    for (const ent of getByType.call(store, 'IfcAnnotation')) {
+    // `getEntitiesByType` is a lazy accessor; guard for the rare
+    // cache-restored store whose accessors have not been reattached yet.
+    if (typeof store?.getEntitiesByType !== 'function') return;
+    for (const ent of store.getEntitiesByType('IfcAnnotation')) {
       ids.add(toGlobal(ent.expressId));
     }
   };

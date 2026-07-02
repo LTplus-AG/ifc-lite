@@ -10,7 +10,7 @@
  */
 
 import { activityAnchor, TOUR_ANCHORS } from '../anchors';
-import { loadDemoIds, loadDemoProject, waitForModelSettled } from '../demo-kit';
+import { DEMO_MODEL_NAMES, loadDemoIds, loadDemoProject, waitForModelSettled } from '../demo-kit';
 import type { TourDefinition } from '../types';
 
 /** "modelId:expressId" - the idsFailedEntityIds key format (idsSlice). */
@@ -53,10 +53,10 @@ export const IDS_TOUR: TourDefinition = {
         // project first when it is not already loaded.
         run: async (store) => {
           const models = [...store.getState().models.values()];
-          // Exact names only: a prefix match would treat a user's own
-          // "demo-project-v2.ifc" as the kit and skip the swap.
+          // Exact kit names only, so a user's own similarly-named file is
+          // not mistaken for the demo and the swap is skipped wrongly.
           const demoLoaded = models.some(
-            (m) => m.name === 'demo-project.ifc' || m.name === 'demo-project-rev-b.ifc',
+            (m) => m.name === DEMO_MODEL_NAMES.base || m.name === DEMO_MODEL_NAMES.revB,
           );
           if (!demoLoaded) {
             await loadDemoProject();

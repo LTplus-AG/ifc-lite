@@ -104,8 +104,13 @@ export const SCRIPTING_TOUR: TourDefinition = {
         if (auditTemplateCode === null) return;
         const s = store.getState();
         const entryActive = ctx.artifacts.get('entryActiveScriptId');
+        // Only ever delete the CURRENTLY ACTIVE script: the tour's pick
+        // became active on creation (the gate proved that). Matching by
+        // code across all saved scripts could hit a template copy the user
+        // saved BEFORE the tour; if they switched scripts afterwards, do
+        // nothing rather than guess.
         const created = s.savedScripts.find(
-          (x) => x.code === auditTemplateCode && x.id !== entryActive,
+          (x) => x.id === s.activeScriptId && x.code === auditTemplateCode && x.id !== entryActive,
         );
         if (!created) return;
         s.deleteScript(created.id);

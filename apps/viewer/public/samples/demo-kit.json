@@ -6,16 +6,16 @@
   "lenses": "samples/demo-project.lenses.json",
   "globalIds": {
     "fireRatingGapWalls": [
-      "2j4jF1QTr7RwZ10at$kmzx",
-      "0z$MJ_2aXFGAsVfhvicsoK"
+      "2gqaXbEYrDmOAuzMHlL3LD",
+      "2DCuA66u56HO9a7eFL$OLJ"
     ],
-    "clashDuct": "2oyyL5gcr2RRIDZFdaIJ5h",
-    "clashBeam": "0wyighjl9FMAjSSOJHA_kD",
-    "clearancePipe": "2TJDnMrBj2uRfxLj$DxyL_",
-    "movedColumn": "3zYMyNxBPCRwloGJsuTSdX",
-    "addedWall": "2PI6ewq9vFQhDU0c2h8AnE",
-    "deletedDoor": "37ZDxusFDAtw1cYxUMACob",
-    "dataModifiedWall": "1pZ0bFO_vFvQyAE1qqa4k9"
+    "clashDuct": "1sFnw2d_nC2emDLobT_TOM",
+    "clashBeam": "0a19VmDqb8Cf8aFS3FBfyl",
+    "clearancePipe": "1m2jiGFwX05QefEuN7mu5Y",
+    "movedColumn": "1qRFm$Mcf2sPZrg_w4Vcd0",
+    "addedWall": "0NSUsc0_zDVPvYNFAOSWlb",
+    "deletedDoor": "0i2jU9xbLB1exkgpiV22Qk",
+    "dataModifiedWall": "1HHLcAeH539B8gFExdv3$A"
   },
   "facts": {
     "storeys": [

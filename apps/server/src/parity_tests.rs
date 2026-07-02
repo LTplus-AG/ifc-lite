@@ -337,7 +337,7 @@ async fn symbolic_endpoint_pending_for_unknown_key() {
 #[tokio::test]
 async fn streaming_complete_event_carries_symbolic_data() {
     let events: Vec<StreamEvent> = process_streaming(
-        FIXTURE.as_bytes().to_vec(),
+        bytes::Bytes::from_static(FIXTURE.as_bytes()),
         100,
         1000,
         ifc_lite_processing::OpeningFilterMode::Default,
@@ -370,7 +370,7 @@ async fn streaming_zero_batch_sizes_still_complete() {
     let events = tokio::time::timeout(
         std::time::Duration::from_secs(10),
         process_streaming(
-            FIXTURE.as_bytes().to_vec(),
+            bytes::Bytes::from_static(FIXTURE.as_bytes()),
             0,
             0,
             ifc_lite_processing::OpeningFilterMode::Default,

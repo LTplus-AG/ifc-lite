@@ -73,8 +73,7 @@ pub async fn parse_parquet_stream(
     Query(query): Query<ParseQuery>,
     mut multipart: Multipart,
 ) -> Result<axum::response::Response, ApiError> {
-    use crate::services::serialize_to_parquet;
-    use crate::types::MeshData;
+    use crate::services::{serialize_to_parquet, StreamingParquetCacheWriter};
     use axum::response::IntoResponse;
     use base64::{engine::general_purpose::STANDARD, Engine};
     use futures::StreamExt;
@@ -179,10 +178,20 @@ pub async fn parse_parquet_stream(
     let max_batch_size = state.config.max_batch_size;
     let cache = state.cache.clone();
 
-    // OPTIMIZATION: Accumulate meshes during streaming to avoid re-processing for cache
-    // This shared container collects all streamed meshes for caching
-    let accumulated_meshes: Arc<Mutex<Vec<MeshData>>> = Arc::new(Mutex::new(Vec::new()));
-    let accumulated_meshes_for_stream = accumulated_meshes.clone();
+    // Incremental cache writer: each batch's columns are appended as Parquet
+    // row groups (GLOBAL offsets) and the meshes dropped, replacing the old
+    // Arc<Mutex<Vec<MeshData>>> accumulator that held a FULL second copy of
+    // the model's geometry until Complete. `None` after a writer error (the
+    // cache fill is skipped; the client stream is unaffected).
+    let cache_writer: Arc<Mutex<Option<StreamingParquetCacheWriter>>> =
+        Arc::new(Mutex::new(match StreamingParquetCacheWriter::new() {
+            Ok(w) => Some(w),
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to create streaming cache writer");
+                None
+            }
+        }));
+    let cache_writer_for_stream = cache_writer.clone();
     let cache_for_geometry = cache.clone();
     let cache_key_for_geometry = cache_key.clone();
 
@@ -207,9 +216,15 @@ pub async fn parse_parquet_stream(
                 ParquetStreamEvent::Progress { processed, total }
             }
             StreamEvent::Batch { meshes, batch_number } => {
-                // OPTIMIZATION: Accumulate meshes for caching (avoids re-processing)
-                if let Ok(mut acc) = accumulated_meshes_for_stream.lock() {
-                    acc.extend(meshes.iter().cloned());
+                // Feed the incremental cache writer, then let the meshes drop
+                // with this event (no whole-model retention).
+                if let Ok(mut slot) = cache_writer_for_stream.lock() {
+                    if let Some(writer) = slot.as_mut() {
+                        if let Err(e) = writer.append(&meshes) {
+                            tracing::error!(error = %e, "Streaming cache writer failed; skipping cache fill");
+                            *slot = None;
+                        }
+                    }
                 }
 
                 // Serialize batch to Parquet and base64 encode
@@ -243,45 +258,47 @@ pub async fn parse_parquet_stream(
                     });
                 }
 
-                // OPTIMIZATION: Use accumulated meshes instead of re-processing
-                // This eliminates duplicate geometry extraction (~1100ms savings for large files)
+                // Finish the incremental writer: the cache blob was built row
+                // group by row group as batches streamed, so nothing is
+                // re-serialized and no second copy of the geometry exists.
                 let cache = cache_for_geometry.clone();
                 let key = cache_key_for_geometry.clone();
                 let stats_clone = stats.clone();
                 let metadata_clone = metadata.clone();
-                let meshes_for_cache = accumulated_meshes.clone();
+                let writer_for_cache = cache_writer.clone();
                 let coord_space = mesh_coordinate_space.clone();
                 let site_tf = site_transform.clone();
                 let building_tf = building_transform.clone();
 
                 tokio::spawn(async move {
-                    // Take accumulated meshes (moves out of Arc<Mutex>)
-                    let all_meshes = {
-                        match meshes_for_cache.lock() {
-                            Ok(mut guard) => std::mem::take(&mut *guard),
+                    // Take the writer (moves out of Arc<Mutex>).
+                    let writer = {
+                        match writer_for_cache.lock() {
+                            Ok(mut guard) => guard.take(),
                             Err(_) => {
-                                tracing::error!("Failed to lock accumulated meshes for caching");
+                                tracing::error!("Failed to lock streaming cache writer");
                                 return;
                             }
                         }
                     };
-
-                    if all_meshes.is_empty() {
-                        tracing::warn!("No meshes accumulated for caching");
+                    let Some(writer) = writer else {
+                        tracing::warn!("Streaming cache writer unavailable; skipping cache fill");
+                        return;
+                    };
+                    if writer.mesh_count() == 0 {
+                        tracing::warn!("No meshes streamed; skipping cache fill");
                         return;
                     }
 
                     tracing::info!(
-                        mesh_count = all_meshes.len(),
-                        "Caching accumulated meshes from stream (no re-processing)"
+                        mesh_count = writer.mesh_count(),
+                        "Caching streamed geometry (incremental writer, no re-serialization)"
                     );
 
-                    // Serialize accumulated meshes to Parquet (no re-processing needed!)
-                    let serialize_result = tokio::task::spawn_blocking(move || {
-                        serialize_to_parquet(&all_meshes)
-                    }).await;
+                    let finish_result =
+                        tokio::task::spawn_blocking(move || writer.finish()).await;
 
-                    if let Ok(Ok(geometry_parquet)) = serialize_result {
+                    if let Ok(Ok(geometry_parquet)) = finish_result {
                         // Build combined format (same as non-streaming endpoint)
                         // Format: [geometry_len: u32][geometry_data][data_model_len: u32]
                         let mut combined_parquet = Vec::new();

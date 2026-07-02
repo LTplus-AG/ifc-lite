@@ -222,7 +222,9 @@ pub async fn parse_parquet(
 
     let metadata_json = serde_json::to_string(&metadata_header)?;
 
-    // Cache the results for future requests
+    // Cache the results for future requests. `Bytes` makes the cache task's
+    // copy an O(1) refcount bump instead of duplicating the whole payload.
+    let combined_parquet = bytes::Bytes::from(combined_parquet);
     let parquet_cache_key = format!("{}-parquet-v4", cache_key_clone);
     let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key_clone);
     let combined_parquet_clone = combined_parquet.clone();

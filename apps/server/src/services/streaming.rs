@@ -67,7 +67,7 @@ pub(crate) fn detect_schema_version(content: &[u8]) -> &'static str {
 /// in the HEADER must not block otherwise valid models, so no `String`
 /// conversion happens anywhere on this path.
 pub fn process_streaming(
-    content: Vec<u8>,
+    content: bytes::Bytes,
     initial_batch_size: usize,
     max_batch_size: usize,
     opening_filter: OpeningFilterMode,

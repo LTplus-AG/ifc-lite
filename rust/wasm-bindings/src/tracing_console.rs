@@ -20,12 +20,28 @@
 //! events, and a full span-tree renderer is not worth the bundle bytes here.
 
 use std::fmt::Write as _;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use wasm_bindgen::prelude::*;
 
-struct ConsoleSubscriber {
-    max: tracing::Level,
+/// Current max verbosity as a usize rank (0=ERROR .. 4=TRACE). A global
+/// atomic rather than subscriber state so repeated `initConsoleTracing`
+/// calls can CHANGE the level: `set_global_default` only succeeds once, and
+/// a level baked into the installed subscriber would silently pin the first
+/// call's choice forever.
+static MAX_LEVEL: AtomicUsize = AtomicUsize::new(2); // info
+
+fn level_rank(level: &tracing::Level) -> usize {
+    match *level {
+        tracing::Level::ERROR => 0,
+        tracing::Level::WARN => 1,
+        tracing::Level::INFO => 2,
+        tracing::Level::DEBUG => 3,
+        tracing::Level::TRACE => 4,
+    }
 }
+
+struct ConsoleSubscriber;
 
 struct FieldFormatter {
     out: String,
@@ -50,7 +66,7 @@ impl tracing::field::Visit for FieldFormatter {
 
 impl tracing::Subscriber for ConsoleSubscriber {
     fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
-        *metadata.level() <= self.max
+        level_rank(metadata.level()) <= MAX_LEVEL.load(Ordering::Relaxed)
     }
 
     fn new_span(&self, _span: &tracing::span::Attributes<'_>) -> tracing::span::Id {
@@ -86,14 +102,15 @@ impl tracing::Subscriber for ConsoleSubscriber {
 /// so the level rides this call.
 #[wasm_bindgen(js_name = initConsoleTracing)]
 pub fn init_console_tracing(level: String) {
-    let max = match level.as_str() {
-        "error" => tracing::Level::ERROR,
-        "warn" => tracing::Level::WARN,
-        "debug" => tracing::Level::DEBUG,
-        "trace" => tracing::Level::TRACE,
-        _ => tracing::Level::INFO,
+    let rank = match level.as_str() {
+        "error" => 0,
+        "warn" => 1,
+        "debug" => 3,
+        "trace" => 4,
+        _ => 2, // info
     };
-    // set_global_default errors when a subscriber is already installed
-    // (repeated init from JS) - that is the idempotent no-op path.
-    let _ = tracing::subscriber::set_global_default(ConsoleSubscriber { max });
+    // The level lives in a global atomic, so a REPEATED init call updates
+    // verbosity even though set_global_default only installs once.
+    MAX_LEVEL.store(rank, Ordering::Relaxed);
+    let _ = tracing::subscriber::set_global_default(ConsoleSubscriber);
 }

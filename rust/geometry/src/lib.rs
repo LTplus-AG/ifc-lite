@@ -145,6 +145,7 @@ pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
 pub use router::{
     aggregate_diagnostics, local_frame_set_enabled_override, ClassificationStats,
+    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
     RectFastSummary, RectParam, WorstHost,

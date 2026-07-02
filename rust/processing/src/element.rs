@@ -176,6 +176,12 @@ pub struct ProducedElementMeshes {
     /// the same cuts) are discarded — only the path that produced the
     /// returned meshes contributes.
     pub csg_failures: FxHashMap<u32, Vec<BoolFailure>>,
+    /// Triangles dropped by the f32-collapse degenerate-triangle backstop
+    /// (`drop_degenerate_triangles` in `build_mesh_data`) across ALL of this
+    /// element's meshes. Zero when the backstop is disabled or nothing was
+    /// degenerate. Request-local (scoped per `produce_element_meshes` call)
+    /// so concurrent passes never cross-contaminate.
+    pub degenerate_triangles_dropped: u64,
 }
 
 /// THE canonical per-element mesh producer.
@@ -202,6 +208,14 @@ pub fn produce_element_meshes(
     // distributed cost. Unbounded under the server/offline-export profile.
     ifc_lite_geometry::kernel::budget::begin_element();
 
+    // Open this element's degenerate-backstop scope (same begin/drain shape as
+    // the kernel budget above): `build_mesh_data` adds to the thread-local as
+    // it drops collapsed triangles, and we drain it into the result below.
+    // Thread-local is correct on both pipelines: the native rayon loop runs
+    // one element entirely on one worker thread, and the wasm batch loop is
+    // serial.
+    DEGENERATE_DROPPED.with(|c| c.set(0));
+
     let mut hasher = match (&job.kind, opts.geometry_hash) {
         (ElementJobKind::Product, Some(cfg)) => {
             Some(GeometryHasher::new(cfg.tolerance, cfg.world_rtc))
@@ -217,11 +231,21 @@ pub fn produce_element_meshes(
 
     let geometry_hash = hasher.and_then(|h| if h.is_empty() { None } else { Some(h.finish()) });
 
+    let degenerate_triangles_dropped = DEGENERATE_DROPPED.with(|c| c.get());
+
     ProducedElementMeshes {
         meshes,
         geometry_hash,
         csg_failures,
+        degenerate_triangles_dropped,
     }
+}
+
+thread_local! {
+    /// Per-element degenerate-backstop drop tally. Reset at the top of
+    /// `produce_element_meshes`, incremented by `build_mesh_data`, drained
+    /// into [`ProducedElementMeshes::degenerate_triangles_dropped`].
+    static DEGENERATE_DROPPED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 fn produce_inner(
@@ -572,7 +596,14 @@ fn build_mesh_data(
     // collapse is PREVENTED upstream and this drops nothing; it stays as the
     // defence-in-depth safety net for any element still too large for its frame.
     if !degenerate_backstop_disabled() {
+        let indices_before = mesh.indices.len();
         mesh.drop_degenerate_triangles();
+        let dropped = ((indices_before - mesh.indices.len()) / 3) as u64;
+        if dropped > 0 {
+            // Diagnostic tally only — the drop itself is unchanged. Drained
+            // per element by `produce_element_meshes` (see DEGENERATE_DROPPED).
+            DEGENERATE_DROPPED.with(|c| c.set(c.get() + dropped));
+        }
     }
     let mesh_origin = mesh.origin;
     // Instancing: capture before the fields are moved into MeshData. A site-local

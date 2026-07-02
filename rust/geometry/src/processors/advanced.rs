@@ -56,7 +56,7 @@ impl GeometryProcessor for AdvancedBrepProcessor {
         let mut all_positions = Vec::new();
         let mut all_indices = Vec::new();
 
-        #[cfg(feature = "debug_geometry")]
+        #[cfg(any(feature = "debug_geometry", feature = "observability"))]
         let mut empty_faces: Vec<(u32, String)> = Vec::new();
 
         for face_ref in faces {
@@ -74,7 +74,7 @@ impl GeometryProcessor for AdvancedBrepProcessor {
                         all_indices.push(base_idx + idx);
                     }
                 } else {
-                    #[cfg(feature = "debug_geometry")]
+                    #[cfg(any(feature = "debug_geometry", feature = "observability"))]
                     {
                         let surface_kind = face
                             .get(1)
@@ -87,13 +87,23 @@ impl GeometryProcessor for AdvancedBrepProcessor {
             }
         }
 
-        #[cfg(feature = "debug_geometry")]
+        // Geometry loss on an advanced brep (faces that meshed to nothing) is
+        // a genuine anomaly: warn-level under observability. The legacy
+        // stderr line stays gated behind debug_geometry as before.
+        #[cfg(any(feature = "debug_geometry", feature = "observability"))]
         if !empty_faces.is_empty() {
-            eprintln!(
-                "[ifc-lite][advanced_brep] entity #{} produced {} empty face(s): {:?}",
-                entity.id,
-                empty_faces.len(),
-                empty_faces
+            crate::diag::diag_warn!(
+                { entity_id = entity.id, empty_faces = empty_faces.len(),
+                  faces = ?empty_faces, "advanced_brep: entity produced empty faces" }
+                else {
+                    #[cfg(feature = "debug_geometry")]
+                    eprintln!(
+                        "[ifc-lite][advanced_brep] entity #{} produced {} empty face(s): {:?}",
+                        entity.id,
+                        empty_faces.len(),
+                        empty_faces
+                    );
+                }
             );
         }
 

@@ -136,6 +136,11 @@ pub struct ProcessingStats {
     /// Number of distinct products with at least one CSG failure.
     #[serde(default)]
     pub products_with_failures: u64,
+    /// Triangles removed by the f32-collapse degenerate-triangle backstop
+    /// across the whole pass (see `element::build_mesh_data`). Non-zero means
+    /// the backstop engaged for this model.
+    #[serde(default)]
+    pub degenerate_triangles_dropped: u64,
     /// Full CSG / opening diagnostics (opening classification, per-reason failure
     /// breakdown, per-host detail, silent rectangular no-ops, rect_fast engagement)
     /// aggregated across the native geometry pass — the same `GeometryDiagnostics`

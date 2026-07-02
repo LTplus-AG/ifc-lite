@@ -81,6 +81,9 @@ pub mod csg_capture;
 /// Corrects f32 import jitter (~0.09°) so authored-coplanar roof slope facets
 /// are EXACTLY coplanar before the exact-kernel opening cut (issue #1007).
 pub mod facet_weld;
+/// Structured-diagnostics macro shims for the `observability` feature
+/// (tracing when ON, the legacy eprintln fallback when OFF).
+pub(crate) mod diag;
 pub mod diagnostics;
 pub mod error;
 pub mod congruence;

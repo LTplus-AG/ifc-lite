@@ -291,6 +291,15 @@ export class IfcAPI {
    */
   extractProfiles(content: string, model_index: number): ProfileCollection;
   /**
+   * Structured pipeline diagnostics accumulated across every
+   * `processGeometryBatch*` call since the last load reset
+   * (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
+   * `schemaVersion` field — or `undefined` when no batch has run yet.
+   * Includes per-batch summed geometry wall time, mesh/triangle counts,
+   * the degenerate-backstop drop count, and the CSG failure aggregates.
+   */
+  getPipelineDiagnostics(): any;
+  /**
    * Get WASM memory for zero-copy access
    */
   getMemory(): any;
@@ -1110,6 +1119,7 @@ export interface InitOutput {
   readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
   readonly ifcapi_getMemory: (a: number) => number;
+  readonly ifcapi_getPipelineDiagnostics: (a: number) => number;
   readonly ifcapi_is_ready: (a: number) => number;
   readonly ifcapi_new: () => number;
   readonly ifcapi_parseAlignmentLines: (a: number, b: number, c: number) => number;

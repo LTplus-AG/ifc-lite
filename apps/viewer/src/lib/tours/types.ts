@@ -43,6 +43,9 @@ export interface TourStepGate {
   predicate?: (state: ViewerState, ctx: TourStepContext) => boolean;
   /** Window CustomEvent name that also completes the step (either wins). */
   event?: string;
+  /** Only complete on events whose `detail.kind` matches (e.g. a ViewCube
+   *  'preset' on the shared camera-interacted event). */
+  eventKind?: string;
   /** Emphasize Skip and show a hint after this long. Default 15000. */
   hintAfterMs?: number;
 }
@@ -114,6 +117,12 @@ export interface TourDefinition {
   /** Panel this tour teaches; lights up that panel's header help button. */
   panel?: WorkspacePanelId;
   prerequisites?: TourPrerequisites;
+  /**
+   * How "Load demo project" on the prerequisite interstitial fulfils THIS
+   * tour's needs (e.g. compare loads base + rev B). Defaults to loading the
+   * base demo model.
+   */
+  demoFulfil?: () => Promise<void>;
   /**
    * Snapshot fields NOT restored on finish, so the tour's visible outcome
    * survives (abort always restores everything). Example: the lens tour

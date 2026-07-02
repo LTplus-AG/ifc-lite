@@ -24,7 +24,7 @@
 import { getViewerStoreApi } from '@/store';
 import type { ViewerState } from '@/store';
 import { resolveAnchor } from './anchor-resolver';
-import { loadDemoProject } from './demo-kit';
+import { loadDemoProject, waitForModelSettled } from './demo-kit';
 import { getTour } from './registry';
 import { captureUiSnapshot, restoreUiSnapshot } from './snapshot';
 import * as storage from './storage';
@@ -88,7 +88,7 @@ export async function confirmPrereqWithDemo(): Promise<void> {
   if (!pending) return;
   patchTourState({ demoLoading: true });
   try {
-    await loadDemoProject();
+    await (pending.def.demoFulfil ?? loadDemoProject)();
     telemetry.trackDemoLoaded(pending.def.id);
     await waitForModelSettled();
   } catch (err) {
@@ -105,25 +105,6 @@ export async function confirmPrereqWithDemo(): Promise<void> {
 export function cancelPrereq(): void {
   prereqPending = null;
   resetTourState();
-}
-
-function waitForModelSettled(timeoutMs = 180_000): Promise<void> {
-  const store = getViewerStoreApi();
-  const settled = (s: ViewerState) => s.models.size > 0 && !s.loading && !s.geometryStreamingActive;
-  return new Promise((resolve, reject) => {
-    if (settled(store.getState())) { resolve(); return; }
-    const timer = window.setTimeout(() => {
-      unsub();
-      reject(new Error('model load did not settle in time'));
-    }, timeoutMs);
-    const unsub = store.subscribe((s) => {
-      if (settled(s)) {
-        window.clearTimeout(timer);
-        unsub();
-        resolve();
-      }
-    });
-  });
 }
 
 function beginRun(def: TourDefinition, source: TourSource): void {
@@ -289,7 +270,14 @@ async function goToStep(r: RunRecord, index: number): Promise<void> {
     }
     if (step.gate.event) {
       const evt = step.gate.event;
-      const onEvent = () => fire();
+      const wantedKind = step.gate.eventKind;
+      const onEvent = (e: Event) => {
+        if (wantedKind !== undefined) {
+          const kind = (e as CustomEvent<{ kind?: string } | undefined>).detail?.kind;
+          if (kind !== wantedKind) return;
+        }
+        fire();
+      };
       window.addEventListener(evt, onEvent);
       cleanups.push(() => window.removeEventListener(evt, onEvent));
     }

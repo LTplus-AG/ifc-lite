@@ -11,7 +11,10 @@
  * bytes are retained for IDS et al).
  */
 
-import { EVENT_LOAD_FILE } from './events';
+import { getViewerStoreApi } from '@/store';
+import type { ViewerState } from '@/store';
+import { loadIdsContent } from '@/hooks/ids/loadIdsContent';
+import { EVENT_ADD_MODEL, EVENT_LOAD_FILE } from './events';
 
 export const DEMO_KIT_PATHS = {
   base: '/samples/demo-project.ifc',
@@ -20,6 +23,30 @@ export const DEMO_KIT_PATHS = {
   lenses: '/samples/demo-project.lenses.json',
   manifest: '/samples/demo-kit.json',
 } as const;
+
+/**
+ * Resolve when at least one model is fully loaded and nothing is streaming.
+ * The load pipeline registers a placeholder model record before parsing, so
+ * `models.size > 0` alone is NOT "loaded".
+ */
+export function waitForModelSettled(timeoutMs = 180_000): Promise<void> {
+  const store = getViewerStoreApi();
+  const settled = (s: ViewerState) => s.models.size > 0 && !s.loading && !s.geometryStreamingActive;
+  return new Promise((resolve, reject) => {
+    if (settled(store.getState())) { resolve(); return; }
+    const timer = window.setTimeout(() => {
+      unsub();
+      reject(new Error('model load did not settle in time'));
+    }, timeoutMs);
+    const unsub = store.subscribe((s) => {
+      if (settled(s)) {
+        window.clearTimeout(timer);
+        unsub();
+        resolve();
+      }
+    });
+  });
+}
 
 async function fetchAsFile(path: string, name: string): Promise<File> {
   const res = await fetch(path);
@@ -38,4 +65,43 @@ export async function loadDemoProject(): Promise<void> {
   const file = await fetchAsFile(DEMO_KIT_PATHS.base, 'demo-project.ifc');
   // detail IS the File - the MainToolbar listener reads e.detail directly.
   window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file }));
+}
+
+/**
+ * Add demo revision B to the CURRENT federation set (the compare tour needs
+ * base + rev B loaded side by side). Rides the add-model bus event, so it
+ * goes through the canonical `addModel` path with ID-offset registration.
+ */
+export async function loadDemoRevB(): Promise<void> {
+  const file = await fetchAsFile(DEMO_KIT_PATHS.revB, 'demo-project-rev-b.ifc');
+  window.dispatchEvent(new CustomEvent(EVENT_ADD_MODEL, { detail: file }));
+}
+
+/**
+ * Both demo revisions for the compare tour, replacing whatever is loaded
+ * (diffing an arbitrary user model against the demo would be garbage - the
+ * prerequisite interstitial says so before this runs). The caller observes
+ * settle through the store, same as `loadDemoProject`.
+ */
+export async function loadDemoRevisions(): Promise<void> {
+  await loadDemoProject();
+  // The base load REPLACES the model set asynchronously; adding rev B before
+  // it settles races the replace's clear and can be silently wiped.
+  await waitForModelSettled();
+  await loadDemoRevB();
+}
+
+/** Load the bundled IDS spec (parse + audit) without the panel mounted. */
+export async function loadDemoIds(): Promise<void> {
+  const res = await fetch(DEMO_KIT_PATHS.ids);
+  if (!res.ok) throw new Error(`demo kit fetch failed: ${res.status} ${DEMO_KIT_PATHS.ids}`);
+  loadIdsContent(getViewerStoreApi(), await res.text());
+}
+
+/** Upsert the bundled lens ruleset (stable ids, so re-loading is idempotent). */
+export async function loadDemoLenses(): Promise<void> {
+  const res = await fetch(DEMO_KIT_PATHS.lenses);
+  if (!res.ok) throw new Error(`demo kit fetch failed: ${res.status} ${DEMO_KIT_PATHS.lenses}`);
+  const lenses = (await res.json()) as unknown[];
+  getViewerStoreApi().getState().importLenses(lenses);
 }

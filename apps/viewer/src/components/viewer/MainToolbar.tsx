@@ -334,9 +334,19 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         void loadFile(file);
       }
     };
+    // Federation variant: ADD the file to the current set instead of
+    // replacing it (the compare tour loads demo revision B this way).
+    const addHandler = (e: Event) => {
+      const file = (e as CustomEvent<File>).detail;
+      if (file) void addModel(file);
+    };
     window.addEventListener('ifc-lite:load-file', handler);
-    return () => window.removeEventListener('ifc-lite:load-file', handler);
-  }, [loadFile]);
+    window.addEventListener('ifc-lite:add-model', addHandler);
+    return () => {
+      window.removeEventListener('ifc-lite:load-file', handler);
+      window.removeEventListener('ifc-lite:add-model', addHandler);
+    };
+  }, [loadFile, addModel]);
 
   // Check if we have models loaded (for showing add model button)
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);

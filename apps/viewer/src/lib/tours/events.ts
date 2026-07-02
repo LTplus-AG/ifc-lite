@@ -25,6 +25,14 @@ export const EVENT_CAMERA_INTERACTED = 'ifc-lite:camera-interacted';
  */
 export const EVENT_FILE_DOWNLOADED = 'ifc-lite:file-downloaded';
 
+/**
+ * Add a model to the CURRENT federation set (detail: File) - unlike
+ * `ifc-lite:load-file`, which replaces the loaded model. Listener lives in
+ * MainToolbar next to the load-file one; used by the compare tour to bring
+ * in the demo revision B.
+ */
+export const EVENT_ADD_MODEL = 'ifc-lite:add-model';
+
 /** Existing bus events tours reuse (listeners live in the viewer today). */
 export const EVENT_LOAD_FILE = 'ifc-lite:load-file';
 export const EVENT_SHOW_SHORTCUTS = 'ifc-lite:show-shortcuts';

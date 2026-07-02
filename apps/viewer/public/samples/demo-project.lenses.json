@@ -1,0 +1,43 @@
+[
+  {
+    "id": "demo-fire-safety",
+    "name": "Fire safety",
+    "rules": [
+      {
+        "id": "fire-rated-green",
+        "name": "Fire-rated walls",
+        "enabled": true,
+        "criteria": {
+          "type": "property",
+          "propertySet": "Pset_WallCommon",
+          "propertyName": "FireRating",
+          "operator": "exists"
+        },
+        "action": "colorize",
+        "color": "#43A047"
+      },
+      {
+        "id": "no-fire-rating-red",
+        "name": "Walls (no fire rating)",
+        "enabled": true,
+        "criteria": {
+          "type": "ifcType",
+          "ifcType": "IfcWall"
+        },
+        "action": "colorize",
+        "color": "#E53935"
+      },
+      {
+        "id": "spaces-transparent",
+        "name": "Spaces",
+        "enabled": true,
+        "criteria": {
+          "type": "ifcType",
+          "ifcType": "IfcSpace"
+        },
+        "action": "transparent",
+        "color": "#FFFFFF"
+      }
+    ]
+  }
+]

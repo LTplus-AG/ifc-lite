@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "base": "samples/demo-project.ifc",
+  "revB": "samples/demo-project-rev-b.ifc",
+  "ids": "samples/demo-project.ids",
+  "lenses": "samples/demo-project.lenses.json",
+  "globalIds": {
+    "fireRatingGapWalls": [
+      "2j4jF1QTr7RwZ10at$kmzx",
+      "0z$MJ_2aXFGAsVfhvicsoK"
+    ],
+    "clashDuct": "2oyyL5gcr2RRIDZFdaIJ5h",
+    "clashBeam": "0wyighjl9FMAjSSOJHA_kD",
+    "clearancePipe": "2TJDnMrBj2uRfxLj$DxyL_",
+    "movedColumn": "3zYMyNxBPCRwloGJsuTSdX",
+    "addedWall": "2PI6ewq9vFQhDU0c2h8AnE",
+    "deletedDoor": "37ZDxusFDAtw1cYxUMACob",
+    "dataModifiedWall": "1pZ0bFO_vFvQyAE1qqa4k9"
+  },
+  "facts": {
+    "storeys": [
+      "Level 1",
+      "Level 2"
+    ],
+    "searchTerm": "door",
+    "clashPair": "duct vs beam"
+  }
+}

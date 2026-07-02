@@ -19,10 +19,13 @@
 //! The test skips cleanly when the fixture is absent so a fresh clone never
 //! panics.
 
+mod voids_common;
+
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 use rustc_hash::FxHashMap;
 use std::path::Path;
+use voids_common::production::fold_origin;
 
 const FIXTURE: &str = "../../tests/models/various/issue-604-door.ifc";
 
@@ -200,18 +203,9 @@ fn wall_opening_cut_has_no_coplanar_sliver() {
         .expect("wall void cut must succeed");
 
     // The parametric rect-opening fast path (default ON) emits a LOCAL-FRAME
-    // mesh: small positions plus mesh.origin, world = origin + position (the
-    // contract every production consumer folds). Fold it here so the
-    // world-space AABB / sliver checks below stay in world coordinates.
-    if mesh.origin != [0.0, 0.0, 0.0] {
-        let o = mesh.origin;
-        for c in mesh.positions.chunks_exact_mut(3) {
-            c[0] = (c[0] as f64 + o[0]) as f32;
-            c[1] = (c[1] as f64 + o[1]) as f32;
-            c[2] = (c[2] as f64 + o[2]) as f32;
-        }
-        mesh.origin = [0.0, 0.0, 0.0];
-    }
+    // mesh (world = origin + position); fold it so the world-space AABB /
+    // sliver checks below stay in world coordinates.
+    fold_origin(&mut mesh);
 
     assert!(
         !mesh.positions.is_empty() && !mesh.indices.is_empty(),

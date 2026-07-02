@@ -23,9 +23,12 @@
 //! all the way down to the wall base and out the +X edge — a half-space
 //! cut, not the authored bounded opening.
 
+mod voids_common;
+
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 use rustc_hash::FxHashMap;
+use voids_common::production::fold_origin;
 
 const FIXTURE: &str = "../../tests/models/issues/832_opening_representations.ifc";
 
@@ -160,18 +163,9 @@ fn all_five_opening_representations_stay_bounded() {
             .unwrap_or_else(|e| panic!("process wall #{wall_id}: {e}"));
 
         // The parametric rect-opening fast path (default ON) emits a
-        // LOCAL-FRAME mesh: small positions plus mesh.origin, world =
-        // origin + position (the contract every production consumer folds).
-        // Fold it so the world-space band checks below stay in world coords.
-        if mesh.origin != [0.0, 0.0, 0.0] {
-            let o = mesh.origin;
-            for c in mesh.positions.chunks_exact_mut(3) {
-                c[0] = (c[0] as f64 + o[0]) as f32;
-                c[1] = (c[1] as f64 + o[1]) as f32;
-                c[2] = (c[2] as f64 + o[2]) as f32;
-            }
-            mesh.origin = [0.0, 0.0, 0.0];
-        }
+        // LOCAL-FRAME mesh (world = origin + position); fold it so the
+        // world-space band checks below stay in world coords.
+        fold_origin(&mut mesh);
 
         let (wmin, wmax) = mesh_bounds(&mesh);
 

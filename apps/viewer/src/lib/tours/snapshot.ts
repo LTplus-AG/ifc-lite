@@ -51,6 +51,7 @@ export function captureUiSnapshot(store: ViewerStoreApi): UiSnapshot {
       position: s.sectionPlane.position,
       enabled: s.sectionPlane.enabled,
       flipped: s.sectionPlane.flipped,
+      custom: s.sectionPlane.custom ? structuredClone(s.sectionPlane.custom) : undefined,
     },
     activeLensId: s.activeLensId,
     camera: s.cameraCallbacks.getViewpoint?.() ?? null,
@@ -120,8 +121,9 @@ export function restoreUiSnapshot(
     }
   }
 
-  // Section plane: merge the four model-relative fields over current state,
-  // preserving the user's persisted cap appearance prefs.
+  // Section plane: merge the model-relative fields (including a face-picked
+  // custom plane) over current state, preserving the user's persisted cap
+  // appearance prefs.
   if (!keep.has('sectionPlane')) {
     store.setState({
       sectionPlane: {
@@ -130,6 +132,7 @@ export function restoreUiSnapshot(
         position: snapshot.sectionPlane.position,
         enabled: snapshot.sectionPlane.enabled,
         flipped: snapshot.sectionPlane.flipped,
+        custom: snapshot.sectionPlane.custom,
       },
     });
   }

@@ -2968,12 +2968,14 @@ mod tests {
     /// a follow-up and intentionally NOT covered here.)
     #[test]
     fn glb_nodes_have_export_rows_for_legacy_products() {
+        let mut found = 0;
         for rel in [
             "ifcopenshell/1030-sphere.ifc",
             "ifcopenshell/1032-curve.ifc",
             "issues/860_solid_stratum.ifc",
         ] {
             let Some(content) = fixture_opt(rel) else { continue };
+            found += 1;
             let opts = GltfOptions {
                 include_metadata: true,
                 ..GltfOptions::default()
@@ -2999,6 +3001,16 @@ mod tests {
                 );
             }
             assert!(checked > 0, "{rel}: expected at least one meshed element node");
+        }
+        // Per the fixture_opt house rule the test is green when the corpus isn't
+        // fetched — but say so, so a silent zero-coverage run (Greptile #1511) is
+        // visible rather than masquerading as a real pass. CI fetches the corpus,
+        // so `found` is 3 there and the join contract is actually exercised.
+        if found == 0 {
+            eprintln!(
+                "skipping glb_nodes_have_export_rows: no legacy fixtures fetched \
+                 (run `pnpm fixtures`)"
+            );
         }
     }
 

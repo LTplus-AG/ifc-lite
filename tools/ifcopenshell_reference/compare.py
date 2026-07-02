@@ -28,9 +28,11 @@ gates, topology is advisory.
                    cut faces by design. A dropped feature shows up in bbox or
                    volume; triangle counts alone would keep the gate
                    permanently red over healthy divergence.
-    vertex_count   ADVISORY: welding topology differs legitimately (duplex
-                   #6426: identical bbox + tri_count, 56 vs 48 welded verts);
-                   `closed` likewise (edge-pairing follows the welding).
+    vertex_count   NOT EVALUATED: carried in the dumps for human diffing
+                   only - welding topology differs legitimately (duplex #6426:
+                   identical bbox + tri_count, 56 vs 48 welded verts), so
+                   classify() neither gates nor flags it; `closed` likewise
+                   feeds only the volume-usability checks above.
 
 An allowlisted MISMATCH/REFERENCE_ONLY is reported but does not fail, so
 every accepted divergence is a reviewed, diffable decision. Exit code is

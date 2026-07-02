@@ -1,0 +1,22 @@
+{
+ "elements": [
+  {
+   "bbox": null,
+   "closed": false,
+   "express_id": 27,
+   "ifc_type": "IfcProxy",
+   "status": "skip:RuntimeError",
+   "tri_count": 0,
+   "vertex_count": 0,
+   "volume": null
+  }
+ ],
+ "engine": "ifcopenshell 0.8.2",
+ "fixture": "1030-sphere.ifc",
+ "settings": {
+  "use_world_coords": true,
+  "weld_vertices": true
+ },
+ "sha256": "0e1233abe55e091da29b4c7abad7895cda31df11a73e64a15d42bb5d2e02a2ab",
+ "version": 1
+}

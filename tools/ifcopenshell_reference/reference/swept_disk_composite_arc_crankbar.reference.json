@@ -1,0 +1,33 @@
+{
+ "elements": [
+  {
+   "bbox": {
+    "max": [
+     4.860002,
+     0.018365,
+     0.0185
+    ],
+    "min": [
+     0.0,
+     -0.018365,
+     -0.0655
+    ]
+   },
+   "closed": true,
+   "express_id": 79,
+   "ifc_type": "IfcReinforcingBar",
+   "status": "ok",
+   "tri_count": 516,
+   "vertex_count": 260,
+   "volume": 0.005177
+  }
+ ],
+ "engine": "ifcopenshell 0.8.2",
+ "fixture": "swept_disk_composite_arc_crankbar.ifc",
+ "settings": {
+  "use_world_coords": true,
+  "weld_vertices": true
+ },
+ "sha256": "7653f051eef21dc23e6749770246d2e71ebf45647700ff271ff7d00ddec2fad4",
+ "version": 1
+}

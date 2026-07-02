@@ -97,9 +97,27 @@ export class FilePersistence implements Persistence {
     return path.join(this.dataDir, `${safe}.log`);
   }
 
+  /**
+   * Pre-encoding log path (the old lossy `[^a-zA-Z0-9._-] -> _` sanitizer).
+   * Lossy — distinct rooms could collide — so it is used ONLY to find and
+   * migrate a room's existing log after upgrading to the encoded scheme, never
+   * for new writes. Equals `logPath` for ids the old sanitizer left unchanged
+   * (UUIDs, room codes), which is the no-migration-needed common case.
+   */
+  private legacyLogPath(roomId: string): string {
+    const safe = roomId.replace(/[^a-zA-Z0-9._-]/g, '_');
+    return path.join(this.dataDir, `${safe}.log`);
+  }
+
   async load(roomId: string): Promise<Uint8Array | null> {
-    const file = this.logPath(roomId);
-    if (!fs.existsSync(file)) return null;
+    let file = this.logPath(roomId);
+    if (!fs.existsSync(file)) {
+      // A room persisted before the encoded-filename change still lives under
+      // the old sanitized name; read it so history survives the upgrade.
+      const legacy = this.legacyLogPath(roomId);
+      if (legacy === file || !fs.existsSync(legacy)) return null;
+      file = legacy;
+    }
     const buf = await fs.promises.readFile(file);
     if (buf.byteLength === 0) return null;
     const frames: Uint8Array[] = [];
@@ -117,6 +135,14 @@ export class FilePersistence implements Persistence {
 
   async append(roomId: string, update: Uint8Array): Promise<void> {
     const file = this.logPath(roomId);
+    // One-time migration: adopt a pre-encoding log so appends extend the
+    // room's existing history instead of starting a second, empty file.
+    if (!fs.existsSync(file)) {
+      const legacy = this.legacyLogPath(roomId);
+      if (legacy !== file && fs.existsSync(legacy)) {
+        await fs.promises.rename(legacy, file);
+      }
+    }
     const header = Buffer.alloc(4);
     header.writeUInt32LE(update.byteLength, 0);
     const body = Buffer.concat([header, Buffer.from(update)]);
@@ -130,12 +156,19 @@ export class FilePersistence implements Persistence {
     header.writeUInt32LE(mergedState.byteLength, 0);
     await fs.promises.writeFile(tmp, Buffer.concat([header, Buffer.from(mergedState)]));
     await fs.promises.rename(tmp, file);
+    // The compacted snapshot supersedes any pre-encoding log; remove it so a
+    // future load can't fall back to stale state.
+    const legacy = this.legacyLogPath(roomId);
+    if (legacy !== file && fs.existsSync(legacy)) {
+      await fs.promises.unlink(legacy);
+    }
   }
 
   async drop(roomId: string): Promise<void> {
-    const file = this.logPath(roomId);
-    if (fs.existsSync(file)) {
-      await fs.promises.unlink(file);
+    for (const file of new Set([this.logPath(roomId), this.legacyLogPath(roomId)])) {
+      if (fs.existsSync(file)) {
+        await fs.promises.unlink(file);
+      }
     }
   }
 }

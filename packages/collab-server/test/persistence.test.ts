@@ -81,4 +81,32 @@ describe('FilePersistence', () => {
     expect(replay(await p.load('a/b'))).toEqual([10, 11]);
     expect(replay(await p.load('a:b'))).toEqual([20, 21]);
   });
+
+  it('reads and migrates a pre-encoding (legacy sanitized) room log', async () => {
+    const dir = tmpDir();
+    // A room id with a `/` written under the OLD sanitizer: `project/model`
+    // was stored as `project_model.log`.
+    const framed = (frames: Uint8Array[]): Buffer =>
+      Buffer.concat(
+        frames.flatMap((f) => {
+          const hdr = Buffer.alloc(4);
+          hdr.writeUInt32LE(f.byteLength, 0);
+          return [hdr, Buffer.from(f)];
+        }),
+      );
+    fs.writeFileSync(path.join(dir, 'project_model.log'), framed(makeFrames([7, 8])));
+
+    const p = new FilePersistence({ dataDir: dir });
+    // Read-fallback: history survives the upgrade even before any new write.
+    expect(replay(await p.load('project/model'))).toEqual([7, 8]);
+
+    // A new append migrates the legacy file to the encoded name and extends it.
+    for (const f of makeFrames([9])) await p.append('project/model', f);
+    expect(fs.existsSync(path.join(dir, 'project_model.log'))).toBe(false);
+    expect(fs.existsSync(path.join(dir, 'project%2Fmodel.log'))).toBe(true);
+    // The `9` frame is a fresh Y doc's update, so it only asserts the migrated
+    // file is still readable and non-empty (independent docs don't merge into
+    // one array); the key guarantees are the fallback read + the rename above.
+    expect(await p.load('project/model')).not.toBeNull();
+  });
 });

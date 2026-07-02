@@ -26,6 +26,8 @@ use thiserror::Error;
 /// Errors during Parquet serialization.
 #[derive(Debug, Error)]
 pub enum ParquetError {
+    #[error("Format overflow: {0}")]
+    Overflow(String),
     #[error("Arrow error: {0}")]
     Arrow(#[from] arrow::error::ArrowError),
     #[error("Parquet error: {0}")]
@@ -47,6 +49,52 @@ pub enum ParquetError {
 // the parallel (positions, normals, colors, ...) column layout.
 #[allow(clippy::type_complexity)]
 pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
+    let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(meshes, 0, 0)?;
+
+    // Write to a custom binary format with multiple Parquet sections
+    // Format: [mesh_parquet_len:u32][mesh_parquet][vertex_parquet_len:u32][vertex_parquet][index_parquet_len:u32][index_parquet]
+    let mesh_parquet = write_parquet_buffer(&mesh_batch)?;
+    let vertex_parquet = write_parquet_buffer(&vertex_batch)?;
+    let index_parquet = write_parquet_buffer(&index_batch)?;
+    frame_sections(&mesh_parquet, &vertex_parquet, &index_parquet)
+}
+
+/// Assemble the three Parquet buffers into the length-prefixed section layout
+/// shared by the whole-model serializer and the incremental cache writer.
+/// Section lengths are u32 on the wire; fail loud instead of truncating a
+/// section over 4 GiB into a silently corrupt blob.
+fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
+    for (name, len) in [("mesh", mesh.len()), ("vertex", vertex.len()), ("index", index.len())] {
+        if u32::try_from(len).is_err() {
+            return Err(ParquetError::Overflow(format!(
+                "{name} section is {len} bytes, over the u32 wire-format limit"
+            )));
+        }
+    }
+    let mut output = Vec::with_capacity(12 + mesh.len() + vertex.len() + index.len());
+    output.extend_from_slice(&(mesh.len() as u32).to_le_bytes());
+    output.extend_from_slice(mesh);
+    output.extend_from_slice(&(vertex.len() as u32).to_le_bytes());
+    output.extend_from_slice(vertex);
+    output.extend_from_slice(&(index.len() as u32).to_le_bytes());
+    output.extend_from_slice(index);
+    Ok(Bytes::from(output))
+}
+
+/// Build the three Arrow tables (mesh metadata / vertices / indices) for a
+/// slice of meshes. `base_vertex_offset` / `base_index_offset` seed the
+/// mesh-table `vertex_start` / `index_start` columns so an incremental caller
+/// (the streaming cache writer) emits GLOBAL whole-model offsets while the
+/// per-batch client blobs keep batch-local ones (bases 0/0). The Z-up to Y-up
+/// transform lives here, in one place, for both paths.
+// The per-mesh column tuple type is explicit on purpose; aliasing it would hide
+// the parallel (positions, normals, colors, ...) column layout.
+#[allow(clippy::type_complexity)]
+fn build_mesh_tables(
+    meshes: &[MeshData],
+    base_vertex_offset: u32,
+    base_index_offset: u32,
+) -> Result<(RecordBatch, RecordBatch, RecordBatch), ParquetError> {
     // Calculate totals for pre-allocation
     let total_vertices: usize = meshes.iter().map(|m| m.positions.len() / 3).sum();
     let total_triangles: usize = meshes.iter().map(|m| m.indices.len() / 3).sum();
@@ -55,8 +103,8 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
     // Phase 1: Compute cumulative offsets (must be sequential)
     let mut vertex_offsets = Vec::with_capacity(mesh_count);
     let mut index_offsets = Vec::with_capacity(mesh_count);
-    let mut vertex_offset: u32 = 0;
-    let mut index_offset: u32 = 0;
+    let mut vertex_offset: u32 = base_vertex_offset;
+    let mut index_offset: u32 = base_index_offset;
 
     for mesh in meshes {
         vertex_offsets.push(vertex_offset);
@@ -206,38 +254,9 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
         idx_2.extend(i2);
     }
 
-    // Use separate schemas for each table type
-    let mesh_schema = Arc::new(Schema::new(vec![
-        Field::new("express_id", DataType::UInt32, false),
-        Field::new("ifc_type", DataType::Utf8, false),
-        Field::new("vertex_start", DataType::UInt32, false),
-        Field::new("vertex_count", DataType::UInt32, false),
-        Field::new("index_start", DataType::UInt32, false),
-        Field::new("index_count", DataType::UInt32, false),
-        Field::new("color_r", DataType::Float32, false),
-        Field::new("color_g", DataType::Float32, false),
-        Field::new("color_b", DataType::Float32, false),
-        Field::new("color_a", DataType::Float32, false),
-    ]));
-
-    let vertex_schema = Arc::new(Schema::new(vec![
-        Field::new("x", DataType::Float32, false),
-        Field::new("y", DataType::Float32, false),
-        Field::new("z", DataType::Float32, false),
-        Field::new("nx", DataType::Float32, false),
-        Field::new("ny", DataType::Float32, false),
-        Field::new("nz", DataType::Float32, false),
-    ]));
-
-    let index_schema = Arc::new(Schema::new(vec![
-        Field::new("i0", DataType::UInt32, false),
-        Field::new("i1", DataType::UInt32, false),
-        Field::new("i2", DataType::UInt32, false),
-    ]));
-
     // Create record batches
     let mesh_batch = RecordBatch::try_new(
-        mesh_schema.clone(),
+        mesh_schema(),
         vec![
             Arc::new(UInt32Array::from(express_ids)),
             Arc::new(StringArray::from(ifc_types)),
@@ -253,7 +272,7 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
     )?;
 
     let vertex_batch = RecordBatch::try_new(
-        vertex_schema.clone(),
+        vertex_schema(),
         vec![
             Arc::new(Float32Array::from(pos_x)),
             Arc::new(Float32Array::from(pos_y)),
@@ -265,7 +284,7 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
     )?;
 
     let index_batch = RecordBatch::try_new(
-        index_schema.clone(),
+        index_schema(),
         vec![
             Arc::new(UInt32Array::from(idx_0)),
             Arc::new(UInt32Array::from(idx_1)),
@@ -273,26 +292,128 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
         ],
     )?;
 
-    // Write to a custom binary format with multiple Parquet sections
-    // Format: [mesh_parquet_len:u32][mesh_parquet][vertex_parquet_len:u32][vertex_parquet][index_parquet_len:u32][index_parquet]
-    let mut output = Vec::new();
+    Ok((mesh_batch, vertex_batch, index_batch))
+}
 
-    // Write mesh Parquet
-    let mesh_parquet = write_parquet_buffer(&mesh_batch)?;
-    output.extend_from_slice(&(mesh_parquet.len() as u32).to_le_bytes());
-    output.extend_from_slice(&mesh_parquet);
+fn mesh_schema() -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("express_id", DataType::UInt32, false),
+        Field::new("ifc_type", DataType::Utf8, false),
+        Field::new("vertex_start", DataType::UInt32, false),
+        Field::new("vertex_count", DataType::UInt32, false),
+        Field::new("index_start", DataType::UInt32, false),
+        Field::new("index_count", DataType::UInt32, false),
+        Field::new("color_r", DataType::Float32, false),
+        Field::new("color_g", DataType::Float32, false),
+        Field::new("color_b", DataType::Float32, false),
+        Field::new("color_a", DataType::Float32, false),
+    ]))
+}
 
-    // Write vertex Parquet
-    let vertex_parquet = write_parquet_buffer(&vertex_batch)?;
-    output.extend_from_slice(&(vertex_parquet.len() as u32).to_le_bytes());
-    output.extend_from_slice(&vertex_parquet);
+fn vertex_schema() -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("x", DataType::Float32, false),
+        Field::new("y", DataType::Float32, false),
+        Field::new("z", DataType::Float32, false),
+        Field::new("nx", DataType::Float32, false),
+        Field::new("ny", DataType::Float32, false),
+        Field::new("nz", DataType::Float32, false),
+    ]))
+}
 
-    // Write index Parquet
-    let index_parquet = write_parquet_buffer(&index_batch)?;
-    output.extend_from_slice(&(index_parquet.len() as u32).to_le_bytes());
-    output.extend_from_slice(&index_parquet);
+fn index_schema() -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("i0", DataType::UInt32, false),
+        Field::new("i1", DataType::UInt32, false),
+        Field::new("i2", DataType::UInt32, false),
+    ]))
+}
 
-    Ok(Bytes::from(output))
+/// Incremental whole-model cache writer for the streaming endpoint: each
+/// batch's columns are appended as one Parquet row group per table, so no
+/// `MeshData` has to be retained past the batch that produced it (previously
+/// the endpoint kept a FULL second copy of the model's meshes just to
+/// re-serialize them at Complete). The mesh-table `vertex_start`/`index_start`
+/// columns carry GLOBAL offsets (whole-model), matching what the one-shot
+/// `serialize_to_parquet` emits for the cached fast-path replay.
+pub struct StreamingParquetCacheWriter {
+    mesh_w: ArrowWriter<Vec<u8>>,
+    vert_w: ArrowWriter<Vec<u8>>,
+    idx_w: ArrowWriter<Vec<u8>>,
+    vertex_offset: u32,
+    index_offset: u32,
+    mesh_count: usize,
+}
+
+impl StreamingParquetCacheWriter {
+    pub fn new() -> Result<Self, ParquetError> {
+        fn writer(schema: Arc<Schema>) -> Result<ArrowWriter<Vec<u8>>, ParquetError> {
+            let props = writer_props(&schema);
+            Ok(ArrowWriter::try_new(Vec::new(), schema, Some(props))?)
+        }
+        Ok(Self {
+            mesh_w: writer(mesh_schema())?,
+            vert_w: writer(vertex_schema())?,
+            idx_w: writer(index_schema())?,
+            vertex_offset: 0,
+            index_offset: 0,
+            mesh_count: 0,
+        })
+    }
+
+    /// Append one batch as one row group per table, advancing the global
+    /// offsets. The meshes can be dropped by the caller afterwards.
+    pub fn append(&mut self, meshes: &[MeshData]) -> Result<(), ParquetError> {
+        if meshes.is_empty() {
+            return Ok(());
+        }
+        let (mesh_batch, vertex_batch, index_batch) =
+            build_mesh_tables(meshes, self.vertex_offset, self.index_offset)?;
+        self.mesh_w.write(&mesh_batch)?;
+        self.mesh_w.flush()?;
+        self.vert_w.write(&vertex_batch)?;
+        self.vert_w.flush()?;
+        self.idx_w.write(&index_batch)?;
+        self.idx_w.flush()?;
+        for mesh in meshes {
+            // The mesh-table start columns are u32; a model that overflows
+            // them must fail the cache fill loudly, not wrap into offsets
+            // that decode as garbage.
+            let verts = u32::try_from(mesh.positions.len() / 3)
+                .ok()
+                .and_then(|v| self.vertex_offset.checked_add(v));
+            let idxs = u32::try_from(mesh.indices.len())
+                .ok()
+                .and_then(|v| self.index_offset.checked_add(v));
+            match (verts, idxs) {
+                (Some(v), Some(i)) => {
+                    self.vertex_offset = v;
+                    self.index_offset = i;
+                }
+                _ => {
+                    return Err(ParquetError::Overflow(
+                        "global vertex/index offsets exceed u32".to_string(),
+                    ));
+                }
+            }
+        }
+        self.mesh_count += meshes.len();
+        Ok(())
+    }
+
+    /// Total meshes appended so far.
+    pub fn mesh_count(&self) -> usize {
+        self.mesh_count
+    }
+
+    /// Close all three writers and assemble the `[len][mesh][len][vert][len][idx]`
+    /// section blob, identical in framing to `serialize_to_parquet`.
+    pub fn finish(self) -> Result<Bytes, ParquetError> {
+        let mesh = self.mesh_w.into_inner()?;
+        let vertex = self.vert_w.into_inner()?;
+        let index = self.idx_w.into_inner()?;
+        frame_sections(&mesh, &vertex, &index)
+    }
 }
 
 /// Write a RecordBatch to a Parquet buffer with LZ4 compression.
@@ -301,15 +422,23 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
 fn write_parquet_buffer(batch: &RecordBatch) -> Result<Vec<u8>, ParquetError> {
     let mut buffer = Vec::new();
     let cursor = Cursor::new(&mut buffer);
+    let props = writer_props(&batch.schema());
+    let mut writer = ArrowWriter::try_new(cursor, batch.schema(), Some(props))?;
+    writer.write(batch)?;
+    writer.close()?;
 
-    // Build WriterProperties with dictionary disabled for numeric columns
+    Ok(buffer)
+}
+
+/// Writer properties shared by the one-shot and incremental writers: LZ4, and
+/// dictionary encoding disabled for numeric columns (high-entropy vertex data
+/// gains nothing from a dictionary while paying significant overhead).
+fn writer_props(schema: &Schema) -> WriterProperties {
     let mut props_builder = WriterProperties::builder()
         .set_compression(Compression::LZ4_RAW)
         .set_dictionary_enabled(true); // Default: enabled for strings
 
-    // Disable dictionary encoding for all numeric columns (floats and integers)
-    // This dramatically speeds up serialization for high-entropy data like vertex coordinates
-    for field in batch.schema().fields() {
+    for field in schema.fields() {
         let is_numeric = matches!(
             field.data_type(),
             DataType::Float32
@@ -326,13 +455,7 @@ fn write_parquet_buffer(batch: &RecordBatch) -> Result<Vec<u8>, ParquetError> {
         }
     }
 
-    let props = props_builder.build();
-
-    let mut writer = ArrowWriter::try_new(cursor, batch.schema(), Some(props))?;
-    writer.write(batch)?;
-    writer.close()?;
-
-    Ok(buffer)
+    props_builder.build()
 }
 
 #[cfg(test)]
@@ -372,6 +495,69 @@ mod tests {
             "Expected compact output, got {} bytes",
             data.len()
         );
+    }
+
+    /// Decode one framed section blob back into its three tables.
+    fn read_sections(blob: &[u8]) -> Vec<Vec<RecordBatch>> {
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+        let mut out = Vec::new();
+        let mut off = 0usize;
+        for _ in 0..3 {
+            let len = u32::from_le_bytes(blob[off..off + 4].try_into().unwrap()) as usize;
+            off += 4;
+            let section = Bytes::copy_from_slice(&blob[off..off + len]);
+            off += len;
+            let reader = ParquetRecordBatchReaderBuilder::try_new(section)
+                .unwrap()
+                .build()
+                .unwrap();
+            out.push(reader.map(|b| b.unwrap()).collect::<Vec<_>>());
+        }
+        assert_eq!(off, blob.len(), "trailing bytes after the three sections");
+        out
+    }
+
+    /// Concatenate row groups per column into one comparable table.
+    fn concat_all(batches: &[RecordBatch]) -> RecordBatch {
+        let schema = batches[0].schema();
+        arrow::compute::concat_batches(&schema, batches).unwrap()
+    }
+
+    /// The incremental cache writer must produce a blob DECODE-equivalent to
+    /// the one-shot serializer for the same meshes: same schemas, same rows,
+    /// same GLOBAL vertex/index offsets - only the row-group layout differs.
+    #[test]
+    fn incremental_writer_matches_one_shot_serializer() {
+        let mesh = |id: u32, verts: usize| {
+            let mut positions = Vec::new();
+            for v in 0..verts {
+                positions.extend_from_slice(&[v as f32, id as f32, 0.5 * v as f32]);
+            }
+            let normals = vec![0.0; verts * 3];
+            let indices: Vec<u32> = (0..(verts as u32 / 3) * 3).collect();
+            MeshData::new(id, format!("IfcThing{id}"), positions, normals, indices, [0.1, 0.2, 0.3, 1.0])
+        };
+        let meshes: Vec<MeshData> = (1..=7).map(|i| mesh(i, 3 * i as usize)).collect();
+
+        let one_shot = serialize_to_parquet(&meshes).unwrap();
+
+        let mut writer = StreamingParquetCacheWriter::new().unwrap();
+        // Uneven batches on purpose: 2 + 4 + 1.
+        writer.append(&meshes[0..2]).unwrap();
+        writer.append(&meshes[2..6]).unwrap();
+        writer.append(&meshes[6..7]).unwrap();
+        assert_eq!(writer.mesh_count(), 7);
+        let incremental = writer.finish().unwrap();
+
+        let a = read_sections(&one_shot);
+        let b = read_sections(&incremental);
+        for (section_a, section_b) in a.iter().zip(b.iter()) {
+            let ta = concat_all(section_a);
+            let tb = concat_all(section_b);
+            assert_eq!(ta.schema(), tb.schema());
+            assert_eq!(ta.num_rows(), tb.num_rows());
+            assert_eq!(ta, tb, "decoded tables must be identical (incl. global offsets)");
+        }
     }
 
     /// Regression test for #586: meshes with positions but no normals

@@ -139,8 +139,12 @@ fn wall_552611_2_openings_matches_ios() {
     assert!((vol - 16.9428).abs() < 1e-3, "cut volume = {vol}, expected 16.9428");
     // Kernel re-baseline: `refine_high_aspect_slivers` (>8:1 bisection, corner
     // fix) inflates the count ~3x over IOS/Manifold's 60 — volume-preserving,
-    // deterministic.
-    assert_eq!(mesh.indices.len() / 3, 180, "triangle count (kernel-native, was IOS 60)");
+    // deterministic. Re-pinned 180 -> 188 when `consolidate_coplanar` switched
+    // its plane buckets to a BTreeMap (target-independent emit order for the
+    // mesh-determinism manifest): the refinement's first-seen canonical ids
+    // follow mesh order, so its bisection cascade re-baselined; bbox + oracle
+    // volume above are the load-bearing invariants and are unchanged.
+    assert_eq!(mesh.indices.len() / 3, 188, "triangle count (kernel-native, was IOS 60)");
 }
 
 #[test]
@@ -163,7 +167,9 @@ fn wall_555082_1_opening_matches_ios() {
     let vol = mesh_volume(&mesh);
     assert!((vol - 11.0650).abs() < 1e-3, "cut volume = {vol}, expected 11.0650");
     // Kernel re-baseline (IOS: v=20 t=36): ~3x from `refine_high_aspect_slivers`.
-    assert_eq!(mesh.indices.len() / 3, 114);
+    // Re-pinned 114 -> 138 with the consolidate_coplanar BTreeMap bucket order
+    // (see wall_552611 above); oracle volume is the load-bearing invariant.
+    assert_eq!(mesh.indices.len() / 3, 138);
 }
 
 // ──────────────────────────── known-bad cases ──────────────────────────

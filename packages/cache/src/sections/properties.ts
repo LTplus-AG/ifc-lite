@@ -163,14 +163,20 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       return null;
     },
 
-    findByProperty: (prop, operator, value) => {
+    findByProperty: (prop, operator, value, pset) => {
       const propIdx = strings.indexOf(prop);
       if (propIdx < 0) return [];
+
+      // When a property-set is named, only rows in that pset match; a same-named
+      // property in another pset must not. An unknown pset name matches nothing.
+      const psetIdx = pset === undefined ? -1 : strings.indexOf(pset);
+      if (pset !== undefined && psetIdx < 0) return [];
 
       const rowIndices = propIndex.get(propIdx) || [];
       const results: number[] = [];
 
       for (const idx of rowIndices) {
+        if (psetIdx >= 0 && psetName[idx] !== psetIdx) continue;
         const propValue = getPropertyValue(idx);
         if (compareValues(propValue, operator, value)) {
           results.push(entityId[idx]);

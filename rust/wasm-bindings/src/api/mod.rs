@@ -321,8 +321,13 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_item_dedup Mutex poisoned")
             .take();
-        // The pipeline diagnostics describe the previous load; start fresh.
-        self.reset_pipeline_diagnostics();
+        // NB: do NOT reset pipeline_diagnostics here. clearPrePassCache runs in
+        // the JS load wrapper's `finally` AFTER the last processGeometryBatch
+        // (packages/geometry/src/index.ts), i.e. end-of-load cleanup; resetting
+        // here would erase the just-completed load's diagnostics before a host
+        // can read getPipelineDiagnostics(). Diagnostics are an accumulator, not
+        // a cache, so they reset only at load START (set_entity_index), unlike
+        // cached_item_dedup which is safe to drop on every clear.
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.

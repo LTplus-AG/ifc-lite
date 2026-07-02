@@ -133,7 +133,20 @@ fn get_pipeline_diagnostics_round_trips_a_normal_load() {
     assert_eq!(get_u64(&diag, "batches"), 2);
     assert_eq!(get_u64(&diag, "elementCount"), 2);
 
-    // A load reset empties the accumulator again.
+    // clearPrePassCache is end-of-load cleanup (it runs in the JS load
+    // wrapper's `finally`, after the last batch). Diagnostics MUST survive it
+    // so a host can read the completed load's numbers; only the caches drop.
     api.clear_pre_pass_cache();
-    assert!(api.get_pipeline_diagnostics().is_undefined());
+    let after_clear = api.get_pipeline_diagnostics();
+    assert!(!after_clear.is_undefined(), "diagnostics survive end-of-load clearPrePassCache");
+    assert_eq!(get_u64(&after_clear, "batches"), 2);
+
+    // set_entity_index is the load START boundary (a new file) — it resets the
+    // accumulator, so the next load begins fresh. A minimal one-entry index is
+    // enough to pass its non-empty guard and reach the reset.
+    api.set_entity_index(&[1u32], &[0u32], &[1u32]);
+    assert!(
+        api.get_pipeline_diagnostics().is_undefined(),
+        "a new entity index (new load) resets diagnostics"
+    );
 }

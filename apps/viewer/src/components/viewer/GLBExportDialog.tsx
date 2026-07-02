@@ -40,6 +40,7 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
+import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor, isNoRenderGeometryError, type MeshData } from '@ifc-lite/geometry';
@@ -48,25 +49,6 @@ import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 
 type ColorSource = 'rendering' | 'shading';
-
-/**
- * Translate the viewer's `typeVisibility` toggles into the set of IFC class
- * names the GLB exporter should drop on a visible-only export. Mirrors the
- * gating in `basketVisibleSet.ts` and `ViewportContainer.tsx` so the export
- * matches what the user sees in the viewport.
- */
-function buildHiddenIfcTypes(
-  typeVisibility: { spaces: boolean; spatialZones: boolean; openings: boolean; virtualElements: boolean; site: boolean; ifcAnnotations: boolean },
-): Set<string> {
-  const out = new Set<string>();
-  if (!typeVisibility.spaces) out.add('IfcSpace');
-  if (!typeVisibility.spatialZones) out.add('IfcSpatialZone');
-  if (!typeVisibility.openings) out.add('IfcOpeningElement');
-  if (!typeVisibility.virtualElements) out.add('IfcVirtualElement');
-  if (!typeVisibility.site) out.add('IfcSite');
-  if (!typeVisibility.ifcAnnotations) out.add('IfcAnnotation');
-  return out;
-}
 
 interface GLBExportDialogProps {
   trigger?: React.ReactNode;

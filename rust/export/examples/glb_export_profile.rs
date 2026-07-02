@@ -11,11 +11,11 @@
 //! ```
 //!
 //! Phases reported:
-//! 1. `index`     - `build_entity_index` (the scan)
-//! 2. `mesh`      - `process_geometry` (full mesher; the suspected dominant phase)
-//! 3. `export`    - `export_glb_with_stats` end to end (re-runs index+mesh
-//!                  internally, so `assemble+serialize ~= export - index - mesh`
-//!                  is an approximation, printed as such)
+//! 1. `index` - `build_entity_index` (the scan)
+//! 2. `mesh` - `process_geometry` (full mesher; the suspected dominant phase)
+//! 3. `export` - `export_glb_with_stats` end to end. It re-runs index+mesh
+//!    internally, so `assemble+serialize ~= export - index - mesh` is an
+//!    approximation, printed as such.
 //!
 //! Attribution: per-IFC-type mesh/vertex/triangle mass from the meshing
 //! result (top N by triangles), which localizes WHERE the geometry cost sits
@@ -34,10 +34,21 @@ fn main() {
         eprintln!("usage: glb_export_profile <file.ifc> [--top N]");
         std::process::exit(2);
     });
+    // Strict flag parsing: a measurement tool that silently ignores a typo
+    // records numbers under settings the caller did not ask for.
     let mut top_n = 15usize;
     while let Some(a) = args.next() {
         if a == "--top" {
-            top_n = args.next().and_then(|v| v.parse().ok()).unwrap_or(top_n);
+            top_n = args
+                .next()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(|| {
+                    eprintln!("--top expects a positive integer");
+                    std::process::exit(2);
+                });
+        } else {
+            eprintln!("unknown argument: {a}\nusage: glb_export_profile <file.ifc> [--top N]");
+            std::process::exit(2);
         }
     }
 

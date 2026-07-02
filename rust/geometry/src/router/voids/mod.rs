@@ -1670,13 +1670,21 @@ impl GeometryRouter {
                             // fires, so round windows (post profile
                             // simplification) can be confirmed to hit CSG and
                             // only genuinely-uncut voids land on the box cut.
-                            #[cfg(any(debug_assertions, test))]
-                            {
-                                eprintln!(
-                                    "[issue-635] AABB fallback used: opening={} tris (CSG produced no change)",
-                                    opening_mesh.triangle_count()
-                                );
-                            }
+                            // A genuine degraded mode, so warn-level under
+                            // observability; the legacy debug/test-only
+                            // eprintln is preserved otherwise.
+                            crate::diag::diag_warn!(
+                                { opening_tris = opening_mesh.triangle_count(),
+                                  reason = "csg-produced-no-change",
+                                  "voids: AABB fallback cut used for opening" }
+                                else {
+                                    #[cfg(any(debug_assertions, test))]
+                                    eprintln!(
+                                        "[issue-635] AABB fallback used: opening={} tris (CSG produced no change)",
+                                        opening_mesh.triangle_count()
+                                    );
+                                }
+                            );
                             // Deliberate degraded mode: this fallback removes
                             // the wall material inside the opening AABB but no
                             // longer emits reveal/recess quads (deleted with

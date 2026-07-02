@@ -7,9 +7,11 @@
 //! This crate extracts the core processing logic so it can be used by both
 //! the HTTP server and the native FFI library.
 
+pub mod determinism;
 pub mod element;
 pub mod geometry_export;
 mod georeferencing;
+pub mod pipeline_diagnostics;
 pub mod prepass;
 mod processor;
 pub mod style;
@@ -18,6 +20,9 @@ mod types;
 
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 pub use georeferencing::{extract_georeferencing, Georeferencing};
+pub use pipeline_diagnostics::{
+    PipelineDiagnostics, PipelinePhaseTimings, PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
+};
 /// Re-exported so the server can name the quality level without a direct
 /// `ifc-lite-geometry` dependency edge for one enum.
 pub use ifc_lite_geometry::TessellationQuality;

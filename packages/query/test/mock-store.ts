@@ -17,6 +17,8 @@ import {
   RelationshipType,
   PropertyValueType,
   QuantityType,
+  type IfcStoreBase,
+  type IfcEntity,
 } from '@ifc-lite/data';
 
 export {
@@ -72,7 +74,7 @@ export interface MockStoreOptions {
  * The returned object is duck-typed to match IfcDataStore's shape as consumed
  * by EntityQuery, EntityNode, QueryResultEntity, and IfcQuery.
  */
-export function createMockStore(opts: MockStoreOptions = {}) {
+export function createMockStore(opts: MockStoreOptions = {}): IfcStoreBase {
   const strings = new StringTable();
   const entityBuilder = new EntityTableBuilder(
     Math.max((opts.entities?.length ?? 0) + 1, 16),
@@ -134,7 +136,7 @@ export function createMockStore(opts: MockStoreOptions = {}) {
     byType.get(upper)!.push(e.expressId);
   }
 
-  const entityMap = new Map<number, { expressId: number; type: string; attributes: unknown[] }>();
+  const entityMap = new Map<number, IfcEntity>();
   for (const e of opts.entities ?? []) {
     entityMap.set(e.expressId, {
       expressId: e.expressId,
@@ -149,7 +151,9 @@ export function createMockStore(opts: MockStoreOptions = {}) {
     });
   }
 
-  return {
+  // Assign to a variable (not a fresh literal return) so the wider mock shape
+  // is structurally accepted as IfcStoreBase without an excess-property error.
+  const store = {
     fileSize: 0,
     schemaVersion: 'IFC4' as const,
     entityCount: opts.entities?.length ?? 0,
@@ -167,7 +171,9 @@ export function createMockStore(opts: MockStoreOptions = {}) {
     getEntity: (expressId: number) => entityMap.get(expressId) ?? null,
     getEntitiesByType: (typeName: string) => {
       const ids = byType.get(typeName.toUpperCase()) ?? [];
-      return ids.map((id: number) => entityMap.get(id)).filter(Boolean);
+      return ids
+        .map((id: number) => entityMap.get(id))
+        .filter((e): e is IfcEntity => e !== undefined);
     },
     getProperties: (expressId: number) => properties.getForEntity(expressId),
     getQuantities: (expressId: number) => quantities.getForEntity(expressId),
@@ -181,4 +187,5 @@ export function createMockStore(opts: MockStoreOptions = {}) {
     onDemandMaterialMap: undefined,
     onDemandDocumentMap: undefined,
   };
+  return store;
 }

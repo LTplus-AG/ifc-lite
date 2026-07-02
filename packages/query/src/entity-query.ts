@@ -149,7 +149,12 @@ export class EntityQuery {
     let filteredIds = ids;
     
     for (const filter of this.propertyFilters) {
-      const matchingIds = this.store.properties.findByProperty(filter.prop, filter.op, filter.value);
+      const matchingIds = this.store.properties.findByProperty(
+        filter.prop,
+        filter.op,
+        filter.value,
+        filter.pset,
+      );
       const matchingSet = new Set(matchingIds);
       filteredIds = filteredIds.filter(id => matchingSet.has(id));
     }

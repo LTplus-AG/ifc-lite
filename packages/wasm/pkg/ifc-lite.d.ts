@@ -310,6 +310,15 @@ export class IfcAPI {
    */
   extractProfiles(content: string, model_index: number): ProfileCollection;
   /**
+   * Structured pipeline diagnostics accumulated across every
+   * `processGeometryBatch*` call since the last load reset
+   * (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
+   * `schemaVersion` field — or `undefined` when no batch has run yet.
+   * Includes per-batch summed geometry wall time, mesh/triangle counts,
+   * the degenerate-backstop drop count, and the CSG failure aggregates.
+   */
+  getPipelineDiagnostics(): any;
+  /**
    * Get WASM memory for zero-copy access
    */
   getMemory(): any;
@@ -376,12 +385,13 @@ export class IfcAPI {
    * Enable or disable the PARAMETRIC rectangular-opening fast path (the
    * placement-frame, ground-truth-exact analytic cut) for `processGeometryBatch`.
    *
-   * DEFAULT OFF. This is the wasm-side toggle that lets native and wasm flip the
-   * flag in LOCKSTEP — the byte-identical native==wasm contract requires both
-   * targets take the same path, and wasm has no env to read `IFC_LITE_RECT_PARAM`.
+   * DEFAULT ON (corpus-validated; native defaults ON too, and wasm has no env to
+   * read `IFC_LITE_RECT_PARAM`, so both targets default in LOCKSTEP -- the
+   * byte-identical native==wasm contract requires both take the same path). This
+   * toggle is the wasm-side escape hatch mirroring `IFC_LITE_RECT_PARAM=0`.
    * The path subtracts rectangular openings as exact parametric boxes in the host's
    * own placement frame (rotated walls included), deferring any non-clean case to
-   * the exact kernel. Pass `true` before `processGeometryBatch`.
+   * the exact kernel. Pass `false` before `processGeometryBatch` to opt out.
    */
   setRectParamFastPath(enabled: boolean): void;
   /**
@@ -1141,6 +1151,7 @@ export interface InitOutput {
   readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
   readonly ifcapi_getMemory: (a: number) => number;
+  readonly ifcapi_getPipelineDiagnostics: (a: number) => number;
   readonly ifcapi_is_ready: (a: number) => number;
   readonly ifcapi_new: () => number;
   readonly ifcapi_parseAlignmentLines: (a: number, b: number, c: number) => number;

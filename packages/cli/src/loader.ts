@@ -7,6 +7,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { logger } from './logger.js';
 import { basename } from 'node:path';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { createBimContext, type BimContext, type ViewerBackendMethods, type VisibilityBackendMethods } from '@ifc-lite/sdk';
@@ -35,11 +36,19 @@ export async function loadIfcFile(filePath: string): Promise<IfcDataStore> {
 
   const parser = new IfcParser();
 
-  // Suppress parser's internal console.log/warn during parsing
+  // Capture the parser's internal console.log/warn during parsing and route
+  // them to logger.debug: silent by default (stdout stays clean for payloads),
+  // visible on stderr under --verbose/--debug. The console capture is the
+  // belt-and-suspenders for raw console lines the parser emits outside its
+  // onDiagnostic channel.
   const origLog = console.log;
   const origWarn = console.warn;
-  console.log = () => {};
-  console.warn = () => {};
+  console.log = (...parts: unknown[]) => {
+    logger.debug(`parser: ${parts.map(String).join(' ')}`);
+  };
+  console.warn = (...parts: unknown[]) => {
+    logger.debug(`parser: ${parts.map(String).join(' ')}`);
+  };
   try {
     // Ensure we pass the exact slice — Node Buffers may be views into
     // a larger pooled ArrayBuffer, so buffer.buffer can include extra bytes.
@@ -47,7 +56,10 @@ export async function loadIfcFile(filePath: string): Promise<IfcDataStore> {
       buffer.byteOffset,
       buffer.byteOffset + buffer.byteLength,
     ) as ArrayBuffer;
-    const store = await parser.parseColumnar(arrayBuffer);
+    const store = await parser.parseColumnar(arrayBuffer, {
+      // The structured diagnostic channel, captured directly.
+      onDiagnostic: (m: string) => logger.debug(`parser: ${m}`),
+    });
     store.fileSize = buffer.byteLength;
     return store;
   } finally {

@@ -52,9 +52,14 @@ pub struct RectFastStats {
     pub defer_no_openings: u64,
 }
 
-/// Escape hatch: `IFC_LITE_RECT_FAST=0` forces every opening back through the
-/// exact kernel (parity debugging / bisection). Default ON — the path is a pure
-/// optimization that defers on any precondition miss.
+/// Escape hatch: `IFC_LITE_RECT_FAST=0` is the GLOBAL rect-fast kill switch.
+/// It forces every opening back through the exact kernel (parity debugging /
+/// bisection) by disabling BOTH the legacy world-axis-aligned path gated here
+/// AND the parametric placement-frame path ([`param_enabled`] honours it), so
+/// setting this single flag is sufficient to route all rectangular openings
+/// through CSG. Default ON: the path is a pure optimization that defers on
+/// any precondition miss. To disable only the parametric path, set
+/// `IFC_LITE_RECT_PARAM=0` instead.
 pub fn enabled() -> bool {
     use std::sync::OnceLock;
     static ON: OnceLock<bool> = OnceLock::new();
@@ -64,11 +69,18 @@ pub fn enabled() -> bool {
 static PARAM_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 /// PARAMETRIC rectangular-opening fast path (placement-frame, ground-truth-exact cut).
-/// DEFAULT OFF — opt in with `IFC_LITE_RECT_PARAM=1` or `param_set_enabled_override`.
-/// Gated separately from [`enabled`] because it is a deliberate behaviour change: it
-/// emits the analytic box-minus-boxes solid, which is MORE correct than the exact kernel
-/// on engulfing-opening walls. Stays off until a parity CI gate + a wasm toggle land, so
-/// native==wasm holds trivially (both off) until the flag is flipped in lockstep.
+/// DEFAULT ON -- opt out with `IFC_LITE_RECT_PARAM=0` (parametric path only),
+/// `IFC_LITE_RECT_FAST=0` (the GLOBAL rect-fast kill switch: disables this path AND
+/// the legacy [`enabled`] path, preserving the documented single-flag parity/bisection
+/// hatch), or `param_set_enabled_override`. Gated separately from [`enabled`] because
+/// it is a deliberate behaviour change: it emits the analytic box-minus-boxes solid,
+/// which is MORE correct than the exact kernel on engulfing-opening walls.
+/// Corpus-validated ON (tests/rect_param_validate.rs A/B over 5 real models): every
+/// non-firing element byte-identical ON vs OFF, every firing host watertight and
+/// matching the analytic ground truth. wasm has no env, so `std::env::var` errs there
+/// and the default is ON on both targets -- native==wasm stays in lockstep; the
+/// wasm-side `setRectParamFastPath` override remains the programmatic escape hatch
+/// (and, being an explicit per-process call, takes precedence over both env flags).
 pub fn param_enabled() -> bool {
     match PARAM_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
         0 => return false,
@@ -77,7 +89,19 @@ pub fn param_enabled() -> bool {
     }
     use std::sync::OnceLock;
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var("IFC_LITE_RECT_PARAM").as_deref() == Ok("1"))
+    *ON.get_or_init(|| {
+        param_env_default(enabled(), std::env::var("IFC_LITE_RECT_PARAM").as_deref().ok())
+    })
+}
+
+/// Env-flag decision core for [`param_enabled`], pure so the semantics are
+/// unit-testable without mutating process env: the parametric path is ON unless
+/// its own flag opts out (`IFC_LITE_RECT_PARAM=0`) or the global rect-fast kill
+/// switch is thrown (`IFC_LITE_RECT_FAST=0`, surfaced here as `rect_fast_on ==
+/// false` via [`enabled`]). `IFC_LITE_RECT_PARAM=1` cannot resurrect the path
+/// past the kill switch: the kill switch means "exact kernel for everything".
+fn param_env_default(rect_fast_on: bool, rect_param: Option<&str>) -> bool {
+    rect_fast_on && rect_param != Some("0")
 }
 
 /// Test-only: force `param_enabled()` on/off (or `None` for the env default).
@@ -585,6 +609,24 @@ mod tests {
             (removed - expect).abs() < vtol,
             "{label}: removed {removed} != expected {expect} (tol {vtol})"
         );
+    }
+
+    /// Flag semantics (pure core, no env mutation, safe under parallel tests):
+    /// `IFC_LITE_RECT_FAST=0` is the GLOBAL kill switch and also disables the
+    /// parametric path (even against an explicit `IFC_LITE_RECT_PARAM=1`);
+    /// `IFC_LITE_RECT_PARAM=0` disables only the parametric path; both unset
+    /// means the parametric path defaults ON.
+    #[test]
+    fn param_env_default_honours_global_kill_switch() {
+        // Global kill switch thrown (IFC_LITE_RECT_FAST=0 => enabled() false).
+        assert!(!param_env_default(false, None));
+        assert!(!param_env_default(false, Some("1")));
+        assert!(!param_env_default(false, Some("0")));
+        // Parametric-only opt-out.
+        assert!(!param_env_default(true, Some("0")));
+        // Defaults ON; explicit "1" is also ON.
+        assert!(param_env_default(true, None));
+        assert!(param_env_default(true, Some("1")));
     }
 
     #[test]

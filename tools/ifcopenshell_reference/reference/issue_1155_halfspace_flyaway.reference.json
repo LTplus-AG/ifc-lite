@@ -1,0 +1,33 @@
+{
+ "elements": [
+  {
+   "bbox": {
+    "max": [
+     12125.0,
+     64600.0,
+     11240.0
+    ],
+    "min": [
+     11875.0,
+     64350.0,
+     -700.0
+    ]
+   },
+   "closed": true,
+   "express_id": 113218,
+   "ifc_type": "IfcColumn",
+   "status": "ok",
+   "tri_count": 2944,
+   "vertex_count": 1472,
+   "volume": 79302453.423546
+  }
+ ],
+ "engine": "ifcopenshell 0.8.2",
+ "fixture": "issue_1155_halfspace_flyaway.ifc",
+ "settings": {
+  "use_world_coords": true,
+  "weld_vertices": true
+ },
+ "sha256": "29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91",
+ "version": 1
+}

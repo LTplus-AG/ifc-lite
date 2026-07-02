@@ -23,6 +23,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useViewerStore } from '@/store';
@@ -411,6 +412,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
             onClick={handleExport}
             disabled={!bcfProject || topics.length === 0}
             title="Export BCF"
+            {...tourAnchor(TOUR_ANCHORS.bcfExport)}
           >
             <Download className="h-4 w-4" />
           </Button>

@@ -9,6 +9,7 @@
  */
 
 import type { WorkspacePanelId } from '@/lib/panels/registry';
+import { BCF_TOUR } from './tours/bcf';
 import { CLASH_TOUR } from './tours/clash';
 import { COMPARE_TOUR } from './tours/compare';
 import { IDS_TOUR } from './tours/ids';
@@ -26,6 +27,7 @@ export const TOUR_REGISTRY: readonly TourDefinition[] = [
   COMPARE_TOUR,
   LENS_TOUR,
   SCRIPTING_TOUR,
+  BCF_TOUR,
 ];
 
 export function getTour(id: TourId): TourDefinition | undefined {

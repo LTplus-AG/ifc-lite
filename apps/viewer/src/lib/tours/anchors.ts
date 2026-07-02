@@ -79,6 +79,12 @@ export const TOUR_ANCHORS = {
   scriptOutput: 'script-output',
   /** ScriptPanel AI-chat toggle button. */
   scriptChatToggle: 'script-chat-toggle',
+  /** BCFTopicList new-topic (+) button in the filter row (list view only). */
+  bcfNewTopic: 'bcf-new-topic',
+  /** BCFTopicDetail viewpoint Capture button (detail view only). */
+  bcfCaptureViewpoint: 'bcf-capture-viewpoint',
+  /** BCFPanel header Export BCF button (disabled until a topic exists). */
+  bcfExport: 'bcf-export',
 } as const;
 
 /** Activity-bar rail button for a panel (one templated attribute serves

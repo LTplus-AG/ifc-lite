@@ -1,5 +1,21 @@
 # @ifc-lite/ifcx
 
+## 2.1.6
+
+### Patch Changes
+
+- [#1506](https://github.com/LTplus-AG/ifc-lite/pull/1506) [`796f50a`](https://github.com/LTplus-AG/ifc-lite/commit/796f50a3b0072dd2c07b60ef84e3f1d2996444e2) Thanks [@louistrue](https://github.com/louistrue)! - fix(ifcx): guard PathIndex hierarchical indexing against child cycles
+
+  `PathIndex.indexHierarchicalPaths` recursed through a node's children with no
+  ancestor tracking, so a malformed IFCX layer with a child cycle (`A -> B -> A`)
+  recursed until the stack overflowed and crashed the load. The recursion now
+  tracks the uuids on the current DFS branch and skips a child that is already an
+  ancestor; a node reached by two distinct non-ancestral paths (a diamond) is
+  still indexed under both.
+
+- Updated dependencies [[`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229)]:
+  - @ifc-lite/data@2.3.0
+
 ## 2.1.5
 
 ### Patch Changes

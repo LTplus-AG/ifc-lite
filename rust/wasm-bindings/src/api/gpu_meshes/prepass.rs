@@ -31,6 +31,11 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
 
+        // Load START on the serial/main-thread path: the previous load's
+        // pipeline diagnostics must not accumulate into this one. (The worker
+        // path resets via setEntityIndex; every load-start entry point resets.)
+        self.reset_pipeline_diagnostics();
+
         let content = data;
 
         // Build entity index — wrap in Arc so processGeometryBatch can
@@ -198,6 +203,8 @@ impl IfcAPI {
         skip_type_geometry: bool,
     ) -> Result<JsValue, JsValue> {
         use crate::api::styling::extract_building_rotation_from_site;
+        // Load START on the streaming pre-pass path (see build_pre_pass_once).
+        self.reset_pipeline_diagnostics();
         use ifc_lite_core::{has_geometry_by_name, EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
 

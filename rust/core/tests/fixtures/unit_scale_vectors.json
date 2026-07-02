@@ -1,0 +1,45 @@
+{
+  "_comment": "Shared length-unit-scale test vectors for the Rust extractor (rust/core/src/units.rs extract_length_unit_scale) and the TS extractor (packages/parser/src/unit-extractor.ts extractLengthUnitScale). Each case is a minimal but complete ISO-10303-21 file; lengthUnitScale is the multiplier that converts file length units to metres. Both extractors must agree on every case. All fixtures are synthetic.",
+  "cases": [
+    {
+      "name": "si_millimetre",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3));\n#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "lengthUnitScale": 0.001
+    },
+    {
+      "name": "si_metre_no_prefix",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3));\n#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "lengthUnitScale": 1.0
+    },
+    {
+      "name": "si_centimetre",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3));\n#3=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "lengthUnitScale": 0.01
+    },
+    {
+      "name": "conversion_foot_by_name",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3));\n#3=IFCCONVERSIONBASEDUNIT(#4,.LENGTHUNIT.,'FOOT',#5);\n#4=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n#5=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#6);\n#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "lengthUnitScale": 0.3048
+    },
+    {
+      "name": "conversion_inch_by_name",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3));\n#3=IFCCONVERSIONBASEDUNIT(#4,.LENGTHUNIT.,'INCH',#5);\n#4=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n#5=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.0254),#6);\n#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "lengthUnitScale": 0.0254
+    },
+    {
+      "name": "late_project_after_units",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#10=IFCCARTESIANPOINT((0.,0.,0.));\n#11=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);\n#12=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\n#13=IFCUNITASSIGNMENT((#11,#12));\n#20=IFCWALL('0002wallbbbbbbbbbbbbbb',$,'W',$,$,$,$,$,$);\n#100=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#13);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "lengthUnitScale": 0.001
+    },
+    {
+      "name": "no_length_unit_defaults_to_metres",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3));\n#3=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "lengthUnitScale": 1.0
+    },
+    {
+      "name": "conversion_custom_via_measure_with_milli_component",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3));\n#3=IFCCONVERSIONBASEDUNIT(#4,.LENGTHUNIT.,'CUSTOM_UNIT',#5);\n#4=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n#5=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(25.4),#6);\n#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "lengthUnitScale": 0.0254
+    }
+  ]
+}

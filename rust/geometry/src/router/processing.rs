@@ -466,10 +466,16 @@ impl GeometryRouter {
                         depth + 1,
                         visited,
                     ) {
-                        #[cfg(debug_assertions)]
-                        eprintln!(
-                            "[ifc-lite] Skipping unsupported nested geometry #{} ({:?}): {}",
-                            nested_item.id, nested_item.ifc_type, _e
+                        crate::diag::diag_debug!(
+                            { item_id = nested_item.id, ifc_type = ?nested_item.ifc_type,
+                              error = %_e, "skipping unsupported nested geometry item" }
+                            else {
+                                #[cfg(debug_assertions)]
+                                eprintln!(
+                                    "[ifc-lite] Skipping unsupported nested geometry #{} ({:?}): {}",
+                                    nested_item.id, nested_item.ifc_type, _e
+                                );
+                            }
                         );
                         continue;
                     }
@@ -518,10 +524,16 @@ impl GeometryRouter {
                     }
                 }
                 Err(_e) => {
-                    #[cfg(debug_assertions)]
-                    eprintln!(
-                        "[ifc-lite] Skipping unsupported geometry #{} ({:?}): {}",
-                        item.id, item.ifc_type, _e
+                    crate::diag::diag_debug!(
+                        { item_id = item.id, ifc_type = ?item.ifc_type, error = %_e,
+                          "skipping unsupported geometry item" }
+                        else {
+                            #[cfg(debug_assertions)]
+                            eprintln!(
+                                "[ifc-lite] Skipping unsupported geometry #{} ({:?}): {}",
+                                item.id, item.ifc_type, _e
+                            );
+                        }
                     );
                 }
             }

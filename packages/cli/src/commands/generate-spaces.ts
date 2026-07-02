@@ -8,6 +8,7 @@
  */
 
 import { writeFile } from 'node:fs/promises';
+import { logger } from '../logger.js';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, getAllFlags, hasFlag, fatal, printJson } from '../output.js';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -56,7 +57,7 @@ export async function generateSpacesCommand(args: string[]): Promise<void> {
   const dryRun = hasFlag(args, '--dry-run');
   const force = hasFlag(args, '--force');
   const json = hasFlag(args, '--json');
-  const debug = hasFlag(args, '--debug');
+  const debug = logger.level() === 'debug';
 
   const { store } = await createHeadlessContext(filePath!);
 

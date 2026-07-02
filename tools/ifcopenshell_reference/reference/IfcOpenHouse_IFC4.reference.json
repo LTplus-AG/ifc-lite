@@ -1,0 +1,831 @@
+{
+ "elements": [
+  {
+   "bbox": {
+    "max": [
+     10.0,
+     10.0,
+     -0.1609
+    ],
+    "min": [
+     -10.0,
+     -10.0,
+     -8.13
+    ]
+   },
+   "closed": false,
+   "express_id": 24,
+   "ifc_type": "IfcSite",
+   "status": "ok",
+   "tri_count": 570,
+   "vertex_count": 299,
+   "volume": null
+  },
+  {
+   "bbox": {
+    "max": [
+     5.0,
+     0.18,
+     3.0
+    ],
+    "min": [
+     -5.0,
+     -0.18,
+     0.0
+    ]
+   },
+   "closed": true,
+   "express_id": 40,
+   "ifc_type": "IfcWallStandardCase",
+   "status": "ok",
+   "tri_count": 48,
+   "vertex_count": 24,
+   "volume": 6.56064
+  },
+  {
+   "bbox": {
+    "max": [
+     5.05,
+     5.23,
+     0.0
+    ],
+    "min": [
+     -5.05,
+     -0.23,
+     -2.0
+    ]
+   },
+   "closed": true,
+   "express_id": 72,
+   "ifc_type": "IfcFooting",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 110.292
+  },
+  {
+   "bbox": {
+    "max": [
+     0.5,
+     1.815,
+     2.0
+    ],
+    "min": [
+     -5.5,
+     -1.815,
+     0.4
+    ]
+   },
+   "closed": true,
+   "express_id": 119,
+   "ifc_type": "IfcOpeningElement",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 34.848
+  },
+  {
+   "bbox": {
+    "max": [
+     3.93,
+     1.5,
+     2.0
+    ],
+    "min": [
+     2.07,
+     -1.5,
+     0.4
+    ]
+   },
+   "closed": true,
+   "express_id": 141,
+   "ifc_type": "IfcOpeningElement",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 8.928
+  },
+  {
+   "bbox": {
+    "max": [
+     5.1,
+     2.5,
+     5.78
+    ],
+    "min": [
+     -5.1,
+     -0.4,
+     2.52
+    ]
+   },
+   "closed": true,
+   "express_id": 189,
+   "ifc_type": "IfcSlab",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 10.648802
+  },
+  {
+   "bbox": {
+    "max": [
+     5.1,
+     5.4,
+     5.78
+    ],
+    "min": [
+     -5.1,
+     2.5,
+     2.52
+    ]
+   },
+   "closed": true,
+   "express_id": 190,
+   "ifc_type": "IfcSlab",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 10.648802
+  },
+  {
+   "bbox": {
+    "max": [
+     5.0,
+     5.18,
+     3.0
+    ],
+    "min": [
+     -5.0,
+     4.82,
+     0.0
+    ]
+   },
+   "closed": true,
+   "express_id": 221,
+   "ifc_type": "IfcWallStandardCase",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 10.8
+  },
+  {
+   "bbox": {
+    "max": [
+     5.0,
+     5.0,
+     5.5
+    ],
+    "min": [
+     4.64,
+     0.0,
+     0.0
+    ]
+   },
+   "closed": true,
+   "express_id": 268,
+   "ifc_type": "IfcWallStandardCase",
+   "status": "ok",
+   "tri_count": 32,
+   "vertex_count": 18,
+   "volume": 6.858
+  },
+  {
+   "bbox": {
+    "max": [
+     -4.64,
+     5.0,
+     5.5
+    ],
+    "min": [
+     -5.0,
+     0.0,
+     0.0
+    ]
+   },
+   "closed": true,
+   "express_id": 281,
+   "ifc_type": "IfcWallStandardCase",
+   "status": "ok",
+   "tri_count": 32,
+   "vertex_count": 18,
+   "volume": 6.60456
+  },
+  {
+   "bbox": {
+    "max": [
+     0.5,
+     1.815,
+     2.0
+    ],
+    "min": [
+     -5.5,
+     -1.815,
+     0.4
+    ]
+   },
+   "closed": true,
+   "express_id": 311,
+   "ifc_type": "IfcOpeningElement",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 34.848
+  },
+  {
+   "bbox": {
+    "max": [
+     5.55,
+     2.2,
+     0.0
+    ],
+    "min": [
+     5.05,
+     1.0,
+     -0.4
+    ]
+   },
+   "closed": true,
+   "express_id": 2357,
+   "ifc_type": "IfcStairFlight",
+   "status": "ok",
+   "tri_count": 20,
+   "vertex_count": 12,
+   "volume": 0.18
+  },
+  {
+   "bbox": {
+    "max": [
+     5.32,
+     2.1,
+     2.2
+    ],
+    "min": [
+     4.32,
+     1.1,
+     0.0
+    ]
+   },
+   "closed": true,
+   "express_id": 2380,
+   "ifc_type": "IfcOpeningElement",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 2.2
+  },
+  {
+   "bbox": {
+    "max": [
+     4.84,
+     2.1,
+     2.2
+    ],
+    "min": [
+     4.76,
+     1.1,
+     0.0
+    ]
+   },
+   "closed": true,
+   "express_id": 2441,
+   "ifc_type": "IfcDoor",
+   "status": "ok",
+   "tri_count": 48,
+   "vertex_count": 32,
+   "volume": 0.088232
+  },
+  {
+   "bbox": {
+    "max": [
+     -3.04,
+     0.045,
+     0.49
+    ],
+    "min": [
+     -4.9,
+     -0.045,
+     0.4
+    ]
+   },
+   "closed": true,
+   "express_id": 2543,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     -3.04,
+     0.045,
+     2.0
+    ],
+    "min": [
+     -4.9,
+     -0.045,
+     1.91
+    ]
+   },
+   "closed": true,
+   "express_id": 2549,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     -4.81,
+     0.045,
+     1.91
+    ],
+    "min": [
+     -4.9,
+     -0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2560,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     -3.04,
+     0.045,
+     1.91
+    ],
+    "min": [
+     -3.13,
+     -0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2566,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     -3.13,
+     0.005,
+     1.91
+    ],
+    "min": [
+     -4.81,
+     -0.005,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2587,
+   "ifc_type": "IfcPlate",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.023856
+  },
+  {
+   "bbox": {
+    "max": [
+     -1.27,
+     0.045,
+     0.49
+    ],
+    "min": [
+     -3.13,
+     -0.045,
+     0.4
+    ]
+   },
+   "closed": true,
+   "express_id": 2621,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     -1.27,
+     0.045,
+     2.0
+    ],
+    "min": [
+     -3.13,
+     -0.045,
+     1.91
+    ]
+   },
+   "closed": true,
+   "express_id": 2627,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     -3.04,
+     0.045,
+     1.91
+    ],
+    "min": [
+     -3.13,
+     -0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2633,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     -1.27,
+     0.045,
+     1.91
+    ],
+    "min": [
+     -1.36,
+     -0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2639,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     -1.36,
+     0.005,
+     1.91
+    ],
+    "min": [
+     -3.04,
+     -0.005,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2660,
+   "ifc_type": "IfcPlate",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.023856
+  },
+  {
+   "bbox": {
+    "max": [
+     0.5,
+     0.045,
+     0.49
+    ],
+    "min": [
+     -1.36,
+     -0.045,
+     0.4
+    ]
+   },
+   "closed": true,
+   "express_id": 2694,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     0.5,
+     0.045,
+     2.0
+    ],
+    "min": [
+     -1.36,
+     -0.045,
+     1.91
+    ]
+   },
+   "closed": true,
+   "express_id": 2700,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     -1.27,
+     0.045,
+     1.91
+    ],
+    "min": [
+     -1.36,
+     -0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2706,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     0.5,
+     0.045,
+     1.91
+    ],
+    "min": [
+     0.41,
+     -0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2712,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     0.41,
+     0.005,
+     1.91
+    ],
+    "min": [
+     -1.27,
+     -0.005,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2733,
+   "ifc_type": "IfcPlate",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.023856
+  },
+  {
+   "bbox": {
+    "max": [
+     3.93,
+     0.045,
+     0.49
+    ],
+    "min": [
+     2.07,
+     -0.045,
+     0.4
+    ]
+   },
+   "closed": true,
+   "express_id": 2767,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     3.93,
+     0.045,
+     2.0
+    ],
+    "min": [
+     2.07,
+     -0.045,
+     1.91
+    ]
+   },
+   "closed": true,
+   "express_id": 2773,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     2.16,
+     0.045,
+     1.91
+    ],
+    "min": [
+     2.07,
+     -0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2779,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     3.93,
+     0.045,
+     1.91
+    ],
+    "min": [
+     3.84,
+     -0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2785,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     3.84,
+     0.005,
+     1.91
+    ],
+    "min": [
+     2.16,
+     -0.005,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2806,
+   "ifc_type": "IfcPlate",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.023856
+  },
+  {
+   "bbox": {
+    "max": [
+     -4.81,
+     1.815,
+     0.49
+    ],
+    "min": [
+     -4.9,
+     -0.045,
+     0.4
+    ]
+   },
+   "closed": true,
+   "express_id": 2840,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     -4.81,
+     1.815,
+     2.0
+    ],
+    "min": [
+     -4.9,
+     -0.045,
+     1.91
+    ]
+   },
+   "closed": true,
+   "express_id": 2846,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.015066
+  },
+  {
+   "bbox": {
+    "max": [
+     -4.81,
+     0.045,
+     1.91
+    ],
+    "min": [
+     -4.9,
+     -0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2852,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     -4.81,
+     1.815,
+     1.91
+    ],
+    "min": [
+     -4.9,
+     1.725,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2858,
+   "ifc_type": "IfcMember",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.011502
+  },
+  {
+   "bbox": {
+    "max": [
+     -4.85,
+     1.725,
+     1.91
+    ],
+    "min": [
+     -4.86,
+     0.045,
+     0.49
+    ]
+   },
+   "closed": true,
+   "express_id": 2879,
+   "ifc_type": "IfcPlate",
+   "status": "ok",
+   "tri_count": 12,
+   "vertex_count": 8,
+   "volume": 0.023856
+  }
+ ],
+ "engine": "ifcopenshell 0.8.2",
+ "fixture": "IfcOpenHouse_IFC4.ifc",
+ "settings": {
+  "use_world_coords": true,
+  "weld_vertices": true
+ },
+ "sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+ "version": 1
+}

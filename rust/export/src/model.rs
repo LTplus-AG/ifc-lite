@@ -274,19 +274,23 @@ pub fn stream_export_model_with_index(
     // Pass 2 — emit a row per IfcProduct occurrence, resolving its property/quantity sets.
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        // Filter on the STEP keyword *before* decoding. `parse_entity` resolves the
-        // type via this same `IfcType::from_str`, so this is identical to decoding
-        // and testing `ifc_type.is_subtype_of(IfcProduct)` — but it skips parsing
-        // the millions of non-product geometry primitives entirely.
-        if !IfcType::from_str(type_name).is_subtype_of(IfcType::IfcProduct) {
+        // Filter on the STEP keyword *before* decoding, skipping the millions of
+        // non-product geometry primitives. `legacy_aware_ifc_type` (not a bare
+        // `from_str`) resolves removed/renamed keywords (IFCPROXY, IFCSOLIDSTRATUM,
+        // …) to their modern base type, matching what the geometry pass meshes —
+        // otherwise those products render as GLB nodes with no attribute row (#1496).
+        let ty = ifc_lite_core::legacy_aware_ifc_type(type_name);
+        if !ty.is_subtype_of(IfcType::IfcProduct) {
             continue;
         }
         let entity = match decoder.decode_at_uncached(start, end) {
             Ok(e) => e,
             Err(_) => continue,
         };
-        // PascalCase canonical name (IfcWall), not the STEP keyword (IFCWALL).
-        let ifc_type = entity.ifc_type.name().to_string();
+        // PascalCase canonical name (IfcWall), not the STEP keyword (IFCWALL);
+        // the legacy-resolved type, so a proxy is "IfcBuildingElementProxy", not
+        // "Unknown", and equals the node's `ifcType` extra.
+        let ifc_type = ty.name().to_string();
         let global_id = opt_string(entity.get(0));
         let name = opt_string(entity.get(2));
         let description = opt_string(entity.get(3));

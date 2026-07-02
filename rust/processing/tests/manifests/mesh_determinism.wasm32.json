@@ -1,0 +1,56 @@
+{
+  "hash": "0x67a57cad9b16ed91",
+  "mesh_count": 6,
+  "vertex_count": 372,
+  "triangle_count": 232,
+  "voids_hash": "0xe20db54c093020fd",
+  "void_host_count": 2,
+  "material_colors_hash": "0x2c8ff21c7f9f5da3",
+  "material_element_count": 2,
+  "styles_hash": "0xe0a323d7dfcfaf31",
+  "style_entry_count": 5,
+  "meshes": [
+    {
+      "express_id": 100,
+      "geometry_class": 0,
+      "vertex_count": 48,
+      "triangle_count": 32,
+      "hash": "0xfd748a2c97b330a6"
+    },
+    {
+      "express_id": 200,
+      "geometry_class": 0,
+      "vertex_count": 24,
+      "triangle_count": 12,
+      "hash": "0xfadd393c11f0f80a"
+    },
+    {
+      "express_id": 400,
+      "geometry_class": 0,
+      "vertex_count": 12,
+      "triangle_count": 4,
+      "hash": "0xbd390dfe930a4a1a"
+    },
+    {
+      "express_id": 500,
+      "geometry_class": 0,
+      "vertex_count": 216,
+      "triangle_count": 140,
+      "hash": "0x795858dfb218cf27"
+    },
+    {
+      "express_id": 600,
+      "geometry_class": 0,
+      "vertex_count": 48,
+      "triangle_count": 32,
+      "hash": "0x165b2db7e78b6424"
+    },
+    {
+      "express_id": 700,
+      "geometry_class": 0,
+      "vertex_count": 24,
+      "triangle_count": 12,
+      "hash": "0x0cbf2b2be41ac691"
+    }
+  ]
+}

@@ -19,6 +19,12 @@ readme = "../../README.md"
 # `csg_scaling_bench` example can replay real void-cut jobs. See
 # rust/processing/examples/csg_scaling_bench.rs.
 csg-capture = ["ifc-lite-geometry/csg_capture"]
+# Structured diagnostics in the geometry crate: routes its production
+# warn/debug messages through `tracing` (this crate already depends on
+# tracing unconditionally, so the flag only affects ifc-lite-geometry).
+# Enabled by the native server; default OFF keeps wasm/default builds
+# byte-identical.
+observability = ["ifc-lite-geometry/observability"]
 
 [[example]]
 name = "csg_scaling_bench"

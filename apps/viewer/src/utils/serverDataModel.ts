@@ -597,12 +597,20 @@ export function convertServerDataModel(
       }
       return null;
     },
-    findByProperty: (propName: string, _operator: string, value: PropertyValue): number[] => {
-      // Server-converted data: search all psets for matching property name + value
+    findByProperty: (
+      propName: string,
+      _operator: string,
+      value: PropertyValue,
+      psetName?: string,
+    ): number[] => {
+      // Server-converted data: search psets for matching property name + value.
+      // When a pset is named, restrict to it so a same-named property in
+      // another pset does not match.
       const matchingEntityIds: number[] = [];
       for (const [entityId, psets] of entityToPsets) {
         let found = false;
         for (const pset of psets) {
+          if (psetName !== undefined && pset.pset_name !== psetName) continue;
           for (const prop of pset.properties) {
             if (prop.property_name === propName && prop.property_value === value) {
               matchingEntityIds.push(entityId);

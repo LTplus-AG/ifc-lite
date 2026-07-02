@@ -1,5 +1,6 @@
 ---
 "@ifc-lite/geometry": patch
+"@ifc-lite/wasm": patch
 ---
 
 Enforce and harden mesh-output determinism (pinned cross-target manifest).

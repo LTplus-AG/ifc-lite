@@ -1,5 +1,5 @@
 {
-  "hash": "0x2b6425accc749592",
+  "hash": "0xd5f9fd32f588a4d3",
   "mesh_count": 6,
   "vertex_count": 372,
   "triangle_count": 232,
@@ -7,6 +7,8 @@
   "void_host_count": 2,
   "material_colors_hash": "0x2c8ff21c7f9f5da3",
   "material_element_count": 2,
+  "styles_hash": "0xe0a323d7dfcfaf31",
+  "style_entry_count": 5,
   "meshes": [
     {
       "express_id": 100,

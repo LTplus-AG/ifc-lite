@@ -61,6 +61,12 @@ fn mesh_output_matches_pinned_manifest() {
          order is only load-bearing with at least 2",
         actual.material_element_count
     );
+    assert!(
+        actual.style_entry_count >= 2,
+        "fixture rot: flat_styles_rgba8 has {} entr(y/ies); the sorted id \
+         order is only load-bearing with at least 2",
+        actual.style_entry_count
+    );
 
     if let Some(report) = diff_report(&expected, &actual) {
         panic!(
@@ -98,6 +104,11 @@ fn wasm_manifest_differs_only_in_the_trig_gap() {
     assert_eq!(
         native.material_element_count, wasm.material_element_count,
         "manifest drift: material_element_count"
+    );
+    assert_eq!(native.styles_hash, wasm.styles_hash, "manifest drift: styles_hash");
+    assert_eq!(
+        native.style_entry_count, wasm.style_entry_count,
+        "manifest drift: style_entry_count"
     );
 
     assert_eq!(native.meshes.len(), wasm.meshes.len(), "manifest drift: mesh list length");

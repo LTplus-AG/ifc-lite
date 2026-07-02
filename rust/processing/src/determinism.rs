@@ -8,8 +8,8 @@
 //! Runs the full `process_geometry` pipeline over a small synthetic fixture
 //! and FNV-1a-hashes the emitted wire bytes: per-mesh
 //! (express id, geometry class, position/normal f32 bits, indices, origin f64
-//! bits) in emit order, plus the sorted `flat_voids` and
-//! `flat_material_colors` wire arrays. The resulting [`MeshManifest`] is
+//! bits) in emit order, plus the sorted `flat_voids`, `flat_material_colors`
+//! and `flat_styles_rgba8` wire arrays. The resulting [`MeshManifest`] is
 //! pinned in `rust/processing/tests/manifests/mesh_determinism.json`
 //! (asserted on x86_64 AND arm64) and in its wasm32 pair (identical except
 //! the documented libm-trig gap). The native test and the `wasm-bindings`
@@ -22,8 +22,8 @@
 //! the exact same battery.
 
 use crate::prepass::{
-    flat_material_colors, flat_voids, resolve_prepass, PrepassSpans, ResolveOptions,
-    ResolvedPrepass,
+    flat_material_colors, flat_styles_rgba8, flat_voids, resolve_prepass, PrepassSpans,
+    ResolveOptions,
 };
 use crate::processor::{process_geometry_filtered_with_quality, OpeningFilterMode};
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
@@ -38,7 +38,11 @@ use serde::{Deserialize, Serialize};
 /// - `#400` proxy with a two-material `IfcMaterialList` appearance chain
 ///   (transparent + opaque colours) and `#500` with a single material - TWO
 ///   `flat_material_colors` entries, so that sort order is load-bearing too,
-/// - `#500` round column (`IfcCircleProfileDef` - Medium tessellation density).
+/// - `#500` round column (`IfcCircleProfileDef` - Medium tessellation density),
+/// - `#530` geometry-attached `IfcStyledItem` on the column solid `#506`, so
+///   `flat_styles_rgba8` carries every precedence layer (geometry style +
+///   material colours + per-element fallback) and its sorted id order is
+///   load-bearing.
 pub const FIXTURE_IFC: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('mesh-output determinism manifest fixture'),'2;1');
@@ -110,6 +114,10 @@ DATA;
 #506=IFCEXTRUDEDAREASOLID(#507,#508,#42,3.0);
 #507=IFCCIRCLEPROFILEDEF(.AREA.,'ColumnProfile',#31,0.25);
 #508=IFCAXIS2PLACEMENT3D(#12,$,$);
+#530=IFCSTYLEDITEM(#506,(#531),$);
+#531=IFCSURFACESTYLE('Concrete',.BOTH.,(#532));
+#532=IFCSURFACESTYLERENDERING(#533,$,$,$,$,$,$,$,.FLAT.);
+#533=IFCCOLOURRGB($,0.62,0.6,0.55);
 #600=IFCWALL('0DeterminismWall0600A',$,'Wall2',$,$,#601,#651,$,$);
 #601=IFCLOCALPLACEMENT($,#602);
 #602=IFCAXIS2PLACEMENT3D(#603,$,$);
@@ -175,7 +183,8 @@ pub struct MeshManifestEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MeshManifest {
     /// FNV-1a over every per-mesh hash in emit order, then the labelled
-    /// `flat_voids` and `flat_material_colors` wire arrays.
+    /// `flat_voids`, `flat_material_colors` and `flat_styles_rgba8` wire
+    /// arrays.
     pub hash: String,
     pub mesh_count: usize,
     pub vertex_count: usize,
@@ -189,6 +198,12 @@ pub struct MeshManifest {
     pub material_colors_hash: String,
     /// Number of material-coloured elements on the wire - same >= 2 rationale.
     pub material_element_count: usize,
+    /// FNV-1a over the sorted `flat_styles_rgba8` `(ids, rgba8)` arrays - the
+    /// third flat wire surface, same cross-target contract as the other two.
+    pub styles_hash: String,
+    /// Number of style entries on the wire (geometry, material and element
+    /// ids across the layered precedence) - same >= 2 rationale.
+    pub style_entry_count: usize,
     pub meshes: Vec<MeshManifestEntry>,
 }
 
@@ -205,10 +220,24 @@ impl MeshManifest {
     }
 }
 
-/// Scan the fixture's prepass spans and resolve them - the same mechanical
+/// The three flat prepass wire surfaces the manifest pins, computed over the
+/// fixture by [`resolve_fixture_wires`].
+struct FixtureWires {
+    void_keys: Vec<u32>,
+    void_counts: Vec<u32>,
+    void_values: Vec<u32>,
+    mat_ids: Vec<u32>,
+    mat_counts: Vec<u32>,
+    mat_rgba: Vec<u8>,
+    style_ids: Vec<u32>,
+    style_rgba: Vec<u8>,
+}
+
+/// Scan the fixture's prepass spans, resolve them - the same mechanical
 /// span-stash both production scan loops run (see the `crate::prepass` module
-/// doc), feeding THE shared resolver.
-fn resolve_fixture_prepass(content: &[u8]) -> ResolvedPrepass {
+/// doc), feeding THE shared resolver - and flatten every wire surface the
+/// manifest pins.
+fn resolve_fixture_wires(content: &[u8]) -> FixtureWires {
     let entity_index = std::sync::Arc::new(build_entity_index(content));
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
     let mut spans = PrepassSpans::default();
@@ -227,7 +256,20 @@ fn resolve_fixture_prepass(content: &[u8]) -> ResolvedPrepass {
             _ => {}
         }
     }
-    resolve_prepass(&spans, &mut decoder, ResolveOptions::default())
+    let resolved = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
+    let (void_keys, void_counts, void_values) = flat_voids(&resolved.void_index);
+    let (mat_ids, mat_counts, mat_rgba) = flat_material_colors(&resolved.element_material_colors);
+    let (style_ids, style_rgba) = flat_styles_rgba8(&resolved, &mut decoder);
+    FixtureWires {
+        void_keys,
+        void_counts,
+        void_values,
+        mat_ids,
+        mat_counts,
+        mat_rgba,
+        style_ids,
+        style_rgba,
+    }
 }
 
 /// Compute the mesh-output determinism manifest over [`FIXTURE_IFC`] at
@@ -249,9 +291,7 @@ pub fn compute_mesh_manifest() -> MeshManifest {
         TessellationQuality::Medium,
     );
 
-    let resolved = resolve_fixture_prepass(FIXTURE_IFC.as_bytes());
-    let (void_keys, void_counts, void_values) = flat_voids(&resolved.void_index);
-    let (mat_ids, mat_counts, mat_rgba) = flat_material_colors(&resolved.element_material_colors);
+    let wires = resolve_fixture_wires(FIXTURE_IFC.as_bytes());
 
     let mut meshes = Vec::with_capacity(result.meshes.len());
     let mut top = FNV_OFFSET_BASIS;
@@ -280,19 +320,25 @@ pub fn compute_mesh_manifest() -> MeshManifest {
     }
 
     let mut voids_hash = FNV_OFFSET_BASIS;
-    fnv1a_u32s(&mut voids_hash, &void_keys);
-    fnv1a_u32s(&mut voids_hash, &void_counts);
-    fnv1a_u32s(&mut voids_hash, &void_values);
+    fnv1a_u32s(&mut voids_hash, &wires.void_keys);
+    fnv1a_u32s(&mut voids_hash, &wires.void_counts);
+    fnv1a_u32s(&mut voids_hash, &wires.void_values);
 
     let mut mat_hash = FNV_OFFSET_BASIS;
-    fnv1a_u32s(&mut mat_hash, &mat_ids);
-    fnv1a_u32s(&mut mat_hash, &mat_counts);
-    fnv1a_bytes(&mut mat_hash, &mat_rgba);
+    fnv1a_u32s(&mut mat_hash, &wires.mat_ids);
+    fnv1a_u32s(&mut mat_hash, &wires.mat_counts);
+    fnv1a_bytes(&mut mat_hash, &wires.mat_rgba);
+
+    let mut styles_hash = FNV_OFFSET_BASIS;
+    fnv1a_u32s(&mut styles_hash, &wires.style_ids);
+    fnv1a_bytes(&mut styles_hash, &wires.style_rgba);
 
     fnv1a_bytes(&mut top, b"voids");
     fnv1a_bytes(&mut top, &voids_hash.to_le_bytes());
     fnv1a_bytes(&mut top, b"material_colors");
     fnv1a_bytes(&mut top, &mat_hash.to_le_bytes());
+    fnv1a_bytes(&mut top, b"styles");
+    fnv1a_bytes(&mut top, &styles_hash.to_le_bytes());
 
     MeshManifest {
         hash: hex(top),
@@ -300,9 +346,11 @@ pub fn compute_mesh_manifest() -> MeshManifest {
         vertex_count,
         triangle_count,
         voids_hash: hex(voids_hash),
-        void_host_count: void_keys.len(),
+        void_host_count: wires.void_keys.len(),
         material_colors_hash: hex(mat_hash),
-        material_element_count: mat_ids.len(),
+        material_element_count: wires.mat_ids.len(),
+        styles_hash: hex(styles_hash),
+        style_entry_count: wires.style_ids.len(),
         meshes,
     }
 }
@@ -358,6 +406,18 @@ pub fn diff_report(expected: &MeshManifest, actual: &MeshManifest) -> Option<Str
         lines.push(format!(
             "material_element_count: expected {} got {}",
             expected.material_element_count, actual.material_element_count
+        ));
+    }
+    if expected.styles_hash != actual.styles_hash {
+        lines.push(format!(
+            "styles_hash: expected {} got {}",
+            expected.styles_hash, actual.styles_hash
+        ));
+    }
+    if expected.style_entry_count != actual.style_entry_count {
+        lines.push(format!(
+            "style_entry_count: expected {} got {}",
+            expected.style_entry_count, actual.style_entry_count
         ));
     }
     let common = expected.meshes.len().min(actual.meshes.len());

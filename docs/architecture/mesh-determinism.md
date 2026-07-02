@@ -15,15 +15,18 @@ Running `process_geometry` over the synthetic fixture in
   Emit order itself is part of the contract: entity jobs are processed in file
   scan order and rayon's ordered collect preserves it, so the mesh list is
   identical regardless of thread count (verified with `RAYON_NUM_THREADS=1`).
-- The two flat prepass wire arrays, which are an EXPLICIT sorted contract
+- The three flat prepass wire arrays, which are an EXPLICIT sorted contract
   since this change (previously an implicit FxHashMap-iteration artifact):
   - `flat_voids` `(keys, counts, values)` sorted by host id, u32 ascending
     (`rust/processing/src/prepass.rs`);
   - `flat_material_colors` `(ids, counts, rgba8)` sorted by element id, u32
     ascending. Per-host opening lists and per-element colour lists keep their
     file order.
-  - `flat_styles_rgba8` `(ids, rgba8)` is sorted the same way as
-    defense-in-depth, although it is not part of the manifest hash.
+  - `flat_styles_rgba8` `(ids, rgba8)` sorted by id, u32 ascending (ids span
+    geometry, material and element ids across the layered style precedence).
+    Each array carries its own hash and entry count in the manifest
+    (`voids_hash`, `material_colors_hash`, `styles_hash`), so a drift report
+    names the wire surface that diverged.
 
 The fingerprint (FNV-1a 64, same scheme as the kernel manifest) is pinned in
 `rust/processing/tests/manifests/mesh_determinism.json` together with mesh,

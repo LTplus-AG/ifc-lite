@@ -12,6 +12,7 @@
  */
 
 import { activityAnchor, TOUR_ANCHORS } from '../anchors';
+import { loadDemoClashModel } from '../demo-kit';
 import type { TourDefinition } from '../types';
 
 /** Union values of `clashFocusMode` (clashSlice), encoded as indexes so the
@@ -35,6 +36,9 @@ export const CLASH_TOUR: TourDefinition = {
   version: 1,
   panel: 'clash',
   prerequisites: { modelLoaded: true },
+  // The base demo model has no interpenetrations; the interstitial loads
+  // the rev-B variant, which carries one injected duct-vs-wall hard clash.
+  demoFulfil: loadDemoClashModel,
   steps: [
     {
       id: 'open-panel',

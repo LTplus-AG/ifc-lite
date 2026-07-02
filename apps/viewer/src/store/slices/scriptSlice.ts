@@ -77,6 +77,15 @@ export interface ScriptSlice {
   scriptEditorContent: string;
   scriptEditorDirty: boolean;
   scriptExecutionState: ScriptExecutionState;
+  /**
+   * Monotonic count of SUCCESSFUL script executions. Bumped by `useSandbox`
+   * right after the success-path `setScriptResult` - never on the error path
+   * (which also calls `setScriptResult` to preserve captured logs) or on
+   * sandbox reset, and never reset itself - so a consumer needing "a run
+   * succeeded since X" (e.g. the scripting tour's run gate) can
+   * baseline-compare a number. Mirrors `clashRunSeq` / `compareRunSeq`.
+   */
+  scriptRunSeq: number;
   scriptLastResult: ScriptResult | null;
   scriptLastError: string | null;
   scriptLastDiagnostics: ScriptDiagnostic[];
@@ -98,6 +107,7 @@ export interface ScriptSlice {
   setActiveScriptId: (id: string | null) => void;
   setScriptEditorContent: (content: string) => void;
   setScriptExecutionState: (state: ScriptExecutionState) => void;
+  bumpScriptRunSeq: () => void;
   setScriptResult: (result: ScriptResult | null) => void;
   setScriptError: (error: string | null, diagnostics?: ScriptDiagnostic[]) => void;
   setScriptDiagnostics: (diagnostics: ScriptDiagnostic[]) => void;
@@ -151,6 +161,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptEditorContent: DEFAULT_CODE,
   scriptEditorDirty: false,
   scriptExecutionState: 'idle',
+  scriptRunSeq: 0,
   scriptLastResult: null,
   scriptLastError: null,
   scriptLastDiagnostics: [],
@@ -297,6 +308,8 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   },
 
   setScriptExecutionState: (scriptExecutionState) => set({ scriptExecutionState }),
+
+  bumpScriptRunSeq: () => set((s) => ({ scriptRunSeq: s.scriptRunSeq + 1 })),
 
   setScriptResult: (scriptLastResult) =>
     set({ scriptLastResult, scriptLastError: null, scriptLastDiagnostics: [], scriptExecutionState: 'success' }),

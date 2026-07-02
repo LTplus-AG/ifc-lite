@@ -69,6 +69,16 @@ export const TOUR_ANCHORS = {
   lensLegend: 'lens-legend',
   /** LensPanel header Clear button (only while a lens is active). */
   lensClear: 'lens-clear',
+  /** ScriptPanel CodeEditor wrapper. */
+  scriptEditor: 'script-editor',
+  /** ScriptPanel new-script (+) dropdown trigger. */
+  scriptNew: 'script-new',
+  /** ScriptPanel Run button. */
+  scriptRun: 'script-run',
+  /** ScriptPanel Output console container. */
+  scriptOutput: 'script-output',
+  /** ScriptPanel AI-chat toggle button. */
+  scriptChatToggle: 'script-chat-toggle',
 } as const;
 
 /** Activity-bar rail button for a panel (one templated attribute serves

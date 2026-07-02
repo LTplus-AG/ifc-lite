@@ -14,6 +14,7 @@ import { COMPARE_TOUR } from './tours/compare';
 import { IDS_TOUR } from './tours/ids';
 import { LENS_TOUR } from './tours/lens';
 import { MEASURE_SECTION_TOUR } from './tours/measure-section';
+import { SCRIPTING_TOUR } from './tours/scripting';
 import { WELCOME_TOUR } from './tours/welcome';
 import type { TourDefinition, TourId } from './types';
 
@@ -24,6 +25,7 @@ export const TOUR_REGISTRY: readonly TourDefinition[] = [
   CLASH_TOUR,
   COMPARE_TOUR,
   LENS_TOUR,
+  SCRIPTING_TOUR,
 ];
 
 export function getTour(id: TourId): TourDefinition | undefined {

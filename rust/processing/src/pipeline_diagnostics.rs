@@ -55,7 +55,10 @@ pub struct PipelinePhaseTimings {
     pub parse_ms: u64,
     /// Per-element geometry extraction (meshing + CSG).
     pub geometry_ms: u64,
-    /// End-to-end wall time of the pass.
+    /// End-to-end wall time of the pass. On the NATIVE single-pass builder
+    /// this is the true end-to-end figure; on the wasm batch path it is the
+    /// SUM of per-batch geometry wall time (the parse-phase timers live in
+    /// the pre-pass and JS orchestration there), i.e. a lower bound.
     pub total_ms: u64,
 }
 

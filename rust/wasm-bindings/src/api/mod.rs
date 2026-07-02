@@ -203,9 +203,11 @@ pub struct IfcAPI {
     /// contract, see `api::pipeline_diagnostics`): every
     /// `processGeometryBatch*` call folds one batch record in — cheap
     /// counters plus per-batch JS wall time, so it is always on. Read by JS
-    /// via `getPipelineDiagnostics`; reset by `clearPrePassCache` and
-    /// `setEntityIndex` (a new load on a reused IfcAPI), like the other
-    /// content-scoped state.
+    /// via `getPipelineDiagnostics`; reset at load START by every entry point
+    /// that begins a new file on a reused IfcAPI (`buildPrePassOnce`,
+    /// `buildPrePassStreaming`, `setEntityIndex`) - deliberately NOT by
+    /// `clearPrePassCache`, which runs at end-of-load before a host reads the
+    /// diagnostics.
     pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnostics>,
 }
 

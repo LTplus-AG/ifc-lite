@@ -53,7 +53,11 @@ export const IDS_TOUR: TourDefinition = {
         // project first when it is not already loaded.
         run: async (store) => {
           const models = [...store.getState().models.values()];
-          const demoLoaded = models.some((m) => m.name.startsWith('demo-project'));
+          // Exact names only: a prefix match would treat a user's own
+          // "demo-project-v2.ifc" as the kit and skip the swap.
+          const demoLoaded = models.some(
+            (m) => m.name === 'demo-project.ifc' || m.name === 'demo-project-rev-b.ifc',
+          );
           if (!demoLoaded) {
             await loadDemoProject();
             await waitForModelSettled();

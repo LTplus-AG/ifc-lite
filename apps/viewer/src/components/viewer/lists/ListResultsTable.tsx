@@ -118,7 +118,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
     items: DisplayItem[]; groupCount: number; totals: Totals; groupKeys: string[];
   }>(() => {
     if (isGrouped) {
-      const view = buildGroupedView(sortedRows, columns, { columnId: groupByColumnId, sumColumnIds }, expandedGroups);
+      const sort = sortCol === null ? null : { colIdx: sortCol, dir: sortDir };
+      const view = buildGroupedView(sortedRows, columns, { columnId: groupByColumnId, sumColumnIds }, expandedGroups, sort);
       return {
         items: view.items, groupCount: view.groupCount, totals: view.totals,
         groupKeys: view.items.filter((i) => i.kind === 'group').map((i) => (i as { key: string }).key),
@@ -130,7 +131,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
       totals: flatTotals(sortedRows, columns, sumColumnIds),
       groupKeys: [],
     };
-  }, [isGrouped, sortedRows, columns, groupByColumnId, sumColumnIds, expandedGroups]);
+  }, [isGrouped, sortedRows, columns, groupByColumnId, sumColumnIds, expandedGroups, sortCol, sortDir]);
 
   const columnWidths = useMemo(
     () => columns.map((c, i) => widthOverrides[c.id] ?? autoColumnWidth(c.label ?? c.propertyName, result.rows, i)),
@@ -204,6 +205,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
       columns,
       rows: sortedRows,
       grouping,
+      sort: sortCol === null ? null : { colIdx: sortCol, dir: sortDir },
       numericCols,
       columnWidths,
       generatedAt: new Date().toLocaleString(),
@@ -216,7 +218,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
       row_count: sortedRows.length,
       column_count: columns.length,
     });
-  }, [listName, columns, sortedRows, grouping, numericCols, columnWidths]);
+  }, [listName, columns, sortedRows, grouping, sortCol, sortDir, numericCols, columnWidths]);
 
   // Flat, ordered list of the selectable rows (group headers excluded) and a
   // lookup from a row to its position, so Shift+click range-select works over

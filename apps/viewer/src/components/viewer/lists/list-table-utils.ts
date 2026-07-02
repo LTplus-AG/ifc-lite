@@ -65,10 +65,48 @@ export type DisplayItem =
 export interface Totals { count: number; sums: Record<string, number> }
 export interface GroupedView { items: DisplayItem[]; groupCount: number; totals: Totals }
 
+/** Active header sort — a column index into the result columns and a
+ *  direction. `null` means no explicit sort (grouped view falls back to its
+ *  count-descending default). */
+export type GroupSort = { colIdx: number; dir: 'asc' | 'desc' } | null;
+
 function sumIndices(columns: ColumnDefinition[], sumColumnIds: string[]) {
   return sumColumnIds
     .map((id) => ({ id, idx: columns.findIndex((c) => c.id === id) }))
     .filter((s) => s.idx >= 0);
+}
+
+interface GroupBucket { key: string; label: string; raw: CellValue; count: number; sums: Record<string, number>; rows: ListRow[] }
+
+/** Minimal shape `orderGroups` needs — the group header's raw value (for the
+ *  group-by column), row count, and per-column subtotals. */
+export interface OrderableGroup { label: string; raw: CellValue; count: number; sums: Record<string, number> }
+
+/** Order the group headers to match the active header sort so that toggling
+ *  a column's sort actually reorders the groups (not just the rows inside
+ *  them). The group header only carries a value for the group-by column and
+ *  the summed columns, so those drive the order; anything else (or no sort)
+ *  falls back to the count-descending default. Shared with the export path so
+ *  the exported sections keep the on-screen order. */
+export function orderGroups<T extends OrderableGroup>(
+  groups: T[],
+  sort: GroupSort,
+  groupIdx: number,
+  sums: { id: string; idx: number }[],
+): T[] {
+  const byCount = (a: T, b: T) => b.count - a.count || a.label.localeCompare(b.label);
+  if (!sort) return groups.sort(byCount);
+
+  const dir = sort.dir === 'desc' ? -1 : 1;
+  if (sort.colIdx === groupIdx) {
+    return groups.sort((a, b) => compareCells(a.raw, b.raw) * dir || a.label.localeCompare(b.label));
+  }
+  const summed = sums.find((s) => s.idx === sort.colIdx);
+  if (summed) {
+    return groups.sort((a, b) => (a.sums[summed.id] - b.sums[summed.id]) * dir || a.label.localeCompare(b.label));
+  }
+  // A non-group, non-summed column has no group-level value to order by.
+  return groups.sort(byCount);
 }
 
 /** Bucket already-filtered/sorted rows by the group-by column, accumulate
@@ -79,19 +117,22 @@ export function buildGroupedView(
   columns: ColumnDefinition[],
   grouping: ListGrouping,
   expanded: Set<string>,
+  sort: GroupSort = null,
 ): GroupedView {
   const groupIdx = columns.findIndex((c) => c.id === grouping.columnId);
   const sums = sumIndices(columns, grouping.sumColumnIds);
   const zero = (): Record<string, number> => Object.fromEntries(sums.map((s) => [s.id, 0]));
 
   const totals: Totals = { count: rows.length, sums: zero() };
-  const byKey = new Map<string, { key: string; label: string; count: number; sums: Record<string, number>; rows: ListRow[] }>();
+  const byKey = new Map<string, GroupBucket>();
 
   for (const row of rows) {
-    const raw = groupIdx >= 0 ? row.values[groupIdx] : null;
-    const label = raw === null || raw === undefined || raw === '' ? '(none)' : formatCellValue(raw);
+    const cell = groupIdx >= 0 ? row.values[groupIdx] : null;
+    const isNone = cell === null || cell === undefined || cell === '';
+    const raw: CellValue = isNone ? null : cell;
+    const label = isNone ? '(none)' : formatCellValue(cell);
     let g = byKey.get(label);
-    if (!g) { g = { key: label, label, count: 0, sums: zero(), rows: [] }; byKey.set(label, g); }
+    if (!g) { g = { key: label, label, raw, count: 0, sums: zero(), rows: [] }; byKey.set(label, g); }
     g.count++;
     g.rows.push(row);
     for (const s of sums) {
@@ -100,7 +141,7 @@ export function buildGroupedView(
     }
   }
 
-  const groups = Array.from(byKey.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const groups = orderGroups(Array.from(byKey.values()), sort, groupIdx, sums);
   const items: DisplayItem[] = [];
   for (const g of groups) {
     items.push({ kind: 'group', key: g.key, label: g.label, count: g.count, sums: g.sums });

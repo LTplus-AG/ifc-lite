@@ -81,6 +81,9 @@ pub mod csg_capture;
 /// Corrects f32 import jitter (~0.09°) so authored-coplanar roof slope facets
 /// are EXACTLY coplanar before the exact-kernel opening cut (issue #1007).
 pub mod facet_weld;
+/// Structured-diagnostics macro shims for the `observability` feature
+/// (tracing when ON, the legacy eprintln fallback when OFF).
+pub(crate) mod diag;
 pub mod diagnostics;
 pub mod error;
 pub mod congruence;
@@ -141,9 +144,11 @@ pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
 pub use router::{
-    aggregate_diagnostics, ClassificationStats, ClassificationSummary, GeometryDiagnostics,
-    GeometryProcessor, GeometryRouter, HostOpeningDiagnostic, ItemDedupCache, OpeningDiagnostic,
-    OpeningKindDiag, ReasonCount, RectFastSummary, RectParam, WorstHost,
+    aggregate_diagnostics, local_frame_set_enabled_override, ClassificationStats,
+    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
+    ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
+    HostOpeningDiagnostic, ItemDedupCache, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
+    RectFastSummary, RectParam, WorstHost,
 };
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{

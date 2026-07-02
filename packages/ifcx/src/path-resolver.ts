@@ -114,12 +114,20 @@ export class PathIndex {
   private indexHierarchicalPaths(
     rootUuid: string,
     currentUuid: string,
-    pathSegments: string[]
+    pathSegments: string[],
+    // Uuids on the current DFS branch. A malformed IFCX layer can contain a
+    // child cycle (A -> B -> A); without this guard the recursion never
+    // terminates and overflows the stack. A node reached by two distinct
+    // (non-ancestral) paths is still indexed under both — only true ancestry
+    // cycles are cut.
+    ancestors: Set<string> = new Set([rootUuid])
   ): void {
     const children = this.childNameIndex.get(currentUuid);
     if (!children) return;
 
     for (const [childName, childUuid] of children) {
+      if (ancestors.has(childUuid)) continue;
+
       const newSegments = [...pathSegments, childName];
       const hierarchicalPath = `${rootUuid}/${newSegments.join('/')}`;
 
@@ -133,7 +141,9 @@ export class PathIndex {
       }
 
       // Recurse
-      this.indexHierarchicalPaths(rootUuid, childUuid, newSegments);
+      ancestors.add(childUuid);
+      this.indexHierarchicalPaths(rootUuid, childUuid, newSegments, ancestors);
+      ancestors.delete(childUuid);
     }
   }
 

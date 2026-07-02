@@ -23,6 +23,12 @@ debug_geometry = ["ifc-lite-geometry/debug_geometry"]
 # separately with atomics/shared-memory flags (build-wasm.sh BUILD_THREADED=1).
 # Off by default — the default bundle stays single-threaded.
 threads = ["dep:wasm-bindgen-rayon"]
+# Browser-console tracing: forwards the geometry/processing crates'
+# structured diagnostics (the `observability` feature) to the DevTools
+# console via a minimal Subscriber. OFF by default - the shipped bundle
+# carries zero tracing code; build a diagnostics bundle with
+# `wasm-pack build ... --features console-tracing`.
+console-tracing = ["dep:tracing", "ifc-lite-processing/observability"]
 
 [dependencies]
 # Optional: only compiled for the threaded bundle (--features threads). Needs
@@ -60,6 +66,7 @@ serde-wasm-bindgen = "=0.6.5"
 thiserror = "2.0"
 wasm-bindgen = "=0.2.106"
 wasm-bindgen-futures = "=0.4.56"
+tracing = { version = "0.1", optional = true, default-features = false, features = ["std"] }
 web-sys = { version = "=0.3.83", features = ["console", "Performance", "Window"] }
 
 [dev-dependencies]

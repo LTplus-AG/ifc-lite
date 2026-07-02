@@ -65,6 +65,11 @@ impl IfcAPI {
         };
         use ifc_lite_processing::style::GeometryStyleInfo;
 
+        // Batch wall-clock for the PipelineDiagnostics channel. std::time::Instant
+        // traps on wasm32, so use the JS clock (two Date.now() reads per batch —
+        // negligible, always on).
+        let batch_started_ms = js_sys::Date::now();
+
         let content = data;
 
         // Geometry fingerprinting for the viewer's revision-diff feature.
@@ -296,6 +301,11 @@ impl IfcAPI {
             Vec<ifc_lite_geometry::BoolFailure>,
         > = rustc_hash::FxHashMap::default();
 
+        // PipelineDiagnostics tallies for this batch (elements actually run
+        // through the producer, degenerate-backstop drops).
+        let mut batch_elements: u64 = 0;
+        let mut batch_backstop: u64 = 0;
+
         // Process only the entities specified in jobs_flat — every job runs
         // THE canonical per-element producer (`ifc_lite_processing::element`),
         // the same code the native pipeline runs.
@@ -379,6 +389,8 @@ impl IfcAPI {
             for (product_id, fails) in produced.csg_failures {
                 batch_csg_failures.entry(product_id).or_default().extend(fails);
             }
+            batch_elements += 1;
+            batch_backstop += produced.degenerate_triangles_dropped;
             outputs.push(ElementMeshOutput {
                 id,
                 meshes: produced.meshes,
@@ -423,6 +435,25 @@ impl IfcAPI {
                 );
             }
         }
+
+        // Fold this batch into the per-worker PipelineDiagnostics accumulator
+        // (read by JS via getPipelineDiagnostics). Counts + two Date.now()
+        // reads — cheap enough to stay on the normal load path unconditionally.
+        let batch_meshes: u64 = outputs.iter().map(|o| o.meshes.len() as u64).sum();
+        let batch_triangles: u64 = outputs
+            .iter()
+            .flat_map(|o| o.meshes.iter())
+            .map(|m| (m.indices.len() / 3) as u64)
+            .sum();
+        let batch_ms = (js_sys::Date::now() - batch_started_ms).max(0.0) as u64;
+        self.record_pipeline_batch(
+            batch_elements,
+            batch_meshes,
+            batch_triangles,
+            batch_backstop,
+            batch_ms,
+            &csg_diag,
+        );
 
         (outputs, csg_diag)
     }

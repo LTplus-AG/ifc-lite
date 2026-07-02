@@ -1,0 +1,33 @@
+{
+ "elements": [
+  {
+   "bbox": {
+    "max": [
+     2.261907,
+     -21.030785,
+     4.0
+    ],
+    "min": [
+     1.55316,
+     -21.740059,
+     -0.599998
+    ]
+   },
+   "closed": true,
+   "express_id": 126,
+   "ifc_type": "IfcColumn",
+   "status": "ok",
+   "tri_count": 60,
+   "vertex_count": 32,
+   "volume": 1.616351
+  }
+ ],
+ "engine": "ifcopenshell 0.8.2",
+ "fixture": "1019-column.ifc",
+ "settings": {
+  "use_world_coords": true,
+  "weld_vertices": true
+ },
+ "sha256": "c5ee15218372a75a061070dbee5242eb8aa5dd0cefc5b765d048722ea5e996ee",
+ "version": 1
+}

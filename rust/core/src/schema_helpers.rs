@@ -145,11 +145,23 @@ pub fn is_simple_geometry_type(type_name: &str) -> bool {
     cached(cache, upper.as_ref(), || compute_is_simple(upper.as_ref()))
 }
 
-fn compute_is_simple(upper: &str) -> bool {
-    let t = match get_legacy_entity_info(upper) {
+/// Resolve a STEP keyword to its `IfcType`, **legacy-aware**: a removed/renamed
+/// entity (`IFCPROXY`, `IFCSOLIDSTRATUM`, …) maps to its modern base type via the
+/// hand-maintained legacy table, exactly as `has_geometry_by_name` does. Any pass
+/// that *classifies* or *labels* an entity must use this rather than a bare
+/// `IfcType::from_str`; otherwise it disagrees with the geometry pass (which meshes
+/// legacy entities), leaving a rendered node with no attribute row — the
+/// geometry/attribute product-set divergence (#1496).
+pub fn legacy_aware_ifc_type(type_name: &str) -> IfcType {
+    let upper = normalise_uppercase(type_name);
+    match get_legacy_entity_info(upper.as_ref()) {
         Some(info) => info.base_type,
-        None => IfcType::from_str(upper),
-    };
+        None => IfcType::from_str(upper.as_ref()),
+    }
+}
+
+fn compute_is_simple(upper: &str) -> bool {
+    let t = legacy_aware_ifc_type(upper);
 
     // Anything not in the modern schema defaults to "simple" priority,
     // matching the original blacklist's "anything else is simple" behaviour.

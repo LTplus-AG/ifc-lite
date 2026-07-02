@@ -28,6 +28,14 @@ pub async fn parse_full(
     mut multipart: Multipart,
 ) -> Result<Json<ParseResponse>, ApiError> {
     // Extract file from multipart
+    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
+    // upload is buffered, reserving the max upload size since multipart rarely
+    // declares a length up front. Held for the request's whole lifetime so a
+    // disconnected-but-still-running job keeps its memory slot.
+    let _admission = state
+        .admission
+        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+        .await?;
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
@@ -96,6 +104,14 @@ pub async fn parse_stream(
     let tessellation_quality = query.resolved_tessellation_quality()?;
 
     // Extract file
+    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
+    // upload is buffered, reserving the max upload size since multipart rarely
+    // declares a length up front. Held for the request's whole lifetime so a
+    // disconnected-but-still-running job keeps its memory slot.
+    let admission_guard = state
+        .admission
+        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+        .await?;
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     let content = data;
@@ -109,6 +125,7 @@ pub async fn parse_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
+        Some(admission_guard),
     )
     .map(|event: StreamEvent| {
             let json = serde_json::to_string(&event).unwrap_or_else(|e| {
@@ -131,6 +148,14 @@ pub async fn parse_metadata(
     mut multipart: Multipart,
 ) -> Result<Json<MetadataResponse>, ApiError> {
     // Extract file
+    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
+    // upload is buffered, reserving the max upload size since multipart rarely
+    // declares a length up front. Held for the request's whole lifetime so a
+    // disconnected-but-still-running job keeps its memory slot.
+    let _admission = state
+        .admission
+        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+        .await?;
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     let file_size = data.len();

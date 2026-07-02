@@ -4,6 +4,26 @@ Project-specific gotchas and guardrails — the things that bite you *here* and 
 
 **House rules (enforced, but easy to violate):** no `as any` / `@ts-ignore` (fix the types or add a `.d.ts`); no silent `catch {}` (log or rethrow); split modules over ~400 non-generated lines; new packages/features ship tests; package-specific deps go in the consuming package, never root.
 
+## Fable 5 orchestration
+- Default Fable 5 to **high** effort for this repo. Escalate above high only for tightly scoped final judgment calls (architecture, risky API/semver decisions, geometry-kernel reasoning, security-sensitive review) after cheaper investigation has narrowed the problem.
+- Use Fable 5 as orchestrator, spec writer, and final reviewer — not as the default engine for token-heavy repo sweeps. Delegate mechanical implementation, broad code search, log triage, fixture inspection, and first-pass test repair to cheaper/specialized agents, then bring back a concise summary, exact files changed, commands run, and open risks.
+- This mirrors Theo's pattern: keep Fable on high, use Claude/other agents as wrappers for work routing, and offload token-hungry filesystem work to Codex. The ifc-lite-specific difference: Codex must still obey this AGENTS.md, use the canonical load/geometry/export paths above, and prove changes with local commands before Fable trusts the result.
+- When delegating from Claude/Fable, set subagent models explicitly. Use `model: fable` only for design/review/taste-sensitive work; use `model: sonnet` or `model: opus` for implementation depending on risk. Avoid Haiku for code changes or review in this repo unless the task is truly trivial and read-only.
+
+### Local Codex handoff
+- Codex is installed on Louis's machine; verify with `command -v codex && codex --version`. Use it as the preferred fallback for implementation, investigation, and adversarial review when Claude/Fable would burn context on filesystem work.
+- For a self-contained implementation/investigation, run Codex directly from the repo root with an explicit sandbox: `codex exec --sandbox workspace-write "<task prompt>"`. Use read-only mode for research/review: `codex exec "<task prompt>"`. Use `--json` or `-o <file>` when Fable needs a compact machine-readable summary instead of a long transcript.
+- Good direct handoff shape:
+  `codex exec --sandbox workspace-write "In this ifc-lite repo, follow AGENTS.md. Goal: <goal>. Relevant files: <files>. Constraints: no as any, no ts-ignore, no silent catch, preserve IFC EXPRESS names, no second load path. Make the smallest safe patch. Run <verification command>. Return: files changed, commands run, result, risks."`
+- If Claude Code has the OpenAI Codex plugin installed, prefer the slash commands for in-Claude orchestration: `/codex:rescue --background <task>` for delegated fixes/investigation, `/codex:review --background` for normal read-only review, `/codex:adversarial-review --background <focus>` for challenge review, then `/codex:status` and `/codex:result` to pull back the final summary. Do not enable the plugin review gate unless actively monitored; it can loop and drain usage.
+- Codex review paths are read-only critique. Treat Codex implementation output as a patch proposal until Fable/Claude inspects `git diff` and local verification passes.
+- Use `codex exec resume --last "<follow-up>"` only when continuing the immediately previous Codex thread for this repo; otherwise start fresh so stale context does not bleed across unrelated tasks.
+
+### Handoff hygiene
+- Handoff prompts must be self-contained: include the user goal, relevant AGENTS.md constraints, files/commands already inspected, acceptance criteria, and the exact verification command expected. Ask the delegate to avoid public API churn, respect IFC EXPRESS names, and report uncertainty instead of inventing aliases or fallbacks.
+- Keep Fable's context clean. Do not paste long logs, generated files, or fixture dumps back into Fable; summarize the failure signature and link/path the artifact. If a delegate fails, return the smallest repro, command, stderr excerpt, and suspected owner area.
+- Final Fable pass before shipping: review `git diff`, confirm generated artifacts/changesets/API surface rules, run the narrowest relevant tests, and explicitly list anything not verified.
+
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names — PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.
 - STEP type names are stored UPPERCASE; render via `store.entities.getTypeName(id)` to get `IfcPascalCase`.

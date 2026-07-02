@@ -72,6 +72,7 @@ pub fn process_streaming(
     max_batch_size: usize,
     opening_filter: OpeningFilterMode,
     tessellation_quality: TessellationQuality,
+    admission: Option<crate::admission::AdmissionGuard>,
 ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send>> {
     // Zero is a caller bug, not a reason to stall the stream.
     let initial_batch_size = initial_batch_size.max(1);
@@ -79,7 +80,21 @@ pub fn process_streaming(
 
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
 
+    // Disconnect-aware cancellation: when the SSE client hangs up, the
+    // receiver drops, the batch callback notices via `tx.is_closed()`, and the
+    // streaming core stops between chunks instead of meshing the rest of the
+    // model for nobody (a full-size parse used to keep burning a core and its
+    // memory slot to completion).
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let cancel_for_task = std::sync::Arc::clone(&cancel);
+
     let handle = tokio::task::spawn_blocking(move || {
+        // The admission permit must outlive the BLOCKING TASK, not just the
+        // response stream: on disconnect the stream drops first, but the task
+        // keeps its memory/CPU until the cooperative cancel takes effect at
+        // the next chunk boundary. Holding the guard here means a replacement
+        // is never admitted on top of a still-running job.
+        let _admission = admission;
         let cache_key = DiskCache::generate_key(&content);
 
         let mut started = false;
@@ -96,9 +111,14 @@ pub fn process_streaming(
                 // Batches are forwarded as they are emitted — retaining them
                 // in the ProcessingResult would double peak memory.
                 retain_emitted_meshes: false,
+                cancel: Some(std::sync::Arc::clone(&cancel_for_task)),
                 ..StreamingOptions::default()
             },
             |meshes, processed, total| {
+                if tx.is_closed() {
+                    cancel_for_task.store(true, std::sync::atomic::Ordering::Relaxed);
+                    return;
+                }
                 if !started {
                     started = true;
                     let _ = tx.send(StreamEvent::Start {
@@ -131,6 +151,13 @@ pub fn process_streaming(
             |_| {},
             |_| {},
         );
+
+        if cancel_for_task.load(std::sync::atomic::Ordering::Relaxed) {
+            // Client gone: the partial result must not be presented as a
+            // completed parse - skip Complete AND the symbolic extraction.
+            tracing::info!("SSE client disconnected; streaming parse stopped early");
+            return;
+        }
 
         if !started {
             // Zero-geometry model: the batch callback never ran. Emit Start

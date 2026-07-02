@@ -81,6 +81,14 @@ pub async fn parse_parquet_stream(
     use std::sync::{Arc, Mutex};
 
     // Extract file
+    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
+    // upload is buffered, reserving the max upload size since multipart rarely
+    // declares a length up front. Held for the request's whole lifetime so a
+    // disconnected-but-still-running job keeps its memory slot.
+    let admission_guard = state
+        .admission
+        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+        .await?;
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key before processing (include opening filter + quality)
@@ -150,6 +158,13 @@ pub async fn parse_parquet_stream(
             )),
         ]));
 
+        // The cached replay still holds the (potentially large) blob in the
+        // stream; keep the admission permit until the client drains it.
+        let fast_stream =
+            fast_stream.map(move |e| {
+                let _hold = &admission_guard;
+                e
+            });
         return Ok(Sse::new(fast_stream)
             .keep_alive(KeepAlive::default())
             .into_response());
@@ -180,6 +195,7 @@ pub async fn parse_parquet_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
+        Some(admission_guard),
     )
     .map(move |event: StreamEvent| {
         let sse_event = match event {

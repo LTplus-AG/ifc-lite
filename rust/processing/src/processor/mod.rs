@@ -147,6 +147,12 @@ pub struct StreamingOptions {
     /// `build_entity_index(content)` for the *same* `content`, or decoding will read
     /// the wrong byte ranges.
     pub entity_index: Option<Arc<EntityIndex>>,
+    /// Cooperative cancellation: when the flag flips true, the streaming core
+    /// stops between job chunks (no further meshing or batch emission). The
+    /// returned `ProcessingResult` is then PARTIAL - the caller set the flag,
+    /// so it must not present the result as a completed parse. Used by the
+    /// server to stop burning a core when an SSE client disconnects.
+    pub cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl Default for StreamingOptions {
@@ -161,6 +167,7 @@ impl Default for StreamingOptions {
             retain_emitted_meshes: true,
             tessellation_quality: TessellationQuality::default(),
             entity_index: None,
+            cancel: None,
         }
     }
 }
@@ -1079,6 +1086,16 @@ pub fn process_geometry_streaming_filtered_with_options(
     let item_dedup_cache = GeometryRouter::new_dedup_cache();
 
     while chunk_start < total_jobs {
+        // Cooperative cancellation between chunks: the caller flipped the flag
+        // (e.g. its client disconnected), so stop meshing and emitting. The
+        // result below is partial by contract; see StreamingOptions::cancel.
+        if options
+            .cancel
+            .as_ref()
+            .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+        {
+            break;
+        }
         let chunk_end = (chunk_start + current_chunk_size).min(total_jobs);
         let jobs_chunk = &mut entity_jobs[chunk_start..chunk_end];
 

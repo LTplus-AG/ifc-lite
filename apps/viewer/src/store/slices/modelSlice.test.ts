@@ -166,16 +166,40 @@ describe('ModelSlice', () => {
 
       const clearedMutations: string[] = [];
       const clearedViews: string[] = [];
+      let scheduleCleared = 0;
       (state as unknown as { clearMutations: (id: string) => void }).clearMutations = (id) =>
         clearedMutations.push(id);
       (state as unknown as { clearMutationView: (id: string) => void }).clearMutationView = (id) =>
         clearedViews.push(id);
+      (state as unknown as { clearGeneratedSchedule: () => number }).clearGeneratedSchedule = () => {
+        scheduleCleared++;
+        return 0;
+      };
 
       state.removeModel('model-1');
 
       assert.deepStrictEqual(clearedMutations, ['model-1']);
       assert.deepStrictEqual(clearedViews, ['model-1']);
+      // model-1 was the only model, so its orphaned schedule is cleared too.
+      assert.strictEqual(scheduleCleared, 1);
       assert.strictEqual(state.models.size, 0);
+    });
+
+    it('does not clear the schedule when other models remain', () => {
+      state.addModel(createMockModel('model-1', 'First'));
+      state.addModel(createMockModel('model-2', 'Second'));
+
+      let scheduleCleared = 0;
+      (state as unknown as { clearGeneratedSchedule: () => number }).clearGeneratedSchedule = () => {
+        scheduleCleared++;
+        return 0;
+      };
+
+      state.removeModel('model-1');
+
+      // model-2 still loaded — a schedule could belong to it, so keep it.
+      assert.strictEqual(scheduleCleared, 0);
+      assert.strictEqual(state.models.size, 1);
     });
 
     it('should update activeModelId if removed model was active', () => {

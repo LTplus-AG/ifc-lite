@@ -156,9 +156,20 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     const cross = get() as unknown as {
       clearMutations?: (id: string) => void;
       clearMutationView?: (id: string) => void;
+      clearGeneratedSchedule?: () => number;
     };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
+
+    // clearMutations only clears a schedule whose source === modelId. Removing
+    // the last model orphans any remaining schedule (e.g. one with a null /
+    // dangling source), which would keep inflating getModifiedEntityCount with
+    // no model left to own it — so drop its generated tasks once the federation
+    // is empty.
+    const models = get().models;
+    if (models.size <= 1 && models.has(modelId)) {
+      cross.clearGeneratedSchedule?.();
+    }
 
     set((state) => {
       const newModels = new Map(state.models);

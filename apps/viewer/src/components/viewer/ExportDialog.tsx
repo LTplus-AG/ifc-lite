@@ -83,6 +83,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const scheduleData = useViewerStore((s) => s.scheduleData);
   const scheduleIsEdited = useViewerStore((s) => s.scheduleIsEdited);
   const scheduleSourceModelId = useViewerStore((s) => s.scheduleSourceModelId);
+  const georefMutations = useViewerStore((s) => s.georefMutations);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
@@ -230,10 +231,17 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     // A merged export writes all models, so it keeps the aggregate count.
     if (exportScope === 'single') {
       let count = getMutationView(selectedModelId)?.getModifiedEntityCount() ?? 0;
-      // The single-model STEP export also splices the schedule when the selected
-      // model owns it (or it's unattributed with pending tasks) — the same gate
-      // spliceScheduleIntoExport uses — so count those tasks too, matching what
-      // actually gets written.
+      // The single-model STEP export also applies the selected model's
+      // georeferencing edits, so count them (+1) when present.
+      const gm = georefMutations.get(selectedModelId);
+      const hasGeoref = !!gm && (
+        (gm.projectedCRS && Object.keys(gm.projectedCRS).length > 0) ||
+        (gm.mapConversion && Object.keys(gm.mapConversion).length > 0)
+      );
+      if (hasGeoref) count += 1;
+      // ...and it splices the schedule when the selected model owns it (or it's
+      // unattributed with pending tasks) — the same gate spliceScheduleIntoExport
+      // uses — so count those tasks too, matching what actually gets written.
       const ownsSchedule = scheduleSourceModelId === selectedModelId
         || (scheduleSourceModelId === null && (scheduleData?.tasks.length ?? 0) > 0);
       if (ownsSchedule) {
@@ -245,7 +253,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     }
     return getModifiedEntityCount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId]);
+  }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations]);
 
   /**
    * Convert global visibility state IDs to local expressIds for a given model.

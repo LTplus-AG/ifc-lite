@@ -9,8 +9,9 @@ function esc(s: string, delim: string): string {
   // Neutralize spreadsheet formula injection (CWE-1236): a leading =, +, -, @,
   // TAB or CR makes a cell execute as a formula in Excel/LibreOffice/Sheets.
   // List cells derive from attacker-controllable IFC values, so prefix such
-  // cells with an apostrophe (matching the SDK export adapter).
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  // cells with an apostrophe. A leading UTF-8 BOM is treated as file metadata
+  // by spreadsheet importers, so a marker hidden behind one still executes.
+  if (/^\uFEFF?[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /["\r\n]/.test(s) || s.includes(delim) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

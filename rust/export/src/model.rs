@@ -498,15 +498,18 @@ mod tests {
         std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
     }
 
-    /// Skip-if-absent loader (test models are staged, not git-tracked).
+    /// Skip-if-absent loader (test models are staged, not git-tracked). Only a
+    /// genuinely-missing file is a skip; any other read error (permission, I/O)
+    /// fails the test rather than passing as a false green.
     fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
         let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
         match std::fs::read(&path) {
             Ok(b) => Some(b),
-            Err(_) => {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
                 None
             }
+            Err(e) => panic!("read {path}: {e}"),
         }
     }
 

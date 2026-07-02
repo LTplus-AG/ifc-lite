@@ -55,7 +55,12 @@ function indexIfc(content: string): { source: Uint8Array; entityIndex: EntityInd
 }
 
 describe.skipIf(!existsSync(fixturePath))('extractLengthUnitScale shared parity vectors', () => {
-  const cases = (JSON.parse(readFileSync(fixturePath, 'utf8')) as { cases: Vector[] }).cases;
+  // Guarded read: with skipIf active (fixture absent outside the monorepo)
+  // the describe body still executes at collection time, so an unguarded
+  // readFileSync would hard-fail instead of skipping.
+  const cases = existsSync(fixturePath)
+    ? (JSON.parse(readFileSync(fixturePath, 'utf8')) as { cases: Vector[] }).cases
+    : [];
 
   it('fixture has cases', () => {
     expect(cases.length).toBeGreaterThan(0);

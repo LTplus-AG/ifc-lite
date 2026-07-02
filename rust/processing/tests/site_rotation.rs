@@ -139,8 +139,10 @@ fn approx(got: [f64; 3], want: [f64; 3], what: &str) {
 /// are axis-aligned, so each normal must also be a signed basis vector. A
 /// missed inverse rotation leaves normals yawed 30 degrees and fails here.
 fn assert_normals_unit_and_axis_aligned(meshes: &[&MeshData]) {
+    let mut checked = 0usize;
     for m in meshes {
         for n in m.normals.chunks_exact(3) {
+            checked += 1;
             let (x, y, z) = (n[0] as f64, n[1] as f64, n[2] as f64);
             let len = (x * x + y * y + z * z).sqrt();
             assert!(
@@ -156,6 +158,7 @@ fn assert_normals_unit_and_axis_aligned(meshes: &[&MeshData]) {
             );
         }
     }
+    assert!(checked > 0, "no normals emitted; the axis-alignment check must not pass vacuously");
 }
 
 /// Assert every mesh vertex coincides with one of the 8 `expected` corners.

@@ -15,6 +15,7 @@ import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { useIfc } from '@/hooks/useIfc';
 import { emitCameraInteracted } from '@/lib/tours/events';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
@@ -202,7 +203,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
       {/* ViewCube (top-right) */}
       {!hideViewCube && (
-        <div className="absolute top-6 right-6">
+        <div className="absolute top-6 right-6" {...tourAnchor(TOUR_ANCHORS.viewcube)}>
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}

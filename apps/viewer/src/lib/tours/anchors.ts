@@ -25,6 +25,13 @@ export const TOUR_ANCHORS = {
   propertiesPanel: 'properties-panel',
   /** HierarchyPanel root in the left slot. */
   hierarchyPanel: 'hierarchy-panel',
+  /** ViewCube wrapper div (top-right viewport overlay). Card placement
+   *  must stay clear of this corner - never anchor a card 'bottom' here. */
+  viewcube: 'viewcube',
+  /** SectionOverlay panel root. Exists while collapsed; the position
+   *  slider itself only mounts once the panel is expanded, so anchor the
+   *  root, not the slider. */
+  sectionPanel: 'section-panel',
 } as const;
 
 /** Activity-bar rail button for a panel (one templated attribute serves
@@ -33,9 +40,16 @@ export function activityAnchor(id: WorkspacePanelId): `activity-${WorkspacePanel
   return `activity-${id}`;
 }
 
+/** MainToolbar tool button (one templated attribute serves every
+ *  toolbar-tool mini-tour, e.g. measure, section). */
+export function toolAnchor(tool: string): `tool-${string}` {
+  return `tool-${tool}`;
+}
+
 export type TourAnchorId =
   | (typeof TOUR_ANCHORS)[keyof typeof TOUR_ANCHORS]
-  | ReturnType<typeof activityAnchor>;
+  | ReturnType<typeof activityAnchor>
+  | ReturnType<typeof toolAnchor>;
 
 /** Spread helper: `<div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)}>`. */
 export function tourAnchor(id: TourAnchorId): { 'data-tour': TourAnchorId } {

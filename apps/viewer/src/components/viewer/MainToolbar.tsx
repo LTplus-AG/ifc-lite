@@ -102,6 +102,7 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 import { closePanelWindow } from '@/services/panel-windows';
+import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
 
 type Tool = 'select' | 'walk' | 'measure' | 'section' | 'annotate' | 'addElement' | 'split' | 'spaceSketch';
 type WorkspacePanel = 'script' | 'list' | 'bcf' | 'ids' | 'lens' | 'addElement' | string;
@@ -148,6 +149,7 @@ function ToolButton({
           className={cn(
             isActive && (activeAccentClass ?? 'bg-primary text-primary-foreground'),
           )}
+          {...tourAnchor(toolAnchor(tool))}
         >
           <Icon className="h-4 w-4" />
         </Button>

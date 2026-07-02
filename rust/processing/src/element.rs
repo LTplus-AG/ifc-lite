@@ -267,6 +267,21 @@ fn produce_inner(
     };
 
     if has_openings {
+        // Phase 5 (#1286, flag-gated): dedup identical voided elements by cutting
+        // once in the host definition frame and reusing with this occurrence's
+        // placement. Returns None when the flag is off / the element is
+        // ineligible, falling through to the per-occurrence cut below.
+        if let Ok(Some(sub_meshes)) = router
+            .process_element_with_submeshes_and_voids_deduped(job.entity, decoder, ctx.void_index)
+        {
+            if !sub_meshes.is_empty() {
+                let out =
+                    emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, layer_class);
+                if !out.is_empty() {
+                    return out;
+                }
+            }
+        }
         // Voided elements: submesh-aware cut FIRST, so per-part colours
         // survive the void subtraction (a voided window keeps frame/glass
         // split; a voided multi-layer wall keeps its layer colours).

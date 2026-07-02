@@ -1773,6 +1773,223 @@ impl GeometryRouter {
         result
     }
 
+    /// The host's `ObjectPlacement` as a PURE TRANSLATION (metres), or `None` if
+    /// it carries any rotation. The v1 definition-frame void cut relativizes
+    /// cutters by a translation only (rotating axis-aligned `Rectangular` cutters
+    /// would break their AABB form), so rotated hosts fall back to the
+    /// per-occurrence world path.
+    fn host_translation_only(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<[f64; 3]>> {
+        let mut t = self.get_placement_transform_from_element(element, decoder)?;
+        // Rotation must be identity on the UNSCALED transform (the uniform unit
+        // scale would otherwise read the diagonal as non-identity).
+        let rot = t.fixed_view::<3, 3>(0, 0);
+        let identity_rot = (0..3).all(|i| {
+            (0..3).all(|j| {
+                let want = if i == j { 1.0 } else { 0.0 };
+                (rot[(i, j)] - want).abs() < 1e-9
+            })
+        });
+        if !identity_rot {
+            return Ok(None);
+        }
+        self.scale_transform(&mut t);
+        Ok(Some([t[(0, 3)], t[(1, 3)], t[(2, 3)]]))
+    }
+
+    /// Definition-frame voided sub-meshes for a PURE-TRANSLATION, non-layered
+    /// host: cut the UNPLACED base with the void cutters relativized into the
+    /// host's definition frame, so the result is placement-invariant (reusable
+    /// across translated occurrences — the element-level void-cut cache, #1286).
+    /// Returns `(def_frame_submeshes, host_translation)`, or `None` when the host
+    /// is ineligible (layered / rotated / no openings / empty / nothing cut) — the
+    /// caller then uses the per-occurrence [`Self::process_element_with_submeshes_and_voids`].
+    pub fn process_element_with_submeshes_and_voids_unplaced(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<Option<(SubMeshCollection, [f64; 3])>> {
+        if self.is_material_layer_sliceable(element.id) {
+            return Ok(None); // per-layer slice baking is not in v1
+        }
+        let opening_ids = match void_index.get(&element.id) {
+            Some(ids) if !ids.is_empty() => ids.clone(),
+            _ => return Ok(None),
+        };
+        let translation = match self.host_translation_only(element, decoder)? {
+            Some(t) => t,
+            None => return Ok(None), // rotated host
+        };
+        let base = self.process_element_with_submeshes_unplaced(element, decoder)?;
+        if base.is_empty() {
+            return Ok(None);
+        }
+        let ctx = self.build_void_context(element, &opening_ids, decoder);
+        if ctx.is_noop() {
+            return Ok(None);
+        }
+        // World cutters -> the host definition frame (translation only). The
+        // rect_fast `param` path is intentionally skipped (relativized_by drops
+        // it); apply_void_context_inner is the exact kernel, cutting the def base
+        // against def cutters at small coords.
+        let def_ctx = ctx.relativized_by(translation);
+        let mut voided = SubMeshCollection::new();
+        for sub in base.sub_meshes {
+            let gid = sub.geometry_id;
+            let mut m = self.apply_void_context_inner(sub.mesh, &def_ctx, element.id);
+            // Voided geometry is not GPU-instanced (the cut invalidates the base's
+            // rep_identity), exactly as the placed path clears it — keep the
+            // deduped output identical so collation behaves the same.
+            m.instance_meta = None;
+            m.clean_degenerate();
+            if !m.is_empty() {
+                voided.sub_meshes.push(SubMesh::new(gid, m));
+            }
+        }
+        if voided.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some((voided, translation)))
+    }
+
+    /// Void-inclusive definition signature for the element-level void-cut cache
+    /// (#1286 Phase 5): the host representation signature folded with an
+    /// ORDER-INVARIANT fold over each opening's (representation signature,
+    /// host-relative placement). Two elements share a signature iff their host
+    /// geometry, opening geometries AND opening placements relative to the host
+    /// all match — so they produce the identical definition-frame cut. `None`
+    /// (no shared key) when ineligible (layered / rotated host / unresolved
+    /// opening), so the caller falls back to the per-occurrence path.
+    pub fn definition_signature(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<Option<u128>> {
+        if self.is_material_layer_sliceable(element.id) {
+            return Ok(None);
+        }
+        let opening_ids = match void_index.get(&element.id) {
+            Some(ids) if !ids.is_empty() => ids.clone(),
+            _ => return Ok(None),
+        };
+        // Same eligibility as the unplaced cut: pure-translation host.
+        let host_w = self.get_placement_transform_from_element(element, decoder)?;
+        let rot = host_w.fixed_view::<3, 3>(0, 0);
+        let identity_rot = (0..3).all(|i| {
+            (0..3).all(|j| (rot[(i, j)] - if i == j { 1.0 } else { 0.0 }).abs() < 1e-9)
+        });
+        if !identity_rot {
+            return Ok(None);
+        }
+        let host_inv = match host_w.try_inverse() {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+        let host_rep = match self.geometry_routing_key(element, decoder) {
+            Some(h) => h,
+            None => return Ok(None),
+        };
+        let mut parts: Vec<u128> = Vec::with_capacity(opening_ids.len());
+        for oid in opening_ids {
+            let opening = match decoder.decode_by_id(oid) {
+                Ok(o) => o,
+                Err(_) => return Ok(None),
+            };
+            if opening.ifc_type != IfcType::IfcOpeningElement {
+                continue;
+            }
+            let op_rep = match opening.get(6).and_then(|a| a.as_entity_ref()) {
+                Some(r) => {
+                    let mut memo = self.content_sig_memo.borrow_mut();
+                    super::content_hash::item_signature(decoder, r, &mut memo)
+                }
+                None => return Ok(None),
+            };
+            let op_w = self.get_placement_transform_from_element(&opening, decoder)?;
+            // M_rel = host^-1 * opening: the opening relative to the host. Quantise
+            // its 12 affine components so float-noise-free identical placements key
+            // the same, and 1e-6-distinct placements key apart (never false-merge).
+            let m_rel = host_inv * op_w;
+            let mut rel_bits: u128 = 0xcbf29ce484222325;
+            for r in 0..3 {
+                for c in 0..4 {
+                    let q = (m_rel[(r, c)] / 1.0e-6).round() as i64;
+                    rel_bits = rel_bits.wrapping_mul(0x100000001b3).wrapping_add(q as u128);
+                }
+            }
+            parts.push(op_rep ^ rel_bits.wrapping_mul(0x9e3779b97f4a7c15));
+        }
+        if parts.is_empty() {
+            return Ok(None);
+        }
+        parts.sort_unstable(); // ORDER-INVARIANT: opening declaration order is irrelevant
+        let mut structural = host_rep;
+        for p in parts {
+            structural = structural.wrapping_mul(0x100000001b3).wrapping_add(p);
+        }
+        Ok(Some(super::content_hash::key_with_params(
+            structural,
+            self.tessellation_quality.to_index(),
+            self.unit_scale,
+            self.rtc_offset,
+        )))
+    }
+
+    /// Element-level DEDUPED voided sub-meshes (#1286 Phase 5): on a
+    /// definition-cache HIT, clone the cached definition-frame template and apply
+    /// THIS occurrence's placement (no re-cut); on a MISS, run the definition-frame
+    /// cut once and cache it. Returns the PLACED voided sub-meshes, or `None` when
+    /// the flag is off / the element is ineligible / nothing was cut, so the caller
+    /// uses the per-occurrence [`Self::process_element_with_submeshes_and_voids`].
+    pub fn process_element_with_submeshes_and_voids_deduped(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<Option<SubMeshCollection>> {
+        if !Self::definition_dedup_enabled() {
+            return Ok(None);
+        }
+        let cache = match self.definition_cache.as_ref() {
+            Some(c) => c,
+            None => return Ok(None),
+        };
+        let sig = match self.definition_signature(element, decoder, void_index)? {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        let hit = cache
+            .lock()
+            .expect("definition cache poisoned")
+            .get(&sig)
+            .cloned();
+        let template = match hit {
+            Some(t) => (*t).clone(),
+            None => {
+                let built =
+                    self.process_element_with_submeshes_and_voids_unplaced(element, decoder, void_index)?;
+                let (tpl, _t) = match built {
+                    Some(v) => v,
+                    None => return Ok(None),
+                };
+                cache
+                    .lock()
+                    .expect("definition cache poisoned")
+                    .insert(sig, std::sync::Arc::new(tpl.clone()));
+                tpl
+            }
+        };
+        // Apply THIS occurrence's placement to the shared definition-frame template.
+        let mut placed = template;
+        self.apply_submesh_placement(&mut placed, element, decoder)?;
+        Ok(Some(placed))
+    }
+
     /// Process an element into per-item sub-meshes with opening subtraction.
     ///
     /// Mirrors [`process_element_with_voids`] but preserves each

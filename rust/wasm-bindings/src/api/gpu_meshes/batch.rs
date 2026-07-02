@@ -144,6 +144,17 @@ impl IfcAPI {
                 .clone();
             router.enable_content_dedup_shared(cache);
         }
+        // Element-level void-cut dedup (#1286 Phase 5; flag-gated, default off).
+        if GeometryRouter::definition_dedup_enabled() {
+            let mut slot = self
+                .cached_definition_dedup
+                .lock()
+                .expect("ifc-lite cached_definition_dedup Mutex poisoned");
+            let cache = slot
+                .get_or_insert_with(GeometryRouter::new_definition_cache)
+                .clone();
+            router.enable_definition_dedup_shared(cache);
+        }
 
         // Attach the per-content material-layer index so single-solid walls and
         // slabs carrying an IfcMaterialLayerSetUsage slice into one coloured

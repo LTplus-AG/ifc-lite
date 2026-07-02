@@ -214,6 +214,21 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<SubMeshCollection> {
+        let mut sub_meshes = self.process_element_with_submeshes_unplaced(element, decoder)?;
+        self.apply_submesh_placement(&mut sub_meshes, element, decoder)?;
+        Ok(sub_meshes)
+    }
+
+    /// Like [`Self::process_element_with_submeshes`] but WITHOUT the element's
+    /// ObjectPlacement applied — the sub-meshes stay in the host DEFINITION frame.
+    /// This is the placement-invariant base the element-level void-cut cache
+    /// (#1286) needs; callers apply [`Self::apply_submesh_placement`] (or a
+    /// per-occurrence transform) afterwards.
+    pub(crate) fn process_element_with_submeshes_unplaced(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<SubMeshCollection> {
         // If a material-layer buildup is attached, try slicing single-solid
         // elements (walls / slabs with IfcMaterialLayerSetUsage) first so each
         // layer gets its own sub-mesh keyed by IfcMaterial id. An empty void
@@ -339,14 +354,13 @@ impl GeometryRouter {
             sub.mesh.clean_degenerate();
         }
 
-        self.apply_submesh_placement(&mut sub_meshes, element, decoder)?;
         Ok(sub_meshes)
     }
 
     /// Apply the element's `ObjectPlacement` (scaled to metres) to every sub-mesh.
     /// Placement is a rigid per-instance transform, kept OUT of the dedup cache so
     /// instances of one shared geometry land at their own positions.
-    fn apply_submesh_placement(
+    pub(crate) fn apply_submesh_placement(
         &self,
         sub_meshes: &mut SubMeshCollection,
         element: &DecodedEntity,

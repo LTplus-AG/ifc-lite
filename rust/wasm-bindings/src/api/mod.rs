@@ -67,6 +67,10 @@ pub struct IfcAPI {
     /// `cached_entity_index`.
     cached_item_dedup: std::sync::Mutex<Option<ifc_lite_geometry::ItemDedupCache>>,
 
+    /// Element-level void-cut cache (#1286 Phase 5; flag-gated). One per model,
+    /// lazily built, mirroring `cached_item_dedup`.
+    cached_definition_dedup: std::sync::Mutex<Option<ifc_lite_geometry::DefinitionCache>>,
+
     /// When `true`, `processGeometryBatch` suppresses geometry emission for
     /// every `IfcBuildingElementPart` whose `IfcRelAggregates` parent (a) has
     /// its own `Representation` and (b) is marked `Sliceable` in
@@ -211,6 +215,7 @@ impl IfcAPI {
             initialized: true,
             cached_entity_index: std::sync::Mutex::new(None),
             cached_item_dedup: std::sync::Mutex::new(None),
+            cached_definition_dedup: std::sync::Mutex::new(None),
             merge_layers: std::sync::atomic::AtomicBool::new(false),
             cached_parts_to_skip: std::sync::Mutex::new(None),
             cached_material_layer_index: std::sync::Mutex::new(None),

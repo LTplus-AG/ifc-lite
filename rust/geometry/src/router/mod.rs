@@ -83,6 +83,16 @@ pub type ItemDedupCache = Arc<Mutex<FxHashMap<u128, Arc<(Mesh, Option<u128>)>>>>
 /// -1 = env default, 0 = forced off, 1 = forced on.
 static DEDUP_EXTRA_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
+/// Shared element-level void-cut cache (#1286 Phase 5): a void-inclusive
+/// definition signature -> the POST-CUT, pre-placement (definition-frame) voided
+/// sub-meshes, so identical voided elements are CSG-cut once and reused with a
+/// per-occurrence placement.
+pub type DefinitionCache = Arc<Mutex<FxHashMap<u128, Arc<crate::mesh::SubMeshCollection>>>>;
+
+/// Test/env override for [`GeometryRouter::definition_dedup_enabled`]:
+/// -1 = env default, 0 = forced off, 1 = forced on.
+static DEF_DEDUP_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
+
 /// Geometry router - routes entities to processors
 pub struct GeometryRouter {
     schema: IfcSchema,
@@ -108,6 +118,11 @@ pub struct GeometryRouter {
     /// so the lock is held only for a map get/clone (hit) or insert (miss); the
     /// build runs outside it. `None` ⇒ dedup disabled (e.g. `new()` in tests).
     item_dedup_cache: Option<ItemDedupCache>,
+    /// Shared cache of POST-CUT, pre-placement (definition-frame) voided
+    /// sub-meshes keyed by the void-inclusive definition signature (#1286 Phase
+    /// 5). Lets identical voided elements be CSG-cut once and reused with a
+    /// per-occurrence placement. `None` ⇒ disabled (the default; flag-gated).
+    definition_cache: Option<DefinitionCache>,
     /// Per-router memo for the per-item structural hash (shared sub-entities hashed
     /// once). Keyed by entity id ⇒ valid for one loaded model. Kept LOCAL (not
     /// shared) so the recursive DAG walk never contends the shared cache's lock;
@@ -182,6 +197,7 @@ impl GeometryRouter {
             mapped_item_cache: RefCell::new(FxHashMap::default()),
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
             item_dedup_cache: None, // armed by `with_units` / `enable_content_dedup_shared`
+            definition_cache: None, // armed by `enable_definition_dedup_shared` (flag-gated)
             content_sig_memo: RefCell::new(FxHashMap::default()),
             unit_scale: 1.0,             // Default to base meters
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
@@ -341,6 +357,46 @@ impl GeometryRouter {
             },
             std::sync::atomic::Ordering::Relaxed,
         );
+    }
+
+    /// Element-level void-cut dedup (#1286 Phase 5): cut identical voided elements
+    /// ONCE in the host definition frame and reuse with a per-occurrence
+    /// placement. DEFAULT OFF (a behaviour change: voided geometry moves from the
+    /// per-occurrence world cut to a canonical definition-frame cut), gated until
+    /// corpus-validated. Default off keeps native==wasm identical. Opt in with
+    /// `IFC_LITE_DEF_DEDUP=1` or [`Self::set_definition_dedup_override`].
+    pub fn definition_dedup_enabled() -> bool {
+        match DEF_DEDUP_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+            0 => return false,
+            1 => return true,
+            _ => {}
+        }
+        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *ON.get_or_init(|| std::env::var("IFC_LITE_DEF_DEDUP").as_deref() == Ok("1"))
+    }
+
+    /// Test-only: force [`Self::definition_dedup_enabled`] on/off (`None` = env).
+    pub fn set_definition_dedup_override(v: Option<bool>) {
+        DEF_DEDUP_OVERRIDE.store(
+            match v {
+                None => -1,
+                Some(false) => 0,
+                Some(true) => 1,
+            },
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+
+    /// Build a fresh shared element-level void-cut cache (one per loaded model).
+    pub fn new_definition_cache() -> DefinitionCache {
+        Arc::new(Mutex::new(FxHashMap::default()))
+    }
+
+    /// Inject a shared definition cache into this router (mirrors
+    /// [`Self::enable_content_dedup_shared`]). All routers sharing the SAME `Arc`
+    /// dedup voided-element CSG against one cache across threads/batches.
+    pub fn enable_definition_dedup_shared(&mut self, cache: DefinitionCache) {
+        self.definition_cache = Some(cache);
     }
 
     /// Inject a shared item-dedup cache (see [`Self::new_dedup_cache`]) into this

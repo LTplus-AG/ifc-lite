@@ -1077,6 +1077,8 @@ pub fn process_geometry_streaming_filtered_with_options(
     // across the rayon pool instead of once per element. The lock is held only for
     // a hash get/insert; meshing runs outside it.
     let item_dedup_cache = GeometryRouter::new_dedup_cache();
+    // Shared element-level void-cut cache (#1286 Phase 5; flag-gated, default off).
+    let definition_cache = GeometryRouter::new_definition_cache();
 
     while chunk_start < total_jobs {
         let chunk_end = (chunk_start + current_chunk_size).min(total_jobs);
@@ -1187,6 +1189,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     &host_diag_collector,
                     &rect_fast_collector,
                     &item_dedup_cache,
+                    &definition_cache,
                 )
             })
             .collect();
@@ -1379,6 +1382,8 @@ fn process_entity_job(
     // Model-wide content-dedup cache shared by every per-job router so identical
     // geometry is meshed once across the rayon pool (#1109 follow-up).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
+    // Model-wide element-level void-cut cache (#1286 Phase 5; flag-gated).
+    definition_cache: &ifc_lite_geometry::DefinitionCache,
 ) -> Vec<MeshData> {
     if skipped_entity_ids.contains(&job.id) {
         return Vec::new();
@@ -1400,6 +1405,9 @@ fn process_entity_job(
     // it skips on real models (see GeometryRouter::content_dedup_enabled).
     if GeometryRouter::content_dedup_enabled() {
         local_router.enable_content_dedup_shared(item_dedup_cache.clone());
+    }
+    if GeometryRouter::definition_dedup_enabled() {
+        local_router.enable_definition_dedup_shared(definition_cache.clone());
     }
     let local_router = local_router;
 

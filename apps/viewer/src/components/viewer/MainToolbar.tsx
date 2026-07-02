@@ -337,8 +337,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     // Federation variant: ADD the file to the current set instead of
     // replacing it (the compare tour loads demo revision B this way).
     const addHandler = (e: Event) => {
-      const file = (e as CustomEvent<File>).detail;
-      if (file) void addModel(file);
+      const file = (e as CustomEvent<unknown>).detail;
+      if (file instanceof File) void addModel(file);
     };
     window.addEventListener('ifc-lite:load-file', handler);
     window.addEventListener('ifc-lite:add-model', addHandler);

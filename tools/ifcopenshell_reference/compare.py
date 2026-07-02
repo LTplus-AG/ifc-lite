@@ -101,7 +101,19 @@ def classify(ref: dict | None, lite: dict | None) -> tuple[str, list[str], list[
     elif (ref.get("closed") and ref.get("volume") and not ref_vol_ok) or (
         lite.get("closed") and lite.get("volume") and not lite_vol_ok
     ):
+        # A reported volume exceeding its own bbox volume is a mixed-winding
+        # artifact - that side's figure is not evidence of anything.
         advisory.append("volume-unverifiable")
+    elif ref_vol_ok != lite_vol_ok:
+        # Exactly one side has usable volume evidence (closed vs open).
+        # GATING here would turn the calibrated welding-topology asymmetry
+        # (duplex: 200+ healthy elements where ifc-lite's edge-pairing reports
+        # open while the reference is closed) permanently red, so it stays
+        # advisory - but it is the harness's known blind spot: an interior
+        # regression that keeps the bbox and only breaks the volume-less side
+        # is not gated at the stats level. The nightly report surfaces these
+        # rows for review; topology-level comparison is the planned later phase.
+        advisory.append("volume-one-sided")
     return ("MISMATCH" if failing else "MATCH"), failing, advisory
 
 

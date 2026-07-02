@@ -286,7 +286,7 @@ export class IfcServerClient {
 
     // Step 2: Check if already cached
     const cacheCheckStart = performance.now();
-    const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}`, {
+    const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}${parseQuery(options)}`, {
       method: 'GET',
       headers: this.authHeaders(),
       signal: AbortSignal.timeout(5000),
@@ -649,6 +649,7 @@ export class IfcServerClient {
       try {
         const response = await fetch(`${this.baseUrl}/api/v1/parse/data-model/${cacheKey}`, {
           method: 'GET',
+          headers: this.authHeaders(),
           signal: AbortSignal.timeout(30000),
         });
 
@@ -722,6 +723,7 @@ export class IfcServerClient {
       try {
         response = await fetch(`${this.baseUrl}/api/v1/parse/symbolic/${cacheKey}`, {
           method: 'GET',
+          headers: this.authHeaders(),
           signal: AbortSignal.timeout(30000),
         });
       } catch (error) {

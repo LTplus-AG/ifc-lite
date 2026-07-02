@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! Pins the Rust length-unit-scale extractor to the shared cross-language test
 //! vectors in `tests/fixtures/unit_scale_vectors.json`. The TypeScript extractor
 //! in `@ifc-lite/parser` (`packages/parser/src/unit-scale.parity.test.ts`) is

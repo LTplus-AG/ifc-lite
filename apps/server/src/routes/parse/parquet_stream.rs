@@ -216,19 +216,32 @@ pub async fn parse_parquet_stream(
                 ParquetStreamEvent::Progress { processed, total }
             }
             StreamEvent::Batch { meshes, batch_number } => {
-                // Feed the incremental cache writer, then let the meshes drop
-                // with this event (no whole-model retention).
-                if let Ok(mut slot) = cache_writer_for_stream.lock() {
-                    if let Some(writer) = slot.as_mut() {
-                        if let Err(e) = writer.append(&meshes) {
-                            tracing::error!(error = %e, "Streaming cache writer failed; skipping cache fill");
-                            *slot = None;
+                // Per-batch CPU work (client-blob serialization + cache-writer
+                // append) runs inside this stream map, i.e. on an async worker.
+                // On the multi-thread runtime, step off the async pool for it
+                // so other connections' polls are not starved. (Guarded by
+                // runtime flavor: block_in_place panics on current_thread,
+                // which the #[tokio::test] harness uses.)
+                let cpu_work = || {
+                    if let Ok(mut slot) = cache_writer_for_stream.lock() {
+                        if let Some(writer) = slot.as_mut() {
+                            if let Err(e) = writer.append(&meshes) {
+                                tracing::error!(error = %e, "Streaming cache writer failed; skipping cache fill");
+                                *slot = None;
+                            }
                         }
                     }
-                }
+                    serialize_to_parquet(&meshes)
+                };
+                let serialized = if tokio::runtime::Handle::current().runtime_flavor()
+                    == tokio::runtime::RuntimeFlavor::MultiThread
+                {
+                    tokio::task::block_in_place(cpu_work)
+                } else {
+                    cpu_work()
+                };
 
-                // Serialize batch to Parquet and base64 encode
-                match serialize_to_parquet(&meshes) {
+                match serialized {
                     Ok(parquet_bytes) => {
                         let base64_data = STANDARD.encode(&parquet_bytes);
                         ParquetStreamEvent::Batch {

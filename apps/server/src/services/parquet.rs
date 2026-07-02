@@ -26,6 +26,8 @@ use thiserror::Error;
 /// Errors during Parquet serialization.
 #[derive(Debug, Error)]
 pub enum ParquetError {
+    #[error("Format overflow: {0}")]
+    Overflow(String),
     #[error("Arrow error: {0}")]
     Arrow(#[from] arrow::error::ArrowError),
     #[error("Parquet error: {0}")]
@@ -54,12 +56,21 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
     let mesh_parquet = write_parquet_buffer(&mesh_batch)?;
     let vertex_parquet = write_parquet_buffer(&vertex_batch)?;
     let index_parquet = write_parquet_buffer(&index_batch)?;
-    Ok(frame_sections(&mesh_parquet, &vertex_parquet, &index_parquet))
+    frame_sections(&mesh_parquet, &vertex_parquet, &index_parquet)
 }
 
 /// Assemble the three Parquet buffers into the length-prefixed section layout
 /// shared by the whole-model serializer and the incremental cache writer.
-fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Bytes {
+/// Section lengths are u32 on the wire; fail loud instead of truncating a
+/// section over 4 GiB into a silently corrupt blob.
+fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
+    for (name, len) in [("mesh", mesh.len()), ("vertex", vertex.len()), ("index", index.len())] {
+        if u32::try_from(len).is_err() {
+            return Err(ParquetError::Overflow(format!(
+                "{name} section is {len} bytes, over the u32 wire-format limit"
+            )));
+        }
+    }
     let mut output = Vec::with_capacity(12 + mesh.len() + vertex.len() + index.len());
     output.extend_from_slice(&(mesh.len() as u32).to_le_bytes());
     output.extend_from_slice(mesh);
@@ -67,7 +78,7 @@ fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Bytes {
     output.extend_from_slice(vertex);
     output.extend_from_slice(&(index.len() as u32).to_le_bytes());
     output.extend_from_slice(index);
-    Bytes::from(output)
+    Ok(Bytes::from(output))
 }
 
 /// Build the three Arrow tables (mesh metadata / vertices / indices) for a
@@ -365,8 +376,26 @@ impl StreamingParquetCacheWriter {
         self.idx_w.write(&index_batch)?;
         self.idx_w.flush()?;
         for mesh in meshes {
-            self.vertex_offset += (mesh.positions.len() / 3) as u32;
-            self.index_offset += mesh.indices.len() as u32;
+            // The mesh-table start columns are u32; a model that overflows
+            // them must fail the cache fill loudly, not wrap into offsets
+            // that decode as garbage.
+            let verts = u32::try_from(mesh.positions.len() / 3)
+                .ok()
+                .and_then(|v| self.vertex_offset.checked_add(v));
+            let idxs = u32::try_from(mesh.indices.len())
+                .ok()
+                .and_then(|v| self.index_offset.checked_add(v));
+            match (verts, idxs) {
+                (Some(v), Some(i)) => {
+                    self.vertex_offset = v;
+                    self.index_offset = i;
+                }
+                _ => {
+                    return Err(ParquetError::Overflow(
+                        "global vertex/index offsets exceed u32".to_string(),
+                    ));
+                }
+            }
         }
         self.mesh_count += meshes.len();
         Ok(())
@@ -383,7 +412,7 @@ impl StreamingParquetCacheWriter {
         let mesh = self.mesh_w.into_inner()?;
         let vertex = self.vert_w.into_inner()?;
         let index = self.idx_w.into_inner()?;
-        Ok(frame_sections(&mesh, &vertex, &index))
+        frame_sections(&mesh, &vertex, &index)
     }
 }
 

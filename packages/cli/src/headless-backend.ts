@@ -649,7 +649,9 @@ export class HeadlessBackend implements BimBackend {
         if (result === null) {
           throw new Error('Geometry engine unavailable for HBJSON export.');
         }
-        return result;
+        // The lens contract carries a string; HBJSON payloads are far below the
+        // V8 string ceiling, so decoding here is safe.
+        return new TextDecoder().decode(result);
       },
       download(_content: string, _filename: string, _mimeType: string): void {
         /* no-op — CLI writes to stdout/file directly */

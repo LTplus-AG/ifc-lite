@@ -62,7 +62,7 @@ impl IfcAPI {
         );
         let unit_scale = unit_scales.length_unit_scale;
         decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
-        let mut router = GeometryRouter::with_scale(unit_scale);
+        let router = GeometryRouter::with_scale(unit_scale);
 
         // Detect RTC offset
         let rtc_jobs: Vec<_> = pre_pass
@@ -537,12 +537,10 @@ impl IfcAPI {
             let ids_arr = js_sys::Uint32Array::new_with_length(n as u32);
             let starts_arr = js_sys::Uint32Array::new_with_length(n as u32);
             let lengths_arr = js_sys::Uint32Array::new_with_length(n as u32);
-            let mut i = 0u32;
-            for (&id, &(start, end)) in index_for_export.iter() {
-                ids_arr.set_index(i, id);
-                starts_arr.set_index(i, start as u32);
-                lengths_arr.set_index(i, (end - start) as u32);
-                i += 1;
+            for (i, (&id, &(start, end))) in index_for_export.iter().enumerate() {
+                ids_arr.set_index(i as u32, id);
+                starts_arr.set_index(i as u32, start as u32);
+                lengths_arr.set_index(i as u32, (end - start) as u32);
             }
             let index_event = js_sys::Object::new();
             crate::api::set_js_prop(&index_event, "type", &"entity-index".into());

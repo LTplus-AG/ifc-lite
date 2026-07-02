@@ -9,7 +9,11 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl IfcAPI {
-    /// Export the `IfcSpace` volumes in `content` as a Honeybee **HBJSON** string.
+    /// Export the `IfcSpace` volumes in `content` as Honeybee **HBJSON** UTF-8 bytes.
+    ///
+    /// Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+    /// V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+    /// is genuinely needed.
     ///
     /// Rooms are built analytically from extruded-area profiles (watertight by construction);
     /// faces are typed Floor / RoofCeiling / Wall with outward normals. The result loads via
@@ -20,8 +24,8 @@ impl IfcAPI {
     /// const hbjson = api.exportHbjson(ifcContent, "my_model");
     /// ```
     #[wasm_bindgen(js_name = exportHbjson)]
-    pub fn export_hbjson(&self, content: &[u8], name: String) -> String {
+    pub fn export_hbjson(&self, content: &[u8], name: String) -> Vec<u8> {
         let opts = ifc_lite_export::HbjsonOptions { name, tolerance: 0.01 };
-        ifc_lite_export::export_hbjson(content, &opts)
+        ifc_lite_export::export_hbjson(content, &opts).into_bytes()
     }
 }

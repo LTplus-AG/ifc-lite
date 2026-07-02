@@ -93,6 +93,12 @@ export class IfcAPI {
    * `true` ⇒ lit (the default), `false` ⇒ flat `KHR_materials_unlit` (the
    * historical look — #1321). Optional at the boundary so older 5-arg callers
    * keep lit-by-default behaviour.
+   *
+   * Fails CLOSED: when the visible mesh set is empty this throws an `Error`
+   * whose message starts with `NO_RENDER_GEOMETRY`, instead of returning a
+   * structurally valid but empty GLB. #1438 put that guard only in the TS
+   * CLI/MCP wrappers; making the boundary itself refuse means SDK/viewer/
+   * direct callers inherit it too (the TS guards stay as defense-in-depth).
    */
   exportGlb(content: Uint8Array, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string, lit?: boolean | null): Uint8Array;
   /**
@@ -111,7 +117,11 @@ export class IfcAPI {
    */
   exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null): Uint8Array;
   /**
-   * Export the render geometry in `content` as a Wavefront **OBJ** string.
+   * Export the render geometry in `content` as Wavefront **OBJ** UTF-8 bytes.
+   *
+   * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+   * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+   * is genuinely needed.
    *
    * `hidden` / `isolated` are express-id filters mirroring the viewer's visibility
    * state (empty `isolated` ⇒ all visible). Instanced type-library shapes are skipped.
@@ -120,7 +130,7 @@ export class IfcAPI {
    * const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
    * ```
    */
-  exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): string;
+  exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): Uint8Array;
   /**
    * Process geometry for a subset of pre-scanned entities → flat
    * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
@@ -211,24 +221,28 @@ export class IfcAPI {
    * `"spatial"`}. `delimiter` defaults to `,` when empty; `include_properties` adds
    * flattened `Pset_Prop` columns to the entities view.
    */
-  exportCsv(content: Uint8Array, mode: string, delimiter: string, include_properties: boolean): string;
+  exportCsv(content: Uint8Array, mode: string, delimiter: string, include_properties: boolean): Uint8Array;
   /**
    * Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
    * only properties with an official IFC5 schema.
    */
-  exportIfcx(content: Uint8Array, only_known_properties: boolean, pretty: boolean): string;
+  exportIfcx(content: Uint8Array, only_known_properties: boolean, pretty: boolean): Uint8Array;
   /**
    * Export structured **JSON** (array of entity objects with typed property values).
    */
-  exportJson(content: Uint8Array, pretty: boolean, include_properties: boolean, include_quantities: boolean): string;
+  exportJson(content: Uint8Array, pretty: boolean, include_properties: boolean, include_quantities: boolean): Uint8Array;
   /**
    * Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
    * IFC4 OWL default. `included` is an express-id isolation filter mirroring the
    * OBJ/glTF/STEP exporters (empty ⇒ all entities).
    */
-  exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): string;
+  exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): Uint8Array;
   /**
-   * Re-serialize the model in `content` to a STEP/IFC string.
+   * Re-serialize the model in `content` to STEP/IFC UTF-8 bytes.
+   *
+   * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+   * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+   * is genuinely needed.
    *
    * `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
    * `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
@@ -236,15 +250,20 @@ export class IfcAPI {
    * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
    * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
    */
-  exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): string;
+  exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
   /**
-   * Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
+   * Merge several IFC models into one STEP/IFC UTF-8 byte buffer (`Uint8Array`).
+   * `concatenated` is every model's
    * bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
    * keeps its ids; later models are id-offset and their project unified to the first.
    */
-  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema: string): string;
+  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema: string): Uint8Array;
   /**
-   * Export the `IfcSpace` volumes in `content` as a Honeybee **HBJSON** string.
+   * Export the `IfcSpace` volumes in `content` as Honeybee **HBJSON** UTF-8 bytes.
+   *
+   * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+   * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+   * is genuinely needed.
    *
    * Rooms are built analytically from extruded-area profiles (watertight by construction);
    * faces are typed Floor / RoofCeiling / Wall with outward normals. The result loads via
@@ -255,7 +274,7 @@ export class IfcAPI {
    * const hbjson = api.exportHbjson(ifcContent, "my_model");
    * ```
    */
-  exportHbjson(content: Uint8Array, name: string): string;
+  exportHbjson(content: Uint8Array, name: string): Uint8Array;
   /**
    * Parse the file and return every `IfcAlignment` directrix as a flat
    * `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
@@ -541,6 +560,12 @@ export class MeshDataJs {
    */
   readonly hasTexture: boolean;
   /**
+   * Local (pre-placement, object-space) AABB (issue #1474), WebGL Y-up,
+   * `[minX,minY,minZ,maxX,maxY,maxZ]`. `undefined` when not captured
+   * (wasm-bindgen maps `Option::None` to `undefined`, not `null`).
+   */
+  readonly localBounds: Float32Array | undefined;
+  /**
    * Decoded RGBA8 texture bytes (`width*height*4`). Empty when untextured.
    */
   readonly textureRgba: Uint8Array;
@@ -561,6 +586,12 @@ export class MeshDataJs {
    * type geometry (hidden in Model mode, shown in Types mode).
    */
   readonly geometryClass: number;
+  /**
+   * The resolved `IfcLocalPlacement` chain for this mesh (issue #1474),
+   * row-major 4×4, WebGL Y-up. `undefined` when not captured (see
+   * `local_bounds` above).
+   */
+  readonly localToWorld: Float64Array | undefined;
   readonly textureHeight: number;
   /**
    * Get triangle count
@@ -1150,6 +1181,8 @@ export interface InitOutput {
   readonly meshdatajs_hasTexture: (a: number) => number;
   readonly meshdatajs_ifcType: (a: number, b: number) => void;
   readonly meshdatajs_indices: (a: number) => number;
+  readonly meshdatajs_localBounds: (a: number, b: number) => void;
+  readonly meshdatajs_localToWorld: (a: number, b: number) => void;
   readonly meshdatajs_normals: (a: number) => number;
   readonly meshdatajs_origin: (a: number) => number;
   readonly meshdatajs_positions: (a: number) => number;
@@ -1171,6 +1204,7 @@ export interface InitOutput {
   readonly partitionedbatch_takeShard: (a: number, b: number) => void;
   readonly profilecollection_get: (a: number, b: number) => number;
   readonly profilecollection_length: (a: number) => number;
+  readonly profileentryjs_expressId: (a: number) => number;
   readonly profileentryjs_extrusionDepth: (a: number) => number;
   readonly profileentryjs_extrusionDir: (a: number) => number;
   readonly profileentryjs_holeCounts: (a: number) => number;
@@ -1253,7 +1287,6 @@ export interface InitOutput {
   readonly init: () => void;
   readonly symbolicpolyline_pointCount: (a: number) => number;
   readonly get_memory: () => number;
-  readonly profileentryjs_expressId: (a: number) => number;
   readonly symbolicfillarea_expressId: (a: number) => number;
   readonly symbolicpolyline_worldY: (a: number) => number;
   readonly symbolictext_colorB: (a: number) => number;

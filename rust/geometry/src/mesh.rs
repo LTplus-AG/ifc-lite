@@ -95,6 +95,18 @@ pub struct Mesh {
     pub origin: [f64; 3],
     /// Instancing side-channel (see [`InstanceMeta`]); `None` on the flat path.
     pub instance_meta: Option<InstanceMeta>,
+    /// Local (pre-placement, object-space) AABB — `positions` bounds as they
+    /// were BEFORE `apply_placement`'s transform was baked in. `None` for an
+    /// empty mesh or one that never went through `transform_mesh_world_framed`
+    /// (e.g. synthetic/test meshes). Unrelated to `origin`, which is a
+    /// *world*-space translation captured AFTER the transform, purely for f32
+    /// precision — see issue #1474.
+    pub local_bounds: Option<[f32; 6]>, // minX,minY,minZ,maxX,maxY,maxZ
+    /// The resolved `IfcLocalPlacement` chain applied to this mesh by
+    /// `apply_placement` (row-major, same convention as
+    /// [`InstanceMeta::transform`]). `None` when no placement was applied
+    /// (synthetic/test meshes) — see issue #1474.
+    pub local_to_world: Option<[f64; 16]>,
 }
 
 /// A sub-mesh with its source geometry item ID.
@@ -171,6 +183,8 @@ impl Mesh {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         }
     }
 
@@ -183,6 +197,8 @@ impl Mesh {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         }
     }
 
@@ -226,40 +242,6 @@ impl Mesh {
         self.positions.push(position.x as f32);
         self.positions.push(position.y as f32);
         self.positions.push(position.z as f32);
-
-        self.normals.push(normal.x as f32);
-        self.normals.push(normal.y as f32);
-        self.normals.push(normal.z as f32);
-    }
-
-    /// Add a vertex with normal, applying coordinate shift in f64 BEFORE f32 conversion
-    /// This preserves precision for large coordinates (georeferenced models)
-    ///
-    /// # Arguments
-    /// * `position` - Vertex position in world coordinates (f64)
-    /// * `normal` - Vertex normal
-    /// * `shift` - Coordinate shift to subtract (in f64) before converting to f32
-    ///
-    /// # Precision
-    /// For coordinates like 5,000,000m (Swiss UTM), direct f32 conversion loses ~1m precision.
-    /// By subtracting the centroid first (in f64), we convert small values (0-100m range)
-    /// which preserves sub-millimeter precision.
-    #[inline]
-    pub fn add_vertex_with_shift(
-        &mut self,
-        position: Point3<f64>,
-        normal: Vector3<f64>,
-        shift: &CoordinateShift,
-    ) {
-        // Subtract shift in f64 precision BEFORE converting to f32
-        // This is the key to preserving precision for large coordinates
-        let shifted_x = position.x - shift.x;
-        let shifted_y = position.y - shift.y;
-        let shifted_z = position.z - shift.z;
-
-        self.positions.push(shifted_x as f32);
-        self.positions.push(shifted_y as f32);
-        self.positions.push(shifted_z as f32);
 
         self.normals.push(normal.x as f32);
         self.normals.push(normal.y as f32);
@@ -453,7 +435,7 @@ impl Mesh {
             indices,
             rtc_applied: self.rtc_applied,
             origin: self.origin,
-        instance_meta: None, }
+        instance_meta: None, local_bounds: None, local_to_world: None }
     }
 
     /// Remove triangle indices that reference vertices beyond the positions array.
@@ -621,6 +603,9 @@ impl Mesh {
         // Reset instancing metadata so a cleared+reused mesh can't carry stale
         // rep-identity / transform into unrelated geometry. (#1238 review)
         self.instance_meta = None;
+        // Same concern for the local-bounds/placement capture (issue #1474).
+        self.local_bounds = None;
+        self.local_to_world = None;
     }
 
     /// Weld coincident vertices, preserving per-vertex normals.
@@ -1070,7 +1055,7 @@ fn weld_impl(
         indices: new_indices,
         rtc_applied: mesh.rtc_applied,
         origin: mesh.origin,
-    instance_meta: None, }
+    instance_meta: None, local_bounds: None, local_to_world: None }
 }
 
 #[cfg(test)]
@@ -1174,45 +1159,6 @@ mod tests {
     }
 
     #[test]
-    fn test_add_vertex_with_shift_preserves_precision() {
-        // Test case: Swiss UTM coordinates (typical large coordinate scenario)
-        // Without shifting: 5000000.123 as f32 = 5000000.0 (loses 0.123m precision!)
-        // With shifting: (5000000.123 - 5000000.0) as f32 = 0.123 (full precision preserved)
-
-        let mut mesh = Mesh::new();
-
-        // Large coordinates typical of Swiss UTM (EPSG:2056)
-        let p1 = Point3::new(2679012.123456, 1247892.654321, 432.111);
-        let p2 = Point3::new(2679012.223456, 1247892.754321, 432.211);
-
-        // Create shift from approximate centroid
-        let shift = CoordinateShift::new(2679012.0, 1247892.0, 432.0);
-
-        mesh.add_vertex_with_shift(p1, Vector3::z(), &shift);
-        mesh.add_vertex_with_shift(p2, Vector3::z(), &shift);
-
-        // Verify shifted positions have sub-millimeter precision
-        // p1 shifted: (0.123456, 0.654321, 0.111)
-        // p2 shifted: (0.223456, 0.754321, 0.211)
-        assert!((mesh.positions[0] - 0.123456).abs() < 0.0001); // X1
-        assert!((mesh.positions[1] - 0.654321).abs() < 0.0001); // Y1
-        assert!((mesh.positions[2] - 0.111).abs() < 0.0001); // Z1
-        assert!((mesh.positions[3] - 0.223456).abs() < 0.0001); // X2
-        assert!((mesh.positions[4] - 0.754321).abs() < 0.0001); // Y2
-        assert!((mesh.positions[5] - 0.211).abs() < 0.0001); // Z2
-
-        // Verify relative distances are preserved with high precision
-        let dx = mesh.positions[3] - mesh.positions[0];
-        let dy = mesh.positions[4] - mesh.positions[1];
-        let dz = mesh.positions[5] - mesh.positions[2];
-
-        // Expected: dx=0.1, dy=0.1, dz=0.1
-        assert!((dx - 0.1).abs() < 0.0001);
-        assert!((dy - 0.1).abs() < 0.0001);
-        assert!((dz - 0.1).abs() < 0.0001);
-    }
-
-    #[test]
     fn test_apply_shift_to_existing_mesh() {
         let mut mesh = Mesh::new();
 
@@ -1301,6 +1247,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -1315,6 +1263,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert!(mesh.indices.is_empty());
@@ -1329,6 +1279,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -1468,6 +1420,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2, 1, 2, 3]);
@@ -1495,7 +1449,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![3, 4, 5], "sliver dropped, real kept");
         // Positions/normals are never touched (orphan vertices are fine).
@@ -1511,7 +1465,7 @@ mod tests {
             indices: vec![0, 1, 2],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert!(mesh.indices.is_empty(), "coincident-pair needle dropped");
     }
@@ -1525,7 +1479,7 @@ mod tests {
             indices: vec![0, 1, 2],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![0, 1, 2], "above-grid triangle kept");
     }
@@ -1556,7 +1510,7 @@ mod tests {
             ],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(
             mesh.indices,
@@ -1577,7 +1531,7 @@ mod tests {
             ],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![0, 1, 2]);
     }
@@ -1593,7 +1547,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         let once = mesh.indices.clone();
         mesh.drop_thin_triangles(GRID);
@@ -1613,7 +1567,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.clean_degenerate();
         assert_eq!(mesh.indices, vec![3, 4, 5]);
     }

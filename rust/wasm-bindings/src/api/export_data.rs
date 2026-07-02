@@ -20,7 +20,7 @@ impl IfcAPI {
         mode: String,
         delimiter: String,
         include_properties: bool,
-    ) -> String {
+    ) -> Vec<u8> {
         let mode = match mode.as_str() {
             "properties" => CsvMode::Properties,
             "quantities" => CsvMode::Quantities,
@@ -31,7 +31,7 @@ impl IfcAPI {
             delimiter: if delimiter.is_empty() { ",".to_string() } else { delimiter },
             include_properties,
         };
-        ifc_lite_export::export_csv(content, mode, &opts)
+        ifc_lite_export::export_csv(content, mode, &opts).into_bytes()
     }
 
     /// Export structured **JSON** (array of entity objects with typed property values).
@@ -42,9 +42,9 @@ impl IfcAPI {
         pretty: bool,
         include_properties: bool,
         include_quantities: bool,
-    ) -> String {
+    ) -> Vec<u8> {
         let opts = JsonOptions { pretty, include_properties, include_quantities };
-        ifc_lite_export::export_json(content, &opts)
+        ifc_lite_export::export_json(content, &opts).into_bytes()
     }
 
     /// Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
@@ -59,7 +59,7 @@ impl IfcAPI {
         include_quantities: bool,
         pretty: bool,
         included: &[u32],
-    ) -> String {
+    ) -> Vec<u8> {
         let mut opts = JsonLdOptions {
             include_properties,
             include_quantities,
@@ -70,7 +70,7 @@ impl IfcAPI {
         if !context.is_empty() {
             opts.context = context;
         }
-        ifc_lite_export::export_jsonld(content, &opts)
+        ifc_lite_export::export_jsonld(content, &opts).into_bytes()
     }
 
     /// Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
@@ -81,8 +81,8 @@ impl IfcAPI {
         content: &[u8],
         only_known_properties: bool,
         pretty: bool,
-    ) -> String {
+    ) -> Vec<u8> {
         let opts = Ifc5Options { only_known_properties, pretty, ..Default::default() };
-        ifc_lite_export::export_ifc5(content, &opts)
+        ifc_lite_export::export_ifc5(content, &opts).into_bytes()
     }
 }

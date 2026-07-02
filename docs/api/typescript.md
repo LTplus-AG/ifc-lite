@@ -624,6 +624,14 @@ interface MergeExportOptions {
   //   'normalize'      — rescale it into the first model's unit (one single-unit project)
   //   'assume-shared'  — force one project without rescaling
   unitReconciliation?: 'auto' | 'normalize' | 'assume-shared';
+  // Spatial matching strategy per container type (omitted = today's combined
+  // heuristic: name match, else single-instance fallback for sites/buildings;
+  // name-then-elevation for storeys):
+  //   'single':  unify iff each model contributes exactly one (Name ignored)
+  //   'by-name': Name match only (case-insensitive), no single-instance fallback
+  mergeSites?: 'single' | 'by-name';
+  mergeBuildings?: 'single' | 'by-name';
+  mergeStoreys?: 'by-name' | 'by-elevation' | 'by-name-then-elevation';
   visibleOnly?: boolean;
 }
 

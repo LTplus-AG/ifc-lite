@@ -42,6 +42,13 @@ pub(super) fn build_welded(mesh: &Mesh) -> Option<Welded> {
     if nv < 4 || nv > MAX_VERTS || w.indices.is_empty() {
         return None;
     }
+    // Reject non-finite coordinates outright: a NaN/inf vertex poisons the
+    // centroid and covariance (NaN eigenvalues), and verify's max-deviation
+    // fold is NaN-blind (`NaN > max_dev` is false), so a malformed mesh could
+    // otherwise bucket AND pass verification with a NaN canonical transform.
+    if w.positions.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
     let mut verts: Vec<Vector3<f64>> = Vec::with_capacity(nv);
     let mut c = Vector3::zeros();
     for i in 0..nv {
@@ -129,7 +136,10 @@ pub(super) fn signature_keys(w: &Welded) -> Vec<u64> {
     cov /= w.verts.len() as f64;
     let eig = cov.symmetric_eigenvalues();
     let mut ev = [eig[0], eig[1], eig[2]];
-    ev.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // total_cmp: a NaN/inf vertex coordinate yields a NaN eigenvalue, and
+    // partial_cmp().unwrap() would panic on it (NaN sorts deterministically
+    // to one end instead).
+    ev.sort_by(|a, b| a.total_cmp(b));
     // relative quantisation: eigenvalues scale with size^2; use a log-ish grid.
     let q = |x: f64| -> [i64; 2] {
         let s = (x.max(0.0)).sqrt(); // characteristic length
@@ -504,7 +514,7 @@ fn pca_frame(verts: &[Vector3<f64>]) -> Option<Matrix3<f64>> {
     let eig = nalgebra::SymmetricEigen::new(cov);
     // sort eigenvectors by eigenvalue
     let mut idx = [0usize, 1, 2];
-    idx.sort_by(|&a, &b| eig.eigenvalues[a].partial_cmp(&eig.eigenvalues[b]).unwrap());
+    idx.sort_by(|&a, &b| eig.eigenvalues[a].total_cmp(&eig.eigenvalues[b]));
     let mut f: Matrix3<f64> = Matrix3::zeros();
     for (k, &i) in idx.iter().enumerate() {
         let col: Vector3<f64> = eig.eigenvectors.column(i).into_owned();

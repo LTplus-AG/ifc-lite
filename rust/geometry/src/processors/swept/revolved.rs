@@ -253,7 +253,7 @@ impl GeometryProcessor for RevolvedAreaSolidProcessor {
             normals: Vec::new(),
             indices,
             rtc_applied: false, 
-            origin: [0.0; 3],        instance_meta: None, };
+            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None };
 
         // Apply Position to lift Position-local coords into object coords.
         apply_transform(&mut mesh, &position_transform);

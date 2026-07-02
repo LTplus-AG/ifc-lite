@@ -13,7 +13,7 @@
 
 import { writeFile, readFile } from 'node:fs/promises';
 import type { EntityRef } from '@ifc-lite/sdk';
-import { GeometryProcessor } from '@ifc-lite/geometry';
+import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { countGlbMeshes } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
@@ -159,12 +159,27 @@ const exportGlb: Tool = {
     const gp = new GeometryProcessor();
     await gp.init();
     try {
-      const glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+      let glb: Uint8Array | null;
+      try {
+        glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+      } catch (err) {
+        // The Rust boundary fails closed on an empty visible mesh set; map the
+        // typed error to the tailored tool error.
+        if (isNoRenderGeometryError(err)) {
+          throw new ToolExecutionError({
+            code: ToolErrorCode.INTERNAL_ERROR,
+            message: filterType
+              ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
+              : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
+          });
+        }
+        throw err;
+      }
       if (glb == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
       }
-      // A structurally valid GLB with zero meshes means nothing had render
-      // geometry — fail loud instead of writing an empty file as success.
+      // Defense-in-depth behind the Rust fail-closed guard: a zero-mesh GLB
+      // must never be written to disk and reported as success.
       if (countGlbMeshes(glb) === 0) {
         throw new ToolExecutionError({
           code: ToolErrorCode.INTERNAL_ERROR,
@@ -219,7 +234,7 @@ const exportObj: Tool = {
       if (obj == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
       }
-      await writeFile(filePath, obj, 'utf-8');
+      await writeFile(filePath, obj);
       return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });
     } finally {
       gp.dispose();
@@ -252,7 +267,7 @@ const exportIfcx: Tool = {
       if (ifcx == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
       }
-      await writeFile(filePath, ifcx, 'utf-8');
+      await writeFile(filePath, ifcx);
       return okResult(`Wrote ${ifcx.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
     } finally {
       gp.dispose();

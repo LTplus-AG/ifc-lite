@@ -166,7 +166,7 @@ impl<'a> Reader<'a> {
         let indices: Vec<u32> = (0..n).map(|_| self.u32()).collect::<Option<_>>()?;
         let rtc_applied = self.u8()? != 0;
         let origin = [self.f64()?, self.f64()?, self.f64()?];
-        Some(Mesh { positions, normals, indices, rtc_applied, origin, instance_meta: None })
+        Some(Mesh { positions, normals, indices, rtc_applied, origin, instance_meta: None, local_bounds: None, local_to_world: None })
     }
 }
 

@@ -1171,6 +1171,13 @@ export class Scene {
         // Fragments are subsets of the same source mesh → same local frame.
         // Preserve origin so each fragment relativizes/renders in world space.
         ...(meshData.origin ? { origin: meshData.origin } : {}),
+        // Each fragment is a vertex SUBSET of the same source mesh, so the
+        // parent's localBounds/localToWorld (issue #1474) still apply
+        // unchanged: localBounds is a safe (if loose) superset — the caller
+        // unions across an entity's pieces anyway — and localToWorld is the
+        // one placement shared by the whole (pre-split) mesh.
+        ...(meshData.localBounds ? { localBounds: meshData.localBounds } : {}),
+        ...(meshData.localToWorld ? { localToWorld: meshData.localToWorld } : {}),
       });
     }
 
@@ -2678,6 +2685,135 @@ export class Scene {
     };
     this.boundingBoxes.set(expressId, bbox);
     return bbox;
+  }
+
+  /**
+   * Local (pre-placement, object-space) AABB for an entity (issue #1474) — the
+   * element's true, un-rotated extent, unlike {@link getEntityBoundingBox}'s
+   * world-space (axis-aligned-to-world) box. Y-up metres, same frame as
+   * `positions`. O(1): no vertex scan, reads `MeshData.localBounds` captured
+   * by the geometry pipeline.
+   *
+   * Unions `localBounds` across all of the entity's mesh pieces — safe with
+   * no reconciliation, since every piece of one element is already expressed
+   * in the same local frame (see `MeshData.localBounds` docs). For a
+   * GPU-instanced entity, unions the local box of every occurrence's
+   * template — one `expressId` can hold multiple occurrence records backed
+   * by DIFFERENT templates (e.g. a mapped-item assembly whose sub-items
+   * split across materials), not just repeats of one template, mirroring the
+   * flat-path union above.
+   *
+   * Returns `null` for a container/assembly with no mesh (e.g.
+   * `IfcElementAssembly`), or when not captured (older cached geometry).
+   */
+  getEntityLocalBounds(expressId: number): { min: [number, number, number]; max: [number, number, number] } | null {
+    const pieces = this.meshDataMap.get(expressId);
+    if (pieces && pieces.length > 0) {
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      let found = false;
+      for (const piece of pieces) {
+        const lb = piece.localBounds;
+        if (!lb) continue;
+        found = true;
+        if (lb.min[0] < minX) minX = lb.min[0];
+        if (lb.min[1] < minY) minY = lb.min[1];
+        if (lb.min[2] < minZ) minZ = lb.min[2];
+        if (lb.max[0] > maxX) maxX = lb.max[0];
+        if (lb.max[1] > maxY) maxY = lb.max[1];
+        if (lb.max[2] > maxZ) maxZ = lb.max[2];
+      }
+      return found ? { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] } : null;
+    }
+
+    // GPU-instanced entity: no flat mesh piece. Union every occurrence's
+    // template box (computed once at upload time, `scene.ts` instancing
+    // upload path) — distinct occurrence records for one expressId can point
+    // at distinct templates.
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (occurrences && occurrences.length > 0) {
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      let found = false;
+      for (const occ of occurrences) {
+        const tmpl = this.instancedTemplateCpu[occ.templateIndex];
+        if (!tmpl || !Number.isFinite(tmpl.localMin[0])) continue;
+        found = true;
+        if (tmpl.localMin[0] < minX) minX = tmpl.localMin[0];
+        if (tmpl.localMin[1] < minY) minY = tmpl.localMin[1];
+        if (tmpl.localMin[2] < minZ) minZ = tmpl.localMin[2];
+        if (tmpl.localMax[0] > maxX) maxX = tmpl.localMax[0];
+        if (tmpl.localMax[1] > maxY) maxY = tmpl.localMax[1];
+        if (tmpl.localMax[2] > maxZ) maxZ = tmpl.localMax[2];
+      }
+      return found ? { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] } : null;
+    }
+    return null;
+  }
+
+  /**
+   * The resolved local→world placement transform for an entity (issue
+   * #1474): row-major 4×4 (16 numbers), Y-up metres — pairs with
+   * {@link getEntityLocalBounds} to reconstruct the element's true oriented
+   * world box (an OBB), unlike {@link getEntityBoundingBox}'s pre-unioned
+   * world-axis-aligned box.
+   *
+   * A flat entity's mesh pieces all share one placement (one
+   * `IfcLocalPlacement` per element) — returns the first piece that carries
+   * one. For a GPU-instanced entity, reads the FIRST occurrence record's
+   * transform (from the packed instance buffer, column-major, transposed
+   * here so the public contract is row-major regardless of path).
+   *
+   * KNOWN LIMITATION: unlike {@link getEntityLocalBounds} (safe to union),
+   * a transform can't be meaningfully aggregated across multiple occurrence
+   * records — an entity whose shape is internally composed of several
+   * independently-placed mapped sub-items (e.g. a railing with repeated
+   * baluster geometry) has genuinely DIFFERENT per-occurrence transforms
+   * under one `expressId`. This returns one representative transform, not
+   * necessarily the "whole entity's" placement, for such cases.
+   *
+   * Returns `null` for a container/assembly with no mesh, or when not
+   * captured (older cached geometry, or the instancing template was released).
+   *
+   * Returns `Float64Array`, NOT `Float32Array`: `localToWorld` carries the
+   * placement's translation in the *original* (pre-RTC) coordinate frame,
+   * which for a building-scale/georeferenced model can be tens of thousands
+   * of metres from the origin — f32 there loses sub-millimetre precision
+   * (the exact fan-collapse failure mode `MeshData.origin` exists to avoid
+   * for `positions`). The flat path's source data is already f64
+   * (`piece.localToWorld` round-trips from Rust's `[f64; 16]`); the
+   * instanced path's source (the GPU instance buffer) is genuinely f32, so
+   * widening it here is lossless but doesn't recover precision already lost
+   * upstream in that path.
+   */
+  getEntityTransform(expressId: number): Float64Array | null {
+    const pieces = this.meshDataMap.get(expressId);
+    if (pieces && pieces.length > 0) {
+      for (const piece of pieces) {
+        if (piece.localToWorld && piece.localToWorld.length === 16) {
+          return new Float64Array(piece.localToWorld);
+        }
+      }
+      return null;
+    }
+
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (occurrences && occurrences.length > 0) {
+      const { templateIndex, byteOffset } = occurrences[0];
+      const tmpl = this.instancedTemplateCpu[templateIndex];
+      if (!tmpl) return null;
+      const dv = new DataView(tmpl.instanceData);
+      const row = new Float64Array(16);
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          // Source is column-major (mat[c][r] at byteOffset + (c*4+r)*4);
+          // write it out row-major.
+          row[r * 4 + c] = dv.getFloat32(byteOffset + (c * 4 + r) * 4, true);
+        }
+      }
+      return row;
+    }
+    return null;
   }
 
   /**

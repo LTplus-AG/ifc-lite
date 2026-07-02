@@ -10,6 +10,7 @@
 mod adjacency;
 mod constructions;
 mod csv;
+mod error;
 mod frame;
 mod geom;
 mod gltf;
@@ -30,9 +31,12 @@ mod shades;
 mod step;
 
 pub use csv::{export_csv, CsvMode, CsvOptions};
+pub use error::ExportError;
 pub use gltf::{
     export_glb, export_glb_from_meshes, export_glb_with_stats, export_glb_with_stats_with_index,
-    GltfOptions, GltfStats,
+    export_gltf_streaming, export_glb_streaming_bounded, try_export_glb,
+    try_export_glb_with_stats, GltfBuffer, GltfOptions,
+    GltfStats,
 };
 pub use hbjson::Model;
 // Re-exported so a caller can `build_entity_index` once and share it across the

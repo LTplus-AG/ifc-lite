@@ -42,7 +42,7 @@ import {
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
-import { type MeshData } from '@ifc-lite/geometry';
+import { GeometryProcessor, isNoRenderGeometryError, type MeshData } from '@ifc-lite/geometry';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
@@ -89,6 +89,10 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   // the geometryResult is needed — GLB export doesn't read the parsed
   // STEP store.
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
+  // Merge-layers suppresses multilayer-wall part meshes at load time (#540);
+  // the from-bytes exporter re-meshes with defaults and would resurrect them,
+  // exporting different model content than the user loaded.
+  const mergeLayers = useViewerStore((s) => s.mergeLayers);
 
   const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
@@ -225,30 +229,84 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       // occurrences from the export. Mirrors ExportDialog.tsx. (#1238 review)
       const federatedModel = models.get(selectedModelId);
       const idOffset = federatedModel?.idOffset ?? 0;
-      const exportGeometry = withInstancedMeshes(
-        selectedModel.geometryResult,
-        idOffset === 0,
-      );
-      const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
-      const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
-      const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
-      const hasIsolation = !!globalIsolated && globalIsolated.size > 0;
+      const sourceFile = federatedModel?.sourceFile;
 
-      const meshes = (exportGeometry.meshes as MeshData[])
-        .filter((m) => {
-          if (!visibleOnly) return true;
-          if (hiddenIfcTypes && m.ifcType && hiddenIfcTypes.has(m.ifcType)) return false;
-          if (hasIsolation && !globalIsolated!.has(m.expressId)) return false;
-          if (globalHidden && globalHidden.has(m.expressId)) return false;
-          return true;
-        })
-        .map((m) =>
-          colorSource === 'shading' && m.shadingColor
-            ? ({ ...m, color: m.shadingColor } as MeshData)
-            : m,
+      // Prefer the FROM-BYTES exporter when it can express this export exactly:
+      // it re-meshes at full fidelity in Rust with rep-identity instancing
+      // (50-85% smaller on repetitive models) and bounded memory on large
+      // inputs. Requirements: rendering colours (shading substitution only
+      // exists on the viewer's MeshData), a plain .ifc source handle (cache
+      // restores have none; .ifcx/.ifczip go through different parsers), and
+      // the primary id space (idOffset 0) so node-extras expressIds stay
+      // consistent with the from-meshes output. Everything else keeps the
+      // from-meshes assembler over the meshes the viewer already holds.
+      // NOTE on fidelity: the on-screen load may skip small cuts / lower the
+      // tessellation tier; exporters deliberately re-mesh at full fidelity
+      // (the house rule - see GeometryProcessorOptions.skipSmallCuts). Only
+      // mergeLayers changes model CONTENT, so it forces the from-meshes path.
+      const canUseSource =
+        colorSource === 'rendering' &&
+        !mergeLayers &&
+        idOffset === 0 &&
+        !!sourceFile &&
+        /\.ifc$/i.test(sourceFile.name);
+
+      let glb: Uint8Array;
+      if (canUseSource) {
+        const bytes = new Uint8Array(await sourceFile.arrayBuffer());
+        const toLocal = (set: Set<number> | null | undefined): Uint32Array => {
+          if (!set || set.size === 0) return new Uint32Array();
+          const out: number[] = [];
+          for (const g of set) {
+            const local = g - idOffset;
+            if (local > 0) out.push(local);
+          }
+          return new Uint32Array(out);
+        };
+        const hidden = visibleOnly ? toLocal(getGlobalHiddenIds(selectedModelId)) : new Uint32Array();
+        const isolated = visibleOnly ? toLocal(getGlobalIsolatedIds(selectedModelId)) : new Uint32Array();
+        const hiddenTypesCsv = visibleOnly
+          ? [...buildHiddenIfcTypes(typeVisibility)].join(',')
+          : '';
+        const gp = new GeometryProcessor();
+        await gp.init();
+        try {
+          const out = gp.exportGlb(bytes, includeMetadata, hidden, isolated, hiddenTypesCsv, lit);
+          if (!out) throw new Error('Geometry engine unavailable');
+          glb = out;
+        } finally {
+          gp.dispose();
+        }
+      } else {
+        const exportGeometry = withInstancedMeshes(
+          selectedModel.geometryResult,
+          idOffset === 0,
         );
+        const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
+        const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;
+        const hiddenIfcTypes = visibleOnly ? buildHiddenIfcTypes(typeVisibility) : undefined;
+        const hasIsolation = !!globalIsolated && globalIsolated.size > 0;
 
-      const glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata, lit });
+        const meshes = (exportGeometry.meshes as MeshData[])
+          .filter((m) => {
+            // Instanced type-library duplicates (geometryClass 2) duplicate
+            // occurrence geometry at the origin; the from-bytes assembler
+            // excludes them (mesh_visible) and so must this path.
+            if (m.geometryClass === 2) return false;
+            if (!visibleOnly) return true;
+            if (hiddenIfcTypes && m.ifcType && hiddenIfcTypes.has(m.ifcType)) return false;
+            if (hasIsolation && !globalIsolated!.has(m.expressId)) return false;
+            if (globalHidden && globalHidden.has(m.expressId)) return false;
+            return true;
+          })
+          .map((m) =>
+            colorSource === 'shading' && m.shadingColor
+              ? ({ ...m, color: m.shadingColor } as MeshData)
+              : m,
+          );
+
+        glb = await exportGlbFromGeometry(exportGeometry, { meshes, includeMetadata, lit });
+      }
 
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
       const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
@@ -268,7 +326,11 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       });
     } catch (err) {
       console.error('Export failed:', err);
-      const errMsg = `GLB export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+      // The Rust boundary fails closed on an empty visible set; translate the
+      // typed error into the operator-friendly message.
+      const errMsg = isNoRenderGeometryError(err)
+        ? 'GLB export produced 0 meshes — nothing visible to export with the current filters.'
+        : `GLB export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
       setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
     } finally {
@@ -277,6 +339,8 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   }, [
     selectedModel,
     selectedModelId,
+    models,
+    mergeLayers,
     includeMetadata,
     lit,
     colorSource,

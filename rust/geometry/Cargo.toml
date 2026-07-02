@@ -43,6 +43,10 @@ rayon = "1.10"
 # Fast hashing
 rustc-hash = "2.1"
 
+# Serialization for the public GeometryDiagnostics contract (already present in
+# the wasm tree transitively via ifc-lite-processing; no new bundle weight).
+serde = { version = "1.0", features = ["derive"] }
+
 # PNG decode for IfcBlobTexture (issue #961). Already in the dependency tree
 # (transitive), so it adds no new wasm weight. Pure-Rust inflate
 # (miniz_oxide / fdeflate) — wasm-safe.
@@ -73,6 +77,9 @@ bnum = { version = "0.14.4", features = ["numtraits"] }
 
 [dev-dependencies]
 approx = "0.5"
+# JSON serialization for the GeometryDiagnostics camelCase-contract test (asserts
+# the serde rename_all keys match the @ifc-lite/geometry TS interface).
+serde_json = "1.0"
 # Property-based testing for the CSG kernel invariants
 # (tests/csg_property_test.rs): volume bounds, NaN-freedom, watertightness
 # over bounded randomized inputs. Case counts are set explicitly per

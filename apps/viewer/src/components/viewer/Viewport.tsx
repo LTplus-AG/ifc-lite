@@ -488,16 +488,30 @@ export function Viewport({
   // animation loop reads the latest without re-subscribing.
   const clashHighlightColors = useViewerStore((s) => s.clashHighlightColors);
   const clashHighlightColorsRef = useLatestRef(clashHighlightColors);
-  // Clash overlap-region wireframe box (#1277): push the focused clash's bounds
-  // to the renderer as a distinct-colour box. Cleared (null) on teardown.
+  // Focused-clash indicator (#1277/#1402): prefer the real CONTACT geometry
+  // (shared-face polygon outlines / intersection lines) when available, and fall
+  // back to the AABB box otherwise. Both draw on the same overlay line buffer, so
+  // a single effect drives exactly one of them (no buffer race). Cleared on
+  // teardown. On by default; the clash settings toggle hides it.
   const clashOverlapBox = useViewerStore((s) => s.clashOverlapBox);
+  const clashContactLines = useViewerStore((s) => s.clashContactLines);
+  const showClashRegionBox = useViewerStore((s) => s.showClashRegionBox);
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    renderer.setClashOverlapBox(
-      clashOverlapBox ? { ...clashOverlapBox, color: CLASH_COLOR_OVERLAP } : null,
-    );
-  }, [clashOverlapBox]);
+    if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
+      renderer.setClashContactLines({
+        vertices: new Float32Array(clashContactLines.vertices),
+        color: clashContactLines.color,
+      });
+    } else if (showClashRegionBox && clashOverlapBox) {
+      renderer.setClashOverlapBox({ ...clashOverlapBox, color: CLASH_COLOR_OVERLAP });
+    } else {
+      renderer.setClashContactLines(null);
+    }
+    // isInitialized: if a clash is focused before the renderer mounts, this effect
+    // bails early; depend on it so the indicator is (re)sent once it is ready.
+  }, [clashOverlapBox, clashContactLines, showClashRegionBox, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);

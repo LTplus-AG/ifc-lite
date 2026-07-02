@@ -97,7 +97,7 @@ export function HbjsonExportDialog({ trigger }: HbjsonExportDialogProps) {
         throw new Error('Geometry engine unavailable');
       }
 
-      const blob = new Blob([hbjson], { type: 'application/json' });
+      const blob = new Blob([hbjson as BlobPart], { type: 'application/json' });
       downloadBlob(blob, `${sanitizeFilename(baseName, { fallback: 'model' })}.hbjson`);
 
       const msg = `Exported HBJSON (${(blob.size / 1024).toFixed(0)} KB)`;

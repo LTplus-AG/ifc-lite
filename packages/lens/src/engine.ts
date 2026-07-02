@@ -10,6 +10,7 @@ import type {
   LensRule,
   AutoColorSpec,
   AutoColorLegendEntry,
+  ClassificationInfo,
 } from './types.js';
 import { matchesCriteria } from './matching.js';
 import { hexToRgba, GHOST_COLOR, uniqueColor } from './colors.js';
@@ -136,6 +137,9 @@ export function evaluateAutoColorLens(
 
   // Phase 1: Extract values and group entities by distinct value
   const valueGroups = new Map<string, number[]>();
+  // Grouping key -> legend label (first occurrence wins). Differs from the key
+  // only for classification, which shows the name alongside System: Code. (#1460)
+  const valueLabels = new Map<string, string>();
   const ghostIds: number[] = [];
 
   provider.forEachEntity((globalId) => {
@@ -149,11 +153,12 @@ export function evaluateAutoColorLens(
       return;
     }
 
-    for (const value of values) {
-      let group = valueGroups.get(value);
+    for (const { key, label } of values) {
+      let group = valueGroups.get(key);
       if (!group) {
         group = [];
-        valueGroups.set(value, group);
+        valueGroups.set(key, group);
+        valueLabels.set(key, label);
       }
       group.push(globalId);
     }
@@ -187,7 +192,7 @@ export function evaluateAutoColorLens(
     ruleEntityIds.set(ruleId, entityIds);
     const displayName = autoColor.source === 'model'
       ? (provider.getModelName?.(value) ?? value)
-      : value;
+      : (valueLabels.get(value) ?? value);
     legend.push({ id: ruleId, name: displayName, color, count: entityIds.length });
   }
 
@@ -207,6 +212,30 @@ export function evaluateAutoColorLens(
 }
 
 /**
+ * A grouping key plus the human-readable label shown in the legend. They are
+ * identical for every source except `classification`, where grouping stays by
+ * `System: Code` (stable identity) but the label also surfaces the name, so the
+ * same code never fragments across slightly different names. (#1460)
+ */
+interface AutoColorValue {
+  key: string;
+  label: string;
+}
+
+/** Pick the classification reference to group by - the one whose system matches
+ *  `psetName` (case-insensitive substring) when set, else the first. */
+function selectClassificationRef(
+  cls: ReadonlyArray<ClassificationInfo>,
+  psetName?: string,
+): ClassificationInfo {
+  if (!psetName) return cls[0];
+  return (
+    cls.find((ref) => (ref.system ?? '').toLowerCase().includes(psetName.toLowerCase())) ??
+    cls[0]
+  );
+}
+
+/**
  * Extract every distinct value an entity should be grouped under. Only
  * `material` is multi-valued — an element with a layer / constituent set
  * belongs to each of its individual materials; all other sources collapse to
@@ -218,7 +247,28 @@ function extractAutoColorValues(
   spec: AutoColorSpec,
   globalId: number,
   provider: LensDataProvider,
-): string[] {
+): AutoColorValue[] {
+  // Classification: group by "System: Code", but label with the name too so the
+  // legend reads e.g. "Uniclass: EF_25_10 (Walls)". (#1460)
+  if (spec.source === 'classification' && provider.getClassifications) {
+    const cls = provider.getClassifications(globalId);
+    if (!cls || cls.length === 0) return [];
+    const c = selectClassificationRef(cls, spec.psetName);
+    const codeParts: string[] = [];
+    if (c.system) codeParts.push(c.system);
+    if (c.identification) codeParts.push(c.identification);
+    const code = codeParts.join(': ');
+    const name = c.name?.trim();
+    const key = code || name || '';
+    if (key === '') return [];
+    // Append the name only when it adds information beyond the code: skip it when
+    // it merely repeats the bare identification OR the full "System: Code" string
+    // (some exports store the whole code in the name attribute).
+    const nameAddsInfo = !!name && name !== c.identification && name !== code;
+    const label = code && nameAddsInfo ? `${code} (${name})` : key;
+    return [{ key, label }];
+  }
+
   if (spec.source === 'material' && provider.getMaterialNames) {
     const names = provider.getMaterialNames(globalId);
     if (names && names.length > 0) {
@@ -227,14 +277,14 @@ function extractAutoColorValues(
         const t = (n ?? '').trim();
         if (t) seen.add(t);
       }
-      if (seen.size > 0) return [...seen];
+      if (seen.size > 0) return [...seen].map((k) => ({ key: k, label: k }));
     }
     // else fall through to the single-valued accessor
   }
 
   const raw = extractAutoColorValue(spec, globalId, provider);
   const value = raw != null ? String(raw).trim() : '';
-  return value === '' ? [] : [value];
+  return value === '' ? [] : [{ key: value, label: value }];
 }
 
 /**
@@ -273,11 +323,7 @@ function extractAutoColorValue(
         // Use "system: identification" as the grouping key. When psetName is set,
         // treat it as a classification-system filter (mirroring matchesClassification),
         // selecting the matching reference instead of unconditionally using the first.
-        const c = spec.psetName
-          ? (cls.find((ref) =>
-              (ref.system ?? '').toLowerCase().includes(spec.psetName!.toLowerCase()),
-            ) ?? cls[0])
-          : cls[0];
+        const c = selectClassificationRef(cls, spec.psetName);
         const parts: string[] = [];
         if (c.system) parts.push(c.system);
         if (c.identification) parts.push(c.identification);

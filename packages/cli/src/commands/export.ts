@@ -12,7 +12,7 @@
 
 import { writeFile, readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { GeometryProcessor } from '@ifc-lite/geometry';
+import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { countGlbMeshes } from '@ifc-lite/export';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
@@ -291,29 +291,42 @@ export async function exportCommand(args: string[]): Promise<void> {
         if (format === 'ifcx') {
           const out = gp.exportIfcx(bytes);
           if (out == null) fatal('IFCX export failed (geometry pipeline not initialized)');
-          await writeOutput(out as string, outPath);
+          await writeOutput(out as Uint8Array, outPath);
         } else if (format === 'step') {
           // Rust faithful re-serialization (+ reference-closed subset when filtered).
           const schema = getFlag(args, '--schema') ?? '';
           const out = gp.exportStep(bytes, schema, isolated);
           if (out == null) fatal('STEP export failed (geometry pipeline not initialized)');
-          await writeOutput(out as string, outPath);
+          await writeOutput(out as Uint8Array, outPath);
         } else if (format === 'jsonld') {
           const out = gp.exportJsonld(bytes, '', true, false, false, isolated);
           if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
-          await writeOutput(out as string, outPath);
+          await writeOutput(out as Uint8Array, outPath);
         } else if (format === 'obj') {
           const out = gp.exportObj(bytes, true, new Uint32Array(), isolated);
           if (out == null) fatal('OBJ export failed (geometry pipeline not initialized)');
-          await writeOutput(out as string, outPath);
+          await writeOutput(out as Uint8Array, outPath);
         } else {
           // gltf | glb → binary GLB
-          const out = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
-          if (out == null) fatal('GLB export failed (geometry pipeline not initialized)');
           if (!outPath) fatal('--out is required for GLB/glTF export (binary output)');
-          // Fail loud on an empty export: assemble_glb still emits a structurally
-          // valid GLB with zero meshes when nothing had render geometry, which would
-          // otherwise be written to disk and reported as success.
+          let out: Uint8Array | null;
+          try {
+            out = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+          } catch (err) {
+            // The Rust boundary fails closed on an empty visible mesh set; map
+            // the typed error to the tailored operator hint.
+            if (isNoRenderGeometryError(err)) {
+              fatal(
+                filterActive
+                  ? 'GLB export produced 0 meshes — the matched entities have no exportable render geometry. Check --type/--storey/--where/--limit.'
+                  : 'GLB export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).',
+              );
+            }
+            throw err;
+          }
+          if (out == null) fatal('GLB export failed (geometry pipeline not initialized)');
+          // Defense-in-depth behind the Rust fail-closed guard: a zero-mesh GLB
+          // must never be written to disk and reported as success.
           if (countGlbMeshes(out as Uint8Array) === 0) {
             fatal(
               filterActive

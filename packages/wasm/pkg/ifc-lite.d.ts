@@ -96,6 +96,12 @@ export class IfcAPI {
    * `emissive` self-illuminates each material at its base colour (core glTF
    * `emissiveFactor`) so renderers without ambient/IBL — Google Earth — don't
    * render the model near-black (#1427); omitted or `false` ⇒ off.
+   *
+   * Fails CLOSED: when the visible mesh set is empty this throws an `Error`
+   * whose message starts with `NO_RENDER_GEOMETRY`, instead of returning a
+   * structurally valid but empty GLB. #1438 put that guard only in the TS
+   * CLI/MCP wrappers; making the boundary itself refuse means SDK/viewer/
+   * direct callers inherit it too (the TS guards stay as defense-in-depth).
    */
   exportGlb(content: Uint8Array, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string, lit?: boolean | null, emissive?: boolean | null): Uint8Array;
   /**
@@ -129,7 +135,11 @@ export class IfcAPI {
    */
   exportKmzFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string): Uint8Array;
   /**
-   * Export the render geometry in `content` as a Wavefront **OBJ** string.
+   * Export the render geometry in `content` as Wavefront **OBJ** UTF-8 bytes.
+   *
+   * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+   * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+   * is genuinely needed.
    *
    * `hidden` / `isolated` are express-id filters mirroring the viewer's visibility
    * state (empty `isolated` ⇒ all visible). Instanced type-library shapes are skipped.
@@ -138,7 +148,7 @@ export class IfcAPI {
    * const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
    * ```
    */
-  exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): string;
+  exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): Uint8Array;
   /**
    * Process geometry for a subset of pre-scanned entities → flat
    * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
@@ -229,24 +239,28 @@ export class IfcAPI {
    * `"spatial"`}. `delimiter` defaults to `,` when empty; `include_properties` adds
    * flattened `Pset_Prop` columns to the entities view.
    */
-  exportCsv(content: Uint8Array, mode: string, delimiter: string, include_properties: boolean): string;
+  exportCsv(content: Uint8Array, mode: string, delimiter: string, include_properties: boolean): Uint8Array;
   /**
    * Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
    * only properties with an official IFC5 schema.
    */
-  exportIfcx(content: Uint8Array, only_known_properties: boolean, pretty: boolean): string;
+  exportIfcx(content: Uint8Array, only_known_properties: boolean, pretty: boolean): Uint8Array;
   /**
    * Export structured **JSON** (array of entity objects with typed property values).
    */
-  exportJson(content: Uint8Array, pretty: boolean, include_properties: boolean, include_quantities: boolean): string;
+  exportJson(content: Uint8Array, pretty: boolean, include_properties: boolean, include_quantities: boolean): Uint8Array;
   /**
    * Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
    * IFC4 OWL default. `included` is an express-id isolation filter mirroring the
    * OBJ/glTF/STEP exporters (empty ⇒ all entities).
    */
-  exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): string;
+  exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): Uint8Array;
   /**
-   * Re-serialize the model in `content` to a STEP/IFC string.
+   * Re-serialize the model in `content` to STEP/IFC UTF-8 bytes.
+   *
+   * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+   * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+   * is genuinely needed.
    *
    * `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
    * `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
@@ -254,15 +268,20 @@ export class IfcAPI {
    * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
    * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
    */
-  exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): string;
+  exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
   /**
-   * Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
+   * Merge several IFC models into one STEP/IFC UTF-8 byte buffer (`Uint8Array`).
+   * `concatenated` is every model's
    * bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
    * keeps its ids; later models are id-offset and their project unified to the first.
    */
-  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema: string): string;
+  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema: string): Uint8Array;
   /**
-   * Export the `IfcSpace` volumes in `content` as a Honeybee **HBJSON** string.
+   * Export the `IfcSpace` volumes in `content` as Honeybee **HBJSON** UTF-8 bytes.
+   *
+   * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+   * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+   * is genuinely needed.
    *
    * Rooms are built analytically from extruded-area profiles (watertight by construction);
    * faces are typed Floor / RoofCeiling / Wall with outward normals. The result loads via
@@ -273,7 +292,7 @@ export class IfcAPI {
    * const hbjson = api.exportHbjson(ifcContent, "my_model");
    * ```
    */
-  exportHbjson(content: Uint8Array, name: string): string;
+  exportHbjson(content: Uint8Array, name: string): Uint8Array;
   /**
    * Parse the file and return every `IfcAlignment` directrix as a flat
    * `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
@@ -350,6 +369,17 @@ export class IfcAPI {
    */
   setMergeLayers(enabled: boolean): void;
   /**
+   * Toggle the tier-independent small-cut skip (#1286). When `true`,
+   * `processGeometryBatch` drops `IfcBooleanResult` differences whose cutter is
+   * tiny relative to its host (steel copes/notches) while keeping the
+   * tessellation tier — so curves stay full-density. The viewer enables this for
+   * the on-screen load; exports/drawings leave it off so their geometry keeps
+   * every cut. Default off ⇒ byte-identical to before.
+   *
+   * Set BEFORE processing — meshes already emitted are not regenerated.
+   */
+  setSkipSmallCuts(on: boolean): void;
+  /**
    * Clear the cached entity index (call between loads when reusing
    * the same `IfcAPI` instance — e.g. the parser worker keeps one
    * `IfcAPI` alive across multiple `parse` requests).
@@ -423,6 +453,14 @@ export class IfcAPI {
    */
   scanGeometryEntitiesFast(content: string): any;
   /**
+   * Run geometry extraction on `content` and return its typed CSG / opening
+   * diagnostics (the `GeometryDiagnostics` contract) as a JS object, or
+   * `undefined` when nothing diagnostic-worthy happened (no openings, no
+   * failures). Takes the raw IFC bytes (`Uint8Array`) so there is no input-size
+   * cap. The produced meshes are dropped; only the diagnostics are returned.
+   */
+  diagnoseGeometry(content: Uint8Array): any;
+  /**
    * Parse IFC file and extract symbolic representations (Plan,
    * Annotation, FootPrint, Axis). These are 2D curves used for
    * architectural drawings instead of sectioning 3D geometry.
@@ -471,6 +509,13 @@ export class MeshCollection {
    * it twice for the same index yields the second call an empty mesh.
    */
   takeMesh(index: number): MeshDataJs | undefined;
+  /**
+   * The batch's typed CSG / opening diagnostics as a JS object (the
+   * `GeometryDiagnostics` contract), or `undefined` if none were recorded. The
+   * worker merges these across batches. One serialized value keeps the rich
+   * nested shape as a single FFI crossing instead of dozens of getters.
+   */
+  readonly diagnostics: any;
   /**
    * Get RTC offset X (for converting local coords back to world coords)
    * Add this to local X coordinates to get world X coordinates
@@ -1088,6 +1133,7 @@ export interface InitOutput {
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
+  readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
   readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
   readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number) => void;
@@ -1118,10 +1164,12 @@ export interface InitOutput {
   readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_setMergeLayers: (a: number, b: number) => void;
   readonly ifcapi_setRectParamFastPath: (a: number, b: number) => void;
+  readonly ifcapi_setSkipSmallCuts: (a: number, b: number) => void;
   readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
   readonly meshcollection_buildingRotation: (a: number, b: number) => void;
+  readonly meshcollection_diagnostics: (a: number) => number;
   readonly meshcollection_geometryHashCount: (a: number) => number;
   readonly meshcollection_geometryHashIds: (a: number) => number;
   readonly meshcollection_geometryHashValues: (a: number) => number;

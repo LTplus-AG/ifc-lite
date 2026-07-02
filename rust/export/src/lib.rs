@@ -11,6 +11,7 @@ mod adjacency;
 mod collada;
 mod constructions;
 mod csv;
+mod error;
 mod frame;
 mod geom;
 mod gltf;
@@ -32,8 +33,18 @@ mod step;
 
 pub use collada::export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};
-pub use gltf::{export_glb, export_glb_from_meshes, export_glb_with_stats, GltfOptions, GltfStats};
+pub use error::ExportError;
+pub use gltf::{
+    export_glb, export_glb_from_meshes, export_glb_with_stats, export_glb_with_stats_with_index,
+    export_gltf_streaming, export_glb_streaming_bounded, try_export_glb,
+    try_export_glb_with_stats, GltfBuffer, GltfOptions,
+    GltfStats,
+};
 pub use hbjson::Model;
+// Re-exported so a caller can `build_entity_index` once and share it across the
+// geometry (`export_glb_with_stats_with_index`) and attribute
+// (`stream_export_model_with_index`) passes.
+pub use ifc_lite_core::{build_entity_index, EntityIndex};
 pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
@@ -42,7 +53,8 @@ pub use kmz::{
 };
 pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use model::{
-    build_export_model, EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue,
+    build_export_model, stream_export_model, stream_export_model_with_index, EntityRow,
+    ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue,
 };
 pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 #[cfg(feature = "parquet-bos")]

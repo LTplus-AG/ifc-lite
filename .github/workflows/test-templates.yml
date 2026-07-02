@@ -17,7 +17,13 @@ permissions:
 jobs:
   test-templates:
     name: Scaffold & verify (${{ matrix.template }})
-    runs-on: depot-ubuntu-24.04-4
+    # Free GitHub-hosted runner. This job scaffolds a template, runs
+    # `npm install` + tsc + a vite/tsc build against PUBLISHED packages —
+    # no Rust/WASM compile and no cargo cache to preserve, so it never
+    # needed Depot's paid cores. A 6-way matrix on `depot-ubuntu-24.04-4`
+    # was billing 6 x 2x the base rate for pure JS work; `ubuntu-latest` is
+    # free + unlimited on a public repo. See scripts/README-vercel-cost.md.
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:

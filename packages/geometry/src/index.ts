@@ -26,6 +26,14 @@ export {
   type MetadataBootstrapSpatialNode,
 } from './platform-bridge.js';
 
+// Public CSG / opening diagnostics contract (surfaced on the streaming `complete`
+// event and the native ProcessingStats).
+export type { GeometryDiagnostics } from './diagnostics.js';
+export { mergeGeometryDiagnostics } from './diagnostics.js';
+
+// Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
+export { NO_RENDER_GEOMETRY, isNoRenderGeometryError } from './export-errors.js';
+
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler } from './coordinate-handler.js';
@@ -118,6 +126,16 @@ export interface GeometryProcessorOptions {
    * and worker-pool); the native desktop path does not consume it yet.
    */
   tessellationQuality?: TessellationQuality;
+  /**
+   * Tier-independent small-cut skip (issue #1286). When true, the WASM mesh pass
+   * drops `IfcBooleanResult` differences whose cutter is tiny relative to its
+   * host (steel copes/notches, minor detail recesses) WITHOUT lowering the
+   * tessellation tier — so curves keep full density while the dominant
+   * boolean-heavy load cost is skipped. Default false ⇒ every cut runs
+   * (byte-identical to before). The viewer enables it for the on-screen load;
+   * exporters/drawings leave it off so their geometry stays full fidelity.
+   */
+  skipSmallCuts?: boolean;
 }
 
 let activeWasmStreamingOperation: string | null = null;
@@ -192,7 +210,16 @@ export type StreamingGeometryEvent =
    * is additive.
    */
   | { type: 'progress'; phase: 'prepass' | 'workers' }
-  | { type: 'complete'; totalMeshes: number; coordinateInfo: import('./types.js').CoordinateInfo };
+  | {
+      type: 'complete';
+      totalMeshes: number;
+      coordinateInfo: import('./types.js').CoordinateInfo;
+      /** CSG / opening diagnostics aggregated over the whole load (the
+       *  GeometryDiagnostics contract). Omitted when none were recorded or on
+       *  non-parallel load paths. See ./diagnostics.ts for the field semantics
+       *  and which counts are exact vs batch-summed upper bounds. */
+      diagnostics?: import('./diagnostics.js').GeometryDiagnostics;
+    };
 
 // QueuedNativeStreamingEvent, native stream constants, and yieldToEventLoop
 // have been extracted to ./geometry-native.ts
@@ -209,6 +236,7 @@ export class GeometryProcessor {
   private mergeLayers: boolean;
   private enableInstancing: boolean;
   private tessellationQuality: TessellationQuality | null;
+  private skipSmallCuts: boolean;
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
@@ -217,6 +245,7 @@ export class GeometryProcessor {
     this.mergeLayers = options.mergeLayers === true;
     this.enableInstancing = options.enableInstancing !== false;
     this.tessellationQuality = options.tessellationQuality ?? null;
+    this.skipSmallCuts = options.skipSmallCuts === true;
     // Note: options accepted for API compatibility
     void options.quality;
 
@@ -229,6 +258,8 @@ export class GeometryProcessor {
       this.bridge.setMergeLayers(this.mergeLayers);
       // Same eager cache-and-replay for the tessellation level (#976).
       this.bridge.setTessellationQuality(this.tessellationQuality);
+      // …and the tier-independent small-cut skip (#1286).
+      this.bridge.setSkipSmallCuts(this.skipSmallCuts);
     }
   }
 
@@ -782,6 +813,10 @@ export class GeometryProcessor {
       // Issue #976: forward the tessellation level so every pool worker's
       // IfcAPI tessellates at the same density as the main-thread paths.
       tessellationQuality: this.tessellationQuality,
+      // Issue #1286: forward the small-cut skip so every pool worker drops the
+      // same tiny detail cuts as the main-thread paths. Forwarded every run, so
+      // an export processor (default false) never inherits a prior load's skip.
+      skipSmallCuts: this.skipSmallCuts,
       wasmUrls,
       workerCountOverride,
     });
@@ -1079,7 +1114,10 @@ export class GeometryProcessor {
 
   /**
    * Domain-format exporters (Rust source of truth in `ifc-lite-export`). Each takes
-   * the raw IFC buffer and returns the serialized format, or null if not initialized.
+   * the raw IFC buffer and returns the serialized output as bytes (`Uint8Array`;
+   * UTF-8 for the text formats, so output is not capped by the V8 max-string
+   * ceiling - decode with `TextDecoder` when a string is needed), or null if
+   * not initialized.
    */
 
   exportObj(
@@ -1087,11 +1125,16 @@ export class GeometryProcessor {
     includeNormals = true,
     hidden: Uint32Array = new Uint32Array(),
     isolated: Uint32Array = new Uint32Array(),
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportObj(buffer, includeNormals, hidden, isolated);
   }
 
+  /**
+   * Export render geometry as a binary GLB. Fails closed: a model whose visible
+   * mesh set is empty throws the typed `NO_RENDER_GEOMETRY` error (match with
+   * `isNoRenderGeometryError`) instead of returning a valid but empty GLB.
+   */
   exportGlb(
     buffer: Uint8Array,
     includeMetadata = false,
@@ -1105,12 +1148,23 @@ export class GeometryProcessor {
     return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive);
   }
 
+  /**
+   * Run geometry extraction on `buffer` and return its typed CSG / opening
+   * diagnostics (the `GeometryDiagnostics` contract), or `undefined` when nothing
+   * diagnostic-worthy happened or the bridge is not initialized. The meshes are
+   * discarded - this is the diagnostics-only surface for the CLI / SDK.
+   */
+  diagnoseGeometry(buffer: Uint8Array): import('./diagnostics.js').GeometryDiagnostics | undefined {
+    if (!this.bridge?.isInitialized()) return undefined;
+    return this.bridge.diagnoseGeometry(buffer);
+  }
+
   exportCsv(
     buffer: Uint8Array,
     mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
     delimiter = ',',
     includeProperties = false,
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportCsv(buffer, mode, delimiter, includeProperties);
   }
@@ -1120,7 +1174,7 @@ export class GeometryProcessor {
     pretty = false,
     includeProperties = true,
     includeQuantities = true,
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportJson(buffer, pretty, includeProperties, includeQuantities);
   }
@@ -1132,7 +1186,7 @@ export class GeometryProcessor {
     includeQuantities = false,
     pretty = false,
     included: Uint32Array = new Uint32Array(),
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
   }
@@ -1142,18 +1196,18 @@ export class GeometryProcessor {
     schema = '',
     included: Uint32Array = new Uint32Array(),
     mutationsJson = '',
-  ): string | null {
+  ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportStep(buffer, schema, included, mutationsJson);
   }
 
-  exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): string | null {
+  exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
   }
 
-  /** Merge several IFC models (raw byte buffers) into one STEP/IFC string. */
-  exportMerged(buffers: Uint8Array[], schema = ''): string | null {
+  /** Merge several IFC models (raw byte buffers) into one STEP/IFC UTF-8 byte buffer. */
+  exportMerged(buffers: Uint8Array[], schema = ''): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     let total = 0;
     for (const b of buffers) total += b.byteLength;
@@ -1293,7 +1347,7 @@ export class GeometryProcessor {
    * @param buffer IFC file buffer
    * @param name Model identifier / display name
    */
-  exportHbjson(buffer: Uint8Array, name: string): string | null {
+  exportHbjson(buffer: Uint8Array, name: string): Uint8Array | null {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }

@@ -1,5 +1,72 @@
 # @ifc-lite/export
 
+## 2.3.0
+
+### Minor Changes
+
+- 24e1648: Make the Rust-backed exporters reliable on large and degenerate inputs.
+
+  Remove the ~512 MB input cap on GLB/glTF (and the sibling OBJ, CSV, JSON, JSON-LD,
+  STEP, IFCX, HBJSON exporters). They decoded the entire input IFC byte buffer into a
+  single JS string via `safeUtf8Decode` before crossing into WASM, where the binding
+  immediately turned it back into bytes (`content.as_bytes()`). For an input over V8's
+  `0x1fffffe8` (~512 MB) string ceiling that decode threw "Cannot create a string longer
+  than 0x1fffffe8 characters", so files in the 0.5 GB+ range failed before any geometry
+  ran. The boundary now passes the raw `Uint8Array`/`&[u8]` straight through (matching the
+  existing `exportMerged` path), which removes the cap, drops a redundant full-buffer copy
+  and a UTF-8 re-encode, and is byte-faithful for non-UTF-8 input.
+
+  Scope: this lifts the cap on the INPUT side for all exporters. GLB returns a
+  `Uint8Array`, so its output also escapes the V8 ceiling; the string-returning
+  exporters (OBJ/CSV/JSON/JSON-LD/STEP/IFCX/HBJSON) still cap their serialized OUTPUT
+  at the same ~512 MB string limit. In-browser, the wasm32 linear-memory heap (not the
+  string cap) is the practical ceiling for the very largest models.
+
+  Fail loud on an empty GLB export. A malformed-but-parseable model (or a filter whose
+  matched entities carry no triangulated geometry) produced a structurally valid GLB with
+  zero meshes, which the CLI and MCP tools wrote to disk and reported as success. Both now
+  reject a zero-mesh GLB with a clear error (new `countGlbMeshes` helper in
+  `@ifc-lite/export`).
+
+  Guard the GLB assembler against the glTF 32-bit buffer limit. The assembler cast every
+  buffer offset and byteLength `as u32`; past 4 GiB those casts silently wrapped (release
+  builds disable overflow checks) and emitted a corrupt GLB. It now sums the binary buffer
+  length in `usize` and asserts the 4 GiB ceiling with a clear message instead of wrapping.
+
+### Patch Changes
+
+- 775e479: Fix IFC2X3 → IFC4/IFC4X3 schema conversion producing invalid entities. The converter trimmed
+  trailing attributes when downgrading but never **padded** the new trailing attributes that
+  newer schemas added (e.g. `PredefinedType` on `IfcWall` / `IfcBeam` / `IfcOpeningElement` /
+  `IfcFastener` / …, the IfcDoor/IfcWindow additions, `IfcMaterial.Category`, etc.). Upgraded
+  entities were left a positional attribute short and rejected by strict readers (e.g. BIM
+  Vision). Padding is driven by the generated buildingSMART attribute tables (`@ifc-lite/data`),
+  scoped to upconversion so the downconversion trim path is untouched.
+
+  Padding is applied **only when the source attribute name-list is a strict prefix of the
+  target's** (i.e. the newer schema merely appended attributes). Many entities insert/reorder
+  attributes mid-list — e.g. `IfcMaterialProperties` (`[Material]` → `[Name, Description,
+Properties, Material]`), `IfcApproval`, `IfcTask` — where blindly appending `$` would shift
+  values into the wrong, type-invalid slots; those are left untouched. All headline targets
+  (`IfcWall`/`Beam`/`Column`/`Member`/`Plate`/`OpeningElement`/`Door`/`Window`/`Fastener`/
+  `MechanicalFastener`/`Grid`, `IfcMaterial`) are prefix-safe, so the intended fix is preserved.
+
+  Also tolerate whitespace after `=` in `convertStepLine` (e.g. Tekla's `#34498= IFCWALL(...)`);
+  such lines previously failed the entity-line regex and passed through **unconverted**, so
+  neither type renames nor attribute adjustment applied. Validated end-to-end with ifcopenshell:
+  a federated IFC2X3 + IFC4X3 → IFC4 export went from 2556 "Invalid attribute value" errors to 0
+  (remaining issues are pre-existing source-data defects). ([#1416](https://github.com/LTplus-AG/ifc-lite/issues/1416))
+
+- Updated dependencies [e6bd2dd]
+- Updated dependencies [24e1648]
+- Updated dependencies [f9f0784]
+- Updated dependencies [7c45192]
+- Updated dependencies [6eb46f1]
+- Updated dependencies [4f76955]
+- Updated dependencies [909c1b0]
+- Updated dependencies [3f25a72]
+  - @ifc-lite/geometry@2.13.0
+
 ## 2.2.0
 
 ### Minor Changes

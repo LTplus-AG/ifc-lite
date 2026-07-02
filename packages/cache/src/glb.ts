@@ -57,9 +57,13 @@ interface GLTFNode {
   name?: string;
   extras?: { expressId?: number };
   children?: number[];
-  /** Node-local translation (xyz). Our exporter places all geometry under a
-   *  single translated root node, so this must be composed down the hierarchy. */
+  /** Node-local translation (xyz). The from-meshes exporter places all geometry
+   *  under a single translated root node, so this is composed down the hierarchy. */
   translation?: number[];
+  /** Node-local column-major 4x4 (glTF convention). The from-bytes instanced
+   *  exporter places each shared-template occurrence with a node MATRIX (rotation +
+   *  translation); mutually exclusive with `translation` per the glTF spec. */
+  matrix?: number[];
 }
 
 interface GLTFMesh {
@@ -341,6 +345,42 @@ function readAccessorData(
   return result;
 }
 
+/** Column-major 4x4 (glTF node-transform convention). */
+type Mat4 = number[];
+
+const MAT4_IDENTITY: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+/** Column-major 4x4 multiply `a * b`. */
+function mat4Mul(a: Mat4, b: Mat4): Mat4 {
+  const out = new Array<number>(16);
+  for (let col = 0; col < 4; col++) {
+    for (let row = 0; row < 4; row++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += a[k * 4 + row] * b[col * 4 + k];
+      out[col * 4 + row] = s;
+    }
+  }
+  return out;
+}
+
+/** A node's local transform: its `matrix` (column-major) or a translation matrix. */
+function nodeLocalMat4(nd: GLTFNode): Mat4 {
+  if (Array.isArray(nd.matrix) && nd.matrix.length === 16) return nd.matrix;
+  const t = nd.translation;
+  return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, t?.[0] ?? 0, t?.[1] ?? 0, t?.[2] ?? 0, 1];
+}
+
+/** True when a 4x4's upper-left 3x3 is the identity (within epsilon) — i.e. the
+ *  node carries pure translation, so vertices need no rotation/scale baking. */
+function linearIsIdentity(m: Mat4): boolean {
+  const e = 1e-6;
+  return (
+    Math.abs(m[0] - 1) < e && Math.abs(m[1]) < e && Math.abs(m[2]) < e &&
+    Math.abs(m[4]) < e && Math.abs(m[5] - 1) < e && Math.abs(m[6]) < e &&
+    Math.abs(m[8]) < e && Math.abs(m[9]) < e && Math.abs(m[10] - 1) < e
+  );
+}
+
 /**
  * Parse GLB geometry into MeshData format
  *
@@ -356,32 +396,32 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
     return meshes;
   }
 
-  // Compose node translations down the hierarchy. Our exporter parents every
-  // element node under one translated root (placement rides that root, vertices
-  // are centre-relative), so a parser that read accessors alone would land the
-  // whole model at the scene centre. Walk from the scene roots accumulating
-  // translation; the composed value rides each mesh as `MeshData.origin` below.
-  const nodeWorldT = new Map<number, [number, number, number]>();
+  // Compose each node's world transform down the hierarchy as a column-major 4x4.
+  // The exporter parents every element node under one translated root (placement
+  // rides that root; vertices are scene-centre-relative). The from-meshes path uses
+  // pure node TRANSLATIONS; the from-bytes INSTANCED path places each shared-template
+  // occurrence with a node MATRIX (rotation + translation). We compose the full 4x4
+  // so both round-trip: the translation rides each mesh as `MeshData.origin` (kept
+  // out of the f32 buffer for georef precision) and any rotation/scale is baked into
+  // the small, local imported vertices below.
+  const nodeWorldM = new Map<number, Mat4>();
   {
     const seen = new Set<number>();
     const roots = gltf.scenes?.[gltf.scene ?? 0]?.nodes ?? gltf.nodes.map((_, i) => i);
-    const walk = (idx: number, px: number, py: number, pz: number): void => {
+    const walk = (idx: number, parent: Mat4): void => {
       const nd = gltf.nodes?.[idx];
       if (!nd || seen.has(idx)) return; // guard against malformed cycles
       seen.add(idx);
-      const t = nd.translation;
-      const x = px + (t?.[0] ?? 0);
-      const y = py + (t?.[1] ?? 0);
-      const z = pz + (t?.[2] ?? 0);
-      nodeWorldT.set(idx, [x, y, z]);
-      for (const c of nd.children ?? []) walk(c, x, y, z);
+      const world = mat4Mul(parent, nodeLocalMat4(nd));
+      nodeWorldM.set(idx, world);
+      for (const c of nd.children ?? []) walk(c, world);
     };
-    for (const r of roots) walk(r, 0, 0, 0);
+    for (const r of roots) walk(r, MAT4_IDENTITY);
     // Extraction below iterates ALL nodes, not just scene-reachable ones. Walk any
     // node the scene roots didn't reach (disconnected components) as its own root so
     // every mesh node gets a composed transform — never silently emitted in local space.
     for (let i = 0; i < gltf.nodes.length; i++) {
-      if (!seen.has(i)) walk(i, 0, 0, 0);
+      if (!seen.has(i)) walk(i, MAT4_IDENTITY);
     }
   }
 
@@ -435,18 +475,6 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
         throw new Error('Position data must be Float32');
       }
 
-      // Surface the node's composed world translation as `MeshData.origin`
-      // (world = origin + position) rather than baking it into the f32 vertices.
-      // The exporter keeps vertices scene-centre-relative precisely so a
-      // georeferenced placement (a root translation of ~1e6 m) stays out of the
-      // f32 buffer; baking it back in would re-snap every vertex to a ~0.5 m grid
-      // and collapse fine detail (the GLB-roundtrip corruption). The renderer and
-      // all world-space consumers fold `origin` (#1114), so positions stay small
-      // and full-precision while the element still lands at its world position.
-      const wt = nodeWorldT.get(nodeIdx);
-      const origin: [number, number, number] | undefined =
-        wt && (wt[0] !== 0 || wt[1] !== 0 || wt[2] !== 0) ? wt : undefined;
-
       // Read normal data (optional, generate if missing)
       let normals: Float32Array;
       if (normAccessorIdx !== undefined) {
@@ -478,10 +506,46 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
         }
       }
 
+      // Apply the node's composed world transform. The TRANSLATION rides each mesh
+      // as `MeshData.origin` (world = origin + position) and is kept OUT of the f32
+      // vertex buffer: the exporter emits scene-centre-relative vertices precisely so
+      // a georeferenced placement (~1e6 m) does not re-snap every vertex to a ~0.5 m
+      // grid (the #1446 round-trip corruption); the renderer folds `origin` (#1114).
+      // Any ROTATION/SCALE (a from-bytes instanced occurrence's node MATRIX) is baked
+      // into the small, local vertices + normals here — MeshData has a translation
+      // origin channel but no rotation channel, so honoring the matrix means rotating
+      // the imported geometry, which stays f32-precise because the vertices are local.
+      const m = nodeWorldM.get(nodeIdx) ?? MAT4_IDENTITY;
+      const t: [number, number, number] = [m[12], m[13], m[14]];
+      let outPositions = positions;
+      let outNormals = normals;
+      if (!linearIsIdentity(m)) {
+        outPositions = new Float32Array(positions.length);
+        for (let i = 0; i + 2 < positions.length; i += 3) {
+          const x = positions[i], y = positions[i + 1], z = positions[i + 2];
+          outPositions[i] = m[0] * x + m[4] * y + m[8] * z;
+          outPositions[i + 1] = m[1] * x + m[5] * y + m[9] * z;
+          outPositions[i + 2] = m[2] * x + m[6] * y + m[10] * z;
+        }
+        outNormals = new Float32Array(normals.length);
+        for (let i = 0; i + 2 < normals.length; i += 3) {
+          const x = normals[i], y = normals[i + 1], z = normals[i + 2];
+          const nx = m[0] * x + m[4] * y + m[8] * z;
+          const ny = m[1] * x + m[5] * y + m[9] * z;
+          const nz = m[2] * x + m[6] * y + m[10] * z;
+          const len = Math.hypot(nx, ny, nz) || 1;
+          outNormals[i] = nx / len;
+          outNormals[i + 1] = ny / len;
+          outNormals[i + 2] = nz / len;
+        }
+      }
+      const origin: [number, number, number] | undefined =
+        t[0] !== 0 || t[1] !== 0 || t[2] !== 0 ? t : undefined;
+
       meshes.push({
         expressId,
-        positions,
-        normals,
+        positions: outPositions,
+        normals: outNormals,
         indices,
         color: resolveMaterialColor(primitive.material),
         ...(origin ? { origin } : {}),

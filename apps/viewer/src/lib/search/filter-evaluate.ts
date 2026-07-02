@@ -66,6 +66,7 @@ import {
   type PsetRows,
   type QtyRows,
 } from './filter-match.js';
+import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
 
 /** A single matched element. Mirrors the Rust `FilteredElement` shape. */
 export interface FilteredElement {
@@ -363,7 +364,10 @@ const RULE_COST: Record<FilterRule['kind'], number> = {
   elevation:      1,
   // String-table indirection.
   name:           2,
-  predefinedType: 2,
+  // Source-buffer parse (resolveEntityPredefinedType re-reads the entity's
+  // attributes) - same cost class as a pset parse, so order it after the
+  // cheap column checks that can short-circuit it. (#1462)
+  predefinedType: 10,
   // Source-buffer parse (the AGENTS.md §2 hot path).
   property:       10,
   quantity:       10,
@@ -461,7 +465,13 @@ function evaluateRule(
       return setOpMatches(rule.op, ctx.table.getTypeName(expressId), rule.values);
     }
     case 'predefinedType': {
-      const pt = ctx.options.predefinedTypeOf?.(expressId) ?? '';
+      // No columnar PredefinedType accessor - resolve from the source buffer
+      // against THIS model's store (the federated options object is shared, so
+      // a per-store fallback is what makes federated runs correct). The optional
+      // `predefinedTypeOf` override still wins when a caller supplies one. (#1462)
+      const pt = ctx.options.predefinedTypeOf?.(expressId)
+        ?? resolveEntityPredefinedType(ctx.store, expressId)
+        ?? '';
       return setOpMatches(rule.op, pt, rule.values);
     }
     case 'name': {

@@ -17,11 +17,23 @@ use crate::router::GeometryProcessor;
 
 /// MappedItem processor (P0)
 /// Handles IfcMappedItem - geometry instancing
-pub struct MappedItemProcessor;
+pub struct MappedItemProcessor {
+    /// Per-build small-cut skip, forwarded to the transient
+    /// [`BooleanClippingProcessor`] this constructs for mapped boolean items so
+    /// the scoped value follows the CSG tree (see
+    /// `BooleanClippingProcessor::skip_small_cuts`).
+    skip_small_cuts: bool,
+}
 
 impl MappedItemProcessor {
     pub fn new() -> Self {
-        Self
+        Self::with_skip_small_cuts(false)
+    }
+
+    /// Construct with the per-build small-cut skip forwarded to the boolean
+    /// processor used for mapped boolean items.
+    pub fn with_skip_small_cuts(skip_small_cuts: bool) -> Self {
+        Self { skip_small_cuts }
     }
 }
 
@@ -95,7 +107,8 @@ impl GeometryProcessor for MappedItemProcessor {
                     // can surface failures from `IfcMappedItem` -> boolean
                     // chains in `take_csg_failures`. Without this drain the
                     // processor's failures vanish when it goes out of scope.
-                    let processor = BooleanClippingProcessor::new();
+                    let processor =
+                        BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts);
                     let mesh = processor.process(&item, decoder, schema, quality)?;
                     crate::diagnostics::push_pending_mapped_bool_failures(
                         processor.take_failures(),

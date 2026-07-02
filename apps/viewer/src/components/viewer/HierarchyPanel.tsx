@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
+import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
 import { Rule, type FilterRule } from '@/lib/search/filter-rules';
 import { toast } from '@/components/ui/toast';
 
@@ -41,6 +42,7 @@ export function HierarchyPanel() {
     removeModel,
   } = useIfc();
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
+  const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
@@ -142,6 +144,38 @@ export function HierarchyPanel() {
   const filteredNodes = useMemo(() => stripPartNodes(rawFilteredNodes), [stripPartNodes, rawFilteredNodes]);
   const storeysNodes = useMemo(() => stripPartNodes(rawStoreysNodes), [stripPartNodes, rawStoreysNodes]);
   const modelsNodes = useMemo(() => stripPartNodes(rawModelsNodes), [stripPartNodes, rawModelsNodes]);
+
+  // Explorer-style multi-select over the leaf element / space rows: Ctrl/Cmd
+  // toggles, Shift selects the contiguous range in the visible order. Built
+  // over the flattened, visible node list so ranges follow what's on screen.
+  // Assemblies keep their existing select-all-parts behaviour. (#1463)
+  const { select: onMultiSelect, setAnchor: setMultiSelectAnchor } = useEntityListMultiSelect();
+  const selectableNodeItems = useMemo<MultiSelectItem[]>(() => {
+    const out: MultiSelectItem[] = [];
+    for (const node of filteredNodes) {
+      if (node.type !== 'element' && node.type !== 'IfcSpace') continue;
+      if (node.assemblyChildGlobalIds && node.assemblyChildGlobalIds.length > 0) continue;
+      const expressId = node.expressIds[0];
+      if (expressId == null) continue;
+      out.push({
+        globalId: node.globalIds[0] ?? expressId,
+        modelId: node.modelIds[0] || 'legacy',
+        expressId,
+      });
+    }
+    return out;
+  }, [filteredNodes]);
+  const selectableNodeIndexById = useMemo(() => {
+    const m = new Map<string, number>();
+    let idx = 0;
+    for (const node of filteredNodes) {
+      if (node.type !== 'element' && node.type !== 'IfcSpace') continue;
+      if (node.assemblyChildGlobalIds && node.assemblyChildGlobalIds.length > 0) continue;
+      if (node.expressIds[0] == null) continue;
+      m.set(node.id, idx++);
+    }
+    return m;
+  }, [filteredNodes]);
 
   // Refs for both scroll areas
   const storeysRef = useRef<HTMLDivElement>(null);
@@ -484,6 +518,17 @@ export function HierarchyPanel() {
       const modelId = node.modelIds[0];
       const globalId = node.globalIds[0] ?? spaceId;
 
+      // Modifier-click -> multi-select (Ctrl/Cmd toggle, Shift range). (#1463)
+      const multiIdx = selectableNodeIndexById.get(node.id);
+      if (multiIdx !== undefined && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+        onMultiSelect(selectableNodeItems, multiIdx, e);
+        if (modelId && modelId !== 'legacy') setActiveModel(modelId);
+        return;
+      }
+      // Plain click goes through the legacy single-select below, but still seed
+      // the multi-select anchor so a following Shift+click extends from here. (#1463)
+      if (multiIdx !== undefined) setMultiSelectAnchor(multiIdx);
+
       setSelectedEntityIds([]);
 
       if (modelId && modelId !== 'legacy') {
@@ -504,6 +549,19 @@ export function HierarchyPanel() {
       const modelId = node.modelIds[0];
       const globalId = node.globalIds[0] ?? elementId;
       const parts = node.assemblyChildGlobalIds;
+
+      // Modifier-click -> multi-select (Ctrl/Cmd toggle, Shift range) for plain
+      // elements. Assemblies aren't in the selectable map, so they fall through
+      // to their existing select-all-parts behaviour. (#1463)
+      const multiIdx = selectableNodeIndexById.get(node.id);
+      if (multiIdx !== undefined && (e.shiftKey || e.ctrlKey || e.metaKey)) {
+        onMultiSelect(selectableNodeItems, multiIdx, e);
+        if (modelId && modelId !== 'legacy') setActiveModel(modelId);
+        return;
+      }
+      // Plain click uses the legacy single-select below, but still seed the
+      // multi-select anchor so a following Shift+click extends from here. (#1463)
+      if (multiIdx !== undefined) setMultiSelectAnchor(multiIdx);
 
       if (parts && parts.length > 0) {
         // A decomposing assembly (IfcElementAssembly, IfcStair-as-container, …)
@@ -534,7 +592,7 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule]);
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById]);
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {
@@ -545,7 +603,12 @@ export function HierarchyPanel() {
       : node.type === 'IfcBuildingStorey'
         ? selectedStoreys.has(node.expressIds[0])
         : node.type === 'IfcSpace' || node.type === 'element'
-          ? selectedEntityId === (node.globalIds[0] ?? node.expressIds[0])
+          ? (() => {
+              const gId = node.globalIds[0] ?? node.expressIds[0];
+              // Honour the multi-selection set so Ctrl/Shift-selected rows all
+              // read as highlighted in the tree, not just the primary. (#1463)
+              return selectedEntityId === gId || selectedEntityIds.has(gId);
+            })()
           : node.type === 'ifc-type' || node.type === 'material-group'
             ? (() => {
                 const entityExpressId = node.entityExpressId;
@@ -584,7 +647,7 @@ export function HierarchyPanel() {
     }
 
     return { isSelected, nodeHidden, modelVisible };
-  }, [selectedStoreys, selectedEntityId, hiddenEntities, getNodeElements, models, toGlobalId]);
+  }, [selectedStoreys, selectedEntityId, selectedEntityIds, hiddenEntities, getNodeElements, models, toGlobalId]);
 
   if (!ifcDataStore && models.size === 0) {
     return (

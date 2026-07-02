@@ -468,15 +468,19 @@ ifc-lite merge file1.ifc file2.ifc file3.ifc --schema IFC4 --out merged.ifc
 
 # JSON output with stats
 ifc-lite merge a.ifc b.ifc --out merged.ifc --json
+
+# Mixed units: rescale every model into the first file's unit (one single-unit project)
+ifc-lite merge metric.ifc imperial.ifc --unit-reconciliation normalize --out merged.ifc
 ```
 
-The merger unifies spatial hierarchy (storeys, buildings) by name and elevation, offsets entity IDs to avoid collisions, and merges into a single IfcProject.
+The merger unifies spatial hierarchy (storeys, buildings) by name and elevation, and offsets entity IDs to avoid collisions. Models that share the first file's length unit merge into a single IfcProject; a model with a different unit is federated (kept as its own project) unless `--unit-reconciliation normalize` rescales it into the first file's unit.
 
 **Flags:**
 
 | Flag | Description |
 |------|-------------|
 | `--schema <ver>` | Target schema (`IFC2X3`, `IFC4`, `IFC4X3`) |
+| `--unit-reconciliation <mode>` | Mixed-unit handling: `auto` (default, federate differing units), `normalize` (rescale into the first file's unit → one single-unit project), `assume-shared` (force one project without rescaling) |
 | `--out <file>` | Output file (required) |
 | `--json` | Output merge stats as JSON |
 

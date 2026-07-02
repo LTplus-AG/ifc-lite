@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/clash",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "description": "Clash detection for IFC-Lite — representation-agnostic core engine + source adapters",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,6 +22,10 @@
     "./bcf": {
       "import": "./dist/bcf-bridge.js",
       "types": "./dist/bcf-bridge.d.ts"
+    },
+    "./contact": {
+      "import": "./dist/contact/index.js",
+      "types": "./dist/contact/index.d.ts"
     },
     "./wasm": {
       "import": "./dist/engine-wasm/index.js",

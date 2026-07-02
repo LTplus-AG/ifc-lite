@@ -95,6 +95,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const [applyMutations, setApplyMutations] = useState(true);
   const [changesOnly, setChangesOnly] = useState(false);
   const [visibleOnly, setVisibleOnly] = useState(false);
+  // How a merged export reconciles models with different length units.
+  const [unitReconciliation, setUnitReconciliation] = useState<'auto' | 'normalize' | 'assume-shared'>('auto');
   const [onlyKnownProperties, setOnlyKnownProperties] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -366,6 +368,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         const result = await mergedExporter.exportAsync({
           schema,
           projectStrategy: 'keep-first',
+          unitReconciliation,
           visibleOnly,
           hiddenEntityIdsByModel: hiddenByModel,
           isolatedEntityIdsByModel: isolatedByModel,
@@ -386,7 +389,10 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
 
         downloadFile(result.content, 'merged_export.ifc', 'text/plain');
 
-        const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`;
+        const msg = `Merged ${result.stats.modelCount} models, ${result.stats.totalEntityCount.toLocaleString()} entities`
+          + (result.stats.normalizedModelCount > 0
+            ? ` (${result.stats.normalizedModelCount} rescaled into the first model's unit)`
+            : '');
         setExportResult({ success: true, message: msg });
         toast.success(msg);
         exportedFormat = 'ifc';
@@ -556,7 +562,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
       }
     }
-  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo]);
+  }, [selectedModel, selectedModelId, schema, isIfc5, exportScope, includeGeometry, applyMutations, changesOnly, visibleOnly, unitReconciliation, onlyKnownProperties, getMutationView, getLocalHiddenIds, getLocalIsolatedIds, modifiedCount, models, extensionHost, outputInfo]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -591,6 +597,23 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
                 <SelectContent>
                   <SelectItem value="single">Single Model</SelectItem>
                   <SelectItem value="merged">Merged (All Models)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Mixed-unit handling — only meaningful for a merged export */}
+          {!isIfc5 && !changesOnly && exportScope === 'merged' && modelList.length > 1 && (
+            <div className="flex items-center gap-4">
+              <Label className="w-32">Mixed units</Label>
+              <Select value={unitReconciliation} onValueChange={(v) => setUnitReconciliation(v as typeof unitReconciliation)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Keep each unit (separate projects)</SelectItem>
+                  <SelectItem value="normalize">Normalize to first model</SelectItem>
+                  <SelectItem value="assume-shared">Assume shared unit</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -114,7 +114,9 @@ pub struct ProcessingResult {
 }
 
 /// Controls the tradeoff between first-frame latency and richer upfront metadata.
-#[derive(Debug, Clone, Copy)]
+// Not `Copy`: `entity_index` holds an `Arc`. Every construction either moves the
+// struct into a process call once or `..Default::default()`s it, so `Clone` suffices.
+#[derive(Debug, Clone)]
 pub struct StreamingOptions {
     /// Batch size used for the very first emitted chunk.
     pub initial_batch_size: usize,
@@ -137,6 +139,14 @@ pub struct StreamingOptions {
     /// (`symbolic.rs`) deliberately ignores the level — symbols are
     /// resolution-independent line work.
     pub tessellation_quality: TessellationQuality,
+    /// Pre-built entity index to reuse instead of scanning `content` again. A caller
+    /// that runs both the geometry pass and a second pass over the same bytes (e.g. a
+    /// server emitting GLB *and* extracting properties) can `build_entity_index`
+    /// once and inject it here, skipping the duplicate SIMD scan. `None` builds it
+    /// internally, exactly as before. The index MUST come from
+    /// `build_entity_index(content)` for the *same* `content`, or decoding will read
+    /// the wrong byte ranges.
+    pub entity_index: Option<Arc<EntityIndex>>,
 }
 
 impl Default for StreamingOptions {
@@ -150,6 +160,7 @@ impl Default for StreamingOptions {
             emit_quick_metadata_bootstrap: false,
             retain_emitted_meshes: true,
             tessellation_quality: TessellationQuality::default(),
+            entity_index: None,
         }
     }
 }
@@ -279,6 +290,31 @@ where
     T: AsRef<[u8]> + ?Sized,
 {
     process_geometry_filtered(content.as_ref(), OpeningFilterMode::Default)
+}
+
+/// Like [`process_geometry`] but reuses a pre-built entity index instead of scanning
+/// `content` for one. For a caller that also runs a second pass over the same bytes
+/// (e.g. pairing GLB export with attribute extraction): build the index once with
+/// `ifc_lite_core::build_entity_index` and share it across both, skipping the
+/// duplicate scan. `index` MUST be built from the same `content`. Output is identical
+/// to `process_geometry(content)`.
+pub fn process_geometry_with_index<T>(content: &T, index: Arc<EntityIndex>) -> ProcessingResult
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    process_geometry_streaming_filtered_with_options(
+        content.as_ref(),
+        OpeningFilterMode::Default,
+        StreamingOptions {
+            initial_batch_size: usize::MAX,
+            throughput_batch_size: usize::MAX,
+            entity_index: Some(index),
+            ..StreamingOptions::default()
+        },
+        |_, _, _| {},
+        |_| {},
+        |_| {},
+    )
 }
 
 /// Process IFC content with parallel geometry extraction and emit batches as they complete.
@@ -412,8 +448,12 @@ pub fn process_geometry_streaming_filtered_with_options(
         "Starting IFC geometry processing"
     );
 
-    // Build entity index (fast SIMD-accelerated single pass)
-    let entity_index = Arc::new(build_entity_index(content));
+    // Build the entity index (fast SIMD-accelerated single pass), unless a caller
+    // injected one built from the same `content` to share across passes.
+    let entity_index = options
+        .entity_index
+        .clone()
+        .unwrap_or_else(|| Arc::new(build_entity_index(content)));
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
     tracing::debug!("Built entity index");
 
@@ -1015,6 +1055,21 @@ pub fn process_geometry_streaming_filtered_with_options(
     // the loop into ProcessingStats + one tracing summary).
     let csg_failure_collector: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>> =
         std::sync::Mutex::new(FxHashMap::default());
+    // Opening-classification + per-host opening diagnostics sinks, drained from
+    // each fresh per-job router and merged here, so the native pass can build the
+    // SAME `GeometryDiagnostics` the WASM batch path produces. Drained from the
+    // local router (not inside `produce_element_meshes`) because the WASM batch path
+    // shares that function and drains classification/host from its own warm router
+    // at batch end — draining there would empty it.
+    let classification_collector: std::sync::Mutex<ifc_lite_geometry::ClassificationStats> =
+        std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default());
+    let host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>> =
+        std::sync::Mutex::new(FxHashMap::default());
+    // rect_fast engagement is now drained from each per-job router too (request-
+    // local), so this pass's `rectFast` is isolated from any concurrent geometry
+    // pass instead of reading process-global counters.
+    let rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats> =
+        std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default());
 
     // Shared content-dedup cache for the whole model: every per-job router (built
     // fresh per element below) dedups against it, so byte-identical geometry the
@@ -1128,6 +1183,9 @@ pub fn process_geometry_streaming_filtered_with_options(
                     texture_index.as_ref(),
                     site_local_rotation,
                     &csg_failure_collector,
+                    &classification_collector,
+                    &host_diag_collector,
+                    &rect_fast_collector,
                     &item_dedup_cache,
                 )
             })
@@ -1211,6 +1269,36 @@ pub fn process_geometry_streaming_filtered_with_options(
         );
     }
 
+    // Build the full GeometryDiagnostics contract from the drained sinks — the
+    // SAME shape the wasm batch path surfaces, so a native consumer and a browser
+    // consumer see identical diagnostics. `None` when nothing diagnostic-worthy
+    // happened (mirrors the wasm `is_empty` skip).
+    //
+    // Every sink — `classification`, `host_diags`, `csg_failures` AND `rect_fast` —
+    // is request-local: each was drained from this pass's own per-job routers and
+    // merged here, so concurrent in-process geometry passes never cross-contaminate.
+    let geometry_diagnostics = {
+        // Matches the wasm path's WORST_HOSTS_LIMIT (top-N per-host detail cap).
+        const WORST_HOSTS_LIMIT: usize = 16;
+        let classification = classification_collector
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let host_diags = host_diag_collector
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let rect_fast = rect_fast_collector
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let diag = ifc_lite_geometry::aggregate_diagnostics(
+            classification,
+            &csg_failures,
+            &host_diags,
+            rect_fast,
+            WORST_HOSTS_LIMIT,
+        );
+        (!diag.is_empty()).then_some(diag)
+    };
+
     let total_time = total_start.elapsed();
 
     tracing::info!(
@@ -1251,6 +1339,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             from_cache: false,
             total_csg_failures: total_csg_failures as u64,
             products_with_failures: products_with_failures as u64,
+            geometry_diagnostics,
         },
     }
 }
@@ -1282,6 +1371,11 @@ fn process_entity_job(
     // Shared sink for per-job router CSG diagnostics (parity with the wasm
     // path's `drain_and_log_csg_diagnostics`).
     csg_failure_collector: &std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>>,
+    // Shared sinks for opening classification + per-host opening diagnostics, drained
+    // from this job's router so the native pass aggregates the full GeometryDiagnostics.
+    classification_collector: &std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
+    host_diag_collector: &std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
+    rect_fast_collector: &std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
     // Model-wide content-dedup cache shared by every per-job router so identical
     // geometry is meshed once across the rayon pool (#1109 follow-up).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
@@ -1357,6 +1451,54 @@ fn process_entity_job(
             for (product_id, fails) in produced.csg_failures {
                 collector.entry(product_id).or_default().extend(fails);
             }
+        }
+    }
+
+    // Drain this job's router opening diagnostics (classification counts +
+    // per-host detail) and merge them. Each job uses a FRESH router that
+    // processed exactly this one element, so the drained values are this
+    // element's only — summing across jobs mirrors the wasm batch router's
+    // accumulate-then-drain, giving the same GeometryDiagnostics counts.
+    let cls = local_router.take_classification_stats();
+    if cls.rectangular != 0
+        || cls.diagonal != 0
+        || cls.non_rectangular != 0
+        || cls.floor_opening_guard_saved != 0
+    {
+        if let Ok(mut acc) = classification_collector.lock() {
+            acc.rectangular += cls.rectangular;
+            acc.diagonal += cls.diagonal;
+            acc.non_rectangular += cls.non_rectangular;
+            acc.floor_opening_guard_saved += cls.floor_opening_guard_saved;
+        }
+    }
+    let host_diags = local_router.take_host_opening_diagnostics();
+    if !host_diags.is_empty() {
+        if let Ok(mut acc) = host_diag_collector.lock() {
+            // Product ids are disjoint across jobs (one product = one job), so this
+            // is an insert; `extend` is robust if that ever changes.
+            acc.extend(host_diags);
+        }
+    }
+    // Drain this job's router rect_fast counters into the request-local collector
+    // (process-global counters are gone — see GeometryRouter::record_rect_fast).
+    let rf = local_router.take_rect_fast_stats();
+    if rf.fired != 0
+        || rf.openings_cut != 0
+        || rf.defer_host_not_box != 0
+        || rf.defer_not_through != 0
+        || rf.defer_off_face != 0
+        || rf.defer_near_edge != 0
+        || rf.defer_no_openings != 0
+    {
+        if let Ok(mut acc) = rect_fast_collector.lock() {
+            acc.fired += rf.fired;
+            acc.openings_cut += rf.openings_cut;
+            acc.defer_host_not_box += rf.defer_host_not_box;
+            acc.defer_not_through += rf.defer_not_through;
+            acc.defer_off_face += rf.defer_off_face;
+            acc.defer_near_edge += rf.defer_near_edge;
+            acc.defer_no_openings += rf.defer_no_openings;
         }
     }
 

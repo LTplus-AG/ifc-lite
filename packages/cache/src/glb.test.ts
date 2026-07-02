@@ -368,3 +368,96 @@ describe('parseGLBToMeshData — node translation → origin', () => {
     expect(p[2]).toBeCloseTo(0.31, 6);
   });
 });
+
+describe('parseGLBToMeshData — node matrix (instanced occurrence)', () => {
+  // The from-bytes instanced exporter shares one template mesh across occurrences and
+  // places each with a node MATRIX (rotation + translation) under the translated root.
+  // The importer composes the full 4x4, bakes the rotation into the small LOCAL vertices
+  // + normals (f32-safe), and surfaces only the translation as MeshData.origin (kept out
+  // of the f32 buffer for georef precision). world = origin + position == matrix * local.
+  function buildInstancedDoc(rootTranslation: number[], occMatrix: number[]) {
+    const tmpl = [1, 0, 0, 0, 1, 0, 0, 0, 1]; // template-local triangle p0,p1,p2
+    const nrm = [1, 0, 0, 1, 0, 0, 1, 0, 0]; // +x normal per vertex
+    const bin = new Uint8Array(84);
+    new Float32Array(bin.buffer, 0, 9).set(tmpl);
+    new Float32Array(bin.buffer, 36, 9).set(nrm);
+    new Uint32Array(bin.buffer, 72, 3).set([0, 1, 2]);
+    const doc = {
+      asset: { version: '2.0' },
+      scene: 0,
+      scenes: [{ nodes: [0] }],
+      nodes: [
+        { translation: rootTranslation, children: [1] },
+        { mesh: 0, matrix: occMatrix },
+      ],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
+      accessors: [
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
+        { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
+        { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
+        { buffer: 0, byteOffset: 36, byteLength: 36, byteStride: 12, target: 34962 },
+        { buffer: 0, byteOffset: 72, byteLength: 12, target: 34963 },
+      ],
+      buffers: [{ byteLength: 84 }],
+    };
+    return { doc, bin, tmpl };
+  }
+
+  it('bakes node-matrix rotation into vertices + normals, translation into origin', () => {
+    // 90 deg about Z (column-major) + local translation [10, 20, 0].
+    const occMatrix = [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 10, 20, 0, 1];
+    const { doc, bin } = buildInstancedDoc([1000, 2000, 3000], occMatrix);
+    const meshes = parseGLBToMeshData(doc, bin);
+    expect(meshes).toHaveLength(1);
+    const mesh = meshes[0];
+
+    // origin = composed translation (root + occ) = [1010, 2020, 3000].
+    expect(mesh.origin).toBeDefined();
+    expect(mesh.origin![0]).toBeCloseTo(1010);
+    expect(mesh.origin![1]).toBeCloseTo(2020);
+    expect(mesh.origin![2]).toBeCloseTo(3000);
+
+    // Rotation baked into LOCAL vertices: Rz(90)·[1,0,0]=[0,1,0], ·[0,1,0]=[-1,0,0], ·[0,0,1]=[0,0,1].
+    const expectLocal = [0, 1, 0, -1, 0, 0, 0, 0, 1];
+    for (let i = 0; i < 9; i++) expect(mesh.positions[i]).toBeCloseTo(expectLocal[i], 4);
+
+    // Reconstructed world = origin + baked-local == matrix * template (full precision).
+    expect(mesh.origin![0] + mesh.positions[0]).toBeCloseTo(1010); // p0.x
+    expect(mesh.origin![1] + mesh.positions[1]).toBeCloseTo(2021); // p0.y
+    expect(mesh.origin![2] + mesh.positions[2]).toBeCloseTo(3000); // p0.z
+
+    // Normal +x rotated to +y; still unit length.
+    expect(mesh.normals[0]).toBeCloseTo(0, 4);
+    expect(mesh.normals[1]).toBeCloseTo(1, 4);
+    expect(mesh.normals[2]).toBeCloseTo(0, 4);
+  });
+
+  it('keeps rotated-occurrence vertices full-precision under a national-grid offset', () => {
+    // 90 deg about Z at a Dutch-RD-scale translation: the baked vertices stay LOCAL
+    // (small) so f32 holds them exactly; the ~6e6 m offset rides origin (a JS double).
+    const occMatrix = [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const { doc, bin } = buildInstancedDoc([155000, 463000, 5500000], occMatrix);
+    const meshes = parseGLBToMeshData(doc, bin);
+    const mesh = meshes[0];
+    // Baked-local positions are small (|v| ~ 1), not building/grid scale.
+    for (const v of mesh.positions) expect(Math.abs(v)).toBeLessThan(2);
+    // origin carries the grid offset at full f64 precision.
+    expect(mesh.origin![0]).toBe(155000);
+    expect(mesh.origin![2]).toBe(5500000);
+    // World p1 = origin + Rz(90)·[0,1,0]=[-1,0,0] -> x = 155000 - 1 = 154999 exactly.
+    expect(mesh.origin![0] + mesh.positions[3]).toBeCloseTo(154999, 3);
+  });
+
+  it('leaves a pure-translation node unbaked (vertices stay the template, no rotation cost)', () => {
+    // Identity rotation + translation: must behave exactly like the translation path.
+    const occMatrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 7, 8, 9, 1];
+    const { doc, bin, tmpl } = buildInstancedDoc([100, 200, 300], occMatrix);
+    const mesh = parseGLBToMeshData(doc, bin)[0];
+    // No rotation: positions are the untouched template (no fresh buffer needed).
+    for (let i = 0; i < 9; i++) expect(mesh.positions[i]).toBeCloseTo(tmpl[i], 6);
+    expect(mesh.origin).toEqual([107, 208, 309]);
+  });
+});

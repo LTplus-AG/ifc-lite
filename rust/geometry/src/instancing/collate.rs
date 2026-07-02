@@ -109,10 +109,30 @@ impl<'a> InstanceMeshRef<'a> {
     }
 }
 
+/// Subtract the model RTC offset from a composed (pre-RTC) world transform's
+/// translation column, giving the post-RTC placement that matches the post-RTC
+/// per-mesh `origin` the renderer applies the relative transform to.
+fn to_post_rtc(mut m: Matrix4<f64>, rtc: [f64; 3]) -> Matrix4<f64> {
+    m[(0, 3)] -= rtc[0];
+    m[(1, 3)] -= rtc[1];
+    m[(2, 3)] -= rtc[2];
+    m
+}
+
 /// Group instanceable meshes by representation identity into templates +
 /// per-instance transforms. `min_group` is the smallest occurrence count worth
 /// instancing (groups below it are emitted flat); use 2 to instance any repeat.
-pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize) -> Collated {
+///
+/// `rtc` is the model RTC offset (`InstanceMeta.transform` is documented pre-RTC
+/// at georeferenced magnitude, while each mesh's baked `origin` is post-RTC and
+/// small). The per-occurrence relative transform is computed in the post-RTC
+/// frame: on raw absolute placements `rel = m_k · m_ref⁻¹` lets a *rotated*
+/// occurrence's translation reach `T_k − R_rel·T_ref ≈ 2× rtc` (the two ~1e6 m
+/// terms add instead of cancel), which then places the occurrence at twice the
+/// georeference and collapses f32 GLB exports. Reducing both transforms by `rtc`
+/// first keeps `rel.translation` at building scale and consistent with the small
+/// template origin.
+pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3]) -> Collated {
     // First-seen order keeps output deterministic regardless of hash iteration.
     let mut order: Vec<u128> = Vec::new();
     let mut groups: FxHashMap<u128, Vec<usize>> = FxHashMap::default();
@@ -153,7 +173,9 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize) -> Collated {
         }
         let t_idx = members[0];
         let template = &meshes[t_idx];
-        let m_ref = compose_world(template.instance_meta.unwrap());
+        // Compose in the post-RTC frame so the georeferenced offset cancels
+        // exactly regardless of each occurrence's rotation (see fn docs).
+        let m_ref = to_post_rtc(compose_world(template.instance_meta.unwrap()), rtc);
         let Some(m_ref_inv) = m_ref.try_inverse() else {
             out.flat_indices.extend_from_slice(members);
             continue;
@@ -183,7 +205,7 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize) -> Collated {
                 shapes_match = false;
                 break;
             }
-            let m_k = compose_world(mesh.instance_meta.unwrap());
+            let m_k = to_post_rtc(compose_world(mesh.instance_meta.unwrap()), rtc);
             let rel = m_k * m_ref_inv;
             occurrences.push(InstanceOccurrence {
                 mesh_index: i,
@@ -205,9 +227,9 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize) -> Collated {
 }
 
 /// `collate_refs` over geometry `Mesh` values (thin wrapper, no geometry clone).
-pub fn collate_instances(meshes: &[Mesh], min_group: usize) -> Collated {
+pub fn collate_instances(meshes: &[Mesh], min_group: usize, rtc: [f64; 3]) -> Collated {
     let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
-    collate_refs(&refs, min_group)
+    collate_refs(&refs, min_group, rtc)
 }
 
 /// Maximum per-vertex world-space error (in mesh units) when each occurrence is

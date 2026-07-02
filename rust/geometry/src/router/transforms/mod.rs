@@ -19,10 +19,11 @@ use nalgebra::Matrix4;
 /// When ON, `transform_mesh_world` stores positions relative to a per-element
 /// f64 `origin` (so f32 coords stay element-small and never collapse to
 /// degenerate fans at building/georef scale), and the void CSG runs in that same
-/// local frame. The renderer + WASM + cache must all consume `MeshData.origin`
-/// (world = origin + position) for this to render correctly — so it stays OFF by
-/// default until that whole stack ships, then flips on. `IFC_LITE_LOCAL_FRAME=1`
-/// enables it for native verification meanwhile. Read once and cached.
+/// local frame. The renderer, WASM boundary, and cache all consume
+/// `MeshData.origin` (world = origin + position), so the flag is ON by default
+/// for the wasm/viewer build (the precision-critical target). Native and server
+/// stay env-gated via `IFC_LITE_LOCAL_FRAME` to keep cross-arch determinism
+/// snapshots absolute-coord byte-identical. Read once and cached.
 pub(crate) fn local_frame_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| {

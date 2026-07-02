@@ -53,13 +53,32 @@ pub struct BooleanClippingProcessor {
     /// and drained from any internal `ClippingProcessor` instances. Drainable
     /// via [`Self::take_failures`].
     failures: RefCell<Vec<BoolFailure>>,
+    /// Per-build small-cut skip (#1286). When set, a solid-solid DIFFERENCE
+    /// whose cutter is far smaller than its host is dropped (host rendered
+    /// un-cut) even at a full tessellation tier. Scoped to this processor
+    /// instance — injected by the [`crate::router::GeometryRouter`] that
+    /// constructs it — so concurrent native builds never bleed the flag into
+    /// each other (was a process-wide static). `false` ⇒ every cut runs,
+    /// byte-identical to before the optimization.
+    skip_small_cuts: bool,
 }
 
 impl BooleanClippingProcessor {
     pub fn new() -> Self {
+        Self::with_skip_small_cuts(false)
+    }
+
+    /// Construct with the per-build small-cut skip set (see
+    /// [`Self::skip_small_cuts`]). The router injects the build's value here;
+    /// nested boolean operands reuse the same `self`, and the only cross-
+    /// processor boolean construction sites (`CsgSolidProcessor`,
+    /// `MappedItemProcessor`) forward their own field so a whole CSG tree shares
+    /// one scoped value.
+    pub fn with_skip_small_cuts(skip_small_cuts: bool) -> Self {
         Self {
             schema: IfcSchema::new(),
             failures: RefCell::new(Vec::new()),
+            skip_small_cuts,
         }
     }
 
@@ -141,9 +160,8 @@ impl BooleanClippingProcessor {
             IfcType::IfcBlock => {
                 BlockProcessor::new().process(operand, decoder, &self.schema, quality)
             }
-            IfcType::IfcCsgSolid => {
-                CsgSolidProcessor::new().process(operand, decoder, &self.schema, quality)
-            }
+            IfcType::IfcCsgSolid => CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts)
+                .process(operand, decoder, &self.schema, quality),
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 // Recursive case with depth tracking
                 self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality)
@@ -727,13 +745,21 @@ impl BooleanClippingProcessor {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
                 return Ok(mesh);
             }
-            // Preview-mode (Lowest/Low) small-cut skip: a cutter far smaller than
-            // its host (a steel cope/notch, a small detail recess) costs a full
-            // exact subtract — the dominant load-time cost on boolean-heavy steel —
-            // for a barely-visible change. In the preview tiers we drop it and
-            // render the host un-cut, recovering Manifold-class load times.
-            // Medium/High/Highest keep EVERY cut (byte-identical to before).
-            if quality_skips_small_cuts(quality) && cutter_below_skip_ratio(&mesh, &second_mesh) {
+            // Small-cut skip: a cutter far smaller than its host (a steel
+            // cope/notch, a small detail recess) costs a full exact subtract —
+            // the dominant load-time cost on boolean-heavy steel — for a
+            // barely-visible change. Dropping it renders the host un-cut and
+            // recovers Manifold-class load times. Enabled either by a preview
+            // tessellation tier (Lowest/Low) OR by the per-build `skip_small_cuts`
+            // field, which the viewer turns on WITHOUT dropping to a preview tier
+            // so curves stay full-density while the tiny cuts are skipped (#1286).
+            // The field is scoped to this processor (injected by the router), so
+            // concurrent native builds never bleed it into one another. With
+            // neither set (the default), EVERY cut runs — byte-identical to
+            // before this optimization, on any tier.
+            if (quality_skips_small_cuts(quality) || self.skip_small_cuts)
+                && cutter_below_skip_ratio(&mesh, &second_mesh)
+            {
                 return Ok(mesh);
             }
             let clipper = ClippingProcessor::new();

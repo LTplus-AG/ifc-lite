@@ -28,7 +28,6 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
@@ -61,6 +60,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
   const clearance = useViewerStore((s) => s.clashClearance);
   const clusterEpsilon = useViewerStore((s) => s.clashClusterEpsilon);
   const reportTouch = useViewerStore((s) => s.clashReportTouch);
+  const showRegionBox = useViewerStore((s) => s.showClashRegionBox);
   const groupBy = useViewerStore((s) => s.clashGroupBy);
   const presets = useViewerStore((s) => s.clashPresets);
   const classes = useViewerStore((s) => s.discoveredLensData?.classes ?? null);
@@ -70,6 +70,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
   const setClearance = useViewerStore((s) => s.setClashClearance);
   const setClusterEpsilon = useViewerStore((s) => s.setClashClusterEpsilon);
   const setReportTouch = useViewerStore((s) => s.setClashReportTouch);
+  const setShowRegionBox = useViewerStore((s) => s.setShowClashRegionBox);
   const setGroupBy = useViewerStore((s) => s.setClashGroupBy);
   const resetSettings = useViewerStore((s) => s.resetClashSettings);
   const createPreset = useViewerStore((s) => s.createClashPreset);
@@ -209,6 +210,10 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
               <Switch checked={reportTouch} onCheckedChange={setReportTouch} />
             </SettingRow>
 
+            <SettingRow label="Show clash region box" hint="Draw a tight wireframe box around the focused clash's contact region to mark the penetration. On by default; turn off to hide it.">
+              <Switch checked={showRegionBox} onCheckedChange={setShowRegionBox} />
+            </SettingRow>
+
             <SettingRow label="Default grouping" hint="How the results list is organized in the panel.">
               <Select value={groupBy} onValueChange={(v) => setGroupBy(v as typeof groupBy)}>
                 <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
@@ -257,7 +262,10 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
               </div>
             </div>
 
-            <ScrollArea className="max-h-[42vh] pr-1">
+            {/* Native overflow scroller (a definite max-height + overflow-y-auto),
+                matching the Detection tab. A Radix ScrollArea here never engaged
+                its viewport scroll, so extra rules were clipped and unreachable. (#1464) */}
+            <div className="max-h-[42vh] overflow-y-auto pr-1">
               <div className="space-y-1">
                 {presets.map((p) => (
                   <div
@@ -291,7 +299,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
 
             {draft && (
               <div className="rounded-md border border-[#f7768e]/40 bg-muted/30 p-2.5 space-y-2">

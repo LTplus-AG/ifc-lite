@@ -257,23 +257,30 @@ describe('matchQuantityRule', () => {
 });
 
 describe('materialNamesOf', () => {
-  it('collects top-level, layer, constituent, profile, and list names', () => {
+  it('collects individual layer / constituent / list materials, not the layer-set name (#1462)', () => {
     const names = __internal.materialNamesOf({
       type: 'MaterialLayerSet',
+      // The layer-set / usage name (Revit family+type) is excluded when the
+      // element has sub-structure - it masked the real materials before. (#1366)
       name: 'Wall Buildup',
       layers: [
         { materialName: 'Concrete C30/37' },
+        // The layer's own label ("Insulation Layer") is NOT a material name.
         { materialName: 'Rigid Insulation', name: 'Insulation Layer' },
       ],
       materials: [{ name: 'Steel S355' }],
     });
     assert.deepStrictEqual(names, [
-      'Wall Buildup',
       'Concrete C30/37',
       'Rigid Insulation',
-      'Insulation Layer',
       'Steel S355',
     ]);
+  });
+  it('falls back to the top-level name when the element has no sub-structure', () => {
+    assert.deepStrictEqual(
+      __internal.materialNamesOf({ type: 'Material', name: 'Concrete' }),
+      ['Concrete'],
+    );
   });
   it('returns [] for a null MaterialInfo (no association)', () => {
     assert.deepStrictEqual(__internal.materialNamesOf(null), []);

@@ -13,6 +13,7 @@ import {
 } from './dragOverlayState';
 import { ViewportOverlays } from './ViewportOverlays';
 import { MergeLayersBanner } from './MergeLayersBanner';
+import { GeometryModeBanner } from './GeometryModeBanner';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
 import { ToolOverlays } from './ToolOverlays';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
@@ -619,6 +620,28 @@ export function ViewportContainer() {
       // No retained File (e.g. blank/new model) — fall back to a full reload
       // (the toggle is persisted, so the user re-opens the file).
       console.warn('[merge-reload] no active sourceFile — falling back to window.location.reload()');
+      window.location.reload();
+    }
+  }, [loadFile]);
+
+  // Reload-to-apply for the Fast/Exact geometry mode, mirroring the merge-layers
+  // reload: re-load the active model in place so loadFile re-snapshots the mode
+  // and re-tessellates. Clears BOTH pending flags since one reload applies every
+  // load-time geometry setting.
+  const handleGeometryModeReload = useCallback(async () => {
+    const st = useViewerStore.getState();
+    const file = st.getActiveModel()?.sourceFile;
+    st.clearGeometryModePendingReload();
+    st.clearMergeLayersPendingReload();
+    if (file) {
+      try {
+        await loadFile(file);
+      } catch (err) {
+        console.error('[geom-mode-reload] loadFile threw:', err);
+      }
+    } else if (typeof window !== 'undefined') {
+      // No retained File — fall back to a full reload (the mode is persisted).
+      console.warn('[geom-mode-reload] no active sourceFile — falling back to window.location.reload()');
       window.location.reload();
     }
   }, [loadFile]);
@@ -1325,6 +1348,7 @@ export function ViewportContainer() {
           merge-layers toggle while a model is in scope. `onReload` re-loads the
           model in place (full page reload would drop it — no boot auto-restore). */}
       <MergeLayersBanner onReload={handleMergeLayersReload} />
+      <GeometryModeBanner onReload={handleGeometryModeReload} />
       <LevelDisplayIndicator />
       <ToolOverlays />
       <BasketPresentationDock />

@@ -17,6 +17,7 @@ import type {
   GeometryBatch,
 } from './platform-bridge.js';
 import type { MeshData } from './types.js';
+import type { GeometryDiagnostics } from './diagnostics.js';
 import { decodePackedGeometryCacheShard } from './packed-geometry-decoder.js';
 import {
   convertNativeMesh,
@@ -283,6 +284,11 @@ export class NativeBridge implements IPlatformBridge {
         firstChunkPackTimeMs?: number;
         firstChunkEmittedTimeMs?: number;
         firstChunkEmitTimeMs?: number;
+        // Full GeometryDiagnostics from the native pass. Read both key spellings:
+        // the inner contract is camelCase (Rust `rename_all`), but the helper may
+        // forward the outer `ProcessingStats` field as snake_case or camelCase.
+        geometryDiagnostics?: GeometryDiagnostics;
+        geometry_diagnostics?: GeometryDiagnostics;
       }>(command, args);
 
       const result: GeometryStats = {
@@ -299,6 +305,7 @@ export class NativeBridge implements IPlatformBridge {
         firstChunkPackTimeMs: stats.firstChunkPackTimeMs,
         firstChunkEmittedTimeMs: stats.firstChunkEmittedTimeMs,
         firstChunkEmitTimeMs: stats.firstChunkEmitTimeMs,
+        diagnostics: stats.geometryDiagnostics ?? stats.geometry_diagnostics,
       };
 
       while (drainPromise) {
@@ -466,6 +473,8 @@ export class NativeBridge implements IPlatformBridge {
         firstChunkPackTimeMs?: number;
         firstChunkEmittedTimeMs?: number;
         firstChunkEmitTimeMs?: number;
+        geometryDiagnostics?: GeometryDiagnostics;
+        geometry_diagnostics?: GeometryDiagnostics;
       }>('get_geometry_streaming', { buffer });
 
       const result: GeometryStats = {
@@ -482,6 +491,7 @@ export class NativeBridge implements IPlatformBridge {
         firstChunkPackTimeMs: stats.firstChunkPackTimeMs,
         firstChunkEmittedTimeMs: stats.firstChunkEmittedTimeMs,
         firstChunkEmitTimeMs: stats.firstChunkEmitTimeMs,
+        diagnostics: stats.geometryDiagnostics ?? stats.geometry_diagnostics,
       };
 
       while (drainPromise) {
@@ -606,6 +616,8 @@ export class NativeBridge implements IPlatformBridge {
       firstChunkPackTimeMs?: number;
       firstChunkEmittedTimeMs?: number;
       firstChunkEmitTimeMs?: number;
+      geometryDiagnostics?: GeometryDiagnostics;
+      geometry_diagnostics?: GeometryDiagnostics;
     }>('get_geometry_streaming_from_path', {
       path,
       cacheKey,
@@ -703,6 +715,7 @@ export class NativeBridge implements IPlatformBridge {
       firstChunkPackTimeMs: stats.firstChunkPackTimeMs,
       firstChunkEmittedTimeMs: stats.firstChunkEmittedTimeMs,
       firstChunkEmitTimeMs: stats.firstChunkEmitTimeMs,
+      diagnostics: stats.geometryDiagnostics ?? stats.geometry_diagnostics,
     };
 
     options.onComplete?.(result);

@@ -48,7 +48,7 @@ impl IfcAPI {
         material_element_ids: Option<Vec<u32>>,
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
-    ) -> Vec<ElementMeshOutput> {
+    ) -> (Vec<ElementMeshOutput>, ifc_lite_geometry::GeometryDiagnostics) {
         use crate::api::styling::resolve_element_color;
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
@@ -114,6 +114,13 @@ impl IfcAPI {
         // identical to the pre-quality pipeline.
         let mut router =
             GeometryRouter::with_scale_and_quality(unit_scale, self.tessellation_quality());
+
+        // Apply the consumer-selected small-cut skip (#1286) for this batch.
+        // Independent of the tessellation tier so the viewer can skip tiny steel
+        // cuts while keeping full-density curves. Scoped to this router (not a
+        // process-wide flag), so an export's router, which never enables it,
+        // keeps every cut regardless of a concurrent display build.
+        router.set_skip_small_cuts(self.skip_small_cuts());
 
         // Arm content-dedup against the per-worker shared cache so byte-identical
         // geometry (e.g. Tekla parts the exporter failed to share via
@@ -379,7 +386,7 @@ impl IfcAPI {
         // goes processAdaptive -> processParallel -> Web Workers ->
         // `processGeometryBatch`, so the log has to fire here or the
         // diagnostic helper never runs for real-world files.
-        let _ = crate::api::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
+        let csg_diag = crate::api::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
 
         // Layered-wall slicing diagnostics (#563): a quiet success summary, but a
         // per-element warning (id + reason) when a sliceable wall fails to slice
@@ -413,7 +420,7 @@ impl IfcAPI {
             }
         }
 
-        outputs
+        (outputs, csg_diag)
     }
 }
 
@@ -446,7 +453,7 @@ impl IfcAPI {
         material_colors_rgba: Option<Vec<u8>>,
     ) -> MeshCollection {
         let num_jobs = jobs_flat.len() / 3;
-        let outputs = self.produce_batch(
+        let (outputs, csg_diag) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba,
@@ -463,6 +470,7 @@ impl IfcAPI {
                 mesh_collection.push_geometry_hash(out.id, hash);
             }
         }
+        mesh_collection.set_diagnostics(csg_diag);
         mesh_collection
     }
 
@@ -497,7 +505,10 @@ impl IfcAPI {
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
     ) -> Vec<u8> {
-        let outputs = self.produce_batch(
+        // NB: this instanced-only export returns raw shard bytes with no
+        // MeshCollection carrier, so CSG diagnostics are intentionally dropped. It
+        // is not the worker's default path (partitioned/flat carry the counts).
+        let (outputs, _) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba,
@@ -529,7 +540,11 @@ impl IfcAPI {
             })
             .collect();
         // min_group = 2: instance any repeat; singletons + non-instanceable flat.
-        ifc_lite_geometry::collate_and_encode(&refs, 2)
+        // Pass the applied RTC so per-occurrence transforms are reduced to the
+        // post-RTC frame (matches the small baked origins; without it a rotated
+        // occurrence lands at 2× the georef offset and collapses GLB exports).
+        let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
+        ifc_lite_geometry::collate_and_encode(&refs, 2, rtc)
     }
 
     /// Produce a batch ONCE and PARTITION it (the instanced-ONLY path): opaque
@@ -568,7 +583,7 @@ impl IfcAPI {
         material_colors_rgba: Option<Vec<u8>>,
     ) -> PartitionedBatch {
         let num_jobs = jobs_flat.len() / 3;
-        let outputs = self.produce_batch(
+        let (outputs, csg_diag) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
             material_element_ids, material_color_counts, material_colors_rgba,
@@ -648,8 +663,12 @@ impl IfcAPI {
         // min_group == the routing threshold so collate_refs never re-flattens a group
         // that already passed the count gate; only its own try_inverse / shape-mismatch
         // safety net can still drop a (rare, degenerate) group to a singleton template.
+        // Reduce occurrence transforms to the post-RTC frame (see the other call
+        // site) so rotated occurrences don't fly out to 2× the georef offset.
+        let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
         let shard =
-            ifc_lite_geometry::collate_and_encode(&refs, INSTANCE_MIN_OCCURRENCES as usize);
+            ifc_lite_geometry::collate_and_encode(&refs, INSTANCE_MIN_OCCURRENCES as usize, rtc);
+        mesh_collection.set_diagnostics(csg_diag);
         PartitionedBatch {
             meshes: Some(mesh_collection),
             shard,

@@ -20,6 +20,7 @@ import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schem
 import { assembleStepBytes } from './step-serialization.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
+import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
 
 /** Entity types forming shared infrastructure (deduplicated across models). */
 const SHARED_INFRASTRUCTURE_TYPES = new Set([
@@ -88,6 +89,16 @@ function isRelationshipType(typeUpper: string): boolean {
 /** Relative tolerance for comparing two length unit scale factors. */
 const UNIT_SCALE_TOLERANCE = 1e-6;
 
+/** SI prefix multipliers, for resolving prefixed area/volume units (rarely used). */
+const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
+  ATTO: 1e-18, FEMTO: 1e-15, PICO: 1e-12, NANO: 1e-9, MICRO: 1e-6, MILLI: 1e-3,
+  CENTI: 1e-2, DECI: 1e-1, DECA: 1e1, HECTO: 1e2, KILO: 1e3, MEGA: 1e6,
+  GIGA: 1e9, TERA: 1e12, PETA: 1e15, EXA: 1e18,
+};
+
+/** Source schemas the IFC4 length registry does not fully cover (see #1475 review). */
+const NORMALIZE_UNCOVERED_SCHEMAS = new Set(['IFC4X3', 'IFC5']);
+
 /** Lookup tables for matching spatial entities from the first model. */
 interface SpatialLookup {
   sitesByName: Map<string, number>;
@@ -112,8 +123,48 @@ interface MergeSetup {
   spatialLookup: SpatialLookup;
   /** Length unit scale of the primary model — the unit other models merge into. */
   primaryScale: number;
+  /** Area unit scale (m² per unit) of the primary model — target for area values. */
+  primaryAreaScale: number;
+  /** Volume unit scale (m³ per unit) of the primary model — target for volume values. */
+  primaryVolumeScale: number;
   /** When true, every model is treated as sharing the primary unit. */
   assumeShared: boolean;
+  /**
+   * When true, a differing-unit model is rescaled into the primary unit and then
+   * unified into the primary project (rather than federated).
+   */
+  normalize: boolean;
+}
+
+/**
+ * How one model folds into the merge, decided from its units and the
+ * reconciliation mode. See {@link MergedExporter.resolveModelMode}.
+ *
+ * Length, area and volume carry *independent* factors: IFC declares
+ * `AREAUNIT`/`VOLUMEUNIT` separately from `LENGTHUNIT` (e.g. millimetre lengths
+ * with square-/cubic-metre areas), so an area is not simply the length factor
+ * squared.
+ */
+interface ModelMode {
+  /**
+   * True when the model is unified into the primary project (its project, units,
+   * contexts and matching spatial structure are deduplicated). False federates it.
+   */
+  compatible: boolean;
+  /** Factor applied to every length-valued datum before emit (`1` = no rescale). */
+  lengthFactor: number;
+  /** Factor applied to every area-valued datum before emit (`1` = no rescale). */
+  areaFactor: number;
+  /** Factor applied to every volume-valued datum before emit (`1` = no rescale). */
+  volumeFactor: number;
+  /**
+   * Unit space the model's emitted entities end up in — the primary scale when
+   * normalized/compatible, else the model's own scale. Recorded with each emitted
+   * GlobalId so later models reconcile against the right unit space.
+   */
+  effectiveScale: number;
+  /** True when this (non-primary) model was rescaled into the primary unit. */
+  normalized: boolean;
 }
 
 /** Per-model plan: how this model's entities are remapped, skipped, or restamped. */
@@ -196,6 +247,20 @@ function viewHasMutations(view: MutablePropertyView | undefined): boolean {
 }
 
 /**
+ * Drop models with no usable source (nothing to emit): a cache-restored or
+ * metadata-only store can reach the merge with an empty `.source`. The emit loop
+ * already skips them, but the primary model (`models[0]`) and the unit/offset
+ * setup must be computed over the SAME set — otherwise an empty model at index 0
+ * would poison the primary unit/scale that later models normalize against. When
+ * every model is empty the original list is kept so a valid (empty) file is still
+ * produced rather than throwing.
+ */
+function withUsableSource(models: MergeModelInput[]): MergeModelInput[] {
+  const usable = models.filter(m => m.dataStore.source && m.dataStore.source.length > 0);
+  return usable.length > 0 ? usable : models;
+}
+
+/**
  * Options for merged STEP export
  */
 export interface MergeExportOptions {
@@ -231,11 +296,23 @@ export interface MergeExportOptions {
    *   (a deliberate relaxation of the IfcSingleProjectInstance rule, flagged in
    *   `stats.warnings`) — the only way to preserve mixed units in one file
    *   without rewriting every length-valued attribute.
+   * - `'normalize'`: single-unit merge. A model with a *different* length unit
+   *   is *rescaled* — every length-valued datum (all `IfcCartesianPoint`
+   *   coordinates, extrusion depths, profile dimensions, radii, thicknesses,
+   *   storey elevations, placement offsets, `IfcLengthMeasure` property values,
+   *   `IfcQuantityLength`/`Area`/`Volume`, …) is converted from its own unit
+   *   into the first model's unit — and then unified into the single first
+   *   `IfcProject` (its `IfcUnitAssignment` and contexts deduplicated). The
+   *   output is one ordinary single-unit IFC that opens correctly everywhere
+   *   (BIM Vision included). Angles, ratios, counts and georeferencing offsets
+   *   are left as-is. Area/volume values assume the SI-derived unit
+   *   (square/cube of the length unit). See {@link ./unit-normalize.ts} for the
+   *   exact set of rescaled attributes.
    * - `'assume-shared'`: treat every model as sharing the first model's unit
    *   (the pre-1332 behaviour). Use only when the caller has already
    *   normalised units; mixing real units under this mode mis-scales geometry.
    */
-  unitReconciliation?: 'auto' | 'assume-shared';
+  unitReconciliation?: 'auto' | 'normalize' | 'assume-shared';
 
   /** Apply visibility filtering to each model before merging */
   visibleOnly?: boolean;
@@ -284,6 +361,12 @@ export interface MergeExportResult {
      */
     federatedModelCount: number;
     /**
+     * Number of models whose length-valued data was rescaled into the first
+     * model's unit under `unitReconciliation: 'normalize'`. 0 for the other
+     * modes (or when every model already shared the first model's unit).
+     */
+    normalizedModelCount: number;
+    /**
      * Human-readable advisories about the merge (empty on a clean single-unit
      * merge). Notably flags when federation produced more than one IfcProject,
      * which intentionally relaxes the IfcSingleProjectInstance schema rule.
@@ -315,14 +398,15 @@ export interface MergeExportResult {
  *    fresh deterministic GlobalId so the file has no duplicate-GlobalId errors
  *    and no relationship membership is lost.
  *
- * Conformance trade-off: when federation triggers, the file contains more than
- * one IfcProject, which intentionally relaxes the IfcSingleProjectInstance
- * EXPRESS rule (SIZEOF(IfcProject) <= 1). This is the only way to keep two
- * different length units in one STEP file without rewriting every length-valued
- * coordinate, and it is strictly better than the previous silent mis-scale.
- * `MergeExportResult.stats.warnings` flags it; pass
- * `unitReconciliation: 'assume-shared'` to force a single project when units
- * are already normalised.
+ * Conformance trade-off: when federation triggers (under the default `'auto'`),
+ * the file contains more than one IfcProject, which intentionally relaxes the
+ * IfcSingleProjectInstance EXPRESS rule (SIZEOF(IfcProject) <= 1). This preserves
+ * both units without rewriting coordinates, and is strictly better than a silent
+ * mis-scale. `MergeExportResult.stats.warnings` flags it. To instead get one
+ * ordinary single-unit IfcProject, pass `unitReconciliation: 'normalize'` — it
+ * rescales every length-valued datum of the differing-unit models into the first
+ * model's unit (see {@link ./unit-normalize.ts}). Use `'assume-shared'` only when
+ * the caller has already normalised units.
  *
  * Limitation: federation only unifies a model against the *first* model's unit
  * group. Two non-first models that share a unit different from the first are
@@ -351,7 +435,7 @@ export class MergedExporter {
         'Use exportAsync() for merged export with mutations.',
       );
     }
-    const models = this.models;
+    const models = withUsableSource(this.models);
     const setup = this.buildMergeSetup(options, models);
 
     const allEntityLines: string[] = [];
@@ -361,6 +445,8 @@ export class MergedExporter {
     const guidToFinalId = new Map<string, GuidRecord>();
     let isFirstModel = true;
     let federatedModelCount = 0;
+    let normalizedModelCount = 0;
+    const normalizeWarnings = new Set<string>();
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
@@ -372,17 +458,16 @@ export class MergedExporter {
       const completeIndex = getCompleteEntityIndex(model.dataStore);
       const includedEntityIds = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
-      const modelScale = this.resolveUnitScale(model);
-      const compatible = isFirstModel || setup.assumeShared
-        || this.unitsCompatible(modelScale, setup.primaryScale);
-      if (!isFirstModel && !compatible) federatedModelCount++;
-      const plan = this.planModel(model, completeIndex, isFirstModel, compatible, setup, guidToFinalId);
+      const mode = this.resolveModelMode(model, isFirstModel, setup);
+      if (!isFirstModel && !mode.compatible) federatedModelCount++;
+      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
+      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
 
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
       for (const [expressId, entityRef] of completeIndex) {
         if (includedEntityIds !== null && !includedEntityIds.has(expressId)) continue;
         if (plan.skipEntityIds.has(expressId)) continue;
-        const line = this.renderEntity(expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, modelScale);
+        const line = this.renderEntity(expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode);
         if (line !== null) allEntityLines.push(line);
       }
 
@@ -395,7 +480,7 @@ export class MergedExporter {
 
     return {
       content,
-      stats: this.buildStats(allEntityLines.length, content.byteLength, federatedModelCount),
+      stats: this.buildStats(allEntityLines.length, content.byteLength, federatedModelCount, normalizedModelCount, normalizeWarnings),
     };
   }
 
@@ -414,7 +499,7 @@ export class MergedExporter {
     // Bake each model's pending edits into its source bytes before merging, so
     // federated export round-trips mutations like single-model export. Models
     // without edits pass through unchanged (no export/parse cost).
-    const models = await this.bakeMutatedModels();
+    const models = withUsableSource(await this.bakeMutatedModels());
     const setup = this.buildMergeSetup(options, models);
 
     const allEntityLines: string[] = [];
@@ -429,6 +514,8 @@ export class MergedExporter {
     let isFirstModel = true;
     let entitiesProcessed = 0;
     let federatedModelCount = 0;
+    let normalizedModelCount = 0;
+    const normalizeWarnings = new Set<string>();
     const YIELD_INTERVAL = 2000;
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
@@ -451,11 +538,10 @@ export class MergedExporter {
       const completeIndex = getCompleteEntityIndex(model.dataStore);
       const includedEntityIds = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
-      const modelScale = this.resolveUnitScale(model);
-      const compatible = isFirstModel || setup.assumeShared
-        || this.unitsCompatible(modelScale, setup.primaryScale);
-      if (!isFirstModel && !compatible) federatedModelCount++;
-      const plan = this.planModel(model, completeIndex, isFirstModel, compatible, setup, guidToFinalId);
+      const mode = this.resolveModelMode(model, isFirstModel, setup);
+      if (!isFirstModel && !mode.compatible) federatedModelCount++;
+      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
+      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
 
       let entityCount = 0;
@@ -463,7 +549,7 @@ export class MergedExporter {
         if (includedEntityIds !== null && !includedEntityIds.has(expressId)) continue;
         if (plan.skipEntityIds.has(expressId)) continue;
 
-        const line = this.renderEntity(expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, modelScale);
+        const line = this.renderEntity(expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode);
         if (line !== null) allEntityLines.push(line);
 
         entityCount++;
@@ -501,7 +587,7 @@ export class MergedExporter {
 
     return {
       content,
-      stats: this.buildStats(allEntityLines.length, content.byteLength, federatedModelCount),
+      stats: this.buildStats(allEntityLines.length, content.byteLength, federatedModelCount, normalizedModelCount, normalizeWarnings),
     };
   }
 
@@ -552,7 +638,13 @@ export class MergedExporter {
   /**
    * Assemble the result stats, including any federation conformance warnings.
    */
-  private buildStats(totalEntityCount: number, fileSize: number, federatedModelCount: number): MergeExportResult['stats'] {
+  private buildStats(
+    totalEntityCount: number,
+    fileSize: number,
+    federatedModelCount: number,
+    normalizedModelCount: number,
+    normalizeWarnings: Set<string>,
+  ): MergeExportResult['stats'] {
     const warnings: string[] = [];
     if (federatedModelCount > 0) {
       warnings.push(
@@ -560,11 +652,36 @@ export class MergedExporter {
         `federated as separate IfcProject roots to keep their geometry correctly scaled. The output ` +
         `therefore contains ${federatedModelCount + 1} IfcProject instances, which intentionally relaxes ` +
         `the IfcSingleProjectInstance rule (SIZEOF(IfcProject) <= 1). Some single-project viewers may ` +
-        `only show the first project. Pass unitReconciliation:'assume-shared' to force one project when ` +
-        `units are already normalised.`,
+        `only show the first project. Pass unitReconciliation:'normalize' to rescale them into one ` +
+        `single-unit project, or 'assume-shared' when units are already normalised.`,
       );
     }
-    return { modelCount: this.models.length, totalEntityCount, fileSize, federatedModelCount, warnings };
+    warnings.push(...normalizeWarnings);
+    return { modelCount: this.models.length, totalEntityCount, fileSize, federatedModelCount, normalizedModelCount, warnings };
+  }
+
+  /**
+   * Record advisories for a model being normalized. The rescaler derives its
+   * length-attribute map from the IFC4 schema registry, so it may not cover
+   * length attributes introduced by newer schemas (IFC4X3 alignment / linear
+   * referencing), and it deliberately leaves georeferencing untouched.
+   */
+  private collectNormalizeCaveats(model: MergeModelInput, warnings: Set<string>): void {
+    const schema = (model.dataStore.schemaVersion ?? '').toUpperCase();
+    if (NORMALIZE_UNCOVERED_SCHEMAS.has(schema)) {
+      warnings.add(
+        `Model "${model.name}" (${schema}) was normalized using the IFC4 length-attribute schema; ` +
+        `length values on ${schema}-specific entities (e.g. alignment / linear-referencing segment ` +
+        `lengths and radii) may not have been rescaled. Verify infrastructure geometry.`,
+      );
+    }
+    if (this.findEntitiesByType(model.dataStore, 'IFCMAPCONVERSION').length > 0) {
+      warnings.add(
+        `Model "${model.name}" carries georeferencing (IfcMapConversion), which normalize leaves ` +
+        `untouched. If the model was georeferenced in its own unit, review the merged coordinate ` +
+        `operation.`,
+      );
+    }
   }
 
   /**
@@ -600,15 +717,128 @@ export class MergedExporter {
     }
 
     const firstModel = models[0];
+    const primaryScale = this.resolveUnitScale(firstModel);
     return {
       modelOffsets,
       firstModelOffset: modelOffsets.get(firstModel.id)!,
       firstModelInfraMap: this.findInfrastructureEntities(firstModel.dataStore),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
-      primaryScale: this.resolveUnitScale(firstModel),
+      primaryScale,
+      primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
+      primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
       assumeShared: options.unitReconciliation === 'assume-shared',
+      normalize: options.unitReconciliation === 'normalize',
     };
+  }
+
+  /**
+   * Decide how one model folds into the merge from its length unit and the
+   * reconciliation mode.
+   *
+   * - The primary model, `assume-shared`, and any model that already shares the
+   *   primary unit are unified with no rescale.
+   * - Under `normalize`, a differing-unit model is unified *and* rescaled: every
+   *   length-valued datum is multiplied by `primaryScale`-relative factor so its
+   *   geometry stays correct under the single shared unit.
+   * - Otherwise (`auto`) a differing-unit model is federated (kept as its own
+   *   project + units), leaving its raw coordinates untouched.
+   *
+   * Area/volume reconciliation is gated on the length unit differing: a model that
+   * shares the primary's length unit is treated as fully compatible (factors 1).
+   * A model that pairs a matching length unit with a *divergent* area/volume unit
+   * (a non-conformant combination no mainstream exporter emits) is not rescaled.
+   */
+  private resolveModelMode(model: MergeModelInput, isFirstModel: boolean, setup: MergeSetup): ModelMode {
+    const modelScale = this.resolveUnitScale(model);
+    if (isFirstModel || setup.assumeShared || this.unitsCompatible(modelScale, setup.primaryScale)) {
+      return { compatible: true, lengthFactor: 1, areaFactor: 1, volumeFactor: 1, effectiveScale: modelScale, normalized: false };
+    }
+    if (setup.normalize) {
+      // Each dimension is converted by the ratio of its own declared unit, not by
+      // powers of the length factor — IFC declares area/volume units independently
+      // (Revit: millimetre lengths but square-/cubic-metre areas/volumes).
+      const modelArea = this.resolveDerivedUnitScale(model.dataStore, 'AREAUNIT', modelScale, 2);
+      const modelVolume = this.resolveDerivedUnitScale(model.dataStore, 'VOLUMEUNIT', modelScale, 3);
+      return {
+        compatible: true,
+        lengthFactor: computeNormalizeFactor(modelScale, setup.primaryScale),
+        areaFactor: computeNormalizeFactor(modelArea, setup.primaryAreaScale),
+        volumeFactor: computeNormalizeFactor(modelVolume, setup.primaryVolumeScale),
+        effectiveScale: setup.primaryScale,
+        normalized: true,
+      };
+    }
+    // auto: federate the differing-unit model, coordinates untouched.
+    return { compatible: false, lengthFactor: 1, areaFactor: 1, volumeFactor: 1, effectiveScale: modelScale, normalized: false };
+  }
+
+  /**
+   * Resolve a model's declared AREAUNIT / VOLUMEUNIT scale (SI m² / m³ per unit)
+   * by walking IfcProject → IfcUnitAssignment. Falls back to the length-derived
+   * unit (`lengthScale ** power`) when the model declares no explicit area/volume
+   * unit — the IFC default. A prefixed SI area/volume unit (rare) applies the
+   * prefix once (buildingSMART / IfcOpenShell convention).
+   */
+  private resolveDerivedUnitScale(
+    dataStore: IfcDataStore,
+    wantType: 'AREAUNIT' | 'VOLUMEUNIT',
+    lengthScale: number,
+    power: number,
+  ): number {
+    const fallback = Math.pow(lengthScale, power);
+    const projectIds = this.findEntitiesByType(dataStore, 'IFCPROJECT');
+    if (projectIds.length === 0) return fallback;
+
+    // IfcProject.UnitsInContext = attr 8 → IfcUnitAssignment.
+    const unitsAttr = this.extractStepAttribute(projectIds[0], dataStore, 8);
+    const assignMatch = unitsAttr?.match(/^#(\d+)$/);
+    if (!assignMatch) return fallback;
+
+    // IfcUnitAssignment.Units = attr 0 (a list of unit refs).
+    const listAttr = this.extractStepAttribute(parseInt(assignMatch[1], 10), dataStore, 0);
+    if (!listAttr) return fallback;
+
+    for (const m of listAttr.matchAll(/#(\d+)/g)) {
+      const uid = parseInt(m[1], 10);
+      const uref = dataStore.entityIndex.byId.get(uid);
+      const utype = (uref?.type ?? '').toUpperCase();
+
+      if (utype === 'IFCSIUNIT') {
+        // IfcSIUnit: [1] UnitType, [2] Prefix, [3] Name.
+        if (this.normalizeEnum(this.extractStepAttribute(uid, dataStore, 1)) !== wantType) continue;
+        const prefixRaw = this.extractStepAttribute(uid, dataStore, 2);
+        if (!prefixRaw || prefixRaw === '$' || prefixRaw === '*') return 1.0; // square/cubic metre
+        const mult = SI_PREFIX_MULTIPLIERS[this.normalizeEnum(prefixRaw)];
+        return mult !== undefined ? mult : 1.0;
+      }
+
+      if (utype === 'IFCCONVERSIONBASEDUNIT') {
+        // IfcConversionBasedUnit: [1] UnitType, [2] Name, [3] ConversionFactor.
+        if (this.normalizeEnum(this.extractStepAttribute(uid, dataStore, 1)) !== wantType) continue;
+        const convMatch = this.extractStepAttribute(uid, dataStore, 3)?.match(/^#(\d+)$/);
+        if (convMatch) {
+          // IfcMeasureWithUnit.ValueComponent = attr 0 (e.g. IFCAREAMEASURE(0.0929)).
+          const num = this.parseMeasureNumber(this.extractStepAttribute(parseInt(convMatch[1], 10), dataStore, 0));
+          if (num !== undefined && num > 0) return num;
+        }
+        return fallback;
+      }
+    }
+    return fallback;
+  }
+
+  /** Uppercase an enum token, stripping the STEP `.ENUM.` dots. `''` for nullish. */
+  private normalizeEnum(raw: string | null): string {
+    return (raw ?? '').replace(/\./g, '').trim().toUpperCase();
+  }
+
+  /** Extract the number from a bare real or a typed measure token (`IFCAREAMEASURE(0.09)`). */
+  private parseMeasureNumber(raw: string | null): number | undefined {
+    if (!raw) return undefined;
+    const typed = raw.match(/\(([^)]*)\)\s*$/);
+    const n = Number((typed ? typed[1] : raw).trim());
+    return Number.isFinite(n) ? n : undefined;
   }
 
   /**
@@ -659,10 +889,10 @@ export class MergedExporter {
    * Plan how a model's entities are remapped, skipped, or re-stamped, given
    * whether it shares the primary model's length unit (`compatible`).
    *
-   * Compatible (or `assume-shared`) models are unified into the primary project:
-   * their IfcProject, shared infrastructure, and matching spatial structure are
-   * deduplicated, and a rooted entity repeating an already-emitted GlobalId is
-   * unified to that one instance.
+   * Compatible models (same unit, `assume-shared`, or `normalize`d into the
+   * primary unit) are unified into the primary project: their IfcProject, shared
+   * infrastructure, and matching spatial structure are deduplicated, and a rooted
+   * entity repeating an already-emitted GlobalId is unified to that one instance.
    *
    * Incompatible (federated) models keep their own project, units, contexts and
    * spatial structure so their coordinates stay correctly scaled; a rooted
@@ -675,6 +905,7 @@ export class MergedExporter {
     completeIndex: CompleteEntityIndex,
     isFirstModel: boolean,
     compatible: boolean,
+    lengthFactor: number,
     setup: MergeSetup,
     guidToFinalId: Map<string, GuidRecord>,
   ): ModelMergePlan {
@@ -711,7 +942,9 @@ export class MergedExporter {
       }
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
-      this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, sharedRemap, skipEntityIds);
+      // Under normalize, this model's raw elevations are in its own unit, so the
+      // elevation match is done in the primary unit (rawElevation * lengthFactor).
+      this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds);
 
       // Skip IfcRelAggregates that become fully redundant after unification.
       this.skipRedundantRelAggregates(model.dataStore, sharedRemap, skipEntityIds);
@@ -764,7 +997,7 @@ export class MergedExporter {
     sourceSchema: IfcSchemaVersion,
     targetSchema: IfcSchemaVersion,
     guidToFinalId: Map<string, GuidRecord>,
-    modelScale: number,
+    mode: ModelMode,
   ): string | null {
     const entityText = safeUtf8Decode(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
 
@@ -780,6 +1013,14 @@ export class MergedExporter {
     const mintedGuid = plan.guidRewrite.get(localId);
     if (mintedGuid !== undefined) {
       finalText = this.replaceGlobalId(finalText, mintedGuid);
+    }
+
+    // Normalize units: rescale every length/area/volume-valued datum into the
+    // primary unit. Done on the SOURCE-schema text (entityRef.type), before any
+    // schema conversion, so the schema-derived attribute indices line up. Touches
+    // only numeric literals, so id remaps and the GlobalId re-stamp above are safe.
+    if (mode.lengthFactor !== 1 || mode.areaFactor !== 1 || mode.volumeFactor !== 1) {
+      finalText = rescaleEntityLengths(finalText, entityRef.type.toUpperCase(), mode.lengthFactor, mode.areaFactor, mode.volumeFactor);
     }
 
     if (needsConversion(sourceSchema, targetSchema)) {
@@ -798,7 +1039,7 @@ export class MergedExporter {
       const emittedGuid = this.readLeadingGuid(finalText)
         ?? mintedGuid ?? plan.localGuids.get(localId);
       if (emittedGuid !== undefined) {
-        guidToFinalId.set(emittedGuid, { finalId: localId + offset, scale: modelScale });
+        guidToFinalId.set(emittedGuid, { finalId: localId + offset, scale: mode.effectiveScale });
       }
     }
 
@@ -1024,6 +1265,7 @@ export class MergedExporter {
     dataStore: IfcDataStore,
     lookup: SpatialLookup,
     firstModelOffset: number,
+    elevationFactor: number,
     sharedRemap: Map<number, number>,
     skipEntityIds: Set<number>,
   ): void {
@@ -1072,10 +1314,13 @@ export class MergedExporter {
         }
       }
 
-      // Fallback: match by elevation
+      // Fallback: match by elevation. The candidate's raw elevation is in this
+      // model's unit; scale it into the primary unit so the comparison (and the
+      // ±0.5 m tolerance) is unit-consistent under normalize (factor 1 otherwise).
       if (match === undefined) {
-        const elevation = this.extractStoreyElevation(id, dataStore);
-        if (elevation !== undefined) {
+        const rawElevation = this.extractStoreyElevation(id, dataStore);
+        if (rawElevation !== undefined) {
+          const elevation = rawElevation * elevationFactor;
           for (const entry of lookup.storeysByElevation) {
             if (matchedFirstStoreys.has(entry.expressId)) continue;
             const tolerance = Math.max(0.5, Math.abs(entry.elevation) * 0.01);

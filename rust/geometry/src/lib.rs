@@ -99,6 +99,7 @@ pub mod profile_extractor;
 pub mod profiles;
 pub mod projection_outline;
 pub mod rect_fast;
+pub use rect_fast::RectFastStats;
 pub mod router;
 pub mod tessellation;
 pub mod space_dcel;
@@ -140,8 +141,9 @@ pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
 pub use router::{
-    ClassificationStats, GeometryProcessor, GeometryRouter, HostOpeningDiagnostic, ItemDedupCache,
-    OpeningDiagnostic, OpeningKindDiag, RectParam,
+    aggregate_diagnostics, ClassificationStats, ClassificationSummary, GeometryDiagnostics,
+    GeometryProcessor, GeometryRouter, HostOpeningDiagnostic, ItemDedupCache, OpeningDiagnostic,
+    OpeningKindDiag, ReasonCount, RectFastSummary, RectParam, WorstHost,
 };
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{

@@ -5,6 +5,7 @@
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import type { MeshData, TessellationQuality } from './types.js';
+import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import {
   DEFAULT_BATCH_SIZING,
   resolveBatchSizing,
@@ -169,6 +170,17 @@ export interface GeometryWorkerSetTessellationQualityMessage {
   level: TessellationQuality | null;
 }
 
+/**
+ * Forward the tier-independent small-cut skip (issue #1286) to this worker's
+ * IfcAPI. Sent AFTER `init` and BEFORE the first `stream-start`, mirroring
+ * `set-tessellation-quality`. `false` (the default) keeps every cut, so never
+ * sending the message changes nothing.
+ */
+export interface GeometryWorkerSetSkipSmallCutsMessage {
+  type: 'set-skip-small-cuts';
+  enabled: boolean;
+}
+
 export type GeometryWorkerRequest =
   | GeometryWorkerInitMessage
   | GeometryWorkerStreamStartMessage
@@ -180,6 +192,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetInstancingMessage
   | GeometryWorkerSetComputeGeometryHashesMessage
   | GeometryWorkerSetTessellationQualityMessage
+  | GeometryWorkerSetSkipSmallCutsMessage
   | GeometryWorkerPrePassMessage;
 
 export interface GeometryWorkerBatchMessage {
@@ -225,6 +238,9 @@ export interface GeometryWorkerProgressMessage {
 export interface GeometryWorkerCompleteMessage {
   type: 'complete';
   totalMeshes: number;
+  /** CSG / opening diagnostics merged over this worker's batches (the
+   *  GeometryDiagnostics contract). Omitted when none were recorded. */
+  diagnostics?: GeometryDiagnostics;
 }
 
 export interface GeometryWorkerErrorMessage {
@@ -281,6 +297,8 @@ async function ensureInit(): Promise<IfcAPI> {
   applyComputeGeometryHashesToApi();
   tessellationQualityApplied = false;
   applyTessellationQualityToApi();
+  skipSmallCutsApplied = false;
+  applySkipSmallCutsToApi();
   entityIndexApplied = false;
   applyEntityIndexToApi();
   return api;
@@ -310,6 +328,7 @@ type IfcAPIWithMerge = IfcAPI & {
   setMergeLayers?: (enabled: boolean) => void;
   setComputeGeometryHashes?: (tolerance?: number | null) => void;
   setTessellationQuality?: (level?: string | null) => void;
+  setSkipSmallCuts?: (on: boolean) => void;
 };
 
 /**
@@ -361,6 +380,26 @@ function applyTessellationQualityToApi(): void {
     quality.setTessellationQuality(tessellationQuality);
   }
   tessellationQualityApplied = true;
+}
+
+/**
+ * Cached tier-independent small-cut skip for this worker (issue #1286), mirroring
+ * the merge-layers replay contract: the host posts the toggle before `init`, so
+ * remember it and re-apply once the IfcAPI exists. `false` (the default) keeps
+ * every cut. Always re-sent per run, so a worker reused by a later export resets
+ * to `false` and that export keeps full-fidelity geometry.
+ */
+let skipSmallCuts: boolean = false;
+let skipSmallCutsApplied: boolean = false;
+
+/** Push the cached small-cut skip onto the IfcAPI (once per API). */
+function applySkipSmallCutsToApi(): void {
+  if (!api || skipSmallCutsApplied) return;
+  const cutting = api as IfcAPIWithMerge;
+  if (typeof cutting.setSkipSmallCuts === 'function') {
+    cutting.setSkipSmallCuts(skipSmallCuts);
+  }
+  skipSmallCutsApplied = true;
 }
 
 /**
@@ -438,6 +477,10 @@ interface ProcessingSession {
   pendingInstancedGeometryHashes: Map<number, bigint>;
   totalMeshesEmitted: number;
   cumulativeMeshBytes: number;
+  /** CSG / opening diagnostics merged across every batch this load (the
+   *  GeometryDiagnostics contract). Reported once at completion so a silently
+   *  uncut model surfaces a typed summary, not just scattered console warnings. */
+  diagnostics: GeometryDiagnostics | null;
 }
 
 let activeSession: ProcessingSession | null = null;
@@ -497,6 +540,7 @@ function startSession(input: {
     pendingInstancedGeometryHashes: new Map(),
     totalMeshesEmitted: 0,
     cumulativeMeshBytes: 0,
+    diagnostics: null,
   };
 }
 
@@ -642,6 +686,17 @@ function collectMeshes(
     for (const [id, hash] of geometryHashes) {
       if (!flatMeshedIds.has(id)) session.pendingInstancedGeometryHashes.set(id, hash);
     }
+    // CSG / opening diagnostics: merge into the per-load accumulator only AFTER
+    // mesh extraction succeeds (both batch paths attach a GeometryDiagnostics to
+    // the collection). A batch that throws is binary-split + re-run by
+    // processBatch; doing the merge here means the failed attempt contributes
+    // nothing and the re-run is the sole contributor, so totalCsgFailures and the
+    // classification counts stay exact. The diagnostics field is not consumed by
+    // takeMesh, so it is still readable after the extraction loop.
+    session.diagnostics = mergeGeometryDiagnostics(
+      session.diagnostics,
+      collection.diagnostics as GeometryDiagnostics | undefined,
+    );
   } finally {
     collection.free();
   }
@@ -820,8 +875,16 @@ function emitSessionEnd(session: ProcessingSession): void {
   (self as unknown as Worker).postMessage(
     { type: 'memory', meshBytes: session.cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
   );
+  // The aggregate per-load console summary is logged once by the parallel loader
+  // (geometry-parallel.ts), which holds the cross-worker total. This worker only
+  // forwards its own subtotal on the message; logging here would print one partial
+  // line per worker.
   (self as unknown as Worker).postMessage(
-    { type: 'complete', totalMeshes: session.totalMeshesEmitted } as GeometryWorkerCompleteMessage,
+    {
+      type: 'complete',
+      totalMeshes: session.totalMeshesEmitted,
+      ...(session.diagnostics ? { diagnostics: session.diagnostics } : {}),
+    } as GeometryWorkerCompleteMessage,
   );
 }
 
@@ -894,6 +957,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         applyComputeGeometryHashesToApi();
         tessellationQualityApplied = false;
         applyTessellationQualityToApi();
+        skipSmallCutsApplied = false;
+        applySkipSmallCutsToApi();
         entityIndexApplied = false;
         applyEntityIndexToApi();
       } else {
@@ -1002,6 +1067,14 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       tessellationQuality = e.data.level ?? null;
       tessellationQualityApplied = false;
       applyTessellationQualityToApi();
+      return;
+    }
+
+    if (e.data.type === 'set-skip-small-cuts') {
+      // Same cache-and-replay contract as set-merge-layers (issue #1286).
+      skipSmallCuts = e.data.enabled === true;
+      skipSmallCutsApplied = false;
+      applySkipSmallCutsToApi();
       return;
     }
 

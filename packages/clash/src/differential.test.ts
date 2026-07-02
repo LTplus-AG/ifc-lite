@@ -52,6 +52,53 @@ function box(key: string, tag: string, center: Vec3, size = 1): ClashElement {
   };
 }
 
+const BOX_CORNER_ORDER: ReadonlyArray<readonly [number, number, number]> = [
+  [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+  [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
+];
+const BOX_IDX = new Uint32Array([
+  0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1,
+  1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0,
+]);
+
+/** Box element with per-axis half-extents (world positions, no transform). */
+function boxHxyz(key: string, tag: string, center: Vec3, half: Vec3): ClashElement {
+  const v: number[] = [];
+  let min: Vec3 = [Infinity, Infinity, Infinity];
+  let max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const [sx, sy, sz] of BOX_CORNER_ORDER) {
+    const p: Vec3 = [center[0] + sx * half[0], center[1] + sy * half[1], center[2] + sz * half[2]];
+    v.push(...p);
+    for (let a = 0; a < 3; a += 1) { if (p[a] < min[a]) min[a] = p[a]; if (p[a] > max[a]) max[a] = p[a]; }
+  }
+  return { key, ref: refCounter++, model: 'm', tag, positions: new Float32Array(v), indices: BOX_IDX, bounds: { min, max } };
+}
+
+const PRISM_IDX = new Uint32Array([
+  0, 1, 2, 3, 4, 5, 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5,
+]);
+
+/** Closed triangular prism: footprint (XY) extruded between z0 and z1. */
+function triPrism(
+  key: string,
+  tag: string,
+  footprint: [[number, number], [number, number], [number, number]],
+  z0: number,
+  z1: number,
+): ClashElement {
+  const [p0, p1, p2] = footprint;
+  const v = [
+    p0[0], p0[1], z0, p1[0], p1[1], z0, p2[0], p2[1], z0,
+    p0[0], p0[1], z1, p1[0], p1[1], z1, p2[0], p2[1], z1,
+  ];
+  let min: Vec3 = [Infinity, Infinity, Infinity];
+  let max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < v.length; i += 3) {
+    for (let a = 0; a < 3; a += 1) { const c = v[i + a]; if (c < min[a]) min[a] = c; if (c > max[a]) max[a] = c; }
+  }
+  return { key, ref: refCounter++, model: 'm', tag, positions: new Float32Array(v), indices: PRISM_IDX, bounds: { min, max } };
+}
+
 function applyMat4Pt(m: Mat4, x: number, y: number, z: number): Vec3 {
   return [
     m[0] * x + m[4] * y + m[8] * z + m[12],
@@ -95,6 +142,17 @@ function assertParity(a: ClashResult, b: ClashResult): void {
     expect(Math.abs(y.distance - x.distance)).toBeLessThan(EPS);
     for (let i = 0; i < 3; i += 1) {
       expect(Math.abs(y.point[i] - x.point[i])).toBeLessThan(EPS);
+    }
+    // Tight-contact bounds must agree across backends too (#1402 Bug B), not just
+    // count/status/point — otherwise a bounds regression in one kernel slips by.
+    // Both kernels must also agree on whether bounds exist at all, so a one-sided
+    // bounds regression cannot hide behind a presence check.
+    expect(Boolean(y.bounds), `clash ${x.id} bounds presence must match`).toBe(Boolean(x.bounds));
+    if (x.bounds && y.bounds) {
+      for (let i = 0; i < 3; i += 1) {
+        expect(Math.abs(y.bounds.min[i] - x.bounds.min[i])).toBeLessThan(EPS);
+        expect(Math.abs(y.bounds.max[i] - x.bounds.max[i])).toBeLessThan(EPS);
+      }
     }
   }
 }
@@ -168,6 +226,45 @@ describe('differential: WASM kernel === TS kernel', () => {
     const els = [box('A', 'IfcWall', [0, 0, 0], 1), box('B', 'IfcDuctSegment', [20, 0, 0], 1)];
     const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
     expect(n).toBe(0);
+  });
+
+  it('agrees that skewed members sharing only a face are not a hard clash (#1362 Bug A)', async () => {
+    const els = [
+      triPrism('A', 'IfcWall', [[0, 0], [2, 0], [0, 2]], 0, 1),
+      triPrism('B', 'IfcDuctSegment', [[2, 0], [0, 2], [5, 5]], 0, 1),
+    ];
+    const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(n).toBe(0);
+  });
+
+  it('agrees that members that interpenetrate are a hard clash (#1362 recall)', async () => {
+    const els = [
+      triPrism('A', 'IfcWall', [[0, 0], [2, 0], [0, 2]], 0, 1),
+      boxHxyz('B', 'IfcDuctSegment', [1, 1, 0.5], [0.5, 0.5, 0.5]),
+    ];
+    const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(n).toBe(1);
+  });
+
+  it('agrees on a genuine crossing (tight-contact path) (#1402 Bug B)', async () => {
+    const els = [
+      boxHxyz('A', 'IfcWall', [0, 0, 0], [5, 0.5, 0.5]),
+      boxHxyz('B', 'IfcDuctSegment', [0, 0, 0], [0.5, 5, 0.5]),
+    ];
+    const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(n).toBe(1);
+  });
+
+  it('agrees on unequal-length aligned overlap (overlap-centre probe) (#1362)', async () => {
+    // Long bar x[-5,5] and short bar x[4.9,5.9] sharing y/z extents: the centroid
+    // midpoint falls outside the short bar, so both kernels must rely on the
+    // AABB-overlap-centre probe and agree it is a hard clash.
+    const els = [
+      boxHxyz('A', 'IfcWall', [0, 0, 0], [5, 0.5, 0.5]),
+      boxHxyz('B', 'IfcDuctSegment', [5.4, 0, 0], [0.5, 0.5, 0.5]),
+    ];
+    const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(n).toBe(1);
   });
 
   it('agrees on transformed elements (f32-quantized world coords)', async () => {

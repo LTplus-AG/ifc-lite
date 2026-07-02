@@ -3,12 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * BCFCreateTopicForm - New topic creation form for the BCF panel.
+ * BCFCreateTopicForm - Topic create/edit form for the BCF panel.
  *
  * Exposes the full BCF topic field set (type, status, priority, assignee, due
  * date, labels) plus an optional viewpoint snapshot preview. The snapshot
  * section only appears when the parent wires snapshot capture (`onCaptureSnapshot`),
  * since the image comes from the live WebGPU canvas the parent owns.
+ *
+ * Reused for editing: pass `initialTopic` to seed every field from an existing
+ * topic and set `heading`/`submitLabel` to relabel the form (#1461).
  */
 
 import React, { useCallback, useState } from 'react';
@@ -39,6 +42,16 @@ export interface BCFCreateTopicFormProps {
   /** Pre-fill the description. */
   initialDescription?: string;
   /**
+   * Seed every field from an existing topic to edit it in place (#1461). Takes
+   * precedence over `initialTitle`/`initialDescription`. Pair with `heading`
+   * and `submitLabel` to relabel the form for editing.
+   */
+  initialTopic?: BCFTopic | null;
+  /** Heading shown at the top of the form (default "New Topic"). */
+  heading?: string;
+  /** Submit button label (default "Create Topic"). */
+  submitLabel?: string;
+  /**
    * Snapshot preview as a data URL. When this OR `onCaptureSnapshot` is provided
    * the form shows a viewpoint-snapshot section with an "attach" toggle.
    */
@@ -59,18 +72,25 @@ export function BCFCreateTopicForm({
   author: _author,
   initialTitle = '',
   initialDescription = '',
+  initialTopic = null,
+  heading = 'New Topic',
+  submitLabel = 'Create Topic',
   snapshot,
   onCaptureSnapshot,
   capturingSnapshot = false,
 }: BCFCreateTopicFormProps) {
-  const [title, setTitle] = useState(initialTitle);
-  const [description, setDescription] = useState(initialDescription);
-  const [topicType, setTopicType] = useState('Issue');
-  const [topicStatus, setTopicStatus] = useState('Open');
-  const [priority, setPriority] = useState('Medium');
-  const [assignedTo, setAssignedTo] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [labels, setLabels] = useState('');
+  // Keep the original ISO due date so an edit that doesn't touch the date can
+  // round-trip it intact (the date input only sees YYYY-MM-DD). (#1461)
+  const initialDueDate = initialTopic?.dueDate;
+  const [title, setTitle] = useState(initialTopic?.title ?? initialTitle);
+  const [description, setDescription] = useState(initialTopic?.description ?? initialDescription);
+  const [topicType, setTopicType] = useState(initialTopic?.topicType ?? 'Issue');
+  const [topicStatus, setTopicStatus] = useState(initialTopic?.topicStatus ?? 'Open');
+  const [priority, setPriority] = useState(initialTopic?.priority ?? 'Medium');
+  const [assignedTo, setAssignedTo] = useState(initialTopic?.assignedTo ?? '');
+  // `<input type="date">` wants a bare YYYY-MM-DD; topics may carry a full ISO timestamp.
+  const [dueDate, setDueDate] = useState((initialDueDate ?? '').split('T')[0]);
+  const [labels, setLabels] = useState((initialTopic?.labels ?? []).join(', '));
   const [includeSnapshot, setIncludeSnapshot] = useState(true);
 
   // Snapshot is offered only when the parent can capture it from the canvas.
@@ -92,19 +112,24 @@ export function BCFCreateTopicForm({
           topicStatus,
           priority,
           assignedTo: assignedTo.trim() || undefined,
-          dueDate: dueDate || undefined,
+          // Round-trip the original ISO timestamp when the date is unchanged, so
+          // editing another field doesn't drop an imported topic's time/offset.
+          dueDate:
+            dueDate && initialDueDate && dueDate === initialDueDate.split('T')[0]
+              ? initialDueDate
+              : dueDate || undefined,
           labels: parsedLabels.length ? parsedLabels : undefined,
         },
         { includeSnapshot: snapshotCapable && includeSnapshot },
       );
     },
-    [title, description, topicType, topicStatus, priority, assignedTo, dueDate, labels, includeSnapshot, snapshotCapable, onSubmit],
+    [title, description, topicType, topicStatus, priority, assignedTo, dueDate, labels, includeSnapshot, snapshotCapable, initialDueDate, onSubmit],
   );
 
   return (
     <form onSubmit={handleSubmit} className="p-3 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-medium">New Topic</h3>
+        <h3 className="font-medium">{heading}</h3>
         <Button variant="ghost" size="sm" type="button" onClick={onCancel}>
           <X className="h-4 w-4" />
         </Button>
@@ -256,7 +281,7 @@ export function BCFCreateTopicForm({
           Cancel
         </Button>
         <Button type="submit" disabled={!title.trim()}>
-          Create Topic
+          {submitLabel}
         </Button>
       </div>
     </form>

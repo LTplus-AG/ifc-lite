@@ -1,36 +1,36 @@
 ---
-"@ifc-lite/wasm": minor
-"@ifc-lite/geometry": minor
-"@ifc-lite/export": minor
-"@ifc-lite/cli": patch
-"@ifc-lite/mcp": patch
+"@ifc-lite/wasm": major
+"@ifc-lite/geometry": major
+"@ifc-lite/cli": minor
+"@ifc-lite/mcp": minor
 ---
 
-Make the Rust-backed exporters reliable on large and degenerate inputs.
+feat(export): large-model GLB reliability - bounded memory, fail-closed, byte returns
 
-Remove the ~512 MB input cap on GLB/glTF (and the sibling OBJ, CSV, JSON, JSON-LD,
-STEP, IFCX, HBJSON exporters). They decoded the entire input IFC byte buffer into a
-single JS string via `safeUtf8Decode` before crossing into WASM, where the binding
-immediately turned it back into bytes (`content.as_bytes()`). For an input over V8's
-`0x1fffffe8` (~512 MB) string ceiling that decode threw "Cannot create a string longer
-than 0x1fffffe8 characters", so files in the 0.5 GB+ range failed before any geometry
-ran. The boundary now passes the raw `Uint8Array`/`&[u8]` straight through (matching the
-existing `exportMerged` path), which removes the cap, drops a redundant full-buffer copy
-and a UTF-8 re-encode, and is byte-faithful for non-UTF-8 input.
+Three related hardening changes on the export surface:
 
-Scope: this lifts the cap on the INPUT side for all exporters. GLB returns a
-`Uint8Array`, so its output also escapes the V8 ceiling; the string-returning
-exporters (OBJ/CSV/JSON/JSON-LD/STEP/IFCX/HBJSON) still cap their serialized OUTPUT
-at the same ~512 MB string limit. In-browser, the wasm32 linear-memory heap (not the
-string cap) is the practical ceiling for the very largest models.
+- **Bounded-memory GLB.** Inputs at or above 64 MB (native override
+  `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) are exported through a
+  two-pass streaming assembler: pass 1 records per-mesh metadata only, pass 2
+  re-streams and bakes vertex bytes directly into an exactly-preallocated GLB.
+  Peak memory is the final artifact plus one mesh batch instead of the whole
+  model's meshes plus multiple full-buffer copies - this fixes the wasm
+  `RuntimeError: unreachable` / OOM on large in-browser exports. Models without
+  instanceable groups produce byte-identical output; instanced models keep
+  identical world geometry (rep-identity instancing is skipped above the
+  threshold, content-hash dedup is kept).
 
-Fail loud on an empty GLB export. A malformed-but-parseable model (or a filter whose
-matched entities carry no triangulated geometry) produced a structurally valid GLB with
-zero meshes, which the CLI and MCP tools wrote to disk and reported as success. Both now
-reject a zero-mesh GLB with a clear error (new `countGlbMeshes` helper in
-`@ifc-lite/export`).
+- **Fail-closed empty GLB at the boundary.** `exportGlb` now throws a typed
+  `Error` whose message starts with `NO_RENDER_GEOMETRY` when the visible mesh
+  set is empty, instead of returning a structurally valid but empty GLB.
+  `@ifc-lite/geometry` exports `NO_RENDER_GEOMETRY` and
+  `isNoRenderGeometryError(err)` to match it; the CLI and MCP map it to their
+  existing tailored messages.
 
-Guard the GLB assembler against the glTF 32-bit buffer limit. The assembler cast every
-buffer offset and byteLength `as u32`; past 4 GiB those casts silently wrapped (release
-builds disable overflow checks) and emitted a corrupt GLB. It now sums the binary buffer
-length in `usize` and asserts the 4 GiB ceiling with a clear message instead of wrapping.
+- **BREAKING: sibling exporters return bytes.** `exportObj`, `exportCsv`,
+  `exportJson`, `exportJsonld`, `exportIfcx`, `exportStep`, `exportMerged` and
+  `exportHbjson` (wasm boundary, `IfcLiteBridge`, and `GeometryProcessor`) now
+  return `Uint8Array` (UTF-8) instead of `string`, so output is no longer capped
+  by the V8 max-string ceiling (~512 MB) - the same escape GLB already had.
+  Decode with `TextDecoder` where a string is genuinely needed; file writers
+  should write the bytes directly.

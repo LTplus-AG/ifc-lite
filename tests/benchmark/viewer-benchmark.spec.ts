@@ -289,9 +289,19 @@ test.describe('Viewer Performance Benchmarks', () => {
         }
       }
 
-      // Fail if thresholds violated
+      // Fail if thresholds violated. VIEWER_BENCHMARK_ADVISORY=1 downgrades
+      // this to a warning: the CI benchmark job is advisory-only (the verdict
+      // is `pnpm benchmark:check` + the PR comment, not a red job), and the
+      // committed baseline may come from a different machine class than the
+      // current runner.
       if (!thresholdResult.passed) {
-        throw new Error(`Performance regression detected:\n${thresholdResult.violations.join('\n')}`);
+        if (process.env.VIEWER_BENCHMARK_ADVISORY === '1') {
+          console.warn(
+            `Advisory mode: thresholds exceeded but not failing the test:\n${thresholdResult.violations.join('\n')}`
+          );
+        } else {
+          throw new Error(`Performance regression detected:\n${thresholdResult.violations.join('\n')}`);
+        }
       }
     });
   }

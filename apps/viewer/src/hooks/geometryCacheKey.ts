@@ -17,10 +17,19 @@ import { FORMAT_VERSION } from '@ifc-lite/cache';
  *     flag — the toggle silently no-op'd until the model was re-imported
  *     (issue #1107). Including it makes a toggle+reload a cache miss that
  *     re-tessellates with the new flag.
+ *   - `skipSmallCuts`: the on-screen load skips tiny detail boolean cuts
+ *     (#1286), so its cached geometry differs from a full-cut build. It must
+ *     discriminate the key or a skipped display cache would be served where a
+ *     full-fidelity build is expected (and vice versa).
+ *   - `tessellationTier`: the load-time vertex-density tier (auto-low for heavy
+ *     models, or a `?geomTier=` override). A model meshed at `low` has different
+ *     bytes than at `medium`, so the tier must discriminate the key or a coarse
+ *     preview cache would be served where full density is expected (and vice
+ *     versa).
  *
- * The `mergeLayers` discriminator is omitted when false so pre-existing
- * cache entries (the default is off) stay valid — only the opt-in `true`
- * path gets a distinct key.
+ * The `mergeLayers`, `skipSmallCuts`, and `tessellationTier` discriminators are
+ * omitted at their defaults (`false` / `medium`) so pre-existing cache entries
+ * stay valid — only the opt-in / non-default paths get a distinct key.
  *
  * The desktop (Tauri) cache backend only accepts `[A-Za-z0-9_-]`, so the key
  * stays filename-safe and independent of the original filename.
@@ -29,7 +38,10 @@ export function buildGeometryCacheKey(
   byteLength: number,
   fingerprint: string,
   mergeLayers: boolean,
-  formatVersion: number | string = FORMAT_VERSION
+  formatVersion: number | string = FORMAT_VERSION,
+  skipSmallCuts?: boolean,
+  tessellationTier?: string
 ): string {
-  return `ifc-${byteLength}-${fingerprint}-v${formatVersion}${mergeLayers ? '-ml' : ''}`;
+  const tier = tessellationTier && tessellationTier !== 'medium' ? `-t${tessellationTier}` : '';
+  return `ifc-${byteLength}-${fingerprint}-v${formatVersion}${mergeLayers ? '-ml' : ''}${skipSmallCuts ? '-sc' : ''}${tier}`;
 }

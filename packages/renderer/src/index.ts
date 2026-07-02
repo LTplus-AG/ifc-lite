@@ -2878,6 +2878,27 @@ export class Renderer {
     }
 
     /**
+     * Draw the focused clash's CONTACT geometry as 3D line segments — the real
+     * shared-face polygon outlines / intersection lines, not the AABB box.
+     * `vertices` is a flat line-list (x,y,z per endpoint, 2 endpoints per
+     * segment) in world frame. Pass `null` to clear. Shares the clash-box line
+     * buffer, so only one of this / setClashOverlapBox is shown at a time.
+     */
+    setClashContactLines(
+        lines: { vertices: Float32Array; color: [number, number, number, number] } | null,
+    ): void {
+        if (!this.section2DOverlayRenderer) return;
+        if (!lines || lines.vertices.length === 0) {
+            this.section2DOverlayRenderer.clearClashBoxLines3D();
+            this.requestRender();
+            return;
+        }
+        this.section2DOverlayRenderer.setClashBoxLineColor(lines.color);
+        this.section2DOverlayRenderer.uploadClashBoxLines3D(lines.vertices);
+        this.requestRender();
+    }
+
+    /**
      * Upload filled IfcAnnotation regions for the symbolic overlay
      * (issue #653). Pass an empty array to clear.
      */

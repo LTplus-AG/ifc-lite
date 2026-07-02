@@ -48,6 +48,17 @@ describe('packBundle / unpackBundle', () => {
     expect(Buffer.from(a).toString('hex')).toBe(Buffer.from(b).toString('hex'));
   });
 
+  it('zeroes the gzip MTIME header so packed bytes are time-independent', async () => {
+    // Bytes 4..8 of a gzip stream are the 4-byte MTIME field. Without
+    // { mtime: 0 } fflate stamps wall-clock seconds there, so identical
+    // content packed in different seconds hashes differently. Assert the
+    // invariant directly instead of relying on two packs landing in the
+    // same second.
+    const original = await loadGood();
+    const packed = packBundle(original);
+    expect(Array.from(packed.subarray(4, 8))).toEqual([0, 0, 0, 0]);
+  });
+
   it('sets source kind to iflx after unpack', async () => {
     const original = await loadGood();
     const packed = packBundle(original);

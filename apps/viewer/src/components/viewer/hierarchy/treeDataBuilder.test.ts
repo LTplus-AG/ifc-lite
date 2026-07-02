@@ -7,7 +7,7 @@ import assert from 'node:assert';
 import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { buildTreeData, buildTypeTree, compareStoreyEntries, type AuthoredProduct } from './treeDataBuilder';
+import { buildTreeData, buildTypeTree, buildUnifiedStoreys, compareStoreyEntries, type AuthoredProduct } from './treeDataBuilder';
 import type { HierarchySortMode } from './types';
 
 function createSpatialNode(
@@ -453,6 +453,205 @@ function createMixedChildrenDataStore(): IfcDataStore {
     entities: { count: 0, getName: () => '', getTypeName: () => 'Unknown' },
   } as unknown as IfcDataStore;
 }
+
+/** One storey "GROUND" (#4) containing three named walls whose document order
+ *  (8, 7, 9) tracks neither name nor id, so each sort mode yields a distinct
+ *  order. Names: 7 = "Wall 10", 8 = "Wall 2", 9 = "Wall 1". */
+function createStoreyElementsDataStore(): IfcDataStore {
+  const storeyNode = createSpatialNode(4, IfcTypeEnum.IfcBuildingStorey, 'GROUND');
+  storeyNode.elevation = 0;
+  const buildingNode = createSpatialNode(3, IfcTypeEnum.IfcBuilding, 'MY_BUILDING', [storeyNode]);
+  const siteNode = createSpatialNode(2, IfcTypeEnum.IfcSite, 'MY_SITE', [buildingNode]);
+  const projectNode = createSpatialNode(1, IfcTypeEnum.IfcProject, 'MY_PROJECT', [siteNode]);
+
+  const spatialHierarchy: SpatialHierarchy = {
+    project: projectNode,
+    byStorey: new Map([[4, [8, 7, 9]]]), // document order: 8, 7, 9
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map([[4, 0]]),
+    storeyHeights: new Map(),
+    elementToStorey: new Map([[7, 4], [8, 4], [9, 4]]),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+
+  const names: Record<number, string> = { 7: 'Wall 10', 8: 'Wall 2', 9: 'Wall 1' };
+  return {
+    spatialHierarchy,
+    entities: {
+      count: 0,
+      getName: (id: number) => names[id] ?? '',
+      getTypeName: () => 'IfcWall',
+    },
+  } as unknown as IfcDataStore;
+}
+
+/** A stair #10 aggregating THREE parts whose document order [11, 12, 13] tracks
+ *  neither name-asc nor name-desc, so both directions prove the recursion sorts
+ *  (a two-part fixture where asc happens to equal document order would leave the
+ *  asc assertion tautological). Names: 11 = "M-mid", 12 = "A-first", 13 = "Z-last". */
+function createSortAssemblyDataStore(): IfcDataStore {
+  const storeyNode = createSpatialNode(4, IfcTypeEnum.IfcBuildingStorey, 'GROUND');
+  const buildingNode = createSpatialNode(3, IfcTypeEnum.IfcBuilding, 'MY_BUILDING', [storeyNode]);
+  const siteNode = createSpatialNode(2, IfcTypeEnum.IfcSite, 'MY_SITE', [buildingNode]);
+  const projectNode = createSpatialNode(1, IfcTypeEnum.IfcProject, 'MY_PROJECT', [siteNode]);
+
+  const spatialHierarchy: SpatialHierarchy = {
+    project: projectNode,
+    byStorey: new Map([[4, [10]]]), // only the stair is contained; parts hang off it
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map(),
+    storeyHeights: new Map(),
+    elementToStorey: new Map([[10, 4]]),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+
+  const names: Record<number, string> = { 10: 'Stair', 11: 'M-mid', 12: 'A-first', 13: 'Z-last' };
+  const types: Record<number, string> = {
+    10: 'IfcStair', 11: 'IfcRailing', 12: 'IfcStairFlight', 13: 'IfcRailing',
+  };
+
+  return {
+    spatialHierarchy,
+    entities: {
+      count: 0,
+      getName: (id: number) => names[id] ?? '',
+      getTypeName: (id: number) => types[id] ?? 'Unknown',
+    },
+    relationships: {
+      getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') =>
+        relType === RelationshipType.Aggregates && direction === 'forward' && id === 10
+          ? [11, 12, 13]
+          : [],
+    },
+  } as unknown as IfcDataStore;
+}
+
+/** One storey "GROUND" (#4) at elevation 0 holding the given element ids, used to
+ *  build a federated (multi-model) scenario. Names drive the in-storey sort. */
+function createSortStoreyModelDataStore(
+  elements: number[],
+  names: Record<number, string>,
+): IfcDataStore {
+  const storeyNode = createSpatialNode(4, IfcTypeEnum.IfcBuildingStorey, 'GROUND');
+  storeyNode.elevation = 0;
+  const buildingNode = createSpatialNode(3, IfcTypeEnum.IfcBuilding, 'MY_BUILDING', [storeyNode]);
+  const siteNode = createSpatialNode(2, IfcTypeEnum.IfcSite, 'MY_SITE', [buildingNode]);
+  const projectNode = createSpatialNode(1, IfcTypeEnum.IfcProject, 'MY_PROJECT', [siteNode]);
+
+  const spatialHierarchy: SpatialHierarchy = {
+    project: projectNode,
+    byStorey: new Map([[4, elements]]),
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map([[4, 0]]),
+    storeyHeights: new Map(),
+    elementToStorey: new Map(elements.map((e) => [e, 4] as const)),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+
+  return {
+    spatialHierarchy,
+    entities: {
+      count: 0,
+      getName: (id: number) => names[id] ?? '',
+      getTypeName: () => 'IfcWall',
+    },
+  } as unknown as IfcDataStore;
+}
+
+describe('element sort within a storey (#1476)', () => {
+  // Storey (and its ancestors) expanded so the contained elements are emitted.
+  const expanded = new Set(['root-1', 'root-1-2', 'root-1-2-3', 'root-1-2-3-4']);
+
+  function elementOrder(sortMode?: HierarchySortMode): number[] {
+    const nodes = buildTreeData(new Map(), createStoreyElementsDataStore(), expanded, false, [], sortMode);
+    return nodes.filter((n) => n.type === 'element').map((n) => n.expressIds[0]);
+  }
+
+  it('keeps document order for elements in elevation mode (default behaviour)', () => {
+    assert.deepStrictEqual(elementOrder('elevation-desc'), [8, 7, 9]);
+    assert.deepStrictEqual(elementOrder('elevation-asc'), [8, 7, 9]);
+    // No explicit mode → default (elevation-desc) → document order preserved.
+    assert.deepStrictEqual(elementOrder(), [8, 7, 9]);
+  });
+
+  it('name-asc sorts elements inside the storey by name, natural-numeric', () => {
+    // Wall 1(9), Wall 2(8), Wall 10(7) — reaches inside the storey (#1476).
+    assert.deepStrictEqual(elementOrder('name-asc'), [9, 8, 7]);
+  });
+
+  it('name-desc reverses the in-storey element order', () => {
+    assert.deepStrictEqual(elementOrder('name-desc'), [7, 8, 9]);
+  });
+
+  it("sorts a decomposing assembly's parts by name when a name sort is active", () => {
+    useViewerStore.setState({ models: new Map() });
+    const ds = createSortAssemblyDataStore();
+    const stairExpanded = new Set([
+      'root-1', 'root-1-2', 'root-1-2-3', 'root-1-2-3-4', 'element-legacy-10',
+    ]);
+    const partOrder = (mode: HierarchySortMode): number[] =>
+      buildTreeData(new Map(), ds, stairExpanded, false, [], mode)
+        .filter((n) => n.type === 'element' && [11, 12, 13].includes(n.expressIds[0]))
+        .map((n) => n.expressIds[0]);
+    // Parts document order is [11 "M-mid", 12 "A-first", 13 "Z-last"] — chosen so
+    // BOTH sort directions differ from it, so neither assertion is tautological.
+    assert.deepStrictEqual(partOrder('name-asc'), [12, 11, 13], 'A-first, M-mid, Z-last');
+    assert.deepStrictEqual(partOrder('name-desc'), [13, 11, 12], 'Z-last, M-mid, A-first');
+    assert.deepStrictEqual(partOrder('elevation-desc'), [11, 12, 13], 'elevation keeps document order');
+  });
+
+  it('sorts elements inside a federated (multi-model) storey contribution (#1476)', () => {
+    // Exercises the multi-model unified-storey contribution loop (the third
+    // orderElementIdsByName call site), which the single-model tests never reach.
+    useViewerStore.setState({ models: new Map() });
+    const offA = useViewerStore.getState().registerModelOffset('sort-fed-A', 20);
+    const offB = useViewerStore.getState().registerModelOffset('sort-fed-B', 20);
+    const modelA: FederatedModel = {
+      ...createModel(offA),
+      id: 'sort-fed-A',
+      name: 'Model A',
+      ifcDataStore: createSortStoreyModelDataStore([8, 7, 9], { 7: 'Wall 10', 8: 'Wall 2', 9: 'Wall 1' }),
+      maxExpressId: 9,
+    };
+    const modelB: FederatedModel = {
+      ...createModel(offB),
+      id: 'sort-fed-B',
+      name: 'Model B',
+      ifcDataStore: createSortStoreyModelDataStore([5], { 5: 'Solo' }),
+      maxExpressId: 5,
+    };
+    const models = new Map<string, FederatedModel>([['sort-fed-A', modelA], ['sort-fed-B', modelB]]);
+    useViewerStore.setState({ models });
+
+    const unified = buildUnifiedStoreys(models, 'name-asc');
+    // Both storeys sit at elevation 0, so they merge into one unified storey.
+    assert.strictEqual(unified.length, 1, 'storeys at the same elevation unify');
+
+    const expanded = new Set([`unified-${unified[0].key}`, 'contrib-sort-fed-A-4']);
+    const nodes = buildTreeData(models, null, expanded, true, unified, 'name-asc');
+
+    const orderA = nodes
+      .filter((n) => n.type === 'element' && n.id.startsWith('element-sort-fed-A-'))
+      .map((n) => n.expressIds[0]);
+    // Model A doc order [8, 7, 9] → name-asc Wall 1(9), Wall 2(8), Wall 10(7).
+    assert.deepStrictEqual(orderA, [9, 8, 7], 'contribution elements sort by name inside a federated storey');
+  });
+});
 
 describe('storey sort order — IFC4.3 parts and non-level siblings (#1296)', () => {
   it('sorts IfcFacilityPart rows, not just IfcBuildingStorey', () => {

@@ -14,7 +14,7 @@ import { useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
-import { getGeomWorkerOverride } from '../store/constants.js';
+import { getGeomWorkerOverride, resolveLoadTessellationTier } from '../store/constants.js';
 import { IfcParser, detectFormat, type IfcDataStore } from '@ifc-lite/parser';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
@@ -54,6 +54,24 @@ import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel 
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { classifyLoadError, formatLoadError } from '../lib/load-errors.js';
+
+/**
+ * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
+ * from the user's geometry-fidelity mode (`fast` vs `exact`, see
+ * `resolveLoadTessellationTier` / store `geometryMode`). In `fast` mode the
+ * on-screen load skips sub-10% detail boolean cuts (steel copes/notches, minor
+ * recesses) for fast first paint on boolean-heavy models (#1286) and may auto-
+ * lower tessellation density on heavy models; in `exact` mode every cut runs at
+ * full density.
+ *
+ * IMPORTANT: in `fast` mode this is NOT display-only — the cached
+ * `geometryResult.meshes` are what exports (GLB/IFC5/CSV) and in-viewer
+ * measure/section read, so they reflect the preview too. That is intentional and
+ * visible: the user picked `fast`. For full-fidelity exports/measurement they
+ * switch to `exact` and reload (same flow as Merge Layers). The cache key folds
+ * the derived flag + tier so a preview cache is never served where `exact` is
+ * expected, and vice versa.
+ */
 
 /**
  * Where a {@link useIfcLoader.loadFile} call should land the model.
@@ -604,12 +622,31 @@ export function useIfcLoader() {
       // with the previous flag (issue #1107). Reused below for the
       // GeometryProcessor so the key and the actual tessellation agree.
       const mergeLayersAtLoad = useViewerStore.getState().mergeLayers;
+      // Snapshot the geometry-fidelity mode the same way: it is a load-time
+      // tessellation input, so it must discriminate the cache key and be reused
+      // for the GeometryProcessor. `fast` = skip sub-10% cuts + auto-low density
+      // for heavy models; `exact` = full cuts + full density.
+      const geometryModeAtLoad = useViewerStore.getState().geometryMode;
+      const skipSmallCutsAtLoad = geometryModeAtLoad === 'fast';
+      // Tessellation tier from the mode: a `?geomTier=` override wins, else
+      // auto-low for heavy models by file size in `fast` mode only (the only
+      // model-weight signal available pre-geometry, so the key stays
+      // deterministic at cache-check time). `undefined` = engine default
+      // (medium). `exact` never auto-lowers.
+      const loadTessellationTier = resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
       // added the geometryClass tag the Model/Types switch needs).
-      const cacheKey = buildGeometryCacheKey(buffer.byteLength, fingerprint, mergeLayersAtLoad);
-      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} cacheKey=${cacheKey}`);
+      const cacheKey = buildGeometryCacheKey(
+        buffer.byteLength,
+        fingerprint,
+        mergeLayersAtLoad,
+        undefined,
+        skipSmallCutsAtLoad,
+        loadTessellationTier
+      );
+      console.log(`[useIfc] loadFile "${file.name}" session=${currentSession} mergeLayers=${mergeLayersAtLoad} geomMode=${geometryModeAtLoad} tier=${loadTessellationTier ?? 'medium'} cacheKey=${cacheKey}`);
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).
@@ -639,11 +676,20 @@ export function useIfcLoader() {
       // Only for IFC4 STEP files (server doesn't support IFCX). Native
       // file handles (Tauri) don't have an HTTP-uploadable body, so skip
       // the server path and fall through to the WASM loader.
-      // Also skip it when merge-layers is on: the server tessellates without
-      // the flag and its cache key ignores it, so a toggle+reload would still
-      // return non-merged geometry. The local WASM path honours the flag, so
-      // route through it instead (issue #1107). Merge-layers is opt-in, so the
-      // common (flag-off) load keeps the server fast path.
+      // Skip it when merge-layers is on: the server tessellates without that
+      // flag and its cache key ignores it, so a toggle+reload would still return
+      // non-merged geometry (issue #1107). Merge-layers is opt-in, so the common
+      // load keeps the server fast path.
+      //
+      // The geometry-fidelity mode (skip-small-cuts / auto-low tier) is a
+      // LOCAL-WASM display optimization and does NOT gate the server here. The
+      // server produces canonical full-fidelity geometry and caches it under its
+      // OWN key (useIfcServer: streamResult.cache_key) — it never writes the
+      // local `-sc/-tlow` cacheKey, so there is no key/geometry mismatch. Gating
+      // the server on the default-on `fast` mode would disable the multi-core
+      // server fast-path for every primary IFC load (the cause of an "overall
+      // slower" regression on server-enabled deploys); fast mode still applies on
+      // every local-path load (IFCX, merge-layers, Tauri, or server-off).
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
@@ -672,6 +718,15 @@ export function useIfcLoader() {
       // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
         quality: GeometryQuality.Balanced,
+        // Auto-low vertex density for heavy models (or `?geomTier=` override);
+        // `undefined` keeps the engine default (medium, full-density curves).
+        // Must match the tier folded into `cacheKey` above so the cached bytes
+        // and the live tessellation agree (issues #540, #1107).
+        tessellationQuality: loadTessellationTier,
+        // Skip tiny detail boolean cuts in `fast` mode for quick first paint
+        // (#1286); `exact` mode keeps every cut. Must match the flag folded into
+        // `cacheKey` above so cached bytes and live tessellation agree (#540, #1107).
+        skipSmallCuts: skipSmallCutsAtLoad,
         preferNative: false,
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
@@ -1105,6 +1160,22 @@ export function useIfcLoader() {
               // Store captured RTC offset in coordinate info for multi-model alignment.
               if (finalCoordinateInfo && capturedRtcOffset) {
                 finalCoordinateInfo.wasmRtcOffset = capturedRtcOffset;
+              }
+
+              // Geometry diagnostics (the typed GeometryDiagnostics contract on the
+              // streaming `complete` event). Surface a concise main-thread summary
+              // when CSG failures or silent no-ops were recorded (for the primary
+              // model and each federated add — file.name disambiguates); the full
+              // object stays on `event.diagnostics` for any UI/telemetry consumer.
+              if (event.diagnostics) {
+                const d = event.diagnostics;
+                if (d.totalCsgFailures > 0 || d.silentNoOps > 0) {
+                  console.info(
+                    `[useIfc] ${file.name} geometry diagnostics: ${d.totalCsgFailures} CSG failure(s) ` +
+                      `across ${d.productsWithFailures} product(s), ${d.silentNoOps} silent no-op(s)`,
+                    d,
+                  );
+                }
               }
 
               if (target.kind === 'primary') {

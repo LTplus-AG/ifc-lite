@@ -10,8 +10,9 @@
  * renderer's selection channel and the federation registry.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useViewerStore } from '@/store';
+import type { ClashFocusMode } from '@/store/slices/clashSlice';
 import {
   createClashEngine,
   rulesFromPresets,
@@ -28,9 +29,10 @@ import {
 } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
+import { contactClusters, type SharedFaceCluster, type Vec3 } from '@ifc-lite/clash/contact';
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { buildClashPairColors, CLASH_COLOR_A } from '@/lib/clash/clash-colors';
+import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { posthog } from '@/lib/analytics';
 import { downloadBlob } from '@/lib/export/download';
 
@@ -40,12 +42,49 @@ interface SelectionRef {
 }
 
 /**
+ * Flatten contact clusters into a world-frame line-list (x,y,z per endpoint, two
+ * per segment) for the focused-clash overlay. Prefer the shared-FACE polygon
+ * outlines when any surface contact exists (flush/coincident members); otherwise
+ * the intersection LINES (angled crossings); otherwise small crosses at POINT
+ * contacts. This is the real contact interface, not an AABB box (#1402).
+ */
+function contactLineList(clusters: readonly SharedFaceCluster[]): number[] {
+  const surfaces = clusters.filter((c) => c.kind === 'surface' && c.boundary.length >= 3);
+  const lines = clusters.filter((c) => c.kind === 'line' && c.boundary.length >= 2);
+  const points = clusters.filter((c) => c.kind === 'point');
+  const out: number[] = [];
+  const seg = (p: Vec3, q: Vec3) => out.push(p[0], p[1], p[2], q[0], q[1], q[2]);
+  // Shared-face polygon outlines (the contact patches) and intersection lines
+  // (penetration boundary) together describe the contact; render both so a thin
+  // patch still reads. Points only matter when there is no surface or line.
+  for (const c of surfaces) {
+    const b = c.boundary;
+    for (let i = 0; i < b.length; i += 1) seg(b[i], b[(i + 1) % b.length]);
+  }
+  for (const c of lines) seg(c.boundary[0], c.boundary[1]);
+  if (surfaces.length === 0 && lines.length === 0) {
+    const s = 0.05;
+    for (const c of points) {
+      const [x, y, z] = c.centroid;
+      seg([x - s, y, z], [x + s, y, z]);
+      seg([x, y - s, z], [x, y + s, z]);
+      seg([x, y, z - s], [x, y, z + s]);
+    }
+  }
+  return out;
+}
+
+/**
  * How the rest of the model is shown when a clash is focused (#1275):
  * - `highlight`: everything stays visible, the pair is just selected/framed;
  * - `isolate`:   everything else is hidden;
  * - `ghost`:     everything else fades to translucent X-Ray context.
+ *
+ * Canonical definition lives in the clash store slice (so the panel's choice
+ * persists across panel switches); imported at the top + re-exported here for
+ * existing consumers. (#1464)
  */
-export type ClashFocusMode = 'highlight' | 'isolate' | 'ghost';
+export type { ClashFocusMode };
 
 /** How clashes collapse into BCF topics. `storey` is omitted — Clash has no
  *  storey, so it degrades to `rule` (see grouping.ts) and would only confuse. */
@@ -114,6 +153,10 @@ export function useClash() {
   const setPanelVisible = useViewerStore((s) => s.setClashPanelVisible);
   const clear = useViewerStore((s) => s.clearClash);
 
+  // Geometry of the last-gathered clash elements, keyed by federated ref, so a
+  // focused clash can compute its real contact interface for that one pair.
+  const elementsByRef = useRef(new Map<number, ClashElement>());
+
   /** Build clash elements + merged exclusions from every loaded model. */
   const gatherElements = useCallback((): { elements: ClashElement[]; exclusions: ExclusionSet } => {
     const state = useViewerStore.getState();
@@ -147,6 +190,8 @@ export function useClash() {
           state.setClashError('No model geometry is loaded. Load an IFC model first.');
           return;
         }
+        // Keep per-ref geometry so focusClash can build the contact interface.
+        elementsByRef.current = new Map(elements.map((e) => [e.ref, e]));
         const engine = createClashEngine({ backend: 'ts' });
         const res = await engine.run(elements, rules, {
           exclusions,
@@ -307,9 +352,33 @@ export function useClash() {
       const colors = buildClashPairColors(a ? clash.a.ref : null, b ? clash.b.ref : null);
       state.setClashHighlightColors(colors); // record for framing + teardown
       state.setPendingColorUpdates(colors);  // actually paint A amber / B cyan
-      // Mark the overlap REGION (clash.bounds AABB, world frame) as a distinct
-      // third-colour wireframe box (#1277).
-      state.setClashOverlapBox(clash.bounds ? { min: clash.bounds.min, max: clash.bounds.max } : null);
+      // Mark the contact as a distinct third colour (#1277/#1402). Prefer the
+      // REAL contact interface (shared-face polygon / intersection line) computed
+      // for this one pair; fall back to the AABB box if it can't be built.
+      let contactDrawn = false;
+      const elA = elementsByRef.current.get(clash.a.ref);
+      const elB = elementsByRef.current.get(clash.b.ref);
+      if (elA && elB) {
+        try {
+          const clusters = contactClusters(
+            { id: elA.key, positions: elA.positions, indices: elA.indices },
+            { id: elB.key, positions: elB.positions, indices: elB.indices },
+            { epsilon: Math.max(state.clashTolerance, 0.002) },
+          );
+          const vertices = contactLineList(clusters);
+          if (vertices.length >= 6) {
+            state.setClashContactLines({ vertices, color: CLASH_COLOR_OVERLAP });
+            state.setClashOverlapBox(null);
+            contactDrawn = true;
+          }
+        } catch {
+          // Contact geometry failed (degenerate mesh); fall back to the box.
+        }
+      }
+      if (!contactDrawn) {
+        state.setClashContactLines(null);
+        state.setClashOverlapBox(clash.bounds ? { min: clash.bounds.min, max: clash.bounds.max } : null);
+      }
       applyFocusMode(globalIds, mode);
       state.setClashSelectedId(clash.id);
       // frameSelection also frames the clash ids (see Viewport), so the camera
@@ -335,7 +404,7 @@ export function useClash() {
       const one = new Map<number, [number, number, number, number]>([[el.ref, CLASH_COLOR_A]]);
       state.setClashHighlightColors(one);
       state.setPendingColorUpdates(one);
-      state.setClashOverlapBox(null);
+      state.setClashOverlapBox(null); state.setClashContactLines(null);
       applyFocusMode([el.ref], mode);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
     },
@@ -368,7 +437,7 @@ export function useClash() {
     // pair colours (restoring an active lens) and rely on the selection outline.
     state.setClashHighlightColors(null);
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-    state.setClashOverlapBox(null);
+    state.setClashOverlapBox(null); state.setClashContactLines(null);
   }, [refOf]);
 
   const clearHighlight = useCallback((): void => {
@@ -380,7 +449,7 @@ export function useClash() {
     // Restore the colour-override channel to whatever owned it (an active lens),
     // or clear it — don't leave the clash A/B colours painted. (#1277 review)
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-    state.setClashOverlapBox(null);
+    state.setClashOverlapBox(null); state.setClashContactLines(null);
     setSelectedId(null);
   }, [setSelectedId]);
 
@@ -505,7 +574,7 @@ export function useClash() {
     state.clearGhost();
     // Drop the clash colour-override (restoring an active lens) + overlap box.
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-    state.setClashOverlapBox(null);
+    state.setClashOverlapBox(null); state.setClashContactLines(null);
     clear();
   }, [clear]);
 

@@ -7,7 +7,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import { MERGE_LAYERS_STORAGE_KEY, UI_DEFAULTS } from '../constants.js';
+import { MERGE_LAYERS_STORAGE_KEY, GEOMETRY_MODE_STORAGE_KEY, UI_DEFAULTS, type GeometryMode } from '../constants.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel } from '../types.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -107,6 +107,15 @@ export interface UISlice {
   mergeLayers: boolean;
   /** True after the user flipped `mergeLayers` while a model was loaded. */
   mergeLayersPendingReload: boolean;
+  /**
+   * Load-time geometry fidelity mode (`fast` = skip tiny cuts + auto-low
+   * density; `exact` = full fidelity). Like `mergeLayers`, it is read on the
+   * next file load; flipping it while a model is in scope sets
+   * `geometryModePendingReload` so the UI can prompt a reload.
+   */
+  geometryMode: GeometryMode;
+  /** True after the user flipped `geometryMode` while a model was loaded. */
+  geometryModePendingReload: boolean;
 
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
@@ -137,6 +146,10 @@ export interface UISlice {
   setMergeLayers: (v: boolean) => void;
   /** Acknowledge the reload banner without performing a reload. */
   clearMergeLayersPendingReload: () => void;
+  /** Update the geometry fidelity mode and persist to localStorage. */
+  setGeometryMode: (v: GeometryMode) => void;
+  /** Acknowledge the geometry-mode reload banner without performing a reload. */
+  clearGeometryModePendingReload: () => void;
 }
 
 /** Apply the correct CSS classes on <html> for the given theme */
@@ -180,6 +193,8 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   separationLinesRadius: UI_DEFAULTS.SEPARATION_LINES_RADIUS,
   mergeLayers: UI_DEFAULTS.MERGE_LAYERS,
   mergeLayersPendingReload: false,
+  geometryMode: UI_DEFAULTS.GEOMETRY_MODE,
+  geometryModePendingReload: false,
 
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
@@ -287,4 +302,25 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
 
   clearMergeLayersPendingReload: () => set({ mergeLayersPendingReload: false }),
+
+  setGeometryMode: (next) => {
+    const current = get();
+    if (current.geometryMode === next) return;
+    // Persist eagerly so the next page-load picks the same value up through
+    // `getInitialGeometryMode` (constants.ts). Wrap in try/catch — Safari
+    // private mode / locked storage throws.
+    try {
+      localStorage.setItem(GEOMETRY_MODE_STORAGE_KEY, next);
+    } catch (err) {
+      // Storage unavailable — accept the in-memory toggle, but don't swallow
+      // silently (AGENTS.md: no silent catch). The choice won't persist.
+      console.warn('[geometry-mode] persist failed; in-memory only', err);
+    }
+    // Only prompt a reload if a model is currently in scope; toggling on an
+    // empty viewer simply changes the next load with no visible effect.
+    const pending = hasLoadedModel(current);
+    set({ geometryMode: next, geometryModePendingReload: pending });
+  },
+
+  clearGeometryModePendingReload: () => set({ geometryModePendingReload: false }),
 });

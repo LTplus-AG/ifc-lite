@@ -379,6 +379,44 @@ describe('evaluateAutoColorLens', () => {
 
     expect(result.legend.length).toBe(2); // two classification values
     expect(result.colorMap.get(3)).toEqual(GHOST_COLOR); // no classification → ghost
+    // Legend shows the name alongside System: Code, not just the code. (#1460)
+    const labels = result.legend.map((e) => e.name).sort();
+    expect(labels).toEqual(['Uniclass: EF_25_10 (Walls)', 'Uniclass: EF_25_30 (Floors)']);
+  });
+
+  it('should drop the name parenthetical when the classification has no name (#1460)', () => {
+    const entities = [
+      { id: 1, type: 'IfcWall' },
+      { id: 2, type: 'IfcSlab' },
+    ];
+    const provider = createMockProvider(entities);
+    (provider as Record<string, unknown>).getClassifications = (id: number) => {
+      // Code only, no name.
+      if (id === 1) return [{ system: 'Uniclass', identification: 'EF_25_10' }];
+      // Name repeats the bare code -> no redundant parenthetical.
+      if (id === 2) return [{ system: 'Uniclass', identification: 'EF_25_30', name: 'EF_25_30' }];
+      return [];
+    };
+
+    const spec: AutoColorSpec = { source: 'classification', psetName: 'Uniclass' };
+    const result = evaluateAutoColorLens(spec, provider);
+
+    const labels = result.legend.map((e) => e.name).sort();
+    expect(labels).toEqual(['Uniclass: EF_25_10', 'Uniclass: EF_25_30']);
+  });
+
+  it('drops the parenthetical when the name repeats the full System: Code string (#1469)', () => {
+    const entities = [{ id: 1, type: 'IfcWall' }];
+    const provider = createMockProvider(entities);
+    (provider as Record<string, unknown>).getClassifications = () => [
+      // Some exports store the whole "System: Code" string in the name attribute.
+      { system: 'Uniclass', identification: 'EF_25_10', name: 'Uniclass: EF_25_10' },
+    ];
+
+    const spec: AutoColorSpec = { source: 'classification', psetName: 'Uniclass' };
+    const result = evaluateAutoColorLens(spec, provider);
+
+    expect(result.legend.map((e) => e.name)).toEqual(['Uniclass: EF_25_10']);
   });
 
   it('should honor psetName as a classification-system filter for multi-system entities', () => {
@@ -408,9 +446,10 @@ describe('evaluateAutoColorLens', () => {
     const spec: AutoColorSpec = { source: 'classification', psetName: 'OmniClass' };
     const result = evaluateAutoColorLens(spec, provider);
 
-    // Both entities share the same OmniClass code → a single group.
+    // Both entities share the same OmniClass code -> a single group (grouping is
+    // by System: Code, not the name). The label carries the first-seen name. (#1460)
     expect(result.legend.length).toBe(1);
-    expect(result.legend[0].name).toBe('OmniClass: 23-13');
+    expect(result.legend[0].name).toBe('OmniClass: 23-13 (Walls)');
     expect(result.legend[0].count).toBe(2);
   });
 

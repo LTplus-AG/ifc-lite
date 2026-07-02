@@ -1,5 +1,16 @@
 # @ifc-lite/lens
 
+## 1.17.0
+
+### Minor Changes
+
+- [#1469](https://github.com/LTplus-AG/ifc-lite/pull/1469) [`731579f`](https://github.com/LTplus-AG/ifc-lite/commit/731579f6a981b5e55e36b8ff949dc5a51003ec08) Thanks [@louistrue](https://github.com/louistrue)! - Classification auto-color legends now show the human-readable name alongside the
+  system and code ([#1460](https://github.com/LTplus-AG/ifc-lite/issues/1460)). An entry reads e.g. `Uniclass: EF_25_10 (Walls)` instead
+  of just `Uniclass: EF_25_10`. Grouping is unchanged - it still keys off
+  `System: Code`, so the same code never fragments across slightly different names;
+  the name is purely a label, taken from the first reference seen for that code, and
+  the parenthetical is dropped when the name merely repeats the code.
+
 ## 1.16.1
 
 ### Patch Changes

@@ -307,6 +307,12 @@ pub struct MeshCollection {
     /// its fingerprint (see `ifc_lite_geometry::geom_hash`). Empty otherwise.
     geometry_hash_ids: Vec<u32>,
     geometry_hash_values: Vec<u64>,
+    /// Typed CSG / opening diagnostics for the batch that produced this collection
+    /// (the public `GeometryDiagnostics` contract). The worker merges these across
+    /// batches and the loader across workers, surfacing one per-load `diagnostics`
+    /// object on the streaming `complete` event. Both the flat and partitioned
+    /// batch paths set it; `None` when no diagnostics were recorded.
+    diagnostics: Option<ifc_lite_geometry::GeometryDiagnostics>,
 }
 
 #[wasm_bindgen]
@@ -436,6 +442,18 @@ impl MeshCollection {
     pub fn geometry_hash_count(&self) -> usize {
         self.geometry_hash_ids.len()
     }
+
+    /// The batch's typed CSG / opening diagnostics as a JS object (the
+    /// `GeometryDiagnostics` contract), or `undefined` if none were recorded. The
+    /// worker merges these across batches. One serialized value keeps the rich
+    /// nested shape as a single FFI crossing instead of dozens of getters.
+    #[wasm_bindgen(getter, js_name = diagnostics)]
+    pub fn diagnostics(&self) -> JsValue {
+        match self.diagnostics.as_ref() {
+            Some(d) => serde_wasm_bindgen::to_value(d).unwrap_or(JsValue::UNDEFINED),
+            None => JsValue::UNDEFINED,
+        }
+    }
 }
 
 impl MeshCollection {
@@ -449,6 +467,7 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            diagnostics: None,
         }
     }
 
@@ -462,6 +481,7 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            diagnostics: None,
         }
     }
 
@@ -478,6 +498,18 @@ impl MeshCollection {
         self.geometry_hash_values.push(hash);
     }
 
+    /// Attach the batch's typed CSG / opening diagnostics (the public
+    /// `GeometryDiagnostics` contract).
+    #[inline]
+    pub fn set_diagnostics(&mut self, diagnostics: ifc_lite_geometry::GeometryDiagnostics) {
+        // Skip all-zero diagnostics so the `diagnostics` getter stays `undefined`
+        // when no opening / CSG activity happened — lets a consumer gate on
+        // presence (`if event.diagnostics`) as well as on counts.
+        if !diagnostics.is_empty() {
+            self.diagnostics = Some(diagnostics);
+        }
+    }
+
     /// Create from vec of meshes
     pub fn from_vec(meshes: Vec<MeshDataJs>) -> Self {
         Self {
@@ -488,6 +520,7 @@ impl MeshCollection {
             building_rotation: None,
             geometry_hash_ids: Vec::new(),
             geometry_hash_values: Vec::new(),
+            diagnostics: None,
         }
     }
 
@@ -559,6 +592,7 @@ impl Clone for MeshCollection {
             building_rotation: self.building_rotation,
             geometry_hash_ids: self.geometry_hash_ids.clone(),
             geometry_hash_values: self.geometry_hash_values.clone(),
+            diagnostics: self.diagnostics.clone(),
         }
     }
 }

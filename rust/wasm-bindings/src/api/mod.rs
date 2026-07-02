@@ -9,6 +9,7 @@
 mod alignment_lines;
 mod clash;
 mod csg_diagnostics;
+mod diagnose;
 mod export_data;
 mod export_glb;
 mod export_hbjson;
@@ -23,7 +24,6 @@ mod space_plate;
 pub(crate) mod styling;
 mod symbolic;
 
-pub use clash::{ClashRunResult, ClashSession};
 use csg_diagnostics::drain_and_log_csg_diagnostics;
 
 use ifc_lite_core::EntityIndex;
@@ -160,6 +160,13 @@ pub struct IfcAPI {
     /// which reproduces the historical hardcoded densities byte-for-byte.
     tessellation_quality: std::sync::atomic::AtomicU8,
 
+    /// Tier-independent small-cut skip switch (#1286). When set, `processGeometryBatch`
+    /// drops `IfcBooleanResult` differences whose cutter is tiny relative to its host
+    /// (steel copes/notches) WITHOUT lowering the tessellation tier, so curves keep
+    /// full density. Default off ⇒ every cut runs (byte-identical to before). Applied
+    /// to the per-batch `GeometryRouter` via `GeometryRouter::set_skip_small_cuts`.
+    skip_small_cuts: std::sync::atomic::AtomicBool,
+
     /// Lazily-resolved plane-angle → radians scale for the current content,
     /// seeded into every batch decoder via `EntityDecoder::seed_unit_scales`.
     /// `EntityDecoder::plane_angle_to_radians()` walks the whole DATA section
@@ -216,6 +223,7 @@ impl IfcAPI {
                 ifc_lite_geometry::DEFAULT_GEOM_HASH_TOLERANCE.to_bits(),
             ),
             tessellation_quality: std::sync::atomic::AtomicU8::new(TESSELLATION_QUALITY_MEDIUM),
+            skip_small_cuts: std::sync::atomic::AtomicBool::new(false),
             cached_plane_angle_to_radians: std::sync::Mutex::new(None),
             cached_geometry_styles: std::sync::Mutex::new(None),
         }
@@ -491,6 +499,20 @@ impl IfcAPI {
             .store(discriminant, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
+
+    /// Toggle the tier-independent small-cut skip (#1286). When `true`,
+    /// `processGeometryBatch` drops `IfcBooleanResult` differences whose cutter is
+    /// tiny relative to its host (steel copes/notches) while keeping the
+    /// tessellation tier — so curves stay full-density. The viewer enables this for
+    /// the on-screen load; exports/drawings leave it off so their geometry keeps
+    /// every cut. Default off ⇒ byte-identical to before.
+    ///
+    /// Set BEFORE processing — meshes already emitted are not regenerated.
+    #[wasm_bindgen(js_name = setSkipSmallCuts)]
+    pub fn set_skip_small_cuts(&self, on: bool) {
+        self.skip_small_cuts
+            .store(on, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl IfcAPI {
@@ -512,6 +534,13 @@ impl IfcAPI {
         {
             idx => TessellationQuality::from_index(idx),
         }
+    }
+
+    /// Active small-cut skip flag, applied to the per-batch `GeometryRouter` at
+    /// the top of `processGeometryBatch`. JS controls it via [`Self::set_skip_small_cuts`].
+    pub(crate) fn skip_small_cuts(&self) -> bool {
+        self.skip_small_cuts
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Active geometry-hash tolerance (metres), or `None` when fingerprinting

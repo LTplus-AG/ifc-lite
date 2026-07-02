@@ -75,22 +75,35 @@ export function createEmptyBounds(): Bounds3D {
 export function updateBoundsFromPositions(
   bounds: Bounds3D,
   positions: Float32Array | number[],
-  maxCoord: number = MAX_VALID_COORD
+  maxCoord: number = MAX_VALID_COORD,
+  origin?: [number, number, number] | null,
 ): void {
+  // `origin` is the element's local-frame origin (world = origin + position).
+  // When present (per-element local frame, or a translated GLB import) the
+  // corruption filter still applies to the *local* coordinate — small by
+  // construction — but the bound is taken in WORLD space, so a legitimately
+  // large georeferenced offset (~1e6 m) doesn't fold the camera onto the scene
+  // origin (the `coordinateInfo.shiftedBounds` fallback in useGeometryStreaming
+  // uses these bounds when no robust box is selected). Absent origin →
+  // world == local, byte-identical to the legacy non-local-frame behaviour.
+  const ox = origin ? origin[0] : 0;
+  const oy = origin ? origin[1] : 0;
+  const oz = origin ? origin[2] : 0;
   for (let i = 0; i < positions.length; i += 3) {
     const x = positions[i];
     const y = positions[i + 1];
     const z = positions[i + 2];
-    // Filter out corrupted/unshifted vertices (> threshold from origin)
+    // Filter out corrupted/unshifted vertices (> threshold from the LOCAL origin).
     const isValid = Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) &&
       Math.abs(x) < maxCoord && Math.abs(y) < maxCoord && Math.abs(z) < maxCoord;
     if (isValid) {
-      bounds.min.x = Math.min(bounds.min.x, x);
-      bounds.min.y = Math.min(bounds.min.y, y);
-      bounds.min.z = Math.min(bounds.min.z, z);
-      bounds.max.x = Math.max(bounds.max.x, x);
-      bounds.max.y = Math.max(bounds.max.y, y);
-      bounds.max.z = Math.max(bounds.max.z, z);
+      const wx = x + ox, wy = y + oy, wz = z + oz;
+      bounds.min.x = Math.min(bounds.min.x, wx);
+      bounds.min.y = Math.min(bounds.min.y, wy);
+      bounds.min.z = Math.min(bounds.min.z, wz);
+      bounds.max.x = Math.max(bounds.max.x, wx);
+      bounds.max.y = Math.max(bounds.max.y, wy);
+      bounds.max.z = Math.max(bounds.max.z, wz);
     }
   }
 }
@@ -107,7 +120,9 @@ export function calculateMeshBounds(meshes: MeshData[]): { bounds: Bounds3D; sta
   let totalTriangles = 0;
 
   for (const mesh of meshes) {
-    updateBoundsFromPositions(bounds, mesh.positions);
+    // Fold the per-element local-frame origin so the bounds are world-space
+    // (a translated GLB import keeps positions local + origin on the placement).
+    updateBoundsFromPositions(bounds, mesh.positions, MAX_VALID_COORD, mesh.origin ?? null);
     totalVertices += mesh.positions.length / 3;
     totalTriangles += mesh.indices.length / 3;
   }

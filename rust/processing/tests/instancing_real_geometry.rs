@@ -62,7 +62,8 @@ fn assert_roundtrip(name: &str) {
         .collect();
 
     // min_group = 2: any repeat instances; singletons + non-instanceable stay flat.
-    let shard = collate_and_encode(&refs, 2);
+    // rtc [0,0,0]: this fixture is modelled at the origin (no georeferenced offset).
+    let shard = collate_and_encode(&refs, 2, [0.0, 0.0, 0.0]);
     let decoded = decode_instanced(&shard).expect("decode IFNS shard");
 
     // (a) NO geometry lost — exactly one occurrence per non-empty input mesh.

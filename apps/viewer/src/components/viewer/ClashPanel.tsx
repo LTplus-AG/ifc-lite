@@ -126,10 +126,14 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<ClashSortBy>('severity');
-  const [hideTouching, setHideTouching] = useState(false);
+  // View settings live in the store so they survive a panel switch (#1464).
+  const sortBy = useViewerStore((s) => s.clashSortBy);
+  const setSortBy = useViewerStore((s) => s.setClashSortBy);
+  const hideTouching = useViewerStore((s) => s.clashHideTouching);
+  const setHideTouching = useViewerStore((s) => s.setClashHideTouching);
   /** How the rest of the model is shown when a clash is focused (#1275). */
-  const [focusMode, setFocusMode] = useState<ClashFocusMode>('highlight');
+  const focusMode = useViewerStore((s) => s.clashFocusMode);
+  const setFocusMode = useViewerStore((s) => s.setClashFocusMode);
   const [showHelp, setShowHelp] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
 

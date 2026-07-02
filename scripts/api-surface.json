@@ -157,6 +157,19 @@
     "createBCFFromClashResult: function",
     "mapBcfToClashes: function"
   ],
+  "@ifc-lite/clash/contact": [
+    "AABB: interface",
+    "ContactOptions: interface",
+    "Mesh: interface",
+    "NarrowPhaseOptions: interface",
+    "SharedFaceCluster: interface",
+    "SharedFaceOptions: interface",
+    "TrianglePair: type",
+    "Vec3: type",
+    "clusterSharedFaces: function",
+    "contactClusters: function",
+    "narrowPhase: function"
+  ],
   "@ifc-lite/clash/ifcx": [
     "IfcxAdapterOptions: interface",
     "IfcxAdapterResult: interface",
@@ -1577,6 +1590,7 @@
     "DecodedInstancedTemplate: interface",
     "DynamicBatchConfig: interface",
     "GeometryBatch: interface",
+    "GeometryDiagnostics: interface",
     "GeometryProcessingResult: interface",
     "GeometryProcessor: class",
     "GeometryProcessorOptions: interface",
@@ -1590,6 +1604,7 @@
     "MetadataBootstrapEntitySummary: interface",
     "MetadataBootstrapPayload: interface",
     "MetadataBootstrapSpatialNode: interface",
+    "NO_RENDER_GEOMETRY: const",
     "PlatformGeometryStats: interface",
     "PointCloudAsset: interface",
     "ProfileCollection: class (type-only)",
@@ -1612,8 +1627,10 @@
     "createPlatformBridge: function",
     "decodeInstancedShard: function",
     "getGeometryStreamWatchdogMs: function",
+    "isNoRenderGeometryError: function",
     "isTauri: function",
     "isWasmAssetUnavailableError: function",
+    "mergeGeometryDiagnostics: function",
     "pickWorkerCount: function"
   ],
   "@ifc-lite/ids": [
@@ -3600,6 +3617,7 @@
     "DataModel: interface",
     "DocumentAssociation: interface",
     "ErrorResponse: interface",
+    "GeometryDiagnostics: interface",
     "Georeferencing: interface",
     "HealthResponse: interface",
     "IfcServerClient: class",

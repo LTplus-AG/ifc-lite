@@ -5,7 +5,7 @@
 use super::collate::mat4_to_row_major_f32;
 use super::{
     collate_and_encode, collate_instances, decode_instanced, encode_instanced, verify_recomposition,
-    InstanceMeshRef,
+    Collated, InstanceMeshRef,
 };
 use crate::mesh::{InstanceMeta, Mesh};
 use nalgebra::Matrix4;
@@ -73,7 +73,7 @@ fn collates_repeated_representation_and_recomposes_within_a_micrometre() {
         })
         .collect();
 
-    let collated = collate_instances(&meshes, 2);
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
     assert_eq!(collated.templates.len(), 1, "one shared template");
     assert_eq!(collated.flat_indices.len(), 0, "nothing left flat");
     let tmpl = &collated.templates[0];
@@ -126,7 +126,7 @@ fn composes_placement_and_mapping_transform() {
         })
         .collect();
 
-    let collated = collate_instances(&meshes, 2);
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
     assert_eq!(collated.templates.len(), 1);
     assert_eq!(collated.templates[0].occurrences.len(), 2);
     let err = verify_recomposition(&meshes, &collated);
@@ -165,7 +165,7 @@ fn rigid_canonical_transform_recomposes() {
             },
         ),
     ];
-    let collated = collate_instances(&meshes, 2);
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
     assert_eq!(collated.templates.len(), 1, "one rigid template");
     assert_eq!(collated.templates[0].occurrences.len(), 2);
     let err = verify_recomposition(&meshes, &collated);
@@ -193,7 +193,7 @@ fn instanced_wire_format_roundtrips_and_expands_to_flat() {
         )
     };
     let meshes = vec![mk(&m0, 50), mk(&m1, 50), mk(&m2, 60)];
-    let collated = collate_instances(&meshes, 2);
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
 
     let bytes = encode_instanced(&meshes, &collated, |i| i as u32, |_| [0.25, 0.5, 0.75, 1.0]);
     let dec = decode_instanced(&bytes).expect("decodes");
@@ -257,7 +257,7 @@ fn dump_instanced_fixture() {
         )
     };
     let meshes = vec![mk(&m0, 50), mk(&m1, 50), mk(&m2, 60)];
-    let collated = collate_instances(&meshes, 2);
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
     let bytes = encode_instanced(&meshes, &collated, |i| (1000 + i) as u32, |i| {
         [i as f32 * 0.1, 0.2, 0.3, 1.0]
     });
@@ -289,9 +289,55 @@ fn collate_count_guard_drops_mismatched_group_to_flat() {
         mesh_from(baked(&CANON, &p), meta(777)),
         mesh_from(baked(&canon_b, &p), meta(777)), // same rep, different counts
     ];
-    let collated = collate_instances(&meshes, 2);
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
     assert_eq!(collated.templates.len(), 0, "count mismatch must NOT form a template");
     assert_eq!(collated.flat_indices.len(), 2, "both fall to flat");
+}
+
+#[test]
+fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
+    // Regression for the GLB-export collapse: a rotated occurrence at a
+    // georeferenced placement. Computing `rel = m_k · m_ref⁻¹` on the raw
+    // pre-RTC (absolute, ~1e6 m) transforms makes the relative translation reach
+    // `T_k − R_rel·T_ref ≈ 2× rtc` when the rotation flips the sign — the
+    // occurrence then lands at twice the georeference and collapses the f32 GLB.
+    // Passing the applied rtc reduces both transforms to the post-RTC frame so
+    // `rel` stays building-scale (consistent with the small baked origin).
+    let rtc = [1_000_000.0_f64, 2_000_000.0, 0.0];
+    let t_template = Matrix4::new_translation(&nalgebra::Vector3::new(rtc[0], rtc[1], rtc[2]));
+    // Same placement, rotated 180° about Z — the worst case (sign flip).
+    let t_occ = t_template * Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::PI);
+    let mk = |m: &Matrix4<f64>| {
+        mesh_from(
+            baked(&CANON, m),
+            InstanceMeta {
+                transform: mat_rm(m),
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 99,
+                instanceable: true,
+            },
+        )
+    };
+    let meshes = vec![mk(&t_template), mk(&t_occ)];
+    // occurrence transform translation magnitude (row-major mat4 → [3],[7],[11]).
+    let occ_trans = |c: &Collated| -> f64 {
+        let occ = &c.templates[0].occurrences;
+        occ.iter()
+            .map(|o| o.transform[3].abs().max(o.transform[7].abs()).max(o.transform[11].abs()) as f64)
+            .fold(0.0, f64::max)
+    };
+
+    // Without the rtc reduction (legacy behaviour) the rotated occurrence blows
+    // up to ~2× the georef offset.
+    let raw = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(raw.templates.len(), 1, "the two congruent meshes instance");
+    assert!(occ_trans(&raw) > 1_000_000.0, "legacy: rotated occurrence reaches ~2× rtc");
+
+    // With the applied rtc the relative transform stays building-scale.
+    let fixed = collate_instances(&meshes, 2, rtc);
+    assert_eq!(fixed.templates.len(), 1, "still instances after the reduction");
+    assert!(occ_trans(&fixed) < 10.0, "fixed: rel translation is building-scale, got {}", occ_trans(&fixed));
 }
 
 #[test]
@@ -316,7 +362,7 @@ fn collate_and_encode_matches_mesh_path() {
     let meshes = vec![mk(&m0, 50), mk(&m1, 50), mk(&m2, 60)];
     let col = |i: usize| [i as f32 * 0.1, 0.2, 0.3, 1.0];
 
-    let collated = collate_instances(&meshes, 2);
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
     let bytes_mesh = encode_instanced(&meshes, &collated, |i| i as u32, col);
 
     let refs: Vec<InstanceMeshRef> = meshes
@@ -329,7 +375,7 @@ fn collate_and_encode_matches_mesh_path() {
             r
         })
         .collect();
-    let bytes_ref = collate_and_encode(&refs, 2);
+    let bytes_ref = collate_and_encode(&refs, 2, [0.0, 0.0, 0.0]);
 
     assert_eq!(bytes_mesh, bytes_ref, "ref one-shot must match the Mesh path byte-for-byte");
     // And it must still decode + expand.
@@ -358,7 +404,7 @@ fn singletons_and_non_instanceable_go_flat() {
         mesh_from(baked(&CANON, &p), meta(1, true)), // singleton rep 1
         mesh_from(baked(&CANON, &p), meta(2, false)), // not instanceable
     ];
-    let collated = collate_instances(&meshes, 2);
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
     // BOTH meshes must be represented. The instanceable singleton has no repeat
     // so it goes flat; the non-instanceable mesh must STILL be drawn (emitted as
     // a flat singleton), not dropped — dropping it silently loses geometry on

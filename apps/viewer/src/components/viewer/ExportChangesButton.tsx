@@ -91,6 +91,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       if (files.length === 0) {
         if (skipped.length > 0) {
           setExportStatus('error');
+          setTimeout(() => setExportStatus('idle'), 3000);
           toast.error(`Export failed: ${skipped[0].reason}`);
         } else {
           toast.info('No changes to export');
@@ -139,7 +140,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   const tooltip =
     modelCount > 1
       ? `Export changes in ${modelCount} models (${totalCount} changes)`
-      : `Export IFC with ${totalCount} property change${totalCount === 1 ? '' : 's'} applied`;
+      : `Export IFC with ${totalCount} change${totalCount === 1 ? '' : 's'} applied`;
 
   return (
     <Tooltip>

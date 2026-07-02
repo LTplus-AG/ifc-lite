@@ -10,12 +10,15 @@
  * first federated model).
  *
  * `collectChangedModels` is pure over a store-shaped snapshot so it stays unit
- * testable. Its per-model `changeCount` mirrors the store's
- * `getModifiedEntityCount` contribution exactly (property/quantity/attribute
- * edits -> distinct modified entities, +1 per georef-only model, generated /
- * edited schedule tasks attributed to a single resolved target model), so
- * `sum(changeCount) === getModifiedEntityCount(state)` for any state whose
- * mutation-view and georef keys are loaded models — locked by a unit test.
+ * testable. Its per-model `changeCount` tracks the store's
+ * `getModifiedEntityCount` contribution (property/quantity/attribute edits ->
+ * distinct modified entities, +1 for georef edits, generated / edited schedule
+ * tasks attributed to a single resolved target model), so
+ * `sum(changeCount) === getModifiedEntityCount(state)` for the common states
+ * (locked by a unit test). The one intentional divergence: georef edits are
+ * counted even when the model also carries property edits, so a georef edit is
+ * never dropped from the export set — a slight, deliberate over-count vs the
+ * store in that rare both-edits case.
  */
 
 import type { IfcDataStore, ScheduleExtraction } from '@ifc-lite/parser';
@@ -179,10 +182,14 @@ export function collectChangedModels(state: ChangesExportState): ChangedModelsRe
     if (!m) continue; // stale id (model removed) — nothing to export
 
     const view = state.mutationViews.get(id);
-    // Mirror getModifiedEntityCount: view contributes distinct modified
-    // entities; a georef-only model (no view) contributes exactly +1.
+    // Distinct modified entities from the overlay, plus +1 when the model has
+    // georeferencing edits. Georef is counted even when a (possibly
+    // inspection-only) view exists, so a georef-only edit on an already-viewed
+    // model is never dropped from the export set. (getModifiedEntityCount counts
+    // georef only when the model has no view — this is a deliberate, more
+    // inclusive divergence in the rare property-and-georef case.)
     let changeCount = view ? view.getModifiedEntityCount() : 0;
-    if (!view && hasGeorefFields(state.georefMutations.get(id))) changeCount += 1;
+    if (hasGeorefFields(state.georefMutations.get(id))) changeCount += 1;
 
     const isScheduleTarget = id === scheduleTargetModelId;
     if (isScheduleTarget) changeCount += scheduleCount;

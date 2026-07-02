@@ -152,23 +152,28 @@ describe('collectChangedModels', () => {
     assert.deepStrictEqual(result.models.map((m) => m.id), ['a']);
   });
 
-  it('counts a georef-only model as +1, and 0 when it also has a view', () => {
+  it('counts georef edits additively so they are never dropped from export', () => {
     const models = new Map<string, FederatedModel>([
       ['g', mkModel('g', 'g.ifc')],
       ['p', mkModel('p', 'p.ifc')],
+      ['v', mkModel('v', 'v.ifc')],
     ]);
     const georefMutations = new Map<string, GeorefMutationData>([
       ['g', { mapConversion: { Eastings: 100 } as GeorefMutationData['mapConversion'] }],
       ['p', { mapConversion: { Eastings: 200 } as GeorefMutationData['mapConversion'] }],
+      // 'v' has a zero-count (inspection-only) view AND a georef edit — the
+      // georef must still count so the edit is exported (Codex #1538 finding).
+      ['v', { projectedCRS: { Name: 'EPSG:2056' } as GeorefMutationData['projectedCRS'] }],
     ]);
-    // 'p' also has a property view -> its georef contributes 0 (store parity).
-    const mutationViews = new Map<string, MutablePropertyView>([['p', mkView(4)]]);
+    const mutationViews = new Map<string, MutablePropertyView>([
+      ['p', mkView(4)], // property edits + georef -> counted additively
+      ['v', mkView(0)], // inspected-only view + georef
+    ]);
     const result = collectChangedModels(mkState({ models, georefMutations, mutationViews }));
 
-    const g = result.models.find((m) => m.id === 'g');
-    const p = result.models.find((m) => m.id === 'p');
-    assert.strictEqual(g?.changeCount, 1);
-    assert.strictEqual(p?.changeCount, 4);
+    assert.strictEqual(result.models.find((m) => m.id === 'g')?.changeCount, 1);
+    assert.strictEqual(result.models.find((m) => m.id === 'p')?.changeCount, 5);
+    assert.strictEqual(result.models.find((m) => m.id === 'v')?.changeCount, 1);
   });
 
   it('attributes the schedule to the declared source model only', () => {

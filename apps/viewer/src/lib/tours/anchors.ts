@@ -62,6 +62,13 @@ export const TOUR_ANCHORS = {
   compareResults: 'compare-results',
   /** ChangeDetailView root (only while a MODIFIED row is selected). */
   compareDetail: 'compare-detail',
+  /** LensPanel lens-list scroll container. */
+  lensList: 'lens-list',
+  /** LensCard legend. The auto-color and rule-based branches share this id;
+   *  they are mutually exclusive and only the ACTIVE card mounts one. */
+  lensLegend: 'lens-legend',
+  /** LensPanel header Clear button (only while a lens is active). */
+  lensClear: 'lens-clear',
 } as const;
 
 /** Activity-bar rail button for a panel (one templated attribute serves
@@ -76,10 +83,17 @@ export function toolAnchor(tool: string): `tool-${string}` {
   return `tool-${tool}`;
 }
 
+/** LensPanel lens card by lens id (one templated attribute lets any tour
+ *  target any card, e.g. the builtin 'lens-by-class'). */
+export function lensCardAnchor(lensId: string): `lens-card-${string}` {
+  return `lens-card-${lensId}`;
+}
+
 export type TourAnchorId =
   | (typeof TOUR_ANCHORS)[keyof typeof TOUR_ANCHORS]
   | ReturnType<typeof activityAnchor>
-  | ReturnType<typeof toolAnchor>;
+  | ReturnType<typeof toolAnchor>
+  | ReturnType<typeof lensCardAnchor>;
 
 /** Spread helper: `<div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)}>`. */
 export function tourAnchor(id: TourAnchorId): { 'data-tour': TourAnchorId } {

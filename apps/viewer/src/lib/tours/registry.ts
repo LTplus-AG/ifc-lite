@@ -12,6 +12,7 @@ import type { WorkspacePanelId } from '@/lib/panels/registry';
 import { CLASH_TOUR } from './tours/clash';
 import { COMPARE_TOUR } from './tours/compare';
 import { IDS_TOUR } from './tours/ids';
+import { LENS_TOUR } from './tours/lens';
 import { MEASURE_SECTION_TOUR } from './tours/measure-section';
 import { WELCOME_TOUR } from './tours/welcome';
 import type { TourDefinition, TourId } from './types';
@@ -22,6 +23,7 @@ export const TOUR_REGISTRY: readonly TourDefinition[] = [
   IDS_TOUR,
   CLASH_TOUR,
   COMPARE_TOUR,
+  LENS_TOUR,
 ];
 
 export function getTour(id: TourId): TourDefinition | undefined {

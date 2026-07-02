@@ -1497,6 +1497,7 @@ dependencies = [
  "ifc-lite-geometry",
  "ifc-lite-processing",
  "parquet",
+ "rustc-hash",
  "serde",
  "serde_json",
  "zip",

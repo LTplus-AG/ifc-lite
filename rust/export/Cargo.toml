@@ -12,6 +12,7 @@ description = "Domain-format exporters for ifc-lite (HBJSON, OBJ, glTF/GLB, CSV,
 ifc-lite-core = { workspace = true }
 ifc-lite-geometry = { workspace = true }
 ifc-lite-processing = { workspace = true }
+rustc-hash = "2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 

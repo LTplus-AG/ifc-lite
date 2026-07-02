@@ -347,7 +347,12 @@ export async function exportCommand(args: string[]): Promise<void> {
           }
           logger.debug(`GLB meshes: ${countGlbMeshes(out as Uint8Array)}`);
           await writeFile(outPath, out as Uint8Array);
-          process.stderr.write(`Written to ${outPath}\n`);
+          logger.info(`Written to ${outPath}`);
+        }
+        if (profileFlag) {
+          process.stderr.write(
+            `profile: ${format} export ${(performance.now() - tWork).toFixed(0)}ms\n`,
+          );
         }
         // Opt-in geometry summary (--diagnostics, or implied by --verbose):
         // reuses the gp/bytes already in scope. This is a second geometry pass
@@ -370,11 +375,6 @@ export async function exportCommand(args: string[]): Promise<void> {
           }
         }
       } finally {
-        if (profileFlag) {
-          process.stderr.write(
-            `profile: ${format} export ${(performance.now() - tWork).toFixed(0)}ms\n`,
-          );
-        }
         gp.dispose();
       }
       break;

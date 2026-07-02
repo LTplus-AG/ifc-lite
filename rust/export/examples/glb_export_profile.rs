@@ -52,6 +52,18 @@ fn main() {
         }
     }
 
+    // Force the in-memory assembler so the derived assemble+serialize metric
+    // subtracts exactly ONE index+mesh pass. Over the streaming threshold the
+    // bounded exporter meshes twice by design, which would misattribute the
+    // second pass as assembly cost - the exact misread this harness exists to
+    // prevent. Profile the bounded path explicitly via
+    // IFC_LITE_GLB_STREAM_THRESHOLD_MB in the environment if that is the goal
+    // (the env set here wins only when the caller did not set one).
+    if std::env::var("IFC_LITE_GLB_STREAM_THRESHOLD_MB").is_err() {
+        std::env::set_var("IFC_LITE_GLB_STREAM_THRESHOLD_MB", "0");
+        println!("(in-memory assembler forced for a clean phase split)");
+    }
+
     let content = std::fs::read(&path).unwrap_or_else(|e| {
         eprintln!("read {path}: {e}");
         std::process::exit(2);
@@ -117,8 +129,8 @@ fn main() {
     );
     println!("assemble+serialize: {assemble}");
     println!(
-        "note: inputs >= the streaming threshold take the bounded two-pass \
-         assembler inside export (meshes twice by design); set \
-         IFC_LITE_GLB_STREAM_THRESHOLD_MB=0 to force the in-memory path for A/B."
+        "note: set IFC_LITE_GLB_STREAM_THRESHOLD_MB explicitly to profile the \
+         bounded two-pass assembler instead (it meshes twice by design, so the \
+         derived assemble+serialize figure does not apply there)."
     );
 }

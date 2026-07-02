@@ -146,7 +146,7 @@ describe('EntityQuery', () => {
       // (Pset_DoorCommon). A query scoped to Pset_WallCommon must return only
       // the wall; ignoring the pset name would leak the door in.
       const store = makeStore();
-      const query = new EntityQuery(store as any, null);
+      const query = new EntityQuery(store, null);
       query.whereProperty('Pset_WallCommon', 'IsExternal', '=', true);
       const results = query.execute();
       expect(results.map(r => r.expressId)).toEqual([1]);
@@ -154,7 +154,7 @@ describe('EntityQuery', () => {
 
     it('returns nothing for an unknown property set even if the property exists', () => {
       const store = makeStore();
-      const query = new EntityQuery(store as any, null);
+      const query = new EntityQuery(store, null);
       query.whereProperty('Pset_NonExistent', 'IsExternal', '=', true);
       const results = query.execute();
       expect(results).toHaveLength(0);

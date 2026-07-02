@@ -1,0 +1,74 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, it, expect } from 'vitest';
+import JSZip from 'jszip';
+import { isZipBuffer, unwrapIfcZip } from './ifczip.js';
+
+const STEP_HEADER = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
+
+async function makeZip(entries: Record<string, string>): Promise<ArrayBuffer> {
+  const zip = new JSZip();
+  for (const [name, content] of Object.entries(entries)) zip.file(name, content);
+  return zip.generateAsync({ type: 'arraybuffer' });
+}
+
+function toArrayBuffer(text: string): ArrayBuffer {
+  const bytes = new TextEncoder().encode(text);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+describe('isZipBuffer', () => {
+  it('is false for a plain STEP file', () => {
+    expect(isZipBuffer(toArrayBuffer(STEP_HEADER))).toBe(false);
+  });
+
+  it('is false for a buffer shorter than 4 bytes', () => {
+    expect(isZipBuffer(new Uint8Array([0x50, 0x4b]).buffer)).toBe(false);
+  });
+
+  it('is true for the zip local-file-header signature', async () => {
+    const zip = await makeZip({ 'model.ifc': STEP_HEADER });
+    expect(isZipBuffer(zip)).toBe(true);
+  });
+});
+
+describe('unwrapIfcZip', () => {
+  it('returns non-zip buffers unchanged', async () => {
+    const buffer = toArrayBuffer(STEP_HEADER);
+    const result = await unwrapIfcZip(buffer);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+  });
+
+  it('extracts the single .ifc entry from an .ifcZIP container', async () => {
+    const zip = await makeZip({ 'model.ifc': STEP_HEADER });
+    const result = await unwrapIfcZip(zip);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+  });
+
+  it('is case-insensitive and matches .ifcxml too, from a nested path', async () => {
+    const zip = await makeZip({ 'nested/dir/Model.IFCXML': '<ifcXML/>' });
+    const result = await unwrapIfcZip(zip);
+    expect(new TextDecoder().decode(result)).toBe('<ifcXML/>');
+  });
+
+  it('ignores referenced resources alongside the model entry', async () => {
+    const zip = await makeZip({
+      'model.ifc': STEP_HEADER,
+      'resources/texture.png': 'not-a-real-png-but-fine-for-this-test',
+    });
+    const result = await unwrapIfcZip(zip);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+  });
+
+  it('throws when the archive has no .ifc/.ifcxml entry', async () => {
+    const zip = await makeZip({ 'readme.txt': 'hello' });
+    await expect(unwrapIfcZip(zip)).rejects.toThrow(/no \.ifc\/\.ifcxml entry/);
+  });
+
+  it('throws when the archive has multiple model entries (ambiguous)', async () => {
+    const zip = await makeZip({ 'a.ifc': STEP_HEADER, 'b.ifc': STEP_HEADER });
+    await expect(unwrapIfcZip(zip)).rejects.toThrow(/expected exactly one/);
+  });
+});

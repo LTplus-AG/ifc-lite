@@ -7,6 +7,8 @@
  * Supports both IFC4 (STEP) and IFC5 (IFCX/JSON) formats
  */
 
+import { unwrapIfcZip } from './ifczip.js';
+export { isZipBuffer, unwrapIfcZip } from './ifczip.js';
 export { StepTokenizer } from './tokenizer.js';
 export { EntityIndexBuilder } from './entity-index.js';
 export { EntityExtractor } from './entity-extractor.js';
@@ -257,6 +259,10 @@ export async function parseAuto(
   buffer: ArrayBuffer,
   options: ParseOptions = {}
 ): Promise<AutoParseResult> {
+  // Transparent .ifcZIP unwrap (issue #1494): a no-op for every ordinary
+  // IFC/IFCX/GLB buffer (cheap magic-byte check), so this is safe to run
+  // unconditionally.
+  buffer = await unwrapIfcZip(buffer);
   const format = detectFormat(buffer);
 
   if (format === 'ifcx') {

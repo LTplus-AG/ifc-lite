@@ -8,7 +8,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, unwrapIfcZip, type IfcDataStore } from '@ifc-lite/parser';
 import { createBimContext, type BimContext, type ViewerBackendMethods, type VisibilityBackendMethods } from '@ifc-lite/sdk';
 import { HeadlessBackend } from './headless-backend.js';
 import { createStreamingViewerAdapter, createStreamingVisibilityAdapter } from './streaming-viewer.js';
@@ -18,11 +18,23 @@ import { createStreamingViewerAdapter, createStreamingVisibilityAdapter } from '
  * Suppresses parser console output for clean CLI experience.
  */
 export async function loadIfcFile(filePath: string): Promise<IfcDataStore> {
-  const buffer = await readFile(filePath);
+  let buffer = await readFile(filePath);
 
   // Validate the file is a STEP/IFC file
   if (buffer.byteLength === 0) {
     process.stderr.write(`Error: ${filePath} is empty (0 bytes)\n`);
+    process.exit(1);
+  }
+
+  // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for an
+  // ordinary .ifc file.
+  try {
+    const unwrapped = await unwrapIfcZip(
+      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
+    );
+    buffer = Buffer.from(unwrapped);
+  } catch (err) {
+    process.stderr.write(`Error: ${filePath}: ${(err as Error).message}\n`);
     process.exit(1);
   }
 

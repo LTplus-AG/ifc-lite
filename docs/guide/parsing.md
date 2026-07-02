@@ -222,8 +222,29 @@ if (result.format === 'ifcx') {
 }
 
 // Or detect format manually
-const format = detectFormat(buffer);  // 'ifc', 'ifcx', or 'unknown'
+const format = detectFormat(buffer);  // 'ifc', 'ifcx', 'glb', or 'unknown'
 ```
+
+### `.ifcZIP` Containers
+
+`parseAuto` (and every built-in loader — CLI, MCP, the viewer) transparently
+unwraps the buildingSMART `.ifcZIP` container format: a zip archive wrapping
+a single `.ifc`/`.ifcxml` file. Feed it the zip bytes directly — no manual
+unzip step needed:
+
+```typescript
+import { parseAuto, unwrapIfcZip } from '@ifc-lite/parser';
+
+// parseAuto detects and unwraps .ifcZIP automatically
+const result = await parseAuto(zipBuffer);
+
+// Or unwrap explicitly (a no-op for a non-zip buffer)
+const ifcBuffer = await unwrapIfcZip(zipBuffer);
+```
+
+Referenced resources inside the archive (textures, documents) are not
+extracted — only the model file's bytes. An archive with zero or more than
+one `.ifc`/`.ifcxml` entry throws rather than guessing which one to load.
 
 ### Direct IFCX Parsing
 

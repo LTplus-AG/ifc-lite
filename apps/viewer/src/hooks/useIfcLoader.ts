@@ -15,7 +15,7 @@ import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '../store/constants.js';
-import { IfcParser, detectFormat, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, detectFormat, unwrapIfcZip, type IfcDataStore } from '@ifc-lite/parser';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import {
@@ -424,7 +424,7 @@ export function useIfcLoader() {
       // reads bytes via `new Uint8Array(buffer)` / `new DataView(buffer)`,
       // both of which work on either backing store. The TS cast is purely
       // type-system: the runtime is identical.
-      const buffer = acquired.buffer as ArrayBuffer;
+      let buffer = acquired.buffer as ArrayBuffer;
       const fileReadMs = performance.now() - fileReadStart;
       console.log(
         `[useIfc] File: ${file.name}, size: ${fileSizeMB.toFixed(2)}MB` +
@@ -432,6 +432,13 @@ export function useIfcLoader() {
             ? ` — point cloud, streaming from Blob (no whole-file read)`
             : `, read in ${fileReadMs.toFixed(0)}ms${acquired.isShared ? ' (streamed→SAB)' : ''}`),
       );
+
+      // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for
+      // an ordinary file. Skipped for point clouds: those never reach here
+      // with the full buffer (streamed straight from the Blob).
+      if (!pointCloudFormat) {
+        buffer = await unwrapIfcZip(buffer);
+      }
 
       // IFCX/IFC5 vs IFC4 STEP vs GLB resolved from the full buffer; point
       // cloud format was already resolved from the head slice above.

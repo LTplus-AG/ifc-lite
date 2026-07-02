@@ -295,7 +295,7 @@ function DropZone({
         e.preventDefault();
         setHover(false);
         const f = e.dataTransfer.files[0];
-        if (f && /\.ifc$/i.test(f.name)) onFile(f);
+        if (f && /\.ifc(zip)?$/i.test(f.name)) onFile(f);
       }}
       className={cn(
         'flex cursor-pointer flex-col items-center gap-1 rounded-md border-2 border-dashed px-3 py-4 text-center transition-colors',
@@ -305,11 +305,11 @@ function DropZone({
       style={{ color: PAPER_DIM }}
     >
       <Upload size={14} />
-      <span className="text-[11.5px]">drop an .ifc, or click to pick</span>
+      <span className="text-[11.5px]">drop an .ifc/.ifczip, or click to pick</span>
       <input
         ref={inputRef}
         type="file"
-        accept=".ifc"
+        accept=".ifc,.ifczip"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

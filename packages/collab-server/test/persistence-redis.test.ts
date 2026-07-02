@@ -3,10 +3,28 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 import {
   RedisPersistence,
   type RedisLikeClient,
 } from '../src/persistence-redis.js';
+
+/** Real per-transaction update frames, mirroring the server's onDocUpdate. */
+function makeFrames(values: number[]): Uint8Array[] {
+  const doc = new Y.Doc();
+  const frames: Uint8Array[] = [];
+  doc.on('update', (u: Uint8Array) => frames.push(u));
+  const arr = doc.getArray<number>('log');
+  for (const v of values) doc.transact(() => arr.push([v]));
+  return frames;
+}
+
+/** Apply a loaded blob to a fresh doc and read back the array it encodes. */
+function replay(loaded: Uint8Array | null): number[] {
+  const doc = new Y.Doc();
+  if (loaded) Y.applyUpdate(doc, loaded);
+  return doc.getArray<number>('log').toArray();
+}
 
 /** Tiny in-memory fake matching the RedisLikeClient surface. */
 function fakeRedis(): { client: RedisLikeClient; store: Map<string, Buffer | Buffer[]> } {
@@ -51,10 +69,11 @@ describe('RedisPersistence', () => {
     const { client } = fakeRedis();
     const p = new RedisPersistence({ client });
     expect(await p.load('room')).toBeNull();
-    await p.append('room', new Uint8Array([1, 2]));
-    await p.append('room', new Uint8Array([3, 4]));
-    const all = await p.load('room');
-    expect(all).toEqual(new Uint8Array([1, 2, 3, 4]));
+    const frames = makeFrames([1, 2, 3]);
+    for (const f of frames) await p.append('room', f);
+    // Regression: byte-concatenating the frames and applying once would decode
+    // only the first update, dropping [2, 3]. Merged frames reconstruct all.
+    expect(replay(await p.load('room'))).toEqual([1, 2, 3]);
   });
 
   it('compact replaces snap and clears the log', async () => {

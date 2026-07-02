@@ -1,5 +1,21 @@
 # @ifc-lite/server-client
 
+## 1.18.1
+
+### Patch Changes
+
+- [#1502](https://github.com/LTplus-AG/ifc-lite/pull/1502) [`7d5a031`](https://github.com/LTplus-AG/ifc-lite/commit/7d5a03191a768f68c5ddad878698d1aacb9940ef) Thanks [@louistrue](https://github.com/louistrue)! - fix(server-client): send the auth token on data-model and symbolic fetches
+
+  `fetchDataModel` and `fetchSymbolic` were the only requests that omitted
+  `authHeaders()`, so against a server started with `IFC_SERVER_API_TOKEN` the
+  geometry parse succeeded but the follow-up data-model and symbolic fetches got
+  401 and silently returned null — the model loaded with no properties and no
+  annotations. Both now send the `Authorization` header like every other request.
+
+  Also: the streaming parse cache-check now includes the parse query string
+  (`parseQuery(options)`), matching the non-streaming path, so a cached result for
+  a different tessellation quality is no longer returned as a hit.
+
 ## 1.18.0
 
 ### Minor Changes

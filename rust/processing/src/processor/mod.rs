@@ -147,6 +147,12 @@ pub struct StreamingOptions {
     /// `build_entity_index(content)` for the *same* `content`, or decoding will read
     /// the wrong byte ranges.
     pub entity_index: Option<Arc<EntityIndex>>,
+    /// Cooperative cancellation: when the flag flips true, the streaming core
+    /// stops between job chunks (no further meshing or batch emission). The
+    /// returned `ProcessingResult` is then PARTIAL - the caller set the flag,
+    /// so it must not present the result as a completed parse. Used by the
+    /// server to stop burning a core when an SSE client disconnects.
+    pub cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl Default for StreamingOptions {
@@ -161,6 +167,7 @@ impl Default for StreamingOptions {
             retain_emitted_meshes: true,
             tessellation_quality: TessellationQuality::default(),
             entity_index: None,
+            cancel: None,
         }
     }
 }
@@ -443,17 +450,41 @@ pub fn process_geometry_streaming_filtered_with_options(
     let parse_start = Clock::now();
     let entity_scan_start = Clock::now();
 
+    // Span taxonomy for the pipeline phases. Each phase span mirrors an
+    // existing ProcessingStats timer window (instrumentation only, no
+    // restructuring); `phase_ms` / count fields are recorded post-hoc from the
+    // measurements the pipeline already takes. Field names reuse the
+    // GeometryDiagnostics vocabulary (total_csg_failures, backstop_count, ...)
+    // so events and the wasm PipelineDiagnostics channel share one vocabulary.
+    let pipeline_span = tracing::info_span!(
+        "geometry_pipeline",
+        byte_size = content.len(),
+        element_count = tracing::field::Empty,
+        total_ms = tracing::field::Empty,
+    );
+    let _pipeline_guard = pipeline_span.clone().entered();
+
     tracing::info!(
         content_size = content.len(),
         "Starting IFC geometry processing"
     );
 
+    let scan_span = tracing::info_span!(
+        "scan_prepass",
+        total_entities = tracing::field::Empty,
+        geometry_entities = tracing::field::Empty,
+        phase_ms = tracing::field::Empty,
+    );
+    let scan_guard = scan_span.clone().entered();
+
     // Build the entity index (fast SIMD-accelerated single pass), unless a caller
     // injected one built from the same `content` to share across passes.
-    let entity_index = options
-        .entity_index
-        .clone()
-        .unwrap_or_else(|| Arc::new(build_entity_index(content)));
+    let entity_index = tracing::debug_span!("entity_index").in_scope(|| {
+        options
+            .entity_index
+            .clone()
+            .unwrap_or_else(|| Arc::new(build_entity_index(content)))
+    });
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
     tracing::debug!("Built entity index");
 
@@ -654,7 +685,10 @@ pub fn process_geometry_streaming_filtered_with_options(
         }
 
         if ifc_lite_core::has_geometry_by_name(type_name) {
-            let ifc_type = IfcType::from_str(type_name);
+            // Legacy-aware so a remapped entity (IfcProxy, IfcSolidStratum, …)
+            // labels its node with the real base type, not "Unknown", and matches
+            // the attribute pass's row type (#1496).
+            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
             if quick_metadata_enabled {
                 quick_element_summaries.insert(
                     id,
@@ -781,8 +815,13 @@ pub fn process_geometry_streaming_filtered_with_options(
     } = resolved;
 
     let entity_scan_time = entity_scan_start.elapsed();
+    scan_span.record("total_entities", total_entities as u64);
+    scan_span.record("geometry_entities", entity_jobs.len() as u64);
+    scan_span.record("phase_ms", entity_scan_time.as_millis() as u64);
+    drop(scan_guard);
 
     let lookup_start = Clock::now();
+    let lookup_span = tracing::debug_span!("lookup", phase_ms = tracing::field::Empty).entered();
     if options.include_properties {
         assign_space_zone_properties(
             &mut entity_jobs,
@@ -797,6 +836,8 @@ pub fn process_geometry_streaming_filtered_with_options(
         });
     }
     let lookup_time = lookup_start.elapsed();
+    lookup_span.record("phase_ms", lookup_time.as_millis() as u64);
+    drop(lookup_span);
 
     let (skipped_entity_ids, filtered_void_index) = apply_opening_filter(
         &entity_jobs,
@@ -919,12 +960,20 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     // Preprocess complex geometry
     let preprocess_start = Clock::now();
+    let preprocess_span =
+        tracing::debug_span!("preprocess", phase_ms = tracing::field::Empty).entered();
     // Resolve BOTH unit scales once via the shared resolver (the scan recorded
     // IFCPROJECT's id, so this is an O(1) decode — no more full-file hunts:
     // the historic `with_units` + `plane_angle_to_radians` pair each re-walked
     // the whole DATA section). Seed the shared decoder so every later consumer
     // (opening filter, metadata phase, deferred-style replay) inherits them.
-    let unit_scales = crate::prepass::resolve_unit_scales(content, project_id, &mut decoder);
+    let unit_scales = tracing::debug_span!("unit_scale")
+        .in_scope(|| crate::prepass::resolve_unit_scales(content, project_id, &mut decoder));
+    tracing::debug!(
+        length_unit_scale = unit_scales.length_unit_scale,
+        plane_angle_to_radians = unit_scales.plane_angle_to_radians,
+        "Resolved unit scales"
+    );
     decoder.seed_unit_scales(
         unit_scales.length_unit_scale,
         unit_scales.plane_angle_to_radians,
@@ -986,6 +1035,8 @@ pub fn process_geometry_streaming_filtered_with_options(
     let has_rtc_offset = coord_space != RAW_IFC_MESH_COORDINATE_SPACE;
     router.set_rtc_offset(rtc_offset);
     let preprocess_time = preprocess_start.elapsed();
+    preprocess_span.record("phase_ms", preprocess_time.as_millis() as u64);
+    drop(preprocess_span);
 
     let parse_time = parse_start.elapsed();
     tracing::info!(
@@ -1070,6 +1121,11 @@ pub fn process_geometry_streaming_filtered_with_options(
     // pass instead of reading process-global counters.
     let rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats> =
         std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default());
+    // Degenerate-backstop drop tally, summed from each element's
+    // `ProducedElementMeshes::degenerate_triangles_dropped` (request-local,
+    // like the other sinks). Non-zero means the f32-collapse safety net in
+    // `element::build_mesh_data` engaged for this model.
+    let backstop_collector = std::sync::atomic::AtomicU64::new(0);
 
     // Shared content-dedup cache for the whole model: every per-job router (built
     // fresh per element below) dedups against it, so byte-identical geometry the
@@ -1078,7 +1134,28 @@ pub fn process_geometry_streaming_filtered_with_options(
     // a hash get/insert; meshing runs outside it.
     let item_dedup_cache = GeometryRouter::new_dedup_cache();
 
+    let geometry_span = tracing::info_span!(
+        "geometry",
+        element_count = total_jobs,
+        mesh_count = tracing::field::Empty,
+        triangle_count = tracing::field::Empty,
+        backstop_count = tracing::field::Empty,
+        total_csg_failures = tracing::field::Empty,
+        phase_ms = tracing::field::Empty,
+    );
+    let geometry_guard = geometry_span.clone().entered();
+
     while chunk_start < total_jobs {
+        // Cooperative cancellation between chunks: the caller flipped the flag
+        // (e.g. its client disconnected), so stop meshing and emitting. The
+        // result below is partial by contract; see StreamingOptions::cancel.
+        if options
+            .cancel
+            .as_ref()
+            .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+        {
+            break;
+        }
         let chunk_end = (chunk_start + current_chunk_size).min(total_jobs);
         let jobs_chunk = &mut entity_jobs[chunk_start..chunk_end];
 
@@ -1186,6 +1263,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     &classification_collector,
                     &host_diag_collector,
                     &rect_fast_collector,
+                    &backstop_collector,
                     &item_dedup_cache,
                 )
             })
@@ -1247,6 +1325,13 @@ pub fn process_geometry_streaming_filtered_with_options(
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let total_csg_failures: usize = csg_failures.values().map(Vec::len).sum();
     let products_with_failures = csg_failures.len();
+    let backstop_dropped = backstop_collector.into_inner();
+    geometry_span.record("mesh_count", total_meshes as u64);
+    geometry_span.record("triangle_count", total_triangles as u64);
+    geometry_span.record("backstop_count", backstop_dropped);
+    geometry_span.record("total_csg_failures", total_csg_failures as u64);
+    geometry_span.record("phase_ms", geometry_time.as_millis() as u64);
+    drop(geometry_guard);
     if total_csg_failures > 0 {
         let mut by_reason: HashMap<&'static str, usize> = HashMap::new();
         for fails in csg_failures.values() {
@@ -1277,7 +1362,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     // Every sink — `classification`, `host_diags`, `csg_failures` AND `rect_fast` —
     // is request-local: each was drained from this pass's own per-job routers and
     // merged here, so concurrent in-process geometry passes never cross-contaminate.
-    let geometry_diagnostics = {
+    let geometry_diagnostics = tracing::debug_span!("collate_diagnostics").in_scope(|| {
         // Matches the wasm path's WORST_HOSTS_LIMIT (top-N per-host detail cap).
         const WORST_HOSTS_LIMIT: usize = 16;
         let classification = classification_collector
@@ -1297,14 +1382,17 @@ pub fn process_geometry_streaming_filtered_with_options(
             WORST_HOSTS_LIMIT,
         );
         (!diag.is_empty()).then_some(diag)
-    };
+    });
 
     let total_time = total_start.elapsed();
+    pipeline_span.record("element_count", total_jobs as u64);
+    pipeline_span.record("total_ms", total_time.as_millis() as u64);
 
     tracing::info!(
         meshes = meshes.len(),
         vertices = total_vertices,
         triangles = total_triangles,
+        backstop_count = backstop_dropped,
         geometry_time_ms = geometry_time.as_millis(),
         total_time_ms = total_time.as_millis(),
         "Geometry processing complete"
@@ -1339,6 +1427,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             from_cache: false,
             total_csg_failures: total_csg_failures as u64,
             products_with_failures: products_with_failures as u64,
+            degenerate_triangles_dropped: backstop_dropped,
             geometry_diagnostics,
         },
     }
@@ -1376,6 +1465,9 @@ fn process_entity_job(
     classification_collector: &std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
     host_diag_collector: &std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
     rect_fast_collector: &std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
+    // Shared tally of degenerate-backstop triangle drops (see
+    // `element::build_mesh_data`); relaxed atomic, added to only when non-zero.
+    backstop_collector: &std::sync::atomic::AtomicU64,
     // Model-wide content-dedup cache shared by every per-job router so identical
     // geometry is meshed once across the rayon pool (#1109 follow-up).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
@@ -1442,6 +1534,14 @@ fn process_entity_job(
         &mut local_decoder,
         &local_router,
     );
+
+    // Fold this element's degenerate-backstop drops into the pass tally.
+    if produced.degenerate_triangles_dropped > 0 {
+        backstop_collector.fetch_add(
+            produced.degenerate_triangles_dropped,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
 
     // Surface this element's CSG diagnostics in the shared collector. The
     // wasm path logs them in the browser console; without this the server

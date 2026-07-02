@@ -30,6 +30,7 @@
 import { randomBytes } from 'node:crypto';
 
 import type { Persistence } from './persistence.js';
+import { mergeUpdateFrames } from './persistence.js';
 
 /** Minimum S3 surface we need; AWS SDK satisfies it directly. */
 export interface S3LikeClient {
@@ -184,7 +185,9 @@ export class S3Persistence implements Persistence {
     }
     if (frames.length === 0) return null;
 
-    return concat(frames);
+    // Merge, not byte-concatenate: applyUpdate reads only the first frame of a
+    // naive concatenation and drops the rest (see mergeUpdateFrames).
+    return mergeUpdateFrames(frames);
   }
 
   async append(roomId: string, update: Uint8Array): Promise<void> {

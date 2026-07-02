@@ -36,6 +36,7 @@ use tower_http::{
     timeout::TimeoutLayer, trace::TraceLayer,
 };
 
+mod admission;
 mod config;
 mod error;
 mod middleware;
@@ -80,6 +81,7 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
 pub struct AppState {
     pub cache: Arc<DiskCache>,
     pub config: Arc<Config>,
+    pub admission: Arc<admission::Admission>,
 }
 
 /// Build the application router with all routes and middleware.
@@ -97,8 +99,12 @@ fn build_router(state: AppState) -> Router {
     let open_routes = Router::new()
         // Root endpoint - API information
         .route("/", get(routes::health::info))
-        // Health check
-        .route("/api/v1/health", get(routes::health::check));
+        // Health check (liveness: static, never load-gated - Railway's
+        // healthcheck points here and must not restart the box under load)
+        .route("/api/v1/health", get(routes::health::check))
+        // Readiness: 503 while the RSS breaker is shedding, so an external
+        // balancer can drain the instance without a restart loop.
+        .route("/api/v1/ready", get(routes::health::ready));
 
     // Protected routes: the compute-heavy parse endpoints and cache reads. When
     // `config.api_token` is set these require an `Authorization: Bearer <token>`
@@ -135,6 +141,9 @@ fn build_router(state: AppState) -> Router {
             "/api/v1/cache/geometry/{hash}",
             get(routes::parse::get_cached_geometry),
         )
+        // Prometheus text metrics (admission gauges + resident memory);
+        // registered only when enabled, protected by the same bearer layer.
+        .route("/api/v1/metrics", get(routes::metrics::metrics))
         // Optional bearer-token auth (off unless `api_token` is configured).
         .layer(axum::middleware::from_fn_with_state(
             config.clone(),
@@ -201,9 +210,27 @@ async fn main() {
     // Initialize cache
     let cache = Arc::new(DiskCache::new(&config.cache_dir).await);
 
+    let admission = Arc::new(admission::Admission::new(admission::AdmissionCfg {
+        max_concurrent_parses: config.max_concurrent_parses,
+        mem_budget_bytes: config.mem_budget_mb as u64 * 1024 * 1024,
+        queue_depth: config.admission_queue_depth,
+        queue_timeout: Duration::from_secs(config.admission_queue_timeout_secs),
+        shed_pct: config.mem_shed_pct,
+    }));
+    admission::spawn_rss_sampler(Arc::clone(&admission));
+    tracing::info!(
+        max_concurrent_parses = config.max_concurrent_parses,
+        mem_budget_mb = config.mem_budget_mb,
+        queue_depth = config.admission_queue_depth,
+        queue_timeout_secs = config.admission_queue_timeout_secs,
+        shed_pct = config.mem_shed_pct,
+        "Admission control active (mem budget 0 = byte gate disabled)"
+    );
+
     let state = AppState {
         cache,
         config: Arc::new(config.clone()),
+        admission,
     };
 
     // Build router

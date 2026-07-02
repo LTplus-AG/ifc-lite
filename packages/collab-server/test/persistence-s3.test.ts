@@ -3,11 +3,29 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 import {
   S3Persistence,
   type S3Commands,
   type S3LikeClient,
 } from '../src/persistence-s3.js';
+
+/** Real per-transaction update frames, mirroring the server's onDocUpdate. */
+function makeFrames(values: number[]): Uint8Array[] {
+  const doc = new Y.Doc();
+  const frames: Uint8Array[] = [];
+  doc.on('update', (u: Uint8Array) => frames.push(u));
+  const arr = doc.getArray<number>('log');
+  for (const v of values) doc.transact(() => arr.push([v]));
+  return frames;
+}
+
+/** Apply a loaded blob to a fresh doc and read back the array it encodes. */
+function replay(loaded: Uint8Array | null): number[] {
+  const doc = new Y.Doc();
+  if (loaded) Y.applyUpdate(doc, loaded);
+  return doc.getArray<number>('log').toArray();
+}
 
 /**
  * Tiny in-memory shim that satisfies the S3LikeClient + S3Commands
@@ -92,10 +110,11 @@ describe('S3Persistence', () => {
     const { client, commands } = makeFakeS3();
     const p = new S3Persistence({ client, commands, bucket: 'b' });
     expect(await p.load('room')).toBeNull();
-    await p.append('room', new Uint8Array([1, 2, 3]));
-    await p.append('room', new Uint8Array([4, 5, 6]));
-    const all = await p.load('room');
-    expect(all).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6]));
+    const frames = makeFrames([1, 2, 3]);
+    for (const f of frames) await p.append('room', f);
+    // Regression: byte-concatenating the frames and applying once would decode
+    // only the first update, dropping [2, 3]. Merged frames reconstruct all.
+    expect(replay(await p.load('room'))).toEqual([1, 2, 3]);
   });
 
   it('compact replaces snap and clears the log', async () => {
@@ -117,18 +136,11 @@ describe('S3Persistence', () => {
     const p = new S3Persistence({ client, commands, bucket: 'b' });
     // 7 frames > PAGE_SIZE (3) ⇒ spans 3 list pages. A single-page load
     // would silently drop the tail; assert every frame is replayed in order.
-    const frames = [
-      [1],
-      [2],
-      [3],
-      [4],
-      [5],
-      [6],
-      [7],
-    ];
-    for (const f of frames) await p.append('room', new Uint8Array(f));
-    const all = await p.load('room');
-    expect(all).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7]));
+    const values = [1, 2, 3, 4, 5, 6, 7];
+    for (const f of makeFrames(values)) await p.append('room', f);
+    // Reconstructing the doc proves every frame was listed across pages and
+    // merged: a dropped page (or a byte-concat load) would lose mutations.
+    expect(replay(await p.load('room'))).toEqual(values);
   });
 
   it('compact paginates removeLog so no log frames are orphaned', async () => {

@@ -31,8 +31,7 @@ use ifc_lite_core::{build_entity_index, has_geometry_by_name, DecodedEntity, Ent
 use ifc_lite_geometry::rect_fast::{param_set_enabled_override, take_param_fires};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh, RectParam, SubMeshCollection};
 use nalgebra::Matrix3;
-use rustc_hash::FxHashMap;
-use std::collections::hash_map::DefaultHasher;
+use rustc_hash::{FxHashMap, FxHasher};
 use std::hash::{Hash, Hasher};
 use std::time::Instant;
 
@@ -62,11 +61,14 @@ fn build_void_index(content: &str, decoder: &mut EntityDecoder) -> FxHashMap<u32
     idx
 }
 
-/// Deterministic content fingerprint of a placed sub-mesh collection -- every
-/// bit the renderer consumes (geometry id, f32 positions/normals, indices, and
-/// the f64 local-frame origin), in submesh order. Same as dedup_validate.rs.
+/// Content fingerprint of a placed sub-mesh collection -- every bit the
+/// renderer consumes (geometry id, f32 positions/normals, indices, and the
+/// f64 local-frame origin), in submesh order; field coverage mirrors
+/// dedup_validate.rs. Hashed with the seed-free `FxHasher` so runs on the
+/// same toolchain produce stable values (`DefaultHasher` guarantees nothing
+/// across processes); the pass/fail comparison is ON-vs-OFF within one run.
 fn fingerprint(sm: &SubMeshCollection) -> u64 {
-    let mut h = DefaultHasher::new();
+    let mut h = FxHasher::default();
     sm.sub_meshes.len().hash(&mut h);
     for s in &sm.sub_meshes {
         s.geometry_id.hash(&mut h);

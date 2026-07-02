@@ -11,15 +11,18 @@ import { writeFile } from 'node:fs/promises';
 export type OutputFormat = 'json' | 'table' | 'csv';
 
 /**
- * Write output to stdout or a file.
+ * Write output to stdout or a file. Bytes are written verbatim (no string
+ * round-trip, so output is not capped by the V8 max-string ceiling).
  */
-export async function writeOutput(content: string, outPath?: string): Promise<void> {
+export async function writeOutput(content: string | Uint8Array, outPath?: string): Promise<void> {
   if (outPath) {
-    await writeFile(outPath, content, 'utf-8');
+    await writeFile(outPath, content);
     process.stderr.write(`Written to ${outPath}\n`);
   } else {
     process.stdout.write(content);
-    if (!content.endsWith('\n')) process.stdout.write('\n');
+    // Convenience newline for human-readable string output only; byte output
+    // stays verbatim so `--format step > out.ifc` matches the exporter bytes.
+    if (typeof content === 'string' && !content.endsWith('\n')) process.stdout.write('\n');
   }
 }
 

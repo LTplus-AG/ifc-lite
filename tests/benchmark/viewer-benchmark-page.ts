@@ -256,7 +256,9 @@ export class ViewerBenchmarkPage {
       await this.page.waitForTimeout(100);
     }
 
-    // Calculate render delay (time between log completion and actual render)
+    // Time from load start until the canvas actually showed content (the
+    // Playwright-observed render completion, distinct from the app's own
+    // totalWallClockMs log).
     if (renderCompleteTime && this.loadEndTime) {
       this.metrics.renderCompleteMs = this.loadEndTime - this.loadStartTime;
     }
@@ -293,6 +295,26 @@ export class ViewerBenchmarkPage {
       this.metrics.firstBatchMeshes = parseInt(firstBatchMatch[1], 10);
       this.metrics.firstBatchWaitMs = parseInt(firstBatchMatch[2], 10);
       this.metrics.firstBatchNumber = 1;
+    }
+
+    // Current stream logs report first batches per worker instead:
+    //   [stream] worker[0] first batch @ 90ms (106 meshes)
+    // The earliest of them is the first geometry to arrive — the same
+    // stream-latency quantity the legacy "Batch #1 … wait: Xms" line measured
+    // (epoch is the stream start rather than the file load; the baseline is
+    // CI-recorded against the same parse, so comparisons stay like-for-like).
+    if (this.metrics.firstBatchWaitMs === null || this.metrics.firstBatchWaitMs === undefined) {
+      const workerFirstBatches = [
+        ...logs.matchAll(/\[stream\] worker\[\d+\] first batch @ (\d+)ms \((\d+) meshes\)/g),
+      ];
+      if (workerFirstBatches.length > 0) {
+        const earliest = workerFirstBatches.reduce((a, b) =>
+          parseInt(a[1], 10) <= parseInt(b[1], 10) ? a : b
+        );
+        this.metrics.firstBatchWaitMs = parseInt(earliest[1], 10);
+        this.metrics.firstBatchMeshes = parseInt(earliest[2], 10);
+        this.metrics.firstBatchNumber = 1;
+      }
     }
 
     const firstAppendMatch = logs.match(/\[useIfc\] (?:Native )?first appendGeometryBatch for .*?: (\d+)ms/i);

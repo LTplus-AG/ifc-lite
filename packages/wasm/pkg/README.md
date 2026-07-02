@@ -158,13 +158,20 @@ console.log(view.getMutations()); // change history for undo / export
 ## Export
 
 ```typescript
-import { exportToStep, GLTFExporter, ParquetExporter, Ifc5Exporter } from '@ifc-lite/export';
+import { exportToStep, ParquetExporter, Ifc5Exporter } from '@ifc-lite/export';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 
 // IFC STEP — applies any pending mutations
 const stepText = exportToStep(store, { schema: 'IFC4', applyMutations: true });
 
-// glTF for the web
-const glb = await new GLTFExporter().export(parseResult, { format: 'glb' });
+// glTF / GLB, CSV and JSON-LD are assembled in Rust (ifc-lite-export) via the
+// GeometryProcessor — the standalone GLTFExporter/CSVExporter/JSONLDExporter
+// classes were retired.
+const gp = new GeometryProcessor();
+await gp.init();
+const glb = gp.exportGlbFromMeshes(result.meshes); // Uint8Array (no re-mesh)
+const csv = gp.exportCsv(buffer, 'entities', ',', /* includeProperties */ true);
+const jsonld = gp.exportJsonld(buffer);
 
 // Parquet — columnar, ~20× smaller than JSON, queryable from DuckDB / Polars
 const parquet = await new ParquetExporter().exportEntities(parseResult);
@@ -181,6 +188,7 @@ const ifcx = new Ifc5Exporter(store, meshes).export({ includeGeometry: true });
 | [**Three.js / Babylon.js**](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
 | [**Server**](https://ltplus-ag.github.io/ifc-lite/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
 | [**Build for Desktop**](https://ltplus-ag.github.io/ifc-lite/guide/desktop/) | Your own offline native app, very large files (500 MB+) | Extension points to wrap the packages in Tauri, with an optional native-Rust geometry fast path |
+| [**Python (native wheel)**](https://ltplus-ag.github.io/ifc-lite/api/python/) | Analysis, scripting, scientific Python | `pip install ifclite-geom` runs the geometry kernel in-process, meshes straight to numpy |
 
 Not sure? Start with the browser setup. You can add a server or switch engines later.
 
@@ -228,7 +236,7 @@ Ready-to-run projects in [`examples/`](examples/):
 | **BIM features** | [Federation](https://ltplus-ag.github.io/ifc-lite/guide/federation/) · [BCF](https://ltplus-ag.github.io/ifc-lite/guide/bcf/) · [IDS Validation](https://ltplus-ag.github.io/ifc-lite/guide/ids/) · [2D Drawings](https://ltplus-ag.github.io/ifc-lite/guide/drawing-2d/) · [Property Editing](https://ltplus-ag.github.io/ifc-lite/guide/mutations/) |
 | **Tutorials** | [Build a Viewer](https://ltplus-ag.github.io/ifc-lite/tutorials/building-viewer/) · [Three.js](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) · [Babylon.js](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/) · [Custom Queries](https://ltplus-ag.github.io/ifc-lite/tutorials/custom-queries/) |
 | **Deep dives** | [Architecture](https://ltplus-ag.github.io/ifc-lite/architecture/overview/) · [Data Flow](https://ltplus-ag.github.io/ifc-lite/architecture/data-flow/) · [Performance](https://ltplus-ag.github.io/ifc-lite/guide/performance/) |
-| **API** | [TypeScript](https://ltplus-ag.github.io/ifc-lite/api/typescript/) · [Rust](https://ltplus-ag.github.io/ifc-lite/api/rust/) · [WASM](https://ltplus-ag.github.io/ifc-lite/api/wasm/) |
+| **API** | [TypeScript](https://ltplus-ag.github.io/ifc-lite/api/typescript/) · [Rust](https://ltplus-ag.github.io/ifc-lite/api/rust/) · [WASM](https://ltplus-ag.github.io/ifc-lite/api/wasm/) · [Python](https://ltplus-ag.github.io/ifc-lite/api/python/) |
 
 ## Contributing
 

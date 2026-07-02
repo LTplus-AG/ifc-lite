@@ -9,7 +9,11 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl IfcAPI {
-    /// Re-serialize the model in `content` to a STEP/IFC string.
+    /// Re-serialize the model in `content` to STEP/IFC UTF-8 bytes.
+    ///
+    /// Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+    /// V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+    /// is genuinely needed.
     ///
     /// `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
     /// `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
@@ -23,20 +27,22 @@ impl IfcAPI {
         schema: String,
         included: &[u32],
         mutations_json: String,
-    ) -> String {
+    ) -> Vec<u8> {
         ifc_lite_export::export_step_json(
             content,
             if schema.is_empty() { None } else { Some(schema) },
             if included.is_empty() { None } else { Some(included.to_vec()) },
             &mutations_json,
         )
+        .into_bytes()
     }
 
-    /// Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
+    /// Merge several IFC models into one STEP/IFC UTF-8 byte buffer (`Uint8Array`).
+    /// `concatenated` is every model's
     /// bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
     /// keeps its ids; later models are id-offset and their project unified to the first.
     #[wasm_bindgen(js_name = exportMerged)]
-    pub fn export_merged(&self, concatenated: &[u8], lengths: &[u32], schema: String) -> String {
+    pub fn export_merged(&self, concatenated: &[u8], lengths: &[u32], schema: String) -> Vec<u8> {
         // Strict segmentation: a malformed `lengths` (overflow, out-of-bounds, or not
         // summing to the buffer) must surface an error rather than silently dropping a
         // model and returning a partial merge.
@@ -59,6 +65,6 @@ impl IfcAPI {
             schema: if schema.is_empty() { None } else { Some(schema) },
             ..Default::default()
         };
-        ifc_lite_export::export_merged(&models, &opts)
+        ifc_lite_export::export_merged(&models, &opts).into_bytes()
     }
 }

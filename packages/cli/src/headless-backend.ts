@@ -652,7 +652,9 @@ export class HeadlessBackend implements BimBackend {
         if (result === null) {
           throw new Error('Geometry engine unavailable for HBJSON export.');
         }
-        return result;
+        // The lens contract carries a string; HBJSON payloads are far below the
+        // V8 string ceiling, so decoding here is safe.
+        return new TextDecoder().decode(result);
       },
       dfjson: async (name?: string): Promise<string> => {
         // DFJSON is rebuilt analytically from the source IFC bytes (extruded Room2D

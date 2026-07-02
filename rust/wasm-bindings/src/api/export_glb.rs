@@ -19,6 +19,12 @@ impl IfcAPI {
     /// `true` ⇒ lit (the default), `false` ⇒ flat `KHR_materials_unlit` (the
     /// historical look — #1321). Optional at the boundary so older 5-arg callers
     /// keep lit-by-default behaviour.
+    ///
+    /// Fails CLOSED: when the visible mesh set is empty this throws an `Error`
+    /// whose message starts with `NO_RENDER_GEOMETRY`, instead of returning a
+    /// structurally valid but empty GLB. #1438 put that guard only in the TS
+    /// CLI/MCP wrappers; making the boundary itself refuse means SDK/viewer/
+    /// direct callers inherit it too (the TS guards stay as defense-in-depth).
     #[wasm_bindgen(js_name = exportGlb)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_glb(
@@ -29,7 +35,7 @@ impl IfcAPI {
         isolated: &[u32],
         hidden_types_csv: String,
         lit: Option<bool>,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, JsValue> {
         let hidden_types = hidden_types_csv
             .split(',')
             .map(|s| s.trim().to_string())
@@ -45,8 +51,12 @@ impl IfcAPI {
             // wasm export path is single-model. Add a parameter here if/when the
             // browser needs to federate.
             model_id: None,
+            // The viewer loads the GLB directly; quantization is a server/export-pipeline
+            // concern (KHR_mesh_quantization needs loader support the viewer doesn't wire).
+            quantize: false,
         };
-        ifc_lite_export::export_glb(content, &opts)
+        ifc_lite_export::try_export_glb(content, &opts)
+            .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
 
     /// Assemble a **GLB** from already-produced meshes (the viewer's `MeshData`, flattened)

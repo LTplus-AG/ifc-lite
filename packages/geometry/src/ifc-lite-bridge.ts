@@ -317,7 +317,7 @@ export class IfcLiteBridge {
     includeNormals = true,
     hidden: Uint32Array = new Uint32Array(),
     isolated: Uint32Array = new Uint32Array(),
-  ): string {
+  ): Uint8Array {
     return this.runExport('exportObj', content, (api) =>
       api.exportObj(content, includeNormals, hidden, isolated),
     );
@@ -371,7 +371,7 @@ export class IfcLiteBridge {
     mode: 'entities' | 'properties' | 'quantities' | 'spatial' = 'entities',
     delimiter = ',',
     includeProperties = false,
-  ): string {
+  ): Uint8Array {
     return this.runExport('exportCsv', content, (api) =>
       api.exportCsv(content, mode, delimiter, includeProperties),
     );
@@ -383,7 +383,7 @@ export class IfcLiteBridge {
     pretty = false,
     includeProperties = true,
     includeQuantities = true,
-  ): string {
+  ): Uint8Array {
     return this.runExport('exportJson', content, (api) =>
       api.exportJson(content, pretty, includeProperties, includeQuantities),
     );
@@ -399,14 +399,14 @@ export class IfcLiteBridge {
     schema = '',
     included: Uint32Array = new Uint32Array(),
     mutationsJson = '',
-  ): string {
+  ): Uint8Array {
     return this.runExport('exportStep', content, (api) =>
       api.exportStep(content, schema, included, mutationsJson),
     );
   }
 
   /** Merge several IFC models into one STEP/IFC string (flat bytes + per-model lengths). */
-  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema = ''): string {
+  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema = ''): Uint8Array {
     if (!this.ifcApi) {
       throw new Error('IFC-Lite not initialized. Call init() first.');
     }
@@ -422,7 +422,7 @@ export class IfcLiteBridge {
   }
 
   /** Export IFC5/IFCX (USD-style node graph). */
-  exportIfcx(content: Uint8Array, onlyKnownProperties = true, pretty = false): string {
+  exportIfcx(content: Uint8Array, onlyKnownProperties = true, pretty = false): Uint8Array {
     return this.runExport('exportIfcx', content, (api) =>
       api.exportIfcx(content, onlyKnownProperties, pretty),
     );
@@ -440,7 +440,7 @@ export class IfcLiteBridge {
     includeQuantities = false,
     pretty = false,
     included: Uint32Array = new Uint32Array(),
-  ): string {
+  ): Uint8Array {
     return this.runExport('exportJsonld', content, (api) =>
       api.exportJsonld(content, context, includeProperties, includeQuantities, pretty, included),
     );
@@ -511,7 +511,7 @@ export class IfcLiteBridge {
    * (Ladybug Tools energy/daylight model). Rooms are built analytically from
    * extruded-area profiles (watertight by construction).
    */
-  exportHbjson(content: Uint8Array, name: string): string {
+  exportHbjson(content: Uint8Array, name: string): Uint8Array {
     return this.runExport('exportHbjson', content, (api) => api.exportHbjson(content, name));
   }
 

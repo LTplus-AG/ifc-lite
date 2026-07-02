@@ -9,10 +9,10 @@
 # docs/architecture/pure-rust-csg-kernel.md), so this is just the pinned
 # Rust nightly + wasm-pack + the cargo cache.
 #
-# Used by test.yml, release.yml and sdk-canary.yml so the three stay in
-# lock-step — a toolchain change here updates all of them at once, instead of
-# one drifting (which is how sdk-canary once shipped without a toolchain
-# piece and went red on an unrelated PR).
+# Used by test.yml, release.yml, sdk-canary.yml and benchmark.yml so they
+# stay in lock-step — a toolchain change here updates all of them at once,
+# instead of one drifting (which is how sdk-canary once shipped without a
+# toolchain piece and went red on an unrelated PR).
 name: 'Setup WASM build toolchain'
 description: 'Rust (rust-toolchain.toml) + wasm-pack for the wasm32 build'
 

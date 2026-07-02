@@ -149,24 +149,31 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
       // so init() no-ops when the viewer already initialised the engine.
       const processor = new GeometryProcessor();
       await processor.init();
-      const out = format === 'hbjson'
-        ? processor.exportHbjson(content, baseName)
-        : processor.exportDfjson(content, baseName);
-      if (out === null) {
-        throw new Error('Geometry engine unavailable');
-      }
+      // HBJSON comes back as UTF-8 bytes (not capped by the V8 max-string
+      // ceiling); DFJSON models are small 2D plates, so that exporter stays
+      // a string.
+      let out: Uint8Array | string;
       if (format === 'hbjson') {
-        // The HBJSON exporter returns an empty string when the model has no
+        const hbjson = processor.exportHbjson(content, baseName);
+        if (hbjson === null) {
+          throw new Error('Geometry engine unavailable');
+        }
+        // The HBJSON exporter returns empty output when the model has no
         // IfcSpace volumes.
-        if (out.trim().length === 0) {
+        if (hbjson.length === 0) {
           throw new Error('No IfcSpace volumes found in the model to export');
         }
+        out = hbjson;
       } else {
+        const dfjson = processor.exportDfjson(content, baseName);
+        if (dfjson === null) {
+          throw new Error('Geometry engine unavailable');
+        }
         // export_dfjson always returns a complete Model JSON, even with zero
         // spaces (empty `buildings`), so an emptiness check on the string can
         // never fire. Count the exported Room2Ds instead so a model without
         // IfcSpace volumes gets the same friendly error, not a useless file.
-        const dfModel = JSON.parse(out) as {
+        const dfModel = JSON.parse(dfjson) as {
           buildings?: { unique_stories?: { room_2ds?: unknown[] }[] }[];
         };
         const roomCount = (dfModel.buildings ?? []).reduce(
@@ -176,9 +183,10 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
         if (roomCount === 0) {
           throw new Error('No IfcSpace volumes found in the model to export');
         }
+        out = dfjson;
       }
 
-      const blob = new Blob([out], { type: 'application/json' });
+      const blob = new Blob([out as BlobPart], { type: 'application/json' });
       downloadBlob(blob, `${sanitizeFilename(baseName, { fallback: 'model' })}.${spec.ext}`);
 
       const msg = `Exported ${spec.label} (${(blob.size / 1024).toFixed(0)} KB)`;

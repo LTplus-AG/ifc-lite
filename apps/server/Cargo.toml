@@ -71,6 +71,9 @@ bytes = "1.5"
 
 # Compression/decompression
 flate2 = "1.0"
+# .ifcZIP container unwrapping (issue #1494). Same crate/features as
+# rust/export; DEFLATE + store cover every real buildingSMART container.
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # Base64 encoding for SSE payloads
 base64 = "0.22"

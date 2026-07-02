@@ -15,7 +15,7 @@ import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '../store/constants.js';
-import { IfcParser, detectFormat, isZipBuffer, unwrapIfcZip, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, detectFormat, unwrapIfcZip, type IfcDataStore } from '@ifc-lite/parser';
 import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import {
@@ -435,13 +435,11 @@ export function useIfcLoader() {
 
       // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for
       // an ordinary file. Skipped for point clouds: those never reach here
-      // with the full buffer (streamed straight from the Blob).
-      // `wasIfcZip` gates the server fast-path below: the server client
-      // uploads the original `file` object (not `buffer`), which still holds
-      // the zip bytes after this unwrap — the server has no zip support, so
-      // a zipped upload must skip straight to the local WASM path, which
-      // correctly consumes the now-unwrapped `buffer`.
-      const wasIfcZip = !pointCloudFormat && isZipBuffer(buffer);
+      // with the full buffer (streamed straight from the Blob). The server
+      // client uploads the original `file` object (still zipped), but the
+      // server unwraps `.ifcZIP` itself (apps/server extract_file), so a zipped
+      // upload can still take the server fast-path; the local WASM path
+      // consumes the now-unwrapped `buffer`.
       if (!pointCloudFormat) {
         buffer = await unwrapIfcZip(buffer);
       }
@@ -703,11 +701,10 @@ export function useIfcLoader() {
       // server fast-path for every primary IFC load (the cause of an "overall
       // slower" regression on server-enabled deploys); fast mode still applies on
       // every local-path load (IFCX, merge-layers, Tauri, or server-off).
-      // `!wasIfcZip`: loadFromServer uploads the original `file` object (not
-      // `buffer`), which still holds zip bytes for a .ifcZIP source — the
-      // server has no zip support, so route those straight to the local WASM
-      // path below instead (it already consumes the unwrapped `buffer`).
-      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !wasIfcZip && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
+      // A .ifcZIP source is fine on the server path: loadFromServer uploads the
+      // original `file` object (still zipped) and the server unwraps the
+      // container itself (apps/server extract_file, issue #1494) before parsing.
+      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {

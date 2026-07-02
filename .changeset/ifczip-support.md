@@ -22,10 +22,14 @@ exports:
 `parseAuto` calls it automatically. The CLI and MCP loaders (`loadIfcFile`,
 `loadIfcModel`) unwrap before their STEP-signature check, so `ifc-lite info
 model.ifcZIP` and MCP's `model_load` just work. The viewer's file picker and
-drag-and-drop now accept `.ifczip` alongside `.ifc`/`.ifcx`/`.glb`; its server
-fast-path (which uploads the original `File`, not the in-memory buffer) is
-skipped for a `.ifcZIP` source and falls through to the local WASM path,
-which does consume the unwrapped bytes — the server itself has no zip support.
+drag-and-drop now accept `.ifczip` alongside `.ifc`/`.ifcx`/`.glb`.
+
+The hosted Rust parsing server (`apps/server`) unwraps `.ifcZIP` too, in its
+multipart `extract_file` path (alongside the existing gzip handling), so an
+uploaded container is decompressed server-side before parsing and the viewer's
+multi-core server fast-path works for zipped uploads. It applies the same
+single-`.ifc`/`.ifcxml`-entry rule and bounds the decompressed size against the
+server's max-file-size ceiling (zip-bomb guard).
 
 Referenced resources inside the container (textures, documents) are not
 extracted in this pass — only the model file's bytes.

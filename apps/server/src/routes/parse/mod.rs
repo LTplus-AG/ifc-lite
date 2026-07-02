@@ -20,7 +20,7 @@ use crate::services::OpeningFilterMode;
 use axum::extract::Multipart;
 use flate2::read::GzDecoder;
 use ifc_lite_processing::TessellationQuality;
-use std::io::Read;
+use std::io::{Cursor, Read};
 
 /// Query parameters shared by all parse endpoints.
 #[derive(serde::Deserialize, Default)]
@@ -70,6 +70,17 @@ pub(crate) async fn extract_file(
 
             // Check if file is gzip-compressed (magic bytes: 1f 8b)
             let is_gzipped = bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
+            // ...or a zip container (.ifcZIP; local-file-header magic: 50 4b 03 04).
+            let is_zip = bytes.len() >= 4
+                && bytes[0] == 0x50
+                && bytes[1] == 0x4b
+                && bytes[2] == 0x03
+                && bytes[3] == 0x04;
+
+            if is_zip {
+                tracing::debug!("Detected .ifcZIP container, unwrapping...");
+                return unwrap_ifczip(&bytes, max_bytes, max_file_size_mb);
+            }
 
             if is_gzipped {
                 tracing::debug!("Detected gzip compression, decompressing...");
@@ -107,4 +118,168 @@ pub(crate) async fn extract_file(
 
     tracing::warn!("No 'file' field found in multipart request");
     Err(ApiError::MissingFile)
+}
+
+/// Unwrap a buildingSMART `.ifcZIP` container (issue #1494): a plain zip
+/// archive wrapping a single `.ifc`/`.ifcxml` model file (optionally alongside
+/// referenced resources like textures — those are ignored, not extracted).
+/// Returns the model entry's bytes so the rest of the pipeline never has to
+/// know zip existed. Mirrors the TypeScript `unwrapIfcZip` semantics
+/// (`packages/parser/src/ifczip.ts`): rejects an archive with zero or more than
+/// one candidate rather than silently guessing which model to load, and bounds
+/// the decompressed size (zip-bomb guard) against the same `max_bytes` ceiling
+/// the raw/gzip paths use.
+fn unwrap_ifczip(
+    bytes: &[u8],
+    max_bytes: usize,
+    max_file_size_mb: usize,
+) -> Result<Vec<u8>, ApiError> {
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
+        .map_err(|e| ApiError::BadRequest(format!("Failed to read .ifcZIP archive: {e}")))?;
+
+    // Collect the model-file entries (case-insensitive .ifc/.ifcxml, non-dir).
+    // Owned names so the >1 error can list them without holding a borrow of the
+    // archive across iterations.
+    let mut candidates: Vec<(usize, String)> = Vec::new();
+    for i in 0..archive.len() {
+        let entry = archive
+            .by_index(i)
+            .map_err(|e| ApiError::BadRequest(format!("Corrupt .ifcZIP entry: {e}")))?;
+        if entry.is_dir() {
+            continue;
+        }
+        let name = entry.name();
+        let lower = name.to_ascii_lowercase();
+        if lower.ends_with(".ifc") || lower.ends_with(".ifcxml") {
+            candidates.push((i, name.to_string()));
+        }
+    }
+
+    match candidates.len() {
+        0 => {
+            return Err(ApiError::BadRequest(
+                "This .ifcZIP archive contains no .ifc/.ifcxml entry — nothing to parse."
+                    .to_string(),
+            ))
+        }
+        1 => {}
+        n => {
+            let names = candidates
+                .iter()
+                .map(|(_, name)| name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(ApiError::BadRequest(format!(
+                "This .ifcZIP archive contains {n} model files ({names}) — expected exactly one."
+            )));
+        }
+    }
+
+    let index = candidates[0].0;
+    let mut entry = archive
+        .by_index(index)
+        .map_err(|e| ApiError::BadRequest(format!("Corrupt .ifcZIP entry: {e}")))?;
+
+    // Reject up front on the uncompressed size declared in the central
+    // directory (no decompression yet), then bound the actual read as a
+    // belt-and-braces guard against a lying header — same shape as the gzip
+    // path above.
+    if entry.size() > max_bytes as u64 {
+        return Err(ApiError::FileTooLarge {
+            max_mb: max_file_size_mb,
+        });
+    }
+
+    let mut model = Vec::new();
+    entry
+        .by_ref()
+        .take(max_bytes as u64 + 1)
+        .read_to_end(&mut model)
+        .map_err(|e| ApiError::Internal(format!("Failed to decompress .ifcZIP entry: {e}")))?;
+    if model.len() > max_bytes {
+        return Err(ApiError::FileTooLarge {
+            max_mb: max_file_size_mb,
+        });
+    }
+
+    tracing::info!(
+        entry = %candidates[0].1,
+        compressed_size = bytes.len(),
+        model_size = model.len(),
+        "Unwrapped .ifcZIP container"
+    );
+    Ok(model)
+}
+
+#[cfg(test)]
+mod ifczip_tests {
+    use super::*;
+    use std::io::Write;
+    use zip::write::{SimpleFileOptions, ZipWriter};
+
+    const STEP: &str = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
+    // Deliberately larger than the raw/gzip max the server would apply, so
+    // callers can pass a real ceiling.
+    const BIG: usize = 512 * 1024 * 1024;
+
+    /// Build an in-memory zip from `(name, content)` pairs (Stored so declared
+    /// uncompressed sizes are exact for the zip-bomb test).
+    fn make_zip(entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let mut zip = ZipWriter::new(&mut buf);
+            let opts =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            for (name, content) in entries {
+                zip.start_file(*name, opts).unwrap();
+                zip.write_all(content.as_bytes()).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    #[test]
+    fn extracts_the_single_model_entry() {
+        let zip = make_zip(&[("model.ifc", STEP)]);
+        let out = unwrap_ifczip(&zip, BIG, 512).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), STEP);
+    }
+
+    #[test]
+    fn matches_ifcxml_case_insensitively_from_a_nested_path() {
+        let zip = make_zip(&[("nested/dir/Model.IFCXML", "<ifcXML/>")]);
+        let out = unwrap_ifczip(&zip, BIG, 512).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "<ifcXML/>");
+    }
+
+    #[test]
+    fn ignores_referenced_resources_alongside_the_model() {
+        let zip = make_zip(&[("model.ifc", STEP), ("resources/texture.png", "not-a-png")]);
+        let out = unwrap_ifczip(&zip, BIG, 512).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), STEP);
+    }
+
+    #[test]
+    fn rejects_an_archive_with_no_model_entry() {
+        let zip = make_zip(&[("readme.txt", "hello")]);
+        let err = unwrap_ifczip(&zip, BIG, 512).unwrap_err();
+        assert!(matches!(err, ApiError::BadRequest(m) if m.contains("no .ifc/.ifcxml entry")));
+    }
+
+    #[test]
+    fn rejects_an_archive_with_multiple_model_entries() {
+        let zip = make_zip(&[("a.ifc", STEP), ("b.ifc", STEP)]);
+        let err = unwrap_ifczip(&zip, BIG, 512).unwrap_err();
+        assert!(matches!(err, ApiError::BadRequest(m) if m.contains("expected exactly one")));
+    }
+
+    #[test]
+    fn rejects_an_entry_over_the_size_ceiling() {
+        // model.ifc is ~60 bytes; a 10-byte ceiling trips the zip-bomb guard
+        // on the declared uncompressed size before decompressing.
+        let zip = make_zip(&[("model.ifc", STEP)]);
+        let err = unwrap_ifczip(&zip, 10, 1).unwrap_err();
+        assert!(matches!(err, ApiError::FileTooLarge { max_mb: 1 }));
+    }
 }

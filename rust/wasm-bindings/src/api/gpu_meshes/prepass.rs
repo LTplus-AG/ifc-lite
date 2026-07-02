@@ -31,6 +31,11 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
 
+        // Load START on the serial/main-thread path: the previous load's
+        // pipeline diagnostics must not accumulate into this one. (The worker
+        // path resets via setEntityIndex; every load-start entry point resets.)
+        self.reset_pipeline_diagnostics();
+
         let content = data;
 
         // Build entity index — wrap in Arc so processGeometryBatch can
@@ -198,6 +203,8 @@ impl IfcAPI {
         skip_type_geometry: bool,
     ) -> Result<JsValue, JsValue> {
         use crate::api::styling::extract_building_rotation_from_site;
+        // Load START on the streaming pre-pass path (see build_pre_pass_once).
+        self.reset_pipeline_diagnostics();
         use ifc_lite_core::{has_geometry_by_name, EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
 
@@ -537,12 +544,10 @@ impl IfcAPI {
             let ids_arr = js_sys::Uint32Array::new_with_length(n as u32);
             let starts_arr = js_sys::Uint32Array::new_with_length(n as u32);
             let lengths_arr = js_sys::Uint32Array::new_with_length(n as u32);
-            let mut i = 0u32;
-            for (&id, &(start, end)) in index_for_export.iter() {
-                ids_arr.set_index(i, id);
-                starts_arr.set_index(i, start as u32);
-                lengths_arr.set_index(i, (end - start) as u32);
-                i += 1;
+            for (i, (&id, &(start, end))) in index_for_export.iter().enumerate() {
+                ids_arr.set_index(i as u32, id);
+                starts_arr.set_index(i as u32, start as u32);
+                lengths_arr.set_index(i as u32, (end - start) as u32);
             }
             let index_event = js_sys::Object::new();
             crate::api::set_js_prop(&index_event, "type", &"entity-index".into());

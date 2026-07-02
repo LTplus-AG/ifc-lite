@@ -23,6 +23,7 @@ import { discoverDataSources } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { downloadFile } from '@/lib/export/download';
+import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
@@ -1148,6 +1149,7 @@ function LensCard({
           : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-zinc-400 dark:hover:border-zinc-500',
       )}
       onClick={() => onToggle(lens.id)}
+      {...tourAnchor(lensCardAnchor(lens.id))}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2">
@@ -1201,7 +1203,7 @@ function LensCard({
 
       {/* Auto-color legend (shown when active + auto-color lens) */}
       {isActive && legendToShow && legendToShow.length > 0 && (
-        <div className="border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60">
+        <div className="border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60" {...tourAnchor(TOUR_ANCHORS.lensLegend)}>
           <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-200/60 dark:border-zinc-700/60">
             <span className="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-medium">
               {legendToShow.length} values
@@ -1230,7 +1232,7 @@ function LensCard({
 
       {/* Rule-based color legend (shown when active + rule lens) */}
       {isActive && !isAutoColor && (
-        <div className="border-t border-zinc-200 dark:border-zinc-700 py-0.5 bg-zinc-50 dark:bg-zinc-800/60">
+        <div className="border-t border-zinc-200 dark:border-zinc-700 py-0.5 bg-zinc-50 dark:bg-zinc-800/60" {...tourAnchor(TOUR_ANCHORS.lensLegend)}>
           {lens.rules.map(rule => {
             const count = ruleCounts?.get(rule.id) ?? 0;
             return (
@@ -1474,6 +1476,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
               size="sm"
               className="h-7 text-[10px] uppercase tracking-wider rounded-sm"
               onClick={() => { setActiveLens(null); showAll(); }}
+              {...tourAnchor(TOUR_ANCHORS.lensClear)}
             >
               <EyeOff className="h-3 w-3 mr-1" />
               Clear
@@ -1493,7 +1496,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
       </div>
 
       {/* Lens list + editor */}
-      <div className="flex-1 overflow-auto p-3 space-y-2">
+      <div className="flex-1 overflow-auto p-3 space-y-2" {...tourAnchor(TOUR_ANCHORS.lensList)}>
         {savedLenses.map(lens => (
           editingLens?.id === lens.id ? (
             editingLens.autoColor ? (

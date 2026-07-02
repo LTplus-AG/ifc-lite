@@ -176,6 +176,10 @@ export function useSandbox(config?: SandboxConfig) {
         logs: result.logs,
         durationMs: result.durationMs,
       });
+      // Successful-run signal for baseline consumers (scripting tour run
+      // gate). Deliberately NOT bumped on the error-path setResult below
+      // (that call only preserves captured logs) or on reset().
+      useViewerStore.getState().bumpScriptRunSeq();
       return result;
     } catch (err: unknown) {
       const runtime = augmentScriptError(err instanceof Error ? err.message : String(err), code);

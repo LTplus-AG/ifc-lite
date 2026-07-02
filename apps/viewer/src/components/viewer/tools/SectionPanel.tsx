@@ -11,6 +11,7 @@ import { X, Slice, ChevronDown, FileImage, FlipHorizontal2, MousePointerClick, R
 import { Button } from '@/components/ui/button';
 import { useViewerStore, loadLastSectionMode } from '@/store';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { AXIS_INFO } from './sectionConstants';
 import { SectionPlaneVisualization } from './SectionVisualization';
 import { SectionCapControls } from './SectionCapControls';
@@ -144,7 +145,12 @@ export function SectionOverlay() {
   return (
     <>
       {/* Compact Section Tool Panel - matches Measure tool style */}
-      <div ref={panelRef} style={drag.style} className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg z-30">
+      <div
+        ref={panelRef}
+        style={drag.style}
+        className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 bg-background/95 backdrop-blur-sm rounded-lg border shadow-lg z-30"
+        {...tourAnchor(TOUR_ANCHORS.sectionPanel)}
+      >
         {/* Header doubles as a drag handle — buttons/inputs are ignored by the
             hook so they keep working (issue #1107). */}
         <div className="flex items-center justify-between gap-2 p-2">

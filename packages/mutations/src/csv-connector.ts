@@ -280,8 +280,14 @@ export class CsvConnector {
 
   /**
    * Import CSV data and apply to entities
+   *
+   * Computed name on purpose: Vite 8's dev-time import-analysis rewrites a
+   * literal `import(` method head as a dynamic import (injecting
+   * `__vite__injectQuery` into the parameter list), which breaks the whole
+   * viewer dev server with a SyntaxError. The computed form is the same
+   * public method, invisible to that rewrite.
    */
-  import(content: string, mapping: DataMapping, options: CsvParseOptions = {}): ImportStats {
+  ['import'](content: string, mapping: DataMapping, options: CsvParseOptions = {}): ImportStats {
     const stats: ImportStats = {
       totalRows: 0,
       matchedRows: 0,

@@ -33,16 +33,23 @@ mod step;
 pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use error::ExportError;
 pub use gltf::{
-    export_glb, export_glb_from_meshes, export_glb_with_stats, export_glb_with_stats_with_index,
-    export_gltf_streaming, export_glb_streaming_bounded, try_export_glb,
-    try_export_glb_with_stats, GltfBuffer, GltfOptions,
-    GltfStats,
+    export_glb, export_glb_from_meshes, export_glb_streaming_bounded,
+    export_glb_streaming_bounded_with_index, export_glb_with_stats,
+    export_glb_with_stats_with_index, export_gltf_streaming, export_gltf_streaming_with_index,
+    project_glb_size, project_glb_size_with_index, try_export_glb, try_export_glb_streaming_bounded,
+    try_export_glb_streaming_bounded_with_index, try_export_glb_with_stats, GlbSizeProjection,
+    GltfBuffer, GltfOptions, GltfStats,
 };
 pub use hbjson::Model;
 // Re-exported so a caller can `build_entity_index` once and share it across the
 // geometry (`export_glb_with_stats_with_index`) and attribute
 // (`stream_export_model_with_index`) passes.
-pub use ifc_lite_core::{build_entity_index, EntityIndex};
+//
+// `entity_count` is the cheap `O(scan)`, `O(1)`-memory entity tally (issue
+// #1517): a downstream DoS guard can reject a file with a pathological entity
+// count WITHOUT forcing the full index (`build_entity_index(..).len()` would
+// allocate ~20 B/entity — undoing the bounded-memory work).
+pub use ifc_lite_core::{build_entity_index, entity_count, EntityIndex};
 pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
@@ -163,6 +170,24 @@ mod tests {
     fn fixture(rel: &str) -> Option<Vec<u8>> {
         let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
         std::fs::read(path).ok()
+    }
+
+    #[test]
+    fn entity_count_reexport_matches_index() {
+        // The re-exported cheap tally must equal the full index's entity count
+        // (both walk the same scanner) — so a downstream can gate on the count
+        // without paying for the index. Well-formed fixtures have unique ids, so
+        // the index map length equals the scanned entity count.
+        let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+            eprintln!(
+                "skipping entity_count_reexport_matches_index: fixture absent — run `pnpm fixtures`"
+            );
+            return;
+        };
+        let counted = entity_count(&bytes);
+        let indexed = build_entity_index(&bytes).len();
+        assert!(counted > 0, "expected entities");
+        assert_eq!(counted, indexed, "cheap count must match the index length");
     }
 
     #[test]

@@ -99,6 +99,7 @@ impl IfcAPI {
     /// `altitude`) + `model.glb`. `x_axis_abscissa`/`x_axis_ordinate` are the
     /// `IfcMapConversion` grid-north components; pass both as `undefined` for heading 0.
     #[wasm_bindgen(js_name = exportKmz)]
+    #[allow(clippy::too_many_arguments)]
     pub fn export_kmz(
         &self,
         glb: &[u8],

@@ -22,6 +22,13 @@ debug_geometry = []
 # global buffer so a bench can replay the real CSG corpus under varying thread
 # counts. Zero cost when absent. See src/csg_capture.rs.
 csg_capture = []
+# Structured diagnostics: routes the production warn/debug messages through
+# `tracing` (structured fields, subscriber-controlled) instead of eprintln.
+# Default OFF so default builds carry no tracing code in this crate; the
+# native server enables it (via ifc-lite-processing/observability) so
+# geometry-crate diagnostics land in its existing tracing subscriber.
+# See src/diag.rs for the warn-vs-debug gating policy.
+observability = ["dep:tracing"]
 
 [dependencies]
 
@@ -62,6 +69,13 @@ smallvec = "1.13"
 
 # Error handling
 thiserror = "2.0"
+
+# Structured diagnostics, only behind the `observability` feature (dep:tracing
+# keeps it out of default builds entirely). Package-local on purpose: the
+# workspace root does not force tracing on every crate. ifc-lite-processing
+# already depends on tracing unconditionally, so enabling the feature adds no
+# new crate to consumers that use both.
+tracing = { version = "0.1", optional = true }
 
 # Pure-Rust CSG kernel (`kernel/`) — exact geometric predicates.
 # geometry-predicates: Shewchuk adaptive predicates + the public expansion

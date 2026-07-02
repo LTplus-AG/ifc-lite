@@ -56,7 +56,7 @@ impl ParseQuery {
 pub(crate) async fn extract_file(
     multipart: &mut Multipart,
     max_file_size_mb: usize,
-) -> Result<Vec<u8>, ApiError> {
+) -> Result<bytes::Bytes, ApiError> {
     let max_bytes = max_file_size_mb.saturating_mul(1024 * 1024);
 
     while let Some(field) = multipart.next_field().await? {
@@ -104,14 +104,16 @@ pub(crate) async fn extract_file(
                         format!("{:.1}x", original_size as f64 / decompressed.len() as f64),
                     "File decompressed successfully"
                 );
-                return Ok(decompressed);
+                return Ok(bytes::Bytes::from(decompressed));
             } else {
                 if bytes.len() > max_bytes {
                     return Err(ApiError::FileTooLarge {
                         max_mb: max_file_size_mb,
                     });
                 }
-                return Ok(bytes.to_vec());
+                // Already-buffered multipart Bytes: hand back the same
+                // allocation instead of a full `.to_vec()` copy.
+                return Ok(bytes);
             }
         }
     }
@@ -133,7 +135,7 @@ fn unwrap_ifczip(
     bytes: &[u8],
     max_bytes: usize,
     max_file_size_mb: usize,
-) -> Result<Vec<u8>, ApiError> {
+) -> Result<bytes::Bytes, ApiError> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|e| ApiError::BadRequest(format!("Failed to read .ifcZIP archive: {e}")))?;
 
@@ -208,7 +210,7 @@ fn unwrap_ifczip(
         model_size = model.len(),
         "Unwrapped .ifcZIP container"
     );
-    Ok(model)
+    Ok(bytes::Bytes::from(model))
 }
 
 #[cfg(test)]
@@ -243,21 +245,21 @@ mod ifczip_tests {
     fn extracts_the_single_model_entry() {
         let zip = make_zip(&[("model.ifc", STEP)]);
         let out = unwrap_ifczip(&zip, BIG, 512).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), STEP);
+        assert_eq!(String::from_utf8(out.to_vec()).unwrap(), STEP);
     }
 
     #[test]
     fn matches_ifcxml_case_insensitively_from_a_nested_path() {
         let zip = make_zip(&[("nested/dir/Model.IFCXML", "<ifcXML/>")]);
         let out = unwrap_ifczip(&zip, BIG, 512).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), "<ifcXML/>");
+        assert_eq!(String::from_utf8(out.to_vec()).unwrap(), "<ifcXML/>");
     }
 
     #[test]
     fn ignores_referenced_resources_alongside_the_model() {
         let zip = make_zip(&[("model.ifc", STEP), ("resources/texture.png", "not-a-png")]);
         let out = unwrap_ifczip(&zip, BIG, 512).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), STEP);
+        assert_eq!(String::from_utf8(out.to_vec()).unwrap(), STEP);
     }
 
     #[test]

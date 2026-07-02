@@ -45,6 +45,15 @@ export interface CompareSlice {
   compareShowUnchanged: boolean;
   /** Last comparison result (null when idle / not yet run). */
   compareResult: CompareResult | null;
+  /**
+   * Monotonic count of COMPLETED comparisons (a fresh run or a scope re-diff).
+   * Bumped by `useCompare` right after each successful non-null
+   * `setCompareResult` - never on error paths and never reset - so a consumer
+   * needing "a comparison completed since X" (e.g. the compare tour's run
+   * gate) can baseline-compare a number instead of reference-diffing
+   * `compareResult`. Mirrors `clashRunSeq`.
+   */
+  compareRunSeq: number;
   compareRunning: boolean;
   compareError: string | null;
   /** GlobalId of the entry focused in the list (for highlight). */
@@ -57,6 +66,7 @@ export interface CompareSlice {
   setCompareScope: (scope: DiffScope) => void;
   setCompareShowUnchanged: (show: boolean) => void;
   setCompareResult: (result: CompareResult | null) => void;
+  bumpCompareRunSeq: () => void;
   setCompareRunning: (running: boolean) => void;
   setCompareError: (error: string | null) => void;
   setCompareSelectedKey: (key: string | null) => void;
@@ -71,6 +81,7 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   compareScope: 'both',
   compareShowUnchanged: false,
   compareResult: null,
+  compareRunSeq: 0,
   compareRunning: false,
   compareError: null,
   compareSelectedKey: null,
@@ -82,6 +93,7 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   setCompareScope: (compareScope) => set({ compareScope }),
   setCompareShowUnchanged: (compareShowUnchanged) => set({ compareShowUnchanged }),
   setCompareResult: (compareResult) => set({ compareResult }),
+  bumpCompareRunSeq: () => set((s) => ({ compareRunSeq: s.compareRunSeq + 1 })),
   setCompareRunning: (compareRunning) => set({ compareRunning }),
   setCompareError: (compareError) => set({ compareError }),
   setCompareSelectedKey: (compareSelectedKey) => set({ compareSelectedKey }),

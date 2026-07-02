@@ -62,24 +62,43 @@ impl GeometryRouter {
             Ok(None) => return None,
             Err(_e) => {
                 // A sliceable wall whose base-mesh build errored falls back to a
-                // single solid. Record for the browser; eprintln for native.
+                // single solid. Record for the browser; warn for native.
                 self.push_layer_slice_diag(element.id, "skip:base-mesh-error");
-                eprintln!("[material-layers] #{}: sliceable but slicing errored", element.id);
+                crate::diag::diag_warn!(
+                    { element_id = element.id, reason = "base-mesh-error",
+                      "material-layers: sliceable element failed to slice, keeping single solid" }
+                    else {
+                        eprintln!("[material-layers] #{}: sliceable but slicing errored", element.id);
+                    }
+                );
                 return None;
             }
         };
         if collection.sub_meshes.len() < 2 {
-            eprintln!(
-                "[material-layers] #{}: sliceable but produced {} sub-mesh(es) (<2) — keeping single solid",
-                element.id,
-                collection.sub_meshes.len()
+            crate::diag::diag_warn!(
+                { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
+                  reason = "fewer-than-two-sub-meshes",
+                  "material-layers: sliceable element produced too few sub-meshes, keeping single solid" }
+                else {
+                    eprintln!(
+                        "[material-layers] #{}: sliceable but produced {} sub-mesh(es) (<2) — keeping single solid",
+                        element.id,
+                        collection.sub_meshes.len()
+                    );
+                }
             );
             return None;
         }
-        eprintln!(
-            "[material-layers] #{}: sliced into {} layer sub-meshes",
-            element.id,
-            collection.sub_meshes.len()
+        crate::diag::diag_debug!(
+            { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
+              "material-layers: sliced element into layer sub-meshes" }
+            else {
+                eprintln!(
+                    "[material-layers] #{}: sliced into {} layer sub-meshes",
+                    element.id,
+                    collection.sub_meshes.len()
+                );
+            }
         );
         // Mesh hygiene: slicing the base mesh by layer-interface planes can
         // introduce zero-area/collinear slivers at the cut, and this layered

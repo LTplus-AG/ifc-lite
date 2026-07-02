@@ -16,6 +16,13 @@ struct ElementMeshOutput {
     geometry_hash: Option<u64>,
 }
 
+/// Session-constant style lookups shared across batches: colour map plus
+/// per-style `GeometryStyleInfo` index (see the #1097 cache note below).
+type StyleMaps = std::sync::Arc<(
+    rustc_hash::FxHashMap<u32, [f32; 4]>,
+    rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+)>;
+
 impl IfcAPI {
     /// Shared core for both batch outputs: run the canonical per-element
     /// producer over `jobs_flat` (setup + loop + CSG/layer diagnostics),
@@ -57,6 +64,11 @@ impl IfcAPI {
             GeometryHashConfig, MeshProductionContext, MeshProductionOptions, TypeGeometryMode,
         };
         use ifc_lite_processing::style::GeometryStyleInfo;
+
+        // Batch wall-clock for the PipelineDiagnostics channel. std::time::Instant
+        // traps on wasm32, so use the JS clock (two Date.now() reads per batch —
+        // negligible, always on).
+        let batch_started_ms = js_sys::Date::now();
 
         let content = data;
 
@@ -175,10 +187,7 @@ impl IfcAPI {
         // AND the GeometryStyleInfo index the producer consumes ONCE per worker
         // and reuse across batches (was ~18 M HashMap inserts each on a 140 K-
         // styled model). Keyed by a cheap (len, first_id, last_id) signature.
-        let style_maps: std::sync::Arc<(
-            rustc_hash::FxHashMap<u32, [f32; 4]>,
-            rustc_hash::FxHashMap<u32, GeometryStyleInfo>,
-        )> = {
+        let style_maps: StyleMaps = {
             let sig_len = style_ids.len();
             let sig_first = style_ids.first().copied().unwrap_or(0);
             let sig_last = style_ids.last().copied().unwrap_or(0);
@@ -193,11 +202,11 @@ impl IfcAPI {
                 _ => {
                     let mut colors: rustc_hash::FxHashMap<u32, [f32; 4]> =
                         rustc_hash::FxHashMap::with_capacity_and_hasher(sig_len, Default::default());
-                    for i in 0..style_ids.len() {
+                    for (i, &style_id) in style_ids.iter().enumerate() {
                         let base = i * 4;
                         if base + 3 < style_colors.len() {
                             colors.insert(
-                                style_ids[i],
+                                style_id,
                                 [
                                     style_colors[base] as f32 / 255.0,
                                     style_colors[base + 1] as f32 / 255.0,
@@ -292,6 +301,11 @@ impl IfcAPI {
             Vec<ifc_lite_geometry::BoolFailure>,
         > = rustc_hash::FxHashMap::default();
 
+        // PipelineDiagnostics tallies for this batch (elements actually run
+        // through the producer, degenerate-backstop drops).
+        let mut batch_elements: u64 = 0;
+        let mut batch_backstop: u64 = 0;
+
         // Process only the entities specified in jobs_flat — every job runs
         // THE canonical per-element producer (`ifc_lite_processing::element`),
         // the same code the native pipeline runs.
@@ -375,6 +389,8 @@ impl IfcAPI {
             for (product_id, fails) in produced.csg_failures {
                 batch_csg_failures.entry(product_id).or_default().extend(fails);
             }
+            batch_elements += 1;
+            batch_backstop += produced.degenerate_triangles_dropped;
             outputs.push(ElementMeshOutput {
                 id,
                 meshes: produced.meshes,
@@ -419,6 +435,25 @@ impl IfcAPI {
                 );
             }
         }
+
+        // Fold this batch into the per-worker PipelineDiagnostics accumulator
+        // (read by JS via getPipelineDiagnostics). Counts + two Date.now()
+        // reads — cheap enough to stay on the normal load path unconditionally.
+        let batch_meshes: u64 = outputs.iter().map(|o| o.meshes.len() as u64).sum();
+        let batch_triangles: u64 = outputs
+            .iter()
+            .flat_map(|o| o.meshes.iter())
+            .map(|m| (m.indices.len() / 3) as u64)
+            .sum();
+        let batch_ms = (js_sys::Date::now() - batch_started_ms).max(0.0) as u64;
+        self.record_pipeline_batch(
+            batch_elements,
+            batch_meshes,
+            batch_triangles,
+            batch_backstop,
+            batch_ms,
+            &csg_diag,
+        );
 
         (outputs, csg_diag)
     }

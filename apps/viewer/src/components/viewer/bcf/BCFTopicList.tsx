@@ -17,6 +17,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -99,7 +100,7 @@ export function BCFTopicList({
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" variant="outline" onClick={onCreateTopic}>
+        <Button size="sm" variant="outline" onClick={onCreateTopic} {...tourAnchor(TOUR_ANCHORS.bcfNewTopic)}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>

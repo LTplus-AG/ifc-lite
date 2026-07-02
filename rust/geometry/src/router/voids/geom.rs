@@ -303,7 +303,9 @@ pub(super) fn rotate_mesh_into_frame(mesh: &Mesh, rt: &Matrix3<f64>, center: &Po
         rtc_applied: mesh.rtc_applied,
         origin: [0.0; 3],
         positions,
-    instance_meta: None, }
+        // Frame-transformed cut intermediate — not an instanceable occurrence,
+        // and pre-placement (issue #1474 fields don't apply here either).
+    instance_meta: None, local_bounds: None, local_to_world: None }
 }
 
 /// Rotate a frame-F mesh into a LOCAL-FRAME world mesh: positions are `R·v_F` (small,
@@ -332,7 +334,9 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
         origin: [center.x, center.y, center.z],
-    instance_meta: None, }
+        // Frame-transformed cut intermediate — not an instanceable occurrence,
+        // and pre-placement (issue #1474 fields don't apply here either).
+    instance_meta: None, local_bounds: None, local_to_world: None }
 }
 
 /// Signed volume of a (closed) triangle mesh via the divergence theorem. Used to
@@ -828,6 +832,8 @@ pub(super) fn mesh_to_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vecto
         origin: mesh.origin,
         // Frame-transformed cut intermediate — not an instanceable occurrence.
         instance_meta: None,
+        local_bounds: None,
+        local_to_world: None,
     }
 }
 
@@ -855,6 +861,8 @@ pub(super) fn mesh_from_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vec
         origin: mesh.origin,
         // Frame-transformed cut intermediate — not an instanceable occurrence.
         instance_meta: None,
+        local_bounds: None,
+        local_to_world: None,
     }
 }
 

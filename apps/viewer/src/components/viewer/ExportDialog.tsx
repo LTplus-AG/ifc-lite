@@ -49,7 +49,7 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { useViewerStore } from '@/store';
+import { useViewerStore, countGeneratedTasks } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -76,6 +76,14 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
   const getModifiedEntityCount = useViewerStore((s) => s.getModifiedEntityCount);
+  // Subscribed so the pending-changes count refreshes while the dialog is open
+  // (getModifiedEntityCount / getMutationView are stable action refs). Schedule
+  // edits don't bump mutationVersion, so the schedule fields are subscribed too.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const scheduleData = useViewerStore((s) => s.scheduleData);
+  const scheduleIsEdited = useViewerStore((s) => s.scheduleIsEdited);
+  const scheduleSourceModelId = useViewerStore((s) => s.scheduleSourceModelId);
+  const georefMutations = useViewerStore((s) => s.georefMutations);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
@@ -217,8 +225,35 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   }, [isIfc5]);
 
   const modifiedCount = useMemo(() => {
+    // A single-model export writes only the selected model, so the pending
+    // changes banner and the "N modifications" file header must reflect that
+    // one model's count — not every loaded model's (getModifiedEntityCount).
+    // A merged export writes all models, so it keeps the aggregate count.
+    if (exportScope === 'single') {
+      let count = getMutationView(selectedModelId)?.getModifiedEntityCount() ?? 0;
+      // The single-model STEP export also applies the selected model's
+      // georeferencing edits, so count them (+1) when present.
+      const gm = georefMutations.get(selectedModelId);
+      const hasGeoref = !!gm && (
+        (gm.projectedCRS && Object.keys(gm.projectedCRS).length > 0) ||
+        (gm.mapConversion && Object.keys(gm.mapConversion).length > 0)
+      );
+      if (hasGeoref) count += 1;
+      // ...and it splices the schedule when the selected model owns it (or it's
+      // unattributed with pending tasks) — the same gate spliceScheduleIntoExport
+      // uses — so count those tasks too, matching what actually gets written.
+      const ownsSchedule = scheduleSourceModelId === selectedModelId
+        || (scheduleSourceModelId === null && (scheduleData?.tasks.length ?? 0) > 0);
+      if (ownsSchedule) {
+        const generated = countGeneratedTasks(scheduleData);
+        if (generated > 0) count += generated;
+        else if (scheduleIsEdited) count += 1;
+      }
+      return count;
+    }
     return getModifiedEntityCount();
-  }, [getModifiedEntityCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations]);
 
   /**
    * Convert global visibility state IDs to local expressIds for a given model.

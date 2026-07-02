@@ -29,7 +29,10 @@ ifc-lite-core = { path = "../../rust/core" }
 # triple (Manifold/BSP removed at M9; see
 # docs/architecture/pure-rust-csg-kernel.md).
 ifc-lite-geometry = { path = "../../rust/geometry", default-features = false }
-ifc-lite-processing = { path = "../../rust/processing" }
+# `observability` routes the geometry crate's production diagnostics through
+# tracing so they land in this server's existing subscriber (main.rs) as
+# structured events instead of raw stderr lines.
+ifc-lite-processing = { path = "../../rust/processing", features = ["observability"] }
 
 # Parallelism
 rayon = "1.10"

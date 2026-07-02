@@ -272,6 +272,23 @@ impl<'a> EntityScanner<'a> {
         counts
     }
 
+    /// Count the entities remaining from the scanner's current position, without
+    /// allocating anything per entity.
+    ///
+    /// Unlike [`count_by_type`](Self::count_by_type) (which builds a per-keyword
+    /// map) or [`build_entity_index`](crate::build_entity_index) (which retains a
+    /// span per entity, ~20 B each), this walks the byte stream and increments a
+    /// single counter: `O(scan)` time, `O(1)` memory. It is the cheap primitive
+    /// for a downstream entity-count DoS guard on a file too large to index
+    /// (issue #1517). Advances the scanner to the end of the data section.
+    pub fn count(&mut self) -> usize {
+        let mut n = 0usize;
+        while self.next_entity().is_some() {
+            n += 1;
+        }
+        n
+    }
+
     /// Reset scanner to beginning (re-applies the HEADER skip).
     pub fn reset(&mut self) {
         self.position = data_section_start(self.bytes);
@@ -372,6 +389,22 @@ impl<'a> EntityScanner<'a> {
 
         false
     }
+}
+
+/// Count the entities in a STEP/IFC byte buffer in `O(scan)` time and `O(1)`
+/// memory — no entity index, no per-type map.
+///
+/// A thin wrapper over [`EntityScanner::count`]. This is the cheap primitive a
+/// downstream can use to reject a file with a pathologically large entity count
+/// that a byte-size cap would miss, WITHOUT paying the ~20 B/entity the full
+/// index costs (issue #1517). Header-aware and comment-/string-safe, exactly
+/// like the scanner (it IS the scanner), so the count matches what
+/// [`build_entity_index`](crate::build_entity_index) would find.
+pub fn entity_count<T>(content: &T) -> usize
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    EntityScanner::new(content).count()
 }
 
 /// Locate the byte offset of the first character after `DATA;` (skipping the
@@ -515,6 +548,39 @@ ENDSEC;\nEND-ISO-10303-21;\n";
         // Confirm we landed at the real DATA;, not the one in the description.
         let pos = scanner.position();
         assert!(pos == content.len() || pos > content.find("ENDSEC;").unwrap());
+    }
+
+    /// `count` / `entity_count` must agree with the number of entities the
+    /// scanner walks (and with the entity index), while allocating nothing per
+    /// entity. It shares `next_entity`, so it inherits the header-skip and the
+    /// quote/comment guards for free.
+    #[test]
+    fn test_entity_count_matches_scan() {
+        let content = "ISO-10303-21;\nHEADER;\n\
+FILE_DESCRIPTION(('has a #99 and DATA; inside'),'2;1');\n\
+FILE_NAME('26-IFC\\X2\\00B1\\X0\\2#.ifc','2026-04-29T18:21:27',$,$,'a','b',$);\n\
+FILE_SCHEMA(('IFC4'));\nENDSEC;\n\
+DATA;\n\
+#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\n\
+/* a comment with #77= IFCWALL inside */\n\
+#2=IFCWALL('guid2',$,$,$,'name with ; semicolon',$,$,$);\n\
+#3=IFCDOOR('guid3',$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+
+        // Free function.
+        assert_eq!(entity_count(content), 3);
+        // Method, from a fresh scanner.
+        assert_eq!(EntityScanner::new(content).count(), 3);
+        // Agrees with the per-type tally (which walks the same entities).
+        let total: usize = EntityScanner::new(content).count_by_type().values().sum();
+        assert_eq!(total, 3);
+    }
+
+    /// An empty / header-only buffer counts zero, never panics.
+    #[test]
+    fn test_entity_count_empty() {
+        assert_eq!(entity_count(""), 0);
+        assert_eq!(entity_count("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\n"), 0);
     }
 
     /// Escaped single quotes (`''`) keep the string open per ISO 10303-21.

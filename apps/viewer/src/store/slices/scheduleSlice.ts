@@ -1311,20 +1311,7 @@ export function computeActiveProductIds(
 
 export { taskStartEpoch, taskFinishEpoch, parseIsoDate };
 
-/**
- * Count tasks that the user generated locally — tasks with no existing
- * `expressId` in the host STEP file. These are the "pending schedule
- * edits" equivalent of property mutations: they need to be serialized
- * and spliced into the STEP on export.
- *
- * Matches the partitioning rule in `export-adapter.injectScheduleIntoStep`
- * so the count, dirty flag, and export path agree on what counts.
- */
-export function countGeneratedTasks(data: ScheduleExtraction | null | undefined): number {
-  if (!data || data.tasks.length === 0) return 0;
-  let n = 0;
-  for (const t of data.tasks) {
-    if (!t.expressId || t.expressId <= 0) n++;
-  }
-  return n;
-}
+// `countGeneratedTasks` lives with the other pure schedule helpers so lean
+// consumers (e.g. lib/export/model-changes) can import it without pulling the
+// slice's full runtime graph. Re-exported here to keep the store surface stable.
+export { countGeneratedTasks } from './schedule-edit-helpers.js';

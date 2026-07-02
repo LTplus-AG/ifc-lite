@@ -417,6 +417,28 @@ result:
 | `'normalize'` | Rescales every length-valued datum of a differing-unit model into the first model's unit, then unifies it — the output is **one single-unit `IfcProject`** that opens correctly everywhere. `stats.normalizedModelCount` reports how many models were rescaled. |
 | `'assume-shared'` | Forces one project without rescaling. Use only when units are already normalised; mixing real units this way mis-scales geometry. |
 
+#### Spatial matching strategy
+
+By default, `IfcSite`/`IfcBuilding` are matched by Name (case-insensitive),
+falling back to unifying a lone instance in each model when no name matches;
+`IfcBuildingStorey` is matched by Name, falling back to Elevation (±0.5 model
+units). To pin down the exact strategy — mirroring IfcOpenShell/BlenderBIM's
+"Merge Projects" recipe — pass:
+
+```typescript
+const result = exporter.export({
+  schema: 'IFC4',
+  mergeSites: 'single',              // 'single' | 'by-name'
+  mergeBuildings: 'by-name',         // 'single' | 'by-name'
+  mergeStoreys: 'by-name-then-elevation', // 'by-name' | 'by-elevation' | 'by-name-then-elevation'
+});
+```
+
+`'single'` ignores Name and unifies iff each model contributes exactly one
+instance of that container type. `'by-name'` requires a Name match with no
+single-instance fallback. All three fields are optional; omitting one keeps
+the pre-existing combined heuristic for that container type.
+
 `'normalize'` rescales all `IfcCartesianPoint`/`IfcCartesianPointList` coordinates,
 scalar lengths (extrusion depths, profile dimensions, radii, thicknesses, storey
 elevations, `IfcVector.Magnitude`, CSG primitive sizes), `IfcLengthMeasure`

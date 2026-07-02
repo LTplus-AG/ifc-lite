@@ -10,6 +10,8 @@
  * names lowercased, dotted classification codes hyphenated, dots underscored).
  */
 
+import { emitFileDownloaded } from '@/lib/tours/events';
+
 export interface SanitizeFilenameOptions {
   /** Returned (and used as the base) when sanitising yields an empty string. Default `'file'`. */
   fallback?: string;
@@ -57,6 +59,9 @@ function clickDownloadAnchor(href: string, filename: string): void {
   document.body.appendChild(a);
   a.click();
   a.remove();
+  // Every save-as path funnels through here, which makes it the one seam
+  // task-gated tours (and anything else) can observe exports from.
+  emitFileDownloaded(filename);
 }
 
 /** Trigger a browser download of a `Blob`. No-op outside the browser. */

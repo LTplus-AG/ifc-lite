@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
 import { useBCF } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
@@ -418,7 +419,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           )}
         </div>
 
-        <Button className="w-full h-8" disabled={running} onClick={() => void runAll()}>
+        <Button className="w-full h-8" disabled={running} onClick={() => void runAll()} {...tourAnchor(TOUR_ANCHORS.clashRun)}>
           {running ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Crosshair className="h-4 w-4 mr-1.5" />}
           {running ? 'Detecting…' : 'Detect all clashes'}
         </Button>
@@ -498,7 +499,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
       {/* Summary */}
       {result && (
-        <div className="px-3 py-2.5 border-b border-border">
+        <div className="px-3 py-2.5 border-b border-border" {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
           <div className="flex items-baseline justify-between mb-1.5">
             <span className="text-2xl font-semibold tabular-nums">{total}</span>
             <span className="text-xs text-muted-foreground">
@@ -563,6 +564,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 disabled={creatingTopic}
                 title={selectedId ? 'Create a BCF topic from the selected clash' : 'Create a BCF topic for this clash report'}
                 onClick={() => void createBcfTopic()}
+                {...tourAnchor(TOUR_ANCHORS.clashBcf)}
               >
                 {creatingTopic ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FilePlus className="h-3.5 w-3.5 mr-1" />}
                 BCF topic
@@ -575,7 +577,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <input type="checkbox" checked={hideTouching} onChange={(e) => setHideTouching(e.target.checked)} className="accent-[#f7768e]" />
               Hide touching{touchingCount > 0 ? ` (${touchingCount})` : ''}
             </label>
-            <div className="inline-flex items-center gap-1" title="How the rest of the model is shown when you click a clash">
+            <div className="inline-flex items-center gap-1" title="How the rest of the model is shown when you click a clash" {...tourAnchor(TOUR_ANCHORS.clashFocusMode)}>
               <span>On select:</span>
               <div className="inline-flex rounded-md border border-border overflow-hidden">
                 {([
@@ -610,7 +612,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       )}
 
       {/* Results — virtualized so 10k+ clashes stay smooth (#1277). */}
-      <div ref={scrollRef} className="flex-1 overflow-auto min-h-0">
+      <div ref={scrollRef} className="flex-1 overflow-auto min-h-0" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
         {!result && !running && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
             <Crosshair className="h-8 w-8 mb-3 opacity-40" />

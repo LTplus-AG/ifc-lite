@@ -13,7 +13,9 @@
 //! - `\S\C` extended ASCII: code point of `C` plus 128
 //! - `\PC\` code-page directive, consumed and dropped
 //!
-//! Unknown or malformed escapes are passed through unchanged.
+//! Unknown or malformed escapes are passed through unchanged. The `''`
+//! doubled-quote escape is NOT handled here — the tokenizer's consumers strip
+//! the surrounding quotes and un-double before calling this.
 
 use std::borrow::Cow;
 
@@ -21,6 +23,11 @@ use std::borrow::Cow;
 ///
 /// Returns the input borrowed and untouched when it contains no backslash, so
 /// the common case (plain names, GUIDs, enums) is allocation-free.
+///
+/// This handles only backslash escapes. The `''` doubled-quote escape is
+/// collapsed by the STEP tokenizer's consumers (they strip the surrounding
+/// quotes and un-double), so decoding must not touch quotes or it would
+/// double-collapse those paths.
 pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
     if !s.as_bytes().contains(&b'\\') {
         return Cow::Borrowed(s);
@@ -47,11 +54,14 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
             continue;
         }
 
-        // `\S\C`: byte value is the code point of `C` plus 128.
+        // `\S\C`: byte value is the code point of `C` plus 128. Read `C` as a
+        // whole char and advance by its UTF-8 length so a malformed multi-byte
+        // `C` can't leave `i` mid-character (which would panic the next slice).
         if i + 3 < n && bytes[i + 1] == b'S' && bytes[i + 2] == b'\\' {
-            let code = bytes[i + 3] as u32 + 128;
+            let c = s[i + 3..].chars().next().unwrap();
+            let code = c as u32 + 128;
             out.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
-            i += 4;
+            i += 3 + c.len_utf8();
             continue;
         }
 
@@ -205,6 +215,17 @@ mod tests {
         assert_eq!(decode_ifc_string(r"a\Qb"), r"a\Qb");
         // Malformed (no terminator) is passed through, not panicked on.
         assert_eq!(decode_ifc_string(r"\X2\00FC"), r"\X2\00FC");
+    }
+
+    #[test]
+    fn s_escape_before_multibyte_char_does_not_panic() {
+        // A malformed `\S\` followed by a multi-byte UTF-8 char must not leave
+        // the cursor mid-character (previously panicked via a non-boundary
+        // slice, aborting the whole wasm instance under panic=abort).
+        let _ = decode_ifc_string("\\S\\\u{00E9}tail");
+        let _ = decode_ifc_string("x\\S\\\u{1F600}y");
+        // The canonical single-ASCII form is unchanged.
+        assert_eq!(decode_ifc_string(r"\S\a"), "\u{E1}");
     }
 
     #[test]

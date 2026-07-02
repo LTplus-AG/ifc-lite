@@ -310,6 +310,15 @@ export class IfcAPI {
    */
   extractProfiles(content: string, model_index: number): ProfileCollection;
   /**
+   * Structured pipeline diagnostics accumulated across every
+   * `processGeometryBatch*` call since the last load reset
+   * (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
+   * `schemaVersion` field — or `undefined` when no batch has run yet.
+   * Includes per-batch summed geometry wall time, mesh/triangle counts,
+   * the degenerate-backstop drop count, and the CSG failure aggregates.
+   */
+  getPipelineDiagnostics(): any;
+  /**
    * Get WASM memory for zero-copy access
    */
   getMemory(): any;
@@ -376,12 +385,13 @@ export class IfcAPI {
    * Enable or disable the PARAMETRIC rectangular-opening fast path (the
    * placement-frame, ground-truth-exact analytic cut) for `processGeometryBatch`.
    *
-   * DEFAULT OFF. This is the wasm-side toggle that lets native and wasm flip the
-   * flag in LOCKSTEP — the byte-identical native==wasm contract requires both
-   * targets take the same path, and wasm has no env to read `IFC_LITE_RECT_PARAM`.
+   * DEFAULT ON (corpus-validated; native defaults ON too, and wasm has no env to
+   * read `IFC_LITE_RECT_PARAM`, so both targets default in LOCKSTEP -- the
+   * byte-identical native==wasm contract requires both take the same path). This
+   * toggle is the wasm-side escape hatch mirroring `IFC_LITE_RECT_PARAM=0`.
    * The path subtracts rectangular openings as exact parametric boxes in the host's
    * own placement frame (rotated walls included), deferring any non-clean case to
-   * the exact kernel. Pass `true` before `processGeometryBatch`.
+   * the exact kernel. Pass `false` before `processGeometryBatch` to opt out.
    */
   setRectParamFastPath(enabled: boolean): void;
   /**
@@ -560,6 +570,12 @@ export class MeshDataJs {
    */
   readonly hasTexture: boolean;
   /**
+   * Local (pre-placement, object-space) AABB (issue #1474), WebGL Y-up,
+   * `[minX,minY,minZ,maxX,maxY,maxZ]`. `undefined` when not captured
+   * (wasm-bindgen maps `Option::None` to `undefined`, not `null`).
+   */
+  readonly localBounds: Float32Array | undefined;
+  /**
    * Decoded RGBA8 texture bytes (`width*height*4`). Empty when untextured.
    */
   readonly textureRgba: Uint8Array;
@@ -580,6 +596,12 @@ export class MeshDataJs {
    * type geometry (hidden in Model mode, shown in Types mode).
    */
   readonly geometryClass: number;
+  /**
+   * The resolved `IfcLocalPlacement` chain for this mesh (issue #1474),
+   * row-major 4×4, WebGL Y-up. `undefined` when not captured (see
+   * `local_bounds` above).
+   */
+  readonly localToWorld: Float64Array | undefined;
   readonly textureHeight: number;
   /**
    * Get triangle count
@@ -1129,6 +1151,7 @@ export interface InitOutput {
   readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
   readonly ifcapi_getMemory: (a: number) => number;
+  readonly ifcapi_getPipelineDiagnostics: (a: number) => number;
   readonly ifcapi_is_ready: (a: number) => number;
   readonly ifcapi_new: () => number;
   readonly ifcapi_parseAlignmentLines: (a: number, b: number, c: number) => number;
@@ -1169,6 +1192,8 @@ export interface InitOutput {
   readonly meshdatajs_hasTexture: (a: number) => number;
   readonly meshdatajs_ifcType: (a: number, b: number) => void;
   readonly meshdatajs_indices: (a: number) => number;
+  readonly meshdatajs_localBounds: (a: number, b: number) => void;
+  readonly meshdatajs_localToWorld: (a: number, b: number) => void;
   readonly meshdatajs_normals: (a: number) => number;
   readonly meshdatajs_origin: (a: number) => number;
   readonly meshdatajs_positions: (a: number) => number;
@@ -1190,6 +1215,7 @@ export interface InitOutput {
   readonly partitionedbatch_takeShard: (a: number, b: number) => void;
   readonly profilecollection_get: (a: number, b: number) => number;
   readonly profilecollection_length: (a: number) => number;
+  readonly profileentryjs_expressId: (a: number) => number;
   readonly profileentryjs_extrusionDepth: (a: number) => number;
   readonly profileentryjs_extrusionDir: (a: number) => number;
   readonly profileentryjs_holeCounts: (a: number) => number;
@@ -1272,7 +1298,6 @@ export interface InitOutput {
   readonly init: () => void;
   readonly symbolicpolyline_pointCount: (a: number) => number;
   readonly get_memory: () => number;
-  readonly profileentryjs_expressId: (a: number) => number;
   readonly symbolicfillarea_expressId: (a: number) => number;
   readonly symbolicpolyline_worldY: (a: number) => number;
   readonly symbolictext_colorB: (a: number) => number;

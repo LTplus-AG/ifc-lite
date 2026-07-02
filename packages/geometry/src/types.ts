@@ -81,6 +81,18 @@ export interface MeshData {
    *  such caches must key on this instead. Absent for flat meshes (one MeshData
    *  per `expressId`), where `expressId` is already a sufficient key. */
   occurrenceKey?: string;
+  /** Local (pre-placement, object-space) AABB — `positions` bounds as they
+   *  were BEFORE the element's `IfcLocalPlacement` was baked in (issue #1474).
+   *  Absent when not captured (e.g. an instancing template, or a mesh built
+   *  outside the standard element pipeline). Unrelated to `origin`, which is
+   *  a *world*-space translation captured AFTER placement, purely for f32
+   *  precision — don't conflate the two. */
+  localBounds?: { min: [number, number, number]; max: [number, number, number] };
+  /** The resolved `IfcLocalPlacement` chain applied to this mesh (issue
+   *  #1474): row-major 4x4, 16 numbers, WebGL Y-up metres (same frame as
+   *  `positions`). Absent when not captured. All of one entity's `MeshData`
+   *  pieces share the same value (one placement per element). */
+  localToWorld?: number[];
 }
 
 /** A decoded RGBA8 surface texture attached to a mesh (issue #961). */

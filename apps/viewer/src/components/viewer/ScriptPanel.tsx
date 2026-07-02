@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn, formatDuration } from '@/lib/utils';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { useSandbox } from '@/hooks/useSandbox';
@@ -316,6 +317,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                 size="icon-xs"
                 onClick={toggleChat}
                 className={cn(chatPanelVisible && 'bg-blue-500 hover:bg-blue-600 text-white')}
+                {...tourAnchor(TOUR_ANCHORS.scriptChatToggle)}
               >
                 <Bot className="h-3.5 w-3.5" />
               </Button>
@@ -381,6 +383,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                 onClick={handleRun}
                 disabled={executionState === 'running'}
                 className="gap-1"
+                {...tourAnchor(TOUR_ANCHORS.scriptRun)}
               >
                 <Play className="h-3.5 w-3.5" />
                 Run
@@ -454,7 +457,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-xs">
+                  <Button variant="ghost" size="icon-xs" {...tourAnchor(TOUR_ANCHORS.scriptNew)}>
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -505,7 +508,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
         </div>
 
         {/* Code Editor */}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden" {...tourAnchor(TOUR_ANCHORS.scriptEditor)}>
           <CodeEditor
             value={editorContent}
             onChange={setEditorContent}
@@ -519,7 +522,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
         </div>
 
         {/* Output Console */}
-        <div className="shrink-0 border-t">
+        <div className="shrink-0 border-t" {...tourAnchor(TOUR_ANCHORS.scriptOutput)}>
           {/* Output header */}
           <button
             className="flex items-center gap-1.5 px-2 py-1 w-full hover:bg-muted/50 transition-colors text-left"

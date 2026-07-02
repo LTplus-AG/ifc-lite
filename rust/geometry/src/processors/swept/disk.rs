@@ -23,7 +23,7 @@ use crate::router::GeometryProcessor;
 /// by rotating it from `tangents[i-1]` onto `tangents[i]` (the minimum rotation
 /// that aligns them). When consecutive tangents are parallel the frame stays
 /// untouched.
-fn build_tube_rmf(
+pub(crate) fn build_tube_rmf(
     curve_points: &[Point3<f64>],
 ) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
     let n = curve_points.len();
@@ -271,7 +271,7 @@ impl GeometryProcessor for SweptDiskSolidProcessor {
             indices,
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
 
         // Ship smooth per-vertex normals, computed here in the directrix-local
         // frame where the coordinates are small (0..directrix-length) and so

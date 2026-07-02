@@ -336,6 +336,8 @@ export async function* processParallel(
           geometryHash?: bigint;
           geometryClass?: number;
           origin?: [number, number, number];
+          localBounds?: MeshData['localBounds'];
+          localToWorld?: MeshData['localToWorld'];
         }) => ({
           expressId: m.expressId,
           ifcType: m.ifcType,
@@ -359,6 +361,9 @@ export async function* processParallel(
           // Per-element local-frame origin (world = origin + position); the
           // renderer reconstructs world via a per-batch model-matrix translate.
           ...(m.origin ? { origin: m.origin } : {}),
+          // Local (pre-placement) AABB + placement transform (issue #1474).
+          ...(m.localBounds ? { localBounds: m.localBounds } : {}),
+          ...(m.localToWorld ? { localToWorld: m.localToWorld } : {}),
         }));
         // GPU-instancing: per-batch IFNS shards ride alongside the flat meshes.
         // Opaque repeated occurrences render ONLY via these shards (taken off the

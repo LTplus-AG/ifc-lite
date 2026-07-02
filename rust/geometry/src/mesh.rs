@@ -95,6 +95,18 @@ pub struct Mesh {
     pub origin: [f64; 3],
     /// Instancing side-channel (see [`InstanceMeta`]); `None` on the flat path.
     pub instance_meta: Option<InstanceMeta>,
+    /// Local (pre-placement, object-space) AABB — `positions` bounds as they
+    /// were BEFORE `apply_placement`'s transform was baked in. `None` for an
+    /// empty mesh or one that never went through `transform_mesh_world_framed`
+    /// (e.g. synthetic/test meshes). Unrelated to `origin`, which is a
+    /// *world*-space translation captured AFTER the transform, purely for f32
+    /// precision — see issue #1474.
+    pub local_bounds: Option<[f32; 6]>, // minX,minY,minZ,maxX,maxY,maxZ
+    /// The resolved `IfcLocalPlacement` chain applied to this mesh by
+    /// `apply_placement` (row-major, same convention as
+    /// [`InstanceMeta::transform`]). `None` when no placement was applied
+    /// (synthetic/test meshes) — see issue #1474.
+    pub local_to_world: Option<[f64; 16]>,
 }
 
 /// A sub-mesh with its source geometry item ID.
@@ -171,6 +183,8 @@ impl Mesh {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         }
     }
 
@@ -183,6 +197,8 @@ impl Mesh {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         }
     }
 
@@ -419,7 +435,7 @@ impl Mesh {
             indices,
             rtc_applied: self.rtc_applied,
             origin: self.origin,
-        instance_meta: None, }
+        instance_meta: None, local_bounds: None, local_to_world: None }
     }
 
     /// Remove triangle indices that reference vertices beyond the positions array.
@@ -587,6 +603,9 @@ impl Mesh {
         // Reset instancing metadata so a cleared+reused mesh can't carry stale
         // rep-identity / transform into unrelated geometry. (#1238 review)
         self.instance_meta = None;
+        // Same concern for the local-bounds/placement capture (issue #1474).
+        self.local_bounds = None;
+        self.local_to_world = None;
     }
 
     /// Weld coincident vertices, preserving per-vertex normals.
@@ -1036,7 +1055,7 @@ fn weld_impl(
         indices: new_indices,
         rtc_applied: mesh.rtc_applied,
         origin: mesh.origin,
-    instance_meta: None, }
+    instance_meta: None, local_bounds: None, local_to_world: None }
 }
 
 #[cfg(test)]
@@ -1228,6 +1247,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -1242,6 +1263,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert!(mesh.indices.is_empty());
@@ -1256,6 +1279,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -1395,6 +1420,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2, 1, 2, 3]);
@@ -1422,7 +1449,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![3, 4, 5], "sliver dropped, real kept");
         // Positions/normals are never touched (orphan vertices are fine).
@@ -1438,7 +1465,7 @@ mod tests {
             indices: vec![0, 1, 2],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert!(mesh.indices.is_empty(), "coincident-pair needle dropped");
     }
@@ -1452,7 +1479,7 @@ mod tests {
             indices: vec![0, 1, 2],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![0, 1, 2], "above-grid triangle kept");
     }
@@ -1483,7 +1510,7 @@ mod tests {
             ],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(
             mesh.indices,
@@ -1504,7 +1531,7 @@ mod tests {
             ],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![0, 1, 2]);
     }
@@ -1520,7 +1547,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         let once = mesh.indices.clone();
         mesh.drop_thin_triangles(GRID);
@@ -1540,7 +1567,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.clean_degenerate();
         assert_eq!(mesh.indices, vec![3, 4, 5]);
     }

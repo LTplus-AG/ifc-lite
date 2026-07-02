@@ -38,6 +38,8 @@ import {
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
+import { TourInvite } from '@/components/tours/TourInvite';
+import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
 import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
@@ -1094,7 +1096,7 @@ export function ViewportContainer() {
         <div className="absolute inset-0 flex flex-col items-center justify-center p-4 md:p-8 z-10 overflow-auto">
 
           {/* Main Card */}
-          <div className="max-w-md w-full bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] p-8 flex flex-col items-center transition-transform hover:-translate-y-1 duration-200 shadow-lg">
+          <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="max-w-md w-full bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] p-8 flex flex-col items-center transition-transform hover:-translate-y-1 duration-200 shadow-lg">
             
             <style>{`
               @keyframes float-slow {
@@ -1196,6 +1198,10 @@ export function ViewportContainer() {
             <p className="mt-1.5 text-[10px] font-mono text-center text-zinc-400 dark:text-[#565f89]">
               new untitled project · or LLM via MCP
             </p>
+
+            {/* First-run tour invite — needs loadFile, so it shares the
+                WebGPU gate of every other action on this card. */}
+            {webgpu.supported && !webgpu.checking && <TourInvite />}
 
             {recentFiles.length > 0 && (
               <div className="mt-6 w-full border-t border-zinc-200 dark:border-[#3b4261] pt-4">

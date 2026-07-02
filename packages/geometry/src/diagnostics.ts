@@ -8,8 +8,8 @@
  * which is built once per geometry batch and serialized to a JS object. The
  * geometry worker merges per-batch values across batches and the parallel loader
  * merges across workers, surfacing one `diagnostics` object on the streaming
- * `complete` event. Native `ProcessingStats` parity reuses the same aggregator
- * and is a follow-up (not yet wired); the serial / native load paths omit it.
+ * `complete` event. The native `ProcessingStats` path reuses the same
+ * aggregator (wired: `rust/processing` populates `geometry_diagnostics`).
  *
  * Counts are best-effort observability: `totalCsgFailures` and the classification
  * counts are exact, while `productsWithFailures` / `hostsWithOpenings` /
@@ -17,6 +17,13 @@
  * whose geometry spans batches may be counted more than once).
  */
 export interface GeometryDiagnostics {
+  /**
+   * Contract version handshake (mirrors Rust
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 1). Bumped on field
+   * renames/removals or count-semantics changes; additive optional fields do
+   * not bump. `0`/absent means a pre-versioned producer.
+   */
+  schemaVersion: number;
   /** Total CSG boolean failures (un-cut openings, emptied hosts, kernel fallbacks). */
   totalCsgFailures: number;
   /** Distinct products with at least one failure (batch-summed upper bound). */
@@ -76,6 +83,8 @@ export function mergeGeometryDiagnostics(
   if (!a) return b ?? null;
   if (!b) return a;
 
+  const schemaVersion = Math.max(a.schemaVersion ?? 0, b.schemaVersion ?? 0);
+
   const reasons = new Map<string, number>();
   for (const r of a.failuresByReason) reasons.set(r.reason, (reasons.get(r.reason) ?? 0) + r.count);
   for (const r of b.failuresByReason) reasons.set(r.reason, (reasons.get(r.reason) ?? 0) + r.count);
@@ -103,6 +112,7 @@ export function mergeGeometryDiagnostics(
     .slice(0, WORST_HOSTS_LIMIT);
 
   return {
+    schemaVersion,
     totalCsgFailures: a.totalCsgFailures + b.totalCsgFailures,
     productsWithFailures: a.productsWithFailures + b.productsWithFailures,
     hostsWithOpenings: a.hostsWithOpenings + b.hostsWithOpenings,

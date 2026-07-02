@@ -17,8 +17,10 @@ mod transforms;
 mod voids;
 mod voids_2d;
 
+pub use transforms::local_frame_set_enabled_override;
 pub use voids::RectParam;
 pub use diagnostics::{
+    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
     aggregate_diagnostics, ClassificationStats, ClassificationSummary, GeometryDiagnostics,
     HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount, RectFastSummary,
     WorstHost,
@@ -35,7 +37,7 @@ use crate::processors::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, IfcAlignmentProcessor,
     MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
     SectionedSolidHorizontalProcessor, ShellBasedSurfaceModelProcessor, SphereProcessor,
-    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};
@@ -203,6 +205,9 @@ impl GeometryRouter {
         router.register(Box::new(BooleanClippingProcessor::new()));
         router.register(Box::new(SweptDiskSolidProcessor::new(schema_clone.clone())));
         router.register(Box::new(RevolvedAreaSolidProcessor::new(
+            schema_clone.clone(),
+        )));
+        router.register(Box::new(SurfaceCurveSweptAreaSolidProcessor::new(
             schema_clone.clone(),
         )));
         router.register(Box::new(SectionedSolidHorizontalProcessor::new(

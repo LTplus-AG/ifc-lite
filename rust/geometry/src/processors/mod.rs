@@ -50,7 +50,9 @@ pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 pub use mapped::MappedItemProcessor;
 pub use sectioned::SectionedSolidHorizontalProcessor;
 pub use surface::SurfaceOfLinearExtrusionProcessor;
-pub use swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
+pub use swept::{
+    RevolvedAreaSolidProcessor, SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor,
+};
 pub use tessellated::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};
 pub use texture::{build_texture_index, MeshTexture, ResolvedTextureMap};
 

@@ -69,6 +69,7 @@ import {
   PanelRight,
   SlidersHorizontal,
   ChevronsRight,
+  GraduationCap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -89,6 +90,9 @@ import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import type { CommandContribution } from '@ifc-lite/extensions';
 import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
+import { TOUR_REGISTRY } from '@/lib/tours/registry';
+import { startTour } from '@/lib/tours/controller';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile } from '@/lib/export/download';
@@ -109,7 +113,8 @@ type Category =
   | 'Export'
   | 'Automation'
   | 'Preferences'
-  | 'Extensions';
+  | 'Extensions'
+  | 'Learn';
 
 interface Command {
   id: string;
@@ -553,6 +558,30 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       { id: 'pref:tooltips', label: 'Hover Tooltips', keywords: 'entity info mouse hover show hide', category: 'Preferences', icon: Info,
         action: () => { useViewerStore.getState().toggleHoverTooltips(); } },
     );
+
+    // ── Learn (tours) ──
+    // Search-only, like Extensions: not in CATEGORY_ORDER, so browse mode
+    // stays uncluttered. The browsable catalog is the Info dialog's Learn
+    // tab, which "Open Learn Hub" deep-links to.
+    for (const tour of TOUR_REGISTRY) {
+      c.push({
+        id: `tour:${tour.id}`,
+        label: `Tour: ${tour.title}`,
+        keywords: `tour walkthrough learn guide tutorial onboarding ${tour.description}`,
+        category: 'Learn',
+        icon: GraduationCap,
+        detail: `${tour.minutes} min`,
+        action: () => { startTour(tour.id, 'palette'); },
+      });
+    }
+    c.push({
+      id: 'learn:hub',
+      label: 'Open Learn Hub',
+      keywords: 'tour walkthrough learn tutorials help getting started onboarding',
+      category: 'Learn',
+      icon: GraduationCap,
+      action: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'learn' } })); },
+    });
 
     // ── Extension contributions ──
     // Surfaced under the "Extensions" category. Clicking dispatches

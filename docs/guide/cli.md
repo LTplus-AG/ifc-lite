@@ -473,7 +473,7 @@ ifc-lite merge a.ifc b.ifc --out merged.ifc --json
 ifc-lite merge metric.ifc imperial.ifc --unit-reconciliation normalize --out merged.ifc
 ```
 
-The merger unifies spatial hierarchy (storeys, buildings) by name and elevation, and offsets entity IDs to avoid collisions. Models that share the first file's length unit merge into a single IfcProject; a model with a different unit is federated (kept as its own project) unless `--unit-reconciliation normalize` rescales it into the first file's unit.
+The merger unifies spatial hierarchy (sites, buildings, storeys) by name and elevation, and offsets entity IDs to avoid collisions. Models that share the first file's length unit merge into a single IfcProject; a model with a different unit is federated (kept as its own project) unless `--unit-reconciliation normalize` rescales it into the first file's unit. The per-container matching strategy can be pinned down with `--merge-sites` / `--merge-buildings` / `--merge-storeys` (see [Spatial matching strategy](exporting.md#spatial-matching-strategy)).
 
 **Flags:**
 
@@ -481,6 +481,9 @@ The merger unifies spatial hierarchy (storeys, buildings) by name and elevation,
 |------|-------------|
 | `--schema <ver>` | Target schema (`IFC2X3`, `IFC4`, `IFC4X3`) |
 | `--unit-reconciliation <mode>` | Mixed-unit handling: `auto` (default, federate differing units), `normalize` (rescale into the first file's unit → one single-unit project), `assume-shared` (force one project without rescaling) |
+| `--merge-sites <mode>` | IfcSite matching across models: `single` (unify iff each model has exactly one site, Name ignored) or `by-name` (Name match only, no single-instance fallback). Omitted: Name match, else single-instance fallback |
+| `--merge-buildings <mode>` | Same modes as `--merge-sites`, applied to IfcBuilding |
+| `--merge-storeys <mode>` | IfcBuildingStorey matching: `by-name`, `by-elevation`, or `by-name-then-elevation` (default) |
 | `--out <file>` | Output file (required) |
 | `--json` | Output merge stats as JSON |
 

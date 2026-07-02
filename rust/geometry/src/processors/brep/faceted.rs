@@ -349,7 +349,7 @@ impl FacetedBrepProcessor {
             indices,
             rtc_applied: true, // RTC already subtracted during f64→f32 conversion
             origin: [0.0; 3],
-        instance_meta: None, })
+        instance_meta: None, local_bounds: None, local_to_world: None })
     }
 }
 
@@ -471,7 +471,7 @@ impl GeometryProcessor for FacetedBrepProcessor {
             normals: Vec::new(),
             indices,
             rtc_applied: false, 
-            origin: [0.0; 3],        instance_meta: None, })
+            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

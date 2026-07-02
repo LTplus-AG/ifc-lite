@@ -4,7 +4,8 @@
 
 //! Shared helpers for the void-subtraction test suites
 //! (`voids_inline_matrix_test`, `voids_submesh_test`,
-//! `voids_production_test`).
+//! `voids_production_test`) and the void-cut regression tests
+//! (`issue_604_door_regression`, `issue_832_opening_representations`).
 //!
 //! Standard `tests/common`-style subdirectory module: Cargo does NOT
 //! compile this directory as its own integration-test crate; each test

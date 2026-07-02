@@ -55,6 +55,12 @@
       "name": "malformed_x2_no_terminator",
       "encoded": "\\X2\\00FC",
       "decoded": "\\X2\\00FC"
+    },
+    {
+      "name": "s_escape_non_bmp_parity",
+      "_comment": "Malformed: \\S\\ is spec-defined for ASCII only. Pins that both decoders read the whole code point (U+1F600) plus 128 (=U+1F680) and advance past the surrogate pair, rather than diverging on a trailing surrogate.",
+      "encoded": "\\S\\\uD83D\uDE00",
+      "decoded": "\uD83D\uDE80"
     }
   ]
 }

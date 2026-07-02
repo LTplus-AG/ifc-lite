@@ -183,8 +183,14 @@ where
                     ) {
                         Ok(entry) => results.push(entry),
                         Err(_e) => {
-                            #[cfg(feature = "debug_geometry")]
-                            eprintln!("[profile_extractor] Skipping #{id} ({ifc_type_name}): {_e}");
+                            crate::diag::diag_debug!(
+                                { element_id = id, ifc_type = %ifc_type_name, error = %_e,
+                                  "profile_extractor: skipping element" }
+                                else {
+                                    #[cfg(feature = "debug_geometry")]
+                                    eprintln!("[profile_extractor] Skipping #{id} ({ifc_type_name}): {_e}");
+                                }
+                            );
                         }
                     }
                 } else if item.ifc_type == IfcType::IfcMappedItem {
@@ -238,8 +244,14 @@ fn extract_mapped_item_profiles(
     results: &mut Vec<ExtractedProfile>,
 ) {
     if depth > MAX_MAPPED_DEPTH {
-        #[cfg(feature = "debug_geometry")]
-        eprintln!("[profile_extractor] #{element_id} ({ifc_type}): max mapped item depth exceeded");
+        crate::diag::diag_debug!(
+            { element_id, ifc_type = %ifc_type, max_depth = MAX_MAPPED_DEPTH,
+              "profile_extractor: max mapped item depth exceeded" }
+            else {
+                #[cfg(feature = "debug_geometry")]
+                eprintln!("[profile_extractor] #{element_id} ({ifc_type}): max mapped item depth exceeded");
+            }
+        );
         return;
     }
 
@@ -297,8 +309,14 @@ fn extract_mapped_item_profiles(
             ) {
                 Ok(entry) => results.push(entry),
                 Err(_e) => {
-                    #[cfg(feature = "debug_geometry")]
-                    eprintln!("[profile_extractor] #{element_id} ({ifc_type}) mapped: {_e}");
+                    crate::diag::diag_debug!(
+                        { element_id, ifc_type = %ifc_type, error = %_e,
+                          "profile_extractor: skipping mapped item solid" }
+                        else {
+                            #[cfg(feature = "debug_geometry")]
+                            eprintln!("[profile_extractor] #{element_id} ({ifc_type}) mapped: {_e}");
+                        }
+                    );
                 }
             }
         } else if sub_item.ifc_type == IfcType::IfcMappedItem {
@@ -428,10 +446,17 @@ fn extract_extruded_solid(
     // Depth (attr 3) — required per IFC spec but default to 1.0 for robustness
     // with malformed files (logged under debug_geometry feature)
     let raw_depth = solid.get(3).and_then(|v| v.as_float());
-    #[cfg(feature = "debug_geometry")]
+    #[cfg(any(feature = "debug_geometry", feature = "observability"))]
     if raw_depth.is_none() {
-        eprintln!(
-            "[profile_extractor] #{element_id} ({ifc_type}): missing Depth, defaulting to 1.0"
+        crate::diag::diag_debug!(
+            { element_id, ifc_type = %ifc_type,
+              "profile_extractor: missing Depth, defaulting to 1.0" }
+            else {
+                #[cfg(feature = "debug_geometry")]
+                eprintln!(
+                    "[profile_extractor] #{element_id} ({ifc_type}): missing Depth, defaulting to 1.0"
+                );
+            }
         );
     }
     let depth = raw_depth.unwrap_or(1.0) * unit_scale;

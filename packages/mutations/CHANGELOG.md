@@ -1,5 +1,11 @@
 # @ifc-lite/mutations
 
+## 1.17.1
+
+### Patch Changes
+
+- [#1509](https://github.com/LTplus-AG/ifc-lite/pull/1509) [`bf56aaa`](https://github.com/LTplus-AG/ifc-lite/commit/bf56aaabf862dd1ac95f71b3b8fa7fbb8175c097) Thanks [@louistrue](https://github.com/louistrue)! - Declare `CsvConnector.import` with a computed method name so Vite 8's dev-time import-analysis no longer rewrites the method head as a dynamic import (which broke the viewer dev server with a SyntaxError). No API change: the method is still called `import`.
+
 ## 1.17.0
 
 ### Minor Changes

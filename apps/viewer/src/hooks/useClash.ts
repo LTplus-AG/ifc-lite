@@ -200,6 +200,8 @@ export function useClash() {
           onProgress: (p) => useViewerStore.getState().setClashProgress(p),
         });
         state.setClashResult(res);
+        // Completed-run signal for baseline consumers (clash tour run gate).
+        state.bumpClashRunSeq();
         // Spatial clustering is the sensible BCF unit; the panel list groups by
         // its own dimension separately. Radius is the user's cluster epsilon.
         state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
@@ -286,6 +288,8 @@ export function useClash() {
       }
       const res = findDuplicates(elements, { exclusions });
       state.setClashResult(res);
+      // Completed-run signal for baseline consumers (clash tour run gate).
+      state.bumpClashRunSeq();
       state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
       state.setClashSelectedId(null);
       posthog.capture('clash_duplicate_scan', { duplicate_count: res.clashes.length });

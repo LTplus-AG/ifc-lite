@@ -42,6 +42,16 @@ export const TOUR_ANCHORS = {
   idsResults: 'ids-results',
   /** IDSPanel isolate-failed (EyeOff) toggle in the results actions bar. */
   idsIsolateFailed: 'ids-isolate-failed',
+  /** ClashPanel "Detect all clashes" run button. */
+  clashRun: 'clash-run',
+  /** ClashPanel severity summary (only while a result exists). */
+  clashSummary: 'clash-summary',
+  /** ClashPanel results scroll container (always mounted with the panel). */
+  clashResults: 'clash-results',
+  /** ClashPanel "On select" focus-mode toggle group (result with clashes). */
+  clashFocusMode: 'clash-focus-mode',
+  /** ClashPanel "BCF topic" button in the results toolbar (result with clashes). */
+  clashBcf: 'clash-bcf',
 } as const;
 
 /** Activity-bar rail button for a panel (one templated attribute serves

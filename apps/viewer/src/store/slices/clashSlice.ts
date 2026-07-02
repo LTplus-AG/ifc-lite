@@ -53,6 +53,14 @@ export interface ClashSlice {
   clashGroups: ClashGroup[] | null;
   clashRunning: boolean;
   clashError: string | null;
+  /**
+   * Monotonic count of COMPLETED detection runs (all-clashes, matrix, preset,
+   * duplicate scan). Bumped by `useClash` right after each successful
+   * `setClashResult` - never on error paths and never reset - so a consumer
+   * needing "a run completed since X" (e.g. the clash tour's run gate) can
+   * baseline-compare a number instead of reference-diffing `clashResult`.
+   */
+  clashRunSeq: number;
   /** Live detection progress for the running rule (null when idle). */
   clashProgress: ClashProgress | null;
   /** Detection settings (persisted). */
@@ -107,6 +115,7 @@ export interface ClashSlice {
   setClashPanelVisible: (visible: boolean) => void;
   toggleClashPanel: () => void;
   setClashResult: (result: ClashResult | null) => void;
+  bumpClashRunSeq: () => void;
   setClashGroups: (groups: ClashGroup[] | null) => void;
   setClashRunning: (running: boolean) => void;
   setClashError: (error: string | null) => void;
@@ -165,6 +174,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashGroups: null,
     clashRunning: false,
     clashError: null,
+    clashRunSeq: 0,
     clashProgress: null,
     clashMode: initial.mode,
     clashTolerance: initial.tolerance,
@@ -185,6 +195,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),
     setClashResult: (clashResult) => set({ clashResult }),
+    bumpClashRunSeq: () => set((s) => ({ clashRunSeq: s.clashRunSeq + 1 })),
     setClashGroups: (clashGroups) => set({ clashGroups }),
     setClashRunning: (clashRunning) => set({ clashRunning }),
     setClashError: (clashError) => set({ clashError }),

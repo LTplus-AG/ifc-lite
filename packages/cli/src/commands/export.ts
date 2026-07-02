@@ -16,6 +16,8 @@ import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { countGlbMeshes } from '@ifc-lite/export';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
+import { logger } from '../logger.js';
+import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
@@ -334,8 +336,21 @@ export async function exportCommand(args: string[]): Promise<void> {
                 : 'GLB export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).',
             );
           }
+          logger.debug(`GLB meshes: ${countGlbMeshes(out as Uint8Array)}`);
           await writeFile(outPath, out as Uint8Array);
           process.stderr.write(`Written to ${outPath}\n`);
+        }
+        // Opt-in geometry summary (--diagnostics, or implied by --verbose):
+        // reuses the gp/bytes already in scope. This is a second geometry pass
+        // (the export bindings do not return diagnostics yet), so it only runs
+        // when asked for; the renderer is shared with diagnose-geometry.
+        if (hasFlag(args, '--diagnostics') || logger.level() === 'debug') {
+          if (format === 'ifcx') {
+            logger.info('No geometry diagnostics for ifcx export (no mesh pass).');
+          } else {
+            const diag = gp.diagnoseGeometry(bytes);
+            logger.info(diag ? formatGeometryReport(diag) : NO_DIAGNOSTICS_LINE);
+          }
         }
       } finally {
         gp.dispose();

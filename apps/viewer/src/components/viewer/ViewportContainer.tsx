@@ -277,14 +277,21 @@ export function ViewportContainer() {
         if (!assets || assets.length === 0) continue;
         const modelIndex = modelIdToIndex.get(modelId) ?? 0;
         for (const asset of assets) {
+          // Scan-based terrain is stamped `IfcGeographicElement`; honour the
+          // same type-visibility gate as the mesh path so the Site toggle hides
+          // it too (issue #1480).
+          if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
           collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
         }
       }
     } else if (geometryResult?.pointClouds) {
-      collected.push(...geometryResult.pointClouds);
+      for (const asset of geometryResult.pointClouds) {
+        if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
+        collected.push(asset);
+      }
     }
     return collected;
-  }, [storeModels, geometryResult, modelIdToIndex]);
+  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility]);
 
   // Extract georeferencing info merged with any live mutations (for Cesium overlay).
   // Reacts to: model load, Cesium toggle, and every georef field edit.

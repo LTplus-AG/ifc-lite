@@ -97,8 +97,11 @@ function collectAnnotationEntityIds(
   if (models.size > 0) {
     const state = useViewerStore.getState();
     for (const [modelId, model] of models) {
+      // modelId comes straight from `models`, so it is always resolvable —
+      // only the legacy sentinel needs the raw local id (matches the id the
+      // tree builder assigns via `resolveTreeGlobalId`).
       addFrom(model.ifcDataStore, (localId) =>
-        modelId === 'legacy' || !models.has(modelId) ? localId : state.toGlobalId(modelId, localId),
+        modelId === 'legacy' ? localId : state.toGlobalId(modelId, localId),
       );
     }
   } else {

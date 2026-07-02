@@ -16,7 +16,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
-import { IfcParser, unwrapIfcZip, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, unwrapIfcZipView, type IfcDataStore } from '@ifc-lite/parser';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
 import type { LoadedModel } from './context.js';
 import { HeadlessLikeBackend } from './headless-backend.js';
@@ -44,11 +44,7 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
 
   // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for an
   // ordinary .ifc file.
-  buffer = Buffer.from(
-    await unwrapIfcZip(
-      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
-    ),
-  );
+  buffer = Buffer.from(await unwrapIfcZipView(buffer));
 
   // Cheap signature check; full parser also bails on malformed STEP.
   const headerSnippet = buffer.subarray(0, Math.min(buffer.byteLength, 256)).toString('ascii');

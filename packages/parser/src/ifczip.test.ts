@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
-import { isZipBuffer, unwrapIfcZip } from './ifczip.js';
+import { isZipBuffer, unwrapIfcZip, unwrapIfcZipWithLimit, unwrapIfcZipView } from './ifczip.js';
 
 const STEP_HEADER = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
 
@@ -70,5 +70,39 @@ describe('unwrapIfcZip', () => {
   it('throws when the archive has multiple model entries (ambiguous)', async () => {
     const zip = await makeZip({ 'a.ifc': STEP_HEADER, 'b.ifc': STEP_HEADER });
     await expect(unwrapIfcZip(zip)).rejects.toThrow(/expected exactly one/);
+  });
+
+  it('rejects a model entry whose declared uncompressed size exceeds the limit (zip-bomb guard)', async () => {
+    const zip = await makeZip({ 'model.ifc': STEP_HEADER });
+    // STEP_HEADER is ~60 bytes; a 10-byte limit forces the guard to fire
+    // without needing a real multi-gigabyte fixture.
+    await expect(unwrapIfcZipWithLimit(zip, 10)).rejects.toThrow(/refusing to decompress/);
+  });
+
+  it('allows a model entry within the size limit', async () => {
+    const zip = await makeZip({ 'model.ifc': STEP_HEADER });
+    const result = await unwrapIfcZipWithLimit(zip, STEP_HEADER.length + 1);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+  });
+});
+
+describe('unwrapIfcZipView', () => {
+  it('unwraps a Uint8Array view that does not span its whole backing buffer', async () => {
+    const zip = await makeZip({ 'model.ifc': STEP_HEADER });
+    const zipBytes = new Uint8Array(zip);
+    // Pad the backing buffer so the view is a slice, not the whole thing —
+    // exercises the byteOffset/byteLength handling.
+    const padded = new Uint8Array(zipBytes.length + 16);
+    padded.set(zipBytes, 8);
+    const view = padded.subarray(8, 8 + zipBytes.length);
+
+    const result = await unwrapIfcZipView(view);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+  });
+
+  it('passes non-zip views through unchanged', async () => {
+    const bytes = new TextEncoder().encode(STEP_HEADER);
+    const result = await unwrapIfcZipView(bytes);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
   });
 });

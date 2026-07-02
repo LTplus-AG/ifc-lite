@@ -8,7 +8,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { IfcParser, unwrapIfcZip, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, unwrapIfcZipView, type IfcDataStore } from '@ifc-lite/parser';
 import { createBimContext, type BimContext, type ViewerBackendMethods, type VisibilityBackendMethods } from '@ifc-lite/sdk';
 import { HeadlessBackend } from './headless-backend.js';
 import { createStreamingViewerAdapter, createStreamingVisibilityAdapter } from './streaming-viewer.js';
@@ -29,10 +29,7 @@ export async function loadIfcFile(filePath: string): Promise<IfcDataStore> {
   // Transparent .ifcZIP unwrap (issue #1494) — cheap magic-byte no-op for an
   // ordinary .ifc file.
   try {
-    const unwrapped = await unwrapIfcZip(
-      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
-    );
-    buffer = Buffer.from(unwrapped);
+    buffer = Buffer.from(await unwrapIfcZipView(buffer));
   } catch (err) {
     process.stderr.write(`Error: ${filePath}: ${(err as Error).message}\n`);
     process.exit(1);

@@ -3191,7 +3191,8 @@
     "toStepLine: function",
     "transformToLocal: function",
     "transformToWorld: function",
-    "unwrapIfcZip: function"
+    "unwrapIfcZip: function",
+    "unwrapIfcZipView: function"
   ],
   "@ifc-lite/parser/browser": [
     "WorkerParser: class",

@@ -29,17 +29,43 @@ export function isZipBuffer(buffer: ArrayBuffer): boolean {
 const MODEL_ENTRY_RE = /\.(ifc|ifcxml)$/i;
 
 /**
+ * Ceiling on the DECOMPRESSED size of the extracted model entry (4 GiB).
+ * Generous enough for any real IFC file this project handles (the desktop
+ * native fast path already targets 500 MB+ source files), but bounds a
+ * maliciously crafted archive that declares a tiny compressed size and a
+ * huge uncompressed one (a zip bomb) from exhausting memory — `unwrapIfcZip`
+ * runs unconditionally on every CLI/MCP/viewer load, including
+ * server-adjacent (MCP) processes.
+ */
+const MAX_UNCOMPRESSED_BYTES = 4 * 1024 * 1024 * 1024;
+
+/**
  * If `buffer` is a zip container, unwrap it and return the bytes of the
  * single `.ifc`/`.ifcxml` entry inside. Returns `buffer` UNCHANGED when it's
  * not a zip (cheap magic-byte check, no-op for every ordinary IFC/IFCX/GLB
  * file) — so callers can call this unconditionally on every load.
  *
  * Throws if the archive contains zero or more than one candidate model
- * entry — silently picking one would risk loading the wrong model.
+ * entry — silently picking one would risk loading the wrong model — or if
+ * the entry's declared uncompressed size exceeds a sane ceiling (zip-bomb
+ * guard, checked from the central-directory metadata, before decompressing).
  * Referenced resources (textures, documents) inside the container are not
  * extracted; only the model entry's bytes are returned.
  */
 export async function unwrapIfcZip(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+  return unwrapIfcZipWithLimit(buffer, MAX_UNCOMPRESSED_BYTES);
+}
+
+/**
+ * `unwrapIfcZip` with an explicit uncompressed-size ceiling. Split out so
+ * tests can exercise the zip-bomb guard with a small limit instead of
+ * needing a multi-gigabyte fixture — not part of the public API, import
+ * directly from `./ifczip.js`.
+ */
+export async function unwrapIfcZipWithLimit(
+  buffer: ArrayBuffer,
+  maxUncompressedBytes: number,
+): Promise<ArrayBuffer> {
   if (!isZipBuffer(buffer)) return buffer;
 
   // Wrap in a Uint8Array rather than passing `buffer` directly: some callers
@@ -63,5 +89,34 @@ export async function unwrapIfcZip(buffer: ArrayBuffer): Promise<ArrayBuffer> {
     );
   }
 
-  return candidates[0].async('arraybuffer');
+  const entry = candidates[0];
+  // `_data.uncompressedSize` is populated from the zip central directory at
+  // `loadAsync` time — reading it costs nothing extra and needs no
+  // decompression. Undocumented/internal JSZip field (no public API exposes
+  // it), so accessed defensively: a future JSZip release dropping it just
+  // skips the guard rather than throwing.
+  const uncompressedSize = (entry as unknown as { _data?: { uncompressedSize?: number } })._data
+    ?.uncompressedSize;
+  if (typeof uncompressedSize === 'number' && uncompressedSize > maxUncompressedBytes) {
+    throw new Error(
+      `This .ifcZIP archive's model entry "${entry.name}" declares an uncompressed ` +
+      `size of ${(uncompressedSize / (1024 * 1024 * 1024)).toFixed(1)} GiB, over the ` +
+      `${(maxUncompressedBytes / (1024 * 1024 * 1024)).toFixed(1)} GiB limit — refusing to decompress.`,
+    );
+  }
+
+  return entry.async('arraybuffer');
+}
+
+/**
+ * `unwrapIfcZip` for a Node `Buffer`/`Uint8Array` view (CLI/MCP loaders):
+ * handles the ArrayBuffer-slice dance for a view that may not span its whole
+ * backing buffer, so callers just wrap the result in `Buffer.from(...)`.
+ */
+export async function unwrapIfcZipView(view: Uint8Array): Promise<ArrayBuffer> {
+  const arrayBuffer = view.buffer.slice(
+    view.byteOffset,
+    view.byteOffset + view.byteLength,
+  ) as ArrayBuffer;
+  return unwrapIfcZip(arrayBuffer);
 }

@@ -11,9 +11,11 @@
 //!
 //! Run with: cargo bench -p ifc-lite-server --bench serialization
 
+// `criterion::black_box` is deprecated in favor of `std::hint::black_box`, but
+// the pinned criterion version still exposes only its own re-export here.
+#![allow(deprecated)]
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use std::fs;
-use std::path::Path;
 
 // We need to access the server's internal modules
 // Since this is a binary crate, we'll define the necessary types here

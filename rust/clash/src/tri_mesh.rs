@@ -111,6 +111,27 @@ impl TriMesh {
         self.bvh.query_aabb(bounds)
     }
 
+    /// Mean of every vertex, summed in index order. A rigid-invariant interior
+    /// probe for the volumetric-overlap check in the narrow phase: the midpoint
+    /// of two solids' vertex centroids lands in their shared volume for a genuine
+    /// overlap (but on/outside the interface for a bare face touch). Iterated in
+    /// index order and summed in `f64`, bit-identical to the TS `vertexCentroid`.
+    pub fn vertex_centroid(&self) -> Vec3 {
+        let n = self.positions.len() / 3;
+        if n == 0 {
+            return [0.0, 0.0, 0.0];
+        }
+        let mut s = [0.0f64; 3];
+        for i in 0..n {
+            let v = self.vertex(i as u32);
+            s[0] += v[0];
+            s[1] += v[1];
+            s[2] += v[2];
+        }
+        let nf = n as f64;
+        [s[0] / nf, s[1] / nf, s[2] / nf]
+    }
+
     /// True when `p` is inside this closed mesh. Casts a fixed-direction ray and
     /// counts forward crossings against every triangle (Möller–Trumbore,
     /// double-sided so winding doesn't matter); an odd count means inside.

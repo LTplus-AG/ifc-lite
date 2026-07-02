@@ -111,8 +111,21 @@ export class RaycastEngine {
                     continue;
                 }
 
-                // Avoid duplicates when a piece is reachable from both regular and batched passes
-                const key = `${piece.expressId}:${piece.modelIndex ?? 'any'}:${piece.positions.length}:${piece.indices.length}`;
+                // Avoid duplicates when a piece is reachable from both regular and
+                // batched passes — but DON'T collapse distinct pieces of one entity.
+                // Mapped copies (IfcMappedItem, e.g. the 4 bolts of one fastener)
+                // become several flat pieces sharing expressId/modelIndex AND buffer
+                // sizes (same template), differing only in position/origin. A
+                // size-based key dropped all but the first, so 3 of 4 bolts were
+                // absent from the raycast set → unpickable / unsnappable. Include the
+                // per-piece origin + first vertex so distinct placements survive while
+                // a truly identical piece reached twice still dedups. (Mirrors the
+                // instanced-piece key fix in #1238.)
+                const p0 = piece.positions;
+                const o = piece.origin;
+                const key = `${piece.expressId}:${piece.modelIndex ?? 'any'}:${piece.positions.length}:${piece.indices.length}`
+                    + `:${o ? `${o[0]},${o[1]},${o[2]}` : ''}`
+                    + `:${p0.length >= 3 ? `${p0[0]},${p0[1]},${p0[2]}` : ''}`;
                 if (seenKeys.has(key)) continue;
                 seenKeys.add(key);
                 allMeshData.push(piece);

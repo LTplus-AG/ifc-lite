@@ -144,11 +144,36 @@ describe('computeWorkerCount', () => {
     // steel) — not the sustained bandwidth-bound big-file regime the per-core
     // caps guard. On a 10-core active-cooled machine it gets cores-2 = 8 workers
     // (was capped at 4, leaving 6 cores idle on CSG-bound geometry). Memory is
-    // a non-issue at 20 MB so the memoryCap doesn't bind.
+    // a non-issue at 20 MB so the memoryCap doesn't bind. (Within the narrowed
+    // <= SMALL_FILE_MB (24) fast-path band; per-worker re-decode cost is low here.)
     const r = computeWorkerCount({
       fileSizeMB: 20, cores: 10, deviceMemoryGB: 16, totalJobs: 25_000,
     });
     expect(r.count).toBe(8);
+    expect(r.reason).toBe('cores');
+  });
+
+  it('medium heavy-tail file (34 MB, 10 cores) → per-core cap (4), not the small-file bump', () => {
+    // Above SMALL_FILE_MB (24): a 10-core browser worker-count sweep showed the
+    // old 8-64 MB cores-2 band ran SLOWER than 4 workers on decode-/heavy-tail-
+    // bound models (34 MB: 7.2s@8 → 5.7s@4; 54 MB: 14.4s@8 → ~11s@4) at ~2x peak
+    // memory, because each worker re-decodes the file into its own WASM heap. So
+    // 24-64 MB now falls through to the per-core bandwidth cap (4 on 10-core).
+    const r = computeWorkerCount({
+      fileSizeMB: 34, cores: 10, deviceMemoryGB: 16, totalJobs: 6_000,
+    });
+    expect(r.count).toBe(4);
+    expect(r.reason).toBe('cores');
+  });
+
+  it('larger decode-bound file (54 MB, 10 cores) → per-core cap (4), not cores-2', () => {
+    // Guard against re-widening the small-file band over 24 MB: 54 MB is a classic
+    // decode-bound model (few big elements) where 8 workers thrash memory (882 MB
+    // peak) and run slower than 4. Must stay 4 on a 10-core host.
+    const r = computeWorkerCount({
+      fileSizeMB: 54, cores: 10, deviceMemoryGB: 16, totalJobs: 5_632,
+    });
+    expect(r.count).toBe(4);
     expect(r.reason).toBe('cores');
   });
 

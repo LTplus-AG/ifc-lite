@@ -44,6 +44,7 @@ import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { downloadBlob } from '@/lib/export/download';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import { toast } from '@/components/ui/toast';
 
@@ -135,12 +136,7 @@ export function MobileToolbar() {
     try {
       const glb = await exportGlbFromGeometry(geometryResult, { includeMetadata: true });
       const blob = new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'model.glb';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, 'model.glb');
       toast.success(`Exported GLB (${(blob.size / 1024).toFixed(0)} KB)`);
     } catch (err) {
       toast.error(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);

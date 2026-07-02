@@ -20,18 +20,13 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
+import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 
 interface ExportChangesButtonProps {
   /** Optional custom class name */
   className?: string;
 }
 
-function toBlobPart(content: string | Uint8Array): BlobPart {
-  if (typeof content === 'string') return content;
-  const bytes = new Uint8Array(content.byteLength);
-  bytes.set(content);
-  return bytes;
-}
 
 export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   const models = useViewerStore((s) => s.models);
@@ -123,7 +118,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   const generateFilename = useCallback(() => {
     if (!modelInfo) return 'export.ifc';
     // Remove extension if present
-    const baseName = modelInfo.name.replace(/\.[^.]+$/, '');
+    const baseName = sanitizeFilename(modelInfo.name.replace(/\.[^.]+$/, ''), { fallback: 'export' });
     return `${baseName}_${formatDate()}.ifc`;
   }, [modelInfo, formatDate]);
 
@@ -169,15 +164,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       });
 
       // Download the file
-      const blob = new Blob([toBlobPart(spliced.content)], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = generateFilename();
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadFile(spliced.content, generateFilename(), 'text/plain');
 
       setExportStatus('success');
 

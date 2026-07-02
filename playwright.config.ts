@@ -133,6 +133,10 @@ export default defineConfig({
         actionTimeout: 300000,
         // CI mode: headless but with GPU flags
         headless: true,
+        // Real Chrome (preinstalled on the runner), not Playwright's bundled
+        // headless shell — the shell's WebGPU device is broken under software
+        // rendering (same reason the E2E CI project pins channel: 'chrome').
+        channel: 'chrome',
         launchOptions: {
           args: [
             '--enable-gpu',

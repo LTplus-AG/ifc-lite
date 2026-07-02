@@ -173,6 +173,46 @@ impl<'a> EntityDecoder<'a> {
         Ok(entity)
     }
 
+    /// Decode the entity in `[start, end)` **without** touching the cache.
+    ///
+    /// [`decode_at`](Self::decode_at) memoizes every entity it parses, which is the
+    /// right trade-off for geometry sub-tree walks (the same points/profiles are
+    /// revisited many times). For a single linear pass over *every* entity in a
+    /// large model — tens of millions of rows — that cache grows without bound and
+    /// dominates memory. This variant parses and returns the entity but never
+    /// inserts it, so a streaming walk stays O(1) in entity count. The caller owns
+    /// the result; for identical bytes it yields an identical [`DecodedEntity`] to
+    /// `decode_at`, only without the cache side effect.
+    pub fn decode_at_uncached(&self, start: usize, end: usize) -> Result<DecodedEntity> {
+        let content_len = self.content.len();
+        if start > end || end > content_len {
+            return Err(Error::parse(
+                0,
+                format!(
+                    "decode_at_uncached: invalid byte span ({}, {}) for content length {}",
+                    start, end, content_len,
+                ),
+            ));
+        }
+        let line = &self.content[start..end];
+        let (id, ifc_type, tokens) = parse_entity(line).map_err(|e| {
+            let cut = line.len().min(100);
+            Error::parse(
+                0,
+                format!(
+                    "Failed to parse entity: {:?}, input: {:?}",
+                    e,
+                    String::from_utf8_lossy(&line[..cut])
+                ),
+            )
+        })?;
+        let attributes = tokens
+            .iter()
+            .map(|token| AttributeValue::from_token(token))
+            .collect();
+        Ok(DecodedEntity::new(id, ifc_type, attributes))
+    }
+
     /// Decode entity at byte offset with known ID (faster - checks cache before parsing)
     /// Use this when the scanner provides the entity ID to avoid re-parsing cached entities
     #[inline]

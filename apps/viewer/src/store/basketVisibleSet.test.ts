@@ -255,6 +255,64 @@ describe('basketVisibleSet', () => {
     });
   });
 
+  describe('type visibility: IfcAnnotation (issue #1354)', () => {
+    const meshes = [
+      { expressId: 1, ifcType: 'IfcWall' },
+      { expressId: 2, ifcType: 'IfcAnnotation' },
+    ];
+
+    it('includes IfcAnnotation 3D meshes when the toggle is on', () => {
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(),
+        selectedEntity: null,
+        selectedEntityIds: new Set(),
+        hierarchyBasketSelection: new Set(),
+        geometryResult: { meshes } as any,
+        typeVisibility: { ...useViewerStore.getState().typeVisibility, ifcAnnotations: true },
+      });
+      invalidateVisibleBasketCache();
+
+      const refs = getVisibleBasketEntityRefsFromStore();
+      assert.ok(refs.some((r) => entityRefToString(r) === 'legacy:2'));
+    });
+
+    it('drops IfcAnnotation 3D meshes when the toggle is off', () => {
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(),
+        selectedEntity: null,
+        selectedEntityIds: new Set(),
+        hierarchyBasketSelection: new Set(),
+        geometryResult: { meshes } as any,
+        typeVisibility: { ...useViewerStore.getState().typeVisibility, ifcAnnotations: false },
+      });
+      invalidateVisibleBasketCache();
+
+      const refs = getVisibleBasketEntityRefsFromStore();
+      assert.ok(refs.some((r) => entityRefToString(r) === 'legacy:1'));
+      assert.ok(!refs.some((r) => entityRefToString(r) === 'legacy:2'));
+    });
+
+    it('drops IfcAnnotation 3D meshes on the models (federated) path too', () => {
+      // The gate also runs through `state.models` in collectVisibleCandidates,
+      // not just the legacy `state.geometryResult` fallback. Lock both paths.
+      const model = { visible: true, idOffset: 0, geometryResult: { meshes } } as any;
+      useViewerStore.setState({
+        selectedEntitiesSet: new Set(),
+        selectedEntity: null,
+        selectedEntityIds: new Set(),
+        hierarchyBasketSelection: new Set(),
+        geometryResult: null,
+        models: new Map([['m1', model]]),
+        typeVisibility: { ...useViewerStore.getState().typeVisibility, ifcAnnotations: false },
+      });
+      invalidateVisibleBasketCache();
+
+      const refs = getVisibleBasketEntityRefsFromStore();
+      assert.ok(refs.some((r) => r.expressId === 1));
+      assert.ok(!refs.some((r) => r.expressId === 2));
+    });
+  });
+
   describe('federation: unresolved globalId in multi-model', () => {
     it('getBasketSelectionRefsFromStore returns array when models exist', () => {
       useViewerStore.setState({

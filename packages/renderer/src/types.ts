@@ -75,12 +75,6 @@ export interface BatchedMesh {
    *  space (world = origin + position). Keeps f32 vertex coords element-small at
    *  building/georef scale (no fan collapse). [0,0,0] = absolute (legacy). */
   origin?: [number, number, number];
-  /** True when every source mesh in this batch is a material-layer slice
-   *  (geometryClass 3). Those slices are watertight, outward-wound thin solids
-   *  whose interior coincident caps z-fight when drawn double-sided; the draw
-   *  loop renders this batch with the BACKFACE-CULLING pipeline so only the
-   *  visible build-up surfaces rasterise (clean solid, no hollow shimmer). */
-  isLayer?: boolean;
 }
 
 // Section plane for clipping
@@ -141,6 +135,23 @@ export interface SectionPlane {
   distance?: number;
 }
 
+/**
+ * Axis-aligned clip box (section / crop box): geometry is kept only where it
+ * lies INSIDE all six box planes; fragments outside the box are discarded by the
+ * shader (real geometry cut, unlike bounding-box element isolation). Coordinates
+ * are in the same world space the shader sees as `input.worldPos` — i.e. the
+ * viewer space the camera/section planes use. Independent of `sectionPlane`; both
+ * can be active at once.
+ */
+export interface ClipBox {
+  /** Box min corner [x, y, z] in world space. */
+  min: [number, number, number];
+  /** Box max corner [x, y, z] in world space. */
+  max: [number, number, number];
+  /** When false (or omitted), the box has no effect. */
+  enabled: boolean;
+}
+
 export type ContactShadingQuality = 'off' | 'low' | 'high';
 export type SeparationLinesQuality = 'off' | 'low' | 'high';
 
@@ -179,6 +190,12 @@ export interface RenderOptions {
   isolatedIds?: Set<number> | null; // Only show these meshes (null = show all)
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
+  /**
+   * Render the active colour overrides almost full-bright so they POP like a
+   * highlight rather than reading as normal lit materials. Used while a clash is
+   * focused so the amber/cyan pair stands out. (#1277/#1339)
+   */
+  emphasizeOverrides?: boolean;
   /**
    * Per-frame alpha overrides — primary use case is X-Ray mode.
    *
@@ -223,6 +240,11 @@ export interface RenderOptions {
   selectedModelIndex?: number;    // Model index for multi-model selection (must match mesh.modelIndex)
   // Section plane clipping
   sectionPlane?: SectionPlane;
+  // Section / crop box: clip geometry to an axis-aligned world-space box (all six
+  // sides). Independent of `sectionPlane`. The GPU picker mirrors the active
+  // section plane + clip box from the last render, so cropped/sectioned-away
+  // geometry is unpickable too with no extra wiring.
+  clipBox?: ClipBox;
   // Terrain clipping: discard fragments below this Y value in viewer space.
   // Used by Cesium overlay to prevent model from showing below terrain.
   terrainClipY?: number;
@@ -255,6 +277,20 @@ export interface PickOptions {
   // Visibility filtering - same as RenderOptions for consistency
   hiddenIds?: Set<number>;        // Hidden elements (can't be picked)
   isolatedIds?: Set<number> | null; // Only these elements can be picked (null = all pickable)
+}
+
+/**
+ * Resolved clip state the GPU picker mirrors from the most recent render so that
+ * section/crop-clipped geometry is unpickable, not just invisible. The renderer
+ * stashes this each `render()` and feeds it to the picker; consumers don't build
+ * it. Point clouds are clipped by the section plane only (matching the point
+ * render); the crop box clips triangle meshes only, on render and on pick.
+ */
+export interface PickClipState {
+  // Resolved section plane (world space, already enabled), or null when off.
+  sectionPlane?: { normal: [number, number, number]; distance: number; flipped: boolean } | null;
+  // Active axis-aligned crop box, or null when off.
+  clipBox?: ClipBox | null;
 }
 
 /**

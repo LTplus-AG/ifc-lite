@@ -7,6 +7,7 @@
  */
 
 import type { TypeVisibility } from './types.js';
+import type { TessellationQuality } from '@ifc-lite/geometry';
 
 // ============================================================================
 // Camera Defaults
@@ -113,6 +114,49 @@ function getInitialMergeLayers(): boolean {
  * localStorage key for the geometry-worker-count A/B override.
  */
 export const GEOM_WORKERS_STORAGE_KEY = 'ifc-lite-geom-workers';
+export const GEOM_TIER_STORAGE_KEY = 'ifc-lite-geom-tier';
+
+// Auto-low tessellation density for heavy models. The on-screen load already
+// skips tiny detail boolean cuts on every load (#1286), which removes the
+// exact-tier escalations that dominate boolean-heavy steel; this is the
+// ORTHOGONAL triangle-count lever — dropping vertex density (low = 0.5x,
+// lowest = 0.25x) so a multi-million-triangle model uploads + fits in GPU
+// memory fast for first paint. The signal is file size, the only model-weight
+// proxy available before geometry runs (the pre-pass job count arrives after
+// the cache key is committed). Size correlates with triangle count at scale but
+// can't tell a dense-but-small model (e.g. 20 MB detailed steel, ~8M tris) from
+// a light one — those still load at medium density (the skip keeps them fast),
+// or can be forced low via `?geomTier=low`. Thresholds are deliberately high so
+// normal models keep full curve density; tune here.
+export const AUTO_LOW_TIER_MB = 50; // >= this → 'low'
+export const AUTO_LOWEST_TIER_MB = 150; // >= this → 'lowest'
+
+/** localStorage key for the load-time geometry fidelity mode (mirrors merge-layers). */
+export const GEOMETRY_MODE_STORAGE_KEY = 'ifc-lite-geometry-mode';
+
+/**
+ * Load-time geometry fidelity mode — a user-facing, persistent switch that
+ * mirrors the merge-layers load-time input (sticky in localStorage, folded into
+ * the geometry cache key, reload-to-apply).
+ * - `fast` (default): skip tiny detail boolean cuts (#1286) + auto-low
+ *   tessellation density for heavy models, for fast first paint. PREVIEW
+ *   fidelity — sub-10% cutters (bolt holes, copes) are dropped and curves may be
+ *   coarser; display, measure AND export all read this same geometry, so it is a
+ *   deliberate, visible choice rather than a silent default.
+ * - `exact`: full boolean cuts + full curve density everywhere — display,
+ *   measure and export consistent. Slower on boolean-heavy / dense models.
+ */
+export type GeometryMode = 'fast' | 'exact';
+
+/** Resolve the initial geometry mode from localStorage; default `fast`. */
+function getInitialGeometryMode(): GeometryMode {
+  if (typeof window === 'undefined') return 'fast';
+  try {
+    return localStorage.getItem(GEOMETRY_MODE_STORAGE_KEY) === 'exact' ? 'exact' : 'fast';
+  } catch {
+    return 'fast';
+  }
+}
 
 /**
  * Resolve an explicit geometry-worker count override for A/B tuning, or
@@ -151,6 +195,70 @@ export function getGeomWorkerOverride(): number | undefined {
   return undefined;
 }
 
+const TESSELLATION_TIERS: readonly TessellationQuality[] = [
+  'lowest',
+  'low',
+  'medium',
+  'high',
+  'highest',
+];
+
+/**
+ * Per-host manual override for the load-time tessellation tier, mirroring
+ * `getGeomWorkerOverride`. `?geomTier=low` (or lowest/medium/high/highest) sets
+ * it AND persists to localStorage so it survives the reload a re-measure needs
+ * (and a shared link carries it). `?geomTier=auto` clears the override. Useful
+ * for forcing low density on a dense-but-small model the size heuristic can't
+ * detect, or pinning full density on a large one.
+ */
+export function getGeomTierOverride(): TessellationQuality | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const param = new URLSearchParams(window.location.search).get('geomTier');
+    if (param != null) {
+      if (param === 'auto') {
+        localStorage.removeItem(GEOM_TIER_STORAGE_KEY);
+        return undefined;
+      }
+      if ((TESSELLATION_TIERS as readonly string[]).includes(param)) {
+        localStorage.setItem(GEOM_TIER_STORAGE_KEY, param);
+        return param as TessellationQuality;
+      }
+    }
+    const stored = localStorage.getItem(GEOM_TIER_STORAGE_KEY) ?? '';
+    if ((TESSELLATION_TIERS as readonly string[]).includes(stored)) {
+      return stored as TessellationQuality;
+    }
+  } catch (err) {
+    // Blocked/unavailable storage (Safari private mode, locked storage) or a
+    // bad URL — fall back to the heuristic, but don't swallow silently
+    // (AGENTS.md: no silent catch). A persisted ?geomTier override is lost here.
+    console.warn('[geom-tier] override read failed; using heuristic', err);
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the load-time tessellation tier for a model of `fileSizeMB` under the
+ * given geometry `mode`: a manual `?geomTier=` override wins in any mode; else
+ * in `fast` mode auto-low for heavy models by size; else `undefined` (engine
+ * default = medium, full curve density). In `exact` mode auto-low never fires,
+ * so dense models keep full density. Returning `undefined` at the medium default
+ * keeps pre-existing cache entries valid (the tier discriminator is omitted from
+ * the cache key at medium — see `buildGeometryCacheKey`).
+ */
+export function resolveLoadTessellationTier(
+  fileSizeMB: number,
+  mode: GeometryMode = 'fast'
+): TessellationQuality | undefined {
+  const override = getGeomTierOverride();
+  if (override) return override;
+  if (mode !== 'fast') return undefined;
+  if (fileSizeMB >= AUTO_LOWEST_TIER_MB) return 'lowest';
+  if (fileSizeMB >= AUTO_LOW_TIER_MB) return 'low';
+  return undefined;
+}
+
 export const UI_DEFAULTS = {
   /** Default active tool */
   ACTIVE_TOOL: 'select',
@@ -185,6 +293,13 @@ export const UI_DEFAULTS = {
    * reloads. Default `false` keeps existing per-layer rendering.
    */
   MERGE_LAYERS: getInitialMergeLayers(),
+  /**
+   * Load-time geometry fidelity mode (see `GeometryMode`). Read from
+   * localStorage on boot so the user's choice survives reloads. Default `fast`
+   * (skip tiny cuts + auto-low density for heavy models) for quick first paint;
+   * `exact` for full display/measure/export fidelity.
+   */
+  GEOMETRY_MODE: getInitialGeometryMode(),
 } as const;
 
 // ============================================================================

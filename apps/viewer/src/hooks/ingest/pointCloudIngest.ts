@@ -39,13 +39,13 @@ export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | '
  * entity table derives its enum (58) from the type name itself.
  */
 function emptyDataStore(
-  buffer: ArrayBuffer,
+  fileSize: number,
   expressId: number,
   fileName: string,
 ): IfcDataStore {
   return createSyntheticDataStore({
     schemaVersion: 'IFC4',
-    fileSize: buffer.byteLength,
+    fileSize,
     entityCount: 1,
     entities: [{
       expressId,
@@ -73,7 +73,10 @@ export interface PointCloudIngestOptions {
   format: PointCloudFormat;
   blob: Blob;
   fileName: string;
-  buffer: ArrayBuffer;
+  /** Source file size in bytes — used only for the synthetic data store.
+   *  Point clouds stream from `blob`; the whole file is never read into
+   *  memory here, so we take the size rather than an ArrayBuffer. */
+  fileSize: number;
   /** Renderer to push chunks into. Streaming starts immediately. */
   renderer: Renderer;
   /** Express ID assigned to this asset (for picking + federation). */
@@ -382,7 +385,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   };
 
   return {
-    dataStore: emptyDataStore(opts.buffer, expressId, opts.fileName),
+    dataStore: emptyDataStore(opts.fileSize, expressId, opts.fileName),
     geometryResult,
     schemaVersion: 'IFC4',
     rendererHandle: handle,

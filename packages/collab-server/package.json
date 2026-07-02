@@ -33,10 +33,10 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
-    "@types/node": "^25.9.3",
+    "@types/node": "^26.0.1",
     "@types/ws": "^8.5.13",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.0",
+    "vitest": "^4.1.9",
     "y-websocket": "^3.0.0"
   },
   "license": "MPL-2.0",

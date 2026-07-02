@@ -21,6 +21,7 @@ import {
   type ClashMode,
   type ClashSeverity,
 } from '@ifc-lite/clash';
+import { downloadFile } from '../export/download.js';
 
 /** A built-in or user-defined clash rule preset, with editor/runtime flags. */
 export type ClashPreset = ClashRulePreset & { enabled: boolean; builtin: boolean };
@@ -65,7 +66,16 @@ export const DEFAULT_CLASH_SETTINGS: ClashGlobalSettings = {
   groupBy: 'severity',
 };
 
-const BUILTIN_PRESET_IDS = new Set(CLASH_RULE_PRESETS.map((p) => p.id));
+// Lazily memoized so we never touch the cross-package `CLASH_RULE_PRESETS`
+// import at module-eval time. Vite 8 / Rolldown does not guarantee that the
+// chunk defining `CLASH_RULE_PRESETS` runs before this module's body, so a
+// top-level `CLASH_RULE_PRESETS.map(...)` here threw "Cannot read properties
+// of undefined" on boot. Deferring to first call sidesteps the chunk
+// initialization-order hazard entirely.
+let builtinPresetIdsCache: Set<string> | null = null;
+function builtinPresetIds(): Set<string> {
+  return (builtinPresetIdsCache ??= new Set(CLASH_RULE_PRESETS.map((p) => p.id)));
+}
 const SEVERITIES: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
 const GROUP_BYS: ClashSettingsGroupBy[] = ['severity', 'rule', 'typePair'];
 
@@ -120,7 +130,7 @@ function readStoredPresets(): ClashPreset[] {
         selectorA: p.selectorA,
         selectorB: p.selectorB,
         enabled: p.enabled !== false,
-        builtin: BUILTIN_PRESET_IDS.has(p.id),
+        builtin: builtinPresetIds().has(p.id),
       }));
   } catch {
     return [];
@@ -235,15 +245,8 @@ export function saveSettings(settings: ClashGlobalSettings): SaveResult {
 /** Download the user's presets (customs + modified built-ins) as a JSON file. */
 export function exportPresets(presets: ClashPreset[]): void {
   const custom = presets.filter((p) => !p.builtin || builtinDiffersFromDefault(p));
-  const blob = new Blob([JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2)], {
-    type: 'application/json',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'clash-rules.clash-presets.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2);
+  downloadFile(json, 'clash-rules.clash-presets.json', 'application/json');
 }
 
 /** Parse an exported file into custom presets (ids regenerated, `builtin` stripped). */
@@ -302,7 +305,7 @@ export function deserializeClashConfig(blob: unknown): { presets: ClashPreset[];
     selectorA: p.selectorA,
     selectorB: p.selectorB,
     enabled: p.enabled !== false,
-    builtin: BUILTIN_PRESET_IDS.has(p.id),
+    builtin: builtinPresetIds().has(p.id),
   }));
   return { presets: mergeStoredPresets(stored), settings: normalizeSettings(b.settings) };
 }

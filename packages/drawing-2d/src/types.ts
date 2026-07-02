@@ -185,6 +185,14 @@ export interface DrawingPolygon {
    *  element; absent for single-material elements (keep the existing
    *  per-`ifcType` / per-entity fill). */
   color?: [number, number, number, number];
+  /** Set on the OPAQUE BASE polygon emitted for a multi-material entity: the
+   *  entity's full closed cross-section (built from the watertight union of all
+   *  its layer bands, so it always closes). It is drawn BEHIND the per-layer
+   *  colour fills in the 3D section overlay as a backstop, so a layer the
+   *  reconstruction cannot resolve still shows solid cut material instead of a
+   *  see-through hole. Carried only in `Drawing2D.layerBaseCutPolygons` (never in
+   *  `cutPolygons`), so the flat 2D drawing / export / measure paths never see it. */
+  isLayerBase?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -261,6 +269,13 @@ export interface Drawing2D {
 
   /** Cut polygons (for hatching) */
   cutPolygons: DrawingPolygon[];
+
+  /** Opaque base cross-sections (one set per multi-material entity) drawn behind
+   *  the per-layer fills in the 3D section overlay so a cut never reads hollow.
+   *  Consumed ONLY by the 3D overlay; absent from `cutPolygons` so the flat 2D
+   *  drawing, SVG export, and measure/snap paths are unaffected. Empty/omitted
+   *  when no multi-material (layered) element is cut. */
+  layerBaseCutPolygons?: DrawingPolygon[];
 
   /** Projection polygons (visible surfaces beyond cut) */
   projectionPolygons: DrawingPolygon[];

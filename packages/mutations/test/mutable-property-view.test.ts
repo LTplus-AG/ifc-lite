@@ -188,3 +188,40 @@ describe('BulkQueryEngine', () => {
     expect(view.getPropertyValue(2, 'Pset_Bulk', 'Zone')).toBe('North');
   });
 });
+
+describe('MutablePropertyView.hasPendingChanges', () => {
+  it('is false on a fresh view and true once an overlay edit is recorded', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    expect(view.hasPendingChanges()).toBe(false);
+
+    view.setProperty(1, 'Pset_Test', 'Foo', 'bar', PropertyValueType.Label);
+    expect(view.hasPendingChanges()).toBe(true);
+  });
+
+  it('returns to false after clear()', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.createPropertySet(1, 'Pset_New', [{ name: 'A', value: 'x', type: PropertyValueType.Label }]);
+    expect(view.hasPendingChanges()).toBe(true);
+
+    view.clear();
+    expect(view.hasPendingChanges()).toBe(false);
+  });
+
+  it('tracks the current overlay footprint, not append-only history', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setProperty(1, 'Pset_Test', 'Foo', 'bar', PropertyValueType.Label);
+    // History only grows; the overlay footprint is what gates the export bake.
+    expect(view.getMutations().length).toBeGreaterThan(0);
+    expect(view.hasPendingChanges()).toBe(true);
+  });
+
+  it('reports a type-only (retype) edit so merged export does not drop it', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    expect(view.hasPendingChanges()).toBe(false);
+
+    view.setEntityType(1, 'IfcColumn');
+    expect(view.hasPendingChanges()).toBe(true);
+  });
+});

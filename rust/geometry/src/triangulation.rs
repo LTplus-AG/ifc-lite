@@ -617,7 +617,7 @@ mod tests {
             Point2::new(3.0, 7.0),
         ];
         let (pts, idx) =
-            triangulate_polygon_with_holes_refined(&outer, &[hole.clone()], false).unwrap();
+            triangulate_polygon_with_holes_refined(&outer, std::slice::from_ref(&hole), false).unwrap();
 
         let n_input = outer.len() + hole.len();
         assert!(pts.len() >= n_input, "input vertices must all be present");

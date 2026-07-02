@@ -6,6 +6,24 @@ import type { LensCriteria, LensDataProvider } from './types.js';
 import { IFC_SUBTYPE_TO_BASE } from './types.js';
 
 /**
+ * Equality test for the `equals` operator.
+ *
+ * Exact string match, with one tolerance: boolean values compare
+ * case-insensitively. `String(true)` yields the lowercase `"true"`, but the
+ * properties panel surfaces IFC booleans capitalized as `True` / `False`. A
+ * user who types the value they see ("True") would otherwise never match the
+ * lowercase form the engine compares against. Non-boolean strings stay
+ * case-sensitive so genuinely case-significant values (codes, fire ratings)
+ * keep matching exactly. (#1403)
+ */
+function valueEquals(actual: string, expected: string): boolean {
+  if (actual === expected) return true;
+  const a = actual.toLowerCase();
+  if (a !== expected.toLowerCase()) return false;
+  return a === 'true' || a === 'false';
+}
+
+/**
  * Check if an entity matches a {@link LensCriteria}.
  *
  * Performance: O(1) for type/attribute, O(psets) for property/material/classification.
@@ -80,7 +98,7 @@ function matchesProperty(
 
   // Default: equals
   if (criteria.propertyValue !== undefined) {
-    return String(value ?? '') === criteria.propertyValue;
+    return valueEquals(String(value ?? ''), criteria.propertyValue);
   }
 
   return value !== null && value !== undefined;
@@ -96,12 +114,18 @@ function matchesMaterial(
 
   const pattern = criteria.materialName.toLowerCase();
 
-  // Prefer dedicated material accessor if available
-  if (provider.getMaterialName) {
-    const matName = provider.getMaterialName(globalId);
-    if (matName) {
-      return matName.toLowerCase().includes(pattern);
-    }
+  // Match against BOTH the individual constituent materials AND the single /
+  // layer-set name. A multi-layer element should match on any of its materials
+  // ("gypsumboard" matches a wall whose layer set also has insulation), and a
+  // rule built from the discovery dropdown — which may surface either an
+  // individual name or the layer-set name (e.g. "Basic Wall: Ext - Gyp/Ins") —
+  // must still match. Checking only one accessor regressed the other. (#1366)
+  if (provider.getMaterialNames || provider.getMaterialName) {
+    const names = provider.getMaterialNames?.(globalId);
+    if (names && names.some((n) => n.toLowerCase().includes(pattern))) return true;
+    const matName = provider.getMaterialName?.(globalId);
+    if (matName && matName.toLowerCase().includes(pattern)) return true;
+    // A dedicated material accessor exists; don't fall through to the pset scan.
     return false;
   }
 
@@ -143,7 +167,7 @@ function matchesAttribute(
 
   // Default: equals
   if (criteria.attributeValue !== undefined) {
-    return (value ?? '') === criteria.attributeValue;
+    return valueEquals(value ?? '', criteria.attributeValue);
   }
 
   return value !== undefined && value !== '';
@@ -176,7 +200,7 @@ function matchesQuantity(
 
   // Default: equals (string comparison)
   if (criteria.quantityValue !== undefined) {
-    return String(value) === criteria.quantityValue;
+    return valueEquals(String(value), criteria.quantityValue);
   }
 
   return true;

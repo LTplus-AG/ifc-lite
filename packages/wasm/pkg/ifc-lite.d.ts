@@ -89,8 +89,18 @@ export class IfcAPI {
    * comma-separated list of IFC type names whose class toggle is off (e.g.
    * `"IfcOpeningElement,IfcSpace"`). `include_metadata` attaches counts + per-node
    * `expressId`. Per-mesh RTC origin rides the node translation (precision-safe).
+   * `lit` emits standard PBR materials that shade from normals; omitted or
+   * `true` ⇒ lit (the default), `false` ⇒ flat `KHR_materials_unlit` (the
+   * historical look — #1321). Optional at the boundary so older 5-arg callers
+   * keep lit-by-default behaviour.
+   *
+   * Fails CLOSED: when the visible mesh set is empty this throws an `Error`
+   * whose message starts with `NO_RENDER_GEOMETRY`, instead of returning a
+   * structurally valid but empty GLB. #1438 put that guard only in the TS
+   * CLI/MCP wrappers; making the boundary itself refuse means SDK/viewer/
+   * direct callers inherit it too (the TS guards stay as defense-in-depth).
    */
-  exportGlb(content: string, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string): Uint8Array;
+  exportGlb(content: Uint8Array, include_metadata: boolean, hidden: Uint32Array, isolated: Uint32Array, hidden_types_csv: string, lit?: boolean | null): Uint8Array;
   /**
    * Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)
    * for Google Earth: a ZIP of `doc.kml` (a `<Model>` placed at `latitude`/`longitude`/
@@ -105,9 +115,13 @@ export class IfcAPI {
    * RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
    * per-mesh local). The caller passes exactly the meshes it wants emitted.
    */
-  exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean): Uint8Array;
+  exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null): Uint8Array;
   /**
-   * Export the render geometry in `content` as a Wavefront **OBJ** string.
+   * Export the render geometry in `content` as Wavefront **OBJ** UTF-8 bytes.
+   *
+   * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+   * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+   * is genuinely needed.
    *
    * `hidden` / `isolated` are express-id filters mirroring the viewer's visibility
    * state (empty `isolated` ⇒ all visible). Instanced type-library shapes are skipped.
@@ -116,12 +130,7 @@ export class IfcAPI {
    * const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
    * ```
    */
-  exportObj(content: string, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): string;
-  /**
-   * Run the pre-pass ONCE and return serialized results for worker distribution.
-   * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
-   */
-  buildPrePassOnce(data: Uint8Array): any;
+  exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): Uint8Array;
   /**
    * Process geometry for a subset of pre-scanned entities → flat
    * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
@@ -130,32 +139,6 @@ export class IfcAPI {
    * there). Output is byte-for-byte what the pre-refactor method produced.
    */
   processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
-  /**
-   * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
-   * instead of waiting for the full file scan to complete.
-   *
-   * Single linear walk over the file:
-   *   1. Builds the entity index incrementally from the same scan that
-   *      collects geometry jobs (a separate index scan would double
-   *      wall-clock).
-   *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
-   *      first ~50 geometry jobs have been collected, resolves
-   *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
-   *      JS host can spin up geometry process workers.
-   *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
-   *      the meta phase already buffered some).
-   *   4. Emits `complete` with the total job count at end of scan.
-   *
-   * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
-   * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
-   * (first 100 K bytes scanned + meta + first chunk).
-   *
-   * The callback receives a single `JsValue` argument shaped as one of:
-   *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
-   *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
-   *   `{ type: "complete", totalJobs }`
-   */
-  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
   /**
    * Like [`IfcAPI::process_geometry_batch`] but collates the batch's meshes
    * into a GPU-instancing shard (IFNS wire format) instead of a flat
@@ -187,6 +170,37 @@ export class IfcAPI {
    */
   processGeometryBatchPartitioned(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
   /**
+   * Run the pre-pass ONCE and return serialized results for worker distribution.
+   * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
+   */
+  buildPrePassOnce(data: Uint8Array): any;
+  /**
+   * Streaming pre-pass: emits geometry jobs in chunks via a JS callback
+   * instead of waiting for the full file scan to complete.
+   *
+   * Single linear walk over the file:
+   *   1. Builds the entity index incrementally from the same scan that
+   *      collects geometry jobs (a separate index scan would double
+   *      wall-clock).
+   *   2. As soon as `IFCPROJECT` has been seen, the unit scale and the
+   *      first ~50 geometry jobs have been collected, resolves
+   *      `unitScale` + `rtcOffset` and emits a `meta` callback so the
+   *      JS host can spin up geometry process workers.
+   *   3. Emits `jobs` callbacks every `chunk_size` jobs (or fewer if
+   *      the meta phase already buffered some).
+   *   4. Emits `complete` with the total job count at end of scan.
+   *
+   * On a 986 MB / 14 M-entity file this drops time-to-first-geometry
+   * from ~17 s (full pre-pass + worker spawn + first batch) to ~3 s
+   * (first 100 K bytes scanned + meta + first chunk).
+   *
+   * The callback receives a single `JsValue` argument shaped as one of:
+   *   `{ type: "meta", unitScale, rtcOffset: [x,y,z], needsShift, buildingRotation? }`
+   *   `{ type: "jobs", jobs: Uint32Array }`     // [id, start, end] triples
+   *   `{ type: "complete", totalJobs }`
+   */
+  buildPrePassStreaming(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
+  /**
    * Parse the file and return structured per-axis data (tag + endpoints) in
    * the renderer's Y-up world space (RTC-subtracted, metres). Use this when
    * you also need the axis tags (to render grid bubbles / labels).
@@ -207,24 +221,28 @@ export class IfcAPI {
    * `"spatial"`}. `delimiter` defaults to `,` when empty; `include_properties` adds
    * flattened `Pset_Prop` columns to the entities view.
    */
-  exportCsv(content: string, mode: string, delimiter: string, include_properties: boolean): string;
+  exportCsv(content: Uint8Array, mode: string, delimiter: string, include_properties: boolean): Uint8Array;
   /**
    * Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
    * only properties with an official IFC5 schema.
    */
-  exportIfcx(content: string, only_known_properties: boolean, pretty: boolean): string;
+  exportIfcx(content: Uint8Array, only_known_properties: boolean, pretty: boolean): Uint8Array;
   /**
    * Export structured **JSON** (array of entity objects with typed property values).
    */
-  exportJson(content: string, pretty: boolean, include_properties: boolean, include_quantities: boolean): string;
+  exportJson(content: Uint8Array, pretty: boolean, include_properties: boolean, include_quantities: boolean): Uint8Array;
   /**
    * Export **JSON-LD** (`@graph` of `ifc:` nodes). Empty `context` ⇒ buildingSMART
    * IFC4 OWL default. `included` is an express-id isolation filter mirroring the
    * OBJ/glTF/STEP exporters (empty ⇒ all entities).
    */
-  exportJsonld(content: string, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): string;
+  exportJsonld(content: Uint8Array, context: string, include_properties: boolean, include_quantities: boolean, pretty: boolean, included: Uint32Array): Uint8Array;
   /**
-   * Re-serialize the model in `content` to a STEP/IFC string.
+   * Re-serialize the model in `content` to STEP/IFC UTF-8 bytes.
+   *
+   * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+   * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+   * is genuinely needed.
    *
    * `schema` is the FILE_SCHEMA label to write (empty ⇒ preserve the source schema).
    * `included` is an express-id allowlist (empty ⇒ whole model); when set, the forward
@@ -232,15 +250,20 @@ export class IfcAPI {
    * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
    * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
    */
-  exportStep(content: string, schema: string, included: Uint32Array, mutations_json: string): string;
+  exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
   /**
-   * Merge several IFC models into one STEP/IFC string. `concatenated` is every model's
+   * Merge several IFC models into one STEP/IFC UTF-8 byte buffer (`Uint8Array`).
+   * `concatenated` is every model's
    * bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
    * keeps its ids; later models are id-offset and their project unified to the first.
    */
-  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema: string): string;
+  exportMerged(concatenated: Uint8Array, lengths: Uint32Array, schema: string): Uint8Array;
   /**
-   * Export the `IfcSpace` volumes in `content` as a Honeybee **HBJSON** string.
+   * Export the `IfcSpace` volumes in `content` as Honeybee **HBJSON** UTF-8 bytes.
+   *
+   * Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+   * V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+   * is genuinely needed.
    *
    * Rooms are built analytically from extruded-area profiles (watertight by construction);
    * faces are typed Floor / RoofCeiling / Wall with outward normals. The result loads via
@@ -251,7 +274,7 @@ export class IfcAPI {
    * const hbjson = api.exportHbjson(ifcContent, "my_model");
    * ```
    */
-  exportHbjson(content: string, name: string): string;
+  exportHbjson(content: Uint8Array, name: string): Uint8Array;
   /**
    * Parse the file and return every `IfcAlignment` directrix as a flat
    * `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
@@ -328,6 +351,17 @@ export class IfcAPI {
    */
   setMergeLayers(enabled: boolean): void;
   /**
+   * Toggle the tier-independent small-cut skip (#1286). When `true`,
+   * `processGeometryBatch` drops `IfcBooleanResult` differences whose cutter is
+   * tiny relative to its host (steel copes/notches) while keeping the
+   * tessellation tier — so curves stay full-density. The viewer enables this for
+   * the on-screen load; exports/drawings leave it off so their geometry keeps
+   * every cut. Default off ⇒ byte-identical to before.
+   *
+   * Set BEFORE processing — meshes already emitted are not regenerated.
+   */
+  setSkipSmallCuts(on: boolean): void;
+  /**
    * Clear the cached entity index (call between loads when reusing
    * the same `IfcAPI` instance — e.g. the parser worker keeps one
    * `IfcAPI` alive across multiple `parse` requests).
@@ -401,6 +435,14 @@ export class IfcAPI {
    */
   scanGeometryEntitiesFast(content: string): any;
   /**
+   * Run geometry extraction on `content` and return its typed CSG / opening
+   * diagnostics (the `GeometryDiagnostics` contract) as a JS object, or
+   * `undefined` when nothing diagnostic-worthy happened (no openings, no
+   * failures). Takes the raw IFC bytes (`Uint8Array`) so there is no input-size
+   * cap. The produced meshes are dropped; only the diagnostics are returned.
+   */
+  diagnoseGeometry(content: Uint8Array): any;
+  /**
    * Parse IFC file and extract symbolic representations (Plan,
    * Annotation, FootPrint, Axis). These are 2D curves used for
    * architectural drawings instead of sectioning 3D geometry.
@@ -449,6 +491,13 @@ export class MeshCollection {
    * it twice for the same index yields the second call an empty mesh.
    */
   takeMesh(index: number): MeshDataJs | undefined;
+  /**
+   * The batch's typed CSG / opening diagnostics as a JS object (the
+   * `GeometryDiagnostics` contract), or `undefined` if none were recorded. The
+   * worker merges these across batches. One serialized value keeps the rich
+   * nested shape as a single FFI crossing instead of dozens of getters.
+   */
+  readonly diagnostics: any;
   /**
    * Get RTC offset X (for converting local coords back to world coords)
    * Add this to local X coordinates to get world X coordinates
@@ -511,6 +560,12 @@ export class MeshDataJs {
    */
   readonly hasTexture: boolean;
   /**
+   * Local (pre-placement, object-space) AABB (issue #1474), WebGL Y-up,
+   * `[minX,minY,minZ,maxX,maxY,maxZ]`. `undefined` when not captured
+   * (wasm-bindgen maps `Option::None` to `undefined`, not `null`).
+   */
+  readonly localBounds: Float32Array | undefined;
+  /**
    * Decoded RGBA8 texture bytes (`width*height*4`). Empty when untextured.
    */
   readonly textureRgba: Uint8Array;
@@ -531,6 +586,12 @@ export class MeshDataJs {
    * type geometry (hidden in Model mode, shown in Types mode).
    */
   readonly geometryClass: number;
+  /**
+   * The resolved `IfcLocalPlacement` chain for this mesh (issue #1474),
+   * row-major 4×4, WebGL Y-up. `undefined` when not captured (see
+   * `local_bounds` above).
+   */
+  readonly localToWorld: Float64Array | undefined;
   readonly textureHeight: number;
   /**
    * Get triangle count
@@ -1066,9 +1127,10 @@ export interface InitOutput {
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
+  readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
   readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
-  readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
-  readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number) => void;
+  readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => void;
+  readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number) => void;
   readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
@@ -1095,10 +1157,12 @@ export interface InitOutput {
   readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_setMergeLayers: (a: number, b: number) => void;
   readonly ifcapi_setRectParamFastPath: (a: number, b: number) => void;
+  readonly ifcapi_setSkipSmallCuts: (a: number, b: number) => void;
   readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
   readonly meshcollection_buildingRotation: (a: number, b: number) => void;
+  readonly meshcollection_diagnostics: (a: number) => number;
   readonly meshcollection_geometryHashCount: (a: number) => number;
   readonly meshcollection_geometryHashIds: (a: number) => number;
   readonly meshcollection_geometryHashValues: (a: number) => number;
@@ -1117,6 +1181,8 @@ export interface InitOutput {
   readonly meshdatajs_hasTexture: (a: number) => number;
   readonly meshdatajs_ifcType: (a: number, b: number) => void;
   readonly meshdatajs_indices: (a: number) => number;
+  readonly meshdatajs_localBounds: (a: number, b: number) => void;
+  readonly meshdatajs_localToWorld: (a: number, b: number) => void;
   readonly meshdatajs_normals: (a: number) => number;
   readonly meshdatajs_origin: (a: number) => number;
   readonly meshdatajs_positions: (a: number) => number;
@@ -1138,6 +1204,7 @@ export interface InitOutput {
   readonly partitionedbatch_takeShard: (a: number, b: number) => void;
   readonly profilecollection_get: (a: number, b: number) => number;
   readonly profilecollection_length: (a: number) => number;
+  readonly profileentryjs_expressId: (a: number) => number;
   readonly profileentryjs_extrusionDepth: (a: number) => number;
   readonly profileentryjs_extrusionDir: (a: number) => number;
   readonly profileentryjs_holeCounts: (a: number) => number;
@@ -1220,7 +1287,6 @@ export interface InitOutput {
   readonly init: () => void;
   readonly symbolicpolyline_pointCount: (a: number) => number;
   readonly get_memory: () => number;
-  readonly profileentryjs_expressId: (a: number) => number;
   readonly symbolicfillarea_expressId: (a: number) => number;
   readonly symbolicpolyline_worldY: (a: number) => number;
   readonly symbolictext_colorB: (a: number) => number;

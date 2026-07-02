@@ -15,7 +15,9 @@ export const mainShaderSource = `
           metallicRoughness: vec2<f32>, // x = metallic, y = roughness
           _padding1: vec2<f32>,
           sectionPlane: vec4<f32>,      // xyz = plane normal, w = plane distance
-          flags: vec4<u32>,             // x = isSelected, y = sectionEnabled, z = edgeEnabled, w = edgeIntensityMilli
+          flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
+          clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
+          clipBoxMax: vec4<f32>,        // xyz = clip-box max corner (world), w = pad
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
 
@@ -222,6 +224,14 @@ export const mainShaderSource = `
               discard;
             }
           }
+          // Clip box (section / crop box): discard fragments OUTSIDE the AABB.
+          // flags.y bit 2 = clip-box enabled.
+          if ((uniforms.flags.y & 4u) != 0u) {
+            let p = input.worldPos;
+            if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) {
+              discard;
+            }
+          }
 
           // Compute normal via derivative-based flat shading.
           //
@@ -374,12 +384,25 @@ export const mainShaderSource = `
             color = vec3<f32>(0.3, 0.6, 1.0) * shade;
           }
 
+          // flags.x bit 5 (value 32) = EMPHASIZE overlay: render the colour
+          // override FULLY UNLIT and saturated (no lighting attenuation, no
+          // wash-to-white) so the focused clash pair reads as a solid, vivid,
+          // distinct colour that pops against the lit model — like a clash tool.
+          // A faint normal-based shade keeps the silhouette from going flat. (#1277)
+          let emphasizedOverlay = isOverlay && (uniforms.flags.x & 32u) != 0u;
+          if (emphasizedOverlay) {
+            let facet = 0.85 + 0.15 * abs(dot(N, normalize(vec3<f32>(0.3, 1.0, 0.2))));
+            color = baseColor * facet;
+          }
+
           // Beautiful fresnel effect for transparent materials (glass)
           // Skip when selected — the glass shine and desaturation wash out the
           // blue highlight, making it appear white instead of blue.
           // Also force alpha to 1.0 for selected objects so the highlight is
           // fully opaque (the selection pipeline has no alpha blending).
-          var finalAlpha = select(input.color.a, 1.0, isSelected);
+          // Emphasized clash overlay paints a SOLID vivid fill (force opaque) so
+          // it isn't blended down to a pale tint against the geometry beneath.
+          var finalAlpha = select(input.color.a, 1.0, isSelected || emphasizedOverlay);
           if (finalAlpha < 0.99 && !isSelected && !isOverlay) {
             // Calculate view direction for fresnel
             let V = normalize(-input.worldPos);

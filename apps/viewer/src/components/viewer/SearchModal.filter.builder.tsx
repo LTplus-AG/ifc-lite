@@ -107,15 +107,19 @@ export function SearchModalFilterBuilder() {
     setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore));
   }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterPsetQtoSchema]);
 
-  // Lazy value discovery — distinct material / classification / property
-  // values for the chip value suggestions. Fired the first time a rule that
-  // benefits from them (property, material, classification) appears.
+  // Lazy value discovery - distinct material / classification / property /
+  // predefined-type values for the chip value suggestions. Fired the first time
+  // a rule that benefits from them appears.
   useEffect(() => {
     if (!activeModelId || !activeStore) return;
     const entry = schemaMap.get(activeModelId);
     if (entry?.values) return;
     const needs = filter.rules.some(
-      (r) => r.kind === 'property' || r.kind === 'material' || r.kind === 'classification',
+      (r) =>
+        r.kind === 'property' ||
+        r.kind === 'material' ||
+        r.kind === 'classification' ||
+        r.kind === 'predefinedType',
     );
     if (!needs) return;
     setFilterValueSchema(activeModelId, discoverFilterValues(activeStore));
@@ -128,6 +132,33 @@ export function SearchModalFilterBuilder() {
     return COMMON_IFC_TYPES.slice();
   }, [schemaEntry]);
   const storeyOptions = schemaEntry?.basic.storeys ?? [];
+
+  // The canonical IFC types the filter selects (ifcType "is one of" rules).
+  const selectedTypes = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of filter.rules) {
+      if (r.kind === 'ifcType' && r.op === 'in') {
+        for (const v of r.values) if (v) set.add(v);
+      }
+    }
+    return Array.from(set);
+  }, [filter.rules]);
+
+  const hasPropOrQty = useMemo(
+    () => filter.rules.some((r) => r.kind === 'property' || r.kind === 'quantity'),
+    [filter.rules],
+  );
+
+  // Pset/Qto dropdown source: when the filter targets specific IFC types, scope
+  // discovery to just those elements so only their (legal + user-defined) psets
+  // show - no scrolling past unrelated MEP/structural sets - and read them
+  // directly so a pset missing from the on-demand map still appears. Otherwise
+  // use the cached whole-model schema. (#1462)
+  const psetQto = useMemo(() => {
+    const cached = schemaEntry?.psetQto ?? null;
+    if (!activeStore || !hasPropOrQty || selectedTypes.length === 0) return cached;
+    return discoverPropertyAndQuantitySchema(activeStore, selectedTypes);
+  }, [activeStore, hasPropOrQty, selectedTypes, schemaEntry?.psetQto]);
 
   // ── Rule construction ─────────────────────────────────────────────
 
@@ -254,7 +285,7 @@ export function SearchModalFilterBuilder() {
             rule={rule}
             ifcTypeOptions={ifcTypeOptions}
             storeyOptions={storeyOptions}
-            psetQto={schemaEntry?.psetQto ?? null}
+            psetQto={psetQto}
             valueSchema={schemaEntry?.values ?? null}
             onChange={(next) => updateFilterRule(i, next)}
             onRemove={() => removeFilterRule(i)}

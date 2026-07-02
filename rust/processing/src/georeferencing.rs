@@ -215,6 +215,63 @@ END-ISO-10303-21;
         assert!((geo.orthogonal_height - 42.0).abs() < 1e-6);
     }
 
+    /// Real-world fixture mirroring the `ifc-georeferencer` post-processor:
+    /// lowercase `ePset_…` property-set names and a separate `ePset_ProjectedCRS`
+    /// carrying the EPSG `Name`. The exact-match + missing-CRS bug dropped these
+    /// to the legacy IfcSite EPSG:4326 and showed the wrong CRS.
+    const IFC2X3_EPSET_LOWERCASE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ifc-georeferencer pset fixture'),'2;1');
+FILE_NAME('georef-lc.ifc','2026-06-26T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCLABEL('EPSG:7415'),$);
+#2=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(160073528.13858587),$);
+#3=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(384153306.2191765),$);
+#4=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(0.),$);
+#5=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#1,#2,#3,#4));
+#6=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:7415'),$);
+#7=IFCPROPERTYSET('27AKTMp8j58fBEhvkJkcNJ',$,'ePset_ProjectedCRS',$,(#6));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn extracts_ifc2x3_lowercase_epset_with_projected_crs_name() {
+        let geo = extract_georeferencing(IFC2X3_EPSET_LOWERCASE_IFC)
+            .expect("expected georeferencing from lowercase ePset_ sets");
+        assert_eq!(geo.source.as_deref(), Some("ePSetMapConversion"));
+        // CRS name surfaced from ePset_ProjectedCRS.Name (was previously lost).
+        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:7415"));
+        assert!((geo.eastings - 160073528.13858587).abs() < 1e-3);
+    }
+
+    /// Without an ePset_ProjectedCRS set, the CRS name falls back to the
+    /// MapConversion's own `TargetCRS` label.
+    const IFC2X3_EPSET_TARGETCRS_ONLY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ifc-georeferencer targetcrs-only fixture'),'2;1');
+FILE_NAME('georef-tc.ifc','2026-06-26T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCLABEL('EPSG:28992'),$);
+#2=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1000.5),$);
+#3=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(2000.25),$);
+#4=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(0.),$);
+#5=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#1,#2,#3,#4));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn falls_back_to_target_crs_when_no_projected_crs_pset() {
+        let geo = extract_georeferencing(IFC2X3_EPSET_TARGETCRS_ONLY_IFC)
+            .expect("expected georeferencing from ePset_MapConversion");
+        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:28992"));
+    }
+
     /// Millimetre MapUnit: the conversion offsets are authored in mm and the
     /// served `map_unit_scale` must say 0.001 — the TS parser already did
     /// this; the server previously ignored MapUnit entirely (alignment
@@ -242,6 +299,63 @@ END-ISO-10303-21;
         assert_eq!(geo.map_unit.as_deref(), Some("MILLIMETRE"));
         assert_eq!(geo.map_unit_scale, Some(0.001));
         assert_eq!(geo.map_zone.as_deref(), Some("32N"));
+    }
+
+    /// An empty `ePset_ProjectedCRS.Name` must not block the `TargetCRS`
+    /// fallback — otherwise `crs_name` stays "" and the viewer gate (which
+    /// requires a truthy name) silently drops the model to EPSG:4326.
+    const IFC2X3_EPSET_EMPTY_CRS_NAME_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ifc-georeferencer empty-crs-name fixture'),'2;1');
+FILE_NAME('georef-empty.ifc','2026-06-26T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCLABEL('EPSG:28992'),$);
+#2=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1000.5),$);
+#3=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(2000.25),$);
+#4=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(0.),$);
+#5=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#1,#2,#3,#4));
+#6=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL(''),$);
+#7=IFCPROPERTYSET('27AKTMp8j58fBEhvkJkcNJ',$,'ePset_ProjectedCRS',$,(#6));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn empty_projected_crs_name_falls_back_to_target_crs() {
+        let geo = extract_georeferencing(IFC2X3_EPSET_EMPTY_CRS_NAME_IFC)
+            .expect("expected georeferencing from ePset_MapConversion");
+        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:28992"));
+    }
+
+    /// An explicit ePSet `MapUnit` label resolves to the matching metre scale,
+    /// parity with the native IfcProjectedCRS path (which reads it from the
+    /// unit entity). Direct consumers must not default these offsets to metres.
+    const IFC2X3_EPSET_FOOT_MAPUNIT_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ifc-georeferencer foot-mapunit fixture'),'2;1');
+FILE_NAME('georef-foot.ifc','2026-06-26T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#2=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1000.5),$);
+#3=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(2000.25),$);
+#4=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(0.),$);
+#5=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#2,#3,#4));
+#6=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2225'),$);
+#8=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('FOOT'),$);
+#7=IFCPROPERTYSET('27AKTMp8j58fBEhvkJkcNJ',$,'ePset_ProjectedCRS',$,(#6,#8));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn epset_map_unit_label_resolves_scale() {
+        let geo = extract_georeferencing(IFC2X3_EPSET_FOOT_MAPUNIT_IFC).expect("georef");
+        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:2225"));
+        assert_eq!(geo.map_unit.as_deref(), Some("FOOT"));
+        assert_eq!(geo.map_unit_scale, Some(0.3048));
     }
 
     /// Two authored IfcMapConversions: the FIRST one wins, matching the TS

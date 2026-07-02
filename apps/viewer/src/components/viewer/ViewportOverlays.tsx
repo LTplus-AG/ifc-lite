@@ -274,9 +274,20 @@ function BasepointToggleButton() {
  */
 function PointCloudPanelMount() {
   const count = useViewerStore((s) => s.pointCloudAssetCount);
-  // Triangle total comes from the merged geometry result. The panel
-  // gates the BIM↔scan deviation compute button on triangleCount > 0
-  // so the user can't trigger an empty-BVH compute pass.
-  const triangleCount = useViewerStore((s) => s.geometryResult?.totalTriangles ?? 0);
+  // BIM↔scan deviation is a CROSS-MODEL operation: the point cloud is one
+  // federated model, the BIM mesh is another. `renderer.computeDeviations()`
+  // builds its BVH from EVERY mesh in the scene (`collectAllSceneMeshes`),
+  // so the compute button must appear whenever ANY loaded model contributes
+  // triangles — not just the active one. Gating on `s.geometryResult` (the
+  // ACTIVE model's result) hid the button whenever the point cloud was the
+  // active model (its synthetic geometryResult has totalTriangles === 0),
+  // which is exactly the common case — so deviation could never be computed
+  // and the colour mode showed every point at the ramp centre (grey). Sum
+  // across all loaded models to mirror the scene the BVH is actually built from.
+  const triangleCount = useViewerStore((s) => {
+    let total = 0;
+    for (const m of s.models.values()) total += m.geometryResult?.totalTriangles ?? 0;
+    return total;
+  });
   return <PointCloudPanel assetCount={count} triangleCount={triangleCount} />;
 }

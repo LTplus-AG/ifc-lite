@@ -29,6 +29,7 @@ import {
   type TranscriptTurn,
 } from '@ifc-lite/extensions';
 import { useViewerStore } from '@/store';
+import { downloadFile } from '@/lib/export/download';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
@@ -83,13 +84,7 @@ export function PrivacyPanel({ onClose }: PrivacyPanelProps) {
 
   const handleExportLog = () => {
     const json = host.actionLog.exportJson();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ifclite-action-log-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadFile(json, `ifclite-action-log-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
     toast.success('Action log exported.');
   };
 

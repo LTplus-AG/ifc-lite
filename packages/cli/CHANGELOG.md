@@ -1,5 +1,128 @@
 # @ifc-lite/cli
 
+## 0.14.0
+
+### Minor Changes
+
+- 909c1b0: Add a typed `GeometryDiagnostics` contract for CSG / opening diagnostics.
+
+  The WASM batch path already computed a rich CSG / opening diagnostic summary
+  (opening classification, per-reason failure breakdown, per-host detail, silent
+  rectangular no-op detection, rect_fast fast-path engagement) and then discarded it,
+  logging only to the browser console. A package consumer could not subscribe to it
+  without scraping console output.
+
+  This surfaces it as a typed, serializable contract:
+
+  - `rust/geometry` exposes a `GeometryDiagnostics` struct and a wasm-free
+    `aggregate_diagnostics` built from the drained router data, so the same shape is
+    producible on the WASM and native paths from a single drain.
+  - The WASM `MeshCollection` exposes the per-batch `diagnostics` as a JS object
+    (replacing the earlier two scalar getters).
+  - `@ifc-lite/geometry` exports the `GeometryDiagnostics` type and
+    `mergeGeometryDiagnostics`, and surfaces a per-load `diagnostics` object on the
+    streaming `complete` event: the geometry worker merges per-batch diagnostics
+    across batches and the parallel loader merges across workers, logging one
+    aggregate console summary.
+  - The viewer reads `event.diagnostics` and logs a concise summary when CSG failures
+    or silent no-ops occur; the full typed object rides the streaming event for a UI
+    or telemetry consumer to subscribe to.
+  - Native parity: the `rust/processing` geometry pass drains opening classification +
+    per-host diagnostics from each per-element router and aggregates them through the
+    same `aggregate_diagnostics`, attaching the full contract to
+    `ProcessingStats.geometry_diagnostics` (the WASM bundle and the server emit it). The
+    native streaming bridge forwards it onto the viewer `complete` event, so the
+    native-only deployed viewer surfaces the same diagnostics as the WASM path, and
+    `@ifc-lite/server-client` types it on the stats response.
+  - CLI / SDK surface: a new wasm `diagnoseGeometry(bytes)` binding runs the same
+    `process_geometry` pass and returns only its `GeometryDiagnostics`, exposed as
+    `GeometryProcessor.diagnoseGeometry` and an `ifc-lite diagnose-geometry <file.ifc>`
+    command (human-readable report, or `--json` for the raw contract).
+
+  `totalCsgFailures` and the classification counts are exact; `productsWithFailures`,
+  `hostsWithOpenings` and `silentNoOps` are batch-summed upper bounds.
+
+### Patch Changes
+
+- 24e1648: Make the Rust-backed exporters reliable on large and degenerate inputs.
+
+  Remove the ~512 MB input cap on GLB/glTF (and the sibling OBJ, CSV, JSON, JSON-LD,
+  STEP, IFCX, HBJSON exporters). They decoded the entire input IFC byte buffer into a
+  single JS string via `safeUtf8Decode` before crossing into WASM, where the binding
+  immediately turned it back into bytes (`content.as_bytes()`). For an input over V8's
+  `0x1fffffe8` (~512 MB) string ceiling that decode threw "Cannot create a string longer
+  than 0x1fffffe8 characters", so files in the 0.5 GB+ range failed before any geometry
+  ran. The boundary now passes the raw `Uint8Array`/`&[u8]` straight through (matching the
+  existing `exportMerged` path), which removes the cap, drops a redundant full-buffer copy
+  and a UTF-8 re-encode, and is byte-faithful for non-UTF-8 input.
+
+  Scope: this lifts the cap on the INPUT side for all exporters. GLB returns a
+  `Uint8Array`, so its output also escapes the V8 ceiling; the string-returning
+  exporters (OBJ/CSV/JSON/JSON-LD/STEP/IFCX/HBJSON) still cap their serialized OUTPUT
+  at the same ~512 MB string limit. In-browser, the wasm32 linear-memory heap (not the
+  string cap) is the practical ceiling for the very largest models.
+
+  Fail loud on an empty GLB export. A malformed-but-parseable model (or a filter whose
+  matched entities carry no triangulated geometry) produced a structurally valid GLB with
+  zero meshes, which the CLI and MCP tools wrote to disk and reported as success. Both now
+  reject a zero-mesh GLB with a clear error (new `countGlbMeshes` helper in
+  `@ifc-lite/export`).
+
+  Guard the GLB assembler against the glTF 32-bit buffer limit. The assembler cast every
+  buffer offset and byteLength `as u32`; past 4 GiB those casts silently wrapped (release
+  builds disable overflow checks) and emitted a corrupt GLB. It now sums the binary buffer
+  length in `usize` and asserts the 4 GiB ceiling with a clear message instead of wrapping.
+
+- 7c45192: Instance repeated geometry in GLB/glTF export (50-85% smaller on repetitive models).
+
+  The from-bytes GLB assembler baked every element occurrence in full, so a model with
+  hundreds of identical windows, doors, or steel parts (one IFC `RepresentationMap`
+  referenced by many `IfcMappedItem`s) emitted that geometry hundreds of times. The
+  exporter now reuses the same representation-identity collation the GPU/native
+  instancing path uses: each repeated shape is emitted ONCE and every occurrence is
+  placed with a glTF node matrix carrying its world pose.
+
+  Each occurrence's node matrix is recomputed in f64 from the per-occurrence world
+  placement, the model RTC / site-local offset the baker subtracted, and the Z-up to Y-up
+  basis change, then folded against the model-wide scene centre before the single f32
+  downcast. Doing the relative transform in the post-RTC baked frame (not the placement's
+  pre-RTC frame) is what keeps a ROTATED occurrence correct under a non-zero site/georef
+  offset — otherwise it is mis-translated by `(R - I) * rtc`, kilometres at national-grid
+  coordinates. The f64 composition keeps the absolute-magnitude terms cancelling to a
+  model-relative, f32-precise translation even at national-grid scale.
+
+  Only exact-bit groups are instanced (the template's local geometry IS each occurrence's),
+  so the exported per-occurrence geometry is byte-faithful; rigid-tier and any
+  singular-placement groups fall back to the flat path. Two round-trip tests reconstruct
+  every instanced occurrence's world geometry from `root.translation * node.matrix *
+template_local` and match the baked geometry to under a millimetre — one on a real model,
+  one synthetic with a rotated instance at national-grid coordinates.
+
+  Non-instanced occurrences keep the existing self-contained `world - scene_center` vertex
+  bake (no node transform), so a consumer that ignores node transforms still sees them
+  correctly placed. The flat remainder is additionally content-hash deduped (byte-identical
+  baked meshes share one mesh placed by a node translation), so the output never regresses
+  below the prior per-occurrence baseline on models without representation-level repeats.
+
+  Measured GLB size: C20-Institute 4.0 -> 1.3 MB (-68%), AC20-Smiley 13.0 -> 2.4 MB (-82%),
+  schependomlaan 15.5 -> 7.6 MB (-51%); models with no repeats are unchanged. Output is
+  byte-deterministic. The viewer's from-meshes GLB path is unaffected (it carries no
+  instancing side-channel and falls back to the flat content-hash dedup).
+
+- Updated dependencies [e6bd2dd]
+- Updated dependencies [24e1648]
+- Updated dependencies [f9f0784]
+- Updated dependencies [7c45192]
+- Updated dependencies [6eb46f1]
+- Updated dependencies [775e479]
+- Updated dependencies [4f76955]
+- Updated dependencies [909c1b0]
+- Updated dependencies [3f25a72]
+  - @ifc-lite/geometry@2.13.0
+  - @ifc-lite/wasm@2.14.0
+  - @ifc-lite/export@2.3.0
+  - @ifc-lite/mcp@0.4.1
+
 ## 0.13.0
 
 ### Minor Changes

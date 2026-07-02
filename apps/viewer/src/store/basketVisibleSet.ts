@@ -113,6 +113,9 @@ function matchesTypeVisibility(ifcType: string | undefined, typeVisibility: View
   if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
   if (ifcType === 'IfcVirtualElement' && !typeVisibility.virtualElements) return false;
   if (ifcType === 'IfcSite' && !typeVisibility.site) return false;
+  // IfcAnnotation 3D mesh geometry (e.g. Bonsai plan-view boxes) tracks the
+  // same toggle that hides the 2D symbolic curve overlay (issue #1354).
+  if (ifcType === 'IfcAnnotation' && !typeVisibility.ifcAnnotations) return false;
   return true;
 }
 

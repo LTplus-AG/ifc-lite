@@ -71,6 +71,7 @@ import type { CatalogTool } from './types';
 import type { ViewerController, ColorTuple } from './PlaygroundViewer';
 import { playgroundFiles } from './playground-files';
 import { playgroundUploads } from './playground-uploads';
+import { sanitizeFilename } from '../../lib/export/download';
 
 // ── loaded-model handle ────────────────────────────────────────────────────
 
@@ -1634,8 +1635,7 @@ function coerceFilename(
   if (!base) base = fallbackBase;
   // Drop any extension already on it (incl. multi-dot like .bcf.zip).
   base = base.replace(/\.(ifc|ifczip|bcfzip|bcf|zip|csv|json|tsv|xml|ids|gltf|glb|ifcx|pdf)$/i, '');
-  base = base.replace(/[^\w.\-]+/g, '_'); // sanitize for OS download
-  if (!base) base = fallbackBase;
+  base = sanitizeFilename(base, { fallback: fallbackBase }); // shared OS-safe sanitiser
   return `${base}.${ext}`;
 }
 

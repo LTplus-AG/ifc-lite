@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/mutations",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "description": "Mutation tracking and property editing for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.9"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

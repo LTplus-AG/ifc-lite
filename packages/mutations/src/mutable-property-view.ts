@@ -1198,6 +1198,37 @@ export class MutablePropertyView {
   }
 
   /**
+   * True when the overlay currently carries anything the STEP exporter would
+   * bake (property/quantity overrides, attribute / positional / type edits,
+   * pset/qset creates or deletes, or overlay-created/tombstoned entities).
+   *
+   * Unlike {@link getMutations} / {@link hasChanges}, this reflects the *current
+   * overlay footprint* — the same set {@link clear} resets and the exporter
+   * reads — rather than the append-only mutation history, which never shrinks.
+   * It is deliberately a conservative over-approximation: undoing an edit resets
+   * the overlay entry's value (or leaves a no-op DELETE marker) instead of
+   * removing it, so a fully-reverted model can still report `true`. That is the
+   * safe direction for gating an export bake — over-reporting only costs a
+   * redundant (identical-output) re-bake, whereas under-reporting would silently
+   * drop edits.
+   */
+  hasPendingChanges(): boolean {
+    return (
+      this.propertyMutations.size > 0 ||
+      this.quantityMutations.size > 0 ||
+      this.attributeMutations.size > 0 ||
+      this.positionalAttrMutations.size > 0 ||
+      this.typeMutations.size > 0 ||
+      this.newPsets.size > 0 ||
+      this.newQsets.size > 0 ||
+      this.deletedPsets.size > 0 ||
+      this.deletedQsets.size > 0 ||
+      this.newEntities.size > 0 ||
+      this.tombstones.size > 0
+    );
+  }
+
+  /**
    * Get count of modified entities
    */
   getModifiedEntityCount(): number {

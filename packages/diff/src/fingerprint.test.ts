@@ -79,6 +79,19 @@ describe('buildDataFingerprint', () => {
     expect(buildDataFingerprint(base)).not.toBe(buildDataFingerprint({ ...base, name: 'W2' }));
   });
 
+  it('includes PredefinedType — value vs unset differ (issue #1361)', () => {
+    // A re-export that drops `.POST.` → `$` is a real change a coordinator may
+    // want to see; the fingerprint must reflect it. (Bonsai's default diff is
+    // attribute-blind and would not, which is the reported discrepancy.)
+    const withType: DataFingerprintInput = { ifcType: 'IfcMember', name: 'member', predefinedType: 'POST' };
+    const unset: DataFingerprintInput = { ifcType: 'IfcMember', name: 'member' };
+    expect(buildDataFingerprint(withType)).not.toBe(buildDataFingerprint(unset));
+    // An unset PredefinedType hashes identically to an explicit-empty one.
+    expect(buildDataFingerprint(unset)).toBe(
+      buildDataFingerprint({ ...unset, predefinedType: '' }),
+    );
+  });
+
   it('treats absent optional collections as empty (stable)', () => {
     expect(buildDataFingerprint({ ifcType: 'IfcWall' })).toBe(
       buildDataFingerprint({

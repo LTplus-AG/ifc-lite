@@ -82,11 +82,10 @@ fn project(verts: &[[f64; 3]], walls: &[WallFace]) -> Option<(usize, usize, Vec<
         let d = dot(sub(c, w.origin), w.n).abs();
         let u = dot(sub(c, w.origin), w.uax);
         let v = dot(sub(c, w.origin), w.vax);
-        if d < 0.7 && u > -0.5 && u < w.ulen + 0.5 && v > -0.5 && v < w.vlen + 0.5 {
-            if best.map_or(true, |(bd, _)| d < bd) {
+        if d < 0.7 && u > -0.5 && u < w.ulen + 0.5 && v > -0.5 && v < w.vlen + 0.5
+            && best.is_none_or(|(bd, _)| d < bd) {
                 best = Some((d, i));
             }
-        }
     }
     let w = &walls[best?.1];
     let us: Vec<f64> = verts.iter().map(|p| dot(sub(*p, w.origin), w.uax)).collect();

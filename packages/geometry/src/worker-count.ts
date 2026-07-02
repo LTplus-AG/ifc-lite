@@ -104,7 +104,18 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   // for idle workers on a model with little parallel work — while the 8–64 MB
   // band, where there's enough geometry to amortize the workers, still scales.
   // (#1258 review P2.)
-  const SMALL_FILE_MB = 64;
+  //
+  // Narrowed from 64 to 24 MB after a 10-core browser worker-count sweep: the
+  // original 8-64 MB band OVER-PROVISIONED decode- and heavy-tail-bound models in
+  // the 24-64 MB range. Each worker is a separate WASM instance that re-decodes
+  // the file into its own heap and rebuilds the entity index, so cores-2 = 8
+  // workers ran 20-30% SLOWER than 4 at ~5x the peak memory (e.g. 882 MB vs
+  // 161 MB on a 54 MB model; a 34 MB heavy-tail model went 7.2s -> 5.7s at 4).
+  // Genuinely small compute-bound steel (170_KM: 20 MB / ~26k boolean jobs) still
+  // measurably benefits from cores-2 (17.0s vs 22.9s at 4 workers), so the fast
+  // path is kept for <= 24 MB where the per-worker re-decode/memory cost is low.
+  // Above 24 MB falls through to the per-core bandwidth cap below (4 on 10-core).
+  const SMALL_FILE_MB = 24;
   const MIN_PARALLEL_MB = 8;
   if (fileSizeMB >= MIN_PARALLEL_MB && fileSizeMB <= SMALL_FILE_MB && cores >= 10) {
     coresCap = Math.min(maxWorkers, cores - 2);

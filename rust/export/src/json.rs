@@ -127,9 +127,9 @@ mod tests {
 
         // A property's value preserves its type (some number-valued property is a JSON number).
         let has_typed_number = arr.iter().any(|e| {
-            e["propertySets"].as_array().map_or(false, |ps| {
+            e["propertySets"].as_array().is_some_and(|ps| {
                 ps.iter().any(|p| {
-                    p["properties"].as_array().map_or(false, |props| {
+                    p["properties"].as_array().is_some_and(|props| {
                         props.iter().any(|pr| pr["value"].is_number() || pr["value"].is_boolean())
                     })
                 })

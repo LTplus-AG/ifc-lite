@@ -13,7 +13,7 @@
 // box-minus-opening volume, and the #1112 roof host against a self-consistency
 // volume + watertight + rim-tear check.
 
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;

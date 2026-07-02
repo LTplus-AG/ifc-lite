@@ -4,6 +4,7 @@
 
 import { useCallback } from 'react';
 import { posthog } from '@/lib/analytics';
+import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import {
   GraphicOverrideEngine,
   renderFrame,
@@ -628,16 +629,10 @@ function useDrawingExport({
     // Use sheet export if enabled, otherwise raw drawing export
     const svg = (sheetEnabled && activeSheet) ? generateSheetSVG() : generateExportSVG();
     if (!svg) return;
-    const blob = new Blob([svg], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const filename = (sheetEnabled && activeSheet)
-      ? `${activeSheet.name.replace(/\s+/g, '-')}-${sectionPlane.axis}-${sectionPlane.position}.svg`
-      : `section-${sectionPlane.axis}-${sectionPlane.position}.svg`;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    const stem = (sheetEnabled && activeSheet)
+      ? `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`
+      : `section-${sectionPlane.axis}-${sectionPlane.position}`;
+    downloadFile(svg, `${stem}.svg`, 'image/svg+xml');
     posthog.capture('drawing_exported', { format: 'svg', axis: sectionPlane.axis, sheet_enabled: sheetEnabled });
   }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
 

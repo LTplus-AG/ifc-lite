@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   X,
   Play,
@@ -20,7 +21,6 @@ import {
   FilePlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
 import { useBCF } from '@/hooks/useBCF';
@@ -126,12 +126,32 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<ClashSortBy>('severity');
-  const [hideTouching, setHideTouching] = useState(false);
+  // View settings live in the store so they survive a panel switch (#1464).
+  const sortBy = useViewerStore((s) => s.clashSortBy);
+  const setSortBy = useViewerStore((s) => s.setClashSortBy);
+  const hideTouching = useViewerStore((s) => s.clashHideTouching);
+  const setHideTouching = useViewerStore((s) => s.setClashHideTouching);
   /** How the rest of the model is shown when a clash is focused (#1275). */
-  const [focusMode, setFocusMode] = useState<ClashFocusMode>('highlight');
+  const focusMode = useViewerStore((s) => s.clashFocusMode);
+  const setFocusMode = useViewerStore((s) => s.setClashFocusMode);
   const [showHelp, setShowHelp] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
+
+  // Clear the clash colours + overlap box when the panel closes/unmounts so they
+  // don't linger on the model after the user leaves clash mode. Restore the
+  // colour-override channel to an active lens (if any) rather than blanking it. (#1277)
+  useEffect(() => () => {
+    const s = useViewerStore.getState();
+    // Fully reset the focus view: a clash focused in isolate/ghost would
+    // otherwise leave the model isolated/ghosted after the panel unmounts.
+    s.clearEntitySelection();
+    s.clearIsolation();
+    s.clearGhost();
+    s.setClashSelectedId(null);
+    s.setClashHighlightColors(null);
+    s.setClashOverlapBox(null);
+    s.setPendingColorUpdates(s.lensAppliedColors ?? new Map());
+  }, []);
 
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {
@@ -203,6 +223,42 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const total = result?.summary.total ?? 0;
   const shown = visibleClashes.length;
   const bySeverity = result?.summary.bySeverity;
+
+  // Flatten sections → a single row list (group header, clash row, and an
+  // expanded-detail row for opened clashes) so the list virtualizes cleanly and
+  // stays smooth at 10k+ clashes. Collapsed sections contribute only their
+  // header. (#1277 list handling)
+  type ClashDisplayRow =
+    | { kind: 'group'; key: string; label: string; color?: string; count: number }
+    | { kind: 'clash'; clash: Clash }
+    | { kind: 'detail'; clash: Clash };
+  const displayRows = useMemo<ClashDisplayRow[]>(() => {
+    const rows: ClashDisplayRow[] = [];
+    for (const section of sections) {
+      rows.push({ kind: 'group', key: section.key, label: section.label, color: section.color, count: section.items.length });
+      if (collapsed.has(section.key)) continue;
+      for (const clash of section.items) {
+        rows.push({ kind: 'clash', clash });
+        if (expanded.has(clash.id)) rows.push({ kind: 'detail', clash });
+      }
+    }
+    return rows;
+  }, [sections, collapsed, expanded]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: displayRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => {
+      const r = displayRows[i];
+      return r.kind === 'group' ? 32 : r.kind === 'detail' ? 96 : 52;
+    },
+    overscan: 16,
+    getItemKey: (i) => {
+      const r = displayRows[i];
+      return r.kind === 'group' ? `g:${r.key}` : r.kind === 'detail' ? `d:${r.clash.id}` : `c:${r.clash.id}`;
+    },
+  });
 
   /**
    * Create a BCF topic from the selected clash (or the whole result) directly in
@@ -553,8 +609,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         </div>
       )}
 
-      {/* Results */}
-      <ScrollArea className="flex-1">
+      {/* Results — virtualized so 10k+ clashes stay smooth (#1277). */}
+      <div ref={scrollRef} className="flex-1 overflow-auto min-h-0">
         {!result && !running && (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
             <Crosshair className="h-8 w-8 mb-3 opacity-40" />
@@ -579,85 +635,80 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           </div>
         )}
 
-        {sections.map((section) => {
-          const isCollapsed = collapsed.has(section.key);
-          return (
-            <div key={section.key} className="border-b border-border/60">
-              <button
-                onClick={() => toggleSection(section.key)}
-                className="flex w-full items-center gap-1.5 px-3 py-1.5 text-xs font-medium hover:bg-muted/50"
-              >
-                {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                {section.color && (
-                  <span className="h-2 w-2 rounded-full" style={{ background: section.color }} />
-                )}
-                <span className="truncate">{section.label}</span>
-                <span className="ml-auto tabular-nums text-muted-foreground">{section.items.length}</span>
-              </button>
-              {!isCollapsed &&
-                section.items.map((clash) => {
-                  const isExpanded = expanded.has(clash.id);
-                  const touch = isTouching(clash);
-                  return (
-                    <div
-                      key={clash.id}
-                      className={cn('border-t border-border/40', selectedId === clash.id && 'bg-primary/10')}
+        {displayRows.length > 0 && (
+          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+            {rowVirtualizer.getVirtualItems().map((v) => {
+              const row = displayRows[v.index];
+              return (
+                <div
+                  key={v.key}
+                  data-index={v.index}
+                  ref={rowVirtualizer.measureElement}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${v.start}px)` }}
+                >
+                  {row.kind === 'group' ? (
+                    <button
+                      onClick={() => toggleSection(row.key)}
+                      aria-expanded={!collapsed.has(row.key)}
+                      aria-label={`${collapsed.has(row.key) ? 'Expand' : 'Collapse'} ${row.label}`}
+                      className="flex w-full items-center gap-1.5 border-b border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/50"
                     >
-                      <div className="flex w-full items-stretch text-xs">
-                        <button
-                          onClick={() => toggleExpand(clash.id)}
-                          title={isExpanded ? 'Collapse' : 'Show both objects'}
-                          className="flex items-center pl-2 pr-1 text-muted-foreground hover:text-foreground"
-                        >
-                          {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                        </button>
-                        <button
-                          onClick={() => focusClash(clash, focusMode)}
-                          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left hover:bg-muted/50"
-                        >
-                          <span
-                            className="self-stretch w-0.5 rounded-full shrink-0"
-                            style={{ background: SEVERITY[clash.severity].color }}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate">
-                              <span className="text-foreground">{clash.a.tag}</span>
-                              <span className="text-muted-foreground"> × </span>
-                              <span className="text-foreground">{clash.b.tag}</span>
-                              {touch && (
-                                <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
-                                  touch
-                                </span>
-                              )}
-                            </div>
-                            <div className="truncate text-[10px] text-muted-foreground">
-                              {clash.a.name ?? shortName(clash.a.key)} ↔ {clash.b.name ?? shortName(clash.b.key)}
-                            </div>
-                          </div>
-                          <span className="shrink-0 tabular-nums text-muted-foreground">{formatDistance(clash.distance)}</span>
-                        </button>
-                        <button
-                          onClick={() => focusClash(clash, focusMode === 'highlight' ? 'isolate' : focusMode)}
-                          title={focusMode === 'ghost' ? 'Ghost the rest (X-Ray context)' : 'Isolate this pair (hide everything else)'}
-                          className="flex items-center px-2 text-muted-foreground hover:text-foreground"
-                        >
-                          <Focus className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      {isExpanded && (
-                        <div className="pb-1.5">
-                          <div className="px-7 py-1 text-[10px] text-muted-foreground">{describeClash(clash)}</div>
-                          <ElementRow el={clash.a} side={0} />
-                          <ElementRow el={clash.b} side={1} />
-                        </div>
-                      )}
+                      {collapsed.has(row.key) ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      {row.color && <span className="h-2 w-2 rounded-full" style={{ background: row.color }} />}
+                      <span className="truncate">{row.label}</span>
+                      <span className="ml-auto tabular-nums text-muted-foreground">{row.count}</span>
+                    </button>
+                  ) : row.kind === 'detail' ? (
+                    <div className="border-t border-border/40 pb-1.5">
+                      <div className="px-7 py-1 text-[10px] text-muted-foreground">{describeClash(row.clash)}</div>
+                      <ElementRow el={row.clash.a} side={0} />
+                      <ElementRow el={row.clash.b} side={1} />
                     </div>
-                  );
-                })}
-            </div>
-          );
-        })}
-      </ScrollArea>
+                  ) : (
+                    <div className={cn('flex w-full items-stretch border-t border-border/40 text-xs', selectedId === row.clash.id && 'bg-primary/10')}>
+                      <button
+                        onClick={() => toggleExpand(row.clash.id)}
+                        aria-expanded={expanded.has(row.clash.id)}
+                        title={expanded.has(row.clash.id) ? 'Collapse' : 'Show both objects'}
+                        className="flex items-center pl-2 pr-1 text-muted-foreground hover:text-foreground"
+                      >
+                        {expanded.has(row.clash.id) ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        onClick={() => focusClash(row.clash, focusMode)}
+                        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left hover:bg-muted/50"
+                      >
+                        <span className="self-stretch w-0.5 rounded-full shrink-0" style={{ background: SEVERITY[row.clash.severity].color }} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate">
+                            <span className="text-foreground">{row.clash.a.tag}</span>
+                            <span className="text-muted-foreground"> × </span>
+                            <span className="text-foreground">{row.clash.b.tag}</span>
+                            {isTouching(row.clash) && (
+                              <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">touch</span>
+                            )}
+                          </div>
+                          <div className="truncate text-[10px] text-muted-foreground">
+                            {row.clash.a.name ?? shortName(row.clash.a.key)} ↔ {row.clash.b.name ?? shortName(row.clash.b.key)}
+                          </div>
+                        </div>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">{formatDistance(row.clash.distance)}</span>
+                      </button>
+                      <button
+                        onClick={() => focusClash(row.clash, focusMode === 'highlight' ? 'isolate' : focusMode)}
+                        title={focusMode === 'ghost' ? 'Ghost the rest (X-Ray context)' : 'Isolate this pair (hide everything else)'}
+                        className="flex items-center px-2 text-muted-foreground hover:text-foreground"
+                      >
+                        <Focus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -132,65 +132,184 @@ export function extractGeoreferencing(
 }
 
 /**
- * IFC2x3 fallback: a property set named `ePSet_MapConversion` /
- * `EPset_MapConversion` carrying Eastings/Northings/OrthogonalHeight (+
- * optional XAxisAbscissa/XAxisOrdinate/Scale) as IfcPropertySingleValue
- * entries. Mirrors `GeoRefExtractor::parse_pset_map_conversion` in
- * rust/core/src/georef.rs.
+ * Unwrap an IfcValue `NominalValue`. The columnar/on-demand extractor delivers
+ * typed values as a `[TYPENAME, value]` tuple (e.g.
+ * `["IFCLENGTHMEASURE", 160073528]`, `["IFCLABEL", "EPSG:7415"]`), which
+ * `getNumber`/`getString` don't see through; raw scalars (used by the
+ * entity-map callers) pass through untouched.
+ */
+function unwrapNominalValue(value: unknown): unknown {
+  if (Array.isArray(value) && value.length >= 2 && typeof value[0] === 'string') {
+    return value[1];
+  }
+  return value;
+}
+
+/**
+ * Read an `IfcPropertySet`'s `IfcPropertySingleValue` children into a
+ * name → raw-value map, keeping the value as-is (string or number) so both
+ * numeric (Eastings) and string (TargetCRS, EPSG Name) properties survive.
+ */
+function readPsetSingleValues(
+  entities: Map<number, IfcEntity>,
+  pset: IfcEntity,
+): Record<string, string | number> {
+  const values: Record<string, string | number> = {};
+  // IfcPropertySet: GlobalId (0), OwnerHistory (1), Name (2), Description (3), HasProperties (4)
+  const props = pset.attributes[4];
+  if (Array.isArray(props)) {
+    for (const propRef of props) {
+      const propId = getReference(propRef);
+      if (!propId) continue;
+      const prop = entities.get(propId);
+      if (!prop) continue;
+      // IfcPropertySingleValue: Name (0), Description (1), NominalValue (2)
+      const propName = getString(prop.attributes[0]);
+      if (!propName) continue;
+      const raw = unwrapNominalValue(prop.attributes[2]);
+      if (typeof raw === 'number') {
+        values[propName] = raw;
+      } else if (typeof raw === 'string') {
+        // Keep the raw string verbatim. Coordinate fields are coerced on read
+        // via `asNumber` (some writers store Eastings/Scale as strings), while
+        // CRS metadata that merely looks numeric — `Name: "7415"`, `MapZone:
+        // "31N"` — must stay a string so `asString` doesn't discard it.
+        values[propName] = raw;
+      }
+    }
+  }
+  return values;
+}
+
+/**
+ * Find the first `IfcPropertySet` whose Name matches `targetName`
+ * case-insensitively. buildingSMART's geo-referencing guide spells the
+ * IFC2x3 property sets `ePSet_…` (capital S), but real authoring tools (e.g.
+ * the `ifc-georeferencer` post-processor) write `ePset_…` (lowercase) — an
+ * exact match silently dropped those models to the legacy IfcSite/EPSG:4326
+ * fallback, so they displayed the wrong CRS.
+ */
+function findPsetByName(
+  entities: Map<number, IfcEntity>,
+  entitiesByType: Map<string, number[]>,
+  targetName: string,
+): IfcEntity | null {
+  const target = targetName.toLowerCase();
+  const psetIds = entitiesByType.get('IfcPropertySet') || [];
+  for (const psetId of psetIds) {
+    const pset = entities.get(psetId);
+    if (!pset) continue;
+    const name = getString(pset.attributes[2]);
+    if (name && name.toLowerCase() === target) return pset;
+  }
+  return null;
+}
+
+function asString(value: string | number | undefined): string | undefined {
+  if (typeof value === 'string') return value.length > 0 ? value : undefined;
+  if (typeof value === 'number') return String(value);
+  return undefined;
+}
+
+function asNumber(value: string | number | undefined): number | undefined {
+  return typeof value === 'number' ? value : getNumber(value);
+}
+
+/**
+ * Map an IFC unit label (e.g. "MILLIMETRE", "FOOT") to its metre scale.
+ * Mirrors the viewer's `inferMapUnitScale` and the native `IfcProjectedCRS`
+ * path so direct parser/MCP consumers of `ProjectedCRS.mapUnitScale` see the
+ * same scale regardless of whether the CRS came from a native entity or an
+ * ePSet. Returns `undefined` for an absent/unknown unit (the ePSet convention
+ * then defers to the project length unit downstream).
+ */
+function inferMapUnitScaleFromLabel(mapUnit: string | undefined): number | undefined {
+  if (!mapUnit) return undefined;
+  const n = mapUnit.toUpperCase();
+  if (n.includes('US') && (n.includes('SURVEY') || n.includes('FTUS'))) return 0.3048006096;
+  if (n.includes('FOOT') || n.includes('FEET')) return 0.3048;
+  if (n.includes('MILLI')) return 0.001;
+  if (n.includes('CENTI')) return 0.01;
+  if (n.includes('DECI')) return 0.1;
+  if (n.includes('KILO')) return 1000;
+  if (n.includes('METRE') || n.includes('METER')) return 1;
+  return undefined;
+}
+
+/**
+ * IFC2x3 fallback: a property set named `ePSet_MapConversion` (any casing)
+ * carrying Eastings/Northings/OrthogonalHeight (+ optional
+ * XAxisAbscissa/XAxisOrdinate/Scale/TargetCRS), optionally paired with an
+ * `ePSet_ProjectedCRS` set carrying the EPSG `Name`. Mirrors
+ * `GeoRefExtractor::extract_from_pset` in rust/core/src/georef.rs.
  */
 function extractEPSetMapConversion(
   entities: Map<number, IfcEntity>,
   entitiesByType: Map<string, number[]>,
 ): GeoreferenceInfo | null {
-  const psetIds = entitiesByType.get('IfcPropertySet') || [];
-  for (const psetId of psetIds) {
-    const pset = entities.get(psetId);
-    if (!pset) continue;
-    // IfcPropertySet: GlobalId (0), OwnerHistory (1), Name (2), Description (3), HasProperties (4)
-    const name = getString(pset.attributes[2]);
-    if (name !== 'ePSet_MapConversion' && name !== 'EPset_MapConversion') continue;
+  const pset = findPsetByName(entities, entitiesByType, 'ePSet_MapConversion');
+  if (!pset) return null;
 
-    const values: Record<string, number> = {};
-    const props = pset.attributes[4];
-    if (Array.isArray(props)) {
-      for (const propRef of props) {
-        const propId = getReference(propRef);
-        if (!propId) continue;
-        const prop = entities.get(propId);
-        if (!prop) continue;
-        // IfcPropertySingleValue: Name (0), Description (1), NominalValue (2)
-        const propName = getString(prop.attributes[0]);
-        const value = getNumber(prop.attributes[2]);
-        if (propName && value !== undefined) {
-          values[propName] = value;
-        }
-      }
-    }
+  const values = readPsetSingleValues(entities, pset);
 
-    const eastings = values['Eastings'] ?? 0;
-    const northings = values['Northings'] ?? 0;
-    const orthogonalHeight = values['OrthogonalHeight'] ?? 0;
-    if (eastings === 0 && northings === 0 && orthogonalHeight === 0) continue;
+  // Some writers store the offsets as strings, so coerce on read.
+  const eastings = asNumber(values['Eastings']) ?? 0;
+  const northings = asNumber(values['Northings']) ?? 0;
+  const orthogonalHeight = asNumber(values['OrthogonalHeight']) ?? 0;
 
-    const mapConversion: MapConversion = {
-      id: pset.expressId,
-      sourceCRS: 0,
-      targetCRS: 0,
-      eastings,
-      northings,
-      orthogonalHeight,
-      xAxisAbscissa: values['XAxisAbscissa'],
-      xAxisOrdinate: values['XAxisOrdinate'],
-      scale: values['Scale'],
-    };
-    return {
-      hasGeoreference: true,
-      source: 'ePSetMapConversion',
-      mapConversion,
-      transformMatrix: computeTransformMatrix(mapConversion),
+  const mapConversion: MapConversion = {
+    id: pset.expressId,
+    sourceCRS: 0,
+    targetCRS: 0,
+    eastings,
+    northings,
+    orthogonalHeight,
+    xAxisAbscissa: asNumber(values['XAxisAbscissa']),
+    xAxisOrdinate: asNumber(values['XAxisOrdinate']),
+    scale: asNumber(values['Scale']),
+  };
+
+  // Resolve the CRS name from ePSet_ProjectedCRS.Name, falling back to the
+  // MapConversion's TargetCRS (the ifc-georeferencer tool writes both as the
+  // same EPSG label). Without this the EPSG code in the file was never
+  // surfaced on the IFC2x3 path.
+  const crsPset = findPsetByName(entities, entitiesByType, 'ePSet_ProjectedCRS');
+  const crsValues = crsPset ? readPsetSingleValues(entities, crsPset) : {};
+  const crsName = asString(crsValues['Name']) ?? asString(values['TargetCRS']);
+
+  // Reject only when there is nothing to georeference by: no CRS name AND the
+  // placement sits at the local origin. Mirrors `has_georef()` in rust/core
+  // (a CRS name OR any non-zero offset is sufficient) so a valid zero-origin
+  // placement at a real projected CRS is kept rather than dropping to the
+  // legacy IfcSite/EPSG:4326 fallback.
+  if (!crsName && eastings === 0 && northings === 0 && orthogonalHeight === 0) return null;
+
+  let projectedCRS: ProjectedCRS | undefined;
+  if (crsName || crsPset) {
+    const mapUnit = asString(crsValues['MapUnit']);
+    projectedCRS = {
+      id: crsPset?.expressId ?? pset.expressId,
+      name: crsName ?? '',
+      description: asString(crsValues['Description']),
+      geodeticDatum: asString(crsValues['GeodeticDatum']),
+      verticalDatum: asString(crsValues['VerticalDatum']),
+      mapProjection: asString(crsValues['MapProjection']),
+      mapZone: asString(crsValues['MapZone']),
+      mapUnit,
+      // An explicit ePSet MapUnit carries its own scale (parity with the native
+      // IfcProjectedCRS path). When absent, leave it undefined so consumers fall
+      // back to the project length unit per the buildingSMART convention.
+      mapUnitScale: inferMapUnitScaleFromLabel(mapUnit),
     };
   }
-  return null;
+
+  return {
+    hasGeoreference: true,
+    source: 'ePSetMapConversion',
+    mapConversion,
+    projectedCRS,
+    transformMatrix: computeTransformMatrix(mapConversion),
+  };
 }
 
 function getAttributeValueByName(entity: IfcEntity, attributeName: string): unknown {

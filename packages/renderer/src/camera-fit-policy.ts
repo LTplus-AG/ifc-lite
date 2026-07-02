@@ -31,6 +31,21 @@ import type { Vec3 } from './raycaster.js';
 const LINEAR_ASPECT_THRESHOLD = 50;
 
 /**
+ * Minimum longest-axis extent (world units, i.e. metres) for the linear
+ * policy to apply. The linear "look down the longest axis from inside the
+ * bbox" pose only makes sense for genuine infrastructure (railway / road
+ * alignments are hundreds of metres). A small but high-aspect element — a
+ * single 4.86 m reinforcing bar is aspect ~130:1 — would otherwise get the
+ * linear pose, which places the camera *inside* its bounding box looking
+ * end-on, so the bar projects to a sub-pixel smear and reads as "nothing
+ * rendered" (issue #1350). Below this floor the compact SE-isometric pose
+ * frames the whole element and keeps it visible. Picked so the longest
+ * building elements (rebar, steel members, long beams ≲ tens of metres)
+ * stay compact while alignments (≥ hundreds of metres) stay linear.
+ */
+const LINEAR_MIN_LONGEST = 100;
+
+/**
  * Target on-screen projection for the smallest non-degenerate dim, in
  * pixels. The linear-policy distance is chosen so the shortest meaningful
  * feature (typically the height of signals / referents) lands at roughly
@@ -78,6 +93,12 @@ export interface PickFitPolicyOptions {
    * at the default; exposed for tests that pin the threshold behaviour.
    */
   linearAspectThreshold?: number;
+  /**
+   * Override the minimum longest-axis extent (world units) at/above which the
+   * linear policy is allowed to apply. Production should leave this at the
+   * default; exposed for tests that pin the size-floor behaviour.
+   */
+  linearMinLongest?: number;
 }
 
 /**
@@ -106,8 +127,14 @@ export function pickFitPolicy(
   const shortest = Math.min(sizeX, sizeY, sizeZ);
   const aspect = longest / Math.max(shortest, longest * 1e-6);
   const threshold = options.linearAspectThreshold ?? LINEAR_ASPECT_THRESHOLD;
+  const minLongest = options.linearMinLongest ?? LINEAR_MIN_LONGEST;
 
-  if (aspect <= threshold) {
+  // Compact unless the bbox is BOTH high-aspect AND large enough to be real
+  // infrastructure. The size floor stops a small high-aspect element (a
+  // single rebar / steel member) from getting the "look down the axis from
+  // inside the bbox" linear pose, which renders it end-on and invisible
+  // (issue #1350).
+  if (aspect <= threshold || longest < minLongest) {
     // Compact: reproduce the legacy SE isometric pose 1:1 so building
     // models frame exactly as before.
     const distance = longest * 2.0;

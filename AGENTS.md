@@ -49,5 +49,9 @@ Project-specific gotchas and guardrails — the things that bite you *here* and 
 ## CLI
 - Discover the full SDK API with `ifc-lite schema` (JSON). `eval` runs SDK expressions (`ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"`); always pass `--json` for machine output. `HeadlessBackend` (`packages/cli/src/headless-backend.ts`) runs query/export/create/IDS/BCF without a renderer.
 
+## Browser exports (viewer)
+- One way to save a file: `apps/viewer/src/lib/export/download.ts`. Use `downloadBlob` / `downloadFile` / `downloadDataUrl` — never hand-roll an `<a download>` + `URL.createObjectURL` dance, and never write another filename regex. `downloadFile` already copies the wasm `Uint8Array<ArrayBufferLike>` into a `BlobPart`.
+- Run every user/model-derived filename through `sanitizeFilename` (preserves case + dots, strips only OS-unsafe chars — see #1299). It is *not* a slug; don't lowercase or hyphenate names for filenames. Slugs (extension IDs) are a separate concern.
+
 ## New source files
 - MPL-2.0 header on every new file — see [`./LICENSE_HEADER.md`](./LICENSE_HEADER.md).

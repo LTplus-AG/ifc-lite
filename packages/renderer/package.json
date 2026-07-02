@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/renderer",
-  "version": "1.28.5",
+  "version": "1.33.2",
   "description": "WebGPU renderer for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,7 +22,7 @@
     "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {
-    "@webgpu/types": "^0.1.70",
+    "@webgpu/types": "^0.1.71",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   },

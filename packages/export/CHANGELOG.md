@@ -1,5 +1,137 @@
 # @ifc-lite/export
 
+## 2.3.0
+
+### Minor Changes
+
+- 24e1648: Make the Rust-backed exporters reliable on large and degenerate inputs.
+
+  Remove the ~512 MB input cap on GLB/glTF (and the sibling OBJ, CSV, JSON, JSON-LD,
+  STEP, IFCX, HBJSON exporters). They decoded the entire input IFC byte buffer into a
+  single JS string via `safeUtf8Decode` before crossing into WASM, where the binding
+  immediately turned it back into bytes (`content.as_bytes()`). For an input over V8's
+  `0x1fffffe8` (~512 MB) string ceiling that decode threw "Cannot create a string longer
+  than 0x1fffffe8 characters", so files in the 0.5 GB+ range failed before any geometry
+  ran. The boundary now passes the raw `Uint8Array`/`&[u8]` straight through (matching the
+  existing `exportMerged` path), which removes the cap, drops a redundant full-buffer copy
+  and a UTF-8 re-encode, and is byte-faithful for non-UTF-8 input.
+
+  Scope: this lifts the cap on the INPUT side for all exporters. GLB returns a
+  `Uint8Array`, so its output also escapes the V8 ceiling; the string-returning
+  exporters (OBJ/CSV/JSON/JSON-LD/STEP/IFCX/HBJSON) still cap their serialized OUTPUT
+  at the same ~512 MB string limit. In-browser, the wasm32 linear-memory heap (not the
+  string cap) is the practical ceiling for the very largest models.
+
+  Fail loud on an empty GLB export. A malformed-but-parseable model (or a filter whose
+  matched entities carry no triangulated geometry) produced a structurally valid GLB with
+  zero meshes, which the CLI and MCP tools wrote to disk and reported as success. Both now
+  reject a zero-mesh GLB with a clear error (new `countGlbMeshes` helper in
+  `@ifc-lite/export`).
+
+  Guard the GLB assembler against the glTF 32-bit buffer limit. The assembler cast every
+  buffer offset and byteLength `as u32`; past 4 GiB those casts silently wrapped (release
+  builds disable overflow checks) and emitted a corrupt GLB. It now sums the binary buffer
+  length in `usize` and asserts the 4 GiB ceiling with a clear message instead of wrapping.
+
+### Patch Changes
+
+- 775e479: Fix IFC2X3 → IFC4/IFC4X3 schema conversion producing invalid entities. The converter trimmed
+  trailing attributes when downgrading but never **padded** the new trailing attributes that
+  newer schemas added (e.g. `PredefinedType` on `IfcWall` / `IfcBeam` / `IfcOpeningElement` /
+  `IfcFastener` / …, the IfcDoor/IfcWindow additions, `IfcMaterial.Category`, etc.). Upgraded
+  entities were left a positional attribute short and rejected by strict readers (e.g. BIM
+  Vision). Padding is driven by the generated buildingSMART attribute tables (`@ifc-lite/data`),
+  scoped to upconversion so the downconversion trim path is untouched.
+
+  Padding is applied **only when the source attribute name-list is a strict prefix of the
+  target's** (i.e. the newer schema merely appended attributes). Many entities insert/reorder
+  attributes mid-list — e.g. `IfcMaterialProperties` (`[Material]` → `[Name, Description,
+Properties, Material]`), `IfcApproval`, `IfcTask` — where blindly appending `$` would shift
+  values into the wrong, type-invalid slots; those are left untouched. All headline targets
+  (`IfcWall`/`Beam`/`Column`/`Member`/`Plate`/`OpeningElement`/`Door`/`Window`/`Fastener`/
+  `MechanicalFastener`/`Grid`, `IfcMaterial`) are prefix-safe, so the intended fix is preserved.
+
+  Also tolerate whitespace after `=` in `convertStepLine` (e.g. Tekla's `#34498= IFCWALL(...)`);
+  such lines previously failed the entity-line regex and passed through **unconverted**, so
+  neither type renames nor attribute adjustment applied. Validated end-to-end with ifcopenshell:
+  a federated IFC2X3 + IFC4X3 → IFC4 export went from 2556 "Invalid attribute value" errors to 0
+  (remaining issues are pre-existing source-data defects). ([#1416](https://github.com/LTplus-AG/ifc-lite/issues/1416))
+
+- Updated dependencies [e6bd2dd]
+- Updated dependencies [24e1648]
+- Updated dependencies [f9f0784]
+- Updated dependencies [7c45192]
+- Updated dependencies [6eb46f1]
+- Updated dependencies [4f76955]
+- Updated dependencies [909c1b0]
+- Updated dependencies [3f25a72]
+  - @ifc-lite/geometry@2.13.0
+
+## 2.2.0
+
+### Minor Changes
+
+- [#1407](https://github.com/LTplus-AG/ifc-lite/pull/1407) [`6af9dc2`](https://github.com/LTplus-AG/ifc-lite/commit/6af9dc26f97f87237c27ae502c127e6170a80d64) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Apply pending edits in merged (federated) export. `MergeModelInput` gains an optional
+  `mutationView`; `MergedExporter.exportAsync` now bakes each model's edits (attribute /
+  property / quantity / retype / positional mutations and overlay-created entities) into its
+  source via `StepExporter` before merging, so federated export round-trips edits exactly like
+  single-model export. Previously the merged path read raw source bytes and silently dropped
+  every mutation — only single-model export reflected edits ([#1406](https://github.com/LTplus-AG/ifc-lite/issues/1406)).
+
+  Models without pending edits pass through unchanged (no export/parse cost). The synchronous
+  `MergedExporter.export()` throws if a model carries pending edits, since baking needs the
+  async parser. The viewer's "Merged (All Models)" export now passes each model's mutation view
+  (gated by the Apply Mutations toggle).
+
+  `MutablePropertyView` gains `hasPendingChanges()`, which reports the current overlay footprint
+  (what the exporter would bake) rather than the append-only mutation history; the merged
+  exporter uses it to decide whether to re-bake a model.
+
+### Patch Changes
+
+- Updated dependencies [[`6af9dc2`](https://github.com/LTplus-AG/ifc-lite/commit/6af9dc26f97f87237c27ae502c127e6170a80d64)]:
+  - @ifc-lite/mutations@1.17.0
+
+## 2.1.1
+
+### Patch Changes
+
+- [#1415](https://github.com/LTplus-AG/ifc-lite/pull/1415) [`829b208`](https://github.com/LTplus-AG/ifc-lite/commit/829b208735ef05f36c0bd3fc9ba802cc12cfcabb) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Stop dropping shared property atoms when a property is edited. Editing a property replaces its
+  property set and skips that set's member atoms wholesale; because exporters deduplicate shared
+  `Pset_*Common` atoms (e.g. one `IsExternal` `IfcPropertySingleValue` referenced by dozens of
+  psets), this orphaned every other pset referencing the atom, leaving dangling `#id` references —
+  an invalid IFC that strict readers (e.g. BIM Vision) refuse to open. `StepExporter` now retains
+  any atom still referenced by a surviving property set / element quantity; the edited pset still
+  emits its replacement with the new value while shared atoms stay for the psets that keep their
+  original. Fixes both single-model and merged export (the merged exporter bakes through
+  `StepExporter`). ([#1413](https://github.com/LTplus-AG/ifc-lite/issues/1413))
+
+  Also stamp generated `IfcPropertySet` / `IfcRelDefinesByProperties` / `IfcElementQuantity`
+  entities (emitted when a property/quantity is edited) with an existing `IfcOwnerHistory`
+  instead of `$`. OwnerHistory is optional in IFC4 but **mandatory** in IFC2X3, so the previous
+  `$` produced an invalid IFC2X3 file that strict readers (e.g. BIM Vision) reject. The exporter
+  now reuses the model's owner history (falling back to `$` only when the file has none).
+
+- Updated dependencies [[`8a4ce69`](https://github.com/LTplus-AG/ifc-lite/commit/8a4ce694ea1d8c1b0f25310f8a1addb3ff649f14)]:
+  - @ifc-lite/parser@3.5.0
+
+## 2.1.0
+
+### Minor Changes
+
+- [#1392](https://github.com/LTplus-AG/ifc-lite/pull/1392) [`d38ee2f`](https://github.com/LTplus-AG/ifc-lite/commit/d38ee2fb2e8003503600df261b0fd9aa1f279a4e) Thanks [@louistrue](https://github.com/louistrue)! - Make `MergedExporter` unit-aware so federating models with different length units no longer mis-scales geometry, and reconcile shared GlobalIds instead of emitting duplicates ([#1332](https://github.com/LTplus-AG/ifc-lite/issues/1332)).
+
+  Previously the merge folded every model into the first model's `IfcProject` and deduplicated its `IfcUnitAssignment`, so a second model's raw coordinates were silently reinterpreted under the first model's unit (e.g. a metre model read as feet, ≈3.28x off). Models that reused the same `GlobalId` for `IfcSite`/`IfcBuilding`/`IfcBuildingStorey` or products also produced duplicate-entity errors in strict viewers.
+
+  Now:
+
+  - A model that shares the first model's length unit is unified as before (single project, spatial structure and infrastructure deduplicated).
+  - A model with a different length unit is **federated**: it keeps its own `IfcProject`, `IfcUnitAssignment` and representation contexts, so its coordinates stay correctly scaled. The output then contains more than one `IfcProject` only when units actually differ — an intentional, flagged relaxation of the `IfcSingleProjectInstance` rule that is strictly better than the previous silent mis-scale.
+  - GlobalIds are reconciled, not blindly duplicated: a non-relationship rooted entity repeating a GlobalId already emitted **in the same unit space** is unified to the one instance. Otherwise it is kept and re-stamped with a fresh deterministic GlobalId — this preserves objectified relationships (`IfcRel*`), whose membership can differ even when the GlobalId matches, and prevents a unit-compatible model from being unified onto a federated (different-unit) instance.
+  - Resource entities whose Name is coincidentally a 22-character GlobalId-charset string (properties, quantities, materials, styles, …) are no longer mistaken for rooted entities, so their values and names are never dropped or overwritten.
+
+  The model's unit scale is read from `dataStore.lengthUnitScale` automatically. New `MergeModelInput.lengthUnitScale` lets callers override it, and a new `MergeExportOptions.unitReconciliation: 'auto' | 'assume-shared'` option (default `'auto'`) can force the pre-1332 single-project behaviour when the caller has already normalised units. `MergeExportResult.stats` now also reports `federatedModelCount` and `warnings` (the latter flags the multi-`IfcProject` conformance trade-off); the CLI `merge` command prints these warnings.
+
 ## 2.0.0
 
 ### Major Changes

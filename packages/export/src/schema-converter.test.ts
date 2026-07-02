@@ -164,6 +164,49 @@ describe('schema-converter', () => {
       // Preserved escaped quote
       expect(result).toContain("'Wall''s Name'");
     });
+
+    // ─── upconversion attribute padding (issue #1416) ──────────────────────
+
+    it('pads PredefinedType when upconverting IFC2X3 → IFC4 (IfcOpeningElement 8→9)', () => {
+      const line = "#5=IFCOPENINGELEMENT('guid',$,$,$,'Opening',#6,#7,$);"; // 8 attrs
+      const result = convertStepLine(line, 'IFC2X3', 'IFC4');
+      expect(result).toBe("#5=IFCOPENINGELEMENT('guid',$,$,$,'Opening',#6,#7,$,$);"); // 9
+    });
+
+    it('pads IfcWall 8→9 on IFC2X3 → IFC4', () => {
+      const line = "#10=IFCWALL('guid',$,'W',$,$,#1,#2,'tag');"; // 8 attrs
+      const result = convertStepLine(line, 'IFC2X3', 'IFC4');
+      expect(result).toBe("#10=IFCWALL('guid',$,'W',$,$,#1,#2,'tag',$);"); // +PredefinedType
+    });
+
+    it('pads multiple added attributes (IfcMaterial 1→3)', () => {
+      const result = convertStepLine("#3=IFCMATERIAL('Steel');", 'IFC2X3', 'IFC4');
+      expect(result).toBe("#3=IFCMATERIAL('Steel',$,$);"); // +Description,+Category
+    });
+
+    it('tolerates whitespace after = (Tekla-style formatting)', () => {
+      const line = "#34498= IFCOPENINGELEMENT('guid',$,$,$,'Opening',#6,#7,$);";
+      const result = convertStepLine(line, 'IFC2X3', 'IFC4');
+      // Reassembled without the stray space, and padded to 9 attrs.
+      expect(result).toBe("#34498=IFCOPENINGELEMENT('guid',$,$,$,'Opening',#6,#7,$,$);");
+    });
+
+    it('does not pad when the attribute count already matches (IfcSlab 9=9)', () => {
+      const line = "#11=IFCSLAB('guid',$,'S',$,$,#1,#2,'tag',.FLOOR.);"; // 9 attrs
+      expect(convertStepLine(line, 'IFC2X3', 'IFC4')).toBe(line);
+    });
+
+    it('does NOT pad entities whose attrs were reordered, not appended (IfcMaterialProperties)', () => {
+      // IFC2X3 [Material] vs IFC4 [Name, Description, Properties, Material] — NOT a
+      // prefix, so trailing `$` would shove the Material ref into the Name slot.
+      const line = '#5=IFCMATERIALPROPERTIES(#6);';
+      expect(convertStepLine(line, 'IFC2X3', 'IFC4')).toBe(line); // left untouched
+    });
+
+    it('does NOT pad a reordered IfcApproval (7→9, fully reordered)', () => {
+      const line = "#5=IFCAPPROVAL('desc','2020-01-01',$,$,$,'Name','Id');"; // 7 attrs
+      expect(convertStepLine(line, 'IFC2X3', 'IFC4')).toBe(line);
+    });
   });
 
   // ─── needsConversion ────────────────────────────────────────────────────

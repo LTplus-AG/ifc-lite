@@ -13,6 +13,7 @@ import {
 } from './dragOverlayState';
 import { ViewportOverlays } from './ViewportOverlays';
 import { MergeLayersBanner } from './MergeLayersBanner';
+import { GeometryModeBanner } from './GeometryModeBanner';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
 import { ToolOverlays } from './ToolOverlays';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
@@ -31,6 +32,11 @@ import type { AggregationRelationships } from '@/utils/aggregation';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { cacheFileBlobs, formatFileSize, getCachedFile, getRecentFiles, recordRecentFiles, type RecentFileEntry } from '@/lib/recent-files';
+import {
+  supportsFileSystemAccess,
+  openIfcFilesWithHandles,
+  handlesFromDataTransfer,
+} from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
 import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus } from 'lucide-react';
@@ -38,6 +44,7 @@ import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
+import { isMeshVisibleInViewMode, meshClassIsPlaced } from '@/lib/type-view-visibility';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -366,7 +373,10 @@ export function ViewportContainer() {
     ifcDataStore,
     georefMutations,
     mutationVersion,
-    mergedGeometryResult,
+    // Only the (stable) coordinateInfo is read here, not the whole result —
+    // depending on `mergedGeometryResult` re-runs this on every streamed
+    // geometry batch, re-triggering the property-set georef scan each time.
+    mergedGeometryResult?.coordinateInfo,
     cesiumPlacementDraft,
     cesiumPlacementDraftModelId,
     anchorModelIdOverride,
@@ -405,7 +415,10 @@ export function ViewportContainer() {
       return false;
     }
     setCesiumAvailable(hasGeoref());
-  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable, mergedGeometryResult]);
+    // Depend on the stable coordinateInfo, not the whole mergedGeometryResult:
+    // the latter gets a new reference each streamed batch, which would re-run
+    // this georef property-set scan ~once per batch on large models.
+  }, [storeModels, ifcDataStore, georefMutations, mutationVersion, setCesiumAvailable, mergedGeometryResult?.coordinateInfo]);
 
   // Sync the active Cesium source model ID so terrain actions are scoped correctly
   useEffect(() => {
@@ -440,6 +453,35 @@ export function ViewportContainer() {
     applyDragEvent('leave');
   }, [applyDragEvent]);
 
+  const isSupportedFile = useCallback((f: File) => {
+    const n = f.name.toLowerCase();
+    return n.endsWith('.ifc') || n.endsWith('.ifcx') || n.endsWith('.glb')
+      || n.endsWith('.las') || n.endsWith('.laz') || n.endsWith('.ply') || n.endsWith('.pcd')
+      || n.endsWith('.e57') || n.endsWith('.pts') || n.endsWith('.xyz');
+  }, []);
+
+  // Single routing point for every ingestion path (picker / drop / input). The
+  // optional `handles` array is positionally aligned with `files` and carries a
+  // live FS Access handle per file when one was captured (Chromium) so the model
+  // stays refreshable; entries are `undefined` otherwise.
+  const routeLoad = useCallback((
+    files: File[],
+    handles?: (FileSystemFileHandle | undefined)[],
+  ) => {
+    if (hasModelsLoaded) {
+      // Models already loaded - add new files sequentially (federate).
+      void loadFilesSequentially(files, handles);
+    } else if (files.length === 1) {
+      // Single file, no models loaded - primary single-model load.
+      void loadFile(files[0], { kind: 'primary' }, { sourceHandle: handles?.[0] });
+    } else {
+      // Multiple files, no models loaded - start a fresh federation.
+      resetViewerState();
+      clearAllModels();
+      void loadFilesSequentially(files, handles);
+    }
+  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, hasModelsLoaded]);
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -450,12 +492,13 @@ export function ViewportContainer() {
       return;
     }
 
+    // Capture live handles synchronously — the DataTransferItemList is neutered
+    // once this handler returns, so this must run before any await.
+    const handlesPromise = handlesFromDataTransfer(e.dataTransfer);
+
     // Filter to supported files (IFC, IFCX, GLB, point clouds)
     const allDropped = Array.from(e.dataTransfer.files);
-    const supportedFiles = allDropped.filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
+    const supportedFiles = allDropped.filter(isSupportedFile);
 
     if (supportedFiles.length === 0) {
       // Tell the user *why* — common case is a Recap project / SketchUp
@@ -467,23 +510,22 @@ export function ViewportContainer() {
       return;
     }
 
-    recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
-    void cacheFileBlobs(supportedFiles);
-    setRecentFiles(getRecentFiles().slice(0, 3));
+    void handlesPromise.then((opened) => {
+      // Prefer the handle-paired files (Chromium): each file + handle comes from
+      // the same dropped item, so no filename matching is needed. Fall back to
+      // the plain dropped files when no handles were captured (Firefox/Safari).
+      const supportedOpened = (opened ?? []).filter((o) => isSupportedFile(o.file));
+      const useHandles = supportedOpened.length > 0;
+      const files = useHandles ? supportedOpened.map((o) => o.file) : supportedFiles;
+      const handles = useHandles ? supportedOpened.map((o) => o.handle) : undefined;
 
-    if (hasModelsLoaded) {
-      // Models already loaded - add new files sequentially
-      loadFilesSequentially(supportedFiles);
-    } else if (supportedFiles.length === 1) {
-      // Single file, no models loaded - use loadFile
-      loadFile(supportedFiles[0]);
-    } else {
-      // Multiple files, no models loaded - use federation
-      resetViewerState();
-      clearAllModels();
-      loadFilesSequentially(supportedFiles);
-    }
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, webgpu.supported, hasModelsLoaded]);
+      recordRecentFiles(files.map((file) => ({ name: file.name, size: file.size })));
+      void cacheFileBlobs(files);
+      setRecentFiles(getRecentFiles().slice(0, 3));
+
+      routeLoad(files, handles);
+    });
+  }, [routeLoad, applyDragEvent, isSupportedFile, webgpu.supported]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     // Block file loading if WebGPU not supported
@@ -494,11 +536,9 @@ export function ViewportContainer() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
+    // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
+    // live handle, so these models are not refreshable.
+    const supportedFiles = Array.from(files).filter(isSupportedFile);
 
     if (supportedFiles.length === 0) return;
 
@@ -506,20 +546,33 @@ export function ViewportContainer() {
     void cacheFileBlobs(supportedFiles);
     setRecentFiles(getRecentFiles().slice(0, 3));
 
-    if (supportedFiles.length === 1) {
-      // Single file - use loadFile (simpler single-model path)
-      loadFile(supportedFiles[0]);
-    } else {
-      // Multiple files selected - use federation from the start
-      // Clear everything and start fresh, then load sequentially
-      resetViewerState();
-      clearAllModels();
-      loadFilesSequentially(supportedFiles);
-    }
+    routeLoad(supportedFiles);
 
     // Reset input so same file can be selected again
     e.target.value = '';
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, webgpu.supported]);
+  }, [routeLoad, isSupportedFile, webgpu.supported]);
+
+  // Preferred open path: the File System Access picker (Chromium) captures a
+  // live handle per file so the model can be refreshed from disk. Falls back to
+  // the hidden <input type="file"> on browsers without the API.
+  const handleOpenClick = useCallback(async () => {
+    if (!webgpu.supported) return;
+    if (!supportsFileSystemAccess()) {
+      fileInputRef.current?.click();
+      return;
+    }
+    const opened = await openIfcFilesWithHandles();
+    if (!opened) return;
+    const supported = opened.filter((o) => isSupportedFile(o.file));
+    if (supported.length === 0) return;
+
+    const files = supported.map((o) => o.file);
+    recordRecentFiles(files.map((f) => ({ name: f.name, size: f.size })));
+    void cacheFileBlobs(files);
+    setRecentFiles(getRecentFiles().slice(0, 3));
+
+    routeLoad(files, supported.map((o) => o.handle));
+  }, [routeLoad, isSupportedFile, webgpu.supported]);
 
   const handleStartBlank = useCallback(async () => {
     if (!webgpu.supported) return;
@@ -571,6 +624,28 @@ export function ViewportContainer() {
     }
   }, [loadFile]);
 
+  // Reload-to-apply for the Fast/Exact geometry mode, mirroring the merge-layers
+  // reload: re-load the active model in place so loadFile re-snapshots the mode
+  // and re-tessellates. Clears BOTH pending flags since one reload applies every
+  // load-time geometry setting.
+  const handleGeometryModeReload = useCallback(async () => {
+    const st = useViewerStore.getState();
+    const file = st.getActiveModel()?.sourceFile;
+    st.clearGeometryModePendingReload();
+    st.clearMergeLayersPendingReload();
+    if (file) {
+      try {
+        await loadFile(file);
+      } catch (err) {
+        console.error('[geom-mode-reload] loadFile threw:', err);
+      }
+    } else if (typeof window !== 'undefined') {
+      // No retained File — fall back to a full reload (the mode is persisted).
+      console.warn('[geom-mode-reload] no active sourceFile — falling back to window.location.reload()');
+      window.location.reload();
+    }
+  }, [loadFile]);
+
   const hasGeometry = mergedGeometryResult?.meshes && mergedGeometryResult.meshes.length > 0;
 
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
@@ -611,6 +686,35 @@ export function ViewportContainer() {
     // that arrives in a later batch even when the meshes array is mutated in place.
   }, [mergedGeometryResult, geometryContentVersion]);
 
+  // Does the model carry any PLACED occurrence (class 0)? Used to decide whether
+  // orphan type-library geometry (class 1) is clutter to hide in Model view or
+  // the only geometry that must stay visible (pure type-library files). Same
+  // incremental-scan pattern as hasTypeGeometry. (#1353)
+  const occGeoSourceRef = useRef<MeshData[] | null>(null);
+  const occGeoScanLenRef = useRef(0);
+  const sawOccurrenceRef = useRef(false);
+  const hasOccurrenceGeometry = useMemo(() => {
+    const meshes = mergedGeometryResult?.meshes;
+    if (!meshes || meshes.length === 0) {
+      occGeoSourceRef.current = meshes ?? null;
+      occGeoScanLenRef.current = meshes?.length ?? 0;
+      sawOccurrenceRef.current = false;
+      return false;
+    }
+    if (occGeoSourceRef.current !== meshes || meshes.length < occGeoScanLenRef.current) {
+      occGeoSourceRef.current = meshes;
+      occGeoScanLenRef.current = 0;
+      sawOccurrenceRef.current = false;
+    }
+    if (!sawOccurrenceRef.current) {
+      for (let i = occGeoScanLenRef.current; i < meshes.length; i++) {
+        if (meshClassIsPlaced(meshes[i].geometryClass ?? 0)) { sawOccurrenceRef.current = true; break; }
+      }
+    }
+    occGeoScanLenRef.current = meshes.length;
+    return sawOccurrenceRef.current;
+  }, [mergedGeometryResult, geometryContentVersion]);
+
   // Persisted view mode may be 'types' from a prior model; fall back to 'model'
   // when the current geometry has no type library so "Types" never renders an
   // empty scene (and the now-hidden switch can't be used to recover).
@@ -631,6 +735,7 @@ export function ViewportContainer() {
   const filteredSourceRef = useRef<MeshData[] | null>(null);
   const filteredTypeVisRef = useRef(typeVisibility);
   const filteredTypeModeRef = useRef(effectiveViewMode);
+  const filteredHasOccRef = useRef(hasOccurrenceGeometry);
   const filteredVersionRef = useRef(0);
 
   const filteredGeometry = useMemo(() => {
@@ -654,7 +759,11 @@ export function ViewportContainer() {
       prevVis.openings !== typeVisibility.openings ||
       prevVis.virtualElements !== typeVisibility.virtualElements ||
       prevVis.site !== typeVisibility.site ||
-      filteredTypeModeRef.current !== effectiveViewMode;
+      prevVis.ifcAnnotations !== typeVisibility.ifcAnnotations ||
+      filteredTypeModeRef.current !== effectiveViewMode ||
+      // Occurrence-presence flipping (e.g. occurrences stream in after orphan
+      // types) changes whether class-1 orphans render in Model view (#1353).
+      filteredHasOccRef.current !== hasOccurrenceGeometry;
     const sourceChanged = filteredSourceRef.current !== allMeshes;
     if (typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current) {
       cache.length = 0;
@@ -662,9 +771,10 @@ export function ViewportContainer() {
       filteredSourceRef.current = allMeshes;
       filteredTypeVisRef.current = typeVisibility;
       filteredTypeModeRef.current = effectiveViewMode;
+      filteredHasOccRef.current = hasOccurrenceGeometry;
     }
 
-    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site;
+    const needsFilter = !typeVisibility.spaces || !typeVisibility.spatialZones || !typeVisibility.openings || !typeVisibility.virtualElements || !typeVisibility.site || !typeVisibility.ifcAnnotations;
     const prevCacheLen = cache.length;
 
     // Only process NEW meshes since last run — O(batch_size) not O(total)
@@ -672,19 +782,14 @@ export function ViewportContainer() {
       const mesh = allMeshes[i];
       const ifcType = mesh.ifcType;
 
-      // Model/Types view switch (#957 follow-up). geometryClass: 0 = occurrence,
-      // 1 = orphan type (no occurrence — shown in BOTH modes since it's the only
-      // geometry), 2 = instanced type-library shape. In 'model' mode hide class 2
-      // (else the AC20 duplicate boxes at the MappingOrigin reappear); in 'types'
-      // mode hide occurrences (class 0) so only the type library shows.
+      // Model/Types view switch (#957, #1353). geometryClass: 0 = occurrence,
+      // 1 = orphan type, 2 = instanced type-library shape, 3 = material-layer
+      // slice (treated like an occurrence — it's part of the real build-up).
+      // An orphan type (class 1) renders in Model view ONLY when the model has
+      // no placed occurrences (pure type-library file); otherwise it's unplaced
+      // library clutter and belongs in the Types view. See helper for the table.
       const geometryClass = mesh.geometryClass ?? 0;
-      // Class 3 = a material-layer slice. It IS rendered in 3D (the renderer
-      // draws it backface-culled so the build-up shows without the thin slabs
-      // z-fighting into a hollow shell), so it's treated like an occurrence
-      // (class 0) for the Model/Types switch.
-      if (effectiveViewMode === 'types') {
-        if (geometryClass === 0 || geometryClass === 3) continue;
-      } else if (geometryClass === 2) {
+      if (!isMeshVisibleInViewMode(geometryClass, effectiveViewMode, hasOccurrenceGeometry)) {
         continue;
       }
 
@@ -694,6 +799,12 @@ export function ViewportContainer() {
         if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) continue;
         if (ifcType === 'IfcVirtualElement' && !typeVisibility.virtualElements) continue;
         if (ifcType === 'IfcSite' && !typeVisibility.site) continue;
+        // IfcAnnotation can carry real 3D solid geometry (e.g. Bonsai
+        // plan-view "DRAWING" boxes) on top of the 2D symbolic curve overlay.
+        // The `ifcAnnotations` toggle drives the curve overlay (Viewport.tsx);
+        // honour it here too so the toggle also hides those 3D meshes instead
+        // of leaving them rendered as stray cubes (issue #1354).
+        if (ifcType === 'IfcAnnotation' && !typeVisibility.ifcAnnotations) continue;
       }
 
       // Mesh alpha flows through unchanged. The previous code re-multiplied
@@ -716,11 +827,25 @@ export function ViewportContainer() {
     // Return the same array reference — downstream change detection uses
     // geometryVersion (which increments each batch) instead of array identity.
     return cache;
-  }, [mergedGeometryResult, typeVisibility, effectiveViewMode]);
+  }, [mergedGeometryResult, typeVisibility, effectiveViewMode, hasOccurrenceGeometry]);
 
   // Version counter that changes every batch — triggers useGeometryStreaming
   // without requiring a new geometry array reference.
   const geometryVersion = filteredVersionRef.current;
+
+  // 3D-context (Cesium) geometry must honour the SAME type-visibility filter as
+  // the WebGPU viewport, or openings/spaces hidden in 2D/3D reappear in the
+  // world view. The Cesium GLB builder reads `geometryResult.meshes`, so wrap the
+  // result with the already-filtered mesh list (`filteredGeometry`) rather than
+  // the raw `mergedGeometryResult` (issue #1337: a 900 m-tall IfcOpeningElement
+  // roof-cutter rendered as a giant salmon column over the building because the
+  // Cesium path skipped the opening filter that the viewport applies). Memoised
+  // on geometryVersion so the GLB rebuilds when the visible set changes.
+  const cesiumGeometryResult = useMemo(() => {
+    if (!mergedGeometryResult || !filteredGeometry) return null;
+    return { ...mergedGeometryResult, meshes: filteredGeometry };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
 
   // Compute combined isolation set (storeys + manual isolation)
   // This is passed to the renderer for batch-level visibility filtering
@@ -1016,12 +1141,7 @@ export function ViewportContainer() {
             */}
             {/* Track 1 — open / drag */}
             <button
-              onClick={() => {
-                if (!webgpu.supported) {
-                  return;
-                }
-                fileInputRef.current?.click();
-              }}
+              onClick={() => { void handleOpenClick(); }}
               disabled={!webgpu.supported || webgpu.checking}
               className={`group w-full flex items-center justify-center gap-3 px-6 py-3 font-mono text-sm border transition-all ${
                 !webgpu.supported || webgpu.checking
@@ -1094,7 +1214,7 @@ export function ViewportContainer() {
                           await loadFile(cached);
                           return;
                         }
-                        fileInputRef.current?.click();
+                        void handleOpenClick();
                       }}
                       className="flex items-center justify-between gap-3 border border-zinc-200 bg-zinc-50 px-3 py-2 text-left transition-colors hover:border-primary hover:text-primary dark:border-[#3b4261] dark:bg-[#1f2335] dark:hover:border-primary"
                     >
@@ -1188,7 +1308,7 @@ export function ViewportContainer() {
           cameraMapConversion={georef.baseMapConversion}
           projectedCRS={georef.projectedCRS}
           coordinateInfo={georef.coordinateInfo}
-          geometryResult={mergedGeometryResult}
+          geometryResult={cesiumGeometryResult}
           lengthUnitScale={georef.lengthUnitScale}
           storeyElevations={georef.storeyElevations}
         />
@@ -1228,6 +1348,7 @@ export function ViewportContainer() {
           merge-layers toggle while a model is in scope. `onReload` re-loads the
           model in place (full page reload would drop it — no boot auto-restore). */}
       <MergeLayersBanner onReload={handleMergeLayersReload} />
+      <GeometryModeBanner onReload={handleGeometryModeReload} />
       <LevelDisplayIndicator />
       <ToolOverlays />
       <BasketPresentationDock />

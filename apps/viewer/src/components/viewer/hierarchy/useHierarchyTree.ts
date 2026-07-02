@@ -6,7 +6,8 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
-import type { TreeNode, UnifiedStorey } from './types';
+import type { TreeNode, UnifiedStorey, HierarchySortMode } from './types';
+import { HIERARCHY_SORT_MODES, DEFAULT_HIERARCHY_SORT } from './types';
 import {
   buildUnifiedStoreys,
   getUnifiedStoreyElements as getUnifiedStoreyElementsFn,
@@ -20,6 +21,23 @@ import {
 } from './treeDataBuilder';
 
 export type GroupingMode = 'spatial' | 'type' | 'ifc-type' | 'material';
+
+const SORT_STORAGE_KEY = 'hierarchy-sort';
+
+/** Read the persisted sort mode, falling back to the default for missing or
+ *  stale (e.g. renamed) localStorage values. Reads can throw (private mode,
+ *  opaque origin), so guard and fall back rather than break the panel mount. */
+function readStoredSortMode(): HierarchySortMode {
+  if (typeof window === 'undefined') return DEFAULT_HIERARCHY_SORT;
+  try {
+    const stored = localStorage.getItem(SORT_STORAGE_KEY);
+    return stored && (HIERARCHY_SORT_MODES as readonly string[]).includes(stored)
+      ? (stored as HierarchySortMode)
+      : DEFAULT_HIERARCHY_SORT;
+  } catch {
+    return DEFAULT_HIERARCHY_SORT;
+  }
+}
 
 interface UseHierarchyTreeParams {
   models: Map<string, FederatedModel>;
@@ -60,11 +78,12 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const [groupingMode, setGroupingMode] = useState<GroupingMode>(() =>
     (typeof window !== 'undefined' && localStorage.getItem('hierarchy-grouping') as GroupingMode) || 'spatial'
   );
+  const [sortMode, setSortMode] = useState<HierarchySortMode>(readStoredSortMode);
 
   // Build unified storey data for multi-model mode (moved before useEffect that depends on it)
   const unifiedStoreys = useMemo(
-    (): UnifiedStorey[] => buildUnifiedStoreys(models),
-    [models]
+    (): UnifiedStorey[] => buildUnifiedStoreys(models, sortMode),
+    [models, sortMode]
   );
 
   // Auto-expand nodes on initial load based on model count
@@ -229,9 +248,9 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       if (groupingMode === 'material') {
         return buildMaterialTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
       }
-      return buildTreeData(models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys);
+      return buildTreeData(models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode);
     },
-    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, groupingMode, geometricIds, authoredProducts]
+    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, authoredProducts]
   );
 
   // Filter nodes based on search
@@ -327,11 +346,25 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     }
   }, []);
 
+  // Persist storey sort-order preference (issue #1296)
+  const handleSetSortMode = useCallback((mode: HierarchySortMode) => {
+    setSortMode(mode);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(SORT_STORAGE_KEY, mode);
+      } catch {
+        // Private mode / quota — keep the in-memory choice, just don't persist.
+      }
+    }
+  }, []);
+
   return {
     searchQuery,
     setSearchQuery,
     groupingMode,
     setGroupingMode: handleSetGroupingMode,
+    sortMode,
+    setSortMode: handleSetSortMode,
     unifiedStoreys,
     treeData,
     filteredNodes,

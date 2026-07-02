@@ -43,6 +43,9 @@ pub enum ParquetError {
 ///
 /// This format is compatible with ara3d BOS and provides excellent compression
 /// for geometry data through columnar storage and dictionary encoding.
+// The per-mesh column tuple type is explicit on purpose; aliasing it would hide
+// the parallel (positions, normals, colors, ...) column layout.
+#[allow(clippy::type_complexity)]
 pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
     // Calculate totals for pre-allocation
     let total_vertices: usize = meshes.iter().map(|m| m.positions.len() / 3).sum();

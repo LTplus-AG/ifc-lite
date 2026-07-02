@@ -26,6 +26,7 @@ import {
 } from '../../hooks/useViewerSelectors.js';
 import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
+import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import {
   getEntityBounds,
@@ -483,6 +484,34 @@ export function Viewport({
   const selectedEntityIdRef = useLatestRef(selectedEntityId);
   const selectedEntityIdsRef = useLatestRef(selectedEntityIds);
   const selectedModelIndexRef = useLatestRef(selectedModelIndex);
+  // Per-element clash A/B highlight tints (#1277/#1339) — kept in a ref so the
+  // animation loop reads the latest without re-subscribing.
+  const clashHighlightColors = useViewerStore((s) => s.clashHighlightColors);
+  const clashHighlightColorsRef = useLatestRef(clashHighlightColors);
+  // Focused-clash indicator (#1277/#1402): prefer the real CONTACT geometry
+  // (shared-face polygon outlines / intersection lines) when available, and fall
+  // back to the AABB box otherwise. Both draw on the same overlay line buffer, so
+  // a single effect drives exactly one of them (no buffer race). Cleared on
+  // teardown. On by default; the clash settings toggle hides it.
+  const clashOverlapBox = useViewerStore((s) => s.clashOverlapBox);
+  const clashContactLines = useViewerStore((s) => s.clashContactLines);
+  const showClashRegionBox = useViewerStore((s) => s.showClashRegionBox);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    if (showClashRegionBox && clashContactLines && clashContactLines.vertices.length > 0) {
+      renderer.setClashContactLines({
+        vertices: new Float32Array(clashContactLines.vertices),
+        color: clashContactLines.color,
+      });
+    } else if (showClashRegionBox && clashOverlapBox) {
+      renderer.setClashOverlapBox({ ...clashOverlapBox, color: CLASH_COLOR_OVERLAP });
+    } else {
+      renderer.setClashContactLines(null);
+    }
+    // isInitialized: if a clash is focused before the renderer mounts, this effect
+    // bails early; depend on it so the indicator is (re)sent once it is ready.
+  }, [clashOverlapBox, clashContactLines, showClashRegionBox, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);
@@ -737,9 +766,14 @@ export function Viewport({
           const geom = geometryRef.current;
           const set = selectedEntityIdsRef.current;
           const single = selectedEntityIdRef.current;
+          // A focused clash glows its pair via the clash-highlight channel WITHOUT
+          // selecting it, so frame those ids too when there's no selection (#1277).
+          const hl = clashHighlightColorsRef.current;
           const ids = set && set.size > 0
             ? Array.from(set)
-            : single !== null ? [single] : [];
+            : hl && hl.size > 0
+              ? Array.from(hl.keys())
+              : single !== null ? [single] : [];
           if (!geom || ids.length === 0) {
             console.warn('[Viewport] frameSelection: No selection or geometry');
             return;
@@ -1180,6 +1214,7 @@ export function Viewport({
     visualEnhancementRef,
     environmentRef,
     selectedEntityIdsRef,
+    clashHighlightColorsRef,
     coordinateInfoRef,
     isInteractingRef,
     lastCameraStateRef,

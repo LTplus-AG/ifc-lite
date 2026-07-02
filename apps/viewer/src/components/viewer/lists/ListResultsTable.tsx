@@ -21,6 +21,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
+import { toGlobalIdFromModels } from '@/store/globalId';
+import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
 import type { ListResult, ListRow, ColumnDefinition, ListGrouping } from '@ifc-lite/lists';
 import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
 import { posthog } from '@/lib/analytics';
@@ -54,11 +56,11 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
   const [widthOverrides, setWidthOverrides] = useState<Record<string, number>>({});
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
-  const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
+  const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   const activateAutoColorFromColumn = useViewerStore((s) => s.activateAutoColorFromColumn);
   const activeLensId = useViewerStore((s) => s.activeLensId);
+  const { select: onMultiSelect } = useEntityListMultiSelect();
 
   // Visibility state — re-filter when 3D visibility changes.
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -216,10 +218,33 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
     });
   }, [listName, columns, sortedRows, grouping, numericCols, columnWidths]);
 
-  const handleRowClick = useCallback((row: ListRow) => {
-    setSelectedEntity({ modelId: row.modelId, expressId: row.entityId });
-    setSelectedEntityId(row.entityId);
-  }, [setSelectedEntity, setSelectedEntityId]);
+  // Flat, ordered list of the selectable rows (group headers excluded) and a
+  // lookup from a row to its position, so Shift+click range-select works over
+  // the on-screen order. (#1463)
+  const selectableItems = useMemo<MultiSelectItem[]>(() => {
+    const out: MultiSelectItem[] = [];
+    for (const it of items) {
+      if (it.kind !== 'row') continue;
+      const r = (it as { row: ListRow }).row;
+      out.push({
+        globalId: toGlobalIdFromModels(models, r.modelId, r.entityId),
+        modelId: r.modelId,
+        expressId: r.entityId,
+      });
+    }
+    return out;
+  }, [items, models]);
+  const rowIndexByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    selectableItems.forEach((it, idx) => m.set(`${it.modelId}:${it.expressId}`, idx));
+    return m;
+  }, [selectableItems]);
+
+  const handleRowClick = useCallback((row: ListRow, e: React.MouseEvent) => {
+    const idx = rowIndexByKey.get(`${row.modelId}:${row.entityId}`);
+    if (idx === undefined) return;
+    onMultiSelect(selectableItems, idx, e);
+  }, [rowIndexByKey, selectableItems, onMultiSelect]);
 
   const sumChips = useMemo(
     () => sumColumnIds.map((id) => {
@@ -374,13 +399,14 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
               }
 
               const row = item.row;
-              const isSelected = row.entityId === selectedEntityId;
+              const globalId = toGlobalIdFromModels(models, row.modelId, row.entityId);
+              const isSelected = selectedEntityIds.has(globalId) || globalId === selectedEntityId;
               return (
                 <div
                   key={vRow.key}
-                  className={cn('absolute left-0 top-0 flex w-full cursor-pointer border-b border-border/30 hover:bg-muted/40', isSelected && 'bg-primary/10')}
+                  className={cn('absolute left-0 top-0 flex w-full cursor-pointer select-none border-b border-border/30 hover:bg-muted/40', isSelected && 'bg-primary/10')}
                   style={{ transform }}
-                  onClick={() => handleRowClick(row)}
+                  onClick={(e) => handleRowClick(row, e)}
                 >
                   {row.values.map((value, colIdx) => (
                     <div

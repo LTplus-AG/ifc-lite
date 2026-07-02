@@ -7,9 +7,10 @@
  */
 
 import { WebGPUDevice } from './device.js';
-import type { Mesh, PickResult } from './types.js';
+import type { Mesh, PickResult, PickClipState } from './types.js';
 import type { InstancedTemplateGPU } from './scene.js';
 import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
+import { packPickUniforms } from './pick-uniforms.js';
 import { MathUtils } from './math.js';
 
 /**
@@ -63,6 +64,11 @@ export class Picker {
   private maxMeshes: number = 100000; // Support up to 100K meshes (was 10K)
   private destroyed = false;
   private pointPicker: PointPicker | null = null;
+  // Reused scratch for the 32-float (128-byte) uniform block: viewProj +
+  // clipBoxMin/Max + sectionPlane + clipFlags. `clipFlags` is a u32 view aliasing
+  // floats 28-31 (byte 112): bit 0 = sectionEnabled, bit 1 = flipped, bit 2 = clipBox.
+  private readonly uniformScratch = new Float32Array(32);
+  private readonly clipFlags = new Uint32Array(this.uniformScratch.buffer, 112, 4);
 
   constructor(device: WebGPUDevice, width: number = 1, height: number = 1) {
     this.webgpuDevice = device;
@@ -84,9 +90,12 @@ export class Picker {
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     });
 
-    // Create uniform buffer for viewProj matrix only (16 floats = 64 bytes)
+    // Uniform buffer: viewProj (16 floats) + clipBoxMin (vec4) + clipBoxMax (vec4)
+    // + sectionPlane (vec4) + clipFlags (vec4<u32>) = 32 floats = 128 bytes. The
+    // picker mirrors the main render's section plane + crop box so clipped-away
+    // geometry is unpickable, not just invisible.
     this.uniformBuffer = this.device.createBuffer({
-      size: 64,
+      size: 128,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -102,6 +111,10 @@ export class Picker {
       code: `
         struct Uniforms {
           viewProj: mat4x4<f32>,
+          clipBoxMin: vec4<f32>,   // xyz = min corner (world), w = pad
+          clipBoxMax: vec4<f32>,   // xyz = max corner (world), w = pad
+          sectionPlane: vec4<f32>, // xyz = plane normal, w = plane distance
+          clipFlags: vec4<u32>,    // x: bit0 sectionEnabled, bit1 flipped, bit2 clipBox
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         @binding(1) @group(0) var<storage, read> expressIds: array<u32>;
@@ -114,6 +127,7 @@ export class Picker {
         struct VertexOutput {
           @builtin(position) position: vec4<f32>,
           @location(0) @interpolate(flat) objectId: u32,
+          @location(1) worldPos: vec3<f32>,
         }
 
         @vertex
@@ -121,6 +135,7 @@ export class Picker {
           var output: VertexOutput;
           // Identity transform - positions are already in world space
           output.position = uniforms.viewProj * vec4<f32>(input.position, 1.0);
+          output.worldPos = input.position;
           // Look up expressId from storage buffer using instance index
           output.objectId = expressIds[instanceIndex];
           return output;
@@ -128,6 +143,22 @@ export class Picker {
 
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) u32 {
+          // Mirror the main render's clip discards so a click can't select a
+          // fragment the user has sectioned or cropped out of view.
+          if ((uniforms.clipFlags.x & 1u) != 0u) {  // section plane enabled
+            let flipped = (uniforms.clipFlags.x & 2u) != 0u;
+            let side = select(1.0, -1.0, flipped);
+            let distToPlane = (dot(input.worldPos, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * side;
+            if (distToPlane > 0.0) {
+              discard;
+            }
+          }
+          if ((uniforms.clipFlags.x & 4u) != 0u) {  // clip box enabled
+            let p = input.worldPos;
+            if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) {
+              discard;
+            }
+          }
           return input.objectId;
         }
       `,
@@ -191,7 +222,13 @@ export class Picker {
     // storage buffer — the id rides the instance buffer per occurrence.
     const instancedPickModule = this.device.createShaderModule({
       code: `
-        struct Uniforms { viewProj: mat4x4<f32> }
+        struct Uniforms {
+          viewProj: mat4x4<f32>,
+          clipBoxMin: vec4<f32>,   // xyz = min corner (world), w = pad
+          clipBoxMax: vec4<f32>,   // xyz = max corner (world), w = pad
+          sectionPlane: vec4<f32>, // xyz = plane normal, w = plane distance
+          clipFlags: vec4<u32>,    // x: bit0 sectionEnabled, bit1 flipped, bit2 clipBox
+        }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
         struct VertexInput { @location(0) position: vec3<f32> }
         struct InstanceInput {
@@ -206,12 +243,15 @@ export class Picker {
           @builtin(position) position: vec4<f32>,
           @location(0) @interpolate(flat) objectId: u32,
           @location(1) @interpolate(flat) instFlags: u32,
+          @location(2) worldPos: vec3<f32>,
         }
         @vertex
         fn vs_main(input: VertexInput, inst: InstanceInput) -> VertexOutput {
           var output: VertexOutput;
           let m = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
-          output.position = uniforms.viewProj * (m * vec4<f32>(input.position, 1.0));
+          let world = m * vec4<f32>(input.position, 1.0);
+          output.position = uniforms.viewProj * world;
+          output.worldPos = world.xyz;
           // bit 30 = instanced marker; express id in the low 30 bits.
           output.objectId = 0x40000000u | (inst.instEntityId & 0x3FFFFFFFu);
           output.instFlags = inst.instFlags;
@@ -223,6 +263,21 @@ export class Picker {
           // discard so a hidden instanced element can't be selected through the picker.
           if ((input.instFlags & 2u) != 0u) {
             discard;
+          }
+          // Mirror the main render's section + crop-box discards for occurrences.
+          if ((uniforms.clipFlags.x & 1u) != 0u) {  // section plane enabled
+            let flipped = (uniforms.clipFlags.x & 2u) != 0u;
+            let side = select(1.0, -1.0, flipped);
+            let distToPlane = (dot(input.worldPos, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * side;
+            if (distToPlane > 0.0) {
+              discard;
+            }
+          }
+          if ((uniforms.clipFlags.x & 4u) != 0u) {  // clip box enabled
+            let p = input.worldPos;
+            if (any(p < uniforms.clipBoxMin.xyz) || any(p > uniforms.clipBoxMax.xyz)) {
+              discard;
+            }
           }
           return input.objectId;
         }
@@ -294,8 +349,9 @@ export class Picker {
     pointNodes?: ReadonlyArray<PointPickNode>,
     pointSizing?: PointPickSizing,
     instancedTemplates?: readonly InstancedTemplateGPU[],
+    clip?: PickClipState | null,
   ): Promise<PickResult | null> {
-    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates);
+    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip);
 
     // Clamp the texel origin to the texture bounds. Math.floor(x/y) can
     // be -1 or equal to width/height on border clicks (and on
@@ -399,9 +455,17 @@ export class Picker {
     };
   }
 
-  updateUniforms(viewProj: Float32Array): void {
-    // Update viewProj matrix only
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, viewProj);
+  updateUniforms(viewProj: Float32Array, clip?: PickClipState | null): void {
+    this.writePickUniforms(viewProj, clip);
+  }
+
+  /**
+   * Pack viewProj + the last render's section plane / crop box into the shared
+   * pick uniform and upload it. Layout + flag bits live in {@link packPickUniforms}.
+   */
+  private writePickUniforms(viewProj: Float32Array, clip?: PickClipState | null): void {
+    packPickUniforms(viewProj, clip, this.uniformScratch, this.clipFlags);
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformScratch);
   }
 
   /**
@@ -426,6 +490,7 @@ export class Picker {
     pointNodes?: ReadonlyArray<PointPickNode>,
     pointSizing?: PointPickSizing,
     instancedTemplates?: readonly InstancedTemplateGPU[],
+    clip?: PickClipState | null,
   ): Promise<Set<number>> {
     // Normalise + clip rect to texture bounds.
     const lx = Math.max(0, Math.floor(Math.min(x0, x1)));
@@ -436,7 +501,7 @@ export class Picker {
     const rectH = hy - ly + 1;
     if (rectW <= 0 || rectH <= 0) return new Set();
 
-    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates);
+    const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip);
 
     // copyTextureToBuffer requires bytesPerRow to be a multiple of 256.
     // r32uint = 4 bytes per texel. Round up to nearest 256.
@@ -497,6 +562,7 @@ export class Picker {
     pointNodes?: ReadonlyArray<PointPickNode>,
     pointSizing?: PointPickSizing,
     instancedTemplates?: readonly InstancedTemplateGPU[],
+    clip?: PickClipState | null,
   ): GPUCommandEncoder {
     if (this.colorTexture.width !== width || this.colorTexture.height !== height) {
       this.colorTexture.destroy();
@@ -538,7 +604,7 @@ export class Picker {
     if (meshes.length > this.maxMeshes) {
       this.resizeExpressIdBuffer(meshes.length);
     }
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, viewProj);
+    this.writePickUniforms(viewProj, clip);
     const meshIndexArray = new Uint32Array(meshes.length);
     for (let i = 0; i < meshes.length; i++) {
       if (meshes[i]) meshIndexArray[i] = i + 1;  // +1 so 0 means no hit
@@ -574,12 +640,14 @@ export class Picker {
         this.pointPicker = new PointPicker(this.webgpuDevice);
       }
       const sz = pointSizing ?? { sizeMode: 0, worldRadius: 0.02, pointSizePx: 4 };
+      // Point clouds are section-clipped on render, so the point picker must clip
+      // on the same plane (the crop box does not clip points, on render or here).
       this.pointPicker.drawIntoPass(pass, pointNodes, viewProj, { width, height }, {
         sizeMode: sz.sizeMode,
         worldRadius: sz.worldRadius,
         pointSizePx: sz.pointSizePx,
         clickTolerancePx: sz.clickTolerancePx ?? 2,
-      });
+      }, clip?.sectionPlane ?? null);
     }
     pass.end();
     return encoder;

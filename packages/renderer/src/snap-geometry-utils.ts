@@ -68,7 +68,14 @@ export function closestPointOnEdgeWithT(
 }
 
 /**
- * Convert screen-space radius to world-space radius.
+ * Convert a screen-space radius (pixels) to a world-space radius at `dist`.
+ *
+ * `fov` is the vertical field of view in RADIANS — matching `Camera.getFOV()`,
+ * which is the only source of this value (the snap detector passes it straight
+ * through). It used to apply a degrees→radians conversion here, but the camera
+ * already supplies radians, so that shrank every snap radius by ~57× (tan of a
+ * 57×-too-small angle) — snap then needed sub-millimetre precision and fell back
+ * to face hits on anything but a near-perfect cursor, e.g. small bolts.
  */
 export function screenToWorldRadius(
   screenRadius: number,
@@ -76,9 +83,8 @@ export function screenToWorldRadius(
   fov: number,
   screenHeight: number
 ): number {
-  // Calculate world height at distance
-  const fovRadians = (fov * Math.PI) / 180;
-  const worldHeight = 2 * dist * Math.tan(fovRadians / 2);
+  // World height spanned by the viewport at `dist` (fov already in radians).
+  const worldHeight = 2 * dist * Math.tan(fov / 2);
 
   // Convert screen pixels to world units
   return (screenRadius / screenHeight) * worldHeight;

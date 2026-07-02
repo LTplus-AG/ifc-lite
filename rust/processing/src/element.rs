@@ -38,8 +38,8 @@ use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
 use crate::types::mesh::{MeshData, MeshTextureData};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::{
-    calculate_normals, BoolFailure, GeometryHasher, GeometryRouter, Mesh, ResolvedTextureMap,
-    SubMeshCollection,
+    calculate_normals, orient_mesh_outward, BoolFailure, GeometryHasher, GeometryRouter, Mesh,
+    ResolvedTextureMap, SubMeshCollection,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
@@ -252,13 +252,14 @@ fn produce_inner(
         .get(&job.id)
         .is_some_and(|openings| !openings.is_empty());
 
-    // Material-layer wall: its per-layer slices are thin coincident-faced solids
-    // that z-fight into a hollow-looking shell when drawn double-sided. They have
-    // verified-correct outward winding, though, so we tag them GEOM_CLASS_LAYER_SLICE
-    // and the renderer draws them BACKFACE-CULLED — the build-up stays visible on
-    // the faces/edges, but the interior coincident caps (which would z-fight) are
-    // never rasterised, so the wall reads as a clean solid. The 2D/section cut
-    // (which never culls) consumes the same class for its per-layer fills.
+    // Material-layer wall: tag its per-layer slices GEOM_CLASS_LAYER_SLICE so the
+    // 2D/section cut can split the cut into per-layer fills (one sub-mesh = one
+    // layer = one colour). Since #1311 the slices are OPEN bands whose union is
+    // the wall's watertight outer skin (no coincident interface caps), and the
+    // renderer draws them DOUBLE-SIDED like all other IFC geometry — IFC winding
+    // is not reliably outward, so the previous backface-culling of these slices
+    // dropped inward-wound faces and made the wall read hollow. The tag no longer
+    // drives any culling; it is purely the per-layer-fill marker.
     let layer_class = if router.is_material_layer_sliceable(job.id) {
         GEOM_CLASS_LAYER_SLICE
     } else {
@@ -309,7 +310,12 @@ fn produce_inner(
         .process_element_with_voids(job.entity, decoder, ctx.void_index)
         .ok();
     let needs_fallback = match mesh_candidate.as_ref() {
-        Some(mesh) => mesh.is_empty(),
+        // An empty void-cut result normally means the cut FAILED and emptied
+        // the host, so we re-render it un-cut. But when a containing void
+        // genuinely CONSUMED the host (`host_consumed_by_void`), the empty
+        // result is correct — keep it, or the un-cut host re-appears as a
+        // spurious solid.
+        Some(mesh) => mesh.is_empty() && !router.host_consumed_by_void(job.id),
         None => true,
     };
     if needs_fallback {
@@ -321,6 +327,16 @@ fn produce_inner(
     };
     if mesh.is_empty() {
         return Vec::new();
+    }
+
+    // Make the assembled body consistently outward-wound. A faceted brep (IFC
+    // face loops are not reliably outward) or a merged multi-item body (extrusion
+    // unioned with a boolean cut) can carry MIXED winding that corrupts signed
+    // volume and the smooth normals computed below. No-op for already-consistent
+    // bodies (every extrusion), so their index buffer + normals are untouched; a
+    // flip invalidates any baked normals, so recompute them.
+    if orient_mesh_outward(&mut mesh) {
+        calculate_normals(&mut mesh);
     }
 
     // Multi-colour IfcIndexedColourMap → one mesh per palette group (#858),
@@ -396,7 +412,9 @@ fn emit_sub_meshes(
         if sub_mesh.is_empty() {
             continue;
         }
-        if sub_mesh.normals.len() != sub_mesh.positions.len() {
+        // Consistently outward-wind each sub-body (see the single-mesh path); a
+        // flip invalidates baked normals, so recompute on flip or when absent.
+        if orient_mesh_outward(&mut sub_mesh) || sub_mesh.normals.len() != sub_mesh.positions.len() {
             calculate_normals(&mut sub_mesh);
         }
 
@@ -565,6 +583,14 @@ fn build_mesh_data(
     } else {
         None
     };
+    // Local bounds/placement transform (issue #1474): same caveat as instancing
+    // above — a site-local rotation re-transforms positions and would invalidate
+    // the captured placement, so drop both when one is active.
+    let (local_bounds, local_to_world) = if ctx.site_local_rotation.is_none() {
+        (mesh.local_bounds, mesh.local_to_world)
+    } else {
+        (None, None)
+    };
     let mut mesh_data = MeshData::new(
         job.id,
         job.ifc_type.name().to_string(),
@@ -574,7 +600,9 @@ fn build_mesh_data(
         color,
     )
     .with_origin(mesh_origin)
-    .with_instance(instance);
+    .with_instance(instance)
+    .with_local_bounds(local_bounds)
+    .with_local_to_world(local_to_world);
     if let Some(meta) = job.metadata {
         mesh_data = mesh_data
             .with_element_metadata(

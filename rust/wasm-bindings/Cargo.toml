@@ -64,3 +64,6 @@ web-sys = { version = "=0.3.83", features = ["console", "Performance", "Window"]
 
 [dev-dependencies]
 wasm-bindgen-test = "=0.3.56"
+
+[lints]
+workspace = true

@@ -710,8 +710,43 @@ export function extractGroupMembersOnDemand(
 /**
  * Extract georeferencing info from on-demand store (source buffer + entityIndex).
  * Bridges to the entity-based georef extractor by resolving entities lazily.
+ *
+ * Memoized per store. On models without an IfcMapConversion (e.g. IFC2x3 files
+ * that carry CRS in ePSet_MapConversion / ePSet_ProjectedCRS) the underlying
+ * scan decodes EVERY IfcPropertySet from the source buffer to match by name —
+ * tens of thousands of decodes on property-heavy models. The viewer calls this
+ * on the load/render path (ViewportContainer's Cesium-availability check), which
+ * re-runs on every streamed geometry batch, so without caching the cost is
+ * O(batches x propertySets) and can turn a multi-second load into minutes.
+ * Caching collapses it to a single scan per store. Safe because the result is a
+ * pure function of the immutable source + entityIndex; georef *edits* are layered
+ * on top later in getEffectiveGeoreference(), not here.
  */
+/**
+ * Memoize an O(entities) on-demand extraction per store. On-demand extractors
+ * derive purely from the immutable source + entityIndex, but the viewer calls
+ * them on render/stream hot paths where they can re-run once per geometry batch
+ * (regression #1404). Caching by store collapses that to one scan per model.
+ * Use this for any new `extract*OnDemand` so the whole family stays O(1)-per-call
+ * regardless of how often the render layer invokes it.
+ */
+const onDemandCaches = new WeakMap<IfcDataStore, Map<string, unknown>>();
+function oncePerStore<T>(store: IfcDataStore, key: string, compute: () => T): T {
+    let byKey = onDemandCaches.get(store);
+    if (!byKey) { byKey = new Map(); onDemandCaches.set(store, byKey); }
+    if (byKey.has(key)) return byKey.get(key) as T;
+    const value = compute();
+    byKey.set(key, value);
+    return value;
+}
+
 export function extractGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
+    // Don't cache a not-yet-loaded store — it may gain source/entityIndex later.
+    if (!store.source?.length || !store.entityIndex) return null;
+    return oncePerStore(store, 'georef', () => computeGeoreferencingOnDemand(store));
+}
+
+function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
     if (!store.source?.length || !store.entityIndex) return null;
 
     const extractor = new EntityExtractor(store.source);
@@ -753,6 +788,52 @@ export function extractGeoreferencingOnDemand(store: IfcDataStore): Georeference
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // IFC2x3 fallback: models without IfcMapConversion store georeferencing in
+    // ePSet_MapConversion / ePSet_ProjectedCRS property sets. Those aren't
+    // loaded above, so the ePSet path in extractGeorefFromEntities had nothing
+    // to read and the model fell back to the legacy IfcSite EPSG:4326 (wrong
+    // CRS). Only scan property sets when no IfcMapConversion exists, and only
+    // pull in the georef ePSets + their values — not every pset in the model.
+    if (!typeMap.has('IfcMapConversion')) {
+        const psetIds = byType.get('IFCPROPERTYSET');
+        if (psetIds?.length) {
+            const georefPsetIds: number[] = [];
+            const childIds = new Set<number>();
+            for (const id of psetIds) {
+                const ref = byId.get(id);
+                if (!ref) continue;
+                const entity = extractor.extractEntity(ref);
+                if (!entity?.attributes) continue;
+                // IfcPropertySet: Name (2), HasProperties (4)
+                const name = typeof entity.attributes[2] === 'string'
+                    ? (entity.attributes[2] as string).toLowerCase()
+                    : '';
+                if (name !== 'epset_mapconversion' && name !== 'epset_projectedcrs') continue;
+                entityMap.set(id, entity);
+                georefPsetIds.push(id);
+                const props = entity.attributes[4];
+                if (Array.isArray(props)) {
+                    for (const propRef of props) {
+                        const propId = typeof propRef === 'number' ? propRef : null;
+                        if (propId === null || childIds.has(propId)) continue;
+                        // Property atoms may be deferred on huge files (not in
+                        // the primary byId index) — fall back like refFromStore.
+                        const childRef = byId.get(propId) ?? store.deferredEntityIndex?.get(propId);
+                        if (!childRef) continue;
+                        const child = extractor.extractEntity(childRef);
+                        if (child) {
+                            entityMap.set(propId, child);
+                            childIds.add(propId);
+                        }
+                    }
+                }
+            }
+            if (georefPsetIds.length) {
+                typeMap.set('IfcPropertySet', georefPsetIds);
             }
         }
     }

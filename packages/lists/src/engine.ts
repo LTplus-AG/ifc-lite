@@ -370,6 +370,8 @@ function getAttributeValue(entityId: number, attrName: string, provider: ListDat
       return provider.getEntityDescription(entityId) || null;
     case 'ObjectType':
       return provider.getEntityObjectType(entityId) || null;
+    case 'PredefinedType':
+      return provider.getEntityPredefinedType?.(entityId) || null;
     case 'Tag':
       return provider.getEntityTag(entityId) || null;
     default:

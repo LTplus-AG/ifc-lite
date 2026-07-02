@@ -324,7 +324,7 @@ fn bsub(a: Big, b: Big) -> Option<Big> {
 }
 #[inline]
 fn bsign(x: &Big) -> Sign {
-    use num_traits::{Signed, Zero};
+    use num_traits::Signed;
     if x.is_negative() {
         Sign::Negative
     } else if x.is_zero() {
@@ -391,7 +391,7 @@ fn axis_ij(axis: DropAxis) -> (usize, usize) {
 
 /// 2-D orientation of three interned points from their cached lambdas.
 pub fn orient2d_from_lam(a: &Lam, b: &Lam, c: &Lam, axis: DropAxis) -> Option<Sign> {
-    use num_traits::{One, ToPrimitive};
+    use num_traits::ToPrimitive;
     let (i, j) = axis_ij(axis);
     let (lam1, d1) = a;
     let (lam2, d2) = b;
@@ -435,7 +435,7 @@ pub fn orient2d_from_lam(a: &Lam, b: &Lam, c: &Lam, axis: DropAxis) -> Option<Si
 
 /// Lexicographic compare of two interned points from their cached lambdas.
 pub fn cmp_lex_from_lam(a: &Lam, b: &Lam) -> Option<Sign> {
-    use num_traits::{One, ToPrimitive};
+    use num_traits::ToPrimitive;
     let (la, da) = a;
     let (lb, db) = b;
     // Fast path: both reduced on-grid (d=1) and λ fit i64 ⇒ plain per-axis i64

@@ -219,10 +219,19 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   // Signed distance: project (p - closestPoint) onto the closest
-  // triangle's normal. Positive ⇒ p is on the outward side.
+  // triangle's normal. Positive means p is on the outward side.
+  //
+  // sign() returns 0 when (p - closestPoint) is perpendicular to the
+  // normal -- i.e. the point is COPLANAR with the triangle but its closest
+  // feature is an edge/vertex (a point beside a wall, an open door swung
+  // into a wall's plane, a floor point laterally past the nearest floor
+  // tri). That multiplied a genuinely large dist by 0 and painted far
+  // points at the ramp centre (white). Treat the in-plane case as the
+  // outward side so the magnitude still flags them.
   let toPoint = p - bestPoint;
   let dist = sqrt(bestDistSq);
-  let s = sign(dot(toPoint, bestNormal));
+  let nd = dot(toPoint, bestNormal);
+  let s = select(-1.0, 1.0, nd >= 0.0);
   var signed: f32 = s * dist;
 
   // Optional clip: keeps the histogram + ramp focused on near-surface

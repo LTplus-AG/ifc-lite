@@ -10,6 +10,7 @@ import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from './export-schedule-splice.js';
+import { downloadFile } from '../../lib/export/download.js';
 
 /** Options for CSV export */
 interface CsvOptions {
@@ -126,13 +127,6 @@ function escapeCsv(value: string, sep: string): string {
  * on the same LocalBackend, providing full export support for both
  * direct dispatch calls and SDK namespace usage.
  */
-function toBlobPart(content: string | Uint8Array): BlobPart {
-  if (typeof content === 'string') return content;
-  const bytes = new Uint8Array(content.byteLength);
-  bytes.set(content);
-  return bytes;
-}
-
 export function createExportAdapter(store: StoreApi): ExportBackendMethods {
   /** Resolve entity data via the query subsystem */
   function getEntityData(ref: EntityRef): EntityData | null {
@@ -797,16 +791,12 @@ function findFirstOwnerHistoryId(stepContent: string): number | null {
   return m ? parseInt(m[1], 10) : null;
 }
 
-/** Trigger a browser file download */
+/** Trigger a browser file download. Unlike the shared helper this throws
+ *  outside the browser, since the SDK's `export.download()` contract promises a
+ *  hard failure rather than a silent no-op when there is no DOM. */
 function triggerDownload(content: string | Uint8Array, filename: string, mimeType: string): void {
   if (typeof document === 'undefined') {
     throw new Error('download() requires a browser environment (document is unavailable)');
   }
-  const blob = new Blob([toBlobPart(content)], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadFile(content, filename, mimeType);
 }

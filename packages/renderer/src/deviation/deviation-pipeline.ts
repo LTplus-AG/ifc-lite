@@ -52,7 +52,15 @@ export class DeviationPipeline {
   private bvhTriangleCount = 0;
   private bvhNodeCount = 0;
   private bvhBounds: TriangleBVHResult['bounds'] | null = null;
-  private paramsBuffer: GPUBuffer | null = null;
+  /**
+   * One uniform buffer per `dispatch()` call within a compute batch. They
+   * MUST be distinct: every chunk's dispatch is recorded into one encoder and
+   * submitted once, but `queue.writeBuffer` runs on the queue BEFORE that
+   * single submit — so a single shared buffer would hold only the LAST
+   * chunk's params when every pass executes. Freed by `releaseTransientParams`
+   * after `onSubmittedWorkDone()`.
+   */
+  private transientParamsBuffers: GPUBuffer[] = [];
 
   constructor(device: GPUDevice) {
     this.device = device;
@@ -142,19 +150,19 @@ export class DeviationPipeline {
     if (!this.bvhNodesBuffer || !this.trianglesBuffer) return false;
     if (input.pointCount === 0) return true;
 
-    // Reuse one instance-cached uniform buffer for the dispatch params.
-    // Created lazily once; overwritten per chunk via writeBuffer. All
-    // chunk dispatches are recorded into one encoder and submitted once,
-    // and writeBuffer is queued in submission order relative to the
-    // dispatches, so overwriting between chunks within the same submit is
-    // safe (each chunk's bind group reads the value as enqueued).
-    if (!this.paramsBuffer) {
-      this.paramsBuffer = this.device.createBuffer({
-        size: PARAMS_UNIFORM_BYTES,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-      });
-    }
-    const paramsBuffer = this.paramsBuffer;
+    // A FRESH uniform buffer per chunk. `queue.writeBuffer` is ordered on the
+    // queue ahead of the single `submit` that runs every chunk's compute pass,
+    // so reusing one cached buffer left every pass reading the LAST chunk's
+    // `pointCount` — the shorter final chunk — and every full chunk then
+    // early-returned its tail (`pi >= params.pointCount`), leaving those
+    // points' deviation at its zero init → rendered at the ramp centre
+    // (white) regardless of their true distance. Distinct buffers keep each
+    // pass's params intact; they're freed in `releaseTransientParams()`.
+    const paramsBuffer = this.device.createBuffer({
+      size: PARAMS_UNIFORM_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.transientParamsBuffers.push(paramsBuffer);
     const params = new Uint32Array(PARAMS_UNIFORM_BYTES / 4);
     const paramsF = new Float32Array(params.buffer);
     params[0] = input.pointCount;
@@ -196,9 +204,18 @@ export class DeviationPipeline {
     this.trianglesBuffer = null;
   }
 
+  /**
+   * Destroy the per-dispatch uniform buffers from the last compute batch.
+   * Call after `queue.onSubmittedWorkDone()` so the GPU is finished reading
+   * them. Safe to call repeatedly.
+   */
+  releaseTransientParams(): void {
+    for (const b of this.transientParamsBuffers) b.destroy();
+    this.transientParamsBuffers = [];
+  }
+
   destroy(): void {
     this.disposeBvh();
-    this.paramsBuffer?.destroy();
-    this.paramsBuffer = null;
+    this.releaseTransientParams();
   }
 }

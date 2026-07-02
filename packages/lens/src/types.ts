@@ -87,6 +87,15 @@ export interface LensDataProvider {
   getMaterialName?(globalId: number): string | undefined;
 
   /**
+   * Get every distinct *individual* material name for an entity — each layer /
+   * constituent / profile material of a multi-material element, or the single
+   * material for a simple one. Unlike {@link getMaterialName} this does NOT
+   * return the layer-set / usage name, so "color/select by material" groups by
+   * the real materials and a multi-layer element belongs to each of them. (#1366)
+   */
+  getMaterialNames?(globalId: number): string[];
+
+  /**
    * Get quantity sets for an entity (used for discovery).
    * Returns quantity set names and their quantity names.
    */
@@ -259,7 +268,7 @@ export const LENS_CRITERIA_TYPES = [
 
 /** Common entity attribute names for the lens rule editor */
 export const ENTITY_ATTRIBUTE_NAMES = [
-  'Name', 'Description', 'ObjectType', 'Tag',
+  'Name', 'Description', 'ObjectType', 'PredefinedType', 'Tag',
 ] as const;
 
 /** Common IFC classes for lens rule editor UI */

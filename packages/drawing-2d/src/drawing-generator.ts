@@ -170,6 +170,10 @@ export class Drawing2DGenerator {
     report('polygons', 0);
 
     const cutPolygons = this.polygonBuilder.buildPolygons(cutSegments);
+    // Opaque base cross-section per multi-material entity, for the 3D overlay to
+    // draw behind the per-layer fills (never see-through). Kept out of
+    // `cutPolygons` so the flat 2D drawing / export / measure paths are untouched.
+    const layerBaseCutPolygons = this.polygonBuilder.buildBasePolygons(cutSegments);
 
     report('polygons', 1);
 
@@ -362,6 +366,7 @@ export class Drawing2DGenerator {
       config,
       lines: allLines,
       cutPolygons,
+      layerBaseCutPolygons,
       projectionPolygons: [], // TODO: implement projection polygon extraction
       bounds,
       stats: {

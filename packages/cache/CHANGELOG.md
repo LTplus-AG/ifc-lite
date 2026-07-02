@@ -1,5 +1,122 @@
 # @ifc-lite/cache
 
+## 2.0.9
+
+### Patch Changes
+
+- e6bd2dd: Cap the number of void cutters packed into a single CSG arrangement, fixing a
+  geometry-stream stall on models with elements that carry many openings.
+
+  `subtract_mesh_many` previously subtracted every disjoint cutter of a host in ONE
+  N-ary conforming arrangement. That arrangement's cost is super-linear in the
+  cutters packed into it, so an element with ~90 openings cost ~12 s in a single
+  arrangement (vs ~0.4 s chunked, 30x). On WASM that single element alone exceeded
+  the 40 s geometry-stream watchdog: an 86 MB model that loaded in ~15 s natively
+  stalled and failed to load in the browser. Because the per-element escalation
+  budget bounds escalations, not the base arrangement size, it did not catch this.
+
+  Void cutters here are order-free (set difference: `host − {all} ≡ host − {chunk₁}
+− {chunk₂} − …`), so the cutters are now processed in chunks of 16, bounding the
+  per-arrangement cost so no single element can stall the stream. It is
+  solid-equivalent (the batch path's contract is volume parity + watertightness,
+  not byte-identical tessellation; the existing `subtract_many_*_matches_sequential`
+  equivalence tests and a new 20-cutter chunked-equivalence test all pass, and the
+  full geometry suite is unchanged). For hosts with <= 16 cutters this is exactly
+  the prior single arrangement. Verified end to end: the previously-stalling model
+  now loads completely and renders correctly.
+
+  Bumps the geometry cache `FORMAT_VERSION` (10 → 11). For a host with > 16 void
+  cutters the chunked cut is solid-equivalent but not byte-identical (and on
+  pre-fix builds those hosts often fell back to an AABB box), so the mesh hash
+  changes. The bump invalidates pre-fix caches so restored models re-mesh with the
+  correct tessellation, and the compare/diff feature does not flag those hosts from
+  a stale-cache hash mismatch.
+
+- ea5e9bc: GLB importer: honor node matrices so instanced exports round-trip.
+
+  The GLB importer (`parseGLBToMeshData`) composed only `node.translation` down the
+  hierarchy, never `node.matrix`. The from-meshes export (the viewer's "Export GLB")
+  emits translations only and round-tripped fine, but the from-bytes instanced exporter
+  (#1443) places each shared-template occurrence with a node MATRIX (rotation +
+  translation). Re-importing such a GLB collapsed every instanced occurrence onto the
+  template (each matrix node contributed a zero translation), losing per-occurrence
+  position and rotation.
+
+  The importer now composes the full column-major 4x4 down the hierarchy. The composed
+  TRANSLATION rides each mesh as `MeshData.origin` (kept out of the f32 vertex buffer for
+  georeferenced precision, as before), and any ROTATION/SCALE is baked into the small,
+  local imported vertices and normals (which stay f32-precise because they are
+  template-local). The pure-translation path is byte-identical to before, so the viewer's
+  own exports are unaffected.
+
+  Verified end to end: a real instanced GLB exported by `ifc-lite-export` (C20-Institute)
+  re-imports with occurrences spread across the building at many distinct world poses (not
+  collapsed), with local vertices staying sub-metre. Normal note: rotation is exact; a
+  non-uniform-scale instance would want the inverse-transpose for normals (a rare,
+  accepted approximation, since instance transforms are rigid).
+
+- fa36858: Fix GLB re-import: SharedArrayBuffer crash + georeferenced precision corruption.
+
+  Two independent round-trip bugs in the GLB importer (`parseGLB` / `parseGLBToMeshData`):
+
+  1. **SharedArrayBuffer decode crash.** The viewer streams large imports (>= 256 MB)
+     into a `SharedArrayBuffer` (`acquireFileBuffer`), and that buffer reaches the GLB
+     parser unchanged. `parseGLB` decoded the JSON chunk with `new TextDecoder().decode(view)`,
+     which browsers reject for any SharedArrayBuffer-backed view (a Spectre mitigation) with
+     "TextDecoder.decode: ... can't be a SharedArrayBuffer ...". Re-importing a large exported
+     GLB therefore threw before any geometry was read. The JSON chunk now goes through
+     `safeUtf8Decode` (already in `@ifc-lite/data`), which copies it into a private non-shared
+     buffer on the SAB path. Only the small JSON chunk is copied; the binary chunk stays
+     zero-copy (it was already copied via `.slice()`).
+
+  2. **Georeferenced f32 re-snap.** The exporter keeps vertices relative to the model
+     scene-centre and carries the placement on a single root-node translation, precisely so a
+     georeferenced offset (a root translation of ~1e6 m) stays out of the f32 vertex buffer. The
+     importer was baking that translation back into the f32 vertices, which re-snaps every vertex
+     to a ~0.06-0.5 m grid at georef scale and collapses fine (rebar-scale) detail. It now surfaces
+     the composed root translation as `MeshData.origin` (world = origin + position) instead, which
+     the renderer and every world-space consumer already fold (the local-frame path). The
+     non-georeferenced case (zero translation) is unchanged.
+
+  Note: the importer's node walk still reads only `node.translation`, not `node.matrix`. The
+  viewer's own "Export GLB" (from-meshes) emits only translations, so it round-trips fully. The
+  from-bytes instanced exporter emits per-occurrence node matrices; round-tripping those is a
+  follow-up that lands with the instancing work.
+
+- 3f25a72: Fix two rendering defects from malformed self-intersecting tessellated void
+  cutters (window/door openings authored as `IfcPolygonalFaceSet` whose point list
+  carries garbage vertices metres from the real opening, plus a sibling multi-body
+  extruded cutter). The exact mesh-arrangement kernel mishandles such cutters two
+  ways, both fixed without touching the cut path:
+
+  - A far-flung "fin" triangle leaked into the host output as a multi-metre spike
+    poking out of the wall, surfacing only under the multi-cutter arrangement (so
+    it slipped past the per-cutter admission guards). A boolean subtract can only
+    REMOVE material, so the result is contained in the host's pre-cut AABB; any
+    output triangle reaching beyond it is provably an artifact and is now dropped
+    (`Mesh::clip_triangles_to_aabb`, which also compacts the orphaned vertices so
+    bounds/picking/clash/export stay correct).
+
+  - The same cutters made the kernel UNDER-cut, leaving a wall flap bridging the
+    opening on the wall face. For each cutter detected as malformed (intrinsic
+    vertex clustering, since a fin running along a long wall stays inside its
+    AABB), the real opening box is recovered and wall triangles overlapping its
+    cross-section are dropped (`clip_opening_flaps`), sparing the reveal/jamb
+    faces on the boundary.
+
+  Both passes are gated to provably-broken cutters and are a no-op on clean
+  openings, so well-formed models are byte-identical.
+
+- Updated dependencies [e6bd2dd]
+- Updated dependencies [24e1648]
+- Updated dependencies [f9f0784]
+- Updated dependencies [7c45192]
+- Updated dependencies [6eb46f1]
+- Updated dependencies [4f76955]
+- Updated dependencies [909c1b0]
+- Updated dependencies [3f25a72]
+  - @ifc-lite/geometry@2.13.0
+
 ## 2.0.8
 
 ### Patch Changes

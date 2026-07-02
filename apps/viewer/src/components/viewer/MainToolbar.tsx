@@ -29,6 +29,7 @@ import {
   Camera,
   Info,
   Layers2,
+  Zap,
   SquareX,
   BoxSelect,
   Building2,
@@ -51,6 +52,7 @@ import {
   Redo2,
   Boxes,
   Shapes,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -69,12 +71,13 @@ import {
   DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
-import { useViewerStore, isIfcxDataStore } from '@/store';
+import { useViewerStore, isIfcxDataStore, type FederatedModel } from '@/store';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { exportCsvFromBytes } from '@/lib/export/csv';
+import { downloadFile, downloadDataUrl } from '@/lib/export/download';
 import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
@@ -84,6 +87,11 @@ import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
 import { SearchInline } from './SearchInline';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
+import {
+  supportsFileSystemAccess,
+  openIfcFilesWithHandles,
+  readFreshFile,
+} from '@/services/file-system-access';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { toast } from '@/components/ui/toast';
@@ -281,6 +289,19 @@ function ActionButton({ icon: Icon, label, onClick, shortcut, disabled }: Action
 }
 // #endregion
 
+/** Extensions the viewer can ingest (IFC / IFCX / GLB / point clouds). */
+function isSupportedModelFile(f: File): boolean {
+  const n = f.name.toLowerCase();
+  return n.endsWith('.ifc') || n.endsWith('.ifcx') || n.endsWith('.glb')
+    || n.endsWith('.las') || n.endsWith('.laz') || n.endsWith('.ply') || n.endsWith('.pcd')
+    || n.endsWith('.e57') || n.endsWith('.pts') || n.endsWith('.xyz');
+}
+
+/** Case-insensitive IFCX check (filenames are accepted case-insensitively). */
+function isIfcxModelFile(f: File): boolean {
+  return f.name.toLowerCase().endsWith('.ifcx');
+}
+
 interface MainToolbarProps {
   onShowShortcuts?: () => void;
 }
@@ -358,6 +379,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // "what shows in the scene" controls.
   const mergeLayers = useViewerStore((state) => state.mergeLayers);
   const setMergeLayers = useViewerStore((state) => state.setMergeLayers);
+  const geometryMode = useViewerStore((state) => state.geometryMode);
+  const setGeometryMode = useViewerStore((state) => state.setGeometryMode);
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
   const bcfPanelVisible = useViewerStore((state) => state.bcfPanelVisible);
   const setBcfPanelVisible = useViewerStore((state) => state.setBcfPanelVisible);
@@ -427,11 +450,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
+    // Filter to supported files (IFC, IFCX, GLB, point clouds)
+    const supportedFiles = Array.from(files).filter(isSupportedModelFile);
 
     if (supportedFiles.length === 0) return;
 
@@ -464,38 +484,161 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     e.target.value = '';
   }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
 
-  const handleAddModelSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Filter to supported files (IFC, IFCX, GLB)
-    const supportedFiles = Array.from(files).filter(
-      f => f.name.endsWith('.ifc') || f.name.endsWith('.ifcx') || f.name.endsWith('.glb')
-        || f.name.toLowerCase().endsWith('.las') || f.name.toLowerCase().endsWith('.laz') || f.name.toLowerCase().endsWith('.ply') || f.name.toLowerCase().endsWith('.pcd') || f.name.toLowerCase().endsWith('.e57') || f.name.toLowerCase().endsWith('.pts') || f.name.toLowerCase().endsWith('.xyz')
-    );
-
+  // Shared Add-Model routing. `handles` is positionally aligned with
+  // `supportedFiles`, carrying a live FS Access handle per file (Chromium) so
+  // each added model stays part of a refreshable federation.
+  const addSupportedFiles = useCallback((
+    supportedFiles: File[],
+    handles?: (FileSystemFileHandle | undefined)[],
+  ) => {
     if (supportedFiles.length === 0) return;
-
-    // Check if adding IFCX files
-    const newFilesAreIfcx = supportedFiles.every(f => f.name.endsWith('.ifcx'));
+    const newFilesAreIfcx = supportedFiles.every(isIfcxModelFile);
     const existingIsIfcx = isIfcxDataStore(ifcDataStore);
 
     if (newFilesAreIfcx && existingIsIfcx) {
       // Adding IFCX overlay(s) to existing IFCX model - re-compose with new layers
       console.log(`[MainToolbar] Adding ${supportedFiles.length} IFCX overlay(s) to existing IFCX model - re-composing`);
-      addIfcxOverlays(supportedFiles);
+      void addIfcxOverlays(supportedFiles);
     } else if (newFilesAreIfcx && !existingIsIfcx && ifcDataStore) {
       // User trying to add IFCX to IFC4 model - won't work
       console.warn('[MainToolbar] Cannot add IFCX files to non-IFCX model');
       alert(`IFCX overlay files cannot be added to IFC4 models.\n\nPlease load IFCX files separately.`);
     } else {
       // Standard case - add as independent models (IFC4, GLB, or mixed)
-      loadFilesSequentially(supportedFiles);
+      void loadFilesSequentially(supportedFiles, handles);
     }
+  }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
 
+  const handleAddModelSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    // <input> yields no live handle, so models added this way aren't refreshable.
+    const supportedFiles = Array.from(files).filter(isSupportedModelFile);
+    addSupportedFiles(supportedFiles);
     // Reset input so same files can be selected again
     e.target.value = '';
-  }, [loadFilesSequentially, addIfcxOverlays, ifcDataStore]);
+  }, [addSupportedFiles]);
+
+  // Preferred Add-Model path: the picker captures a handle per file so the
+  // resulting federation can be refreshed. Falls back to the hidden <input>.
+  const handleAddModelClick = useCallback(async () => {
+    if (!supportsFileSystemAccess()) {
+      addModelInputRef.current?.click();
+      return;
+    }
+    const opened = await openIfcFilesWithHandles();
+    if (!opened) return;
+    const supported = opened.filter(o => isSupportedModelFile(o.file));
+    addSupportedFiles(supported.map(o => o.file), supported.map(o => o.handle));
+  }, [addSupportedFiles]);
+
+  // Open via the File System Access API when available (Chromium) so we capture
+  // a live FileSystemFileHandle for each file — that handle is what lets the
+  // Refresh button re-read the same file from disk later (issue #1345). Browsers
+  // without the API fall back to the hidden <input type="file">.
+  const handleOpenClick = useCallback(async () => {
+    if (!supportsFileSystemAccess()) {
+      fileInputRef.current?.click();
+      return;
+    }
+    const picked = await openIfcFilesWithHandles();
+    if (!picked) return; // cancelled, unavailable, or picker failed
+    // The picker keeps an "all files" option, so drop anything unsupported
+    // before it reaches the load pipeline (matches the <input> + Add Model paths).
+    const opened = picked.filter(o => isSupportedModelFile(o.file));
+    if (opened.length === 0) return;
+
+    const files = opened.map(o => o.file);
+    recordRecentFiles(files.map(f => ({ name: f.name, size: f.size })));
+    void cacheFileBlobs(files);
+
+    if (opened.length === 1) {
+      // Single model: keep the handle so Refresh can re-read it from disk.
+      void loadFile(opened[0].file, { kind: 'primary' }, { sourceHandle: opened[0].handle });
+    } else {
+      // Multiple files mirror handleFileSelect's branching.
+      const allIfcx = files.every(isIfcxModelFile);
+      resetViewerState();
+      clearAllModels();
+      if (allIfcx) {
+        // IFCX layers compose into one shared store — no per-file handle.
+        void loadFederatedIfcx(files);
+      } else {
+        // Carry each file's handle so the whole federation stays refreshable.
+        void loadFilesSequentially(files, opened.map(o => o.handle));
+      }
+    }
+  }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
+
+  // Refresh re-reads files from disk and re-parses them. Offered when EVERY
+  // loaded model has a live FS Access handle (a single model, or a federation
+  // fully opened via the picker/drag this session). Drag-drop on non-Chromium,
+  // <input type="file">, cache-restored, and IFCX-composed models have no
+  // handle, so a mixed session hides the button rather than risk dropping the
+  // handle-less models during the rebuild.
+  const canRefresh = useMemo(() => {
+    if (loading || models.size === 0) return false;
+    return Array.from(models.values()).every(m => m.sourceHandle);
+  }, [models, loading]);
+
+  const handleRefresh = useCallback(async () => {
+    const targets = (Array.from(useViewerStore.getState().models.values()) as FederatedModel[])
+      .filter((m): m is FederatedModel & { sourceHandle: FileSystemFileHandle } => Boolean(m.sourceHandle))
+      .sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
+    if (targets.length === 0) return;
+
+    // Re-read every handle BEFORE clearing anything, so a failed read never
+    // leaves the viewer empty.
+    const reads = await Promise.all(
+      targets.map(async (m) => ({ model: m, fresh: await readFreshFile(m.sourceHandle) })),
+    );
+    const ok = reads.filter((r) => r.fresh) as { model: typeof targets[number]; fresh: File }[];
+    const failedNames = reads.filter((r) => !r.fresh).map((r) => `"${r.model.name}"`);
+
+    if (ok.length === 0) {
+      toast.error(`Couldn't re-read ${failedNames.join(', ')}. Files may have moved, been deleted, or access was denied.`);
+      return;
+    }
+
+    recordRecentFiles(ok.map((r) => ({ name: r.fresh.name, size: r.fresh.size })));
+    void cacheFileBlobs(ok.map((r) => r.fresh));
+
+    if (targets.length === 1) {
+      // Await so the success toast only fires once the reload has completed.
+      await loadFile(ok[0].fresh, { kind: 'primary' }, { sourceHandle: ok[0].model.sourceHandle });
+    } else {
+      // Rebuild the federation from fresh bytes, preserving id + order + state.
+      clearAllModels();
+      for (const r of ok) {
+        const reloadedId = await addModel(r.fresh, {
+          name: r.model.name,
+          modelId: r.model.id,
+          loadedAt: r.model.loadedAt,
+          visible: r.model.visible,
+          collapsed: r.model.collapsed,
+          sourceHandle: r.model.sourceHandle,
+        });
+        if (reloadedId && r.model.visible === false) {
+          useViewerStore.getState().setModelVisibility(r.model.id, false);
+        }
+      }
+    }
+
+    if (failedNames.length > 0) {
+      toast.error(`Refreshed ${ok.length}; couldn't re-read ${failedNames.join(', ')}.`);
+    } else {
+      toast.success(ok.length === 1 ? `Refreshed "${ok[0].fresh.name}"` : `Refreshed ${ok.length} models`);
+    }
+  }, [loadFile, addModel, clearAllModels]);
+
+  // The command palette dispatches this (synchronously, inside the click) so the
+  // toolbar's handle-capturing open path runs while user activation is still
+  // live — required for the file dialog to actually open on Chrome.
+  useEffect(() => {
+    const handler = () => { void handleOpenClick(); };
+    window.addEventListener('ifc-lite:open-files', handler);
+    return () => window.removeEventListener('ifc-lite:open-files', handler);
+  }, [handleOpenClick]);
 
   const hasSelection = selectedEntityId !== null;
   // Selection chip uses the multi-select size when present; falls back
@@ -713,11 +856,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     const canvas = document.querySelector('canvas');
     if (!canvas) return;
     try {
-      const dataUrl = canvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = 'screenshot.png';
-      a.click();
+      downloadDataUrl(canvas.toDataURL('image/png'), 'screenshot.png');
       toast.success('Screenshot saved');
     } catch (err) {
       console.error('Screenshot failed:', err);
@@ -730,14 +869,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     try {
       const csv = await exportCsvFromBytes(ifcDataStore.source, type, { includeProperties: type === 'entities' });
       const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;
-
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadFile(csv, filename, 'text/csv');
       toast.success(`Exported ${type} CSV`);
     } catch (err) {
       console.error('CSV export failed:', err);
@@ -761,13 +893,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       }
 
       const json = JSON.stringify({ entities }, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'model-data.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadFile(json, 'model-data.json', 'application/json');
       toast.success(`Exported ${entities.length} entities as JSON`);
     } catch (err) {
       console.error('JSON export failed:', err);
@@ -804,7 +930,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             onClick={(e) => {
               // Blur button to close tooltip before opening file dialog
               (e.currentTarget as HTMLButtonElement).blur();
-              fileInputRef.current?.click();
+              void handleOpenClick();
             }}
             disabled={loading}
           >
@@ -818,6 +944,26 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <TooltipContent>Open IFC File</TooltipContent>
       </Tooltip>
 
+      {canRefresh && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={(e) => {
+                (e.currentTarget as HTMLButtonElement).blur();
+                void handleRefresh();
+              }}
+              disabled={loading}
+              aria-label={models.size > 1 ? 'Refresh models from disk' : 'Refresh model from disk'}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{models.size > 1 ? 'Refresh models from disk' : 'Refresh model from disk'}</TooltipContent>
+        </Tooltip>
+      )}
+
       {/* Add Model button - only shown when models are loaded */}
       {hasModelsLoaded && (
         <Tooltip>
@@ -827,7 +973,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               size="icon-sm"
               onClick={(e) => {
                 (e.currentTarget as HTMLButtonElement).blur();
-                addModelInputRef.current?.click();
+                void handleAddModelClick();
               }}
               disabled={loading}
               className="text-[#9ece6a] hover:text-[#9ece6a] hover:bg-[#9ece6a]/10"
@@ -1421,6 +1567,29 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               </span>
             </span>
             <Switch checked={mergeLayers} onCheckedChange={(next) => setMergeLayers(next === true)} />
+          </label>
+
+          {/* Fast vs Exact geometry — like merge-layers, a load-time geometry
+              input that only takes effect on the next model load ("· on reload").
+              Fast skips sub-10% detail cuts + auto-lowers density on heavy models
+              for quick first paint; Exact keeps every cut at full density for
+              display/measure/export fidelity. */}
+          <label className="group flex items-center justify-between gap-3 rounded-md px-2 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors">
+            <span className={cn('flex items-center gap-2.5 min-w-0 transition-opacity', geometryMode !== 'fast' && 'opacity-50')}>
+              <Zap className="h-4 w-4 shrink-0 text-primary" />
+              <span className="grid gap-0.5 min-w-0">
+                <span className="text-sm leading-tight truncate">Fast geometry</span>
+                <span className="text-[10px] leading-tight text-muted-foreground truncate">
+                  {geometryMode === 'fast'
+                    ? 'Skip tiny cuts, auto-detail · on reload'
+                    : 'Exact: full cuts + density · on reload'}
+                </span>
+              </span>
+            </span>
+            <Switch
+              checked={geometryMode === 'fast'}
+              onCheckedChange={(next) => setGeometryMode(next === true ? 'fast' : 'exact')}
+            />
           </label>
         </DropdownMenuContent>
       </DropdownMenu>

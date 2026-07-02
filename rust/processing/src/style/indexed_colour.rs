@@ -138,6 +138,8 @@ pub fn split_mesh_by_indexed_colour(
     let has_normals = mesh.normals.len() == mesh.positions.len();
     let rtc_applied = mesh.rtc_applied;
     let origin = mesh.origin;
+    let local_bounds = mesh.local_bounds;
+    let local_to_world = mesh.local_to_world;
 
     // One accumulator per palette entry; built lazily so empty groups vanish.
     #[derive(Default)]
@@ -192,6 +194,14 @@ pub fn split_mesh_by_indexed_colour(
                 rtc_applied,
                 origin,
                 instance_meta: None,
+                // Every split group shares the parent's placement (same element,
+                // just partitioned by colour), so both carry over unchanged. The
+                // parent's local_bounds is a superset of this group's actual
+                // extent, but that's fine — Scene.getEntityLocalBounds unions
+                // across an entity's pieces, and a union of identical supersets
+                // still yields the correct entity-level box. See issue #1474.
+                local_bounds,
+                local_to_world,
             };
             Some((map.colours[palette], mesh))
         })
@@ -219,6 +229,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         let map = FullIndexedColourMap {
             geometry_id: 1,

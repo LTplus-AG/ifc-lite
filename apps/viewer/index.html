@@ -16,74 +16,85 @@
   </script>
 
   <script>
-    // Vercel Skew Protection: pin this browser session to the deployment that
-    // served THIS document, so lazily-fetched content-hashed assets — notably
-    // the geometry WASM, only fetched when a model is opened — don't 404 after a
-    // newer deploy ships fresh hashes ("Failed to execute 'compile' on
-    // 'WebAssembly': HTTP status code is not ok"). The __vdpl cookie makes
-    // Vercel's edge route subsequent same-origin requests to the matching
-    // deployment. The token is replaced with the live VERCEL_DEPLOYMENT_ID at
-    // deploy time by scripts/vercel-build.sh, and ONLY when the project's Skew
-    // Protection toggle is on; otherwise it stays as the literal token and the
-    // `dpl_` guard below makes this a no-op (localhost, previews, toggle off).
-    (function () {
-      try {
-        var id = '__VDPL_DEPLOYMENT_ID__';
-        if (id.indexOf('dpl_') !== 0) return;
-        // Always reconcile the cookie to THIS page's deployment. Setting it only
-        // when absent would leave a stale __vdpl from an earlier deployment in
-        // place — e.g. a SameSite=Strict cross-site navigation doesn't send the
-        // cookie, so Vercel serves the current deployment while the browser
-        // still holds the old pin — and the next same-origin WASM fetch would
-        // route to the wrong (possibly deleted) deployment and 404.
-        var m = document.cookie.match(/(?:^|;\s*)__vdpl=([^;]*)/);
-        if (!m || m[1] !== id) {
-          document.cookie = '__vdpl=' + id + '; path=/; SameSite=Strict; Secure';
-        }
-      } catch (e) {
-        // House rule: don't swallow — a silently disabled skew fix is hard to
-        // diagnose against the very WASM 404 it is meant to prevent.
-        if (typeof console !== 'undefined') console.warn('[skew-protection] could not set __vdpl cookie', e);
-      }
-    })();
-  </script>
-
-  <script>
-    // Boot self-heal — the safety net UNDER skew protection above.
+    // Boot self-heal + stale Vercel skew-pin cleanup (issue #1457).
     //
-    // When a Vercel deploy is mid-rollout (or the __vdpl pin above points at a
-    // now-deleted deployment), the content-hashed ENTRY module can 404. Vercel
-    // serves 404s as `text/plain`, which the browser refuses to run as a module
-    // ("blocked because of a disallowed MIME type"). The entry never executes,
-    // React never mounts, and the page shows only the themed background with no
-    // content — recoverable only by a manual reload.
+    // BACKGROUND. The site can run behind Vercel Skew Protection, which routes
+    // same-origin requests to the deployment named by a `__vdpl` cookie. We used
+    // to SET that cookie here to pin a session's lazily-fetched assets (the
+    // geometry WASM) to the deployment that served the page. That pin caused a
+    // worse failure than it prevented: a browser holding a `__vdpl` from an
+    // OLDER deployment loads the CURRENT HTML on a cross-site navigation
+    // (SameSite=Strict suppresses the cookie on the document request) but routes
+    // the content-hashed asset requests — which DO carry the cookie — to the old
+    // deployment, so every /assets/* 404s and the app never boots. It hit
+    // returning Edge/Brave users right after an asset-hash-rotating deploy
+    // (the Vite 7 -> 8 / Rolldown upgrade).
     //
-    // This must live INLINE in the HTML: a listener inside the bundle can't fire
-    // if the bundle itself failed to load. We watch for (a) a load error on any
-    // entry/preload module asset, or (b) #root never gaining children, and then
-    // reload ONCE to fetch fresh HTML + matching assets. sessionStorage bounds
-    // the attempts so a genuinely-broken deploy can't loop.
+    // The original lazy-WASM-404 concern is already handled in app code (see
+    // @ifc-lite/geometry `wasm-asset-error` + apps/viewer `wasm-version-skew`:
+    // detect the rotated-asset 404 and reload once). So we no longer set a pin.
+    // Instead we ACTIVELY EXPIRE any lingering pin, and keep this INLINE boot
+    // self-heal as the backstop for a pinned/mid-rollout 404 that kills the
+    // entry module before any bundle code can run. The reload drops the pin so
+    // it always falls back to the current live deployment.
     (function () {
       var KEY = 'ifc-lite:boot-reload';
+      var COUNT_COOKIE = 'ifc-lite-boot-reload';
       var MAX = 2;            // at most 2 automatic reloads, then give up
       var BACKSTOP_MS = 30000; // silent-hang backstop (entry JS is multi-MB)
       var ERROR_DEBOUNCE_MS = 800;
       var healed = false;
 
       function warn(msg) { if (typeof console !== 'undefined') console.warn('[boot-self-heal] ' + msg); }
-      // Current attempt count, or -1 when sessionStorage is unreadable (sandboxed
-      // frame / storage disabled) — the signal that we cannot bound retries.
-      function attempts() {
-        try { return Number(sessionStorage.getItem(KEY)) || 0; }
-        catch (e) { warn('sessionStorage unreadable: ' + e); return -1; }
+
+      // Registrable-ish parent domain (last two labels) so we can also clear a
+      // pin that an earlier build set with a Domain attribute — a host-only
+      // deletion would not remove it. Best-effort; '' on a single-label host.
+      function parentDomain() {
+        var parts = (location.hostname || '').split('.');
+        return parts.length >= 2 ? parts.slice(-2).join('.') : '';
       }
-      // Persist n and confirm it survives a read-back; returns false when storage
-      // is unavailable, so callers can refuse to reload rather than loop forever.
+
+      // Expire any Vercel skew pin in every scope it might have been set. Run on
+      // load (so a browser stuck on an old pin migrates to current) and before
+      // each self-heal reload (so the reload can't re-pin to the broken deploy).
+      function clearPin() {
+        try {
+          document.cookie = '__vdpl=; path=/; Max-Age=0; SameSite=Lax';
+          document.cookie = '__vdpl=; path=/; Max-Age=0; SameSite=Strict; Secure';
+          var pd = parentDomain();
+          if (pd) document.cookie = '__vdpl=; path=/; domain=.' + pd + '; Max-Age=0; SameSite=Lax; Secure';
+        } catch (e) { warn('could not clear __vdpl pin: ' + e); }
+      }
+
+      // Reload-attempt counter. Prefer sessionStorage (auto-clears on tab close);
+      // fall back to a short-lived cookie when storage is blocked (private mode /
+      // sandboxed frame / strict tracking-prevention — the likely reason
+      // Edge/Brave never recovered) so we STILL bound retries AND still recover,
+      // instead of giving up and leaving a blank page.
+      function attempts() {
+        try {
+          var v = sessionStorage.getItem(KEY);
+          if (v != null) return Number(v) || 0;
+        } catch (e) { warn('sessionStorage unreadable: ' + e); }
+        var m = document.cookie.match(/(?:^|;\s*)ifc-lite-boot-reload=(\d+)/);
+        return m ? (Number(m[1]) || 0) : 0;
+      }
+      // Persist n in both stores; returns false only when NEITHER took, so a
+      // caller can refuse to reload rather than loop forever.
       function recordAttempts(n) {
+        var ok = false;
         try {
           sessionStorage.setItem(KEY, String(n));
-          return (Number(sessionStorage.getItem(KEY)) || 0) === n;
-        } catch (e) { warn('sessionStorage unwritable: ' + e); return false; }
+          ok = (Number(sessionStorage.getItem(KEY)) || 0) === n;
+        } catch (e) { warn('sessionStorage unwritable: ' + e); }
+        try {
+          // 120s: long enough to survive a reload, short enough that a later
+          // genuine deploy in the same tab can self-heal again.
+          document.cookie = COUNT_COOKIE + '=' + n + '; path=/; Max-Age=120; SameSite=Lax';
+          ok = true;
+        } catch (e) { warn('could not persist reload count: ' + e); }
+        return ok;
       }
       function mounted() {
         var r = document.getElementById('root');
@@ -93,16 +104,11 @@
         if (healed) return;
         if (mounted()) { recordAttempts(0); return; } // app is actually up — nothing to do
         var n = attempts();
-        // Storage blocked: we can't enforce MAX, so reloading would loop forever.
-        // Give up and let the broken page surface (a manual reload still works).
-        if (n < 0) { warn('cannot bound retries without storage; skipping auto-reload (' + reason + ')'); return; }
         if (n >= MAX) return;                       // avoid reload loops on a real outage
-        // On a retry, a stale __vdpl pin to a deleted deployment would keep us
-        // broken; drop it so the reload falls back to the current live deploy.
-        if (n >= 1) {
-          try { document.cookie = '__vdpl=; path=/; Max-Age=0; SameSite=Strict; Secure'; }
-          catch (e) { warn('could not clear __vdpl pin: ' + e); }
-        }
+        // A stale __vdpl pin is the most likely cause of an entry/asset 404, so
+        // drop it BEFORE every reload (not just the second) — the reload then
+        // falls back to the current live deployment and its matching assets.
+        clearPin();
         // Record the attempt BEFORE reloading and confirm it stuck; if it didn't,
         // bail rather than risk reloading forever.
         if (!recordAttempts(n + 1)) { warn('retry count did not persist; skipping auto-reload to avoid a loop (' + reason + ')'); return; }
@@ -110,6 +116,11 @@
         warn('app failed to boot (' + reason + '); reloading to recover');
         location.reload();
       }
+
+      // Proactively expire any lingering pin on every load, so a browser stuck on
+      // a still-alive old pin (which loads fine and so never trips the error path)
+      // migrates to the current deployment on its next navigation.
+      clearPin();
 
       // (a) Fast path: a content-hashed entry/preload module failed to load.
       // Capture phase — resource load errors on script/link elements don't bubble.

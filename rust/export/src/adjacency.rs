@@ -95,7 +95,7 @@ pub fn solve_adjacency(rooms: &mut [Room]) -> usize {
             if (a.area - b.area).abs() / a.area.max(b.area).max(1e-9) > MAX_AREA_DIFF {
                 continue;
             }
-            if best.map_or(true, |(bg, _)| gap < bg) {
+            if best.is_none_or(|(bg, _)| gap < bg) {
                 best = Some((gap, j));
             }
         }

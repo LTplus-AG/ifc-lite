@@ -9,7 +9,11 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl IfcAPI {
-    /// Export the render geometry in `content` as a Wavefront **OBJ** string.
+    /// Export the render geometry in `content` as Wavefront **OBJ** UTF-8 bytes.
+    ///
+    /// Returned as UTF-8 bytes (`Uint8Array`) so output is not capped by the
+    /// V8 max-string ceiling (~512 MB); decode with `TextDecoder` when a string
+    /// is genuinely needed.
     ///
     /// `hidden` / `isolated` are express-id filters mirroring the viewer's visibility
     /// state (empty `isolated` ⇒ all visible). Instanced type-library shapes are skipped.
@@ -20,16 +24,16 @@ impl IfcAPI {
     #[wasm_bindgen(js_name = exportObj)]
     pub fn export_obj(
         &self,
-        content: String,
+        content: &[u8],
         include_normals: bool,
         hidden: &[u32],
         isolated: &[u32],
-    ) -> String {
+    ) -> Vec<u8> {
         let opts = ifc_lite_export::ObjOptions {
             include_normals,
             hidden: hidden.to_vec(),
             isolated: isolated.to_vec(),
         };
-        ifc_lite_export::export_obj(content.as_bytes(), &opts)
+        ifc_lite_export::export_obj(content, &opts).into_bytes()
     }
 }

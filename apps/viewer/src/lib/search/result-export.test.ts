@@ -93,9 +93,7 @@ describe('__internal helpers', () => {
     assert.strictEqual(__internal.escapeCsvCell('a\nb'), '"a\nb"');
   });
 
-  it('sanitiseFilenameStem strips path-unsafe characters', () => {
-    assert.strictEqual(__internal.sanitiseFilenameStem('My Query.csv'), 'My_Query_csv');
-    assert.strictEqual(__internal.sanitiseFilenameStem('   '), 'query');
-    assert.strictEqual(__internal.sanitiseFilenameStem('weird/../path'), 'weird_path');
-  });
+  // Filename sanitisation now lives in lib/export/download.ts (sanitizeFilename),
+  // which preserves case and dots — see download.test.ts. downloadResult() routes
+  // its stem through it, so there is no module-local helper to test here anymore.
 });

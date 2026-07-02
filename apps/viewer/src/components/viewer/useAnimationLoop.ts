@@ -51,6 +51,8 @@ export interface UseAnimationLoopParams {
    */
   modelBoundsRef?: MutableRefObject<{ min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null>;
   selectedEntityIdsRef: MutableRefObject<Set<number> | undefined>;
+  /** Non-empty while a clash is focused → emphasize (pop) the override colours. */
+  clashHighlightColorsRef: MutableRefObject<Map<number, [number, number, number, number]> | null | undefined>;
   coordinateInfoRef: MutableRefObject<CoordinateInfo | undefined>;
   isInteractingRef: MutableRefObject<boolean>;
   lastCameraStateRef: MutableRefObject<{
@@ -88,6 +90,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     sectionRangeRef,
     modelBoundsRef,
     selectedEntityIdsRef,
+    clashHighlightColorsRef,
     coordinateInfoRef,
     isInteractingRef,
     lastCameraStateRef,
@@ -182,7 +185,17 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         continuousThrottleMs > 0 &&
         (currentTime - lastRenderTime) < continuousThrottleMs;
 
-      if ((isAnimating || renderRequested || queueFlushed) && !throttled) {
+      // Render continuously while the user is interacting (issue #1394), not
+      // just when a pointermove happens to set the dirty flag. Pointer events
+      // can arrive sparsely (coalesced / slow drag), which left the swap chain
+      // unrefreshed for hundreds of ms between renders. Compositors that don't
+      // preserve canvas contents between frames then show BLANK while orbiting
+      // and only "reappear" on release — the reported bug. The large-model
+      // interaction throttle still caps the cadence via `throttled`.
+      const willRender =
+        (isAnimating || renderRequested || queueFlushed || isInteractingRef.current) && !throttled;
+
+      if (willRender) {
         renderer.consumeRenderRequest();
         renderer.render({
           hiddenIds: hiddenEntitiesRef.current,
@@ -190,6 +203,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           ghostExceptIds: ghostExceptEntitiesRef.current,
           selectedId: selectedEntityIdRef.current,
           selectedIds: selectedEntityIdsRef.current,
+          emphasizeOverrides: (clashHighlightColorsRef.current?.size ?? 0) > 0,
           selectedModelIndex: selectedModelIndexRef.current,
           clearColor: clearColorRef.current,
           visualEnhancement: visualEnhancementRef.current,

@@ -77,6 +77,26 @@ export interface UnifiedStorey {
   totalElements: number;
 }
 
+/**
+ * How the spatial browser orders storeys (and storey-like spatial parts).
+ * Elevation keeps the building-section mental model; name is alphanumeric with
+ * natural numeric ordering so "Level 2" sorts before "Level 10" (issue #1296).
+ */
+export type HierarchySortMode =
+  | 'elevation-desc'  // highest storey first (default — top-down building stack)
+  | 'elevation-asc'   // lowest storey first
+  | 'name-asc'        // A to Z
+  | 'name-desc';      // Z to A
+
+export const HIERARCHY_SORT_MODES: readonly HierarchySortMode[] = [
+  'elevation-desc',
+  'elevation-asc',
+  'name-asc',
+  'name-desc',
+];
+
+export const DEFAULT_HIERARCHY_SORT: HierarchySortMode = 'elevation-desc';
+
 // Spatial container types (all non-leaf spatial nodes) - these don't participate in storey filters.
 const SPATIAL_CONTAINER_TYPES: Set<NodeType> = new Set([
   'IfcProject',

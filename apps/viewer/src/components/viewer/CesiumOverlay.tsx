@@ -30,6 +30,8 @@ import {
   shouldPreferOrthometricTerrain,
 } from '@/lib/geo/cesium-placement';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
+import { egm96Undulation } from '@/lib/geo/egm96-undulation';
+import { buildMergedGLB } from '@/lib/geo/cesium-glb';
 import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
 import { sunPosition, sunTimes } from '@ifc-lite/solar';
 
@@ -49,133 +51,7 @@ function loadCesium() {
   return cesiumPromise;
 }
 
-/**
- * Build a minimal GLB with all geometry merged into a SINGLE mesh.
- * This is MUCH faster than GLTFExporter (which creates one glTF node per IFC mesh).
- * For a 42K mesh model: GLTFExporter takes seconds, this takes ~100ms.
- */
-function buildMergedGLB(meshes: import('@ifc-lite/geometry').MeshData[]): Uint8Array {
-  // Pass 1: calculate total sizes
-  let totalVerts = 0;
-  let totalIdxs = 0;
-  for (const m of meshes) {
-    if (!m.positions?.length || !m.indices?.length) continue;
-    totalVerts += m.positions.length / 3;
-    totalIdxs += m.indices.length;
-  }
 
-  // Allocate merged buffers
-  const positions = new Float32Array(totalVerts * 3);
-  const colors = new Uint8Array(totalVerts * 4);
-  const indices = new Uint32Array(totalIdxs);
-
-  // Pass 2: merge
-  let vertOff = 0;
-  let idxOff = 0;
-  for (const m of meshes) {
-    if (!m.positions?.length || !m.indices?.length) continue;
-    const nv = m.positions.length / 3;
-    // Positions are in the element's local frame (world = origin + position);
-    // fold the per-mesh origin while merging so the GLB is world-space. No-op
-    // when origin is absent/[0,0,0].
-    const ox = m.origin?.[0] ?? 0, oy = m.origin?.[1] ?? 0, oz = m.origin?.[2] ?? 0;
-    if (ox !== 0 || oy !== 0 || oz !== 0) {
-      for (let i = 0; i < nv; i++) {
-        const s = (vertOff + i) * 3, t = i * 3;
-        positions[s] = m.positions[t] + ox;
-        positions[s + 1] = m.positions[t + 1] + oy;
-        positions[s + 2] = m.positions[t + 2] + oz;
-      }
-    } else {
-      positions.set(m.positions, vertOff * 3);
-    }
-    // Vertex colors from mesh color
-    const r = Math.round((m.color?.[0] ?? 0.7) * 255);
-    const g = Math.round((m.color?.[1] ?? 0.7) * 255);
-    const b = Math.round((m.color?.[2] ?? 0.7) * 255);
-    const a = Math.round((m.color?.[3] ?? 1.0) * 255);
-    for (let i = 0; i < nv; i++) {
-      const ci = (vertOff + i) * 4;
-      colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = a;
-    }
-    for (let i = 0; i < m.indices.length; i++) {
-      indices[idxOff + i] = m.indices[i] + vertOff;
-    }
-    vertOff += nv;
-    idxOff += m.indices.length;
-  }
-
-  // Compute bounds
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (let i = 0; i < positions.length; i += 3) {
-    const x = positions[i], y = positions[i + 1], z = positions[i + 2];
-    if (x < minX) minX = x; if (x > maxX) maxX = x;
-    if (y < minY) minY = y; if (y > maxY) maxY = y;
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
-  }
-
-  // Build minimal glTF JSON
-  const posByteLen = positions.byteLength;
-  const colByteLen = colors.byteLength;
-  const idxByteLen = indices.byteLength;
-  const totalBinLen = posByteLen + colByteLen + idxByteLen;
-
-  const gltf = {
-    asset: { version: '2.0', generator: 'IFC-Lite-Cesium' },
-    scene: 0,
-    scenes: [{ nodes: [0] }],
-    nodes: [{ mesh: 0 }],
-    meshes: [{ primitives: [{ attributes: { POSITION: 0, COLOR_0: 1 }, indices: 2 }] }],
-    accessors: [
-      { bufferView: 0, componentType: 5126, count: totalVerts, type: 'VEC3', min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
-      { bufferView: 1, componentType: 5121, count: totalVerts, type: 'VEC4', normalized: true },
-      { bufferView: 2, componentType: 5125, count: totalIdxs, type: 'SCALAR' },
-    ],
-    bufferViews: [
-      { buffer: 0, byteOffset: 0, byteLength: posByteLen, target: 34962 },
-      { buffer: 0, byteOffset: posByteLen, byteLength: colByteLen, target: 34962 },
-      { buffer: 0, byteOffset: posByteLen + colByteLen, byteLength: idxByteLen, target: 34963 },
-    ],
-    buffers: [{ byteLength: totalBinLen }],
-    extensionsUsed: ['KHR_materials_unlit'],
-  };
-
-  const jsonStr = JSON.stringify(gltf);
-  const jsonBuf = new TextEncoder().encode(jsonStr);
-  // Pad JSON to 4-byte alignment
-  const jsonPad = (4 - (jsonBuf.length % 4)) % 4;
-  const jsonChunkLen = jsonBuf.length + jsonPad;
-  // Pad binary to 4-byte alignment
-  const binPad = (4 - (totalBinLen % 4)) % 4;
-  const binChunkLen = totalBinLen + binPad;
-
-  // GLB: 12-byte header + 8-byte JSON chunk header + JSON + 8-byte BIN chunk header + BIN
-  const glbLen = 12 + 8 + jsonChunkLen + 8 + binChunkLen;
-  const glb = new ArrayBuffer(glbLen);
-  const view = new DataView(glb);
-  let off = 0;
-
-  // GLB header
-  view.setUint32(off, 0x46546C67, true); off += 4; // magic "glTF"
-  view.setUint32(off, 2, true); off += 4;           // version
-  view.setUint32(off, glbLen, true); off += 4;       // total length
-
-  // JSON chunk
-  view.setUint32(off, jsonChunkLen, true); off += 4;
-  view.setUint32(off, 0x4E4F534A, true); off += 4;   // "JSON"
-  new Uint8Array(glb, off, jsonBuf.length).set(jsonBuf); off += jsonBuf.length;
-  for (let i = 0; i < jsonPad; i++) view.setUint8(off++, 0x20); // space padding
-
-  // BIN chunk
-  view.setUint32(off, binChunkLen, true); off += 4;
-  view.setUint32(off, 0x004E4942, true); off += 4;   // "BIN\0"
-  new Uint8Array(glb, off, posByteLen).set(new Uint8Array(positions.buffer)); off += posByteLen;
-  new Uint8Array(glb, off, colByteLen).set(colors); off += colByteLen;
-  new Uint8Array(glb, off, idxByteLen).set(new Uint8Array(indices.buffer)); off += idxByteLen;
-
-  return new Uint8Array(glb);
-}
 
 /**
  * Build a Cesium model matrix for placing the IFC model in ECEF.
@@ -526,11 +402,18 @@ export function CesiumOverlay({
       // (IfcMapConversion.OrthogonalHeight + geometry origin), so they ARE
       // the final bridges. computeCesiumPlacement is still called for the
       // clip-plane Y; placementHeight == ifcOriginHeight.
+      // The model origin is now ellipsoidal (orthometric + geoid N, #1355).
+      // Express an orthometric terrain sample in the same ellipsoidal frame so
+      // the below-terrain clip plane stays consistent; Cesium-sourced terrain
+      // is already ellipsoidal and needs no shift.
+      const terrainHForFrame = (terrainSample?.reference === 'orthometric' && terrainH !== null)
+        ? terrainH + egm96Undulation(modelTentative.modelOrigin.latitude, modelTentative.modelOrigin.longitude)
+        : terrainH;
       const placement = computeCesiumPlacement({
         coordinateInfo,
         projectedCRS,
         ifcOriginHeight: modelTentative.modelOrigin.height,
-        terrainHeight: terrainH,
+        terrainHeight: terrainHForFrame,
         storeyElevations,
       });
       const cameraPlacement = usesSeparateCameraBridge
@@ -538,7 +421,7 @@ export function CesiumOverlay({
             coordinateInfo,
             projectedCRS,
             ifcOriginHeight: cameraTentative.modelOrigin.height,
-            terrainHeight: terrainH,
+            terrainHeight: terrainHForFrame,
             storeyElevations,
           })
         : placement;
@@ -677,6 +560,24 @@ export function CesiumOverlay({
             upAxis: Cesium.Axis.Z,
             forwardAxis: Cesium.Axis.X,
           });
+          // Ambient floor. The overlay composits transparently with the
+          // atmosphere/skybox off, so the scene's ONLY light is the directional
+          // sun — without an environment map the model's shadowed faces get no
+          // ambient and read muddy. Give the model a flat image-based-lighting
+          // ambient via a constant spherical-harmonic term: every surface stays
+          // readable while the sun still shapes the lit faces. (#1380)
+          try {
+            const ibl = (model as unknown as {
+              imageBasedLighting?: { sphericalHarmonicCoefficients: unknown };
+            }).imageBasedLighting;
+            if (ibl) {
+              const a = new Cesium.Cartesian3(0.72, 0.72, 0.75); // neutral daylight ambient
+              const z = Cesium.Cartesian3.ZERO;
+              ibl.sphericalHarmonicCoefficients = [a, z, z, z, z, z, z, z, z];
+            }
+          } catch (e) {
+            console.warn('[CesiumOverlay] could not set model ambient IBL:', e);
+          }
         } finally {
           URL.revokeObjectURL(glbUrl);
         }

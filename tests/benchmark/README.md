@@ -10,8 +10,9 @@ This directory contains performance benchmarks for IFC-Lite geometry processing 
 # Build viewer first
 pnpm --filter viewer build
 
-# Fetch one small fixture on demand
-git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
+# Fetch one small fixture on demand (fixtures come from a GitHub Release,
+# see tests/models/manifest.json — the repo no longer uses Git LFS)
+node scripts/fixtures/fetch-fixtures.mjs "ara3d/AC20-FZK-Haus.ifc"
 
 # Run a single small benchmark (headed browser for accurate GPU timing)
 VIEWER_BENCHMARK_FILES="tests/models/ara3d/AC20-FZK-Haus.ifc" pnpm test:benchmark:viewer
@@ -23,14 +24,14 @@ VIEWER_BENCHMARK_FILES="tests/models/ara3d/AC20-FZK-Haus.ifc" pnpm test:benchmar
 VIEWER_BENCHMARK_FILES="tests/models/ara3d/AC20-FZK-Haus.ifc" pnpm test:benchmark:viewer
 ```
 
-You can provide a comma-separated list, but only after pulling the exact fixtures you want to test.
+You can provide a comma-separated list, but only after fetching the exact fixtures you want to test.
 
 ### Optional Stress Tests
 
-The largest fixtures are intentionally opt-in because they consume substantial Git LFS bandwidth:
+The largest fixtures are intentionally opt-in because of their download size:
 
 ```bash
-git lfs pull --include="tests/models/various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc,tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+node scripts/fixtures/fetch-fixtures.mjs "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc" "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
 VIEWER_BENCHMARK_FILES="tests/models/various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc,tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc" pnpm test:benchmark:viewer
 ```
 
@@ -54,21 +55,35 @@ The benchmark suite includes 4 models covering different scenarios:
 
 For day-to-day work, prefer `FZK-Haus` or `Snowdon Towers`. Reserve `BWK-BIM` and `Holter Tower` for intentional stress testing.
 
-## Establishing Baseline
+## Baseline Policy: the committed baseline is CI-recorded
 
-1. **Run benchmarks on clean branch** (e.g., main):
-   ```bash
-   git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc,tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc"
-   VIEWER_BENCHMARK_FILES="tests/models/ara3d/AC20-FZK-Haus.ifc,tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc" pnpm test:benchmark:viewer
-   ```
+The committed `baseline.json` holds numbers recorded on the CI runner
+(GitHub-hosted `ubuntu-latest`, headless Chrome, SwiftShader, production
+build) so the CI regression check diffs like-for-like. Local machines are a
+different speed class — **never commit locally recorded numbers**.
 
-2. **Copy results to baseline.json**:
-   ```bash
-   # Results are saved to tests/benchmark/benchmark-results/
-   # Manually copy metrics to tests/benchmark/baseline.json
-   ```
+### Refreshing the committed baseline
 
-3. **Commit baseline.json** - This becomes the reference for regression detection.
+1. Dispatch the **Benchmark** workflow on `main` with `record_baseline`
+   enabled (`gh workflow run benchmark.yml -f record_baseline=true`).
+2. Download the `benchmark-baseline` artifact from the run.
+3. Commit the refreshed `tests/benchmark/baseline.json` via a normal PR.
+
+Only the two CI fixtures (FZK-Haus + Snowdon) are refreshed this way; the
+BWK-BIM / Holter Tower entries only serve local stress runs and keep the
+machine noted in their `environment` field.
+
+### Local scratch baselines
+
+To compare your own before/after runs at local machine speed, record and
+check against an uncommitted scratch baseline:
+
+```bash
+VIEWER_BENCHMARK_FILES="..." pnpm test:benchmark:viewer
+BENCHMARK_BASELINE=/tmp/my-baseline.json node scripts/update-benchmark-baseline.mjs
+# ...make changes, rerun the benchmark...
+BENCHMARK_BASELINE=/tmp/my-baseline.json pnpm benchmark:check
+```
 
 ## Metrics Captured
 
@@ -92,7 +107,8 @@ The benchmark suite includes mesh count validation to detect geometry regression
 
 ## Performance Targets
 
-Baseline updated from local run on 2026-02-21:
+Reference numbers from a local (Apple Silicon) run on 2026-02-21 — these are a
+speed-class illustration, not the committed CI baseline:
 
 | Model | First Geometry (`firstBatchWaitMs`) | Total Time (`totalWallClockMs`) | WASM Wait (`wasmWaitMs`) | Meshes |
 |-------|--------------------------------------|----------------------------------|---------------------------|--------|
@@ -103,19 +119,27 @@ Baseline updated from local run on 2026-02-21:
 
 ## CI Integration
 
-Viewer benchmark CI mode is available via:
+`.github/workflows/benchmark.yml` runs on PRs that touch performance-relevant
+paths: it builds the viewer (production), benchmarks FZK-Haus + Snowdon with
+the `viewer-benchmark-ci` Playwright project, and posts the per-metric delta
+vs `baseline.json` as a sticky PR comment + step summary. The job is
+**advisory** — it reports regressions but never fails the PR (promote to
+blocking once runner noise is characterized). `VIEWER_BENCHMARK_ADVISORY=1`
+is what keeps the spec's own threshold check from failing the run there.
+
+To reproduce the CI mode locally:
 
 ```bash
-git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
+node scripts/fixtures/fetch-fixtures.mjs "ara3d/AC20-FZK-Haus.ifc"
 VIEWER_BENCHMARK_FILES="tests/models/ara3d/AC20-FZK-Haus.ifc" pnpm test:benchmark:viewer:ci
 ```
 
-This runs headless with software rendering (`--use-angle=swiftshader`) and is useful for reproducible CI-style timing checks.
+This runs headless Chrome with software rendering (`--use-angle=swiftshader`) and is useful for reproducible CI-style timing checks.
 
 ## Troubleshooting
 
 **Benchmarks fail with "No baseline available"**:
-- Fetch the fixtures you want to baseline, then run `VIEWER_BENCHMARK_FILES="..." pnpm test:benchmark:viewer` and copy the results into `baseline.json`
+- Fetch the fixtures you want to baseline, then run `VIEWER_BENCHMARK_FILES="..." pnpm test:benchmark:viewer` and `node scripts/update-benchmark-baseline.mjs` (use `BENCHMARK_BASELINE=...` for a local scratch baseline)
 
 **Performance regressions detected**:
 - Check if optimizations broke geometry (mesh count validation)

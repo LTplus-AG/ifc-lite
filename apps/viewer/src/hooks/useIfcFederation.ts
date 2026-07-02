@@ -55,7 +55,11 @@ export interface IfcxDataStore extends IfcDataStore {
 export function useIfcFederation(
   // The ONE canonical loader. Federated adds route through it (target
   // 'federated') so model #1 and model #N share an identical pipeline.
-  loadFile: (file: File, target?: import('./useIfcLoader.js').LoadTarget) => Promise<void>,
+  loadFile: (
+    file: File,
+    target?: import('./useIfcLoader.js').LoadTarget,
+    options?: { sourceHandle?: FileSystemFileHandle },
+  ) => Promise<void>,
 ) {
   const {
     setLoading,
@@ -109,6 +113,8 @@ export function useIfcFederation(
       loadedAt?: number;
       visible?: boolean;
       collapsed?: boolean;
+      /** Live FS Access handle so this federated model stays refreshable. */
+      sourceHandle?: FileSystemFileHandle;
     }
   ): Promise<string | null> => {
     const modelId = options?.modelId ?? crypto.randomUUID();
@@ -158,7 +164,7 @@ export function useIfcFederation(
         collapsed: options?.collapsed,
         loadedAt: options?.loadedAt,
         sharedRtcOffset,
-      });
+      }, { sourceHandle: options?.sourceHandle });
 
       if (loadSessionRef.current !== currentSession) return null;
       const registered = useViewerStore.getState().models.has(modelId);
@@ -361,9 +367,12 @@ export function useIfcFederation(
    * Load multiple files sequentially (WASM parser isn't thread-safe)
    * Each file fully loads before the next one starts
    */
-  const loadFilesSequentially = useCallback(async (files: File[]): Promise<void> => {
-    for (const file of files) {
-      await addModel(file);
+  const loadFilesSequentially = useCallback(async (
+    files: File[],
+    handles?: (FileSystemFileHandle | undefined)[],
+  ): Promise<void> => {
+    for (let i = 0; i < files.length; i++) {
+      await addModel(files[i], { sourceHandle: handles?.[i] });
     }
   }, [addModel]);
 

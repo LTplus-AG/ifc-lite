@@ -40,6 +40,7 @@ import { BCFTopicList } from './bcf/BCFTopicList';
 import { BCFTopicDetail } from './bcf/BCFTopicDetail';
 import { BCFCreateTopicForm } from './bcf/BCFCreateTopicForm';
 import { openGenericFileDialog } from '@/services/file-dialog';
+import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 
 // ============================================================================
 // Main BCF Panel Component
@@ -95,6 +96,8 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
   // Local state
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  // Editing the active topic's fields in place (reuses the create form). (#1461)
+  const [showEditForm, setShowEditForm] = useState(false);
   const [showAuthorDialog, setShowAuthorDialog] = useState(false);
   const [tempAuthor, setTempAuthor] = useState(bcfAuthor);
   // Viewpoint previewed in the create form and attached to the new topic.
@@ -190,16 +193,9 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     try {
       setBcfLoading(true);
       const blob = await writeBCF(bcfProject);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
       // Use project name, or generate from model name, or date-based fallback
-      const fileName = bcfProject.name || getDefaultProjectName();
-      a.download = `${fileName}.bcfzip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'issues' });
+      downloadBlob(blob, `${fileName}.bcfzip`);
       posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
     } catch (error) {
       console.error('Failed to export BCF:', error);
@@ -237,6 +233,12 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showCreateForm]);
+
+  // Close the edit form whenever the active topic changes (back, delete, or
+  // selecting another topic) so it never reopens onto a different topic. (#1461)
+  useEffect(() => {
+    setShowEditForm(false);
+  }, [activeTopicId]);
 
   const handleCreateTopic = useCallback(
     async (data: Partial<BCFTopic>, options?: { includeSnapshot: boolean }) => {
@@ -335,6 +337,28 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     [activeTopicId, updateTopic, bcfAuthor]
   );
 
+  // Edit the active topic's fields in place. Empty optional fields come back as
+  // `undefined` from the form, which clears them on merge. (#1461)
+  const handleEditTopic = useCallback(
+    (data: Partial<BCFTopic>) => {
+      if (!activeTopicId) return;
+      updateTopic(activeTopicId, {
+        title: data.title?.trim() || activeTopic?.title || 'Untitled',
+        description: data.description,
+        topicType: data.topicType,
+        topicStatus: data.topicStatus,
+        priority: data.priority,
+        assignedTo: data.assignedTo,
+        dueDate: data.dueDate,
+        labels: data.labels,
+        modifiedAuthor: bcfAuthor,
+      });
+      setShowEditForm(false);
+      posthog.capture('bcf_topic_edited', { topic_type: data.topicType });
+    },
+    [activeTopicId, activeTopic, updateTopic, bcfAuthor]
+  );
+
   // Delete topic
   const handleDeleteTopic = useCallback(() => {
     if (!activeTopicId) return;
@@ -431,10 +455,25 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
               capturingSnapshot={capturingSnapshot}
             />
           </div>
+        ) : showEditForm && activeTopic ? (
+          // Edit the active topic's fields in place. No snapshot capture here -
+          // viewpoints are managed from the detail view. (#1461)
+          <div className="h-full overflow-auto">
+            <BCFCreateTopicForm
+              key={activeTopic.guid}
+              onSubmit={handleEditTopic}
+              onCancel={() => setShowEditForm(false)}
+              author={bcfAuthor}
+              initialTopic={activeTopic}
+              heading="Edit Topic"
+              submitLabel="Save Changes"
+            />
+          </div>
         ) : activeTopic ? (
           <BCFTopicDetail
             topic={activeTopic}
             onBack={() => setActiveTopic(null)}
+            onEditTopic={() => setShowEditForm(true)}
             onAddComment={handleAddComment}
             onAddViewpoint={handleCaptureViewpoint}
             onActivateViewpoint={handleActivateViewpoint}

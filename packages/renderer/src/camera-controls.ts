@@ -35,6 +35,15 @@ export interface CameraInternalState {
   orthoSize: number;
   /** Scene bounding box for tight orthographic near/far computation */
   sceneBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
+  /**
+   * Optional outlier-robust bounds for anchoring the orbit pivot (issue #1394).
+   * Distinct from `sceneBounds`: the renderer keeps `sceneBounds` synced to the
+   * FULL model AABB (needed for near/far clipping and section ranges), but a
+   * handful of far-flung meshes can push that AABB's centre into empty space,
+   * which the orbit-pivot fallback would then rotate around. When set, the pivot
+   * uses this tighter centre instead. `null` ⇒ fall back to `sceneBounds`.
+   */
+  orbitAnchorBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
 }
 
 // ---------------------------------------------------------------------------

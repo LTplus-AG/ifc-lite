@@ -33,7 +33,7 @@ fn dist(a: &[f64; 3], b: &[f64; 3]) -> f64 {
 pub(crate) fn clean_ring(ring: Vec<[f64; 3]>, merge: f64) -> Vec<[f64; 3]> {
     let mut out: Vec<[f64; 3]> = Vec::with_capacity(ring.len());
     for p in ring {
-        if out.last().map_or(true, |q| dist(&p, q) > merge) {
+        if out.last().is_none_or(|q| dist(&p, q) > merge) {
             out.push(p);
         }
     }
@@ -191,6 +191,9 @@ pub(crate) fn is_simple_polygon(ring: &[[f64; 3]], tol: f64) -> bool {
 /// True when the faces form a closed 2-manifold: every undirected edge (vertices snapped
 /// to a `tol` grid) is shared by exactly two faces. Catches self-intersecting footprints
 /// and any other non-watertight prism — the same naked-edge test Honeybee applies.
+// The edge-key HashMap type is explicit on purpose; aliasing it would obscure
+// the naked-edge bookkeeping.
+#[allow(clippy::type_complexity)]
 pub(crate) fn is_watertight(faces: &[(Vec<[f64; 3]>, &'static str)], tol: f64) -> bool {
     let grid = tol.max(1e-6);
     let key = |p: &[f64; 3]| {

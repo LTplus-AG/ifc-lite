@@ -363,6 +363,100 @@ pub fn try_extract_length_unit_scale(decoder: &mut EntityDecoder, project_id: u3
     }
 }
 
+/// Partial-index-safe sibling of [`extract_plane_angle_to_radians`].
+///
+/// The streaming meta gate resolves units against a PARTIAL entity index (only
+/// the file head scanned so far). [`extract_plane_angle_to_radians`] returns
+/// `Ok(1.0)` BOTH for a genuine radian/missing-unit file AND when a PLANEANGLEUNIT
+/// is declared but its conversion chain (`IFCMEASUREWITHUNIT`) is not yet indexed
+/// — the caller cannot tell "really radians" from "couldn't resolve yet". This
+/// variant returns `None` for the latter so `resolve_unit_scales` can retry
+/// against a full index, mirroring [`try_extract_length_unit_scale`]. Without it
+/// a Revit/EDM export whose DEGREE unit is early but whose `IFCMEASUREWITHUNIT`
+/// is at the file tail silently defaulted to radians → degree-trimmed arcs
+/// rendered as full circles (issue #1367).
+pub fn try_extract_plane_angle_to_radians(
+    decoder: &mut EntityDecoder,
+    project_id: u32,
+) -> Option<f64> {
+    // Project must decode; if not, the chain is incomplete on this index.
+    let project = decoder.decode_by_id(project_id).ok()?;
+    if project.ifc_type.as_str() != "IFCPROJECT" {
+        return Some(1.0); // Not a project — matches extract_plane_angle_to_radians.
+    }
+
+    let units_ref = match project.get(8).and_then(|a| a.as_entity_ref()) {
+        Some(r) => r,
+        None => return Some(1.0),
+    };
+    // Assignment not in the index ⇒ incomplete chain; signal a full-index retry.
+    let unit_assignment = decoder.decode_by_id(units_ref).ok()?;
+    if unit_assignment.ifc_type.as_str() != "IFCUNITASSIGNMENT" {
+        return Some(1.0);
+    }
+    let units_list = match unit_assignment.get(0).and_then(|a| a.as_list()) {
+        Some(list) => list,
+        None => return Some(1.0),
+    };
+
+    let mut saw_undecodable = false;
+    for unit_attr in units_list {
+        let unit_ref = match unit_attr.as_entity_ref() {
+            Some(r) => r,
+            None => continue,
+        };
+        let unit_entity = match decoder.decode_by_id(unit_ref) {
+            Ok(e) => e,
+            // A unit referenced by the assignment is missing from this index;
+            // it might be the plane-angle unit, so we cannot resolve confidently.
+            Err(_) => {
+                saw_undecodable = true;
+                continue;
+            }
+        };
+
+        match unit_entity.ifc_type.as_str() {
+            "IFCSIUNIT" => {
+                if unit_entity.get(1).and_then(|a| a.as_enum()) != Some("PLANEANGLEUNIT") {
+                    continue;
+                }
+                // SI plane-angle unit is .RADIAN.; honour exotic SI prefixes.
+                let prefix_scale = match unit_entity.get(2) {
+                    Some(p) if !p.is_null() => {
+                        p.as_enum().map(get_si_prefix_multiplier).unwrap_or(1.0)
+                    }
+                    _ => 1.0,
+                };
+                return Some(prefix_scale);
+            }
+            "IFCCONVERSIONBASEDUNIT" => {
+                if unit_entity.get(1).and_then(|a| a.as_enum()) != Some("PLANEANGLEUNIT") {
+                    continue;
+                }
+                // Resolve the conversion factor (IFCMEASUREWITHUNIT). A missing
+                // ref or one not yet indexed means we cannot resolve confidently
+                // — `None` makes `resolve_unit_scales` retry on a full index.
+                let conv_ref = unit_entity.get_ref(3)?;
+                let measure = decoder.decode_by_id(conv_ref).ok()?;
+                let value = measure.get(0).and_then(|a| a.as_float()).unwrap_or(0.0);
+                if value > 0.0 && value.is_finite() {
+                    return Some(value);
+                }
+                return None;
+            }
+            _ => {}
+        }
+    }
+
+    // No plane-angle unit found. If everything decoded, the file genuinely uses
+    // the radian default; otherwise it may be among the undecodable refs — retry.
+    if saw_undecodable {
+        None
+    } else {
+        Some(1.0)
+    }
+}
+
 /// Extract the multiplier that converts file plane-angle units to radians.
 ///
 /// Follows the chain: IFCPROJECT → IFCUNITASSIGNMENT → IFCSIUNIT / IFCCONVERSIONBASEDUNIT.
@@ -419,7 +513,7 @@ pub fn extract_plane_angle_to_radians(decoder: &mut EntityDecoder, project_id: u
         if unit_type_str == "IFCSIUNIT" {
             // [1]=UnitType, [2]=Prefix, [3]=Name
             let kind = unit_entity.get(1).and_then(|a| a.as_enum());
-            if kind.as_deref() != Some("PLANEANGLEUNIT") {
+            if kind != Some("PLANEANGLEUNIT") {
                 continue;
             }
             // SI plane-angle unit is .RADIAN. by definition; SI prefixes
@@ -427,7 +521,7 @@ pub fn extract_plane_angle_to_radians(decoder: &mut EntityDecoder, project_id: u
             let prefix_scale = match unit_entity.get(2) {
                 Some(p) if !p.is_null() => p
                     .as_enum()
-                    .map(|s| get_si_prefix_multiplier(&s))
+                    .map(get_si_prefix_multiplier)
                     .unwrap_or(1.0),
                 _ => 1.0,
             };
@@ -437,7 +531,7 @@ pub fn extract_plane_angle_to_radians(decoder: &mut EntityDecoder, project_id: u
         if unit_type_str == "IFCCONVERSIONBASEDUNIT" {
             // [1]=UnitType, [2]=Name, [3]=ConversionFactor (IFCMEASUREWITHUNIT)
             let kind = unit_entity.get(1).and_then(|a| a.as_enum());
-            if kind.as_deref() != Some("PLANEANGLEUNIT") {
+            if kind != Some("PLANEANGLEUNIT") {
                 continue;
             }
             // The conversion factor expresses (1 file-unit) in terms of its
@@ -726,6 +820,111 @@ END-ISO-10303-21;
             "expected 1.0 default for missing PLANEANGLEUNIT, got {}",
             scale
         );
+    }
+
+    #[test]
+    fn test_try_extract_plane_angle_degree_full_index() {
+        let ifc_content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('guid',$,'Test',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);
+#3=IFCUNITASSIGNMENT((#5,#10));
+#4=IFCAXIS2PLACEMENT3D(#7,$,$);
+#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#7=IFCCARTESIANPOINT((0.,0.,0.));
+#8=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#9=IFCMEASUREWITHUNIT(IFCRATIOMEASURE(0.0174532925199433),#8);
+#10=IFCCONVERSIONBASEDUNIT(#11,.PLANEANGLEUNIT.,'DEGREE',#9);
+#11=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let mut decoder = EntityDecoder::new(ifc_content);
+        let scale = try_extract_plane_angle_to_radians(&mut decoder, 1).unwrap();
+        assert!((scale - 0.0174532925199433).abs() < 1e-9, "got {}", scale);
+    }
+
+    #[test]
+    fn test_try_extract_plane_angle_incomplete_chain_returns_none() {
+        // The DEGREE conversion unit is present but its IFCMEASUREWITHUNIT (#9)
+        // is omitted from the index — the partial-index situation that masked
+        // issue #1367. Must report None (retry) rather than the radian default.
+        let ifc_content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('test.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('guid',$,'Test',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);
+#3=IFCUNITASSIGNMENT((#5,#10));
+#4=IFCAXIS2PLACEMENT3D(#7,$,$);
+#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#7=IFCCARTESIANPOINT((0.,0.,0.));
+#8=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#9=IFCMEASUREWITHUNIT(IFCRATIOMEASURE(0.0174532925199433),#8);
+#10=IFCCONVERSIONBASEDUNIT(#11,.PLANEANGLEUNIT.,'DEGREE',#9);
+#11=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        // Build an index that omits the conversion measure (#9), mimicking a
+        // partial streaming index where the tail measure is not yet scanned.
+        let full = crate::decoder::build_entity_index(&ifc_content);
+        let partial: crate::decoder::EntityIndex =
+            full.iter().filter(|(&id, _)| id != 9).map(|(&k, &v)| (k, v)).collect();
+        let mut decoder = EntityDecoder::with_index(ifc_content, partial);
+        assert_eq!(try_extract_plane_angle_to_radians(&mut decoder, 1), None);
+    }
+
+    #[test]
+    fn test_try_extract_plane_angle_radian_and_missing() {
+        // Genuine RADIAN file resolves to Some(1.0) (NOT None) on a full index.
+        let radian = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('t.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('guid',$,'Test',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);
+#3=IFCUNITASSIGNMENT((#5,#6));
+#4=IFCAXIS2PLACEMENT3D(#7,$,$);
+#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#6=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#7=IFCCARTESIANPOINT((0.,0.,0.));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let mut decoder = EntityDecoder::new(radian);
+        assert_eq!(try_extract_plane_angle_to_radians(&mut decoder, 1), Some(1.0));
+
+        // No PLANEANGLEUNIT declared at all → radian default, fully resolved.
+        let missing = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Test'),'2;1');
+FILE_NAME('t.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('guid',$,'Test',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#4,$);
+#3=IFCUNITASSIGNMENT((#5));
+#4=IFCAXIS2PLACEMENT3D(#6,$,$);
+#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#6=IFCCARTESIANPOINT((0.,0.,0.));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let mut decoder = EntityDecoder::new(missing);
+        assert_eq!(try_extract_plane_angle_to_radians(&mut decoder, 1), Some(1.0));
     }
 
     #[test]

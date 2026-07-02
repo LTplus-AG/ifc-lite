@@ -600,20 +600,51 @@ interface StepExportResult {
 
 ### MergedExporter
 
-Merge multiple IFC models into a single STEP file with unified ID space.
+Merge multiple IFC models into a single STEP file with a unified ID space,
+spatial-hierarchy unification, and unit-aware reconciliation.
 
 ```typescript
 class MergedExporter {
-  export(
-    models: MergeModelInput[],
-    options?: MergeExportOptions
-  ): MergeExportResult;
+  constructor(models: MergeModelInput[]);
+  export(options: MergeExportOptions): MergeExportResult;          // synchronous
+  exportAsync(options: MergeExportOptions): Promise<MergeExportResult>; // progress + mutations
 }
 
 interface MergeModelInput {
+  id: string;
+  name: string;
   dataStore: IfcDataStore;
-  source: Uint8Array;
-  name?: string;
+  lengthUnitScale?: number;   // metres per unit; falls back to dataStore.lengthUnitScale
+}
+
+interface MergeExportOptions {
+  schema: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
+  // Mixed length units:
+  //   'auto' (default) — federate a differing-unit model as its own IfcProject
+  //   'normalize'      — rescale it into the first model's unit (one single-unit project)
+  //   'assume-shared'  — force one project without rescaling
+  unitReconciliation?: 'auto' | 'normalize' | 'assume-shared';
+  // Spatial matching strategy per container type (omitted = today's combined
+  // heuristic: name match, else single-instance fallback for sites/buildings;
+  // name-then-elevation for storeys):
+  //   'single':  unify iff each model contributes exactly one (Name ignored)
+  //   'by-name': Name match only (case-insensitive), no single-instance fallback
+  mergeSites?: 'single' | 'by-name';
+  mergeBuildings?: 'single' | 'by-name';
+  mergeStoreys?: 'by-name' | 'by-elevation' | 'by-name-then-elevation';
+  visibleOnly?: boolean;
+}
+
+interface MergeExportResult {
+  content: Uint8Array;
+  stats: {
+    modelCount: number;
+    totalEntityCount: number;
+    fileSize: number;
+    federatedModelCount: number;   // models kept as separate projects (auto)
+    normalizedModelCount: number;  // models rescaled into the first unit (normalize)
+    warnings: string[];
+  };
 }
 ```
 

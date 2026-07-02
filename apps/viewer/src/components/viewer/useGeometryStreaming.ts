@@ -93,6 +93,20 @@ const DEFAULT_BOUNDS = {
 
 const MAX_VALID_COORD = 10000;
 
+// Outlier-robust camera-fit bounds (issue #1394). A handful of far-flung
+// meshes (a stray covering 600 m off, a detached out-building) blow the raw
+// AABB out to hundreds of metres even though ~99 % of the geometry sits in a
+// compact cluster. The camera fits to the inflated AABB → its centre lands in
+// empty space between the building and the strays → the model renders tiny and
+// off to one side, and orbiting (the raycast-miss pivot also anchors to that
+// AABB centre, see useMouseControls) swings it straight out of frame. We keep
+// the innermost ROBUST_KEEP_MASS of the *vertex mass* and drop the sparse far
+// tail from the fit bounds only (the strays still render). The end-guard makes
+// this a strict no-op unless the tail meaningfully inflates the box, so compact
+// single-building models frame exactly as before.
+const ROBUST_KEEP_MASS = 0.995;
+const ROBUST_SHRINK_GUARD = 0.66;
+
 function traceGeometrySync(message: string): void {
   console.log(`[GeomSync] ${message}`);
 }
@@ -382,8 +396,29 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // dot — the user sees a blank viewport even though geometry is in
       // the scene. See packages/renderer/src/camera-fit-policy.ts.
       let fitted = false;
+      // Outlier-robust framing takes precedence over the raw wasm AABB when a
+      // sparse far tail would otherwise park the fit target / orbit pivot in
+      // empty space (issue #1394). `robust` is null for models without such a
+      // tail, leaving the shiftedBounds / computeBounds paths below untouched.
+      // `sceneBoundsFull` is the FULL AABB and is what feeds setSceneBounds —
+      // near/far clipping + section ranges must still cover the far meshes.
+      const rbEarly = geometry.length > 0 ? robustFitBounds(geometry) : null;
+      const robustEarly = rbEarly?.robust ?? null;
+      let sceneBoundsFull: Bounds | null = null;
+      if (robustEarly) {
+        const canvas = renderer.getCanvas();
+        const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+        const policy = renderer.getCamera().fitBoundsAdaptive(
+          robustEarly,
+          { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+        );
+        geometryBoundsRef.current = robustEarly;
+        sceneBoundsFull = rbEarly!.full;
+        lastFitPolicyKindRef.current = policy.kind;
+        fitted = true;
+      }
       const sb = coordinateInfo?.shiftedBounds;
-      if (sb) {
+      if (!fitted && sb) {
         const maxSize = Math.max(sb.max.x - sb.min.x, sb.max.y - sb.min.y, sb.max.z - sb.min.z);
         if (maxSize > 0 && Number.isFinite(maxSize)) {
           const canvas = renderer.getCanvas();
@@ -393,6 +428,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
           );
           geometryBoundsRef.current = { min: { ...sb.min }, max: { ...sb.max } };
+          // shiftedBounds is the full wasm AABB.
+          sceneBoundsFull = { min: { ...sb.min }, max: { ...sb.max } };
           lastFitPolicyKindRef.current = policy.kind;
           fitted = true;
         }
@@ -407,6 +444,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
           );
           geometryBoundsRef.current = bounds;
+          sceneBoundsFull = bounds;
           lastFitPolicyKindRef.current = policy.kind;
           fitted = true;
         }
@@ -417,7 +455,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         // directly (not via Renderer.loadGeometry), so this is the only place
         // the camera learns the bounds — consumers like the orbit-pivot
         // fallback (issue #1107) and tight near/far clipping depend on it.
-        renderer.getCamera().setSceneBounds(geometryBoundsRef.current);
+        // Use the FULL AABB so clipping/section ranges still cover far meshes;
+        // the trimmed robust box only drives framing + the orbit anchor (#1394).
+        renderer.getCamera().setSceneBounds(sceneBoundsFull ?? geometryBoundsRef.current);
+        // Pin (or clear) the robust orbit-pivot anchor for this model (#1394).
+        renderer.getCamera().setOrbitAnchorBounds(robustEarly);
         const pos = renderer.getCamera().getPosition();
         const tgt = renderer.getCamera().getTarget();
         cameraSnapshotRef.current = { px: pos.x, py: pos.y, pz: pos.z, tx: tgt.x, ty: tgt.y, tz: tgt.z };
@@ -480,7 +522,18 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           // sub-pixel distance for railway / road corridors.
           if (cameraFittedRef.current && !finalBoundsRefittedRef.current && capturedGeometry && capturedGeometry.length > 0) {
             const t0 = performance.now();
-            const exactBounds = computeBounds(capturedGeometry);
+            // Prefer outlier-robust framing so a sparse far tail can't park the
+            // fit target (and the orbit pivot) in empty space (issue #1394).
+            // `robust` is the trimmed framing box (null when there is no tail);
+            // `fullBounds` is the complete AABB for clipping / section ranges.
+            const rb = robustFitBounds(capturedGeometry);
+            const robust = rb?.robust ?? null;
+            const fullBounds = rb?.full ?? computeBounds(capturedGeometry);
+            const exactBounds = robust ?? fullBounds;
+            // Pin (or clear) the robust orbit-pivot anchor. setSceneBounds gets
+            // overwritten by the renderer's per-upload full-AABB sync, so the
+            // pivot reads this dedicated anchor instead (issue #1394).
+            r.getCamera().setOrbitAnchorBounds(robust);
             console.log(`[GeomStream] computeBounds: ${(performance.now() - t0).toFixed(0)}ms`);
             if (exactBounds) {
               if (!userMovedCamera(r, cameraSnapshotRef.current)) {
@@ -502,9 +555,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
                 }
               }
               geometryBoundsRef.current = exactBounds;
-              // Refresh the camera's cached bounds with the final exact extent
-              // (issue #1107 orbit-pivot fallback / clipping).
-              r.getCamera().setSceneBounds(exactBounds);
+              // Refresh the camera's cached scene bounds with the FULL extent so
+              // near/far clipping + section ranges still cover the far meshes;
+              // the trimmed robust box only drives framing + the orbit anchor
+              // (issues #1107 / #1394).
+              r.getCamera().setSceneBounds(fullBounds ?? exactBounds);
               finalBoundsRefittedRef.current = true;
             }
           }
@@ -690,7 +745,9 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-function computeBounds(meshes: MeshData[]): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
+type Bounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+
+function computeBounds(meshes: MeshData[]): Bounds | null {
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   for (let gi = 0; gi < meshes.length; gi++) {
@@ -711,6 +768,98 @@ function computeBounds(meshes: MeshData[]): { min: { x: number; y: number; z: nu
   const maxSize = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
   if (minX === Infinity || maxSize <= 0 || !Number.isFinite(maxSize)) return null;
   return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
+}
+
+// Outlier-robust camera-fit bounds (issue #1394).
+//
+// Returns `{ full, robust }` where `full` is the complete model AABB and
+// `robust` is a tightened framing box when the model is a compact cluster plus
+// a sparse far tail (a stray covering 600 m off, a detached out-building), or
+// `null` when there is no such tail. Returns `null` overall only when there is
+// no usable geometry. Callers MUST use `full` for clipping / scene bounds and
+// `robust ?? full` only for camera framing + the orbit pivot — trimming the
+// scene bounds would clip the far meshes out of near/far and section ranges.
+//
+// Unlike `computeBounds`, this folds the per-element origin and uses a generous
+// garbage threshold rather than MAX_VALID_COORD — real building coordinates can
+// be hundreds of thousands of millimetres from the origin (this model keeps mm
+// with no RTC shift), which `computeBounds`' 10 km guard rejects outright. We
+// keep the innermost ROBUST_KEEP_MASS of *vertex mass* (measured by each mesh's
+// distance from the vertex-weighted centroid) and emit a `robust` box only when
+// it is meaningfully tighter than the full extent (ROBUST_SHRINK_GUARD) — i.e.
+// only when a few far meshes were genuinely inflating the box and dragging the
+// fit target (and the raycast-miss orbit pivot, see useMouseControls) into
+// empty space.
+const ROBUST_GARBAGE_COORD = 1e12;
+
+function robustFitBounds(meshes: MeshData[]): { full: Bounds; robust: Bounds | null } | null {
+  let fMinX = Infinity, fMinY = Infinity, fMinZ = Infinity;
+  let fMaxX = -Infinity, fMaxY = -Infinity, fMaxZ = -Infinity;
+  const cx: number[] = [], cy: number[] = [], cz: number[] = [], w: number[] = [];
+  const bb: Float64Array[] = [];
+  let cwX = 0, cwY = 0, cwZ = 0, totalW = 0;
+  for (let gi = 0; gi < meshes.length; gi++) {
+    const positions = meshes[gi].positions;
+    const o = meshes[gi].origin;
+    const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
+    let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
+    let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
+    let n = 0;
+    for (let i = 0; i < positions.length; i += 3) {
+      const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
+      if (Math.abs(x) < ROBUST_GARBAGE_COORD && Math.abs(y) < ROBUST_GARBAGE_COORD && Math.abs(z) < ROBUST_GARBAGE_COORD) {
+        if (x < mnX) mnX = x; if (y < mnY) mnY = y; if (z < mnZ) mnZ = z;
+        if (x > mxX) mxX = x; if (y > mxY) mxY = y; if (z > mxZ) mxZ = z;
+        n++;
+      }
+    }
+    if (n > 0) {
+      if (mnX < fMinX) fMinX = mnX; if (mnY < fMinY) fMinY = mnY; if (mnZ < fMinZ) fMinZ = mnZ;
+      if (mxX > fMaxX) fMaxX = mxX; if (mxY > fMaxY) fMaxY = mxY; if (mxZ > fMaxZ) fMaxZ = mxZ;
+      const mcx = (mnX + mxX) / 2, mcy = (mnY + mxY) / 2, mcz = (mnZ + mxZ) / 2;
+      cx.push(mcx); cy.push(mcy); cz.push(mcz); w.push(n);
+      bb.push(Float64Array.of(mnX, mnY, mnZ, mxX, mxY, mxZ));
+      cwX += mcx * n; cwY += mcy * n; cwZ += mcz * n; totalW += n;
+    }
+  }
+  const count = w.length;
+  const fullMaxSize = Math.max(fMaxX - fMinX, fMaxY - fMinY, fMaxZ - fMinZ);
+  // No usable geometry → no bounds at all.
+  if (count === 0 || totalW <= 0 || !(fullMaxSize > 0) || !Number.isFinite(fullMaxSize)) return null;
+  const full: Bounds = { min: { x: fMinX, y: fMinY, z: fMinZ }, max: { x: fMaxX, y: fMaxY, z: fMaxZ } };
+  // Too few meshes to reason about an outlier tail — full bounds only.
+  if (count < 8) return { full, robust: null };
+
+  const ctrX = cwX / totalW, ctrY = cwY / totalW, ctrZ = cwZ / totalW;
+  const order = Array.from({ length: count }, (_, i) => i);
+  order.sort((a, b) => {
+    const da = (cx[a] - ctrX) ** 2 + (cy[a] - ctrY) ** 2 + (cz[a] - ctrZ) ** 2;
+    const db = (cx[b] - ctrX) ** 2 + (cy[b] - ctrY) ** 2 + (cz[b] - ctrZ) ** 2;
+    return da - db;
+  });
+
+  const keepTarget = ROBUST_KEEP_MASS * totalW;
+  let cum = 0, kept = 0;
+  let rMinX = Infinity, rMinY = Infinity, rMinZ = Infinity;
+  let rMaxX = -Infinity, rMaxY = -Infinity, rMaxZ = -Infinity;
+  for (let i = 0; i < count; i++) {
+    if (cum >= keepTarget) break;
+    const b = bb[order[i]];
+    if (b[0] < rMinX) rMinX = b[0]; if (b[1] < rMinY) rMinY = b[1]; if (b[2] < rMinZ) rMinZ = b[2];
+    if (b[3] > rMaxX) rMaxX = b[3]; if (b[4] > rMaxY) rMaxY = b[4]; if (b[5] > rMaxZ) rMaxZ = b[5];
+    cum += w[order[i]];
+    kept++;
+  }
+  if (kept >= count) return { full, robust: null }; // nothing dropped → no override
+  const robustMaxSize = Math.max(rMaxX - rMinX, rMaxY - rMinY, rMaxZ - rMinZ);
+  // Tail isn't inflating the box → no override (compact models unaffected).
+  if (!(robustMaxSize < fullMaxSize * ROBUST_SHRINK_GUARD)) return { full, robust: null };
+
+  console.log(
+    `[GeomStream] outlier-robust camera fit: dropped ${count - kept} far mesh(es) from framing, ` +
+    `extent ${Math.round(fullMaxSize)} → ${Math.round(robustMaxSize)} units`,
+  );
+  return { full, robust: { min: { x: rMinX, y: rMinY, z: rMinZ }, max: { x: rMaxX, y: rMaxY, z: rMaxZ } } };
 }
 
 function userMovedCamera(

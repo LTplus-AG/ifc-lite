@@ -1,5 +1,153 @@
 # @ifc-lite/renderer
 
+## 1.33.2
+
+### Patch Changes
+
+- a7f257e: Show the focused clash's REAL contact interface instead of an AABB box (#1402). New `@ifc-lite/clash/contact`: `contactClusters(meshA, meshB)` returns the contact patches — the shared-face polygon for coplanar/flush overlaps (surface), the intersection line for crossings (line), or a point — classified by area/length, via a Moller triangle-triangle test plus shared-face clustering (coplanar pairs Sutherland-Hodgman clipped on their common plane and unioned into a boundary polygon; cross pairs unioned along the intersection line). Computed on demand for the single focused pair. The renderer gains `setClashContactLines()` to draw the contact polygon outlines / intersection lines; the viewer prefers this over the box.
+- Updated dependencies [1b148c1]
+  - @ifc-lite/geometry@2.13.1
+
+## 1.33.1
+
+### Patch Changes
+
+- 7de2936: Fix measure-snap missing all-but-one piece of a multi-piece flat mesh. The snap geometry cache
+  keyed flat meshes on `expressId` alone (instanced occurrences already keyed on `occurrenceKey`,
+  `#1405`), assuming one flat mesh per `expressId`. But mesh fragmentation routinely emits one
+  entity as several flat `MeshData` pieces — e.g. an `IfcMechanicalFastener` "Bolt assembly" of
+  mapped items materialized as 24 pieces sharing one `expressId` — and mapped copies share both
+  `expressId` and local positions, differing only in `origin`. So the first piece's deduped
+  vertices/edges were served for every other piece, and vertex/edge snap lit up on only one piece
+  (one bolt of the group) while the rest fell back to a free-point face hit. The cache now keys
+  flat pieces on a cheap content signature (`expressId` + `origin` + buffer sizes + sampled
+  vertices), so every piece snaps; genuinely identical world geometry still shares one entry.
+
+  Also fix the measure-snap radius being ~57× too small. `screenToWorldRadius` applied a
+  degrees→radians conversion to `fov`, but its only caller passes `Camera.getFOV()`, which is
+  already in radians. The shrunken radius made vertex/edge snap require sub-millimetre cursor
+  precision and fall back to a face hit on small features (e.g. bolts). The conversion is
+  removed; `fov` is treated as radians.
+
+  Also fix the CPU pick/snap mesh collection dropping mapped copies. `collectVisibleMeshData`
+  deduped flat pieces on a size-based key (`expressId` + `modelIndex` + buffer sizes), so the
+  several flat pieces a mapped entity expands to — identical template geometry at different
+  placements (e.g. the 4 bolts of one `IfcMechanicalFastener`) — collided and all but the first
+  were dropped from the raycast set. The hidden bolts then returned no ray hit at all, so neither
+  pick nor snap could reach them. The key now also includes the per-piece `origin` + first vertex,
+  so distinct placements survive while a truly identical piece reached from both the regular and
+  batched passes still dedups. (Mirrors the instanced-piece key fix from #1238 for the flat path.)
+
+- Updated dependencies [e6bd2dd]
+- Updated dependencies [24e1648]
+- Updated dependencies [f9f0784]
+- Updated dependencies [7c45192]
+- Updated dependencies [6eb46f1]
+- Updated dependencies [4f76955]
+- Updated dependencies [909c1b0]
+- Updated dependencies [3f25a72]
+  - @ifc-lite/geometry@2.13.0
+
+## 1.33.0
+
+### Minor Changes
+
+- [#1410](https://github.com/LTplus-AG/ifc-lite/pull/1410) [`32fe7de`](https://github.com/LTplus-AG/ifc-lite/commit/32fe7de75745e0d7088f7979d6a83f238607cf21) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.setOrbitAnchorBounds(bounds | null)` / `getOrbitAnchorBounds()` — an outlier-robust orbit-pivot anchor distinct from the full-scene `sceneBounds`. The renderer keeps `sceneBounds` pinned to the full model AABB (needed for near/far clipping and section ranges), but a handful of far-flung meshes can push that AABB's centre into empty space; when the anchor is set, the orbit-pivot fallback rotates around the tighter centre instead. Part of the fix for the model disappearing during orbit on sparse/outlier models ([#1394](https://github.com/LTplus-AG/ifc-lite/issues/1394)).
+
+### Patch Changes
+
+- [#1409](https://github.com/LTplus-AG/ifc-lite/pull/1409) [`76b6a4f`](https://github.com/LTplus-AG/ifc-lite/commit/76b6a4fd1c6f3710127e402c11636917a338ce38) Thanks [@louistrue](https://github.com/louistrue)! - Fix measure-snap missing all-but-one occurrence of GPU-instanced geometry ([#1405](https://github.com/LTplus-AG/ifc-lite/issues/1405)). `Scene.getInstancedMeshDataPieces` materializes one `MeshData` per instanced occurrence, all stamped with the same `expressId` but holding distinct world-space positions. `SnapDetector` cached the deduped vertices/edges/valence keyed on `expressId` alone, so the first occurrence's geometry was served for every later one (whose true world positions are elsewhere) and snap fell back to a free-point face hit — vertex/edge snapping lit up on only a single instance while raycast (which is cache-free) kept working on all of them. Materialized occurrences now carry a stable per-occurrence `occurrenceKey` (new optional field on `MeshData`), and the snap geometry cache keys on `occurrenceKey ?? expressId`, so snap works on every occurrence and the cache no longer collides instanced pieces with a flat mesh of the same `expressId`.
+
+- Updated dependencies [[`76b6a4f`](https://github.com/LTplus-AG/ifc-lite/commit/76b6a4fd1c6f3710127e402c11636917a338ce38)]:
+  - @ifc-lite/geometry@2.12.0
+
+## 1.32.0
+
+### Minor Changes
+
+- [#1377](https://github.com/LTplus-AG/ifc-lite/pull/1377) [`2c331ad`](https://github.com/LTplus-AG/ifc-lite/commit/2c331addfc97fc67d2c022f65babb3f08d48c088) Thanks [@louistrue](https://github.com/louistrue)! - Add `Renderer.setClashOverlapBox(box | null)` — draws a world-space AABB as a distinct-colour wireframe box (e.g. the clash overlap region) via the existing overlay line pipeline. Pass `null` to clear. ([#1277](https://github.com/LTplus-AG/ifc-lite/issues/1277)/[#1339](https://github.com/LTplus-AG/ifc-lite/issues/1339))
+
+## 1.31.0
+
+### Minor Changes
+
+- [#1360](https://github.com/LTplus-AG/ifc-lite/pull/1360) [`608e527`](https://github.com/LTplus-AG/ifc-lite/commit/608e5276637430e4a97f1aab0f50267a247fdbe2) Thanks [@Blogbotana](https://github.com/Blogbotana)! - renderer: add `Renderer.setOverlayLineColor(rgba)` so the 3D overlay lines (annotation / alignment / grid) and the section-cut outline are themeable. The line shader previously hardcoded black, leaving these lines invisible on dark backgrounds; the colour now comes from a uniform and defaults to opaque black (no behaviour change unless set). Complements `SymbolicTextInput.color`, which already themes the matching labels.
+
+### Patch Changes
+
+- [#1368](https://github.com/LTplus-AG/ifc-lite/pull/1368) [`1c27802`](https://github.com/LTplus-AG/ifc-lite/commit/1c27802ae79b402e540ff607b73bed29e02d897d) Thanks [@louistrue](https://github.com/louistrue)! - Fix picking of colour-merged fillers (IfcDoor / IfcWindow) under isolation. When a door or window is colour-fused into a batch keyed by its host wall or opening, its expressId lives only in the per-vertex `entityIds`, not in `batch.expressIds`. Picking now seeds its candidate set from the scene's authoritative mesh-data id set (`getAllMeshDataExpressIds()`), so an isolated door/window is hydrated and selectable instead of returning `null` from `pick()`. ([#1358](https://github.com/LTplus-AG/ifc-lite/issues/1358))
+
+## 1.30.1
+
+### Patch Changes
+
+- [#1351](https://github.com/LTplus-AG/ifc-lite/pull/1351) [`18187fa`](https://github.com/LTplus-AG/ifc-lite/commit/18187facd6fa6fec15a23ef5e3263353730c5d8b) Thanks [@louistrue](https://github.com/louistrue)! - Keep small high-aspect elements on the compact camera-fit pose. The linear-infrastructure fit policy (camera positioned inside the bbox looking down the longest axis) is meant for railway / road alignments hundreds of metres long, but it triggered on any high-aspect bounding box regardless of absolute size. A single reinforcing bar viewed alone (e.g. a 4.86 m bar, aspect ~130:1) got framed end-on from inside its own bounding box and rendered as nothing (issue [#1350](https://github.com/LTplus-AG/ifc-lite/issues/1350)). The linear policy now requires the longest axis to be at least 100 m; below that the compact SE-isometric pose frames the whole element. Fixes the rendering half of [#1350](https://github.com/LTplus-AG/ifc-lite/issues/1350).
+
+- Updated dependencies [[`0b73ebb`](https://github.com/LTplus-AG/ifc-lite/commit/0b73ebb785d378651e063ace128ad097991ccfb6)]:
+  - @ifc-lite/geometry@2.10.1
+
+## 1.30.0
+
+### Minor Changes
+
+- [#1331](https://github.com/LTplus-AG/ifc-lite/pull/1331) [`5193fdb`](https://github.com/LTplus-AG/ifc-lite/commit/5193fdb5f39a58cff2c4779dffcee5160df87227) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Add `RenderOptions.clipBox` — an axis-aligned, world-space clip box (section / crop box). The fragment shader discards geometry outside the six box planes, so consumers can crop to a real geometry cut instead of bounding-box element isolation. Independent of `sectionPlane`; both can be active. ([#1329](https://github.com/LTplus-AG/ifc-lite/issues/1329))
+
+- [#1335](https://github.com/LTplus-AG/ifc-lite/pull/1335) [`54c86f9`](https://github.com/LTplus-AG/ifc-lite/commit/54c86f96dbb8acbd1c200a53378cbd9b0fa36d4a) Thanks [@louistrue](https://github.com/louistrue)! - Picking now mirrors the active section plane and clip box from the last render, so geometry clipped away by `RenderOptions.sectionPlane` or `RenderOptions.clipBox` is unpickable (single-click `pick` and rectangle `pickRect`), not just invisible. Both pick paths are covered: the GPU picker shaders and the CPU raycast fallback used for batched / large / released-geometry models (the latter falls through a sectioned/cropped surface to the nearest visible one behind it). No consumer wiring is needed: the renderer stashes what it actually clipped each frame and feeds it to the picker, so selection always matches what is visible. Point clouds are clipped by the section plane (matching the point render); the crop box clips triangle meshes only. ([#1329](https://github.com/LTplus-AG/ifc-lite/issues/1329))
+
+## 1.29.2
+
+### Patch Changes
+
+- [#1311](https://github.com/LTplus-AG/ifc-lite/pull/1311) [`207a4fb`](https://github.com/LTplus-AG/ifc-lite/commit/207a4fba4b86b2db67e8784b4d7b05a52cd86960) Thanks [@louistrue](https://github.com/louistrue)! - Reconstruct per-layer section fills from open (cap-free) material-layer bands. The geometry slicer no longer caps the layer interface planes — capping doubled each shared interface into a coincident, non-watertight "ghost face" sheet and ~tripled the triangle count on layered walls. With the interfaces left open, the 2D section's polygon builder is now bidirectional (each open band closes at the interface chord) and, for 3+ layer walls, stitches the disconnected end strips of an interior layer (which has no wall face) back into a closed fill at the interface chords — so every layer keeps its section fill.
+
+  Harden that reconstruction on OPENING-cut walls so the 3D section cap covers every layer (no more wall-reads-hollow in section view). An opening splits each layer into disconnected solid chunks; the old greedy nearest-endpoint stitch hopped an interior layer's strip to the strip ACROSS the opening, emitting one self-overlapping polygon that bridged the void and failed to fill. Closure now runs along the interface lines (the principal/length axis of the band, so it is robust to rotated walls): endpoints are paired CONSECUTIVELY along each interface line, which closes each solid chunk and leaves the opening between chunks empty. Ambiguous layouts fall back to the previous stitch, so no case is made worse.
+
+  Add an opaque base-cap backstop so a 3D section cut can NEVER read see-through, even on a wall the per-layer reconstruction cannot resolve. For each multi-material entity the builder also emits its full closed cross-section (the watertight union of the bands always closes, so this needs no interface stitching), carried in a new `Drawing2D.layerBaseCutPolygons` that ONLY the 3D section overlay consumes (the flat 2D drawing, SVG export, and measure/snap paths are untouched). The overlay draws this opaque base first and the per-layer colours over it, so the colours show where they reconstruct and solid cut material shows everywhere else.
+
+  Fix multilayer walls reading HOLLOW in normal (uncut) 3D, not just in section. The renderer backface-culled material-layer slices on the assumption their winding was reliably outward — correct for the OLD closed per-layer slabs (the cull hid their coincident interface caps). Since the slabs became open bands whose union is the wall's watertight outer skin (no caps), and IFC winding is not reliably outward, culling dropped inward-wound faces and punched holes, so the wall looked like a thin see-through shell. Layer slices now render DOUBLE-SIDED like all other IFC geometry: every face of the watertight skin draws, so the wall reads solid. With no coincident caps left there is nothing to z-fight, so the cull that motivated the special pipeline is removed (the `GEOM_CLASS_LAYER_SLICE` tag stays — it now only marks per-layer section fills).
+
+## 1.29.1
+
+### Patch Changes
+
+- [#1315](https://github.com/LTplus-AG/ifc-lite/pull/1315) [`582fc07`](https://github.com/LTplus-AG/ifc-lite/commit/582fc077272c6a9cc0db87711e2828f41d0983bd) Thanks [@louistrue](https://github.com/louistrue)! - Stop a lost-device `popErrorScope` rejection from surfacing as an unhandled `DOMException`.
+
+  During the first few frames the renderer wraps the render pass in `pushErrorScope('validation')` and reads it back with `device.popErrorScope()`. That promise rejects (`OperationError: Instance dropped in popErrorScope`) when the GPU device is lost while the scope is still pending — something seen in the wild on Windows/Edge when the adapter resets. The `.then()` had no rejection handler, so the rejection escaped the surrounding synchronous `try/catch` and became an unhandled rejection reported as a top-level error. It is now caught and treated like any other device loss: the context is invalidated so it reconfigures on the next frame, with a throttled warning instead of a crash.
+
+## 1.29.0
+
+### Minor Changes
+
+- [#1290](https://github.com/LTplus-AG/ifc-lite/pull/1290) [`07dedbc`](https://github.com/LTplus-AG/ifc-lite/commit/07dedbcaa4f970b26134ae68aef5105761754011) Thanks [@louistrue](https://github.com/louistrue)! - Add `ghostExceptIds` / `ghostAlpha` to `RenderOptions` — an X-Ray _context_ mode
+  that fades every non-selected mesh NOT in the set to a translucent alpha, while
+  the focused subset stays solid. It feeds the existing `transparencyOverrides`
+  alpha path (explicit per-id entries still win, selected meshes stay opaque), so
+  callers can ghost "the rest" of a model without building a Map over every
+  element. Same id space as `isolatedIds`.
+
+### Patch Changes
+
+- [#1291](https://github.com/LTplus-AG/ifc-lite/pull/1291) [`39400ee`](https://github.com/LTplus-AG/ifc-lite/commit/39400ee5bb48c1554656e1ac7aaf8a06ba2274cf) Thanks [@louistrue](https://github.com/louistrue)! - Fix Exploded level-display mode leaving geometry behind ([#1289](https://github.com/LTplus-AG/ifc-lite/issues/1289)).
+
+  Two independent defects made Exploded mode look broken:
+
+  - GPU-instanced occurrences (repeated geometry emitted via `IfcMappedItem`, e.g.
+    windows / mullions) were never lifted with their storey, because the per-entity
+    translate only touched the flat `meshDataMap` and not the instanced shard. They
+    stayed at their native elevation while the rest of the storey rose ("objects
+    left behind"). `Scene.translateInstancedEntity` now shifts each occurrence's
+    transform in both the CPU instance record and the GPU buffer, plus its cached
+    world AABB, so pick / measure / section / export stay correct. This also fixes
+    moving an instanced element with the gizmo.
+
+  - A storey whose `Elevation` attribute is null (common in Revit / ArchiCAD
+    exports) was dropped from the elevation map, so Exploded mode had a single
+    floor to order ("only one floor"). The spatial-hierarchy builder now falls back
+    to the storey's `ObjectPlacement` Z when the attribute is missing.
+
+- Updated dependencies [[`84c9f6e`](https://github.com/LTplus-AG/ifc-lite/commit/84c9f6e09eba2747b37da8f74aa7de23cb9f96d3)]:
+  - @ifc-lite/geometry@2.9.2
+
 ## 1.28.5
 
 ### Patch Changes

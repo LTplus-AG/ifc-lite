@@ -6,7 +6,7 @@
  * Scene graph and mesh management
  */
 
-import type { Mesh, BatchedMesh, Vec3 } from './types.js';
+import type { Mesh, BatchedMesh, Vec3, PickClipState } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderPipeline } from './pipeline.js';
 import { BATCH_CONSTANTS } from './constants.js';
@@ -1171,6 +1171,13 @@ export class Scene {
         // Fragments are subsets of the same source mesh → same local frame.
         // Preserve origin so each fragment relativizes/renders in world space.
         ...(meshData.origin ? { origin: meshData.origin } : {}),
+        // Each fragment is a vertex SUBSET of the same source mesh, so the
+        // parent's localBounds/localToWorld (issue #1474) still apply
+        // unchanged: localBounds is a safe (if loose) superset — the caller
+        // unions across an entity's pieces anyway — and localToWorld is the
+        // one placement shared by the whole (pre-split) mesh.
+        ...(meshData.localBounds ? { localBounds: meshData.localBounds } : {}),
+        ...(meshData.localToWorld ? { localToWorld: meshData.localToWorld } : {}),
       });
     }
 
@@ -1666,14 +1673,6 @@ export class Scene {
       ],
     });
 
-    // Backface-cull this batch iff EVERY source mesh is a material-layer slice
-    // (geometryClass 3). Mixed-class buckets (a non-layer element that happens
-    // to share the exact colour) stay double-sided — culling them could drop
-    // faces if their winding is unreliable; the layer slices' winding is not.
-    const isLayer =
-      meshDataArray.length > 0 &&
-      meshDataArray.every((m) => (m.geometryClass ?? 0) === 3);
-
     return {
       id: this.nextBatchId++,
       colorKey: bucketKey ?? this.colorKey(color),
@@ -1688,7 +1687,6 @@ export class Scene {
       // Per-batch local frame: positions are stored relative to this; the draw
       // loop applies model = translate(origin) so they land in world space.
       origin: merged.origin,
-      isLayer,
     };
   }
 
@@ -2229,7 +2227,13 @@ export class Scene {
         }
       }
       const color: [number, number, number, number] = [...o.originalColor];
-      out.push({ expressId, positions, normals, indices: tpl.indices, color });
+      // Per-occurrence key so CPU caches that would otherwise key on `expressId`
+      // alone (measure-snap geometry cache) don't collide across occurrences of
+      // this instanced entity, which share `expressId` but hold distinct
+      // world-space positions (issue #1405). templateIndex+byteOffset uniquely
+      // and stably identifies an occurrence within the instance buffers.
+      const occurrenceKey = `${expressId}:inst:${o.templateIndex}:${o.byteOffset}`;
+      out.push({ expressId, positions, normals, indices: tpl.indices, color, occurrenceKey });
     }
     return out.length > 0 ? out : undefined;
   }
@@ -2684,6 +2688,135 @@ export class Scene {
   }
 
   /**
+   * Local (pre-placement, object-space) AABB for an entity (issue #1474) — the
+   * element's true, un-rotated extent, unlike {@link getEntityBoundingBox}'s
+   * world-space (axis-aligned-to-world) box. Y-up metres, same frame as
+   * `positions`. O(1): no vertex scan, reads `MeshData.localBounds` captured
+   * by the geometry pipeline.
+   *
+   * Unions `localBounds` across all of the entity's mesh pieces — safe with
+   * no reconciliation, since every piece of one element is already expressed
+   * in the same local frame (see `MeshData.localBounds` docs). For a
+   * GPU-instanced entity, unions the local box of every occurrence's
+   * template — one `expressId` can hold multiple occurrence records backed
+   * by DIFFERENT templates (e.g. a mapped-item assembly whose sub-items
+   * split across materials), not just repeats of one template, mirroring the
+   * flat-path union above.
+   *
+   * Returns `null` for a container/assembly with no mesh (e.g.
+   * `IfcElementAssembly`), or when not captured (older cached geometry).
+   */
+  getEntityLocalBounds(expressId: number): { min: [number, number, number]; max: [number, number, number] } | null {
+    const pieces = this.meshDataMap.get(expressId);
+    if (pieces && pieces.length > 0) {
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      let found = false;
+      for (const piece of pieces) {
+        const lb = piece.localBounds;
+        if (!lb) continue;
+        found = true;
+        if (lb.min[0] < minX) minX = lb.min[0];
+        if (lb.min[1] < minY) minY = lb.min[1];
+        if (lb.min[2] < minZ) minZ = lb.min[2];
+        if (lb.max[0] > maxX) maxX = lb.max[0];
+        if (lb.max[1] > maxY) maxY = lb.max[1];
+        if (lb.max[2] > maxZ) maxZ = lb.max[2];
+      }
+      return found ? { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] } : null;
+    }
+
+    // GPU-instanced entity: no flat mesh piece. Union every occurrence's
+    // template box (computed once at upload time, `scene.ts` instancing
+    // upload path) — distinct occurrence records for one expressId can point
+    // at distinct templates.
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (occurrences && occurrences.length > 0) {
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      let found = false;
+      for (const occ of occurrences) {
+        const tmpl = this.instancedTemplateCpu[occ.templateIndex];
+        if (!tmpl || !Number.isFinite(tmpl.localMin[0])) continue;
+        found = true;
+        if (tmpl.localMin[0] < minX) minX = tmpl.localMin[0];
+        if (tmpl.localMin[1] < minY) minY = tmpl.localMin[1];
+        if (tmpl.localMin[2] < minZ) minZ = tmpl.localMin[2];
+        if (tmpl.localMax[0] > maxX) maxX = tmpl.localMax[0];
+        if (tmpl.localMax[1] > maxY) maxY = tmpl.localMax[1];
+        if (tmpl.localMax[2] > maxZ) maxZ = tmpl.localMax[2];
+      }
+      return found ? { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] } : null;
+    }
+    return null;
+  }
+
+  /**
+   * The resolved local→world placement transform for an entity (issue
+   * #1474): row-major 4×4 (16 numbers), Y-up metres — pairs with
+   * {@link getEntityLocalBounds} to reconstruct the element's true oriented
+   * world box (an OBB), unlike {@link getEntityBoundingBox}'s pre-unioned
+   * world-axis-aligned box.
+   *
+   * A flat entity's mesh pieces all share one placement (one
+   * `IfcLocalPlacement` per element) — returns the first piece that carries
+   * one. For a GPU-instanced entity, reads the FIRST occurrence record's
+   * transform (from the packed instance buffer, column-major, transposed
+   * here so the public contract is row-major regardless of path).
+   *
+   * KNOWN LIMITATION: unlike {@link getEntityLocalBounds} (safe to union),
+   * a transform can't be meaningfully aggregated across multiple occurrence
+   * records — an entity whose shape is internally composed of several
+   * independently-placed mapped sub-items (e.g. a railing with repeated
+   * baluster geometry) has genuinely DIFFERENT per-occurrence transforms
+   * under one `expressId`. This returns one representative transform, not
+   * necessarily the "whole entity's" placement, for such cases.
+   *
+   * Returns `null` for a container/assembly with no mesh, or when not
+   * captured (older cached geometry, or the instancing template was released).
+   *
+   * Returns `Float64Array`, NOT `Float32Array`: `localToWorld` carries the
+   * placement's translation in the *original* (pre-RTC) coordinate frame,
+   * which for a building-scale/georeferenced model can be tens of thousands
+   * of metres from the origin — f32 there loses sub-millimetre precision
+   * (the exact fan-collapse failure mode `MeshData.origin` exists to avoid
+   * for `positions`). The flat path's source data is already f64
+   * (`piece.localToWorld` round-trips from Rust's `[f64; 16]`); the
+   * instanced path's source (the GPU instance buffer) is genuinely f32, so
+   * widening it here is lossless but doesn't recover precision already lost
+   * upstream in that path.
+   */
+  getEntityTransform(expressId: number): Float64Array | null {
+    const pieces = this.meshDataMap.get(expressId);
+    if (pieces && pieces.length > 0) {
+      for (const piece of pieces) {
+        if (piece.localToWorld && piece.localToWorld.length === 16) {
+          return new Float64Array(piece.localToWorld);
+        }
+      }
+      return null;
+    }
+
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (occurrences && occurrences.length > 0) {
+      const { templateIndex, byteOffset } = occurrences[0];
+      const tmpl = this.instancedTemplateCpu[templateIndex];
+      if (!tmpl) return null;
+      const dv = new DataView(tmpl.instanceData);
+      const row = new Float64Array(16);
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          // Source is column-major (mat[c][r] at byteOffset + (c*4+r)*4);
+          // write it out row-major.
+          row[r * 4 + c] = dv.getFloat32(byteOffset + (c * 4 + r) * 4, true);
+        }
+      }
+      return row;
+    }
+    return null;
+  }
+
+  /**
    * CPU raycast against all mesh data.
    * Returns expressId and modelIndex of closest hit, or null.
    * Delegates to extracted raycaster utilities.
@@ -2692,13 +2825,14 @@ export class Scene {
     rayOrigin: Vec3,
     rayDir: Vec3,
     hiddenIds?: Set<number>,
-    isolatedIds?: Set<number> | null
+    isolatedIds?: Set<number> | null,
+    clip?: PickClipState | null
   ): RaycastHit | null {
     const { rayDirInv, rayDirSign } = prepareRayDirInv(rayDir);
 
     // When geometry data has been released, use bounding-box-only raycast.
     if (this.geometryReleased) {
-      return raycastBoundingBoxes(rayOrigin, rayDirInv, rayDirSign, this.boundingBoxes, hiddenIds, isolatedIds);
+      return raycastBoundingBoxes(rayOrigin, rayDir, rayDirInv, rayDirSign, this.boundingBoxes, hiddenIds, isolatedIds, clip);
     }
 
     // Full triangle-level raycast with bounding-box pre-filter
@@ -2711,6 +2845,7 @@ export class Scene {
       (id) => this.getEntityBoundingBox(id),
       hiddenIds,
       isolatedIds,
+      clip,
     );
 
     // Instanced-only occurrences live in the shard, not meshDataMap, so the CPU
@@ -2738,6 +2873,7 @@ export class Scene {
           (id) => this.getInstancedEntityBounds(id),
           hiddenIds,
           isolatedIds,
+          clip,
         );
       }
     }

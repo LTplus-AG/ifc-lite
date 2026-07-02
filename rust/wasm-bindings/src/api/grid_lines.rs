@@ -15,11 +15,12 @@
 //!
 //! This module resolves each axis through the **same** transform pipeline the
 //! meshes use — full `IfcLocalPlacement` chain (`resolve_scaled_placement`) +
-//! `lengthUnitScale` + the same RTC offset (`detect_rtc_offset_from_first_element`,
-//! >10 km gated) — and emits the endpoints in the renderer's **Y-up,
-//! RTC-subtracted, metres** world space (the exact frame `MeshDataJs::new`
-//! produces after its IFC Z-up → WebGL Y-up swap). Grids then line up with the
-//! streamed geometry by construction, mirroring `alignment_lines.rs`.
+//! `lengthUnitScale` + the same RTC offset
+//! (`detect_rtc_offset_from_first_element`, gated at 10 km and above) — and
+//! emits the endpoints in the renderer's **Y-up, RTC-subtracted, metres** world
+//! space (the exact frame `MeshDataJs::new` produces after its IFC Z-up → WebGL
+//! Y-up swap). Grids then line up with the streamed geometry by construction,
+//! mirroring `alignment_lines.rs`.
 
 use super::IfcAPI;
 use ifc_lite_core::{build_entity_index, DecodedEntity, EntityDecoder, EntityScanner, IfcType};

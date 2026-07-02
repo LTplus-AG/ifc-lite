@@ -22,6 +22,7 @@ import type { Flavor, UnpackedFlavor } from '@ifc-lite/extensions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { toast } from '@/components/ui/toast';
+import { downloadFile } from '@/lib/export/download';
 import { FlavorMergeDialog } from './FlavorMergeDialog';
 import { FlavorListView } from './FlavorListView';
 import { FlavorImportPreview } from './FlavorImportPreview';
@@ -94,19 +95,9 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
     setBusy(true);
     try {
       const bytes = await host.flavors.exportFlavor(id);
-      // Copy into a fresh ArrayBuffer so DOM Blob typings accept it —
-      // Uint8Array<ArrayBufferLike> isn't a BlobPart in strict
-      // TS lib.dom, and `.slice()` on the underlying buffer may
-      // return SharedArrayBuffer.
-      const buffer = new ArrayBuffer(bytes.byteLength);
-      new Uint8Array(buffer).set(bytes);
-      const blob = new Blob([buffer], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${id || 'flavor'}.iflv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // downloadFile copies the (possibly ArrayBufferLike / Shared) bytes into a
+      // fresh ArrayBuffer-backed view, so DOM Blob typings accept them.
+      downloadFile(bytes, `${id || 'flavor'}.iflv`, 'application/octet-stream');
       toast.success(toastText.flavorExported(`${id}.iflv`));
     } catch (err) {
       toast.error(toastText.failed('Export', err));

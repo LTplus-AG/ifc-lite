@@ -27,8 +27,10 @@
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
+import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { computeWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
+import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 
 /**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
@@ -140,6 +142,13 @@ export interface ProcessParallelOptions {
    */
   tessellationQuality?: TessellationQuality | null;
   /**
+   * Issue #1286 — tier-independent small-cut skip. When true, each geometry
+   * worker's IfcAPI receives `setSkipSmallCuts(true)` before the first
+   * stream-chunk, dropping tiny `IfcBooleanResult` detail cuts while keeping the
+   * tessellation tier. `undefined`/`false` ⇒ every cut runs (default).
+   */
+  skipSmallCuts?: boolean;
+  /**
    * Explicit URL for the wasm-bindgen `.wasm` binary. When provided,
    * forwarded to the geometry workers' init messages so they call
    * `init(wasmUrl)` instead of relying on wasm-bindgen's default
@@ -250,6 +259,9 @@ export async function* processParallel(
   let workerError: Error | null = null;
   let workersCompleted = 0;
   let totalMeshes = 0;
+  // CSG / opening diagnostics merged across all workers, forwarded on the final
+  // completion event so loadFile callers can read a typed per-load summary.
+  let diagnostics: GeometryDiagnostics | null = null;
   let endSentToWorkers = false;
   let streamStartSentToWorkers = false;
   /**
@@ -324,6 +336,8 @@ export async function* processParallel(
           geometryHash?: bigint;
           geometryClass?: number;
           origin?: [number, number, number];
+          localBounds?: MeshData['localBounds'];
+          localToWorld?: MeshData['localToWorld'];
         }) => ({
           expressId: m.expressId,
           ifcType: m.ifcType,
@@ -347,6 +361,9 @@ export async function* processParallel(
           // Per-element local-frame origin (world = origin + position); the
           // renderer reconstructs world via a per-batch model-matrix translate.
           ...(m.origin ? { origin: m.origin } : {}),
+          // Local (pre-placement) AABB + placement transform (issue #1474).
+          ...(m.localBounds ? { localBounds: m.localBounds } : {}),
+          ...(m.localToWorld ? { localToWorld: m.localToWorld } : {}),
         }));
         // GPU-instancing: per-batch IFNS shards ride alongside the flat meshes.
         // Opaque repeated occurrences render ONLY via these shards (taken off the
@@ -400,12 +417,16 @@ export async function* processParallel(
         // of batch lengths we observed, a batch was lost — log but
         // trust our observed count to keep totalSoFar consistent
         // with what consumers actually rendered.
+        diagnostics = mergeGeometryDiagnostics(diagnostics, msg.diagnostics);
         workersCompleted++;
         worker.terminate();
         wake();
         return;
       }
       if (msg.type === 'error') {
+        // A rotated/missing engine binary after a redeploy (#1363) surfaces
+        // here as the worker's wasm-init failure — let the host reload.
+        notifyIfWasmAssetUnavailable(msg.message);
         workerError = new Error(`Geometry worker error: ${msg.message}`);
         workersCompleted++;
         worker.terminate();
@@ -424,6 +445,7 @@ export async function* processParallel(
         (err?.message && String(err.message)) ||
         (err?.filename ? `at ${err.filename}:${err.lineno ?? 0}` : '') ||
         'worker terminated unexpectedly';
+      notifyIfWasmAssetUnavailable(detail);
       workerError = new Error(`Geometry worker failed: ${detail}`);
       workersCompleted++;
       worker.terminate();
@@ -495,6 +517,12 @@ export async function* processParallel(
     worker.postMessage({
       type: 'set-tessellation-quality',
       level: options?.tessellationQuality ?? null,
+    });
+    // Issue #1286: forward the small-cut skip the same way — always sent so a
+    // worker reused by a later export (which omits it) resets to false.
+    worker.postMessage({
+      type: 'set-skip-small-cuts',
+      enabled: options?.skipSmallCuts === true,
     });
   }
 
@@ -861,6 +889,10 @@ export async function* processParallel(
       return;
     }
     if (data.type === 'error') {
+      // The streaming pre-pass is the first thing to touch the engine binary,
+      // so a stale-deploy 404 of the wasm (#1363) lands here — let the host
+      // reload onto the current deployment.
+      notifyIfWasmAssetUnavailable(data.message);
       prepassError = new Error(data.message);
       prepassDone = true;
       prepassWorker.terminate();
@@ -872,6 +904,7 @@ export async function* processParallel(
     // `buildPrePassStreaming`. We treat unknown messages as no-ops.
   };
   prepassWorker.onerror = (e) => {
+    notifyIfWasmAssetUnavailable(e.message);
     prepassError = new Error(`Pre-pass worker failed: ${e.message}`);
     prepassDone = true;
     prepassWorker.terminate();
@@ -972,7 +1005,25 @@ export async function* processParallel(
   }
 
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
-  yield { type: 'complete', totalMeshes, coordinateInfo };
+  // One aggregate per-load summary (only this scope holds the cross-worker
+  // total). Counts include batch-summed upper bounds; see the event-type doc.
+  // `diagnostics` is only reassigned inside the message-handler closure; restore
+  // its declared union type at this yield via a cast (a bare reference compiled to
+  // an unhelpful narrowed type under the generator's control-flow analysis).
+  const loadDiagnostics = diagnostics as GeometryDiagnostics | null;
+  if (loadDiagnostics && loadDiagnostics.totalCsgFailures > 0) {
+    console.warn(
+      `[ifc-lite] ${loadDiagnostics.totalCsgFailures} CSG failure(s) across ` +
+        `${loadDiagnostics.productsWithFailures} product(s) this load - some ` +
+        `openings/voids may be left uncut`,
+    );
+  }
+  yield {
+    type: 'complete',
+    totalMeshes,
+    coordinateInfo,
+    ...(loadDiagnostics ? { diagnostics: loadDiagnostics } : {}),
+  };
   } finally {
     for (const w of workers) {
       try { w.terminate(); } catch { /* cleanup — safe to ignore */ }

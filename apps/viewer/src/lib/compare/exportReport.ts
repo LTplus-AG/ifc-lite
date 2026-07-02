@@ -21,6 +21,7 @@ import type { FederatedModel } from '../../store/types.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { summarizeGeometryChange, type Aabb } from './describeChange.js';
+import { downloadBlob, sanitizeFilename } from '../export/download.js';
 
 /** One row of the exported change report. */
 export interface CompareReportRow {
@@ -192,10 +193,6 @@ export function reportToJson(report: CompareReport): string {
   return JSON.stringify(report, null, 2);
 }
 
-function slug(s: string): string {
-  return (s || 'model').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'model';
-}
-
 /** Build + download the change report as a CSV or JSON file. */
 export function downloadCompareReport(
   format: 'csv' | 'json',
@@ -203,13 +200,9 @@ export function downloadCompareReport(
   models: ReadonlyMap<string, FederatedModel>,
 ): void {
   const report = buildCompareReport(result, models);
-  const name = `compare-${slug(report.baseModel)}-vs-${slug(report.headModel)}`;
+  const modelName = (s: string) => sanitizeFilename(s, { fallback: 'model', maxLength: 40 });
+  const name = `compare-${modelName(report.baseModel)}-vs-${modelName(report.headModel)}`;
   const body = format === 'csv' ? reportToCsv(report) : reportToJson(report);
   const type = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/json;charset=utf-8;';
-  const url = URL.createObjectURL(new Blob([body], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}.${format}`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  downloadBlob(new Blob([body], { type }), `${name}.${format}`);
 }

@@ -387,22 +387,66 @@ Supports all 202 `IfcProduct` subtypes from IFC4 and IFC4X3 schemas, including i
 
 ### Multi-Model Merged Export
 
-Merge multiple IFC models into a single file:
+Merge multiple IFC models into a single file. The models are passed to the
+constructor; `export()` (sync) or `exportAsync()` (progress-reporting) takes the
+options:
 
 ```typescript
 import { MergedExporter } from '@ifc-lite/export';
 
-const exporter = new MergedExporter();
-const result = await exporter.export([
-  { dataStore: store1, source: buffer1, name: 'Architecture' },
-  { dataStore: store2, source: buffer2, name: 'Structure' },
-], {
+const exporter = new MergedExporter([
+  { id: 'arch', name: 'Architecture', dataStore: store1 },
+  { id: 'struct', name: 'Structure', dataStore: store2 },
+]);
+const result = await exporter.exportAsync({
+  schema: 'IFC4',
+  unitReconciliation: 'normalize',
   visibleOnly: true,
-  hiddenEntityIds: hiddenSet,
-  isolatedEntityIds: isolatedSet,
 });
 await saveFile('merged.ifc', result.content);
 ```
+
+#### Mixed length units
+
+When the models use different length units, `unitReconciliation` controls the
+result:
+
+| Mode | Behaviour |
+|------|-----------|
+| `'auto'` (default) | Unit-aware: same-unit models are unified; a differing-unit model is **federated** as its own `IfcProject` so its raw coordinates stay correctly scaled. The output then holds more than one `IfcProject` (flagged in `stats.warnings`). |
+| `'normalize'` | Rescales every length-valued datum of a differing-unit model into the first model's unit, then unifies it — the output is **one single-unit `IfcProject`** that opens correctly everywhere. `stats.normalizedModelCount` reports how many models were rescaled. |
+| `'assume-shared'` | Forces one project without rescaling. Use only when units are already normalised; mixing real units this way mis-scales geometry. |
+
+#### Spatial matching strategy
+
+By default, `IfcSite`/`IfcBuilding` are matched by Name (case-insensitive),
+falling back to unifying a lone instance in each model when no name matches;
+`IfcBuildingStorey` is matched by Name, falling back to Elevation (±0.5 model
+units). To pin down the exact strategy — mirroring IfcOpenShell/BlenderBIM's
+"Merge Projects" recipe — pass:
+
+```typescript
+const result = exporter.export({
+  schema: 'IFC4',
+  mergeSites: 'single',              // 'single' | 'by-name'
+  mergeBuildings: 'by-name',         // 'single' | 'by-name'
+  mergeStoreys: 'by-name-then-elevation', // 'by-name' | 'by-elevation' | 'by-name-then-elevation'
+});
+```
+
+`'single'` ignores Name and unifies iff each model contributes exactly one
+instance of that container type. `'by-name'` requires a Name match with no
+single-instance fallback. All three fields are optional; omitting one keeps
+the pre-existing combined heuristic for that container type.
+
+`'normalize'` rescales all `IfcCartesianPoint`/`IfcCartesianPointList` coordinates,
+scalar lengths (extrusion depths, profile dimensions, radii, thicknesses, storey
+elevations, `IfcVector.Magnitude`, CSG primitive sizes), `IfcLengthMeasure`
+property values and `IfcQuantityLength`. Areas and volumes are converted by their
+own declared `AREAUNIT`/`VOLUMEUNIT` ratio. Angles, ratios, counts, unit
+definitions and georeferencing offsets are left untouched. Length attributes
+specific to IFC4X3 (alignment / linear referencing) may not be rescaled — a
+`stats.warnings` advisory flags this.
 
 ## GLB Import
 

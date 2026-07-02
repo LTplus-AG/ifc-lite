@@ -96,11 +96,22 @@ impl GeometryProcessor for BlockProcessor {
 /// `IfcBooleanClippingResult` or an `IfcCsgPrimitive3D`. This processor
 /// resolves the reference and dispatches it to the matching leaf processor,
 /// so callers don't need to know that the geometry was wrapped.
-pub struct CsgSolidProcessor;
+pub struct CsgSolidProcessor {
+    /// Per-build small-cut skip, forwarded to the nested
+    /// [`BooleanClippingProcessor`] this wraps so a CSG tree shares one scoped
+    /// value (see `BooleanClippingProcessor::skip_small_cuts`).
+    skip_small_cuts: bool,
+}
 
 impl CsgSolidProcessor {
     pub fn new() -> Self {
-        Self
+        Self::with_skip_small_cuts(false)
+    }
+
+    /// Construct with the per-build small-cut skip forwarded to the boolean
+    /// processor at the root of the wrapped CSG tree.
+    pub fn with_skip_small_cuts(skip_small_cuts: bool) -> Self {
+        Self { skip_small_cuts }
     }
 }
 
@@ -132,7 +143,8 @@ impl GeometryProcessor for CsgSolidProcessor {
         // unbounded recursion.
         match root.ifc_type {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                BooleanClippingProcessor::new().process(&root, decoder, schema, quality)
+                BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts)
+                    .process(&root, decoder, schema, quality)
             }
             IfcType::IfcBlock => BlockProcessor::new().process(&root, decoder, schema, quality),
             IfcType::IfcSphere => SphereProcessor::new().process(&root, decoder, schema, quality),

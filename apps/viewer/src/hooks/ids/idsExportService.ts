@@ -11,6 +11,7 @@
 
 import type { IDSValidationReport, SupportedLocale } from '@ifc-lite/ids';
 import { posthog } from '../../lib/analytics';
+import { downloadFile } from '../../lib/export/download';
 
 // ============================================================================
 // JSON Export
@@ -59,13 +60,7 @@ export function buildReportJSON(report: IDSValidationReport): Record<string, unk
  */
 export function downloadReportJSON(report: IDSValidationReport): void {
   const exportData = buildReportJSON(report);
-  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = globalThis.document.createElement('a');
-  a.href = url;
-  a.download = `ids-report-${new Date().toISOString().split('T')[0]}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadFile(JSON.stringify(exportData, null, 2), `ids-report-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
   posthog.capture('ids_report_exported', { format: 'json', total_specifications: report.summary.totalSpecifications });
 }
 
@@ -436,12 +431,6 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
  */
 export function downloadReportHTML(report: IDSValidationReport, locale: SupportedLocale): void {
   const html = buildReportHTML(report, locale);
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const a = globalThis.document.createElement('a');
-  a.href = url;
-  a.download = `ids-report-${new Date().toISOString().split('T')[0]}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadFile(html, `ids-report-${new Date().toISOString().split('T')[0]}.html`, 'text/html');
   posthog.capture('ids_report_exported', { format: 'html', locale, total_specifications: report.summary.totalSpecifications });
 }

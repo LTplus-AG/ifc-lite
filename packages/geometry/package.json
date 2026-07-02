@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "2.9.1",
+  "version": "2.13.1",
   "description": "Geometry processing bridge for IFC-Lite - 1.9x faster than web-ifc",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,12 +22,12 @@
     "@ifc-lite/wasm": "workspace:^"
   },
   "optionalDependencies": {
-    "@tauri-apps/api": "^2.11.0"
+    "@tauri-apps/api": "^2.11.1"
   },
   "devDependencies": {
-    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/api": "^2.11.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.9"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

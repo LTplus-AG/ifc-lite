@@ -282,6 +282,9 @@ pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
 }
 
 /// Like [`export_step`] but also returns coverage stats.
+// The grouped-property-mutation Vec type is explicit by design; aliasing it
+// would hide the (entity, pset) -> [(key, value)] grouping structure.
+#[allow(clippy::type_complexity)]
 pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, StepStats) {
     // 1. Index every entity line (preserve source order).
     let mut order: Vec<u32> = Vec::new();

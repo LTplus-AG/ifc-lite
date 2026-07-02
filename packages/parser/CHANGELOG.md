@@ -1,5 +1,82 @@
 # @ifc-lite/parser
 
+## 3.5.1
+
+### Patch Changes
+
+- [#1423](https://github.com/LTplus-AG/ifc-lite/pull/1423) [`d567c4e`](https://github.com/LTplus-AG/ifc-lite/commit/d567c4eb55edf7f2e68f67709c3716cda0bf5360) Thanks [@louistrue](https://github.com/louistrue)! - perf(georef): memoize `extractGeoreferencingOnDemand` per store
+
+  On models without an `IfcMapConversion`, the on-demand georeferencing extractor
+  scans and decodes every `IfcPropertySet` from the source buffer to find
+  `ePset_MapConversion` / `ePset_ProjectedCRS`. On property-set-heavy models that
+  is tens of thousands of entity decodes per call, and the viewer invokes it on
+  the render path (once per streamed geometry batch), so the cost compounded to
+  O(batches x propertySets) and could stall large-model loads by an order of
+  magnitude. The result is a pure function of the immutable source + entityIndex
+  (georef edits are layered on top later in `getEffectiveGeoreference`), so the
+  extraction is now memoized per store via a `WeakMap`, collapsing it to a single
+  scan per model. Not-yet-loaded stores (missing source/entityIndex) are not
+  cached, so a store that fills in later still recomputes.
+
+## 3.5.0
+
+### Minor Changes
+
+- [#1388](https://github.com/LTplus-AG/ifc-lite/pull/1388) [`8a4ce69`](https://github.com/LTplus-AG/ifc-lite/commit/8a4ce694ea1d8c1b0f25310f8a1addb3ff649f14) Thanks [@mehmet-ylcnky](https://github.com/mehmet-ylcnky)! - Re-export EntityTable and SpatialHierarchy types from @ifc-lite/data, allowing consumers to import store types directly from @ifc-lite/parser.
+
+## 3.4.1
+
+### Patch Changes
+
+- [#1404](https://github.com/LTplus-AG/ifc-lite/pull/1404) [`f746659`](https://github.com/LTplus-AG/ifc-lite/commit/f746659ada2c918d88ea8458240e5d91b3f348f4) Thanks [@louistrue](https://github.com/louistrue)! - Fix IFC2X3 `ePset_MapConversion` / `ePset_ProjectedCRS` georeferencing so the authored EPSG code is read (not a fallback `EPSG:4326`), and route those models into the Cesium / federation pipeline.
+
+  IFC2X3 has no native `IfcMapConversion`/`IfcProjectedCRS`, so tools like `ifc-georeferencer` store georeferencing in property sets per the buildingSMART guide. Three bugs dropped these models to the legacy `IfcSite` lat/long (`EPSG:4326`), so two files differing only by CRS (`EPSG:7415` RD+NAP vs `EPSG:28992` RD) both displayed the same wrong CRS:
+
+  - The pset-name match was case-sensitive (`ePSet_`/`EPset_`) and missed the real-world `ePset_` casing — now matched case-insensitively in both the TS (`extractGeoreferencing`) and Rust (`GeoRefExtractor`) extractors.
+  - The ePSet path never read `ePset_ProjectedCRS.Name` (nor `MapConversion.TargetCRS`), so the EPSG code was discarded — now surfaced, with typed `IFCLABEL(...)`/`IFCLENGTHMEASURE(...)` values unwrapped.
+  - The viewer's on-demand extractor never loaded the property sets at all — now pulls in the georef ePSets + their values (only when no `IfcMapConversion` exists, deferred-atom safe).
+
+  The viewer's Cesium/federation gate accepts the `ePSetMapConversion` source, and ePSet offsets are scaled by the project length unit (millimetres for these files) so the model reprojects to the correct location instead of ~1000× out of range. The offline reproject fallback for the compound `EPSG:7415` (datum reported as `RD`) now carries the Kadaster `+towgs84` shift.
+
+- Updated dependencies [[`f746659`](https://github.com/LTplus-AG/ifc-lite/commit/f746659ada2c918d88ea8458240e5d91b3f348f4)]:
+  - @ifc-lite/wasm@2.13.4
+
+## 3.4.0
+
+### Minor Changes
+
+- [#1347](https://github.com/LTplus-AG/ifc-lite/pull/1347) [`297ae7b`](https://github.com/LTplus-AG/ifc-lite/commit/297ae7bc232519fe06a25d6ea20f39290e8a7ed2) Thanks [@louistrue](https://github.com/louistrue)! - `SpatialHierarchyBuilder` is now the single source for spatial-hierarchy construction. Added `buildFromCache(entities, relationships)` for cache restores (no source buffer, so storey elevations stay empty and `getStoreyByElevation` returns null), alongside the existing `build(...)` for fresh parses. Both entry points share one `buildNode`, so they can no longer drift: the fresh path now also applies the aggregate-descendant storey mapping (an `IfcBuildingElementPart` under an `IfcWall` resolves to that wall's storey), and the cache path now also has the cyclic-`IfcRelAggregates` guard. The viewer's duplicate `rebuildSpatialHierarchy` becomes a thin wrapper over `buildFromCache`.
+
+### Patch Changes
+
+- Updated dependencies [[`c7c58c0`](https://github.com/LTplus-AG/ifc-lite/commit/c7c58c09e40fe40be5cc14cadf95beac18130ea5), [`18187fa`](https://github.com/LTplus-AG/ifc-lite/commit/18187facd6fa6fec15a23ef5e3263353730c5d8b)]:
+  - @ifc-lite/wasm@2.13.2
+
+## 3.3.2
+
+### Patch Changes
+
+- [#1291](https://github.com/LTplus-AG/ifc-lite/pull/1291) [`39400ee`](https://github.com/LTplus-AG/ifc-lite/commit/39400ee5bb48c1554656e1ac7aaf8a06ba2274cf) Thanks [@louistrue](https://github.com/louistrue)! - Fix Exploded level-display mode leaving geometry behind ([#1289](https://github.com/LTplus-AG/ifc-lite/issues/1289)).
+
+  Two independent defects made Exploded mode look broken:
+
+  - GPU-instanced occurrences (repeated geometry emitted via `IfcMappedItem`, e.g.
+    windows / mullions) were never lifted with their storey, because the per-entity
+    translate only touched the flat `meshDataMap` and not the instanced shard. They
+    stayed at their native elevation while the rest of the storey rose ("objects
+    left behind"). `Scene.translateInstancedEntity` now shifts each occurrence's
+    transform in both the CPU instance record and the GPU buffer, plus its cached
+    world AABB, so pick / measure / section / export stay correct. This also fixes
+    moving an instanced element with the gizmo.
+
+  - A storey whose `Elevation` attribute is null (common in Revit / ArchiCAD
+    exports) was dropped from the elevation map, so Exploded mode had a single
+    floor to order ("only one floor"). The spatial-hierarchy builder now falls back
+    to the storey's `ObjectPlacement` Z when the attribute is missing.
+
+- Updated dependencies [[`df607ef`](https://github.com/LTplus-AG/ifc-lite/commit/df607effd3a4cf2e0fb2898e14cb385df6d8e8d0)]:
+  - @ifc-lite/wasm@2.11.1
+
 ## 3.3.1
 
 ### Patch Changes

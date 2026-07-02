@@ -87,13 +87,53 @@ export function createNode(
 const DEBUG_VERTEX_CLASS_LOG_LIMIT = 3;
 let debugVertexClassLogs = 0;
 
-/** Convert a renderer-agnostic chunk into a GPU vertex buffer + metadata. */
+/**
+ * Append a chunk's points to a node as one or more GPU vertex buffers.
+ *
+ * A single GPU buffer can't exceed `maxBufferSize` (typically 256 MiB), and
+ * because this vertex buffer is also bound as STORAGE for the deviation
+ * compute, `maxStorageBufferBindingSize` (often 128 MiB) applies too. At
+ * 24 B/point that caps a buffer at ~5–11 M points — so a large chunk (e.g. a
+ * whole-file decode that doesn't sub-chunk, or a big inline cloud) is split
+ * into sub-buffers that each fit, instead of failing with
+ * "Buffer size N is greater than the maximum buffer size". The draw and
+ * deviation passes already iterate `node.chunks`, so the split is transparent.
+ */
 export function appendChunkToNode(
   device: GPUDevice,
   node: PointCloudNode,
   chunk: PointCloudChunkInput,
-): PointCloudGpuChunk {
-  const count = chunk.pointCount;
+): void {
+  const total = chunk.pointCount;
+  if (total <= 0) return;
+  // Honour BOTH the raw buffer cap and the storage-binding cap, with a 5%
+  // margin for safety against driver rounding.
+  const maxBytes = Math.min(
+    device.limits.maxBufferSize,
+    device.limits.maxStorageBufferBindingSize,
+  );
+  const bufferPointCap = Math.floor((maxBytes * 0.95) / POINT_VERTEX_BYTES);
+  // The deviation compute dispatches ceil(count / 64) workgroups over a whole
+  // chunk (its workgroup size is 64). That count must stay within
+  // maxComputeWorkgroupsPerDimension (65535), else WebGPU rejects the dispatch
+  // ("group size ... must be less or equal to 65535"). So a chunk is capped so
+  // both its GPU buffer AND a single per-point compute dispatch over it fit —
+  // ~4.19 M points (65535 × 64), tighter than the ~5.3 M buffer cap.
+  const dispatchPointCap = device.limits.maxComputeWorkgroupsPerDimension * 64;
+  const maxPerBuffer = Math.max(1, Math.min(bufferPointCap, dispatchPointCap));
+  for (let start = 0; start < total; start += maxPerBuffer) {
+    appendPointSubBuffer(device, node, chunk, start, Math.min(maxPerBuffer, total - start));
+  }
+}
+
+/** Pack `chunk`'s `[start, start+count)` points into one GPU vertex buffer. */
+function appendPointSubBuffer(
+  device: GPUDevice,
+  node: PointCloudNode,
+  chunk: PointCloudChunkInput,
+  start: number,
+  count: number,
+): void {
   const bytes = new ArrayBuffer(count * POINT_VERTEX_BYTES);
   const f32 = new Float32Array(bytes);
   const u8 = new Uint8Array(bytes);
@@ -104,27 +144,28 @@ export function appendChunkToNode(
   const intensities = chunk.intensities;
   const expressId = node.meta.expressId >>> 0;
 
-  for (let i = 0; i < count; i++) {
-    const fOff = i * 6;
-    f32[fOff] = positions[i * 3];
-    f32[fOff + 1] = positions[i * 3 + 1];
-    f32[fOff + 2] = positions[i * 3 + 2];
+  for (let j = 0; j < count; j++) {
+    const src = start + j;
+    const fOff = j * 6;
+    f32[fOff] = positions[src * 3];
+    f32[fOff + 1] = positions[src * 3 + 1];
+    f32[fOff + 2] = positions[src * 3 + 2];
 
-    const byteOff = i * POINT_VERTEX_BYTES + 12;
+    const byteOff = j * POINT_VERTEX_BYTES + 12;
     if (colors) {
-      u8[byteOff] = clamp01(colors[i * 3]) * 255;
-      u8[byteOff + 1] = clamp01(colors[i * 3 + 1]) * 255;
-      u8[byteOff + 2] = clamp01(colors[i * 3 + 2]) * 255;
+      u8[byteOff] = clamp01(colors[src * 3]) * 255;
+      u8[byteOff + 1] = clamp01(colors[src * 3 + 1]) * 255;
+      u8[byteOff + 2] = clamp01(colors[src * 3 + 2]) * 255;
     } else {
       u8[byteOff] = 200;
       u8[byteOff + 1] = 200;
       u8[byteOff + 2] = 200;
     }
-    u8[byteOff + 3] = classes ? classes[i] : 0;
+    u8[byteOff + 3] = classes ? classes[src] : 0;
 
     // intensity at offset +16, low 16 bits of a u32
-    u32[i * 6 + 4] = intensities ? intensities[i] & 0xffff : 0;
-    u32[i * 6 + 5] = expressId;
+    u32[j * 6 + 4] = intensities ? intensities[src] & 0xffff : 0;
+    u32[j * 6 + 5] = expressId;
   }
 
   // Sanity-check the packed buffer: read back the class byte for
@@ -135,8 +176,8 @@ export function appendChunkToNode(
   if (debugVertexClassLogs < DEBUG_VERTEX_CLASS_LOG_LIMIT && classes) {
     debugVertexClassLogs++;
     const sample: number[] = [];
-    for (let i = 0; i < Math.min(8, count); i++) {
-      sample.push(u8[i * POINT_VERTEX_BYTES + 15]);
+    for (let j = 0; j < Math.min(8, count); j++) {
+      sample.push(u8[j * POINT_VERTEX_BYTES + 15]);
     }
     console.log(
       `[pointcloud-debug] vertex-buffer chunk #${debugVertexClassLogs}: `
@@ -163,16 +204,14 @@ export function appendChunkToNode(
   // and some implementations skip the initial clear when STORAGE is set.
   device.queue.writeBuffer(deviationBuffer, 0, new Float32Array(count));
 
-  const gpuChunk: PointCloudGpuChunk = {
+  node.chunks.push({
     vertexBuffer,
     deviationBuffer,
     pointCount: count,
     bbox: chunk.bbox,
-  };
-  node.chunks.push(gpuChunk);
+  });
   node.pointCount += count;
   growBounds(node.bounds, chunk.bbox);
-  return gpuChunk;
 }
 
 /** One-shot upload — produces a node with a single GPU chunk. */

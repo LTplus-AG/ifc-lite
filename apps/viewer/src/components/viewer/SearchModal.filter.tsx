@@ -319,6 +319,40 @@ export function SearchModalFilter() {
     const total = Object.values(byModel).reduce((n, ids) => n + ids.length, 0);
     if (total === 0) return;
 
+    // Seed columns from the property / quantity rules the filter used, so a
+    // NetVolume (or any pset value) the user filtered on shows up as a column
+    // without re-adding it by hand. (#1462) Name + Class stay as the base set.
+    const columns: ListDefinition['columns'] = [
+      { id: 'attr-name', source: 'attribute', propertyName: 'Name', label: 'Name' },
+      { id: 'attr-class', source: 'attribute', propertyName: 'Class', label: 'Class' },
+    ];
+    const seenCol = new Set<string>();
+    for (const rule of searchFilter.rules) {
+      if (rule.kind === 'property' && rule.setName && rule.propertyName) {
+        const key = `property:${rule.setName}:${rule.propertyName}`;
+        if (seenCol.has(key)) continue;
+        seenCol.add(key);
+        columns.push({
+          id: `col-${columns.length}`,
+          source: 'property',
+          psetName: rule.setName,
+          propertyName: rule.propertyName,
+          label: rule.propertyName,
+        });
+      } else if (rule.kind === 'quantity' && rule.setName && rule.quantityName) {
+        const key = `quantity:${rule.setName}:${rule.quantityName}`;
+        if (seenCol.has(key)) continue;
+        seenCol.add(key);
+        columns.push({
+          id: `col-${columns.length}`,
+          source: 'quantity',
+          psetName: rule.setName,
+          propertyName: rule.quantityName,
+          label: rule.quantityName,
+        });
+      }
+    }
+
     const now = Date.now();
     const draft: ListDefinition = {
       id: crypto.randomUUID(),
@@ -328,15 +362,12 @@ export function SearchModalFilter() {
       entityTypes: [],
       expressIdsByModel: byModel,
       conditions: [],
-      columns: [
-        { id: 'attr-name', source: 'attribute', propertyName: 'Name', label: 'Name' },
-        { id: 'attr-class', source: 'attribute', propertyName: 'Class', label: 'Class' },
-      ],
+      columns,
     };
     setPendingListDraft(draft);
     setListPanelVisible(true);
     setSearchModalOpen(false);
-  }, [searchFilterResult, activeModelId, setPendingListDraft, setListPanelVisible, setSearchModalOpen]);
+  }, [searchFilterResult, searchFilter.rules, activeModelId, setPendingListDraft, setListPanelVisible, setSearchModalOpen]);
 
   if (!activeStore) {
     return (
@@ -351,7 +382,9 @@ export function SearchModalFilter() {
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       {/* ── Builder (chip palette) ─────────────────────────────────────── */}
-      <div className="overflow-y-auto border-b">
+      {/* Bounded height so a long rules list scrolls with the wheel instead of
+          growing unbounded and pushing the result table off-screen. (#1462) */}
+      <div className="max-h-[45vh] shrink-0 overflow-y-auto border-b">
         <SearchModalFilterBuilder />
       </div>
 

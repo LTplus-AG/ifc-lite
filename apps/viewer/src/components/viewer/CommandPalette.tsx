@@ -91,7 +91,8 @@ import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
-import { getRecentFiles, formatFileSize, getCachedFile } from '@/lib/recent-files';
+import { downloadFile } from '@/lib/export/download';
+import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
 import { describeRunCommandError } from '@/services/extensions/runtime-errors';
@@ -119,6 +120,13 @@ interface Command {
   shortcut?: string;
   detail?: string;            // subtle secondary text (e.g. file size)
   action: () => void;
+  /**
+   * Run the action synchronously inside the click handler instead of deferring
+   * to the next animation frame. Required for actions that open a file dialog:
+   * Chrome only honours `input.click()` / `showOpenFilePicker()` while transient
+   * user activation is live, which a `requestAnimationFrame` hop would discard.
+   */
+  immediate?: boolean;
 }
 
 interface FlatItem {
@@ -197,18 +205,6 @@ function recordUsage(id: string) {
   } catch { /* noop */ }
 }
 
-// ── Utilities ──────────────────────────────────────────────────────────
-
-function downloadBlob(data: BlobPart | Uint8Array, name: string, mime: string) {
-  // The Rust/wasm exporters return `Uint8Array<ArrayBufferLike>`, which TS 5.7
-  // no longer treats as a `BlobPart`. Copy into a fresh ArrayBuffer-backed view
-  // (same coercion as GLBExportDialog) so the Blob constructor accepts it.
-  const part: BlobPart = data instanceof Uint8Array ? new Uint8Array(data) : data;
-  const url = URL.createObjectURL(new Blob([part], { type: mime }));
-  Object.assign(document.createElement('a'), { href: url, download: name }).click();
-  URL.revokeObjectURL(url);
-}
-
 /** Toggle a sidebar workspace panel (#1208). The store's `toggleWorkspacePanel`
  *  owns the single-tenant + re-dock + detach semantics; a second activation
  *  closes the panel back to the Information fallback. Closing any active
@@ -257,6 +253,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const navigatedByKeyboard = useRef(false);
+  // Names currently in the blob cache, refreshed each open. Lets recent-file
+  // clicks decide hit/miss without an async gap that would void user activation.
+  const cachedNamesRef = useRef<Set<string>>(new Set());
 
   const { execute } = useSandbox();
   const extensionCommands = useSlotContributions<CommandContribution>('commandPalette');
@@ -266,6 +265,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     if (open) {
       setRecentIds(getRecentIds());
       setRecentFiles(getRecentFiles());
+      void getCachedFileNames().then((names) => { cachedNamesRef.current = new Set(names); });
       setQuery('');
       requestAnimationFrame(() => inputRef.current?.focus());
     }
@@ -276,11 +276,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     const c: Command[] = [];
 
     // ── File ──
+    // `immediate` so the open action runs inside the click gesture: opening a
+    // file dialog needs live user activation, which a rAF hop would discard.
+    // The actual picker is driven by MainToolbar's handleOpenClick (via the
+    // `ifc-lite:open-files` event) so palette opens capture a live handle too.
     c.push(
       { id: 'file:open', label: 'Open File', keywords: 'ifc ifcx glb load model browse', category: 'File', icon: FolderOpen,
+        immediate: true,
         action: () => {
-          const input = document.getElementById('file-input-open') as HTMLInputElement | null;
-          if (input) input.click();
+          window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
         } },
     );
     for (const rf of recentFiles) {
@@ -290,17 +294,20 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         keywords: `recent open ${formatFileSize(rf.size)}`,
         category: 'File', icon: Clock,
         detail: formatFileSize(rf.size),
+        immediate: true,
         action: () => {
-          // Try loading from IndexedDB blob cache → dispatches to MainToolbar's loadFile
-          getCachedFile(rf).then(file => {
-            if (file) {
-              window.dispatchEvent(new CustomEvent('ifc-lite:load-file', { detail: file }));
-            } else {
-              // Cache miss — fall back to file picker
-              const input = document.getElementById('file-input-open') as HTMLInputElement | null;
-              if (input) input.click();
-            }
-          });
+          // Cached (decided synchronously from the pre-loaded key set): load the
+          // blob — dispatching a load event needs no user activation.
+          if (cachedNamesRef.current.has(fileName)) {
+            void getCachedFile(rf).then(file => {
+              if (file) window.dispatchEvent(new CustomEvent('ifc-lite:load-file', { detail: file }));
+              else window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
+            });
+          } else {
+            // Not cached — re-pick. Synchronous within the gesture so the dialog
+            // actually opens on Chrome.
+            window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
+          }
         },
       });
     }
@@ -508,24 +515,24 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       { id: 'export:glb', label: 'Export GLB', keywords: '3d model gltf download', category: 'Export', icon: Download,
         action: async () => {
           const gr = useViewerStore.getState().geometryResult; if (!gr) return;
-          try { downloadBlob(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
+          try { downloadFile(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
           catch (e) { console.error('GLB export failed:', e); }
         } },
       { id: 'export:csv-entities', label: 'Export CSV: Entities', keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadBlob(await exportCsvFromBytes(d.source, 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-properties', label: 'Export CSV: Properties', keywords: 'pset spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadBlob(await exportCsvFromBytes(d.source, 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-quantities', label: 'Export CSV: Quantities', keywords: 'qto spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadBlob(await exportCsvFromBytes(d.source, 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-spatial', label: 'Export CSV: Spatial', keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadBlob(await exportCsvFromBytes(d.source, 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:json', label: 'Export JSON', keywords: 'data entities all download', category: 'Export', icon: FileJson,
         action: () => {
           const d = useViewerStore.getState().ifcDataStore; if (!d) return;
           try {
             const out: Record<string, unknown>[] = [];
             for (let i = 0; i < d.entities.count; i++) { const id = d.entities.expressId[i]; out.push({ expressId: id, globalId: d.entities.getGlobalId(id), name: d.entities.getName(id), type: d.entities.getTypeName(id), properties: d.properties.getForEntity(id) }); }
-            downloadBlob(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
+            downloadFile(JSON.stringify({ entities: out }, null, 2), 'model-data.json', 'application/json');
           } catch (e) { console.error(e); }
         } },
     );
@@ -645,7 +652,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const runCommand = useCallback((cmd: Command) => {
     onOpenChange(false);
     recordUsage(cmd.id);
-    requestAnimationFrame(() => cmd.action());
+    // File-dialog actions must run while user activation is still live; deferring
+    // them to a frame later voids it and Chrome silently ignores the dialog.
+    if (cmd.immediate) {
+      cmd.action();
+    } else {
+      requestAnimationFrame(() => cmd.action());
+    }
   }, [onOpenChange]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

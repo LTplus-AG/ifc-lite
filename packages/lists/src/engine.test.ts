@@ -84,6 +84,12 @@ function createMockProvider(): ListDataProvider {
     [3, 'Level 0'],
   ]);
 
+  const predefinedTypes = new Map<number, string>([
+    [1, 'SOLIDWALL'],
+    // entity 2 intentionally has no PredefinedType
+    [3, 'FLOOR'],
+  ]);
+
   return {
     getEntitiesByType: (type) => typeIndex.get(type) ?? [],
     getEntityName: (id) => entities.get(id)?.name ?? '',
@@ -98,6 +104,7 @@ function createMockProvider(): ListDataProvider {
     getMaterialNames: (id) => materialNames.get(id) ?? [],
     getClassifications: (id) => classifications.get(id) ?? [],
     getStoreyName: (id) => storeyNames.get(id) ?? '',
+    getEntityPredefinedType: (id) => predefinedTypes.get(id) ?? '',
   };
 }
 
@@ -126,6 +133,30 @@ describe('executeList', () => {
     expect(result.rows[0].values[0]).toBe('Wall-01');
     expect(result.rows[1].values[0]).toBe('Wall-02');
     expect(result.rows[0].values[1]).toBe('IfcWall');
+  });
+
+  // #1364: PredefinedType is selectable as an entity attribute column.
+  it('resolves the PredefinedType attribute column', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'predef',
+      name: 'PredefinedType',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'predef', source: 'attribute', propertyName: 'PredefinedType' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    const byName = new Map(result.rows.map(r => [r.values[0], r.values[1]]));
+    expect(byName.get('Wall-01')).toBe('SOLIDWALL');
+    expect(byName.get('Slab-01')).toBe('FLOOR');
+    // Element without a PredefinedType yields null, not a fabricated value.
+    expect(byName.get('Wall-02')).toBe(null);
   });
 
   it('extracts property values with IFC type resolution', () => {

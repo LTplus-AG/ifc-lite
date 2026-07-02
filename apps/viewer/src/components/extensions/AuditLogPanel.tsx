@@ -26,6 +26,7 @@ import type { AuditEvent, AuditEventKind } from '@ifc-lite/extensions';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
+import { downloadFile } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { HelpHint } from './HelpHint';
 
@@ -96,13 +97,7 @@ export function AuditLogPanel({ extensionId, onClose }: AuditLogPanelProps) {
 
   const handleExport = () => {
     const json = host.audit.exportJson();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `ifclite-audit-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadFile(json, `ifclite-audit-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
     toast.success('Audit log exported.');
   };
 

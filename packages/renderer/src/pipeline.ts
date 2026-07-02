@@ -9,6 +9,7 @@
 import { WebGPUDevice } from './device.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { texturedShaderSource } from './shaders/textured.wgsl.js';
+import { packClipBox } from './clip-box.js';
 import {
     ENVIRONMENT_UNIFORM_SIZE,
     packEnvironmentUniforms,
@@ -20,7 +21,6 @@ export class RenderPipeline {
     private device: GPUDevice;
     private webgpuDevice: WebGPUDevice;
     private pipeline: GPURenderPipeline;
-    private culledPipeline!: GPURenderPipeline;  // Opaque pipeline with backface culling — material-layer slices only (their winding is reliable)
     private instancedPipeline!: GPURenderPipeline;  // GPU-instancing: template (slot 0) + per-instance buffer (slot 1)
     private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); lazily built, null if unbuilt/rejected
     private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
@@ -104,12 +104,13 @@ export class RenderPipeline {
             this.multisampleTextureView = this.multisampleTexture.createView();
         }
 
-        // Create uniform buffer for camera matrices, PBR material, and section plane
+        // Create uniform buffer for camera matrices, PBR material, section plane + clip box
         // Layout: viewProj (64 bytes) + model (64 bytes) + baseColor (16 bytes) + metallicRoughness (8 bytes) +
-        //         sectionPlane (16 bytes: vec3 normal + float position) + flags (16 bytes: u32 isSelected + u32 sectionEnabled + padding) = 192 bytes
+        //         sectionPlane (16 bytes: vec3 normal + float distance) + flags (16 bytes) +
+        //         clipBoxMin (16 bytes) + clipBoxMax (16 bytes) = 224 bytes
         // WebGPU requires uniform buffers to be aligned to 16 bytes
         this.uniformBuffer = this.device.createBuffer({
-            size: 192, // 12 * 16 bytes = properly aligned
+            size: 224, // 14 * 16 bytes = properly aligned
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
@@ -243,19 +244,6 @@ export class RenderPipeline {
         // Stash the instanced vertex stage so the transparent instanced pipeline
         // (built after transparentPipelineDescriptor below) reuses it verbatim.
         const instancedVertexStage = instancedVertex;
-
-        // Backface-culled clone of the opaque pipeline, used ONLY for material-
-        // layer slices. Those are thin watertight outward-wound solids stacked
-        // with coincident interface caps; drawn double-sided (cullMode 'none')
-        // the back-facing cap of each pair z-fights its neighbour into a hollow-
-        // looking shimmer. Their winding is reliable (positive signed volume), so
-        // culling back faces (default frontFace 'ccw') drops the interior caps
-        // and the build-up reads as a clean solid. General IFC geometry stays on
-        // the non-culled `pipeline` because its winding is not reliable.
-        this.culledPipeline = this.device.createRenderPipeline({
-            ...pipelineDescriptor,
-            primitive: { topology: 'triangle-list', cullMode: 'back' },
-        } as GPURenderPipelineDescriptor);
 
         // Create selection pipeline descriptor
         const selectionPipelineDescriptor: GPURenderPipelineDescriptor = {
@@ -513,12 +501,13 @@ export class RenderPipeline {
         color?: [number, number, number, number],
         material?: { metallic?: number; roughness?: number },
         sectionPlane?: { normal: [number, number, number]; distance: number; enabled: boolean; flipped?: boolean },
-        isSelected?: boolean
+        isSelected?: boolean,
+        clipBox?: { min: [number, number, number]; max: [number, number, number]; enabled: boolean }
     ): void {
         // Create buffer with proper alignment:
-        // viewProj (16 floats) + model (16 floats) + baseColor (4 floats) + metallicRoughness (2 floats) + padding (2 floats)
-        // + sectionPlane (4 floats) + flags (4 u32) = 48 floats = 192 bytes
-        const buffer = new Float32Array(48);
+        // viewProj (16) + model (16) + baseColor (4) + metallicRoughness (2) + padding (2)
+        // + sectionPlane (4) + flags (4 u32) + clipBoxMin (4) + clipBoxMax (4) = 56 floats = 224 bytes
+        const buffer = new Float32Array(56);
         const flagBuffer = new Uint32Array(buffer.buffer, 176, 4); // flags at byte 176
 
         // viewProj: mat4x4<f32> at offset 0 (16 floats)
@@ -551,12 +540,17 @@ export class RenderPipeline {
             buffer[43] = sectionPlane.distance;
         }
 
+        // clipBoxMin / clipBoxMax: vec4<f32> at float offsets 48 / 52 (xyz + pad);
+        // returns the flags.y clip-enabled bit (or 0).
+        const clipBit = packClipBox(clipBox, buffer, 48);
+
         // flags: vec4<u32> at offset 44 (4 u32 - using flagBuffer view)
-        // flags.y packs: bit 0 = sectionEnabled, bit 1 = sectionFlipped.
+        // flags.y packs: bit 0 = sectionEnabled, bit 1 = sectionFlipped, bit 2 = clipBoxEnabled.
         flagBuffer[0] = isSelected ? 1 : 0;
         flagBuffer[1] =
             (sectionPlane?.enabled ? 1 : 0) |
-            (sectionPlane?.flipped ? 2 : 0);
+            (sectionPlane?.flipped ? 2 : 0) |
+            clipBit;
         flagBuffer[2] = 0;                             // reserved (edgeEnabled written by Renderer)
         flagBuffer[3] = 0;                             // reserved (edgeIntensity written by Renderer)
 
@@ -565,7 +559,7 @@ export class RenderPipeline {
     }
 
     /**
-     * Write a raw 48-float (192-byte) uniform block into the SHARED uniform
+     * Write a raw 56-float (224-byte) uniform block into the SHARED uniform
      * buffer, whose bind group is `getBindGroup()`. Used by the GPU-instancing
      * pass, which reuses the frame's viewProj + section + flags from the
      * renderer's prebuilt template (model + baseColor are unused — vs_instanced
@@ -662,11 +656,6 @@ export class RenderPipeline {
 
     getPipeline(): GPURenderPipeline {
         return this.pipeline;
-    }
-
-    /** Backface-culled opaque pipeline — material-layer slices only. */
-    getCulledPipeline(): GPURenderPipeline {
-        return this.culledPipeline;
     }
 
     /** GPU-instancing pipeline (template vertex buffer at slot 0 + per-instance buffer at slot 1). */
@@ -787,7 +776,7 @@ export class RenderPipeline {
     }
 
     getUniformBufferSize(): number {
-        return 192; // 48 floats * 4 bytes
+        return 224; // 56 floats * 4 bytes (incl. section plane + clip box)
     }
 
     private destroyed = false;

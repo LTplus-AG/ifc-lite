@@ -22,6 +22,7 @@ import {
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
+import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
 
 /** Collect every material-name string an element exposes — top-level
  *  material plus layer / constituent / profile names and list members. */
@@ -67,6 +68,17 @@ export function createListDataProvider(store: IfcDataStore): ListDataProvider {
     return empty;
   }
 
+  // PredefinedType re-parses the entity (no columnar accessor); cache it so
+  // a list column doesn't re-extract per row across re-renders.
+  const predefCache = new Map<number, string>();
+  function getPredefinedTypeFor(id: number): string {
+    const cached = predefCache.get(id);
+    if (cached !== undefined) return cached;
+    const value = resolveEntityPredefinedType(store, id) ?? '';
+    predefCache.set(id, value);
+    return value;
+  }
+
   // Complete column discovery is cached — the provider outlives a builder
   // open, and the scan touches every entity that declares a pset/qto.
   let columnsCache: DiscoveredColumns | null = null;
@@ -91,6 +103,7 @@ export function createListDataProvider(store: IfcDataStore): ListDataProvider {
     getEntityGlobalId: (id) => store.entities.getGlobalId(id),
     getEntityDescription: (id) => store.entities.getDescription(id) || getOnDemandAttrs(id).description,
     getEntityObjectType: (id) => store.entities.getObjectType(id) || getOnDemandAttrs(id).objectType,
+    getEntityPredefinedType: (id) => getPredefinedTypeFor(id),
     getEntityTag: (id) => getOnDemandAttrs(id).tag,
     getEntityTypeName: (id) => store.entities.getTypeName(id),
 

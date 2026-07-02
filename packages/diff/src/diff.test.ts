@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { diffModels } from './diff.js';
+import { buildDataFingerprint } from './fingerprint.js';
 import type { EntityFingerprint } from './types.js';
 
 /** Terse fingerprint builder for tests. */
@@ -111,6 +112,77 @@ describe('diffModels — type & geometry edge cases', () => {
     expect(
       diffModels([fp('e')], [fp('e')], { scope: 'geometry' }).byKey.get('e')?.state,
     ).toBe('unchanged');
+  });
+});
+
+describe('diffModels — issue #1361 (attribute changes Bonsai ignores)', () => {
+  // A user reported ifc-lite's compare flagging changes that buildingSMART's
+  // `ifcdiff` (Bonsai) did not. Investigating their two revisions showed the
+  // newer export genuinely *dropped* `PredefinedType` from nearly every element
+  // (e.g. `.POST.`/`.ELEMENT.`/`.USERDEFINED.` → `$`) and reclassified five
+  // `IfcBuildingElementProxy` to `IfcGeographicElement`. Those are real source
+  // changes — Bonsai's default diff is attribute-blind, ifc-lite is not. These
+  // tests lock in that ifc-lite reports the real deltas (and only the real
+  // deltas), so a future "match Bonsai / reduce noise" change can't silently
+  // drop genuine change detection.
+
+  // Build the data hash the viewer would, for one entity's relevant fields.
+  const hashOf = (input: Parameters<typeof buildDataFingerprint>[0]) =>
+    buildDataFingerprint(input);
+
+  it('flags a PredefinedType drop (real value → unset) as a data change', () => {
+    const base = [
+      fp('e1', {
+        ifcType: 'IfcMember',
+        dataHash: hashOf({ ifcType: 'IfcMember', name: 'member', predefinedType: 'POST' }),
+      }),
+    ];
+    const head = [
+      fp('e1', {
+        ifcType: 'IfcMember',
+        // Re-exported without a PredefinedType — semantically NOTDEFINED.
+        dataHash: hashOf({ ifcType: 'IfcMember', name: 'member' }),
+      }),
+    ];
+    const d = diffModels(base, head, { scope: 'data' }).byKey.get('e1');
+    expect(d?.state).toBe('modified');
+    expect(d?.changeKinds).toEqual(['data']);
+  });
+
+  it('flags a proxy → geographic reclassification (with its type assignment) as a data change', () => {
+    const base = [
+      fp('e2', {
+        ifcType: 'IfcBuildingElementProxy',
+        dataHash: hashOf({
+          ifcType: 'IfcBuildingElementProxy',
+          name: 'feature',
+          typeAssignments: [{ name: 'feature', type: 'IfcBuildingElementProxyType' }],
+        }),
+      }),
+    ];
+    const head = [
+      fp('e2', {
+        ifcType: 'IfcGeographicElement',
+        dataHash: hashOf({
+          ifcType: 'IfcGeographicElement',
+          name: 'feature',
+          typeAssignments: [{ name: 'feature', type: 'IfcGeographicElementType' }],
+        }),
+      }),
+    ];
+    const d = diffModels(base, head, { scope: 'data' }).byKey.get('e2');
+    expect(d?.state).toBe('modified');
+    expect(d?.changeKinds).toEqual(['data']);
+  });
+
+  it('does not flag an element whose attributes are genuinely unchanged', () => {
+    const sameInput = { ifcType: 'IfcBuildingElementProxy', name: 'proxy' };
+    const d = diffModels(
+      [fp('road', { ifcType: 'IfcBuildingElementProxy', dataHash: hashOf(sameInput) })],
+      [fp('road', { ifcType: 'IfcBuildingElementProxy', dataHash: hashOf(sameInput) })],
+      { scope: 'data' },
+    ).byKey.get('road');
+    expect(d?.state).toBe('unchanged');
   });
 });
 

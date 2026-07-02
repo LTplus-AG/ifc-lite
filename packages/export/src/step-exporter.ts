@@ -130,6 +130,11 @@ export class StepExporter {
   private mutationView: MutablePropertyView | null;
   private nextExpressId: number;
   private entityExtractor: EntityExtractor | null;
+  /** Lazily-resolved fallback `#id` of an IfcOwnerHistory that survives the
+   *  current export closure (or `$` when the file has none). */
+  private ownerHistoryFallbackRef: string | undefined;
+  /** Per-host cache of an element's own OwnerHistory ref (`#id` or null). */
+  private ownerHistoryByEntity = new Map<number, string | null>();
 
   constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView) {
     this.dataStore = dataStore;
@@ -540,6 +545,13 @@ export class StepExporter {
       );
     }
 
+    // A modified pset is replaced wholesale, which skips ALL of its member atoms.
+    // But IFC exporters deduplicate identical Pset_*Common atoms (e.g. one
+    // IsExternal IfcPropertySingleValue shared by dozens of psets), so skipping a
+    // shared atom would orphan every OTHER pset that still references it, leaving
+    // dangling refs and an invalid file. Keep any atom a surviving container needs.
+    this.retainSharedAtoms(skipPropertySetIds, allowedEntityIds);
+
     // Export original entities from source buffer, SKIPPING modified property sets
     if (!options.deltaOnly && this.dataStore.source) {
       const source = this.dataStore.source;
@@ -653,6 +665,7 @@ export class StepExporter {
       const newEntities = this.generatePropertySetEntities(
         entityId,
         psets,
+        allowedEntityIds,
         typeOwnedPsetNamesByEntity.get(entityId)
       );
       entities.push(...newEntities.lines);
@@ -688,7 +701,7 @@ export class StepExporter {
 
     // Generate new quantity entities for mutations
     for (const { entityId, qsets } of newQuantitySets) {
-      const newEntities = this.generateQuantitySetEntities(entityId, qsets);
+      const newEntities = this.generateQuantitySetEntities(entityId, qsets, allowedEntityIds);
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;
     }
@@ -816,11 +829,66 @@ export class StepExporter {
   }
 
   /**
+   * Resolve a STEP reference to an existing IfcOwnerHistory for the
+   * IfcPropertySet / IfcRelDefinesByProperties / IfcElementQuantity entities we
+   * generate for `hostEntityId`'s mutations. OwnerHistory is optional in IFC4 but
+   * MANDATORY in IFC2X3 (IfcRoot.OwnerHistory), so emitting `$` yields an invalid
+   * IFC2X3 file that strict readers (e.g. BIM Vision) reject.
+   *
+   * Prefer the host element's OWN owner history: it is the semantically correct
+   * owner and — being reachable from an exported root — is guaranteed to survive a
+   * `visibleOnly` closure. Fall back to any owner history still inside the export
+   * (closure-aware) so we never reference one a `visibleOnly` / isolated export
+   * dropped, then to `$` only when the file has none.
+   */
+  private resolveOwnerHistoryRef(hostEntityId: number, allowedEntityIds: Set<number> | null): string {
+    const own = this.getOwnerHistoryRefOfEntity(hostEntityId);
+    if (own !== null) {
+      const ownId = parseInt(own.slice(1), 10);
+      if (allowedEntityIds === null || allowedEntityIds.has(ownId)) return own;
+    }
+    if (this.ownerHistoryFallbackRef === undefined) {
+      const ids = this.dataStore.entityIndex.byType.get('IFCOWNERHISTORY') ?? [];
+      const surviving = allowedEntityIds === null
+        ? ids[0]
+        : ids.find((id: number) => allowedEntityIds.has(id));
+      this.ownerHistoryFallbackRef = surviving !== undefined ? `#${surviving}` : '$';
+    }
+    return this.ownerHistoryFallbackRef;
+  }
+
+  /**
+   * Read an element's own OwnerHistory reference (`#id`), or null when the
+   * element omits one (`$`) or cannot be parsed. OwnerHistory is the second
+   * attribute of every IfcRoot subtype, immediately after the GlobalId string.
+   */
+  private getOwnerHistoryRefOfEntity(entityId: number): string | null {
+    const cached = this.ownerHistoryByEntity.get(entityId);
+    if (cached !== undefined) return cached;
+    let result: string | null = null;
+    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
+    if (entityRef && this.dataStore.source && entityRef.byteLength > 0) {
+      const entityText = safeUtf8Decode(
+        this.dataStore.source,
+        entityRef.byteOffset,
+        entityRef.byteOffset + entityRef.byteLength
+      );
+      // #ID=IFCWALL('GlobalId',#owner,...): GlobalId is a quoted STEP string
+      // (doubled '' escapes); OwnerHistory is the ref/`$` right after it.
+      const match = entityText.match(/=\s*IFC\w+\s*\(\s*'(?:[^']|'')*'\s*,\s*#(\d+)/i);
+      if (match) result = `#${match[1]}`;
+    }
+    this.ownerHistoryByEntity.set(entityId, result);
+    return result;
+  }
+
+  /**
    * Generate STEP entities for property sets
    */
   private generatePropertySetEntities(
     entityId: number,
     psets: PropertySet[],
+    allowedEntityIds: Set<number> | null,
     typeOwnedPsetNames?: Set<string>
   ): { lines: string[]; count: number; generatedTypeOwnedPsetIds: Map<string, number> } {
     const lines: string[] = [];
@@ -852,8 +920,8 @@ export class StepExporter {
       const propRefs = propertyIds.map(id => `#${id}`).join(',');
       const globalId = this.generateGlobalId();
 
-      // #ID=IFCPROPERTYSET('GlobalId',$,'Name',$,(#props));
-      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',$,'${escapeStepString(pset.name)}',$,(${propRefs}));`;
+      // #ID=IFCPROPERTYSET('GlobalId',#ownerHistory,'Name',$,(#props));
+      const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},'${escapeStepString(pset.name)}',$,(${propRefs}));`;
       lines.push(psetLine);
 
       if (typeOwnedPsetNames?.has(pset.name)) {
@@ -864,8 +932,8 @@ export class StepExporter {
         count++;
 
         const relGlobalId = this.generateGlobalId();
-        // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',$,$,$,(#entity),#pset);
-        const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',$,$,$,(#${entityId}),#${psetId});`;
+        // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',#ownerHistory,$,$,(#entity),#pset);
+        const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},$,$,(#${entityId}),#${psetId});`;
         lines.push(relLine);
       }
     }
@@ -878,7 +946,8 @@ export class StepExporter {
    */
   private generateQuantitySetEntities(
     entityId: number,
-    qsets: QuantitySet[]
+    qsets: QuantitySet[],
+    allowedEntityIds: Set<number> | null
   ): { lines: string[]; count: number } {
     const lines: string[] = [];
     let count = 0;
@@ -905,8 +974,8 @@ export class StepExporter {
       const quantRefs = quantityIds.map(id => `#${id}`).join(',');
       const globalId = this.generateGlobalId();
 
-      // #ID=IFCELEMENTQUANTITY('GlobalId',$,'Name',$,$,(#quants));
-      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',$,'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
+      // #ID=IFCELEMENTQUANTITY('GlobalId',#ownerHistory,'Name',$,$,(#quants));
+      const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
       lines.push(qsetLine);
 
       // Create IfcRelDefinesByProperties to link qset to entity
@@ -914,7 +983,7 @@ export class StepExporter {
       count++;
 
       const relGlobalId = this.generateGlobalId();
-      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',$,$,$,(#${entityId}),#${qsetId});`;
+      const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},$,$,(#${entityId}),#${qsetId});`;
       lines.push(relLine);
     }
 
@@ -1268,6 +1337,38 @@ export class StepExporter {
   /**
    * Get IDs of properties in a property set
    */
+  /**
+   * Un-skip property/quantity atoms that a surviving (non-skipped, and — under
+   * visible-only export — still-included) IfcPropertySet / IfcElementQuantity
+   * still references.
+   *
+   * When a property is edited, the modified pset is replaced and its member atoms
+   * are added to `skipIds` wholesale. Because exporters deduplicate shared
+   * Pset_*Common atoms (e.g. a single IsExternal / IsLoadBearing value referenced
+   * by many psets), that wholesale skip can drop an atom another pset still needs.
+   * This pass restores any such atom: the edited pset still emits its replacement
+   * with the new value, while the shared atom stays for the psets that keep their
+   * original value.
+   */
+  private retainSharedAtoms(skipIds: Set<number>, allowedEntityIds: Set<number> | null): void {
+    if (skipIds.size === 0) return;
+    const byType = this.dataStore.entityIndex.byType;
+    const containerIds = [
+      ...(byType.get('IFCPROPERTYSET') ?? []),
+      ...(byType.get('IFCELEMENTQUANTITY') ?? []),
+    ];
+    for (const containerId of containerIds) {
+      // Skipped containers are being dropped/replaced — their atoms may go.
+      if (skipIds.has(containerId)) continue;
+      // Under visible-only export a container outside the closure is not emitted,
+      // so it cannot keep an atom alive.
+      if (allowedEntityIds !== null && !allowedEntityIds.has(containerId)) continue;
+      for (const atomId of this.getPropertyIdsInSet(containerId)) {
+        skipIds.delete(atomId);
+      }
+    }
+  }
+
   private getPropertyIdsInSet(psetId: number): number[] {
     const entityRef = this.dataStore.entityIndex.byId.get(psetId);
     if (!entityRef || !this.dataStore.source) return [];

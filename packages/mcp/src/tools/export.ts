@@ -13,7 +13,8 @@
 
 import { writeFile, readFile } from 'node:fs/promises';
 import type { EntityRef } from '@ifc-lite/sdk';
-import { GeometryProcessor } from '@ifc-lite/geometry';
+import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
+import { countGlbMeshes } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -145,13 +146,47 @@ const exportGlb: Tool = {
     const isolated = filterType
       ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
       : new Uint32Array();
+    // An empty isolation set means "export everything" to the Rust mesher, so a
+    // `type` filter that matched nothing would silently export the WHOLE model
+    // and report success. Fail loud instead, mirroring the CLI guard.
+    if (filterType && isolated.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: `No ${filterType} entities found - nothing to export.`,
+      });
+    }
     const bytes = await resolveIfcBytes(m);
     const gp = new GeometryProcessor();
     await gp.init();
     try {
-      const glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+      let glb: Uint8Array | null;
+      try {
+        glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+      } catch (err) {
+        // The Rust boundary fails closed on an empty visible mesh set; map the
+        // typed error to the tailored tool error.
+        if (isNoRenderGeometryError(err)) {
+          throw new ToolExecutionError({
+            code: ToolErrorCode.INTERNAL_ERROR,
+            message: filterType
+              ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
+              : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
+          });
+        }
+        throw err;
+      }
       if (glb == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
+      }
+      // Defense-in-depth behind the Rust fail-closed guard: a zero-mesh GLB
+      // must never be written to disk and reported as success.
+      if (countGlbMeshes(glb) === 0) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.INTERNAL_ERROR,
+          message: filterType
+            ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
+            : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
+        });
       }
       await writeFile(filePath, glb);
       return okResult(`Wrote ${glb.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: glb.length });
@@ -182,6 +217,15 @@ const exportObj: Tool = {
     const isolated = filterType
       ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
       : new Uint32Array();
+    // An empty isolation set means "export everything" to the Rust mesher, so a
+    // `type` filter that matched nothing would silently export the WHOLE model
+    // and report success. Fail loud instead, mirroring the CLI guard.
+    if (filterType && isolated.length === 0) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: `No ${filterType} entities found - nothing to export.`,
+      });
+    }
     const bytes = await resolveIfcBytes(m);
     const gp = new GeometryProcessor();
     await gp.init();
@@ -190,7 +234,7 @@ const exportObj: Tool = {
       if (obj == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
       }
-      await writeFile(filePath, obj, 'utf-8');
+      await writeFile(filePath, obj);
       return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });
     } finally {
       gp.dispose();
@@ -223,7 +267,7 @@ const exportIfcx: Tool = {
       if (ifcx == null) {
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
       }
-      await writeFile(filePath, ifcx, 'utf-8');
+      await writeFile(filePath, ifcx);
       return okResult(`Wrote ${ifcx.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
     } finally {
       gp.dispose();

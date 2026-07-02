@@ -108,8 +108,8 @@ fn main() {
 
 /// Test that window geometry items have different colors (frame = wood, glass = transparent)
 fn test_window_colors(
-    content: &str,
-    decoder: &mut EntityDecoder,
+    _content: &str,
+    _decoder: &mut EntityDecoder,
     geometry_styles: &FxHashMap<u32, [f32; 4]>,
 ) {
     println!("\n=== Testing Window Color Separation ===");
@@ -163,10 +163,7 @@ fn test_window_colors(
     let frame_color = geometry_styles.get(&frame_id);
     let glass_color = geometry_styles.get(&glass_id);
 
-    if frame_color.is_some() && glass_color.is_some() {
-        let frame = frame_color.unwrap();
-        let glass = glass_color.unwrap();
-
+    if let (Some(frame), Some(glass)) = (frame_color, glass_color) {
         if (frame[3] - glass[3]).abs() > 0.5 {
             println!("\n✅ SUCCESS: Frame and glass have DIFFERENT transparency!");
             println!("   Frame alpha: {:.2} (opaque)", frame[3]);

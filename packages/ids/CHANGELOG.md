@@ -1,5 +1,77 @@
 # @ifc-lite/ids
 
+## 1.15.21
+
+### Patch Changes
+
+- bc1d2b0: Fix three IDS-validator false positives that flagged valid IDS documents and (in
+  one case) blocked model validation entirely.
+
+  **Type-entity property applicability (#1441).** A standard occurrence pset is
+  equally applicable to its companion type entity — IFC lets the same pset attach
+  to either the occurrence or its type. The audit's applicability cross-check only
+  matched occurrence subtypes, so an IDS that targets type entities (e.g.
+  `IfcActuatorType`) with an element pset (e.g. `Pset_ManufacturerTypeInformation`,
+  declared applicable only to `IfcElement`) was wrongly reported as
+  `E_IFC_PROP_NOT_IN_PSET`. Because that is an `error`, it disabled the Run
+  Validation button. The check now expands a pset's applicable occurrence classes
+  with their companion type entities (via the authoritative `typeEntity` link, with
+  a schema-validated `<Occurrence>Type` naming fallback for IFC2X3, whose rows omit
+  the link).
+
+  **Quantity sets in IFC4/IFC2X3 (#1442).** The upstream schema data only
+  enumerates `Qto_*` quantity sets for IFC4X3, so IFC2X3/IFC4 carry no quantity-set
+  rows at all and a standard set such as `Qto_SpaceBaseQuantities` tripped the
+  reserved-prefix warning (`W_IFC_PSET_RESERVED_PREFIX`). The reserved-prefix check
+  now only fires for a `Qto_*` name when the schema version actually has
+  quantity-set coverage to check against — without that data we cannot tell an
+  authoring typo from a real standard set, so suppressing the warning is the honest
+  choice. `Pset_*` coverage is complete, so bogus `Pset_*` names still warn in every
+  version, and bogus `Qto_*` names still warn in IFC4X3.
+
+  **Empty requirements on a prohibited spec (#1444).** A prohibited specification
+  (`<applicability maxOccurs="0">`) asserts that no entity matches and the IDS spec
+  requires its requirements to be empty, yet the audit warned "specification has no
+  <requirements>". The warning is now suppressed when the applicability declares an
+  explicit numeric `maxOccurs` (prohibited `0` or a bounded count), where the
+  cardinality itself is the assertion. Default-cardinality specs with no
+  requirements still warn.
+
+## 1.15.20
+
+### Patch Changes
+
+- Updated dependencies [[`d567c4e`](https://github.com/LTplus-AG/ifc-lite/commit/d567c4eb55edf7f2e68f67709c3716cda0bf5360)]:
+  - @ifc-lite/parser@3.5.1
+
+## 1.15.19
+
+### Patch Changes
+
+- Updated dependencies [[`8a4ce69`](https://github.com/LTplus-AG/ifc-lite/commit/8a4ce694ea1d8c1b0f25310f8a1addb3ff649f14)]:
+  - @ifc-lite/parser@3.5.0
+
+## 1.15.18
+
+### Patch Changes
+
+- Updated dependencies [[`f746659`](https://github.com/LTplus-AG/ifc-lite/commit/f746659ada2c918d88ea8458240e5d91b3f348f4)]:
+  - @ifc-lite/parser@3.4.1
+
+## 1.15.17
+
+### Patch Changes
+
+- Updated dependencies [[`297ae7b`](https://github.com/LTplus-AG/ifc-lite/commit/297ae7bc232519fe06a25d6ea20f39290e8a7ed2)]:
+  - @ifc-lite/parser@3.4.0
+
+## 1.15.16
+
+### Patch Changes
+
+- Updated dependencies [[`39400ee`](https://github.com/LTplus-AG/ifc-lite/commit/39400ee5bb48c1554656e1ac7aaf8a06ba2274cf)]:
+  - @ifc-lite/parser@3.3.2
+
 ## 1.15.15
 
 ### Patch Changes

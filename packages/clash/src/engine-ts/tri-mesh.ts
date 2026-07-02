@@ -97,6 +97,30 @@ export class TriMesh {
   }
 
   /**
+   * Mean of every vertex (world-space, transform applied), summed in index
+   * order. A rigid-invariant interior probe for the volumetric-overlap check in
+   * the narrow phase: for a convex solid it is the centroid, and the midpoint of
+   * two solids' vertex centroids lands in their shared volume for a genuine
+   * overlap (but on/outside the interface for a bare face touch). Iterated in
+   * index order and summed in `f64` so it is bit-identical to the Rust
+   * `vertex_centroid`. Only called in the rare coplanar-overlap branch.
+   */
+  vertexCentroid(): Vec3 {
+    const n = Math.floor(this.positions.length / 3);
+    if (n === 0) return [0, 0, 0];
+    let sx = 0;
+    let sy = 0;
+    let sz = 0;
+    for (let i = 0; i < n; i += 1) {
+      const [x, y, z] = this.vertex(i);
+      sx += x;
+      sy += y;
+      sz += z;
+    }
+    return [sx / n, sy / n, sz / n];
+  }
+
+  /**
    * True when `p` is inside this closed mesh. Casts a fixed-direction ray and
    * counts forward crossings against every triangle (Möller–Trumbore,
    * double-sided so winding doesn't matter); an odd count means inside.
